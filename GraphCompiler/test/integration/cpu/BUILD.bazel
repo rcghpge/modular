@@ -50,26 +50,12 @@ _COMMON_DEPS = [
     "//GraphCompiler/test/utils/test-helper:test_vs_numpy",
 ]
 
-# Files that fail under MAX_GC_USE_ADV_FUSION=1 today (compile error or wrong
-# result), found by sweeping this directory with the env var forced on both
-# x86 and Graviton -- a few pass on one arch and fail on the other, so the
-# list is the union across arches. Removing an entry should say which fix
-# covers it, not just "now passes".
-_ADV_FUSION_EXCLUDED_TESTS = [
-    # Custom view-kernel graphs removed (unsupported going forward); still
-    # blocked on a matmul epilogue-fusion difference (has_epilogue_fusion),
-    # a separate cause from view kernels.
-    "MODialect/mogg-kernel-api-e2e-fusion.mlir",
-]
-
-# Files that will never run under MAX_GC_USE_ADV_FUSION=1: either rewritten as
-# a MAP test, or checking something the advanced fusion path does not have.
-# Unlike the list above, this one is not meant to empty -- it goes away with
-# the legacy path itself.
+# Files that will never run under MAX_GC_USE_ADV_FUSION=1: rewritten as a MAP
+# test, or checking something that path does not have. Not meant to empty; it
+# goes away with the legacy path.
 _ADV_FUSION_DISABLED_TESTS = [
-    # Read the propagated static strides out of the legacy-only
-    # `mogg-debug-dump-fused-tensor-specs`. Their graphs are checked as index
-    # transforms instead, in
+    # Read the legacy-only `mogg-debug-dump-fused-tensor-specs`. Their graphs
+    # are checked as index transforms in
     # mo-opt/MAPDialect/Transforms/ViewFusion/view_fusion_propagate_strides.mlir.
     "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
     "MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir",
@@ -92,8 +78,7 @@ lit_tests(
 # ============================================================================
 # New tests: adv-fusion regression target (GEX-4140).
 # ============================================================================
-# Mirrors `tests` above under MAX_GC_USE_ADV_FUSION=1, minus
-# _ADV_FUSION_EXCLUDED_TESTS. Most of its srcs intentionally overlap `tests`'
+# Mirrors `tests` above under MAX_GC_USE_ADV_FUSION=1. Most of its srcs intentionally overlap `tests`'
 # own (find_duplicate_srcs.py has a matching exemption for this package, the
 # same pattern mblack's unit_tests/unit_tests_validate already uses); a
 # lit_tests srcs list needs real file paths (it derives each per-file target
@@ -104,8 +89,7 @@ lit_tests(
     size = "enormous",
     srcs = glob(
         ["**/*.mlir"],
-        exclude = ["**/*-gpu.mlir"] + _ADV_FUSION_EXCLUDED_TESTS +
-                  _ADV_FUSION_DISABLED_TESTS,
+        exclude = ["**/*-gpu.mlir"] + _ADV_FUSION_DISABLED_TESTS,
     ),
     custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
     data = _COMMON_DATA,

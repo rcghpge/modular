@@ -641,6 +641,41 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+/// Whether an epilogue recomputes the value the kernel hands it, which is what
+/// `has_epilogue_fusion` asks. Its presence answers nothing: `MOToMAP` gives
+/// every output a store epilogue, so an unfused one has a body that stores the
+/// value untouched. An index transform cannot show up in these uses, and only
+/// `ReshapeEpilogueFuser` remaps the store index anyway -- never alone.
+static bool epilogueRecomputesValue(MOGG::TensorCreateEpilogueOp epilogue) {
+  mlir::Block &body = epilogue.getBody().front();
+  if (body.getNumArguments() == 0)
+    return false;
+  // Stored or yielded as it arrived is a pass-through; every other use derives
+  // something from it.
+  return !llvm::all_of(body.getArgument(0).getUsers(),
+                       [](mlir::Operation *user) {
+                         return isa<MOGG::TensorStoreOp, MOGG::YieldOp>(user);
+                       });
+}
+
+/// Whether a prologue computes the value the kernel reads, rather than merely
+/// loading it. Same trap as `epilogueRecomputesValue`: every fusible input gets
+/// a load prologue whether or not anything fuses into it. The value is produced
+/// here rather than handed in, so the question is what gets yielded.
+static bool prologueRecomputesValue(MOGG::TensorCreatePrologueOp prologue) {
+  mlir::Block &body = prologue.getBody().front();
+  // Block arguments are the callback index, then one per capture. An unfused
+  // input yields a plain load of its capture at that index.
+  if (body.getNumArguments() < 2)
+    return true;
+  auto yield = dyn_cast<MOGG::YieldOp>(body.getTerminator());
+  if (!yield || yield.getOperands().size() != 1)
+    return true;
+  auto load = yield.getOperands().front().getDefiningOp<MOGG::TensorLoadOp>();
+  return !load || load.getIndex() != body.getArgument(0) ||
+         load.getTensor() != body.getArgument(1);
+}
+
 // map.call.opaque -> mogg._call.opaque. Each call output -- a plain opaque
 // output block arg or a `map.iter.epilogue` result -- is already in
 // `state.mapping`, lowered earlier by `IterOpaqueOp::lowerToMOGG`'s
@@ -666,10 +701,12 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // prologue tensor, into the op now, so its own emit never has to inspect an
   // operand's producer for this.
   bool hasEpilogueFusion = llvm::any_of(callOutputs, [](Value out) {
-    return out.getDefiningOp<MOGG::TensorCreateEpilogueOp>() != nullptr;
+    auto epilogue = out.getDefiningOp<MOGG::TensorCreateEpilogueOp>();
+    return epilogue && epilogueRecomputesValue(epilogue);
   });
   bool hasPrologueFusion = llvm::any_of(callInputs, [](Value in) {
-    return in.getDefiningOp<MOGG::TensorCreatePrologueOp>() != nullptr;
+    auto prologue = in.getDefiningOp<MOGG::TensorCreatePrologueOp>();
+    return prologue && prologueRecomputesValue(prologue);
   });
 
   // Emit appends the contexts verbatim. A host-only kernel's execute takes

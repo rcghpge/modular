@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-allocate-accumulating-buffers --map-to-mogg | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg | FileCheck %s
 
 // MAPToMOGG lowers a store-epilogue (fused) output of a `map.iter.opaque`
 // directly into a `mogg._tensor.create.epilogue` holding the
@@ -7,6 +7,11 @@
 // tensor. The epilogue tensor reuses the store target's `!mogg.shape` operand
 // and records the kernel `device`, and the call is wired to the body's
 // `!mogg.context`.
+//
+// The first four graphs fuse nothing INTO their epilogue, so the call carries
+// no `hasEpilogueFusion`: the flag tracks whether the body recomputes the
+// value, not whether an epilogue exists. Every fused-output kernel gets one.
+// The last three are the other polarity.
 
 // One fused output.
 // CHECK-LABEL: mo.graph @one_fused
@@ -17,7 +22,8 @@
 // CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %[[ESH]] capturing(%[[OT]] : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
 // CHECK: ^bb0(%[[V:.*]]: f32, %[[I:.*]]: !map.index<2>, %[[CAP:.*]]: !mogg.tensor_):
 // CHECK:   mogg._tensor.store %[[CAP]][%[[I]]] = %[[V]] : !mogg.tensor_, !map.index<2>, f32
-// CHECK: mogg._call.opaque @{{.*}}MapLowerOneFusedOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%[[EPI]] : !mogg.tensor_) context(%[[CTX]] : !mogg.context) {{.*}}hasEpilogueFusion = true
+// CHECK: mogg._call.opaque @{{.*}}MapLowerOneFusedOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%[[EPI]] : !mogg.tensor_) context(%[[CTX]] : !mogg.context)
+// CHECK-NOT: hasEpilogueFusion
 mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
@@ -31,7 +37,8 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK: %[[E0:.*]] = mogg._tensor.create.epilogue %[[ESH0]] capturing(%[[OT0]] : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
 // CHECK: %[[ESH1:.*]] = mogg._shape.create()
 // CHECK: %[[E1:.*]] = mogg._tensor.create.epilogue %[[ESH1]] capturing(%[[OT1]] : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
-// CHECK: mogg._call.opaque @{{.*}}MapLowerTwoFusedOutputs inputs(%{{.*}} : !mogg.tensor_) outputs(%[[E0]], %[[E1]] : !mogg.tensor_, !mogg.tensor_) context(%{{.*}} : !mogg.context) {{.*}}hasEpilogueFusion = true
+// CHECK: mogg._call.opaque @{{.*}}MapLowerTwoFusedOutputs inputs(%{{.*}} : !mogg.tensor_) outputs(%[[E0]], %[[E1]] : !mogg.tensor_, !mogg.tensor_) context(%{{.*}} : !mogg.context)
+// CHECK-NOT: hasEpilogueFusion
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -45,7 +52,8 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 // CHECK: %[[OT:.*]] = mogg._tensor.create(%{{.*}}, %{{.*}}) {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true{{.*}}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK: %[[ESH:.*]] = mogg._shape.create()
 // CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %[[ESH]] capturing(%[[OT]] : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
-// CHECK: mogg._call.opaque @{{.*}}MapLowerTwoInputsOneFusedOutput inputs(%{{.*}}, %{{.*}} : !mogg.tensor_, !mogg.tensor_) outputs(%[[EPI]] : !mogg.tensor_) context(%{{.*}} : !mogg.context) {{.*}}hasEpilogueFusion = true
+// CHECK: mogg._call.opaque @{{.*}}MapLowerTwoInputsOneFusedOutput inputs(%{{.*}}, %{{.*}} : !mogg.tensor_, !mogg.tensor_) outputs(%[[EPI]] : !mogg.tensor_) context(%{{.*}} : !mogg.context)
+// CHECK-NOT: hasEpilogueFusion
 mo.graph @two_inputs_one_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_inputs_one_fused_output"}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
@@ -54,8 +62,47 @@ mo.graph @two_inputs_one_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2
 // Mixed: first output fused (epilogue tensor), second plain (raw output tensor).
 // CHECK-LABEL: mo.graph @two_partial
 // CHECK: %[[EPI:.*]] = mogg._tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_ attributes {device = #M.device_ref<"cpu", 0>,{{.*}}mut = true} {
-// CHECK: mogg._call.opaque @{{.*}}MapLowerPartialFusedOutputs inputs(%{{.*}} : !mogg.tensor_) outputs(%[[EPI]], %{{.*}} : !mogg.tensor_, !mogg.tensor_) context(%{{.*}} : !mogg.context) {{.*}}hasEpilogueFusion = true
+// CHECK: mogg._call.opaque @{{.*}}MapLowerPartialFusedOutputs inputs(%{{.*}} : !mogg.tensor_) outputs(%[[EPI]], %{{.*}} : !mogg.tensor_, !mogg.tensor_) context(%{{.*}} : !mogg.context)
+// CHECK-NOT: hasEpilogueFusion
 mo.graph @two_partial(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
+}
+
+// A consumer fused into the epilogue: its body recomputes the value, so the
+// flag is set. The mirror of @fused_producer in fused-input-opaque.mlir.
+
+// CHECK-LABEL: mo.graph @fused_consumer
+// CHECK: mogg._call.elementwise[
+// CHECK: mogg._call.opaque @{{.*}}MapLowerOneFusedOutput {{.*}}hasEpilogueFusion = true
+mo.graph @fused_consumer(%a: !mo.tensor<[2, 2], f32>, %z: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
+  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %d = mo.add(%c, %z) : !mo.tensor<[2, 2], f32>
+  mo.output %d : !mo.tensor<[2, 2], f32>
+}
+
+// A pure reshape stays its own view kernel rather than moving onto the store
+// index, so the epilogue body is still a bare store.
+
+// CHECK-LABEL: mo.graph @reshape_only
+// CHECK-NOT: hasEpilogueFusion
+mo.graph @reshape_only(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[4], f32> {
+  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %r = mo.static.reshape(%c) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[4], f32>
+  mo.output %r : !mo.tensor<[4], f32>
+}
+
+// A reshape between the kernel and an add does move onto the store index, so
+// this body remaps the index AND recomputes the value. Only the second counts,
+// which is why the flag is read off the value and not the body's size.
+
+// CHECK-LABEL: mo.graph @reshape_and_add
+// CHECK: mogg.index.reshape
+// CHECK: mogg._call.elementwise[
+// CHECK: mogg._call.opaque @{{.*}}MapLowerOneFusedOutput {{.*}}hasEpilogueFusion = true
+mo.graph @reshape_and_add(%a: !mo.tensor<[2, 2], f32>, %z: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
+  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %r = mo.static.reshape(%c) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[4], f32>
+  %d = mo.add(%r, %z) : !mo.tensor<[4], f32>
+  mo.output %d : !mo.tensor<[4], f32>
 }

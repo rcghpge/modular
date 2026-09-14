@@ -20,9 +20,10 @@
 // ops (its `mogg._tensor.store` becomes `store`'s own store statement), then
 // binds it directly onto the store target's own (unfused) ManagedTensorSlice
 // via `._bind_to_fused_output(...)` -- the same mechanism the MOGG-ABI
-// `TensorFusedOp::emitMojo` non-variadic path uses -- and forces the kernel's
-// `has_epilogue_fusion` parameter True on the DPS execute call. The whole path
-// is `@__parameter`-free (NOPARAM below).
+// `TensorFusedOp::emitMojo` non-variadic path uses. The whole path is
+// `@__parameter`-free (NOPARAM below). None of these graphs fuses anything
+// INTO its epilogue, so the execute call reads `has_epilogue_fusion = False`:
+// the binding happens regardless, because every fusible output is bound.
 //
 // The pipeline runs through `mogg-to-mgp` (so the region consumes the outlined
 // stub), then emits; `mogg-emit-mojo` still erases the stub, so
@@ -33,14 +34,14 @@
 // One fused output: the store target (capture 0) is captured as a bare
 // pointer + row-major layout, the functor is built over that pointer, and it
 // binds onto a fresh ManagedTensorSlice reconstructed over the same pointer
-// (the epilogue's `$outputPtr`). The bound tensor is the DPS output of an
-// execute call carrying `has_epilogue_fusion = True`.
+// (the epilogue's `$outputPtr`). The bound tensor is the DPS output of the
+// execute call.
 // CHECK: var [[CAP0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
 // CHECK: var [[PTR0:.*]] = [[CAP0]]._ptr
 // CHECK: var [[F0:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}]([[PTR0]], {{.*}})
 // CHECK: var [[BASE0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTR0]]{{.*}})
 // CHECK: var [[W0:.*]] = [[BASE0]]._bind_to_fused_output([[F0]])
-// CHECK: {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = True]([[W0]], {{.*}})
+// CHECK: {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = False]([[W0]], {{.*}})
 
 mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
@@ -49,8 +50,8 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 
 // Two fused outputs: one functor + bind per output, both bound tensors
 // passed to a single fused execute call.
-// CHECK-DAG: {{.*}}.MapLowerTwoFusedOutputs.execute[target = "cpu", has_epilogue_fusion = True]
-// CHECK-DAG: {{.*}}.MapLowerPartialFusedOutputs.execute[target = "cpu", has_epilogue_fusion = True]
+// CHECK-DAG: {{.*}}.MapLowerTwoFusedOutputs.execute[target = "cpu", has_epilogue_fusion = False]
+// CHECK-DAG: {{.*}}.MapLowerPartialFusedOutputs.execute[target = "cpu", has_epilogue_fusion = False]
 
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
@@ -76,7 +77,7 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>
 // CHECK:   var [[FD:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}]([[PTRD]], {{.*}})
 // CHECK:   var [[BASED:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTRD]]{{.*}})
 // CHECK:   var [[WD:.*]] = [[BASED]]._bind_to_fused_output([[FD]])
-// CHECK:   {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = True]([[WD]], {{.*}})
+// CHECK:   {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = False]([[WD]], {{.*}})
 
 mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32>
