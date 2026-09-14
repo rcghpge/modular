@@ -58,16 +58,8 @@ _COMMON_DEPS = [
 _ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/inline-broadcast-constant-scalars.mlir",  # correctness: wrong result on Graviton
     "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
-    "MODialect/arg-nonzero.mlir",
-    "MODialect/batch-matmul.mlir",
     "MODialect/conv-epilogue-fusion.mlir",
-    "MODialect/conv.mlir",
-    "MODialect/conv_transpose.mlir",
-    "MODialect/custom-reduce-min-max.mlir",
-    "MODialect/dynamic-op-coverage.mlir",
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
-    "MODialect/layer_norm.mlir",
-    "MODialect/matmul-epilogue-fusion.mlir",
     "MODialect/matmuls.mlir",  # correctness: wrong result on Graviton
     "MODialect/mogg-ints.mlir",  # compile-time: times out (>800s) on Graviton
     "MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir",
@@ -75,23 +67,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     # blocked on a matmul epilogue-fusion difference (has_epilogue_fusion),
     # a separate cause from view kernels.
     "MODialect/mogg-kernel-api-e2e-fusion.mlir",
-    # NPU target that must reject top-level tile projection; its device path is
-    # not covered by this CPU/GPU-focused change.
-    "MODialect/mogg-kernel-api-e2e-trait-tile-tensor-npu-negative.mlir",
-    # Now compiles the trait lane, but reaches a separate pre-existing bug: an
-    # in-place `!mo.buffer` graph output hits a null-value deref while lowering
-    # `mo.output` in MOGGToMGP under advanced fusion (the `rmo-in-place` family).
-    # Blocked on that fix, not the trait ABI.
-    "MODialect/mogg-kernel-api-e2e-trait-mutable.mlir",
-    "MODialect/non-maximum-suppression.mlir",
-    "MODialect/pad.mlir",
-    "MODialect/pool.mlir",
-    "MODialect/random.mlir",
-    "MODialect/resize.mlir",
-    "MODialect/roi-align-dynamic-output-size.mlir",
-    "MODialect/roi-align.mlir",
-    "MODialect/top-k.mlir",
-    "OptimizationPatterns/conv_pack_filter.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-no-mask-div-normalization.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-no-mask.mlir",
 ]
