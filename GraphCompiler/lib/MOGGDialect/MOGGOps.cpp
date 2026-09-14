@@ -3839,6 +3839,8 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
       "IndexReshapeOp::emitMojo reached without currentLambdaInfo set");
   MojoBuilder &builder = *lambdaInfo.lambdaBuilder;
 
+  // A rank-0 shape is emitted as rank-1 extent-1, here as everywhere else, so
+  // the ranks must follow: a `to_rank` of 0 contradicts its own static shape.
   MojoValue fromStaticShape = builder.comptime(
       EmitMojoState::getAsIntTupleMojoValue(getFromShape().getIntDims()));
   MojoValue toStaticShape = builder.comptime(
@@ -3849,7 +3851,7 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
 
   SmallVector<MojoValue> primParams = {
       MojoValue("to_rank").equal(
-          MojoValue(static_cast<uint64_t>(getToShape().getRank()))),
+          MojoValue(uint64_t(getToShape().getRankNonZero()))),
       MojoValue("from_static_shape").equal(fromStaticShape),
       MojoValue("to_static_shape").equal(toStaticShape)};
   SmallVector<MojoValue> primArgs = {idxList};
@@ -3863,7 +3865,7 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
     // `$dynamicShapes` is [from-shape, to-shape] (see the MAPToMOGG lowering).
     primArgs[0] =
         builder.var(idxList.rebind(MojoValue(kStructIndexList)[MojoValue(
-            static_cast<uint64_t>(getFromShape().getRank()))]));
+            uint64_t(getFromShape().getRankNonZero()))]));
     primArgs.push_back(state.getMojoValueFor(getDynamicShapes()[0]));
     primArgs.push_back(state.getMojoValueFor(getDynamicShapes()[1]));
   }

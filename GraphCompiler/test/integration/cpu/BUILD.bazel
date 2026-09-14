@@ -66,7 +66,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/custom-reduce-min-max.mlir",
     "MODialect/dynamic-op-coverage.mlir",
     "MODialect/gather-trans-intensive.mlir",  # correctness: wrong result on Graviton
-    "MODialect/in-place-and-cf.mlir",
     "MODialect/layer_norm.mlir",
     "MODialect/matmul-epilogue-fusion.mlir",
     "MODialect/matmuls.mlir",  # correctness: wrong result on Graviton
@@ -92,7 +91,6 @@ _ADV_FUSION_EXCLUDED_TESTS = [
     "MODialect/roi-align-dynamic-output-size.mlir",
     "MODialect/roi-align.mlir",
     "MODialect/top-k.mlir",
-    "MODialect/while.mlir",
     "OptimizationPatterns/conv_pack_filter.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-no-mask-div-normalization.mlir",
     "OptimizationPatterns/multi-head-attention-cpu-no-mask.mlir",

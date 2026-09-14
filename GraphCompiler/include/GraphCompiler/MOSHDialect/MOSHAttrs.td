@@ -86,6 +86,11 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// Returns the rank (i.e. size) of the shape.
     size_t getRank() const { return getSize(); }
 
+    /// Returns the rank with rank 0 reported as 1, matching
+    /// `MOShapedTypeInterface::getRankNonZero` and the emitters, which
+    /// represent a rank-0 shape as rank-1 extent-1.
+    size_t getRankNonZero() const { return getRank() == 0 ? 1 : getRank(); }
+
     /// Returns the number of elements inside the shape. This mainly serves to
     /// calls less confusing when `ShapeAttr` is used to represent a list of
     /// ints, rather than shape (e.g., bounds for a slice op).
