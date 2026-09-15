@@ -702,7 +702,14 @@ materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
 
   // Construct output shape and make sure input shapes are compatible.
   SmallVector<TypedAttr> resDims(firstInputShape.getValues());
-  Var concatDimSum = b.createVar(resDims[axis]);
+  // Sum the axis dims in one variadic `add`, the way `LowerConcat` spells the
+  // same sum, rather than accumulating through `Var`. Accumulating mints a
+  // fresh graph parameter per partial sum and KGEN orders a commutative operand
+  // list by parameter NAME, which makes the term order a function of the
+  // graph's parameter counter rather than of the dims. Inference runs again to
+  // verify the op, by then with a larger counter, and a reordered (if
+  // numerically identical) sum reads there as a result-type mismatch.
+  SmallVector<TypedAttr> axisDims{firstInputShape[axis]};
   for (ShapeAttr inputShape : restInputShapes) {
     for (auto [idx, firstInputDimAttr, inputDimAttr] :
          llvm::enumerate(firstInputShape.getValues(), inputShape.getValues())) {
@@ -714,10 +721,9 @@ materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
             "[concat] input shapes must match except at concat axis");
       }
     }
-    Var inputAxisDim = b.createVar(inputShape[axis]);
-    concatDimSum = concatDimSum + inputAxisDim;
+    axisDims.push_back(inputShape[axis]);
   }
-  resDims[axis] = concatDimSum.getAttr();
+  resDims[axis] = KGEN::ParamOperatorAttr::get(KGEN::POC::Add, axisDims);
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
