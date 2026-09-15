@@ -22,7 +22,6 @@ filegroup(
 # sweeping this directory with the env var forced. Removing an entry should
 # say which fix covers it, not just "now passes".
 _ADV_FUSION_EXCLUDED_TESTS = [
-    "Conversion/lower-distributed-allreduce.mlir",
     "Conversion/tile-codegen-elementwise-add-mul.mlir",
     "Conversion/tile-codegen-elementwise-add.mlir",
     "Conversion/tile-codegen-matmul-epilogue-add.mlir",

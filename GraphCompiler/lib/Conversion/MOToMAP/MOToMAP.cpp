@@ -137,7 +137,17 @@ LogicalResult lowerToOpaque(Operation *op,
   auto opaque = MAP::IterOpaqueOp::create(builder, loc, resultTypes,
                                           nonChainOperands, inputChain,
                                           /*fusionInfo=*/Attribute());
-  opaque.setDeviceRef(MO::getDeviceOrDefaultAny(op));
+  // A collective executes on every device it reduces across, so the singular
+  // getExecutionDevice() behind getDeviceOrDefaultAny asserts on one. Take the
+  // first, as MOToMOGGLowering::getDevice() does -- the label only picks host
+  // or GPU codegen. TODO: carry all of them, see GEX-2278.
+  DeviceRefAttr device;
+  if (auto hasDevice = dyn_cast<MO::MOHasDeviceInterface>(op)) {
+    SmallVector<DeviceRefAttr> devices = hasDevice.getExecutionDevices();
+    if (!devices.empty())
+      device = devices.front();
+  }
+  opaque.setDeviceRef(device ? device : MO::getDeviceOrDefaultAny(op));
   opaque.setFusionInfoAttr(
       MOGG::FusionInfoAttr::get(op->getContext(), MOGG::createFusionLeaf(op)));
   auto [hasReadEffect, hasWriteEffect] = getReadWriteEffects(op);
