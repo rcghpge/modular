@@ -80,7 +80,8 @@ ShapedType DeviceTensorType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                        Type elementType) const {
   auto tensorSpec = llvm::dyn_cast<TensorSpecType>(
       getTensorSpec().cloneWith(shape, elementType));
-  return DeviceTensorType::get(getContext(), getDevice(), tensorSpec, getMut());
+  return DeviceTensorType::get(getContext(), getDevice(), tensorSpec, getMut(),
+                               getStable());
 }
 
 bool DeviceTensorType::hasRank() const { return true; }
@@ -96,13 +97,20 @@ Type DeviceTensorType::getElementType() const {
 DeviceTensorType DeviceTensorType::get(DeviceRefAttr device,
                                        TensorSpecType tensorSpecType) {
   return DeviceTensorType::get(device.getContext(), device, tensorSpecType,
-                               UnitAttr());
+                               /*mut=*/false, /*stable=*/false);
 }
 
 DeviceTensorType DeviceTensorType::get(DeviceRefAttr device,
                                        TensorSpecType tensorSpecType,
                                        bool mut) {
+  return DeviceTensorType::get(device.getContext(), device, tensorSpecType,
+                               /*mut=*/mut, /*stable=*/false);
+}
+
+DeviceTensorType DeviceTensorType::get(DeviceRefAttr device,
+                                       TensorSpecType tensorSpecType, bool mut,
+                                       bool stable) {
   MLIRContext *ctx = device.getContext();
-  return DeviceTensorType::get(ctx, device, tensorSpecType,
-                               mut ? UnitAttr::get(ctx) : UnitAttr());
+  return DeviceTensorType::get(ctx, device, tensorSpecType, /*mut=*/mut,
+                               /*stable=*/stable);
 }

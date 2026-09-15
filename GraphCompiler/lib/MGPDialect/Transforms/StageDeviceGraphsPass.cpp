@@ -90,25 +90,43 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
   // the rest of the computation (otherwise they strand and form a cycle).
   lowerGuardsToCompiledRegions(ctx, model);
 
-  auto ops = llvm::to_vector(
-      model.getExecuteBlock()->getOps<GenericCompiledRegionOp>());
+  Block *executeBlock = model.getExecuteBlock();
 
-  if (ops.empty())
+  /// Collect the ops that will move into the staging body: every
+  /// `mogg.generic.compiled.region`, plus any `mgp.device_graph.stable.create`
+  /// whose operand is produced by an op already in the staged set. Walking the
+  /// block in order preserves the original scheduling.
+  llvm::DenseSet<Operation *> stagedOpSet;
+  for (GenericCompiledRegionOp region :
+       executeBlock->getOps<GenericCompiledRegionOp>())
+    stagedOpSet.insert(region);
+
+  /// Stable-create ops that promote a staged producer result belong inside the
+  /// device-graph staging body; keeping them outside would create a dataflow
+  /// cycle with the staging op.
+  for (DeviceGraphStableCreateOp stableCreate :
+       executeBlock->getOps<DeviceGraphStableCreateOp>()) {
+    Operation *producer = stableCreate.getTensor().getDefiningOp();
+    if (producer && stagedOpSet.contains(producer))
+      stagedOpSet.insert(stableCreate);
+  }
+
+  SmallVector<Operation *> stagedOps;
+  for (Operation &op : *executeBlock)
+    if (stagedOpSet.contains(&op))
+      stagedOps.push_back(&op);
+
+  if (stagedOps.empty())
     return;
 
-  llvm::SetVector<Operation *> bodyOps;
-  bodyOps.insert(ops.begin(), ops.end());
-
-  /// Free values: region operands defined outside the staged set. The staging
-  /// op is `IsolatedFromAbove`, so these become its `inputs` operands and enter
-  /// the body as bare-`T` block arguments. A compiled region is itself
-  /// isolated, so it can only reference outer values through its operands --
-  /// remapping those is all that is needed.
+  /// Free values: operands of staged ops that are defined outside the staged
+  /// set. The staging op is `IsolatedFromAbove`, so these become its `inputs`
+  /// operands and enter the body as bare-`T` block arguments.
   llvm::SetVector<Value> freeValues;
-  for (GenericCompiledRegionOp op : ops) {
+  for (Operation *op : stagedOps) {
     for (Value operand : op->getOperands()) {
       Operation *def = operand.getDefiningOp();
-      if (!def || !bodyOps.contains(def))
+      if (!def || !stagedOpSet.contains(def))
         freeValues.insert(operand);
     }
   }
@@ -118,17 +136,17 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
   /// The set of uses of values produced inside our new region op by operations
   /// that will remain outside the region op.
   llvm::SetVector<OpOperand *> escapingUses;
-  for (GenericCompiledRegionOp op : ops) {
+  for (Operation *op : stagedOps) {
     for (OpResult result : op->getResults()) {
       for (OpOperand &use : result.getUses()) {
-        if (!bodyOps.contains(use.getOwner()))
+        if (!stagedOpSet.contains(use.getOwner()))
           escapingUses.insert(&use);
       }
     }
   }
 
   auto locations = llvm::map_to_vector(
-      ops, [](GenericCompiledRegionOp op) { return op.getLoc(); });
+      stagedOps, [](Operation *op) { return op->getLoc(); });
 
   Location newLoc = FusedLoc::get(ctx, locations);
 
@@ -140,13 +158,13 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
     IRMapping freeMap;
     freeMap.map(inputs, inputArgs);
 
-    /// Move all regions into the body (preserving order).
-    for (GenericCompiledRegionOp op : ops)
+    /// Move all staged ops into the body (preserving order).
+    for (Operation *op : stagedOps)
       op->moveBefore(builder.getBlock(), builder.getBlock()->end());
 
-    /// Rewire each region operand that referenced a free value to the
+    /// Rewire each staged op's operand that referenced a free value to the
     /// corresponding in-body block arg.
-    for (GenericCompiledRegionOp op : ops)
+    for (Operation *op : stagedOps)
       for (OpOperand &operand : op->getOpOperands())
         if (Value mapped = freeMap.lookupOrNull(operand.get()))
           operand.set(mapped);
@@ -163,9 +181,9 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
   };
 
   /// Anchor the insertion point on the execute terminator rather than the first
-  /// compiled region: the staging-body callback moves every region (including
-  /// the first) into the new op's body, so anchoring on a region would leave
-  /// the builder's restored insertion point pointing at a relocated op and the
+  /// staged op: the staging-body callback moves every staged op (including the
+  /// first) into the new op's body, so anchoring on an op would leave the
+  /// builder's restored insertion point pointing at a relocated op and the
   /// staging op would be inserted detached from the execute block. The
   /// terminator does not move, and is the correct spot anyway (mef.output
   /// consumes the staging results).

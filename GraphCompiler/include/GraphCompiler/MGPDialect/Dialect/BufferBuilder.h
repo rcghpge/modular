@@ -149,9 +149,11 @@ public:
   MGPTypeBuilder(DeviceRefAttr device) : device(device) {}
 
   /// Returns the device-specific tensor type with the given tensor spec.
-  /// `mut` marks the tensor as mutable (the lowered form of `!mo.buffer`).
-  DeviceTensorType tensorType(TensorSpecType tensorSpecType, bool mut = false) {
-    return DeviceTensorType::get(device, tensorSpecType, mut);
+  /// `mut` marks the tensor as mutable (the lowered form of `!mo.buffer`);
+  /// `stable` marks the tensor as having a stable address across dispatches.
+  DeviceTensorType tensorType(TensorSpecType tensorSpecType, bool mut = false,
+                              bool stable = false) {
+    return DeviceTensorType::get(device, tensorSpecType, mut, stable);
   }
 };
 

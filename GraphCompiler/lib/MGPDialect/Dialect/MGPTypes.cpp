@@ -118,38 +118,55 @@ void M::MGP::printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec) {
                     tensorSpec.getShapeOrEmpty());
 }
 
-ParseResult M::MGP::parseOptDeviceAndMut(AsmParser &p, DeviceRefAttr &device,
-                                         UnitAttr &mut) {
+ParseResult M::MGP::parseDeviceTensorTail(AsmParser &p, DeviceRefAttr &device,
+                                          bool &mut, bool &stable) {
   device = DeviceRefAttr::getDefault(p.getContext());
-  mut = UnitAttr();
-  if (p.parseOptionalComma())
+  mut = false;
+  stable = false;
+
+  // The optional tail is a comma-separated list of `mut`, `stable`, and/or a
+  // device reference. They may appear in any order, but each keyword may only
+  // appear once.
+  if (failed(p.parseOptionalComma()))
     return success();
 
-  // The device precedes `mut` when both are present.
-  if (p.parseOptionalKeyword("mut")) {
-    FailureOr<DeviceRefAttr> parsedDevice =
-        mlir::FieldParser<DeviceRefAttr>::parse(p);
-    if (failed(parsedDevice))
-      return p.emitError(p.getCurrentLocation(),
-                         "expected `mut` or a device reference");
-    device = *parsedDevice;
-    if (p.parseOptionalComma())
+  while (true) {
+    if (succeeded(p.parseOptionalKeyword("mut"))) {
+      if (mut)
+        return p.emitError(p.getCurrentLocation(), "unexpected repeated `mut`");
+      mut = true;
+    } else if (succeeded(p.parseOptionalKeyword("stable"))) {
+      if (stable)
+        return p.emitError(p.getCurrentLocation(),
+                           "unexpected repeated `stable`");
+      stable = true;
+    } else {
+      FailureOr<DeviceRefAttr> parsedDevice =
+          mlir::FieldParser<DeviceRefAttr>::parse(p);
+      if (failed(parsedDevice))
+        return p.emitError(p.getCurrentLocation(),
+                           "expected `mut`, `stable`, or a device reference");
+      if (device != DeviceRefAttr::getDefault(p.getContext()))
+        return p.emitError(p.getCurrentLocation(),
+                           "unexpected repeated device reference");
+      device = *parsedDevice;
+    }
+
+    if (failed(p.parseOptionalComma()))
       return success();
-    if (p.parseKeyword("mut"))
-      return failure();
   }
-  mut = UnitAttr::get(p.getContext());
-  return success();
 }
 
-void M::MGP::printOptDeviceAndMut(AsmPrinter &p, DeviceRefAttr device,
-                                  UnitAttr mut) {
+void M::MGP::printDeviceTensorTail(AsmPrinter &p, DeviceRefAttr device,
+                                   bool mut, bool stable) {
   if (device != DeviceRefAttr::getDefault(device.getContext())) {
     p << ", ";
     p.printStrippedAttrOrType(device);
   }
   if (mut)
     p << ", mut";
+  if (stable)
+    p << ", stable";
 }
 
 //===----------------------------------------------------------------------===//

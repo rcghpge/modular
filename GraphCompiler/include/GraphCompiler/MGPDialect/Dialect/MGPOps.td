@@ -180,7 +180,9 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
     MGP_TensorSpecType:$tensorSpec,
     // Mirrors the `mut` marker on the result type: the type parameter is not
     // derivable from the operands, allowing the use of InferTypeOpAdaptor.
-    UnitAttr:$mut
+    UnitAttr:$mut,
+    // Mirrors the `stable` marker on the result type.
+    UnitAttr:$stable
   );
   let results = (outs MGP_DeviceTensorType:$outTensor);
   let assemblyFormat = [{

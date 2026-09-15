@@ -23,6 +23,7 @@ include "GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
 include "GraphCompiler/MOGGDialect/MOGGTypes.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
@@ -190,18 +191,19 @@ def DeviceGraphCacheOp : MGP_DeviceGraphOp<"cache", [
 
 def DeviceGraphYieldOp : MGP_DeviceGraphOp<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  HasParent<"DeviceGraphCreateOp">,
+  ParentOneOf<["DeviceGraphCreateOp", "DeviceGraphCollectiveCreateOp"]>,
   Pure,
   ReturnLike,
   Terminator,
 ]> {
-  let summary = "Terminator for a `mgp.device_graph.create` build body.";
+  let summary = "Terminator for a device-graph build body.";
   let description = [{
     Marks the end of the recording build body of an enclosing
-    `mgp.device_graph.create`, yielding the graph's output values. The operand
-    types form the result `!mgp.device_graph` signature's results; the parent op
-    instantiates the recorded builder into that graph after the body returns. A
-    body with no graph outputs yields nothing (the operand list is empty).
+    `mgp.device_graph.create` or `mgp.device_graph.collective.create`, yielding
+    the graph's output values. The operand types form the result
+    `!mgp.device_graph` signature's results; the parent op instantiates the
+    recorded builder into that graph after the body returns. A body with no
+    graph outputs yields nothing (the operand list is empty).
 
     Example:
     ```mlir
@@ -636,6 +638,330 @@ def DeviceGraphStagingYieldOp : MGP_DeviceGraphOp<"staging.yield", [
   // No-operand builder for the `SingleBlockImplicitTerminator` trait on the
   // parent (see DeviceGraphDependenciesYieldOp).
   let builders = [OpBuilder<(ins)>];
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStableCreateOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphStableCreateOp : MGP_DeviceGraphOp<"stable.create", [
+  InferTypeOpAdaptor,
+  Pure,
+]> {
+  let summary = "Marks a tensor as requiring a stable address.";
+  let description = [{
+    Designates `$tensor` as a value that must be assigned a stable address when
+    the device graph is partitioned across devices. The result has the same
+    shape, device, and mutability as `$tensor`, but its `stable` flag is set.
+
+    Example:
+    ```mlir
+      %shared = mgp.device_graph.stable.create %t
+          : !mgp.tensor<4xf32, <"gpu", 0>>
+    ```
+  }];
+
+  let arguments = (ins MGP_DeviceTensorType:$tensor);
+  let results = (outs MGP_DeviceTensorType:$result);
+
+  let assemblyFormat = [{
+    $tensor attr-dict `:` qualified(type($tensor))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStableGetOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphStableGetOp : MGP_DeviceGraphOp<"stable.get", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  InferTypeOpAdaptor,
+]> {
+  let summary = "Reads a tensor view from a stable address; optional builder.";
+  let description = [{
+    Records a node that, at replay, reads the value currently published at
+    `$addr`. When `$graphBuilder` is present, the node is recorded against that
+    builder; when absent, the operation is recorded against an implicit
+    device-graph context (used while the per-region builder plumbing is being
+    worked out).
+
+    At construction time the stable-address mapping is recorded on the device
+    graph itself, so that the patched pointer resolves at launch time.
+
+    A `!mgp.stable_addr<T>` produces a `!mgp.device_tensor<T, ..., stable>`
+    whose shape/device are taken from the slot's element type `T`. The returned
+    tensor is marked `stable` because its backing address is provided by the
+    stable-address slot.
+  }];
+
+  let arguments = (ins
+    MGP_StableAddressType:$addr,
+    Optional<MGP_DeviceGraphBuilderType>:$graphBuilder
+  );
+  let results = (outs MGP_DeviceTensorType:$result);
+  let assemblyFormat = [{
+    $addr `:` qualified(type($addr))
+     (`,` $graphBuilder^ `:` qualified(type($graphBuilder)))?
+     attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStablePlaceOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphStablePlaceOp : MGP_DeviceGraphOp<"stable.place", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  TypesMatchWith<"stable address type wraps the tensor type",
+                 "tensor", "addr",
+                 "::M::MGP::StableAddressType::get($_self)">,
+]> {
+  let summary = "Publishes a value into a stable address; optional builder.";
+  let description = [{
+    Records a node that, at replay, publishes `$tensor` at `$addr`. When
+    `$graphBuilder` is present, the node is recorded against that builder; when
+    absent, the operation publishes against an implicit device-graph context
+    (used while the per-region builder plumbing is being worked out).
+
+    At construction time the stable-address mapping is recorded on the device
+    graph itself, so that the patched pointer resolves at launch time. A
+    subsequent `mgp.device_graph.stable.get` in the same region that reads the
+    same `$addr` sees this value at replay when enqueued after the place.
+  }];
+
+  let arguments = (ins
+    MGP_StableAddressType:$addr,
+    MGP_DeviceTensorType:$tensor,
+    Optional<MGP_DeviceGraphBuilderType>:$graphBuilder
+  );
+  let assemblyFormat = [{
+    $addr `,` $tensor `:` qualified(type($tensor))
+    (`,` $graphBuilder^ `:` qualified(type($graphBuilder)))?
+    attr-dict
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
+  SingleBlockImplicitTerminator<"DeviceGraphCollectiveYieldOp">,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>
+]> {
+  let summary =
+    "Bundles a set of per-device device-graph bodies that must launch together.";
+  let description = [{
+    Holds one region per device. The op is the allocation point for the shared
+    stable addresses used to coordinate the device graphs.
+
+    The `$devices` attribute carries one `M_DeviceRefAttr` per region in
+    region order, recording which device each region's body represents.
+
+    Each region's body records a single device-graph on its respective device.
+    Each region receives the same entry-block arguments: a
+    `!mgp.device_graph.builder` followed by the shared stable-address slots.
+    Each region terminates with `mgp.device_graph.collective.yield`, whose
+    operands append to the parent op's `$outputs` in region order.
+
+    The printed form hoists the entry-block arguments into two clauses:
+    `builder(...)` for the shared `!mgp.device_graph.builder` block argument,
+    followed by `stable(...)` for the shared stable-address block arguments.
+    Each per-device region is introduced by the `DeviceRefAttr` of the device it
+    runs on, and the region body is printed without its entry-block arguments
+    because they are determined by the `builder(...)` and `stable(...)` clauses.
+
+    Example:
+    ```mlir
+    %0:2 = mgp.device_graph.collective builder(%b) stable(
+      %s0: !mgp.stable_addr<<4xf32, <"gpu", 0>>>,
+      %s1: !mgp.stable_addr<<4xf32, <"gpu", 1>>>
+    ) <"gpu", 0> {
+      mgp.device_graph.collective.yield %val : !mgp.tensor<4xf32>
+    }, <"gpu", 1> {
+      mgp.device_graph.collective.yield %val : !mgp.tensor<4xf32>
+    } : !mgp.tensor<4xf32>, !mgp.tensor<4xf32>
+    ```
+  }];
+
+  let arguments = (ins
+    M_DeviceRefsAttr:$devices
+  );
+
+  let results = (outs
+    Variadic<AnyType>:$outputs
+  );
+
+  let regions = (region
+    VariadicRegion<SizedRegion<1>>:$graphs
+  );
+
+  let extraClassDeclaration = [{
+    /// Returns the number of regions.
+    unsigned getNumRegions() { return getGraphs().size(); }
+
+    /// Returns the block of region `idx`.
+    Block &getRegionBlock(unsigned idx) {
+      return getGraphs()[idx].front();
+    }
+
+    /// Returns the builder block argument for region `idx`.
+    BlockArgument getRegionBuilder(unsigned idx) {
+      return getRegionBlock(idx).getArgument(0);
+    }
+
+    /// Returns the stable-address block arguments for region `idx`.
+    MutableArrayRef<BlockArgument> getRegionStableAddresses(unsigned idx) {
+      return getRegionBlock(idx).getArguments().drop_front(1);
+    }
+
+    auto getGraphBlocks() {
+      return llvm::map_range(getGraphs(), [](Region &region) {
+        return &region.front();
+      });
+    }
+  }];
+
+  let builders = [
+    OpBuilder<(ins
+      "llvm::ArrayRef<M::DeviceRefAttr>":$devices,
+      "llvm::ArrayRef<StableAddressType>":$stableTypes,
+      CArg<"llvm::function_ref<void(::mlir::OpBuilder &, M::DeviceRefAttr, BlockArgument, llvm::ArrayRef<::mlir::BlockArgument>)>", "nullptr">:$bodyBuilder
+    )>
+  ];
+
+  let hasCustomAssemblyFormat = 1;
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveYieldOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphCollectiveYieldOp
+    : MGP_DeviceGraphOp<"collective.yield", [
+  HasParent<"DeviceGraphCollectiveOp">,
+  Pure,
+  ReturnLike,
+  Terminator,
+]> {
+  let summary = "Terminator for a `mgp.device_graph.collective` device region.";
+  let description = [{
+    Yields the values this region contributes to the parent op's `$outputs`.
+    The parent op appends operands across regions in region order.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+  let assemblyFormat =
+    "attr-dict ($operands^ `:` type($operands))?";
+
+  // No-operand builder for the parent's `SingleBlockImplicitTerminator` trait
+  // so the auto-generated terminator builder has the right signature; operands
+  // are populated after insertion.
+  let builders = [OpBuilder<(ins)>];
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveCreateOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphCollectiveCreateOp : MGP_DeviceGraphOp<"collective.create", [
+  AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  IsolatedFromAbove,
+]> {
+  let summary = "Builds one device graph per device from a collective body.";
+  let description = [{
+    Returns a variadic set of `!mgp.device_graph` values, one per region,
+    by running each region's build body against its own recorder.
+
+    The op is the multi-device counterpart of `mgp.device_graph.create`:
+    each region records a single device graph belonging to a `!mgp.device_context`
+    from the `deviceContexts` operand list. The regions share the same
+    `theContext` and the same optional `cache`. The `inputs` operand list is
+    the flat concatenation of each region's graph inputs, in region order;
+    the i-th region's block input arguments consume the next slice of that
+    list.
+
+    Each region's block arguments are, in order: the recorder, the model context,
+    then the region's slice of the `inputs` operands. The region must terminate
+    with `mgp.device_graph.yield`; the yielded value types define the output
+    signature of that region's graph.
+
+    The printed form hoists the per-region argument lists next to the region
+    they belong to: each region is prefixed with `graph(...)`, the builder
+    block argument name, and the input block argument names and types. The
+    shared `theContext` operand appears after the op name; the `cache` operand,
+    when present, is printed after it. The region bodies are printed without
+    their entry-block arguments because those arguments are declared by the
+    prefix clauses.
+
+    Example:
+    ```mlir
+      %g0, %g1 = mgp.device_graph.collective.create %ctx
+        graph(%d0: !mgp.device_context<<"gpu", 0>>) builder(%b0)
+            inputs(%i0: !mgp.buffer<<"gpu", 0>>) {
+          mgp.device_graph.yield %i0 : !mgp.buffer<<"gpu", 0>>
+      }, graph(%d1: !mgp.device_context<<"gpu", 1>>) builder(%b1)
+            inputs(%i1: !mgp.buffer<<"gpu", 1>>) {
+          mgp.device_graph.yield %i1 : !mgp.buffer<<"gpu", 1>>
+      } : !mgp.device_graph<(!mgp.buffer<<"gpu", 0>>) -> (!mgp.buffer<<"gpu", 0>>)>,
+          !mgp.device_graph<(!mgp.buffer<<"gpu", 1>>) -> (!mgp.buffer<<"gpu", 1>>)>
+    ```
+  }];
+
+  let arguments = (ins
+    MGP_ContextType:$theContext,
+    Variadic<MGP_DeviceContextType>:$deviceContexts,
+    Optional<MGP_DeviceGraphCacheType>:$cache,
+    Variadic<AnyType>:$inputs
+  );
+
+  let results = (outs Variadic<MGP_DeviceGraphType>:$outGraphs);
+  let regions = (region VariadicRegion<SizedRegion<1>>:$graphs);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveExecuteOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphCollectiveExecuteOp : MGP_DeviceGraphOp<"collective.execute", [
+  AttrSizedOperandSegments,
+]> {
+  let summary = "Replays a set of device graphs built by collective.create.";
+  let description = [{
+    Triggers replay of the `!mgp.device_graph` values produced by the
+    matching `mgp.device_graph.collective.create`.
+
+    The `graphs` operands are the per-device graphs, in the same order as the
+    regions of the creating op. The `inputs` operands are the union of the
+    live inputs for all graphs, laid out flat as
+    `[graph0_inputs..., graph1_inputs..., ...]`; each graph itself knows how
+    many inputs it consumes, so no extra per-graph segmentation metadata is
+    required by the runtime primitive.
+
+    The op produces a fresh `!mef.chain` for host-side ordering and a variadic
+    set of value outputs, one per graph-output in graph order.
+  }];
+
+  let arguments = (ins
+    Variadic<MGP_DeviceGraphType>:$graphs,
+    Variadic<AnyType>:$inputs
+  );
+  let results = (outs ChainType:$chain, Variadic<AnyType>:$outputs);
+
+  let assemblyFormat = [{
+    $graphs `inputs` `(` ($inputs^ `:` qualified(type($inputs)))? `)` attr-dict
+    `:` type($graphs) (`->` type($outputs)^)?
+  }];
+  let hasVerifier = 1;
 }
 
 #endif // GENERICML_MGPDIALECT_MGPDEVICEGRAPHOPS_TD

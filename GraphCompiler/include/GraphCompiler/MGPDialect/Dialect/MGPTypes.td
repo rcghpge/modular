@@ -519,6 +519,11 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     The `mut` marker is the lowered form of `!mo.buffer`: a tensor the model
     writes in place through explicitly chained ops (a KV cache, for example).
 
+    The `stable` marker indicates that the tensor's underlying address is
+    stable across dispatches and may participate in cross-device coordination
+    mechanisms such as `!mgp.stable_addr` slots. A tensor may be both `mut` and
+    `stable`.
+
     `!mgp.tensor`s are represented by (subclasses of) `Tensor` in the host-side
     C++ runtime. The tensor's underlying byte-array buffer may also be passed
     around as a raw `void*` pointer.
@@ -538,33 +543,76 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     !mgp.tensor<?x?xf32>
     // A mutable tensor (lowered from !mo.buffer) on GPU 0.
     !mgp.tensor<464x4800xf16, <"gpu", 0>, mut>
+    // A stable tensor on GPU 0.
+    !mgp.tensor<4x16xf32, <"gpu", 0>, stable>
+    // A mutable, stable tensor on GPU 0.
+    !mgp.tensor<4x16xf32, <"gpu", 0>, mut, stable>
     ```
   }];
 
   let parameters = (ins
     MGP_OptDeviceRefParam:$device,
     "M::MGP::TensorSpecType":$tensorSpec,
-    OptionalParameter<"mlir::UnitAttr">:$mut
+    DefaultValuedParameter<"bool", "false">:$mut,
+    DefaultValuedParameter<"bool", "false">:$stable
   );
 
-  // The device and mut tail share one custom directive: both optional groups
-  // would otherwise start with `,`, which the generated parser cannot
+  // The device, mut, and stable tail share one custom directive: the optional
+  // groups would otherwise start with `,`, which the generated parser cannot
   // disambiguate.
   let assemblyFormat = [{
-    `<` custom<TensorSpec>($tensorSpec) `` custom<OptDeviceAndMut>($device, $mut) `>`
+    `<` custom<TensorSpec>($tensorSpec) `` custom<DeviceTensorTail>($device, $mut, $stable) `>`
   }];
 
   let builders = [
-    /// Constructs an immutable tensor type from the given device and tensor
-    /// spec.
+    /// Constructs an immutable, non-stable tensor type from the given device
+    /// and tensor spec.
     TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
                                         "M::MGP::TensorSpecType":$tensorSpecType)>,
 
     /// Constructs a tensor type from the given device, tensor spec, and
-    /// mutability.
+    /// mutability. The result is not stable.
     TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
                                         "M::MGP::TensorSpecType":$tensorSpecType,
                                         "bool":$mut)>,
+
+    /// Constructs a tensor type from the given device, tensor spec,
+    /// mutability, and stability.
+    TypeBuilderWithInferredContext<(ins "M::DeviceRefAttr":$device,
+                                        "M::MGP::TensorSpecType":$tensorSpecType,
+                                        "bool":$mut,
+                                        "bool":$stable)>,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// StableAddressType
+//===----------------------------------------------------------------------===//
+
+def MGP_StableAddressType : MGP_Type<"StableAddress", "stable_addr"> {
+  let summary = "Handle to a stable address slot for cross-device coordination.";
+  let description = [{
+    Inside a device-graph body, `mgp.device_graph.stable.get` materializes a
+    tensor view from the contents of the slot; `mgp.device_graph.stable.place`
+    publishes a value into it.
+
+    The low-level allocation and pointer-patching mechanism is sketched in
+    `starting-point.md`; this type is the MGP-level handle into that mechanism.
+
+    The `elementType` parameter records the tensor element type held by the
+    slot, restricted to `!mgp.tensor` so that `mgp.device_graph.stable.get` can
+    return a `!mgp.tensor` (with shape/device resolved from the slot).
+  }];
+  let parameters = (ins MGP_DeviceTensorType:$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+
+  let builders = [
+    /// Builds a `!mgp.stable_addr<T>` without an explicit context, reusing the
+    /// context of the wrapped tensor type.
+    TypeBuilderWithInferredContext<(ins "Type":$tensorType), [{
+      return $_get(tensorType.getContext(),
+                    llvm::cast<DeviceTensorType>(tensorType));
+    }]>,
   ];
 }
 

@@ -24,6 +24,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
@@ -1179,4 +1180,680 @@ void DeviceGraphStagingOp::getCanonicalizationPatterns(
 void DeviceGraphStagingYieldOp::build(OpBuilder &, OperationState &) {
   // No-operand stub for the parent's SingleBlockImplicitTerminator; operands
   // are populated after insertion.
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStableCreateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DeviceGraphStableCreateOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto tensorType = cast<DeviceTensorType>(adaptor.getTensor().getType());
+
+  auto resultType = DeviceTensorType::get(
+      tensorType.getDevice(), tensorType.getTensorSpec(), tensorType.getMut(),
+      /*stable=*/true);
+
+  inferredReturnTypes.push_back(resultType);
+  return success();
+}
+
+LogicalResult DeviceGraphStableCreateOp::verify() {
+  if (getTensor().getType().getStable())
+    return emitOpError("input tensor is already marked `stable`");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStableGetOp
+//===----------------------------------------------------------------------===//
+
+bool DeviceGraphStableGetOp::isThrows() { return true; }
+
+LogicalResult DeviceGraphStableGetOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto slotType = cast<StableAddressType>(adaptor.getAddr().getType());
+  auto elementType = slotType.getElementType();
+
+  auto resultType = DeviceTensorType::get(
+      elementType.getDevice(), elementType.getTensorSpec(),
+      elementType.getMut(), /*stable=*/true);
+
+  inferredReturnTypes.push_back(resultType);
+  return success();
+}
+
+LogicalResult DeviceGraphStableGetOp::emitMojo(MOGG::EmitMojoState &) {
+  return emitError(
+      "`mgp.device_graph.stable.get` Mojo emission is not yet implemented");
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStablePlaceOp
+//===----------------------------------------------------------------------===//
+
+bool DeviceGraphStablePlaceOp::isThrows() { return true; }
+
+LogicalResult DeviceGraphStablePlaceOp::emitMojo(MOGG::EmitMojoState &) {
+  return emitError(
+      "`mgp.device_graph.stable.place` Mojo emission is not yet implemented");
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveOp
+//===----------------------------------------------------------------------===//
+
+// Verifies the structural invariants implied by the design:
+//   1. `$devices.size() == #regions`.
+//   2. Every region has the same block-arg count (the per-device collective
+//      bodies see the same shape of the stable-address map).
+//   3. Block argument #0 of every region is a `!mgp.device_graph.builder`.
+//   4. Remaining block arguments are `!mgp.stable_addr<...>` slots and match
+//      across regions.
+//   5. Every region terminates with `DeviceGraphCollectiveYieldOp`.
+//   6. The total yielded operand count across regions equals `$outputs.size()`
+//      (yields append in region order).
+LogicalResult DeviceGraphCollectiveOp::verify() {
+  if (getGraphs().size() != getDevices().size())
+    return emitOpError("`devices` attribute has ")
+           << getDevices().size() << " entries, but the op has "
+           << getGraphs().size() << " regions";
+
+  if (getDevices().empty())
+    return success();
+
+  const unsigned firstNumArgs = getRegionBlock(0).getNumArguments();
+  TypeRange firstArgTypes = getRegionBlock(0).getArgumentTypes();
+  unsigned outputIdx = 0;
+  for (auto [idx, region] : llvm::enumerate(getGraphs())) {
+    Block &block = region.front();
+
+    if (block.getNumArguments() != firstNumArgs)
+      return emitOpError("region #")
+             << idx << " has " << block.getNumArguments()
+             << " block argument(s), but region 0 has " << firstNumArgs
+             << "; all regions must agree on the block argument shape";
+
+    if (block.getNumArguments() == 0)
+      return emitOpError("region #")
+             << idx
+             << " has no block arguments; expected at least a "
+                "`!mgp.device_graph.builder`";
+
+    if (!isa<DeviceGraphBuilderType>(block.getArgument(0).getType()))
+      return emitOpError("region #")
+             << idx << " block argument #0 has type "
+             << block.getArgument(0).getType()
+             << "; expected `!mgp.device_graph.builder`";
+
+    for (auto [argIdx, blockArg] : llvm::enumerate(block.getArguments())) {
+      if (argIdx == 0)
+        continue;
+
+      if (!isa<StableAddressType>(blockArg.getType()))
+        return emitOpError("region #")
+               << idx << " block argument #" << argIdx << " has type "
+               << blockArg.getType() << "; expected `!mgp.stable_addr<...>`";
+
+      if (blockArg.getType() != firstArgTypes[argIdx])
+        return emitOpError("region #")
+               << idx << " block argument #" << argIdx << " has type "
+               << blockArg.getType() << "; expected the same type as region 0 ("
+               << firstArgTypes[argIdx] << ")";
+    }
+
+    if (!block.mightHaveTerminator() ||
+        !isa<DeviceGraphCollectiveYieldOp>(block.getTerminator()))
+      return emitOpError("region #")
+             << idx
+             << " must terminate with `mgp.device_graph.collective.yield`";
+
+    auto yield = cast<DeviceGraphCollectiveYieldOp>(block.getTerminator());
+    for (auto operand : yield.getOperands()) {
+      if (outputIdx >= getOutputs().size())
+        return emitOpError("region #")
+               << idx << " yields more operands than declared outputs ("
+               << getOutputs().size() << ")";
+      if (operand.getType() != getOutputs()[outputIdx].getType())
+        return emitOpError("region #")
+               << idx << " yield operand type " << operand.getType()
+               << " does not match output #" << outputIdx << " type "
+               << getOutputs()[outputIdx].getType();
+      ++outputIdx;
+    }
+  }
+
+  if (outputIdx != getOutputs().size())
+    return emitOpError("total `mgp.device_graph.collective.yield` operand "
+                       "count across regions is ")
+           << outputIdx << ", expected " << getOutputs().size()
+           << " (one per op result)";
+
+  return success();
+}
+
+ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
+                                           OperationState &result) {
+  // Parse the shared `!mgp.device_graph.builder` block argument. The same
+  // prototype is threaded into every per-device region. The printed form
+  // omits the builder type, so when it is missing we infer it.
+  if (parser.parseKeyword("builder"))
+    return failure();
+
+  if (parser.parseLParen())
+    return failure();
+
+  OpAsmParser::Argument builderArg;
+  if (parser.parseArgument(builderArg, /*allowType=*/false))
+    return failure();
+
+  // The builder type is optional in the printed form and defaults to
+  // `!mgp.device_graph.builder`.
+  if (succeeded(parser.parseOptionalColon())) {
+    if (parser.parseType(builderArg.type))
+      return failure();
+  } else {
+    builderArg.type = DeviceGraphBuilderType::get(parser.getContext());
+  }
+
+  if (parser.parseRParen())
+    return failure();
+
+  // Parse the shared stable-address block arguments. The same prototype is
+  // threaded into every per-device region.
+  if (parser.parseKeyword("stable"))
+    return failure();
+
+  SmallVector<OpAsmParser::Argument> stableArgs;
+  if (parser.parseArgumentList(stableArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true))
+    return failure();
+
+  // The first region's entry block takes the builder, then the stable slots.
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  regionArgs.push_back(builderArg);
+  llvm::append_range(regionArgs, stableArgs);
+
+  // Parse each device region: a `DeviceRefAttr` label followed by the region
+  // body.  The label order defines the `$devices` attribute.
+  SmallVector<DeviceRefAttr> deviceRefs;
+
+  auto parseDeviceRegionPair = [&]() -> ParseResult {
+    DeviceRefAttr deviceRef;
+    if (parser.parseCustomAttributeWithFallback(deviceRef))
+      return failure();
+    deviceRefs.push_back(deviceRef);
+
+    Region *region = result.addRegion();
+    if (parser.parseRegion(*region, regionArgs,
+                           /*enableNameShadowing=*/false))
+      return failure();
+
+    return success();
+  };
+
+  if (parser.parseCommaSeparatedList(OpAsmParser::Delimiter::None,
+                                     parseDeviceRegionPair))
+    return failure();
+
+  auto devices = DeviceRefsAttr::get(parser.getContext(), deviceRefs);
+  result.addAttribute(getDevicesAttrName(result.name), devices);
+
+  // Parse optional trailing result types.
+  SmallVector<Type> resultTypes;
+  if (parser.parseOptionalColonTypeList(resultTypes))
+    return failure();
+  result.types.append(resultTypes);
+
+  return success();
+}
+
+void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
+  // Print the shared entry-block arguments once, using the first region as the
+  // canonical prototype. The first argument is the `!mgp.device_graph.builder`
+  // printed in a `builder(...)` clause; the rest are stable-address slots
+  // printed in a `stable(...)` clause. The printer assigns unique names and
+  // reuses them when the region bodies are printed without their entry-block
+  // arguments.
+  p << " builder(";
+  if (!getGraphs().empty()) {
+    // The builder block argument is always a `!mgp.device_graph.builder`,
+    // so the type is omitted from the printed form.
+    p.printRegionArgument(getRegionBlock(0).getArgument(0),
+                          /*argAttrs=*/{}, /*omitType=*/true);
+  }
+  p << ") stable(";
+  if (!getGraphs().empty()) {
+    Block &firstBlock = getRegionBlock(0);
+    auto stableArgs = firstBlock.getArguments().drop_front(1);
+    llvm::interleaveComma(stableArgs, p, [&](BlockArgument arg) {
+      p.printRegionArgument(arg, /*argAttrs=*/{},
+                            /*omitType=*/false);
+    });
+  }
+  p << ')';
+
+  if (!getDevices().empty())
+    p << " ";
+
+  llvm::interleaveComma(llvm::enumerate(getDevices()), p, [&](auto idxAndAttr) {
+    auto [idx, attr] = idxAndAttr;
+    p.printStrippedAttrOrType(attr);
+    p << " ";
+    p.printRegion(getGraphs()[idx], /*printEntryBlockArgs=*/false);
+  });
+
+  // Print trailing result types when present.
+  if (!getOutputs().empty()) {
+    p << " : ";
+    llvm::interleaveComma(getOutputs(), p,
+                          [&](Value v) { p.printType(v.getType()); });
+  }
+}
+
+void DeviceGraphCollectiveOp::getAsmBlockArgumentNames(
+    Region &region, llvm::function_ref<void(Value, StringRef)> setNameFn) {
+  // Set argument names for the entry block arguments: the builder is `b`, and
+  // the stable-address slots are `s0`, `s1`, ...
+  for (auto [idx, arg] : llvm::enumerate(region.getArguments())) {
+    if (idx == 0)
+      setNameFn(arg, "b");
+    else
+      setNameFn(arg, "s" + std::to_string(idx - 1));
+  }
+}
+
+void DeviceGraphCollectiveOp::build(
+    OpBuilder &builder, OperationState &state,
+    ArrayRef<M::DeviceRefAttr> devices, ArrayRef<StableAddressType> stableTypes,
+    function_ref<void(OpBuilder &, M::DeviceRefAttr, BlockArgument,
+                      ArrayRef<BlockArgument>)>
+        bodyBuilder) {
+  OpBuilder::InsertionGuard guard(builder);
+
+  MLIRContext *ctx = builder.getContext();
+
+  SmallVector<Location> argLocs(stableTypes.size(), state.location);
+  auto argTypes = llvm::to_vector_of<Type>(stableTypes);
+
+  // Build one region per device.  Each region gets the shared builder block
+  // argument followed by one block argument per stable address slot.
+  SmallVector<Type> resultTypes;
+  for (auto dev : devices) {
+    Region *region = state.addRegion();
+    Block *block = builder.createBlock(region);
+
+    auto builderArg =
+        block->addArgument(DeviceGraphBuilderType::get(ctx), state.location);
+    auto args = block->addArguments(argTypes, argLocs);
+
+    SmallVector<BlockArgument> stableArgs = llvm::to_vector(args);
+
+    builder.setInsertionPointToEnd(block);
+    bodyBuilder(builder, dev, builderArg, stableArgs);
+    ensureTerminator(*region, builder, state.location);
+
+    // Infer output types from the terminator the callback produced.
+    llvm::append_range(resultTypes, block->getTerminator()->getOperandTypes());
+  }
+
+  // Call into the tablegen builder with `graphsCount=0`. We've already added
+  // the child regions to `state`, so we do not want to add any additional
+  // regions as the region count will not match the number of devices.
+  DeviceGraphCollectiveOp::build(builder, state, resultTypes, devices,
+                                 /*graphsCount=*/0);
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveYieldOp
+//===----------------------------------------------------------------------===//
+
+void DeviceGraphCollectiveYieldOp::build(OpBuilder &, OperationState &) {
+  // No-operand stub for the parent's `SingleBlockImplicitTerminator`; operands
+  // are populated after insertion.
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveCreateOp
+//===----------------------------------------------------------------------===//
+
+ParseResult DeviceGraphCollectiveCreateOp::parse(OpAsmParser &parser,
+                                                 OperationState &result) {
+  MLIRContext *ctx = parser.getContext();
+  Type contextType = MGP::ContextType::get(ctx);
+
+  // The shared `!mgp.context` operand.  It is also threaded into each region as
+  // the second block argument.
+  OpAsmParser::UnresolvedOperand theContext;
+  if (parser.parseOperand(theContext))
+    return failure();
+
+  // Optional cache(%cache : !mgp.device_graph.cache).
+  bool hasCache = false;
+  OpAsmParser::UnresolvedOperand cacheVal;
+  Type cacheType;
+  if (succeeded(parser.parseOptionalKeyword("cache"))) {
+    hasCache = true;
+    if (parser.parseLParen() || parser.parseOperand(cacheVal) ||
+        parser.parseColon() || parser.parseType(cacheType) ||
+        parser.parseRParen())
+      return failure();
+  }
+
+  SmallVector<OpAsmParser::UnresolvedOperand> deviceContextVals;
+  SmallVector<Type> deviceContextTypes;
+  SmallVector<OpAsmParser::UnresolvedOperand> inputVals;
+  SmallVector<Type> inputTypes;
+
+  // Each per-device graph is introduced by its device context, builder block
+  // arg, and input block args.  The body itself is printed without its
+  // entry-block arguments because they are declared in the prefix clauses.
+  auto parseGraph = [&]() -> ParseResult {
+    // graph(<deviceContext> : <type>)
+    if (parser.parseKeyword("graph") || parser.parseLParen())
+      return failure();
+
+    OpAsmParser::UnresolvedOperand deviceContext;
+    Type deviceContextType;
+    if (parser.parseOperand(deviceContext) || parser.parseColon() ||
+        parser.parseType(deviceContextType) || parser.parseRParen())
+      return failure();
+    deviceContextVals.push_back(deviceContext);
+    deviceContextTypes.push_back(deviceContextType);
+
+    // builder(<name>)
+    if (parser.parseKeyword("builder") || parser.parseLParen())
+      return failure();
+    OpAsmParser::Argument builderArg;
+    if (parser.parseArgument(builderArg, /*allowType=*/false))
+      return failure();
+    builderArg.type = DeviceGraphBuilderType::get(ctx);
+    if (parser.parseRParen())
+      return failure();
+
+    // inputs(<name> : <type>, ...)
+    if (parser.parseKeyword("inputs") || parser.parseLParen())
+      return failure();
+    SmallVector<OpAsmParser::Argument> inputArgs;
+    if (succeeded(parser.parseOptionalRParen())) {
+      // empty input list
+    } else {
+      do {
+        OpAsmParser::UnresolvedOperand input;
+        Type inputType;
+        if (parser.parseOperand(input) || parser.parseColon() ||
+            parser.parseType(inputType))
+          return failure();
+        inputVals.push_back(input);
+        inputTypes.push_back(inputType);
+
+        OpAsmParser::Argument inputArg;
+        inputArg.ssaName = input;
+        inputArg.type = inputType;
+        inputArgs.push_back(inputArg);
+      } while (succeeded(parser.parseOptionalComma()));
+      if (parser.parseRParen())
+        return failure();
+    }
+
+    // The shared context becomes the second block argument; use the same name
+    // as the op-level context operand so the body can refer to it naturally.
+    OpAsmParser::Argument contextArg;
+    contextArg.ssaName = theContext;
+    contextArg.type = contextType;
+
+    SmallVector<OpAsmParser::Argument> regionArgs;
+    regionArgs.push_back(builderArg);
+    regionArgs.push_back(contextArg);
+    llvm::append_range(regionArgs, inputArgs);
+
+    Region *region = result.addRegion();
+    if (parser.parseRegion(*region, regionArgs,
+                           /*enableNameShadowing=*/true))
+      return failure();
+
+    return success();
+  };
+
+  if (parser.parseCommaSeparatedList(parseGraph))
+    return failure();
+
+  // Resolve operands in the order expected by the ODS-generated accessors.
+  if (parser.resolveOperand(theContext, contextType, result.operands) ||
+      parser.resolveOperands(deviceContextVals, deviceContextTypes, {},
+                             result.operands) ||
+      (hasCache &&
+       parser.resolveOperand(cacheVal, cacheType, result.operands)) ||
+      parser.resolveOperands(inputVals, inputTypes, {}, result.operands))
+    return failure();
+
+  // The `operandSegmentSizes` attribute is required by
+  // `AttrSizedOperandSegments`.
+  result.addAttribute(
+      getOperandSegmentSizesAttrName(result.name),
+      parser.getBuilder().getDenseI32ArrayAttr(
+          {1, static_cast<int32_t>(deviceContextVals.size()), hasCache ? 1 : 0,
+           static_cast<int32_t>(inputVals.size())}));
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  SmallVector<Type> resultTypes;
+  if (parser.parseOptionalColonTypeList(resultTypes))
+    return failure();
+  result.types.append(resultTypes);
+
+  return success();
+}
+
+void DeviceGraphCollectiveCreateOp::print(OpAsmPrinter &p) {
+  p << ' ' << getTheContext();
+
+  if (Value cache = getCache()) {
+    p << " cache(" << cache << " : " << cache.getType() << ")";
+  }
+
+  size_t inputOffset = 0;
+  for (auto [idx, region] : llvm::enumerate(getGraphs())) {
+    if (idx != 0)
+      p << ",";
+
+    Block &body = region.front();
+    Value deviceContext = getDeviceContexts()[idx];
+    BlockArgument builderArg = body.getArgument(0);
+    size_t numRegionInputs = body.getNumArguments() - 2;
+    auto regionInputs =
+        getInputs().drop_front(inputOffset).take_front(numRegionInputs);
+
+    p << " graph(" << deviceContext << " : " << deviceContext.getType()
+      << ") builder(";
+    p.printRegionArgument(builderArg, /*argAttrs=*/{}, /*omitType=*/true);
+
+    p << ") inputs(";
+    llvm::interleaveComma(regionInputs, p, [&](Value input) {
+      p << input << " : " << input.getType();
+    });
+    p << ") ";
+
+    SmallVector<Value> shadowNames;
+    shadowNames.reserve(1 + 1 + numRegionInputs);
+    shadowNames.push_back(builderArg);
+    shadowNames.push_back(getTheContext());
+    llvm::append_range(shadowNames, regionInputs);
+    p.shadowRegionArgs(region, shadowNames);
+
+    p.printRegion(region, /*printEntryBlockArgs=*/false);
+    inputOffset += numRegionInputs;
+  }
+
+  SmallVector<StringRef> elide = {getOperandSegmentSizesAttrName()};
+  p.printOptionalAttrDict(getOperation()->getAttrs(), elide);
+
+  if (!getOutGraphs().empty()) {
+    p << " : ";
+    llvm::interleaveComma(getOutGraphs(), p,
+                          [&](Value v) { p.printType(v.getType()); });
+  }
+}
+
+void DeviceGraphCollectiveCreateOp::getAsmBlockArgumentNames(
+    Region &region, llvm::function_ref<void(Value, StringRef)> setNameFn) {
+  unsigned idx = region.getRegionNumber();
+  setNameFn(region.front().getArgument(0), "b" + Twine(idx).str());
+}
+
+LogicalResult DeviceGraphCollectiveCreateOp::verify() {
+  if (getGraphs().size() != getDeviceContexts().size())
+    return emitOpError("`deviceContexts` has ")
+           << getDeviceContexts().size() << " operands, but the op has "
+           << getGraphs().size() << " regions";
+
+  if (getOutGraphs().size() != getGraphs().size())
+    return emitOpError() << "number of result graphs (" << getOutGraphs().size()
+                         << ") does not match the number of body regions ("
+                         << getGraphs().size() << ")";
+
+  if (getGraphs().empty())
+    return emitOpError("must have at least one device graph region");
+
+  Type theContextType = getTheContext().getType();
+  SmallVector<Type> inputTypes;
+  llvm::append_range(inputTypes, getInputs().getTypes());
+  size_t inputIdx = 0;
+
+  for (auto [regionIdx, region] : llvm::enumerate(getGraphs())) {
+    Block &block = region.front();
+
+    if (block.empty() || !llvm::isa<DeviceGraphYieldOp>(block.back()))
+      return emitOpError("region #")
+             << regionIdx << " must terminate with `mgp.device_graph.yield`";
+
+    if (block.getNumArguments() < 2)
+      return emitOpError("region #")
+             << regionIdx << " has " << block.getNumArguments()
+             << " block argument(s), expected at least 2 (the builder and the "
+                "context)";
+
+    if (!llvm::isa<DeviceGraphBuilderType>(block.getArgument(0).getType()))
+      return emitOpError("region #")
+             << regionIdx << " block argument #0 has type "
+             << block.getArgument(0).getType()
+             << "; expected `!mgp.device_graph.builder`";
+
+    if (block.getArgument(1).getType() != theContextType)
+      return emitOpError("region #")
+             << regionIdx
+             << " block argument #1 must be the `theContext` operand type "
+             << theContextType << ", but is " << block.getArgument(1).getType();
+
+    size_t numRegionInputs = block.getNumArguments() - 2;
+    if (inputIdx + numRegionInputs > getInputs().size())
+      return emitOpError("region #")
+             << regionIdx << " has " << numRegionInputs
+             << " input block argument(s), but only "
+             << (getInputs().size() - inputIdx) << " input operand(s) remain";
+
+    for (size_t i = 0; i < numRegionInputs; ++i) {
+      Type argType = block.getArgument(2 + i).getType();
+      Type inputType = getInputs()[inputIdx + i].getType();
+      if (argType != inputType)
+        return emitOpError("region #")
+               << regionIdx << " block argument #" << (2 + i) << " has type "
+               << argType << ", expected " << inputType;
+    }
+
+    auto yieldOp = cast<DeviceGraphYieldOp>(block.back());
+    auto graphType = cast<DeviceGraphType>(getOutGraphs()[regionIdx].getType());
+    FunctionType sig = graphType.getSignature();
+
+    ArrayRef<Type> regionInputTypes(
+        ArrayRef<Type>(inputTypes).slice(inputIdx, numRegionInputs));
+    if (!llvm::equal(sig.getInputs(), regionInputTypes))
+      return emitOpError("result graph #")
+             << regionIdx
+             << " signature inputs do not match this region's input operands";
+
+    if (!llvm::equal(sig.getResults(), yieldOp.getOutputs().getTypes()))
+      return emitOpError("result graph #")
+             << regionIdx
+             << " signature results do not match the region's yielded value "
+                "types";
+
+    inputIdx += numRegionInputs;
+  }
+
+  if (inputIdx != getInputs().size())
+    return emitOpError("the op has ")
+           << getInputs().size()
+           << " input operand(s), but the regions consume only " << inputIdx;
+
+  return verifyInputResidency(*this, getInputs());
+}
+
+LogicalResult DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &) {
+  return (*this)->emitError(
+      "`mgp.device_graph.collective.create` Mojo emission is not yet "
+      "implemented");
+}
+
+bool DeviceGraphCollectiveCreateOp::isThrows() { return true; }
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveExecuteOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DeviceGraphCollectiveExecuteOp::verify() {
+  size_t expectedInputCount = 0;
+  size_t expectedOutputCount = 0;
+
+  for (auto graph : getGraphs()) {
+    auto sig = cast<DeviceGraphType>(graph.getType()).getSignature();
+    expectedInputCount += sig.getInputs().size();
+    expectedOutputCount += sig.getResults().size();
+  }
+
+  if (getInputs().size() != expectedInputCount)
+    return emitOpError("`inputs` has ")
+           << getInputs().size()
+           << " operands, but the graph signatures consume "
+           << expectedInputCount;
+
+  if (getOutputs().size() != expectedOutputCount)
+    return emitOpError("`outputs` has ")
+           << getOutputs().size()
+           << " results, but the graph signatures produce "
+           << expectedOutputCount;
+
+  SmallVector<Type> inputTypes;
+  llvm::append_range(inputTypes, getInputs().getTypes());
+  SmallVector<Type> outputTypes;
+  llvm::append_range(outputTypes, getOutputs().getTypes());
+
+  size_t inputIdx = 0;
+  size_t outputIdx = 0;
+  for (auto [graphIdx, graph] : llvm::enumerate(getGraphs())) {
+    auto sig = cast<DeviceGraphType>(graph.getType()).getSignature();
+
+    if (!llvm::equal(
+            sig.getInputs(),
+            ArrayRef<Type>(inputTypes).slice(inputIdx, sig.getInputs().size())))
+      return emitOpError("graph #")
+             << graphIdx
+             << " signature inputs do not match the corresponding `inputs` "
+                "operands";
+    inputIdx += sig.getInputs().size();
+
+    if (!llvm::equal(sig.getResults(),
+                     ArrayRef<Type>(outputTypes)
+                         .slice(outputIdx, sig.getResults().size())))
+      return emitOpError("graph #")
+             << graphIdx
+             << " signature results do not match the corresponding `outputs` "
+                "results";
+    outputIdx += sig.getResults().size();
+  }
+
+  return verifyInputResidency(*this, getInputs());
 }

@@ -45,13 +45,15 @@ ParseResult parseTensorSpec(AsmParser &p, TensorSpecType &tensorSpec);
 /// Prints a compact tensor type description.
 void printTensorSpec(AsmPrinter &p, TensorSpecType tensorSpec);
 
-/// Parses the optional `, <device>` and `, mut` tail of a device tensor type.
-ParseResult parseOptDeviceAndMut(AsmParser &p, M::DeviceRefAttr &device,
-                                 mlir::UnitAttr &mut);
+/// Parses the optional `, <device>`, `, mut`, and `, stable` tail of a device
+/// tensor type.
+ParseResult parseDeviceTensorTail(AsmParser &p, M::DeviceRefAttr &device,
+                                  bool &mut, bool &stable);
 
-/// Prints the optional `, <device>` and `, mut` tail of a device tensor type.
-void printOptDeviceAndMut(AsmPrinter &p, M::DeviceRefAttr device,
-                          mlir::UnitAttr mut);
+/// Prints the optional `, <device>`, `, mut`, and `, stable` tail of a device
+/// tensor type.
+void printDeviceTensorTail(AsmPrinter &p, M::DeviceRefAttr device, bool mut,
+                           bool stable);
 
 } // namespace M::MGP
 

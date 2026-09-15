@@ -874,7 +874,8 @@ LogicalResult BufferPlanOp::inferReturnTypes(
 
 LogicalResult TensorCreateOp::verify() {
   auto expectedOutTensorType = DeviceTensorType::get(
-      getBuffer().getType().getDevice(), getTensorSpec().getType(), getMut());
+      getBuffer().getType().getDevice(), getTensorSpec().getType(),
+      static_cast<bool>(getMut()), static_cast<bool>(getStable()));
   if (expectedOutTensorType != getOutTensor().getType()) {
     return emitOpError("expected output tensor type does not match "
                        "actual output tensor type (")
@@ -896,8 +897,9 @@ LogicalResult TensorCreateOp::inferReturnTypes(
 
   DeviceRefAttr device =
       cast<DeviceBufferType>(adaptor.getBuffer().getType()).getDevice();
-  inferredReturnTypes.emplace_back(
-      DeviceTensorType::get(device, tensorSpecType, adaptor.getMut()));
+  inferredReturnTypes.emplace_back(DeviceTensorType::get(
+      device, tensorSpecType, static_cast<bool>(adaptor.getMut()),
+      static_cast<bool>(adaptor.getStable())));
   return success();
 }
 
