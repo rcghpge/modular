@@ -189,6 +189,20 @@ AsyncRT_DeviceContext_createHostBuffer(DeviceBuffer **result, void **devicePtr,
   return errMsg;
 }
 
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_wrapHostMemory(DeviceBuffer **result, void **devicePtr,
+                                     DeviceContext *ctx, void *hostPtr,
+                                     size_t len, size_t elemSize) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_wrapHostMemory",
+                       TRACY_COLOR_GRAY);
+  const char *errMsg =
+      checkRef(result, ctx->wrapHostMemory(hostPtr, len * elemSize));
+  if (errMsg == nullptr) {
+    *devicePtr = (*result)->ptr();
+  }
+  return errMsg;
+}
+
 // TODO: Remove the V1 compatibility.
 MODULAR_EXPORT void AsyncRT_DeviceContext_createBuffer_owning(
     DeviceBuffer **result, DeviceContext *ctx, void *devicePtr, size_t len,

@@ -604,12 +604,11 @@ TEST_F(GPUDeviceContextTest, WrapHostMemoryRoundTrip) {
                   ctx->wrapHostMemory(dst, byteSize));
     EXPECT_EQ(wrappedSrc->byteSize(), byteSize);
     EXPECT_TRUE(wrappedSrc->isHost());
-    // The host pointer itself under UVA, an aliasing buffer's GPU address on
-    // Metal.
-    if (ctx->device().api() == Device::metalAPI)
-      EXPECT_NE(wrappedSrc->ptr(), src);
-    else
+    // Only CUDA maps a registered range back at the host address.
+    if (ctx->device().api() == Device::cudaAPI)
       EXPECT_EQ(wrappedSrc->ptr(), src);
+    else
+      EXPECT_NE(wrappedSrc->ptr(), src);
 
     ASSIGN_NO_ERR(DeviceBufferRef, deviceBuf,
                   ctx->enqueueCreateBuffer(byteSize));

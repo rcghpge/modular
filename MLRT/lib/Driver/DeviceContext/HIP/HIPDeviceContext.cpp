@@ -1544,16 +1544,35 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
 ErrorOrSuccess HIPDeviceContext::memWrap(void **devPtr, void *hostPtr,
                                          size_t byteSize) {
   RETURN_IF_ERROR(registerHostMemory(hostPtr, byteSize));
-  // UVA gives a registered page one address; guaranteed on our AMD targets.
-  *devPtr = hostPtr;
+
+  // A registered range is mapped at a driver-chosen address, not at `hostPtr`.
+  HIP_WITH_CTX_ERR(*this);
+  hipDeviceptr_t mapped = nullptr;
+  HIPDriver::Result result =
+      driver_.hipHostGetDevicePointer(&mapped, hostPtr, 0);
+  if (result != HIPDriver::SUCCESS) {
+    (void)unregisterHostMemory(hostPtr);
+    const char *errName = nullptr;
+    (void)driver_.hipDrvGetErrorName(result, &errName);
+    return Error(std::string("memWrap: hipHostGetDevicePointer failed: ")
+                     .append(errName ? errName : "(unknown)"));
+  }
+  *devPtr = reinterpret_cast<void *>(mapped);
   return success();
 }
 
 ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memFree", TRACY_COLOR_PURPLE);
 
-  if (kind == Device::FreeKind::WRAPPED)
-    return unregisterHostMemory(ptr);
+  if (kind == Device::FreeKind::WRAPPED) {
+    // `hipHostUnregister` takes the host base; `ptr` is the mapped address.
+    HIP_WITH_CTX_ERR(*this);
+    hipPointerAttribute_t attrs{};
+    HIP_CHECK_ERR(driver_.hipPointerGetAttributes(&attrs, ptr));
+    if (attrs.hostPointer == nullptr)
+      RETURN_ERROR("memFree: wrapped range has no host pointer to unregister");
+    return unregisterHostMemory(attrs.hostPointer);
+  }
 
   HIP_WITH_CTX_ERR(*this);
   if (kind == Device::FreeKind::HOST) {
