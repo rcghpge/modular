@@ -707,6 +707,17 @@ public:
     return Error("unregisterHostMemory is not supported on this device");
   }
 
+  /// Grants the device access to a host range. The HAL API has no host-wrap
+  /// primitive yet, so this reports the legacy "unsupported" default.
+  ErrorOr<DeviceBufferRef> wrapHostMemory(void *ptr, size_t byteSize) {
+    return Error("wrapHostMemory is not supported on this device");
+  }
+
+  /// Drains completed event handlers. The HAL shim queues none, so this is a
+  /// no-op. TODO(MXF-673): drain for real once the shim gains
+  /// `enqueueEventHandler`, after which success here would be a lie.
+  ErrorOrSuccess pollPendingEvents() { return success(); }
+
   // ===-- Identity / Mojo interop ---------------------------------------=== //
 
   /// Contexts compare equal when they drive the same underlying stream,
