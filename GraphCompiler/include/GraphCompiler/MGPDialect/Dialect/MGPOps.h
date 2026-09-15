@@ -35,8 +35,9 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 namespace mlir {
+class IRRewriter;
 class ModuleOp;
-}
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations

@@ -391,7 +391,7 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
   let description = [{
     An operation used to model dependencies between regions of IR. In the
     incremental lowering process towards device-graph based execution, one
-    `mpg.device_graph.dependencies` operation is created per
+    `mgp.device_graph.dependencies` operation is created per
     `mogg.generic.compiled.region`.
 
     It separates the two things a compiled region entangles -- dataflow and
@@ -609,6 +609,10 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
       return cast<TypedValue<DeviceGraphBuilderType>>(
         getBodyBlock().getArgument(0));
     }
+
+    MutableArrayRef<BlockArgument> getBodyInputs() {
+      return getBodyBlock().getArguments().drop_front(1);
+    }
   }];
 
   let hasCanonicalizer = 1;
@@ -668,6 +672,18 @@ def DeviceGraphStableCreateOp : MGP_DeviceGraphOp<"stable.create", [
     $tensor attr-dict `:` qualified(type($tensor))
   }];
 
+  let extraClassDeclaration = [{
+    /// Get the stable address type that will back this tensor.
+    MGP::StableAddressType getStableType() {
+      return MGP::StableAddressType::get(getTensor().getType());
+    }
+
+    /// The device for the stable tensor.
+    M::DeviceRefAttr getDevice() {
+      return getTensor().getType().getDevice();
+    }
+  }];
+
   let hasVerifier = 1;
 }
 
@@ -714,6 +730,7 @@ def DeviceGraphStableGetOp : MGP_DeviceGraphOp<"stable.get", [
 
 def DeviceGraphStablePlaceOp : MGP_DeviceGraphOp<"stable.place", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  InferTypeOpAdaptor,
   TypesMatchWith<"stable address type wraps the tensor type",
                  "tensor", "addr",
                  "::M::MGP::StableAddressType::get($_self)">,
@@ -729,6 +746,11 @@ def DeviceGraphStablePlaceOp : MGP_DeviceGraphOp<"stable.place", [
     graph itself, so that the patched pointer resolves at launch time. A
     subsequent `mgp.device_graph.stable.get` in the same region that reads the
     same `$addr` sees this value at replay when enqueued after the place.
+
+    The operation also returns a `!mgp.device_tensor` view backed by the stable
+    address, identical to the value produced by `mgp.device_graph.stable.get`
+    on the same `$addr`. This lets consumers on the source device reuse the
+    placed value directly instead of emitting a separate `stable.get`.
   }];
 
   let arguments = (ins
@@ -736,6 +758,7 @@ def DeviceGraphStablePlaceOp : MGP_DeviceGraphOp<"stable.place", [
     MGP_DeviceTensorType:$tensor,
     Optional<MGP_DeviceGraphBuilderType>:$graphBuilder
   );
+  let results = (outs MGP_DeviceTensorType:$placedTensor);
   let assemblyFormat = [{
     $addr `,` $tensor `:` qualified(type($tensor))
     (`,` $graphBuilder^ `:` qualified(type($graphBuilder)))?

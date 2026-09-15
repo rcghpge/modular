@@ -1234,6 +1234,21 @@ LogicalResult DeviceGraphStableGetOp::emitMojo(MOGG::EmitMojoState &) {
 // DeviceGraphStablePlaceOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult DeviceGraphStablePlaceOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  auto slotType = cast<StableAddressType>(adaptor.getAddr().getType());
+  auto elementType = slotType.getElementType();
+
+  auto resultType =
+      DeviceTensorType::get(elementType.getDevice(),
+                            elementType.getTensorSpec(), elementType.getMut(),
+                            /*stable=*/true);
+
+  inferredReturnTypes.push_back(resultType);
+  return success();
+}
+
 bool DeviceGraphStablePlaceOp::isThrows() { return true; }
 
 LogicalResult DeviceGraphStablePlaceOp::emitMojo(MOGG::EmitMojoState &) {

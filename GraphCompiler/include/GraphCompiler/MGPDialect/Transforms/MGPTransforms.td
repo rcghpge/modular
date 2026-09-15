@@ -728,6 +728,27 @@ def StageDeviceGraphsPass :
 }
 
 //===----------------------------------------------------------------------===//
+// PartitionDeviceGraphCollectivePass
+//===----------------------------------------------------------------------===//
+
+def PartitionDeviceGraphCollectivePass :
+    Pass<"mgp-partition-device-graph-collective", "MGP::ModelOp"> {
+  let summary = "Partition a `mgp.device_graph.staging` op into per-device "
+                "`mgp.device_graph.collective` regions.";
+  let description = [{
+    Part of device-graph synthesis; runs after `mgp-stage-device-graphs`. For
+    each `mgp.model` marked `isDeviceGraph`, converts the single
+    `mgp.device_graph.staging` op in the execute block into a
+    `mgp.device_graph.collective` op with one region per device. Cross-device
+    values are exchanged through stable address slots using
+    `mgp.device_graph.stable.place` and `mgp.device_graph.stable.get`.
+
+    For models without `isDeviceGraph` or without a staging op, the pass is a
+    no-op.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ComputeDeviceGraphDependenciesPass
 //===----------------------------------------------------------------------===//
 
