@@ -648,9 +648,21 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
       cond = builder.createOrFold<KGEN::POP::CastToBuiltinOp>(
           loc, builder.getIntegerType(1), cond);
     }
-    // We must be dealing with an assert.
+    // We must be dealing with an assert. The dictionary is carried over from
+    // an arbitrary op, so the inherent `message` has to be split out into
+    // properties by name, which the aggregate builder used to do itself.
+    MGP::AssertOp::Properties properties;
+    SmallVector<NamedAttribute> discardableAttributes;
+    StringRef messageName = MGP::AssertOp::getAttributeNames().front();
+    for (NamedAttribute namedAttr : opAttr.getAttrs()) {
+      if (namedAttr.getName() == messageName)
+        properties.setMessage(::M::cast<StringAttr>(namedAttr.getValue()));
+      else
+        discardableAttributes.push_back(namedAttr);
+    }
+
     MGP::AssertOp assertOp = MGP::AssertOp::create(
-        builder, loc, ValueRange{cond}, opAttr.getAttrs().getValue());
+        builder, loc, ValueRange{cond}, properties, discardableAttributes);
 
     newOp = assertOp;
     if (maybeParentAssert)

@@ -960,7 +960,8 @@ struct ConvTransposeConstFilterPattern
 
     // Pack the filter.
     auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
-        loc, /*outputTypes=*/packedFilterType, filter);
+        loc, /*outputTypes=*/packedFilterType, filter,
+        MO::LayoutTransformOp::Properties{});
     rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, packedFilter); });
     return mlir::success();
   }
@@ -1100,11 +1101,17 @@ struct LayerNormPattern
           beta);
     }
 
+    MO::LayerNormOp::Properties properties;
+    MO::LayerNormOp::populateDefaultProperties(
+        mlir::OperationName(MO::LayerNormOp::getOperationName(),
+                            op.getContext()),
+        properties);
+
     rewriter.replaceOpWithNewOp<MO::LayerNormOp>(
         op,
         /*outputTypes=*/op->getResultTypes(),
         /*inputOperands=*/
-        SmallVector<Value>{input, gamma, beta, eps});
+        SmallVector<Value>{input, gamma, beta, eps}, properties);
     return mlir::success();
   }
 };

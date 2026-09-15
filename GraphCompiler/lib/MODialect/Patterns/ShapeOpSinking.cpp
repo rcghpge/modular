@@ -2483,8 +2483,8 @@ struct SinkBroadcastsThroughLinalgBandPartOp
     SmallVector<Value> newOperands(op.getOperands());
     newOperands[0] = newBcastOp;
     auto newBandPartOp = rewriter.create<MO::LinAlg::BandPartOp>(
-        loc, newBcastResTy, newOperands,
-        op.getOperation()->getAttrDictionary().getValue());
+        loc, newBcastResTy, newOperands, op.getProperties(),
+        llvm::to_vector(op.getOperation()->getDiscardableAttrs()));
 
     // Note that the original result type is used.
     rewriter.replaceOpWithNewOp<MO::Static::BroadcastToOp>(op, resTy,

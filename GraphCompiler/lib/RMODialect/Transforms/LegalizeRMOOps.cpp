@@ -462,8 +462,15 @@ struct LegalizeMutableStoreSliceOp
 
     moOperands.push_back(op.getInChain());
 
+    // Only the inherent `outputParamDecls` carries over into properties; the
+    // discardable half is replaced wholesale just below.
+    MO::MutableStoreSliceOp::Properties properties;
+    if (auto decls = op->getAttrOfType<KGEN::ParamDeclArrayAttr>(
+            MO::MutableStoreSliceOp::getAttributeNames().front()))
+      properties.setOutputParamDecls(decls);
+
     auto moOp = MO::MutableStoreSliceOp::create(
-        rewriter, op->getLoc(), moResultTypes, moOperands, op->getAttrs());
+        rewriter, op->getLoc(), moResultTypes, moOperands, properties);
     moOp->setDiscardableAttrs(op->getRawDictionaryAttrs());
     rewriter.replaceAllUsesWith(op.getOutChain(), moOp.getOutChain());
 

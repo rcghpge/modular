@@ -44,8 +44,10 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []> :
           moOutputParamDeclsFlattened.append(resultDecls);
         }
 
-        // Call normal output type, input value builder
-        build($_builder, $_state, mlir::TypeRange{moResultTypes}, inputValues);
+        $_state.addOperands(inputValues);
+        populateDefaultProperties($_state.name,
+                                  $_state.getOrAddProperties<Properties>());
+        $_state.addTypes(mlir::TypeRange{moResultTypes});
 
         // Manually set outputParamDecls field
         $_state.addAttribute(

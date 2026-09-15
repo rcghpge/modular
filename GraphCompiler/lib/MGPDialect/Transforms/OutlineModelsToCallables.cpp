@@ -582,10 +582,9 @@ class OutlineModelsToCallablesPass
           operands.push_back(arg);
         }
 
-        auto invoke = GRT::InvokeOp::create(
-            builder, loc, callable.getResultTypes(), operands);
-
-        invoke.setTarget(callable.getName());
+        auto invoke =
+            GRT::InvokeOp::create(builder, loc, callable.getResultTypes(),
+                                  callable.getName(), operands);
 
         MEF::OutputOp::create(builder, loc, invoke.getResults());
       }
