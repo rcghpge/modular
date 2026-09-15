@@ -1218,7 +1218,8 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   let assemblyFormat = [{
     `(` $input `)` attr-dict `:` type($output)
   }];
-  let hasCanonicalizeMethod = 1;
+
+  let hasFolder = 1;
 }
 
 def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
@@ -1243,10 +1244,7 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
                  /*lhs=*/"input", /*rhs=*/"output",
                  "::M::MOGG::AsyncType::get($_self)">,
 ]> {
-  let arguments = (ins
-    AnyType:$input,
-    Optional<MGP_DeviceContextType>:$deviceCtx
-  );
+  let arguments = (ins AnyType:$input);
   let results = (outs MOGG_Async:$output);
   let summary = "Packs an sync value and returns it as async";
   let description = [{
@@ -1254,16 +1252,15 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
     `T` value into an `!mogg.async<T>`.
 
     Only the input element type `T` is printed; the `!mogg.async<T>` result type
-    is inferred from it. The optional device context operand, when present,
-    prints its own type since it is not derivable from `T`.
+    is inferred from it.
   }];
 
   let assemblyFormat = [{
-    `(` $input (`,` $deviceCtx^ `:` type($deviceCtx))? `)` attr-dict
-    `:` type($input)
+    `(` $input `)` attr-dict `:` type($input)
   }];
-}
 
+  let hasFolder = 1;
+}
 
 def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,

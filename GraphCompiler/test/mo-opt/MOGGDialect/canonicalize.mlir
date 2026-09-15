@@ -59,7 +59,9 @@ mo.graph @genericRegionEmptyChain() {
 
 // Duplicate operands are collapsed to the first occurrence, the duplicate body
 // argument is erased, and uses of it are redirected to the first occurrence's
-// argument. The signature drops the corresponding entry.
+// argument. The signature drops the corresponding entry. The resulting
+// `mogg.async.pack(mogg.async.unpack(x))` chain then folds to `x`, leaving
+// just `mogg.output %[[A]]`.
 mo.graph @genericRegionDedupOperands(%arg0: index, %arg1: index) {
   %0 = mogg.generic.compiled.region (%arg0, %arg1, %arg0) : (%a: index, %b: index, %c: index) -> index {
     %u = mogg.async.unpack(%c) : index
@@ -74,8 +76,31 @@ mo.graph @genericRegionDedupOperands(%arg0: index, %arg1: index) {
 // CHECK:       (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
 // CHECK:       mogg.generic.compiled.region (%[[ARG0]], %[[ARG1]]) :
 // CHECK-SAME:  (%[[A:[^,]*]]: index, %[[B:[^,]*]]: index)
-// CHECK:         mogg.async.unpack(%[[A]])
+// CHECK:         mogg.output %[[A]] : !mogg.async<index>
 // CHECK:       inOutSignature = #M.inout_sig<"..">
+
+// -----
+
+// `mogg.async.pack(mogg.async.unpack(x))` folds to `x`. The unpack's input is
+// the region body arg (`!mogg.async<index>` printed as `index`), so the new
+// pack fold elides the round-trip; the now-dead unpack drops out via DCE,
+// leaving a single `mogg.output %[[A]]`.
+mo.graph @fold_pack_unpack_round_trip(%arg0: index) {
+  %0 = mogg.generic.compiled.region (%arg0) : (%a: index) -> index {
+    %u = mogg.async.unpack(%a) : index
+    %p = mogg.async.pack(%u) : index
+    mogg.output %p : !mogg.async<index>
+  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
+
+  mo.output
+}
+
+// CHECK-LABEL: mo.graph @fold_pack_unpack_round_trip
+// CHECK:       (%[[ARG0:.*]]: index)
+// CHECK:       mogg.generic.compiled.region (%[[ARG0]]) :
+// CHECK-SAME:  (%[[A:[^,)]*]]: index)
+// CHECK:         mogg.output %[[A]] : !mogg.async<index>
+// CHECK:       inOutSignature = #M.inout_sig<".">
 
 // -----
 

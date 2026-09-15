@@ -5900,14 +5900,11 @@ LogicalResult AsyncUnpackOp::inferReturnTypes(
   return success();
 }
 
-LogicalResult AsyncUnpackOp::canonicalize(AsyncUnpackOp unpackOp,
-                                          mlir::PatternRewriter &rewriter) {
-  if (auto packOp = unpackOp.getInput().getDefiningOp<AsyncPackOp>()) {
-    rewriter.replaceOp(unpackOp, packOp.getInput());
-    return success();
-  }
-
-  return failure();
+OpFoldResult AsyncUnpackOp::fold(FoldAdaptor adaptor) {
+  // Fold `mogg.async.unpack(mogg.async.pack(x))` -> `x`.
+  if (auto packOp = getInput().getDefiningOp<AsyncPackOp>())
+    return packOp.getInput();
+  return {};
 }
 
 LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
@@ -6062,6 +6059,13 @@ LogicalResult AsyncPackOp::emitMojo(EmitMojoState &state) {
 
   state.setMojoValueFor(getResult(), packed);
   return success();
+}
+
+OpFoldResult AsyncPackOp::fold(FoldAdaptor adaptor) {
+  // Fold `mogg.async.pack(mogg.async.unpack(x))` -> `x`.
+  if (auto unpackOp = getInput().getDefiningOp<AsyncUnpackOp>())
+    return unpackOp.getInput();
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
