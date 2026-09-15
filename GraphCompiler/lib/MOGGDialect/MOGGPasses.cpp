@@ -56,10 +56,9 @@ KGEN::CompilationOptions M::MOGG::createCompilationOptions(
   return compilationOptions;
 }
 
-ErrorOr<TargetInfoAttr>
-M::MOGG::getHostTargetInfoAttr(MLIRContext *ctx,
-                               llvm::StringRef acceleratorArchOverride,
-                               llvm::StringRef acceleratorTripleOverride) {
+ErrorOr<TargetInfoAttr> M::MOGG::getHostTargetInfoAttr(
+    MLIRContext *ctx, llvm::StringRef acceleratorArchOverride,
+    llvm::StringRef acceleratorTripleOverride, bool forHostExecution) {
   ASSERT_STREAM(ctx != nullptr, "context must be non-null");
 
   // Resolve through getTargetInfo (the same chokepoint codegen uses) so the
@@ -68,7 +67,8 @@ M::MOGG::getHostTargetInfoAttr(MLIRContext *ctx,
 
   ctx->loadDialect<M::MDialect>();
 
-  return getTargetInfo(ctx, acceleratorArchOverride, acceleratorTripleOverride);
+  return getTargetInfo(ctx, acceleratorArchOverride, acceleratorTripleOverride,
+                       forHostExecution);
 }
 
 ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,

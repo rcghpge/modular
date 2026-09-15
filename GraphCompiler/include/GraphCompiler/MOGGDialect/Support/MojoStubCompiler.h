@@ -30,9 +30,14 @@ DenseResourceElementsAttr createArchiveAttr(MLIRContext *ctx, BufferRef buffer,
 /// `sm_100a` / `nvptx64-nvidia-cuda`) on a machine that lacks that GPU, or has
 /// no GPU at all. A non-GPU override falls back to host detection. The host CPU
 /// triple/CPU/features are unaffected.
+///
+/// `forHostExecution` ignores the virtual-CPU override: a sub-compilation
+/// whose artifact executes in the compiling process (constant folding) must
+/// compile for the machine that runs it, not for the export target.
 ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
                                       StringRef acceleratorArchOverride = "",
-                                      StringRef acceleratorTripleOverride = "");
+                                      StringRef acceleratorTripleOverride = "",
+                                      bool forHostExecution = false);
 
 /// A resolved (de-sugared, validated) virtual-CPU-target request, letting a
 /// host-warmed cache target a different CPU or even architecture.

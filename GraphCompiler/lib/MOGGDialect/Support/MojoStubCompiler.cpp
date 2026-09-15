@@ -114,7 +114,8 @@ ErrorOr<VirtualCpuTargetSpec> parseVirtualCpuTarget(StringRef knob,
 
 ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
                                       StringRef acceleratorArchOverride,
-                                      StringRef acceleratorTripleOverride) {
+                                      StringRef acceleratorTripleOverride,
+                                      bool forHostExecution) {
   std::string triple = llvm::sys::getDefaultTargetTriple();
   std::string cpu = llvm::sys::getHostCPUName().str();
   std::string features = getHostCPUFeatures();
@@ -133,7 +134,8 @@ ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
     return M::Driver::Device::getAcceleratorArchOrEmpty();
   };
 
-  std::string virtualCpu = M::Driver::getVirtualCpuTarget();
+  std::string virtualCpu =
+      forHostExecution ? std::string() : M::Driver::getVirtualCpuTarget();
   if (!virtualCpu.empty()) {
     ErrorOr<VirtualCpuTargetSpec> specOr =
         parseVirtualCpuTarget(virtualCpu, triple);

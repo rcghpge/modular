@@ -94,4 +94,40 @@ TEST(VirtualCpuTargetResolve, DescriptorIsHonoredByGetTargetInfo) {
       << target.getTripleStr();
 }
 
+TEST(VirtualCpuTargetResolve, ForHostExecutionIgnoresTheOverride) {
+  // The constant-folding sub-compilation executes its artifact in this
+  // process, so it must resolve the true host even while a virtual CPU
+  // target retargets every other compile (a Windows-ABI fold object dies
+  // materializing `__chkstk` on a Linux or macOS host).
+  initLLVM();
+  mlir::MLIRContext ctx;
+  ctx.loadDialect<MDialect>();
+
+  llvm::scope_exit restore{[prev = M::Driver::getVirtualCpuTarget()] {
+    M::Driver::setVirtualCpuTarget(prev);
+  }};
+
+  // The host baseline, resolved with no override in effect.
+  M::Driver::setVirtualCpuTarget("");
+  auto hostOr = getTargetInfo(&ctx);
+  ASSERT_FALSE(hostOr.isError()) << hostOr.takeError().get();
+  auto host = hostOr.takeValue();
+
+  M::Driver::setVirtualCpuTarget(
+      "triple=aarch64-w64-windows-gnu-elf;cpu=generic");
+  auto foldOr = getTargetInfo(&ctx, "", "", /*forHostExecution=*/true);
+  ASSERT_FALSE(foldOr.isError()) << foldOr.takeError().get();
+  auto fold = foldOr.takeValue();
+
+  EXPECT_EQ(fold.getTripleStr(), host.getTripleStr());
+  EXPECT_EQ(fold.getArch(), host.getArch());
+  EXPECT_EQ(fold.getFeatures(), host.getFeatures());
+
+  // And without the flag the same override still wins, so this cannot pass
+  // by the override never engaging.
+  auto overriddenOr = getTargetInfo(&ctx);
+  ASSERT_FALSE(overriddenOr.isError()) << overriddenOr.takeError().get();
+  EXPECT_NE(overriddenOr.takeValue().getTripleStr(), host.getTripleStr());
+}
+
 } // namespace

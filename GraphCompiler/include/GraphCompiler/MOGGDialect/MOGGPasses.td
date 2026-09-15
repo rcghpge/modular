@@ -65,7 +65,13 @@ def JitCompileKernels: Pass<"jit", "ModuleOp"> {
       /*default=*/"",
       "Target triple (e.g. nvptx64-nvidia-cuda) identifying the accelerator "
       "vendor for default-device-target-arch. The override applies only when "
-      "this triple names a GPU target.">
+      "this triple names a GPU target.">,
+    Option<"compileForHostExecution", "compile-for-host-execution", "bool",
+      /*default=*/"false",
+      "Compile kernels for the machine running this compilation, ignoring any "
+      "process-global virtual CPU target override. For sub-compilations whose "
+      "artifacts execute in the compiling process (constant folding), where a "
+      "cross-target object cannot be JIT-linked.">
   ];
 }
 

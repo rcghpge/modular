@@ -612,6 +612,7 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
     // These are the same options fed to ValidateDevicesPass above.
     jitOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
     jitOpts.defaultDeviceTargetTriple = opts.defaultDeviceTargetTriple;
+    jitOpts.compileForHostExecution = opts.compileForHostExecution;
   }
 
   // Appends one pipeline stage's passes to `pm`, then (when dumping) a

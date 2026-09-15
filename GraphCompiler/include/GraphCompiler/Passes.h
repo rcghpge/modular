@@ -213,6 +213,13 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
       llvm::cl::desc(
           "Create debuginfo for stubs so they show up in the debugger."),
       llvm::cl::init(false)};
+  Option<bool> compileForHostExecution{
+      *this, "compile-for-host-execution",
+      llvm::cl::desc(
+          "Compile kernels for the machine running this compilation, ignoring "
+          "any virtual CPU target override. Set by sub-compilations whose "
+          "artifacts execute in the compiling process (constant folding)."),
+      llvm::cl::init(false)};
   Option<bool> sanityCheckShapeFuncs{
       *this, "sanity-check-shape-funcs",
       llvm::cl::desc(

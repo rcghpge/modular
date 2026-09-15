@@ -75,11 +75,15 @@ void initLLVM();
 /// target, the accelerator arch is taken from them instead of probing the host
 /// GPU. The cache key and codegen must resolve the target the same way, so any
 /// caller that overrides the codegen target must pass the identical override
-/// here.
+/// here -- including `forHostExecution`, which makes codegen ignore the
+/// virtual-CPU override (see `MOGG::getTargetInfo`): a host-compiled artifact
+/// cached under the virtual target's key would poison lookups made by
+/// compiles that really target it.
 ErrorOr<TargetInfoAttr>
 getHostTargetInfoAttr(mlir::MLIRContext *ctx,
                       llvm::StringRef acceleratorArchOverride = "",
-                      llvm::StringRef acceleratorTripleOverride = "");
+                      llvm::StringRef acceleratorTripleOverride = "",
+                      bool forHostExecution = false);
 
 KGEN::CompilationOptions
 createCompilationOptions(TargetInfoAttr target, KernelBuildType kernelBuildType,

@@ -849,6 +849,11 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   moOpts.performTrivialKernelOpt = false;
   // Assign ops to CPU so we can constant fold there.
   moOpts.defaultDeviceLabel = kCPULabel;
+  // The folded sub-model executes in this process, so its kernels must be
+  // compiled for this machine even when a virtual CPU target retargets the
+  // outer compile: a cross-target object cannot be JIT-linked here (a
+  // Windows-ABI object, for one, dies materializing `__chkstk`).
+  moOpts.compileForHostExecution = true;
   // Force all kernels to be synchronous. This prevents higher memory usage.
   moOpts.forceSync = true;
   // We gain little benefit by enabling post-abi as most constant subgraphs are

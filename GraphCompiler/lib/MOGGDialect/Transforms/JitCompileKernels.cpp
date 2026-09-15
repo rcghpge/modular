@@ -178,10 +178,13 @@ struct JitCompileKernels
     envAttr.printStripped(*keyBufRef);
 
     // Resolve the key's target the same way codegen does (honoring an explicit
-    // accelerator override); otherwise a host-warmed artifact would falsely hit
-    // for a cross-compiled target.
+    // accelerator override, and ignoring the virtual-CPU override for a
+    // compile-for-host-execution pass); otherwise a host-warmed artifact would
+    // falsely hit for a cross-compiled target -- or a host-compiled fold
+    // kernel would be cached under the cross target's key and poison it.
     auto hostTargetOr = MOGG::getHostTargetInfoAttr(
-        ctx, defaultDeviceTargetArch, defaultDeviceTargetTriple);
+        ctx, defaultDeviceTargetArch, defaultDeviceTargetTriple,
+        compileForHostExecution);
     if (hostTargetOr.isError())
       return kgenModuleOp->emitError() << hostTargetOr.takeError();
     if (auto error = MOGG::graphCompilerCacheKey(
@@ -422,8 +425,10 @@ struct JitCompileKernels
     // opts (not the module target-info stamp) drives the ObjectCompiler, so the
     // virtual-CPU override must reach it too or the cache key and codegen
     // desync. Gated: propagating the host target unconditionally would churn
-    // every JIT cache key (resolved features != raw host CPUID delta).
-    if (!M::Driver::getVirtualCpuTarget().empty()) {
+    // every JIT cache key (resolved features != raw host CPUID delta). A
+    // compile-for-host-execution pass ignores the override entirely, keeping
+    // its keys in the same legacy host form.
+    if (!compileForHostExecution && !M::Driver::getVirtualCpuTarget().empty()) {
       opts.targetTriple = targetInfo.getTripleStr();
       opts.targetCpu = targetInfo.getArch();
       opts.targetFeatures = targetInfo.getFeatures();
@@ -569,7 +574,8 @@ struct JitCompileKernels
                       ArrayRef<std::string> kernelLibraryPaths) {
     auto ctx = module.getContext();
     auto targetInfoAttr =
-        getTargetInfo(ctx, defaultDeviceTargetArch, defaultDeviceTargetTriple);
+        getTargetInfo(ctx, defaultDeviceTargetArch, defaultDeviceTargetTriple,
+                      compileForHostExecution);
     if (targetInfoAttr.isError()) {
       return module->emitError("Could not retrieve target info: ")
              << targetInfoAttr.getError();
