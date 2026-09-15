@@ -9,6 +9,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GraphCompiler/Support/DataflowUtils.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -278,7 +279,7 @@ static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
     chainCreate->replaceUsesOfWith(loadOutChain, loadInChain);
 
   // Sanity-check that the rewrite fully severed the dependency.
-  ASSERT_STREAM(!valueDependsTransitivelyOn(kernelInChain, loadOutChain),
+  ASSERT_STREAM(!dataflowGraphDependsOn(kernelInChain, loadOutChain),
                 "Expected exclusive chain path from mutable.load to kernel op "
                 "to be severed.");
 
@@ -302,7 +303,7 @@ void fuseLoadBuffer(OpBuilder &builder, MO::MutableLoadOp loadOp,
   TypedValue<MO::ChainType> loadOutChain = loadOp.getOutChain();
   if (auto maybeKernelInChain = kernelOp.maybeGetInChain()) {
     if (*maybeKernelInChain != loadOutChain &&
-        valueDependsTransitivelyOn(*maybeKernelInChain, loadOutChain) &&
+        dataflowGraphDependsOn(*maybeKernelInChain, loadOutChain) &&
         !detachExclusiveChainPath(loadOutChain, loadOp.getInChain(),
                                   *maybeKernelInChain)) {
       LLVM_DEBUG(loadOp.emitRemark() << "Skipping mutable load fusion to avoid "

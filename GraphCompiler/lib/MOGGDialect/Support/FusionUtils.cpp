@@ -65,44 +65,29 @@ FusionLeafAttr createFusionLeaf(Operation *op) {
 }
 
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
-  return dependsOnlyOnProperty(operation, [](mlir::Operation *op) -> bool {
-    if (!isa<MO::ConstantLike, MO::ChainCreateOp>(op))
-      return false;
-
-    auto extConst = dyn_cast<MO::ConstantExternalOp>(op);
-    return !extConst || !extConst.getHasAlias();
-  });
-}
-
-static bool valueDependsTransitivelyOnImpl(Value start, Value targetValue,
-                                           mlir::Operation *targetOp) {
-  SmallVector<Value> worklist{start};
-  llvm::SmallPtrSet<Value, 16> visited;
-  while (!worklist.empty()) {
-    Value current = worklist.pop_back_val();
-    if (!visited.insert(current).second)
-      continue;
-
-    if (current == targetValue)
-      return true;
-
-    if (Operation *def = current.getDefiningOp()) {
-      if (def == targetOp)
-        return true;
-      worklist.append(def->operand_begin(), def->operand_end());
-    }
-  }
-  return false;
-}
-
-bool valueDependsTransitivelyOn(Value start, Value target) {
-  if (start == target)
-    return true;
-  return valueDependsTransitivelyOnImpl(start, target, nullptr);
-}
-
-bool valueDependsTransitivelyOn(Value start, mlir::Operation *target) {
-  return valueDependsTransitivelyOnImpl(start, nullptr, target);
+  if (!operation)
+    return false;
+  // The property is checked only at operand-less source ops; an op reached with
+  // a block-arg operand fails the walk (it depends on a runtime value). The
+  // functor inspects each op's own operands, so a mixed op (a constant and a
+  // block arg) is caught here rather than needing a separate leaf notion.
+  return !walkDataflowGraph<WalkDirection::Producers>(
+              operation,
+              [](mlir::Operation *op) -> mlir::WalkResult {
+                if (op->getNumOperands() == 0) {
+                  if (!isa<MO::ConstantLike, MO::ChainCreateOp>(op))
+                    return mlir::WalkResult::interrupt();
+                  auto extConst = dyn_cast<MO::ConstantExternalOp>(op);
+                  return (!extConst || !extConst.getHasAlias())
+                             ? mlir::WalkResult::advance()
+                             : mlir::WalkResult::interrupt();
+                }
+                for (mlir::Value operand : op->getOperands())
+                  if (!operand.getDefiningOp())
+                    return mlir::WalkResult::interrupt();
+                return mlir::WalkResult::advance();
+              })
+              .wasInterrupted();
 }
 
 ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(

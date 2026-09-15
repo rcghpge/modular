@@ -1417,7 +1417,7 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
     }
 
     if (constantSubtreeSide != Input::UNK &&
-        !dependsOnConstantsOnly<MO::ConstantOp, ChainCreateOp>(
+        !dataflowGraphFoldsToConstants<MO::ConstantOp, ChainCreateOp>(
             maybeConstantSubtreeRootOp)) {
       return rewriter.notifyMatchFailure(
           op, "Failed to match, the view op input is not a constant subtree");
@@ -1427,9 +1427,9 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
     // no gain and it can lead to cycles with other patterns that sink reshapes
     // through elementwise operations.
     bool lhsConstantFoldable =
-        dependsOnConstantsOnly<ConstantOp, ChainCreateOp>(lhsProducer);
+        dataflowGraphFoldsToConstants<ConstantOp, ChainCreateOp>(lhsProducer);
     bool rhsConstantFoldable =
-        dependsOnConstantsOnly<ConstantOp, ChainCreateOp>(rhsProducer);
+        dataflowGraphFoldsToConstants<ConstantOp, ChainCreateOp>(rhsProducer);
     if (lhsConstantFoldable && rhsConstantFoldable) {
       return rewriter.notifyMatchFailure(
           op, "Not applying the pattern to a constant foldable subgraph");

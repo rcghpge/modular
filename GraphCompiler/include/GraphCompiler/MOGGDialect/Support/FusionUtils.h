@@ -85,27 +85,6 @@ using fuseRegionInlineCallBackT = llvm::function_ref<bool(
 // need to revisit it when the aliased constant is handled correctly.
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation);
 
-/// Checks if `start` depends on `target` transitively.
-/// Eg
-/// ```
-/// %1 = foo(%0)
-/// %2 = bar(%1)
-/// ```
-/// `valueDependsTransitivelyOn(%2, %0) == true`.
-/// Also returns true if start == target.
-bool valueDependsTransitivelyOn(Value start, Value target);
-
-/// Checks if `start` depends on `target` transitively.
-/// Eg
-/// ```
-/// %1 = foo(%0)
-/// %2 = bar(%1)
-/// ```
-/// `valueDependsTransitivelyOn(%2, foo) == true`.
-/// Same as `llvm::any_of(target->getResults(), [](Value targetResult) { return
-/// valueDependsTransitivelyOn(start, targetResult)}; )`.
-bool valueDependsTransitivelyOn(Value start, mlir::Operation *target);
-
 // As we transition from output to compute lambda, this represent currently the
 // 3 different kind of fused tensor types that we can have when build a lambda
 // and its corresponding fuser tensor object in the graph compiler.

@@ -9,6 +9,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GraphCompiler/Support/DataflowUtils.h"
 
 using namespace M;
 
@@ -228,7 +229,7 @@ struct FuseEpilogues : public impl::FuseEpiloguesBase<FuseEpilogues> {
         // This check ensures there is no dependency between dst -> src.
         if (llvm::any_of(src.getOperands(), [&](Value otherOperand) {
               return otherOperand != dstOutput &&
-                     valueDependsTransitivelyOn(otherOperand, dst);
+                     dataflowGraphDependsOn(otherOperand, dst);
             })) {
           continue;
         }

@@ -11,6 +11,7 @@
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GraphCompiler/Support/DataflowUtils.h"
 
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/DenseSet.h"
@@ -233,7 +234,7 @@ ReshapeEpilogueFuser::collectCandidates() {
       // create a cycle.
       if (llvm::any_of(src->getOperands(), [&](Value otherOperand) {
             return otherOperand != result &&
-                   MOGG::valueDependsTransitivelyOn(otherOperand, dst);
+                   dataflowGraphDependsOn(otherOperand, dst);
           }))
         continue;
 

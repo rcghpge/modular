@@ -1863,7 +1863,7 @@ struct MathematicalSimplificationDivBySmallTensorToMul
 
     // This is to avoid looping.
     bool xConstantFoldable =
-        dependsOnConstantsOnly<MO::ConstantOp, ChainCreateOp>(
+        dataflowGraphFoldsToConstants<MO::ConstantOp, ChainCreateOp>(
             x.getDefiningOp());
     if (xConstantFoldable)
       return failure();
@@ -1884,7 +1884,7 @@ struct MathematicalSimplificationDivBySmallTensorToMul
     // This is checking if the broadcasted value is a constant or if it was
     // broadcasted by a factor of at least `kThreshold`.
     bool yConstantFoldable =
-        dependsOnConstantsOnly<MO::ConstantOp, ChainCreateOp>(
+        dataflowGraphFoldsToConstants<MO::ConstantOp, ChainCreateOp>(
             y.getDefiningOp());
     // Avoid division by 0.
     if (!yConstantFoldable && (*origYType.getNumElements() == 0 ||
@@ -1933,7 +1933,7 @@ struct MathematicalSimplificationMulOfDivToDiv
     }
 
     if (isa_and_nonnull<MO::Static::BroadcastToOp>(y.getDefiningOp()) ||
-        dependsOnConstantsOnly<MO::ConstantOp, ChainCreateOp>(
+        dataflowGraphFoldsToConstants<MO::ConstantOp, ChainCreateOp>(
             y.getDefiningOp())) {
       return failure();
     }

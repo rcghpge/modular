@@ -366,8 +366,9 @@ struct MatmulConstBPattern
 
     // TODO(KERN-1160): This can change back to MO::ConstantLike after the
     // kernel crash described in this ticket has been resolved.
-    if (!input || !dependsOnConstantsOnly<MO::ConstantOp, MO::ChainCreateOp>(
-                      weight.getDefiningOp()))
+    if (!input ||
+        !dataflowGraphFoldsToConstants<MO::ConstantOp, MO::ChainCreateOp>(
+            weight.getDefiningOp()))
       return rewriter.notifyMatchFailure(op, "Need to solve KERN-1160.");
 
     if (transpose) {
@@ -458,7 +459,7 @@ struct MatmulTranspBPattern
     // remove the check.
     if (auto weightDefOp = weight.getDefiningOp();
         weightDefOp &&
-        !dependsOnConstantsOnly<MO::ConstantLike, MO::ChainCreateOp>(
+        !dataflowGraphFoldsToConstants<MO::ConstantLike, MO::ChainCreateOp>(
             weightDefOp)) {
       return rewriter.notifyMatchFailure(
           op, "can't update layout for non-constant");

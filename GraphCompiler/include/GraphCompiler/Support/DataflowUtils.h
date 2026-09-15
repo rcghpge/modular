@@ -8,52 +8,137 @@
 #define GENERICML_DATALOW_UTILS_H
 
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/Visitors.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 
 namespace M {
 
-// Checks if an operation depends on constants only.
-inline bool dependsOnlyOnProperty(
-    mlir::Operation *operation,
-    llvm::function_ref<bool(mlir::Operation *)> propertyCheck =
-        [](mlir::Operation *) { return true; }) {
-  llvm::SmallVector<mlir::Operation *> next = {operation};
-  mlir::DenseSet<mlir::Operation *> visited;
-  while (!next.empty()) {
-    mlir::Operation *op = next.back();
-    next.pop_back();
+enum class WalkDirection { Producers, Consumers };
 
-    // Is a mlir::BlockArgument
-    if (!op)
-      return false;
+/// The dataflow-walk engine: the single traversal every other helper here
+/// composes. Visits every non-visited op reachable from `op` in `Dir`,
+/// including `op` itself. Neighbors are the producing ops of `op`'s operands
+/// (`Producers`) or the users of `op`'s results (`Consumers`).
+///
+/// The functor returns an `mlir::WalkResult`:
+///   - `advance()`   expand this op's neighbors,
+///   - `skip()`      do not expand this op's neighbors (prune this branch),
+///   - `interrupt()` stop the whole walk.
+/// Returns the overall walk result; inspect `.wasInterrupted()`.
+///
+/// A null neighbor (an operand that is a block argument, i.e. has no defining
+/// op) is skipped rather than visited.
+template <WalkDirection Dir>
+inline mlir::WalkResult walkDataflowGraph(
+    mlir::Operation *op,
+    llvm::function_ref<mlir::WalkResult(mlir::Operation *)> functor) {
+  if (!op)
+    return mlir::WalkResult::advance();
 
-    // Skip visited ops.
-    if (!visited.insert(op).second)
+  llvm::SmallVector<mlir::Operation *> worklist{op};
+  llvm::DenseSet<mlir::Operation *> visited;
+  while (!worklist.empty()) {
+    mlir::Operation *current = worklist.pop_back_val();
+    if (!current)
+      continue;
+    if (!visited.insert(current).second)
       continue;
 
-    // Check the property if `op` has no operands.
-    auto operands = op->getOperands();
-    if (!llvm::range_size(operands)) {
-      if (!propertyCheck(op))
-        return false;
-
+    mlir::WalkResult res = functor(current);
+    if (res.wasInterrupted())
+      return mlir::WalkResult::interrupt();
+    if (res.wasSkipped())
       continue;
+
+    if constexpr (Dir == WalkDirection::Producers) {
+      for (mlir::Value operand : current->getOperands())
+        if (mlir::Operation *def = operand.getDefiningOp())
+          worklist.push_back(def);
+    } else {
+      for (mlir::Operation *user : current->getUsers())
+        worklist.push_back(user);
     }
-
-    for (auto operand : operands)
-      next.push_back(operand.getDefiningOp());
   }
 
-  return true;
+  return mlir::WalkResult::advance();
 }
 
-template <typename... ConstantTypes>
-bool dependsOnConstantsOnly(mlir::Operation *operation) {
-  auto propertyCheck = [](mlir::Operation *op) {
-    return llvm::isa<ConstantTypes...>(op);
-  };
+/// Returns true iff some op reachable from `op` in `Dir` (inclusive) matches
+/// `matcher`.
+template <WalkDirection Dir = WalkDirection::Consumers>
+inline bool
+dataflowGraphContains(mlir::Operation *op,
+                      llvm::function_ref<bool(mlir::Operation *)> matcher) {
+  return walkDataflowGraph<Dir>(op,
+                                [&](mlir::Operation *o) {
+                                  return matcher(o)
+                                             ? mlir::WalkResult::interrupt()
+                                             : mlir::WalkResult::advance();
+                                })
+      .wasInterrupted();
+}
 
-  return dependsOnlyOnProperty(operation, propertyCheck);
+/// Checks if `start` depends on `target` transitively.
+/// Eg
+/// ```
+/// %1 = foo(%0)
+/// %2 = bar(%1)
+/// ```
+/// `dataflowGraphDependsOn(%2, %0) == true`.
+/// Also returns true if `start == target`.
+inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Value target) {
+  if (start == target)
+    return true;
+  mlir::Operation *startDef = start.getDefiningOp();
+  if (!startDef)
+    return false;
+  // A reachable value equals `target` iff `target` is an operand of some op in
+  // the producer cone (block-arg targets included, hence the operand scan
+  // rather than a defining-op comparison).
+  return dataflowGraphContains<WalkDirection::Producers>(
+      startDef, [&](mlir::Operation *op) {
+        return llvm::is_contained(op->getOperands(), target);
+      });
+}
+
+/// Checks if `start` depends on `target` transitively.
+/// Eg
+/// ```
+/// %1 = foo(%0)
+/// %2 = bar(%1)
+/// ```
+/// `dataflowGraphDependsOn(%2, foo) == true`.
+/// Same as `llvm::any_of(target->getResults(), [](Value r) { return
+/// dataflowGraphDependsOn(start, r); })`.
+inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Operation *target) {
+  return dataflowGraphContains<WalkDirection::Producers>(
+      start.getDefiningOp(), [&](mlir::Operation *op) { return op == target; });
+}
+
+/// True iff `op`'s producer cone bottoms out entirely in ops of `ConstantTypes`
+/// (checked only at operand-less source ops). Any op reached with a block-arg
+/// operand makes the result false: it is not constant-foldable.
+template <typename... ConstantTypes>
+inline bool dataflowGraphFoldsToConstants(mlir::Operation *op) {
+  if (!op)
+    return false;
+  return !walkDataflowGraph<WalkDirection::Producers>(
+              op,
+              [](mlir::Operation *o) -> mlir::WalkResult {
+                if (o->getNumOperands() == 0)
+                  return llvm::isa<ConstantTypes...>(o)
+                             ? mlir::WalkResult::advance()
+                             : mlir::WalkResult::interrupt();
+                for (mlir::Value operand : o->getOperands())
+                  if (!operand.getDefiningOp())
+                    return mlir::WalkResult::interrupt();
+                return mlir::WalkResult::advance();
+              })
+              .wasInterrupted();
 }
 
 } // namespace M
