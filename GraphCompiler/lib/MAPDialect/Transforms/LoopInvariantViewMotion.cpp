@@ -16,6 +16,7 @@
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
+#include "GraphCompiler/Support/DataflowUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 
@@ -45,19 +46,44 @@ SmallVector<IndexTransformOpInterface> collectIndexTransformChain(Value index) {
   return chain;
 }
 
-// A store-index transform: an index-transform op (e.g. a reshape fused into an
-// epilogue) that feeds a `map.store`, projecting the loop index to the store's
-// target position. Unlike a load-side view it cannot be hoisted into a
-// materialized `.stride` tensor -- it maps an INDEX, not a tensor -- so it (and
-// any load/elementwise op that indexes THROUGH it, reading/computing at the
-// transformed position) must stay inside the closure.
-bool isStoreIndexTransform(IndexTransformOpInterface op) {
-  return llvm::any_of(op->getUsers(),
-                      [](Operation *user) { return isa<StoreOp>(user); });
+// Whether `op`'s result is used -- directly, or transitively through further
+// index-transform ops -- as a `map.store` index. Such an op projects the loop
+// index to a store's target position: it maps an INDEX, not a tensor, so it
+// cannot be hoisted into a materialized `.stride` view and must stay inside the
+// closure, along with any op it feeds that store index through. A load-side
+// view that only ever reaches loads does NOT feed a store and is hoistable --
+// even when it is composed on top of a store-index transform (e.g. a broadcast
+// fused onto a reshaped store index: the broadcast feeds only its load, so it
+// hoists, while the reshape feeds the store and stays).
+//
+// The consumer walk stays in index space: it recurses through index-transform
+// users (advance) but prunes anything else (skip), so it never follows a
+// `map.load`'s data result into the store that consumes it as a stored VALUE --
+// only a store that consumes the index directly counts.
+bool transitivelyFeedsStore(IndexTransformOpInterface op) {
+  return walkDataflowGraph<WalkDirection::Consumers>(
+             op.getOperation(),
+             [](Operation *user) -> WalkResult {
+               if (isa<StoreOp>(user))
+                 return WalkResult::interrupt();
+               if (isa<IndexTransformOpInterface>(user))
+                 return WalkResult::advance();
+               return WalkResult::skip();
+             })
+      .wasInterrupted();
 }
 
-bool chainHasStoreIndexTransform(ArrayRef<IndexTransformOpInterface> chain) {
-  return llvm::any_of(chain, isStoreIndexTransform);
+// The load-side prefix of `chain` (closest-to-consumer first) that is
+// hoistable: the leading run of ops that do not transitively feed a store.
+// Feeding a store is monotonic down the chain -- if an op feeds a store, every
+// op below it (nearer the loop index) feeds it through that op too -- so the
+// hoistable ops form a contiguous prefix, and the first store-feeding op plus
+// everything under it stays in the closure.
+size_t hoistablePrefixLen(ArrayRef<IndexTransformOpInterface> chain) {
+  size_t n = 0;
+  while (n < chain.size() && !transitivelyFeedsStore(chain[n]))
+    ++n;
+  return n;
 }
 
 // Hoists `chain` (feeding `loadOp`) into stride ops inserted via `builder`
@@ -94,12 +120,14 @@ void rewireElementwiseIndices(Region &body) {
   for (CallElementwiseOp call : calls) {
     SmallVector<IndexTransformOpInterface> chain =
         collectIndexTransformChain(call.getIndex());
-    if (chain.empty())
-      continue; // Already indexes with the loop's own index; nothing to do.
-    if (chainHasStoreIndexTransform(chain))
-      continue; // Store-index transform stays; compute at the transformed pos.
-    IndexTransformOpInterface outermost = chain.back();
-    call.getIndexMutable().assign(outermost.getIndex());
+    size_t prefix = hoistablePrefixLen(chain);
+    if (prefix == 0)
+      continue; // Indexes with the loop's own index, or computes at (or
+                // through) a store-index-transformed position, which stays.
+    // The hoistable prefix's views are gone; rewire to the input of the last
+    // hoisted op -- the loop index when the whole chain hoisted, else the first
+    // store-index transform's result the pinned suffix still computes at.
+    call.getIndexMutable().assign(chain[prefix - 1].getIndex());
   }
 }
 
@@ -123,10 +151,16 @@ LogicalResult loopInvariantViewMotionInClosure(CapturingFusionClosure closure) {
   for (LoadOp loadOp : loads) {
     SmallVector<IndexTransformOpInterface> chain =
         collectIndexTransformChain(loadOp.getIndex());
-    if (chain.empty())
-      continue; // Already indexes with the loop's own index; nothing to do.
-    if (chainHasStoreIndexTransform(chain))
-      continue; // Load reads at a store-index-transformed pos; leave in place.
+    size_t prefix = hoistablePrefixLen(chain);
+    if (prefix == 0)
+      continue; // Nothing hoistable: the load already indexes with the loop's
+                // own index, or reads at (or through) a store-index-transformed
+                // position, which stays in the closure.
+    // Hoist only the load-side prefix above the first store-index transform;
+    // `hoistChain` rewires the load to read the hoisted view at that
+    // transform's result (e.g. a broadcast view read at the reshaped store
+    // index).
+    chain.truncate(prefix);
     hoistChain(loadOp, chain, builder, closure, outerValues);
   }
 
@@ -161,11 +195,11 @@ struct LoopInvariantViewMotionPass
       return signalPassFailure();
 
     // Invariant: hoisting above must leave no HOISTABLE (load-side)
-    // index-transform op behind inside any capturing closure. A store-index
-    // transform legitimately stays -- it maps an index, not a tensor, so there
-    // is nothing to hoist.
+    // index-transform op behind inside any capturing closure. An op that
+    // transitively feeds a store legitimately stays -- it maps an index, not a
+    // tensor, so there is nothing to hoist.
     WalkResult invariantResult = opaque.walk([&](IndexTransformOpInterface op) {
-      if (isStoreIndexTransform(op))
+      if (transitivelyFeedsStore(op))
         return WalkResult::advance();
       op.emitError(
           "LoopInvariantViewMotion: an index-transform op survived hoisting "
