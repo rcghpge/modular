@@ -18,16 +18,28 @@ filegroup(
     tags = ["maybe-unused"],
 )
 
-# Files that fail to compile under MAX_GC_USE_ADV_FUSION=1 today, found by
-# sweeping this directory with the env var forced. Removing an entry should
-# say which fix covers it, not just "now passes".
-_ADV_FUSION_EXCLUDED_TESTS = [
+# Files that will never run under MAX_GC_USE_ADV_FUSION=1: they cover a
+# feature the new path does not implement and that nothing enables. Not meant
+# to empty; it goes away with the legacy path.
+_ADV_FUSION_DISABLED_TESTS = [
+    # Tile codegen. `tile_based_fusion` is an opt-in compile option defaulting
+    # to false with no caller in this repo, and the two kernels behind it say
+    # in their own headers that the plumbing is provisional. MAP implements
+    # none of it: three of these fail to compile, two compile to SIMD instead
+    # of tile and still return the right answer, and the negative test
+    # compiles what legacy rejects. Re-enable with tile support, not before.
     "Conversion/tile-codegen-elementwise-add-mul.mlir",
     "Conversion/tile-codegen-elementwise-add.mlir",
     "Conversion/tile-codegen-matmul-epilogue-add.mlir",
     "Conversion/tile-codegen-matmul.mlir",
     "Conversion/tile-codegen-mismatch.mlir",
     "Conversion/tile-codegen-rms-norm-epilogue-store.mlir",
+]
+
+# Files that fail to compile under MAX_GC_USE_ADV_FUSION=1 today, found by
+# sweeping this directory with the env var forced. Removing an entry should
+# say which fix covers it, not just "now passes".
+_ADV_FUSION_EXCLUDED_TESTS = [
     "E2E/device-graph-elementwise.mlir",
     "E2E/device-graph-execute-gpu.mlir",
     "E2E/device-graph-execute-only-gpu.mlir",
@@ -102,7 +114,7 @@ modular_py_test(
 # New tests: adv-fusion regression target (GEX-4140).
 # ============================================================================
 # Mirrors `gpu-integration-test` above under MAX_GC_USE_ADV_FUSION=1, minus
-# _ADV_FUSION_EXCLUDED_TESTS. Most of its srcs intentionally overlap
+# both adv-fusion lists. Most of its srcs intentionally overlap
 # `gpu-integration-test`'s own (find_duplicate_srcs.py has a matching
 # exemption for this package); a lit_tests srcs list needs real file paths,
 # so unlike modular_py_test this can't be routed through a shared filegroup.
@@ -112,7 +124,8 @@ lit_tests(
     name = "gpu-integration-test-adv-fusion",
     srcs = glob(
         ["**/*.mlir"],
-        exclude = _BROKEN_TESTS + _ADV_FUSION_EXCLUDED_TESTS,
+        exclude = _BROKEN_TESTS + _ADV_FUSION_DISABLED_TESTS +
+                  _ADV_FUSION_EXCLUDED_TESTS,
     ),
     custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
     data = _COMMON_DATA,
