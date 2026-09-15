@@ -376,3 +376,95 @@ mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}
+
+// -----
+
+// A MAP-path stub. The producer is `mogg._call.foreach`, which implements no
+// `KernelTerminator` and sits in no `mogg.with_trace`, and the call site reaches
+// the launch context through `mogg._rebind` -- the MAP ABI's handle bridge. The
+// recording sibling repoints the producer at a recording context; the call takes
+// the dependencies builder directly, leaving the `_rebind` dead.
+
+mogg.primitive.decl @foreach_impl registration = "mogg._call.foreach" function = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
+
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.pointer_, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
+// CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
+// CHECK-NOT: mogg.call.build_graph
+// CHECK: mogg._call.foreach @foreach_impl shape(%{{.*}}) context(%[[REC]])
+mogg.kernel.stub @stub_1 (%p: !mogg.pointer_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+  %shape = "test.shape"() : () -> !mogg.shape
+  %t = "test.tensor"() : () -> !mogg.tensor_
+  mogg._call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor_) attributes {device = #M.device_ref<"gpu", 0>} {
+  ^bb0(%a: !mogg.tensor_, %i: !map.index<2>):
+  }
+  mogg.output
+}
+
+// CHECK-LABEL: mgp.model @dg_map_foreach
+// CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
+// CHECK-NEXT: ^bb0(%[[DB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
+// CHECK-NEXT: mogg.call.stub @stub_1_build_graph %{{.*}}, %[[DB]] : !mogg.pointer_, !mgp.device_graph.builder
+// CHECK-NOT: mogg._rebind
+mgp.model @dg_map_foreach : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
+  mgp.device_graph.staging inputs() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+    ^bb0(%dep_builder: !mgp.device_graph.builder):
+      %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
+      %ctx_h = mogg._rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %p = "test.pointer"() : () -> !mogg.pointer_
+      mogg.call.stub @stub_1 %p, %ctx_h : !mogg.pointer_, !mogg.context
+      mgp.device_graph.dependencies.yield
+    }
+    mgp.device_graph.staging.yield
+  }
+  mef.output %ch0 : !mef.chain
+} {isDeviceGraph}
+
+// -----
+
+// The other MAP producer: `mogg._call.opaque` whose kernel declares
+// `build_graph`. It takes the recording path legacy reserves for
+// `mogg.call.execute` -- the dispatch is replaced by `mogg.call.build_graph`
+// and, with no `mogg.with_trace` wrapping it, has to be erased on its own.
+
+#kf = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
+
+mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
+
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
+// CHECK: mogg.call.build_graph["k"]
+// CHECK-NOT: mogg._call.opaque
+mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+  mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
+  mogg.output
+}
+
+// CHECK-LABEL: mgp.model @dg_map_opaque
+// CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
+// CHECK-NEXT: ^bb0(%[[DB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
+// CHECK-NEXT: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %[[DB]] : {{.*}}!mgp.device_graph.builder
+mgp.model @dg_map_opaque : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
+  mgp.device_graph.staging inputs() {
+  ^bb0(%builder: !mgp.device_graph.builder):
+    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+    ^bb0(%dep_builder: !mgp.device_graph.builder):
+      %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
+      %ctx_h = mogg._rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %t_in = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_h : !mogg.tensor_, !mogg.tensor_, !mogg.context
+      mgp.device_graph.dependencies.yield
+    }
+    mgp.device_graph.staging.yield
+  }
+  mef.output %ch0 : !mef.chain
+} {isDeviceGraph}

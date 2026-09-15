@@ -17,18 +17,42 @@ using namespace mlir;
 
 namespace {
 
-/// Locate the producer dispatch in a kernel stub body: the `mogg.call.execute`
-/// (compute kernel) or `mogg.call.materialize` (view copy) terminating a
-/// `mogg.with_trace`.
-KernelTerminator findProducerDispatch(KernelStubOp stub,
+/// The producer dispatch in a kernel stub body, with the launch context it
+/// runs against. `mogg.with_trace` is not part of the contract -- it is an
+/// out-param every later use null-guards. What is required is one dispatch and
+/// a context. The MAP ops are not terminators and share no interface with the
+/// legacy ones, so the match is by op rather than by interface.
+struct ProducerDispatch {
+  Operation *op = nullptr;
+  Value context;
+
+  explicit operator bool() const { return op != nullptr; }
+};
+
+ProducerDispatch matchProducerDispatch(Operation *op) {
+  if (isa<CallExecuteOp, CallForeachOp, CallMaterializeOp>(op))
+    return {op, cast<KernelTerminator>(op).getDeviceContext()};
+
+  if (auto opaque = dyn_cast<CallOpaqueOp>(op)) {
+    ValueRange contexts = opaque.getDeviceContexts();
+    return {op, contexts.empty() ? Value() : contexts.front()};
+  }
+
+  if (auto foreachRegion = dyn_cast<CallForeachRegionOp>(op))
+    return {op, foreachRegion.getContext()};
+
+  return {};
+}
+
+ProducerDispatch findProducerDispatch(KernelStubOp stub,
                                       WithTraceOp &withTrace) {
-  KernelTerminator result = nullptr;
-  stub.walk([&](KernelTerminator op) {
-    if (!isa<CallExecuteOp, CallForeachOp, CallMaterializeOp>(
-            op.getOperation()))
+  ProducerDispatch result;
+  stub.walk([&](Operation *op) {
+    ProducerDispatch match = matchProducerDispatch(op);
+    if (!match)
       return WalkResult::advance();
 
-    result = op;
+    result = match;
     withTrace = op->getParentOfType<WithTraceOp>();
     return WalkResult::interrupt();
   });
@@ -67,19 +91,18 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
   OwningOpRef<KernelStubOp> clone = cast<KernelStubOp>(original->clone());
 
   WithTraceOp withTrace;
-  KernelTerminator producer = findProducerDispatch(*clone, withTrace);
+  ProducerDispatch producer = findProducerDispatch(*clone, withTrace);
   if (!producer) {
     return original.emitError(
-        "device-graph recording stub generation: kernel stub has no "
-        "`mogg.with_trace { mogg.call.execute | mogg.call.materialize }` "
-        "producer dispatch");
+        "device-graph recording stub generation: kernel stub has no producer "
+        "dispatch");
   }
 
   // The launch context the producer dispatches against must be one of the
   // stub's block arguments (in any position) -- that is the slot the builder
   // takes over.
   Block &body = clone->getBodyBlock();
-  auto context = dyn_cast<BlockArgument>(producer.getDeviceContext());
+  auto context = dyn_cast<BlockArgument>(producer.context);
   if (!context || context.getOwner() != &body) {
     return original.emitError(
         "device-graph recording stub generation: expected the producer launch "
@@ -90,12 +113,23 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
   // method records through `mogg.call.build_graph`. Everything else -- an
   // execute-only kernel or a `mogg.call.materialize` view copy -- records by
   // dispatching the producer against a recording device context.
-  auto execute = dyn_cast<CallExecuteOp>(producer.getOperation());
-  bool useBuildGraph = false;
-  if (execute) {
-    auto decl =
+  auto execute = dyn_cast<CallExecuteOp>(producer.op);
+  auto opaque = dyn_cast<CallOpaqueOp>(producer.op);
+  KernelDeclOp decl;
+  if (execute)
+    decl =
         symtab.lookup<KernelDeclOp>(execute.getKernelSymNameAttr().getValue());
-    useBuildGraph = decl && decl.getBuildGraph().has_value();
+  else if (opaque)
+    decl = symtab.lookup<KernelDeclOp>(opaque.getCallee());
+  bool useBuildGraph = decl && decl.getBuildGraph().has_value();
+
+  // `mogg.call.build_graph` has no fusion flags and its emission never asks,
+  // so recording a fused kernel through it would drop the fusion silently.
+  if (useBuildGraph && opaque &&
+      (opaque.getHasEpilogueFusion() || opaque.getHasPrologueFusion())) {
+    return original.emitError(
+        "device-graph recording stub generation: cannot record a fused "
+        "`mogg._call.opaque` through `mogg.call.build_graph`");
   }
 
   // Snapshot the producer's operands/attrs *before* retyping the launch arg:
@@ -106,20 +140,38 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
   StringAttr kernelSymName, moOpName;
   UnitAttr isThrows;
   DictionaryAttr kernelParams;
-  if (useBuildGraph) {
+  if (useBuildGraph && execute) {
     kernelInputs = execute.getKernelInputs();
     outputs = llvm::to_vector(execute.getOutputs());
     kernelSymName = execute.getKernelSymNameAttr();
     moOpName = execute.getMoOpNameAttr();
     isThrows = execute.getIsThrowsAttr();
     kernelParams = execute.getKernelParamAttr();
+  } else if (useBuildGraph) {
+    // `useBuildGraph` implies a decl, which only an execute or an opaque
+    // resolves, so this branch is the opaque.
+    assert(opaque && "a build_graph producer is an execute or an opaque");
+    // `_call.opaque` keeps inputs, outputs and contexts in separate operand
+    // groups, so there is no context to filter out. `moOpName` is provenance
+    // that nothing reads back, so the decl's registration stands in.
+    kernelInputs = llvm::to_vector(opaque.getInputs());
+    outputs = llvm::to_vector(opaque.getOutputs());
+    kernelSymName = StringAttr::get(ctx, opaque.getCallee());
+    moOpName = StringAttr::get(ctx, decl.getRegistration());
+    // The raises bit has to come off `build_graph`, since that is what this
+    // dispatch calls. `CallOpaqueOp::isThrows()` cannot serve: it resolves the
+    // decl by symbol lookup, which finds nothing from inside a detached clone
+    // and would silently answer false.
+    auto buildGraphSignature = decl.getBuildGraph()->getSignature();
+    isThrows = buildGraphSignature.isThrows() ? UnitAttr::get(ctx) : UnitAttr();
+    kernelParams = opaque.getKernelParamAttr();
   }
 
   // Retype the launch arg: `!mogg.context` -> `!mgp.device_graph.builder`.
   BlockArgument launchArg = context;
   launchArg.setType(DeviceGraphBuilderType::get(ctx));
 
-  Operation &insertionPoint = withTrace ? *withTrace : *producer;
+  Operation &insertionPoint = withTrace ? *withTrace : *producer.op;
 
   if (useBuildGraph) {
     OpBuilder builder(&insertionPoint);
@@ -127,7 +179,7 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
     // into the builder. `call.build_graph` is a plain value op (not a kernel
     // terminator), so the wrapping `with_trace` is dropped.
     CallBuildGraphOp::create(builder,
-                             /*location=*/producer->getLoc(),
+                             /*location=*/producer.op->getLoc(),
                              /*kernelSymName=*/kernelSymName,
                              /*moOpName=*/moOpName,
                              /*isThrows=*/isThrows,
@@ -135,8 +187,12 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
                              /*outputs=*/outputs,
                              /*graphBuilder=*/launchArg,
                              /*kernel_param=*/kernelParams);
+    // Legacy wraps the producer in `with_trace`, so erasing that removes the
+    // dispatch too; a MAP producer stands alone and has to go on its own.
     if (withTrace)
       withTrace.erase();
+    else
+      producer.op->erase();
   } else {
     auto builder = OpBuilder::atBlockBegin(&clone->getBodyBlock());
     // Execute-only kernel or view copy: keep the producer dispatch, but repoint
@@ -144,10 +200,11 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
     // device context viewed off the builder. The dispatch then records into the
     // graph instead of running eagerly.
     auto recordingContext = DeviceGraphRecordingContextOp::create(
-        builder, producer->getLoc(), M::MOGG::ContextType::get(ctx), launchArg);
+        builder, producer.op->getLoc(), M::MOGG::ContextType::get(ctx),
+        launchArg);
     launchArg.replaceUsesWithIf(
         recordingContext.getContext(),
-        [&](OpOperand &use) { return use.getOwner() == producer; });
+        [&](OpOperand &use) { return use.getOwner() == producer.op; });
   }
 
   // The recording is node-free: ordering is expressed by the enclosing
@@ -171,6 +228,15 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
   return RecordingStub{newName, context.getArgNumber()};
 }
 
+/// The builder recording the region that contains `op`: the body block argument
+/// of the innermost `mgp.device_graph.dependencies`, or the staged body's
+/// builder for an op sitting directly in the staging body.
+Value enclosingGraphBuilder(Operation *op) {
+  if (auto deps = op->getParentOfType<DeviceGraphDependenciesOp>())
+    return deps.getBuilderBlockArgument();
+  return op->getParentOfType<DeviceGraphStagingOp>().getBodyBuilder();
+}
+
 /// Retarget a staged `mogg.call.stub @stub_N` to its sibling
 /// `@stub_N_build_graph`.
 ///
@@ -178,7 +244,6 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
 /// position where the original took a launch context; all other operands
 /// (including any other context-typed ones) pass through unchanged.
 LogicalResult rewriteStagedCall(CallStubOp call, const RecordingStub &sibling) {
-  MLIRContext *ctx = call.getContext();
   SmallVector<Value> operands = llvm::to_vector(call.getInputs());
   if (sibling.contextArgIndex >= operands.size() ||
       !isa<DeviceContextType, M::MOGG::ContextType>(
@@ -189,13 +254,9 @@ LogicalResult rewriteStagedCall(CallStubOp call, const RecordingStub &sibling) {
 
   IRRewriter rewriter(call);
 
-  // Bridge the launch context to a builder.
-  Value &launch = operands[sibling.contextArgIndex];
-  launch = UnrealizedConversionCastOp::create(
-               rewriter, call.getLoc(),
-               /*resultTypes=*/DeviceGraphBuilderType::get(ctx),
-               /*operands=*/launch)
-               .getResult(0);
+  // Take the builder directly, as `rewriteBuilderAllocs` does; the launch
+  // context chain this leaves dead is canonicalized away before finalization.
+  operands[sibling.contextArgIndex] = enclosingGraphBuilder(call);
 
   // The sibling stub is node-free (void result), so the retargeted call keeps
   // the original call's result types unchanged.
@@ -206,16 +267,8 @@ LogicalResult rewriteStagedCall(CallStubOp call, const RecordingStub &sibling) {
   rewriter.replaceAllUsesWith(call.getResults(), newCall.getResults());
 
   call.erase();
-  return success();
-}
 
-/// The builder recording the region that contains `op`: the body block argument
-/// of the innermost `mgp.device_graph.dependencies`, or the staged body's
-/// builder for an op sitting directly in the staging body.
-Value enclosingGraphBuilder(Operation *op) {
-  if (auto deps = op->getParentOfType<DeviceGraphDependenciesOp>())
-    return deps.getBuilderBlockArgument();
-  return op->getParentOfType<DeviceGraphStagingOp>().getBodyBuilder();
+  return success();
 }
 
 /// Replace each `mgp.buffer.alloc` in `staging` with `mgp.device_graph.alloc`,

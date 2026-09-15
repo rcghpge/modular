@@ -488,6 +488,9 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
     pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
     pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
     pm.addPass(MGP::createGenerateBuildGraphStubsPass());
+    // Finalization audits the builder bridge's live users; drop the launch
+    // context chain the stub rewrite left dead first.
+    pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
     pm.addPass(MGP::createFinalizeDeviceGraphsPass());
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   }
