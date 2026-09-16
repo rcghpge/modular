@@ -20,19 +20,19 @@ too.
 | Basic NIXL behaviors                | real NIXL send/recv/read over host DRAM (CPU UCX plugin)                                                                           | remote execution, no GPU                             | pre-submit             | Yes                |
 | GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv                          | `validateNIXLSync`                                   | nightly                | Yes                |
 | Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                                                      | `nightlyMultiGPUTest` on B200 and MI355              | nightly                | Yes                |
-| Single-node perf smoke              | NVIDIA UCX rc (InfiniBand loopback) and AMD UCCL bandwidth floors — catches transport-selection regressions                        | `modrunner-b200-2x` + `-mi355-2x`                    | nightly                | Yes                |
+| Single-node perf smoke              | NVIDIA UCX + EFA loopback, NVIDIA UCX rc (IB loopback) and AMD UCCL bandwidth floors — catches transport-selection regressions     | `modrunner-b200-efa-2x` + `-b200-2x` + `-mi355-2x`   | nightly                | Yes                |
 | Shared-pool                         | 4-row cross-node EFA KV smoke + three Mammoth 1p1d quick-tests (kimi-k27, deepseekv3.1)                                            | shared `mammoth-benchmark` B200 pod pool             | dispatched by the gate | No (informational) |
 | Shared-pool (AMD)                   | 4-row cross-node RoCE KV smoke on AMD, UCCL backend                                                                                | shared AMD (MI355) pod pool                          | dispatched by the gate | No (informational) |
 | Client-driven                       | Same DI bring-up + benchmark as the shared-pool lane, via `run_dist_from_local.py`; substitute when the shared pool is unavailable | personal Coder workspace(s), cross-node or intranode | on demand              | No (informational) |
 
-The perf smoke's NVIDIA lane follows whichever B200 fabric CI has. The
-AWS EFA nodes left the fleet in September 2026 and the Hydra InfiniBand
-nodes returned, so the EFA rows (UCX same-host and libfabric loopback)
-are commented out of the `nixlPerfSmoke.yaml` matrix and the InfiniBand
-`rc` rows run in their place. Restore the EFA row alongside the
-InfiniBand one when those nodes come back (GEX-4168) — libfabric and
-cuda-verbs are different plugins, and neither row substitutes for the
-other. Until then, no gating lane exercises libfabric.
+The perf smoke carries one NVIDIA row per B200 fabric CI has, and both
+are load-bearing: libfabric (EFA) and cuda-verbs (InfiniBand) are
+different plugins, so neither row substitutes for the other. The AWS EFA
+nodes left the fleet in early September 2026 and came back mid-month,
+with the Hydra InfiniBand nodes arriving in the same shuffle; the EFA row
+was off in between (GEX-4168), which left libfabric with no gating
+coverage. If a pool leaves again, drop its row rather than letting it
+queue — a job-level `if:` cannot read the `matrix` context.
 
 ## The aggregate gate
 
