@@ -108,53 +108,59 @@ struct SliceToSplitPattern
           .getSExtValue();
     };
 
-    SmallVector<int64_t> splitSizes;
+    // A split's results are consecutive chunks in result order, so the slices
+    // have to be ordered by where they actually start. `mo.slice` takes
+    // numpy-style bounds, where the raw constant is not that position: -8 on a
+    // 32-wide axis starts at 24, and an out-of-bound bound is clamped onto the
+    // axis. `clampAxis` is what shape inference normalizes with, so using it
+    // here keeps the ordering and overlap checks on the same positions the
+    // slices actually read.
+    const int64_t sliceDimSize = inputType.getIntDim(sliceDimension);
+    const auto sliceStart = [&](SliceOp sliceOp) {
+      return clampAxis(getSliceValue(sliceOp.getStart()), sliceDimSize);
+    };
+    // The result type already carries the clamped extent, which a stop bound
+    // does not: it may be negative, or the `int64` max that spells
+    // "to the end of the axis".
+    const auto sliceSize = [&](SliceOp sliceOp) {
+      return sliceOp.getType().getIntDim(sliceDimension);
+    };
 
-    if constexpr (AllowDynamicStop) {
-      if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
-            return getSliceValue(sliceOp.getStep()) != 1;
-          })) {
-        return rewriter.notifyMatchFailure(op,
-                                           "Sliced dimension step must be 1");
-      }
-
-      const auto sliceSize = [&](SliceOp sliceOp) {
-        return sliceOp.getType().getIntDim(sliceDimension);
-      };
-
-      std::sort(sliceOps.begin(), sliceOps.end(),
-                [&](SliceOp lhs, SliceOp rhs) {
-                  return getSliceValue(lhs.getStart()) <
-                         getSliceValue(rhs.getStart());
-                });
-
-      for (uint64_t i = 1; i < sliceOps.size(); ++i) {
-        if (getSliceValue(sliceOps[i].getStart()) <
-            getSliceValue(sliceOps[i - 1].getStart()) +
-                sliceSize(sliceOps[i - 1])) {
-          return rewriter.notifyMatchFailure(op, "Slices are overlapping");
-        }
-      }
-
-      for (SliceOp sliceOp : sliceOps)
-        splitSizes.push_back(sliceSize(sliceOp));
-    } else {
-      std::sort(
-          sliceOps.begin(), sliceOps.end(), [&](SliceOp lhs, SliceOp rhs) {
-            return getSliceValue(lhs.getStart()) < getSliceValue(rhs.getStop());
-          });
-
-      for (uint64_t i = 1; i < sliceOps.size(); ++i) {
-        if (getSliceValue(sliceOps[i].getStart()) <
-            getSliceValue(sliceOps[i - 1].getStop())) {
-          return rewriter.notifyMatchFailure(op, "Slices are overlapping");
-        }
-      }
-
-      for (SliceOp sliceOp : sliceOps)
-        splitSizes.push_back(getSliceValue(sliceOp.getStop()) -
-                             getSliceValue(sliceOp.getStart()));
+    // Only step 1 walks an axis as the contiguous chunk a split result is. A
+    // strided set of slices can still cover every element of the axis (two
+    // step-2 slices of a 32-wide axis sum to 32) while interleaving rather
+    // than partitioning it.
+    if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
+          return getSliceValue(sliceOp.getStep()) != 1;
+        })) {
+      return rewriter.notifyMatchFailure(op, "Sliced dimension step must be 1");
     }
+
+    // Every chunk has to land inside the axis it claims to partition. A clamped
+    // start cannot run past it, but an extent can: under `AllowDynamicStop` the
+    // extent is whatever the result type declares rather than something shape
+    // inference derived from the bounds.
+    if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
+          return sliceStart(sliceOp) + sliceSize(sliceOp) > sliceDimSize;
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Slice falls outside the sliced dimension");
+    }
+
+    std::sort(sliceOps.begin(), sliceOps.end(), [&](SliceOp lhs, SliceOp rhs) {
+      return sliceStart(lhs) < sliceStart(rhs);
+    });
+
+    for (uint64_t i = 1; i < sliceOps.size(); ++i) {
+      if (sliceStart(sliceOps[i]) <
+          sliceStart(sliceOps[i - 1]) + sliceSize(sliceOps[i - 1])) {
+        return rewriter.notifyMatchFailure(op, "Slices are overlapping");
+      }
+    }
+
+    SmallVector<int64_t> splitSizes;
+    for (SliceOp sliceOp : sliceOps)
+      splitSizes.push_back(sliceSize(sliceOp));
 
     Location loc = op.getLoc();
     rewriter.setInsertionPoint(op);
