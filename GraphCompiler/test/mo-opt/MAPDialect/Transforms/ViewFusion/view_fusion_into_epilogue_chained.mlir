@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --canonicalize | FileCheck %s
 
 // MO-level counterpart of view_fusion_into_epilogue.mlir's single-view case:
 // a chain of TWO view ops (slice, then broadcast) fuses into an existing
@@ -51,9 +51,13 @@ mo.graph @broadcastOfSliceIntoExistingEpilogue(
 // CHECK-NEXT:  map.store %[[OCAP]][%[[IDX]]] = %[[SUM]]
 // CHECK-NEXT:  } : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:  map.call.opaque @{{.*}}MapLowerOneFusedOutput{{.*}} inputs(%[[MAIN]]) outputs(%[[EPI]])
-// CHECK:       #mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.slice"
+// The view chain lands in the epilogue emergently: ViewFuser folds the slice
+// and broadcast into the add foreach, then output fusion pulls that foreach into
+// the custom op's epilogue -- so the tree nests one view (slice, broadcast, add)
+// under the epilogue.
+// CHECK:       #mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"
+// CHECK-SAME:  #mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.static.broadcast_to"
-// CHECK-SAME:  #mogg.fusion_leaf<"custom__map_lower_one_fused_output"
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.add"
 // CHECK-NOT:   map.iter.foreach
 // CHECK:       mo.output %[[RES]] : !mo.tensor<[8, 8], f32>

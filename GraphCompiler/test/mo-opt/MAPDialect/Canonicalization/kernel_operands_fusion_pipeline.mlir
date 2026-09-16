@@ -15,13 +15,12 @@
 // CHECK-NEXT:    %[[XV:.*]] = map.load %[[X_IN]][%[[IDX]]] : !mo.tensor<[8], f32>
 // CHECK-NEXT:    %[[YV:.*]] = map.load %[[Y_IN]][%[[IDX]]] : !mo.tensor<[8], f32>
 // CHECK-NEXT:    %[[ADD0:.*]] = map.call.elementwise @{{.*}}.Add(%[[IDX]], %[[XV]], %[[YV]])
-// CHECK-NEXT:    %[[RELU:.*]] = map.call.elementwise @{{.*}}.ReLU(%[[IDX]], %[[ADD0]])
 // CHECK-NEXT:    %[[MUL:.*]] = map.call.elementwise @{{.*}}.Mul(%[[IDX]], %[[ADD0]], %[[ADD0]])
+// CHECK-NEXT:    %[[RELU:.*]] = map.call.elementwise @{{.*}}.ReLU(%[[IDX]], %[[ADD0]])
 // CHECK-NEXT:    %[[ADD1:.*]] = map.call.elementwise @{{.*}}.Add(%[[IDX]], %[[MUL]], %[[RELU]])
 // CHECK-NEXT:    map.store %[[O_IN]][%[[IDX]]] = %[[ADD1]] : !mo.tensor<[8], f32>
 // CHECK-NEXT:  }
 // CHECK:       } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.relu"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>, hasReadEffect = false, hasWriteEffect = false}
-//     ref.     } {fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add", loc = #loc, sig = (!mo.tensor<[8], f32>, !mo.tensor<[8], f32>) -> !mo.tensor<[8], f32>>, #mogg.fusion_leaf<"mo.relu", loc = #loc1, sig = (!mo.tensor<[8], f32>) -> !mo.tensor<[8], f32>>, #mogg.fusion_leaf<"mo.mul", loc = #loc2, sig = (!mo.tensor<[8], f32>, !mo.tensor<[8], f32>) -> !mo.tensor<[8], f32>>, #mogg.fusion_leaf<"mo.add", loc = #loc3, sig = (!mo.tensor<[8], f32>, !mo.tensor<[8], f32>) -> !mo.tensor<[8], f32>>]>>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output %[[OUT]] : !mo.tensor<[8], f32>
 mo.graph @fusion_diamond(
   %x: !mo.tensor<[8], f32>,

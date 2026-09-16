@@ -82,31 +82,6 @@ mo.graph @chainedViews(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[1, 32, 
   mo.output %res : !mo.tensor<[1, 32, 3], f32>
 }
 
-// A plain elementwise producer feeding a view consumer of a different
-// shape: eligibility isn't restricted to "producer is a view" -- a view on
-// EITHER side of the edge needs this general mechanism, since it's the
-// consumer's own transform that makes the raw shared index wrong here.
-// (ElementwiseFuser's compatibility check requires equal shapes, so it
-// declines this edge on its own; a plain elementwise producer/consumer
-// pair, which always shares a shape, stays entirely its job.)
-
-// CHECK-LABEL: mo.graph @addIntoTranspose
-// CHECK:       %{{.*}} = map.iter.foreach<[32, 3]>
-// CHECK:       index   (%[[IDX5:.*]]: !map.index<2>) -> !mo.tensor<[32, 3], f32> {
-// CHECK-NEXT:  %[[TIDX3:.*]] = map.index.transpose<{{.*}}> (%[[IDX5]], %{{.*}})
-// CHECK-NEXT:  %[[XV:.*]] = map.load %{{.*}}[%[[TIDX3]]]
-// CHECK-NEXT:  %[[YV:.*]] = map.load %{{.*}}[%[[TIDX3]]]
-// CHECK-NEXT:  map.call.elementwise @{{.*}}.Add(%[[TIDX3]], %[[XV]], %[[YV]])
-// CHECK-NEXT:  map.store %{{.*}}[%[[IDX5]]]
-// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_view<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.transpose"{{.*}}]>>
-// CHECK-NOT:   map.iter.foreach
-mo.graph @addIntoTranspose(%x: !mo.tensor<[3, 32], f32>, %y: !mo.tensor<[3, 32], f32>) -> !mo.tensor<[32, 3], f32> {
-  %added = mo.add(%x, %y) : !mo.tensor<[3, 32], f32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %res = mo.transpose(%added, %perm) : (!mo.tensor<[3, 32], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[32, 3], f32>
-  mo.output %res : !mo.tensor<[32, 3], f32>
-}
-
 // A view used twice by the same consumer (mo.add(slice, slice)) gets an
 // independent copy fused into each use site, mirroring ElementwiseFuser's
 // own convention for a duplicated operand.

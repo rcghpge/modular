@@ -14,8 +14,8 @@
 // CHECK-NEXT:      %[[XV:.*]] = map.load %[[CX]][%[[I]]]
 // CHECK-NEXT:      %[[YV:.*]] = map.load %[[CY]][%[[I]]]
 // CHECK-NEXT:      %[[ADD:.*]] = map.call.elementwise @{{.*}}.Add(%[[I]], %[[XV]], %[[YV]])
-// CHECK-NEXT:      %[[RELU:.*]] = map.call.elementwise @{{.*}}.ReLU(%[[I]], %[[ADD]])
 // CHECK-NEXT:      %[[MUL:.*]] = map.call.elementwise @{{.*}}.Mul(%[[I]], %[[ADD]], %[[ADD]])
+// CHECK-NEXT:      %[[RELU:.*]] = map.call.elementwise @{{.*}}.ReLU(%[[I]], %[[ADD]])
 // CHECK-NEXT:      %[[SUM:.*]] = map.call.elementwise @{{.*}}.Add(%[[I]], %[[MUL]], %[[RELU]])
 // CHECK-NEXT:      map.yield %[[SUM]] : f32
 // CHECK-NEXT:    } : !mo.tensor<[3, 3], f32>

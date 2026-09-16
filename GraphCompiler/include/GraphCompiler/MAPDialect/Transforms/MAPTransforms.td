@@ -115,6 +115,37 @@ def FusePrologue : Pass<"map-fuse-prologue", "MO::GraphOp"> {
   ];
 }
 
+def FuseInput : Pass<"map-fuse-input", "MO::GraphOp"> {
+  let summary = "Unconstrained generic input fusion. For testing only.";
+  let description = [{
+    Runs generic input fusion over `mo.graph` with no wrapper constraint --
+    every eligible producer/consumer edge fuses, subject only to the shared
+    correctness constraints. Lets a lit test exercise the generic directly,
+    unconstrained by the elementwise/view/prologue narrowing. Not part of
+    `buildMapPipeline`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
+def FuseOutput : Pass<"map-fuse-output", "MO::GraphOp"> {
+  let summary = "Unconstrained generic output fusion. For testing only.";
+  let description = [{
+    Runs generic output fusion over `mo.graph` with no wrapper constraint --
+    every eligible epilogue edge fuses, subject only to the shared correctness
+    constraints. Lets a lit test exercise the generic directly, unconstrained by
+    the epilogue/reshape-epilogue narrowing. Not part of `buildMapPipeline`.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
 def OutlineStructuredKernelBodies
     : Pass<"map-outline-structured-kernel-bodies", "mlir::ModuleOp"> {
   let summary =

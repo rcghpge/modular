@@ -193,11 +193,12 @@ mo.graph @no_fuse_multi_use(
   mo.output %out, %data : !mo.tensor<[2, 2, 3], f32>, !mo.tensor<[3, 3], f32>
 }
 
+// Feeds both operands, so not fused; the duplicate inputs are `--canonicalize`'s.
 // CHECK-LABEL: mo.graph @no_fuse_same_producer_twice
 // CHECK:       %[[EW:.*]] = map.iter.foreach
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       map.iter.opaque
-// CHECK-NEXT:  inputs (%[[EW]]: !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:  inputs (%[[EW]] as %{{.*}}: !mo.tensor<[2, 2], f32>, %[[EW]] as %{{.*}}: !mo.tensor<[2, 2], f32>)
 // CHECK-NOT:   map.call.elementwise
 // CHECK:       #mogg.fusion<#mogg.fusion_leaf<"custom__map_lower_two_fused_inputs"
 mo.graph @no_fuse_same_producer_twice(

@@ -8,14 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/MAPDialect/Support/ElementwiseFuser.h"
-#include "GraphCompiler/MAPDialect/Support/EpilogueFuser.h"
-#include "GraphCompiler/MAPDialect/Support/PrologueFuser.h"
-#include "GraphCompiler/MAPDialect/Support/ReshapeEpilogueFuser.h"
-#include "GraphCompiler/MAPDialect/Support/ViewFuser.h"
+#include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MOOps.h"
-#include "GraphCompiler/MOGGDialect/MOGGDialect.h"
+
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -33,32 +29,46 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
 
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
-    // Epilogue-fuse first each round, prologue-fuse last: elementwise and
-    // view fusion having already run this round is what guarantees every
-    // producer `PrologueFuser` sees is the maximal elementwise/view chain.
-    // ReshapeEpilogueFuser runs after those four (appended, not reordering
-    // them, so non-reshape fusion is untouched): a reshape is first folded
-    // into an elementwise consumer, then this relocates it onto the producer's
-    // epilogue store (retyping only the store destination, not the kernel's
-    // fused-output shape). It is single-use + static-shape gated and declines a
-    // pure (unfused) reshape, so its position within the sum does not matter.
+
+    // One fusion round: input fusion before output fusion, so a
+    // view/elementwise producer fuses into a foreach consumer before that
+    // consumer is output-fused into an epilogue -- which is what lets a view
+    // reach an epilogue without fusing directly into a closure. Prologue runs
+    // after elementwise/view so every producer it sees is the maximal
+    // elementwise/view chain.
+    mlir::OpPassManager fusePm(MO::GraphOp::getOperationName());
+    fusePm.addPass(createFuseElementwise());
+    fusePm.addPass(createFuseViews());
+    fusePm.addPass(createFusePrologue());
+    fusePm.addPass(createFuseEpilogue());
+    fusePm.addPass(createFuseReshapeEpilogue());
+
+    // Between rounds, only CSE: the fusers dedup the kernels they fused into
+    // and erase consumed producers, so a full canonicalization would be wasted
+    // work.
     mlir::OpPassManager cleanupPm(MO::GraphOp::getOperationName());
-    cleanupPm.addPass(mlir::createCanonicalizerPass());
     cleanupPm.addPass(mlir::createCSEPass());
 
-    unsigned numFused;
+    auto kernelCount = [&] {
+      unsigned n = 0;
+      graphOp.getBody().walk(
+          [&](Operation *op) { n += isa<IterForeachOp, IterOpaqueOp>(op); });
+      return n;
+    };
+
+    // Repeat until a round fuses nothing, since folding one link of a chain can
+    // expose the next. Every fusion erases a kernel, so a round that leaves the
+    // kernel count unchanged fused nothing.
+    unsigned fused;
     do {
-      numFused = EpilogueFuser(graphOp).fuse() +
-                 ElementwiseFuser(graphOp).fuse() + ViewFuser(graphOp).fuse() +
-                 PrologueFuser(graphOp).fuse() +
-                 ReshapeEpilogueFuser(graphOp).fuse();
-      numKernelsFused += numFused;
-      // Canonicalize/CSE between rounds: a fuser can leave behind dead ops
-      // or duplicate loads a later round's own eligibility/compatibility
-      // checks may depend on seeing cleaned up.
+      unsigned before = kernelCount();
+      if (failed(runPipeline(fusePm, graphOp)))
+        return signalPassFailure();
+      fused = before - kernelCount();
+      numKernelsFused += fused;
       if (failed(runPipeline(cleanupPm, graphOp)))
         return signalPassFailure();
-    } while (numFused > 0);
+    } while (fused > 0);
   }
 };
 

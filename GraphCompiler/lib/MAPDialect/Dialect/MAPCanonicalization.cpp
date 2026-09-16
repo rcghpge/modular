@@ -10,6 +10,7 @@
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/TypeTraits.h"
+#include "Support/AssertStream.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 
@@ -18,33 +19,24 @@ using namespace M::MAP;
 
 namespace {
 
-// Fusion can leave a `map.iter.opaque` binding the same value several times in
-// `inputs` (once per fused producer). The `$inputs` list becomes the lowered
-// kernel's parameter list, so keep it minimal: rewire every duplicate's
-// shadowed block arg onto the first occurrence and erase it. Uniquing also
-// makes the redundant loads and computations in the body identical, so CSE can
-// collapse them.
+// Thin canonicalization wrappers over `dedupeKernelInputs` (see MAPOps.h):
+// fusion can leave a kernel binding the same value several times in `inputs`,
+// and the `$inputs` list becomes the lowered kernel's parameter list.
 struct DedupeIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(IterOpaqueOp op,
                                 PatternRewriter &rewriter) const override {
-    llvm::DenseMap<Value, BlockArgument> seen;
-    llvm::SmallVector<unsigned> duplicates;
-    for (auto [idx, input] : llvm::enumerate(op.getInputs()))
-      if (!seen.insert({input, op.getInputBlockArgs()[idx]}).second)
-        duplicates.push_back(idx);
-    if (duplicates.empty())
-      return failure();
+    return success(dedupeKernelInputs(op, rewriter));
+  }
+};
 
-    for (unsigned idx : duplicates)
-      rewriter.replaceAllUsesWith(op.getInputBlockArgs()[idx],
-                                  seen.lookup(op.getInputs()[idx]));
-    rewriter.modifyOpInPlace(op, [&] {
-      for (unsigned idx : llvm::reverse(duplicates))
-        op.eraseInputsAt(idx);
-    });
-    return success();
+struct DedupeIterForeachInputs : OpRewritePattern<IterForeachOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IterForeachOp op,
+                                PatternRewriter &rewriter) const override {
+    return success(dedupeKernelInputs(op, rewriter));
   }
 };
 
@@ -340,10 +332,66 @@ struct InlineConstantScalarLoad : OpRewritePattern<LoadOp> {
 
 } // namespace
 
+StoreOp M::MAP::getUniqueStore(Block &body) {
+  StoreOp store;
+  for (Operation &op : body)
+    if (auto candidate = dyn_cast<StoreOp>(&op)) {
+      ASSERT_STREAM(!store, << "expected exactly one map.store in the body");
+      store = candidate;
+    }
+  ASSERT_STREAM(store, << "expected a map.store in the body");
+  return store;
+}
+
+// Fusion can leave a MAP kernel binding the same value several times in
+// `inputs` (once per fused producer). The `$inputs` list becomes the lowered
+// kernel's parameter list, so keep it minimal: rewire every duplicate's
+// shadowed block arg onto the first occurrence and erase it. Uniquing also
+// makes the redundant loads and computations in the body identical, so CSE can
+// collapse them -- and re-exposes a shared producer as single-use so it fuses.
+bool M::MAP::dedupeKernelInputs(Operation *kernel, RewriterBase &rewriter) {
+  auto dedupe = [&](auto op,
+                    llvm::function_ref<BlockArgument(unsigned)> inputArg) {
+    llvm::DenseMap<Value, BlockArgument> seen;
+    llvm::SmallVector<unsigned> duplicates;
+    for (auto [idx, input] : llvm::enumerate(op.getInputs()))
+      if (!seen.insert({input, inputArg(idx)}).second)
+        duplicates.push_back(idx);
+    if (duplicates.empty())
+      return false;
+
+    for (unsigned idx : duplicates)
+      rewriter.replaceAllUsesWith(inputArg(idx),
+                                  seen.lookup(op.getInputs()[idx]));
+    rewriter.modifyOpInPlace(op, [&] {
+      for (unsigned idx : llvm::reverse(duplicates))
+        op.eraseInputsAt(idx);
+    });
+    return true;
+  };
+
+  if (auto foreachOp = dyn_cast<IterForeachOp>(kernel)) {
+    // A foreach body's leading arguments are its inputs.
+    Block &body = foreachOp.getBody().front();
+    return dedupe(foreachOp,
+                  [&](unsigned idx) { return body.getArgument(idx); });
+  }
+  if (auto opaqueOp = dyn_cast<IterOpaqueOp>(kernel))
+    return dedupe(opaqueOp, [&](unsigned idx) {
+      return opaqueOp.getInputBlockArgs()[idx];
+    });
+  return false;
+}
+
 void IterOpaqueOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
   results.add<DedupeIterOpaqueInputs, DropDeadIterOpaqueInputs,
               FuseConstantIterOpaqueInputs>(context);
+}
+
+void IterForeachOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
+  results.add<DedupeIterForeachInputs>(context);
 }
 
 void LoadOp::getCanonicalizationPatterns(RewritePatternSet &results,

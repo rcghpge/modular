@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels --map-fuse-mutable-loads | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels --canonicalize --map-fuse-mutable-loads | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME:  %[[BUF:.*]]: !mo.buffer<[10, 10], f32>, %[[RHS:.*]]: !mo.tensor<[10, 10], f32>
@@ -82,8 +82,7 @@ mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: 
 }
 
 // Both loads are pure reads with no intervening write, so canonicalization
-// (now also running between map-fuse-kernels rounds, not just after) treats
-// each pure-read kernel's own out-chain as interchangeable with its in-chain
+// treats each pure-read kernel's out-chain as interchangeable with its in-chain
 // and reduces all three kernels to the same shared in-chain -- a safe
 // parallelization, not a dropped ordering constraint (RAR has no hazard).
 // CHECK-LABEL: mo.graph @multiple_load_fusion(
@@ -101,7 +100,7 @@ mo.graph @same_kernel_multiple_fusions(%buf1: !mo.buffer<[10, 10], f32>, %buf2: 
 // CHECK:       chain(%[[CH60]])
 // CHECK:       map.call.elementwise @{{.*}}.Abs
 // CHECK:       map.iter.foreach<[2, 2]>
-// CHECK-NEXT:  inputs  (%[[BUF6]] as {{.*}}: !mo.buffer<[2, 2], f32>, %[[BUF6]] as {{.*}}: !mo.buffer<[2, 2], f32>)
+// CHECK-NEXT:  inputs  (%[[BUF6]]: !mo.buffer<[2, 2], f32>)
 // CHECK:       chain(%[[CH60]])
 // CHECK:       map.call.elementwise @{{.*}}.Add
 mo.graph @multiple_load_fusion(%buf: !mo.buffer<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
@@ -147,7 +146,7 @@ mo.graph @dont_merge_loads_across_blocks(%arg0: !mo.buffer<[2, 2], f32>, %arg1: 
 // CHECK: %[[TENSOR:.*]], {{.*}} = mo.mutable.load
 // CHECK: mo.if
 // CHECK: map.iter.foreach
-// CHECK-NEXT: inputs  (%[[TENSOR]] as {{.*}}: !mo.tensor<[2, 2], f32>, %[[TENSOR]] as {{.*}}: !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT: inputs  (%[[TENSOR]]: !mo.tensor<[2, 2], f32>)
 // CHECK: else
 // CHECK: map.iter.foreach
 // CHECK-NEXT: inputs  (%[[TENSOR]]: !mo.tensor<[2, 2], f32>)
@@ -363,12 +362,12 @@ mo.graph @no_detach_when_chain_path_shared(%buf1: !mo.buffer<[10, 10], f32>, %bu
 // CHECK-NOT:   mo.mutable.load
 // CHECK:       %[[CH160:.*]] = mo.chain.create()
 // CHECK:       %{{.*}}:2 = map.iter.foreach<[3, 3]>
-// CHECK-NEXT:  inputs  (%[[BUF16]] as %[[BUFARG16:.*]]: !mo.buffer<[10, 10], f32>,
+// CHECK-NEXT:  inputs  (%[[BUF16]]: !mo.buffer<[10, 10], f32>,
 // CHECK:       chain(%[[CH160]])
 // CHECK-SAME:  -> (!mo.tensor<[3, 3], f32>, !mo.chain)
 // CHECK:       %[[IDX16:.*]] = map.index.slice<#map.index.slice.spec<[10, 10] -> [3, 3], starts = [2, 2], stops = [8, 8], steps = [2, 2]>>
-// CHECK:       %{{.*}} = map.load %[[BUFARG16]][%[[IDX16]]] : !mo.buffer<[10, 10], f32>
-// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_mutable_load<[#mogg.fusion_leaf<"mo.mutable.load"{{.*}}, #mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.slice"{{.*}}, #mogg.fusion_leaf<"mo.negative"{{.*}}]>]>>
+// CHECK:       %{{.*}} = map.load %[[BUF16]][%[[IDX16]]] : !mo.buffer<[10, 10], f32>
+// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_mutable_load<[#mogg.fusion_leaf<"mo.mutable.load"{{.*}}, #mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"{{.*}}, #mogg.fusion_leaf<"mo.negative"{{.*}}]>]>>
 mo.graph @fusion_with_slice(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.tensor<[3, 3], f32> {
   %0 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %1 = mo.constant {value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>

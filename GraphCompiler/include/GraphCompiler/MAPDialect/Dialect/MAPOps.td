@@ -414,6 +414,7 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     // Insert a range of new inputs at `idx`, this updates both operands and
