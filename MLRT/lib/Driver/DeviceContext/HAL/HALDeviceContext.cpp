@@ -1100,27 +1100,17 @@ int64_t DeviceContext::configAsInt(StringRef key, int64_t defaultValue,
 
 // ===-- Virtual device mode ----------------------------------------------===
 // //
-// Virtual device mode flags are the process-global AsyncRT runtime globals
+// Virtual device mode state, the CPU codegen target included, lives in the
+// process-global AsyncRT runtime globals
 // (AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h), shared with the legacy
-// backend; only the CPU codegen target below is Driver-owned.
-
-static std::string &getVirtualCpuTargetImpl() {
-  static std::string cpu;
-  return cpu;
-}
-static std::mutex &getVirtualCpuTargetMutex() {
-  static std::mutex mutex;
-  return mutex;
-}
+// backend. The Driver API here only forwards.
 
 MODULAR_CXX_EXPORT void setVirtualCpuTarget(StringRef cpu) {
-  std::lock_guard<std::mutex> lock(getVirtualCpuTargetMutex());
-  getVirtualCpuTargetImpl() = cpu.str();
+  AsyncRT::setVirtualCpuTarget(cpu);
 }
 
 MODULAR_CXX_EXPORT std::string getVirtualCpuTarget() {
-  std::lock_guard<std::mutex> lock(getVirtualCpuTargetMutex());
-  return getVirtualCpuTargetImpl();
+  return AsyncRT::getVirtualCpuTarget();
 }
 
 // ===-- BinaryID ----------------------------------------------------------===

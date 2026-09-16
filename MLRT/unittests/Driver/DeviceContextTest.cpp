@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h"
 #include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "ScopedEnvVar.h"
@@ -24,6 +25,37 @@ using namespace M::AsyncRT;
 using M::ErrorOr;
 
 namespace {
+
+// The virtual CPU target is written by one image (the Python extension) and
+// read by another (kernel codegen in libmax). Both namespaces are `using`-ed
+// above and both declare the name, so every call below is qualified on
+// purpose: the point of these cases is *which* one is reached.
+class VirtualCpuTargetTest : public ::testing::Test {
+protected:
+  void SetUp() override { saved = M::Driver::getVirtualCpuTarget(); }
+  void TearDown() override { M::Driver::setVirtualCpuTarget(saved); }
+  std::string saved;
+};
+
+TEST_F(VirtualCpuTargetTest, DriverSetterReachesTheRuntimeGlobals) {
+  M::Driver::setVirtualCpuTarget("triple=aarch64-pc-windows-msvc;cpu=generic");
+  EXPECT_EQ(M::AsyncRT::getVirtualCpuTarget(),
+            "triple=aarch64-pc-windows-msvc;cpu=generic");
+}
+
+TEST_F(VirtualCpuTargetTest, RuntimeGlobalsSetterReachesTheDriverApi) {
+  // The direction that fails if the string moves back into this TU: the
+  // Driver API must be a forwarder, not a second copy of the state.
+  M::AsyncRT::setVirtualCpuTarget("generic");
+  EXPECT_EQ(M::Driver::getVirtualCpuTarget(), "generic");
+}
+
+TEST_F(VirtualCpuTargetTest, EmptyMeansHostCpu) {
+  M::Driver::setVirtualCpuTarget("generic");
+  ASSERT_FALSE(M::AsyncRT::getVirtualCpuTarget().empty());
+  M::Driver::setVirtualCpuTarget("");
+  EXPECT_TRUE(M::AsyncRT::getVirtualCpuTarget().empty());
+}
 
 TEST(DeviceContextTest, Smoke) {
   ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));

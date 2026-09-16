@@ -67,23 +67,15 @@ static thread_local const DeviceContext *currentlyBoundContext = nullptr;
 // every device on subsequent calls.
 static std::atomic<bool> g_allPeerAccessEnabled{false};
 
-static std::string &getVirtualCpuTargetImpl() {
-  static std::string cpu;
-  return cpu;
-}
-static std::mutex &getVirtualCpuTargetMutex() {
-  static std::mutex mutex;
-  return mutex;
-}
-
+// Forwarded, not stored: this TU is statically linked into several images
+// (libmax, libAsyncRTMojoBindings), and a string held here would exist once
+// per image under Mach-O two-level binding. See VirtualDeviceGlobals.h.
 MODULAR_CXX_EXPORT void setVirtualCpuTarget(StringRef cpu) {
-  std::lock_guard<std::mutex> lock(getVirtualCpuTargetMutex());
-  getVirtualCpuTargetImpl() = cpu.str();
+  AsyncRT::setVirtualCpuTarget(cpu);
 }
 
 MODULAR_CXX_EXPORT std::string getVirtualCpuTarget() {
-  std::lock_guard<std::mutex> lock(getVirtualCpuTargetMutex());
-  return getVirtualCpuTargetImpl();
+  return AsyncRT::getVirtualCpuTarget();
 }
 
 DeviceContextScope::DeviceContextScope(const DeviceContext &ctx)

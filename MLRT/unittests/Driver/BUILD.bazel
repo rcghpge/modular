@@ -319,6 +319,7 @@ modular_cc_test(
     ],
     deps = [
         ":TestUtils",
+        "//AsyncRT:RuntimeGlobals",
         "//MLRT:Driver/DeviceContextImpl",
         "//Support:Base",
         "@llvm-project//llvm:Support",
