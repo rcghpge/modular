@@ -61,3 +61,44 @@ mo.graph @sliceDynamicBounds(
   ) -> !mo.tensor<[3, 32], f32>
   mo.output %res : !mo.tensor<[3, 32], f32>
 }
+
+// A constant start indexing a DYNAMIC input dim (mirrors `x[-8:]` off a
+// dynamic `seq_len`): MOToMAP normalizes a start against its dim's extent only
+// for static-input dims, so this start stays the raw literal `-8`. Its real
+// offset `dim - 8` is not known until runtime, so its `staticStart` entry must
+// lower to `?` (`kDynamic`, printed as the i64 min) -- not the raw `-8`, which
+// the slice primitive cannot infer as a comptime offset (GEX-3964 / the
+// mixed-shape LLM snifftest gap). The static dim1 start (0) stays static.
+
+// CHECK-LABEL: mo.graph @sliceNegativeStartDynamicInDim
+// CHECK: mogg._tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}staticStart = array<i64: -9223372036854775808, 0>{{.*}}staticStep = array<i64: 1, 1>{{.*}}
+mo.graph @sliceNegativeStartDynamicInDim(
+    %input: !mo.tensor<[?, 64], f32>,
+    %stop: !mo.tensor<[2], si64>)
+    -> !mo.tensor<[?, 64], f32> {
+  %start = mo.constant {value = #M.dense_array<-8, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[?, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[?, 64], f32>
+  mo.output %res : !mo.tensor<[?, 64], f32>
+}
+
+// A NON-negative constant start indexing a DYNAMIC input dim: `2` is already an
+// absolute offset (no extent needed to resolve it), so it stays a comptime
+// `staticStart` hint even though dim0 is dynamic -- only negatives, which need
+// the unknown extent to normalize, must lower to `?`.
+
+// CHECK-LABEL: mo.graph @slicePositiveStartDynamicInDim
+// CHECK: mogg._tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}staticStart = array<i64: 2, 0>{{.*}}staticStep = array<i64: 1, 1>{{.*}}
+mo.graph @slicePositiveStartDynamicInDim(
+    %input: !mo.tensor<[?, 64], f32>,
+    %stop: !mo.tensor<[2], si64>)
+    -> !mo.tensor<[?, 64], f32> {
+  %start = mo.constant {value = #M.dense_array<2, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %res = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[?, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[?, 64], f32>
+  mo.output %res : !mo.tensor<[?, 64], f32>
+}

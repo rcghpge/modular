@@ -750,9 +750,24 @@ LogicalResult SliceStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
   Type elementType =
       MO::castFromTensorLike(getInput().getType()).getElementType();
+
+  // Only a negative start on a dynamic dim is unresolvable: MOToMAP resolves
+  // Python-style negatives against the dim's extent, so `[-window:]` off a
+  // dynamic `seq_len` stays a raw literal whose real offset `dim + start` is
+  // unknown until runtime. Mark just those `?` so the slice primitive reads
+  // them from the runtime `starts` operand; a non-negative start is already an
+  // absolute offset and stays a comptime hint even on a dynamic dim.
+  SmallVector<int64_t> inDims = signature.getIn().getIntDims();
+  SmallVector<int64_t> staticStart =
+      llvm::to_vector(getSpec().getStarts().asArrayRef());
+  for (size_t i = 0; i < staticStart.size(); ++i)
+    if (staticStart[i] < 0 && ShapedType::isDynamic(inDims[i]))
+      staticStart[i] = ShapedType::kDynamic;
+
   auto createSlice = MOGG::TensorCreateSliceOp::create(
       state.builder, getLoc(), MOGG::TensorType::get(ctx), signature.getOut(),
-      getSpec().getStarts(), getSpec().getSteps(), TypeAttr::get(elementType),
+      DenseI64ArrayAttr::get(ctx, staticStart), getSpec().getSteps(),
+      TypeAttr::get(elementType),
       state.builder.getBoolAttr(viewsMutableStorage(getInput())),
       state.mapping.lookup(getInput()), state.mapping.lookup(getStarts()),
       state.mapping.lookup(getStops()), state.mapping.lookup(getSteps()));
