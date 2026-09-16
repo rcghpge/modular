@@ -138,11 +138,31 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
     if (user->getBlock() != dst->getBlock())
       continue;
     auto src = dyn_cast<IterForeachOp>(user);
-    if (!src || src.getNumResults() != 1 ||
-        isa<MO::ChainType>(src.getResult(0).getType()))
+    if (!src || src.getNumResults() != 1)
       continue;
     if (llvm::count(src.getInputs(), res) != 1)
       continue;
+
+    // A chain-returning consumer is `mo.mutable.store`: its body has no output
+    // block argument and the buffer INPUT is the store target (see
+    // `lowerMutableStoreToForeach`). It fuses the way MOGG's `FuseEpilogues`
+    // does, pointing the epilogue's store at that buffer instead of at `dst`'s
+    // own output.
+    if (isa<MO::ChainType>(src.getResult(0).getType())) {
+      // Legacy's guard: a fused kernel must not write a buffer it also reads.
+      if (llvm::any_of(src->getOperands(), [&](Value srcOperand) {
+            return isa<MO::BufferType>(srcOperand.getType()) &&
+                   llvm::is_contained(dst->getOperands(), srcOperand);
+          }))
+        continue;
+      // `dst` holds no chain, so a consumed one has nowhere to be threaded and
+      // its ordering would be lost. Only the store's own write survives the
+      // fusion, so fuse only when that is all anyone wanted.
+      // TODO(GEX-3964): give `dst` a chain in/out the way
+      // `FuseMutableLoads::fuseLoadBufferAndChains` does, and fuse either way.
+      if (!src.getResult(0).use_empty())
+        continue;
+    }
 
     Block &srcBody = src.getBody().front();
     BlockArgument fusionArg = fusedInputArg(src, res);
@@ -206,7 +226,6 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
         swappedSpec, storeIdx);
   }
 
-  unsigned numInputs = src.getInputs().size();
   auto fusionArgIt = llvm::find(src.getInputs(), dstResult);
   unsigned fusionArgIdx = fusionArgIt - src.getInputs().begin();
   BlockArgument fusionArg = srcBody.getArgument(fusionArgIdx);
@@ -238,11 +257,20 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   }
 
   // Keep `src`'s final value; its store-target arg dies with the body. Rewire
-  // the loop index to the store index so every remaining load reads there too.
+  // the loop index -- the body's last argument either way: [inputs, output,
+  // index] for a pointwise consumer, [inputs, index] for a `mo.mutable.store`
+  // one -- to the store index so every remaining load reads there too.
   auto srcStore = getUniqueStore(srcBody);
   Value finalVal = srcStore.getValue();
+  // A `mo.mutable.store` consumer writes through a buffer INPUT, which the loop
+  // above already threaded in as an epilogue capture; the trailing store is
+  // rebuilt on that rather than on `dst`'s own output, which nothing reads once
+  // the consumer is gone.
+  Value storeTargetBuffer;
+  if (isa<MO::ChainType>(src.getResult(0).getType()))
+    storeTargetBuffer = srcStore.getTensor();
   srcStore.erase();
-  srcBody.getArgument(numInputs + 1).replaceAllUsesWith(storeTransform);
+  srcBody.getArguments().back().replaceAllUsesWith(storeTransform);
   srcBody.eraseArguments(0, srcBody.getNumArguments());
 
   // Retype the store-target path when the consumer changes the result's type.
@@ -251,8 +279,13 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   // shape (the kernel binds it, and an epilogue-opt-in kernel like matmul must
   // keep seeing its own shape) -- the store reaches the reshaped destination
   // via the reshaped index.
+  if (storeTargetBuffer) {
+    cap = storeTargetBuffer;
+    dst.setHasWriteEffect(true);
+  }
+
   Type fusedTy = src.getResult(0).getType();
-  if (fusedTy != dstResult.getType()) {
+  if (!storeTargetBuffer && fusedTy != dstResult.getType()) {
     dstResult.setType(fusedTy);
     dst.getOutputBlockArgs()[edge.resultIdx].setType(fusedTy);
     cap.setType(fusedTy);
@@ -265,7 +298,10 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   rewriter.setInsertionPointToEnd(&epilogueBody);
   StoreOp::create(rewriter, storeLoc, cap, storeTransform, finalVal);
 
-  src->replaceAllUsesWith(ValueRange{dstResult});
+  // A `mo.mutable.store` consumer yields only a chain, which eligibility
+  // required to be unused, and whose type `dst` has no result to match anyway.
+  if (!storeTargetBuffer)
+    src->replaceAllUsesWith(ValueRange{dstResult});
 }
 
 } // namespace

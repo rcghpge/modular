@@ -2002,7 +2002,10 @@ def MOGG_TensorGetPtrOp : MOGG_Op<"_tensor.get_ptr", [
     through, while a non-accumulating one simply ignores it and the lambda does
     the store.
   }];
-  let arguments = (ins MOGG_Tensor:$tensor);
+  // A buffer as well as a tensor: an epilogue that stores into a fused
+  // `mo.mutable.store`'s buffer has that buffer as its store target, and
+  // `mogg._tensor.load`/`_tensor.store` already take either.
+  let arguments = (ins MOGG_TensorLike:$tensor);
   let results = (outs MOGG_Pointer:$ptr);
   let assemblyFormat = [{
     `(` $tensor `)` attr-dict `:` functional-type(operands, results)
