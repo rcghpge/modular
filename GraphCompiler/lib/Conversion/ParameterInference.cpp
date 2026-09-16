@@ -66,6 +66,17 @@ DictionaryAttr inferParameters(Operation *op, OpBuilder &builder) {
     Attribute value = attr.getValue();
     if (isa<M::DeviceRefAttr, KGEN::ParamDeclArrayAttr>(value))
       continue;
+    // An all-integer `ArrayAttr` (e.g. a fused slice's `static_starts` /
+    // `static_steps`) is not a `TypedAttr`, but is a valid comptime `IntTuple`
+    // kernel parameter. The legacy MO->MOGG scrape (`forwardParameters`)
+    // forwards it, so mirror that here -- otherwise it is dropped and the
+    // kernel's own param inference fails with "Failed to infer parameter".
+    if (auto arrayAttr = dyn_cast<ArrayAttr>(value)) {
+      if (llvm::all_of(arrayAttr,
+                       [](Attribute a) { return isa<IntegerAttr>(a); }))
+        params.push_back(NamedAttribute(attr.getName(), value));
+      continue;
+    }
     // Not `TypedAttr`s, but the normalizer knows how to spell them.
     if (!isa<TypedAttr, TypeAttr, MO::CoordinateTransformModeAttr>(value))
       continue;

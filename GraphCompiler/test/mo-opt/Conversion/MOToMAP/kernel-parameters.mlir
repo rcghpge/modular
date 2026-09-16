@@ -39,6 +39,23 @@ mo.graph @convDynamicStrides(%input: !mo.tensor<[1, 5, 5, 3], f32>, %filter: !mo
   mo.output %res : !mo.tensor<[1, 2, 2, 1], f32>
 }
 
+// A fused slice's `static_starts` / `static_steps` are all-integer `ArrayAttr`s
+// on the op -- not `TypedAttr`s -- so the generic attribute scrape would drop
+// them, and `FusedConcatSlice`'s execute (which declares both as comptime
+// `IntTuple` parameters) would then fail with "Failed to infer parameter
+// static_starts". The legacy MO->MOGG path forwards them, so the MAP call must
+// too. A raw negative start (`-8`, unnormalized off a concat dim) is preserved:
+// the kernel normalizes it at runtime.
+
+// CHECK-LABEL: mo.graph @concatSliceStaticStarts
+// CHECK: map.call.opaque @{{.*}}FusedConcatSlice[
+// CHECK-SAME: static_starts = [0, -8, 0]
+// CHECK-SAME: static_steps = [1, 1, 1]
+mo.graph @concatSliceStaticStarts(%a: !mo.tensor<[2, 8, 16], f32>, %b: !mo.tensor<[2, 1, 16], f32>) -> (!mo.tensor<[2, 9, 16], f32>, !mo.tensor<[2, 8, 16], f32>) {
+  %concat, %slice = mo.composite.concat_slice[1](%a, %b) {static_starts = [0, -8, 0], static_steps = [1, 1, 1]} : (!mo.tensor<[2, 8, 16], f32>, !mo.tensor<[2, 1, 16], f32>) -> (!mo.tensor<[2, 9, 16], f32>, !mo.tensor<[2, 8, 16], f32>)
+  mo.output %concat, %slice : !mo.tensor<[2, 9, 16], f32>, !mo.tensor<[2, 8, 16], f32>
+}
+
 // `coordinate_transform_mode` is an enum attribute, so it is not a TypedAttr
 // and needs converting to the integer the kernel declares.
 
