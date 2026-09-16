@@ -1801,6 +1801,7 @@ def MOGG_ShapeFunctionDeclOp
 
 def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
   AttrSizedOperandSegments,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
@@ -1841,7 +1842,12 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
     Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer, MO_Opaque]>>:$inputs,
     Optional<MO_Chain>:$chain,
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
-    MO_ParamDecls:$outputParamDecls
+    MO_ParamDecls:$outputParamDecls,
+    // Carried from `map.iter.foreach`/`map.iter.opaque`, which carry them from
+    // the op they lower. Without them a kernel whose only observable effect is
+    // a mutable store reports none and is dead.
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
   );
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain, MO_Opaque,
                                           MOGG_ShapeFuncResult]>>:$outputs);

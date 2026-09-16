@@ -960,6 +960,11 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // device used for the reconstructed tensors so outlining and `MOGGToMGP`
   // resolve the real execution device instead of the host fallback.
   kernel.setDeviceRef(state.device);
+  // Carry the effects the MAP op holds. A kernel whose only observable effect
+  // is a mutable store has no used result, so without them it reports none and
+  // is dead -- the store is dropped and the buffer never written.
+  kernel.setHasReadEffect(getHasReadEffect());
+  kernel.setHasWriteEffect(getHasWriteEffect());
 
   // Unique dynamic dims the kernel references anywhere -- not just its I/O
   // signature. A dim can live only on an intermediate value or a view's spec:

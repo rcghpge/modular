@@ -5287,6 +5287,27 @@ void KernelOp::getEffects(
     effects.emplace_back(mlir::MemoryEffects::Write::get());
 }
 
+void KernelRegionOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  // Same rule as `KernelOp::getEffects` above, on the MAP-lowered kernel.
+  if (!getOutputParamDecls().empty())
+    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
+
+  bool addedEffect = false;
+  for (auto &&opOperand : getOperation()->getOpOperands()) {
+    if (!MO::isMutableOperand(opOperand.get()))
+      continue;
+    if (getHasWriteEffect())
+      effects.emplace_back(mlir::MemoryEffects::Write::get(), &opOperand);
+    if (getHasReadEffect())
+      effects.emplace_back(mlir::MemoryEffects::Read::get(), &opOperand);
+    addedEffect = true;
+  }
+
+  if (!addedEffect && (getHasReadEffect() || getHasWriteEffect()))
+    effects.emplace_back(mlir::MemoryEffects::Write::get());
+}
+
 LogicalResult KernelOp::verify() {
   auto term =
       dyn_cast<MOGG::KernelTerminator>(getExecBody().front().getTerminator());
