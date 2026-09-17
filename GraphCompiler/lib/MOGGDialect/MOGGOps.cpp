@@ -2665,7 +2665,19 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     return nullptr;
   }
 
-  Value inChain = st.getGuardChain(loweringState.getCurrentExecuteChain());
+  // The op's own `$chain` carries its ordering against the kernels that wrote
+  // the buffers it reads and writes, so it is what the region must wait on.
+  // Falling back to the ambient execute chain drops that edge, and two kernels
+  // writing one buffer end up ordered only by how their chains happen to be
+  // joined. `mogg.kernel`'s lowering takes the same in-chain when it has one.
+  Value inChain = loweringState.getCurrentExecuteChain();
+  if (Value opChain = getChain()) {
+    Value lowered = loweringState.lookupExecuteLoweredValue(opChain);
+    ASSERT_STREAM(lowered, << "no lowered value for mogg._kernel input chain: "
+                           << opChain);
+    inChain = lowered;
+  }
+  inChain = st.getGuardChain(inChain);
 
   // Region operands (plain sync values) + their in/out signature. The chain
   // leads, as in `mogg.kernel`'s lowering, so block arg i is operand i + 1.
@@ -2678,11 +2690,22 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   // `inChain` and the region's own chain result -- and has no kernel body block
   // argument, so drop it here; otherwise it would shift every following operand
   // out of alignment with the body's input pointers, outputs, and context.
+  // A `!mo.buffer` input is written in place by the body, so it takes the
+  // mutable signature the way `mogg.kernel`'s lowering gives it: declaring it
+  // an input lets MGP treat a buffer the kernel writes as read-only, and the
+  // write is lost. The signature comes from the operand's own type, since the
+  // body's block arguments are type-erased `!mogg.pointer_`s.
+  auto inputs = getInputs();
+  unsigned inputIdx = 0;
   for (Value buffer : st.getLoweredOperands()) {
     if (isa<MEF::ChainType>(buffer.getType()))
       continue;
     operands.push_back(buffer);
-    semantics.push_back(InOutSignatureAttr::kIn);
+    bool isMutable = inputIdx < inputs.size() &&
+                     isa<MO::BufferType>(inputs[inputIdx].getType());
+    semantics.push_back(isMutable ? InOutSignatureAttr::kMut
+                                  : InOutSignatureAttr::kIn);
+    ++inputIdx;
   }
 
   // Outputs: freshly-allocated buffers (externally-allocated, DPS).
