@@ -53,6 +53,7 @@ MOGGKernelBuilder::MOGGKernelBuilder(Operation *op, OpBuilder &insertPoint,
       forceSync || isa<MO::TransposeOp>(op) ||
       (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
       isa<MO::AllReduceSumOp>(op) || isa<MO::ReduceScatterSumOp>(op) ||
+      isa<MO::Composite::AllReduceAddRMSNormQuantFP8Op>(op) ||
       isa<MO::Composite::DistributedMatmulReduceScatterSumOp>(op) ||
       isa<MO::Composite::DistributedReduceScatterRMSNormOp>(op) ||
       isa<MO::Composite::DistributedAllGatherRMSNormOp>(op) ||

@@ -40,8 +40,8 @@ struct MHAOptions {
 };
 
 /// Imperatively fuses an `mo.allreduce.sum` chain followed by add +
-/// rms_norm + quantize_fp8 into a single op. Walks downward from the seed
-/// op; no-op if the chain does not match.
+/// rms_norm + an optional quantize_fp8 into a single op. Walks downward from
+/// the seed op; no-op if the chain does not match.
 void applyFuseAllReduceAddRMSNormQuantFP8(MO::AllReduceSumOp allReduceOp,
                                           M::DeviceRefAttr targetDeviceRef);
 

@@ -3070,36 +3070,54 @@ static bool matchCustomOp(Value val, MO::CustomOp &customOp,
   return false;
 }
 
-/// Validates the fused `allreduce + add + rms_norm + quantize_fp8` chain
-/// ending at `quantizeOp`.  `inputTy` is the tensor type entering the add op
-/// (i.e. the allreduce output on the relevant device).  Returns false unless:
-///   - the quantize op reads `rmsNormOp.getResult()` as operand 0,
-///   - `group_size_or_per_token` is either -1 or matches the inner dim,
-///   - the rms_norm op reads `residualOp.getResult()` and has
-///     `multiply_before_cast`.
+/// Validates the fused `allreduce + add + rms_norm [+ quantize_fp8]` chain.
+/// `inputTy` is the tensor type entering the add op (the allreduce output on
+/// the relevant device); a null `quantizeOp` is the chain that stops at the
+/// norm, which the kernel serves in the input dtype.
 static bool verifyFusedAllReducePath(TensorType inputTy, MO::AddOp residualOp,
                                      MO::ReduceRMSNormOp rmsNormOp,
                                      MO::CustomOp quantizeOp) {
-  if (quantizeOp.getOperand(0) != rmsNormOp.getResult())
-    return false;
   if (!inputTy.hasRank())
     return false;
+  // The fused kernel needs P2P between the peers and flattens to [rows, cols].
+  DeviceRefAttr device = inputTy.getDeviceRef();
+  if (!device || device.getLabel() != M::kGPULabel)
+    return false;
   size_t rank = inputTy.getRank();
-  DictionaryAttr quantizeOpParams = quantizeOp.getParameters();
-  Attribute groupSizeAttr = quantizeOpParams.get("group_size_or_per_token");
-  if (!groupSizeAttr)
+  if (rank < 2)
     return false;
-  auto groupSizeIntAttr = dyn_cast<IntegerAttr>(groupSizeAttr);
-  if (!groupSizeIntAttr)
-    return false;
-  int64_t groupSize = groupSizeIntAttr.getInt();
-  if (groupSize != -1 && groupSize != inputTy.getIntDim(rank - 1))
-    return false;
+  if (quantizeOp) {
+    if (quantizeOp.getOperand(0) != rmsNormOp.getResult())
+      return false;
+    DictionaryAttr quantizeOpParams = quantizeOp.getParameters();
+    Attribute groupSizeAttr = quantizeOpParams.get("group_size_or_per_token");
+    if (!groupSizeAttr)
+      return false;
+    auto groupSizeIntAttr = dyn_cast<IntegerAttr>(groupSizeAttr);
+    if (!groupSizeIntAttr)
+      return false;
+    int64_t groupSize = groupSizeIntAttr.getInt();
+    if (groupSize != -1 && groupSize != inputTy.getIntDim(rank - 1))
+      return false;
+  } else {
+    // out_dtype == in_dtype is what turns the kernel's quantize phases off.
+    auto normTy = dyn_cast<TensorType>(rmsNormOp.getResult().getType());
+    if (!normTy || !normTy.hasRank() || normTy.getDtype() != inputTy.getDtype())
+      return false;
+  }
   if (rmsNormOp.getInput() != residualOp.getResult())
     return false;
   if (!rmsNormOp.getMultiplyBeforeCast())
     return false;
   return true;
+}
+
+/// Stands in for the scale of a composite that does not quantize: the kernel
+/// never writes it, but the variadic result groups must be the same size.
+static TensorType makeUnwrittenScaleType(TensorType normTy) {
+  SmallVector<TypedAttr> dims = llvm::to_vector(normTy.getDims());
+  dims.back() = MOSH::ShapeAttr::getDim(normTy.getContext(), 1);
+  return normTy.cloneWith(dims).cloneWith(DType::f32);
 }
 
 struct FuseAllReduceAddRMSNormQuantFP8PatternMatcher {
@@ -3123,9 +3141,17 @@ public:
     }
     if (residualOps.size() != devicesCount)
       return;
+    // A mix of quantizing and plain chains has no composite to lower to.
+    quantizes = !quantizeOps.empty();
+    if (quantizes && quantizeOps.size() != devicesCount)
+      return;
 
     // Let's build the new op
     builder.setInsertionPointAfter(allReduceOp);
+    if (!quantizes)
+      unreadScaleUb =
+          MO::ConstantOp::create(builder, allReduceOp.getLoc(), 1.0f)
+              .getResult();
 
     // Prepare the operands
     llvm::SmallVector<Type> outputTypes;
@@ -3139,15 +3165,14 @@ public:
     for (Value out : allReduceOp.getOutputs()) {
       DeviceRefAttr device = cast<TensorValue>(out).getType().getDeviceRef();
       MO::ReduceRMSNormOp rmsNormOp = rmsNormOps.at(device);
-      MO::CustomOp quantizeOp = quantizeOps.at(device);
-      outputTypes.push_back(quantizeOp->getResultTypes()[0]);
-      outScaleTypes.push_back(quantizeOp->getResultTypes()[1]);
+      outputTypes.push_back(normedResultFor(device).getType());
+      outScaleTypes.push_back(scaleTypeFor(device));
+      scaleUbOperands.push_back(scaleUbFor(device));
       outResidualTypes.push_back(residualOps.at(device).getResult().getType());
       residualOperands.push_back(residualValues.at(device));
       gammaOperands.push_back(rmsNormOp.getWeight());
       epsilonOperands.push_back(rmsNormOp.getEpsilon());
       weightOffsetOperands.push_back(rmsNormOp.getWeightOffset());
-      scaleUbOperands.push_back(quantizeOp.getOperand(1));
     }
 
     // Build the op
@@ -3177,16 +3202,15 @@ public:
       DeviceRefAttr device = cast<TensorValue>(out).getType().getDeviceRef();
       MO::AddOp residualOp = residualOps.at(device);
       MO::ReduceRMSNormOp rmsNormOp = rmsNormOps.at(device);
-      MO::CustomOp quantizeOp = quantizeOps.at(device);
       // Replace the intermediate result.
       residualOp.getResult().replaceAllUsesExcept(
           allReduceFusedOp.getOutResidual()[i], rmsNormOp);
 
-      // Replace the quantized op outputs
-      quantizeOp.getResult(0).replaceAllUsesWith(
+      normedResultFor(device).replaceAllUsesWith(
           allReduceFusedOp.getOutput()[i]);
-      quantizeOp.getResult(1).replaceAllUsesWith(
-          allReduceFusedOp.getOutScale()[i]);
+      if (quantizes)
+        quantizeOps.at(device).getResult(1).replaceAllUsesWith(
+            allReduceFusedOp.getOutScale()[i]);
     }
   }
 
@@ -3198,6 +3222,24 @@ private:
   llvm::DenseMap<DeviceRefAttr, MO::ReduceRMSNormOp> rmsNormOps;
   llvm::DenseMap<DeviceRefAttr, MO::CustomOp> quantizeOps;
   llvm::DenseMap<DeviceRefAttr, Value> residualValues;
+  bool quantizes = false;
+  // Stands in for `scale_ub`; the kernel's scale clamp never reads it.
+  Value unreadScaleUb;
+
+  Value normedResultFor(DeviceRefAttr device) {
+    return quantizes ? quantizeOps.at(device).getResult(0)
+                     : rmsNormOps.at(device).getResult();
+  }
+
+  Type scaleTypeFor(DeviceRefAttr device) {
+    return quantizes ? quantizeOps.at(device).getResult(1).getType()
+                     : makeUnwrittenScaleType(cast<TensorType>(
+                           rmsNormOps.at(device).getResult().getType()));
+  }
+
+  Value scaleUbFor(DeviceRefAttr device) {
+    return quantizes ? quantizeOps.at(device).getOperand(1) : unreadScaleUb;
+  }
 
   bool matchFusedAllReducePath(TensorValue allReduceOut) {
     DeviceRefAttr device = allReduceOut.getType().getDeviceRef();
@@ -3219,9 +3261,9 @@ private:
     if (!matchRMSNormOp(residualOp.getResult(), rmsNormOp))
       return false;
 
-    if (!matchCustomOp(rmsNormOp.getResult(), quantizeOp,
-                       "mo.quantize_dynamic_scaled_float8"))
-      return false;
+    // Optional; a null quantizeOp selects the kernel's no-quantize path.
+    matchCustomOp(rmsNormOp.getResult(), quantizeOp,
+                  "mo.quantize_dynamic_scaled_float8");
 
     if (!verifyFusedAllReducePath(allReduceOut.getType(), residualOp, rmsNormOp,
                                   quantizeOp))
@@ -3229,7 +3271,8 @@ private:
 
     residualOps[device] = residualOp;
     rmsNormOps[device] = rmsNormOp;
-    quantizeOps[device] = quantizeOp;
+    if (quantizeOp)
+      quantizeOps[device] = quantizeOp;
     residualValues[device] = residualValue;
     return true;
   }
