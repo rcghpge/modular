@@ -810,7 +810,13 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
   }];
 
   let arguments = (ins
-    M_DeviceRefsAttr:$devices
+    M_DeviceRefsAttr:$devices,
+    // As mogg.generic.compiled.region ops are inlined away, we need to
+    // preserve the constant resource attributes.
+    //
+    // This operation is eventually synthesized back into a
+    // mogg.generic.compiled.region, so it is the natural place.
+    DefaultValuedAttr<ArrayAttr, "{}">:$constantResources
   );
 
   let results = (outs

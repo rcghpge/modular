@@ -1413,6 +1413,13 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
                                      parseDeviceRegionPair))
     return failure();
 
+  // Parse the optional attribute dictionary (e.g. constant_resources).
+  // `devices` is represented by the per-region labels, so drop it if the
+  // textual attr-dict happens to contain it.
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+  result.attributes.erase(getDevicesAttrName(result.name));
+
   auto devices = DeviceRefsAttr::get(parser.getContext(), deviceRefs);
   result.addAttribute(getDevicesAttrName(result.name), devices);
 
@@ -1459,6 +1466,14 @@ void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
     p << " ";
     p.printRegion(getGraphs()[idx], /*printEntryBlockArgs=*/false);
   });
+
+  // The `devices` attribute is represented by the per-region labels above. An
+  // empty `constantResources` is omitted to keep the printed form compact and
+  // consistent with `mgp.device_graph.staging`.
+  SmallVector<StringRef> elide = {getDevicesAttrName()};
+  if (getConstantResources().empty())
+    elide.push_back(getConstantResourcesAttrName());
+  p.printOptionalAttrDict(getOperation()->getAttrs(), elide);
 
   // Print trailing result types when present.
   if (!getOutputs().empty()) {
@@ -1518,6 +1533,7 @@ void DeviceGraphCollectiveOp::build(
   // the child regions to `state`, so we do not want to add any additional
   // regions as the region count will not match the number of devices.
   DeviceGraphCollectiveOp::build(builder, state, resultTypes, devices,
+                                 /*constantResources=*/ArrayAttr(),
                                  /*graphsCount=*/0);
 }
 

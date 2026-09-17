@@ -223,15 +223,94 @@ LogicalResult convertStagedRegions(DeviceGraphStagingOp stagingOp) {
   return success();
 }
 
+/// Replace every `mogg.generic.compiled.region` in each device region of
+/// `collectiveOp` with a `mgp.device_graph.dependencies` op, preserving the
+/// per-device ordering and dissolving each compiled region's dataflow boundary.
+LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
+  llvm::MapVector<GenericCompiledRegionOp, DeviceGraphDependenciesOp> oldToNew;
+  IRMapping oldValueToNew;
+
+  // Each device region has its own `!mgp.device_graph.builder` block argument.
+  // Convert the compiled regions inside each region independently; edges across
+  // regions are derived below using the same global `oldToNew` map.
+  for (auto [idx, graph] : llvm::enumerate(collectiveOp.getGraphs())) {
+    Value regionBuilder = collectiveOp.getRegionBuilder(idx);
+    for (auto region : graph.getOps<GenericCompiledRegionOp>()) {
+      OpBuilder builder(region);
+
+      LogicalResult bodyResult = success();
+      auto depsOp = DeviceGraphDependenciesOp::create(
+          builder, region.getLoc(), /*graphBuilder=*/regionBuilder,
+          /*dependencies=*/ValueRange{},
+          [&](OpBuilder &bodyBuilder, Location loc, Value graphBuilder) {
+            bodyResult = buildDependenciesBody(bodyBuilder, loc, graphBuilder,
+                                               region, oldValueToNew);
+          });
+
+      if (failed(bodyResult))
+        return failure();
+
+      oldToNew[region] = depsOp;
+      oldValueToNew.map(region.getResults(), depsOp.getBodyResults());
+    }
+  }
+
+  // Derive dependency edges. Operands defined by another converted region
+  // (within the same or another device region) become edges to that region's
+  // node; other operands are model inputs or outer SSA and contribute no edge.
+  for (auto [region, dependencies] : oldToNew) {
+    llvm::SmallSetVector<Value, 8> edges;
+    for (Value operand : region.getOperands()) {
+      Operation *def = operand.getDefiningOp();
+      if (auto producer = dyn_cast_if_present<GenericCompiledRegionOp>(def))
+        if (auto it = oldToNew.find(producer); it != oldToNew.end())
+          edges.insert(it->second.getNode());
+    }
+    dependencies.getDependenciesMutable().assign(edges.getArrayRef());
+  }
+
+  // Rewire all uses of the original regions' results to the new body results,
+  // then erase the originals.
+  for (auto [region, dependencies] : oldToNew) {
+    for (auto [oldResult, newResult] :
+         llvm::zip(region.getResults(), dependencies.getBodyResults()))
+      oldResult.replaceAllUsesWith(newResult);
+  }
+
+  SetVector<Attribute> constantResources;
+  for (auto region : oldToNew.keys()) {
+    if (auto resources = region.getConstantResources())
+      constantResources.insert_range(resources);
+    region.erase();
+  }
+
+  Builder builder(collectiveOp->getContext());
+  auto newAttr = builder.getArrayAttr(constantResources.getArrayRef());
+  collectiveOp.setConstantResourcesAttr(newAttr);
+
+  return success();
+}
+
 /// Convert the `mogg.generic.compiled.region` ops staged by
-/// `mgp-stage-device-graphs` into `mgp.device_graph.dependencies` ops,
+/// `mgp-stage-device-graphs` (or already bundled by
+/// `mgp.device_graph.collective`) into `mgp.device_graph.dependencies` ops,
 /// capturing the dependency DAG explicitly.
 LogicalResult computeDeviceGraphDependencies(ModelOp model) {
+  Block *execute = model.getExecuteBlock();
+
   // `mgp-stage-device-graphs` leaves one `mgp.device_graph.staging` op per
   // device in the execute block, holding the model's compiled regions verbatim.
   for (DeviceGraphStagingOp stagingOp :
-       model.getExecuteBlock()->getOps<DeviceGraphStagingOp>()) {
+       llvm::make_early_inc_range(execute->getOps<DeviceGraphStagingOp>())) {
     if (failed(convertStagedRegions(stagingOp)))
+      return failure();
+  }
+
+  // The same lowering applies to `mgp.device_graph.collective`, where each
+  // device region is processed separately.
+  for (DeviceGraphCollectiveOp collectiveOp :
+       llvm::make_early_inc_range(execute->getOps<DeviceGraphCollectiveOp>())) {
+    if (failed(convertCollectiveRegions(collectiveOp)))
       return failure();
   }
   return success();
