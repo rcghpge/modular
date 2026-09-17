@@ -164,14 +164,20 @@ def OutlineStructuredKernelBodies
   ];
 }
 
-def LoopInvariantViewMotion : Pass<"map-loop-invariant-view-motion", "M::MAP::IterOpaqueOp"> {
+def LoopInvariantViewMotion : Pass<"map-loop-invariant-view-motion", "MO::GraphOp"> {
   let summary =
       "Hoist chains of index-transform ops out of a structured loop body.";
   let description = [{
-    Runs after `OutlineStructuredKernelBodies`, once per `map.iter.opaque`.
-    Scoping to a single `map.iter.opaque` (rather than the whole module)
-    relies on it being `IsolatedFromAbove`, and lets independent instances run
-    in parallel.
+    Runs after `OutlineStructuredKernelBodies`, once per `mo.graph`, over every
+    `map.iter.opaque` in the body and in any nested control-flow region.
+
+    Anchoring on the graph rather than on `map.iter.opaque` is load-bearing:
+    a pass adaptor iterates only the ops directly inside its anchor's regions
+    and descends no further, so an opaque nested in an `mo.while`, `mo.if` or
+    `mo.parallel` body is never reached. This rewrite is mandatory, not an optimisation -- an
+    unhoisted index-transform op has no `LowerableToMOGGInterface` and strands
+    `map-to-mogg` -- so skipping a region is a hard compile failure, not a
+    missed speedup.
 
     For each `map.load` inside a nested `map.iter.foreach.body`, walks
     backward from its index operand through any chain of index-transform ops

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --pass-pipeline='builtin.module(mo.graph(map.iter.opaque(map-loop-invariant-view-motion,cse,canonicalize)))' | FileCheck %s
+// RUN: mo-opt %s --pass-pipeline='builtin.module(mo.graph(map-loop-invariant-view-motion, map.iter.opaque(cse,canonicalize)))' | FileCheck %s
 
 // LoopInvariantViewMotion hoists a map.index.slice chain feeding a map.load
 // out of the loop body into a map.index.slice.stride op in the enclosing

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, map-outline-structured-kernel-bodies, mo.graph(map.iter.opaque(map-loop-invariant-view-motion, canonicalize)), map-to-mogg)' | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, map-outline-structured-kernel-bodies, mo.graph(map-loop-invariant-view-motion, map.iter.opaque(canonicalize)), map-to-mogg)' | FileCheck %s
 
 // Full pipeline from a real mo.slice op through MOToMAP, outlining, view
 // motion, and MAPToMOGG: map.index.slice.stride lowers to

@@ -9,8 +9,7 @@
 // CapturingFusionClosure (map.iter.foreach.body, map.iter.prologue,
 // map.iter.epilogue) into a chain of "stride" ops (e.g.
 // map.index.slice.stride) in the enclosing map.iter.opaque, so the transform
-// runs once per kernel invocation instead of once per loop index. Runs once
-// per map.iter.opaque instance, independent instances in parallel.
+// runs once per kernel invocation instead of once per loop index.
 //
 //===----------------------------------------------------------------------===//
 
@@ -184,9 +183,13 @@ struct LoopInvariantViewMotionPass
   using Base::Base;
 
   void runOnOperation() override {
-    IterOpaqueOp opaque = getOperation();
+    MO::GraphOp graphOp = getOperation();
 
-    WalkResult liftResult = opaque.walk([&](CapturingFusionClosure closure) {
+    // Walk rather than iterate the body's direct ops: a kernel can sit inside
+    // control flow (e.g. mo.while), and iterating only the graph's own
+    // top-level ops would miss those -- leaving an index-form view that
+    // map-to-mogg cannot lower.
+    WalkResult liftResult = graphOp.walk([&](CapturingFusionClosure closure) {
       if (failed(loopInvariantViewMotionInClosure(closure)))
         return WalkResult::interrupt();
       return WalkResult::advance();
@@ -198,7 +201,7 @@ struct LoopInvariantViewMotionPass
     // index-transform op behind inside any capturing closure. An op that
     // transitively feeds a store legitimately stays -- it maps an index, not a
     // tensor, so there is nothing to hoist.
-    WalkResult invariantResult = opaque.walk([&](IndexTransformOpInterface op) {
+    WalkResult invariant = graphOp.walk([&](IndexTransformOpInterface op) {
       if (transitivelyFeedsStore(op))
         return WalkResult::advance();
       op.emitError(
@@ -206,7 +209,7 @@ struct LoopInvariantViewMotionPass
           "-- this is a bug in the pass, not in the input IR");
       return WalkResult::interrupt();
     });
-    if (invariantResult.wasInterrupted())
+    if (invariant.wasInterrupted())
       signalPassFailure();
   }
 };
