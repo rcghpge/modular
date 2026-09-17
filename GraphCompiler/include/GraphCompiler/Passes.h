@@ -57,6 +57,14 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
       llvm::cl::desc("Emit ranges for regions carrying no profile scope."
                      " Useful for visualizing compiler output."),
       llvm::cl::init(false)};
+  // The in-process equivalent of the `gc-pipeline-pre-jit` pipeline: a caller
+  // that wants the emitted Mojo (see `ir-output-dir`) and not the compiled
+  // kernels. The emitted text is identical either way; only the JIT is skipped.
+  Option<bool> preJit{
+      *this, "pre-jit",
+      llvm::cl::desc("Stop after emit-mojo instead of JIT-compiling the "
+                     "kernels."),
+      llvm::cl::init(false)};
   Option<bool> fuseMutableLoadStore{
       *this, "fuse-mutable-load-store",
       llvm::cl::desc("If set to false will disable the creation of in-place "

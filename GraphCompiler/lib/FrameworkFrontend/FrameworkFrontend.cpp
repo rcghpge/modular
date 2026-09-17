@@ -212,6 +212,9 @@ void MOFContext::overrideLoweringOptions(
             "max-debug.profile-scope-tracing-trace-unlabelled", false))
       gcPipelineOptions.profileScopeTracingTraceUnlabelled = true;
 
+    if (configOr->getValueAsBool("max-debug.pre-jit", false))
+      gcPipelineOptions.preJit = true;
+
     // The GC pipeline's JSON pass-timing writer was previously reachable only
     // through mo-opt's command line, which does not run the in-process compile
     // the Python path takes. Route it through a config key so an in-situ
@@ -399,6 +402,14 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
   if (failed(MO::runGCPipeline(moduleOp, options, dumpStages)))
     return Error(Twine("Graph compilation failed:\n") +
                  diagnostics.formatMessage());
+
+  // With the JIT skipped the module holds kernel declarations, not compiled
+  // kernels, so there is nothing to export -- and an error here also keeps a
+  // half-lowered result out of the MEF cache. The Mojo the caller wanted was
+  // written by emit-mojo, into `ir-output-dir`, before this point.
+  if (options.preJit)
+    return Error("compilation stopped after emitting Mojo, as requested by "
+                 "pre-jit; the emitted Mojo is in ir-output-dir");
 
   auto bufOr = MO::convertMGPToMEF(moduleOp, enableMEFMetadata);
   if (bufOr)

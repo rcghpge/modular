@@ -717,7 +717,7 @@ LogicalResult M::MO::runGCPipeline(ModuleOp moduleOp,
 
   // gcPipelineImpl populates `pm`; when dumping, it interleaves DumpStagePasses
   // that write each stage's IR as `pm` runs.
-  gcPipelineImpl(pm, opts, /*skipJit=*/false, dumpIntermediates);
+  gcPipelineImpl(pm, opts, /*skipJit=*/opts.preJit, dumpIntermediates);
   return pm.run(moduleOp);
 }
 
