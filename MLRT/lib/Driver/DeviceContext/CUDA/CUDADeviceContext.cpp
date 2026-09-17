@@ -854,6 +854,12 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
       memInfo.free = nvmlMemInfo.free;
       memInfo.total = nvmlMemInfo.total;
     } else if (nvmlMemResult == NVML::NOT_SUPPORTED) {
+#ifdef _WIN32
+      // CUDA devices never initialize on Windows (see CUDADriver::lib_name),
+      // and mingw has no sysconf, so the unified-memory fallback below cannot
+      // be compiled or reached here.
+      RETURN_ERROR("NVML: Unable to get memory info");
+#else
       // On unified memory systems (e.g. NVIDIA Grace Blackwell GB10), NVML
       // cannot report discrete GPU memory. Fall back to system memory info
       // since CPU and GPU share the same physical memory.
@@ -871,6 +877,7 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
           static_cast<size_t>(pages) * static_cast<size_t>(pageSize);
       memInfo.free =
           static_cast<size_t>(availPages) * static_cast<size_t>(pageSize);
+#endif // _WIN32
     } else {
       memInfoFromCUDA = true;
     }

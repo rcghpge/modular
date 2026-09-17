@@ -30,8 +30,14 @@
 #include <cstring>
 #include <memory>
 #include <string>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <sys/resource.h>
 #include <unistd.h>
+#endif
 
 #define CHECK_IS_CPU_ERR(dev)                                                  \
   do {                                                                         \
@@ -93,6 +99,21 @@ ErrorOrSuccess CpuDevice::chunkFree(void *ptr, bool isHost) {
   return success();
 }
 
+#ifdef _WIN32
+
+ErrorOr<Device::MemInfo> CpuDevice::getMemoryInfo() const {
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  if (!GlobalMemoryStatusEx(&status))
+    RETURN_ERROR("Failed to get memory status via GlobalMemoryStatusEx");
+  Device::MemInfo info;
+  info.total = status.ullTotalPhys;
+  info.free = status.ullAvailPhys;
+  return info;
+}
+
+#else // _WIN32
+
 // Call sysconf() and check for errors.
 static ErrorOr<size_t> getSystemValue(int name) {
   errno = 0;
@@ -132,6 +153,8 @@ ErrorOr<Device::MemInfo> CpuDevice::getMemoryInfo() const {
   info.free = info.total - used;
   return info;
 }
+
+#endif // _WIN32
 
 ErrorOr<void *> CpuDevice::getCurrentDriverContext() const { return nullptr; }
 ErrorOrSuccess CpuDevice::setCurrentDriverContext(void *ctx) {

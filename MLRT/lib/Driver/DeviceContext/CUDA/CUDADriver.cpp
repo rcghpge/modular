@@ -10,12 +10,12 @@
 
 #include "CUDADriver.h"
 
+#include "Support/DLFcn.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
 
-#include <dlfcn.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -42,7 +42,11 @@ ErrorOr<std::unique_ptr<CUDADriver>> CUDADriver::allocAndInitDriver() {
   //     device-ordering between reboots)
   // [2]
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cuda-environment-variables
+#ifdef _WIN32
+  _putenv_s("CUDA_DEVICE_ORDER", "PCI_BUS_ID");
+#else
   setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID", /*overwrite=*/1);
+#endif
 
   // Attempt to open the shared library of the CUDA driver.
   // We use RTLD_GLOBAL to allow UCX CUDA backend to also use these loaded CUDA

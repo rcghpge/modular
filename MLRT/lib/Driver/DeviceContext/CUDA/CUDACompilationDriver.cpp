@@ -11,6 +11,7 @@
 #include "CUDACompilationDriver.h"
 
 #include "Support/BazelRunfiles.h"
+#include "Support/DLFcn.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 #include "llvm/ADT/SmallString.h"
@@ -18,8 +19,6 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
-
-#include <dlfcn.h>
 
 namespace M::Driver {
 
@@ -48,7 +47,10 @@ void *openNVPTXLibrary() {
     if (void *lib = dlopen(runfilesPath->c_str(), RTLD_NOW | RTLD_LOCAL))
       return lib;
 
-  // Installed layouts place it alongside the other shared libraries.
+  // Installed layouts place it alongside the other shared libraries. mingw
+  // has no dladdr, and on Windows this function is unreachable anyway
+  // (nvptxLibName is empty), so the branch is fenced rather than emulated.
+#ifndef _WIN32
   Dl_info info;
   if (dladdr(reinterpret_cast<const void *>(&openNVPTXLibrary), &info) != 0 &&
       info.dli_fname != nullptr) {
@@ -61,6 +63,7 @@ void *openNVPTXLibrary() {
         return lib;
     }
   }
+#endif // _WIN32
 
   // Last resort: let the loader search (LD_LIBRARY_PATH, ldconfig).
   return dlopen(nvptxLibName, RTLD_NOW | RTLD_LOCAL);

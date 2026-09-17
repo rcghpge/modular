@@ -10,12 +10,12 @@
 
 #include "HIPDriver.h"
 
+#include "Support/DLFcn.h"
 #include "Support/ErrorOr.h"
 #include "Support/PlatformUtils.h"
 #include "Support/Profiling/Ranges.h"
 #include "llvm/ADT/Twine.h"
 
-#include <dlfcn.h>
 #include <stdlib.h>
 
 namespace M::Driver {

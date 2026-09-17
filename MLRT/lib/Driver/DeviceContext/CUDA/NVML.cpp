@@ -9,9 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "NVML.h"
+#include "Support/DLFcn.h"
 #include "Support/PlatformUtils.h"
 #include "llvm/Support/raw_ostream.h"
-#include <dlfcn.h>
 #include <stddef.h>
 
 namespace M::Driver {

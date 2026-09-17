@@ -843,8 +843,8 @@ MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
       vmmEnabled_(vmmEnabled), pageSize_(vmmPageSize), maxCacheSize_(maxSize),
       chunkSize_(chunkSize),
       // A minimum of 64 byte alignment for allocations from the memory manager.
-      alignmentOffset_(std::max(64UL, alignment) - 1),
-      alignmentMask_(~(std::max(64UL, alignment) - 1)),
+      alignmentOffset_(std::max<size_t>(64, alignment) - 1),
+      alignmentMask_(~(std::max<size_t>(64, alignment) - 1)),
       largeAllocAlignment_(largeAllocAlignment),
       allocatedMap_(chunkSize_ == 0 ? 0 : 10) {
   // chunks_ will be lazily initialized on the first allocation request.
@@ -1243,7 +1243,8 @@ bool MemoryManager::allocateChunk() {
 
   size_t allocSize = std::min(chunkSize_, remainingBudget);
 
-  const size_t minChunkSize = std::min(128UL * 1024, (chunkSize_ * 25) / 100);
+  const size_t minChunkSize =
+      std::min<size_t>(128 * 1024, (chunkSize_ * 25) / 100);
   if (allocSize < minChunkSize) {
     llvm::raw_string_ostream os(lastChunkAllocFailureDetail_);
     os << "alloc_size " << humanMemorySize(allocSize)
