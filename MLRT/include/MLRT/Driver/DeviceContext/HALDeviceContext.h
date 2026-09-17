@@ -696,17 +696,6 @@ public:
     return Error("getHostAccessiblePointer is not supported on this device");
   }
 
-  /// Pins an existing host allocation for fast DMA. The HAL API has no
-  /// host-register support yet, so this reports the legacy "unsupported"
-  /// default and callers fall back to unpinned transfers.
-  ErrorOrSuccess registerHostMemory(void *ptr, size_t byteSize) {
-    return Error("registerHostMemory is not supported on this device");
-  }
-  /// See `registerHostMemory`.
-  ErrorOrSuccess unregisterHostMemory(void *ptr) {
-    return Error("unregisterHostMemory is not supported on this device");
-  }
-
   /// Grants the device access to a host range. The HAL API has no host-wrap
   /// primitive yet, so this reports the legacy "unsupported" default.
   ErrorOr<DeviceBufferRef> wrapHostMemory(void *ptr, size_t byteSize) {

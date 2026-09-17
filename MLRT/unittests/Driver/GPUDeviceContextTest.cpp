@@ -572,6 +572,68 @@ static void runPinnedMultiStreamFree(bool viaSubBuffer) {
   }
 }
 
+// Mirror of `runPinnedMultiStreamFree` with the copy direction flipped: the
+// host buffer is the DESTINATION, so the recording goes through
+// `enqueueCopyDeviceToDevice`'s `dst.isHost()` branch, which the source-side
+// twin never reaches.
+static void runPinnedMultiStreamFreeAsDestination(bool viaSubBuffer) {
+  ASSIGN_NO_ERR(DeviceContextRef, ownCtx,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, copyCtx,
+                DeviceContext::create(Device::gpuAPI));
+  ASSERT_NE(ownCtx.getPointer(), copyCtx.getPointer());
+
+  // Large enough that the D2H copy stays in flight across the free below.
+  const int allocLen = 127 * 1024 * 1024; // 127MB, fits host manager chunks.
+
+  // Source on copyCtx's stream, primed with a known byte.
+  ASSIGN_NO_ERR(DeviceBufferRef, devBuf,
+                copyCtx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, seed, copyCtx->createHostBuffer(allocLen));
+  memset(seed->ptr(), 12, allocLen);
+  EXPECT_NO_ERR(seed->copyTo(*devBuf));
+  EXPECT_NO_ERR(copyCtx->synchronize());
+
+  {
+    // Pad OWNED by ownCtx, written by a copy that runs on copyCtx's stream.
+    ASSIGN_NO_ERR(DeviceBufferRef, pad, ownCtx->createHostBuffer(allocLen));
+    if (viaSubBuffer) {
+      ASSIGN_NO_ERR(DeviceBufferRef, sub, pad->createSubBuffer(0, allocLen));
+      EXPECT_NO_ERR(devBuf->copyTo(*sub, 0, allocLen));
+    } else {
+      EXPECT_NO_ERR(devBuf->copyTo(*pad, 0, allocLen));
+    }
+    // `pad` released here with the copy still in flight on copyCtx.
+  }
+
+  EXPECT_NO_ERR(ownCtx->pollPendingEvents());
+
+  // Recycle the same size from ownCtx's host free list and mark only the final
+  // byte. If the pad was freed early, this allocation IS the pad's memory and
+  // the still-running copy writes 12 over the mark; marking one byte at the end
+  // loses to no part of the DMA, which writes it last (cf. the src-side twin).
+  ASSIGN_NO_ERR(DeviceBufferRef, recycled, ownCtx->createHostBuffer(allocLen));
+  reinterpret_cast<char *>(recycled->ptr())[allocLen - 1] = 99;
+
+  EXPECT_NO_ERR(copyCtx->synchronize());
+  EXPECT_NO_ERR(ownCtx->synchronize());
+
+  EXPECT_EQ(reinterpret_cast<const char *>(recycled->ptr())[allocLen - 1], 99)
+      << "pad recycled before copyCtx's device-to-host copy completed";
+}
+
+// Regression: host buffer written by a foreign stream, freed while that copy is
+// in flight.
+TEST_F(GPUDeviceContextTest, PinnedDestinationMultiStreamFree) {
+  runPinnedMultiStreamFreeAsDestination(/*viaSubBuffer=*/false);
+}
+
+// Regression: the same through a sub-buffer, the shape the Mach shim uses --
+// the recording must forward to the root pad before the sub-buffer dies.
+TEST_F(GPUDeviceContextTest, PinnedDestinationSubBufferMultiStreamFree) {
+  runPinnedMultiStreamFreeAsDestination(/*viaSubBuffer=*/true);
+}
+
 // Regression: pinned buffer copied directly on a foreign stream.
 TEST_F(GPUDeviceContextTest, PinnedBufferMultiStreamFree) {
   runPinnedMultiStreamFree(/*viaSubBuffer=*/false);

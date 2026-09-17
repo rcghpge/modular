@@ -1543,15 +1543,19 @@ ErrorOrSuccess HIPDeviceContext::memAlloc(void **ptr, size_t byteSize,
 
 ErrorOrSuccess HIPDeviceContext::memWrap(void **devPtr, void *hostPtr,
                                          size_t byteSize) {
-  RETURN_IF_ERROR(registerHostMemory(hostPtr, byteSize));
+  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memWrap", TRACY_COLOR_PURPLE);
+  HIP_WITH_CTX_ERR(*this);
+  // hipHostRegisterPortable (0x1): the registration is visible from every
+  // device in the process, matching the hipHostMalloc host-alloc path.
+  constexpr unsigned int kFlags = 0x1;
+  HIP_CHECK_ERR(driver_.hipHostRegister(hostPtr, byteSize, kFlags));
 
   // A registered range is mapped at a driver-chosen address, not at `hostPtr`.
-  HIP_WITH_CTX_ERR(*this);
   hipDeviceptr_t mapped = nullptr;
   HIPDriver::Result result =
       driver_.hipHostGetDevicePointer(&mapped, hostPtr, 0);
   if (result != HIPDriver::SUCCESS) {
-    (void)unregisterHostMemory(hostPtr);
+    (void)driver_.hipHostUnregister(hostPtr);
     const char *errName = nullptr;
     (void)driver_.hipDrvGetErrorName(result, &errName);
     return Error(std::string("memWrap: hipHostGetDevicePointer failed: ")
@@ -1564,17 +1568,17 @@ ErrorOrSuccess HIPDeviceContext::memWrap(void **devPtr, void *hostPtr,
 ErrorOrSuccess HIPDeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("HIPDeviceContext::memFree", TRACY_COLOR_PURPLE);
 
+  HIP_WITH_CTX_ERR(*this);
   if (kind == Device::FreeKind::WRAPPED) {
     // `hipHostUnregister` takes the host base; `ptr` is the mapped address.
-    HIP_WITH_CTX_ERR(*this);
     hipPointerAttribute_t attrs{};
     HIP_CHECK_ERR(driver_.hipPointerGetAttributes(&attrs, ptr));
     if (attrs.hostPointer == nullptr)
       RETURN_ERROR("memFree: wrapped range has no host pointer to unregister");
-    return unregisterHostMemory(attrs.hostPointer);
+    HIP_CHECK_ERR(driver_.hipHostUnregister(attrs.hostPointer));
+    return success();
   }
 
-  HIP_WITH_CTX_ERR(*this);
   if (kind == Device::FreeKind::HOST) {
     POLL_PENDING_EVENTS(*this);
     HIP_CHECK_ERR(driver_.hipHostFree(ptr));
@@ -1617,26 +1621,6 @@ ErrorOrSuccess HIPDeviceContext::freeCompletionFlag(void *hostPtr) {
   HIP_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
   HIP_CHECK_ERR(driver_.hipHostFree(hostPtr));
-  return success();
-}
-
-ErrorOrSuccess HIPDeviceContext::registerHostMemory(void *ptr,
-                                                    size_t byteSize) {
-  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::registerHostMemory",
-                       TRACY_COLOR_PURPLE);
-  HIP_WITH_CTX_ERR(*this);
-  // hipHostRegisterPortable (0x1): the registration is visible from every
-  // device in the process, matching the hipHostMalloc host-alloc path.
-  constexpr unsigned int kFlags = 0x1;
-  HIP_CHECK_ERR(driver_.hipHostRegister(ptr, byteSize, kFlags));
-  return success();
-}
-
-ErrorOrSuccess HIPDeviceContext::unregisterHostMemory(void *ptr) {
-  TRACY_ZONE_SCOPED_NC("HIPDeviceContext::unregisterHostMemory",
-                       TRACY_COLOR_PURPLE);
-  HIP_WITH_CTX_ERR(*this);
-  HIP_CHECK_ERR(driver_.hipHostUnregister(ptr));
   return success();
 }
 

@@ -1742,7 +1742,12 @@ ErrorOrSuccess CUDADeviceContext::memAlloc(void **ptr, size_t byteSize,
 
 ErrorOrSuccess CUDADeviceContext::memWrap(void **devPtr, void *hostPtr,
                                           size_t byteSize) {
-  RETURN_IF_ERROR(registerHostMemory(hostPtr, byteSize));
+  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memWrap", TRACY_COLOR_PURPLE);
+  CUDA_WITH_CTX_ERR(*this);
+  // CU_MEMHOSTREGISTER_PORTABLE (0x1): the registration is visible from every
+  // context in the process
+  constexpr unsigned int kFlags = 0x1;
+  CUDA_CHECK_ERR(driver_.cuMemHostRegister_v2(hostPtr, byteSize, kFlags));
   // UVA gives a registered page one address; guaranteed at our CC 7.5 floor.
   *devPtr = hostPtr;
   return success();
@@ -1751,10 +1756,12 @@ ErrorOrSuccess CUDADeviceContext::memWrap(void **devPtr, void *hostPtr,
 ErrorOrSuccess CUDADeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("CUDADeviceContext::memFree", TRACY_COLOR_PURPLE);
 
-  if (kind == Device::FreeKind::WRAPPED)
-    return unregisterHostMemory(ptr);
-
   CUDA_WITH_CTX_ERR(*this);
+  if (kind == Device::FreeKind::WRAPPED) {
+    CUDA_CHECK_ERR(driver_.cuMemHostUnregister(ptr));
+    return success();
+  }
+
   if (kind == Device::FreeKind::HOST) {
     POLL_PENDING_EVENTS(*this);
     CUDA_CHECK_ERR(driver_.cuMemFreeHost(ptr));
@@ -1819,26 +1826,6 @@ ErrorOrSuccess CUDADeviceContext::freeCompletionFlag(void *hostPtr) {
   CUDA_WITH_CTX_ERR(*this);
   POLL_PENDING_EVENTS(*this);
   CUDA_CHECK_ERR(driver_.cuMemFreeHost(hostPtr));
-  return success();
-}
-
-ErrorOrSuccess CUDADeviceContext::registerHostMemory(void *ptr,
-                                                     size_t byteSize) {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::registerHostMemory",
-                       TRACY_COLOR_PURPLE);
-  CUDA_WITH_CTX_ERR(*this);
-  // CU_MEMHOSTREGISTER_PORTABLE (0x1): the registration is visible from every
-  // context in the process
-  constexpr unsigned int kFlags = 0x1;
-  CUDA_CHECK_ERR(driver_.cuMemHostRegister_v2(ptr, byteSize, kFlags));
-  return success();
-}
-
-ErrorOrSuccess CUDADeviceContext::unregisterHostMemory(void *ptr) {
-  TRACY_ZONE_SCOPED_NC("CUDADeviceContext::unregisterHostMemory",
-                       TRACY_COLOR_PURPLE);
-  CUDA_WITH_CTX_ERR(*this);
-  CUDA_CHECK_ERR(driver_.cuMemHostUnregister(ptr));
   return success();
 }
 
