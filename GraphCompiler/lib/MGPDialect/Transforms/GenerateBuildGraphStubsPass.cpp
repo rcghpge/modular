@@ -229,21 +229,36 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
 }
 
 /// The builder recording the region that contains `op`: the body block argument
-/// of the innermost `mgp.device_graph.dependencies`, or the staged body's
-/// builder for an op sitting directly in the staging body.
+/// of the innermost `mgp.device_graph.dependencies`, or the container body's
+/// builder for an op sitting directly in a `staging`/`collective` region.
 Value enclosingGraphBuilder(Operation *op) {
   if (auto deps = op->getParentOfType<DeviceGraphDependenciesOp>())
     return deps.getBuilderBlockArgument();
-  return op->getParentOfType<DeviceGraphStagingOp>().getBodyBuilder();
+
+  if (auto staging = op->getParentOfType<DeviceGraphStagingOp>())
+    return staging.getBodyBuilder();
+
+  auto collective = op->getParentOfType<DeviceGraphCollectiveOp>();
+  ASSERT_STREAM(collective,
+                "reached an operation not inside a device graph region");
+
+  Region *opRegion = op->getParentRegion();
+  for (DeviceGraphCollectiveOp::CollectiveRegion region : collective.graphs()) {
+    auto blockRegion = region.bodyBlock->getParent();
+    if (blockRegion->isAncestor(opRegion))
+      return region.builder;
+  }
+
+  llvm_unreachable("unable to determine body region");
 }
 
-/// Retarget a staged `mogg.call.stub @stub_N` to its sibling
-/// `@stub_N_build_graph`.
+/// Retarget a `mogg.call.stub @stub_N` inside a device-graph container to its
+/// sibling `@stub_N_build_graph`.
 ///
 /// The sibling takes a `!mgp.device_graph.builder` in the launch-context
 /// position where the original took a launch context; all other operands
 /// (including any other context-typed ones) pass through unchanged.
-LogicalResult rewriteStagedCall(CallStubOp call, const RecordingStub &sibling) {
+LogicalResult rewriteGraphCall(CallStubOp call, const RecordingStub &sibling) {
   SmallVector<Value> operands = llvm::to_vector(call.getInputs());
   if (sibling.contextArgIndex >= operands.size() ||
       !isa<DeviceContextType, M::MOGG::ContextType>(
@@ -271,11 +286,11 @@ LogicalResult rewriteStagedCall(CallStubOp call, const RecordingStub &sibling) {
   return success();
 }
 
-/// Replace each `mgp.buffer.alloc` in `staging` with `mgp.device_graph.alloc`,
-/// so every address the graph records comes from the builder's memory pool and
-/// stays reserved for the graph's lifetime.
-void rewriteBuilderAllocs(DeviceGraphStagingOp staging) {
-  staging.getBody().walk([&](BufferAllocOp alloc) {
+/// Replace each `mgp.buffer.alloc` in `container` with
+/// `mgp.device_graph.alloc`, so every address the graph records comes from the
+/// builder's memory pool and stays reserved for the graph's lifetime.
+void rewriteBuilderAllocs(Operation *container) {
+  container->walk([&](BufferAllocOp alloc) {
     IRRewriter rewriter(alloc);
     rewriter.replaceOpWithNewOp<DeviceGraphAllocOp>(
         alloc,
@@ -287,15 +302,16 @@ void rewriteBuilderAllocs(DeviceGraphStagingOp staging) {
   });
 }
 
-/// For each `mogg.call.stub @stub_N` inside `staging` (the staged execute
-/// body), generate a sibling recording stub `@stub_N_build_graph` (inserted at
-/// module scope alongside `@stub_N` via `symtab`) and retarget the call to it.
+/// For each `mogg.call.stub @stub_N` inside `container` (the body of a
+/// `staging` or `collective`), generate a sibling recording stub
+/// `@stub_N_build_graph` (inserted at module scope alongside `@stub_N` via
+/// `symtab`) and retarget the call to it.
 LogicalResult generateBuildGraphStubs(SymbolTable &symtab,
-                                      DeviceGraphStagingOp staging) {
+                                      Operation *container) {
   // TODO: We may need to expand this to support `CallStubAsyncOp` in the
   // future.
   SmallVector<CallStubOp> calls;
-  staging.getBody().walk([&](CallStubOp call) { calls.push_back(call); });
+  container->walk([&](CallStubOp call) { calls.push_back(call); });
 
   if (calls.empty())
     return success();
@@ -320,7 +336,7 @@ LogicalResult generateBuildGraphStubs(SymbolTable &symtab,
       sibling = std::move(*recording);
     }
 
-    if (failed(rewriteStagedCall(call, sibling)))
+    if (failed(rewriteGraphCall(call, sibling)))
       return failure();
   }
   return success();
@@ -352,31 +368,39 @@ class GenerateBuildGraphStubsPass final
         getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
 
     // Device-graph synthesis; runs after
-    // `mgp-compute-device-graph-dependencies`. Scope is the staged execute
-    // body: collect the `mgp.device_graph.staging` op(s) of each
-    // `isDeviceGraph` model first, then process them (generating stubs mutates
-    // the module's top-level op list, so we must not be mid-iteration over it).
-    SmallVector<DeviceGraphStagingOp> stagingOps;
+    // `mgp-compute-device-graph-dependencies`. Scope is each device-graph
+    // container (`mgp.device_graph.staging` and `mgp.device_graph.collective`)
+    // in the execute body. Collect them first, then process them (generating
+    // stubs mutates the module's top-level op list, so we must not be
+    // mid-iteration over it).
+    SmallVector<Operation *> graphContainers;
     for (ModelOp model : module.getOps<ModelOp>()) {
       if (!model.getIsDeviceGraph())
         continue;
 
       model.getExecuteBlock()->walk<WalkOrder::PreOrder>(
           [&](DeviceGraphStagingOp staging) {
-            stagingOps.push_back(staging);
-            // Staging ops do not nest.
+            graphContainers.push_back(staging);
+            // Device-graph containers do not nest.
+            return WalkResult::skip();
+          });
+
+      model.getExecuteBlock()->walk<WalkOrder::PreOrder>(
+          [&](DeviceGraphCollectiveOp collective) {
+            graphContainers.push_back(collective);
+            // Device-graph containers do not nest.
             return WalkResult::skip();
           });
     }
 
-    for (DeviceGraphStagingOp staging : stagingOps)
-      if (failed(generateBuildGraphStubs(symtab, staging)))
+    for (Operation *container : graphContainers)
+      if (failed(generateBuildGraphStubs(symtab, container)))
         return signalPassFailure();
 
     // Route in-body allocations through the builder: rewrite
     // `mgp.buffer.alloc(builder-cast)` to `mgp.device_graph.alloc(builder)`.
-    for (DeviceGraphStagingOp staging : stagingOps)
-      rewriteBuilderAllocs(staging);
+    for (Operation *container : graphContainers)
+      rewriteBuilderAllocs(container);
   }
 };
 

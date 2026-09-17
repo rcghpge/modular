@@ -233,8 +233,10 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
   // Each device region has its own `!mgp.device_graph.builder` block argument.
   // Convert the compiled regions inside each region independently; edges across
   // regions are derived below using the same global `oldToNew` map.
-  for (auto [idx, graph] : llvm::enumerate(collectiveOp.getGraphs())) {
-    Value regionBuilder = collectiveOp.getRegionBuilder(idx);
+  for (DeviceGraphCollectiveOp::CollectiveRegion graph :
+       collectiveOp.graphs()) {
+    Value regionBuilder = graph.builder;
+
     for (auto region : graph.getOps<GenericCompiledRegionOp>()) {
       OpBuilder builder(region);
 

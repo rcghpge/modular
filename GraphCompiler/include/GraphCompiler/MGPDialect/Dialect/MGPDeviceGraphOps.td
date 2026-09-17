@@ -828,6 +828,30 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
   );
 
   let extraClassDeclaration = [{
+    /// A structured interface to each device graph body.
+    struct CollectiveRegion {
+      Block *bodyBlock;
+      BlockArgument builder;
+      ArrayRef<BlockArgument> stableAddrs;
+      DeviceRefAttr device;
+
+      template <typename T=void>
+      auto getOps() { return bodyBlock->getOps<T>(); }
+    };
+
+    auto graphs() {
+      return llvm::map_range(getGraphs(), [this](Region &region) {
+        CollectiveRegion result;
+
+        Block *block = &region.front();
+        result.bodyBlock = block;
+        result.builder = block->getArgument(0);
+        result.stableAddrs = block->getArguments().drop_front();
+        result.device = getDevices()[region.getRegionNumber()];
+        return result;
+      });
+    }
+
     /// Returns the number of regions.
     unsigned getNumRegions() { return getGraphs().size(); }
 
