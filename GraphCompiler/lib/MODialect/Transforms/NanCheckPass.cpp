@@ -87,9 +87,15 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         ctx, ArrayRef<int64_t>{1}, M::DType::si32, hostDevice, emptyMetadata);
     assert(countTypeHost && "Failed to create count tensor type");
 
-    // Collect all MOGG kernel ops (compiled regions).
-    SmallVector<MOGG::KernelOp> kernelOps;
-    graphOp->walk([&kernelOps](MOGG::KernelOp op) { kernelOps.push_back(op); });
+    // Collect all MOGG kernel ops (compiled regions). The graph-level region
+    // is `mogg.kernel` on the legacy path and `mogg._kernel` on the MAP one,
+    // so both kinds count: matching only the legacy op left the check silently
+    // uninserted under advanced fusion, and the run reported no NaN at all.
+    SmallVector<Operation *> kernelOps;
+    graphOp->walk([&kernelOps](Operation *op) {
+      if (isa<MOGG::KernelOp, MOGG::KernelRegionOp>(op))
+        kernelOps.push_back(op);
+    });
 
     if (kernelOps.empty())
       return;
@@ -130,7 +136,7 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
     // The original tensor flows unchanged — no copy, no replaceAllUsesExcept.
     for (auto kernelOp : kernelOps) {
       builder.setInsertionPointAfter(kernelOp);
-      for (Value res : kernelOp.getResults()) {
+      for (Value res : kernelOp->getResults()) {
         if (!isFloatTensor(res))
           continue;
 
@@ -159,7 +165,7 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
 
         // 1. nan_check_count: input tensor → (nan_count, inf_count) on device
         auto countOp = MO::CustomOp::create(
-            builder, kernelOp.getLoc(),
+            builder, kernelOp->getLoc(),
             /*resultTypes=*/TypeRange{countTypeOnDevice, countTypeOnDevice},
             /*operands=*/ValueRange{res},
             /*symbol=*/builder.getStringAttr("nan_check_count"),
@@ -171,7 +177,7 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
 
         // 2. mo.transfer: move scalar counts to host
         if (!currentChain) {
-          currentChain = MO::ChainCreateOp::create(builder, kernelOp.getLoc(),
+          currentChain = MO::ChainCreateOp::create(builder, kernelOp->getLoc(),
                                                    chainType, ValueRange{})
                              .getResult();
           assert(currentChain && "currentChain is null after creation");
@@ -184,14 +190,14 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         bool needsTransfer = (device != hostDevice);
         if (needsTransfer) {
           auto nanTransfer = MO::TransferOp::create(
-              builder, kernelOp.getLoc(), cast<TensorValue>(nanCount),
+              builder, kernelOp->getLoc(), cast<TensorValue>(nanCount),
               hostDevice, cast<ChainValue>(currentChain),
               /*alwaysElideSameDeviceCopy=*/true);
           nanCountHost = nanTransfer.getResult();
           currentChain = nanTransfer.getOutChain();
 
           auto infTransfer = MO::TransferOp::create(
-              builder, kernelOp.getLoc(), cast<TensorValue>(infCount),
+              builder, kernelOp->getLoc(), cast<TensorValue>(infCount),
               hostDevice, cast<ChainValue>(currentChain),
               /*alwaysElideSameDeviceCopy=*/true);
           infCountHost = infTransfer.getResult();
@@ -200,7 +206,7 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
 
         // 3. nan_check_raise: read host counts, raise if > 0
         auto raiseOp = MO::CustomOp::create(
-            builder, kernelOp.getLoc(),
+            builder, kernelOp->getLoc(),
             /*resultTypes=*/TypeRange{chainType},
             /*operands=*/ValueRange{nanCountHost, infCountHost, currentChain},
             /*symbol=*/builder.getStringAttr("nan_check_raise"),
