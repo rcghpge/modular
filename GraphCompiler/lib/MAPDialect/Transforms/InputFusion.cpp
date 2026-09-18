@@ -244,10 +244,42 @@ void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
   }
 }
 
+// Whether `dstOp` has a site to read `src`'s result through if it were cloned
+// in: a foreach loads it in its body, an opaque only through an existing
+// prologue capture.
+bool hasFusionSite(IterForeachOp src, Operation *dstOp) {
+  if (src->getBlock() != dstOp->getBlock())
+    return false;
+
+  if (auto dst = dyn_cast<IterForeachOp>(dstOp))
+    return firstConsumerLoad(dst, src) != nullptr;
+
+  auto dst = dyn_cast<IterOpaqueOp>(dstOp);
+  if (!dst)
+    return false;
+  bool feedsInput = false;
+  for (auto [i, in] : llvm::enumerate(dst.getInputs())) {
+    if (in != src.getResult(0))
+      continue;
+    if (!findExistingPrologueCapture(dst, i).closure)
+      return false;
+    feedsInput = true;
+  }
+  return feedsInput;
+}
+
 // A multi-use producer fuses only if the config allows duplicating it (the
 // splice clones it into each consumer); a single-use producer always fuses.
+// Cloning pays by removing the materialization, so every user needs a site to
+// absorb the clone -- `mo.output`, or an opaque with no prologue on that input,
+// leaves the result written to memory anyway. Legacy refuses the same case.
 bool duplicationAllowed(IterForeachOp src, const InputFusionConfig &config) {
-  return src.getResult(0).hasOneUse() || config.canDuplicate(src);
+  if (src.getResult(0).hasOneUse())
+    return true;
+  for (Operation *user : src.getResult(0).getUsers())
+    if (!hasFusionSite(src, user))
+      return false;
+  return config.canDuplicate(src);
 }
 
 // Finds an eligible producer feeding `dstOp` under `config`, or null. A foreach

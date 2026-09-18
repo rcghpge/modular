@@ -415,3 +415,23 @@ mo.graph @no_fuse_into_in_place_opaque(%buf: !mo.buffer<[3, 2], si32>, %offsets:
   %c = mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "sampler.apply_penalties"}(%buf, %t, %offsets, %penalty, %penalty, %penalty, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
   mo.output %c : !mo.chain
 }
+
+// The computed result also leaves the graph, so it is materialized and its
+// producer is not cloned into the store kernel. The load keeps its single use
+// and still fuses -- a clone would strand it, to lower into an allocation plus
+// a device-to-device copy of the whole buffer.
+
+// CHECK-LABEL: mo.graph @escaping_result_keeps_load_fused(
+// CHECK-SAME:  %[[BUF:.*]]: !mo.buffer<[4096, 2], f32, gpu:0>
+// CHECK-NOT:   mo.mutable.load
+// CHECK:       map.iter.foreach<[4096, 2]>
+// CHECK-NEXT:  inputs  (%[[BUF]]
+// CHECK:       %{{.*}} = map.load %[[BUF]][%{{.*}}] : !mo.buffer<[4096, 2], f32, gpu:0>
+// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_mutable_load<[#mogg.fusion_leaf<"mo.mutable.load"{{.*}}
+mo.graph @escaping_result_keeps_load_fused(%buffer: !mo.buffer<[4096, 2], f32, gpu:0>) -> (!mo.tensor<[4096, 2], f32, gpu:0>, !mo.chain) {
+  %ch0 = mo.chain.create(%buffer) : !mo.buffer<[4096, 2], f32, gpu:0>
+  %loaded, %ch1 = mo.mutable.load(%buffer, %ch0) : (!mo.buffer<[4096, 2], f32, gpu:0>, !mo.chain) -> (!mo.tensor<[4096, 2], f32, gpu:0>, !mo.chain)
+  %abs = mo.abs(%loaded) : !mo.tensor<[4096, 2], f32, gpu:0>
+  %ch2 = mo.mutable.store(%buffer, %abs, %ch1) : (!mo.buffer<[4096, 2], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>, !mo.chain) -> !mo.chain
+  mo.output %abs, %ch2 : !mo.tensor<[4096, 2], f32, gpu:0>, !mo.chain
+}

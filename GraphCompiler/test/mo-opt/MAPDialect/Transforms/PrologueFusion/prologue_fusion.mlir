@@ -225,3 +225,26 @@ mo.graph @no_fuse_plain_input(
   %out = mo.matmul(%p, %z) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
   mo.output %out : !mo.tensor<[8, 8], f32>
 }
+
+// A producer feeding both a prologue-capable opaque and a foreach is cloned
+// into each: every user absorbs it, so nothing is left to materialize. The
+// standalone Exp kernel is gone -- no foreach precedes the opaque.
+
+// CHECK-LABEL: mo.graph @exp_into_prologue_and_foreach
+// CHECK-NOT:   map.iter.foreach
+// CHECK:       map.iter.opaque
+// CHECK:       map.iter.prologue
+// CHECK:       map.call.elementwise @{{.*}}.Exp
+// CHECK:       map.call.opaque @{{.*}}.Gather
+// CHECK:       map.iter.foreach
+// CHECK:       map.call.elementwise @{{.*}}.Exp
+// CHECK:       map.call.elementwise @{{.*}}.Tanh
+mo.graph @exp_into_prologue_and_foreach(
+  %a: !mo.tensor<[4096, 2], f32, gpu:0>,
+  %indices: !mo.tensor<[2, 2], si32, gpu:0>
+) -> (!mo.tensor<[2, 2, 2], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>) {
+  %0 = mo.exp(%a) : !mo.tensor<[4096, 2], f32, gpu:0>
+  %1 = mo.gather(%0, %indices) {axis = 0 : index} : (!mo.tensor<[4096, 2], f32, gpu:0>, !mo.tensor<[2, 2], si32, gpu:0>) -> !mo.tensor<[2, 2, 2], f32, gpu:0>
+  %2 = mo.tanh(%0) : !mo.tensor<[4096, 2], f32, gpu:0>
+  mo.output %1, %2 : !mo.tensor<[2, 2, 2], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>
+}

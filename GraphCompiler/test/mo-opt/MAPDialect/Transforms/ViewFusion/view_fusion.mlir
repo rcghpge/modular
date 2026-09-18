@@ -177,3 +177,24 @@ mo.graph @sliceIntoReshapeStaysUnfused(%input: !mo.tensor<[10, 64], f32>) -> !mo
   %res = mo.static.reshape(%sliced) : !mo.tensor<[3, 32], f32> -> !mo.tensor<[96], f32>
   mo.output %res : !mo.tensor<[96], f32>
 }
+
+// A view whose result is also a graph output is written to memory either way,
+// so it stays its own kernel rather than being re-derived in the consumer.
+
+// CHECK-LABEL: mo.graph @sliceEscapingOutput
+// CHECK:       [[SLICED:%.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       map.index.slice<{{.*}}>
+// CHECK:       map.iter.foreach<[3, 32]>
+// CHECK:       inputs  ([[SLICED]]: !mo.tensor<[3, 32], f32>
+// CHECK-NOT:   map.index.slice<{{.*}}>
+// CHECK:       map.call.elementwise @{{.*}}.Add
+mo.graph @sliceEscapingOutput(%input: !mo.tensor<[10, 64], f32>, %other: !mo.tensor<[3, 32], f32>) -> (!mo.tensor<[3, 32], f32>, !mo.tensor<[3, 32], f32>) {
+  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %sliced = mo.slice(%input, %start, %stop, %step) : (
+    !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
+  ) -> !mo.tensor<[3, 32], f32>
+  %res = mo.add(%sliced, %other) : !mo.tensor<[3, 32], f32>
+  mo.output %sliced, %res : !mo.tensor<[3, 32], f32>, !mo.tensor<[3, 32], f32>
+}

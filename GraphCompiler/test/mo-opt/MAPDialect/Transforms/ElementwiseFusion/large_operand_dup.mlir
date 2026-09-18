@@ -37,3 +37,37 @@ mo.graph @unaryExpLargeFanout(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>) -> (!mo.
 // CHECK: map.iter.foreach
 // CHECK: map.call.elementwise @{{.*}}.Exp
 // CHECK: map.call.elementwise @{{.*}}.ReLU
+
+// The same unary op, but its result is also a graph output: it is written to
+// memory either way, so cloning it into the consumer only adds work.
+mo.graph @unaryExpEscapingOutput(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>) -> (!mo.tensor<[4096, 2], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>) {
+  %0 = mo.exp(%arg0) : !mo.tensor<[4096, 2], f32, gpu:0>
+  %1 = mo.tanh(%0) : !mo.tensor<[4096, 2], f32, gpu:0>
+  mo.output %0, %1 : !mo.tensor<[4096, 2], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>
+}
+
+// CHECK-LABEL: mo.graph @unaryExpEscapingOutput
+// CHECK: map.iter.foreach
+// CHECK: map.call.elementwise @{{.*}}.Exp
+// CHECK: map.iter.foreach
+// CHECK-NOT: map.call.elementwise @{{.*}}.Exp
+// CHECK: map.call.elementwise @{{.*}}.Tanh
+
+// The same unary op feeding an opaque kernel that cannot absorb it: the matmul
+// reads the materialized result, so cloning into the other consumer only adds
+// work.
+mo.graph @unaryExpIntoOpaque(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>, %w: !mo.tensor<[2, 8], f32, gpu:0>) -> (!mo.tensor<[4096, 8], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>) {
+  %0 = mo.exp(%arg0) : !mo.tensor<[4096, 2], f32, gpu:0>
+  %1 = mo.matmul(%0, %w) : (!mo.tensor<[4096, 2], f32, gpu:0>, !mo.tensor<[2, 8], f32, gpu:0>) -> !mo.tensor<[4096, 8], f32, gpu:0>
+  %2 = mo.tanh(%0) : !mo.tensor<[4096, 2], f32, gpu:0>
+  mo.output %1, %2 : !mo.tensor<[4096, 8], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>
+}
+
+// CHECK-LABEL: mo.graph @unaryExpIntoOpaque
+// CHECK: map.iter.foreach
+// CHECK: map.call.elementwise @{{.*}}.Exp
+// CHECK: map.iter.opaque
+// CHECK: map.call.opaque @{{.*}}.Matmul
+// CHECK: map.iter.foreach
+// CHECK-NOT: map.call.elementwise @{{.*}}.Exp
+// CHECK: map.call.elementwise @{{.*}}.Tanh
