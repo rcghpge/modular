@@ -8,6 +8,7 @@
 #include "GraphCompiler/Conversion/ParameterInference.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/Analysis/Support.h"
@@ -35,35 +36,10 @@ MOGGKernelBuilder::MOGGKernelBuilder(Operation *op, OpBuilder &insertPoint,
       builder(insertPoint), ctx(op->getContext()), loc(op->getLoc()),
       registry(reg) {
 
-  // Most ops are async, with specific exceptions:
-  // - forceSync overrides everything (unsafe, for debugging only)
-  // - TransposeOp is always sync
-  //   TODO(GEX-2569): make async after enforcing high water mark
-  // - LayoutTransformOp is sync on CPU
-  // - MO_MultiDevice ops (AllReduceSumOp, ReduceScatterSumOp, ...) are sync:
-  //   they manage their own cross-device parallelism internally (via
-  //   TaskGroup) and must complete before the graph runtime proceeds.
-  //
-  // All other GPU ops are async to ensure that the primitives are
-  // non-blocking (see KeyConceptsInGraphRT.md).
-  // Note that `cuModuleLoadDataEx` and sync kernel launch can block in
-  // general. Rely on sequence fusion to amortize the associated primitive
-  // launch overhead, instead of synchronous primitive execution.
-  bool isSyncRequired =
-      forceSync || isa<MO::TransposeOp>(op) ||
-      (MO::isOnHost(op) && isa<MO::LayoutTransformOp>(op)) ||
-      isa<MO::AllReduceSumOp>(op) || isa<MO::ReduceScatterSumOp>(op) ||
-      isa<MO::Composite::AllReduceAddRMSNormQuantFP8Op>(op) ||
-      isa<MO::Composite::DistributedMatmulReduceScatterSumOp>(op) ||
-      isa<MO::Composite::DistributedReduceScatterRMSNormOp>(op) ||
-      isa<MO::Composite::DistributedAllGatherRMSNormOp>(op) ||
-      isa<MO::Composite::DistributedAllGatherRMSNormQuantMXFP8Op>(op) ||
-      isa<MO::Composite::DistributedAllGatherRMSNormQuantMXFP6Op>(op) ||
-      isa<MO::DistributedBroadcastOp>(op) ||
-      isa<MO::DistributedScatterOp>(op) || isa<MO::EPDispatchOp>(op) ||
-      isa<MO::EPDispatchFP8Op>(op) || isa<MO::EPDispatchBlockScaledNVOp>(op) ||
-      isa<MO::EPDispatchMXFP4Op>(op) || isa<MO::EPCombineOp>(op);
-  isAsync = !isSyncRequired;
+  // `forceSync` overrides everything (unsafe, for debugging only); the
+  // op-identity policy lives in `MO::kernelRequiresSyncLaunch` so the MO->MAP
+  // path can share it.
+  isAsync = !(forceSync || MO::kernelRequiresSyncLaunch(op));
 
   // Get ready for building ops.
   builder.setInsertionPoint(op);

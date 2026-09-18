@@ -185,6 +185,8 @@ void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
       mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
   dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
   dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
+  // Async if either member is (as RegionFusion combines it on the old path).
+  dst.setIsAsync(src.getIsAsync() || dst.getIsAsync());
 }
 
 // Splices `src`'s body into `dst`'s existing prologue at the load site behind
@@ -242,6 +244,9 @@ void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
     dst->setLoc(
         mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
   }
+
+  // Async if either member is (as RegionFusion combines it on the old path).
+  dst.setIsAsync(src.getIsAsync() || dst.getIsAsync());
 }
 
 // Whether `dstOp` has a site to read `src`'s result through if it were cloned

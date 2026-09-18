@@ -48,6 +48,7 @@ void outlineForeach(IterForeachOp foreachOp) {
     opaque.setFusionInfoAttr(fusionInfo);
   opaque.setHasReadEffect(foreachOp.getHasReadEffect());
   opaque.setHasWriteEffect(foreachOp.getHasWriteEffect());
+  opaque.setIsAsync(foreachOp.getIsAsync());
 
   // `map.iter.opaque` shadows only its non-chain inputs and outputs as body
   // block args; the chain rides the dedicated `$inputChain` operand and the

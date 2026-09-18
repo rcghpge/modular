@@ -96,6 +96,7 @@ static IterOpaqueOp addScratchResult(IterOpaqueOp op, Type scratchType,
     newOp.setFusionInfoAttr(fusionInfo);
   newOp.setHasReadEffect(op.getHasReadEffect());
   newOp.setHasWriteEffect(op.getHasWriteEffect());
+  newOp.setIsAsync(op.getIsAsync());
 
   // Move the body over, then append the scratch output block arg: it becomes
   // the last output (the chain has no block arg), matching the new last

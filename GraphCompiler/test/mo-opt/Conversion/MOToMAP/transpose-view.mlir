@@ -18,6 +18,8 @@
 // CHECK:         [[IDX_:%.*]] = map.index.transpose<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>> ([[IDX]], [[PERM]])
 // CHECK:         [[VAL:%.*]] = map.load [[INPUT]]{{\[}}[[IDX_]]] : !mo.tensor<[2, 3], f32>
 // CHECK:         map.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mo.tensor<[3, 2], f32>
+// mo.transpose is sync-launch, so the foreach carries `isAsync = false`.
+// CHECK:         isAsync = false
 mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
   %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %res = mo.transpose(%input, %perm) : (

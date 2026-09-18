@@ -11,6 +11,7 @@ mo.graph @add(
   mo.output %output : !mo.tensor<[8, 16, 128], f32>
 }
 
+// An elementwise op is async, so the foreach prints no `isAsync` attribute.
 // CHECK-LABEL:   mo.graph @add
 // CHECK-NOT:       map.iter.opaque
 // CHECK:           map.iter.foreach<[8, 16, 128]>
@@ -18,3 +19,4 @@ mo.graph @add(
 // CHECK:             [[YV:%.*]] = map.load %{{.*}}[[[IDX]]] : !mo.tensor<[8, 16, 128], f32>
 // CHECK:             map.call.elementwise @{{.+}}.Add([[IDX]], [[XV]], [[YV]])
 // CHECK:             map.store %{{.*}}[[[IDX]]] = %{{.*}} : !mo.tensor<[8, 16, 128], f32>
+// CHECK-NOT:       isAsync

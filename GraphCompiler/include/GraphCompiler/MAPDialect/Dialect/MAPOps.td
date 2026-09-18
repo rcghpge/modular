@@ -116,7 +116,8 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     Optional<MO_Chain>:$inputChain,
     OptionalAttr<AnyAttr>:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
   );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -406,7 +407,8 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
     Optional<MO_Chain>:$chain,
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
   );
 
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain]>>:$results);

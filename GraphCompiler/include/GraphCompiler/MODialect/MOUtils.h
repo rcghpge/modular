@@ -25,11 +25,20 @@
 #include <cstdlib>
 #include <type_traits>
 
+namespace mlir {
+class Operation;
+} // namespace mlir
+
 namespace M::MO {
 
 //===----------------------------------------------------------------------===//
 // MO Utilities
 //===----------------------------------------------------------------------===//
+
+/// True when the kernel built for `op` must launch synchronously (transpose,
+/// host layout transform, or a collective). Shared by the MO->MOGG and MO->MAP
+/// lowerings so their async policy cannot drift.
+bool kernelRequiresSyncLaunch(mlir::Operation *op);
 
 namespace Detail {
 template <typename inT, typename outT>

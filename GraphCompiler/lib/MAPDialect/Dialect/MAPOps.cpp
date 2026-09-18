@@ -255,8 +255,11 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
     }
   }
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
-  p.printOptionalAttrDict((*this)->getAttrs(),
-                          {getOperandSegmentSizesAttrName().getValue()});
+  // Async is the default; only a sync kernel prints `isAsync = false`.
+  SmallVector<StringRef> elided{getOperandSegmentSizesAttrName().getValue()};
+  if (getIsAsync())
+    elided.push_back(getIsAsyncAttrName().getValue());
+  p.printOptionalAttrDict((*this)->getAttrs(), elided);
 }
 
 // The body shadows the non-chain inputs then the non-chain outputs; the chain
@@ -784,9 +787,12 @@ void IterForeachOp::print(OpAsmPrinter &p) {
   }
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 
-  p.printOptionalAttrDict(
-      getOperation()->getAttrs(),
-      {"shape", getOperandSegmentSizesAttrName().getValue()});
+  // Async is the default; only a sync kernel prints `isAsync = false`.
+  SmallVector<StringRef> elided{"shape",
+                                getOperandSegmentSizesAttrName().getValue()};
+  if (getIsAsync())
+    elided.push_back(getIsAsyncAttrName().getValue());
+  p.printOptionalAttrDict(getOperation()->getAttrs(), elided);
 }
 
 LogicalResult IterForeachOp::verify() {

@@ -167,6 +167,9 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
                             /*hasReadEffect=*/true,
                             /*hasWriteEffect=*/kernelOp.getHasWriteEffect());
 
+  // Inherent, so `setDiscardableAttrs` below does not carry it.
+  newKernelOp.setIsAsync(kernelOp.getIsAsync());
+
   // Merge source locations so the fused kernel keeps both ops' provenance.
   newKernelOp->setLoc(mlir::FusedLoc::get(
       kernelOp->getContext(), {loadOp->getLoc(), kernelOp->getLoc()}));

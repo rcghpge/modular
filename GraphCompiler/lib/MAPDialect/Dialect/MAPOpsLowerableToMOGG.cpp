@@ -965,6 +965,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // is dead -- the store is dropped and the buffer never written.
   kernel.setHasReadEffect(getHasReadEffect());
   kernel.setHasWriteEffect(getHasWriteEffect());
+  kernel.setIsAsync(getIsAsync());
 
   // Unique dynamic dims the kernel references anywhere -- not just its I/O
   // signature. A dim can live only on an intermediate value or a view's spec:

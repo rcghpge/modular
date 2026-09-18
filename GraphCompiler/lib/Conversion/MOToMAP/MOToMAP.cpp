@@ -23,6 +23,7 @@
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/Analysis/Support.h"
@@ -105,6 +106,12 @@ std::pair<bool, bool> getReadWriteEffects(Operation *op) {
           memEffectOp.hasEffect<MemoryEffects::Write>()};
 }
 
+// Stamp the async launch policy the old MO->MOGG path derives from `srcOp`.
+template <typename OpT>
+void stampAsyncLaunch(OpT iterOp, Operation *srcOp) {
+  iterOp.setIsAsync(!MO::kernelRequiresSyncLaunch(srcOp));
+}
+
 LogicalResult lowerToOpaque(Operation *op,
                             const MOGG::KernelDeclAdaptor &adaptor,
                             const MOGG::KernelDeclOperandMapping &mapping) {
@@ -153,6 +160,7 @@ LogicalResult lowerToOpaque(Operation *op,
   auto [hasReadEffect, hasWriteEffect] = getReadWriteEffects(op);
   opaque.setHasReadEffect(hasReadEffect);
   opaque.setHasWriteEffect(hasWriteEffect);
+  stampAsyncLaunch(opaque, op);
 
   // Body block args shadow the non-chain inputs then the non-chain outputs.
   // The chain (in and out) is pure MGP sequencing threaded through the op's
@@ -275,6 +283,7 @@ lowerElementwiseToForeach(Operation *op,
       /*chain=*/Value(),
       /*fusionInfo=*/
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+  stampAsyncLaunch(foreachOp, op);
 
   // Body block args: [input tensors..., output tensor, map.index<rank>].
   Block *body = &foreachOp.getBody().emplaceBlock();
@@ -350,6 +359,7 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)),
       /*hasReadEffect=*/hasReadEffect,
       /*hasWriteEffect=*/hasWriteEffect);
+  stampAsyncLaunch(foreachOp, op);
 
   // Body block args: [tensor value, buffer, map.index<rank>]. No "outputs"
   // block arg at all -- the buffer input itself is the store target, and
@@ -455,6 +465,7 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
       /*chain=*/Value(),
       /*fusionInfo=*/
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+  stampAsyncLaunch(foreachOp, op);
 
   // Body block args: [input, start, stop, step, output, map.index<rank>].
   Block *body = &foreachOp.getBody().emplaceBlock();
@@ -513,6 +524,7 @@ LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
       /*chain=*/Value(),
       /*fusionInfo=*/
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+  stampAsyncLaunch(foreachOp, op);
 
   // Body block args: [input, output, map.index<outRank>].
   Block *body = &foreachOp.getBody().emplaceBlock();
@@ -567,6 +579,7 @@ LogicalResult lowerReshapeToForeach(MO::Static::ReshapeOp op) {
       /*chain=*/Value(),
       /*fusionInfo=*/
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+  stampAsyncLaunch(foreachOp, op);
 
   // Body block args: [input, output, map.index<outRank>].
   Block *body = &foreachOp.getBody().emplaceBlock();
@@ -634,6 +647,7 @@ LogicalResult lowerTransposeToForeach(MO::TransposeOp op) {
       /*chain=*/Value(),
       /*fusionInfo=*/
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+  stampAsyncLaunch(foreachOp, op);
 
   // Body block args: [input, perm, output, map.index<rank>].
   Block *body = &foreachOp.getBody().emplaceBlock();

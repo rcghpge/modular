@@ -2512,6 +2512,9 @@ void KernelRegionOp::print(OpAsmPrinter &p) {
   SmallVector<StringRef> elided{getOperandSegmentSizesAttrName().getValue()};
   if (getOutputParamDecls().empty())
     elided.push_back(getOutputParamDeclsAttrName().getValue());
+  // Async is the default; only a sync kernel prints `isAsync = false`.
+  if (getIsAsync())
+    elided.push_back(getIsAsyncAttrName().getValue());
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(), elided);
   p << " ";
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
@@ -2793,7 +2796,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
       /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, decls),
       InOutSignatureAttr::get(ctx, semantics),
       /*fusionInfo=*/getFusionInfoAttr(),
-      /*isAsync=*/BoolAttr::get(ctx, false),
+      /*isAsync=*/BoolAttr::get(ctx, getIsAsync()),
       /*constantResources=*/ArrayAttr::get(ctx, {}),
       /*canFuseIntoOther=*/BoolAttr::get(ctx, !MO::isOnHost(getOperation())),
       /*canBeFusedInto=*/BoolAttr::get(ctx, true),

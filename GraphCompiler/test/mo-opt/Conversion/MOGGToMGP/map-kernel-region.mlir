@@ -26,6 +26,9 @@
 // CHECK: mogg.call.stub @[[STUB0:[A-Za-z0-9_]+_map[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.context
 // CHECK: mogg.async.ready
 // CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio.">
+// Async op: the region keeps `isAsync = true` (was hardcoded `false` before
+// KernelRegionOp had an `isAsync` attribute).
+// CHECK-SAME: isAsync = true
 // CHECK: mogg.kernel.stub @[[STUB0]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.context)
 // CHECK-SAME: device = #M.device_ref<"cpu", 0>
 // CHECK: mogg._shape.create() {shape = #mosh<ape[2, 2]>{{.*}}} : () -> !mogg.shape

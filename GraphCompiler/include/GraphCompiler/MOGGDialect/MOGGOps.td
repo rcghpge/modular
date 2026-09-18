@@ -1848,7 +1848,8 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
     // the op they lower. Without them a kernel whose only observable effect is
     // a mutable store reports none and is dead.
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
   );
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain, MO_Opaque,
                                           MOGG_ShapeFuncResult]>>:$outputs);

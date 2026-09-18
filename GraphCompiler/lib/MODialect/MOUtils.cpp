@@ -5,10 +5,32 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MODialect/MOUtils.h"
+#include "GraphCompiler/MODialect/MODevices.h"
+#include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
 
 using namespace M;
 using namespace MO;
+
+// Most ops are async to keep primitives non-blocking (see
+// KeyConceptsInGraphRT.md). The exceptions: transpose (TODO(GEX-2569): make
+// async after enforcing high water mark), host layout transform, and the
+// collectives, which manage their own cross-device parallelism and must
+// complete before the runtime proceeds.
+bool M::MO::kernelRequiresSyncLaunch(Operation *op) {
+  return isa<TransposeOp>(op) || (isOnHost(op) && isa<LayoutTransformOp>(op)) ||
+         isa<AllReduceSumOp>(op) || isa<ReduceScatterSumOp>(op) ||
+         isa<Composite::AllReduceAddRMSNormQuantFP8Op>(op) ||
+         isa<Composite::DistributedMatmulReduceScatterSumOp>(op) ||
+         isa<Composite::DistributedReduceScatterRMSNormOp>(op) ||
+         isa<Composite::DistributedAllGatherRMSNormOp>(op) ||
+         isa<Composite::DistributedAllGatherRMSNormQuantMXFP8Op>(op) ||
+         isa<Composite::DistributedAllGatherRMSNormQuantMXFP6Op>(op) ||
+         isa<DistributedBroadcastOp>(op) || isa<DistributedScatterOp>(op) ||
+         isa<EPDispatchOp>(op) || isa<EPDispatchFP8Op>(op) ||
+         isa<EPDispatchBlockScaledNVOp>(op) || isa<EPDispatchMXFP4Op>(op) ||
+         isa<EPCombineOp>(op);
+}
 
 template <>
 std::optional<SmallVector<APInt>>
