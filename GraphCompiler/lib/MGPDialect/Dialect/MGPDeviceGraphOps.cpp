@@ -1823,6 +1823,62 @@ LogicalResult DeviceGraphCollectiveCreateOp::verify() {
   return verifyInputResidency(*this, getInputs());
 }
 
+void DeviceGraphCollectiveCreateOp::build(
+    OpBuilder &builder, OperationState &result, Value theContext,
+    llvm::ArrayRef<Value> deviceContexts, Value cache,
+    llvm::ArrayRef<Value> inputs, llvm::ArrayRef<unsigned> inputCounts,
+    llvm::function_ref<void(OpBuilder &, Location, unsigned, Value, Value,
+                            ValueRange)>
+        bodyBuilder) {
+  OpBuilder::InsertionGuard guard(builder);
+
+  unsigned numRegions = inputCounts.size();
+  unsigned inputTotal = 0;
+  for (unsigned count : inputCounts)
+    inputTotal += count;
+  assert(inputTotal == inputs.size() &&
+         "inputCounts must sum to inputs.size()");
+
+  MLIRContext *ctx = builder.getContext();
+  SmallVector<Type> graphTypes;
+  graphTypes.reserve(numRegions);
+
+  size_t inputOffset = 0;
+
+  for (unsigned i : llvm::seq(numRegions)) {
+    Region *region = result.addRegion();
+    Block *block = builder.createBlock(region);
+
+    Value graphBuilder =
+        block->addArgument(DeviceGraphBuilderType::get(ctx), result.location);
+    Value contextArg =
+        block->addArgument(theContext.getType(), result.location);
+
+    unsigned count = inputCounts[i];
+    ValueRange argSlice =
+        llvm::ArrayRef<Value>(inputs).slice(inputOffset, count);
+    SmallVector<Location> locs(count, result.location);
+    auto inputArgs = block->addArguments(argSlice.getTypes(), locs);
+
+    if (bodyBuilder)
+      bodyBuilder(builder, result.location, i, graphBuilder, contextArg,
+                  ValueRange(inputArgs));
+
+    if (!block->mightHaveTerminator())
+      ensureTerminator(*region, builder, result.location);
+
+    auto yieldOp = cast<DeviceGraphYieldOp>(block->getTerminator());
+    FunctionType signature = FunctionType::get(ctx, argSlice.getTypes(),
+                                               yieldOp.getOutputs().getTypes());
+    graphTypes.push_back(DeviceGraphType::get(ctx, signature));
+
+    inputOffset += count;
+  }
+
+  build(builder, result, graphTypes, theContext, deviceContexts, cache, inputs,
+        /*graphsCount=*/0);
+}
+
 LogicalResult DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &) {
   return (*this)->emitError(
       "`mgp.device_graph.collective.create` Mojo emission is not yet "

@@ -767,6 +767,33 @@ def DeviceGraphStablePlaceOp : MGP_DeviceGraphOp<"stable.place", [
 }
 
 //===----------------------------------------------------------------------===//
+// DeviceGraphCollectiveYieldOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphCollectiveYieldOp
+    : MGP_DeviceGraphOp<"collective.yield", [
+  HasParent<"DeviceGraphCollectiveOp">,
+  Pure,
+  ReturnLike,
+  Terminator,
+]> {
+  let summary = "Terminator for a `mgp.device_graph.collective` device region.";
+  let description = [{
+    Yields the values this region contributes to the parent op's `$outputs`.
+    The parent op appends operands across regions in region order.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+  let assemblyFormat =
+    "attr-dict ($operands^ `:` type($operands))?";
+
+  // No-operand builder for the parent's `SingleBlockImplicitTerminator` trait
+  // so the auto-generated terminator builder has the right signature; operands
+  // are populated after insertion.
+  let builders = [OpBuilder<(ins)>];
+}
+
+//===----------------------------------------------------------------------===//
 // DeviceGraphCollectiveOp
 //===----------------------------------------------------------------------===//
 
@@ -891,33 +918,6 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
 }
 
 //===----------------------------------------------------------------------===//
-// DeviceGraphCollectiveYieldOp
-//===----------------------------------------------------------------------===//
-
-def DeviceGraphCollectiveYieldOp
-    : MGP_DeviceGraphOp<"collective.yield", [
-  HasParent<"DeviceGraphCollectiveOp">,
-  Pure,
-  ReturnLike,
-  Terminator,
-]> {
-  let summary = "Terminator for a `mgp.device_graph.collective` device region.";
-  let description = [{
-    Yields the values this region contributes to the parent op's `$outputs`.
-    The parent op appends operands across regions in region order.
-  }];
-
-  let arguments = (ins Variadic<AnyType>:$operands);
-  let assemblyFormat =
-    "attr-dict ($operands^ `:` type($operands))?";
-
-  // No-operand builder for the parent's `SingleBlockImplicitTerminator` trait
-  // so the auto-generated terminator builder has the right signature; operands
-  // are populated after insertion.
-  let builders = [OpBuilder<(ins)>];
-}
-
-//===----------------------------------------------------------------------===//
 // DeviceGraphCollectiveCreateOp
 //===----------------------------------------------------------------------===//
 
@@ -926,6 +926,7 @@ def DeviceGraphCollectiveCreateOp : MGP_DeviceGraphOp<"collective.create", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   IsolatedFromAbove,
+  SingleBlockImplicitTerminator<"DeviceGraphYieldOp">,
 ]> {
   let summary = "Builds one device graph per device from a collective body.";
   let description = [{
@@ -979,6 +980,16 @@ def DeviceGraphCollectiveCreateOp : MGP_DeviceGraphOp<"collective.create", [
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins
+      "Value":$theContext,
+      "llvm::ArrayRef<mlir::Value>":$deviceContexts,
+      "mlir::Value":$cache,
+      "llvm::ArrayRef<mlir::Value>":$inputs,
+      "llvm::ArrayRef<unsigned>":$inputCounts,
+      CArg<"llvm::function_ref<void(::mlir::OpBuilder &, ::mlir::Location, unsigned, ::mlir::Value, ::mlir::Value, ::mlir::ValueRange)>", "nullptr">:$bodyBuilder)>
+  ];
 }
 
 //===----------------------------------------------------------------------===//

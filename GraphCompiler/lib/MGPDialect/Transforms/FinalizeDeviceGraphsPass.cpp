@@ -11,7 +11,10 @@
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/RegionUtils.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 
 using namespace M;
@@ -56,10 +59,9 @@ SmallVector<Value> nonChainValues(ValueRange v) {
 /// `mgp.buffer.bulk_slice`, which only does host-side sub-buffer math) leaves
 /// its cast live, and an unrealized cast cannot be emitted to Mojo. Fold the
 /// round trips first: converting one of a pair early would strand its inverse.
-LogicalResult resolveBuilderCasts(DeviceGraphCreateOp createOp) {
+LogicalResult resolveBuilderCasts(Region &region) {
   SmallVector<UnrealizedConversionCastOp> casts;
-  createOp.getBuildBody().walk(
-      [&](UnrealizedConversionCastOp cast) { casts.push_back(cast); });
+  region.walk([&](UnrealizedConversionCastOp cast) { casts.push_back(cast); });
 
   SmallVector<UnrealizedConversionCastOp> remaining;
   mlir::reconcileUnrealizedCasts(casts, &remaining);
@@ -103,6 +105,59 @@ LogicalResult resolveBuilderCasts(DeviceGraphCreateOp createOp) {
   }
 
   return mlir::success();
+}
+
+/// Build a `mogg.generic.compiled.region` around a device-graph build callback.
+///
+/// `operands` are the live values the region needs from the outside. The region
+/// body receives them as `!mogg.async<T>` block arguments, unpacks them, and
+/// passes the unpacked values to `bodyBuilder`. The values returned by
+/// `bodyBuilder` are packed back into async and yielded.
+static FailureOr<MOGG::GenericCompiledRegionOp> wrapDeviceGraphBuildRegion(
+    IRRewriter &rewriter, Location loc, DeviceRefAttr deviceRef,
+    TypeRange resultTypes, ValueRange operands, StringRef fusionName,
+    ArrayAttr constantResources,
+    llvm::function_ref<FailureOr<SmallVector<Value>>(OpBuilder &, Location,
+                                                     ValueRange)>
+        bodyBuilder) {
+  MLIRContext *ctx = rewriter.getContext();
+
+  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
+      operands.size(), InOutSignatureAttr::InOutSemantics::kNone);
+
+  auto regionOp = MOGG::GenericCompiledRegionOp::create(
+      rewriter, loc, resultTypes, operands,
+      KGEN::ParamDeclArrayAttr::get(ctx, {}),
+      InOutSignatureAttr::get(ctx, operandSemantics),
+      MOGG::FusionInfoAttr::get(
+          ctx, MOGG::FusionLeafAttr::get(ctx, StringAttr::get(ctx, fusionName),
+                                         /*loc=*/{}, /*signature=*/{})),
+      rewriter.getBoolAttr(false), constantResources,
+      rewriter.getBoolAttr(false), rewriter.getBoolAttr(false),
+      rewriter.getBoolAttr(false));
+  regionOp.setDeviceRef(deviceRef);
+
+  Block &regionBody = regionOp.getBody().emplaceBlock();
+  for (Value operand : operands)
+    regionBody.addArgument(MOGG::AsyncType::get(operand.getType()), loc);
+  rewriter.setInsertionPointToStart(&regionBody);
+
+  auto unpacked =
+      llvm::map_to_vector(regionBody.getArguments(), [&](Value arg) -> Value {
+        return MOGG::AsyncUnpackOp::create(rewriter, loc, arg);
+      });
+
+  FailureOr<SmallVector<Value>> outputs = bodyBuilder(rewriter, loc, unpacked);
+  if (failed(outputs))
+    return mlir::failure();
+
+  auto packed = llvm::map_to_vector(*outputs, [&](Value out) -> Value {
+    return MOGG::AsyncPackOp::create(rewriter, loc, out);
+  });
+
+  MOGG::OutputOp::create(rewriter, loc, packed);
+
+  return regionOp;
 }
 
 /// Lower a single `mgp.device_graph.staging` op into a
@@ -163,97 +218,63 @@ LogicalResult finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
   SmallVector<Value> regionOperands{theContext, deviceContext};
   llvm::append_range(regionOperands, inputs);
 
-  SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
-      regionOperands.size(), InOutSignatureAttr::InOutSemantics::kNone);
+  auto regionOpResult = wrapDeviceGraphBuildRegion(
+      rewriter, loc, deviceContext.getType().getDevice(), TypeRange{graphType},
+      regionOperands, "mgp.device_graph.create",
+      stagingOp.getConstantResources(),
+      [&](OpBuilder &bodyBuilder, Location bodyLoc,
+          ValueRange unpacked) -> FailureOr<SmallVector<Value>> {
+        Value contextUnpacked = unpacked[0];
+        Value deviceContextUnpacked = unpacked[1];
+        ValueRange inputsUnpacked = unpacked.drop_front(2);
 
-  auto regionOp = MOGG::GenericCompiledRegionOp::create(
-      rewriter, loc, /*results=*/TypeRange{graphType},
-      /*operands=*/regionOperands,
-      /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, {}),
-      /*inOutSignature=*/InOutSignatureAttr::get(ctx, operandSemantics),
-      /*fusionInfo=*/
-      MOGG::FusionInfoAttr::get(
-          ctx, MOGG::FusionLeafAttr::get(
-                   ctx, StringAttr::get(ctx, "mgp.device_graph.create"),
-                   /*loc=*/{}, /*signature=*/{})),
-      /*isAsync=*/rewriter.getBoolAttr(false),
-      /*constantResources=*/stagingOp.getConstantResources(),
-      /*canFuseIntoOther=*/rewriter.getBoolAttr(false),
-      /*canBeFusedInto=*/rewriter.getBoolAttr(false),
-      /*canDuplicate=*/rewriter.getBoolAttr(false));
+        // The graph is cached in the state context, so an execution that hits
+        // reuses the graph a previous one built instead of recording it again.
+        Value cache =
+            DeviceGraphCacheOp::create(bodyBuilder, bodyLoc, contextUnpacked);
 
-  regionOp.setDeviceRef(deviceContext.getType().getDevice());
+        // Build the create op inside the region body, moving the staged body
+        // into its build body. The create builder makes the body block with
+        // [builder, context, inputs...] args; the callback splices the staged
+        // ops in, rebinds the staged block args, and yields the graph outputs.
+        auto createOp = DeviceGraphCreateOp::create(
+            bodyBuilder, bodyLoc, contextUnpacked, deviceContextUnpacked, cache,
+            inputsUnpacked,
+            [&](OpBuilder &innerBuilder, Location innerLoc, Value graphBuilder,
+                Value /*contextArg*/, ValueRange inputArgs) {
+              Block *createBody = innerBuilder.getInsertionBlock();
+              createBody->getOperations().splice(
+                  createBody->end(), stagingBody.getOperations(),
+                  stagingBody.begin(), std::prev(stagingBody.end()));
 
-  // The region's body block args are `!mogg.async<T>` wrappers around the
-  // operands; unpack them to plain `T` at the top.
-  Block &regionBody = regionOp.getBody().emplaceBlock();
-  for (Value operand : regionOperands)
-    regionBody.addArgument(MOGG::AsyncType::get(operand.getType()), loc);
-  rewriter.setInsertionPointToStart(&regionBody);
+              // Yield before rebinding the staged block args below: a staged
+              // body may yield one of its own inputs, and
+              // `replaceAllUsesWith` only rewrites uses that already exist.
+              DeviceGraphYieldOp::create(innerBuilder, innerLoc, graphOutputs);
 
-  auto unpackAsyncValue = [&](Value val) -> Value {
-    return MOGG::AsyncUnpackOp::create(rewriter, loc, val);
-  };
+              stagingBuilderArg.replaceAllUsesWith(graphBuilder);
+              unsigned createArgIdx = 0;
+              for (auto [stagingArg, stagingInput] :
+                   llvm::zip_equal(stagingInputArgs, stagingOp.getInputs())) {
+                if (isChain(stagingInput))
+                  continue;
+                stagingArg.replaceAllUsesWith(inputArgs[createArgIdx++]);
+              }
 
-  SmallVector<Value> unpacked =
-      llvm::map_to_vector(regionBody.getArguments(), unpackAsyncValue);
+              // We're transitioning to an SSACFG based operation, so we need to
+              // order the operations in the body to enforce dominance
+              // requirements.
+              mlir::sortTopologically(createBody);
+            });
 
-  Value contextUnpacked = unpacked[0];
-  Value deviceContextUnpacked = unpacked[1];
-  ValueRange inputsUnpacked = ArrayRef<Value>(unpacked).drop_front(2);
+        if (failed(resolveBuilderCasts(createOp.getBuildBody())))
+          return mlir::failure();
 
-  // The graph is cached in the state context, so an execution that hits reuses
-  // the graph a previous one built instead of recording it again.
-  Value cache = DeviceGraphCacheOp::create(rewriter, loc, contextUnpacked);
-
-  // Build the create op inside the region body, moving the staged body into its
-  // build body. The create builder makes the body block with
-  // [builder, context, inputs...] args; the callback splices the staged ops in,
-  // rebinds the staged block args, and yields the graph outputs (from which the
-  // result graph signature is inferred). The `context` block arg is build-time
-  // only (for the body's `get_cached` reads); the staged body in the first cut
-  // does not reference it, so it is left unused here.
-  auto createOp = DeviceGraphCreateOp::create(
-      rewriter, loc, contextUnpacked, deviceContextUnpacked, cache,
-      inputsUnpacked,
-      [&](OpBuilder &bodyBuilder, Location bodyLoc, Value graphBuilder,
-          Value /*contextArg*/, ValueRange inputArgs) {
-        Block *createBody = bodyBuilder.getInsertionBlock();
-        createBody->getOperations().splice(
-            createBody->end(), stagingBody.getOperations(), stagingBody.begin(),
-            std::prev(stagingBody.end()));
-
-        // Yield before rebinding the staged block args below: a staged body may
-        // yield one of its own inputs, and `replaceAllUsesWith` only rewrites
-        // uses that already exist, so a yield built afterwards would keep
-        // pointing at a staging block arg that erasing `stagingOp` destroys.
-        DeviceGraphYieldOp::create(bodyBuilder, bodyLoc, graphOutputs);
-
-        stagingBuilderArg.replaceAllUsesWith(graphBuilder);
-        // Rebind the staged input block args to the create body's input args.
-        // Chain inputs were filtered out of the graph signature, so skip them
-        // (they are unused inside the staged body).
-        unsigned createArgIdx = 0;
-        for (auto [stagingArg, stagingInput] :
-             llvm::zip_equal(stagingInputArgs, stagingOp.getInputs())) {
-          if (isChain(stagingInput))
-            continue;
-          stagingArg.replaceAllUsesWith(inputArgs[createArgIdx++]);
-        }
-
-        // We're transitioning to an SSACFG based operation, so we need to order
-        // the operations in the body to enforce dominance requirements.
-        mlir::sortTopologically(createBody);
+        return SmallVector<Value>{createOp.getOutGraph()};
       });
-
-  if (failed(resolveBuilderCasts(createOp)))
+  if (failed(regionOpResult))
     return mlir::failure();
-
-  // Pack the built graph back into async and yield it from the region.
-  rewriter.setInsertionPointAfter(createOp);
-  Value packedGraph =
-      MOGG::AsyncPackOp::create(rewriter, loc, createOp.getOutGraph());
-  MOGG::OutputOp::create(rewriter, loc, ValueRange{packedGraph});
+  auto regionOp = *regionOpResult;
 
   // Replay (outside the region): feed the same (non-chain) inputs, surface the
   // graph's value outputs as results, and produce a fresh completion chain that
@@ -284,6 +305,205 @@ LogicalResult finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
   return mlir::success();
 }
 
+/// Collect the values used inside a collective graph `region` that are defined
+/// outside of it. Chain values (dead pass-throughs) and stable-address slots
+/// are left to later work.
+static LogicalResult collectRegionInputs(Region &region,
+                                         SmallVectorImpl<Value> &inputs) {
+  llvm::SetVector<Value> captured;
+  mlir::getUsedValuesDefinedAbove(region, captured);
+
+  inputs = nonChainValues(captured.getArrayRef());
+  return mlir::success();
+}
+
+/// A region of a `mgp.device_graph.collective` after we have computed its
+/// captures and the non-chain values it yields.
+struct RegionInterface {
+  Region *region;
+  SmallVector<Value> inputs;
+  SmallVector<Value> outputs;
+};
+
+/// Build a `RegionInterface` for each graph body in `collectiveOp`, computing
+/// the values it captures from outside and the value outputs it contributes.
+static LogicalResult
+createRegionInterfaces(DeviceGraphCollectiveOp collectiveOp,
+                       SmallVectorImpl<RegionInterface> &interfaces) {
+  interfaces.reserve(collectiveOp.getNumRegions());
+
+  for (auto graph : collectiveOp.graphs()) {
+    RegionInterface iface;
+    iface.region = graph.bodyBlock->getParent();
+    if (failed(collectRegionInputs(*iface.region, iface.inputs)))
+      return mlir::failure();
+
+    auto yieldOp =
+        cast<DeviceGraphCollectiveYieldOp>(graph.bodyBlock->getTerminator());
+    for (Value out : yieldOp.getOperands())
+      if (!isChain(out))
+        iface.outputs.push_back(out);
+
+    interfaces.push_back(std::move(iface));
+  }
+  return mlir::success();
+}
+
+/// Map each device referenced by `collectiveOp` to the corresponding
+/// execute-block device context in `model`.
+static FailureOr<SmallVector<DeviceContextValue>>
+collectDeviceContexts(DeviceGraphCollectiveOp collectiveOp, ModelOp model) {
+  SmallVector<DeviceContextValue> deviceContexts;
+  for (auto deviceRef : collectiveOp.getDevices()) {
+    DeviceContextValue deviceContext;
+    for (auto [attr, execDevice] :
+         llvm::zip(model.getDevices(), model.getExecuteDevices())) {
+      if (attr == deviceRef) {
+        deviceContext = cast<DeviceContextValue>(execDevice);
+        break;
+      }
+    }
+    if (!deviceContext)
+      return collectiveOp.emitError(
+                 "device-graph finalization: no execute device context matches "
+                 "device ")
+             << deviceRef;
+    deviceContexts.push_back(deviceContext);
+  }
+  return deviceContexts;
+}
+
+/// Lower a single `mgp.device_graph.collective` op into a
+/// `mgp.device_graph.collective.create` wrapped in a
+/// `mogg.generic.compiled.region`, plus a bare
+/// `mgp.device_graph.collective.execute` that replays it.
+LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
+                                   ModelOp model) {
+  Location loc = collectiveOp.getLoc();
+  MLIRContext *ctx = collectiveOp->getContext();
+  IRRewriter rewriter(collectiveOp);
+
+  Value theContext = model.getExecuteContext();
+
+  // Map each region to its execute-block device context.
+  auto deviceContextsResult = collectDeviceContexts(collectiveOp, model);
+  if (failed(deviceContextsResult))
+    return mlir::failure();
+
+  SmallVector<DeviceContextValue> deviceContexts =
+      std::move(*deviceContextsResult);
+
+  // Determine per-region inputs and outputs. Chain outputs are dropped from the
+  // graph signature and later rewired to the execute op's fresh chain.
+  SmallVector<RegionInterface> regionInterfaces;
+  if (failed(createRegionInterfaces(collectiveOp, regionInterfaces)))
+    return failure();
+
+  // Flatten per-region inputs in region order for the new create/execute ops.
+  SmallVector<Value> allInputs;
+  SmallVector<unsigned> inputCounts;
+  inputCounts.reserve(regionInterfaces.size());
+  for (RegionInterface &info : regionInterfaces) {
+    inputCounts.push_back(info.inputs.size());
+    llvm::append_range(allInputs, info.inputs);
+  }
+
+  auto graphTypes =
+      llvm::map_to_vector(regionInterfaces, [&](RegionInterface &info) -> Type {
+        return DeviceGraphType::get(ctx, info.inputs, info.outputs);
+      });
+
+  // Wrap the build work in a compiled region: context + all device contexts +
+  // all graph inputs enter via the async ABI, and the region yields the built
+  // graphs (one per device).
+  SmallVector<Value> regionOperands{theContext};
+  llvm::append_range(regionOperands, deviceContexts);
+  llvm::append_range(regionOperands, allInputs);
+
+  auto regionOpResult = wrapDeviceGraphBuildRegion(
+      rewriter, loc, deviceContexts.front().getType().getDevice(),
+      TypeRange(graphTypes), regionOperands, collectiveOp.getOperationName(),
+      collectiveOp.getConstantResources(),
+      [&](OpBuilder &bodyBuilder, Location bodyLoc,
+          ValueRange unpacked) -> FailureOr<SmallVector<Value>> {
+        Value contextUnpacked = unpacked[0];
+        SmallVector<Value> deviceContextsUnpacked =
+            llvm::to_vector(unpacked.slice(1, deviceContexts.size()));
+        SmallVector<Value> inputsUnpacked =
+            llvm::to_vector(unpacked.drop_front(1 + deviceContexts.size()));
+
+        Value cache =
+            DeviceGraphCacheOp::create(bodyBuilder, bodyLoc, contextUnpacked);
+
+        auto createOp = DeviceGraphCollectiveCreateOp::create(
+            bodyBuilder, bodyLoc, contextUnpacked, deviceContextsUnpacked,
+            cache, inputsUnpacked, inputCounts,
+            [&](OpBuilder &innerBuilder, Location innerLoc, unsigned regionIdx,
+                Value graphBuilder, Value /*contextArg*/,
+                ValueRange inputArgs) {
+              RegionInterface &info = regionInterfaces[regionIdx];
+              Region &oldRegion = *info.region;
+              Block &oldBlock = oldRegion.front();
+
+              IRMapping mapper;
+              mapper.map(oldRegion.getArgument(0), graphBuilder);
+              mapper.map(info.inputs, inputArgs);
+
+              for (Operation &op : oldBlock.without_terminator())
+                innerBuilder.clone(op, mapper);
+
+              auto oldYield = oldBlock.getTerminator();
+              SmallVector<Value> newOutputs;
+              newOutputs.reserve(info.outputs.size());
+              for (Value out : oldYield->getOperands()) {
+                if (isChain(out))
+                  continue;
+                Value mapped = mapper.lookupOrDefault(out);
+                newOutputs.push_back(mapped);
+              }
+
+              DeviceGraphYieldOp::create(innerBuilder, innerLoc, newOutputs);
+            });
+
+        for (Region &createRegion : createOp.getGraphs())
+          if (failed(resolveBuilderCasts(createRegion)))
+            return mlir::failure();
+
+        return llvm::to_vector_of<Value>(createOp.getOutGraphs());
+      });
+
+  if (failed(regionOpResult))
+    return mlir::failure();
+  auto regionOp = *regionOpResult;
+
+  // The output types is the flattened sequence of output types for each
+  // graph.
+  SmallVector<Type> outputTypes;
+  for (RegionInterface &info : regionInterfaces)
+    llvm::append_range(outputTypes, TypeRange(info.outputs));
+
+  rewriter.setInsertionPoint(collectiveOp);
+  auto executeOp = DeviceGraphCollectiveExecuteOp::create(
+      rewriter, loc, /*chain=*/MEF::ChainType::get(ctx),
+      /*outputs=*/TypeRange(outputTypes),
+      /*graphs=*/regionOp.getResults(),
+      /*inputs=*/allInputs);
+
+  // Rewire the collective op's results: chain results map to the execute chain,
+  // value results map to the execute value outputs in region/yield order.
+  Value executeChain = executeOp.getChain();
+  unsigned outputIdx = 0;
+  for (Value result : collectiveOp.getResults()) {
+    if (isChain(result))
+      result.replaceAllUsesWith(executeChain);
+    else
+      result.replaceAllUsesWith(executeOp.getOutputs()[outputIdx++]);
+  }
+
+  rewriter.eraseOp(collectiveOp);
+  return mlir::success();
+}
+
 } // namespace
 
 namespace M::MGP {
@@ -307,6 +527,11 @@ class FinalizeDeviceGraphsPass
     for (DeviceGraphStagingOp stagingOp : llvm::to_vector(
              model.getExecuteBlock()->getOps<DeviceGraphStagingOp>()))
       if (failed(finalizeStagingOp(stagingOp, model)))
+        return signalPassFailure();
+
+    for (DeviceGraphCollectiveOp collectiveOp : llvm::to_vector(
+             model.getExecuteBlock()->getOps<DeviceGraphCollectiveOp>()))
+      if (failed(finalizeCollectiveOp(collectiveOp, model)))
         return signalPassFailure();
   }
 };

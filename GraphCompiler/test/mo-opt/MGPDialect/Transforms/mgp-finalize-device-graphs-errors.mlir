@@ -50,3 +50,4 @@ mgp.model @dg_no_device : mof devices [#M.device_ref<"gpu", 0>]
   } -> index
   mef.output %ch0, %in : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 }  {isDeviceGraph}
+

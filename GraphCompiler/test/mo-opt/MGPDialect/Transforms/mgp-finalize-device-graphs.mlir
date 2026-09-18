@@ -14,9 +14,7 @@
 // graph as its single result.
 // CHECK: %[[GRAPH:[a-zA-Z0-9_]+]] = mogg.generic.compiled.region (%[[CTX]], %[[GPU]], %[[IN]]) : (%{{.+}}: !mgp.context, %{{.+}}: !mgp.device_context<<"gpu", 0>>, %{{.+}}: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>> {
 // CHECK: mogg.async.unpack
-// The create op takes no chain/slot; the `!mgp.context` is a build-time block
-// arg after the builder, not part of the signature. The graph is cached in that
-// same context, so create takes the cache as an operand.
+
 // CHECK: %[[CACHE:[a-zA-Z0-9_]+]] = mgp.device_graph.cache %{{.+}} : !mgp.device_graph.cache
 // CHECK: mgp.device_graph.create %{{.+}}, %{{.+}} cache(%[[CACHE]] : !mgp.device_graph.cache) inputs(%{{.+}} : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
 // CHECK-NEXT: ^bb0(%[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder, %{{.+}}: !mgp.context, %{{.+}}: !mgp.tensor<2x3xf32, <"gpu", 0>>):
@@ -292,6 +290,48 @@ mgp.model @dg_mut_input : mof devices [#M.device_ref<"gpu", 0>]
 } {isDeviceGraph}
 
 // -----
+
+// A multi-device `mgp.device_graph.collective` with no stable-address slots
+// lowers to a single `mogg.generic.compiled.region` that builds all graphs
+// via `mgp.device_graph.collective.create`, followed by a host-side
+// `mgp.device_graph.collective.execute`.
+
+// CHECK-LABEL: mgp.model @dg_collective
+// CHECK: execute (%[[CH:[a-zA-Z0-9_]+]]: !mef.chain, %[[CTX:[a-zA-Z0-9_]+]]: !mgp.context, %{{.+}}: !mgp.opaque<"weights_registry">, %[[GPU0:[a-zA-Z0-9_]+]]: !mgp.device_context<<"gpu", 0>>, %[[GPU1:[a-zA-Z0-9_]+]]: !mgp.device_context<<"gpu", 1>>, %[[IN0:[a-zA-Z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>>, %[[IN1:[a-zA-Z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 1>>)
+// CHECK: %[[GRAPHS:[a-zA-Z0-9_]+]]:2 = mogg.generic.compiled.region (%[[CTX]], %[[GPU0]], %[[GPU1]], %[[IN0]], %[[IN1]]) : (%{{.+}}: !mgp.context, %{{.+}}: !mgp.device_context<<"gpu", 0>>, %{{.+}}: !mgp.device_context<<"gpu", 1>>, %{{.+}}: !mgp.tensor<2x3xf32, <"gpu", 0>>, %{{.+}}: !mgp.tensor<2x3xf32, <"gpu", 1>>)  -> (!mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>, !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 1>>) -> !mgp.tensor<2x3xf32, <"gpu", 1>>>)
+// CHECK: %[[CACHE:[a-zA-Z0-9_]+]] = mgp.device_graph.cache %{{.+}} : !mgp.device_graph.cache
+// CHECK: %[[CGRAPHS:[a-zA-Z0-9_]+]]:2 = mgp.device_graph.collective.create %{{.+}} cache(%[[CACHE]] : !mgp.device_graph.cache) graph(%{{.+}} : !mgp.device_context<<"gpu", 0>>) builder(%b0) inputs(%[[RI0:[a-zA-Z0-9_]+]] : !mgp.tensor<2x3xf32, <"gpu", 0>>) {
+// CHECK:   mgp.device_graph.yield %[[RI0]] : !mgp.tensor<2x3xf32, <"gpu", 0>>
+// CHECK: }, graph(%{{.+}} : !mgp.device_context<<"gpu", 1>>) builder(%b1) inputs(%[[RI1:[a-zA-Z0-9_]+]] : !mgp.tensor<2x3xf32, <"gpu", 1>>) {
+// CHECK:   mgp.device_graph.yield %[[RI1]] : !mgp.tensor<2x3xf32, <"gpu", 1>>
+// CHECK: } : !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>, !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 1>>) -> !mgp.tensor<2x3xf32, <"gpu", 1>>>
+// CHECK: %{{[a-zA-Z0-9_]+}}, %[[OUTS:[a-zA-Z0-9_]+]]:2 = mgp.device_graph.collective.execute %[[GRAPHS]]#0, %[[GRAPHS]]#1 inputs(%[[IN0]], %[[IN1]] : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>) : !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>>>, !mgp.device_graph<(!mgp.tensor<2x3xf32, <"gpu", 1>>) -> !mgp.tensor<2x3xf32, <"gpu", 1>>> -> !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+// CHECK: mef.output %[[CH]], %[[OUTS]]#0, %[[OUTS]]#1 : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+// CHECK-NOT: mgp.device_graph.collective builder
+
+mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
+  init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu0, %gpu1
+      : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">,
+        !mgp.device_context<<"gpu", 0>>, !mgp.device_context<<"gpu", 1>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">,
+           %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>,
+           %in0: !mgp.tensor<2x3xf32, <"gpu", 0>>, %in1: !mgp.tensor<2x3xf32, <"gpu", 1>>)
+    -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>) {
+  %c0, %c1 = mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    mgp.device_graph.collective.yield %in0 : !mgp.tensor<2x3xf32, <"gpu", 0>>
+  }, <"gpu", 1> {
+    mgp.device_graph.collective.yield %in1 : !mgp.tensor<2x3xf32, <"gpu", 1>>
+  } : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+
+  mef.output %ch0, %c0, %c1
+      : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+} {isDeviceGraph}
+
+// -----
+
 
 // A host-placed tensor input (dispatch metadata) flows through finalization
 // with its cpu placement spelled verbatim at every boundary; the graph device
