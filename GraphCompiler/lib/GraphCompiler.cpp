@@ -162,6 +162,7 @@ void M::MO::registerPasses() {
 
   MOGG::registerMergeIdenticalKernelStubs();
   MOGG::registerAddProfileScopeTracingPass();
+  MOGG::registerWrapKernelsWithTraceOpPass();
   MOGG::registerAddTryExceptBlocksPass();
   MOGG::registerLookupConstantResources();
   MGP::registerRaiseBackIndexConstant();
@@ -398,6 +399,7 @@ void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
   // then outline each mogg._kernel into a mogg.kernel.stub.
   pm.addPass(MOGG::createConformCallOperands());
   pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
+  pm.addPass(MOGG::createWrapKernelsWithTraceOp());
 
   pm.addPass(MOGG::createSimplifyKernelOperands());
 

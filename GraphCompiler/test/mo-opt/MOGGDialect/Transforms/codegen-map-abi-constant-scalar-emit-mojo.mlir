@@ -18,7 +18,7 @@
 // CHECK:   var [[PTR1:.*]] = [[MTS1]]._ptr
 // CHECK:   var [[LAY1:.*]] = [[MTS1]].to_tile_tensor().layout
 // CHECK:   comptime [[AL1:.*]] = [[MTS1]].alignment
-// CHECK:   def [[LAMBDA:lambda____[0-9]+]][width : Int, element_alignment : Int = 1](idx: layout.Coord) {var}:
+// CHECK:   def [[LAMBDA:lambda_____[0-9]+]][width : Int, element_alignment : Int = 1](idx: layout.Coord) {var}:
 // CHECK:     var [[T0:.*]] = layout.TileTensor[dtype = DType.float32, LayoutType = type_of([[LAY0]]), origin = UntrackedOrigin[mut = False]](ptr = [[PTR0]], layout = [[LAY0]])
 // CHECK:     var [[T1:.*]] = layout.TileTensor[dtype = DType.float32, LayoutType = type_of([[LAY1]]), origin = UntrackedOrigin[mut = True]](ptr = [[PTR1]], layout = [[LAY1]])
 // CHECK:     var [[XV:.*]] = {{.*}}tile_tensor_strided_load[simd_width = width, element_alignment = element_alignment, tensor_alignment = [[AL0]]]([[T0]], idx)

@@ -7652,15 +7652,16 @@ LogicalResult OutputOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult YieldOp::emitMojo(EmitMojoState &state) {
-  // Yields are only used inside TryOp to route a branch's produced value to
-  // one of the TryOp's results. Assign each operand to the corresponding result
-  // variable declared by the parent TryOp.
-  auto tryOp = dyn_cast<MOGG::TryOp>(getOperation()->getParentOp());
-  if (!tryOp)
+  // Routes a region's produced value to one of the parent's results:
+  // `mogg.try` forwarding a branch's, or `mogg.with_trace` forwarding a traced
+  // dispatch's. The op's other legal parents, guaranteed by its `ParentOneOf`,
+  // carry nothing out this way.
+  Operation *parent = getOperation()->getParentOp();
+  if (!isa<MOGG::TryOp, MOGG::WithTraceOp>(parent))
     return success();
 
   for (auto [operand, result] :
-       llvm::zip_equal(getOperands(), tryOp.getResults())) {
+       llvm::zip_equal(getOperands(), parent->getResults())) {
     MojoValue value = state.getMojoValueFor(operand);
     // An opaque struct need not be `ImplicitlyCopyable` (`SIMDPair` is only
     // `RegisterPassable`), so transfer it into the result variable rather than
@@ -7742,6 +7743,13 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
         MojoValue(kParameterTaskId)
             .equal(MojoValue(kFnGetSafeTaskId)({}, {contextMojoArg})));
   MojoValue traceExpr = MojoValue(kStructTrace)(traceParams, traceOperands);
+
+  // Declare a variable per result before the `with`, so the yield inside can
+  // assign it and the op consuming this trace's results still sees it in scope.
+  // Same shape `TryOp::emitMojo` uses for a non-MGP ABI.
+  for (OpResult result : getResults())
+    state.setMojoValueFor(result, state.builder.varDecl(boundaryTypeToMojo(
+                                      state, result.getType())));
 
   bool errOccurred = false;
   state.builder.with_(traceExpr, [&]() {

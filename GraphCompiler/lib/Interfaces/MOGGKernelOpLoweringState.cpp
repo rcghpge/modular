@@ -233,8 +233,10 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp) {
     auto *kernelTerminator = bodyBlock.getTerminator();
     OpBuilder localBuilder(ctx);
     localBuilder.setInsertionPoint(kernelTerminator);
-    auto withTraceOp =
-        MOGG::WithTraceOp::create(localBuilder, kernelTerminator->getLoc());
+    // No results: the MOGG ABI's kernel terminator moves inside the region and
+    // nothing downstream reads a value back out of the trace.
+    auto withTraceOp = MOGG::WithTraceOp::create(
+        localBuilder, kernelTerminator->getLoc(), mlir::TypeRange{});
     Block &innerBlock = withTraceOp.getBody().emplaceBlock();
     kernelTerminator->moveBefore(&innerBlock, innerBlock.end());
     localBuilder.setInsertionPointAfter(withTraceOp);

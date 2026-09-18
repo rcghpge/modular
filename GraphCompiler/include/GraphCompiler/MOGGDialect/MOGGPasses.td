@@ -362,6 +362,20 @@ def AddProfileScopeTracing: Pass<"mogg-add-profile-scope-tracing", "MOGG::Kernel
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
 
+def WrapKernelsWithTraceOp: Pass<"mogg-wrap-kernels-with-trace-op", "MOGG::KernelStubOp"> {
+  let summary = "Wraps a MAP ABI kernel stub's body in a trace range";
+  let description = [{
+    `mogg.with_trace` emits the kernel's per-kernel `Trace` range. A MOGG-ABI
+    stub gets one from `createKernelStub` and an MGP-ABI one from
+    `mogg-add-profile-scope-tracing`, so only MAP-ABI stubs are handled here.
+
+    Runs before `mogg-add-try-except-blocks`, which moves this op into the try
+    it builds.
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
 def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp"> {
   let summary = "Adds a try-except block to raising kernels";
   let description = [{

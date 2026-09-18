@@ -1386,7 +1386,7 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 def MOGG_YieldOp : MOGG_Op<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   ParentOneOf<["MOGG::TryOp", "MOGG::TensorCreatePrologueOp",
-               "MOGG::TensorCreateEpilogueOp"]>,
+               "MOGG::TensorCreateEpilogueOp", "MOGG::WithTraceOp"]>,
   ReturnLike,
   Terminator,
 ]> {
@@ -1413,8 +1413,9 @@ def MOGG_WithTraceOp : MOGG_Op<"with_trace", [
     whose terminator is the KernelTerminator for the stub.  This op is
     always considered throwing because Trace.__enter__ raises.
   }];
+  let results = (outs Variadic<AnyType>:$outputs);
   let regions = (region SizedRegion<1>:$body);
-  let assemblyFormat = "$body attr-dict";
+  let assemblyFormat = "$body attr-dict (`:` type($outputs)^)?";
 }
 
 def MOGG_ProfileScopeBeginOp : MOGG_Op<"profile_scope.begin", [
