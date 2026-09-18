@@ -3373,10 +3373,13 @@ LogicalResult KernelStubOp::verify() {
 }
 
 bool KernelStubOp::isThrows() {
-  // MOGG ABI kernels always use `with Trace[...]` which can raise, so they
-  // unconditionally return true. This also prevents deep recursion through
+  // A MOGG stub always carries a raising `with Trace[...]`, and
+  // `AddTryExceptBlocks` always gives a MAP stub the `mogg.raise` that renders
+  // its error context. Answering without a body walk also keeps
+  // `mogg.call.stub`'s `isThrows` -- whose callee is always one of these two --
+  // off a stub another thread is rewriting, and prevents deep recursion through
   // CallStubOp chains in sequence-fused kernels.
-  if (getAbi() == ABIKind::MOGG)
+  if (getAbi() == ABIKind::MOGG || getAbi() == ABIKind::MAP)
     return true;
   return llvm::any_of(getBodyBlock().getOps<MOGG::EmitsMojoInterface>(),
                       [](auto emitMojoOp) { return emitMojoOp.isThrows(); });
@@ -7659,10 +7662,27 @@ LogicalResult YieldOp::emitMojo(EmitMojoState &state) {
   for (auto [operand, result] :
        llvm::zip_equal(getOperands(), tryOp.getResults())) {
     MojoValue value = state.getMojoValueFor(operand);
+    // An opaque struct need not be `ImplicitlyCopyable` (`SIMDPair` is only
+    // `RegisterPassable`), so transfer it into the result variable rather than
+    // copying -- as `emitMojoMAPABI` does when returning one.
+    if (isa<MO::OpaqueType>(operand.getType()))
+      value = value.transfer();
     state.builder.assign(state.getMojoValueFor(result), value);
   }
 
   return success();
+}
+
+/// Renders a value crossing a stub boundary, where an opaque is the kernel's
+/// own struct rather than the `Pointer[NoneType]` `mlirTypeToMojoType` erases
+/// it to. Same mapping `emitMojoMOGGABI` and `emitMojoMAPABI` build inline.
+static MojoValue boundaryTypeToMojo(EmitMojoState &state, Type type) {
+  auto opaqueType = dyn_cast<MO::OpaqueType>(type);
+  if (!opaqueType)
+    return state.mlirTypeToMojoType(type);
+  MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
+  auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
+  return params.empty() ? baseTy : baseTy[params];
 }
 
 //===----------------------------------------------------------------------===//
@@ -7848,9 +7868,18 @@ LogicalResult TryOp::emitMojo(EmitMojoState &state) {
   // Declare result variables that both branches will assign. The variables
   // are visible to the yield ops in each region and to the mogg.output that
   // consumes this TryOp's results.
+  // MGP forwards async values and its except block sets an error on each one,
+  // so those stay `AnyAsyncValueRef`. Every other ABI forwards the result's
+  // own type and raises instead of yielding, so the variable is declared
+  // untyped-initialized and only the try branch assigns it.
+  auto stubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  bool isMGPAbi = stubOp && stubOp.getAbi() == MOGG::ABIKind::MGP;
   for (OpResult result : getResults()) {
-    MojoValue resultVar = state.builder.var(
-        MojoValue(kStructAnyAsyncValueRef)(), /*cache=*/false);
+    MojoValue resultVar =
+        isMGPAbi ? state.builder.var(MojoValue(kStructAnyAsyncValueRef)(),
+                                     /*cache=*/false)
+                 : state.builder.varDecl(
+                       boundaryTypeToMojo(state, result.getType()));
     state.setMojoValueFor(result, resultVar);
   }
 

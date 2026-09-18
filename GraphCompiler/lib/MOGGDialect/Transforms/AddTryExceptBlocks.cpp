@@ -38,12 +38,14 @@ struct AddTryExceptBlocks
     // TryOp. The try block contains the setup ops and WithTraceOp (added by
     // createKernelStub). The except block contains a RaiseOp that formats
     // the error with full kernel context (name, fusion info, traceback).
-    if (kernelOp.getAbi() == MOGG::ABIKind::MOGG) {
-      if (!kernelOp.isThrows())
-        return;
-
+    //
+    // MAP stubs take this arm too, or nothing renders their error context. The
+    // terminator stays outside the try, so its values are forwarded through.
+    if (kernelOp.getAbi() == MOGG::ABIKind::MOGG ||
+        kernelOp.getAbi() == MOGG::ABIKind::MAP) {
       builder.setInsertionPointToStart(&kernelBody);
-      auto tryOp = MOGG::TryOp::create(builder, loc, TypeRange{});
+      auto tryOp =
+          MOGG::TryOp::create(builder, loc, terminator->getOperandTypes());
       Block &tryBlock = tryOp.getTryRegion().emplaceBlock();
       for (Operation &op :
            llvm::make_early_inc_range(kernelBody.getOperations())) {
@@ -51,13 +53,15 @@ struct AddTryExceptBlocks
           op.moveBefore(&tryBlock, tryBlock.end());
       }
       builder.setInsertionPointToEnd(&tryBlock);
-      MOGG::YieldOp::create(builder, loc, ValueRange{});
+      MOGG::YieldOp::create(builder, loc, terminator->getOperands());
 
       Block &exceptBlock = tryOp.getExceptRegion().emplaceBlock();
       Value errArg =
           exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
       builder.setInsertionPointToStart(&exceptBlock);
       MOGG::RaiseOp::create(builder, loc, errArg);
+
+      terminator->setOperands(tryOp.getOutputs());
       return;
     }
 

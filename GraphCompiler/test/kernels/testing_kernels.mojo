@@ -251,6 +251,38 @@ def imposter_add_shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
     return x.shape()
 
 
+# Same as `imposter_add`, but its shape function raises, so the generated shape
+# stub is a throwing one that also returns a value.
+@extensibility.register("imposter_add_raising_shape")
+struct FooRaisingShape:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: OutputTensor,
+        x: InputTensor,
+        y: InputTensor,
+        ctx: DeviceContext,
+    ) raises:
+        @__parameter
+        @inline(.always)
+        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+            return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
+                SIMD[z.dtype, width]
+            ](y.load[width](idx))
+
+        foreach[func, target=target](z, ctx)
+
+
+@extensibility.register_shape_function("imposter_add_raising_shape")
+def imposter_add_raising_shape_shape(
+    x: InputTensor, y: InputTensor
+) raises -> IndexList[x.rank]:
+    if x.rank == 0:
+        raise "imposter_add_raising_shape: rank-0 is not supported"
+    return x.shape()
+
+
 # Device entry for the GPU negate path: one thread per flat element, negating
 # `input` into `output`. The trait arg's device representation is a `TileTensor`
 # (see `_MoggDenseTensorArg.device_type`), so the kernel gets Coord/raw-indexable
