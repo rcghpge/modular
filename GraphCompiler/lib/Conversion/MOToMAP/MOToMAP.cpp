@@ -30,6 +30,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "Support/ML/TensorShape.h"
 #include "mlir/IR/Builders.h"
 
 using namespace M;
@@ -42,6 +43,26 @@ namespace M::MO {
 
 namespace {
 
+// The runtime tensor representation caps rank at `kMaxRank` (see
+// Support/ML/TensorShape.h; `MGP::TensorSpecType::verify` enforces it and
+// `TensorSpecType::get` asserts on a violation). A ranked tensor above that cap
+// has no valid runtime representation. The legacy MO->MOGG path rejects such an
+// op with a graceful diagnostic (`opHasCompatibleTypes` in MOToMOGG.cpp); MAP
+// must not claim it, or it lowers to a rank>kMaxRank `map.iter` kernel that
+// then aborts building the MGP tensor spec. Deferring it here lets the op fall
+// through to MO->MOGG and get the same graceful error.
+static bool hasLowerableRank(Operation *op) {
+  auto rankOk = [](Type t) {
+    MO::TensorType tt = MO::dynCastFromTensorLike(t);
+    // Unranked / non-tensor operands are unchanged from prior behavior; only a
+    // ranked tensor above the cap is deferred.
+    return !tt || !tt.hasRank() ||
+           tt.getRank() <= static_cast<int64_t>(kMaxRank);
+  };
+  return llvm::all_of(op->getOperandTypes(), rankOk) &&
+         llvm::all_of(op->getResultTypes(), rankOk);
+}
+
 bool shouldLower(Operation *op) {
   if (isa<MO::PreservedDuringKernelLowering>(op))
     return false;
@@ -49,7 +70,9 @@ bool shouldLower(Operation *op) {
   if (isa<MO::InvokeShapeFuncOp>(op))
     return false;
   Dialect *dialect = op->getDialect();
-  return dialect && isa<MO::MODialect>(dialect);
+  if (!dialect || !isa<MO::MODialect>(dialect))
+    return false;
+  return hasLowerableRank(op);
 }
 
 MAP::IterEpilogueOp buildStoreEpilogue(OpBuilder &builder, Location loc,
