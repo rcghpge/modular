@@ -42,9 +42,25 @@ MOTypeToKernelDeclOperand(Type type) {
 static ErrorOrSuccess
 matchConvertedMOTypeToKernelDeclType(const KernelDeclOperandVariant &moType,
                                      const KernelDeclOperandVariant &kernelType,
-                                     Type originalMOType) {
+                                     Type originalMOType,
+                                     bool allowMutToImmut) {
   if (moType == kernelType)
     return success();
+
+  // A mutable operand may satisfy an immutable kernel operand -- reading
+  // mutable storage as an immutable snapshot is sound (the converse is not).
+  // Only ConformCallOperands opts in (`allowMutToImmut`): a
+  // `mogg._tensor.create` that `MAPToMOGG` built as a mutable buffer for a
+  // fused mutable-load can back a read-only kernel input, and conform recreates
+  // it immutable afterwards.
+  if (allowMutToImmut) {
+    if (const auto *kernelTensor =
+            std::get_if<KernelDeclTensorAdaptor>(&kernelType)) {
+      const auto *moTensor = std::get_if<KernelDeclTensorAdaptor>(&moType);
+      if (moTensor && moTensor->mut && !kernelTensor->mut)
+        return success();
+    }
+  }
 
   if (std::holds_alternative<KernelDeclVariadicTensorAdaptor>(kernelType)) {
     const auto *tensorType = std::get_if<KernelDeclTensorAdaptor>(&moType);
@@ -91,7 +107,8 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
                                  StringRef opName,
                                  bool hasSameVariadicOperandSize,
                                  bool hasExtraOutputShapeArgument,
-                                 bool resultLeavesByValue) {
+                                 bool resultLeavesByValue,
+                                 bool allowMutToImmut) {
   static const char *argumentKind = matchOperands ? "input" : "output";
 
   auto skipContextType =
@@ -182,7 +199,8 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
     }
 
     auto errorOnMatch = matchConvertedMOTypeToKernelDeclType(
-        *moTypeToKernelDeclOperand, kernelType->underlyingType, *moType);
+        *moTypeToKernelDeclOperand, kernelType->underlyingType, *moType,
+        allowMutToImmut);
 
     if (errorOnMatch.isError()) {
       return Error(llvm::formatv(
@@ -270,8 +288,8 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
   }
 
   auto errorOnMatch = matchConvertedMOTypeToKernelDeclType(
-      *moTypeToKernelDeclOperand, adaptor.outputResult->underlyingType,
-      *moType);
+      *moTypeToKernelDeclOperand, adaptor.outputResult->underlyingType, *moType,
+      /*allowMutToImmut=*/false);
   if (errorOnMatch.isError()) {
     return Error(llvm::formatv(
         "Op '{}' output at position {} does not match kernel function result; "
@@ -289,16 +307,20 @@ mapToKernelImplementation(ValueRange operands, ValueRange results,
                           const KernelDeclFunctionAdaptor &adaptor,
                           StringRef opName, bool hasSameVariadicOperandSize,
                           bool hasExtraOutputShapeArgument,
-                          bool resultLeavesByValue) {
+                          bool resultLeavesByValue, bool allowMutToImmut) {
   auto matchedInputsOrError = matchOperandsOrResultsKernelDecl<true>(
       operands, adaptor, opName, hasSameVariadicOperandSize,
-      hasExtraOutputShapeArgument, /*resultLeavesByValue=*/false);
+      hasExtraOutputShapeArgument, /*resultLeavesByValue=*/false,
+      allowMutToImmut);
   if (matchedInputsOrError.isError())
     return matchedInputsOrError.takeError();
 
+  // Outputs are destination-passing (mutable); the mut->immut widening only
+  // applies to read-only inputs.
   auto matchedOutputsOrError = matchOperandsOrResultsKernelDecl<false>(
       results, adaptor, opName, hasSameVariadicOperandSize,
-      hasExtraOutputShapeArgument, resultLeavesByValue);
+      hasExtraOutputShapeArgument, resultLeavesByValue,
+      /*allowMutToImmut=*/false);
   if (matchedOutputsOrError.isError())
     return matchedOutputsOrError.takeError();
 

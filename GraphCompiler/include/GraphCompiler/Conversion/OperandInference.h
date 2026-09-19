@@ -41,12 +41,16 @@ struct KernelDeclOperandMapping {
 /// op properties. Set `resultLeavesByValue` when the kernel's function result
 /// is returned rather than written through a destination, so `results` carries
 /// no entry standing in for it.
-ErrorOr<KernelDeclOperandMapping>
-mapToKernelImplementation(ValueRange operands, ValueRange results,
-                          const KernelDeclFunctionAdaptor &adaptor,
-                          StringRef opName, bool hasSameVariadicOperandSize,
-                          bool hasExtraOutputShapeArgument,
-                          bool resultLeavesByValue = false);
+/// `allowMutToImmut` lets a mutable operand satisfy an immutable kernel operand
+/// (a sound read-only widening; the converse is never allowed). Only
+/// ConformCallOperands opts in, so it can accept a `mogg._tensor.create` that
+/// MAPToMOGG built as a mutable buffer for a fused mutable-load and then
+/// recreate it immutable to match the callee.
+ErrorOr<KernelDeclOperandMapping> mapToKernelImplementation(
+    ValueRange operands, ValueRange results,
+    const KernelDeclFunctionAdaptor &adaptor, StringRef opName,
+    bool hasSameVariadicOperandSize, bool hasExtraOutputShapeArgument,
+    bool resultLeavesByValue = false, bool allowMutToImmut = false);
 
 /// Convenience overload that reads the operands/results and op properties off
 /// `op`.

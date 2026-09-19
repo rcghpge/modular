@@ -126,21 +126,52 @@ struct PackedCall {
   bool changed = false;
 };
 
-// Wraps each operand `fn` wants as a scalar or a tuple.
+// Wraps each operand `fn` wants as a scalar or a tuple. `allowMutToImmut` lets
+// a mutable operand back a read-only kernel input (see below); only kernel
+// calls opt in.
 FailureOr<PackedCall>
 packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
                      StringRef callee, ValueRange inputs, ValueRange outputs,
                      M::DeviceRefAttr device, bool hasSameVariadicOperandSize,
-                     bool resultLeavesByValue) {
+                     bool resultLeavesByValue, bool allowMutToImmut = false) {
   ErrorOr<KernelDeclOperandMapping> mapping = mapToKernelImplementation(
       inputs, outputs, fn, callee, hasSameVariadicOperandSize,
-      /*hasExtraOutputShapeArgument=*/false, resultLeavesByValue);
+      /*hasExtraOutputShapeArgument=*/false, resultLeavesByValue,
+      allowMutToImmut);
   if (mapping.isError())
     return call->emitOpError("ConformCallOperands: ") << mapping.getError();
 
   OpBuilder builder(call);
+
+  // `MAPToMOGG` reconstructs a fused mutable-load operand as a mutable
+  // `mogg._tensor.create` (a `!mogg.buffer_`). When it backs a read-only kernel
+  // input, the mapping above accepts the mut->immut widening, but codegen would
+  // still emit a mutable slice the kernel's immutable parameter rejects.
+  // Recreate that producer immutable so the emitted slice matches; DCE drops
+  // the now-unused mutable original.
+  SmallVector<Value> reconciledInputs(inputs.begin(), inputs.end());
+  bool reconciled = false;
+  if (allowMutToImmut) {
+    for (const auto &[idx, kernelArg] : mapping->operandMapping) {
+      if (idx >= reconciledInputs.size() || kernelArg.isMutableTensorType())
+        continue;
+      Value operand = reconciledInputs[idx];
+      if (!isa<BufferType>(operand.getType()))
+        continue;
+      auto producer = operand.getDefiningOp<TensorCreateInterface>();
+      if (!producer || !producer.getMut())
+        continue;
+      builder.setInsertionPointAfter(producer);
+      reconciledInputs[idx] =
+          producer.cloneWithMut(builder, /*mut=*/false)->getResult(0);
+      reconciled = true;
+    }
+    builder.setInsertionPoint(call);
+  }
+
   PackedCall packed;
-  packed.inputs = packOperands(builder, call->getLoc(), inputs,
+  packed.changed = reconciled;
+  packed.inputs = packOperands(builder, call->getLoc(), reconciledInputs,
                                mapping->operandMapping, device, packed.changed);
   packed.outputs = packOperands(builder, call->getLoc(), outputs,
                                 mapping->resultMapping, device, packed.changed);
@@ -173,7 +204,8 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
       call, *adaptor.executeFunction, call.getCallee(), call.getInputs(),
       call.getOutputs(), enclosingKernelDevice(call),
       call.getHasSameVariadicOperandSize(),
-      /*resultLeavesByValue=*/call.getOpaqueResult() != nullptr);
+      /*resultLeavesByValue=*/call.getOpaqueResult() != nullptr,
+      /*allowMutToImmut=*/true);
   if (failed(packed))
     return failure();
   bool changed = packed->changed;

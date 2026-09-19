@@ -3008,6 +3008,19 @@ struct MapLowerNoContext:
         pass
 
 
+# A signature-only in-place kernel with a mutable destination and a plain
+# (non-fused) immutable input, mirroring `InplaceMemcpy`. Used to check that
+# `FuseMutableLoads` fusing a `mo.mutable.load` into the immutable `src` operand
+# still lowers to an immutable tensor view rather than a mutable buffer.
+@extensibility.register("map_lower_inplace_copy")
+struct MapLowerInplaceCopy:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](dst: MutableInputTensor, src: InputTensor, ctx: DeviceContext,) raises:
+        pass
+
+
 @extensibility.register("map_lower_two_fused_outputs")
 struct MapLowerTwoFusedOutputs:
     @staticmethod

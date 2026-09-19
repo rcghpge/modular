@@ -11,9 +11,12 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/Support/LogicalResult.h"
 
-namespace mlir {
-class Operation;
-} // namespace mlir
+// `MOGGTypes.h` (for `!mogg.buffer_`/`!mogg.tensor_`) and `Builders.h` (for
+// `OpBuilder::clone`) are needed by the `cloneWithMut` default implementation,
+// which is emitted inline into the generated interface header below. Neither
+// pulls in `MOGGInterfaces.h`, so there is no include cycle.
+#include "GraphCompiler/MOGGDialect/MOGGTypes.h"
+#include "mlir/IR/Builders.h"
 
 namespace M::MOGG {
 // Shared verifier for `MOGG_TensorCreateInterface`, defined in MOGGOps.cpp

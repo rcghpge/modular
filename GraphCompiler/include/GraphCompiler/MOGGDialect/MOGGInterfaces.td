@@ -82,6 +82,31 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
       "bool", "getMut", (ins), /*methodBody=*/[{}],
       /*defaultImplementation=*/[{ return $_op.getMut(); }]
     >,
+    InterfaceMethod<
+      "Sets whether the produced tensor is mutable.",
+      "void", "setMut", (ins "bool":$mut), /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{ $_op.setMut(mut); }]
+    >,
+    InterfaceMethod<
+      [{Clone this create op with a new mutability, adjusting the result kind
+        (`!mogg.tensor_` when made immutable) so the buffer-implies-mutable
+        invariant holds. Returns the clone; the original is left for DCE.}],
+      "::M::MOGG::TensorCreateInterface", "cloneWithMut",
+      (ins "::mlir::OpBuilder &":$builder, "bool":$mut), /*methodBody=*/[{}],
+      /*defaultImplementation=*/[{
+        auto cloned = ::mlir::cast<ConcreteOp>(builder.clone(*$_op.getOperation()));
+        // Concrete `setMut` writes the `mut` property `getMut` reads (and errs
+        // at compile time if an op ever drops it); a raw `setAttr` would not.
+        cloned.setMut(mut);
+        ::mlir::Value result = cloned->getResult(0);
+        // A buffer result is mutable memory; retype to `!mogg.tensor_` when the
+        // clone becomes immutable to keep `!mogg.buffer_ => mut`.
+        if (!mut && ::mlir::isa<::M::MOGG::BufferType>(result.getType()))
+          result.setType(::M::MOGG::TensorType::get(cloned->getContext()));
+        return ::mlir::cast<::M::MOGG::TensorCreateInterface>(
+            cloned.getOperation());
+      }]
+    >,
   ];
 
   // A `!mogg.buffer_` result is mutable memory -- `getKernelOperandKind()`
