@@ -33,27 +33,63 @@ namespace M::MAP {
 
 namespace {
 
-// Returns the sole `TransformOpTy` op computing `op`'s load index if `op`'s
-// body is exactly what MOToMAP's lowering produces for a standalone,
-// never-fused view kernel of that kind -- one transform op consuming the
-// loop's own index, feeding a single load, feeding the store -- and null
-// otherwise. `ViewFuser` always changes this shape (more ops) when it fuses
-// anything into or out of a kernel, so matching the exact 3-op shape is
-// sufficient to know this kernel was never touched.
-template <typename TransformOpTy>
-TransformOpTy matchUnfusedView(IterForeachOp op) {
+// Defined below; matches a contiguous slice and returns its sliced dim.
+std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice);
+
+// Returns the index-transform chain of `op`'s body if that body is a pure view:
+// a run of `map.index.slice`/`map.index.reshape` ops threading the loop index
+// into a single load of the sole data input, feeding the store -- i.e. exactly
+//   [t_1, ..., t_n, load, store]
+// where `t_1` consumes the loop index, each `t_{i+1}` consumes `t_i`'s result
+// (single-use), and `load` reads `t_n`'s result from input-0's block arg. The
+// returned ops are in body order (`t_1` first, feeding the load last). Empty if
+// the body is anything else -- e.g. a real elementwise/compute kernel, or a
+// view with a broadcast/transpose the raise-back does not handle.
+//
+// This generalizes the legacy one-transform match: `MOToMAP` lowers each view
+// standalone, but `ViewFuser` fuses adjacent views (slice into reshape, ...)
+// into one kernel with several chained transforms. Matching the whole chain
+// lets us still raise it, where the old exact-3-op match would give up and
+// leave the fused view to materialize.
+SmallVector<Operation *> matchViewChain(IterForeachOp op) {
+  SmallVector<Operation *> empty;
   if (op.getNumResults() != 1)
-    return {};
+    return empty;
   Block &body = op.getBody().front();
-  if (body.getOperations().size() != 3)
-    return {};
-  auto it = body.begin();
-  auto transform = dyn_cast<TransformOpTy>(&*it++);
-  auto load = dyn_cast<LoadOp>(&*it++);
-  auto store = dyn_cast<StoreOp>(&*it);
-  if (!transform || !load || !store)
-    return {};
-  return transform;
+  auto &ops = body.getOperations();
+
+  SmallVector<Operation *> transforms;
+  auto it = ops.begin();
+  for (; it != ops.end() && isa<SliceIndexOp, ReshapeIndexOp>(&*it); ++it)
+    transforms.push_back(&*it);
+  if (transforms.empty())
+    return empty;
+
+  auto load = it != ops.end() ? dyn_cast<LoadOp>(&*it++) : nullptr;
+  auto store = it != ops.end() ? dyn_cast<StoreOp>(&*it++) : nullptr;
+  if (!load || !store || it != ops.end())
+    return empty;
+
+  // Linear chain from the loop index (the store's index) through each transform
+  // to the load. Each transform takes its index as operand 0.
+  Value cursor = store.getIndex();
+  for (Operation *t : transforms) {
+    if (t->getOperand(0) != cursor || !t->getResult(0).hasOneUse())
+      return empty;
+    cursor = t->getResult(0);
+  }
+  if (load.getIndex() != cursor)
+    return empty;
+  // The load must read input 0's block arg (`getArgument(i)` backs input i).
+  if (load.getTensor() != body.getArgument(0))
+    return empty;
+
+  // Reshape is always raise-able; every slice must be contiguous.
+  for (Operation *t : transforms)
+    if (auto slice = dyn_cast<SliceIndexOp>(t))
+      if (!matchContiguousSliceDim(slice))
+        return empty;
+  return transforms;
 }
 
 // Mirrors the legacy raise-back's own heuristic for identifying "the" sliced
@@ -95,54 +131,67 @@ std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice) {
   return k;
 }
 
-// Raises an unfused, contiguous `map.iter.foreach` slice kernel back to
-// `mogg.slice`, a zero-copy buffer slice `MOGGToMGP` lowers to
-// `mgp.tensor.slice`. Returns whether `op` was raised.
-bool raiseContiguousSlice(IterForeachOp op) {
-  SliceIndexOp slice = matchUnfusedView<SliceIndexOp>(op);
-  if (!slice)
-    return false;
-  std::optional<int64_t> k = matchContiguousSliceDim(slice);
-  if (!k)
-    return false;
-
-  MAP::SliceSpecAttr spec = slice.getSpec();
-  ArrayRef<int64_t> starts = spec.getStarts().asArrayRef();
-  ArrayRef<int64_t> stops = spec.getStops().asArrayRef();
-
-  Value input = op.getInputs()[0];
-  Value startsOperand = op.getInputs()[1];
-  auto hostDevice =
-      cast<MO::TensorType>(startsOperand.getType()).getDeviceRef();
-
-  OpBuilder builder(op);
-  Value startK =
-      MO::ConstantOp::create(builder, op.getLoc(), starts[*k], hostDevice);
-  Value stopK =
-      MO::ConstantOp::create(builder, op.getLoc(), stops[*k], hostDevice);
-
-  auto resultType = cast<MO::TensorType>(op.getResultTypes()[0]);
-  auto sliceOp = MOGG::SliceOp::create(builder, op.getLoc(), resultType, input,
-                                       startK, stopK);
-  op->replaceAllUsesWith(sliceOp->getResults());
-  op->erase();
-  return true;
-}
-
-// Raises an unfused `map.iter.foreach` reshape kernel back to
-// `mo.static.reshape` -- unconditional, unlike slice, since `MOGGToMGP`
-// always turns a reshape into a non-copying primitive regardless of
-// contiguity. Returns whether `op` was raised.
-bool raiseReshape(IterForeachOp op) {
-  ReshapeIndexOp reshape = matchUnfusedView<ReshapeIndexOp>(op);
-  if (!reshape)
+// Raises a view kernel whose body is a chain of contiguous slice/reshape index
+// transforms (as `matchViewChain` recognizes) back to a sequence of standalone
+// zero-copy ops the pre-advanced-fusion pipeline lowers without a copy: each
+// contiguous slice becomes `mogg.slice` (-> `mgp.tensor.slice`) and each
+// reshape becomes `mo.static.reshape` (a non-copying primitive). Returns
+// whether `op` was raised, tallying each raised op into the pass statistics.
+//
+// The body threads the loop index (output space) through the transforms into
+// the input load, so the transforms run output->input; the data ops are their
+// reverse (input->output). E.g. body `slice -> reshape -> load(in)` raises to
+// `reshape(in) -> slice(...)` on the buffer.
+bool raiseViewChain(IterForeachOp op, unsigned &numSlicesRaised,
+                    unsigned &numReshapesRaised) {
+  SmallVector<Operation *> chain = matchViewChain(op);
+  if (chain.empty())
     return false;
 
   OpBuilder builder(op);
-  auto reshapeOp = MO::Static::ReshapeOp::create(
-      builder, op.getLoc(), op.getResultTypes(), op.getInputs());
-  op->replaceAllUsesWith(reshapeOp->getResults());
+  Value cur = op.getInputs()[0];
+  unsigned slicesHere = 0, reshapesHere = 0;
+  for (Operation *t : llvm::reverse(chain)) {
+    auto curType = cast<MO::TensorType>(cur.getType());
+    // Last data op (first body transform) yields the kernel's exact result
+    // type; intermediates clone the running type with the transform's out
+    // shape.
+    bool isLast = (t == chain.front());
+    if (auto reshape = dyn_cast<ReshapeIndexOp>(t)) {
+      Type outType = isLast ? op.getResultTypes()[0]
+                            : Type(curType.cloneWith(
+                                  reshape.getSpec().getSignature().getOut()));
+      cur = MO::Static::ReshapeOp::create(builder, op.getLoc(),
+                                          TypeRange{outType}, ValueRange{cur})
+                ->getResult(0);
+      ++reshapesHere;
+    } else {
+      auto slice = cast<SliceIndexOp>(t);
+      MAP::SliceSpecAttr spec = slice.getSpec();
+      int64_t k = *matchContiguousSliceDim(slice);
+      ArrayRef<int64_t> starts = spec.getStarts().asArrayRef();
+      ArrayRef<int64_t> stops = spec.getStops().asArrayRef();
+      // The slice's start operand is a host tensor; reuse its device for the
+      // scalar bound constants.
+      auto hostDevice =
+          cast<MO::TensorType>(slice->getOperand(1).getType()).getDeviceRef();
+      Value startK =
+          MO::ConstantOp::create(builder, op.getLoc(), starts[k], hostDevice);
+      Value stopK =
+          MO::ConstantOp::create(builder, op.getLoc(), stops[k], hostDevice);
+      Type outType =
+          isLast ? op.getResultTypes()[0]
+                 : Type(curType.cloneWith(spec.getSignature().getOut()));
+      cur = MOGG::SliceOp::create(builder, op.getLoc(), outType, cur, startK,
+                                  stopK)
+                ->getResult(0);
+      ++slicesHere;
+    }
+  }
+  op->replaceAllUsesWith(ValueRange{cur});
   op->erase();
+  numSlicesRaised += slicesHere;
+  numReshapesRaised += reshapesHere;
   return true;
 }
 
@@ -156,15 +205,13 @@ struct RaiseBackContiguousViewsPass
     // Walk rather than iterate the body's direct ops: a map.iter.foreach
     // view kernel can sit inside control flow (e.g. mo.parallel), and
     // iterating only the graph's own top-level ops would miss those.
+    unsigned slices = 0, reshapes = 0;
     SmallVector<IterForeachOp> foreachOps;
     graphOp.walk([&](IterForeachOp op) { foreachOps.push_back(op); });
-    for (IterForeachOp op : foreachOps) {
-      if (raiseContiguousSlice(op)) {
-        ++numSlicesRaised;
-      } else if (raiseReshape(op)) {
-        ++numReshapesRaised;
-      }
-    }
+    for (IterForeachOp op : foreachOps)
+      raiseViewChain(op, slices, reshapes);
+    numSlicesRaised = slices;
+    numReshapesRaised = reshapes;
   }
 };
 
