@@ -1883,9 +1883,9 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
   // boundary (enforced at the MOGG stage) and a marker for which ops get the
   // side stream. Cross-stream ordering is expressed purely through buffer/
   // tensor guard chains -- never the running execute chain: the fork gates on
-  // the guard chains of the body's inputs *and* its captured values, and the
-  // body's outputs are re-guarded on the join chain so downstream consumers
-  // wait for the side stream.
+  // the guard chains of the body's inputs (chain-guarded captures are promoted
+  // to inputs first), and the body's outputs are re-guarded on the join chain
+  // so downstream consumers wait for the side stream.
   OpBuilder &b = loweringState.getExecuteOpBuilder();
   Location loc = seq.getLoc();
   Block &body = seq.getBodyRegion().front();
@@ -1939,19 +1939,27 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
     addDevice(res);
   const bool bindStream = streamId != 0 && !devices.empty();
 
-  // Values the body reads from the enclosing scope (everything that is NOT a
-  // block argument). mo.sequence is intentionally not IsolatedFromAbove -- the
-  // body may capture immutable weights/constants directly -- so to keep the
-  // cross-stream sync complete we also gate the fork on the producer chains of
-  // these captures. A read-only constant/weight has no guard chain (no-op); a
-  // capture produced on the main stream contributes its chain, so the side
-  // stream correctly waits for it.
+  // mo.sequence is intentionally not IsolatedFromAbove: the body may read
+  // constants and weights from the enclosing scope, and some lowerings need to
+  // see those constant operands directly. A capture with a producer chain is
+  // an unlisted input, though: promote it to a block argument so the body
+  // reads it through the fork-guarded argument below, exactly like a listed
+  // input. Only chain-free captures (constants, weights) stay captured.
+  SmallVector<Value> inputs(seq.getInputs());
   llvm::SetVector<Value> captured;
   mlir::getUsedValuesDefinedAbove(seq.getBodyRegion(), captured);
+  for (Value cap : captured) {
+    if (!guardOf(cap))
+      continue;
+    BlockArgument arg = body.addArgument(cap.getType(), cap.getLoc());
+    cap.replaceUsesWithIf(arg, [&](OpOperand &use) {
+      return seq.getBodyRegion().isAncestor(use.getOwner()->getParentRegion());
+    });
+    inputs.push_back(cap);
+  }
 
   // Fork: per device, create the side-stream view and a device_wait that makes
-  // the side stream wait for the base-stream producers of that device's inputs
-  // and captures.
+  // the side stream wait for the base-stream producers of that device's inputs.
   llvm::SmallDenseMap<DeviceRefAttr, TypedValue<MGP::DeviceContextType>>
       viewFor;
   llvm::SmallDenseMap<DeviceRefAttr, Value> forkChainFor;
@@ -1963,12 +1971,9 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
           MGP::DeviceContextSelectStreamOp::create(b, loc, base, streamId);
       viewFor[dev] = view;
       SmallVector<Value> inGuards;
-      for (Value in : seq.getInputs())
+      for (Value in : inputs)
         if (deviceOf(in) == dev)
           inGuards.push_back(guardOf(in));
-      for (Value cap : captured)
-        if (deviceOf(cap) == dev)
-          inGuards.push_back(guardOf(cap));
       forkChainFor[dev] =
           MGP::DeviceWaitOp::create(b, loc, /*inChain=*/combineChains(inGuards),
                                     execContext, /*waitingDeviceContext=*/view,
@@ -1983,11 +1988,14 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
   // local) block argument on the device's fork chain, so the body's ops wait
   // for the fork. We guard the block argument -- not the shared input value --
   // so unrelated main-stream consumers of the same input are not serialized.
-  for (auto [arg, operand] : llvm::zip(body.getArguments(), seq.getInputs())) {
+  // A device with no fork (not bound, or a promoted capture living on a device
+  // the body neither takes inputs from nor yields to) keeps producer ordering.
+  for (auto [arg, operand] : llvm::zip_equal(body.getArguments(), inputs)) {
     loweringState.emplaceExecuteLoweredValue(
         arg, loweringState.lookupExecuteLoweredValue(operand));
-    Value guard =
-        bindStream ? forkChainFor.lookup(deviceOf(operand)) : guardOf(operand);
+    Value guard = bindStream ? forkChainFor.lookup(deviceOf(operand)) : Value();
+    if (!guard)
+      guard = guardOf(operand);
     if (guard)
       loweringState.replaceChainGuard(arg, guard);
   }
