@@ -10,6 +10,7 @@
 
 #include "font.h"
 
+#include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
@@ -47,12 +48,16 @@
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 #undef GL_SILENCE_DEPRECATION
 
+#include "portable-file-dialogs.h"
+
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -358,28 +363,28 @@ static std::string findUnicodeFallbackFont() {
   return {};
 }
 
-class Renderer {
-private:
-  GLFWwindow *window;
-  float fontSizeScale = 1.0f;
-  // Visibility flags for each floating panel.
-  bool showBookmarks = false;
-  bool showTree = true;
-  bool showSource = true;
-  bool showGraph = true;
+// One opened IR file: its parsed module, the display dump, and the four views
+// seeded from it. Held via unique_ptr so its address stays stable — the view
+// callbacks below capture `this`.
+struct Document {
+  std::string label;                // basename, shown in the Files sidebar
+  std::string path;                 // full path, shown as a tooltip
+  OwningOpRef<ModuleOp> module;     // the parsed IR
+  OwningOpRef<ModuleOp> dumpModule; // reparse carrying FileLineColLoc positions
+  std::string dumpText;             // elided pretty-print shown in the IR panel
 
   TextView textView;
   TreeView treeRenderer;
   GraphView graphRenderer;
   SourceView sourceRenderer;
 
-public:
-  Renderer(GLFWwindow *window, ModuleOp root, ModuleOp dumpRoot,
-           const std::string &dumpText)
-      : window(window) {
+  Document() = default;
+  Document(const Document &) = delete;
+  Document &operator=(const Document &) = delete;
 
-    // Create all the different views and provide them with callbacks for
-    // changing the state of the MLIR text viewer.
+  // Build the views and wire the cross-view callbacks. The callbacks capture
+  // the Document, so navigation stays scoped to this file's own views.
+  void initViews(const TextViewer::Palette &palette) {
     TextViewCallbacks callbacks;
     callbacks.highlightOpInTextViewer = [this](int line) {
       textView.highlightLine(line);
@@ -392,9 +397,9 @@ public:
       textView.scrollToOp(op);
     };
 
-    treeRenderer = TreeView(root, callbacks);
-    graphRenderer = GraphView(root, callbacks);
-    sourceRenderer = SourceView(root);
+    treeRenderer = TreeView(*module, callbacks);
+    graphRenderer = GraphView(*module, callbacks);
+    sourceRenderer = SourceView(*module);
 
     // Give the text view callbacks to drive tree highlighting.
     TextView::TreeCallbacks treeCbs;
@@ -404,6 +409,154 @@ public:
     treeCbs.clearHighlight = [this]() { treeRenderer.clearHighlightedOp(); };
     textView.setTreeCallbacks(treeCbs);
 
+    textView.init(*module, *dumpModule, dumpText, palette);
+    sourceRenderer.initViewer(palette);
+  }
+};
+
+class Renderer {
+private:
+  GLFWwindow *window;
+  MLIRContext &context;
+  float fontSizeScale = 1.0f;
+  // Visibility flags for each floating panel.
+  bool showBookmarks = false;
+  bool showTree = true;
+  bool showSource = true;
+  bool showGraph = true;
+  bool showFiles = true;
+
+  // Every opened file and the index of the one currently displayed.
+  std::vector<std::unique_ptr<Document>> documents;
+  int activeIndex = 0;
+
+  // Text-viewer palette derived from the UI theme once, reused per document.
+  TextViewer::Palette palette;
+
+  // Pending file-open errors to surface in the UI. Populated by openFile,
+  // shown in a modal by render(), and cleared when the user dismisses it.
+  std::vector<std::string> openErrors;
+
+public:
+  Renderer(GLFWwindow *window, MLIRContext &context)
+      : window(window), context(context) {
+    initStyleAndFonts();
+    // Route Finder/Explorer file drops onto the window into openFile. ImGui's
+    // GLFW backend does not use the window user pointer or a drop callback, so
+    // both are free for us to claim.
+    glfwSetWindowUserPointer(window, this);
+    glfwSetDropCallback(window, &Renderer::handleFileDrop);
+  }
+
+  ~Renderer() = default;
+
+  // GLFW file-drop callback (fires during glfwPollEvents): open each dropped
+  // path, making the last one active.
+  static void handleFileDrop(GLFWwindow *win, int count, const char **paths) {
+    auto *self = static_cast<Renderer *>(glfwGetWindowUserPointer(win));
+    if (!self)
+      return;
+    for (int i = 0; i < count; ++i)
+      self->openFile(paths[i]);
+  }
+
+  // The document currently shown, or nullptr when none are open.
+  Document *active() {
+    if (documents.empty())
+      return nullptr;
+    return documents[activeIndex].get();
+  }
+
+  // Parse `path` into a new Document and make it active. Returns false (without
+  // exiting) if the file can't be read or parsed, so an interactive open never
+  // tears down the app.
+  bool openFile(const std::string &path) {
+    // Record a failure both to stderr and to the UI error queue, so a bad file
+    // is visible whether glidir was launched from a terminal or not.
+    auto fail = [&](const std::string &msg) {
+      llvm::errs() << msg << "\n";
+      openErrors.push_back(msg);
+      return false;
+    };
+
+    std::ifstream file(path);
+    if (!file)
+      return fail(llvm::formatv("Could not open {}", path));
+    std::ostringstream ss;
+    ss << file.rdbuf();
+    std::string mlirText = ss.str();
+
+    context.allowUnregisteredDialects();
+    // Parse without post-parse verification: glidir is a read-only viewer, so
+    // it should display partial or hand-edited IR (e.g. a phase dump missing
+    // its kernel.decl symbols) rather than refuse to open it.
+    ParserConfig parserConfig(&context, /*verifyAfterParse=*/false);
+    OwningOpRef<ModuleOp> module =
+        parseSourceString<ModuleOp>(mlirText, parserConfig);
+    if (!module)
+      return fail(llvm::formatv("Could not parse the MLIR in {}", path));
+
+    // Same reparse trick as the CLI path: printing then re-parsing gives each
+    // op a FileLineColLoc into the dump text (exact line numbers for the IR
+    // panel), and the elided print is the smaller text actually shown.
+    std::string fullText;
+    {
+      llvm::raw_string_ostream os(fullText);
+      module->print(os);
+    }
+    OwningOpRef<ModuleOp> dumpModule =
+        parseSourceString<ModuleOp>(fullText, parserConfig);
+    if (!dumpModule)
+      return fail(llvm::formatv("Could not re-parse the MLIR in {}", path));
+    std::string dumpText;
+    {
+      llvm::raw_string_ostream os(dumpText);
+      mlir::OpPrintingFlags flags;
+      flags.elideLargeElementsAttrs(32).elideLargeResourceString(64);
+      module->print(os, flags);
+    }
+
+    auto doc = std::make_unique<Document>();
+    doc->path = path;
+    doc->label = std::filesystem::path(path).filename().string();
+    if (doc->label.empty())
+      doc->label = path;
+    doc->module = std::move(module);
+    doc->dumpModule = std::move(dumpModule);
+    doc->dumpText = std::move(dumpText);
+    doc->initViews(palette);
+
+    documents.push_back(std::move(doc));
+    activeIndex = (int)documents.size() - 1;
+    return true;
+  }
+
+  // Prompt for one or more IR files and open each.
+  void openFileDialog() {
+    auto selection =
+        pfd::open_file(
+            "Open MLIR file", ".",
+            {"MLIR files", "*.mlir *.mlirbc *.ir *.mojo", "All files", "*"},
+            pfd::opt::multiselect)
+            .result();
+    for (const auto &path : selection)
+      openFile(path);
+  }
+
+  // Close the document at `index`, keeping activeIndex in range.
+  void closeDocument(int index) {
+    if (index < 0 || index >= (int)documents.size())
+      return;
+    documents.erase(documents.begin() + index);
+    if (activeIndex >= (int)documents.size())
+      activeIndex = (int)documents.size() - 1;
+    if (activeIndex < 0)
+      activeIndex = 0;
+  }
+
+private:
+  // One-time global ImGui theme + font setup, and the derived text palette.
+  void initStyleAndFonts() {
     /// Set the theme and set the indentation to be smaller to reduce
     /// horizontal screen usage in deeply nested trees.
     ImGuiStyle style =
@@ -481,7 +634,7 @@ public:
         ImGui::ColorConvertFloat4ToU32(uiStyle.Colors[ImGuiCol_WindowBg]);
     ImU32 uiText =
         ImGui::ColorConvertFloat4ToU32(uiStyle.Colors[ImGuiCol_Text]);
-    TextViewer::Palette palette = TextViewer::GetDarkPalette();
+    palette = TextViewer::GetDarkPalette();
     palette[(int)TextViewer::PaletteIndex::Background] = uiBg;
     palette[(int)TextViewer::PaletteIndex::Default] = uiText;
     palette[(int)TextViewer::PaletteIndex::Identifier] = uiText;
@@ -490,18 +643,17 @@ public:
     palette[(int)TextViewer::PaletteIndex::CurrentLineFill] = 0xFF007FFF;
     palette[(int)TextViewer::PaletteIndex::CurrentLineFillInactive] =
         0xFF007FFF;
-
-    // Initialize the text view and source viewer with the computed palette.
-    textView.init(root, dumpRoot, dumpText, palette);
-    sourceRenderer.initViewer(palette);
   }
 
-  ~Renderer() = default;
-
+public:
   // If a save was requested this frame, render every bookmarked node into an
   // offscreen FBO sized to the full graph and write it as a PNG.  Must be
   // called after drawFrameToBackbuffer() but before glfwSwapBuffers().
   void capturePendingSave(GLFWwindow *win) {
+    Document *doc = active();
+    if (!doc)
+      return;
+    GraphView &graphRenderer = doc->graphRenderer;
     if (!graphRenderer.pendingSave)
       return;
     graphRenderer.pendingSave = false;
@@ -616,6 +768,26 @@ public:
       fontSizeScale = std::max(fontSizeScale - 0.1f, 0.5f);
   }
 
+  // Surface any pending file-open errors in a modal so a failed open is visible
+  // in the UI, not only on stderr. OK dismisses and clears the queue.
+  void renderErrorModal() {
+    if (!openErrors.empty())
+      ImGui::OpenPopup("File open error");
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("File open error", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+      for (const auto &e : openErrors)
+        ImGui::TextWrapped("%s", e.c_str());
+      ImGui::Separator();
+      if (ImGui::Button("OK", ImVec2(120, 0))) {
+        openErrors.clear();
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+  }
+
   void render() {
     processFontSizeChange();
     // Apply font scale every frame so changes take effect on the next NewFrame.
@@ -631,7 +803,13 @@ public:
     float topBarHeight = 0;
     if (ImGui::BeginMainMenuBar()) {
       topBarHeight = ImGui::GetWindowHeight();
+      if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("Open..."))
+          openFileDialog();
+        ImGui::EndMenu();
+      }
       if (ImGui::BeginMenu("Views")) {
+        ImGui::MenuItem("Files", nullptr, &showFiles);
         ImGui::MenuItem("Tree", nullptr, &showTree);
         ImGui::MenuItem("Source", nullptr, &showSource);
         ImGui::MenuItem("Graph", nullptr, &showGraph);
@@ -647,6 +825,8 @@ public:
       ImGui::TextDisabled("%s", fpsStr);
       ImGui::EndMainMenuBar();
     }
+
+    renderErrorModal();
 
     float panelHeight = windowSize.y - topBarHeight;
     ImVec2 contentOrigin =
@@ -675,8 +855,14 @@ public:
       ImGui::DockBuilderRemoveNode(dsId);
       ImGui::DockBuilderAddNode(dsId, ImGuiDockNodeFlags_DockSpace);
       ImGui::DockBuilderSetNodeSize(dsId, ImVec2(windowSize.x, panelHeight));
+      // Carve off a narrow left column for the file list, then split the
+      // remainder into IR (left) and the Tree/Source/Graph tab group (right).
+      ImGuiID filesNode, rest;
+      ImGui::DockBuilderSplitNode(dsId, ImGuiDir_Left, 0.18f, &filesNode,
+                                  &rest);
       ImGuiID left, right;
-      ImGui::DockBuilderSplitNode(dsId, ImGuiDir_Left, 0.5f, &left, &right);
+      ImGui::DockBuilderSplitNode(rest, ImGuiDir_Left, 0.5f, &left, &right);
+      ImGui::DockBuilderDockWindow("Files", filesNode);
       ImGui::DockBuilderDockWindow("IR", left);
       ImGui::DockBuilderDockWindow("Tree", right);
       ImGui::DockBuilderDockWindow("Source", right);
@@ -685,43 +871,81 @@ public:
     }
     ImGui::End();
 
-    if (ImGui::Begin("IR")) {
-      HelpMarker("Read-only MLIR text viewer.\n"
-                 "Click a line to navigate the tree.\n"
-                 "Double-click an op to bookmark it.\n"
-                 "Use the search bar to find ops by regex.\n"
-                 "Right-click to bookmark a selection.");
-      ImGui::SameLine();
-      textView.renderTextFilter();
-      textView.getViewer().Render("IR");
-      textView.processTextViewerCursorEvents();
-
-      if (textView.getViewer().RightClick())
-        ImGui::OpenPopup("##ir_ctx");
-      if (ImGui::BeginPopup("##ir_ctx")) {
-        auto &lineNumberToOp = textView.getLineNumberToOp();
-        int minLine = textView.getViewer().GetSelectionStart().mLine;
-        int maxLine = textView.getViewer().GetSelectionEnd().mLine;
-        int opCount = 0;
-        for (int line = minLine; line <= maxLine; ++line)
-          if (line < (int)lineNumberToOp.size() && lineNumberToOp[line])
-            ++opCount;
-        if (opCount > 0) {
-          char label[64];
-          snprintf(label, sizeof(label), "Bookmark %d op%s", opCount,
-                   opCount == 1 ? "" : "s");
-          if (ImGui::MenuItem(label))
-            textView.bookmarkSelection(minLine, maxLine,
-                                       textView.getActiveBookmarkColor());
-        } else {
-          ImGui::TextDisabled("No ops in selection");
+    // File list sidebar: click to switch the active document, right-click to
+    // close one. Opening more files is via File > Open.
+    if (showFiles) {
+      if (ImGui::Begin("Files", &showFiles)) {
+        HelpMarker("Loaded IR files.\n"
+                   "Click to switch. Right-click for options.\n"
+                   "Open more with File > Open.");
+        int pendingClose = -1;
+        for (int i = 0; i < (int)documents.size(); ++i) {
+          ImGui::PushID(i);
+          if (ImGui::Selectable(documents[i]->label.c_str(), i == activeIndex))
+            activeIndex = i;
+          if (ImGui::IsItemHovered() && !documents[i]->path.empty())
+            ImGui::SetTooltip("%s", documents[i]->path.c_str());
+          if (ImGui::BeginPopupContextItem("##filectx")) {
+            if (ImGui::MenuItem("Close"))
+              pendingClose = i;
+            ImGui::EndPopup();
+          }
+          ImGui::PopID();
         }
-        ImGui::EndPopup();
+        // Defer erase until after the loop so we don't mutate the list
+        // mid-walk.
+        if (pendingClose >= 0)
+          closeDocument(pendingClose);
+      }
+      ImGui::End();
+    }
+
+    Document *doc = active();
+
+    if (ImGui::Begin("IR")) {
+      if (!doc) {
+        ImGui::TextDisabled(
+            "No file open. Use File > Open to load an IR file.");
+      } else {
+        TextView &textView = doc->textView;
+        HelpMarker("Read-only MLIR text viewer.\n"
+                   "Click a line to navigate the tree.\n"
+                   "Double-click an op to bookmark it.\n"
+                   "Use the search bar to find ops by regex.\n"
+                   "Right-click to bookmark a selection.");
+        ImGui::SameLine();
+        textView.renderTextFilter();
+        textView.getViewer().Render("IR");
+        textView.processTextViewerCursorEvents();
+
+        if (textView.getViewer().RightClick())
+          ImGui::OpenPopup("##ir_ctx");
+        if (ImGui::BeginPopup("##ir_ctx")) {
+          auto &lineNumberToOp = textView.getLineNumberToOp();
+          int minLine = textView.getViewer().GetSelectionStart().mLine;
+          int maxLine = textView.getViewer().GetSelectionEnd().mLine;
+          int opCount = 0;
+          for (int line = minLine; line <= maxLine; ++line)
+            if (line < (int)lineNumberToOp.size() && lineNumberToOp[line])
+              ++opCount;
+          if (opCount > 0) {
+            char label[64];
+            snprintf(label, sizeof(label), "Bookmark %d op%s", opCount,
+                     opCount == 1 ? "" : "s");
+            if (ImGui::MenuItem(label))
+              textView.bookmarkSelection(minLine, maxLine,
+                                         textView.getActiveBookmarkColor());
+          } else {
+            ImGui::TextDisabled("No ops in selection");
+          }
+          ImGui::EndPopup();
+        }
       }
     }
     ImGui::End();
 
-    if (showBookmarks) {
+    if (doc && showBookmarks) {
+      TextView &textView = doc->textView;
       ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
       ImGui::SetNextWindowPos(
           ImVec2(contentOrigin.x + 20, contentOrigin.y + 30),
@@ -731,7 +955,8 @@ public:
       ImGui::End();
     }
 
-    if (showTree) {
+    if (doc && showTree) {
+      TreeView &treeRenderer = doc->treeRenderer;
       if (ImGui::Begin("Tree", &showTree,
                        ImGuiWindowFlags_NoScrollbar |
                            ImGuiWindowFlags_NoScrollWithMouse)) {
@@ -748,14 +973,17 @@ public:
       ImGui::End();
     }
 
-    if (showSource) {
+    if (doc && showSource) {
+      TextView &textView = doc->textView;
+      TreeView &treeRenderer = doc->treeRenderer;
+      SourceView &sourceRenderer = doc->sourceRenderer;
       if (ImGui::Begin("Source", &showSource)) {
         HelpMarker(
             "Source files referenced by FileLineColLoc locations in the IR.\n"
             "Tabs show each unique source file.\n"
             "The highlighted line corresponds to the op selected in the IR.");
         sourceRenderer.render(
-            treeRenderer.opToHighlight, [this](ArrayRef<Operation *> ops) {
+            treeRenderer.opToHighlight, [&textView](ArrayRef<Operation *> ops) {
               auto &lineNumberToOp = textView.getLineNumberToOp();
               auto &opLineNumber = textView.getOpLineNumber();
               int minLine = std::numeric_limits<int>::max(), maxLine = -1;
@@ -777,7 +1005,9 @@ public:
       ImGui::End();
     }
 
-    if (showGraph) {
+    if (doc && showGraph) {
+      TextView &textView = doc->textView;
+      GraphView &graphRenderer = doc->graphRenderer;
       if (ImGui::Begin("Graph", &showGraph)) {
         HelpMarker(
             "Use-def graph for bookmarked ops.\n"
@@ -802,7 +1032,8 @@ public:
       ImGui::End();
     }
 
-    treeRenderer.clearPerFrameData();
+    if (doc)
+      doc->treeRenderer.clearPerFrameData();
   }
 };
 
@@ -810,10 +1041,18 @@ public:
 // Main application and rendering loop
 //===----------------------------------------------------------------------===//
 
-static void runMainLoop(ModuleOp moduleOp, ModuleOp dumpModule,
-                        const std::string &dumpText) {
+static void runMainLoop(MLIRContext &context,
+                        const std::vector<std::string> &paths) {
   auto osWindowHandle = initImGuiWithBackends();
-  Renderer renderer(osWindowHandle, moduleOp, dumpModule, dumpText);
+  Renderer renderer(osWindowHandle, context);
+
+  int opened = 0;
+  for (const auto &path : paths)
+    opened += renderer.openFile(path) ? 1 : 0;
+  // Launching with no files is fine — the window opens empty and the user loads
+  // files via File > Open. Only warn when files were requested but none loaded.
+  if (opened == 0 && !paths.empty())
+    llvm::errs() << "No files could be opened; use File > Open to load one.\n";
 
   using Clock = std::chrono::steady_clock;
   static constexpr auto kTargetFrameTime =
@@ -836,24 +1075,6 @@ static void runMainLoop(ModuleOp moduleOp, ModuleOp dumpModule,
   deinitImGuiWithBackends(osWindowHandle);
 }
 
-static void validateProgramArguments(int argc, char **argv) {
-  if (argc != 2) {
-    llvm::errs() << llvm::formatv("Usage: {} <mlir-file>\n", argv[0]);
-    exit(1);
-  }
-}
-
-static std::string loadInputMLIRFile(const std::string &fileName) {
-  std::ifstream file(fileName);
-  if (!file) {
-    llvm::errs() << llvm::formatv("Could not open {}\n", fileName);
-    exit(1);
-  }
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  return ss.str();
-}
-
 static DialectRegistry loadNecessaryDialects() {
   DialectRegistry registry;
   registry.insert<
@@ -864,23 +1085,11 @@ static DialectRegistry loadNecessaryDialects() {
       // Add the Modular Dialects.
       MEF::MEFDialect, DebugInfo::DebugInfoDialect, GRT::GRTDialect, MDialect,
       MGP::MGPDialect, RMO::RMODialect, MOSH::MOSHDialect, MO::MODialect,
-      MOGG::MOGGDialect>();
+      MOGG::MOGGDialect, MAP::MAPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
 
   return registry;
-}
-
-static OwningOpRef<ModuleOp> parseMLIRText(MLIRContext &context,
-                                           const std::string &mlirText) {
-  context.allowUnregisteredDialects();
-  auto module = parseSourceString<ModuleOp>(mlirText, &context);
-  if (!module) {
-    llvm::errs() << "Could not parse the MLIR\n";
-    exit(1);
-  }
-
-  return module;
 }
 
 } // namespace GlidIR
@@ -888,36 +1097,13 @@ static OwningOpRef<ModuleOp> parseMLIRText(MLIRContext &context,
 
 int main(int argc, char **argv) {
   using namespace M::GlidIR;
-  validateProgramArguments(argc, argv);
-  auto mlirText = loadInputMLIRFile(argv[1]);
+  // Files are optional: with none, glidir opens an empty window and files are
+  // loaded via File > Open.
+  // One shared context registers every dialect; each opened file parses its own
+  // module into it. Renderer::openFile performs the per-file print/reparse that
+  // gives ops FileLineColLoc positions for the IR text viewer.
   MLIRContext context(loadNecessaryDialects());
-  OwningOpRef<ModuleOp> module = parseMLIRText(context, mlirText);
-
-  // Dump the parsed IR without location attributes, then re-parse. The
-  // re-parsed ops have no explicit loc(), so the parser assigns each op a
-  // FileLineColLoc pointing to its position in the dump text. This gives exact
-  // line numbers for the IR text viewer without any regex scanning.
-  //
-  // The full print is used for re-parsing (elided forms may not be parseable).
-  // The elided print is used for display: large inline elements and dialect
-  // resource blobs (which come last) are replaced with __elided__, keeping op
-  // line numbers identical to the full print while dramatically shrinking the
-  // text for large models.
-  std::string fullText;
-  {
-    llvm::raw_string_ostream os(fullText);
-    module->print(os);
-  }
-  OwningOpRef<ModuleOp> dumpModule = parseMLIRText(context, fullText);
-
-  std::string dumpText;
-  {
-    llvm::raw_string_ostream os(dumpText);
-    mlir::OpPrintingFlags flags;
-    flags.elideLargeElementsAttrs(32).elideLargeResourceString(64);
-    module->print(os, flags);
-  }
-
-  runMainLoop(*module, *dumpModule, dumpText);
+  std::vector<std::string> paths(argv + 1, argv + argc);
+  runMainLoop(context, paths);
   return 0;
 }

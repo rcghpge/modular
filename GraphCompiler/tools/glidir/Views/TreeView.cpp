@@ -437,7 +437,8 @@ void TreeView::render(Operation &op, uint64_t id, bool recursiveCollapse) {
       ImGui::SetScrollHereY();
     }
     flags |= ImGuiTreeNodeFlags_Selected;
-    ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(255, 127, 0, 255));
+    // Slightly translucent so the node's text stays legible over the highlight.
+    ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(255, 127, 0, 200));
   }
 
   {

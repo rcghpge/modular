@@ -72,6 +72,7 @@ modular_cc_binary(
     deps = [
         "glidir-font",
         "glidir-textviewer",
+        "//GraphCompiler:MAPDialect",
         "//GraphCompiler:MGPDialect",
         "//GraphCompiler:MODialect",
         "//GraphCompiler:MOGGDialect",
@@ -81,5 +82,6 @@ modular_cc_binary(
         "@imgui_docking",
         "@imgui_docking//:platform-glfw",
         "@imgui_docking//:renderer-opengl3",
+        "@portable_file_dialogs",
     ],
 )
