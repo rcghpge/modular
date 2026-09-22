@@ -5,7 +5,7 @@
 kgen.func @broadcast(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !mosh.ape {
   // CHECK: %[[RES:.*]] = mosh.broadcast(%[[SH0]], %[[SH1]])
   %0 = mosh.broadcast(%sh0, %sh1)
-  kgen.return %0 : !mosh.ape
+  hlcf.return %0 : !mosh.ape
 }
 
 // CHECK-LABEL: kgen.func @concat(
@@ -13,7 +13,7 @@ kgen.func @broadcast(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !mosh.ape {
 kgen.func @concat(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !mosh.ape {
   // CHECK: %[[VAL0:.*]] = mosh.concat(%[[ARG0]], %[[ARG1]])
   %0 = mosh.concat(%sh0, %sh1)
-  kgen.return %0 : !mosh.ape
+  hlcf.return %0 : !mosh.ape
 }
 
 // CHECK-LABEL: kgen.func @equal(
@@ -21,7 +21,7 @@ kgen.func @concat(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !mosh.ape {
 kgen.func @equal(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !kgen.scalar<bool> {
   // CHECK: %[[VAL0:.*]] = mosh.eq(%[[ARG0]], %[[ARG1]])
   %0 = mosh.eq(%sh0, %sh1)
-  kgen.return %0 : !kgen.scalar<bool>
+  hlcf.return %0 : !kgen.scalar<bool>
 }
 
 // CHECK-LABEL: kgen.func @get_dim(
@@ -29,7 +29,7 @@ kgen.func @equal(%sh0: !mosh.ape, %sh1: !mosh.ape) -> !kgen.scalar<bool> {
 kgen.func @get_dim(%sh0: !mosh.ape, %dim: !kgen.scalar<si64>) -> (!kgen.scalar<si64>, !kgen.scalar<si64>) {
   // CHECK: %[[VAL0:.*]] = mosh.get_dim(%[[SH0]])[%[[DIM]]]
   %0 = mosh.get_dim(%sh0)[%dim]
-  kgen.return %0, %0 : !kgen.scalar<si64>, !kgen.scalar<si64>
+  hlcf.return %0, %0 : !kgen.scalar<si64>, !kgen.scalar<si64>
 }
 
 // CHECK-LABEL: kgen.func @get_rank(
@@ -37,7 +37,7 @@ kgen.func @get_dim(%sh0: !mosh.ape, %dim: !kgen.scalar<si64>) -> (!kgen.scalar<s
 kgen.func @get_rank(%sh0: !mosh.ape) -> !kgen.scalar<si64> {
   // CHECK: %[[VAL0:.*]] = mosh.get_rank(%[[SH0]])
   %0 = mosh.get_rank(%sh0)
-  kgen.return %0 : !kgen.scalar<si64>
+  hlcf.return %0 : !kgen.scalar<si64>
 }
 
 // CHECK-LABEL: kgen.func @new_dim(
@@ -50,7 +50,7 @@ kgen.func @new_dim(%d0: !kgen.scalar<si64>, %d1: !kgen.scalar<si64>)
   %sh1 = mosh.new(%d0)
   // CHECK: %[[SH2:.*]] = mosh.new(%[[D0]], %[[D1]], %[[D0]])
   %sh2 = mosh.new(%d0, %d1, %d0)
-  kgen.return %sh0, %sh1, %sh2 : !mosh.ape, !mosh.ape, !mosh.ape
+  hlcf.return %sh0, %sh1, %sh2 : !mosh.ape, !mosh.ape, !mosh.ape
 }
 
 // CHECK-LABEL: kgen.func @num_elements(
@@ -58,7 +58,7 @@ kgen.func @new_dim(%d0: !kgen.scalar<si64>, %d1: !kgen.scalar<si64>)
 kgen.func @num_elements(%sh0: !mosh.ape) -> !kgen.scalar<si64> {
   // CHECK: %[[VAL0:.*]] = mosh.num_elements(%[[SH0]])
   %0 = mosh.num_elements(%sh0)
-  kgen.return %0 : !kgen.scalar<si64>
+  hlcf.return %0 : !kgen.scalar<si64>
 }
 
 // CHECK-LABEL: kgen.func @slice(
@@ -66,7 +66,7 @@ kgen.func @num_elements(%sh0: !mosh.ape) -> !kgen.scalar<si64> {
 kgen.func @slice(%sh0: !mosh.ape, %start: !kgen.scalar<si64>, %end: !kgen.scalar<si64>) -> !mosh.ape {
   // CHECK: %[[VAL0:.*]] = mosh.slice(%[[SH0]])[%[[START]], %[[END]]]
   %sh1 = mosh.slice(%sh0)[%start, %end]
-  kgen.return %sh1 : !mosh.ape
+  hlcf.return %sh1 : !mosh.ape
 }
 
 // CHECK-LABEL: kgen.generator @param_to_value<
@@ -78,8 +78,8 @@ kgen.generator @param_to_value<D>() -> (!kgen.scalar<si64>, !mosh.ape) {
   %idx   = mosh.param.to_value = <D>
   %shape = mosh.param.to_value: !mosh.ape = <[D, 42]>
 
-  // CHECK: kgen.return %[[IDX]], %[[SHAPE]] : !kgen.scalar<si64>, !mosh.ape
-  kgen.return %idx, %shape : !kgen.scalar<si64>, !mosh.ape
+  // CHECK: hlcf.return %[[IDX]], %[[SHAPE]] : !kgen.scalar<si64>, !mosh.ape
+  hlcf.return %idx, %shape : !kgen.scalar<si64>, !mosh.ape
 }
 
 // CHECK-LABEL: kgen.generator @value_to_param<
@@ -94,6 +94,6 @@ kgen.generator @value_to_param<D>(%arg0: !kgen.scalar<si64>, %arg1: f32, %arg2: 
   // CHECK: mosh.param.from_value  Sh : !mosh.ape = %[[ARG2]]
   mosh.param.from_value Sh : !mosh.ape = %arg2
 
-  // CHECK: kgen.return
-  kgen.return
+  // CHECK: hlcf.return
+  hlcf.return
 }

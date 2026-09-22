@@ -19,5 +19,5 @@ kgen.generator @shape_attr_and_type() {
 
   // CHECK: kgen.param.declare [[S:.*]]: !mosh.ape = <[N, 2, ?]>
   kgen.param.declare S: !mosh.ape = <[N, 2, ?]>
-  kgen.return
+  hlcf.return
 }

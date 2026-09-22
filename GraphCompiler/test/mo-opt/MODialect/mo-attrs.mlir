@@ -57,5 +57,5 @@ kgen.func @chain_attr() {
   %0 = "foo.chain"() {ch = #mo.chain : !mo.chain} : () -> !mo.chain
   // CHECK-DAG: kgen.param.declare [[CH:.*]]: !mo.chain = <#mo.chain>
   kgen.param.declare Ch: !mo.chain = <#mo.chain>
-  kgen.return
+  hlcf.return
 }

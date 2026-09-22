@@ -9,7 +9,7 @@ kgen.func @assert(%arg0: index, %arg1: index) -> !mo.chain {
   %0 = pop.cast_from_builtin %cmp : i1 to !kgen.scalar<bool>
   // CHECK: mo.assert %[[VAL0]], "args are not equal"
   %ch0 = mo.assert %0, "args are not equal"
-  kgen.return %ch0 : !mo.chain
+  hlcf.return %ch0 : !mo.chain
 }
 
 // CHECK-LABEL: kgen.func @assert_sequence
@@ -32,7 +32,7 @@ kgen.func @assert_sequence(%arg0: index, %arg1: index, %arg2: index, %arg3: inde
   %ch0 = mo.assert %0, "first pair of args are not equal"
   %ch1 = mo.assert[%ch0] %1, "second pair of args are not equal"
 
-  kgen.return %ch1 : !mo.chain
+  hlcf.return %ch1 : !mo.chain
 }
 
 // CHECK-LABEL: mo.graph @assert_sequence_param_level

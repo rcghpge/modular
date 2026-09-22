@@ -5,14 +5,14 @@
 
 // CHECK-LABEL: kgen.generator @__S0
 kgen.generator @my_first_function(%arg0: si32) -> si32 {
-  kgen.return %arg0 : si32
+  hlcf.return %arg0 : si32
 }
 
 // CHECK-LABEL: kgen.generator @__S1
 kgen.generator @my_second_function(%arg0: si32) -> si32 {
   // CHECK: kgen.call @__S0
   %x = kgen.call @my_first_function(%arg0) : (si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // -----
@@ -21,14 +21,14 @@ kgen.generator @my_second_function(%arg0: si32) -> si32 {
 
 // CHECK-LABEL: kgen.generator @__S0
 kgen.generator @func_a(%arg0: si32) -> si32 {
-  kgen.return %arg0 : si32
+  hlcf.return %arg0 : si32
 }
 
 // CHECK-LABEL: kgen.generator @__S1
 kgen.generator @func_b(%arg0: si32) -> si32 {
   // CHECK: kgen.call @__S0
   %x = kgen.call @func_a(%arg0) : (si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL: kgen.generator @__S2
@@ -37,7 +37,7 @@ kgen.generator @func_c(%arg0: si32) -> si32 {
   %x = kgen.call @func_b(%arg0) : (si32) -> si32
   // CHECK: kgen.call @__S0
   %y = kgen.call @func_a(%arg0) : (si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // -----

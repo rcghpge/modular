@@ -2,7 +2,7 @@
 
 kgen.func @foo() -> !kgen.scalar<si64> {
   %c = mosh.param.to_value = <42>
-  kgen.return %c : !kgen.scalar<si64>
+  hlcf.return %c : !kgen.scalar<si64>
 }
 
 mo.graph @unsupported_expr() {

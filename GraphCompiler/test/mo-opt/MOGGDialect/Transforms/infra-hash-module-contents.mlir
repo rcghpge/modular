@@ -6,27 +6,27 @@
 // CHECK-LABEL @foo1
 // CHECK: semantic_hash = "[[FOO_HASH:.*]]"
 kgen.generator @foo_1(%arg0: si32, %arg1: si32) -> si32 {
-  kgen.return %arg0 : si32
+  hlcf.return %arg0 : si32
 }
 
 // CHECK-LABEL @foo2
 // CHECK: semantic_hash = "[[FOO_HASH]]"
 kgen.generator @foo_2(%arg0: si32, %arg1: si32) -> si32 {
-  kgen.return %arg0 : si32
+  hlcf.return %arg0 : si32
 }
 
 // CHECK-LABEL @bar1
 // CHECK: semantic_hash = "[[BAR_HASH:.*]]"
 kgen.generator @bar_1(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @foo_1(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL @bar2
 // CHECK: semantic_hash = "[[BAR_HASH]]"
 kgen.generator @bar_2(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @foo_2(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // -----
@@ -37,12 +37,12 @@ kgen.generator @bar_2(%arg0: si32, %arg1: si32) -> si32 {
 
 // CHECK-LABEL @foo
 kgen.generator @foo(%arg0: si32, %arg1: si32) -> si32 {
-  kgen.return %arg0 : si32
+  hlcf.return %arg0 : si32
 }
 
 // CHECK-LABEL @bar
 kgen.generator @bar(%arg0: si32, %arg1: si32) -> si32 {
-  kgen.return %arg1 : si32
+  hlcf.return %arg1 : si32
 }
 
 // CHECK-LABEL: @test_1
@@ -50,7 +50,7 @@ kgen.generator @bar(%arg0: si32, %arg1: si32) -> si32 {
 kgen.generator @test_1(%arg0: si32, %arg1: si32) -> (si32, si32) {
   %x = kgen.call @foo(%arg0, %arg1) : (si32, si32) -> si32
   %y = kgen.call @bar(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x, %y : si32, si32
+  hlcf.return %x, %y : si32, si32
 }
 
 // CHECK-LABEL: @test_2
@@ -58,7 +58,7 @@ kgen.generator @test_1(%arg0: si32, %arg1: si32) -> (si32, si32) {
 kgen.generator @test_2(%arg0: si32, %arg1: si32) -> (si32, si32) {
   %x = kgen.call @bar(%arg0, %arg1) : (si32, si32) -> si32
   %y = kgen.call @foo(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x, %y : si32, si32
+  hlcf.return %x, %y : si32, si32
 }
 
 // -----
@@ -71,28 +71,28 @@ kgen.generator @test_2(%arg0: si32, %arg1: si32) -> (si32, si32) {
 // CHECK-SAME: semantic_hash = "[[REC_HASH:.*]]"
 kgen.generator @recursion_1(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @recursion_2(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL: @recursion_2
 // CHECK-NOT: semantic_hash = "[[REC_HASH]]"
 kgen.generator @recursion_2(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @recursion_1(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL: @test_1
 // CHECK-SAME: semantic_hash = "[[CALLER_HASH:.*]]"
 kgen.generator @test_1(%arg0: si32) -> si32 {
   %x = kgen.call @recursion_1(%arg0, %arg0) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL @test_2
 // CHECK-NOT: semantic_hash = "[[CALLER_HASH]]"
 kgen.generator @test_2(%arg0: si32) -> si32 {
   %x = kgen.call @recursion_2(%arg0, %arg0) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 
@@ -103,7 +103,7 @@ kgen.generator @test_2(%arg0: si32) -> si32 {
 
 kgen.generator @scc_input() {
   "some_op" () : () -> ()
-  kgen.return
+  hlcf.return
 }
 
 // CHECK-LABEL: @recursion_1
@@ -113,7 +113,7 @@ kgen.generator @recursion_1(%arg0: si32, %arg1: si32) -> (si32, si32) {
 
   %x = kgen.call @recursion_2(%arg0, %arg1) : (si32, si32) -> si32
   %y = kgen.call @recursion_3(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x, %y : si32, si32
+  hlcf.return %x, %y : si32, si32
 }
 
 // CHECK-LABEL: @recursion_2
@@ -121,7 +121,7 @@ kgen.generator @recursion_1(%arg0: si32, %arg1: si32) -> (si32, si32) {
 kgen.generator @recursion_2(%arg0: si32, %arg1: si32) -> (si32, si32) {
   %x = kgen.call @recursion_3(%arg0, %arg1) : (si32, si32) -> si32
   %y = kgen.call @recursion_1(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x, %y : si32, si32
+  hlcf.return %x, %y : si32, si32
 }
 
 // CHECK-LABEL: @recursion_3
@@ -130,7 +130,7 @@ kgen.generator @recursion_2(%arg0: si32, %arg1: si32) -> (si32, si32) {
 kgen.generator @recursion_3(%arg0: si32, %arg1: si32) -> (si32, si32) {
   %x = kgen.call @recursion_2(%arg0, %arg1) : (si32, si32) -> si32
   %y = kgen.call @recursion_1(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x, %y : si32, si32
+  hlcf.return %x, %y : si32, si32
 }
 
 // -----
@@ -139,28 +139,28 @@ kgen.generator @recursion_3(%arg0: si32, %arg1: si32) -> (si32, si32) {
 // CHECK: semantic_hash = "[[HASH1:.*]]"
 kgen.generator @foo_recursive_1(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @foo_recursive_2(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL: @foo_recursive_2
 // CHECK: semantic_hash = "[[HASH2:.*]]"
 kgen.generator @foo_recursive_2(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @foo_recursive_1(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL: @bar_recursive_1
 // CHECK: semantic_hash = "[[HASH1]]"
 kgen.generator @bar_recursive_1(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @bar_recursive_2(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // CHECK-LABEL: @bar_recursive_2
 // CHECK: semantic_hash = "[[HASH2]]"
 kgen.generator @bar_recursive_2(%arg0: si32, %arg1: si32) -> si32 {
   %x = kgen.call @bar_recursive_1(%arg0, %arg1) : (si32, si32) -> si32
-  kgen.return %x : si32
+  hlcf.return %x : si32
 }
 
 // -----
@@ -174,35 +174,35 @@ kgen.generator @bar_recursive_2(%arg0: si32, %arg1: si32) -> si32 {
 // CHECK: semantic_hash = "[[FUNC_HASH:.*]]"
 kgen.generator @parameter_function_1(%arg0: !kgen.scalar<si32>) -> !kgen.scalar<si32> {
   %x = pop.add %arg0, %arg0 : !kgen.scalar<si32>
-  kgen.return %x : !kgen.scalar<si32>
+  hlcf.return %x : !kgen.scalar<si32>
 }
 
 // CHECK-LABEL: @parameter_function_2
 // CHECK-NOT: semantic_hash = "[[FUNC_HASH]]"
 kgen.generator @parameter_function_2(%arg0: !kgen.scalar<si32>) -> !kgen.scalar<si32> {
   %x = pop.sub %arg0, %arg0 : !kgen.scalar<si32>
-  kgen.return %x : !kgen.scalar<si32>
+  hlcf.return %x : !kgen.scalar<si32>
 }
 
 kgen.generator @enqueue_function<callable: (!kgen.scalar<si32>) -> (!kgen.scalar<si32>)>() -> !kgen.scalar<si32> {
   %c0 = kgen.param.constant : !kgen.scalar<si32> = <1>
   %callee = kgen.param.constant : (!kgen.scalar<si32>) -> !kgen.scalar<si32> = <callable>
   %call = kgen.call_indirect %callee(%c0) : (!kgen.scalar<si32>) -> !kgen.scalar<si32>
-  kgen.return %call : !kgen.scalar<si32>
+  hlcf.return %call : !kgen.scalar<si32>
 }
 
 // CHECK-LABEL: @main_1
 // CHECK: semantic_hash = "[[MAIN_HASH:.*]]"
 kgen.generator @main_1() {
   kgen.call @enqueue_function<:(!kgen.scalar<si32>) -> !kgen.scalar<si32> @parameter_function_1>() : () -> ()
-  kgen.return
+  hlcf.return
 }
 
 // CHECK-LABEL: @main_2
 // CHECK-NOT: semantic_hash = "[[MAIN_HASH]]"
 kgen.generator @main_2() {
   kgen.call @enqueue_function<:(!kgen.scalar<si32>) -> !kgen.scalar<si32> @parameter_function_2>() : () -> ()
-  kgen.return
+  hlcf.return
 }
 
 // -----
@@ -216,14 +216,14 @@ kgen.generator @main_2() {
 // CHECK: semantic_hash = "[[TRAIT_HASH_A:.*]]"
 kgen.generator @trait_check_a<T: type>(%arg0: si32) -> si32 {
   "test_op"() {check = #kgen.type_conforms_to_trait<#kgen.param.decl.ref<"T"> : !kgen.type, #kgen.type<typevalue<#kgen.trait_ref<[@TraitA]>>, type> : !kgen.type>} : () -> ()
-  kgen.return %arg0 : si32
+  hlcf.return %arg0 : si32
 }
 
 // CHECK-LABEL: @trait_check_b
 // CHECK-NOT: semantic_hash = "[[TRAIT_HASH_A]]"
 kgen.generator @trait_check_b<T: type>(%arg0: si32) -> si32 {
   "test_op"() {check = #kgen.type_conforms_to_trait<#kgen.param.decl.ref<"T"> : !kgen.type, #kgen.type<typevalue<#kgen.trait_ref<[@TraitB]>>, type> : !kgen.type>} : () -> ()
-  kgen.return %arg0 : si32
+  hlcf.return %arg0 : si32
 }
 
 // -----
@@ -239,7 +239,7 @@ kgen.generator @trait_check_b<T: type>(%arg0: si32) -> si32 {
 // CHECK: semantic_hash = "[[STORE_FIRST:.*]]"
 kgen.generator @store() -> !kgen.simd<1, f64> {
   %c = kgen.param.constant: simd<1, f64> = <#pop.float_literal_convert<#pop.float_literal<250000|1>>>
-  kgen.return %c : !kgen.simd<1, f64>
+  hlcf.return %c : !kgen.simd<1, f64>
 }
 
 kgen.struct.generator @FusionStruct<n: i32> =
@@ -254,7 +254,7 @@ kgen.struct.generator @FusionStruct<n: i32> =
 // CHECK: semantic_hash = "[[REGION_FIRST:.*]]"
 kgen.generator @region() {
   "use"() {fused_output = #kgen.type<typevalue<#kgen.genref<@FusionStruct<:i32 0>>>, struct<(scalar<index>)>> : !kgen.type} : () -> ()
-  kgen.return
+  hlcf.return
 }
 
 // -----
@@ -263,7 +263,7 @@ kgen.generator @region() {
 // CHECK-NOT: semantic_hash = "[[STORE_FIRST]]"
 kgen.generator @store() -> !kgen.simd<1, f64> {
   %c = kgen.param.constant: simd<1, f64> = <#pop.float_literal_convert<#pop.float_literal<500000|1>>>
-  kgen.return %c : !kgen.simd<1, f64>
+  hlcf.return %c : !kgen.simd<1, f64>
 }
 
 kgen.struct.generator @FusionStruct<n: i32> =
@@ -278,7 +278,7 @@ kgen.struct.generator @FusionStruct<n: i32> =
 // CHECK-NOT: semantic_hash = "[[REGION_FIRST]]"
 kgen.generator @region() {
   "use"() {fused_output = #kgen.type<typevalue<#kgen.genref<@FusionStruct<:i32 0>>>, struct<(scalar<index>)>> : !kgen.type} : () -> ()
-  kgen.return
+  hlcf.return
 }
 
 // -----
@@ -292,7 +292,7 @@ kgen.generator @region() {
 // CHECK: semantic_hash = "[[STORE_FIRST]]"
 kgen.generator @store() -> !kgen.simd<1, f64> {
   %c = kgen.param.constant: simd<1, f64> = <#pop.float_literal_convert<#pop.float_literal<250000|1>>>
-  kgen.return %c : !kgen.simd<1, f64>
+  hlcf.return %c : !kgen.simd<1, f64>
 }
 
 kgen.struct.generator @FusionStruct<n: i32> =
@@ -307,5 +307,5 @@ kgen.struct.generator @FusionStruct<n: i32> =
 // CHECK: semantic_hash = "[[REGION_FIRST]]"
 kgen.generator @region() {
   "use"() {fused_output = #kgen.type<typevalue<#kgen.genref<@FusionStruct<:i32 0>>>, struct<(scalar<index>)>> : !kgen.type} : () -> ()
-  kgen.return
+  hlcf.return
 }

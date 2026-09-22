@@ -62,4 +62,4 @@ module {
 
 // COM: call create_mojo_value_async
 // CHECK: [[V12:%.*]] = kgen.call @"{{.*}}MOGGPrimitives::create_mojo_value_async({{.*}}, {{.*}}, [[INDEX]], [[INDEX_0]], [[V8]], [[V7]]) : (!kgen.pointer<none>, !kgen.pointer<none>, index, index, !kgen.generator<(!kgen.pointer<none>) -> !kgen.none>, !kgen.generator<(!kgen.pointer<none>, !kgen.pointer<none>) -> !kgen.none>) -> !kgen.none
-// CHECK: kgen.return
+// CHECK: hlcf.return
