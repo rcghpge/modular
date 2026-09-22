@@ -1798,6 +1798,7 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
 def BufferSliceOp : MGP_Op<"buffer.slice", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   DeclareOpInterfaceMethods<MGP_LiftableBufferCreateOpInterface>,
   InferTypeOpAdaptor,
   Pure,
@@ -1854,6 +1855,7 @@ def BufferBulkSliceOp : MGP_Op<"buffer.bulk_slice", [
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<GRTExtendsLifetimeInterface>,
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   InferTypeOpAdaptor,
   Pure,
 ]> {

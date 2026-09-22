@@ -456,26 +456,43 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
     stack.pop_back();
 
     for (auto &use : top->getUses()) {
-      if (!isa<MGP::TensorExtractTensorSpecOp>(*use.getOwner()))
-        uses.push_back(use.getOwner());
+      Operation *owner = use.getOwner();
+      if (!isa<MGP::TensorExtractTensorSpecOp>(*owner))
+        uses.push_back(owner);
 
-      const bool isBufferOperand =
-          isa<MGP::DeviceBufferType>(use.get().getType());
-
-      if (isa<GRT::GRTControlFlowInterface>(*use.getOwner()))
+      if (isa<GRT::GRTControlFlowInterface>(*owner))
         return Error("control flow op may alias");
 
-      if (isa<MGP::CallOp>(*use.getOwner()))
+      if (isa<MGP::CallOp>(*owner))
         return Error("call op may alias");
 
-      if (use.getOwner()->hasTrait<mlir::OpTrait::IsTerminator>() &&
-          use.getOwner()->getParentOfType<MGP::ModelOp>().getIsSubgraph())
+      if (owner->hasTrait<mlir::OpTrait::IsTerminator>() &&
+          owner->getParentOfType<MGP::ModelOp>().getIsSubgraph())
         return Error("terminator op of subgraph may alias");
 
-      if (isBufferOperand &&
-          isa<GRT::GRTMayAliasInterface, GRT::GRTExtendsLifetimeInterface>(
-              *use.getOwner()))
-        stack.push_back(use.getOwner());
+      // Follow the chain into `owner`'s results whenever this operand aliases
+      // or extends the lifetime of one. Querying the interface (not the operand
+      // type) lets the walk cross tensor-typed hops such as tensor.create ->
+      // tensor.slice, so a buffer viewed by a zero-copy slice stays live until
+      // the slice's users rather than looking dead after the view op.
+      unsigned operandNumber = use.getOperandNumber();
+      bool aliasesResult = false;
+      if (auto mayAlias = dyn_cast<GRT::GRTMayAliasInterface>(owner))
+        for (size_t r : llvm::seq(owner->getNumResults()))
+          if (mayAlias.mayAlias(operandNumber, r)) {
+            aliasesResult = true;
+            break;
+          }
+      if (!aliasesResult)
+        if (auto extendsLife =
+                dyn_cast<GRT::GRTExtendsLifetimeInterface>(owner))
+          for (size_t r : llvm::seq(owner->getNumResults()))
+            if (extendsLife.extendsLifetime(operandNumber, r)) {
+              aliasesResult = true;
+              break;
+            }
+      if (aliasesResult)
+        stack.push_back(owner);
     }
   }
   return uses;

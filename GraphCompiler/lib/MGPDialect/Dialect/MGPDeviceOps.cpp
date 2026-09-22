@@ -498,6 +498,10 @@ bool BufferSliceOp::extendsLifetime(size_t operandIndex, size_t resultIndex) {
   return operandIndex == getInBufferMutable().getOperandNumber();
 }
 
+bool BufferSliceOp::mayAlias(size_t operandIndex, size_t resultIndex) {
+  return operandIndex == getInBufferMutable().getOperandNumber();
+}
+
 //===----------------------------------------------------------------------===//
 // BufferBulkSliceOp
 //===----------------------------------------------------------------------===//
@@ -527,6 +531,10 @@ LogicalResult BufferBulkSliceOp::verify() {
 
 bool BufferBulkSliceOp::extendsLifetime(size_t operandIndex,
                                         size_t /*resultIndex*/) {
+  return operandIndex == getBaseBufferMutable().getOperandNumber();
+}
+
+bool BufferBulkSliceOp::mayAlias(size_t operandIndex, size_t /*resultIndex*/) {
   return operandIndex == getBaseBufferMutable().getOperandNumber();
 }
 

@@ -133,3 +133,31 @@ mgp.model @multiple_devices : mof devices [#M.device_ref<"gpu", 0>, #M.device_re
 
   mef.output %ch4 : !mef.chain
 }
+
+// -----
+
+// A GPU buffer reached only through a tensor view (tensor.create ->
+// tensor.extract.buffer) must stay live until the view's consumers, not just
+// the view ops. Here %allocA is used before (%ch0) and after (%ch2) %allocB's
+// use (%ch1), so their lifetimes overlap and the planner must not share their
+// slot: canShare stays all-zero.
+// CHECK-LABEL: mgp.model @tensor_view_extends_lifetime
+mgp.model @tensor_view_extends_lifetime : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"gpu", 0>>) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index) -> !mef.chain {
+  // CHECK: mgp.buffer.plan
+  // CHECK-SAME: canShare = #M.dense_array<0, 0, 0, 0>
+  %allocA = mgp.buffer.alloc %arg0, %arg4, %arg3, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
+  %spec = mgp.tensor_spec.create : !mgp.tensor_spec<4xsi64>
+  %tA = mgp.tensor.create %arg0, %allocA, %spec : !mgp.tensor<4xsi64, <"gpu", 0>>
+  %bA = mgp.tensor.extract.buffer %tA : <4xsi64, <"gpu", 0>>
+
+  %ch0 = "use"(%arg0, %bA) : (!mef.chain, !mgp.buffer<<"gpu", 0>>) -> !mef.chain
+  %allocB = mgp.buffer.alloc %ch0, %arg4, %arg3, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
+  %ch1 = "use"(%ch0, %allocB) : (!mef.chain, !mgp.buffer<<"gpu", 0>>) -> !mef.chain
+  %ch2 = "use"(%ch1, %bA) : (!mef.chain, !mgp.buffer<<"gpu", 0>>) -> !mef.chain
+
+  mef.output %ch2 : !mef.chain
+}
