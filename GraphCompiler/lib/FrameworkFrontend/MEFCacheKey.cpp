@@ -7,6 +7,7 @@
 #include "GraphCompiler/MEFCacheKey.h"
 
 #include "Cache/CachedTransform.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOGGDialect/Support/ParametersUtils.h"
@@ -113,6 +114,11 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
   os << "cas-enabled="
      << (gcPipelineOptions.cacheDir.hasValue() &&
          !gcPipelineOptions.cacheDir.getValue().empty());
+  // The fusion path is selected by `MAX_GC_USE_ADV_FUSION` and read inside pass
+  // bodies, so it changes the compiled model while leaving both the option list
+  // and the pass list untouched. Without it the two paths share one key, and
+  // whichever compiled first is silently served to the other.
+  os << "advanced-fusion=" << MO::useAdvancedFusion();
   feedMOToMGPPipelineKey(b3, &mlirCtx, keyOptions);
 
   // KGEN compilation context (Mojo compile-time defines)
