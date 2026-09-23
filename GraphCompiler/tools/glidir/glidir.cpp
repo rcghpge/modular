@@ -414,6 +414,34 @@ struct Document {
   }
 };
 
+// Read `path` and parse it the way the viewer needs: unregistered dialects
+// allowed and post-parse verification off, so a partial or hand-edited phase
+// dump (e.g. one missing its kernel.decl symbols) still loads. On any failure
+// it invokes `onError` with a human-readable message and returns null. Shared
+// by the interactive open path (Renderer::openFile) and the headless `--dry`
+// path so the two agree on exactly what "loads".
+static OwningOpRef<ModuleOp>
+readAndParseModule(MLIRContext &context, const std::string &path,
+                   llvm::function_ref<void(std::string)> onError) {
+  std::ifstream file(path);
+  if (!file) {
+    onError(llvm::formatv("Could not open {}", path));
+    return {};
+  }
+  std::ostringstream ss;
+  ss << file.rdbuf();
+
+  context.allowUnregisteredDialects();
+  ParserConfig parserConfig(&context, /*verifyAfterParse=*/false);
+  OwningOpRef<ModuleOp> module =
+      parseSourceString<ModuleOp>(ss.str(), parserConfig);
+  if (!module) {
+    onError(llvm::formatv("Could not parse the MLIR in {}", path));
+    return {};
+  }
+  return module;
+}
+
 class Renderer {
 private:
   GLFWwindow *window;
@@ -479,22 +507,12 @@ public:
       return false;
     };
 
-    std::ifstream file(path);
-    if (!file)
-      return fail(llvm::formatv("Could not open {}", path));
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    std::string mlirText = ss.str();
-
-    context.allowUnregisteredDialects();
-    // Parse without post-parse verification: glidir is a read-only viewer, so
-    // it should display partial or hand-edited IR (e.g. a phase dump missing
-    // its kernel.decl symbols) rather than refuse to open it.
-    ParserConfig parserConfig(&context, /*verifyAfterParse=*/false);
-    OwningOpRef<ModuleOp> module =
-        parseSourceString<ModuleOp>(mlirText, parserConfig);
+    // Shared read+parse with the headless --dry path; failures land in the UI
+    // error queue (and stderr) via `fail`.
+    OwningOpRef<ModuleOp> module = readAndParseModule(
+        context, path, [&](std::string msg) { fail(std::move(msg)); });
     if (!module)
-      return fail(llvm::formatv("Could not parse the MLIR in {}", path));
+      return false;
 
     // Same reparse trick as the CLI path: printing then re-parsing gives each
     // op a FileLineColLoc into the dump text (exact line numbers for the IR
@@ -504,6 +522,7 @@ public:
       llvm::raw_string_ostream os(fullText);
       module->print(os);
     }
+    ParserConfig parserConfig(&context, /*verifyAfterParse=*/false);
     OwningOpRef<ModuleOp> dumpModule =
         parseSourceString<ModuleOp>(fullText, parserConfig);
     if (!dumpModule)
@@ -1075,6 +1094,23 @@ static void runMainLoop(MLIRContext &context,
   deinitImGuiWithBackends(osWindowHandle);
 }
 
+// Parse every path without opening the window; used by `--dry`. Reuses the
+// viewer's read+parse (readAndParseModule) so a --dry pass and an interactive
+// open agree on what loads. Exit code is the number of files that failed to
+// parse (0 = all good), so it composes in CI and shell loops.
+static int runDryParse(MLIRContext &context,
+                       const std::vector<std::string> &paths) {
+  int failures = 0;
+  for (const auto &path : paths) {
+    OwningOpRef<ModuleOp> module = readAndParseModule(
+        context, path, [](std::string msg) { llvm::errs() << msg << "\n"; });
+    llvm::outs() << llvm::formatv("{0}: {1}\n", path,
+                                  module ? "ok" : "parse failed");
+    failures += module ? 0 : 1;
+  }
+  return failures;
+}
+
 static DialectRegistry loadNecessaryDialects() {
   DialectRegistry registry;
   registry.insert<
@@ -1103,7 +1139,21 @@ int main(int argc, char **argv) {
   // module into it. Renderer::openFile performs the per-file print/reparse that
   // gives ops FileLineColLoc positions for the IR text viewer.
   MLIRContext context(loadNecessaryDialects());
-  std::vector<std::string> paths(argv + 1, argv + argc);
+
+  // `--dry`: parse the given files and exit without opening a window. Handy for
+  // checking that a phase dump still loads (CI, scripts) without a display.
+  bool dry = false;
+  std::vector<std::string> paths;
+  for (char **arg = argv + 1; arg != argv + argc; ++arg) {
+    if (std::string(*arg) == "--dry")
+      dry = true;
+    else
+      paths.push_back(*arg);
+  }
+
+  if (dry)
+    return runDryParse(context, paths);
+
   runMainLoop(context, paths);
   return 0;
 }
