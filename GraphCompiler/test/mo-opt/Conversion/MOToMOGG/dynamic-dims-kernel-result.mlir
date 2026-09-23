@@ -6,13 +6,12 @@
 
 // This test uses mo.gather, whose output shape is derivable from its inputs
 // once the axis is a compile-time attribute. The kernel stub therefore lowers
-// to a direct call.execute carrying the axis kernel param.
+// to a direct opaque call carrying the axis kernel param.
 
 // CHECK-LABEL: mo.graph @gather_dynamic_output_dims
-// CHECK: mogg.kernel
-// CHECK: mogg.call.execute["{{.*}}.Gather"]
+// CHECK: mogg._kernel
+// CHECK: mogg._call.opaque @{{.*}}.Gather
 // CHECK-SAME: kernel_param = {axis = 0 : index}
-// CHECK-SAME: moOpName = "mo.gather"
 mo.graph @gather_dynamic_output_dims<D0, D1 -> D2, D3>(
   %input : !mo.tensor<[D0, 64], f32>,
   %indices : !mo.tensor<[D1], si32>
@@ -24,11 +23,11 @@ mo.graph @gather_dynamic_output_dims<D0, D1 -> D2, D3>(
 }
 
 // CHECK-LABEL: mo.graph @avg_pool_dynamic_output_dims
-// CHECK: mogg.kernel
-// CHECK: mogg.call.shape["{{.*}}.avg_pool_shape"]
-// The dynamic dimensions D3, D4 from avg_pool's result type should be passed
-// to the kernel stub as output parameter declarations.
-// CHECK: outputParamDecls = #kgen<param.decls[{{.*}}D3 : !kgen.scalar<si64>{{.*}}D4 : !kgen.scalar<si64>{{.*}}]>
+// CHECK: mogg._kernel
+// CHECK: mogg._call.shape @{{.*}}.avg_pool_shape
+// The dynamic dimensions D3, D4 from avg_pool's result type should reach the
+// kernel as dim operands.
+// CHECK: dims ({{.*}}!mogg.dim_<D3>{{.*}}!mogg.dim_<D4>{{.*}})
 mo.graph @avg_pool_dynamic_output_dims<() -> D1, D2>(
   %input: !mo.tensor<[32, 10, 20, 3], f32>,
   %filter_shape: !mo.tensor<[2], si64>,

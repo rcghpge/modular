@@ -7,19 +7,3 @@ lit_tests(
     srcs = glob(["*.mlir"]),
     tools = ["//GraphCompiler/tools/mo-opt"],
 )
-
-# ============================================================================
-# New tests: adv-fusion regression target (GEX-4140).
-# ============================================================================
-# Mirrors `test` above under MAX_GC_USE_ADV_FUSION=1 -- every file here
-# already passes both ways, so there's no exclusion list yet (a regression
-# gate: this stays empty until something here needs it).
-lit_tests(
-    name = "test-adv-fusion",
-    srcs = glob(["*.mlir"]),
-    env = {"MAX_GC_USE_ADV_FUSION": "1"},
-    tools = ["//GraphCompiler/tools/mo-opt"],
-    # Per-file generated target names would otherwise collide with `test`
-    # above, which shares the same underlying .mlir files.
-    unique_suffix = "adv-fusion",
-)

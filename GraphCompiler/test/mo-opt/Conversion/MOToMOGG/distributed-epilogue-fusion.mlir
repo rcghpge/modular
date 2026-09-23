@@ -1,8 +1,9 @@
 // RUN: mo-opt %s --gc-pipeline | FileCheck %s
 
-// The allreduce.sum should be fused with the add operations
+// The allreduce.sum should be fused with the add operations. The two device
+// branches are recorded in the opposite order to the legacy path's.
 // CHECK-LABEL: mef.callable @allreduce_sum_with_epilogue$exec
-// CHECK: Epilogue(mo.distributed.allreduce.sum, mo.add, mo.add, operandIndices=[0, 1])
+// CHECK: Epilogue(mo.distributed.allreduce.sum, mo.add, mo.add, operandIndices=[1, 0])
 // CHECK: mef.output
 mo.graph @allreduce_sum_with_epilogue(
   %input0: !mo.tensor<[5, 64], bf16, gpu:0>,

@@ -155,11 +155,10 @@ LogicalResult checkReshapeShapesCompatible(
     MOSH::ShapeAttr inShape, MOSH::ShapeAttr outShape,
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError);
 
-/// Returns whether the advanced (MAP) fusion pipeline is enabled. Gated on
-/// the presence of the `MAX_GC_USE_ADV_FUSION` environment variable; only its
-/// existence matters, not its value.
+/// Returns whether the advanced (MAP) fusion pipeline is enabled. On by
+/// default; set `MAX_GC_NO_ADV_FUSION` to fall back to the legacy path.
 inline bool useAdvancedFusion() {
-  return std::getenv("MAX_GC_USE_ADV_FUSION") != nullptr;
+  return std::getenv("MAX_GC_NO_ADV_FUSION") == nullptr;
 }
 
 } // namespace M::MO

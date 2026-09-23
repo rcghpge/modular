@@ -10,7 +10,7 @@ mo.graph @updside_down(
 }
 
 // CHECK-LABEL: mef.callable @updside_down$exec
-// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.mul{{.*}}"
-// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.add{{.*}}"
-// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}mo.relu{{.*}}"
+// The three ops fuse into one kernel, so the dependency order this graph's
+// reversed source order tests shows up inside a single summary.
+// CHECK: "mgp.generic.execute"{{.*}}dSummary = "{{.*}}Elementwise(mo.mul, mo.add, mo.relu){{.*}}"
 // CHECK: mef.model @updside_down

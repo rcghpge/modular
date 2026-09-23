@@ -50,17 +50,6 @@ _COMMON_DEPS = [
     "//GraphCompiler/test/utils/test-helper:test_vs_numpy",
 ]
 
-# Files that will never run under MAX_GC_USE_ADV_FUSION=1: rewritten as a MAP
-# test, or checking something that path does not have. Not meant to empty; it
-# goes away with the legacy path.
-_ADV_FUSION_DISABLED_TESTS = [
-    # Read the legacy-only `mogg-debug-dump-fused-tensor-specs`. Their graphs
-    # are checked as index transforms in
-    # mo-opt/MAPDialect/Transforms/ViewFusion/view_fusion_propagate_strides.mlir.
-    "E2E/mogg-kernel-api-e2e-elementwise-fusion-propagate-strides.mlir",
-    "MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir",
-]
-
 lit_tests(
     name = "tests",
     size = "enormous",
@@ -72,32 +61,5 @@ lit_tests(
     data = _COMMON_DATA,
     mojo_deps = _COMMON_MOJO_DEPS,
     tools = _COMMON_TOOLS,
-    deps = _COMMON_DEPS,
-)
-
-# ============================================================================
-# New tests: adv-fusion regression target (GEX-4140).
-# ============================================================================
-# Mirrors `tests` above under MAX_GC_USE_ADV_FUSION=1. Most of its srcs intentionally overlap `tests`'
-# own (find_duplicate_srcs.py has a matching exemption for this package, the
-# same pattern mblack's unit_tests/unit_tests_validate already uses); a
-# lit_tests srcs list needs real file paths (it derives each per-file target
-# name straight from the string), so unlike modular_py_test this can't be
-# routed through a shared filegroup.
-lit_tests(
-    name = "tests-adv-fusion",
-    size = "enormous",
-    srcs = glob(
-        ["**/*.mlir"],
-        exclude = ["**/*-gpu.mlir"] + _ADV_FUSION_DISABLED_TESTS,
-    ),
-    custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
-    data = _COMMON_DATA,
-    env = {"MAX_GC_USE_ADV_FUSION": "1"},
-    mojo_deps = _COMMON_MOJO_DEPS,
-    tools = _COMMON_TOOLS,
-    # Per-file generated target names would otherwise collide with `tests`
-    # above, which shares most of the same underlying .mlir files.
-    unique_suffix = "adv-fusion",
     deps = _COMMON_DEPS,
 )

@@ -7,8 +7,8 @@
 // CHECK-CONST-MO-SUBGRAPH-LABEL: @partial_fold_bcast_constant_subgraphs
 // CHECK-CONST-MO-SUBGRAPH: mo.static.broadcast_to
 
-// the reshape is decomposed into add_singleton_dim
-// CHECK-CONST-MO-SUBGRAPH: mo.add_singleton_dim
+// the reshape is no longer decomposed; it stays a view call
+// CHECK-CONST-MO-SUBGRAPH: mo.static.reshape
 
 // COM: Do not constant fold broadcasts in the output, but allow them internally
 // CHECK-LABEL: mo.graph
