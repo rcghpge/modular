@@ -76,10 +76,11 @@ bool checkMutableKernelFusible(Value srcInChain, Value srcOutChain,
 
 // The existing prologue capturing `dst`'s `argIdx`'th input and that capture's
 // own index, or null when the input isn't captured by a prologue, is captured
-// with something else, or its capture is read more than once -- any of which
-// leaves no single, safely-replaceable load site. Input fusion targets
-// prologues only; an epilogue's input capture is reached emergently (a view
-// fuses into the consumer foreach, which then output-fuses into the epilogue).
+// with something else, its capture is read more than once, or its capture feeds
+// anything but a load -- any of which leaves no single, safely-replaceable load
+// site. Input fusion targets prologues only; an epilogue's input capture is
+// reached emergently (a view fuses into the consumer foreach, which then
+// output-fuses into the epilogue).
 struct ClosureCapture {
   CapturingFusionClosure closure = nullptr;
   unsigned captureIdx = 0;
@@ -99,6 +100,11 @@ ClosureCapture findExistingPrologueCapture(IterOpaqueOp dst, unsigned argIdx) {
       static_cast<unsigned>(captureIt - closure.getCaptures().begin());
   BlockArgument capArg = closure.getCaptureBlockArgs()[captureIdx];
   if (!capArg.hasOneUse())
+    return {};
+  // The splice replaces a single load of the capture; a capture that instead
+  // feeds an index transform (e.g. dynamic `map.index.slice` bounds) has no
+  // such site, so it is not a fusible prologue.
+  if (!isa<LoadOp>(*capArg.getUsers().begin()))
     return {};
   return {closure, captureIdx};
 }
