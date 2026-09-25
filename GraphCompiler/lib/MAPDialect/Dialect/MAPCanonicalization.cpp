@@ -108,6 +108,10 @@ constexpr int64_t kMaxConstantSize = 2048;
 // Returns the `mo.constant` producing `val` when its value can be
 // rematerialized inside a kernel body, else null.
 M::MO::ConstantOp getFusableConstant(Value val) {
+  // A rebind only reinterprets the type.
+  if (auto rebind = val.getDefiningOp<M::MO::RebindOp>())
+    val = rebind.getInput();
+
   auto cst = val.getDefiningOp<M::MO::ConstantOp>();
   if (!cst || !M::MO::isOnHost(cst))
     return {};
@@ -150,8 +154,9 @@ struct FuseConstantIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
       if (!cst)
         continue;
       // A `map.iter.opaque` body holds only MAP ops, so the value is carried
-      // by a `map.constant` rather than a clone of the `mo.constant`.
-      Value inBody = ConstantOp::create(rewriter, cst.getLoc(), cst.getType(),
+      // by a `map.constant` rather than a clone of the `mo.constant`, typed
+      // against the input since a looked-through rebind retypes it.
+      Value inBody = ConstantOp::create(rewriter, cst.getLoc(), input.getType(),
                                         cst.getValueAttr());
       rewriter.replaceAllUsesWith(op.getInputBlockArgs()[idx], inBody);
       folded.push_back(idx);

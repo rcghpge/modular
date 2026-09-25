@@ -62,3 +62,71 @@ mo.graph @folds_constant_into_foreach(
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %r : !mo.tensor<[2, 2], f32>
 }
+
+// A `mo.rebind` between the constant and the kernel only reinterprets the
+// type, so the constant behind it still folds -- matching
+// `MOGG::FuseConstants` on the pre-advanced-fusion lane.
+// CHECK-LABEL: mo.graph @folds_constant_through_rebind
+// CHECK-NOT:     mo.constant
+// CHECK-NOT:     mo.rebind
+// CHECK:       map.iter.opaque
+// CHECK-NEXT:  inputs ([[A:%[^ :,]+]]: !mo.tensor<[D0], f32>)
+// CHECK-NEXT:  outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[D0], f32>) {
+// The rematerialized constant carries the dropped input's type rather than the
+// constant's own `[4]`, so the body's captures and loads stay well typed.
+// CHECK-NEXT:    [[B:%[^ ]+]] = map.constant {{.*}} : tensor<4xf32> : <[D0], f32>
+// CHECK-NEXT:    map.iter.foreach.body<[D0]>
+// CHECK-NEXT:      index   ([[IDX:%[^ :,]+]]: !map.index<1>)
+// CHECK-NEXT:      capturing ([[ACAP:%[^ ]+]] = [[A]] : !mo.tensor<[D0], f32>, [[BCAP:%[^ ]+]] = [[B]] : !mo.tensor<[D0], f32>, [[OCAP:%[^ ]+]] = [[OUT]] : !mo.tensor<[D0], f32>) {
+mo.graph @folds_constant_through_rebind<D0>(
+  %a: !mo.tensor<[D0], f32>
+) -> !mo.tensor<[D0], f32> {
+  %bias = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
+  %rb = mo.rebind(%bias) : !mo.tensor<[4], f32> -> !mo.tensor<[D0], f32>
+  %r = map.iter.opaque
+      inputs (%a : !mo.tensor<[D0], f32>, %rb as %b : !mo.tensor<[D0], f32>)
+      outputs (%out : !mo.tensor<[D0], f32>) {
+    map.iter.foreach.body<[D0]>
+        index (%idx: !map.index<1>)
+        capturing (%a0 = %a : !mo.tensor<[D0], f32>,
+                   %b0 = %b : !mo.tensor<[D0], f32>,
+                   %out0 = %out : !mo.tensor<[D0], f32>) {
+      %av = map.load %a0[%idx] : !mo.tensor<[D0], f32>
+      %bv = map.load %b0[%idx] : !mo.tensor<[D0], f32>
+      %sum = map.call.elementwise @my_add(%idx, %av, %bv)
+                : !map.index<1>, f32, f32 -> f32
+      map.store %out0[%idx] = %sum : !mo.tensor<[D0], f32>
+    }
+  } {device = #M.device_ref<"cpu", 0>}
+  mo.output %r : !mo.tensor<[D0], f32>
+}
+
+// The look-through reaches a constant only: a rebind of anything else leaves
+// the operand on the kernel.
+// CHECK-LABEL: mo.graph @keeps_non_constant_through_rebind
+// CHECK:         [[RB:%[^ ]+]] = mo.rebind
+// CHECK:       map.iter.opaque
+// CHECK-NEXT:  inputs ([[A:%[^ :,]+]]: !mo.tensor<[D0], f32>, [[RB]]: !mo.tensor<[D0], f32>)
+// CHECK-NOT:     map.constant
+mo.graph @keeps_non_constant_through_rebind<D0>(
+  %a: !mo.tensor<[D0], f32>,
+  %b: !mo.tensor<[4], f32>
+) -> !mo.tensor<[D0], f32> {
+  %rb = mo.rebind(%b) : !mo.tensor<[4], f32> -> !mo.tensor<[D0], f32>
+  %r = map.iter.opaque
+      inputs (%a : !mo.tensor<[D0], f32>, %rb as %b1 : !mo.tensor<[D0], f32>)
+      outputs (%out : !mo.tensor<[D0], f32>) {
+    map.iter.foreach.body<[D0]>
+        index (%idx: !map.index<1>)
+        capturing (%a0 = %a : !mo.tensor<[D0], f32>,
+                   %b0 = %b1 : !mo.tensor<[D0], f32>,
+                   %out0 = %out : !mo.tensor<[D0], f32>) {
+      %av = map.load %a0[%idx] : !mo.tensor<[D0], f32>
+      %bv = map.load %b0[%idx] : !mo.tensor<[D0], f32>
+      %sum = map.call.elementwise @my_add(%idx, %av, %bv)
+                : !map.index<1>, f32, f32 -> f32
+      map.store %out0[%idx] = %sum : !mo.tensor<[D0], f32>
+    }
+  } {device = #M.device_ref<"cpu", 0>}
+  mo.output %r : !mo.tensor<[D0], f32>
+}
