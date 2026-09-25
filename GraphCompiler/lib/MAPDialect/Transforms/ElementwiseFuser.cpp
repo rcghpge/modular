@@ -69,6 +69,9 @@ struct FuseElementwisePass
     config.canDuplicate = [](IterForeachOp src) {
       return !MO::isOnHost(src) && isCheapToDuplicate(src);
     };
+    // Bound duplication so a cheap multi-use producer with fan-out can't grow a
+    // few enormous kernels (mirrors MOGG's kMaximumFusionSetSize).
+    config.maxFusionSetSize = maxFusionSetSize;
     numKernelsFused = fuseInput(getOperation(), config);
   }
 

@@ -79,6 +79,14 @@ def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
     "M::MAP::MAPDialect",
     "M::MOGG::MOGGDialect",
   ];
+
+  let options = [
+    Option<"maxFusionSetSize", "max-fusion-set-size", "uint64_t",
+           /*default=*/"64",
+           "Cap on the number of kernels fused into one consumer, bounding the "
+           "duplication of a cheap multi-use producer across an elementwise "
+           "chain with fan-out. Mirrors the legacy kMaximumFusionSetSize.">,
+  ];
 }
 
 def FuseViews : Pass<"map-fuse-views", "MO::GraphOp"> {

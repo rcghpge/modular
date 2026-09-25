@@ -19,6 +19,7 @@
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 
+#include <cstdint>
 #include <functional>
 
 namespace M::MAP {
@@ -42,6 +43,14 @@ struct InputFusionConfig {
   /// Whether a producer with more than one use may be duplicated (the splice
   /// clones it into each consumer). A single-use producer always fuses.
   std::function<bool(IterForeachOp src)> canDuplicate;
+  /// Cap on how many kernels may be fused into a single consumer, mirroring the
+  /// legacy `kMaximumFusionSetSize`. Duplication lets a cheap multi-use
+  /// producer be cloned into every consumer, so an unbounded elementwise chain
+  /// with fan-out would otherwise grow a handful of enormous kernels. Draining
+  /// stops once a consumer reaches this many fused kernel calls. Defaults to
+  /// unbounded so callers that never duplicate (e.g. prologue fusion) are
+  /// unaffected.
+  uint64_t maxFusionSetSize = UINT64_MAX;
 };
 
 /// Greedily fuses producers into their consumers in `graphOp`, processing

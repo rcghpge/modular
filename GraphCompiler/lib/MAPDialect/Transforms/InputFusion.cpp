@@ -256,14 +256,24 @@ void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
 }
 
 // Whether `dstOp` has a site to read `src`'s result through if it were cloned
-// in: a foreach loads it in its body, an opaque only through an existing
-// prologue capture.
-bool hasFusionSite(IterForeachOp src, Operation *dstOp) {
+// in, AND the wrapper's `shouldFuse` would actually fuse there. The latter is
+// what keeps duplication honest: `hasFusionSite` gates `duplicationAllowed`, so
+// counting a consumer the pass will not fuse into (e.g. a `map.iter.opaque`
+// prologue for the elementwise fuser, whose `shouldFuse` requires a foreach
+// consumer) would clone `src` into the foreach users while that consumer keeps
+// `src` materialized -- pure recomputation. Requiring `shouldFuse` here makes a
+// multi-use producer refuse duplication unless every consumer genuinely absorbs
+// it, matching the legacy elementwise fuser which never duplicates across a
+// materializing (non-eligible) consumer.
+bool hasFusionSite(IterForeachOp src, Operation *dstOp,
+                   const InputFusionConfig &config) {
   if (src->getBlock() != dstOp->getBlock())
     return false;
 
-  if (auto dst = dyn_cast<IterForeachOp>(dstOp))
-    return firstConsumerLoad(dst, src) != nullptr;
+  if (auto dst = dyn_cast<IterForeachOp>(dstOp)) {
+    LoadOp load = firstConsumerLoad(dst, src);
+    return load && config.shouldFuse(producerStoreOf(src), load);
+  }
 
   auto dst = dyn_cast<IterOpaqueOp>(dstOp);
   if (!dst)
@@ -272,7 +282,17 @@ bool hasFusionSite(IterForeachOp src, Operation *dstOp) {
   for (auto [i, in] : llvm::enumerate(dst.getInputs())) {
     if (in != src.getResult(0))
       continue;
-    if (!findExistingPrologueCapture(dst, i).closure)
+    ClosureCapture capture = findExistingPrologueCapture(dst, i);
+    if (!capture.closure)
+      return false;
+    BlockArgument capArg =
+        capture.closure.getCaptureBlockArgs()[capture.captureIdx];
+    // The capture may have no users, or a user that isn't a load; either way
+    // there is no load site to fuse through, so don't treat it as one.
+    if (capArg.use_empty())
+      return false;
+    auto load = dyn_cast<LoadOp>(*capArg.getUsers().begin());
+    if (!load || !config.shouldFuse(producerStoreOf(src), load))
       return false;
     feedsInput = true;
   }
@@ -288,7 +308,7 @@ bool duplicationAllowed(IterForeachOp src, const InputFusionConfig &config) {
   if (src.getResult(0).hasOneUse())
     return true;
   for (Operation *user : src.getResult(0).getUsers())
-    if (!hasFusionSite(src, user))
+    if (!hasFusionSite(src, user, config))
       return false;
   return config.canDuplicate(src);
 }
@@ -408,7 +428,13 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
     for (Operation *op : llvm::reverse(ops)) {
       if (erased.contains(op) || !isa<IterForeachOp, IterOpaqueOp>(op))
         continue;
+      // Count kernels spliced into this consumer as we go and stop at the cap,
+      // so duplication across a fan-out chain can't build a few huge kernels
+      // (legacy's kMaximumFusionSetSize).
+      uint64_t fusedIntoConsumer = 0;
       while (IterForeachOp src = findEligibleProducer(op, config)) {
+        if (fusedIntoConsumer >= config.maxFusionSetSize)
+          break;
         if (isa<IterForeachOp>(op))
           spliceIntoForeach(cast<IterForeachOp>(op), src, rewriter);
         else
@@ -420,6 +446,7 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
         // Uniquing inputs re-exposes a shared producer as single-use, so this
         // drain fuses it once instead of duplicating or dropping it.
         dedupeKernelInputs(op, rewriter);
+        ++fusedIntoConsumer;
         ++numFused;
       }
     }
