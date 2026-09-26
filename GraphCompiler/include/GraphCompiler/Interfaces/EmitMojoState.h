@@ -28,6 +28,20 @@ struct KernelDeclAdaptor;
 class PrimitiveDeclOp;
 class ShapeFunctionDeclOp;
 
+/// The decomposed `ManagedTensorSlice` components of a fused load/store
+/// receiver: a bare pointer, its runtime shape/strides, and its comptime
+/// `StaticTensorSpec`. These are all trivial/comptime (device-passable), so a
+/// fusion lane -- the foreach closure or the prologue/epilogue functor --
+/// captures them instead of a `ManagedTensorSlice`, and `TensorLoadOp` /
+/// `TensorStoreOp::emitMojo` reassemble the load/store through
+/// `simd_{load_from,store_into}_tensor_pointer`.
+struct FusedTensorArg {
+  MojoValue ptr;
+  MojoValue shape;
+  MojoValue strides;
+  MojoValue spec;
+};
+
 /// This struct holds all the necessary state to lower a MOGG operation into
 /// Mojo text.
 struct EmitMojoState {
@@ -198,6 +212,10 @@ private:
   /// `setTensorArgAlignmentFor`).
   mlir::DenseMap<Value, MojoValue> tensorArgAlignments;
 
+  /// The decomposed `ManagedTensorSlice` components of a fused load/store
+  /// receiver (see `setFusedTensorArgFor`).
+  mlir::DenseMap<Value, FusedTensorArg> fusedTensorArgs;
+
   /// Enables the emission of additional comments detailing IR ops that are
   /// currently being processed
   bool enableOpTraceComments;
@@ -244,6 +262,24 @@ public:
     auto it = tensorArgAlignments.find(val);
     ASSERT_STREAM(it != tensorArgAlignments.end(),
                   << "tensor value has no recorded fused-arg alignment");
+    return it->second;
+  }
+
+  /// Record the decomposed `ManagedTensorSlice` components (ptr, shape,
+  /// strides, static spec) for a fused load/store receiver, keyed by the
+  /// load/store's tensor operand. Both fusion lanes populate this so
+  /// `TensorLoadOp` / `TensorStoreOp::emitMojo` can emit
+  /// `simd_{load_from,store_into}` calls without materializing a `TileTensor`.
+  void setFusedTensorArgFor(Value val, FusedTensorArg arg) {
+    fusedTensorArgs[val] = std::move(arg);
+  }
+
+  /// Get the decomposed MTS components recorded for a fused load/store
+  /// receiver.
+  const FusedTensorArg &getFusedTensorArgFor(Value val) const {
+    auto it = fusedTensorArgs.find(val);
+    ASSERT_STREAM(it != fusedTensorArgs.end(),
+                  << "tensor value has no recorded fused-arg components");
     return it->second;
   }
 

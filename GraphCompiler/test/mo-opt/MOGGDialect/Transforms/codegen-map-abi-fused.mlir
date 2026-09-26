@@ -37,9 +37,9 @@
 // (the epilogue's `$outputPtr`). The bound tensor is the DPS output of the
 // execute call.
 // CHECK: var [[CAP0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
-// CHECK: var [[PTR0:.*]] = [[CAP0]]._ptr
+// CHECK: var [[PTR0:.*]] = [[CAP0]].unsafe_ptr()
 // CHECK: var [[F0:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}]([[PTR0]], {{.*}})
-// CHECK: var [[BASE0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTR0]]{{.*}})
+// CHECK: var [[BASE0:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]({{.*}})
 // CHECK: var [[W0:.*]] = [[BASE0]]._bind_to_fused_output([[F0]])
 // CHECK: {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = False]([[W0]], {{.*}})
 
@@ -73,9 +73,9 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>
 // CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM]]), layout.Idx[2])
 // CHECK:   var [[CAPD:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
-// CHECK:   var [[PTRD:.*]] = [[CAPD]]._ptr
+// CHECK:   var [[PTRD:.*]] = [[CAPD]].unsafe_ptr()
 // CHECK:   var [[FD:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}]([[PTRD]], {{.*}})
-// CHECK:   var [[BASED:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTRD]]{{.*}})
+// CHECK:   var [[BASED:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]({{.*}})
 // CHECK:   var [[WD:.*]] = [[BASED]]._bind_to_fused_output([[FD]])
 // CHECK:   {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = False]([[WD]], {{.*}})
 
@@ -102,10 +102,10 @@ mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batc
 // CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM2:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM2]]), layout.Idx[2])
 // CHECK:   var [[CAPR:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
-// CHECK:   var [[PTRR:.*]] = [[CAPR]]._ptr
-// CHECK:   var [[PTRB:.*]] = {{.*}}._ptr
+// CHECK:   var [[PTRR:.*]] = [[CAPR]].unsafe_ptr()
+// CHECK:   var [[PTRB:.*]] = {{.*}}.unsafe_ptr()
 // CHECK:   var [[FR:.*]] = EpilogueStoreFunctor{{[0-9_]*}}[{{.*}}, {{.*}}]([[PTRR]], {{.*}}, [[PTRB]], {{.*}})
-// CHECK:   var [[BASER:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]([[PTRR]]{{.*}})
+// CHECK:   var [[BASER:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, False, extensibility.IO.Input, {{.*}}]({{.*}})
 // CHECK:   var [[WR:.*]] = [[BASER]]._bind_to_fused_output([[FR]])
 // CHECK:   {{.*}}.AddFuseOutput.execute[target = "cpu"]([[WR]], {{.*}})
 
@@ -131,15 +131,16 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // literal dtype (not the method's own still-symbolic `dtype` param) so the
 // store type-checks against a concrete type. NO `@__parameter`, NO
 // `ManagedTensorSlice` field.
-// CHECK:      struct EpilogueStoreFunctor{{[0-9_]*}}[[[LAYOUT:[a-zA-Z0-9_]+]]: layout.TensorLayout, {{[a-zA-Z0-9_]+}}: Int](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
-// CHECK-NEXT:     var [[PTRF:[a-zA-Z0-9_]+]]: Pointer[Scalar[DType.float32], UntrackedOrigin[mut = True]]
-// CHECK-NEXT:     var [[LAYOUTF:[a-zA-Z0-9_]+]]: Self.[[LAYOUT]]
+// CHECK:      struct EpilogueStoreFunctor{{[0-9_]*}}[[[SPEC:[a-zA-Z0-9_]+]]: {{.*}}StaticTensorSpec[DType.float32, _, ...]](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
+// CHECK-NEXT:     @__allow_legacy_any_origin_fields
+// CHECK-NEXT:     var [[PTRF:[a-zA-Z0-9_]+]]: Pointer[Scalar[DType.float32], MutAnyOrigin]
+// CHECK-NEXT:     var [[SHF:[a-zA-Z0-9_]+]]: std.utils.IndexList[Self.[[SPEC]].rank]
+// CHECK-NEXT:     var [[STF:[a-zA-Z0-9_]+]]: std.utils.IndexList[Self.[[SPEC]].rank]
 // CHECK:          @inline(.always)
 // CHECK-NEXT:     def store[dtype : DType, rank : Int, simd_width : SIMDLength, element_alignment : Int = 1](self, idx: std.utils.IndexList[rank], value: SIMD[dtype, simd_width]):
 // CHECK-NEXT:         var [[COORDIDX:.*]] = layout.Coord(idx)
 // CHECK-NEXT:         var [[REBOUND:.*]] = rebind[SIMD[DType.float32, simd_width]](value)
-// CHECK-NEXT:         var [[TILE:[a-zA-Z0-9_]+]] = layout.TileTensor[dtype = DType.float32, LayoutType = Self.[[LAYOUT]], origin = UntrackedOrigin[mut = True]](ptr = self.[[PTRF]], layout = self.[[LAYOUTF]])
-// CHECK-NEXT:         builtin_primitives.primitives.tile_tensor_strided_store[simd_width = simd_width, element_alignment = element_alignment, tensor_alignment = Self.{{[a-zA-Z0-9_]+}}]([[TILE]], [[COORDIDX]], rebind[SIMD[type_of([[TILE]]).dtype, simd_width]]([[REBOUND]]))
+// CHECK-NEXT:         {{.*}}simd_store_into_tensor_pointer[static_spec = Self.[[SPEC]], simd_width = simd_width, element_alignment = element_alignment](self.[[PTRF]], self.[[SHF]], self.[[STF]], {{.*}}, rebind[SIMD[{{.*}}, simd_width]]([[REBOUND]]))
 
 // The advanced-fusion emit path must be entirely `@__parameter`-free.
 // NOPARAM-NOT: @__parameter
@@ -157,20 +158,22 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // `bias` input, only ever loaded) carries its OWN `mut = False` rather than
 // inheriting the store target's mutability: each capture's dtype/mut come from
 // its own defining `mogg._tensor.create`.
-// CHECK-COUNT-4: struct EpilogueStoreFunctor{{[0-9_]*}}[{{[a-zA-Z0-9_]+}}: layout.TensorLayout, {{[a-zA-Z0-9_]+}}: Int](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
-// CHECK:      struct EpilogueStoreFunctor{{[0-9_]*}}[[[LAYOUT0:[a-zA-Z0-9_]+]]: layout.TensorLayout, {{[a-zA-Z0-9_]+}}: Int, [[LAYOUT1:[a-zA-Z0-9_]+]]: layout.TensorLayout, {{[a-zA-Z0-9_]+}}: Int](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
-// CHECK-NEXT:     var {{.*}}: Pointer[Scalar[DType.float32], UntrackedOrigin[mut = True]]
-// CHECK-NEXT:     var {{.*}}: Self.[[LAYOUT0]]
-// CHECK-NEXT:     var {{.*}}: Pointer[Scalar[DType.float32], UntrackedOrigin[mut = False]]
-// CHECK-NEXT:     var {{.*}}: Self.[[LAYOUT1]]
+// CHECK-COUNT-4: struct EpilogueStoreFunctor{{[0-9_]*}}[{{[a-zA-Z0-9_]+}}: {{.*}}StaticTensorSpec[DType.float32, _, ...]](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
+// CHECK:      struct EpilogueStoreFunctor{{[0-9_]*}}[[[SPEC0:[a-zA-Z0-9_]+]]: {{.*}}StaticTensorSpec[DType.float32, _, ...], [[SPEC1:[a-zA-Z0-9_]+]]: {{.*}}StaticTensorSpec[DType.float32, _, ...]](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
+// CHECK-NEXT:     @__allow_legacy_any_origin_fields
+// CHECK-NEXT:     var {{.*}}: Pointer[Scalar[DType.float32], MutAnyOrigin]
+// CHECK-NEXT:     var {{.*}}: std.utils.IndexList[Self.[[SPEC0]].rank]
+// CHECK-NEXT:     var {{.*}}: std.utils.IndexList[Self.[[SPEC0]].rank]
+// CHECK-NEXT:     @__allow_legacy_any_origin_fields
+// CHECK-NEXT:     var {{.*}}: Pointer[Scalar[DType.float32], MutAnyOrigin]
+// CHECK-NEXT:     var {{.*}}: std.utils.IndexList[Self.[[SPEC1]].rank]
+// CHECK-NEXT:     var {{.*}}: std.utils.IndexList[Self.[[SPEC1]].rank]
 // CHECK:          def store[dtype : DType, rank : Int, simd_width : SIMDLength, element_alignment : Int = 1](self, idx: std.utils.IndexList[rank], value: SIMD[dtype, simd_width]):
 // CHECK-NEXT:         var [[COORDIDX2:.*]] = layout.Coord(idx)
 // CHECK-NEXT:         var [[REBOUND2:.*]] = rebind[SIMD[DType.float32, simd_width]](value)
-// CHECK-NEXT:         var [[STORETILE:.*]] = layout.TileTensor[dtype = DType.float32, LayoutType = Self.[[LAYOUT0]], origin = UntrackedOrigin[mut = True]](ptr = self.{{.*}}, layout = self.{{.*}})
-// CHECK-NEXT:         var [[LOADTILE:.*]] = layout.TileTensor[dtype = DType.float32, LayoutType = Self.[[LAYOUT1]], origin = UntrackedOrigin[mut = False]](ptr = self.{{.*}}, layout = self.{{.*}})
-// CHECK-NEXT:         var [[LOADED:.*]] = builtin_primitives.primitives.tile_tensor_strided_load[simd_width = simd_width, element_alignment = element_alignment, tensor_alignment = Self.{{[a-zA-Z0-9_]+}}]([[LOADTILE]], [[COORDIDX2]])
+// CHECK-NEXT:         var [[LOADED:.*]] = {{.*}}simd_load_from_tensor_pointer[static_spec = Self.[[SPEC1]], simd_width = simd_width, element_alignment = element_alignment](self.{{.*}}, self.{{.*}}, self.{{.*}}, {{.*}})
 // CHECK-NEXT:         var [[SUM:.*]] = testing_kernels.testing_kernels.AddElementwise.elementwise[dtype = DType.float32]([[REBOUND2]], [[LOADED]])
-// CHECK-NEXT:         builtin_primitives.primitives.tile_tensor_strided_store[simd_width = simd_width, element_alignment = element_alignment, tensor_alignment = Self.{{[a-zA-Z0-9_]+}}]([[STORETILE]], [[COORDIDX2]], rebind[SIMD[type_of([[STORETILE]]).dtype, simd_width]]([[SUM]]))
+// CHECK-NEXT:         {{.*}}simd_store_into_tensor_pointer[static_spec = Self.[[SPEC0]], simd_width = simd_width, element_alignment = element_alignment](self.{{.*}}, self.{{.*}}, self.{{.*}}, {{.*}}, rebind[SIMD[{{.*}}, simd_width]]([[SUM]]))
 
 // A kernel declaring `_FusedComputeOutputTensor` gets a COMPUTE functor: it
 // conforms to `ComputeOutputFusion`, its method is `compute` and RETURNS the
