@@ -242,46 +242,55 @@ ErrorOr<int> MetalDevice::getAttribute(Attribute attr) const {
     ATTRIBUTE_UNSUPPORTED(CLOCK_RATE);
 
   case Device::Attribute::MULTIPROCESSOR_COUNT: {
+    static std::once_flag mpcFlag;
+    static std::optional<int> mpCount;
+
 // Host is built for MacOS 11.0, but `kIOMainPortDefault` is only available on
 // MacOS >= 12.0. However, we support Apple GPU only for MacOS >= 15, so this
 // warning can be ignored.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunguarded-availability-new"
-    io_iterator_t iterator;
-    CFMutableDictionaryRef matchDict = IOServiceMatching("AGXAccelerator");
+    std::call_once(mpcFlag, []() {
+      io_iterator_t iterator;
+      CFMutableDictionaryRef matchDict = IOServiceMatching("AGXAccelerator");
 
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, matchDict,
-                                     &iterator) != KERN_SUCCESS)
-      ATTRIBUTE_UNSUPPORTED(MULTIPROCESSOR_COUNT);
+      if (IOServiceGetMatchingServices(kIOMainPortDefault, matchDict,
+                                       &iterator) != KERN_SUCCESS)
+        return;
 
-    io_service_t service;
-    while ((service = IOIteratorNext(iterator)) != 0) {
-      CFMutableDictionaryRef properties = nullptr;
+      io_service_t service;
+      while ((service = IOIteratorNext(iterator)) != 0) {
+        CFMutableDictionaryRef properties = nullptr;
 
-      if (IORegistryEntryCreateCFProperties(
-              service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS) {
-        CFNumberRef coreCountRef = (CFNumberRef)CFDictionaryGetValue(
-            properties, CFSTR("gpu-core-count"));
+        if (IORegistryEntryCreateCFProperties(
+                service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS) {
+          CFNumberRef coreCountRef = (CFNumberRef)CFDictionaryGetValue(
+              properties, CFSTR("gpu-core-count"));
 
-        if (coreCountRef && CFGetTypeID(coreCountRef) == CFNumberGetTypeID()) {
-          int coreCount = 0;
-          CFNumberGetValue(coreCountRef, kCFNumberIntType, &coreCount);
-          CFRelease(properties);
-          IOObjectRelease(service);
-          IOObjectRelease(iterator);
-          return coreCount;
+          if (coreCountRef &&
+              CFGetTypeID(coreCountRef) == CFNumberGetTypeID()) {
+            int coreCount = 0;
+            CFNumberGetValue(coreCountRef, kCFNumberIntType, &coreCount);
+            CFRelease(properties);
+            IOObjectRelease(service);
+            IOObjectRelease(iterator);
+            mpCount = coreCount;
+            return;
+          }
+
+          if (properties)
+            CFRelease(properties);
         }
 
-        if (properties)
-          CFRelease(properties);
+        IOObjectRelease(service);
       }
 
-      IOObjectRelease(service);
-    }
-
-    IOObjectRelease(iterator);
-    ATTRIBUTE_UNSUPPORTED(MULTIPROCESSOR_COUNT);
+      IOObjectRelease(iterator);
+    });
 #pragma clang diagnostic pop
+    if (!mpCount)
+      ATTRIBUTE_UNSUPPORTED(MULTIPROCESSOR_COUNT);
+    return *mpCount;
   }
 
   // The max total threads per threadgroup is a dynamic property which is

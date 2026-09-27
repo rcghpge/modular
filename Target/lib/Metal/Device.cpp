@@ -81,40 +81,44 @@ static bool sdkSupportsMSLVersion(int maj, int min) {
 /// IORegistry entry, or `nullopt` if it cannot be determined. Mirrors the
 /// AsyncRT Metal backend (`MetalDevice::getAttribute`).
 static std::optional<int32_t> gpuCoreCount() {
+  static std::once_flag gpuCoreCountFlag;
+  static std::optional<int32_t> cachedCount;
+
 // Host is built for macOS 11.0, but `kIOMainPortDefault` is only available on
 // macOS >= 12.0. Apple GPU support requires macOS >= 15, so the warning is
 // safe to ignore.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunguarded-availability-new"
-  io_iterator_t iterator;
-  CFMutableDictionaryRef matchDict = IOServiceMatching("AGXAccelerator");
-  if (IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator) !=
-      KERN_SUCCESS)
-    return std::nullopt;
+  std::call_once(gpuCoreCountFlag, []() {
+    io_iterator_t iterator;
+    CFMutableDictionaryRef matchDict = IOServiceMatching("AGXAccelerator");
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, matchDict,
+                                     &iterator) != KERN_SUCCESS)
+      return;
 
-  std::optional<int32_t> result;
-  io_service_t service;
-  while ((service = IOIteratorNext(iterator)) != 0) {
-    CFMutableDictionaryRef properties = nullptr;
-    if (IORegistryEntryCreateCFProperties(
-            service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS) {
-      CFNumberRef coreCountRef = (CFNumberRef)CFDictionaryGetValue(
-          properties, CFSTR("gpu-core-count"));
-      if (coreCountRef && CFGetTypeID(coreCountRef) == CFNumberGetTypeID()) {
-        int coreCount = 0;
-        CFNumberGetValue(coreCountRef, kCFNumberIntType, &coreCount);
-        result = coreCount;
+    io_service_t service;
+    while ((service = IOIteratorNext(iterator)) != 0) {
+      CFMutableDictionaryRef properties = nullptr;
+      if (IORegistryEntryCreateCFProperties(
+              service, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS) {
+        CFNumberRef coreCountRef = (CFNumberRef)CFDictionaryGetValue(
+            properties, CFSTR("gpu-core-count"));
+        if (coreCountRef && CFGetTypeID(coreCountRef) == CFNumberGetTypeID()) {
+          int coreCount = 0;
+          CFNumberGetValue(coreCountRef, kCFNumberIntType, &coreCount);
+          cachedCount = coreCount;
+        }
+        if (properties)
+          CFRelease(properties);
       }
-      if (properties)
-        CFRelease(properties);
+      IOObjectRelease(service);
+      if (cachedCount)
+        break;
     }
-    IOObjectRelease(service);
-    if (result)
-      break;
-  }
-  IOObjectRelease(iterator);
-  return result;
+    IOObjectRelease(iterator);
+  });
 #pragma clang diagnostic pop
+  return cachedCount;
 }
 } // namespace
 
