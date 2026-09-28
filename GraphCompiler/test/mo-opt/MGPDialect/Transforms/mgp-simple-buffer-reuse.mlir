@@ -91,3 +91,40 @@ mgp.model @serial_negative : mof devices [#M.device_ref<"cpu", 0>] init (%weight
   %outTensor = mgp.tensor.create %outChain_2, %alloc2, %inTensorSpec : !mgp.tensor<?x?xf32>
   mef.output %arg0, %outTensor : !mef.chain, !mgp.tensor<?x?xf32>
 }
+
+
+// -----
+
+// A buffer published through a stable address slot is read by other devices'
+// regions of the partitioned device graph, which never show up as uses of the
+// buffer here. The lifetime analysis gives up at the stable create, so the
+// buffer is never a reuse candidate even though its visible uses all precede
+// the consumer's.
+mgp.model @stable_slot_not_reused : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %0 = grt.chain.create ()
+  %1 = mgp.context.create 2
+  mef.output %0, %1, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+
+} execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>, %inTensor: !mgp.tensor<4xf32, <"gpu", 0>>) -> (!mef.chain, !mgp.tensor<4xf32, <"gpu", 0>>) {
+  %inBuffer = mgp.tensor.extract.buffer %inTensor : <4xf32, <"gpu", 0>>
+  %spec = mgp.tensor.extract.tensor_spec %inTensor : <4xf32, <"gpu", 0>>
+  %size = index.constant 16
+
+  // CHECK: %[[ALLOC0:.*]] = mgp.buffer.alloc
+  // CHECK-NEXT: %[[ALLOC1:.*]] = mgp.buffer.alloc
+  %alloc0 = mgp.buffer.alloc %arg0, %size, %gpu, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
+  %alloc1 = mgp.buffer.alloc %arg0, %size, %gpu, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
+
+  // CHECK-NEXT: %[[CH0:.*]] = "kernel_execute"(%{{.*}}, %{{.*}}, %[[ALLOC0]])
+  %ch0 = "kernel_execute"(%arg0, %inBuffer, %alloc0) : (!mef.chain, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> !mef.chain
+  %t0 = mgp.tensor.create %ch0, %alloc0, %spec : !mgp.tensor<4xf32, <"gpu", 0>>
+  %s0 = mgp.device_graph.stable.create %t0 : !mgp.tensor<4xf32, <"gpu", 0>>
+  %sb = mgp.tensor.extract.buffer %s0 : <4xf32, <"gpu", 0>, stable>
+
+  // The consumer keeps its own output buffer.
+  // CHECK: "kernel_execute"(%[[CH0]], %{{.*}}, %[[ALLOC1]])
+  %ch1 = "kernel_execute"(%ch0, %sb, %alloc1) : (!mef.chain, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> !mef.chain
+
+  %out = mgp.tensor.create %ch1, %alloc1, %spec : !mgp.tensor<4xf32, <"gpu", 0>>
+  mef.output %arg0, %out : !mef.chain, !mgp.tensor<4xf32, <"gpu", 0>>
+}

@@ -22,6 +22,7 @@ include "GraphCompiler/Interfaces/EmitsMojoInterface.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
 include "GraphCompiler/MGPDialect/Dialect/MGPTypes.td"
 include "GraphCompiler/MOGGDialect/MOGGTypes.td"
+include "MLRT/GraphRT/GRTDialect/GRTMayAliasInterface.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/RegionKindInterface.td"
@@ -649,6 +650,7 @@ def DeviceGraphStagingYieldOp : MGP_DeviceGraphOp<"staging.yield", [
 //===----------------------------------------------------------------------===//
 
 def DeviceGraphStableCreateOp : MGP_DeviceGraphOp<"stable.create", [
+  DeclareOpInterfaceMethods<GRTMayAliasInterface>,
   InferTypeOpAdaptor,
   Pure,
 ]> {
@@ -657,6 +659,8 @@ def DeviceGraphStableCreateOp : MGP_DeviceGraphOp<"stable.create", [
     Designates `$tensor` as a value that must be assigned a stable address when
     the device graph is partitioned across devices. The result has the same
     shape, device, and mutability as `$tensor`, but its `stable` flag is set.
+    The result aliases `$tensor`: the slot holds its data pointer, and every
+    device region of the partitioned graph may read through it.
 
     Example:
     ```mlir

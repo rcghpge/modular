@@ -463,7 +463,13 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
       if (isa<GRT::GRTControlFlowInterface>(*owner))
         return Error("control flow op may alias");
 
-      if (isa<MGP::CallOp>(*owner))
+      // // A slot-published buffer is read by other devices' regions of the
+      // // partitioned device graph, none of which appear as uses here.
+      // if (isa<MGP::DeviceGraphStableCreateOp>(*use.getOwner()))
+      //   return Error("stable address slot extends the buffer's lifetime to "
+      //                "the device graph");
+
+      if (isa<MGP::CallOp>(owner))
         return Error("call op may alias");
 
       if (owner->hasTrait<mlir::OpTrait::IsTerminator>() &&
@@ -477,20 +483,26 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
       // the slice's users rather than looking dead after the view op.
       unsigned operandNumber = use.getOperandNumber();
       bool aliasesResult = false;
-      if (auto mayAlias = dyn_cast<GRT::GRTMayAliasInterface>(owner))
-        for (size_t r : llvm::seq(owner->getNumResults()))
+      if (auto mayAlias = dyn_cast<GRT::GRTMayAliasInterface>(owner)) {
+        for (size_t r : llvm::seq(owner->getNumResults())) {
           if (mayAlias.mayAlias(operandNumber, r)) {
             aliasesResult = true;
             break;
           }
-      if (!aliasesResult)
+        }
+      }
+
+      if (!aliasesResult) {
         if (auto extendsLife =
-                dyn_cast<GRT::GRTExtendsLifetimeInterface>(owner))
+                dyn_cast<GRT::GRTExtendsLifetimeInterface>(owner)) {
           for (size_t r : llvm::seq(owner->getNumResults()))
             if (extendsLife.extendsLifetime(operandNumber, r)) {
               aliasesResult = true;
               break;
             }
+        }
+      }
+
       if (aliasesResult)
         stack.push_back(owner);
     }

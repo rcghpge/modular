@@ -1205,6 +1205,11 @@ LogicalResult DeviceGraphStableCreateOp::verify() {
   return success();
 }
 
+bool DeviceGraphStableCreateOp::mayAlias(size_t operandIndex,
+                                         size_t resultIndex) {
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // DeviceGraphStableGetOp
 //===----------------------------------------------------------------------===//
