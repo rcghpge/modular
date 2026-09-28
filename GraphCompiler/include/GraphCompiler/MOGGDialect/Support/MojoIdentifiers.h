@@ -283,6 +283,13 @@ constexpr llvm::StringLiteral kStructStateContext =
     "builtin_primitives.primitives.StateContext";
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
 constexpr llvm::StringLiteral kStructArray = "std.collections.Array";
+
+/// Returns a Mojo type expression `std.collections.Array[ElementType, N]`.
+inline MojoValue makeMojoArrayType(llvm::StringRef elementType, size_t size) {
+  return MojoValue(
+      llvm::formatv("{}[{}, {}]", kStructArray, elementType, size).str());
+}
+
 constexpr llvm::StringLiteral kStructScalar = "Scalar";
 constexpr llvm::StringLiteral kStructVariadic = "Variadic";
 constexpr llvm::StringLiteral kStructParameterList = "ParameterList";
@@ -842,6 +849,7 @@ public:
 
   /// Mojo static-method / keyword-argument symbol names on `DeviceGraph`.
   static constexpr llvm::StringLiteral kCreate = "create";
+  static constexpr llvm::StringLiteral kCreateCollective = "create_collective";
   static constexpr llvm::StringLiteral kCache = "cache";
 
   /// `DeviceGraph.create(args...)` — the static factory that creates a builder,
@@ -849,6 +857,16 @@ public:
   /// device context, the build closure, then the cache key inputs.
   static MojoValue create(llvm::ArrayRef<MojoValue> args) {
     return MojoValue(kStructDeviceGraph).get(kCreate)(/*parameters=*/{}, args);
+  }
+
+  /// `DeviceGraph.create_collective(args...)` — the static factory that
+  /// builds one graph per device from a shared build callback indexed by the
+  /// device ordinal. `args` is the array of device contexts, the build
+  /// callback, the cache-key callback, and the `cache = ...` keyword argument.
+  /// The comptime `N` is inferred from the `Array[DeviceContext, N]` argument.
+  static MojoValue createCollective(llvm::ArrayRef<MojoValue> args) {
+    return MojoValue(kStructDeviceGraph)
+        .get(kCreateCollective)(/*parameters=*/{}, args);
   }
 
   /// `cache = <value>` — the keyword argument selecting the caching overload of

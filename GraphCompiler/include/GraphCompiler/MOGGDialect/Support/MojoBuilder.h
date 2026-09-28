@@ -284,7 +284,9 @@ public:
   [[nodiscard]] MojoBuilder &try_(std::function<void()> &&tryBlock);
   void except(std::function<void(const MojoValue &)> &&exceptBlock);
 
-  MojoBuilder &if_(const MojoValue &cond, std::function<void()> &&ifBlock);
+  MojoBuilder &if_(const MojoValue &cond, std::function<void()> &&ifBlock,
+                   bool comptime = false);
+
   [[nodiscard]] MojoBuilder &elif_(const MojoValue &cond,
                                    std::function<void()> &&elifBlock);
   void else_(std::function<void()> &&elseBlock);

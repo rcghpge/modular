@@ -1884,10 +1884,210 @@ void DeviceGraphCollectiveCreateOp::build(
         /*graphsCount=*/0);
 }
 
-LogicalResult DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &) {
-  return (*this)->emitError(
-      "`mgp.device_graph.collective.create` Mojo emission is not yet "
-      "implemented");
+/// Emit the shared indexed build closure used by both the cached and uncached
+/// paths of `mgp.device_graph.collective.create`. The closure receives a
+/// device index `n` and a `DeviceGraphBuilder`, then dispatches to the body for
+/// region `n`.
+static FailureOr<MOGG::MojoValue>
+emitCollectiveBuildForClosure(MOGG::EmitMojoState &state,
+                              DeviceGraphCollectiveCreateOp op) {
+  using namespace MOGG;
+
+  NamedMojoDef nParam("n", MojoValue("Int"));
+  NamedMojoDef builderParam =
+      NamedMojoDef::asVerbatim("builder", MojoValue(kStructDeviceGraphBuilder));
+  builderParam.argConvention = "mut";
+
+  MojoValue sharedContext = state.getMojoValueFor(op.getTheContext());
+
+  bool errOccurred = false;
+  MojoValue buildFor = state.builder.lambda(
+      "collective_build_for", /*parameters=*/{nParam},
+      /*arguments=*/{builderParam},
+      /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kNever,
+      /*isParameter=*/false, /*isAsync=*/false, /*raises=*/true,
+      /*captureConvention=*/"imm", [&](const FunctionBody &buildBody) {
+        MojoValue n = buildBody.parameters.front();
+        MojoValue builderArgMojo = buildBody.arguments.front();
+
+        // The shared context and builder are the same for every region.
+        for (Region &region : op.getGraphs()) {
+          state.setMojoValueFor(region.front().getArgument(1), sharedContext);
+          state.setMojoValueFor(region.front().getArgument(0), builderArgMojo);
+        }
+
+        size_t inputOffset = 0;
+        MojoBuilder *branch = nullptr;
+        for (auto [idx, region] : llvm::enumerate(op.getGraphs())) {
+          Block &block = region.front();
+          size_t numRegionInputs = block.getNumArguments() - 2;
+          auto regionInputs =
+              op.getInputs().slice(inputOffset, numRegionInputs);
+
+          SmallVector<Value> blockInputs(block.getArguments().begin() + 2,
+                                         block.getArguments().end());
+
+          auto regionBody = [&] {
+            DeviceGraphBuilderRef builderValue(builderArgMojo);
+            for (auto [arg, operand] :
+                 llvm::zip_equal(blockInputs, regionInputs)) {
+              if (!isDeviceGraphInput(operand)) {
+                state.setMojoValueFor(arg, state.getMojoValueFor(operand));
+                continue;
+              }
+              MojoValue stable = state.builder.var(
+                  builderValue.addInput(state.getMojoValueFor(operand)));
+              state.setMojoValueFor(arg, stable);
+            }
+
+            for (Operation &opInBody : block.getOperations())
+              if (state.lowerOpToMojo(&opInBody).failed()) {
+                errOccurred = true;
+                return;
+              }
+          };
+
+          if (idx == 0)
+            branch = &state.builder.if_(n.eq(MojoValue(idx)), regionBody,
+                                        /*comptime=*/true);
+          else
+            branch = &branch->elif_(n.eq(MojoValue(idx)), regionBody);
+
+          inputOffset += numRegionInputs;
+        }
+
+        branch->else_([&] {
+          state.builder.raise(
+              "Error(\"unexpected device index in collective device graph "
+              "build\")");
+        });
+      });
+
+  if (errOccurred)
+    return failure();
+  return buildFor;
+}
+
+/// Emit the per-device cache-key closure for the cached variant of
+/// `mgp.device_graph.collective.create`. Each device produces a key from only
+/// the device-graph inputs for that region; `DeviceGraph.create_collective`
+/// adds the closure identity separately.
+static MOGG::MojoValue
+emitCollectiveKeyForClosure(MOGG::EmitMojoState &state,
+                            DeviceGraphCollectiveCreateOp op) {
+  using namespace MOGG;
+
+  NamedMojoDef nParam("n", MojoValue("Int"));
+
+  return state.builder.lambda(
+      "collective_key_for", /*parameters=*/{nParam},
+      /*arguments=*/{},
+      /*returnType=*/MojoValue(kStructString),
+      MojoBuilder::LambdaInline::kNever, /*isParameter=*/false,
+      /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/"imm",
+      [&](const FunctionBody &keyBody) {
+        MojoValue n = keyBody.parameters.front();
+
+        size_t inputOffset = 0;
+        MojoBuilder *branch = nullptr;
+        for (auto [idx, region] : llvm::enumerate(op.getGraphs())) {
+          Block &block = region.front();
+          size_t numRegionInputs = block.getNumArguments() - 2;
+          auto regionInputs =
+              op.getInputs().slice(inputOffset, numRegionInputs);
+
+          auto keyRegionBody = [&] {
+            SmallVector<MojoValue> keyInputs;
+            for (Value input : regionInputs)
+              if (isDeviceGraphInput(input))
+                keyInputs.push_back(state.getMojoValueFor(input));
+
+            MojoValue key = state.builder.var(
+                MojoValue(kStructDeviceGraphCache)
+                    .get("make_key")(/*parameters=*/{}, keyInputs));
+            state.builder.returnsValue(key.transfer());
+          };
+
+          if (idx == 0)
+            branch = &state.builder.if_(n.eq(MojoValue(idx)), keyRegionBody,
+                                        /*comptime=*/true);
+          else
+            branch = &branch->elif_(n.eq(MojoValue(idx)), keyRegionBody);
+
+          inputOffset += numRegionInputs;
+        }
+
+        branch->else_([&] {
+          state.builder.raise(
+              "Error(\"unexpected device index in collective device graph "
+              "key\")");
+        });
+      });
+}
+
+LogicalResult
+DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  FailureOr<MojoValue> buildFor = emitCollectiveBuildForClosure(state, *this);
+  if (failed(buildFor))
+    return failure();
+
+  unsigned numGraphs = getGraphs().size();
+
+  MojoValue contextsArrayType =
+      makeMojoArrayType(kStructDeviceContext, numGraphs);
+  MojoValue graphsArrayType = makeMojoArrayType(kStructDeviceGraph, numGraphs);
+
+  MojoValue graphsArray;
+  if (Value cache = getCache()) {
+    MojoValue keyFor = emitCollectiveKeyForClosure(state, *this);
+
+    SmallVector<MojoValue> deviceContextValues =
+        state.getMojoValuesFor(getDeviceContexts());
+    MojoValue contextsArray = state.builder.varDecl(contextsArrayType);
+    state.builder.assign(contextsArray,
+                         state.builder.listLiteral(deviceContextValues));
+
+    SmallVector<MojoValue> collectiveArgs = {
+        contextsArray, *buildFor, keyFor,
+        DeviceGraphRef::cacheArg(state.getMojoValueFor(cache))};
+    graphsArray =
+        state.builder.var(DeviceGraphRef::createCollective(collectiveArgs));
+  } else {
+    // Uncached path: build each graph individually so the op does not require
+    // a shared cache.
+    NamedMojoDef builderParam = NamedMojoDef::asVerbatim(
+        "builder", MojoValue(kStructDeviceGraphBuilder));
+    builderParam.argConvention = "mut";
+
+    graphsArray = state.builder.varDecl(MojoValue(graphsArrayType));
+    for (auto [idx, ctx] : llvm::enumerate(getDeviceContexts())) {
+      MojoValue buildDevice = state.builder.lambda(
+          "collective_build_device", /*parameters=*/{},
+          /*arguments=*/{builderParam},
+          /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kNever,
+          /*isParameter=*/false, /*isAsync=*/false, /*raises=*/true,
+          /*captureConvention=*/"var", [&](const FunctionBody &bd) {
+            state.builder.call(*buildFor, /*parameters=*/{MojoValue(idx)},
+                               /*operands=*/{bd.arguments.front()});
+          });
+
+      MojoValue graph = state.builder.var(
+          DeviceGraphRef::create({state.getMojoValueFor(ctx), buildDevice}));
+      state.builder.assign(graphsArray[MojoValue(idx)], graph);
+    }
+  }
+
+  // Copy each per-device graph out of the collective result array into its own
+  // named variable. This keeps the variables origin-trackable so consumers can
+  // transfer them with `^`.
+  for (unsigned i = 0; i < numGraphs; ++i) {
+    MojoValue graphVar = state.builder.var(graphsArray[MojoValue(i)]);
+    state.setMojoValueFor(getOutGraphs()[i], graphVar);
+  }
+
+  return success();
 }
 
 bool DeviceGraphCollectiveCreateOp::isThrows() { return true; }

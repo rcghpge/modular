@@ -242,8 +242,12 @@ void MojoBuilder::except(std::function<void(const MojoValue &)> &&exceptBlock) {
 }
 
 MojoBuilder &MojoBuilder::if_(const MojoValue &cond,
-                              std::function<void()> &&ifBlock) {
-  statement("if ", cond, ":");
+                              std::function<void()> &&ifBlock, bool comptime) {
+  if (comptime)
+    statement("comptime if ", cond, ":");
+  else
+    statement("if ", cond, ":");
+
   MojoBuilderScopeGuard guard(this);
   ifBlock();
   return *this;
@@ -264,6 +268,7 @@ MojoBuilder &MojoBuilder::elif_(const MojoValue &cond,
   elifBlock();
   return *this;
 }
+
 void MojoBuilder::else_(std::function<void()> &&elseBlock) {
   statement("else:");
   MojoBuilderScopeGuard guard(this);
