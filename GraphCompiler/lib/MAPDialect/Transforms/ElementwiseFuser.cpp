@@ -26,31 +26,6 @@ namespace M::MAP {
 
 namespace {
 
-// Above this many elements, re-reading a tensor operand is expensive. Mirrors
-// MOGG's FuseElementwiseKernels.cpp (JSC-30 / MSTDL-2759).
-constexpr int64_t kLargeTensorElementThreshold = 4096;
-
-bool isLargeTensorOperand(Type type) {
-  auto tensorType = dyn_cast<MO::TensorType>(type);
-  if (!tensorType)
-    return false;
-  std::optional<int64_t> numElements = tensorType.getNumElements();
-  return !numElements.has_value() ||
-         *numElements > kLargeTensorElementThreshold;
-}
-
-// Cheap to duplicate iff at most one input is a large tensor: duplication
-// re-reads all inputs once per extra consumer, a win only when at most one
-// re-read is expensive.
-bool isCheapToDuplicate(IterForeachOp op) {
-  int numLargeOperands = 0;
-  for (Value input : op.getInputs())
-    if (isLargeTensorOperand(input.getType()))
-      if (++numLargeOperands > 1)
-        return false;
-  return true;
-}
-
 struct FuseElementwisePass
     : public MAP::impl::FuseElementwiseBase<FuseElementwisePass> {
   using Base::Base;

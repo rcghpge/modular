@@ -36,9 +36,15 @@ struct FuseViewsPass : public MAP::impl::FuseViewsBase<FuseViewsPass> {
     config.shouldFuse = [](StoreOp srcStore, LoadOp) {
       return producesThroughView(srcStore);
     };
-    // A view is a cheap index computation, always fine to re-derive per
-    // consumer.
-    config.canDuplicate = [](IterForeachOp) { return true; };
+    // A pure view is a cheap index computation, always fine to re-derive per
+    // consumer. A view already fused into elementwise compute is not: cloning
+    // it re-reads all of its inputs, and on a residual chain
+    // (h = h + reshape(matmul(h))) that recomputes every earlier layer in each
+    // later one. Such a kernel is held to the elementwise duplication rule, as
+    // legacy does by fusing only view-only kernels here (GEX-4234).
+    config.canDuplicate = [](IterForeachOp src) {
+      return isPureViewForeach(src) || isCheapToDuplicate(src);
+    };
     numKernelsFused = fuseInput(getOperation(), config);
   }
 };

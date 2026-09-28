@@ -39,6 +39,34 @@ bool producesThroughView(StoreOp store) {
       [](Operation *o) { return isa<IndexTransformOpInterface>(o); });
 }
 
+bool isPureViewForeach(IterForeachOp op) {
+  return isViewForeach(op) &&
+         !op.getBody()
+              .walk([&](CallElementwiseOp) { return WalkResult::interrupt(); })
+              .wasInterrupted();
+}
+
+// Above this many elements, re-reading a tensor operand is expensive.
+constexpr int64_t kLargeTensorElementThreshold = 4096;
+
+static bool isLargeTensorOperand(Type type) {
+  auto tensorType = dyn_cast<MO::TensorType>(type);
+  if (!tensorType)
+    return false;
+  std::optional<int64_t> numElements = tensorType.getNumElements();
+  return !numElements.has_value() ||
+         *numElements > kLargeTensorElementThreshold;
+}
+
+bool isCheapToDuplicate(IterForeachOp op) {
+  int numLargeOperands = 0;
+  for (Value input : op.getInputs())
+    if (isLargeTensorOperand(input.getType()))
+      if (++numLargeOperands > 1)
+        return false;
+  return true;
+}
+
 namespace {
 
 // TODO(GEX-4184): support multiple stores/outputs. Kernels are single-output

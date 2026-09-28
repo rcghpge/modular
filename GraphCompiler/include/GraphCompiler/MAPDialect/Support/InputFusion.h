@@ -34,6 +34,17 @@ bool isViewForeach(IterForeachOp op);
 /// assumption about the producer having a single output.
 bool producesThroughView(StoreOp store);
 
+/// Whether `op` is a view and nothing else: it has an index transform but no
+/// elementwise compute. Once a view fuses into an elementwise kernel the result
+/// still reads through a transform, but it is no longer free to re-derive.
+bool isPureViewForeach(IterForeachOp op);
+
+/// Whether duplicating `op` into each of its consumers is not a net
+/// memory-traffic loss: at most one of its inputs is a large tensor, since
+/// every extra copy re-reads all of them. Mirrors MOGG's
+/// FuseElementwiseKernels.cpp (JSC-30 / MSTDL-2759).
+bool isCheapToDuplicate(IterForeachOp op);
+
 /// The policy a wrapper supplies to narrow generic input fusion.
 struct InputFusionConfig {
   /// Whether the edge from `producerStore` (a producer kernel's store) to
