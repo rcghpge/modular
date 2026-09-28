@@ -3090,6 +3090,10 @@ static bool verifyFusedAllReducePath(TensorType inputTy, MO::AddOp residualOp,
     if (quantizeOp.getOperand(0) != rmsNormOp.getResult())
       return false;
     DictionaryAttr quantizeOpParams = quantizeOp.getParameters();
+    // The fused kernel derives the scale itself and has no amax floor, so a
+    // quantize op that asks for one must stay unfused.
+    if (quantizeOpParams.get("amax_floor"))
+      return false;
     Attribute groupSizeAttr = quantizeOpParams.get("group_size_or_per_token");
     if (!groupSizeAttr)
       return false;
