@@ -93,7 +93,12 @@ modular_cc_test(
 # single-GPU CUDAPluginTest with a multi-GPU requirement.
 modular_cc_test(
     name = "CUDAPeerCopyTest",
-    size = "small",
+    # ~40s suite (generic DriverPluginTests plus the two 2-GPU CopyInterDevice
+    # tests). Only runs when the toolchain SHA invalidates it; under
+    # full-invalidation contention on a shared multi-GPU node it can exceed
+    # small's 60s cap, so use medium for margin. (Does not affect scheduling
+    # queue time, which is a separate multi-GPU pool-capacity concern.)
+    size = "medium",
     srcs = ["test/Fixture.h"],
     data = [":CUDAPlugin.so"],
     env = {
