@@ -7,8 +7,7 @@
 #include "GraphCompiler/Driver/Device/DeviceExecution.h"
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "GraphCompiler/Driver/Device/DebugAllocPoison.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/raw_ostream.h"
+#include <cstring>
 
 using M::AnyAsyncValueRef;
 using M::ErrorOr;
@@ -32,22 +31,20 @@ ErrorOr<DeviceBufferRef> M::GraphCompiler::Driver::allocateDeviceBuffer(
   // stdlib uninit-read check has a single value to look for.
   // Enable via: MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison
   if (device->isDebugAllocatorEnabled("uninitialized-poison")) {
-    if (hostAlloc) {
-      M::GraphCompiler::Driver::poisonUninitializedMemory(buf->ptr(), spec);
-    } else if (std::optional<M::GraphCompiler::Driver::PoisonPattern> pattern =
-                   M::GraphCompiler::Driver::getPoisonPattern(spec)) {
-      llvm::errs() << "DEBUG_ALLOC_POISON: Filling device " << spec.getEltType()
-                   << " allocation (" << spec.getSizeInBytes()
-                   << " bytes) with " << pattern->patternKind << " pattern ";
-      (llvm::errs().changeColor(llvm::raw_ostream::RED)
-       << "0x"
-       << llvm::format_hex_no_prefix(pattern->bits, pattern->patternBytes * 2))
-          .resetColor();
-      llvm::errs() << "\n";
-
-      if (M::ErrorOrSuccess err = device->enqueueSetMemory(
-              *buf, pattern->bits, pattern->patternBytes))
+    M::GraphCompiler::Driver::AllocationPoisonDecision decision =
+        M::GraphCompiler::Driver::decidePoison(spec, hostAlloc);
+    if (const auto &fill = decision.fill) {
+      if (hostAlloc)
+        M::GraphCompiler::Driver::fillHostMemory(buf->ptr(),
+                                                 spec.getSizeInBytes(), *fill);
+      else if (M::ErrorOrSuccess err = device->enqueueSetMemory(
+                   *buf, fill->bits, fill->patternBytes))
         return err.takeError();
+    }
+    // Every device allocation synchronizes, filled or not, so that
+    // `sync-only` reproduces exactly the synchronization of the modes that
+    // fill.
+    if (!hostAlloc) {
       if (M::ErrorOrSuccess err = device->synchronize())
         return err.takeError();
     }

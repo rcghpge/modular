@@ -1357,6 +1357,7 @@ ErrorOrSuccess HIPDeviceFunction::hipCallKernelDirect(
   HIP_CHECK_ERR(moduleFunction_->hipDriver().hipModuleLaunchKernel(
       moduleFunction_->hipFunction(), gridX, gridY, gridZ, blockX, blockY,
       blockZ, sharedMemBytes, stream, args, nullptr));
+  MAYBE_SYNC(HIPDeviceContext::cast(context()));
   return success();
 }
 

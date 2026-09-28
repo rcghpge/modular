@@ -319,6 +319,8 @@ succeeds. This eliminates the "plenty free but no contiguous block" OOM.
     Detection is via an opt-in Mojo stdlib load check (built with
     `-D MOJO_STDLIB_SIMD_UNINIT_CHECK=true`) that aborts with the offending
     load's source location, dtype, and SIMD lane.
+    To poison only some allocations, see [Selecting which allocations to
+    poison](#selecting-which-allocations-to-poison).
   - `poison-all`: fill the body of *every* memory-manager allocation (not just
     graph tensors — also internal scratch/workspace and other non-tensor
     buffers) with a single repeated byte on alloc. The allocator layer has no
@@ -364,6 +366,71 @@ cover it. When both are enabled, the allocator fills each block with `0xFF`
 first and the graph driver then overwrites graph-tensor bodies with the
 type-aware sentinel, so `poison-all` effectively covers the non-tensor
 allocations that `uninitialized-poison` cannot see.
+
+#### Selecting which allocations to poison
+
+`uninitialized-poison` fills every graph-tensor allocation by default. To find
+which allocation an uninitialized read comes from, restrict it to some
+allocations and bisect. Allocations that aren't selected are zero-filled rather
+than left alone, so both arms of a bisection stay deterministic.
+
+The following table lists the variables that set the selection:
+
+| Variable                                 | Config key                       | Value                                                   |
+|------------------------------------------|----------------------------------|---------------------------------------------------------|
+| `MODULAR_DEBUG_ALLOC_POISON_SELECT`      | `debug.alloc_poison_select`      | A selection, fixed for the process                      |
+| `MODULAR_DEBUG_ALLOC_POISON_SELECT_FILE` | `debug.alloc_poison_select_file` | A file holding a selection, checked on every allocation |
+
+A selection is either one of these modes on its own:
+
+- `all` (the default): poison every allocation.
+- `none`: poison nothing and zero-fill everything.
+- `sync-only`: write nothing, but keep the device synchronization after every
+  allocation.
+
+Or it's one or both of these filters, joined by `&`, all of which must match:
+
+- `dtype=si64,ui32`: poison only these element types, spelled as `DType` prints
+  them.
+- `ord=100-2000`: poison only these allocation ordinals, inclusive. `ord=100`
+  selects one.
+
+For example, `dtype=si64&ord=100-2000` poisons the `si64` allocations among
+ordinals 100 through 2000. The separator is `&` rather than `;` because
+`modular.cfg` reads a `;` as the start of a comment. Quote the selection in a
+shell.
+
+A malformed clause is ignored with a warning, so a typo widens the selection
+instead of narrowing it to nothing and reporting a clean run. A mode combined
+with other clauses, or a second `dtype=` or `ord=` filter, counts as malformed.
+
+Each `DEBUG_ALLOC_POISON` log line reports the allocation's ordinal, dtype, and
+size, so the log of one run is the index for the next run's `ord=` ranges.
+Ordinals line up across runs only if the process allocates in the same order;
+diff two runs' logs to check. Ordinals count from the start of the process, or,
+with a selection file, from its latest change: each change resets them to zero,
+so rewriting the file between two requests addresses "the n-th allocation of
+this request" without restarting the server. A change is a new modification
+time, size, or file identity. To make sure every rewrite registers, including
+one that repeats the same selection, write a temporary file and rename it over
+the selection file.
+
+`sync-only` exists because this allocator changes two things at once: it fills
+memory, and it synchronizes the device after every allocation. If the output
+stays deterministic under `sync-only`, the synchronization is hiding a race. If
+it turns nondeterministic again, the fill was doing the work.
+
+Dtypes with no poison pattern (fp8 and sub-byte floats) are left alone when
+selected and zero-filled when not. With `poison-all` also enabled, unselected
+graph tensors are zero-filled over the allocator's byte pattern.
+
+```bash
+export MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison
+export MODULAR_DEBUG_ALLOC_POISON_SELECT_FILE=/tmp/poison-select
+# Before each request, replace the file to set the next selection.
+echo 'dtype=si64&ord=100-2000' > /tmp/poison-select.new
+mv /tmp/poison-select.new /tmp/poison-select
+```
 
 ### Configuration Examples
 

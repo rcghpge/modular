@@ -1737,6 +1737,7 @@ modular_cc_library(
         ":Support",
         "//MLRT:Driver/DeviceContext",
         "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Configuration",
         "//Support:Context",
     ],
 )
