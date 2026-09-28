@@ -202,8 +202,9 @@ TODO: Flesh out MGP/kGen interface
 
 ## MGP (Modular Glue Primitives) Dialect
 
-Refer to the
-[MGP Dialect](https://engineering.modular.com/GraphCompiler/MGPDialect.html)
+The dialect reference is generated from the TableGen definitions in
+[`include/GraphCompiler/MGPDialect/Dialect`](../include/GraphCompiler/MGPDialect/Dialect);
+build `//GraphCompiler:MGPDialect.doc` to render it.
 
 ## Not Yet Considered
 
