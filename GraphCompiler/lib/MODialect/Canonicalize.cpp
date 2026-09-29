@@ -17,6 +17,7 @@
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/MOSHDialect/MOSHOps.h"
 #include "GraphCompiler/Matchers.h"
+#include "GraphCompiler/Support/DataflowUtils.h"
 #include "GraphCompiler/Support/Dims.h"
 #include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Mojo/KGENDialect/KGENOps.h"
@@ -1513,6 +1514,40 @@ LogicalResult Shape::ToTensorOp::canonicalize(Shape::ToTensorOp op,
   }
 
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// SequenceOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// Moves ops that read only constants and weights out of a side-stream body,
+/// so exec-invariant code motion can lift them to init.
+struct HoistConstantDerivedOps : public OpRewritePattern<SequenceOp> {
+  using OpRewritePattern<SequenceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SequenceOp seq,
+                                PatternRewriter &rewriter) const override {
+    bool changed = false;
+    Block &body = seq.getBodyRegion().front();
+    for (Operation &op :
+         llvm::make_early_inc_range(body.without_terminator())) {
+      // An op with regions may read block arguments from inside them, which
+      // the producer walk does not see.
+      if (op.getNumRegions() == 0 &&
+          dataflowGraphFoldsToConstants<ConstantLike, ChainCreateOp>(&op)) {
+        rewriter.moveOpBefore(&op, seq);
+        changed = true;
+      }
+    }
+    return success(changed);
+  }
+};
+} // namespace
+
+void SequenceOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                             MLIRContext *ctx) {
+  patterns.add<HoistConstantDerivedOps>(ctx);
 }
 
 //===----------------------------------------------------------------------===//

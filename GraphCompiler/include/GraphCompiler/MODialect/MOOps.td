@@ -910,6 +910,7 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
