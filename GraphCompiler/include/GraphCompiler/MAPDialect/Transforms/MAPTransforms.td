@@ -75,17 +75,23 @@ def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
     part of `buildMapPipeline`.
   }];
 
-  let dependentDialects = [
-    "M::MAP::MAPDialect",
-    "M::MOGG::MOGGDialect",
-  ];
-
   let options = [
+    Option<"largeTensorElementThreshold", "large-tensor-element-threshold",
+           "int64_t", /*default=*/"4096",
+           "Tensor operands with more static elements than this (or with an "
+           "unknown element count) are considered large; a kernel with more "
+           "than one large tensor operand is not duplicated into multiple "
+           "consumer subgraphs.">,
     Option<"maxFusionSetSize", "max-fusion-set-size", "uint64_t",
            /*default=*/"64",
            "Cap on the number of kernels fused into one consumer, bounding the "
            "duplication of a cheap multi-use producer across an elementwise "
            "chain with fan-out. Mirrors the legacy kMaximumFusionSetSize.">,
+  ];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
   ];
 }
 

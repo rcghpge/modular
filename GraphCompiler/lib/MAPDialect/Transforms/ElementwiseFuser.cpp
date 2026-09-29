@@ -26,6 +26,28 @@ namespace M::MAP {
 
 namespace {
 
+// A tensor with more static elements than the threshold (or an unknown element
+// count) is "large": re-reading it is expensive (JSC-30 / MSTDL-2759).
+bool isLargeTensorOperand(Type type, int64_t largeTensorElementThreshold) {
+  auto tensorType = dyn_cast<MO::TensorType>(type);
+  if (!tensorType)
+    return false;
+  std::optional<int64_t> numElements = tensorType.getNumElements();
+  return !numElements.has_value() || *numElements > largeTensorElementThreshold;
+}
+
+// Cheap to duplicate iff at most one input is a large tensor: duplication
+// re-reads all inputs once per extra consumer, a win only when at most one
+// re-read is expensive.
+bool isCheapToDuplicate(IterForeachOp op, int64_t largeTensorElementThreshold) {
+  int numLargeOperands = 0;
+  for (Value input : op.getInputs())
+    if (isLargeTensorOperand(input.getType(), largeTensorElementThreshold))
+      if (++numLargeOperands > 1)
+        return false;
+  return true;
+}
+
 struct FuseElementwisePass
     : public MAP::impl::FuseElementwiseBase<FuseElementwisePass> {
   using Base::Base;
@@ -41,8 +63,9 @@ struct FuseElementwisePass
       return src && dst && !isViewForeach(src) && !isViewForeach(dst);
     };
     // Never duplicate a host kernel (mirrors MOGG).
-    config.canDuplicate = [](IterForeachOp src) {
-      return !MO::isOnHost(src) && isCheapToDuplicate(src);
+    int64_t threshold = largeTensorElementThreshold;
+    config.canDuplicate = [threshold](IterForeachOp src) {
+      return !MO::isOnHost(src) && isCheapToDuplicate(src, threshold);
     };
     // Bound duplication so a cheap multi-use producer with fan-out can't grow a
     // few enormous kernels (mirrors MOGG's kMaximumFusionSetSize).

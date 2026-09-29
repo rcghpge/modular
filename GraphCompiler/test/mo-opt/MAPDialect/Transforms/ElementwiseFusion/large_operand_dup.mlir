@@ -1,4 +1,5 @@
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-elementwise | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-elementwise=large-tensor-element-threshold=16384 | FileCheck %s --check-prefix=HIGHTHRESH
 
 // A multi-use binary op over TWO large operands must NOT be duplicated: the Add
 // is materialized into its own kernel and each consumer reads its result.
@@ -19,6 +20,17 @@ mo.graph @binaryAddLargeFanout(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>, %arg1: 
 // CHECK: map.iter.foreach
 // CHECK: inputs (%[[ADD]]
 // CHECK: map.call.elementwise @{{.*}}.ReLU
+
+// With `large-tensor-element-threshold` raised above the operands' 8192-element
+// count, both operands count as small, so the Add is cloned into each
+// consumer's fused kernel instead of being materialized once.
+// HIGHTHRESH-LABEL: mo.graph @binaryAddLargeFanout
+// HIGHTHRESH: map.iter.foreach
+// HIGHTHRESH: map.call.elementwise @{{.*}}.Add
+// HIGHTHRESH: map.call.elementwise @{{.*}}.Tanh
+// HIGHTHRESH: map.iter.foreach
+// HIGHTHRESH: map.call.elementwise @{{.*}}.Add
+// HIGHTHRESH: map.call.elementwise @{{.*}}.ReLU
 
 // A multi-use UNARY op has at most one large operand, so re-reading it on
 // duplication is not a net loss. It is still cloned into each consumer's fused
