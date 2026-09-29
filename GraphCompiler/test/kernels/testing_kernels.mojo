@@ -989,7 +989,6 @@ struct TraitFusedStoreParameterClosure:
             comptime assert conforms_to(type_of(x), DevicePassable)
             comptime dtype = type_of(x).dtype
 
-            @__parameter
             @inline(.always)
             def store_adapter[
                 OutT: Storable, width: Int
