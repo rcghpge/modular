@@ -33,7 +33,6 @@ pkg_files(
         ":MOGGToMGPIncGen.doc",
         ":MOSHDialect.doc",
         ":MOToMAPIncGen.doc",
-        ":MOToMOGGIncGen.doc",
         ":MOTransformsIncGen.doc",
         ":RMODialect.doc",
         ":RMOTransformsIncGen.doc",
@@ -101,7 +100,6 @@ modular_cc_library(
         ":MOGGToMGP",
         ":MOGGTransforms",
         ":MOToMAP",
-        ":MOToMOGG",
         ":MOTransforms",
         ":RMODialect",
         ":RMOTransforms",
@@ -1454,42 +1452,6 @@ modular_cc_library(
         "//MLRT:Driver/DeviceContext",
         "//Mojo:ToolCommon",
         "//Support:CommonCLOptions",
-    ],
-)
-
-## MOToMogg
-td_library(
-    name = "MOToMOGGTdFiles",
-    srcs = ["include/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.td"],
-    includes = ["include"],
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-    ],
-)
-
-gentbl_modular_passes(
-    name = "MOToMOGGIncGen",
-    output_name = "MOToMOGG",
-    td_file = "include/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.td",
-    deps = [
-        ":MOToMOGGTdFiles",
-        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
-        "@llvm-project//mlir:PassBaseTdFiles",
-    ],
-)
-
-modular_cc_library(
-    name = "MOToMOGG",
-    srcs = glob(["lib/Conversion/MOToMOGG/*.cpp"]),
-    hdrs = ["include/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h"],
-    copts = ["-fvisibility=default"],
-    deps = [
-        ":GraphCompilerInterfaces",
-        ":MGPDialect",
-        ":MODialect",
-        ":MOGGDialect",
-        ":MOToMOGGIncGen",
-        "//Mojo:ToolCommon",
     ],
 )
 

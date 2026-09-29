@@ -423,19 +423,7 @@ struct MapPipelineOptions
 /// Options for `mogg-pipeline`: all passes between `mo-to-mogg` and
 /// `mogg-to-mgp` (both endpoints excluded).
 struct MoggPipelineOptions
-    : public mlir::PassPipelineOptions<MoggPipelineOptions> {
-  Option<bool> fuseJitKernels{
-      *this, "fuse-jit-kernels",
-      llvm::cl::desc(
-          "Fuse connected elementwise/view/prologue–epilogue kernels."),
-      llvm::cl::init(true)};
-  Option<bool> fuseMutableLoadStore{
-      *this, "fuse-mutable-load-store",
-      llvm::cl::desc("If set to false will disable the creation of in-place "
-                     "kernels, instead lowering to explicit copies into and "
-                     "out of mo.buffer values. Primarily used for testing."),
-      llvm::cl::init(true)};
-};
+    : public mlir::PassPipelineOptions<MoggPipelineOptions> {};
 
 /// Options for `mgp-pipeline`: all passes between `mogg-to-mgp` and `jit`
 /// (both endpoints excluded).

@@ -9,13 +9,13 @@
 #include "GraphCompiler/Conversion/MAPToMOGG/MAPToMOGG.h"
 #include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
-#include "GraphCompiler/Conversion/MOToMOGG/MOToMOGG.h"
 #include "GraphCompiler/Driver/Common/Utils.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/Transforms/ConstantFoldPass.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
@@ -152,7 +152,6 @@ void M::MO::registerPasses() {
   MO::registerMoggPipeline();
   MO::registerMgpPipeline();
   MO::registerJitPipeline();
-  MO::registerMOToMOGGPasses();
   MO::registerMOToMAPPasses();
   MO::registerMOTransformsPasses();
   MAP::registerMAPTransformsPasses();
@@ -392,44 +391,13 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
 // ---------------------------------------------------------------------------
 
 void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
-                              const MoggPipelineOptions &opts) {
+                              const MoggPipelineOptions &) {
   // Finalize the advanced-fusion MOGG codegen form: conform each call's
   // operands to its callee signature (scalars, variadic tuples, trait args),
   // then outline each mogg._kernel into a mogg.kernel.stub.
   pm.addPass(MOGG::createConformCallOperands());
   pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
   pm.addPass(MOGG::createWrapKernelsWithTraceOp());
-
-  pm.addPass(MOGG::createSimplifyKernelOperands());
-
-  if (opts.fuseJitKernels) {
-    MOGG::FuseElementwiseOptions fuseElementwiseOptions;
-    // To dump dot graph, uncomment below:
-    // fuseElementwiseOptions.dumpDotGraph = true;
-    pm.addPass(MOGG::createFuseElementwise(fuseElementwiseOptions));
-    pm.addPass(MOGG::createSimplifyKernelOperands());
-
-    pm.addPass(MOGG::createFuseViews());
-    pm.addPass(MOGG::createSimplifyKernelOperands());
-
-    pm.addPass(MOGG::createFusePrologues());
-    pm.addPass(MOGG::createSimplifyKernelOperands());
-
-    // FuseEpilogues also runs affine view fusion internally until convergence,
-    // handling multi-hop cases like: matmul -> add -> affine_view -> add.
-    pm.addPass(MOGG::createFuseEpilogues());
-    pm.addPass(MOGG::createSimplifyKernelOperands());
-
-    // Inline fully-broadcast constant scalars into kernel lambdas (elementwise,
-    // prologue, and epilogue) so they are emitted as literals rather than
-    // zero-strided loads. Runs before FuseConstants so the broadcast source is
-    // still a constant kernel operand.
-    pm.addPass(MOGG::createInlineBroadcastConstantScalars());
-
-    pm.addPass(MOGG::createFuseConstants());
-    if (opts.fuseMutableLoadStore)
-      pm.addPass(MOGG::createFuseMutableLoads());
-  }
 
   pm.addPass(MOGG::createSimplifyKernelOperands());
 
@@ -578,8 +546,6 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
 
   // --- mogg-pipeline options ---
   MoggPipelineOptions moggOpts;
-  moggOpts.fuseJitKernels = opts.fuseJitKernels;
-  moggOpts.fuseMutableLoadStore = opts.fuseMutableLoadStore;
 
   // --- mogg-to-mgp options ---
   MGP::MOGGToMGPOptions moToPrimOpts;
@@ -639,13 +605,6 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   mapToMoggOpts.enableComputeLambdas = opts.enableComputeLambdas;
   buildStage([&](auto &p) { p.addPass(MAP::createMAPToMOGG(mapToMoggOpts)); },
              "map-to-mogg");
-
-  // --- mo-to-mogg ---
-  buildStage(
-      [&](auto &p) {
-        p.addPass(MO::createMOToMOGG({kernelLibraryPaths, opts.forceSync}));
-      },
-      "mogg");
 
   // --- mogg-pipeline (+ optional nan-check) ---
   // Insert NaN/Inf checks at compiled region boundaries. Runs after all fusion

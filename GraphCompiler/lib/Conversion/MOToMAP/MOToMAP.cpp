@@ -742,10 +742,25 @@ struct MOToMAPPass : public M::MO::impl::MOToMAPBase<MOToMAPPass> {
     MOGG::MojoRegistry registry(getOperation());
 
     SmallVector<Operation *> worklist;
-    getOperation()->walk([&](Operation *op) {
+    WalkResult walkResult = getOperation()->walk([&](Operation *op) {
+      // A tensor whose rank exceeds the runtime cap (kMaxRank) has no valid
+      // runtime representation and would abort MGP tensor-spec construction
+      // later. The legacy MO->MOGG path used to reject these with a
+      // diagnostic; reject them here now that it is gone.
+      Dialect *dialect = op->getDialect();
+      if (dialect && isa<MO::MODialect>(dialect) && !hasLowerableRank(op)) {
+        op->emitError() << "'" << op->getName().getStringRef()
+                        << "' op has a tensor whose rank exceeds the maximum "
+                           "supported rank of "
+                        << kMaxRank << "; the graph cannot be lowered";
+        return WalkResult::interrupt();
+      }
       if (shouldLower(op))
         worklist.push_back(op);
+      return WalkResult::advance();
     });
+    if (walkResult.wasInterrupted())
+      return signalPassFailure();
 
     for (Operation *op : worklist)
       if (failed(lowerOp(op, registry)))

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
 
 // RUN: mo-opt %s --gc-pipeline="kernel-library-paths=%kernel_api_test_pkg constant-fold=false" -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s --check-prefix=CHECK-MT

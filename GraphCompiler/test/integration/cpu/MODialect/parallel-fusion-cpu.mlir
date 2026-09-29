@@ -3,7 +3,7 @@
 // RUN: FileCheck %s < %t.out
 // RUN: FileCheck %s --check-prefix=CHECK-MGP < %t.mgp
 // Verify that the parallel body contains multiple kernels before lowering.
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg | FileCheck %s --check-prefix=CHECK-MOGG
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s --check-prefix=CHECK-MOGG
 // Verify lowering works with fusion disabled (multiple kernel groups).
 // RUN: mo-opt %s --gc-pipeline="constant-fold=false fuse-jit-kernels=false" -o /dev/null
 
@@ -84,12 +84,12 @@ mo.graph @parallel_three_ops() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f
 // Verify that before lowering, the parallel body has multiple kernels.
 // neg+relu = 2 kernels:
 // CHECK-MOGG: mo.parallel
-// CHECK-MOGG:   mogg.kernel
-// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mogg._kernel
+// CHECK-MOGG:   mogg._kernel
 // CHECK-MOGG:   mo.yield
 // neg+relu+neg = 3 kernels:
 // CHECK-MOGG: mo.parallel
-// CHECK-MOGG:   mogg.kernel
-// CHECK-MOGG:   mogg.kernel
-// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mogg._kernel
+// CHECK-MOGG:   mogg._kernel
+// CHECK-MOGG:   mogg._kernel
 // CHECK-MOGG:   mo.yield

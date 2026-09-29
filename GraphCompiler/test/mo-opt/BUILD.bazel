@@ -2,17 +2,11 @@ load("//bazel:api.bzl", "lit_tests")
 
 package(default_visibility = ["//visibility:private"])
 
-# Tests that require a GPU
-_GPU_ONLY_TESTS = [
-    "Conversion/MOToMOGG/distributed-epilogue-fusion.mlir",
-]
-
 lit_tests(
     name = "test",
     size = "large",
     srcs = glob(
         ["**/*.mlir"],
-        exclude = _GPU_ONLY_TESTS,
     ),
     custom_substitutions = {
         "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
@@ -29,36 +23,6 @@ lit_tests(
         "//max:builtin_kernels",
         "//max:builtin_primitives",
     ],
-    target_compatible_with = select({
-        "//:tsan": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
-    tools = [
-        "//GraphCompiler/tools/mo-opt",
-    ],
-)
-
-lit_tests(
-    name = "test-gpu",
-    size = "large",
-    srcs = _GPU_ONLY_TESTS,
-    custom_substitutions = {
-        "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
-        "%kernel_api_test_pkg": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
-        "%tensor_arg_trait_pkg": "$(rlocationpath //GraphCompiler/test/kernels/tensor_arg_trait_stubs:TensorArgTraitStubs)",
-        "%tensor_arg_trait_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs)",
-    },
-    data = [
-        "//GraphCompiler/test/kernels:testing_kernels",
-        "//GraphCompiler/test/kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs",
-        "//GraphCompiler/test/kernels/tensor_arg_trait_stubs:TensorArgTraitStubs",
-    ],
-    gpu_constraints = ["//:has_gpu"],
-    mojo_deps = [
-        "//max:builtin_kernels",
-        "//max:builtin_primitives",
-    ],
-    tags = ["gpu"],
     target_compatible_with = select({
         "//:tsan": ["@platforms//:incompatible"],
         "//conditions:default": [],

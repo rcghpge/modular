@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages -mo-to-mogg -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-pipeline -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks 2>&1 | FileCheck %s
 
 // Verify that the three ops introduced by the MOGG ABI lowering are present
 // after mogg-outline-kernels and mogg-add-try-except-blocks:
@@ -15,12 +15,12 @@
 // CHECK-NOT:       mogg.raise
 // CHECK:         } except {
 
-// The MOGG ABI stub (@relu_mogg) has mogg.with_trace around the kernel
+// The MOGG ABI stub (@relu_map) has mogg.with_trace around the kernel
 // terminator and mogg.try/mogg.raise for error propagation.
-// CHECK-LABEL: mogg.kernel.stub @relu_mogg
+// CHECK-LABEL: mogg.kernel.stub @relu_map
 // CHECK:         mogg.try {
 // CHECK:           mogg.with_trace
-// CHECK:             mogg.call.foreach
+// CHECK:             mogg._call.foreach
 // CHECK:           }
 // CHECK:           mogg.yield
 // CHECK:         } except {

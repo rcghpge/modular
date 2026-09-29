@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --canonicalize --mogg-to-mgp --mgp-lower-primitives | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --canonicalize --mogg-to-mgp --mgp-lower-primitives | FileCheck %s
 
 // CHECK-LABEL: @while_op
 // CHECK: } execute

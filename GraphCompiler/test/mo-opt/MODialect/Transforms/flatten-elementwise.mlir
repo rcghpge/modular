@@ -1,5 +1,4 @@
 // RUN: mo-opt --mo-flatten-elementwise --cse --canonicalize %s | FileCheck %s --check-prefix=CHECK-MO
-// RUN: mo-opt --mo-flatten-elementwise --mo-hoist-param-exprs --cse --canonicalize --mogg-import-packages --mo-to-mogg --mogg-fuse-elementwise --mogg-fuse-views --cse --mogg-strip-kernel-decls %s | FileCheck %s --check-prefix=CHECK-MOGG
 
 !tt = !mo.tensor<[1,2,3,4,5], f32>
 !tta = !mo.tensor<[6,4,5], f32>
@@ -11,10 +10,6 @@
 // CHECK-MO-LABEL: mo.graph @binary_elemwise_with_parameter
 // CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
 // CHECK-MO: mo.add({{.*}}) : !mo.tensor<[mul_no_wrap(P1, 20)], f32>
-
-// CHECK-MOGG-LABEL: mo.graph @binary_elemwise_with_parameter
-// CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View("mo.static.reshape":{{.*}}, "mo.static.reshape":{{.*}}, Elementwise("mo.relu":{{.*}}, "mo.add":{{.*}}))
 mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, %arg1 : !mo.tensor<[2,2,P1,5], f32>) -> !mo.tensor<[P1,4,5], f32> {
     %0 = mo.relu(%arg0) : !mo.tensor<[P1,4,5], f32>
     %1 = mo.static.reshape(%0) : !mo.tensor<[P1,4,5], f32> -> !mo.tensor<[2,2,P1,5], f32>
@@ -26,14 +21,6 @@ mo.graph @binary_elemwise_with_parameter<P1>(%arg0 : !mo.tensor<[P1,4,5], f32>, 
 // CHECK-MO-LABEL: mo.graph @with_non_elemwise
 // CHECK-MO-NOT: mo.relu({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
 // CHECK-MO-NOT: mo.add({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
-
-// CHECK-MOGG-LABEL: mo.graph @with_non_elemwise
-// CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.relu":{{.*}}, "mo.add":{{.*}}))
-// CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.relu":{{.*}}, "mo.add":{{.*}}))
-// CHECK-MOGG-NOT: mogg.kernel
 mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb) -> !tta {
     %0 = mo.relu(%arg0) : !tta
     %1 = mo.static.reshape(%0) : !tta -> !ttb
@@ -53,10 +40,6 @@ mo.graph @with_non_elemwise(%arg0 : !tta, %arg1 : !ttb) -> !tta {
 // CHECK-MO-LABEL: mo.graph @many_reshapes
 // CHECK-MO-NOT: mo.relu({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
 // CHECK-MO-NOT: mo.add({{.*}}) : !mo.tensor<[{{.*}},{.*}}], f32>
-
-// CHECK-MOGG-LABEL: mo.graph @many_reshapes
-// CHECK-MOGG: mogg.kernel
-// CHECK-MOGG-NOT: mogg.kernel{{[^.]}}
 mo.graph @many_reshapes(%arg1 : !tt, %arg2 : !tt) -> !tt {
     %a1 = mo.static.reshape(%arg1) : !tt -> !tta
     %a2 = mo.static.reshape(%arg2) : !tt -> !tta
@@ -105,11 +88,6 @@ mo.graph @many_reshapes(%arg1 : !tt, %arg2 : !tt) -> !tt {
 // CHECK-MO: mo.cast({{.*}}) : (!mo.tensor<[24], f32>) -> !mo.tensor<[24], f16>
 // CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[24], f16>
 // CHECK-MO: mo.cast({{.*}}) : (!mo.tensor<[24], f16>) -> !mo.tensor<[24], f64>
-
-// CHECK-MOGG-LABEL: mo.graph @with_cast
-// CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.cast":{{.*}}, "mo.relu":{{.*}}, "mo.cast":{{.*}}))
-// CHECK-MOGG-NOT: mogg.kernel{{[^.]}}
 mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f64> {
     %0 = mo.cast(%arg0) : (!mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f16>
     %1 = mo.relu(%0) : !mo.tensor<[1,2,3,4], f16>
@@ -121,11 +99,6 @@ mo.graph @with_cast(%arg0 : !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[2,3,4], f
 // CHECK-MO-LABEL: mo.graph @with_pow
 // CHECK-MO: mo.pow({{.*}} : !mo.tensor<[6], f32>, {{.*}} : !mo.tensor<[6], si32>) : !mo.tensor<[6], f32>
 // CHECK-MO: mo.relu({{.*}}) : !mo.tensor<[6], f32>
-
-// CHECK-MOGG-LABEL: mo.graph @with_pow
-// CHECK-MOGG: mogg.kernel
-// CHECK-MOGG: fusionInfo = View({{.*}}Elementwise("mo.pow":{{.*}}, "mo.relu":{{.*}}))
-// CHECK-MOGG-NOT: mogg.kernel{{[^.]}}
 mo.graph @with_pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) -> !mo.tensor<[3,2], f32> {
     %0 = mo.pow(%arg0 : !mo.tensor<[3,2], f32>, %arg1 : !mo.tensor<[3,2], si32>) : !mo.tensor<[3,2], f32>
     %1 = mo.static.reshape(%0) : !mo.tensor<[3,2], f32> -> !mo.tensor<[3,2,1], f32>

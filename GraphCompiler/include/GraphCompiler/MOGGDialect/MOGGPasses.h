@@ -126,13 +126,6 @@ void mergeIdenticalKernelStubs(mlir::ModuleOp module);
 /// operand from kernel-stub bodies into new kernel arguments. See GEX-3685.
 void liftBufferCacheSlots(mlir::ModuleOp module);
 
-/// Perform one iteration of reshape-into-epilogue fusion on the graph, fusing
-/// SplitDim/MergeDim/AddSingletonDim ops into kernel output lambdas.
-/// Returns the number of views fused. Shared by FuseReshapesIntoEpilogues and
-/// FuseEpilogues.
-size_t fuseReshapesIntoEpiloguesStep(MO::GraphOp graph,
-                                     const MojoRegistry &registry);
-
 } // namespace M::MOGG
 
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_TRANSFORMS_MOGGPASSES_H

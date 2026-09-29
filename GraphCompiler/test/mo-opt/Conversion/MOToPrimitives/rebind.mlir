@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp --cse | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-to-mgp --cse | FileCheck %s
 
 // CHECK-LABEL: mgp.model @static_ranks_int_to_unknown : mof
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context,
@@ -63,7 +63,9 @@ mo.graph @static_ranks_unknown_to_static<D0, D1>(
 
 // CHECK: %[[CH_M3:.*]] = grt.chain.create (%[[CH3]], %[[CH0]])
 
-// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M3]]
+// CHECK: %[[CH_M4:.*]] = grt.chain.create (%[[CH_M3]], %[[CH0]])
+
+// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M4]]
 
 
 mo.graph @multiple_rebind<D0, D1>(

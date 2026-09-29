@@ -1,26 +1,29 @@
 // Variant of bundled-allreduce-fusion.mlir where the relu occurs outside the
 // parallel region, applied to each unbundled result individually.  Verifies
 // that after the create+merge pipeline pulls the relu into the parallel, the
-// full MOGG pipeline still produces an epilogue-fused kernel.  The create
+// MAP fusion pipeline still produces an epilogue-fused kernel.  The create
 // and merge passes in isolation are covered by their respective unit tests
 // under mo-opt/.../Transforms/.
 
 // RUN: mo-opt %s --mogg-import-packages \
 // RUN:     --mo-create-parallel-from-unbundle --canonicalize \
 // RUN:     --mo-merge-adjacent-parallels \
-// RUN:     --mo-pipeline=kernel-decls-pre-populated=true --mo-to-mogg \
-// RUN:     --mogg-pipeline | FileCheck %s --check-prefix=CHECK-FUSED
+// RUN:     --mo-pipeline=kernel-decls-pre-populated=true \
+// RUN:     --mo-to-map --map-pipeline --map-to-mogg \
+// RUN:     | FileCheck %s --check-prefix=CHECK-FUSED
 
-// After create+merge + the full MOGG pipeline, relu is fused into the
-// allreduce as an output_lambda, so a single mogg.kernel remains inside
-// mo.parallel.
+// After create+merge + the MAP fusion pipeline, relu is fused into the
+// allreduce as an epilogue, so a single mogg._kernel remains inside
+// mo.parallel, its fusion_epilogue joining the allreduce and the relu.
 // CHECK-FUSED-LABEL: mo.graph @bundled_allreduce_relu_outside
 // CHECK-FUSED:      mo.parallel
-// CHECK-FUSED:        mogg.kernel
-// CHECK-FUSED:          mogg.bind {{.*}} output_lambda
-// CHECK-FUSED:            mogg.call.elementwise["{{.*}}.ReLU"]
-// CHECK-FUSED:          mogg.call.execute["{{.*}}.BundledAllReduceSum"]
-// CHECK-FUSED:        mo.yield
+// CHECK-FUSED:        mogg._kernel
+// CHECK-FUSED:          fusion_epilogue<[
+// CHECK-FUSED-SAME:       "mo.bundled.allreduce.sum"
+// CHECK-FUSED-SAME:       "mo.relu"
+// CHECK-FUSED:          mogg._tensor.create.epilogue
+// CHECK-FUSED:            mogg._call.elementwise["{{.*}}.ReLU"]
+// CHECK-FUSED:          mogg._call.opaque @{{.*}}BundledAllReduceSum
 
 mo.graph @bundled_allreduce_relu_outside(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,

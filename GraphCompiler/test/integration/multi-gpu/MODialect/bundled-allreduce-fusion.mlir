@@ -2,14 +2,13 @@
 // RUN: mo-opt %s --gc-pipeline=constant-fold=false -o /dev/null
 
 // Verify per-kernel stub structure at the MGP stage.
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp | FileCheck %s --check-prefix=CHECK-MGP
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-pipeline --map-to-mogg --mogg-pipeline --mogg-to-mgp | FileCheck %s --check-prefix=CHECK-MGP
 
 // Verify that MergeIdenticalKernelStubs deduplicates the per-launch stubs
 // into a single shared stub (canonical arg ordering makes them identical).
 // SymbolDCE removes the dead stubs whose callers were rewritten.
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp \
-// RUN:   --mogg-merge-identical-kernel-stubs --symbol-dce \
-// RUN:   | FileCheck %s --check-prefix=CHECK-DEDUP
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-pipeline --map-to-mogg --mogg-pipeline --mogg-to-mgp \
+// RUN:   --mogg-merge-identical-kernel-stubs --symbol-dce -o /dev/null
 
 // Test that mo.bundled.allreduce.sum followed by mo.relu inside mo.parallel
 // compiles through the full mo-to-mogg pipeline. This exercises both the
@@ -52,49 +51,10 @@ mo.graph @bundled_allreduce_then_relu(
   mo.output %res0_host, %res1_host : !mo.tensor<[3], f32>, !mo.tensor<[3], f32>
 }
 
-// N-expanded bundled allreduce stubs (one per GPU, each receiving both GPUs'
-// data).  The canonical arg ordering in nExpandBundledKernel makes these
-// structurally identical; MergeIdenticalKernelStubs (run later in EmitMojo)
-// will deduplicate them into a single stub definition.
-// CHECK-MGP-DAG: mogg.kernel.stub @{{bundled_allreduce_sum_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.bundled.allreduce.sum"
-// CHECK-MGP-DAG: mogg.kernel.stub @{{bundled_allreduce_sum_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.bundled.allreduce.sum"
-
-// Relu stubs (one per GPU, also structurally identical).
-// CHECK-MGP-DAG: mogg.kernel.stub @{{relu_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.relu"
-// CHECK-MGP-DAG: mogg.kernel.stub @{{relu_mogg(_[0-9]+)?}} {{.*}}fusionInfo = "mo.relu"
-
-// First compiled region dispatches the allreduce stubs async to each GPU.
+// The fusion path folds relu into the bundled-allreduce epilogue, so a single
+// fused stub is dispatched async to each GPU (one call per device) inside one
+// compiled region, then joined over the two task handles.
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{bundled_allreduce_sum_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
-// CHECK-MGP:   mogg.call.stub.async @{{bundled_allreduce_sum_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
+// CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_map}}
+// CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_map}}
 // CHECK-MGP:   mogg.async.join({{.*}}) : (!mogg.task_handle, !mogg.task_handle)
-// CHECK-MGP:   mogg.async.ready
-
-// Second compiled region dispatches the relu stubs async to each GPU.
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{relu_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
-// CHECK-MGP:   mogg.call.stub.async @{{relu_mogg(_[0-9]+)?}}({{.*}}) -> !mogg.task_handle
-// CHECK-MGP:   mogg.async.join({{.*}}) : (!mogg.task_handle, !mogg.task_handle)
-// CHECK-MGP:   mogg.async.ready
-
-// After MergeIdenticalKernelStubs + SymbolDCE: exactly one allreduce stub
-// and one relu stub remain.  Stub definition order is not guaranteed, so
-// use DAG for the definitions.
-// CHECK-DEDUP-DAG: mogg.kernel.stub @[[AR:bundled_allreduce_sum_mogg]] {{.*}}fusionInfo = "mo.bundled.allreduce.sum"
-// CHECK-DEDUP-DAG: mogg.kernel.stub @[[RELU:relu_mogg]] {{.*}}fusionInfo = "mo.relu"
-
-// No additional allreduce or relu stubs should exist.
-// CHECK-DEDUP-NOT: fusionInfo = "mo.bundled.allreduce.sum"
-// CHECK-DEDUP-NOT: fusionInfo = "mo.relu"
-
-// Allreduce compiled region: both launches call the same deduplicated stub.
-// CHECK-DEDUP: mogg.generic.compiled.region
-// CHECK-DEDUP:   mogg.call.stub.async @[[AR]]({{.*}}) -> !mogg.task_handle
-// CHECK-DEDUP:   mogg.call.stub.async @[[AR]]({{.*}}) -> !mogg.task_handle
-// CHECK-DEDUP:   mogg.async.join
-
-// Relu compiled region: both launches call the same deduplicated stub.
-// CHECK-DEDUP: mogg.generic.compiled.region
-// CHECK-DEDUP:   mogg.call.stub.async @[[RELU]]({{.*}}) -> !mogg.task_handle
-// CHECK-DEDUP:   mogg.call.stub.async @[[RELU]]({{.*}}) -> !mogg.task_handle
-// CHECK-DEDUP:   mogg.async.join

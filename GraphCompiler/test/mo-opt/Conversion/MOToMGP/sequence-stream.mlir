@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-pipeline \
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-pipeline \
 // RUN:   --mogg-to-mgp | FileCheck %s
 
 // An `mo.sequence` tagged with a non-default stream id lowers by binding its

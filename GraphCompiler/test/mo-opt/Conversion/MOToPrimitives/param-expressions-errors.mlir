@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-to-mgp --split-input-file --verify-diagnostics
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-to-mgp --split-input-file --verify-diagnostics
 
 kgen.func @foo() -> !kgen.scalar<si64> {
   %c = mosh.param.to_value = <42>
