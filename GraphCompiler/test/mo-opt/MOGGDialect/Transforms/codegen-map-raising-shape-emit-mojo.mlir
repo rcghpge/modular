@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --gc-pipeline-pre-jit="kernel-library-paths=%kernel_api_test_pkg dump-mojo-text=true" 2>&1 | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline-pre-jit="kernel-library-paths=%kernel_api_test_pkg dump-mojo-text=true" 2>&1 | FileCheck %s
 
 // A throwing shape function's stub returns a value through the try, so its
 // result variable is declared with the result's own type. Declaring it as an

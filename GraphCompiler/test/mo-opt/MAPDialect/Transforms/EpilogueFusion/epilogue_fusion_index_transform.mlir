@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-epilogue | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-epilogue | FileCheck %s
 
 // `mo.slice` lowers to a `map.iter.foreach` over the OUTPUT shape whose body
 // transforms the loop index (`map.index.slice`) before loading the input -- see

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
 // Kernel parameters that do not arrive as plain typed attributes on the MO op.
 // The legacy MO->MOGG lowering supplies both of these, so a MAP call that

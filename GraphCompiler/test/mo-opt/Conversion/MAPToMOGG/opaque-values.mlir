@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mogg-rewrite-opaque-types --mo-to-map --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mogg-rewrite-opaque-types --mo-to-map --map-to-mogg | FileCheck %s
 
 // An `!mo.opaque` crosses a `mogg._kernel` boundary as itself, not as a
 // `!mogg.pointer_` it is rebuilt from: it carries no shape, so there is

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-allocate-accumulating-buffers --map-to-mogg --mogg-outline-kernels-into-functions | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-allocate-accumulating-buffers --map-to-mogg --mogg-outline-kernels-into-functions | FileCheck %s
 
 // OutlineKernelsIntoFunctions moves each `mogg._kernel` body into a module-level
 // `mogg.kernel.stub` labeled with the `MAP` ABI (`abi = 2`), and replaces the

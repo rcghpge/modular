@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-to-mogg | FileCheck %s
 
 // mo.invoke_shape_func has no MAP form, so map-to-mogg lowers it directly. Its
 // `kgenParams` are ordinary parameters of the shape function and must reach the

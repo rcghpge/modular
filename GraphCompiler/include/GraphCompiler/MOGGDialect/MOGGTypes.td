@@ -189,8 +189,8 @@ def MOGG_ScalarOfAnyRank : ConfinedType<
 // Advanced-fusion codegen types
 //
 // The types below back the new MAP -> MOGG -> MGP lowering path. Everything
-// ABOVE remains the legacy type set and is removed once advanced fusion
-// (MAX_GC_USE_ADV_FUSION) is the default, so these are appended here for a clean
+// ABOVE remains the legacy type set, to be removed now that advanced fusion is
+// the only path, so these are appended here for a clean
 // eventual cut. They are opaque handles by design: the op that creates a value
 // carries its shape / dtype / mutability / io-kind, not the type.
 //===----------------------------------------------------------------------===//

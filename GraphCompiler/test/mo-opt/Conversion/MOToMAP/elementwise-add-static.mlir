@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
 // Verify that elementwise mo ops lower to map.iter.foreach (not map.iter.opaque)
 // when the advanced fusion pipeline is enabled.

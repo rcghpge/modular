@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg | FileCheck %s
 
 // Dynamic shapes: `mogg._kernel` gains one `!mogg.dim_` block argument per UNIQUE
 // dynamic dimension (deduped across inputs and outputs), listed in the grouped

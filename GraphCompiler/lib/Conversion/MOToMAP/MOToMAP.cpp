@@ -739,9 +739,6 @@ struct MOToMAPPass : public M::MO::impl::MOToMAPBase<MOToMAPPass> {
   using Base::Base;
 
   void runOnOperation() override {
-    if (!useAdvancedFusion())
-      return;
-
     MOGG::MojoRegistry registry(getOperation());
 
     SmallVector<Operation *> worklist;

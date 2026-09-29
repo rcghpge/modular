@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --map-to-mogg | FileCheck %s
 
 // A `map.constant` has no operand to arrive on, so it lowers to a
 // `mogg.buffer.constant` -- a pointer straight from the bytes -- and its tensor

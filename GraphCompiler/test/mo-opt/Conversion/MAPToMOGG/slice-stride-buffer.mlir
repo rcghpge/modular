@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, map-to-mogg)' | FileCheck %s
+// RUN: mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, map-to-mogg)' | FileCheck %s
 
 // A hoisted slice view whose $input is a buffer rather than a tensor -- what
 // `LoopInvariantViewMotion` produces once `FuseMutableLoads` has retyped an

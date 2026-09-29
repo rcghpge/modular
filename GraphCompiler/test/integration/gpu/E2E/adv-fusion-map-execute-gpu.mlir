@@ -1,19 +1,13 @@
-// RUN: env MAX_GC_USE_ADV_FUSION=1 mo-opt %s -o %t.adv.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_lib"
-// RUN: mt --execute %t.adv.mlir --result-output-style=full --model-inputs=ones | FileCheck %s
-// RUN: mo-opt %s -o %t.legacy.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_lib"
-// RUN: mt --execute %t.legacy.mlir --result-output-style=full --model-inputs=ones | FileCheck %s
+// RUN: mo-opt %s -o %t.mlir --gc-pipeline="kernel-library-paths=%kernel_api_test_lib"
+// RUN: mt --execute %t.mlir --result-output-style=full --model-inputs=ones | FileCheck %s
 
-// End-to-end GPU execution of the advanced-fusion MAP-ABI path. CPU coverage
-// lives in `cpu/E2E/adv-fusion-map-execute*.mlir`; GPU is the edge case, so this
-// file keeps a small graph set that COMPILES the emitted Mojo for GPU, RUNS it,
-// and checks the numeric result. Each `mo.custom` runs on
+// End-to-end GPU execution of the MAP-ABI path. CPU coverage lives in
+// `cpu/E2E/adv-fusion-map-execute*.mlir`; GPU is the edge case, so this file
+// keeps a small graph set that COMPILES the emitted Mojo for GPU, RUNS it, and
+// checks the numeric result. Each `mo.custom` runs on
 // `device=#M.device_ref<"gpu", 0>` over `gpu:0` tensors, with `mo.transfer`
 // staging the graph inputs cpu->gpu and the results gpu->cpu (mirrors
-// `add_one.mlir` and `mogg-kernel-api-e2e-trait-gpu.mlir`). Same dual-run
-// equivalence proof as the CPU siblings: with `MAX_GC_USE_ADV_FUSION=1` the op
-// lowers through the MAP-ABI pipeline, without it through the legacy MOGG path,
-// and both runs are checked against the SAME FileCheck patterns -- that
-// identical GPU output IS the equivalence proof. Inputs are all-ones
+// `add_one.mlir` and `mogg-kernel-api-e2e-trait-gpu.mlir`). Inputs are all-ones
 // (`--model-inputs=ones`); the kernels are chosen so the results are still
 // discriminating (add3 -> 3; add_sub -> 2 and 0).
 

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --mogg-outline-kernels-into-functions --mogg-wrap-kernels-with-trace-op | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --mogg-outline-kernels-into-functions --mogg-wrap-kernels-with-trace-op | FileCheck %s
 
 // A MAP ABI stub's body gets wrapped in mogg.with_trace. The terminator stays
 // outside and reads its results, so a value-returning stub keeps its return.

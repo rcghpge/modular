@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
 
 // `mogg._kernel` carries the memory effects the MAP op holds, which `MOToMAP`
 // took from the op it lowered. A kernel whose only observable effect is a

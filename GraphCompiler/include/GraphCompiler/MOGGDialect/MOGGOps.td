@@ -1793,8 +1793,8 @@ def MOGG_ShapeFunctionDeclOp
 // Advanced-fusion codegen ops
 //
 // `MAPToMOGG` lowers the `map` dialect into the ops below. Everything ABOVE is
-// the legacy MOGG op set, removed once advanced fusion (MAX_GC_USE_ADV_FUSION)
-// is the default; new codegen ops are appended here so the cleanup is a clean
+// the legacy MOGG op set, to be removed now that advanced fusion is the only
+// path; new codegen ops are appended here so the cleanup is a clean
 // cut at this line. Values are opaque handles (`!mogg.pointer_` / `!mogg.tensor_`
 // / `!mogg.dim_`); shape/dtype/mut/io live on the creating op. No lowering is
 // wired yet.

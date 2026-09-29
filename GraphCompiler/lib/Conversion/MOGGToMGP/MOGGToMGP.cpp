@@ -1854,8 +1854,8 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
             MO::MutableLoadOp, MO::BufferCreateOp, MO::BufferTransferOp,
             MO::CallOp>([this](auto op) { return lower(op); })
       // Interface-based lowering for externally-defined ops. Includes the
-      // advanced-fusion new-path kernel (`mogg._kernel`, gated by
-      // MAX_GC_USE_ADV_FUSION), which implements this interface directly.
+      // advanced-fusion new-path kernel (`mogg._kernel`), which implements this
+      // interface directly.
       .Case<MGP::LowerableToMGPInterface>(
           [this](auto op) { return lowerInterface(op); })
       .Default([](Operation *op) -> LogicalResult {
@@ -2188,8 +2188,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   // but by lowering time only kernels and bundled.expand should remain --
   // anything else indicates a missing cleanup pass or an unsupported pattern.
   //
-  // A body's kernels are either all old-path `mogg.kernel` (fusion off) or all
-  // new-path `mogg._kernel` (MAX_GC_USE_ADV_FUSION on): the fusion passes run
+  // A body's kernels are either all old-path `mogg.kernel` or all
+  // new-path `mogg._kernel`: the fusion passes run
   // over the whole body, so the two kinds never coexist. The per-launch loop
   // below dispatches on that single kind rather than handling a mix.
   SmallVector<Operation *> kernelOps;

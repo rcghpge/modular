@@ -408,15 +408,6 @@ def ElideRedundantMutableOps :
   }];
 }
 
-def DecomposeViewOps : Pass<"mo-decompose-views", "GraphOp"> {
-  let summary = "Decompose view ops into simpler ops";
-  let description = [{
-    Breaks down large CISC like view ops into a series of simpler
-    RISC like view ops. Each one has a simpler lowering in mojo and
-    offers potentially cleaner fusion semantics.
-  }];
-}
-
 def FlattenElementwise : Pass<"mo-flatten-elementwise", "ModuleOp"> {
   let summary = "Flattens elementwise ops";
   let description = [{

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --gc-pipeline-pre-jit="dump-mojo-text=true" -o /dev/null 2>&1 | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline-pre-jit="dump-mojo-text=true" -o /dev/null 2>&1 | FileCheck %s
 
 // The MAP-ABI counterpart of trace-instrumentation-profile-scope-suffix.mlir,
 // which drives `--mo-to-mogg` directly and so only ever covers the legacy stub.

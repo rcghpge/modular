@@ -1193,31 +1193,6 @@ Source:
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.td>
 
-### DecomposeViewOps
-
-#### Description
-
-Breaks complex view ops into simpler view primitives to enable cleaner lowering
-and fusion.
-
-#### Dialects
-
-Consumes and produces `mo` (GraphOp), `mosh` for shape ops.
-
-#### Additional notes
-
-Rewrites `mo.static.reshape` into merge/split/add‑singleton sequences when
-possible, preserving layouts and rebinding types as needed.
-
-This aids downstream passes (e.g., FuseReshapesIntoEpilogues) that don't handle
-complex cases. `mo.slice` is left intact and handled directly by FuseViews
-(contiguous slices) or the copy‑kernel path (non‑contiguous slices).
-
-Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MODialect/Transforms/DecomposeViewOps.cpp>
-Pass definition:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MODialect/Transforms/MOTransforms.td>
-
 ### ConstantFold
 
 #### Description

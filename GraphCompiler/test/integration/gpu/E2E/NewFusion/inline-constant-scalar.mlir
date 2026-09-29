@@ -1,7 +1,5 @@
-// RUN: env MAX_GC_USE_ADV_FUSION=1 mo-opt %s --gc-pipeline="constant-fold=false" -o %t.adv.mlir
-// RUN: mt --execute --model-inputs=ones --result-output-style=full %t.adv.mlir | FileCheck %s
-// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.legacy.mlir
-// RUN: mt --execute --model-inputs=ones --result-output-style=full %t.legacy.mlir | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline="constant-fold=false" -o %t.mlir
+// RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL: Running 'scalar_constant_sub':
 // CHECK: 'scalar_constant_sub' returned tensor<2x2xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00]

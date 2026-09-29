@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, map-to-mogg)' | FileCheck %s
+// RUN: mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, map-to-mogg)' | FileCheck %s
 
 // Two map.index.slice.stride ops in the same kernel body, the second's
 // $input being the first's own result: verifies mogg._tensor.create.slice

@@ -1,9 +1,9 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-pipeline --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-pipeline --map-to-mogg | FileCheck %s
 //
 // And, after `ConformCallOperands`, the read-only operand is recreated immutable
 // (this is the fix; without it the call would carry a mutable slice the kernel's
 // immutable parameter rejects at codegen).
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-pipeline --map-to-mogg --mogg-conform-call-operands | FileCheck %s --check-prefix=CONFORM
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-pipeline --map-to-mogg --mogg-conform-call-operands | FileCheck %s --check-prefix=CONFORM
 
 // `FuseMutableLoads` fuses a `mo.mutable.load` into an opaque kernel operand the
 // kernel only reads -- here `map_lower_inplace_copy`'s immutable `src`. MAPToMOGG

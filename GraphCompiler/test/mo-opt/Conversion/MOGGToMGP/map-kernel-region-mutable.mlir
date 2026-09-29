@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-mutable-loads --map-outline-structured-kernel-bodies --map-to-mogg --mogg-conform-call-operands --mogg-outline-kernels-into-functions --mogg-to-mgp > %t
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-mutable-loads --map-outline-structured-kernel-bodies --map-to-mogg --mogg-conform-call-operands --mogg-outline-kernels-into-functions --mogg-to-mgp > %t
 // RUN: FileCheck %s < %t
 
 // A `!mo.buffer` operand of a new-path mogg._kernel is written in place by the

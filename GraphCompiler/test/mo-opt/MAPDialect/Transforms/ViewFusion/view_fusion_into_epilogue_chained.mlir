@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --canonicalize | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --canonicalize | FileCheck %s
 
 // MO-level counterpart of view_fusion_into_epilogue.mlir's single-view case:
 // a chain of TWO view ops (slice, then broadcast) fuses into an existing

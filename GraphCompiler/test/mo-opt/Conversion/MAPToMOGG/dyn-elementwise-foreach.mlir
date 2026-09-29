@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @add
 // CHECK: mogg._kernel (%{{.*}} : !mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>

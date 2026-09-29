@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-kernels --map-outline-structured-kernel-bodies --canonicalize --cse | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-kernels --map-outline-structured-kernel-bodies --canonicalize --cse | FileCheck %s
 
 // Kernel fusion duplicates %x/%y once per fused producer;
 // simplify-kernel-operands uniques them, which makes the redundant loads and

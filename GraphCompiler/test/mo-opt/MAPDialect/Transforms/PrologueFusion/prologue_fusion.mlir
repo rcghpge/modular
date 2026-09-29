@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels | FileCheck %s
 
 // CHECK-LABEL: mo.graph @add_gather
 // CHECK-SAME:  (%[[A:.*]]: !mo.tensor<[3, 3], f32>, %[[B:.*]]: !mo.tensor<[3, 3], f32>, %[[INDICES:.*]]: !mo.tensor<[2, 2], si32>)

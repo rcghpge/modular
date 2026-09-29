@@ -1,5 +1,5 @@
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: env MODULAR_DEBUG=ir-output-dir=%t MAX_GC_USE_ADV_FUSION=1 mo-opt %s \
+// RUN: env MODULAR_DEBUG=ir-output-dir=%t mo-opt %s \
 // RUN:   --mo-shape-inference --gc-pipeline=constant-fold=false -o /dev/null
 // RUN: cat %t/*.mogg-pre-mgp.mlir | FileCheck %s
 

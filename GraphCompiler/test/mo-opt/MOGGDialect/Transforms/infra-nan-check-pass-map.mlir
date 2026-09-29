@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --cse --mo-nan-check-pass="stride=1" | FileCheck %s --enable-var-scope
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --cse --mo-nan-check-pass="stride=1" | FileCheck %s --enable-var-scope
 
 //===----------------------------------------------------------------------===//
 // The advanced-fusion counterpart of infra-nan-check-pass.mlir: same graphs,

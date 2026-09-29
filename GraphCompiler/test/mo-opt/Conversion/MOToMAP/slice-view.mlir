@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
 // Verify that mo.slice lowers to a standalone (unfused) map.iter.foreach over
 // the output shape, with a map.index.slice op computing the input index --

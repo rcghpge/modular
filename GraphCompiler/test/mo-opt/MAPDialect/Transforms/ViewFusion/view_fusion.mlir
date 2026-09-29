@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views | FileCheck %s
 
 // ViewFuser is generic over IndexTransformOpInterface: it does not special-case
 // slice/broadcast/transpose, and it does not require its producer and consumer

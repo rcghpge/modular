@@ -1,5 +1,5 @@
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: env MODULAR_DEBUG=ir-output-dir=%t MAX_GC_USE_ADV_FUSION=1 mo-opt %s \
+// RUN: env MODULAR_DEBUG=ir-output-dir=%t mo-opt %s \
 // RUN:   --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" \
 // RUN:   --mo-to-map --map-to-mogg --mogg-conform-call-operands \
 // RUN:   --mogg-outline-kernels-into-functions --mogg-emit-mojo -verify-each=false

@@ -35,8 +35,6 @@ struct GCPipelineOptions;
 /// - The built-in kernel packages and every Mojo binary package on the
 ///   module import path (the kernel implementations the built-in packages
 ///   re-export live there)
-/// - The fusion path (`MAX_GC_USE_ADV_FUSION`), which neither the options nor
-///   the textual pipeline capture
 ///
 /// It _does not_ depend on location info or specific symbol names.
 class MEFCacheKeyHasher {

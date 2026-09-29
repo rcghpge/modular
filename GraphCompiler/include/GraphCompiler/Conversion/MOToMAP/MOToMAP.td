@@ -14,9 +14,6 @@ def MOToMAP : Pass<"mo-to-map", "mlir::ModuleOp"> {
   let description = [{
     This pass lowers known `mo` dialect ops into one `map` kernel each,
     as the entry point of the advanced fusion pipeline.
-
-    This is scaffolding gated on `M::MO::useAdvancedFusion()`; it currently does
-    nothing.
   }];
 
   let dependentDialects = [

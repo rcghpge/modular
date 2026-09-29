@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-raise-back-contiguous-views | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-raise-back-contiguous-views | FileCheck %s
 
 // RaiseBackContiguousViews raises an unfused, contiguous slice back to
 // mogg.slice (zero-copy) and an unfused reshape back to mo.static.reshape

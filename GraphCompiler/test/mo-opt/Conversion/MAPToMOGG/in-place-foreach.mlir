@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels --map-fuse-mutable-loads --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels --map-fuse-mutable-loads --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
 
 // `map-fuse-mutable-loads` folds the load's mutable buffer into the loop, so
 // the loaded and stored captures reach `mogg._call.foreach` as `!mogg.buffer_`

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-elementwise | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-elementwise | FileCheck %s
 
 // A same-shape, non-identity view (transpose of a square matrix) must not be
 // absorbed by map-fuse-elementwise: ElementwiseFuser's compatibility check

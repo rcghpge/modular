@@ -317,7 +317,6 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   validateDevicesPassOpt.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
   pm.addPass(MO::createValidateDevicesPass(validateDevicesPassOpt));
 
-  pm.addPass(MO::createDecomposeViewOps());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 

@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-mutable-loads | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-mutable-loads | FileCheck %s
 
 // The first load fuses into the opaque kernel reading it: its buffer takes the
 // tensor's input slot and the kernel's chain sequences the load.

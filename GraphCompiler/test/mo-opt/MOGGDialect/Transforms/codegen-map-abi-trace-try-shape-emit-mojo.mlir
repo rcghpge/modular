@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --gc-pipeline-pre-jit="kernel-library-paths=%kernel_api_test_pkg dump-mojo-text=true" 2>&1 | FileCheck %s
+// RUN: mo-opt %s --gc-pipeline-pre-jit="kernel-library-paths=%kernel_api_test_pkg dump-mojo-text=true" 2>&1 | FileCheck %s
 
 // A throwing shape function gets both wrappers and still returns: each
 // forwards the shape out, so it survives both hops. Without that forwarding

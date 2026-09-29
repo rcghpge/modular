@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views | FileCheck %s
 
 // The advanced-fusion counterpart to
 // `integration/cpu/MODialect/mogg-kernel-api-e2e-fusion-propagate-strides.mlir`,

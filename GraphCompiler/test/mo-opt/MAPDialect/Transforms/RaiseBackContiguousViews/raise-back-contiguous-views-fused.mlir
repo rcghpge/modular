@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views --map-raise-back-contiguous-views | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views --map-raise-back-contiguous-views | FileCheck %s
 
 // ViewFuser collapses a chain of adjacent views (here two slices) into one
 // kernel with several chained map.index transforms. Since the whole chain is

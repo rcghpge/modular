@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, mo.graph(map-fuse-kernels), map-outline-structured-kernel-bodies, mo.graph(canonicalize), map-to-mogg)' | FileCheck %s
+// RUN: mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, mo.graph(map-fuse-kernels), map-outline-structured-kernel-bodies, mo.graph(canonicalize), map-to-mogg)' | FileCheck %s
 
 // Full pipeline from a real `mo.constant` fed to a broadcast: `LoadOp`'s
 // canonicalizer turns the per-element read of the one-element constant into a

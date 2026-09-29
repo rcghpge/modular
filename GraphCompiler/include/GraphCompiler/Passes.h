@@ -483,8 +483,7 @@ struct MgpPipelineOptions
 
 /// Builds individual sub-pipelines.
 void buildMoPipeline(mlir::OpPassManager &pm, const MoPipelineOptions &opts);
-/// Passes between `mo-to-map` and `mogg-to-mgp`, run instead of
-/// `buildMoggPipeline` when advanced fusion (MAX_GC_USE_ADV_FUSION) is on.
+/// Passes between `mo-to-map` and `mogg-to-mgp`.
 void buildMapPipeline(mlir::OpPassManager &pm, const MapPipelineOptions &opts);
 void buildMoggPipeline(mlir::OpPassManager &pm,
                        const MoggPipelineOptions &opts);
