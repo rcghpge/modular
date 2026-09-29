@@ -231,6 +231,56 @@ TEST_F(VirtualDeviceContextTest, EnqueueCreateBufferDoesNotCrash) {
   setVirtualDeviceCount(0);
 }
 
+// A virtual device exists to compile, so everything that would need the
+// hardware returns an error. These used to be `assert(false)` above the error,
+// which aborted a debug build instead of returning it -- and an abort is not
+// something a caller can report, recover from, or test. The HAL shim always
+// returned the error (see `HALVirtualDeviceTest`); these pin the same contract
+// on this backend.
+
+TEST_F(VirtualDeviceContextTest, BufferCreationIsRejected) {
+  VirtualDeviceRef device =
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  // Nothing may allocate. A zero-byte buffer is special-cased before any
+  // allocation happens, so it is the one case that succeeds.
+  ASSIGN_NO_ERR(DeviceBufferRef, empty, ctx->enqueueCreateBuffer(0));
+  EXPECT_EQ(empty->byteSize(), 0u);
+
+  // Not matched on the message: both route through a layer that may wrap it.
+  EXPECT_ERR(ctx->enqueueCreateBuffer(1024));
+  EXPECT_ERR(ctx->memmapFile("/dev/null"));
+}
+
+TEST_F(VirtualDeviceContextTest, MemoryOperationsAreRejected) {
+  VirtualDeviceRef device =
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  uint64_t host = 0;
+  EXPECT_ERR_MSG(ctx->enqueueCopyToDevice(&host, &host, sizeof(host)),
+                 "VirtualDevice does not support memory operations");
+  EXPECT_ERR_MSG(ctx->enqueueCopyFromDevice(&host, &host, sizeof(host)),
+                 "VirtualDevice does not support memory operations");
+  EXPECT_ERR_MSG(ctx->enqueueSetMemory(&host, sizeof(host), 0, 1),
+                 "VirtualDevice does not support memory operations");
+}
+
+TEST_F(VirtualDeviceContextTest, FunctionLoadingIsRejected) {
+  VirtualDeviceRef device =
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+
+  // Compiling a function is what a virtual device is for; resolving one to
+  // device code is where it stops.
+  EXPECT_ERR_MSG(ctx->loadFunction("vec_add_module", "vec_add", vecAddPtx,
+                                   /*maxDynamicSharedBytes=*/0,
+                                   /*debugLevel=*/"",
+                                   /*optimizationLevel=*/3),
+                 "VirtualDevice does not support function loading");
+}
+
 TEST_F(VirtualDeviceContextTest, MultipleVirtualDevices) {
   // Test creating multiple virtual devices and contexts
   VirtualDeviceRef device0 =

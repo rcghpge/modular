@@ -74,12 +74,10 @@ int VirtualDevice::deviceCount() const {
 
 ErrorOrSuccess VirtualDevice::chunkAlloc(void **ptr, size_t byteSize,
                                          bool isHost) {
-  assert(false && "VirtualDevice::chunkAlloc not implemented");
   RETURN_ERROR("VirtualDevice does not support memory allocation");
 }
 
 ErrorOrSuccess VirtualDevice::chunkFree(void *ptr, bool isHost) {
-  assert(false && "VirtualDevice::chunkFree not implemented");
   RETURN_ERROR("VirtualDevice does not support memory deallocation");
 }
 
@@ -92,12 +90,10 @@ ErrorOr<Device::MemInfo> VirtualDevice::getMemoryInfo() const {
 }
 
 ErrorOr<void *> VirtualDevice::getCurrentDriverContext() const {
-  assert(false && "VirtualDevice::getCurrentDriverContext not implemented");
   RETURN_ERROR("VirtualDevice does not have a driver context");
 }
 
 ErrorOrSuccess VirtualDevice::setCurrentDriverContext(void *ctx) {
-  assert(false && "VirtualDevice::setCurrentDriverContext not implemented");
   RETURN_ERROR("VirtualDevice does not support setting driver context");
 }
 
@@ -151,8 +147,6 @@ ErrorOrSuccess VirtualDeviceStream::enqueueFunctionExecDirect(
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
     void *attrs, uint32_t numAttrs, void **args, uint32_t /*argCount*/,
     const size_t * /*argSizes*/) const {
-  assert(false &&
-         "VirtualDeviceStream::enqueueFunctionExecDirect not implemented");
   RETURN_ERROR("VirtualDevice does not support function execution");
 }
 
@@ -183,7 +177,6 @@ ErrorOrSuccess VirtualDeviceContext::enqueueCopyToDevice(void *dst,
                                                          size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyToDevice",
                        TRACY_COLOR_PURPLE);
-  assert(false && "VirtualDeviceContext::enqueueCopyToDevice not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 
@@ -192,8 +185,6 @@ ErrorOrSuccess VirtualDeviceContext::enqueueCopyFromDevice(void *dst,
                                                            size_t byteSize) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueCopyFromDevice",
                        TRACY_COLOR_PURPLE);
-  assert(false &&
-         "VirtualDeviceContext::enqueueCopyFromDevice not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 
@@ -203,7 +194,6 @@ ErrorOrSuccess VirtualDeviceContext::memCopyDtoD(DeviceBuffer &dst,
                                                  size_t srcByteSize,
                                                  bool /*crossStreamSync*/) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memCopyDtoD", TRACY_COLOR_PURPLE);
-  assert(false && "VirtualDeviceContext::memCopyDtoD not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 
@@ -213,7 +203,6 @@ ErrorOrSuccess VirtualDeviceContext::enqueueSetMemory(void *dst,
                                                       size_t valSize) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueSetMemory",
                        TRACY_COLOR_PURPLE);
-  assert(false && "VirtualDeviceContext::enqueueSetMemory not implemented");
   RETURN_ERROR("VirtualDevice does not support memory operations");
 }
 
@@ -223,7 +212,6 @@ ErrorOr<DeviceFunctionRef> VirtualDeviceContext::loadFunction(
     int32_t optimizationLevel) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::loadFunction",
                        TRACY_COLOR_PURPLE);
-  assert(false && "VirtualDeviceContext::loadFunction not implemented");
   RETURN_ERROR("VirtualDevice does not support function loading");
 }
 
@@ -234,8 +222,6 @@ ErrorOrSuccess VirtualDeviceContext::enqueueFunctionExecDirect(
     const size_t *argSizes) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::enqueueFunctionExecDirect",
                        TRACY_COLOR_PURPLE);
-  assert(false &&
-         "VirtualDeviceContext::enqueueFunctionExecDirect not implemented");
   RETURN_ERROR("VirtualDevice does not support function execution");
 }
 
@@ -301,13 +287,11 @@ VirtualDeviceContext::verified_cast(const DeviceContext *ctx) {
 ErrorOrSuccess VirtualDeviceContext::memAlloc(void **ptr, size_t byteSize,
                                               Device::AllocMode mode) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memAlloc", TRACY_COLOR_PURPLE);
-  assert(false && "VirtualDeviceContext::memAlloc not implemented");
   RETURN_ERROR("VirtualDevice does not support memory allocation");
 }
 
 ErrorOrSuccess VirtualDeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memFree", TRACY_COLOR_PURPLE);
-  assert(false && "VirtualDeviceContext::memFree not implemented");
   RETURN_ERROR("VirtualDevice does not support memory deallocation");
 }
 
@@ -318,7 +302,6 @@ void *VirtualDeviceContext::driverContext() const {
 
 DeviceContext::MMapFileImplResult VirtualDeviceContext::memmapFileImpl(
     const std::filesystem::path &filename) const {
-  assert(false && "VirtualDeviceContext::memmapFileImpl not implemented");
   RETURN_ERROR("VirtualDevice does not support memory mapping");
 }
 

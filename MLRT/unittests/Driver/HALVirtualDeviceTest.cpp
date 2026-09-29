@@ -262,9 +262,9 @@ TEST_F(HALVirtualDeviceTest, HostAccessiblePointerIsRejected) {
 }
 
 #if MODULAR_HAL_DEVICE_CONTEXT
-// The legacy backend pairs an assert(false) with each of the errors below, so a
-// debug build there aborts instead of returning. The HAL shim deliberately
-// returns the error; assert that it does.
+// Both backends return these errors rather than asserting, so a caller can
+// report them; `VirtualDeviceContextTest` pins the same contract on the legacy
+// one.
 
 TEST_F(HALVirtualDeviceTest, BufferCreationIsRejected) {
   DeviceRef device = virtualDevice();
