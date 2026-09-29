@@ -611,8 +611,7 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   /// devices.
   if (paramName == MOGG::kMoggTargetParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
-    return MojoValue(MO::getDeviceOrDefaultAny(kernelStubOp).getLabel())
-        .quote();
+    return MojoValue(kernelStubOp.getDevice()).quote();
   }
   if (paramName == MOGG::kMoggTraceNameParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();

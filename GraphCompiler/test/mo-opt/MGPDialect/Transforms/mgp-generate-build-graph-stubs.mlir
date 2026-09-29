@@ -37,7 +37,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%{{.*}}) {{.*}}kernel_param = {transpose_b = true}
 // CHECK-NEXT: mogg.output
 // CHECK-NEXT: }
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
   }
@@ -86,7 +86,7 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
 // CHECK-NOT: @stub_1_build_graph
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
 
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
   }
@@ -135,7 +135,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK-NEXT: mogg.with_trace
 // CHECK-NOT: mogg.call.build_graph
 // CHECK: mogg.call.execute["k"] inputs(%{{.*}}, %[[REC]] :
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
   }
@@ -184,7 +184,7 @@ mogg.primitive.decl @view_copy_impl registration = "mogg.call.materialize" funct
 // CHECK-NEXT: mogg.with_trace
 // CHECK-NOT: mogg.call.build_graph
 // CHECK: mogg.call.materialize["view_copy_impl"] input(%{{.*}}) output(%{{.*}}) context(%[[REC]])
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.view":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.view":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.materialize["view_copy_impl"] input(%in) output(%out) context(%ctx) : (!mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mogg.context) -> ()
   }
@@ -299,7 +299,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 
 // CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mgp.device_graph.builder, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>)
 // CHECK-NEXT: mogg.call.build_graph["k"]
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %ctx: !mogg.context, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %ctx: !mogg.context, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
   }
@@ -346,7 +346,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.context, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
 // CHECK: mogg.call.execute["k"] inputs(%{{.*}}, %[[REC]] :
-mogg.kernel.stub @stub_1 (%aux: !mogg.context, %in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%aux: !mogg.context, %in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
   }
@@ -391,10 +391,10 @@ mogg.primitive.decl @foreach_impl registration = "mogg._call.foreach" function =
 // CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
 // CHECK-NOT: mogg.call.build_graph
 // CHECK: mogg._call.foreach @foreach_impl shape(%{{.*}}) context(%[[REC]])
-mogg.kernel.stub @stub_1 (%p: !mogg.pointer_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%p: !mogg.pointer_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   %shape = "test.shape"() : () -> !mogg.shape
   %t = "test.tensor"() : () -> !mogg.tensor_
-  mogg._call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor_) attributes {device = #M.device_ref<"gpu", 0>} {
+  mogg._call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor_) attributes {device = "gpu"} {
   ^bb0(%a: !mogg.tensor_, %i: !map.index<2>):
   }
   mogg.output
@@ -438,7 +438,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK: mogg.call.build_graph["k"]
 // CHECK-NOT: mogg._call.opaque
-mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   mogg.output
 }
@@ -485,7 +485,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK: mogg.kernel.stub @stub_1 (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mogg.context)
 // CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%[[B]]) {{.*}}kernel_param = {transpose_b = true}
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
   }

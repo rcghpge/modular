@@ -67,14 +67,13 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
             fusionInfo = FusionInfoAttr::get(
                 ctx, FusionLeafAttr::get(ctx, opName, /*loc=*/{}, /*sig=*/{}));
           }
+          DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);
           auto stubOp = MOGG::KernelStubOp::create(
               builder, loc, stubName, functionType, fusionInfo,
               kernelOp.getIsAsyncAttr(), kernelOp.getConstantResourcesAttr(),
-              MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP), nullptr,
-              nullptr);
+              MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP),
+              builder.getStringAttr(device.getLabel()), nullptr, nullptr);
           stubOp.getBody().takeBody(kernelOp.getBody());
-          DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);
-          stubOp.setDeviceRef(device);
 
           // Register the stub in the cached symbol table. `create` already
           // linked it into the module, so this only updates the table's name
@@ -93,7 +92,7 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
               /*fusionInfo=*/stubOp.getFusionInfoAttr(),
               /*isAsync=*/stubOp.getIsAsyncAttr(),
               /*constantResources=*/stubOp.getConstantResources());
-          callOp.setDeviceRef(stubOp.getExecutionDevice());
+          callOp.setDeviceRef(device);
 
           kernelOp->replaceAllUsesWith(callOp);
           kernelOp.erase();

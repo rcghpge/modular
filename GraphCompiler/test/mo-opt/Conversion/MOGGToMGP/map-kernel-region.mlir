@@ -30,7 +30,7 @@
 // KernelRegionOp had an `isAsync` attribute).
 // CHECK-SAME: isAsync = true
 // CHECK: mogg.kernel.stub @[[STUB0]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.context)
-// CHECK-SAME: device = #M.device_ref<"cpu", 0>
+// CHECK-SAME: device = "cpu"
 // CHECK: mogg._shape.create() {shape = #mosh<ape[2, 2]>{{.*}}} : () -> !mogg.shape
 // CHECK: mogg._tensor.create(%arg0, %{{.*}}) {device = {{.*}}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK: mogg._call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%arg2 : !mogg.context)
@@ -49,7 +49,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK: mogg.async.ready
 // CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio..">
 // CHECK: mogg.kernel.stub @[[STUB1]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.dim_, %arg3: !mogg.context)
-// CHECK-SAME: device = #M.device_ref<"cpu", 0>
+// CHECK-SAME: device = "cpu"
 // CHECK: mogg._shape.create(%arg2) {shape = #mosh<ape[dyn, 4]>{{.*}}} : (!mogg.dim_) -> !mogg.shape
 // CHECK: mogg._call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%arg3 : !mogg.context)
 mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {

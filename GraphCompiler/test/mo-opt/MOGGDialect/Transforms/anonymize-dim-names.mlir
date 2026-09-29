@@ -14,7 +14,7 @@
 // CHECK-NOT: !mogg.dim_<
 mogg.kernel.stub @named_dim(%d: !mogg.dim_<batch>)
   fusionInfo = named_dim
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   %s = mogg._shape.create(%d) {shape = #mosh<ape[batch, 4]> : !mosh.ape} : (!mogg.dim_<batch>) -> !mogg.shape
   mogg.output
 }
@@ -24,7 +24,7 @@ mogg.kernel.stub @named_dim(%d: !mogg.dim_<batch>)
 // CHECK-SAME: ()
 mogg.kernel.stub @no_dims()
   fusionInfo = no_dims
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
@@ -33,6 +33,6 @@ mogg.kernel.stub @no_dims()
 // CHECK-SAME: (%{{.*}}: !mogg.dim_)
 mogg.kernel.stub @already_anonymous(%d: !mogg.dim_)
   fusionInfo = already_anonymous
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }

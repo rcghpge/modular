@@ -159,49 +159,6 @@ struct LiftBufferCacheSlots
 struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
   using EmitMojoBase::EmitMojoBase;
 
-  /// TODO: If this is slow, parallelize over KernelStubOp (will need to take
-  /// the first dummyDimAttr from any kernel and then run in //).
-  void stripDeviceIdsAndDynamicShapes() {
-    TypedAttr dummyDimAttr = nullptr;
-    auto moduleOp = getOperation();
-    auto ctx = moduleOp->getContext();
-    for (auto &&kernelStub : moduleOp.getOps<MOGG::KernelStubOp>()) {
-      mlir::AttrTypeReplacer walker;
-
-      // Replace all device reference IDs with the same ID. This is because the
-      // ID itself does not contribute to the emitted Mojo but we could hash on
-      // it.
-      walker.addReplacement([&](M::DeviceRefAttr deviceRef) {
-        return M::DeviceRefAttr::get(kernelStub->getContext(),
-                                     deviceRef.getLabel(), 0);
-      });
-
-      // Replace all dynamic shape parameters into the same parameter. This is
-      // because the parameter does not contribute to the emitted Mojo but we
-      // could hash on it. It always lowers to Dim().
-      walker.addReplacement([&](MOSH::ShapeAttr shapeAttr) {
-        if (shapeAttr.isStatic())
-          return shapeAttr;
-
-        SmallVector<TypedAttr> newShape;
-        for (auto &&dimAttr : shapeAttr.getValues()) {
-          if (auto staticDim = MOSH::ShapeAttr::getStaticDim(dimAttr)) {
-            newShape.push_back(dimAttr);
-          } else {
-            if (!dummyDimAttr) {
-              dummyDimAttr =
-                  KGEN::ParamDeclRefAttr::get("dyn", dimAttr.getType());
-            }
-            newShape.push_back(dummyDimAttr);
-          }
-        }
-        return MOSH::ShapeAttr::get(ctx, newShape, shapeAttr.getType());
-      });
-
-      walker.recursivelyReplaceElementsIn(kernelStub, true, true, true);
-    }
-  }
-
   void emitMojoText() {
     auto moduleOp = getOperation();
     auto ctx = moduleOp->getContext();
@@ -346,12 +303,6 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
   void runOnOperation() override {
     auto moduleOp = getOperation();
 
-    // [optional]
-    // Strip device IDs (not the labels like cpu or gpu, just the numbers) and
-    // dynamic shape parameters because those mean nothing when emitting Mojo
-    // and thus they should not be an obstacle to deduplication.
-    stripDeviceIdsAndDynamicShapes();
-
     // [optional] Lift inline `index.constant` ops feeding
     // `mgp.buffer.get_cached`'s slot operand out of kernel bodies and into
     // kernel-stub function arguments, so that kernels that previously
@@ -360,17 +311,10 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     // See `liftBufferCacheSlots` for the full rationale.
     liftBufferCacheSlots(moduleOp);
 
-    // The following are a series of passes that run nested within the current
-    // pass because we have to disable the verifier after stripping device
-    // attributes.
+    // The following passes run nested within the current pass.
     MLIRContext *ctx = &getContext();
     mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
         ctx, mlir::OpPassManager::Nesting::Implicit);
-
-    // We disable the verifier because we have stripped device attributes. The
-    // IR is in an invalid state and we do not want the verifiers to catch that
-    // as we run SymbolDCE.
-    pm.enableVerifier(false);
 
     // [optional]
     // Merge identical kernel stubs using their hashes.

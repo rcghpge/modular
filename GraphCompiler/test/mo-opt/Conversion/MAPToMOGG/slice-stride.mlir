@@ -29,7 +29,7 @@
 // CHECK-NEXT:    [[OT:%[^ ]+]] = mogg._tensor.create([[OP]], [[OSH]]) {{.*}}io = 0{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK-NEXT:    [[STRIDED:%[^ ]+]] = mogg._tensor.create.slice([[IT0]], [[IT1]], [[IT2]], [[IT3]]) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}staticStart = array<i64: 1, 32>{{.*}}staticStep = array<i64: 1, 1>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
 // CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[3, 32]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[STRIDED]] : !mogg.tensor_, !mogg.tensor_) attributes {device = #M.device_ref<"cpu", 0>} {
+// CHECK-NEXT:    mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[STRIDED]] : !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
 // CHECK-NEXT:    ^bb0([[OUT:%[^ :,]+]]: !mogg.tensor_, [[STRIDEDARG:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg._tensor.load [[STRIDEDARG]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
 // CHECK-NEXT:      mogg._tensor.store [[OUT]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor_, !map.index<2>, f32

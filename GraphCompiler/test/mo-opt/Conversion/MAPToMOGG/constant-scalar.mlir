@@ -20,7 +20,7 @@
 // CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[8, 64]> : !mosh.ape} : () -> !mogg.shape
 // CHECK-NEXT:    [[OT:%[^ ]+]] = mogg._tensor.create([[OP]], [[OSH]]) {{.*}}io = 0{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[8, 64]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[IT]], [[OT]] : !mogg.tensor_, !mogg.tensor_) attributes {device = #M.device_ref<"cpu", 0>} {
+// CHECK-NEXT:    mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[IT]], [[OT]] : !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
 // CHECK-NEXT:    ^bb0([[IN:%[^ :,]+]]: !mogg.tensor_, [[OUT:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[CST:%[^ ]+]] = mogg._constant.scalar {value = 2.000000e+00 : f32} : f32
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg._tensor.load [[IN]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32

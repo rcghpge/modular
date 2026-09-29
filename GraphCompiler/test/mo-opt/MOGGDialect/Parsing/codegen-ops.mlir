@@ -21,8 +21,8 @@ func.func @codegen_ops(%ptr: !mogg.pointer_, %dim: !mogg.dim_,
   // tensor.create: immutable input vs mutable output. The `device` records the
   // device kind (cpu vs gpu) locally.
   // CHECK: mogg._tensor.create(%{{.*}}, %{{.*}}) {{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-  %t0 = mogg._tensor.create(%ptr, %s0) {device = #M.device_ref<"cpu", 0>, elementType = f32, io = 0 : i32, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-  %t1 = mogg._tensor.create(%ptr, %s0) {device = #M.device_ref<"gpu", 0>, elementType = f32, io = 1 : i32, mut = true, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+  %t0 = mogg._tensor.create(%ptr, %s0) {device = "cpu", elementType = f32, io = 0 : i32, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+  %t1 = mogg._tensor.create(%ptr, %s0) {device = "gpu", elementType = f32, io = 1 : i32, mut = true, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 
   // rebind: a no-op handle conversion (async buffer -> pointer).
   // CHECK: mogg._rebind %{{.*}} : !mogg.async<!mgp.buffer> to !mogg.pointer_
@@ -34,7 +34,7 @@ func.func @codegen_ops(%ptr: !mogg.pointer_, %dim: !mogg.dim_,
   // context).
   // CHECK: mogg._tensor.create.epilogue %{{.*}}(%{{.*}} : !mogg.dim_) capturing(%{{.*}} : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_
   %epi = mogg._tensor.create.epilogue %s0(%dim : !mogg.dim_) capturing (%t1 : !mogg.tensor_) ptr %cp : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_
-      attributes {device = #M.device_ref<"gpu", 0>, elementType = f32, io = 1 : i32, mut = true} {
+      attributes {device = "gpu", elementType = f32, io = 1 : i32, mut = true} {
   ^bb0(%val: f32, %i: !mogg.dim_):
     // CHECK: mogg._tensor.store %{{.*}}[%{{.*}}] = %{{.*}} : !mogg.tensor_, !mogg.dim_, f32
     mogg._tensor.store %t1[%i] = %val : !mogg.tensor_, !mogg.dim_, f32

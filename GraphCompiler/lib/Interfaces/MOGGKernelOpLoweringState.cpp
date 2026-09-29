@@ -223,7 +223,9 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp) {
   kernelStub = MOGG::KernelStubOp::create(
       builder, loc, stubName, functionType, kernelOp.getFusionInfoAttr(),
       kernelOp.getIsAsyncAttr(), ArrayAttr::get(ctx, {}),
-      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG), nullptr, nullptr);
+      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG),
+      builder.getStringAttr(MO::getDeviceOrDefaultAny(kernelOp).getLabel()),
+      nullptr, nullptr);
   kernelStub.getBody().takeBody(kernelOp.getExecBody());
 
   // Wrap the kernel terminator in a WithTraceOp so that Trace instrumentation
@@ -242,8 +244,6 @@ MOGGKernelOpLoweringState::createKernelStub(MOGG::KernelOp kernelOp) {
     localBuilder.setInsertionPointAfter(withTraceOp);
     MOGG::OutputOp::create(localBuilder, kernelStub.getLoc(), ValueRange{});
   }
-
-  kernelStub.setDeviceRef(device);
 
   // Register the stub through the module's symbol table so the cached
   // `SymbolTableAnalysis` stays consistent -- it is never invalidated by the

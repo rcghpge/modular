@@ -91,8 +91,9 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
       builder, loc, stubName, functionType, fusionInfo,
       /*isAsync=*/nullptr, /*constantResources=*/ArrayAttr::get(ctx, {}),
       MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MAP),
+      /*device=*/
+      builder.getStringAttr(MO::getDeviceOrDefaultAny(kernel).getLabel()),
       /*trait_stub_buffer_capture=*/nullptr, /*trait_stub_arg_bounds=*/nullptr);
-  stub.setDeviceRef(MO::getDeviceOrDefaultAny(kernel));
 
   // `create` already linked the stub into the module; registering it here
   // resolves any name collision and returns the unique name for the call site.

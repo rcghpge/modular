@@ -6,13 +6,13 @@
 // CHECK-NEXT: outputs ([[OP:%[^ :,]+]]: !mogg.pointer_)
 // CHECK-NEXT: context ([[CTX:%[^ :,]+]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK-NEXT:   [[ISH0:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[2, 2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:   [[IT0:%[^ ]+]] = mogg._tensor.create([[IP0]], [[ISH0]]) {device = #M.device_ref<"cpu", 0>, elementType = f32, io = 1 : i32, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:   [[IT0:%[^ ]+]] = mogg._tensor.create([[IP0]], [[ISH0]]) {device = "cpu", elementType = f32, io = 1 : i32, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK-NEXT:   [[ISH1:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[2, 2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:   [[IT1:%[^ ]+]] = mogg._tensor.create([[IP1]], [[ISH1]]) {device = #M.device_ref<"cpu", 0>, elementType = f32, io = 1 : i32, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:   [[IT1:%[^ ]+]] = mogg._tensor.create([[IP1]], [[ISH1]]) {device = "cpu", elementType = f32, io = 1 : i32, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK-NEXT:   [[OSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[2, 2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:   [[OT:%[^ ]+]] = mogg._tensor.create([[OP]], [[OSH]]) {device = #M.device_ref<"cpu", 0>, elementType = f32, io = 0 : i32, mut = true, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:   [[OT:%[^ ]+]] = mogg._tensor.create([[OP]], [[OSH]]) {device = "cpu", elementType = f32, io = 0 : i32, mut = true, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
 // CHECK-NEXT:   [[LSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[2, 2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:   mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[IT0]], [[IT1]], [[OT]] : !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) attributes {device = #M.device_ref<"cpu", 0>} {
+// CHECK-NEXT:   mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[IT0]], [[IT1]], [[OT]] : !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
 // CHECK-NEXT:   ^bb0([[IN0:%[^ :,]+]]: !mogg.tensor_, [[IN1:%[^ :,]+]]: !mogg.tensor_, [[OUT:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:     [[V0:%[^ ]+]] = mogg._tensor.load [[IN0]][[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
 // CHECK-NEXT:     [[V1:%[^ ]+]] = mogg._tensor.load [[IN1]][[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32

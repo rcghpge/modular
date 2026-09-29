@@ -2222,9 +2222,8 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   // Get the target device from the kernel stub that contains this operation.
   auto kernelStubOp = this->getOperation()->getParentOfType<KernelStubOp>();
   MojoValue targetDeviceLabel =
-      MojoValue(kernelStubOp
-                    ? MO::getDeviceOrDefaultAny(kernelStubOp).getLabel()
-                    : MO::getDeviceOrDefaultAny(*this).getLabel())
+      MojoValue(kernelStubOp ? kernelStubOp.getDevice()
+                             : MO::getDeviceOrDefaultAny(*this).getLabel())
           .quote();
 
   // Get the trace name from the fusion info tree.
@@ -3736,7 +3735,7 @@ LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
   // Device kind (cpu vs gpu) is on the op's own `$device` attr, so the
   // preferred alignment is picked locally without reaching out to the stub.
   MojoValue alignmentParam(static_cast<uint64_t>(
-      M::Driver::getPreferredAlignment(getDevice().getLabel().str())));
+      M::Driver::getPreferredAlignment(getDevice().str())));
 
   // Build a row-major `Layout` from the shape Coord produced by `shape.create`.
   auto layoutVar = state.builder.var(
@@ -4736,7 +4735,7 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
     // Wrap the transform functor in `_MoggTransformFusionTensor`, which also
     // holds the real output buffer (`$outputPtr`): the wrapper stores the
     // transformed value through it. Sourced from this op's own device/shape.
-    StringRef deviceLabel = getDevice().getLabel();
+    StringRef deviceLabel = getDevice();
     bool devicePassable = deviceLabel != kCPULabel;
     MojoValue alignmentParam(static_cast<uint64_t>(
         M::Driver::getPreferredAlignment(deviceLabel.str())));
@@ -4768,7 +4767,7 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
     // `_MoggOutputStoreFusionTensor` -- the functor already owns its store to
     // its captured store-target, so no base slice / `_bind_to_fused_output` is
     // needed. Sourced from this op's own device/shape.
-    StringRef deviceLabel = getDevice().getLabel();
+    StringRef deviceLabel = getDevice();
     bool devicePassable = deviceLabel != kCPULabel;
     MojoValue alignmentParam(static_cast<uint64_t>(
         M::Driver::getPreferredAlignment(deviceLabel.str())));
@@ -4816,7 +4815,7 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   MojoValue baseSlice = emitBaseSliceFromPtr(
       state, inputDtypeParam, *baseRank, baseLayout,
       MojoValue(static_cast<uint64_t>(
-          M::Driver::getPreferredAlignment(getDevice().getLabel().str()))),
+          M::Driver::getPreferredAlignment(getDevice().str()))),
       state.getMojoValueFor(getOutputPtr()));
   // Which entry point to bind through follows the kernel's declared argument
   // type, not the lane: a `_FusedComputeOutputTensor` argument binds with
@@ -4923,7 +4922,7 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
   MojoValue layoutVar = state.builder.var(
       MojoValue(kFnRowMajor)({}, {state.getMojoValueFor(getShape())}));
   MojoValue alignmentParam(static_cast<uint64_t>(
-      M::Driver::getPreferredAlignment(getDevice().getLabel().str())));
+      M::Driver::getPreferredAlignment(getDevice().str())));
 
   if (traitFused) {
     // Wrap the functor in the conforming, device-passable
@@ -4931,7 +4930,7 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
     // trait lane, but sourced from this op's own device/shape rather than a
     // walked capture. On CPU the host proxy runs the load (`_access_enabled`);
     // on GPU the projected `device_type` does, so the host proxy disables it.
-    StringRef deviceLabel = getDevice().getLabel();
+    StringRef deviceLabel = getDevice();
     bool devicePassable = deviceLabel != kCPULabel;
     MojoValue wrapper = MojoValue("_MoggInputLoadFusionTensor")(
         {dtypeParam, MojoValue("type_of")({}, {layoutVar}), alignmentParam,
@@ -5018,7 +5017,7 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
   SmallVector<FusedCaptureInfo> captureInfos = *captureInfosOr;
 
   // The device is the op's own `$device` attribute.
-  MojoValue targetStr = MojoValue(("\"" + getDevice().getLabel() + "\"").str());
+  MojoValue targetStr = MojoValue(("\"" + getDevice() + "\"").str());
 
   // Infer simd_width from all dtypes touched anywhere in the closure body,
   // mirroring legacy `foreach_fusion`'s own computation.
@@ -6486,8 +6485,8 @@ maybeAssembleDenseTraitArgFromCapture(EmitMojoState &state, Value val,
   if (!tensorTy)
     return state.getMojoValueFor(val);
   bool devicePassable = !MO::isOnHost(stub.getOperation());
-  bool canProjectTileTensor = canProjectTileTensorForDeviceLabel(
-      MO::getDeviceOrDefaultAny(stub.getOperation()).getLabel().str());
+  bool canProjectTileTensor =
+      canProjectTileTensorForDeviceLabel(stub.getDevice().str());
   return assembleDenseTensorArgFromCapture(
       state, state.getMojoValueFor(val), contract.role, tensorTy,
       devicePassable, canProjectTileTensor);
@@ -6569,7 +6568,7 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
   // Device is recorded on the op (like `mogg._tensor.create`), so alignment and
   // the device-passable / tile-projection flavors are picked locally without
   // reaching to the enclosing stub.
-  StringRef deviceLabel = getDevice().getLabel();
+  StringRef deviceLabel = getDevice();
   MojoValue alignmentParam(static_cast<uint64_t>(
       M::Driver::getPreferredAlignment(deviceLabel.str())));
 
@@ -6765,11 +6764,9 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
   // other cases (no affinity hint, CPU/host device) fall back to the standard
   // create_task which passes desired_worker_id=-1 to the AsyncRT scheduler.
   //
-  // The device ID is stored as $affinity_device_id (I64Attr) rather than
-  // being read from $device (DeviceRefAttr), because mogg-emit-mojo internally
-  // runs stripDeviceIdsAndDynamicShapes before emission — that pass zeroes all
-  // DeviceRefAttr IDs, destroying the per-launch device ordinal.  A plain
-  // integer attribute is not affected by that transformation.
+  // The device ID is stored as $affinity_device_id (I64Attr) rather than in a
+  // DeviceRefAttr, because the codegen device refs in the kernel layer are
+  // label-only (no numeric id); a plain integer carries the per-launch ordinal.
   MojoValue taskVar;
   auto affinityId = getAffinityDeviceIdAttr();
   if (affinityId) {
@@ -7689,8 +7686,7 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
   if (!kernelStubOp)
     return emitOpError("WithTraceOp must be nested in a KernelStubOp");
 
-  std::string deviceLabel =
-      MO::getDeviceOrDefaultAny(kernelStubOp).getLabel().str();
+  std::string deviceLabel = kernelStubOp.getDevice().str();
   // Distinct chains here means a kernel body genuinely shared by two
   // non-nested profile_scope()s (MergeIdenticalKernelStubs can merge such a
   // stub's location onto one surviving symbol, see its fix for the
@@ -7771,8 +7767,7 @@ LogicalResult ProfileScopeBeginOp::emitMojo(EmitMojoState &state) {
   if (!kernelStubOp)
     return emitOpError("ProfileScopeBeginOp must be nested in a KernelStubOp");
 
-  std::string deviceLabel =
-      MO::getDeviceOrDefaultAny(kernelStubOp).getLabel().str();
+  std::string deviceLabel = kernelStubOp.getDevice().str();
 
   SmallVector<MojoValue> traceParams = {
       MojoValue(kEnumTraceLevelOp),

@@ -242,10 +242,8 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
     is emitted.
 
     The device ordinal is stored as a plain integer rather than as a
-    DeviceRefAttr because `mogg-emit-mojo` internally runs
-    `stripDeviceIdsAndDynamicShapes` (which zeroes DeviceRefAttr IDs for
-    deduplication) before emitting Mojo text. A plain I64Attr is unaffected
-    by that transformation.
+    DeviceRefAttr because the codegen device refs in the kernel layer are
+    label-only (no numeric id), so the per-launch ordinal must ride separately.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$name,
@@ -1037,8 +1035,6 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   FunctionOpInterface,
   IsolatedFromAbove,
-  MO_ExplicitDevice,
-  MO_HasDeviceInterface,
   SingleBlockImplicitTerminator<"MOGG::OutputOp">,
   SymbolName,
   SymbolVisibility,
@@ -1055,6 +1051,10 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     OptionalAttr<BoolAttr>:$isAsync,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
     MOGG_ABIKind:$abi,
+    // Execution-device label (host vs GPU). Codegen reads it for each kernel's
+    // `target` compile-time parameter; only the label matters, so it is a plain
+    // string rather than a `#M.device_ref` (no numeric id).
+    StrAttr:$device,
     OptionalAttr<ArrayAttr>:$trait_stub_buffer_capture,
     OptionalAttr<ArrayAttr>:$trait_stub_arg_bounds,
     // The following is necessary for -symbol-dce
@@ -1910,7 +1910,7 @@ def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [
     MOGG_Pointer:$ptr,
     MOGG_Shape:$shape,
     MOSH_ShapeAttr:$shapeAttr,
-    M_DeviceRefAttr:$device,
+    StrAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
     MO_IOKind:$io
@@ -1963,7 +1963,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     Variadic<AnyType>:$args,
     Variadic<MOGG_Shape>:$shapeCaptures,
     MOGG_Pointer:$outputPtr,
-    M_DeviceRefAttr:$device,
+    StrAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
     MO_IOKind:$io,
@@ -2040,7 +2040,7 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
     // epilogue's: they become trailing `IndexList` fields on the fusion
     // functor.
     Variadic<MOGG_Shape>:$shapeCaptures,
-    M_DeviceRefAttr:$device,
+    StrAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
     MO_IOKind:$io,
@@ -2168,7 +2168,7 @@ def MOGG_TraitCreateOp : MOGG_Op<"_trait.create", [
   }];
   let arguments = (ins
     MOGG_TensorLike:$tensor,
-    M_DeviceRefAttr:$device,
+    StrAttr:$device,
     MOGG_TensorArgContractAttr:$contract
   );
   let results = (outs MOGG_TensorLike:$result);
@@ -2322,7 +2322,7 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
     MOGG_Shape:$shape,
     MOGG_Context:$context,
     Variadic<MOGG_TensorLike>:$capturing,
-    M_DeviceRefAttr:$device
+    StrAttr:$device
   );
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{

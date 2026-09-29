@@ -21,17 +21,17 @@
 // CHECK: loc(fused[
 
 mogg.kernel.stub @func_a() fusionInfo = func_a
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 } loc(fused<"  File \22model.py\22, line 10, in call_site_a\n">["model.py":10:0])
 
 mogg.kernel.stub @func_b() fusionInfo = func_b
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 } loc(fused<"  File \22model.py\22, line 20, in call_site_b\n">["model.py":20:0])
 
 mogg.kernel.stub @caller() fusionInfo = caller
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @func_a
   mogg.call.stub @func_b
   mogg.output

@@ -9,7 +9,7 @@
 // CHECK-LABEL: mo.graph @chainedSliceStride
 // CHECK:       [[INNER:%[^ ]+]] = mogg._tensor.create.slice([[IT0:%[^ ]+]], {{.*}}) {{.*}}outShape = #mosh<ape[4, 32]>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
 // CHECK-NEXT:  [[OUTER:%[^ ]+]] = mogg._tensor.create.slice([[INNER]], {{.*}}) {{.*}}outShape = #mosh<ape[2, 16]>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
-// CHECK:       mogg._call.foreach @builtin_primitives.primitives._foreach shape({{%[^ ]+}}) context({{%[^ ]+}}) capturing([[OUTER]], [[OT:%[^ ]+]] : !mogg.tensor_, !mogg.tensor_) attributes {device = #M.device_ref<"cpu", 0>} {
+// CHECK:       mogg._call.foreach @builtin_primitives.primitives._foreach shape({{%[^ ]+}}) context({{%[^ ]+}}) capturing([[OUTER]], [[OT:%[^ ]+]] : !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
 // CHECK-NEXT:  ^bb0([[ARG:%[^ :,]+]]: !mogg.tensor_, [[OUTARG:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:    [[VAL:%[^ ]+]] = mogg._tensor.load [[ARG]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
 // CHECK-NEXT:    mogg._tensor.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor_, !map.index<2>, f32

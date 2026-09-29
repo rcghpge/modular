@@ -10,7 +10,7 @@
 // CHECK: %[[PRO:.*]] = mogg._tensor.create.prologue %{{.*}} capturing(
 // CHECK-SAME: %[[C0:.*]], %[[C1:.*]] : !mogg.tensor_, !mogg.tensor_)
 // CHECK-SAME: !mogg.shape -> !mogg.tensor_ attributes
-// CHECK-SAME: {device = #M.device_ref<"cpu", 0>, elementType = f32,
+// CHECK-SAME: {device = "cpu", elementType = f32,
 // CHECK-SAME: io = 1 : i32, mut = false} {
 // CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[A0:.*]]: !mogg.tensor_,
 // CHECK-SAME: %[[A1:.*]]: !mogg.tensor_):

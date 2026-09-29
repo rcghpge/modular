@@ -106,7 +106,8 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
       // Keep the operand's own kind: a mutable-input trait argument comes in as
       // a `!mogg.buffer_`, everything else as a `!mogg.tensor_`.
       packed.push_back(TraitCreateOp::create(
-          builder, loc, operands[i].getType(), operands[i], device,
+          builder, loc, operands[i].getType(), operands[i],
+          builder.getStringAttr(device.getLabel()),
           tensorArgContractToAttr(ctx, *contract)));
       changed = true;
       ++i;

@@ -127,7 +127,8 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
   Type resultType = isBuffer ? Type(MOGG::BufferType::get(ctx))
                              : Type(MOGG::TensorType::get(ctx));
   return MOGG::TensorCreateOp::create(
-      state.builder, loc, resultType, ptr, shape, shapeAttr, state.device,
+      state.builder, loc, resultType, ptr, shape, shapeAttr,
+      state.builder.getStringAttr(state.device.getLabel()),
       TypeAttr::get(tensorTy.getElementType()),
       state.builder.getBoolAttr(isMut), MO::IOKindAttr::get(ctx, io));
 }
@@ -486,8 +487,9 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   auto epilogueOp = MOGG::TensorCreateEpilogueOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), outShape, moggCaptures,
       /*args=*/ValueRange{}, /*shapeCaptures=*/shapeCaptures,
-      /*outputPtr=*/outputPtr, state.device, TypeAttr::get(outElemType),
-      state.builder.getBoolAttr(true),
+      /*outputPtr=*/outputPtr,
+      state.builder.getStringAttr(state.device.getLabel()),
+      TypeAttr::get(outElemType), state.builder.getBoolAttr(true),
       MO::IOKindAttr::get(ctx, MO::IOKind::Output),
       state.builder.getBoolAttr(computeOutputArg),
       /*contract=*/contractAttr);
@@ -599,7 +601,7 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
       state.builder, loc, /*tensor=*/MOGG::TensorType::get(ctx),
       /*shape=*/buildShape(loc, resultTy.getShape(), state),
       /*captures=*/moggCaptures, /*shapeCaptures=*/shapeCaptures,
-      /*device=*/state.device,
+      /*device=*/state.builder.getStringAttr(state.device.getLabel()),
       /*elementType=*/TypeAttr::get(resultTy.getElementType()),
       /*mut=*/state.builder.getBoolAttr(false),
       /*io=*/MO::IOKindAttr::get(ctx, MO::IOKind::Input),
@@ -901,7 +903,8 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   // context arg `IterOpaqueOp::lowerToMOGG` created.
   auto callForeach = MOGG::CallForeachRegionOp::create(
       state.builder, loc, FlatSymbolRefAttr::get(ctx, foreachPrim.getSymName()),
-      loopShape, state.contextArgs.front(), capturing, state.device);
+      loopShape, state.contextArgs.front(), capturing,
+      state.builder.getStringAttr(state.device.getLabel()));
 
   // New block: one arg per capture (same order), then the index.
   Block *foreachBlock = state.builder.createBlock(&callForeach.getBody());
@@ -939,9 +942,9 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   // The execution device is stated outright on `map.iter.opaque`
   // (`MO_ExplicitDevice`), stamped by whoever built the op from the tensor
-  // types back when they were still annotated. This device is recorded on each
-  // reconstructed tensor; its ID is later zeroed by
-  // `stripDeviceIdsAndDynamicShapes` for dedup, matching the stub's device.
+  // types back when they were still annotated. Only the label is recorded on
+  // each reconstructed tensor (a string -- codegen picks host vs GPU from it);
+  // the full ref is kept on the `mogg._kernel` for device-context resolution.
   state.device = MO::getDeviceOrDefault(*this);
 
   // Forward the fusion-tree provenance `MOToMAP` recorded on `map.iter.opaque`

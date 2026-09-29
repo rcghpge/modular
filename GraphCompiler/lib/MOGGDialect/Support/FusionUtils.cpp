@@ -205,8 +205,10 @@ ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
 
 bool isTileCodegenForOp(mlir::Operation *op, mlir::ModuleOp moduleOp) {
   auto kernelStubOp = op->getParentOfType<MOGG::KernelStubOp>();
-  auto deviceRef = kernelStubOp ? MO::getDeviceOrDefaultAny(kernelStubOp)
-                                : MO::getDeviceOrDefaultAny(op);
+  StringRef deviceLabel = kernelStubOp
+                              ? kernelStubOp.getDevice()
+                              : MO::getDeviceOrDefaultAny(op).getLabel();
+  auto deviceRef = M::DeviceRefAttr::get(op->getContext(), deviceLabel, 0);
   return MO::DeviceInfoMapping(moduleOp).get(deviceRef).getTileBasedFusion();
 }
 

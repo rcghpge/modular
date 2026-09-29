@@ -9,7 +9,7 @@
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
 
 // expected-error @below {{device-graph recording stub generation: expected the producer launch context to be an argument of the kernel stub}}
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   %ctx = "test.make_ctx"() : () -> !mogg.context
   mogg.with_trace {
     mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}

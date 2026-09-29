@@ -2340,9 +2340,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       // For GPU launches, stamp the integer device ordinal onto every
       // CallStubOp so that fuseAndConvertToAsync can forward it unchanged
       // to the async variant.  The ordinal is stored as a plain I64Attr
-      // rather than a DeviceRefAttr because mogg-emit-mojo internally runs
-      // stripDeviceIdsAndDynamicShapes (which zeroes DeviceRefAttr IDs)
-      // before emitting Mojo text.
+      // rather than a DeviceRefAttr because the codegen device refs in the
+      // kernel layer are label-only (no numeric id).
       if (launchDevice && launchDevice.getLabel() == M::kGPULabel) {
         auto affinityId =
             mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),

@@ -1,12 +1,12 @@
 // RUN: mo-opt -mogg-merge-identical-kernel-stubs
 
 mogg.kernel.stub @func_1() fusionInfo = func_1
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
 mogg.kernel.stub @func_2() fusionInfo = func_2
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
@@ -15,7 +15,7 @@ mogg.kernel.stub @func_2() fusionInfo = func_2
 // CHECK-NEXT: mogg.call.stub @func_1
 // CHECK-NOT:  mogg.call.stub @func
 mogg.kernel.stub @func_3() fusionInfo = func_3
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @func_1
   mogg.call.stub @func_2
   mogg.output
@@ -26,7 +26,7 @@ mogg.kernel.stub @func_3() fusionInfo = func_3
 // CHECK:      mogg.call.stub @func_1
 // CHECK-NOT:  mogg.call.stub @func
 mogg.kernel.stub @func_4() fusionInfo = func_4
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @func_1
   mogg.call.stub @func_2
   mogg.output
@@ -37,19 +37,19 @@ mogg.kernel.stub @func_4() fusionInfo = func_4
 // CHECK:      mogg.call.stub @func_3
 // CHECK-NOT:  mogg.call.stub @func
 mogg.kernel.stub @func_5() fusionInfo = func_5
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @func_3
   mogg.call.stub @func_4
   mogg.output
 }
 
 mogg.kernel.stub @func_6() fusionInfo = func_6
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, foo = "foo", isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", foo = "foo", isAsync = true} {
   mogg.output
 }
 
 mogg.kernel.stub @func_7() fusionInfo = func_7
-  attributes {abi = 0 : i32, constantResources = [], device = #M.device_ref<"cpu", 0>, foo = "foo", isAsync = true} {
+  attributes {abi = 0 : i32, constantResources = [], device = "cpu", foo = "foo", isAsync = true} {
   mogg.output
 }
 
