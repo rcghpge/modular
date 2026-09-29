@@ -421,6 +421,138 @@ static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
   std::move(outChain).emplace();
 }
 
+/// Copies the live `inputs` for a single `graph` into the stable input buffers
+/// it was built with. Returns an Error on mismatch. The caller is responsible
+/// for passing exactly the slice of operands that belong to this graph.
+static M::ErrorOrSuccess
+copyDeviceGraphInputs(M::Driver::DeviceGraph &graph,
+                      ArrayRef<AnyAsyncValueRef> inputs) {
+  ArrayRef<M::Driver::DeviceBufferRef> stableInputs = graph.getInputs();
+  if (stableInputs.empty())
+    return M::success();
+
+  size_t inputIdx = 0;
+  for (const AnyAsyncValueRef &operand : inputs) {
+    std::optional<std::pair<void *, size_t>> data = graphInputData(operand);
+    if (!data)
+      continue;
+
+    if (inputIdx >= stableInputs.size())
+      return Error("device graph input count mismatch");
+
+    if (!stableInputs[inputIdx]) {
+      ++inputIdx;
+      continue;
+    }
+
+    M::Driver::DeviceBuffer &dst = *stableInputs[inputIdx++];
+    auto [srcPtr, srcSize] = *data;
+
+    M::Driver::DeviceContextRef ctx =
+        M::Driver::DeviceContextRef::copy(&dst.context());
+    M::Driver::DeviceBufferRef srcView =
+        dst.isHost() ? ctx->createHostBufferOwning(srcPtr, srcSize,
+                                                   /*owning=*/false)
+                     : ctx->createBufferOwning(srcPtr, srcSize,
+                                               /*owning=*/false);
+
+    if (ErrorOrSuccess err = srcView->copyTo(dst))
+      return err.takeError();
+  }
+
+  if (inputIdx != stableInputs.size())
+    return Error("device graph input count mismatch");
+  return M::success();
+}
+
+//===----------------------------------------------------------------------===//
+// mgp.device_graph.collective.execute
+//===----------------------------------------------------------------------===//
+
+// Replays a set of device graphs built by `mgp.device_graph.collective.create`.
+// The leading operands are the per-device `DeviceGraphRef`s; the remaining
+// operands are the union of live inputs for all graphs, laid out in graph
+// order. Each graph's recorded signature determines how many of those inputs it
+// consumes. The op surfaces the graphs' recorded outputs as its value results.
+static void mgp_device_graph_collective_execute(RemainingArguments operands,
+                                                Result<Chain> outChain,
+                                                RemainingResults outputs,
+                                                EncodedLocation loc) {
+  TRACY_ZONE_SCOPED_NC("mgp_device_graph_collective_execute", TRACY_COLOR_TEAL);
+
+  // Separate the leading graph operands from the flat input list. The
+  // mgp.device_graph.collective.execute operation places all device graphs
+  // as the first set of operands.
+  SmallVector<M::Driver::DeviceGraph *, 8> graphs;
+
+  for (const AnyAsyncValueRef &operand : operands) {
+    RCRef<M::Driver::DeviceGraph> *graph =
+        dyn_cast<M::Driver::DeviceGraphRef>(operand);
+    if (!graph)
+      break;
+
+    graphs.push_back(graph->getPointer());
+  }
+
+  // The remaining operands are the inputs to each device graph.
+  MutableArrayRef<AnyAsyncValueRef> remainingInputs =
+      operands.get().slice(graphs.size());
+
+  outputs.allocateIndirectResults();
+
+  size_t inputOffset = 0;
+  size_t outputIdx = 0;
+
+  for (M::Driver::DeviceGraph *graph : graphs) {
+    size_t numGraphInputs = graph->getInputs().size();
+    if (inputOffset + numGraphInputs > remainingInputs.size()) {
+      Error msg = "device graph collective execute: input operand count does "
+                  "not match graph signatures";
+      std::move(outChain).setToError(msg.copy());
+      return std::move(outputs).setAllToError(std::move(msg), loc);
+    }
+
+    ArrayRef<AnyAsyncValueRef> graphInputs =
+        remainingInputs.slice(inputOffset, numGraphInputs);
+
+    if (M::ErrorOrSuccess err = copyDeviceGraphInputs(*graph, graphInputs)) {
+      Error msg = err.takeError();
+      std::move(outChain).setToError(msg.copy());
+      return std::move(outputs).setAllToError(std::move(msg), loc);
+    }
+
+    inputOffset += numGraphInputs;
+
+    if (ErrorOrSuccess err = graph->replay()) {
+      Error msg = err.takeError();
+      std::move(outChain).setToError(msg.copy());
+      return std::move(outputs).setAllToError(std::move(msg), loc);
+    }
+
+    ArrayRef<AnyAsyncValueRef> graphOutputs = graph->getOutputs();
+    if (outputIdx + graphOutputs.size() > outputs.size()) {
+      Error msg = "device graph collective execute: output count does not "
+                  "match graph signatures";
+      std::move(outChain).setToError(msg.copy());
+      return std::move(outputs).setAllToError(std::move(msg), loc);
+    }
+
+    for (const AnyAsyncValueRef &graphOutput : graphOutputs) {
+      AnyAsyncValueRef &out = outputs[outputIdx++];
+      out.copy().resolveIndirect(graphOutput.copy());
+    }
+  }
+
+  if (outputIdx != outputs.size()) {
+    Error msg = "device graph collective execute: output count does not "
+                "match graph signatures";
+    std::move(outChain).setToError(msg.copy());
+    return std::move(outputs).setAllToError(std::move(msg), loc);
+  }
+
+  std::move(outChain).emplace();
+}
+
 //===----------------------------------------------------------------------===//
 // mgp.list.append
 //===----------------------------------------------------------------------===//
@@ -757,6 +889,8 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
   ADD_PRIMITIVE(registry, "mgp.device_graph.execute", mgp_device_graph_execute);
+  ADD_PRIMITIVE(registry, "mgp.device_graph.collective.execute",
+                mgp_device_graph_collective_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);
   ADD_PRIMITIVE(registry, "mgp.guard", mgp_guard);
   ADD_PRIMITIVE(registry, "mgp.list.concat", mgp_list_concat);
