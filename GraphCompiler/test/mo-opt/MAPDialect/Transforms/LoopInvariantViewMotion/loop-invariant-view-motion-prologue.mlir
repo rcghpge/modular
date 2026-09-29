@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --pass-pipeline='builtin.module(mo.graph(map-loop-invariant-view-motion, map.iter.opaque(canonicalize,cse)))' | FileCheck %s
+// RUN: mo-opt %s --pass-pipeline='builtin.module(mo.graph(map-livm, map.iter.opaque(canonicalize,cse)))' | FileCheck %s
 
 // LoopInvariantViewMotion walks every CapturingFusionClosure generically, not
 // just map.iter.foreach.body -- this covers map.iter.prologue, whose own

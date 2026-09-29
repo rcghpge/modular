@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-pipeline --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-pipeline --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
 
 // Test that Graph profile scope's ProfileScopeLocationAttr survives
 // fusion/outlining and that WithTraceOp::emitMojo appends the formatted

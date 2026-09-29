@@ -514,7 +514,7 @@ def EmitMojo: Pass<"mogg-emit-mojo", "ModuleOp"> {
   ];
 }
 
-def DumpMojo: Pass<"mgp-dump-mojo", "ModuleOp"> {
+def DumpMojo: Pass<"mogg-dump-mojo", "ModuleOp"> {
   let summary = "Dump Mojo text";
   let description = [{
     Dump to stderr the previously emitted Mojo as text.
@@ -535,7 +535,7 @@ def DumpMojo: Pass<"mgp-dump-mojo", "ModuleOp"> {
     ];
 }
 
-def LoadMojo: Pass<"mgp-load-mojo", "ModuleOp"> {
+def LoadMojo: Pass<"mogg-load-mojo", "ModuleOp"> {
   let summary = "Load Mojo text";
   let description = [{
     Load the provided Mojo text and replace the existing module. This can be
@@ -544,9 +544,9 @@ def LoadMojo: Pass<"mgp-load-mojo", "ModuleOp"> {
 
     Example:
     mo-opt program.mlir -gc-pipeline -o /dev/null -mlir-print-ir-after=mogg-emit-mojo &> program.mgp.mlir
-    mo-opt program.mgp.mlir -mgp-dump-mojo -o /dev/null &> program.mojo
+    mo-opt program.mgp.mlir -mogg-dump-mojo -o /dev/null &> program.mojo
     # Modify Mojo here
-    mo-opt program.mgp.mlir -mgp-load-mojo=path=program.mojo -jit-pipeline
+    mo-opt program.mgp.mlir -mogg-load-mojo=path=program.mojo -jit-pipeline
   }];
 
   let options = [

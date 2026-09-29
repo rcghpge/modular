@@ -50,7 +50,7 @@ definitions instead -- one `def stub_N` per surviving unique kernel:
 ```bash
 $MO_OPT $FIXTURE --gc-pipeline -o /dev/null \
   -mlir-print-ir-after=mogg-emit-mojo &> /tmp/out.mgp.mlir
-$MO_OPT /tmp/out.mgp.mlir -mgp-dump-mojo -o /dev/null &> /tmp/out.mojo
+$MO_OPT /tmp/out.mgp.mlir -mogg-dump-mojo -o /dev/null &> /tmp/out.mojo
 grep -c '^def stub_' /tmp/out.mojo   # unique kernels
 wc -l /tmp/out.mojo                  # generated Mojo LOC
 ```

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages -mo-to-mogg --mogg-simplify-kernel-operands -mogg-fuse-elementwise --canonicalize --cse -mogg-fuse-views --canonicalize --cse -mogg-fuse-epilogues -mogg-inline-broadcast-constant-scalars -mogg-to-mgp -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-mogg --mogg-simplify-kernel-operands -mogg-fuse-elementwise --canonicalize --cse -mogg-fuse-views --canonicalize --cse -mogg-fuse-epilogues -mogg-inline-broadcast-constant-scalars -mogg-to-mgp -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
 
 // The broadcast constant scalar is emitted as a literal operand to the
 // elementwise call. No `StaticBroadcastTo.update_input_view` is emitted, so the

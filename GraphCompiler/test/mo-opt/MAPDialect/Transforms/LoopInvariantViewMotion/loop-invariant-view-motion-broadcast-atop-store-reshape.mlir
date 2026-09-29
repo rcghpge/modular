@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --pass-pipeline='builtin.module(mo.graph(map-loop-invariant-view-motion, map.iter.opaque(canonicalize,cse)))' | FileCheck %s
+// RUN: mo-opt %s --pass-pipeline='builtin.module(mo.graph(map-livm, map.iter.opaque(canonicalize,cse)))' | FileCheck %s
 
 // A load-side view (broadcast) whose index is computed THROUGH a store-index
 // reshape -- the shape a reshape-into-epilogue fuses (the bias load of

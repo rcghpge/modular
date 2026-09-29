@@ -111,7 +111,7 @@
 
 // Dense CPU emit: region→stub passes `_MoggTensorBufferCapture`; the stub
 // assembles `_MoggDenseTensorArg` before forwarding to `execute`.
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mgp-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-mogg --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mogg-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
 //
 // Buffer capture at the region boundary and dense assembly inside the stub.
 // EMIT-DAG: struct _MoggTensorBufferCapture[

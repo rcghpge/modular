@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-pipeline --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo -mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-mogg --mogg-pipeline --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
 
 // Regression test for two issues that only surface when Graph.profile_scope()
 // wraps a location whose leaf is a FusedLoc (the shape produced by

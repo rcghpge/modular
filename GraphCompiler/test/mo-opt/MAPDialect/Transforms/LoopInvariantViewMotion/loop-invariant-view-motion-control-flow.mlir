@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, map-outline-structured-kernel-bodies, mo.graph(map-loop-invariant-view-motion, map.iter.opaque(canonicalize)), map-to-mogg)' | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --pass-pipeline='builtin.module(mogg-import-packages, mo-to-map, map-outline-structured-kernel-bodies, mo.graph(map-livm, map.iter.opaque(canonicalize)), map-to-mogg)' | FileCheck %s
 
 // A kernel nested in a control-flow region must be hoisted too. The rewrite is
 // mandatory: `map.index.broadcast` is index-space and declares no

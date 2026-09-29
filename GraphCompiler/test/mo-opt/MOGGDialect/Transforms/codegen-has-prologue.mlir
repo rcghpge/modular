@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg --mogg-simplify-kernel-operands --mogg-fuse-elementwise --canonicalize --cse --mogg-fuse-views --canonicalize --cse --mogg-fuse-prologues --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mgp-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-mogg --mogg-simplify-kernel-operands --mogg-fuse-elementwise --canonicalize --cse --mogg-fuse-views --canonicalize --cse --mogg-fuse-prologues --mogg-to-mgp --mogg-outline-kernels --mogg-add-try-except-blocks --mogg-emit-mojo --mogg-dump-mojo 2>&1 | FileCheck %s
 
 // Verifies the `has_prologue_fusion` comptime parameter the graph compiler injects
 // into kernels that declare it (getHasPrologueFusionValue in EmitMojoState.cpp).

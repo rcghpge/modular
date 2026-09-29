@@ -172,7 +172,7 @@ def OutlineStructuredKernelBodies
   ];
 }
 
-def LoopInvariantViewMotion : Pass<"map-loop-invariant-view-motion", "MO::GraphOp"> {
+def LoopInvariantViewMotion : Pass<"map-livm", "MO::GraphOp"> {
   let summary =
       "Hoist chains of index-transform ops out of a structured loop body.";
   let description = [{

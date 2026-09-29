@@ -16,7 +16,7 @@
 // container is only consumed later (MOGGToMGP + region outlining), so its
 // `mogg.call.stub` dangles once emit erases the stub -- `-verify-each=false`
 // tolerates that. The emitted Mojo is read from the `ir-output-dir` dump rather
-// than `--mgp-dump-mojo`, which needs a fully lowered `mgp.model`.
+// than `--mogg-dump-mojo`, which needs a fully lowered `mgp.model`.
 
 // Plain output: static shape -> compile-time `Idx[N]` Coord, a raw-pointer
 // `mogg_tensor_init` per tensor, and a DPS execute call (output, input, ctx).
