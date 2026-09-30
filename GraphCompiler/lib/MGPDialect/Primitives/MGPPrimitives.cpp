@@ -311,8 +311,8 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
 ///
 /// The two cases mirror the MLIR types the emitter selects on: `!mgp.tensor`
 /// arrives as a `Tensor` and `!mgp.buffer` as a `TensorBufferRef`, so this
-/// predicate must stay in step with `DeviceGraphCreateOp::emitMojo`, which
-/// decides which operands get an `add_input` stable location. If the two
+/// predicate must stay in step with `DeviceGraphCollectiveCreateOp::emitMojo`,
+/// which decides which operands get an `add_input` stable location. If the two
 /// disagree, inputs pair with the wrong stable buffers.
 static std::optional<std::pair<void *, size_t>>
 graphInputData(const AnyAsyncValueRef &operand) {
@@ -321,104 +321,6 @@ graphInputData(const AnyAsyncValueRef &operand) {
   if (auto *buffer = dyn_cast<TensorBufferRef>(operand))
     return std::pair{buffer->getBuffer(), buffer->getSize()};
   return std::nullopt;
-}
-
-// Replays a constructed device graph and surfaces its recorded outputs as the
-// op's results. Runtime counterpart of `mgp.device_graph.create` (which builds
-// the graph via the kernel path). Synchronous first cut: replay inline, then
-// forward each stored output `AnyAsyncValueRef` into the result slots.
-static void mgp_device_graph_execute(M::Driver::DeviceGraphRef &graph,
-                                     M::Driver::DeviceContextRef &context,
-                                     RemainingArguments inputs,
-                                     Result<Chain> outChain,
-                                     RemainingResults outputs,
-                                     EncodedLocation loc) {
-  TRACY_ZONE_SCOPED_NC("mgp_device_graph_execute", TRACY_COLOR_TEAL);
-
-  // `graph` is operand 0 (packed as a `DeviceGraphRef` by the create region's
-  // pack helper); the device context and input operands land in
-  // `inputs`, device context first.
-  //
-  // A recorded graph reads the addresses it was built with, so the live inputs
-  // have to be copied into the stable buffers the build registered via
-  // `add_input` before replay can see them. Without this a cached graph would
-  // replay against whatever the building execution happened to pass.
-  ArrayRef<M::Driver::DeviceBufferRef> stableInputs = graph->getInputs();
-
-  if (!stableInputs.empty()) {
-    size_t inputIdx = 0;
-    for (const AnyAsyncValueRef &operand : inputs) {
-      std::optional<std::pair<void *, size_t>> data = graphInputData(operand);
-      if (!data)
-        continue;
-
-      // A mismatch means the build registered a different number of stable
-      // inputs than the op passes, so the pairing above is wrong. Fail loudly
-      // rather than copying into the wrong buffer.
-      assert(inputIdx < stableInputs.size() &&
-             "device graph input count must match execute operand count");
-
-      // A null entry marks an in-place input (a mutable tensor such as a KV
-      // cache): the graph recorded the caller's live address and keys the
-      // cache on it, so there is no stable twin and nothing to copy. Consume
-      // the position to keep the pairing aligned.
-      if (!stableInputs[inputIdx]) {
-        ++inputIdx;
-        continue;
-      }
-
-      M::Driver::DeviceBuffer &dst = *stableInputs[inputIdx++];
-      auto [srcPtr, srcSize] = *data;
-
-      // Non-owning view so the copy can go through the `DeviceBuffer` API,
-      // which is the only one offering device-to-device. `copyTo` routes
-      // through the destination's context -- the one the graph was built from
-      // -- so the copy lands on the stream the graph replays on and is ordered
-      // before its first node.
-      M::Driver::DeviceBufferRef srcView =
-          dst.isHost()
-              ? context->createHostBufferOwning(srcPtr, srcSize,
-                                                /*owning=*/false)
-              : context->createBufferOwning(srcPtr, srcSize, /*owning=*/false);
-
-      if (ErrorOrSuccess err = srcView->copyTo(dst)) {
-        Error msg = err.takeError();
-        std::move(outChain).setToError(msg.copy());
-        return std::move(outputs).setAllToError(std::move(msg), loc);
-      }
-    }
-
-    assert(inputIdx == stableInputs.size() &&
-           "device graph input count must match execute operand count");
-  }
-
-  if (ErrorOrSuccess err = graph->replay()) {
-    Error msg = err.takeError();
-    std::move(outChain).setToError(msg.copy());
-    return std::move(outputs).setAllToError(std::move(msg), loc);
-  }
-
-  // The recorded outputs (registered via `add_output` during the build and
-  // transferred into the graph by `instantiate`) become the op's value results
-  // (device graphs carry no chain, so `getOutputs()` is chain-free). Share the
-  // underlying `Tensor`/`TensorBufferRef` via `copy()` -- no deep copy.
-  //
-  // GraphRT hands us pre-allocated (indirect) result async values that
-  // downstream consumers already reference, so we must resolve those in place
-  // to the graph's outputs rather than replacing the slot references (which
-  // would leave the referenced async values unfulfilled). Mirrors the
-  // control-flow primitives and `mgp_generic_execute`.
-  ArrayRef<AnyAsyncValueRef> stored = graph->getOutputs();
-  assert(stored.size() == outputs.size() &&
-         "device graph output count must match execute result count");
-  outputs.allocateIndirectResults();
-
-  for (const auto &[output, value] : llvm::zip_equal(outputs, stored))
-    output.copy().resolveIndirect(value.copy());
-
-  // Fresh ordering chain: replay finished, so host-side consumers ordered after
-  // this op may proceed.
-  std::move(outChain).emplace();
 }
 
 /// Copies the live `inputs` for a single `graph` into the stable input buffers
@@ -888,7 +790,6 @@ void M::registerMGPPrimitives(PrimitiveRegistry &registry) {
   ADD_PRIMITIVE(registry, "mgp.buffer.cache", mgp_buffer_cache);
   ADD_PRIMITIVE(registry, "mgp.context.create", mgp_context_create);
   ADD_PRIMITIVE(registry, "mgp.generic.execute", mgp_generic_execute);
-  ADD_PRIMITIVE(registry, "mgp.device_graph.execute", mgp_device_graph_execute);
   ADD_PRIMITIVE(registry, "mgp.device_graph.collective.execute",
                 mgp_device_graph_collective_execute);
   ADD_PRIMITIVE(registry, "mgp.list.append", mgp_list_append);

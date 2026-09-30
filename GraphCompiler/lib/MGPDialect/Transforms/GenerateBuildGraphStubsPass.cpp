@@ -373,17 +373,10 @@ class GenerateBuildGraphStubsPass final
     // in the execute body. Collect them first, then process them (generating
     // stubs mutates the module's top-level op list, so we must not be
     // mid-iteration over it).
-    SmallVector<Operation *> graphContainers;
+    SmallVector<DeviceGraphCollectiveOp> graphContainers;
     for (ModelOp model : module.getOps<ModelOp>()) {
       if (!model.getIsDeviceGraph())
         continue;
-
-      model.getExecuteBlock()->walk<WalkOrder::PreOrder>(
-          [&](DeviceGraphStagingOp staging) {
-            graphContainers.push_back(staging);
-            // Device-graph containers do not nest.
-            return WalkResult::skip();
-          });
 
       model.getExecuteBlock()->walk<WalkOrder::PreOrder>(
           [&](DeviceGraphCollectiveOp collective) {

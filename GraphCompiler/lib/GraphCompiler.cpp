@@ -451,6 +451,7 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
 
   { // Device-graph synthesis path
     pm.addPass(MGP::createStageDeviceGraphsPass());
+    pm.addPass(MGP::createPartitionDeviceGraphCollectivePass());
     pm.addPass(MGP::createComputeDeviceGraphDependenciesPass());
     pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
     pm.addPass(MGP::createSimplifyDeviceGraphDependenciesPass());

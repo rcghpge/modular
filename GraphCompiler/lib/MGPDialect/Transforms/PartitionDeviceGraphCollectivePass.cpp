@@ -10,6 +10,7 @@
 #include "GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "Support/MDialect/MAttrs.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -130,6 +131,10 @@ collectDevices(ArrayRef<GenericCompiledRegionOp> compiledRegions) {
 LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
                                  IRRewriter &rewriter) {
   Location loc = stagingOp.getLoc();
+
+  // Transitioning to a non-graph region. Toposort the body block before
+  // processing.
+  mlir::sortTopologically(&stagingOp.getBodyBlock());
 
   // Map staging body input block args back to the outer operands.  The body is
   // isolated, so every read of an enclosing value goes through these arguments.

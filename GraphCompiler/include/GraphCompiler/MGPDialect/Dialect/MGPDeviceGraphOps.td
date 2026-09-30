@@ -37,127 +37,6 @@ class MGP_DeviceGraphOp<string mnemonic, list<Trait> traits = []> :
   Op<MGPDialect, "device_graph." # mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// DeviceGraphCreateOp
-//===----------------------------------------------------------------------===//
-
-def DeviceGraphCreateOp : MGP_DeviceGraphOp<"create", [
-  AttrSizedOperandSegments,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  IsolatedFromAbove,
-  SingleBlockImplicitTerminator<"DeviceGraphYieldOp">,
-]> {
-  let summary = "Builds a device graph by recording into a builder.";
-  let description = [{
-    Returns an `!mgp.device_graph` built by invoking the build body. The op takes
-    no chain and has no chain result -- the produced graph value carries the
-    downstream dependency (`mgp.device_graph.execute` consumes it).
-
-    When the optional `cache` operand is present, the graph is looked up in that
-    cache under a key derived from the `inputs`, and the build body runs only on
-    a miss; the newly built graph is then stored under the same key. Without the
-    operand the op is stateless and rebuilds the graph on every execution.
-
-    The `inputs` operands are the read-only buffers/tensors the graph treats as
-    frozen inputs at replay time; they form the input half of the result
-    `!mgp.device_graph` signature. The graph's outputs are produced inside the
-    graph (value-returning, not destination-passing), so they have no operand --
-    the build body yields them via `mgp.device_graph.yield`, and their types form
-    the output half of the signature. The `!mgp.context` operand is build-time
-    only (it feeds in-body `mgp.buffer.get_cached` reads) and is deliberately not
-    part of the signature.
-
-    The op owns the device-graph builder lifecycle. It creates a
-    `!mgp.device_graph.builder` from its `deviceContext` operand and passes that
-    builder to the build body as the body's first block argument; after the body
-    returns, the op instantiates the recorded builder into its result
-    `!mgp.device_graph`. The build body records nodes into that builder and
-    yields the graph's output values; it does not create the builder or produce
-    the graph object itself.
-
-    The body's block arguments are, in order: the `!mgp.device_graph.builder`,
-    the `!mgp.context`, then the `inputs` (carrying the input operand types
-    verbatim -- bare `T`, no `!mogg.async` wrapping). The body must terminate with
-    a `mgp.device_graph.yield` whose operand types match the result graph
-    signature's results.
-
-    Example:
-    ```mlir
-      %graph = mgp.device_graph.create
-          %ctx, %gpu_ctx
-          inputs(%in, %bias, %wt
-              : !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>,
-                !mgp.buffer<<"gpu", 0>>) ({
-        ^bb0(%builder: !mgp.device_graph.builder,
-             %ctx_b: !mgp.context,
-             %in_b: !mgp.buffer<<"gpu", 0>>,
-             %bias_b: !mgp.buffer<<"gpu", 0>>,
-             %wt_b: !mgp.buffer<<"gpu", 0>>):
-          // ... record nodes into %builder, produce %out ...
-          mgp.device_graph.yield %out : !mgp.buffer<<"gpu", 0>>
-      }) : !mgp.device_context<<"gpu", 0>> -> !mgp.device_graph<...>
-    ```
-  }];
-
-  let arguments = (ins
-    MGP_ContextType:$theContext,
-    MGP_DeviceContextType:$deviceContext,
-    Optional<MGP_DeviceGraphCacheType>:$cache,
-    Variadic<AnyType>:$inputs
-  );
-  let results = (outs MGP_DeviceGraphType:$outGraph);
-  let regions = (region SizedRegion<1>:$buildBody);
-
-  let assemblyFormat = [{
-    $theContext `,` $deviceContext
-    (`cache` `(` $cache^ `:` qualified(type($cache)) `)`)?
-    `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
-    $buildBody attr-dict
-    `:` qualified(type($deviceContext)) `->` qualified(type($outGraph))
-  }];
-
-  let builders = [
-    // Builds the op and its build body in one shot. Creates the body block with
-    // its `!mgp.device_graph.builder` block argument, then the `!mgp.context`
-    // block arg, then one bare-`T` argument per input, and invokes `bodyBuilder`
-    // with the builder arg, the context arg, and the input args. The callback is
-    // expected to record nodes into the builder and emit the
-    // `mgp.device_graph.yield` carrying the graph's output values; the result
-    // `!mgp.device_graph`'s signature is then inferred as
-    // `(type(inputs)) -> (type(yielded outputs))` (the context is build-time and
-    // is not part of the signature). If `bodyBuilder` is null or leaves the body
-    // unterminated, an operandless `mgp.device_graph.yield` (no graph outputs) is
-    // supplied. A null `cache` builds the op without the cache operand.
-    OpBuilder<(ins
-      "Value":$theContext,
-      "Value":$deviceContext,
-      "Value":$cache,
-      "ValueRange":$inputs,
-      CArg<"function_ref<void(OpBuilder &, Location, Value, Value, ValueRange)>",
-           "nullptr">:$bodyBuilder)>
-  ];
-
-  let extraClassDeclaration = [{
-    Block &getBodyBuilderBlock() {
-      return getBuildBody().front();
-    }
-
-    BlockArgument getBodyBuilder() {
-      return getBodyBuilderBlock().getArgument(0);
-    }
-
-    BlockArgument getBodyContext() {
-      return getBodyBuilderBlock().getArgument(1);
-    }
-
-    MutableArrayRef<BlockArgument> getBodyInputs() {
-      return getBodyBuilderBlock().getArguments().drop_front(2);
-    }
-  }];
-
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
 // DeviceGraphCacheOp
 //===----------------------------------------------------------------------===//
 
@@ -192,7 +71,7 @@ def DeviceGraphCacheOp : MGP_DeviceGraphOp<"cache", [
 
 def DeviceGraphYieldOp : MGP_DeviceGraphOp<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  ParentOneOf<["DeviceGraphCreateOp", "DeviceGraphCollectiveCreateOp"]>,
+  HasParent<"DeviceGraphCollectiveCreateOp">,
   Pure,
   ReturnLike,
   Terminator,
@@ -218,55 +97,6 @@ def DeviceGraphYieldOp : MGP_DeviceGraphOp<"yield", [
   // No-operand builder for the parent's `SingleBlockImplicitTerminator` trait
   // (operands are populated after insertion); see DeviceGraphStagingYieldOp.
   let builders = [OpBuilder<(ins)>];
-}
-
-//===----------------------------------------------------------------------===//
-// DeviceGraphExecuteOp
-//===----------------------------------------------------------------------===//
-
-def DeviceGraphExecuteOp : MGP_DeviceGraphOp<"execute", []> {
-  let summary = "Replays a constructed device graph.";
-  let description = [{
-    Triggers replay of the given `!mgp.device_graph` on `deviceContext`.
-
-    - `inputs`: read-only buffers/tensors whose contents are fed to the graph's
-      frozen-input addresses at replay time. Types must match `graph`'s
-      signature inputs.
-
-    Replay produces the graph's outputs internally and surfaces them as the op's
-    `outputs` results (value-returning, not destination-passing): one result per
-    graph output, whose types match `graph`'s signature results. Device graphs
-    have no notion of a chain, so `!mef.chain` never appears in the graph
-    signature; instead this op produces its own `chain` result that represents
-    completion of the replay, threading host-side ordering after the graph runs.
-
-    Example:
-    ```mlir
-      %chain, %out = mgp.device_graph.execute
-          %graph, %gpu_ctx
-          inputs(%in, %bias
-              : !mgp.tensor<2x4xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 0>>)
-          : !mgp.device_graph<...>, !mgp.device_context<<"gpu", 0>>
-            -> !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
-    ```
-  }];
-
-  let arguments = (ins
-    MGP_DeviceGraphType:$graph,
-    MGP_DeviceContextType:$deviceContext,
-    Variadic<AnyType>:$inputs
-  );
-  let results = (outs ChainType:$chain, Variadic<AnyType>:$outputs);
-
-  let assemblyFormat = [{
-    $graph `,` $deviceContext
-    `inputs` `(` ( $inputs^ `:` qualified(type($inputs)) )? `)`
-    attr-dict
-    `:` qualified(type($graph)) `,` qualified(type($deviceContext))
-    `->` qualified(type($chain)) ( `,` qualified(type($outputs))^ )?
-  }];
-
-  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

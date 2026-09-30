@@ -22,16 +22,15 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
-    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
       %t_out = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
       mogg.call.stub @stub_1 %t_in, %t_out : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
       mgp.device_graph.dependencies.yield
     }
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}

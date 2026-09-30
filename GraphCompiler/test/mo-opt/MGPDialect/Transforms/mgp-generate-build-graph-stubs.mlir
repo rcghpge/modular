@@ -6,18 +6,19 @@
 // dependencies builder block arg directly -- which is what we match below.
 
 // Stage 4 of device-graph synthesis. Input IR mirrors the shape produced by
-// `mgp-compute-device-graph-dependencies`: the execute block is a
-// `mgp.device_graph.staging` op holding `mgp.device_graph.dependencies` ops, and
-// the kernel-dispatch node invokes a module-scope `mogg.kernel.stub @stub_1` via
-// `mogg.call.stub`. The kernel decl, stub body, and model are minimal synthetic
-// stand-ins (the real builtin kernels lack a `build_graph` method, which
-// `mogg.call.build_graph` verification requires).
+// `mgp-compute-device-graph-dependencies`: the execute block holds an
+// `mgp.device_graph.collective` op whose per-device region contains
+// `mgp.device_graph.dependencies` ops, and the kernel-dispatch node invokes a
+// module-scope `mogg.kernel.stub @stub_1` via `mogg.call.stub`. The kernel
+// decl, stub body, and model are minimal synthetic stand-ins (the real builtin
+// kernels lack a `build_graph` method, which `mogg.call.build_graph`
+// verification requires).
 //
 // For each staged `mogg.call.stub @stub_N` the pass generates a sibling recording
 // stub `@stub_N_build_graph` (producer dispatch `mogg.call.execute` -> recording
 // `mogg.call.build_graph` against a `!mgp.device_graph.builder`, yielding a
-// `!mgp.device_graph.node`) and retargets the call to it, threading the staging
-// op's builder as the launch operand.
+// `!mgp.device_graph.node`) and retargets the call to it, threading the
+// dependencies op's builder block arg as the launch operand.
 
 #kf = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
 
@@ -47,8 +48,9 @@ mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut
 // CHECK-LABEL: mgp.model @dg
 // The staged call is retargeted to the sibling. The launch operand is the
 // *enclosing* `mgp.device_graph.dependencies` op's builder block arg (not the
-// staging builder), and the now-dead builder->device-context bridge cast that
-// `mgp-compute-device-graph-dependencies` left feeding the call is removed.
+// collective builder), and the now-dead builder->device-context bridge cast
+// that `mgp-compute-device-graph-dependencies` left feeding the call is removed.
+// CHECK: mgp.device_graph.collective builder(%{{.*}}) stable() <"gpu", 0> {
 // CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
 // CHECK-NEXT: ^bb0(%[[DEPB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK-NOT: unrealized_conversion_cast
@@ -59,9 +61,8 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
-    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       // The launch context is sourced from the dependencies builder, exactly as
       // `mgp-compute-device-graph-dependencies` emits it.
@@ -71,7 +72,7 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
       mogg.call.stub @stub_1 %t_in, %t_out, %ctx_cast : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
       mgp.device_graph.dependencies.yield
     }
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}
@@ -152,9 +153,8 @@ mgp.model @dg_execute_only : mof devices [#M.device_ref<"gpu", 0>] init (%weight
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
-    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
       %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
@@ -162,7 +162,7 @@ mgp.model @dg_execute_only : mof devices [#M.device_ref<"gpu", 0>] init (%weight
       mogg.call.stub @stub_1 %t_in, %t_out, %ctx_cast : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
       mgp.device_graph.dependencies.yield
     }
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}
@@ -201,9 +201,8 @@ mgp.model @dg_view : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
-    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
       %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
@@ -211,23 +210,23 @@ mgp.model @dg_view : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.
       mogg.call.stub @stub_1 %t_in, %t_out, %ctx_cast : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
       mgp.device_graph.dependencies.yield
     }
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}
 
 // -----
 
-// `mgp.buffer.alloc` in the staged body: host and device allocations alike are
-// routed through the builder (`mgp.device_graph.alloc`), which allocates from
-// the graph's memory pool so every recorded address stays reserved. The
+// `mgp.buffer.alloc` in the collective body: host and device allocations alike
+// are routed through the builder (`mgp.device_graph.alloc`), which allocates
+// from the graph's memory pool so every recorded address stays reserved. The
 // allocation's device survives in the result buffer type, which is what selects
 // the host or device pool at emission time.
 
 // CHECK-LABEL: mgp.model @dg_host_alloc
-// Both allocations take the staged body's builder directly -- an alloc outside
-// any `dependencies` region has no enclosing region builder to source.
-// CHECK: ^bb0(%[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
+// Both allocations take the collective body's builder directly -- an alloc
+// outside any `dependencies` region has no enclosing region builder to source.
+// CHECK: mgp.device_graph.collective builder(%[[B:[a-zA-Z0-9_]+]]) stable() <"gpu", 0> {
 // CHECK-NOT: mgp.buffer.alloc
 // A `cpu` buffer type prints without its device, so the host alloc's result
 // type is a bare `!mgp.buffer`.
@@ -240,8 +239,7 @@ mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights:
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
     %chain = "test.chain"() : () -> !mef.chain
     %size = "test.size"() : () -> index
     %cpu_ctx = "test.cpu_ctx"() : () -> !mgp.device_context<<"cpu", 0>>
@@ -250,7 +248,7 @@ mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights:
     %host_buf = mgp.buffer.alloc %chain, %size, %cpu_ctx, align 16 : !mgp.buffer<<"cpu", 0>>, !mgp.device_context<<"cpu", 0>>
     %dev_buf = mgp.buffer.alloc %chain, %size, %gpu_ctx, align 16 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
     "test.sink"(%host_buf, %dev_buf) : (!mgp.buffer<<"cpu", 0>>, !mgp.buffer<<"gpu", 0>>) -> ()
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}
@@ -261,6 +259,7 @@ mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights:
 // body's builder block argument, keeping the body self-contained.
 
 // CHECK-LABEL: mgp.model @dg_alloc_in_dependencies
+// CHECK: mgp.device_graph.collective builder(%{{.*}}) stable() <"gpu", 0> {
 // CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
 // CHECK-NEXT: ^bb0(%[[DB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK: %[[BUF:[a-zA-Z0-9_]+]] = mgp.device_graph.alloc %{{.*}}, %{{.*}}, %[[DB]], align 16 : !mgp.buffer{{$}}
@@ -270,9 +269,8 @@ mgp.model @dg_alloc_in_dependencies : mof devices [#M.device_ref<"gpu", 0>] init
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
-    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %chain = "test.chain"() : () -> !mef.chain
       %size = "test.size"() : () -> index
@@ -281,7 +279,7 @@ mgp.model @dg_alloc_in_dependencies : mof devices [#M.device_ref<"gpu", 0>] init
       "test.sink"(%host_buf) : (!mgp.buffer<<"cpu", 0>>) -> ()
       mgp.device_graph.dependencies.yield
     }
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}
@@ -307,6 +305,7 @@ mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut
 }
 
 // CHECK-LABEL: mgp.model @dg_ctx_mid
+// CHECK: mgp.device_graph.collective builder(%{{.*}}) stable() <"gpu", 0> {
 // CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
 // CHECK-NEXT: ^bb0(%[[DEPB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK-NOT: unrealized_conversion_cast
@@ -316,9 +315,8 @@ mgp.model @dg_ctx_mid : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
-    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
       %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
@@ -326,7 +324,7 @@ mgp.model @dg_ctx_mid : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
       mogg.call.stub @stub_1 %t_in, %ctx_cast, %t_out : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mgp.device_context<<"gpu", 0>>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
       mgp.device_graph.dependencies.yield
     }
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}
@@ -354,6 +352,7 @@ mogg.kernel.stub @stub_1 (%aux: !mogg.context, %in: !mo.tensor<[2, 3], f32, gpu:
 }
 
 // CHECK-LABEL: mgp.model @dg_two_ctx
+// CHECK: mgp.device_graph.collective builder(%{{.*}}) stable() <"gpu", 0> {
 // CHECK: %[[AUX:[a-zA-Z0-9_]+]] = "test.aux_ctx"()
 // CHECK: mogg.call.stub @stub_1_build_graph %[[AUX]], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.device_context<<"gpu", 0>>, !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, !mgp.device_graph.builder
 mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
@@ -361,9 +360,8 @@ mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.staging inputs() {
-  ^bb0(%builder: !mgp.device_graph.builder):
-    %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
       %aux_ctx = "test.aux_ctx"() : () -> !mgp.device_context<<"gpu", 0>>
@@ -372,7 +370,7 @@ mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
       mogg.call.stub @stub_1 %aux_ctx, %t_in, %t_out, %ctx_cast : !mgp.device_context<<"gpu", 0>>, !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
       mgp.device_graph.dependencies.yield
     }
-    mgp.device_graph.staging.yield
+    mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
 } {isDeviceGraph}

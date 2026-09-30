@@ -25,17 +25,6 @@ namespace {
 
 using DeviceContextValue = mlir::TypedValue<DeviceContextType>;
 
-DeviceRefAttr findGraphDevice(ValueRange values) {
-  for (Value value : values) {
-    if (auto deviceType =
-            dyn_cast<MGPHasDeviceTypeInterface>(value.getType())) {
-      return deviceType.getDevice();
-    }
-  }
-
-  return {};
-}
-
 // device graphs have no chain concept: a host-side sequencing chain is
 // neither a real graph input nor output (in the staged body the chain inputs
 // are dead pass-throughs and the chain outputs come from host-side
@@ -158,151 +147,6 @@ static FailureOr<MOGG::GenericCompiledRegionOp> wrapDeviceGraphBuildRegion(
   MOGG::OutputOp::create(rewriter, loc, packed);
 
   return regionOp;
-}
-
-/// Lower a single `mgp.device_graph.staging` op into a
-/// `mgp.device_graph.create` / `mgp.device_graph.execute` pair, rewiring
-/// `mef.output` and erasing the staging op.
-LogicalResult finalizeStagingOp(DeviceGraphStagingOp stagingOp, ModelOp model) {
-  Block &stagingBody = stagingOp.getBodyBlock();
-  Value stagingBuilderArg = stagingBody.getArgument(0);
-  auto stagingInputArgs = stagingBody.getArguments().drop_front(1);
-
-  // The escaping (non-chain) values the staged body yields become the graph's
-  // outputs.
-  SmallVector<Value> graphOutputs =
-      nonChainValues(stagingOp.getYieldOp().getOperands());
-
-  // create/execute draw the model inputs from the staging op and the context /
-  // device context from the execute block.
-  SmallVector<Value> inputs = nonChainValues(stagingOp.getInputs());
-
-  Value theContext = model.getExecuteContext();
-
-  // The device graph runs on the device its buffers/tensors live on. The
-  // model's execute devices list the host (CPU) context first, and the host
-  // context cannot build a device graph (`createGraphBuilder` is unsupported
-  // there), so `.front()` is wrong for accelerator graphs.
-  // Determine the graph's device from its I/O and select the matching execute
-  // device context. (First cut: a single device per model, so one device
-  // covers the whole graph.)
-  DeviceRefAttr graphDevice = findGraphDevice(graphOutputs);
-  if (!graphDevice)
-    graphDevice = findGraphDevice(inputs);
-
-  if (!graphDevice)
-    return stagingOp.emitError("device-graph finalization: none of the staged "
-                               "graph's inputs or outputs carries a device");
-
-  DeviceContextValue deviceContext;
-  for (auto [deviceRef, execDevice] :
-       llvm::zip(model.getDevices(), model.getExecuteDevices())) {
-    if (deviceRef == graphDevice) {
-      deviceContext = cast<DeviceContextValue>(execDevice);
-      break;
-    }
-  }
-  if (!deviceContext)
-    return stagingOp.emitError("device-graph finalization: no execute device "
-                               "context matches the staged graph's device ")
-           << graphDevice;
-
-  IRRewriter rewriter(stagingOp);
-  Location loc = stagingOp.getLoc();
-  MLIRContext *ctx = rewriter.getContext();
-
-  // The `mgp.device_graph.create` op is compiled like any other kernel by
-  // wrapping it in a `mogg.generic.compiled.region`.
-  auto graphType = DeviceGraphType::get(ctx, inputs, graphOutputs);
-
-  SmallVector<Value> regionOperands{theContext, deviceContext};
-  llvm::append_range(regionOperands, inputs);
-
-  auto regionOpResult = wrapDeviceGraphBuildRegion(
-      rewriter, loc, deviceContext.getType().getDevice(), TypeRange{graphType},
-      regionOperands, "mgp.device_graph.create",
-      stagingOp.getConstantResources(),
-      [&](OpBuilder &bodyBuilder, Location bodyLoc,
-          ValueRange unpacked) -> FailureOr<SmallVector<Value>> {
-        Value contextUnpacked = unpacked[0];
-        Value deviceContextUnpacked = unpacked[1];
-        ValueRange inputsUnpacked = unpacked.drop_front(2);
-
-        // The graph is cached in the state context, so an execution that hits
-        // reuses the graph a previous one built instead of recording it again.
-        Value cache =
-            DeviceGraphCacheOp::create(bodyBuilder, bodyLoc, contextUnpacked);
-
-        // Build the create op inside the region body, moving the staged body
-        // into its build body. The create builder makes the body block with
-        // [builder, context, inputs...] args; the callback splices the staged
-        // ops in, rebinds the staged block args, and yields the graph outputs.
-        auto createOp = DeviceGraphCreateOp::create(
-            bodyBuilder, bodyLoc, contextUnpacked, deviceContextUnpacked, cache,
-            inputsUnpacked,
-            [&](OpBuilder &innerBuilder, Location innerLoc, Value graphBuilder,
-                Value /*contextArg*/, ValueRange inputArgs) {
-              Block *createBody = innerBuilder.getInsertionBlock();
-              createBody->getOperations().splice(
-                  createBody->end(), stagingBody.getOperations(),
-                  stagingBody.begin(), std::prev(stagingBody.end()));
-
-              // Yield before rebinding the staged block args below: a staged
-              // body may yield one of its own inputs, and
-              // `replaceAllUsesWith` only rewrites uses that already exist.
-              DeviceGraphYieldOp::create(innerBuilder, innerLoc, graphOutputs);
-
-              stagingBuilderArg.replaceAllUsesWith(graphBuilder);
-              unsigned createArgIdx = 0;
-              for (auto [stagingArg, stagingInput] :
-                   llvm::zip_equal(stagingInputArgs, stagingOp.getInputs())) {
-                if (isChain(stagingInput))
-                  continue;
-                stagingArg.replaceAllUsesWith(inputArgs[createArgIdx++]);
-              }
-
-              // We're transitioning to an SSACFG based operation, so we need to
-              // order the operations in the body to enforce dominance
-              // requirements.
-              mlir::sortTopologically(createBody);
-            });
-
-        if (failed(resolveBuilderCasts(createOp.getBuildBody())))
-          return mlir::failure();
-
-        return SmallVector<Value>{createOp.getOutGraph()};
-      });
-  if (failed(regionOpResult))
-    return mlir::failure();
-  auto regionOp = *regionOpResult;
-
-  // Replay (outside the region): feed the same (non-chain) inputs, surface the
-  // graph's value outputs as results, and produce a fresh completion chain that
-  // host-side ordering hangs off of. The replay is ordered after the build by
-  // the graph value. Reset the insertion point outside the region (it was left
-  // in the region body) so the execute op replaces the staging op in the
-  // execute block.
-  rewriter.setInsertionPoint(stagingOp);
-  auto executeOp = DeviceGraphExecuteOp::create(
-      rewriter, loc, /*chain=*/MEF::ChainType::get(ctx),
-      /*outputs=*/TypeRange(graphOutputs),
-      /*graph=*/regionOp.getResult(0),
-      /*deviceContext=*/deviceContext,
-      /*inputs=*/inputs);
-
-  // Rewire the staging op's results: chain results (host ordering) map to the
-  // execute completion chain; value results map to the execute value outputs in
-  // yield order.
-  Value executeChain = executeOp.getChain();
-  unsigned outputIdx = 0;
-  for (Value stagingResult : stagingOp.getResults()) {
-    if (isChain(stagingResult))
-      stagingResult.replaceAllUsesWith(executeChain);
-    else
-      stagingResult.replaceAllUsesWith(executeOp.getOutputs()[outputIdx++]);
-  }
-  rewriter.eraseOp(stagingOp);
-  return mlir::success();
 }
 
 /// Collect the values used inside a collective graph `region` that are defined
@@ -521,13 +365,6 @@ class FinalizeDeviceGraphsPass
     ModelOp model = getOperation();
     if (!model.getIsDeviceGraph())
       return;
-
-    // One staging op per device today; each is lowered independently (the
-    // create/execute pair carries no chain, so there is nothing to thread).
-    for (DeviceGraphStagingOp stagingOp : llvm::to_vector(
-             model.getExecuteBlock()->getOps<DeviceGraphStagingOp>()))
-      if (failed(finalizeStagingOp(stagingOp, model)))
-        return signalPassFailure();
 
     for (DeviceGraphCollectiveOp collectiveOp : llvm::to_vector(
              model.getExecuteBlock()->getOps<DeviceGraphCollectiveOp>()))

@@ -135,94 +135,6 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
   return success();
 }
 
-/// Replace every `mogg.generic.compiled.region` staged in `stagingOp` with a
-/// `mgp.device_graph.dependencies` op: dissolve the dataflow boundary into the
-/// new op's body and capture the ordering DAG as explicit
-/// `!mgp.device_graph.node` edges.
-LogicalResult convertStagedRegions(DeviceGraphStagingOp stagingOp) {
-  // old region op -> new dependencies op (drives edge derivation below).
-  llvm::MapVector<GenericCompiledRegionOp, DeviceGraphDependenciesOp> oldToNew;
-
-  // old region result -> new `bodyResult`, so both converted bodies and outside
-  // users reference the new values rather than the soon-to-be-erased old ones.
-  IRMapping oldValueToNew;
-
-  Block &body = stagingOp.getBodyBlock();
-  // The staging op's first block arg is the device-graph builder; each
-  // `dependencies` op takes it as its `graphBuilder` operand, making the
-  // builder dependency explicit while the op's body uses its own (bound)
-  // builder block arg.
-  Value stagingBuilder = stagingOp.getBodyBuilder();
-  // Convert each region in block order. The staging body is a graph region, so
-  // block order need not be topological: a consumer may be visited before its
-  // producer. That is fine -- when a producer is not yet in `oldValueToNew` its
-  // consumer's body references the producer's *old* result, which the final
-  // rewire below redirects to the new value. The forward node edges and forward
-  // body references this leaves are legal in the enclosing graph region.
-  for (auto region : body.getOps<GenericCompiledRegionOp>()) {
-    OpBuilder builder(region);
-    // Edges are derived in a second pass (they may be forward), so start with
-    // no dependency operands; the callback builds the body and the op infers
-    // its `bodyResults` from the yield.
-    LogicalResult bodyResult = success();
-    auto depsOp = DeviceGraphDependenciesOp::create(
-        builder, region.getLoc(), /*graphBuilder=*/stagingBuilder,
-        /*dependencies=*/ValueRange{},
-        [&](OpBuilder &bodyBuilder, Location loc, Value graphBuilder) {
-          bodyResult = buildDependenciesBody(bodyBuilder, loc, graphBuilder,
-                                             region, oldValueToNew);
-        });
-
-    if (failed(bodyResult))
-      return failure();
-
-    oldToNew[region] = depsOp;
-    oldValueToNew.map(region.getResults(), depsOp.getBodyResults());
-  }
-
-  // Derive the dependency edges: an operand defined by another converted region
-  // (chain or tensor) becomes an edge to that region's node. Operands
-  // referencing model inputs / outer SSA contribute no edge. The graph region
-  // tolerates forward edges, so this runs after all nodes exist.
-  for (auto [region, dependencies] : oldToNew) {
-    llvm::SmallSetVector<Value, 8> edges;
-    for (Value operand : region.getOperands()) {
-      Operation *def = operand.getDefiningOp();
-
-      if (auto producer = dyn_cast_if_present<GenericCompiledRegionOp>(def))
-        if (auto it = oldToNew.find(producer); it != oldToNew.end())
-          edges.insert(it->second.getNode());
-    }
-
-    dependencies.getDependenciesMutable().assign(edges.getArrayRef());
-  }
-
-  // Rewire all external uses (the `staging.yield`, sibling operands) to the new
-  // `bodyResults`, then erase the originals. Rewiring fully before erasing
-  // avoids leaving dangling uses between not-yet-erased siblings.
-  for (auto [region, dependencies] : oldToNew) {
-    for (auto [oldResult, newResult] :
-         llvm::zip(region.getResults(), dependencies.getBodyResults()))
-      oldResult.replaceAllUsesWith(newResult);
-  }
-
-  // Aggregate the new dense resources before deleting the original
-  // GenericCompiledRegionOps.
-  SetVector<Attribute> constantResources;
-  for (auto region : oldToNew.keys()) {
-    if (auto resources = region.getConstantResources())
-      constantResources.insert_range(resources);
-
-    region.erase();
-  }
-
-  Builder builder(stagingOp->getContext());
-  auto newAttr = builder.getArrayAttr(constantResources.getArrayRef());
-  stagingOp.setConstantResourcesAttr(newAttr);
-
-  return success();
-}
-
 /// Replace every `mogg.generic.compiled.region` in each device region of
 /// `collectiveOp` with a `mgp.device_graph.dependencies` op, preserving the
 /// per-device ordering and dissolving each compiled region's dataflow boundary.
@@ -299,14 +211,6 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
 /// capturing the dependency DAG explicitly.
 LogicalResult computeDeviceGraphDependencies(ModelOp model) {
   Block *execute = model.getExecuteBlock();
-
-  // `mgp-stage-device-graphs` leaves one `mgp.device_graph.staging` op per
-  // device in the execute block, holding the model's compiled regions verbatim.
-  for (DeviceGraphStagingOp stagingOp :
-       llvm::make_early_inc_range(execute->getOps<DeviceGraphStagingOp>())) {
-    if (failed(convertStagedRegions(stagingOp)))
-      return failure();
-  }
 
   // The same lowering applies to `mgp.device_graph.collective`, where each
   // device region is processed separately.

@@ -7,24 +7,26 @@
 
 // End-to-end device-graph synthesis + EmitMojo. An `isDeviceGraph` mo.graph
 // with a single custom op lowers (through the synthesis stages) to a
-// `mgp.device_graph.create` whose build body records the kernel via
-// `DeviceGraphBuilder.region`, invoking the kernel's node-free `build_graph`
-// method. `imposter_build_graph_capable` (`BuildGraphCapable` in the test kernel
-// library) exposes both `execute` and a node-free `build_graph`. A second
-// graph covers the fallback for kernels exposing only `execute`.
+// `mgp.device_graph.collective.create` whose per-device build body records the
+// kernel via `DeviceGraphBuilder.region`, invoking the kernel's node-free
+// `build_graph` method. `imposter_build_graph_capable` (`BuildGraphCapable` in
+// the test kernel library) exposes both `execute` and a node-free `build_graph`.
+// A second graph covers the fallback for kernels exposing only `execute`.
 
 // The graph cache comes from the state context. `DeviceGraphCache` is not
 // copyable, so the reference the state context hands back is taken by pointer
 // rather than bound to a `var` of its own.
 // CHECK: var [[CACHE:var[_0-9]+]] = Pointer(to = {{var[_0-9]+}}.get_device_graph_cache())
 
-// The build closure passed to `DeviceGraph.create` is a runtime closure that
-// owns its captures, so it carries the `var` capture convention.
-// The build closure and per-kernel work closures are pinned @inline(.never) so
-// AutomaticInline cannot merge the whole model's enqueue code into one
-// function (whose Mem2Reg would dominate compile time).
+// The build closure passed to `DeviceGraph.collective.create` is a runtime
+// closure that owns its captures, so it carries the `var` capture convention.
+// It is indexed by a comptime device index and dispatches into the per-device
+// body with `comptime if`. The build closure and per-kernel work closures are
+// pinned @inline(.never) so AutomaticInline cannot merge the whole model's enqueue
+// code into one function as this has significant compile time overhead.
 // CHECK: @inline(.never)
-// CHECK-NEXT: def [[BUILD:build[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {var}:
+// CHECK-NEXT: def [[BUILD:collective_build_for[_0-9]+]]{{.*}}(mut builder: {{.*}}DeviceGraphBuilder) raises {imm}:
+// CHECK-NEXT: comptime if {{[a-z_0-9]+}} == 0:
 
 // Each device input is recorded against a graph-owned stable location rather
 // than the caller's buffer, so a replay does not depend on the caller's address
@@ -64,9 +66,14 @@
 // `add_output`.
 // CHECK: builder.add_output({{var[_0-9]+}}.async_pack())
 
-// The graph is built via the static `DeviceGraph.create(deviceContext, build)`,
-// which is handed the graph inputs (to key the cache on) and the cache itself.
-// CHECK: {{.*}}DeviceGraph.create({{.*}}, [[BUILD]], {{.*}}, cache = [[CACHE]])
+// The graph is built via the static `DeviceGraph.collective.create(...)`.
+// The collective is keyed on the graph inputs and cached via the same cache.
+// CHECK: @inline(.never)
+// CHECK-NEXT: def [[KEY:collective_key_for[_0-9]+]]{{.*}}() raises {imm} -> String:
+// CHECK-NEXT: comptime if {{[a-z_0-9]+}} == 0:
+// CHECK: raise Error("unexpected device index in collective device graph key")
+// CHECK: [[ARRAY:var[_0-9]+]] = {{.*}}DeviceGraph.create_collective({{.*}}, [[BUILD]], [[KEY]], cache = [[CACHE]])
+// CHECK: var [[G0:var[_0-9]+]] = [[ARRAY]][0]
 
 // The recording stub is node-free (no result) and calls the kernel's
 // `build_graph` method with the builder as the launch argument.
@@ -110,7 +117,7 @@ mo.graph @dg_execute_only(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 
 // contributes its address to the key via `write_graph_key`).
 // CHECK-DAG: unpack_tensor[{{[0-9]+}}, {{[0-9]+}}, DType.float32, mut = True]
 // CHECK-DAG: builder.add_input({{var[_0-9]+}})
-// CHECK-DAG: DeviceGraph.create(
+// CHECK-DAG: DeviceGraph.create_collective(
 
 mo.graph @dg_mut_input(%buf: !mo.buffer<[2, 3], f32, gpu:0>, %x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.chain
     attributes {isDeviceGraph} {
@@ -132,7 +139,7 @@ mo.graph @dg_mut_input(%buf: !mo.buffer<[2, 3], f32, gpu:0>, %x: !mo.tensor<[2, 
 // `DeviceGraph.create` as a cache-key input.
 // CHECK-DAG: unpack_tensor[{{[0-9]+}}, {{[0-9]+}}, DType.int64, host = True]
 // CHECK-DAG: builder.add_input({{var[_0-9]+}})
-// CHECK-DAG: DeviceGraph.create(
+// CHECK-DAG: DeviceGraph.create_collective(
 
 mo.graph @dg_host_input(%h: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:0>
     attributes {isDeviceGraph} {
@@ -149,15 +156,11 @@ mo.graph @dg_host_input(%h: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:
 // single closure records both stubs, rather than one closure each.
 // The chain edge survives as the body order: `DeviceGraphBuilder.region` chains
 // the nodes its body records.
-// The `imm` capture convention picks out the dispatch closure: the alloc
-// region ahead of it surfaces a buffer and so captures `mut`.
+// The `imm` capture convention picks out the dispatch closure.
 // CHECK: def [[WORK:work[_0-9]+]](mut builder: {{.*}}DeviceGraphBuilder) raises {imm}:
 // CHECK: [[STUB:[A-Za-z0-9_]+_map(_[0-9]+)?_build_graph]]({{.*}}, builder)
 // CHECK: [[STUB]]({{.*}}, builder)
 // CHECK: builder.region([[WORK]], dependencies =
-// The alloc region is not fused in (it yields a buffer), so the two dispatches
-// leave exactly one further `region` call, not two.
-// CHECK-NOT: builder.region(
 
 mo.graph @dg_chain(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
     attributes {isDeviceGraph} {
