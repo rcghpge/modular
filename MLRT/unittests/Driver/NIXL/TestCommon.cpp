@@ -31,11 +31,11 @@ static bool setPluginDirFromRepoRoot(const std::filesystem::path &root) {
   std::error_code ec;
   if (!std::filesystem::exists(root, ec))
     return false;
-  // Force the plain (non-verbs) flavor: these tests build two nixlAgents in one
-  // process, so on an IB host the verbs flavor would open two mlx5 contexts on
-  // the same HCA and crash in teardown (host rdma-core reserved-QPN mutex
-  // assertion). The verbs/rc path is validated cross-process by the cross-node
-  // smoke instead; see resolveNixlPluginDir's allowVerbsFlavor note.
+  // Force the plain (non-verbs) flavor: these loopback tests assert intra-host
+  // latencies, such as xferDuration staying under a 50 ms poll gap, that the
+  // verbs flavor's IB endpoint wireup can exceed. The verbs/rc path is
+  // validated cross-process by the cross-node smoke instead; see
+  // resolveNixlPluginDir's allowVerbsFlavor note.
   if (auto vendorDir =
           M::resolveNixlPluginDir(root, /*allowVerbsFlavor=*/false))
     setenv("NIXL_PLUGIN_DIR", vendorDir->c_str(), /*overwrite=*/0);
@@ -50,11 +50,12 @@ void configureNixlPluginDir() {
   // Pre-load the GPU runtime libraries with RTLD_LAZY|RTLD_GLOBAL so their
   // symbols are visible when nixlPluginManager calls
   //   dlopen(libplugin_UCX.so, RTLD_NOW)
-  // libplugin_UCX.so is built with -Wl,-z,undefs — it has unresolved
-  // references to CUDA driver/NVML symbols (cuda flavor), HSA symbols (rocm
-  // flavors), or rdma-core symbols (the *-verbs flavors). RTLD_NOW at dlopen
-  // time requires ALL symbols to be resolvable from currently loaded
-  // libraries. Pre-loading these with RTLD_GLOBAL makes them available.
+  // libplugin_UCX.so is built with -Wl,-z,undefs, leaving CUDA driver/NVML
+  // symbols (cuda flavor) or HSA symbols (rocm flavors) unresolved. RTLD_NOW at
+  // dlopen time requires ALL symbols to be resolvable from currently loaded
+  // libraries. Pre-loading these with RTLD_GLOBAL makes them available. The
+  // rdma-core entries matter only to the *-verbs flavors, which these tests do
+  // not load.
   // Failures are non-fatal: on CPU-only machines the plugin simply won't load.
   const char *gpuLibs[] = {
       "libcuda.so.1",          "libcuda.so",
