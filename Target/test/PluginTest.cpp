@@ -169,8 +169,6 @@ TEST_F(DriverPluginDeviceTest, PropertyArch) {
 }
 
 TEST_F(DriverPluginContextTest, ContextMemoryInfo) {
-  if (api == "Metal")
-    GTEST_SKIP() << "memory_info is not implemented for Metal";
   for (M_driver_context_t context : contexts) {
     uint64_t freeBytes = 0;
     uint64_t totalBytes = 0;

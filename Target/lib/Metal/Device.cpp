@@ -185,6 +185,13 @@ M_driver_status_t M_driver_device::getProperty(llvm::StringRef name,
     return M_DRIVER_STATUS_SUCCESS;
   }
 
+  if (name == M_DRIVER_DEVICE_PROPERTY_MAX_ALLOCATION_SIZE) {
+    if (mDevice == nullptr)
+      return M_DRIVER_STATUS_BAD_DEVICE;
+    *static_cast<uint64_t *>(value) = mDevice->maxBufferLength();
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+
   if (name == M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE ||
       name == M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE_PINNED) {
     auto *dl = static_cast<M_driver_dlpack_device *>(value);

@@ -146,8 +146,7 @@ public:
   /// Memory held by device-graph pools. The HAL backend does not support
   /// device graphs, so no graph pool ever exists and both counters are zero.
   ErrorOr<GraphMemInfo> getGraphMemoryInfo() const { return GraphMemInfo(); }
-  /// Largest single allocation the device supports; the HAL backend uses the
-  /// total device memory (the documented default).
+  /// The plugin's `max_allocation_size` property, else total device memory.
   ErrorOr<size_t> maxSingleAllocationSize() const;
   /// Whether this device can directly access `other`'s memory.
   ErrorOr<bool> canAccess(const Device &other) const;

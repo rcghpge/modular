@@ -398,6 +398,24 @@ def MojoHAL_DeviceContext_isHostUnified(
 
 
 @export
+def MojoHAL_DeviceContext_maxAllocationSize(
+    out_has_limit: _OutPtr[Bool],
+    out_size: _OutPtr[UInt64],
+    ctx: _DeviceContextBoxPtr,
+) abi("C") -> _CString[]:
+    try:
+        ref device = ctx[]._device[]
+        var size = device._raw[].get_optional_device_property[
+            "max_allocation_size", UInt64
+        ](device._handle)
+        out_has_limit[] = Bool(size)
+        out_size[] = size.or_else(0)
+        return None
+    except e:
+        return _err_cstr(String(e))
+
+
+@export
 def MojoHAL_DeviceContext_isCompatible(
     ctx: _DeviceContextBoxPtr,
 ) abi("C") -> Bool:

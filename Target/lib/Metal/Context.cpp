@@ -252,10 +252,18 @@ extern "C" M_driver_status_t M_driver_context_set_current_driver_context(
 }
 
 extern "C" M_driver_status_t
-M_driver_context_memory_info([[maybe_unused]] M_driver_context_t context,
-                             [[maybe_unused]] uint64_t *free,
-                             [[maybe_unused]] uint64_t *total) {
-  return M_DRIVER_STATUS_UNIMPLEMENTED;
+M_driver_context_memory_info(M_driver_context_t context, uint64_t *free,
+                             uint64_t *total) {
+  if (context == nullptr)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  if (free == nullptr || total == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  MTL::Device *dev = context->device->mDevice;
+  uint64_t budget = dev->recommendedMaxWorkingSetSize();
+  uint64_t used = dev->currentAllocatedSize();
+  *total = budget;
+  *free = budget > used ? budget - used : 0;
+  return M_DRIVER_STATUS_SUCCESS;
 }
 
 // Synchronous fill C ABI: thin wrappers over the M_driver_context methods

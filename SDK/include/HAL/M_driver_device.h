@@ -60,6 +60,8 @@ typedef M_driver_status_t (*M_driver_device_get_func_ptr_t)(
  *   terminator.
  * - "host_unified": write an `int64_t`, 1 when the device and the host draw
  *   from one physical memory pool. Hardware topology, not addressability.
+ * - "max_allocation_size": write a `uint64_t`, the largest single allocation
+ *   in bytes. Optional; without it, callers assume the context's total memory.
  */
 #define M_DRIVER_DEVICE_PROPERTY_MAX_LEN 256
 #define M_DRIVER_DEVICE_PROPERTY_DLPACK_DEVICE "dlpack_device"
@@ -67,6 +69,7 @@ typedef M_driver_status_t (*M_driver_device_get_func_ptr_t)(
 #define M_DRIVER_DEVICE_PROPERTY_NAME "name"
 #define M_DRIVER_DEVICE_PROPERTY_ARCH "arch"
 #define M_DRIVER_DEVICE_PROPERTY_HOST_UNIFIED "host_unified"
+#define M_DRIVER_DEVICE_PROPERTY_MAX_ALLOCATION_SIZE "max_allocation_size"
 
 /**
  * Retrieve an integer-valued property of a device, as 64-bit integer.

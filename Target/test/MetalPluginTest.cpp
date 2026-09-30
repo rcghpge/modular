@@ -142,6 +142,25 @@ TEST_F(DriverPluginContextTest, AllocRejectsOversizedBuffer) {
   }
 }
 
+// KV-cache sizing caps a buffer at this value, so it must be the guard's limit.
+TEST_F(DriverPluginContextTest, MaxAllocationSizeMatchesAllocGuard) {
+  ASSERT_EQ(devices.size(), contexts.size());
+  for (size_t i = 0; i < contexts.size(); i++) {
+    uint64_t maxAlloc = 0;
+    ASSERT_SUCCESS(device_property(
+        devices[i], M_DRIVER_DEVICE_PROPERTY_MAX_ALLOCATION_SIZE, &maxAlloc));
+    ASSERT_GT(maxAlloc, 0u);
+
+    M_driver_memory_t memory = nullptr;
+    M_driver_status_t status =
+        memory_alloc_sync(contexts[i], maxAlloc + 1, &memory);
+    ASSERT_NE(M_DRIVER_STATUS_SUCCESS, status);
+    std::string message = getStatusMessage(status);
+    EXPECT_NE(message.find("larger than allowed"), std::string::npos)
+        << "Expected the maxBufferLength guard to fire, got: " << message;
+  }
+}
+
 struct DriverMetalPluginFunctionTest : DriverPluginQueueTest {
   void SetUp() override {
     DriverPluginQueueTest::SetUp();

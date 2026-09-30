@@ -74,6 +74,9 @@ bool MojoHAL_DeviceContext_canAccess(MojoHALContextBox *ctx,
 bool MojoHAL_DeviceContext_isCompatible(MojoHALContextBox *ctx);
 const char *MojoHAL_DeviceContext_isHostUnified(bool *out_unified,
                                                 MojoHALContextBox *ctx);
+const char *MojoHAL_DeviceContext_maxAllocationSize(bool *out_has_limit,
+                                                    uint64_t *out_size,
+                                                    MojoHALContextBox *ctx);
 const char *MojoHAL_DeviceContext_getMemoryInfo(uint64_t *out_free,
                                                 uint64_t *out_total,
                                                 MojoHALContextBox *ctx);
@@ -364,6 +367,15 @@ ErrorOr<int> Device::getAttribute(Attribute attr) const {
 }
 
 ErrorOr<size_t> Device::maxSingleAllocationSize() const {
+  if (!isVirtual()) {
+    bool hasLimit = false;
+    uint64_t limit = 0;
+    if (const char *err = MojoHAL_DeviceContext_maxAllocationSize(
+            &hasLimit, &limit, mojoCtx_))
+      return takeError(err);
+    if (hasLimit)
+      return static_cast<size_t>(limit);
+  }
   auto info = getMemoryInfo();
   if (info.isError())
     return info.takeError();
