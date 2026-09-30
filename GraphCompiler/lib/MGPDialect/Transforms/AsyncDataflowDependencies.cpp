@@ -253,11 +253,8 @@ void AsyncDataflowDependencies::setupMaybeSameAs() {
 
 /// Implements the rules:
 ///  - Given
-///      %x = {grt, mgp}.chain.create (%y1, ..., %yn)
+///      %x = grt.chain.create (%y1, ..., %yn)
 ///    where isAlwaysReady(%yi) for all i then isAlwaysReady(%x)
-///  - Given
-///      %x = mgp.chain.{device_to_host, host_to_device} %y
-///    where isAlwaysReady(%y) then isAlwaysReady(x)
 ///  - The control flow rules.
 void AsyncDataflowDependencies::flowAlwaysReady(Operation *op,
                                                 ValueDomainMap &domainMap) {

@@ -166,7 +166,7 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
     Example:
     ```mlir
     %ctx : !mef.context
-    %ch : !mgp.chain<<"gpu", 3>>
+    %ch : !mef.chain
     %buf : !mgp.buffer<<"gpu", 3>>
     %spec : !mgp.tensor_spec<4x16xf32>
     %tensor = mgp.tensor.create %ch, %ctx[5], %buf, %spec : !mgp.tensor<4x16xf32, <"gpu", 3>>
@@ -1115,8 +1115,7 @@ def StringConcatOp : MGP_Op<"string.concat", [Pure]> {
 // efficiency of direct dispatch to per-device label primitives without the
 // overhead of dealing with device labels at runtime.
 //
-// Note that MGP has an `!mgp.chain` type which carries its device. For host
-// devices this is has the same runtime representation as for `!mef.chain`.
+// Note that chains in MGP are plain `!mef.chain` values.
 //
 //===----------------------------------------------------------------------===//
 
@@ -1377,7 +1376,7 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
 
     Example:
     ```mlir
-      %ch : !mgp.chain<<"gpu", 3>>
+      %ch : !mef.chain
       %ctx : !mgp.context
       %size : index
       // Allocates %size bytes using the CUDA runtime from slot 5, which
@@ -1472,7 +1471,7 @@ def BufferFreeOp : MGP_Op<"buffer.free"> {
     Example:
     ```mlir
       %ctx : !mgp.context
-      %ch1 : !mgp.chain
+      %ch1 : !mef.chain
       %buf0 : !mgp.buffer
       %ch2 = mgp.buffer.free %ch1, %buf0 : !mgp.buffer
     ```
@@ -1719,7 +1718,7 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
 
     Example:
     ```mlir
-    %in_ch : !mgp.chain<<"gpu", 3>>
+    %in_ch : !mef.chain
     %out_buf : !mgp.buffer<<"gpu", 3>>
     %in0_buf : !mgp.buffer<<"gpu", 3>>
     %in1_buf : !mgp.buffer<<"gpu", 3>>
@@ -1728,7 +1727,7 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
               : (!mgp.buffer<<"gpu", 3>>,
                  !mgp.buffer<<"gpu", 3>>,
                  !mgp.buffer<<"gpu", 3>>) -> !mgp.buffer<<"gpu", 3>>
-    %out_ch : !mgp.chain<<"gpu", 3>>
+    %out_ch : !mef.chain
     ```
   }];
 
@@ -1818,7 +1817,7 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
 
     Example:
     ```mlir
-    %ch:  !mgp.chain
+    %ch:  !mef.chain
     %ctx : !mgp.device_context<<"cpu", 0>>
     %in_buf : !mgp.buffer
     %offset : index
@@ -1988,13 +1987,13 @@ def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
     %buf0 : !mgp.buffer<<"gpu", 3>>
     %idx0 : index
     %ch0 = mgp.buffer.set_with_index %buf0, %idx0 : !mgp.buffer<<"gpu", 3>>
-    %ch0 : !mgp.chain<<"gpu", 3>>
+    %ch0 : !mef.chain
 
     %idx1 : index
     %idx2 : index
     %buf1 : !mgp.buffer<<"gpu", 3>>
     %ch1 = mgp.buffer.set_with_index %buf1, %idx0, %idx1, %idx2 : !mgp.buffer<<"gpu", 3>>
-    %ch1 : !mgp.chain<<"gpu", 3>>
+    %ch1 : !mef.chain
     ```
   }];
 

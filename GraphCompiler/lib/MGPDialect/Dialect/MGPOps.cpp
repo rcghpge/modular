@@ -136,7 +136,7 @@ LogicalResult M::MGP::verifyConsistentDevices(
 //===----------------------------------------------------------------------===//
 
 /// Parses a !mgp.buffer type, extracts its device attribute,
-/// assigns chains the type !mgp.chain<device>.
+/// assigns chains the type !mef.chain.
 static ParseResult parseBufferTypeToDeviceImpl(OpAsmParser &p, Type &buffer,
                                                DeviceRefAttr &device,
                                                ArrayRef<Type *> chains) {
@@ -188,7 +188,7 @@ static void printBufferTypeToChain(OpAsmPrinter &p, Operation *op,
 }
 
 /// Parses a !mgp.tensor type and extracts its device, buffer type, and
-/// tensor spec type, and assigns chain the type !mgp.chain<device>.
+/// tensor spec type, and assigns chain the type !mef.chain.
 /// If isShapeOnly is true, the tensor spec will have 'unk' dtype.
 static ParseResult parseTensorTypeToDeviceBufferSpecImpl(
     OpAsmParser &p, Type &tensor, DeviceRefAttr &device, Type &buffer,
@@ -227,7 +227,7 @@ static void printTensorTypeToDeviceBufferSpec(OpAsmPrinter &p, Operation *op,
 
 /// Parses a function type consisting of one input buffer and one output buffer
 /// type, assigns their devices to srcDevice and dstDevice, and assigns inChain
-/// the type !mgp.chain<srcDevice>.
+/// the type !mef.chain.
 static ParseResult
 parseSrcDstBufferTypesToDevices(OpAsmParser &p, Type &srcBuffer,
                                 Type &dstBuffer, DeviceRefAttr &srcDevice,

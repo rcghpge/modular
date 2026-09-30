@@ -462,14 +462,14 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     buffer type.
 
     Since `!mgp.buffers` are generally considered mutable, any op reading from
-    a buffer must also accept an `!mgp.chain`, and any op writing to a buffer
-    must also return an `!mgp.chain`. In this way the compiler can correctly
+    a buffer must also accept a `!mef.chain`, and any op writing to a buffer
+    must also return a `!mef.chain`. In this way the compiler can correctly
     sequence writes and reads.
 
     `!mgp.buffer`s are represented by (subclasses of)
     `MLRT::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
     such as CUDA, may need to include additional data to control device-side
-    synchronization, see `!mgp.chain` for more details.
+    synchronization.
 
     Examples:
     ```mlir
@@ -531,7 +531,7 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     `!mgp.tensors`s are represented by (subclasses of)
     `MLRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices, such as
     CUDA, may need to include additional data to control device-side
-    synchronization, see `!mgp.chain` for more details.
+    synchronization.
 
     Examples:
     ```mlir

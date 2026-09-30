@@ -42,13 +42,13 @@ def SimplifyExtendLifetimesPass : Pass<"mgp-simplify-extend-lifetimes", "MGP::Mo
   let description = [{
     Given:
     ```mlir
-      %ch1 = mogg.generic.compiled.region(...) -> !mgp.chain
+      %ch1 = mogg.generic.compiled.region(...) -> !mef.chain
       %ch2 = mgp.extend.lifetime %ch1, %t1, ... %tn
       op(%ch2)
     ```
     We can fuse these into simply:
     ```mlir
-      %ch1 = mogg.generic.compiled.region(..., %t1, ... %tn) -> !mgp.chain
+      %ch1 = mogg.generic.compiled.region(..., %t1, ... %tn) -> !mef.chain
       op(%ch1)
     ```
     Provided they are not then removed for being unused. So we must run this pass last.
@@ -129,7 +129,7 @@ def ConcatInPlacePass : Pass<"mgp-concat-in-place", "MGP::ModelOp"> {
     %in2_ch = ... writer to %in2_buf ...
     %out_bytes = ...
     %out_buf = mgp.buffer.alloc ..., %out_bytes
-    %ch1 = mgp.chain.create (%in1_ch, %in2_ch)
+    %ch1 = grt.chain.create (%in1_ch, %in2_ch)
     %ch2 = mgp.buffer.concat %ch1, %out_buf, %in1_buf, %in2_buf : ...
     // where these are the only uses of %in1_buf and %in2_buf
     ```
@@ -142,7 +142,7 @@ def ConcatInPlacePass : Pass<"mgp-concat-in-place", "MGP::ModelOp"> {
     %in1_buf, %in2_buf = mgp.buffer.split %root_ch, %out_buf, %in2_size : ...
     %in1_ch = ... writer to %in1_buf ...
     %in2_ch = ... writer to %in2_buf ...
-    %ch2 = mgp.chain.create (%in1_ch, %in2_ch)
+    %ch2 = grt.chain.create (%in1_ch, %in2_ch)
     ```
 
     Note that this pass simply assumes that the argument chain to the
@@ -356,7 +356,7 @@ def PrepareDevicePrimitivesPass : Pass<"mgp-prepare-device-primitives"> {
                { aRuntimeSlot = 1 : ui64,
                  bRawAlign = kUnknownSize,
                  cDevice = 3 : ui64 }
-               : (!mgp.chain<<"gpu", 3>>, !mgp.context) ->
+               : (!mef.chain, !mgp.context) ->
                  !mgp.buffer<<"gpu", 3>>
     ```
   }];

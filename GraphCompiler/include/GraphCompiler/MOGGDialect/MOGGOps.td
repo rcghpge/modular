@@ -1508,7 +1508,7 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
     mogg.try {
      ...
     } except (%err: !mogg.Error) {
-      %chain = mogg.async.error %err : !mgp.chain
+      %chain = mogg.async.error %err : !mef.chain
       %dim0 = mogg.async.error %err : !si64
       mogg.yield %chain, %dim0
     }
