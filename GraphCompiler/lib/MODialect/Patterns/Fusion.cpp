@@ -4759,6 +4759,11 @@ public:
       return rewriter.notifyMatchFailure(
           downOp, "L1 and L2 are driven by different routing tensors");
 
+    // The fused kernel applies per-row input scales on the gate-up leg only.
+    if (downOp.getHasARowScales())
+      return rewriter.notifyMatchFailure(
+          downOp, "mega_ffn does not take down-leg row scales");
+
     // num_experts is the leading dim of the rank-3 down weight; bail if it is
     // statically known to exceed the scheduler's hard limit.
     int64_t numExperts =
@@ -4840,13 +4845,15 @@ public:
         /*expert_ids=*/downOp.getExpertIds(),
         /*a_scale_offsets=*/downOp.getAScaleOffsets(),
         /*gate_up_expert_scales=*/l1.getExpertScales(),
+        /*gate_up_a_row_scales=*/l1.getARowScales(),
         /*down_expert_scales=*/downOp.getExpertScales(),
         /*c_input_scales=*/l1.getCInputScales(),
         /*estimated_total_m=*/downOp.getEstimatedTotalM(),
         /*gate_up_num_active_experts=*/l1.getNumActiveExperts(),
         /*down_num_active_experts=*/downOp.getNumActiveExperts(),
         /*arrival_count=*/arrivalBuf,
-        /*inChain=*/inChain);
+        /*inChain=*/inChain,
+        /*has_gate_up_a_row_scales=*/l1.getHasARowScales());
 
     // Forward the clamped-SwiGLU (`swigluoai`) activation selector from L1; the
     // kernel supplies the canonical alpha/limit constants when it is set.

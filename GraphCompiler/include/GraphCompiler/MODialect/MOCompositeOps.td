@@ -875,6 +875,11 @@ def MOComposite_GroupedMatmulSwigluNvfp4Op
     `swiglu_alpha`/`swiglu_limit` are host scalars parameterizing the clamped
     SwiGLU (swigluoai) activation, enabled by the `clamp_activation` attribute.
 
+    When `has_a_row_scales` is set, `a_row_scales` holds one bf16 scale per
+    `hidden_states` row, multiplied into that row together with its expert
+    scale before the SwiGLU. Otherwise `a_row_scales` is an unread
+    placeholder.
+
     Composite form of the `mo.composite.grouped_matmul_swiglu_nvfp4` kernel;
     lowers 1:1.
   }];
@@ -888,12 +893,14 @@ def MOComposite_GroupedMatmulSwigluNvfp4Op
     MO_Tensor:$expert_ids,
     MO_Tensor:$a_scale_offsets,
     MO_Tensor:$expert_scales,
+    MO_Tensor:$a_row_scales,
     MO_Tensor:$c_input_scales,
     MO_Tensor:$estimated_total_m,
     MO_Tensor:$num_active_experts,
     MO_Tensor:$swiglu_alpha,
     MO_Tensor:$swiglu_limit,
-    DefaultValuedAttr<BoolAttr, "false">:$clamp_activation
+    DefaultValuedAttr<BoolAttr, "false">:$clamp_activation,
+    DefaultValuedAttr<BoolAttr, "false">:$has_a_row_scales
   );
   let results = (outs MO_Tensor:$c_packed, MO_Tensor:$c_swiglu_scales);
   let assemblyFormat = [{
@@ -912,6 +919,10 @@ def MOComposite_GroupedMatmulBlockScaledOp
     matmul of the packed-NVFP4 activations by the down weights, producing the
     bf16 hidden-state output.
 
+    When `has_a_row_scales` is set, `a_row_scales` holds one bf16 scale per
+    `hidden_states` row, multiplied into that output row together with its
+    expert scale. Otherwise `a_row_scales` is an unread placeholder.
+
     Composite form of the `mo.composite.grouped_matmul_block_scaled` kernel;
     lowers 1:1.
   }];
@@ -925,8 +936,10 @@ def MOComposite_GroupedMatmulBlockScaledOp
     MO_Tensor:$expert_ids,
     MO_Tensor:$a_scale_offsets,
     MO_Tensor:$expert_scales,
+    MO_Tensor:$a_row_scales,
     MO_Tensor:$estimated_total_m,
-    MO_Tensor:$num_active_experts
+    MO_Tensor:$num_active_experts,
+    DefaultValuedAttr<BoolAttr, "false">:$has_a_row_scales
   );
   let results = (outs MO_Tensor:$output);
   let assemblyFormat = [{
@@ -966,10 +979,10 @@ def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
 
     Operands are the union of the two legs' inputs (minus the dead intermediate):
     the gate-up leg's `hidden_states`/`weight`/`a_scales`/`b_scales`/
-    `expert_scales`/`c_input_scales`, the down leg's `weight`/`b_scales`/
-    `expert_scales`, the shared routing tensors (`expert_start_indices`,
-    `expert_ids`, `a_scale_offsets`, `estimated_total_m`), and each leg's
-    `num_active_experts`.
+    `expert_scales`/`a_row_scales`/`c_input_scales`, the down leg's
+    `weight`/`b_scales`/`expert_scales`, the shared routing tensors
+    (`expert_start_indices`, `expert_ids`, `a_scale_offsets`,
+    `estimated_total_m`), and each leg's `num_active_experts`.
 
     The `arrival_count` buffer holds the cross-CTA pool-slot arrival counters
     the kernel uses to hand off between the two legs. It is a PERSISTENT device
@@ -989,6 +1002,10 @@ def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
     The clamped-SwiGLU (`swigluoai`) activation is selected by the discardable
     `clamp_activation` attribute; the kernel supplies the canonical swigluoai
     alpha/limit constants when it is set.
+
+    `gate_up_a_row_scales` and `has_gate_up_a_row_scales` carry the gate-up
+    leg's per-row input scales (see `mo.composite.grouped_matmul_swiglu_nvfp4`).
+    The down leg takes none.
   }];
 
   let arguments = (ins
@@ -1002,13 +1019,15 @@ def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
     MO_Tensor:$expert_ids,
     MO_Tensor:$a_scale_offsets,
     MO_Tensor:$gate_up_expert_scales,
+    MO_Tensor:$gate_up_a_row_scales,
     MO_Tensor:$down_expert_scales,
     MO_Tensor:$c_input_scales,
     MO_Tensor:$estimated_total_m,
     MO_Tensor:$gate_up_num_active_experts,
     MO_Tensor:$down_num_active_experts,
     MO_Buffer:$arrival_count,
-    MO_Chain:$inChain
+    MO_Chain:$inChain,
+    DefaultValuedAttr<BoolAttr, "false">:$has_gate_up_a_row_scales
   );
   let results = (outs MO_Tensor:$output, MO_Chain:$outChain);
   let assemblyFormat = [{

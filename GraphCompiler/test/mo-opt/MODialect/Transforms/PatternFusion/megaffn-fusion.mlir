@@ -50,28 +50,29 @@ mo.graph @mega_ffn_fuses(
 ) -> !mo.tensor<[66560, 7168], bf16, gpu:0> {
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
-      %scale_off, %gate_up_es, %c_in_scales, %est_m, %gate_up_nae,
-      %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
+      %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
+      %gate_up_nae, %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
       !mo.tensor<[], f32>, !mo.tensor<[], f32>
     ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
           !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
   %out = mo.composite.grouped_matmul_block_scaled(
       %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
-      %scale_off, %down_es, %est_m, %down_nae) : (
+      %scale_off, %down_es, %down_es, %est_m, %down_nae) : (
       !mo.tensor<[66560, 1024], ui8, gpu:0>,
       !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
       !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
     ) -> !mo.tensor<[66560, 7168], bf16, gpu:0>
   mo.output %out : !mo.tensor<[66560, 7168], bf16, gpu:0>
 }
@@ -107,28 +108,29 @@ mo.graph @mega_ffn_fuses_clamp(
 ) -> !mo.tensor<[66560, 7168], bf16, gpu:0> {
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
-      %scale_off, %gate_up_es, %c_in_scales, %est_m, %gate_up_nae,
-      %swiglu_alpha, %swiglu_limit) {clamp_activation = true} : (
+      %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
+      %gate_up_nae, %swiglu_alpha, %swiglu_limit) {clamp_activation = true} : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
       !mo.tensor<[], f32>, !mo.tensor<[], f32>
     ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
           !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
   %out = mo.composite.grouped_matmul_block_scaled(
       %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
-      %scale_off, %down_es, %est_m, %down_nae) : (
+      %scale_off, %down_es, %down_es, %est_m, %down_nae) : (
       !mo.tensor<[66560, 1024], ui8, gpu:0>,
       !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
       !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
     ) -> !mo.tensor<[66560, 7168], bf16, gpu:0>
   mo.output %out : !mo.tensor<[66560, 7168], bf16, gpu:0>
 }
@@ -162,28 +164,29 @@ mo.graph @neg_multi_use_intermediate(
       !mo.tensor<[66560, 1024], ui8, gpu:0>) {
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
-      %scale_off, %gate_up_es, %c_in_scales, %est_m, %gate_up_nae,
-      %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
+      %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
+      %gate_up_nae, %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
       !mo.tensor<[], f32>, !mo.tensor<[], f32>
     ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
           !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
   %out = mo.composite.grouped_matmul_block_scaled(
       %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
-      %scale_off, %down_es, %est_m, %down_nae) : (
+      %scale_off, %down_es, %down_es, %est_m, %down_nae) : (
       !mo.tensor<[66560, 1024], ui8, gpu:0>,
       !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
       !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
     ) -> !mo.tensor<[66560, 7168], bf16, gpu:0>
   mo.output %out, %down_in : !mo.tensor<[66560, 7168], bf16, gpu:0>,
       !mo.tensor<[66560, 1024], ui8, gpu:0>
@@ -218,28 +221,29 @@ mo.graph @neg_mismatched_routing(
 ) -> !mo.tensor<[66560, 7168], bf16, gpu:0> {
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
-      %scale_off, %gate_up_es, %c_in_scales, %est_m, %gate_up_nae,
-      %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
+      %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
+      %gate_up_nae, %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
       !mo.tensor<[], f32>, !mo.tensor<[], f32>
     ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
           !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
   %out = mo.composite.grouped_matmul_block_scaled(
       %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids2,
-      %scale_off, %down_es, %est_m, %down_nae) : (
+      %scale_off, %down_es, %down_es, %est_m, %down_nae) : (
       !mo.tensor<[66560, 1024], ui8, gpu:0>,
       !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
       !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
     ) -> !mo.tensor<[66560, 7168], bf16, gpu:0>
   mo.output %out : !mo.tensor<[66560, 7168], bf16, gpu:0>
 }
@@ -272,27 +276,151 @@ mo.graph @neg_too_many_experts(
 ) -> !mo.tensor<[66560, 7168], bf16, gpu:0> {
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
-      %scale_off, %gate_up_es, %c_in_scales, %est_m, %gate_up_nae,
-      %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
+      %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
+      %gate_up_nae, %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[128, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[128, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[129], ui32, gpu:0>, !mo.tensor<[128], si32, gpu:0>,
       !mo.tensor<[128], ui32, gpu:0>, !mo.tensor<[128], f32, gpu:0>,
-      !mo.tensor<[128], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
+      !mo.tensor<[128], f32, gpu:0>, !mo.tensor<[128], f32, gpu:0>,
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
       !mo.tensor<[], f32>, !mo.tensor<[], f32>
     ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
           !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
   %out = mo.composite.grouped_matmul_block_scaled(
       %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
-      %scale_off, %down_es, %est_m, %down_nae) : (
+      %scale_off, %down_es, %down_es, %est_m, %down_nae) : (
       !mo.tensor<[66560, 1024], ui8, gpu:0>,
       !mo.tensor<[128, 7168, 1024], ui8, gpu:0>,
       !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[128, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
       !mo.tensor<[129], ui32, gpu:0>, !mo.tensor<[128], si32, gpu:0>,
       !mo.tensor<[128], ui32, gpu:0>, !mo.tensor<[128], f32, gpu:0>,
+      !mo.tensor<[128], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
+    ) -> !mo.tensor<[66560, 7168], bf16, gpu:0>
+  mo.output %out : !mo.tensor<[66560, 7168], bf16, gpu:0>
+}
+
+
+// Positive (per-row input scales on the gate-up leg): the fused op takes L1's
+// `a_row_scales` operand and flag, and the down leg keeps its expert scales.
+//
+// CHECK-LABEL: mo.graph @mega_ffn_fuses_row_scales
+// CHECK: mo.composite.mega_ffn_nvfp4
+// CHECK-SAME: has_gate_up_a_row_scales = true
+// CHECK-SAME: !mo.tensor<[66560], bf16, gpu:0>
+// CHECK-NOT: mo.composite.grouped_matmul_swiglu_nvfp4
+// CHECK-NOT: mo.composite.grouped_matmul_block_scaled
+mo.graph @mega_ffn_fuses_row_scales(
+    %hidden: !mo.tensor<[66560, 3584], ui8, gpu:0>,
+    %gate_up_w: !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
+    %a_scales: !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+    %gate_up_bs: !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+    %row_off: !mo.tensor<[50], ui32, gpu:0>,
+    %expert_ids: !mo.tensor<[49], si32, gpu:0>,
+    %scale_off: !mo.tensor<[49], ui32, gpu:0>,
+    %gate_up_es: !mo.tensor<[49], f32, gpu:0>,
+    %row_scales: !mo.tensor<[66560], bf16, gpu:0>,
+    %c_in_scales: !mo.tensor<[49], f32, gpu:0>,
+    %est_m: !mo.tensor<[], ui32>,
+    %gate_up_nae: !mo.tensor<[], ui32>,
+    %swiglu_alpha: !mo.tensor<[], f32>,
+    %swiglu_limit: !mo.tensor<[], f32>,
+    %down_w: !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
+    %down_bs: !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
+    %down_es: !mo.tensor<[49], f32, gpu:0>,
+    %down_row_scales: !mo.tensor<[66560], bf16, gpu:0>,
+    %down_nae: !mo.tensor<[], ui32>
+) -> !mo.tensor<[66560, 7168], bf16, gpu:0> {
+  %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
+      %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
+      %scale_off, %gate_up_es, %row_scales, %c_in_scales, %est_m,
+      %gate_up_nae, %swiglu_alpha, %swiglu_limit)
+      {clamp_activation = false, has_a_row_scales = true} : (
+      !mo.tensor<[66560, 3584], ui8, gpu:0>,
+      !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
+      !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
+      !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[66560], bf16, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
+      !mo.tensor<[], f32>, !mo.tensor<[], f32>
+    ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
+          !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
+  %out = mo.composite.grouped_matmul_block_scaled(
+      %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
+      %scale_off, %down_es, %down_es, %est_m, %down_nae)
+      {has_a_row_scales = false} : (
+      !mo.tensor<[66560, 1024], ui8, gpu:0>,
+      !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
+      !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
+      !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
+    ) -> !mo.tensor<[66560, 7168], bf16, gpu:0>
+  mo.output %out : !mo.tensor<[66560, 7168], bf16, gpu:0>
+}
+
+// Negative: the down leg carries per-row input scales, which the fused kernel
+// does not apply -> bail.
+//
+// CHECK-LABEL: mo.graph @neg_down_row_scales
+// CHECK: mo.composite.grouped_matmul_swiglu_nvfp4
+// CHECK: mo.composite.grouped_matmul_block_scaled
+// CHECK-SAME: has_a_row_scales = true
+// CHECK-NOT: mo.composite.mega_ffn_nvfp4
+mo.graph @neg_down_row_scales(
+    %hidden: !mo.tensor<[66560, 3584], ui8, gpu:0>,
+    %gate_up_w: !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
+    %a_scales: !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+    %gate_up_bs: !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+    %row_off: !mo.tensor<[50], ui32, gpu:0>,
+    %expert_ids: !mo.tensor<[49], si32, gpu:0>,
+    %scale_off: !mo.tensor<[49], ui32, gpu:0>,
+    %gate_up_es: !mo.tensor<[49], f32, gpu:0>,
+    %row_scales: !mo.tensor<[66560], bf16, gpu:0>,
+    %c_in_scales: !mo.tensor<[49], f32, gpu:0>,
+    %est_m: !mo.tensor<[], ui32>,
+    %gate_up_nae: !mo.tensor<[], ui32>,
+    %swiglu_alpha: !mo.tensor<[], f32>,
+    %swiglu_limit: !mo.tensor<[], f32>,
+    %down_w: !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
+    %down_bs: !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
+    %down_es: !mo.tensor<[49], f32, gpu:0>,
+    %down_row_scales: !mo.tensor<[66560], bf16, gpu:0>,
+    %down_nae: !mo.tensor<[], ui32>
+) -> !mo.tensor<[66560, 7168], bf16, gpu:0> {
+  %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
+      %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
+      %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
+      %gate_up_nae, %swiglu_alpha, %swiglu_limit)
+      {clamp_activation = false, has_a_row_scales = false} : (
+      !mo.tensor<[66560, 3584], ui8, gpu:0>,
+      !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
+      !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[49, 32, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
+      !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
+      !mo.tensor<[], f32>, !mo.tensor<[], f32>
+    ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
+          !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
+  %out = mo.composite.grouped_matmul_block_scaled(
+      %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
+      %scale_off, %down_es, %down_row_scales, %est_m, %down_nae)
+      {has_a_row_scales = true} : (
+      !mo.tensor<[66560, 1024], ui8, gpu:0>,
+      !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
+      !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
+      !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
+      !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
+      !mo.tensor<[66560], bf16, gpu:0>,
       !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
     ) -> !mo.tensor<[66560, 7168], bf16, gpu:0>
   mo.output %out : !mo.tensor<[66560, 7168], bf16, gpu:0>
