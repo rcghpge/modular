@@ -21,8 +21,10 @@
 #include "Support/internal/Tracy/Tracy.h"
 #include "Support/internal/Tracy/TracyCuda.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/Threading.h"
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -2186,9 +2188,21 @@ CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
   }
 
   if (logLoadFunction_) {
-    llvm::errs() << "CUDADeviceContext::loadFunction(" << functionName
-                 << (logVerbose_ ? "):\n" : ")") << (logVerbose_ ? code : "")
-                 << "\n";
+    // Assemble first, then write once. `errs()` is unbuffered and every `<<`
+    // is its own write, so concurrent loaders otherwise interleave mid-record
+    // and a reader cannot tell which name belongs to which load.
+    llvm::SmallString<512> message;
+    llvm::raw_svector_ostream stream(message);
+    // The OS thread id is what a debugger reports as the thread's LWP, so a
+    // backtrace taken during a stuck load names the kernel it wanted. The
+    // CUDA ordinal rather than the logical device id, because it is what
+    // `nvidia-smi` indexes by and the two diverge once a process is given a
+    // subset of the node's GPUs.
+    stream << "[tid " << llvm::get_threadid() << " device "
+           << CUDADevice::cast(device()).cudaDevice()
+           << "] CUDADeviceContext::loadFunction(" << functionName
+           << (logVerbose_ ? "):\n" : ")") << (logVerbose_ ? code : "") << "\n";
+    llvm::errs() << message;
   }
   auto errorOrOpts = setupCompilationOptions(debugLevel, optimizationLevel);
   if (errorOrOpts)
