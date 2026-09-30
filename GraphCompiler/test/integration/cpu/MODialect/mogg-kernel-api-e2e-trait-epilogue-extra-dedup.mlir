@@ -2,10 +2,9 @@
 // RUN: mt --execute %t.mlir --result-output-style=full --input-shapes=4 --model-inputs=ones | FileCheck %s
 
 // Epilogue fusion whose extra consumer operand is the producer's own input:
-// `SimplifyKernelOperands` merges them, so one exec-body argument feeds the
-// dense input execute position AND the in-lambda `mogg.tensor.load`. The
-// direct operand position wins the contract derivation (dense input); the
-// weak lambda-capture vote only cross-checks the lowering lane. This used to
+// one kernel argument feeds both the dense input execute position and the
+// epilogue capture. The direct operand position wins the contract derivation
+// (dense input); the capture only cross-checks the lowering lane. This used to
 // hard-error with a contract conflict (GEX-4071).
 
 // CHECK: 'trait_epilogue_extra_dedup_graph' returned tensor<4xf32> [3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00]

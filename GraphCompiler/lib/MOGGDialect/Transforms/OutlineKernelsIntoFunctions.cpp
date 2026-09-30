@@ -48,7 +48,7 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   // A `mogg.buffer.constant` stays behind at the call site: `MOGGToMGP` turns
   // it into the real `mgp.buffer.constant` in the region it builds there,
   // because resources reach the runtime through the `void**` of the MGP-ABI
-  // entry point, which this MAP-ABI stub does not have. Each one becomes a
+  // entry point, which this MOGG-ABI stub does not have. Each one becomes a
   // trailing stub argument here, while the signature is still being built --
   // growing it afterwards would mean patching every call site too.
   SmallVector<MOGG::BufferConstantOp> constants;
@@ -75,9 +75,9 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   if (!fusionInfo)
     fusionInfo = MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(kernel));
 
-  // Name the stub after the ops it fuses, e.g. "relu_add_map"; the symbol table
-  // appends a numeric suffix below when two kernels fuse the same ops.
-  auto stubName = MOGG::getKernelStubName(fusionInfo, MOGG::ABIKind::MAP);
+  // Name the stub after the ops it fuses, e.g. "relu_add_mogg"; the symbol
+  // table appends a numeric suffix below when two kernels fuse the same ops.
+  auto stubName = MOGG::getKernelStubName(fusionInfo, MOGG::ABIKind::MOGG);
 
   // Place the stub just after the kernel's top-level ancestor for readable,
   // deterministic output.
@@ -90,7 +90,7 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   auto stub = MOGG::KernelStubOp::create(
       builder, loc, stubName, functionType, fusionInfo,
       /*isAsync=*/nullptr, /*constantResources=*/ArrayAttr::get(ctx, {}),
-      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MAP),
+      MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG),
       /*device=*/
       builder.getStringAttr(MO::getDeviceOrDefaultAny(kernel).getLabel()),
       /*trait_stub_buffer_capture=*/nullptr, /*trait_stub_arg_bounds=*/nullptr);

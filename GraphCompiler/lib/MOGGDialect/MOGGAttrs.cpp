@@ -35,7 +35,7 @@ FusionInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        Attribute root) {
   if (!isa<FusionLeafAttr, FusionSequenceAttr, FusionElementwiseAttr,
            FusionEpilogueAttr, FusionPrologueAttr, FusionViewAttr,
-           FusionAffineAttr, FusionMutableLoadAttr>(root))
+           FusionMutableLoadAttr>(root))
     return emitError() << "root must be a valid fusion info attribute";
   return success();
 }
@@ -74,7 +74,7 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
               os << ':' << fileLoc.getLine();
       })
       .Case<FusionSequenceAttr, FusionElementwiseAttr, FusionViewAttr,
-            FusionAffineAttr, FusionMutableLoadAttr>([&](auto attr) {
+            FusionMutableLoadAttr>([&](auto attr) {
         os << decltype(attr)::getFusionName() << '(';
         llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
           nodeToString(child, os, includeLineNumbers, quote,
@@ -149,7 +149,7 @@ void nodeToPrettyTree(Attribute node, llvm::raw_string_ostream &os,
         os << '\n';
       })
       .Case<FusionSequenceAttr, FusionElementwiseAttr, FusionViewAttr,
-            FusionAffineAttr, FusionMutableLoadAttr>(
+            FusionMutableLoadAttr>(
           [&](auto attr) { emitChildren(attr, attr.getChildren()); })
       .Case<FusionEpilogueAttr, FusionPrologueAttr>([&](auto attr) {
         emitChildren(attr, attr.getChildren(), attr.getOperandIndices());
@@ -205,7 +205,6 @@ Attribute parseNode(AsmParser &p) {
            FusionElementwiseAttr::getFusionName(),
            FusionEpilogueAttr::getFusionName(),
            FusionPrologueAttr::getFusionName(), FusionViewAttr::getFusionName(),
-           FusionAffineAttr::getFusionName(),
            FusionMutableLoadAttr::getFusionName()}))) {
     SmallVector<Attribute> children;
     SmallVector<uint32_t> operandIndices;
@@ -223,8 +222,6 @@ Attribute parseNode(AsmParser &p) {
       return FusionPrologueAttr::get(ctx, children, operandIndices);
     if (keyword == FusionViewAttr::getFusionName())
       return FusionViewAttr::get(ctx, children);
-    if (keyword == FusionAffineAttr::getFusionName())
-      return FusionAffineAttr::get(ctx, children);
     if (keyword == FusionMutableLoadAttr::getFusionName())
       return FusionMutableLoadAttr::get(ctx, children);
 

@@ -39,10 +39,9 @@ struct AddTryExceptBlocks
     // createKernelStub). The except block contains a RaiseOp that formats
     // the error with full kernel context (name, fusion info, traceback).
     //
-    // MAP stubs take this arm too, or nothing renders their error context. The
+    // MOGG stubs take this arm, or nothing renders their error context. The
     // terminator stays outside the try, so its values are forwarded through.
-    if (kernelOp.getAbi() == MOGG::ABIKind::MOGG ||
-        kernelOp.getAbi() == MOGG::ABIKind::MAP) {
+    if (kernelOp.getAbi() == MOGG::ABIKind::MOGG) {
       builder.setInsertionPointToStart(&kernelBody);
       auto tryOp =
           MOGG::TryOp::create(builder, loc, terminator->getOperandTypes());

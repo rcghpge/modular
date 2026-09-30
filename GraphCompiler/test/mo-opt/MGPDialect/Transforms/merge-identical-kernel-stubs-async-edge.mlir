@@ -7,24 +7,24 @@
 // regions each collapse to one in a single merge + symbol-dce run.
 
 mogg.kernel.stub @inner_1() fusionInfo = inner_1
-  attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
   mogg.output
 }
 
 mogg.kernel.stub @inner_2() fusionInfo = inner_2
-  attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
   mogg.output
 }
 
 mogg.kernel.stub @region_a() fusionInfo = region_a
-  attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
   %t = mogg.call.stub.async @inner_1 -> !mogg.task_handle
   mogg.async.join(%t) : (!mogg.task_handle)
   mogg.output
 }
 
 mogg.kernel.stub @region_b() fusionInfo = region_b
-  attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
   %t = mogg.call.stub.async @inner_2 -> !mogg.task_handle
   mogg.async.join(%t) : (!mogg.task_handle)
   mogg.output

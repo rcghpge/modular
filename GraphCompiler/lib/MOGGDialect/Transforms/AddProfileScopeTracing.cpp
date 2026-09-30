@@ -55,7 +55,7 @@ struct AddProfileScopeTracing
     for (Operation &op : kernelBody.without_terminator()) {
       // Async lifetime/signaling bookkeeping belong to no user scope, so they
       // neither open a run nor break one.
-      if (isa<MOGG::AsyncDelOp, MOGG::AsyncReadyOp>(op))
+      if (isa<MOGG::AsyncReadyOp>(op))
         continue;
       traceable.push_back(&op);
     }
@@ -205,7 +205,7 @@ struct AddProfileScopeTracing
   void runOnOperation() override {
     auto kernelOp = getOperation();
 
-    // Only MGP-ABI kernel stubs get in-region range bracketing. MOGG/MAP-ABI
+    // Only MGP-ABI kernel stubs get in-region range bracketing. MOGG-ABI
     // stubs are handled by other emission paths and are skipped here, matching
     // the ABI gating `mogg-add-try-except-blocks` applies to its own work.
     if (kernelOp.getAbi() != MOGG::ABIKind::MGP)

@@ -37,8 +37,7 @@ static llvm::StringRef extractStackTrace(mlir::OpaqueLoc opaqueLoc) {
 // For each op in the module that has an OpaqueLoc wrapping a PythonFrameAttr:
 //  - Embeds the Python stack trace into the message of any mgp.assert op.
 //  - Encodes the trace as FusedLoc metadata so it survives downstream
-//    lowering passes (e.g. KernelStubOp::emitMojoMOGGABI can retrieve it
-//    via collectSourceNotes). See GEX-2678.
+//    lowering passes can retrieve it via collectSourceNotes. See GEX-2678.
 //  - Strips the OpaqueLoc (replacing it with the fallback location), since
 //    OpaqueLoc does not serialize correctly to bytecode. See GEX-1435.
 //  - If OpaqueLocs are nested inside a FusedLoc, each is individually

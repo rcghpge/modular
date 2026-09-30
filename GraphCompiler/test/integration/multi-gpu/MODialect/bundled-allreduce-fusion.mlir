@@ -55,6 +55,6 @@ mo.graph @bundled_allreduce_then_relu(
 // fused stub is dispatched async to each GPU (one call per device) inside one
 // compiled region, then joined over the two task handles.
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_map}}
-// CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_map}}
+// CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_mogg}}
+// CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_mogg}}
 // CHECK-MGP:   mogg.async.join({{.*}}) : (!mogg.task_handle, !mogg.task_handle)

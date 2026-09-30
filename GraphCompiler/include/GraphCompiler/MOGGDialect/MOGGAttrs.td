@@ -169,7 +169,7 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
                           lane kernels are unaffected.
                           `distillTensorArgContract` distills this array.
 
-    `arg_params` powers opaque-parameter inference in `MOToMOGGLowering`:
+    `arg_params` powers opaque-parameter inference during MO-to-MOGG lowering:
     given an `MO::OpaqueType` operand carrying `{S0 = 4, S1 = 8}` and a
     kernel argument typed `SIMDPair[S0 = P0, S1 = P1]`, the slot dict
     `{S0 -> ParamDeclRef<P0>, S1 -> ParamDeclRef<P1>}` lets the lowering
@@ -288,16 +288,6 @@ def MOGG_FusionViewAttr : MOGGFusionGroupAttr<"FusionView", "fusion_view", "View
   let assemblyFormat = "`<` `[` $children `]` `>`";
 }
 
-def MOGG_FusionAffineAttr : MOGGFusionGroupAttr<"FusionAffine", "fusion_affine", "Affine"> {
-  let summary = "An attribute that represents affine fusion info.";
-  let description = [{
-    This attribute holds information for affine view fusion.
-  }];
-
-  let parameters = (ins ArrayRefParameter<"mlir::Attribute">:$children);
-  let assemblyFormat = "`<` `[` $children `]` `>`";
-}
-
 def MOGG_FusionMutableLoadAttr : MOGGFusionGroupAttr<"FusionMutableLoad", "fusion_mutable_load", "MutableLoad"> {
   let summary = "An attribute that represents mutable load fusion info.";
   let description = [{
@@ -329,7 +319,6 @@ def MOGG_FusionInfoAttr : MOGGAttr<"FusionInfo", "fusion"> {
     - FusionEpilogueAttr: epilogue fusion (with optional operand index)
     - FusionPrologueAttr: prologue fusion (with optional operand index)
     - FusionViewAttr: view fusion
-    - FusionAffineAttr: affine view fusion
     - FusionMutableLoadAttr: mutable load fusion
   }];
 

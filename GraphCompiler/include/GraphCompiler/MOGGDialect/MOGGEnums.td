@@ -39,12 +39,11 @@ def MOGG_VariadicABI
 }
 
 def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
-  I32EnumAttrCase<"MOGG", 0, "MOGG">,
   I32EnumAttrCase<"MGP", 1, "MGP">,
-  // Advanced-fusion path: a `mogg.kernel.stub` outlined from a `mogg._kernel`
-  // (see OutlineKernelsIntoFunctions). Labeled here so `EmitMojo` can branch on
-  // it without touching the legacy MOGG/MGP ABI emission.
-  I32EnumAttrCase<"MAP", 2, "MAP">,
+  // Advanced-fusion MOGG kernel-stub ABI: a `mogg.kernel.stub` outlined from a
+  // `mogg._kernel` (see OutlineKernelsIntoFunctions). Labeled here so `EmitMojo`
+  // can branch on it without touching the separate MGP ABI emission.
+  I32EnumAttrCase<"MOGG", 2, "MOGG">,
 ]> {
   let cppNamespace = "::M::MOGG";
 }

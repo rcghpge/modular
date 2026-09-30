@@ -520,34 +520,11 @@ static MojoValue getTraceNameValue(FusionInfoAttr fusionInfo) {
   return MojoValue(fusionInfo.toString()).quote();
 }
 
-static MojoValue getHasEpilogueFusionValue(mlir::Operation *kernelCallOp) {
-  // The kernel call op may be nested inside a WithTraceOp (MOGG ABI), so
-  // BindLambdaOps may live in a parent block. Walk up the block hierarchy
-  // (stopping at KernelStubOp) until we find BindLambdaOps.
-  auto hasFusion = [](Block *block) {
-    auto bindOps = block->getOps<MOGG::BindLambdaOp>();
-    // Fused in affine view does not set the flag.
-    //
-    // TODO: we should come up with a better way, it works because current
-    // affine view fusion is very limited and it does not change the contiguity
-    // of the buffer, which might not be the case after treating all view
-    // operations as index transform.
-    return llvm::any_of(bindOps, [](MOGG::BindLambdaOp bindOp) {
-      return llvm::any_of(bindOp.getLambda().getOps(), [](Operation &op) {
-        return isa<MOGG::CallElementwiseOp>(&op);
-      });
-    });
-  };
-
-  Block *block = kernelCallOp->getBlock();
-  while (block) {
-    if (!block->getOps<MOGG::BindLambdaOp>().empty())
-      return hasFusion(block);
-    auto *parentOp = block->getParentOp();
-    if (!parentOp || isa<MOGG::KernelStubOp>(parentOp))
-      break;
-    block = parentOp->getBlock();
-  }
+static MojoValue getHasEpilogueFusionValue(mlir::Operation *) {
+  // The advanced-fusion path carries epilogue fusion as an explicit op flag
+  // (`CallOpaqueOp::getHasEpilogueFusion`), which the call's own `emitMojo`
+  // forces on. This fallback answers for a kernel that has no such flag set,
+  // which never has fused epilogue work.
   return false;
 }
 

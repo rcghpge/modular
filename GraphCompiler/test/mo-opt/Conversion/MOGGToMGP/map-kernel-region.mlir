@@ -23,7 +23,7 @@
 // CHECK: mogg.async.unpack(%{{.*}}) : !mgp.buffer
 // CHECK: mogg._rebind %{{.*}} : !mgp.buffer to !mogg.pointer_
 // CHECK: mogg._rebind %{{.*}} to !mogg.context
-// CHECK: mogg.call.stub @[[STUB0:[A-Za-z0-9_]+_map[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.context
+// CHECK: mogg.call.stub @[[STUB0:[A-Za-z0-9_]+_mogg[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.context
 // CHECK: mogg.async.ready
 // CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio.">
 // Async op: the region keeps `isAsync = true` (was hardcoded `false` before
@@ -45,7 +45,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK-LABEL: mgp.model @dyn
 // CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
 // CHECK: mogg._rebind %{{.*}} : !kgen.scalar<si64> to !mogg.dim_{{$}}
-// CHECK: mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_map[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.dim_, !mogg.context
+// CHECK: mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_mogg[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.dim_, !mogg.context
 // CHECK: mogg.async.ready
 // CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio..">
 // CHECK: mogg.kernel.stub @[[STUB1]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.dim_, %arg3: !mogg.context)

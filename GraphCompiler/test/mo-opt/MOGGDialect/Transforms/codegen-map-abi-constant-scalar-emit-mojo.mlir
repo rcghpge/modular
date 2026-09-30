@@ -6,7 +6,7 @@
 // and the kernel takes one input pointer rather than two -- the constant
 // buffer is never loaded from, or even passed in.
 
-// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}([[IN:[^:]*]]: OpaquePointer[MutAnyOrigin], [[OUT:[^:]*]]: OpaquePointer[MutAnyOrigin], [[CTX:.*]]: {{.*}}DeviceContext) raises:
+// CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}([[IN:[^:]*]]: OpaquePointer[MutAnyOrigin], [[OUT:[^:]*]]: OpaquePointer[MutAnyOrigin], [[CTX:.*]]: {{.*}}DeviceContext) raises:
 // CHECK:   var [[MTS0:.*]] = {{.*}}mogg_tensor_init[DType.float32, 2, False, extensibility.IO.Input, {{[0-9]+}}]([[IN]]{{.*}})
 // CHECK:   var [[MTS1:.*]] = {{.*}}mogg_tensor_init[DType.float32, 2, True, extensibility.IO.Output, {{[0-9]+}}]([[OUT]]{{.*}})
 // Each capture is decomposed into (ptr, shape, strides) plus its comptime

@@ -153,30 +153,6 @@ def MOGG_SliceOp : MOGG_Op<"slice", [
 }
 
 //===----------------------------------------------------------------------===//
-// AsTupleOp
-//===----------------------------------------------------------------------===//
-
-def MOGG_AsTupleOp : MOGG_Op<"as_tuple", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  Pure,
-]> {
-  let summary = "MOGG tuple creation operation";
-  let description = [{
-    This operation creates tuple of values that will be later been translated to
-    mojo's StaticTuple.
-
-    ```mlir
-    %r = mogg.as_tuple(%t1, %2: mo.tensor<...>, mo.tensor<...>) : tuple<mo.tensor<...>, mo.tensor<...>>
-    ```
-  }];
-
-  let arguments = (ins Variadic<AnyType>:$inputs);
-  let results = (outs AnyTuple:$result);
-  let assemblyFormat = "attr-dict `(`$inputs `)` `:` type($inputs) `->` type($result)";
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
 // OutputOp
 //===----------------------------------------------------------------------===//
 
@@ -258,72 +234,6 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
   }];
 }
 
-def MOGG_CallForeachOp : MOGG_KernelTerminatorOp<"call.foreach", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-]> {
-  let summary = "call the registered foreach kernel";
-  let description = [{
-    This represents a call to the mojo implementation of `foreach` function. If
-    a mogg.kernel terminates with the operation, it also implies that the kernel
-    is an element-wise kernel.
-  }];
-
-  let arguments = (ins
-    StrAttr:$kernelSymName,
-    MO_Tensor:$input,
-    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output,
-    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context,
-    OptionalAttr<DictionaryAttr>:$kernel_param
-  );
-
-  let assemblyFormat = [{
-    `[` $kernelSymName `]` `input` `(` $input `)` `output` `(` $output `)` (`context` `(` $context^ `)`)? `:` functional-type(operands, results) attr-dict
-  }];
-  let hasVerifier = 1;
-}
-
-
-def MOGG_CallExecuteOp : MOGG_KernelTerminatorOp<"call.execute", [
-  AttrSizedOperandSegments,
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-]> {
-  let summary = "Call the registered `execute` function for a particular kernel";
-  let description = [{
-    This represents a call to the mojo implementation of `Kernel::execute`
-    function.
-
-    Example:
-    ```mlir
-    mogg.call.execute["mo.add"] inputs(...) outputs(...)
-
-    // Lowered to
-    kgen.call "Add::execute"(...)
-    ```
-  }];
-
-  let arguments = (ins
-    StrAttr:$kernelSymName,
-    StrAttr:$moOpName,
-    OptionalAttr<TypeAttr>:$regRetType,
-    UnitAttr:$isThrows,
-    Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$outputs,
-    OptionalAttr<DictionaryAttr>:$kernel_param
-  );
-
-  let assemblyFormat = [{
-    `[` $kernelSymName `]` (`inputs` `(` $inputs^ `:` qualified(type($inputs)) `)`)?
-                        (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
-                        (`->` $regRetType^)? attr-dict
-  }];
-  let hasVerifier = 1;
-}
-
-
 def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
@@ -379,331 +289,6 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
                         `builder` `(` $graphBuilder `)` attr-dict
   }];
   let hasVerifier = 1;
-}
-
-
-def MOGG_CallMaterializeOp : MOGG_KernelTerminatorOp<"call.materialize", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-]> {
-  let summary = "Call the registered `view_copy_impl` function for materializing a view kernel";
-  let description = [{
-    This represents a call to the mojo implementation of `view_copy_impl`
-    function.
-
-    Example:
-    ```mlir
-    mogg.call.materialize inputs(...) outputs(...)
-
-    // Lowered to
-    kgen.call "view_copy_impl"(...)
-    ```
-  }];
-
-  let arguments = (ins
-    StrAttr:$kernelSymName,
-    AnyType:$input,
-    MO_Tensor:$output,
-    Variadic<AnyTypeOf<[MOGG_Context, AnyTuple]>>:$context,
-    OptionalAttr<DictionaryAttr>:$kernel_param
-  );
-
-  let assemblyFormat = [{
-    `[` $kernelSymName `]` `input` `(` $input `)` `output` `(` $output `)` (`context` `(` $context^ `)`)? `:` functional-type(operands, results) attr-dict
-  }];
-  let hasVerifier = 1;
-}
-
-
-def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  ParentOneOf<["MOGG::BindLambdaOp", "MOGG::CallForeachRegionOp"]>,
-  Pure,
-]> {
-  let summary = "Call the registered `::elementwise` function for a particular kernel";
-  let description = [{
-    This represents a call to the `elementwise` method.
-
-    Example:
-    ```mlir
-    mogg.call.elementwise["mo.add"](...)
-
-    // Lowered to
-    kgen.call "Add::elementwise"(...)
-    ```
-  }];
-  let arguments = (ins
-    StrAttr:$kernelSymName,
-    StrAttr:$moOpName,
-    Variadic<AnyType>:$inputs,
-    OptionalAttr<DictionaryAttr>:$kernel_param
-  );
-  let results = (outs Variadic<AnyType>:$outputs);
-
-  let assemblyFormat = [{
-    `[` $kernelSymName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` type($outputs)
-  }];
-}
-
-def MOGG_CallViewOp : MOGG_Op<"call.view", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  Pure,
-]> {
-  let summary = "Call the corresponding `update_input_view` function for a particular kernel";
-  let description = [{
-    This represents a call to `update_input_view` functions for a corresponding
-    view kernel.
-
-    Example:
-    ```mlir
-    mogg.call.view["mo.add"]<[?, 2, 3]>(...)
-
-    // Lowered to
-    kgen.call "Add::update_input_view"(...)
-    ```
-  }];
-  let arguments = (ins
-    StrAttr:$kernelSymName,
-    StrAttr:$moOpName,
-    Variadic<AnyType>:$inputs,
-    OptionalAttr<DictionaryAttr>:$kernel_param
-  );
-  let results = (outs MO_Tensor:$output);
-
-  let assemblyFormat = [{
-    `[` $kernelSymName `]` `(` $inputs `)` attr-dict `:` type($inputs) `->` qualified(type($output))
-  }];
-}
-
-def MOGG_AsScalarOp : MOGG_Op<"as_scalar", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  Pure,
-]> {
-  let summary = "Converts a tensor that contains one element to a scalar";
-  let description = [{
-    Given a tensor with one element, ie with a shape of [] or [1], etc, convert
-    it to a scalar because the kernel using it expects it as a scalar in Mojo.
-  }];
-
-  let arguments = (ins MOGG_ScalarOfAnyRank:$input);
-  let results = (outs MO_Scalar:$result);
-  let hasVerifier = 1;
-}
-
-def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
-  AttrSizedOperandSegments,
-  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  IsolatedFromAbove,
-  MO_ExplicitDevice,
-  MO_HasDeviceInterface,
-  SingleBlock,
-]> {
-  let summary = "A representation of a kernel which can be fused into and compiled.";
-  let description = [{
-    This kernel represents a compiled region that can be fused with other
-    kernels. It uses BindLambdaOp operations within its body to define
-    fusion interfaces for inputs and outputs.
-
-    The kernel takes tensor inputs and an optional chain, and produces
-    tensor outputs and optionally a chain. Fusion interfaces are defined
-    using `mogg.bind` operations within the kernel body.
-  }];
-
-  let arguments = (ins
-    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Buffer, Index]>>:$inputs,
-    Optional<MO_Chain>:$chain,
-    MO_ParamDecls:$outputParamDecls,
-    MOGG_FusionInfoAttr:$fusionInfo,
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync,
-    DefaultValuedOptionalAttr<ArrayAttr, "{}">:$allocIndices,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect
-  );
-
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain, MOGG_ShapeFuncResult]>>:$results);
-  let regions = (region SizedRegion<1>:$execBody);
-
-  let extraClassDeclaration = [{
-    KernelTerminator getTerminator();
-
-    // Whether the kernel is an view kernel.
-    bool isViewOp() { return isa<MOGG::CallMaterializeOp>(getTerminator());}
-
-    // Get the input lambda associated with the kernel operand at position operandIdx.
-    BindLambdaOp getBoundInputLambda(uint64_t operandIdx);
-    // Get the output lambda associated with the kernel result at position operandIdx.
-    BindLambdaOp getBoundOutputLambda(uint64_t resultIdx);
-    // Get the elementwise lambda of this kernel.
-    BindLambdaOp getElemwiseBodyLambda();
-
-    bool isOperandFusible(uint64_t operandIdx, bool lookThroughView = false);
-    bool hasFusibleOperand(bool lookThroughView = false) {
-      for (unsigned i = 0, e = getExecBody().getNumArguments(); i < e; i++)
-        if (isOperandFusible(i, lookThroughView))
-          return true;
-
-      return false;
-    }
-    /// Returns the OutputPlaceholder for this operation or null if it doesn't
-    /// exist.
-    OutputPlaceholdersOp getOutputPlaceholder();
-
-    // Returns the ScratchPlaceholderOp for this operation or null if it does
-    // not exist.
-    ScratchPlaceholdersOp getScratchPlaceholder();
-
-    // Returns the OutputOp for this operation or null if it does not exist.
-    OutputOp getOutputOp();
-
-    /// Returns the sole input chain (if present) and std::nullopt otherwise.
-    std::optional<MO::ChainValue> maybeGetInChain();
-    /// Returns the sole output chain (if present) and std::nullopt otherwise.
-    std::optional<MO::ChainValue> maybeGetOutChain();
-
-    // Use the following methods to update inputs/chains
-    // (instead of op->insertOperand/eraseOperand) to keep the
-    // `operandSegmentSize` up-to-date.
-    //
-    // Insert a range of new inputs at `idx`, this updates both operands and
-    // block arguments.
-    void insertInputsAt(unsigned idx, ValueRange vals);
-    // Remove a range of inputs at `[idx, idx + len)`, this updates both operands and
-    // block arguments.
-    void eraseInputsAt(unsigned idx, size_t len = 1);
-    //
-    // Chain update.
-    //
-    // Set and erase chain.
-    void setChain(Value chain);
-    void eraseChain();
-  }];
-
-  // This should set all attributes including MO_HasDeviceInterface
-  let builders = [
-    OpBuilder<(ins
-      "TypeRange":$results,
-      "ValueRange":$operands,
-      "FusionInfoAttr":$fusionInfo,
-      "BoolAttr":$isAsync,
-      "DeviceRefAttr":$device,
-      CArg<"ArrayRef<ParamDeclAttr>", "{}">:$outputParamDecls,
-      CArg<"ArrayAttr", "{}">:$allocIndices,
-      CArg<"bool", "false">:$hasReadEffect,
-      CArg<"bool", "false">:$hasWriteEffect
-    )>,
-  ];
-
-  let hasCustomAssemblyFormat = 1;
-  let skipDefaultBuilders=1;
-  let hasVerifier = 1;
-}
-
-// lower to ManageTensorSlice.load
-def MOGG_LoadTensorOp : MOGG_Op<"tensor.load", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  HasParent<"MOGG::BindLambdaOp">,
-]> {
-  let summary = "Load a value from mo.tensor at the given indices";
-  let description = [{
-     This operation represent a tensor load at the given indices. It is needed
-     to be able to fuse N-ary elementwise kernels into a output lambda, in which
-     case, only one of the operands get fused.
-
-     For example:
-     ```mlir
-     %a = bind (%out) output_lambda (%out_v, %indices) {
-       // The unfused lhs need a concrete tensor load.
-       %lhs = tensor.load(%add_lhs, %indices);
-       %fused_add = mogg.call.elementwise["mo.add"](%lhs, %out_v)
-       mogg.output %fused_add, %indices
-     }
-     ```
-
-     It will lowered to a call to
-     ```mojo
-     def simd_load_from_managed_tensor_slice(...)
-     ```
-
-  }];
-
-  let arguments = (ins
-    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor,
-    POP_ArrayType:$indices
-  );
-  let results = (outs AnyType:$outputs);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-}
-
-
-def MOGG_BindLambdaOp : MOGG_Op<"bind", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  SingleBlock,
-]> {
-  let summary = "Bind a fusion interface to a tensor";
-  let description = [{
-     This operation exposes a fusion interface to a tensor. It build the connection
-     between in/out_lambda in `StaticTensorSpec` with the tensor.
-
-     For example:
-     ```mlir
-     // To make %in a FusedInputTensor
-     %a = bind (%in) input_lambda (%in_v, %indices) {
-       %fused_v = ... (%in_v) // whatever got fused.
-       mogg.output %in_v
-     }
-
-     // To make %out a FusedOutputTensor
-     %a = bind (%out) output_lambda (%out_v, %indices) {
-       %fused_v = ... (%out_v) // whatever got fused.
-       mogg.output %out_v, %indices
-     }
-
-     // To make %in Elemwise fusible
-     %a = bind (%in) elemwise_lambda (%in_v, %indices) {
-       %fused_v = ... (%in_v) // other elemwise that got fused.
-       mogg.output %in_v
-     }
-     ```
-  }];
-
-  let arguments = (ins
-    MOGG_BindLambdaKind:$bindKind,
-    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$fusibleTensors
-  );
-
-  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$output);
-  let regions = (region SizedRegion<1>:$lambda);
-
-  let extraClassDeclaration = [{
-    BlockArgument getIndicesArg();
-    ArrayRef<BlockArgument> getValueArgs();
-
-    // Whether the bound lambda is identity or not.
-    bool isIdentityLambda();
-
-    // Returns true if the lambda contains some affine-view operations.
-    bool hasAffineViewOperation();
-  }];
-
-  let builders = [
-    OpBuilder<(ins
-      "Type":$outputTp,
-      "ValueRange":$fusibleTensors,
-      "BindLambdaKind":$bindKind
-    )>,
-  ];
-
-  let hasVerifier = 1;
-  let hasCustomAssemblyFormat = 1;
 }
 
 
@@ -791,38 +376,6 @@ def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
   }];
 }
 
-def MOGG_CallAffineOp : MOGG_Op<"call.affine", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  HasParent<"MOGG::BindLambdaOp">,
-  Pure,
-]> {
-  let summary = "Represents a mojo call to an affine remapping function";
-  let description = [{
-    This represents a call to a mojo function to remap the indices argument inside a fusion lambda.
-    This op is inserted by the Graph Compiler during FuseReshapesIntoEpiloguesPass.
-
-    Example:
-    ```mlir
-    mogg.call.affine "insert_index"(%arg) {axis = 0 : index, value = 0 : index} : !pop.array<2, index> -> !pop.array<3, index>
-    ```
-  }];
-
-  let arguments = (ins
-    StrAttr:$kernelSymName,
-    Variadic<AnyType>:$operands,
-    OptionalAttr<DictionaryAttr>:$kernel_param
-  );
-
-  let results = (outs AnyType:$result);
-
-  let assemblyFormat = [{
-    `[` $kernelSymName `]` `(`($operands^)?`)` ($kernel_param^)? attr-dict
-      (`:` type($operands)^)? `->` type($result)
-  }];
-}
-
 def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
@@ -849,29 +402,6 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
   let hasFolder = 1;
 }
 
-def MOGG_OutputPlaceholdersOp : MOGG_Op<"output_placeholders", [Pure]> {
-  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
-
-  let summary = "Represents buffer semantic SSA values for the outputs";
-  let description = [{
-    As the KGEN kernels require the output to be a buffer semantic input to the
-    kernel we need to represent this within the kernel. This op produces a
-    placeholder we can use for each output. During lowering these become inputs
-    to the kernel as KGEN expects.
-
-    Example:
-    ```mlir
-      %out = mogg.output_placeholders : !mo.tensor<[2, 3], f32>
-    ```
-    This provides a `%out` SSA value which corresponds to the first output which
-    we can now pass into the KGEN calls which expect a buffer.
-  }];
-
-  let assemblyFormat = [{
-   attr-dict `:` type($results)
-  }];
-}
-
 def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders"> {
   let results = (outs Variadic<MO_Tensor>:$results);
 
@@ -892,46 +422,6 @@ def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders"> {
   let assemblyFormat = [{
    attr-dict `:` type($results)
   }];
-}
-
-//===----------------------------------------------------------------------===//
-// MOGG Runtime compiled code representation ops.
-//===----------------------------------------------------------------------===//
-
-def MOGG_DeviceContextPlaceholderOp: MOGG_Op<"device_context_placeholder", [Pure]> {
-  let summary = "Launders the runtime device context into KGEN land";
-  let description = [{
-    Returns the device context passed to the Mojo kernel by the C++ runtime.
-  }];
-  let arguments = (ins M_DeviceRefAttr:$device);
-  let results = (outs AnyType:$results);
-
-  let assemblyFormat = [{
-    attr-dict `:` type($results)
-  }];
-}
-
-def MOGG_TensorGetShapeOp: MOGG_Op<"tensor.shape", [
-  Pure,
-]> {
-  let summary = "Gets the shape of a tensor";
-  let arguments = (ins TypeAttr:$tensor);
-  let results = (outs MOGG_Shape:$shape);
-
-  let assemblyFormat = [{
-    `<` $tensor `>` attr-dict
-  }];
-}
-
-def MOGG_AssertOp: MOGG_Op<"assert"> {
-  let summary = "Placeholder for inserting a try catch block";
-  let description = [{
-    Placeholder operations that will eventually be lowered to a try catch block.
-    This is necessary because mogg.kernel can't contain the try catch block
-    until after JITing.
-  }];
-
-  let arguments = (ins AnyType:$condition, AnyType:$errorHandle);
 }
 
 def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
@@ -1054,9 +544,8 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     mlir::Attribute removeResAttrsAttr() { return nullptr; }
 
   private:
-    mlir::LogicalResult emitMojoMOGGABI(EmitMojoState &state);
     mlir::LogicalResult emitMojoMGPABI(EmitMojoState &state);
-    mlir::LogicalResult emitMojoMAPABI(EmitMojoState &state);
+    mlir::LogicalResult emitMojoMOGGABI(EmitMojoState &state);
   }];
 }
 
@@ -1191,21 +680,6 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   let hasFolder = 1;
 }
 
-def MOGG_AsyncDelOp : MOGG_Op<"async.__del__", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-]> {
-  let arguments = (ins Variadic<AnyType>:$inputs);
-  let summary = "Decrements the async reference of the underlying objects";
-  let description = [{
-    This is the 1:1 mirror of mogg.async.unpack. It must be deref an async value
-    after its last use.
-  }];
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-}
-
 def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
@@ -1245,60 +719,6 @@ def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
-def MOGG_TensorFusedOp : MOGG_Op<"tensor.fused", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  Pure,
-]> {
-  let summary = "Build a Mojo FusedInput / FusedOutput ManagedTensorSlice object";
-  let description = [{
-    This operation takes a fusion `lambda`, a `tensor` object, and build a new tensor bind with the corresponding lambda.
-    `lambda` must be the output of a `BindLambdaOp`.
-
-    In most situations, `tensor` is the input of the BindLambdaOp.
-    Examples:
-    ```
-    %lambda = mogg.bind (%tensor) output_lambda (%arg12: f32, %arg13: !pop.array<4, index>) {
-        mogg.output %arg12, %arg13 : f32, !pop.array<4, index>
-      }: (!mo.tensor<[4, 5, 1, 3], f32, {io = 0 : i32}>) -> !mo.tensor<[4, 5, 1, 3], f32>
-    %fused_tensor = mogg.tensor.fused(%lambda, %tensor) : (!mo.tensor<[4, 5, 1, 3], f32>, !mo.tensor<[4, 5, 1, 3], f32>) -> !mo.tensor<[4, 5, 1, 3], f32>
-    ```
-
-    For some fusion types (eg input fusion), the kernel must take an empty / reshaped tensor.
-    This is represented using this op
-    - the lambda will load using the `fusedTensor`
-    - the kernel call will take the `emptyTensor`.
-
-    Example:
-    ```
-      %lambda = mogg.bind (%tensor) input_lambda (%arg8: f32, %arg9: !pop.array<4, index>) {
-        mogg.output %arg8, %arg9 : f32, !pop.array<4, index>
-      }: (!mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
-      %empty_buff = mogg.empty_buffer : !mgp.buffer
-      %empty_tensor = mogg.tensor.__init__(%empty_buff) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[4, 5, 2, 3], f32>
-      %fused_tensor = mogg.tensor.fused(%lambda, %empty_tensor) : (!mo.tensor<[4, 5, 2, 3], f32>, !mo.tensor<[4, 5, 2, 3], f32>) -> !mo.tensor<[4, 5, 2, 3], f32>
-    ```
-  }];
-
-  let arguments = (ins
-    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$lambda,
-    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor
-  );
-  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
-
-  let extraClassDeclaration = [{
-
-    BindLambdaOp getBindLambdaOp() {
-      return cast<BindLambdaOp>(getLambda().getDefiningOp());
-    }
-  }];
-
-  let hasVerifier = 1;
-}
-
 def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   Pure,
@@ -1330,26 +750,6 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
   }];
-}
-
-def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  Pure,
-]> {
-  let summary = "create a scalar constant value";
-  let description = [{
-
-
-    Example:
-
-    ```mlir
-    %cst2 = mogg.constant.scalar {value = 2 : si64} : !mo.scalar<si64>
-    ```
-  }];
-
-  let arguments = (ins TypedAttrInterface:$value);
-  let results = (outs MO_Scalar:$result);
-  let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
 def MOGG_YieldOp : MOGG_Op<"yield", [
@@ -1489,40 +889,6 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
 
   let assemblyFormat = [{
     $error attr-dict `:` type(results)
-  }];
-}
-
-def MOGG_CallShapeOp : MOGG_KernelTerminatorOp<"call.shape", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
-  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  Pure,
-]> {
-  let summary = "Call a shape function";
-  let description = [{
-    This operation calls a shape function with the given name and operands,
-    returning a shape value via the kernel terminator interface rather than as an SSA value.
-
-    This follows the same pattern as other call operations like mogg.call.execute and
-    mogg.call.foreach, where the return value is accessed through getKernelReturnOutput().
-
-    Example:
-    ```mlir
-    mogg.call.shape["mo.avg_pool"](%input, %kernel_size, %strides, %dilations, %paddings) :
-      (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>,
-       !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> ()
-    ```
-  }];
-
-  let arguments = (ins
-    StrAttr:$kernelSymName,
-    TypeAttr:$retType,
-    UnitAttr:$isThrows,
-    Variadic<AnyTypeOf<[MO_Tensor, MO_List, MO_Opaque, MO_Scalar, AnyTuple]>>:$operands,
-    OptionalAttr<DictionaryAttr>:$kernel_param
-  );
-  let assemblyFormat = [{
-    `[` $kernelSymName `]` `(` $operands `:` type($operands) `)` `->` $retType attr-dict
   }];
 }
 
@@ -2175,7 +1541,7 @@ def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure,
     Reconciles the type system during the async-unpack transition (e.g.
     `!mgp.buffer` -> `!mogg.pointer_`). For a `!mogg.pointer_` result it emits
     real Mojo, bridging the unpacked `OwnedByteBuffer` to the raw opaque data
-    pointer the MAP-ABI stub expects; the `!mogg.context` / `!mogg.dim_` casts
+    pointer the MOGG-ABI stub expects; the `!mogg.context` / `!mogg.dim_` casts
     are code-generation no-ops (the unpacked handle already has the right Mojo
     type).
 
@@ -2328,7 +1694,7 @@ def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  ParentOneOf<["MOGG::BindLambdaOp", "MOGG::CallForeachRegionOp", "MOGG::TensorCreateEpilogueOp", "MOGG::TensorCreatePrologueOp"]>,
+  ParentOneOf<["MOGG::CallForeachRegionOp", "MOGG::TensorCreateEpilogueOp", "MOGG::TensorCreatePrologueOp"]>,
   Pure,
 ]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";

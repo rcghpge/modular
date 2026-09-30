@@ -104,18 +104,6 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   ];
 }
 
-def SimplifyKernelOperands: Pass<"mogg-simplify-kernel-operands", "MO::GraphOp"> {
-  let summary = "Gets rid of duplicate kernel operands";
-  let description = [{
-    This pass uniques kernel operands.
-  }];
-  let dependentDialects = [
-    "M::MDialect",
-    "M::MOGG::MOGGDialect",
-    "M::KGEN::KGENDialect",
-  ];
-}
-
 def HashModuleContents: Pass<"mogg-hash-module-contents", "mlir::ModuleOp"> {
   let summary = "Compute and attach hash of module contents";
   let description = [{
@@ -194,11 +182,11 @@ def AddProfileScopeTracing: Pass<"mogg-add-profile-scope-tracing", "MOGG::Kernel
 }
 
 def WrapKernelsWithTraceOp: Pass<"mogg-wrap-kernels-with-trace-op", "MOGG::KernelStubOp"> {
-  let summary = "Wraps a MAP ABI kernel stub's body in a trace range";
+  let summary = "Wraps a MOGG ABI kernel stub's body in a trace range";
   let description = [{
     `mogg.with_trace` emits the kernel's per-kernel `Trace` range. A MOGG-ABI
     stub gets one from `createKernelStub` and an MGP-ABI one from
-    `mogg-add-profile-scope-tracing`, so only MAP-ABI stubs are handled here.
+    `mogg-add-profile-scope-tracing`, so only MOGG-ABI stubs are handled here.
 
     Runs before `mogg-add-try-except-blocks`, which moves this op into the try
     it builds.

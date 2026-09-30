@@ -38,12 +38,12 @@
 // CHECK-DAG: mogg.kernel.stub @inner
 // CHECK-DAG: mogg.kernel.stub @z_top
 mogg.kernel.stub @inner() fusionInfo = inner
-  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
 mogg.kernel.stub @z_top() fusionInfo = z_top
-  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
@@ -54,7 +54,7 @@ mogg.kernel.stub @z_top() fusionInfo = z_top
 // CHECK:      mogg.call.stub @inner
 // CHECK-NEXT: mogg.output
 mogg.kernel.stub @caller() fusionInfo = caller
-  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @inner
   mogg.output
 }

@@ -4,7 +4,7 @@
 
 // The concat kernel takes its three variadic int32 rank-1 inputs and its
 // int32 rank-1 output, each reconstructed via a typed tensor init.
-// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}(
+// CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}(
 // CHECK-COUNT-3: mogg_tensor_init[DType.int32, 1, {{.*}}extensibility.IO.Input, {{.*}}]
 // CHECK: mogg_tensor_init[DType.int32, 1, {{.*}}extensibility.IO.Output, {{.*}}]
 // CHECK: var {{.*}} = std.utils.StaticTuple[size = 3]({{.*}}._ptr, {{.*}}._ptr, {{.*}}._ptr)

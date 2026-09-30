@@ -111,13 +111,6 @@ enum class KernelOutputFusionLambdaType {
                    // manufactures its result via the `dst` destination tile).
 };
 
-// Returns the FusedTensor kind to be emitted by the Graph Compiler for
-// `fusedOp`. Or returns an error if the kernel is not found / the op is
-// invalid.
-ErrorOr<KernelOutputFusionLambdaType> getKernelOutputFusionLambdaType(
-    MojoRegistry &registry, MOGG::TensorFusedOp fusedOp,
-    bool enableComputeLambdas, mlir::ModuleOp moduleOp);
-
 // Returns true if the device `op` runs on is configured for tile codegen, i.e.
 // its `#M.device_info` entry in `moduleOp`'s `mo.device_info_mapping` has
 // `tile_based_fusion = true`. The device is taken from the enclosing kernel

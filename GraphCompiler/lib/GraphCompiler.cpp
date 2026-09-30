@@ -399,12 +399,9 @@ void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
   pm.addPass(MOGG::createWrapKernelsWithTraceOp());
 
-  pm.addPass(MOGG::createSimplifyKernelOperands());
-
   // Add cleanup passes to catch e.g used/duplicated constants.
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
-  pm.addPass(MOGG::createSimplifyKernelOperands());
 }
 
 // ---------------------------------------------------------------------------
@@ -596,7 +593,17 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
 
   // --- map-pre-mogg: elementwise/prologue/epilogue fusion over MAP kernels,
   // then MAP-dialect prep before the MAP -> MOGG conversion ---
-  buildStage([&](auto &p) { buildMapPipeline(p, mapOpts); }, "map-pre-mogg");
+  buildStage(
+      [&](auto &p) {
+        buildMapPipeline(p, mapOpts);
+        // Insert NaN/Inf checks at compiled-region boundaries. Runs after all
+        // MAP fusion so a check kernel is never fused into the kernel it
+        // checks, and before map-to-mogg so the injected `mo.custom` checks
+        // (lowered to MAP kernels in the pass) are compiled with the rest.
+        if (opts.nanCheck)
+          p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
+      },
+      "map-pre-mogg");
 
   // --- map-to-mogg: the MAP -> MOGG conversion ---
   MAP::MAPToMOGGOptions mapToMoggOpts;
@@ -604,15 +611,10 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   buildStage([&](auto &p) { p.addPass(MAP::createMAPToMOGG(mapToMoggOpts)); },
              "map-to-mogg");
 
-  // --- mogg-pipeline (+ optional nan-check) ---
-  // Insert NaN/Inf checks at compiled region boundaries. Runs after all fusion
-  // passes so checks sit between already-fused compiled regions. The pass
-  // creates mo.custom ops and lowers them to MOGG kernels in-place.
+  // --- mogg-pipeline ---
   buildStage(
       [&](auto &p) {
         buildMoggPipeline(p, moggOpts);
-        if (opts.nanCheck)
-          p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
         // Python tracebacks live in OpaqueLocs, which cannot be
         // printed; convert them to FusedLocs so the dump carries the
         // call sites. Limit to dumpIntermediates because the conversion

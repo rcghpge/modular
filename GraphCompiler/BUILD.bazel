@@ -619,6 +619,7 @@ modular_cc_library(
         ":MOGGDialectPassesIncGen",
         ":MOPatterns",
         ":MOTarget",
+        ":MOToMAP",
         ":MOTransformsIncGen",
         ":RMODialect",
         ":RMOSupport",
@@ -889,12 +890,7 @@ modular_cc_library(
         "include/GraphCompiler/MOGGDialect/Support/*.h",
         "include/GraphCompiler/MOGGDialect/Analysis/*.h",
         "include/GraphCompiler/Interfaces/*.h",
-    ]) + [
-        # MOToMOGGLowering.h (a MOGG header) includes OperandInference.h, so it
-        # must be available wherever these headers are. The compiled symbol
-        # lives in the separate :OperandInference target.
-        "include/GraphCompiler/Conversion/OperandInference.h",
-    ],
+    ]),
     tags = ["no-clang-tidy-headers"],
     visibility = ["//visibility:private"],
     deps = [

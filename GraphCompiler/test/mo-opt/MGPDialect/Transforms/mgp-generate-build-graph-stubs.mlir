@@ -15,33 +15,30 @@
 // verification requires).
 //
 // For each staged `mogg.call.stub @stub_N` the pass generates a sibling recording
-// stub `@stub_N_build_graph` (producer dispatch `mogg.call.execute` -> recording
-// `mogg.call.build_graph` against a `!mgp.device_graph.builder`, yielding a
-// `!mgp.device_graph.node`) and retargets the call to it, threading the
-// dependencies op's builder block arg as the launch operand.
+// stub `@stub_N_build_graph` (producer dispatch `mogg._call.opaque` -> recording
+// `mogg.call.build_graph` against a `!mgp.device_graph.builder`) and retargets
+// the call to it, threading the dependencies op's builder block arg as the
+// launch operand.
 
 #kf = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
 
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
 
 // The original stub is retained (still used by the direct-execution / init path),
-// keeping its `!mogg.context` launch arg and `mogg.call.execute` dispatch.
-// CHECK: mogg.kernel.stub @stub_1 (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mogg.context)
-// CHECK: mogg.with_trace
-// CHECK: mogg.call.execute["k"]
+// keeping its `!mogg.context` launch arg and `mogg._call.opaque` dispatch.
+// CHECK: mogg.kernel.stub @stub_1 (%{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.context)
+// CHECK: mogg._call.opaque @k
 //
 // The recording sibling is generated immediately after the original stub (so it
 // precedes the model): builder launch arg, void result (node-free), producer
-// recorded via `mogg.call.build_graph` (no `mogg.with_trace`), and the
-// producer's `kernel_param` carried over.
-// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mgp.device_graph.builder)
-// CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%{{.*}}) {{.*}}kernel_param = {transpose_b = true}
+// recorded via `mogg.call.build_graph`, and the producer's `moOpName` carried
+// over.
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
+// CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%[[B]]) {{.*}}moOpName = "test.k"
 // CHECK-NEXT: mogg.output
 // CHECK-NEXT: }
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
-  mogg.with_trace {
-    mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
-  }
+mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
+  mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   mogg.output
 }
 
@@ -67,9 +64,10 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
       // The launch context is sourced from the dependencies builder, exactly as
       // `mgp-compute-device-graph-dependencies` emits it.
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
-      %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_cast : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
+      %ctx_h = mogg._rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %t_in = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_h : !mogg.tensor_, !mogg.tensor_, !mogg.context
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.collective.yield
@@ -87,18 +85,16 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
 // CHECK-NOT: @stub_1_build_graph
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
 
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
-  mogg.with_trace {
-    mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
-  }
+mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
+  mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   mogg.output
 }
 
 // CHECK-LABEL: mgp.model @not_dg
 // The model is untouched: the bridge cast survives and the call still targets
-// `@stub_1` with its device-context launch operand.
+// `@stub_1` with its rebound launch operand.
 // CHECK: builtin.unrealized_conversion_cast
-// CHECK: mogg.call.stub @stub_1 %{{.*}}, %{{.*}}, %{{.*}} : {{.*}}, !mgp.device_context<<"gpu", 0>>
+// CHECK: mogg.call.stub @stub_1 %{{.*}}, %{{.*}}, %{{.*}} : !mogg.tensor_, !mogg.tensor_, !mogg.context
 mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -109,9 +105,10 @@ mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.o
     %node = mgp.device_graph.dependencies builder(%builder) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
-      %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_cast : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
+      %ctx_h = mogg._rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %t_in = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_h : !mogg.tensor_, !mogg.tensor_, !mogg.context
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.staging.yield
@@ -122,24 +119,21 @@ mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.o
 // -----
 
 // A device-graph model whose kernel has only an `execute` method (no
-// `build_graph`). The recording sibling keeps `mogg.with_trace { call.execute }`
+// `build_graph`). The recording sibling keeps the `mogg._call.opaque` producer
 // but repoints the launch context to a recording device context viewed off the
-// builder via `mgp.device_graph.recording_context`, so the ordinary `execute`
+// builder via `mgp.device_graph.recording_context`, so the ordinary producer
 // records into the graph. No `mogg.call.build_graph` is generated.
 
 #kf = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
 
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf struct_params = [] is_user_defined = false
 
-// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
-// CHECK-NEXT: mogg.with_trace
 // CHECK-NOT: mogg.call.build_graph
-// CHECK: mogg.call.execute["k"] inputs(%{{.*}}, %[[REC]] :
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
-  mogg.with_trace {
-    mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
-  }
+// CHECK: mogg._call.opaque @k inputs(%{{.*}}) outputs(%{{.*}}) context(%[[REC]]
+mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
+  mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   mogg.output
 }
 
@@ -157,57 +151,10 @@ mgp.model @dg_execute_only : mof devices [#M.device_ref<"gpu", 0>] init (%weight
     %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
-      %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_cast : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
-      mgp.device_graph.dependencies.yield
-    }
-    mgp.device_graph.collective.yield
-  }
-  mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
-
-// -----
-
-// A view-copy kernel whose device-graph stub terminates in
-// `mogg.call.materialize` (not `mogg.call.execute`). Like the execute-only case,
-// the recording sibling keeps `with_trace { call.materialize }` but repoints its
-// launch context to a recording device context viewed off the builder. No
-// `mogg.call.build_graph` is generated (materialize has no `build_graph` form).
-
-#kf = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
-
-mogg.primitive.decl @view_copy_impl registration = "mogg.call.materialize" function = #kf
-
-// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
-// CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
-// CHECK-NEXT: mogg.with_trace
-// CHECK-NOT: mogg.call.build_graph
-// CHECK: mogg.call.materialize["view_copy_impl"] input(%{{.*}}) output(%{{.*}}) context(%[[REC]])
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.view":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
-  mogg.with_trace {
-    mogg.call.materialize["view_copy_impl"] input(%in) output(%out) context(%ctx) : (!mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mogg.context) -> ()
-  }
-  mogg.output
-}
-
-// CHECK-LABEL: mgp.model @dg_view
-// The staged call is retargeted to the recording sibling, threading the
-// enclosing dependencies builder block arg as the launch operand.
-// CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
-// CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %{{.*}} : {{.*}}, !mgp.device_graph.builder
-mgp.model @dg_view : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
-  %ch0 = grt.chain.create ()
-  %ctx = mgp.context.create 1
-  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
-} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
-    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
-    ^bb0(%dep_builder: !mgp.device_graph.builder):
-      %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
-      %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_cast : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
+      %ctx_h = mogg._rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %t_in = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %t_in, %t_out, %ctx_h : !mogg.tensor_, !mogg.tensor_, !mogg.context
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.collective.yield
@@ -295,12 +242,10 @@ mgp.model @dg_alloc_in_dependencies : mof devices [#M.device_ref<"gpu", 0>] init
 
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
 
-// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mgp.device_graph.builder, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>)
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.tensor_, %{{.*}}: !mgp.device_graph.builder, %{{.*}}: !mogg.tensor_)
 // CHECK-NEXT: mogg.call.build_graph["k"]
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %ctx: !mogg.context, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
-  mogg.with_trace {
-    mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
-  }
+mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %ctx: !mogg.context, %out: !mogg.tensor_) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
+  mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   mogg.output
 }
 
@@ -309,7 +254,7 @@ mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut
 // CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
 // CHECK-NEXT: ^bb0(%[[DEPB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK-NOT: unrealized_conversion_cast
-// CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %[[DEPB]], %{{.*}} : !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, !mgp.device_graph.builder, !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>
+// CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %[[DEPB]], %{{.*}} : !mogg.tensor_, !mgp.device_graph.builder, !mogg.tensor_
 mgp.model @dg_ctx_mid : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -319,9 +264,10 @@ mgp.model @dg_ctx_mid : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
     %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
-      %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %t_in, %ctx_cast, %t_out : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mgp.device_context<<"gpu", 0>>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
+      %ctx_h = mogg._rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %t_in = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %t_in, %ctx_h, %t_out : !mogg.tensor_, !mogg.context, !mogg.tensor_
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.collective.yield
@@ -341,20 +287,18 @@ mgp.model @dg_ctx_mid : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
 
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf struct_params = [] is_user_defined = false
 
-// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.context, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.context, %{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
-// CHECK: mogg.call.execute["k"] inputs(%{{.*}}, %[[REC]] :
-mogg.kernel.stub @stub_1 (%aux: !mogg.context, %in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
-  mogg.with_trace {
-    mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
-  }
+// CHECK: mogg._call.opaque @k inputs(%{{.*}}) outputs(%{{.*}}) context(%[[REC]]
+mogg.kernel.stub @stub_1 (%aux: !mogg.context, %in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
+  mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   mogg.output
 }
 
 // CHECK-LABEL: mgp.model @dg_two_ctx
 // CHECK: mgp.device_graph.collective builder(%{{.*}}) stable() <"gpu", 0> {
 // CHECK: %[[AUX:[a-zA-Z0-9_]+]] = "test.aux_ctx"()
-// CHECK: mogg.call.stub @stub_1_build_graph %[[AUX]], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.device_context<<"gpu", 0>>, !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, !mgp.device_graph.builder
+// CHECK: mogg.call.stub @stub_1_build_graph %[[AUX]], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.device_context<<"gpu", 0>>, !mogg.tensor_, !mogg.tensor_, !mgp.device_graph.builder
 mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -364,10 +308,11 @@ mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
     %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
+      %ctx_h = mogg._rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
       %aux_ctx = "test.aux_ctx"() : () -> !mgp.device_context<<"gpu", 0>>
-      %t_in = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %aux_ctx, %t_in, %t_out, %ctx_cast : !mgp.device_context<<"gpu", 0>>, !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
+      %t_in = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %aux_ctx, %t_in, %t_out, %ctx_h : !mgp.device_context<<"gpu", 0>>, !mogg.tensor_, !mogg.tensor_, !mogg.context
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.collective.yield
@@ -425,9 +370,8 @@ mgp.model @dg_map_foreach : mof devices [#M.device_ref<"gpu", 0>] init (%weights
 // -----
 
 // The other MAP producer: `mogg._call.opaque` whose kernel declares
-// `build_graph`. It takes the recording path legacy reserves for
-// `mogg.call.execute` -- the dispatch is replaced by `mogg.call.build_graph`
-// and, with no `mogg.with_trace` wrapping it, has to be erased on its own.
+// `build_graph`. Its dispatch is replaced by `mogg.call.build_graph` and, with
+// no `mogg.with_trace` wrapping it, has to be erased on its own.
 
 #kf = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
 
@@ -480,13 +424,11 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 
 // The recording sibling is generated once and shared across both collective
 // regions.
-// CHECK: mogg.kernel.stub @stub_1 (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mogg.context)
-// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %{{.*}}: !mo.tensor<[2, 3], f32, gpu:0, {{.*}}>, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
-// CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%[[B]]) {{.*}}kernel_param = {transpose_b = true}
-mogg.kernel.stub @stub_1 (%in: !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, %out: !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 0 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
-  mogg.with_trace {
-    mogg.call.execute["k"] inputs(%in, %ctx : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mogg.context) outputs(%out : !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>) {isThrows, kernel_param = {transpose_b = true}, moOpName = "test.k"}
-  }
+// CHECK: mogg.kernel.stub @stub_1 (%{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.context)
+// CHECK: mogg.kernel.stub @stub_1_build_graph (%{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
+// CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%[[B]]) {{.*}}moOpName = "test.k"
+mogg.kernel.stub @stub_1 (%in: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
+  mogg._call.opaque @k inputs(%in : !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   mogg.output
 }
 
@@ -513,9 +455,10 @@ mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"
     %node0 = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder0: !mgp.device_graph.builder):
       %ctx_cast0 = builtin.unrealized_conversion_cast %dep_builder0 : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
-      %t_in0 = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out0 = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %t_in0, %t_out0, %ctx_cast0 : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
+      %ctx_h0 = mogg._rebind %ctx_cast0 : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %t_in0 = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out0 = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %t_in0, %t_out0, %ctx_h0 : !mogg.tensor_, !mogg.tensor_, !mogg.context
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.collective.yield
@@ -523,9 +466,10 @@ mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"
     %node1 = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder1: !mgp.device_graph.builder):
       %ctx_cast1 = builtin.unrealized_conversion_cast %dep_builder1 : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 1>>
-      %t_in1 = "test.tensor_in"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>
-      %t_out1 = "test.tensor_out"() : () -> !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>
-      mogg.call.stub @stub_1 %t_in1, %t_out1, %ctx_cast1 : !mo.tensor<[2, 3], f32, gpu:0, {io = 1 : i32, mut = false}>, !mo.tensor<[2, 3], f32, gpu:0, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 1>>
+      %ctx_h1 = mogg._rebind %ctx_cast1 : !mgp.device_context<<"gpu", 1>> to !mogg.context
+      %t_in1 = "test.tensor_in"() : () -> !mogg.tensor_
+      %t_out1 = "test.tensor_out"() : () -> !mogg.tensor_
+      mogg.call.stub @stub_1 %t_in1, %t_out1, %ctx_h1 : !mogg.tensor_, !mogg.tensor_, !mogg.context
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.collective.yield

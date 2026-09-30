@@ -3,7 +3,7 @@
 // A MAP ABI stub's body gets wrapped in mogg.with_trace. The terminator stays
 // outside and reads its results, so a value-returning stub keeps its return.
 
-// CHECK-LABEL: mogg.kernel.stub @add_map
+// CHECK-LABEL: mogg.kernel.stub @add_mogg
 // CHECK:         mogg.with_trace {
 // CHECK:           mogg._call.foreach
 // CHECK:           mogg.yield

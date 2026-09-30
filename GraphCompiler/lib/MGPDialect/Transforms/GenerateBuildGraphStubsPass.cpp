@@ -30,9 +30,6 @@ struct ProducerDispatch {
 };
 
 ProducerDispatch matchProducerDispatch(Operation *op) {
-  if (isa<CallExecuteOp, CallForeachOp, CallMaterializeOp>(op))
-    return {op, cast<KernelTerminator>(op).getDeviceContext()};
-
   if (auto opaque = dyn_cast<CallOpaqueOp>(op)) {
     ValueRange contexts = opaque.getDeviceContexts();
     return {op, contexts.empty() ? Value() : contexts.front()};
@@ -109,17 +106,12 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
         "context to be an argument of the kernel stub");
   }
 
-  // Only a `mogg.call.execute` whose kernel declares a node-free `build_graph`
-  // method records through `mogg.call.build_graph`. Everything else -- an
-  // execute-only kernel or a `mogg.call.materialize` view copy -- records by
+  // A `mogg._call.opaque` whose kernel declares a node-free `build_graph`
+  // method records through `mogg.call.build_graph`. Everything else records by
   // dispatching the producer against a recording device context.
-  auto execute = dyn_cast<CallExecuteOp>(producer.op);
   auto opaque = dyn_cast<CallOpaqueOp>(producer.op);
   KernelDeclOp decl;
-  if (execute)
-    decl =
-        symtab.lookup<KernelDeclOp>(execute.getKernelSymNameAttr().getValue());
-  else if (opaque)
+  if (opaque)
     decl = symtab.lookup<KernelDeclOp>(opaque.getCallee());
   bool useBuildGraph = decl && decl.getBuildGraph().has_value();
 
@@ -140,17 +132,9 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
   StringAttr kernelSymName, moOpName;
   UnitAttr isThrows;
   DictionaryAttr kernelParams;
-  if (useBuildGraph && execute) {
-    kernelInputs = execute.getKernelInputs();
-    outputs = llvm::to_vector(execute.getOutputs());
-    kernelSymName = execute.getKernelSymNameAttr();
-    moOpName = execute.getMoOpNameAttr();
-    isThrows = execute.getIsThrowsAttr();
-    kernelParams = execute.getKernelParamAttr();
-  } else if (useBuildGraph) {
-    // `useBuildGraph` implies a decl, which only an execute or an opaque
-    // resolves, so this branch is the opaque.
-    assert(opaque && "a build_graph producer is an execute or an opaque");
+  if (useBuildGraph) {
+    // `useBuildGraph` implies a decl, which only an opaque resolves.
+    assert(opaque && "a build_graph producer is an opaque");
     // `_call.opaque` keeps inputs, outputs and contexts in separate operand
     // groups, so there is no context to filter out. `moOpName` is provenance
     // that nothing reads back, so the decl's registration stands in.

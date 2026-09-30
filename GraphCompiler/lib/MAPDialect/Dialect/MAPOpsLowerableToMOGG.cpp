@@ -289,11 +289,6 @@ LogicalResult CallElementwiseOp::lowerToMOGG(MAPToMOGGState &state) {
 // because the epilogue -> `map.call.opaque` edge is still explicit in the IR
 // and the epilogue lowers before the call does. Emit therefore never has to
 // walk anywhere to recover it.
-//
-// The MOGG-ABI sibling of this is `MOGG::getKernelOutputFusionLambdaType`,
-// which applies the same IOSpec and tile rules to a `mogg.tensor.fused`. The
-// two deliberately live apart: no MOGG header depends on the MAP dialect, and
-// a MAP-typed entry point there would invert that. Keep the rules in sync.
 static ErrorOr<MOGG::KernelOutputFusionLambdaType>
 classifyEpilogueLambdaKind(IterEpilogueOp epilogueOp, MAPToMOGGState &state) {
   using Kind = MOGG::KernelOutputFusionLambdaType;

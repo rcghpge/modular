@@ -44,7 +44,7 @@ mogg.kernel.stub @lift_b(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer
 // CHECK-SAME:    () fusionInfo
 // CHECK:         %{{.+}} = index.constant 7
 mogg.kernel.stub @mogg_abi_kernel() fusionInfo = mogg_abi_kernel
-  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = false} {
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = false} {
   %0 = index.constant 7
   mogg.output
 }

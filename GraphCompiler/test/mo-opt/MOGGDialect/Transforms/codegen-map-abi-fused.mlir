@@ -70,7 +70,7 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>
 // feeds a runtime `Scalar[DType.int]` Coord component instead of an
 // all-compile-time `layout.Idx` Coord; the fused-output functor/bind/
 // execute shape is otherwise identical to the static case above.
-// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
+// CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM]]), layout.Idx[2])
 // CHECK:   var [[CAPD:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
 // CHECK:   var [[PTRD:.*]] = [[CAPD]].unsafe_ptr()
@@ -93,13 +93,13 @@ mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batc
 // text-golden-only checks above, this exact scenario also has real
 // end-to-end compile+run coverage: see
 // add-fuse-output-epilogue-fusion-dynamic.mlir
-// (GraphCompiler/test/integration/cpu/E2E/NewFusion/). All `def ..._map(...)`
+// (GraphCompiler/test/integration/cpu/E2E/NewFusion/). All `def ..._mogg(...)`
 // functions are emitted before any struct definitions, so this
 // function-level check must run before the generic functor-struct-shape
 // check below (which lands in the later struct section); its own struct-body
 // check (the fused elementwise-add specific one) is placed after that check
 // instead, further down.
-// CHECK: def {{[A-Za-z0-9_]+_map(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM2:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
+// CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM2:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM2]]), layout.Idx[2])
 // CHECK:   var [[CAPR:.*]] = builtin_primitives.primitives.mogg_tensor_init[{{.*}}, True, extensibility.IO.Output, {{.*}}]
 // CHECK:   var [[PTRR:.*]] = [[CAPR]].unsafe_ptr()
@@ -147,7 +147,7 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 
 // `real_kernel_fused_dynamic`'s own struct-body check, placed here (after the
 // generic one-capture struct-shape check above) since struct definitions
-// follow all `def ..._map(...)` functions in the emitted file. Its functor is
+// follow all `def ..._mogg(...)` functions in the emitted file. Its functor is
 // the LAST of the six emitted, and neither the struct header (every functor
 // now takes a `LayoutType` and an alignment param per capture) nor
 // the `def store[...]` signature discriminates it on its own -- and FileCheck
@@ -179,7 +179,7 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // conforms to `ComputeOutputFusion`, its method is `compute` and RETURNS the
 // transformed value rather than storing it, and it binds through
 // `_bind_to_fused_compute_output`. The primary kernel performs the one store.
-// All `def ..._map(...)` functions are emitted before any struct definitions,
+// All `def ..._mogg(...)` functions are emitted before any struct definitions,
 // so these three land in different sections; match them order-independently.
 // COMPUTE-DAG: _bind_to_fused_compute_output
 // COMPUTE-DAG: struct EpilogueComputeFunctor{{[0-9_]*}}[{{.*}}](managed_tensor_slice.ComputeOutputFusion, TrivialRegisterPassable):

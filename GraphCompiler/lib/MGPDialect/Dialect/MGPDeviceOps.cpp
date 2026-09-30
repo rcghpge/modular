@@ -9,7 +9,6 @@
 #include "GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/Support/Diagnostic.h"
 #include "Mojo/LITDialect/LITOps.h"

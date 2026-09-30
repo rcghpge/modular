@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/Conversion/MOToMAP/MOToMAP.h"
+#include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
-#include "GraphCompiler/MOGGDialect/MOGGOps.h"
-#include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
 #include "Support/MDialect/MAttrs.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
@@ -54,23 +54,17 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
     return tensorType.getDtype().isFloat();
   }
 
-  /// Lower an mo.custom op to an MOGG kernel in-place. Returns the kernel
-  /// or signals pass failure.
-  MOGG::KernelOp lowerCustomOpToMOGG(MO::CustomOp customOp, OpBuilder &builder,
-                                     MOGG::MojoRegistry &registry) {
-    OpBuilder insertPoint{customOp};
-    MOGG::MOGGKernelBuilder kernelBuilder(customOp, insertPoint,
-                                          /*forceSync=*/false, registry);
-    auto kernelOrErr = kernelBuilder.lowerToKernel();
-    if (kernelOrErr.isError()) {
-      customOp->emitOpError("[NanCheckPass] ")
-          << llvm::Twine(kernelOrErr.getError());
+  /// Lower an mo.custom check op to its MAP kernel form in-place, through the
+  /// same `mo-to-map` opaque lowering the rest of the graph used. Runs after
+  /// MAP fusion, so the injected kernel is never fused into the kernel it
+  /// checks; the subsequent `map-to-mogg` conversion compiles it. Returns the
+  /// created `map.iter.opaque` op, or nullptr on failure.
+  Operation *lowerCheckOpToMAP(MO::CustomOp customOp,
+                               MOGG::MojoRegistry &registry) {
+    FailureOr<Operation *> mapOp = MO::lowerMOOpToMAP(customOp, registry);
+    if (failed(mapOp))
       return nullptr;
-    }
-    auto moggKernel = kernelOrErr.takeValue();
-    customOp->replaceAllUsesWith(moggKernel->getResults());
-    customOp->erase();
-    return moggKernel;
+    return *mapOp;
   }
 
   void runOnOperation() override {
@@ -87,13 +81,14 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         ctx, ArrayRef<int64_t>{1}, M::DType::si32, hostDevice, emptyMetadata);
     assert(countTypeHost && "Failed to create count tensor type");
 
-    // Collect all MOGG kernel ops (compiled regions). The graph-level region
-    // is `mogg.kernel` on the legacy path and `mogg._kernel` on the MAP one,
-    // so both kinds count: matching only the legacy op left the check silently
-    // uninserted under advanced fusion, and the run reported no NaN at all.
+    // Collect all MAP kernel ops (compiled regions). This pass runs after MAP
+    // fusion but before `map-to-mogg`, so the compiled regions are still in MAP
+    // form: `map.iter.foreach` for structured loops and `map.iter.opaque` for
+    // outlined / opaque kernels. Their results are `MO_Tensor`, so the float
+    // check below is unchanged from when this walked the MOGG kernels.
     SmallVector<Operation *> kernelOps;
     graphOp->walk([&kernelOps](Operation *op) {
-      if (isa<MOGG::KernelOp, MOGG::KernelRegionOp>(op))
+      if (isa<MAP::IterForeachOp, MAP::IterOpaqueOp>(op))
         kernelOps.push_back(op);
     });
 
@@ -219,19 +214,21 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
                                 builder.getStringAttr(typeStr))}));
         currentChain = raiseOp.getResult(0);
 
-        // Lower nan_check_count to MOGG kernel.
-        if (!lowerCustomOpToMOGG(countOp, builder, registry))
+        // Lower nan_check_count to its MAP kernel.
+        if (!lowerCheckOpToMAP(countOp, registry))
           return signalPassFailure();
 
-        // Lower nan_check_raise to MOGG kernel, then mark it as having
-        // write side effects so DCE preserves it even with unused results.
-        auto raiseKernel = lowerCustomOpToMOGG(raiseOp, builder, registry);
+        // Lower nan_check_raise to its MAP kernel, then mark it as having write
+        // side effects so DCE preserves it even with unused results. The opaque
+        // lowering only carries a write effect for an in-place `mo.custom`, and
+        // the raise takes no buffer, so set it explicitly here.
+        auto *raiseKernel = lowerCheckOpToMAP(raiseOp, registry);
         if (!raiseKernel)
           return signalPassFailure();
-        raiseKernel.setHasWriteEffect(true);
+        cast<MAP::IterOpaqueOp>(raiseKernel).setHasWriteEffect(true);
 
-        // Update currentChain to point to the MOGG kernel's chain result
-        // (the raiseOp was erased during lowering, invalidating the old ref).
+        // Update currentChain to point to the MAP kernel's chain result (the
+        // raiseOp was erased during lowering, invalidating the old ref).
         for (auto result : raiseKernel->getResults()) {
           if (isa<MO::ChainType>(result.getType())) {
             currentChain = result;

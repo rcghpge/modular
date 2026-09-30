@@ -34,7 +34,7 @@ struct MAPToMOGGState {
 
   // Whether an epilogue feeding a `_FusedComputeOutputTensor` argument may be
   // lowered as a compute lambda. Mirrors the `EmitMojo` option of the same
-  // name, which still governs the legacy MOGG-ABI path.
+  // name.
   bool enableComputeLambdas = true;
 
   // Substitution for every value reachable from the kernel currently being

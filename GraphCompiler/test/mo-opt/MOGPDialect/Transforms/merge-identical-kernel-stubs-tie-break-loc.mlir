@@ -41,17 +41,17 @@
 // CHECK: mogg.call.stub @a_dup
 
 mogg.kernel.stub @z_dup() fusionInfo = z_dup
-  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 10, in site_z\n">["model.py":10:0])
 
 mogg.kernel.stub @a_dup() fusionInfo = a_dup
-  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 20, in site_a\n">["model.py":20:0])
 
 mogg.kernel.stub @caller() fusionInfo = caller
-  attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @a_dup
   mogg.output
 }

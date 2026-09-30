@@ -11,7 +11,6 @@
 #include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "GraphCompiler/Interfaces/LowerableToMGPInterface.h"
-#include "GraphCompiler/Interfaces/MOGGKernelOpLoweringState.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
@@ -2186,21 +2185,10 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   // few preserved ops as transient intermediate IR (see ParallelOp::verify),
   // but by lowering time only kernels and bundled.expand should remain --
   // anything else indicates a missing cleanup pass or an unsupported pattern.
-  //
-  // A body's kernels are either all old-path `mogg.kernel` or all
-  // new-path `mogg._kernel`: the fusion passes run
-  // over the whole body, so the two kinds never coexist. The per-launch loop
-  // below dispatches on that single kind rather than handling a mix.
   SmallVector<Operation *> kernelOps;
   SmallVector<MO::BundledExpandOp> expandOps;
-  bool sawOldKernel = false;
-  bool sawNewKernel = false;
   for (Operation &op : bodyBlock.without_terminator()) {
-    if (isa<MOGG::KernelOp>(&op)) {
-      sawOldKernel = true;
-      kernelOps.push_back(&op);
-    } else if (isa<MOGG::KernelRegionOp>(&op)) {
-      sawNewKernel = true;
+    if (isa<MOGG::KernelRegionOp>(&op)) {
       kernelOps.push_back(&op);
     } else if (auto expand = dyn_cast<MO::BundledExpandOp>(&op)) {
       expandOps.push_back(expand);
@@ -2212,14 +2200,10 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   }
   if (kernelOps.empty())
     return parallelOp.emitOpError("body must contain at least one kernel");
-  if (sawOldKernel && sawNewKernel)
-    return parallelOp.emitOpError(
-        "mo.parallel body mixes old-path mogg.kernel and new-path "
-        "mogg._kernel; the fusion passes are expected to produce one kind");
-  const bool bodyIsNewPath = sawNewKernel;
 
   // For each kernel in the body, clone it once per launch, lower each clone
-  // via the standard lowerKernelOp path, then fuse and convert to async.
+  // via `KernelRegionOp::lowerToCompiledRegion`, then fuse and convert to
+  // async.
   //
   // Fusion is per kernel group (not across groups) to avoid creating dataflow
   // cycles: a later group's buffer allocs may depend on the earlier group's
@@ -2282,8 +2266,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       for (size_t group = 0; group < numGroups; ++group)
         mapper.map(bodyBlock.getArgument(group), bundleElements[group][launch]);
       // Trailing chain block arg (chained parallels): map it to the MO-level
-      // in-chain so the cloned body op carries an MO chain operand (as the old
-      // captured-chain form did); lowerKernelOp resolves its lowered value.
+      // in-chain so the cloned body op carries an MO chain operand; the
+      // compiled-region lowering resolves its lowered value.
       if (parallelOp.hasChain())
         mapper.map(bodyBlock.getArgument(numBundleGroups),
                    parallelOp.getInChain());
@@ -2308,33 +2292,16 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
             result.setType(resTy.cloneWith(launchDevice));
       }
 
-      // Lower the clone to its compiled region. The two kernel kinds are
-      // lowered by their own paths -- a body is all old-path `mogg.kernel` or
-      // all new-path `mogg._kernel` (the walk above rejects a mix). The new
-      // path reuses `KernelRegionOp::lowerToCompiledRegion`, the same hook its
-      // top-level `lower()` wraps.
-      MOGG::GenericCompiledRegionOp launchRegion;
-      if (bodyIsNewPath) {
-        auto clonedKernel = cast<MOGG::KernelRegionOp>(clonedOp);
-        if (retarget)
-          clonedKernel.setDeviceRef(launchDevice);
-        launchRegion = clonedKernel.lowerToCompiledRegion(loweringState);
-        if (!launchRegion)
-          return failure();
-      } else {
-        auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
-        if (retarget) {
-          clonedKernel.setDeviceRef(launchDevice);
-          clonedKernel.walk([&](MOGG::DeviceContextPlaceholderOp placeholder) {
-            placeholder.setDeviceAttr(launchDevice);
-          });
-        }
-        MGP::MOGGKernelOpLoweringState perLaunchState(clonedKernel,
-                                                      loweringState);
-        if (failed(perLaunchState.lowerKernelOp(clonedKernel)))
-          return failure();
-        launchRegion = perLaunchState.getMGPRegion();
-      }
+      // Lower the clone to its compiled region via
+      // `KernelRegionOp::lowerToCompiledRegion`, the same hook its top-level
+      // `lower()` wraps.
+      auto clonedKernel = cast<MOGG::KernelRegionOp>(clonedOp);
+      if (retarget)
+        clonedKernel.setDeviceRef(launchDevice);
+      MOGG::GenericCompiledRegionOp launchRegion =
+          clonedKernel.lowerToCompiledRegion(loweringState);
+      if (!launchRegion)
+        return failure();
 
       // For GPU launches, stamp the integer device ordinal onto every
       // CallStubOp so that fuseAndConvertToAsync can forward it unchanged
@@ -2369,9 +2336,10 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     for (Value res : kernelOp->getResults())
       resultToFusedChain[res] = fusedChain;
 
-    // lowerKernelOp registered chain guards against individual compiled region
-    // chains, which fuseAndConvertToAsync just erased. Repoint them to the
-    // fused region's chain so that subsequent kernel groups see valid guards.
+    // The compiled-region lowering registered chain guards against individual
+    // compiled region chains, which fuseAndConvertToAsync just erased. Repoint
+    // them to the fused region's chain so subsequent kernel groups see valid
+    // guards.
     for (Operation *clone : kernelClones) {
       for (Value cloneRes : clone->getResults()) {
         loweringState.replaceChainGuard(cloneRes, fusedChain);

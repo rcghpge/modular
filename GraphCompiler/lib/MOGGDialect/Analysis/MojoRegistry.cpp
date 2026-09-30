@@ -6,16 +6,28 @@
 
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/Conversion/OperandInference.h"
+#include "GraphCompiler/Conversion/ParameterInference.h"
+#include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/Support.h"
-#include "GraphCompiler/MOGGDialect/Support/MOToMOGGLowering.h"
+#include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/MOGGDialect/MojoParameters.h"
+#include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
+#include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENOps.h"
+#include "Mojo/KGENDialect/KGENPogUtils.h"
+#include "Mojo/LITDialect/LITOps.h"
+#include "Mojo/LITDialect/LITUtils.h"
 #include "Mojo/MojoParser/EntryPoint.h"
 #include "Mojo/MojoParser/ModuleLoader.h"
 #include "Mojo/MojoParser/SharedState.h"
 #include "Mojo/ToolCommon/CompilationOptions.h"
 #include "Support/AssertStream.h"
 #include "Support/Filesystem/Paths.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -338,6 +350,281 @@ M::MOGG::getKernelPackagePathsForCacheKey(mlir::MLIRContext *ctx) {
   llvm::append_range(paths, found);
   return paths;
 }
+
+namespace M::MOGG {
+
+// ---------------------------------------------------------------------------
+// Custom op parameter validation using KernelDeclOp
+// ---------------------------------------------------------------------------
+
+static bool isStaticStringLoweredPattern(Type ty) {
+  auto structTy = dyn_cast<KGEN::StructType>(ty);
+  if (!structTy || structTy.getIsParamPack())
+    return false;
+
+  std::optional<SmallVector<Type>> elementTypes = structTy.getElementTypes();
+  if (!elementTypes || elementTypes->size() != 2)
+    return false;
+
+  auto ptrTy = dyn_cast<KGEN::PointerType>((*elementTypes)[0]);
+  if (!ptrTy || !isa<KGEN::NoneType>(ptrTy.getElementType()))
+    return false;
+
+  return isa<IndexType>((*elementTypes)[1]);
+}
+
+static bool isLITStaticStringType(Type ty) {
+  auto structTy = KGEN::sugarDynCast<KGEN::LIT::StructType>(ty);
+  if (!structTy) {
+    if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(ty)) {
+      structTy =
+          KGEN::sugarDynCast<KGEN::LIT::StructType>(ref.getElementType());
+    }
+  }
+  if (!structTy)
+    return false;
+
+  auto symbol = structTy.getSymbol();
+  std::string symbolName =
+      llvm::formatv("{}::{}", symbol.getRootReference().strref(),
+                    symbol.getLeafReference().strref())
+          .str();
+  if (symbolName != kMojoInternalStaticStringTypeName)
+    return false;
+
+  auto paramValues = structTy.getParamValues();
+  if (paramValues.empty())
+    return false;
+
+  TypedAttr originAttr = paramValues[0];
+  if (KGEN::sugarIsa<KGEN::ParamDeclRefAttr>(originAttr))
+    return false;
+
+  return true;
+}
+
+static StringAttr maybeDemangleName(StringAttr name) {
+  StringRef demangled = KGEN::demangleParameterName(name);
+  if (demangled != name)
+    return StringAttr::get(name.getContext(), demangled);
+  return name;
+}
+
+/// Return the "root::leaf" name of a parameter's declared struct type, or
+/// null if the type is not a recognisable struct (e.g. primitive scalars).
+/// Used by `validateCustomOpParameters` to dispatch on Mojo class names
+/// like `std::StaticString` vs `std::StringSpan` — information not carried
+/// by the bare KGEN type alone.
+static StringAttr getParamTypeName(MLIRContext *ctx, Type paramType) {
+  if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(paramType))
+    paramType = ref.getElementType();
+  auto structTy = KGEN::sugarDynCast<KGEN::LIT::StructType>(paramType);
+  if (!structTy)
+    return nullptr;
+  auto sym = structTy.getSymbol();
+  return StringAttr::get(ctx, llvm::formatv("{}::{}",
+                                            sym.getRootReference().strref(),
+                                            sym.getLeafReference().strref())
+                                  .str());
+}
+
+static ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
+                                                 MO::CustomOp customOp) {
+  if (!registry.containsKernel(customOp.getSymbol())) {
+    return Error(
+        llvm::formatv("no kernel registered for '{}'", customOp.getSymbol())
+            .str());
+  }
+  auto declOpOr =
+      registry.getResolvedKernel(customOp.getSymbol(), customOp.getDevice());
+  if (declOpOr.isError())
+    return declOpOr.takeError();
+  KernelDeclOp declOp = *declOpOr;
+  // The user-supplied `parameters` dict on `mo.custom` can target struct-level
+  // compile-time params (e.g. `[interleaved: Bool]`) or any fn-level params
+  // declared on the registered functions. Collect struct params first to
+  // mirror Mojo's merged `@register` parameter layout, then union the param
+  // lists from each function variant (some kernels declare params only on
+  // `elementwise` instead of `execute`).
+  SmallVector<KGEN::ParamDeclAttr> inputParamsVec;
+  llvm::SmallDenseSet<StringRef> seen;
+  auto append = [&](KGEN::ParamDeclAttr p) {
+    if (seen.insert(p.getName().strref()).second)
+      inputParamsVec.push_back(p);
+  };
+  for (auto a : declOp.getStructParams())
+    append(cast<KGEN::ParamDeclAttr>(a));
+  auto appendFn = [&](std::optional<MOGG::KernelFunctionAttr> fn) {
+    if (!fn)
+      return;
+    for (auto a : fn->getParams())
+      append(cast<KGEN::ParamDeclAttr>(a));
+  };
+  appendFn(declOp.getExecute());
+  appendFn(declOp.getElementwise());
+  if (registry.containsShapeFunction(declOp.getRegistration()))
+    appendFn(
+        registry.lookupShapeFunction(declOp.getRegistration()).getFunction());
+  appendFn(declOp.getUpdateView());
+  ArrayRef<KGEN::ParamDeclAttr> inputParams = inputParamsVec;
+
+  struct MojoParameterAdaptor {
+    KGEN::ParamDeclAttr attr;
+    StringAttr typeName;
+  };
+  llvm::DenseMap<StringAttr, MojoParameterAdaptor> paramDecls;
+
+  // Compute the param type-name on demand from each ParamDeclAttr instead of
+  // caching strings on KernelDeclOp.
+  MLIRContext *ctx = customOp.getContext();
+  for (auto param : inputParams)
+    paramDecls[maybeDemangleName(param.getName())] = {
+        param, getParamTypeName(ctx, param.getType())};
+
+  for (const NamedAttribute &namedAttr : customOp.getParameters()) {
+    auto it = paramDecls.find(namedAttr.getName());
+    if (it == paramDecls.end()) {
+      return Error(llvm::formatv(
+          "parameter '{}' supplied to custom op '{}' does not exist in the "
+          "corresponding Mojo code",
+          namedAttr.getName().strref(), customOp.getSymbol()));
+    }
+
+    auto [customParamDecl, typeName] = it->second;
+    Attribute mlirParamAttr = namedAttr.getValue();
+
+    Type kgenParamTy = customParamDecl.getType();
+    auto asIntegerType = dyn_cast<IntegerType>(kgenParamTy);
+
+    if (isa<IndexType>(kgenParamTy)) {
+      auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
+      if (asInt == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an integer type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (asIntegerType && asIntegerType.getWidth() == 1) {
+      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
+      if (asBool == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an boolean type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (isa<KGEN::StringType>(kgenParamTy)) {
+      if (typeName && typeName == MOGG::kMojoInternalStaticStringTypeName) {
+        [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        ASSERT_STREAM(asString != nullptr,
+                      "failed to convert custom op attribute "
+                          << mlirParamAttr
+                          << " to expected mojo kernel param type "
+                          << kgenParamTy << ": expected string type");
+      } else if (typeName) {
+        return Error(llvm::formatv(
+            "in custom op '{}' attribute '{}' uses a string-like type that is "
+            "not supported. Use type StaticString instead to define a string "
+            "parameter for a custom op.",
+            customOp.getSymbol(), customParamDecl.getName()));
+      } else {
+        [[maybe_unused]] auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        ASSERT_STREAM(asString != nullptr,
+                      "failed to convert custom op attribute "
+                          << mlirParamAttr
+                          << " to expected mojo kernel param type "
+                          << kgenParamTy << ": expected string type");
+      }
+    } else if (isa<KGEN::DTypeType>(kgenParamTy)) {
+      auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
+      if (asType == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a DType",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName && typeName == MOGG::kMojoDtypeTypeName) {
+      auto asType = dyn_cast<TypeAttr>(mlirParamAttr);
+      if (asType == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a DType",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName && typeName == MOGG::kMojoStaticStringTypeName) {
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      if (asString == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected string type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               typeName == MOGG::kMojoInternalStaticStringTypeName) {
+      bool isStaticString = isLITStaticStringType(kgenParamTy) ||
+                            isStaticStringLoweredPattern(kgenParamTy);
+      if (isStaticString) {
+        auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+        if (asString == nullptr) {
+          return Error(llvm::formatv(
+              "failed to convert custom op '{}' attribute '{}' with value "
+              "'{}' to the proper Mojo parameter type: expected string type",
+              customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+        }
+      } else {
+        return Error(llvm::formatv(
+            "in custom op '{}' attribute '{}' uses type StringSpan. Use type "
+            "StaticString instead to define a string parameter for a custom "
+            "op.",
+            customOp.getSymbol(), customParamDecl.getName()));
+      }
+    } else if (typeName && (typeName == MOGG::kMojoInternalDpsSimdTypeName)) {
+      auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
+      if (asInt == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected an integer type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName && typeName == MOGG::kMojoInternalDpsBoolTypeName) {
+      auto asBool = dyn_cast<BoolAttr>(mlirParamAttr);
+      if (asBool == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected a boolean type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else if (typeName &&
+               (typeName == MOGG::kMojoInternalStringSliceTypeName ||
+                typeName == MOGG::kMojoStringTypeName)) {
+      std::string userTypeName =
+          typeName == MOGG::kMojoInternalStringSliceTypeName ? "StringSpan"
+                                                             : "String";
+      return Error(llvm::formatv(
+          "in custom op '{}' attribute '{}' uses type {}. Use type "
+          "StaticString instead to define a string parameter for a custom op.",
+          customOp.getSymbol(), customParamDecl.getName(), userTypeName));
+    } else if (!typeName && isStaticStringLoweredPattern(kgenParamTy)) {
+      auto asString = dyn_cast<StringAttr>(mlirParamAttr);
+      if (asString == nullptr) {
+        return Error(llvm::formatv(
+            "failed to convert custom op '{}' attribute '{}' with value '{}' "
+            "to the proper Mojo parameter type: expected string type",
+            customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr));
+      }
+    } else {
+      return Error(llvm::formatv(
+          "failed to convert custom op '{}' attribute '{}' with value '{}' to "
+          "the proper Mojo parameter type: no type conversion found to type "
+          "'{}'",
+          customOp.getSymbol(), customParamDecl.getName(), mlirParamAttr,
+          kgenParamTy));
+    }
+  }
+
+  return success();
+}
+
+} // namespace M::MOGG
 
 ErrorOrSuccess M::MOGG::verifyCustomOp(const MojoRegistry &registry,
                                        mlir::Operation *op) {

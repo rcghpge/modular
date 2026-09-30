@@ -113,7 +113,7 @@ getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
 ///     small (SIMD, IndexList, plus user/kernel-API decls in the loaded
 ///     pkg).
 ///   - `false`: fall back to a UnitAttr placeholder. Used for argument
-///     types, where the consumer (`MOToMOGGLowering::inferOpaqueParameters`)
+///     types, where the consumer (MO-to-MOGG opaque-parameter inference)
 ///     only reads entries that correspond to MO::OpaqueType operands; tensor
 ///     and device-context argument types (whose struct decls live in
 ///     dependency packages we deliberately do not load) fall through

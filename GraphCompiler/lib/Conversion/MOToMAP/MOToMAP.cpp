@@ -135,9 +135,9 @@ void stampAsyncLaunch(OpT iterOp, Operation *srcOp) {
   iterOp.setIsAsync(!MO::kernelRequiresSyncLaunch(srcOp));
 }
 
-LogicalResult lowerToOpaque(Operation *op,
-                            const MOGG::KernelDeclAdaptor &adaptor,
-                            const MOGG::KernelDeclOperandMapping &mapping) {
+FailureOr<Operation *>
+lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
+              const MOGG::KernelDeclOperandMapping &mapping) {
   llvm::DenseMap<uint64_t, bool> inputFusible;
   for (const auto &[idx, arg] : mapping.operandMapping)
     inputFusible[idx] = arg.isFusedTensorType();
@@ -169,7 +169,7 @@ LogicalResult lowerToOpaque(Operation *op,
                                           /*fusionInfo=*/Attribute());
   // A collective executes on every device it reduces across, so the singular
   // getExecutionDevice() behind getDeviceOrDefaultAny asserts on one. Take the
-  // first, as MOToMOGGLowering::getDevice() does -- the label only picks host
+  // first, as MO-to-MOGG lowering does -- the label only picks host
   // or GPU codegen. TODO: carry all of them, see GEX-2278.
   DeviceRefAttr device;
   if (auto hasDevice = dyn_cast<MO::MOHasDeviceInterface>(op)) {
@@ -216,9 +216,11 @@ LogicalResult lowerToOpaque(Operation *op,
       callInputs.push_back(operand);
       continue;
     }
-    if (!isa<MO::TensorType>(operand.getType()))
-      return op->emitOpError(
+    if (!isa<MO::TensorType>(operand.getType())) {
+      op->emitOpError(
           "MOToMAP: input fusion is only supported for tensor operands");
+      return failure();
+    }
     callInputs.push_back(buildLoadPrologue(builder, loc, operand).getResult());
   }
 
@@ -228,9 +230,11 @@ LogicalResult lowerToOpaque(Operation *op,
       callOutputs.push_back(out);
       continue;
     }
-    if (!isa<MO::TensorType>(out.getType()))
-      return op->emitOpError(
+    if (!isa<MO::TensorType>(out.getType())) {
+      op->emitOpError(
           "MOToMAP: output fusion is only supported for tensor results");
+      return failure();
+    }
     callOutputs.push_back(buildStoreEpilogue(builder, loc, out).getResult());
   }
 
@@ -271,7 +275,7 @@ LogicalResult lowerToOpaque(Operation *op,
 
   op->replaceAllUsesWith(opaque.getResults());
   op->erase();
-  return success();
+  return opaque.getOperation();
 }
 
 // Lowers an elementwise MO op to a `map.iter.foreach` expressing its loop
@@ -354,10 +358,10 @@ lowerElementwiseToForeach(Operation *op,
 // MutableStore); the actual in-place write happens via `map.store` into the
 // buffer instead of a materialized tensor output.
 //
-// mo.mutable.store is the one op MOGG itself special-cases by identity for
-// this (MOToMOGGLowering.cpp's `isa<MO::MutableStoreOp>(moOp)`, TODO
-// GEX-2360 acknowledges there's no generic mechanism to generalize) --
-// mirrored here rather than generalized, for the same reason.
+// mo.mutable.store is the one op MOGG lowering itself special-cases by
+// identity for this (`isa<MO::MutableStoreOp>(moOp)`, TODO GEX-2360
+// acknowledges there's no generic mechanism to generalize) -- mirrored
+// here rather than generalized, for the same reason.
 LogicalResult
 lowerMutableStoreToForeach(MO::MutableStoreOp op,
                            const MOGG::KernelDeclAdaptor &adaptor) {
@@ -695,44 +699,66 @@ LogicalResult lowerTransposeToForeach(MO::TransposeOp op) {
   return success();
 }
 
-LogicalResult lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
+// Lowers a single MO kernel op to its MAP form in place. Returns the created
+// MAP kernel op for the opaque path (the only case a caller currently needs the
+// op back), a null `Operation *` for the other successful paths (lowered, no op
+// tracked) and for an op with no kernel adaptor (left unchanged), or
+// `failure()` on a lowering error.
+FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
   if (adaptor.isError())
-    return success();
+    return static_cast<Operation *>(nullptr);
 
-  if (auto mutableStoreOp = dyn_cast<MO::MutableStoreOp>(op))
-    return lowerMutableStoreToForeach(mutableStoreOp, *adaptor);
+  if (auto mutableStoreOp = dyn_cast<MO::MutableStoreOp>(op)) {
+    if (failed(lowerMutableStoreToForeach(mutableStoreOp, *adaptor)))
+      return failure();
+    return static_cast<Operation *>(nullptr);
+  }
 
   // Elementwise kernels don't have an executeFunction (only
   // elementwiseFunction), so this must be checked before the executeFunction
   // gate below.
-  if (adaptor->isElementwise())
-    return lowerElementwiseToForeach(op, *adaptor);
+  if (adaptor->isElementwise()) {
+    if (failed(lowerElementwiseToForeach(op, *adaptor)))
+      return failure();
+    return static_cast<Operation *>(nullptr);
+  }
 
-  if (!adaptor->executeFunction)
-    return op->emitOpError("MOToMAP: kernel has no execute function");
+  if (!adaptor->executeFunction) {
+    op->emitOpError("MOToMAP: kernel has no execute function");
+    return failure();
+  }
 
   ErrorOr<MOGG::KernelDeclOperandMapping> mapping =
       MOGG::mapMOOpToKernelImplementation(op, *adaptor->executeFunction);
-  if (mapping.isError())
-    return op->emitOpError("MOToMAP: failed to map operands to kernel");
+  if (mapping.isError()) {
+    op->emitOpError("MOToMAP: failed to map operands to kernel");
+    return failure();
+  }
 
-  if (isa<MO::InvokeShapeFuncOp>(op))
-    return op->emitOpError(
-        "MOToMAP: shape-function kernels are not yet supported");
-  else if (auto sliceOp = dyn_cast<MO::SliceOp>(op))
-    return lowerSliceToForeach(sliceOp);
-  else if (auto broadcastOp = dyn_cast<MO::Static::BroadcastToOp>(op))
-    return lowerBroadcastToForeach(broadcastOp);
-  else if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(op))
-    return lowerReshapeToForeach(reshapeOp);
-  else if (auto transposeOp = dyn_cast<MO::TransposeOp>(op))
-    return lowerTransposeToForeach(transposeOp);
-  else if (adaptor->isViewKernel())
-    return op->emitOpError("MOToMAP: view kernels are not yet supported");
-  else
+  LogicalResult foreachResult = success();
+  if (isa<MO::InvokeShapeFuncOp>(op)) {
+    op->emitOpError("MOToMAP: shape-function kernels are not yet supported");
+    return failure();
+  } else if (auto sliceOp = dyn_cast<MO::SliceOp>(op)) {
+    foreachResult = lowerSliceToForeach(sliceOp);
+  } else if (auto broadcastOp = dyn_cast<MO::Static::BroadcastToOp>(op)) {
+    foreachResult = lowerBroadcastToForeach(broadcastOp);
+  } else if (auto reshapeOp = dyn_cast<MO::Static::ReshapeOp>(op)) {
+    foreachResult = lowerReshapeToForeach(reshapeOp);
+  } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(op)) {
+    foreachResult = lowerTransposeToForeach(transposeOp);
+  } else if (adaptor->isViewKernel()) {
+    op->emitOpError("MOToMAP: view kernels are not yet supported");
+    return failure();
+  } else {
     return lowerToOpaque(op, *adaptor, *mapping);
+  }
+
+  if (failed(foreachResult))
+    return failure();
+  return static_cast<Operation *>(nullptr);
 }
 
 struct MOToMAPPass : public M::MO::impl::MOToMAPBase<MOToMAPPass> {
@@ -769,5 +795,10 @@ struct MOToMAPPass : public M::MO::impl::MOToMAPBase<MOToMAPPass> {
 };
 
 } // namespace
+
+FailureOr<Operation *> lowerMOOpToMAP(Operation *op,
+                                      MOGG::MojoRegistry &registry) {
+  return lowerOp(op, registry);
+}
 
 } // namespace M::MO

@@ -28,7 +28,7 @@ struct WrapKernelsWithTraceOp
     MOGG::KernelStubOp stub = getOperation();
     // A MOGG-ABI stub is wrapped by `createKernelStub`, an MGP-ABI one by
     // `AddProfileScopeTracing`.
-    if (stub.getAbi() != MOGG::ABIKind::MAP)
+    if (stub.getAbi() != MOGG::ABIKind::MOGG)
       return;
 
     Block &body = stub.getBodyBlock();

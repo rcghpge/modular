@@ -200,8 +200,8 @@ struct EmitMojoState {
   /// Emit the shared output-store fusion trait + wrapper definitions
   /// (`kOutputStoreFusionDefs`: `OutputStoreFusion` +
   /// `_MoggOutputStoreFusionTensor`) into `structDefsBuilder` exactly once per
-  /// module, guarded by `emittedOutputStoreFusionArgDefs`. Both the MOGG-ABI
-  /// and MAP-ABI store-fusion emitters share this entry point.
+  /// module, guarded by `emittedOutputStoreFusionArgDefs`. The store-fusion
+  /// emitters share this entry point.
   void emitOutputStoreFusionDefsOnce();
 
 private:
@@ -328,7 +328,7 @@ public:
     } else if (isa<MGP::DeviceContextType, ContextType>(mlirType)) {
       return kStructDeviceContext;
     } else if (isa<PointerType>(mlirType)) {
-      // A raw data pointer at the MAP-ABI stub boundary.
+      // A raw data pointer at the MOGG-ABI stub boundary.
       return kComptimeOpaquePointer;
     } else if (isa<DimType>(mlirType)) {
       // A runtime dynamic dimension is passed as a plain `Int`.

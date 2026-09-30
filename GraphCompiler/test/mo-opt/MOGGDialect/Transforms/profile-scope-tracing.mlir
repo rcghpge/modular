@@ -20,12 +20,11 @@ mogg.kernel.stub @region_952 (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.async
   %3 = mogg.tensor.__init__(%0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
   %4 = mogg.tensor.__init__(%1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @cast_mogg %3, %4, %2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#mogg.profile_scope<"draft_forward", loc(unknown)>)
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %5 = mogg.async.ready : !mef.chain
   mogg.output %5 : !mef.chain
 }
 
-mogg.kernel.stub @cast_mogg (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_mogg (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
 
@@ -45,12 +44,11 @@ mogg.kernel.stub @unlabeled_region (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg
   %3 = mogg.tensor.__init__(%0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
   %4 = mogg.tensor.__init__(%1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @cast_mogg_unlabeled %3, %4, %2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>>
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %5 = mogg.async.ready : !mef.chain
   mogg.output %5 : !mef.chain
 }
 
-mogg.kernel.stub @cast_mogg_unlabeled (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_mogg_unlabeled (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
 
@@ -84,12 +82,11 @@ mogg.kernel.stub @region_glue_mismatch (%arg0: !mogg.async<!mef.chain>, %arg1: !
   mogg.call.stub @cast_step %g3, %g4, %g2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#glueStepA)
   %g5 = mogg.tensor.__init__(%g0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}> loc(#glueStepForeign)
   mogg.call.stub @cast_step %g3, %g4, %g2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#glueStepA)
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %g6 = mogg.async.ready : !mef.chain
   mogg.output %g6 : !mef.chain
 }
 
-mogg.kernel.stub @cast_step (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_step (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
 
@@ -117,12 +114,11 @@ mogg.kernel.stub @region_shared (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.as
   %sh3 = mogg.tensor.__init__(%sh0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
   %sh4 = mogg.tensor.__init__(%sh1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @cast_shared %sh3, %sh4, %sh2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#shared_a)
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %sh5 = mogg.async.ready : !mef.chain
   mogg.output %sh5 : !mef.chain
 } loc(fused[#shared_a, #shared_b])
 
-mogg.kernel.stub @cast_shared (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_shared (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
 
@@ -138,12 +134,11 @@ mogg.kernel.stub @region_color (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.asy
   %c3 = mogg.tensor.__init__(%c0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
   %c4 = mogg.tensor.__init__(%c1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @cast_mogg_color %c3, %c4, %c2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#mogg.profile_scope<"colored", loc(unknown), color = "orange">)
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %c5 = mogg.async.ready : !mef.chain
   mogg.output %c5 : !mef.chain
 }
 
-mogg.kernel.stub @cast_mogg_color (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_mogg_color (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
 
@@ -162,16 +157,15 @@ mogg.kernel.stub @region_color_conflict (%arg0: !mogg.async<!mef.chain>, %arg1: 
   %x4 = mogg.tensor.__init__(%x1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @cast_mogg_conflict1 %x3, %x4, %x2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#mogg.profile_scope<"conflict", loc(unknown), color = "orange">)
   mogg.call.stub @cast_mogg_conflict2 %x3, %x4, %x2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#mogg.profile_scope<"conflict", loc(unknown), color = "blue">)
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %x5 = mogg.async.ready : !mef.chain
   mogg.output %x5 : !mef.chain
 }
 
-mogg.kernel.stub @cast_mogg_conflict1 (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_mogg_conflict1 (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
 
-mogg.kernel.stub @cast_mogg_conflict2 (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_mogg_conflict2 (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
 
@@ -202,7 +196,6 @@ mogg.kernel.stub @region_ancestor (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.
   %a4 = mogg.tensor.__init__(%a1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @cast_step %a3, %a4, %a2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#step0)
   mogg.call.stub @cast_step %a3, %a4, %a2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#step1)
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %a5 = mogg.async.ready : !mef.chain
   mogg.output %a5 : !mef.chain
 }
@@ -225,11 +218,10 @@ mogg.kernel.stub @region_ancestor_single (%arg0: !mogg.async<!mef.chain>, %arg1:
   %s3 = mogg.tensor.__init__(%s0) {io = 1 : i32, mut = false} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>
   %s4 = mogg.tensor.__init__(%s1) {io = 0 : i32, mut = true} : (!mgp.buffer) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @cast_step_single %s3, %s4, %s2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"cpu", 0>> loc(#step_only)
-  mogg.async.__del__(%arg0, %arg1, %arg2, %arg3) : (!mogg.async<!mef.chain>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.buffer>, !mogg.async<!mgp.device_context<<"cpu", 0>>>) -> ()
   %s5 = mogg.async.ready : !mef.chain
   mogg.output %s5 : !mef.chain
 }
 
-mogg.kernel.stub @cast_step_single (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 0 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @cast_step_single (%arg0: !mo.tensor<[10], f32, {io = 1 : i32, mut = false}>, %arg1: !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, %arg2: !mogg.context) fusionInfo = "mo.cast" attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, sym_visibility = "private"} {
   mogg.output
 }
