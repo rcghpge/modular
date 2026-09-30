@@ -1832,8 +1832,7 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
             MOSH::ParamFromValueOp>(
           [this, parentRegion](auto op) { return lowerParam(parentRegion, op); })
       // Reshape/slice ops need a local MOOpLoweringState.
-      .Case<MO::Static::ReshapeOp, MO::AddSingletonDimOp, MO::SplitDimOp,
-            MO::MergeDimOp>([this](auto op) {
+      .Case<MO::Static::ReshapeOp>([this](auto op) {
         MGP::MOOpLoweringState opLoweringState(loweringState, op);
         return lowerReshapeImpl(opLoweringState, op.getInput(), op.getResult(),
                                 loweringState.getExecuteChain(), op.getType());

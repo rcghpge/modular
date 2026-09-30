@@ -1623,33 +1623,6 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// SplitDimOp
-//===----------------------------------------------------------------------===//
-LogicalResult SplitDimOp::canonicalize(SplitDimOp op,
-                                       PatternRewriter &rewriter) {
-  int64_t axis = op.getAxis().getLimitedValue();
-  TensorType resultTy = op.getResult().getType();
-
-  if (!resultTy.hasRank())
-    return rewriter.notifyMatchFailure(op->getLoc(),
-                                       "Result has dynamic rank.");
-
-  if (resultTy.getIntDim(axis) == 1) {
-    rewriter.replaceOpWithNewOp<AddSingletonDimOp>(
-        op, resultTy, op.getInput(),
-        IntegerAttr::get(op.getAxisAttr().getType(), axis));
-    return success();
-  }
-  if (resultTy.getIntDim(axis + 1) == 1) {
-    rewriter.replaceOpWithNewOp<AddSingletonDimOp>(
-        op, resultTy, op.getInput(),
-        IntegerAttr::get(op.getAxisAttr().getType(), axis + 1));
-    return success();
-  }
-  return failure();
-}
-
-//===----------------------------------------------------------------------===//
 // SplitOp
 //===----------------------------------------------------------------------===//
 LogicalResult SplitOp::fold(FoldAdaptor adaptor,

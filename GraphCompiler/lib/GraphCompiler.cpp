@@ -420,9 +420,6 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addPass(MGP::createSimplifyChainsPass());
   pm.addPass(MGP::createConcatInPlacePass());
-  // Note: LowerAlignmentsPass must be before Dynamic MemoryPlanning or it can
-  // erroneously pick up slices introduced by memory planning
-  pm.addPass(MGP::createLowerAlignmentsPass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
 
   // Run simple buffer reuse pass after moving code to `init()`

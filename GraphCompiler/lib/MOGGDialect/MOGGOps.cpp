@@ -5901,15 +5901,6 @@ OpFoldResult ToMGPFromOpaqueOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// AlignmentPlaceholderOp
-//===----------------------------------------------------------------------===//
-
-void AlignmentPlaceholderOp::walkDefinitions(
-    function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {
-  walkDef(getParamDecl(), {});
-}
-
-//===----------------------------------------------------------------------===//
 // AsTupleOp
 //===----------------------------------------------------------------------===//
 

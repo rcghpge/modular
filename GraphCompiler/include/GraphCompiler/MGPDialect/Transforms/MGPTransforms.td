@@ -21,19 +21,6 @@ def AsyncDataflowDependenciesTestPass : Pass<"mgp-async-dataflow-dependencies-te
 }
 
 //===----------------------------------------------------------------------===//
-// LowerAlignmentsPass
-//===----------------------------------------------------------------------===//
-
-def LowerAlignmentsPass : Pass<"mgp-lower-alignments", "MGP::ModelOp"> {
-  let summary = "Lowers alignment information to the kgen op from MGP";
-  let description = [{
-    Alignment can be modified by kernel or operations. This pass will
-    have heuristics which help determine when alignment from MGP buffers
-    are potentially modified and provide additional information in kgen for this.
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // SimplifyExtendLifetimesPass
 //===----------------------------------------------------------------------===//
 

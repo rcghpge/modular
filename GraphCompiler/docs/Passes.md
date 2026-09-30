@@ -978,32 +978,6 @@ Source:
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.td>
 
-### LowerAlignments
-
-#### Description
-
-Infers and propagates buffer alignment through `mgp` ops and writes concrete
-alignment values into `mogg.alignment.placeholder` via `kgen.param.declare`.
-
-#### Dialects
-
-Consumes and produces `mgp` (ModelOp), with `mogg` alignment placeholders and
-`kgen` parameter declarations.
-
-#### Additional notes
-
-The pass resolves `mogg.alignment.placeholder` ops into concrete
-`kgen.param.declare` alignment values by inferring alignment through MGP
-dataflow. This gives kernel generation a concrete alignment parameter for
-memory accesses. Memory planning introduces slices; slices change alignment
-(GCD with offset), so the pass must run before slices are introduced. Defaults
-to device preferred alignment when unknown.
-
-Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MGPDialect/Transforms/LowerAlignmentsPass.cpp>
-Pass definition:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.td>
-
 ## RMO passes
 
 ### LegalizeRMOOps
