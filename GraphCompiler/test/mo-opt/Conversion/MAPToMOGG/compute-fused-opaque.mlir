@@ -7,21 +7,21 @@
 // store-target capture (`%[[COUT]]`) survives unused -- emit still binds the
 // functor onto its slice.
 // CHECK-LABEL: mo.graph @matmul_add
-// CHECK:       mogg._tensor.create.epilogue {{.*}}capturing({{[^)]*}}) {{.*}}computeOutputArg = true
+// CHECK:       mogg.tensor.create.epilogue {{.*}}capturing({{[^)]*}}) {{.*}}computeOutputArg = true
 // CHECK-NEXT:  ^bb0(%[[VAL:.*]]: f32, %[[IDX:.*]]: !map.index<2>, %[[COUT:.*]]: !mogg.tensor_, %[[CZ:.*]]: !mogg.tensor_):
-// CHECK-NEXT:    %[[ZV:.*]] = mogg._tensor.load %[[CZ]][%[[IDX]]]
-// CHECK-NEXT:    %[[SUM:.*]] = mogg._call.elementwise[{{.*}}Add{{.*}}] (%[[VAL]], %[[ZV]])
+// CHECK-NEXT:    %[[ZV:.*]] = mogg.tensor.load %[[CZ]][%[[IDX]]]
+// CHECK-NEXT:    %[[SUM:.*]] = mogg.call.elementwise[{{.*}}Add{{.*}}] (%[[VAL]], %[[ZV]])
 // CHECK-NEXT:    mogg.yield %[[SUM]] : f32
 
 // With compute lambdas off the same graph keeps a classic store lambda, but
 // `computeOutputArg` still records what the kernel argument declares -- emit
 // must bind through the compute entry point either way.
 // NOCOMPUTE-LABEL: mo.graph @matmul_add
-// NOCOMPUTE:       mogg._tensor.create.epilogue {{.*}}computeOutputArg = true
+// NOCOMPUTE:       mogg.tensor.create.epilogue {{.*}}computeOutputArg = true
 // NOCOMPUTE-NEXT:  ^bb0(%{{.*}}: f32, %[[IDX:.*]]: !map.index<2>, %[[COUT:.*]]: !mogg.tensor_, %{{.*}}: !mogg.tensor_):
-// NOCOMPUTE-NEXT:    mogg._tensor.load
-// NOCOMPUTE-NEXT:    %[[SUM:.*]] = mogg._call.elementwise
-// NOCOMPUTE-NEXT:    mogg._tensor.store %[[COUT]][%[[IDX]]] = %[[SUM]]
+// NOCOMPUTE-NEXT:    mogg.tensor.load
+// NOCOMPUTE-NEXT:    %[[SUM:.*]] = mogg.call.elementwise
+// NOCOMPUTE-NEXT:    mogg.tensor.store %[[COUT]][%[[IDX]]] = %[[SUM]]
 mo.graph @matmul_add(
   %a: !mo.tensor<[8, 8], f32>,
   %b: !mo.tensor<[8, 8], f32>,
@@ -38,9 +38,9 @@ mo.graph @matmul_add(
 // it. `computeOutputArg` is still set, because the kernel argument is still a
 // `_FusedComputeOutputTensor`.
 // CHECK-LABEL: mo.graph @mixed_dtype
-// CHECK:       mogg._tensor.create.epilogue {{.*}}computeOutputArg = true
+// CHECK:       mogg.tensor.create.epilogue {{.*}}computeOutputArg = true
 // CHECK-NEXT:  ^bb0(%[[V:.*]]: f32, %[[I:.*]]: !map.index<2>, %[[CO:.*]]: !mogg.tensor_, %{{.*}}: !mogg.tensor_):
-// CHECK:         mogg._tensor.store %[[CO]][%[[I]]]
+// CHECK:         mogg.tensor.store %[[CO]][%[[I]]]
 mo.graph @mixed_dtype(
   %a: !mo.tensor<[2, 2], f32>,
   %b: !mo.tensor<[2, 2], f32>,
@@ -56,9 +56,9 @@ mo.graph @mixed_dtype(
 // stays at its `false` default, which the printer elides. `computeOutputArg`
 // sorts before `device`, so matching `attributes {device` proves it is absent.
 // CHECK-LABEL: mo.graph @plain_store
-// CHECK:       mogg._tensor.create.epilogue {{.*}}attributes {device =
+// CHECK:       mogg.tensor.create.epilogue {{.*}}attributes {device =
 // CHECK-NEXT:  ^bb0(%[[PV:.*]]: f32, %[[PI:.*]]: !map.index<1>, %[[PO:.*]]: !mogg.tensor_, %{{.*}}: !mogg.tensor_):
-// CHECK:         mogg._tensor.store %[[PO]][%[[PI]]]
+// CHECK:         mogg.tensor.store %[[PO]][%[[PI]]]
 mo.graph @plain_store(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%c, %b) : !mo.tensor<[4], f32>

@@ -397,7 +397,7 @@ static LogicalResult verifySymbolUsesForKernelDeclCall(
 // CallMaterializeOp
 //===----------------------------------------------------------------------===//
 
-ParseResult KernelRegionOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &result) {
   // Op operands: the `!mo.tensor` inputs, printed bare as `(%a, %b : types)`
   // (no `inputs` keyword).
   llvm::SMLoc operandsLoc = parser.getCurrentLocation();
@@ -429,10 +429,9 @@ ParseResult KernelRegionOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
     numChainOperands = 1;
   }
-  result.addAttribute(
-      KernelRegionOp::getOperandSegmentSizesAttrName(result.name),
-      parser.getBuilder().getDenseI32ArrayAttr(
-          {numInputOperands, numChainOperands}));
+  result.addAttribute(KernelOp::getOperandSegmentSizesAttrName(result.name),
+                      parser.getBuilder().getDenseI32ArrayAttr(
+                          {numInputOperands, numChainOperands}));
 
   // Results: an optional `-> types`.
   SmallVector<Type> resultTypes;
@@ -468,7 +467,7 @@ ParseResult KernelRegionOp::parse(OpAsmParser &parser, OperationState &result) {
   return parser.parseRegion(*result.addRegion(), bodyArgs);
 }
 
-void KernelRegionOp::print(OpAsmPrinter &p) {
+void KernelOp::print(OpAsmPrinter &p) {
   // Op operands: the `!mo.tensor` inputs, printed bare.
   p << " (";
   p.printOperands(getInputs());
@@ -541,7 +540,7 @@ void KernelRegionOp::print(OpAsmPrinter &p) {
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 }
 
-LogicalResult KernelRegionOp::verify() {
+LogicalResult KernelOp::verify() {
   // A chain result, if present, is always last (mirrors
   // `IterForeachOp::verify()`/`KernelOp::maybeGetOutChain()`) and, like the
   // input chain, never gets a body block argument -- only the preceding
@@ -611,8 +610,8 @@ LogicalResult KernelRegionOp::verify() {
   // One kernel, one call -- counting the `mogg.call.stub` outlining leaves.
   size_t numCalls = 0;
   for (Operation &bodyOp : getBody().front())
-    if (isa<CallOpaqueOp, CallForeachRegionOp, CallElementwiseV2Op,
-            CallShapeV2Op, CallStubOp>(bodyOp))
+    if (isa<CallOpaqueOp, CallForeachOp, CallElementwiseOp, CallShapeOp,
+            CallStubOp>(bodyOp))
       ++numCalls;
   if (numCalls != 1)
     return emitOpError() << "expected exactly one call in the body, got "
@@ -642,7 +641,7 @@ LogicalResult KernelRegionOp::verify() {
   return success();
 }
 
-Value KernelRegionOp::getOutputChain() {
+Value KernelOp::getOutputChain() {
   mlir::ResultRange outputs = getOutputs();
   if (outputs.empty())
     return nullptr;
@@ -650,7 +649,7 @@ Value KernelRegionOp::getOutputChain() {
   return isa<MO::ChainType>(last.getType()) ? last : Value();
 }
 
-// Lowers a `mogg._kernel` into a `mogg.generic.compiled.region`: the kernel
+// Lowers a `mogg.kernel` into a `mogg.generic.compiled.region`: the kernel
 // stub is already outlined (OutlineKernelsIntoFunctions), so we only
 // materialize the region operands (input buffers, freshly-allocated output
 // buffers, dim values, device context), build the region, unpack + cast each
@@ -659,12 +658,12 @@ Value KernelRegionOp::getOutputChain() {
 //
 // TODO(GEX-3965): buffer allocation / context / dim materialization should move
 // to dedicated pre-MGP passes, leaving this a genuinely thin lowering.
-LogicalResult KernelRegionOp::lower(MGP::MOGraphLoweringState &loweringState) {
+LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
   return lowerToCompiledRegion(loweringState) ? success() : failure();
 }
 
-MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
-    MGP::MOGraphLoweringState &loweringState) {
+MOGG::GenericCompiledRegionOp
+KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState st(loweringState, getOperation());
   MLIRContext *ctx = getContext();
   Location loc = getLoc();
@@ -683,7 +682,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
       ++numOutputs;
   unsigned numArgs = kernelBody.getNumArguments();
   if (numArgs < numInputs + numOutputs + 1) {
-    emitOpError("MOGGToMGP: malformed mogg._kernel body");
+    emitOpError("MOGGToMGP: malformed mogg.kernel body");
     return nullptr;
   }
 
@@ -695,7 +694,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   Value inChain = loweringState.getCurrentExecuteChain();
   if (Value opChain = getChain()) {
     Value lowered = loweringState.lookupExecuteLoweredValue(opChain);
-    ASSERT_STREAM(lowered, << "no lowered value for mogg._kernel input chain: "
+    ASSERT_STREAM(lowered, << "no lowered value for mogg.kernel input chain: "
                            << opChain);
     inChain = lowered;
   }
@@ -740,7 +739,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   // buffer to allocate for a sequencing token), so it produces one entry per
   // non-chain result -- `numOutputs`, not the unfiltered `getNumResults()`.
   assert(storage.size() == numOutputs &&
-         "expected one output storage per non-chain mogg._kernel result");
+         "expected one output storage per non-chain mogg.kernel result");
   for (const MGP::MOOutputStorage &out : storage) {
     operands.push_back(out.buffer);
     semantics.push_back(InOutSignatureAttr::kOut);
@@ -755,7 +754,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     auto dimType =
         cast<MOGG::DimType>(kernelBody.getArgument(argIdx).getType());
     if (!dimType.getName()) {
-      emitOpError("MOGGToMGP: mogg._kernel dim arg lacks a name");
+      emitOpError("MOGGToMGP: mogg.kernel dim arg lacks a name");
       return nullptr;
     }
     ErrorOr<Value> dimValue = loweringState.lowerExpression(
@@ -782,7 +781,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
     SmallVector<DeviceRefAttr> devices =
         MO::getUniqueDevicesFromKernel(getOperation());
     if (devices.size() != numContexts) {
-      emitOpError("MOGGToMGP: mogg._kernel has ")
+      emitOpError("MOGGToMGP: mogg.kernel has ")
           << numContexts << " context args but " << devices.size()
           << " unique devices";
       return nullptr;
@@ -841,7 +840,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   for (unsigned i = 0; i < numArgs; ++i) {
     Value unpacked = MOGG::AsyncUnpackOp::create(
         builder, loc, regionBody->getArgument(i + 1));
-    // `mogg._rebind` reconciles the unpacked MGP handle (`!mgp.buffer` /
+    // `mogg.rebind` reconciles the unpacked MGP handle (`!mgp.buffer` /
     // `!mgp.device_context` / a dim value) with the stub's codegen handle
     // (`!mogg.pointer_` / `!mogg.context` / `!mogg.dim_`). For `!mogg.pointer_`
     // it emits real Mojo -- bridging the unpacked `OwnedByteBuffer` to the raw
@@ -921,7 +920,7 @@ MOGG::GenericCompiledRegionOp KernelRegionOp::lowerToCompiledRegion(
   }
   if (opaqueKernelResult) {
     if (!opaqueResult) {
-      emitOpError("MOGGToMGP: mogg._kernel returns an opaque but its body "
+      emitOpError("MOGGToMGP: mogg.kernel returns an opaque but its body "
                   "produces none");
       return nullptr;
     }
@@ -1384,8 +1383,8 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
   // The MOGG-ABI stub takes raw runtime handles as arguments -- one
   // `!mogg.pointer_` per input then per output tensor, then the dynamic
   // `!mogg.dim_`s, then a `!mogg.context` -- and reconstructs the codegen
-  // tensors internally (`mogg._shape.create` / `mogg._tensor.create`) before
-  // invoking the opaque kernel's execute function (`mogg._call.opaque`). Unlike
+  // tensors internally (`mogg.shape.create` / `mogg.tensor.create`) before
+  // invoking the opaque kernel's execute function (`mogg.call.opaque`). Unlike
   // the MGP ABI there is no trait lane, no async wrapping, and no `void**`
   // marshalling: the body ops emit straight-line Mojo.
   // `mlirTypeToMojoType` renders any opaque as a bare `OpaquePointer`, but an
@@ -1568,7 +1567,7 @@ LogicalResult TensorCreateReshapeOp::emitMojo(EmitMojoState &state) {
   // from this shape), reshape's runtime stride is a row-major
   // de-linearization of its output shape's own values, so any dim this op
   // doesn't know until runtime has to arrive as a real argument: `$shape`
-  // (the same `!mogg.shape` Coord `mogg._tensor.create` builds) converted to
+  // (the same `!mogg.shape` Coord `mogg.tensor.create` builds) converted to
   // an `IndexList` via `coord_to_index_list`.
   auto reshapeCreatePrimDecl =
       state.registry.lookupPrimitive(TensorCreateReshapeOp::getOperationName());
@@ -1592,7 +1591,7 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
   // the incoming index -- a `Coord` here -- to an `IndexList`, remap it to the
   // output shape's coordinates preserving the row-major linear offset via the
   // `mogg.index.reshape` primitive, then wrap the result back into a `Coord`
-  // for the downstream `mogg._tensor.store`. Static dims ride as comptime
+  // for the downstream `mogg.tensor.store`. Static dims ride as comptime
   // `IntTuple`s so the primitive specializes the (de)linearization. When an
   // inner dim is dynamic, its runtime from/to shapes were threaded in as
   // epilogue shape captures (`$dynamicShapes`) and passed as extra `IndexList`
@@ -1906,7 +1905,7 @@ LogicalResult TensorLoadOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult TensorStoreOp::emitMojo(EmitMojoState &state) {
   // Reached recursively from whichever caller sets up `currentLambdaInfo` --
-  // `TensorCreateEpilogueOp`'s `__call__` and `CallForeachRegionOp`'s closure
+  // `TensorCreateEpilogueOp`'s `__call__` and `CallForeachOp`'s closure
   // each have a different comptime parameter list, hence reading
   // width/alignment/builder by role rather than assuming either shape.
   const FusedTensorArg &arg = state.getFusedTensorArgFor(getTensor());
@@ -1939,7 +1938,7 @@ LogicalResult TensorStoreOp::emitMojo(EmitMojoState &state) {
 /// One fused-region functor capture, as the enclosing function sees it.
 /// `!mogg.tensor_` is an opaque handle (see MOGGTypes.td), so shape / dtype /
 /// mutability live on the op that CREATES the capture, not on the SSA value --
-/// they are read from there, exactly as `CallForeachRegionOp::emitMojo` does.
+/// they are read from there, exactly as `CallForeachOp::emitMojo` does.
 struct FusedCaptureInfo {
   /// The capture's `ManagedTensorSlice`, decomposed into device-passable parts:
   /// a bare pointer and its runtime shape/strides are enclosing-function locals
@@ -1967,14 +1966,14 @@ collectFusedCaptureInfos(EmitMojoState &state, Operation *op,
                          ValueRange captures) {
   SmallVector<FusedCaptureInfo> infos;
   for (Value cap : captures) {
-    // Element type / mutability are read off whichever `mogg._tensor.create*`
+    // Element type / mutability are read off whichever `mogg.tensor.create*`
     // op produced this capture through `TensorCreateInterface` -- everything
     // else here comes off the capture's own already-emitted Mojo value
     // instead (see below).
     auto create = cap.getDefiningOp<TensorCreateInterface>();
     if (!create)
       return op->emitOpError(
-          "capture must be a mogg._tensor.create(.slice|.broadcast|"
+          "capture must be a mogg.tensor.create(.slice|.broadcast|"
           ".transpose|.reshape) result");
     ErrorOr<DType> capDtypeOr = M::MO::fromMLIRType(create.getElementType());
     if (capDtypeOr.isError())
@@ -2062,7 +2061,7 @@ LogicalResult TensorGetPtrOp::emitMojo(EmitMojoState &state) {
 static FailureOr<unsigned> fusedRegionRank(Operation *op, Value shape) {
   auto shapeCreate = shape.getDefiningOp<ShapeCreateOp>();
   if (!shapeCreate)
-    return op->emitOpError("shape operand must come from a mogg._shape.create");
+    return op->emitOpError("shape operand must come from a mogg.shape.create");
   unsigned rank = shapeCreate.getShape().getRank();
   return rank == 0 ? 1 : rank;
 }
@@ -2699,7 +2698,7 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
-bool CallForeachRegionOp::isThrows() { return true; }
+bool CallForeachOp::isThrows() { return true; }
 
 // Collects the distinct MO dtypes touched anywhere in `body` as a
 // `StaticTuple[DType, N]` MojoValue for `get_simd_width_for_dtypes` --
@@ -2728,7 +2727,7 @@ static FailureOr<MojoValue> collectDtypesTuple(EmitMojoState &state,
       {}, dtypeMojoValues);
 }
 
-LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
+LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
   // Emits the per-index closure directly (not a struct + `__call__` the way
   // `TensorCreateEpilogueOp` builds one), then calls `_foreach` with it.
   // `_foreach`'s `Lambda` parameter needs a blanket `{var}` capture clause,
@@ -2770,7 +2769,7 @@ LogicalResult CallForeachRegionOp::emitMojo(EmitMojoState &state) {
   // mirroring legacy `foreach_fusion`'s own computation.
   FailureOr<MojoValue> dtypesTuple = collectDtypesTuple(state, getBody());
   if (failed(dtypesTuple))
-    return emitOpError("mogg._call.foreach: could not determine capture dtype");
+    return emitOpError("mogg.call.foreach: could not determine capture dtype");
   MojoValue simdWidth =
       MojoValue(kFnGetSimdWidthForDtypes)[{*dtypesTuple, targetStr}]({}, {});
 
@@ -2889,7 +2888,7 @@ void KernelStubOp::print(OpAsmPrinter &p) {
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
 }
 
-void KernelRegionOp::getEffects(
+void KernelOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   // Same rule as `KernelOp::getEffects` above, on the MAP-lowered kernel.
   if (!getOutputParamDecls().empty())
@@ -3397,8 +3396,7 @@ LogicalResult RebindOp::emitMojo(EmitMojoState &state) {
     return success();
   }
 
-  return emitOpError(
-             "mogg._rebind: unsupported result type for Mojo emission: ")
+  return emitOpError("mogg.rebind: unsupported result type for Mojo emission: ")
          << resultType;
 }
 
@@ -3727,7 +3725,7 @@ static bool canProjectTileTensorForDeviceLabel(StringRef label) {
 /// canProjectTileTensor](ptr, layout)`, defining the struct once per module.
 /// The runtime args are a `Pointer[NoneType, MutAnyOrigin]` and the layout;
 /// callers source them from a stub-bound capture or a codegen slice (via
-/// `mogg._trait.create`).
+/// `mogg.trait.create`).
 static MojoValue emitDenseTensorArg(EmitMojoState &state, MojoValue dtype,
                                     MojoValue layoutType, MojoValue alignment,
                                     MojoValue io, MojoValue devicePassable,
@@ -3812,7 +3810,7 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
   // The operand is the reconstructed codegen tensor -- a `ManagedTensorSlice`
-  // from `mogg._tensor.create`, or a view slice. We re-present it as the
+  // from `mogg.tensor.create`, or a view slice. We re-present it as the
   // conforming trait argument, sourcing the pointer and layout off the slice
   // itself so any producer works, including a view whose layout is not
   // row-major. dtype and the layout's own Mojo type are the struct parameters;
@@ -3829,7 +3827,7 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
                     ManagedTensorSliceRef(slice).unsafePtr().text)
           .str());
 
-  // Device is recorded on the op (like `mogg._tensor.create`), so alignment and
+  // Device is recorded on the op (like `mogg.tensor.create`), so alignment and
   // the device-passable / tile-projection flavors are picked locally without
   // reaching to the enclosing stub.
   StringRef deviceLabel = getDevice();
@@ -3933,7 +3931,7 @@ LogicalResult CallStubOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     return failure();
 
   // The MOGG ABI is the advanced-fusion outlining path (a stub outlined from a
-  // `mogg._kernel`); it reuses `mogg.call.stub` as its call site.
+  // `mogg.kernel`); it reuses `mogg.call.stub` as its call site.
   if (calleeFunc->getAbi() != ABIKind::MOGG)
     return emitError("Call site should be in the MOGG ABI");
 
@@ -4135,11 +4133,11 @@ LogicalResult ChainSinkOp::canonicalize(ChainSinkOp sinkOp,
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// CallElementwiseV2Op
+// CallElementwiseOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult
-CallElementwiseV2Op::verifySymbolUses(SymbolTableCollection &symbolTable) {
+CallElementwiseOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return verifySymbolUsesForKernelDeclCall(
       *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
         if (!decl.getElementwise())
@@ -4149,17 +4147,17 @@ CallElementwiseV2Op::verifySymbolUses(SymbolTableCollection &symbolTable) {
       });
 }
 
-LogicalResult CallElementwiseV2Op::emitMojo(EmitMojoState &state) {
+LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
   const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
   ASSERT_STREAM(
       lambdaInfo.lambdaBuilder,
-      "CallElementwiseV2Op::emitMojo reached without currentLambdaInfo set");
+      "CallElementwiseOp::emitMojo reached without currentLambdaInfo set");
 
   SmallVector<MojoValue> inputs = state.getMojoValuesFor(getInputs());
 
   // `$index` is present only when `CallElementwiseOp::lowerToMOGG` decided
   // this kernel wants it; its MLIR-level value is a `layout.Coord` (the only
-  // representation `CallForeachRegionOp::emitMojo`'s closure produces), so
+  // representation `CallForeachOp::emitMojo`'s closure produces), so
   // it needs converting to the `IndexList` the kernel expects.
   if (Value index = getIndex())
     inputs.push_back(
@@ -4231,7 +4229,7 @@ LogicalResult EmptyBufferOp::emitMojo(EmitMojoState &state) {
 // MOGG_KernelCallInterface methods
 
 LogicalResult
-CallShapeV2Op::verifySymbolUses(SymbolTableCollection &symbolTable) {
+CallShapeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   auto decl = symbolTable.lookupNearestSymbolFrom<ShapeFunctionDeclOp>(
       *this, getCalleeAttr());
   if (!decl)
@@ -4240,9 +4238,9 @@ CallShapeV2Op::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return success();
 }
 
-bool CallShapeV2Op::isThrows() { return getIsThrows(); }
+bool CallShapeOp::isThrows() { return getIsThrows(); }
 
-LogicalResult CallShapeV2Op::emitMojo(EmitMojoState &state) {
+LogicalResult CallShapeOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> kernelOperands;
   for (Value operand : getOperands())
     kernelOperands.push_back(state.getMojoValueFor(operand));
@@ -4300,7 +4298,7 @@ LogicalResult ShapeResultGetItemOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// ConstantScalarV2Op
+// ConstantScalarOp
 //===----------------------------------------------------------------------===//
 
 /// Convert a scalar-constant value attribute (an IntegerAttr or FloatAttr) to a
@@ -4338,7 +4336,7 @@ scalarConstantAttrToMojoLiteral(TypedAttr attr) {
   return MojoValue(floatAttr.getValue());
 }
 
-LogicalResult ConstantScalarV2Op::verify() {
+LogicalResult ConstantScalarOp::verify() {
   if (getValue().getType() != getResult().getType())
     return emitOpError("value attribute type ")
            << getValue().getType() << " does not match result type "
@@ -4346,7 +4344,7 @@ LogicalResult ConstantScalarV2Op::verify() {
   return success();
 }
 
-LogicalResult ConstantScalarV2Op::emitMojo(EmitMojoState &state) {
+LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
   std::optional<MojoValue> literal =
       scalarConstantAttrToMojoLiteral(getValue());
   if (!literal)

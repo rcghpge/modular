@@ -396,7 +396,7 @@ void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
                               const MoggPipelineOptions &) {
   // Finalize the advanced-fusion MOGG codegen form: conform each call's
   // operands to its callee signature (scalars, variadic tuples, trait args),
-  // then outline each mogg._kernel into a mogg.kernel.stub.
+  // then outline each mogg.kernel into a mogg.kernel.stub.
   pm.addPass(MOGG::createConformCallOperands());
   pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
   pm.addPass(MOGG::createWrapKernelsWithTraceOp());

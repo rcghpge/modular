@@ -220,12 +220,12 @@ def OutlineKernels: Pass<"mogg-outline-kernels", "ModuleOp"> {
 
 def OutlineKernelsIntoFunctions
     : Pass<"mogg-outline-kernels-into-functions", "mlir::ModuleOp"> {
-  let summary = "Outline each `mogg._kernel` body into a `mogg.kernel.stub`.";
+  let summary = "Outline each `mogg.kernel` body into a `mogg.kernel.stub`.";
   let description = [{
-    Moves each `mogg._kernel` body into a module-level `mogg.kernel.stub`
+    Moves each `mogg.kernel` body into a module-level `mogg.kernel.stub`
     labeled with the `MAP` ABI, and replaces the kernel body with a single
     `mogg.call.stub` forwarding the kernel's pointer/dim/context block arguments
-    to the stub. The `mogg._kernel` container is kept: it carries the
+    to the stub. The `mogg.kernel` container is kept: it carries the
     `!mo.tensor` interface that `MOGGToMGP` later lowers by unpacking the async
     operands into the handles the stub consumes.
 
@@ -503,9 +503,9 @@ def ConformCallOperands
   let description = [{
     Inspects the signatures of `mogg` call ops and inserts the operand
     conversion ops each callee requires: a scalar argument's tensor is wrapped
-    in `mogg._scalar.create`, a variadic run is packed into a
-    `mogg._tuple.create`, and a trait-bound argument (`Tensor` / `DenseTensor` /
-    `TileTensorable`) is wrapped in a `mogg._trait.create` so the raw
+    in `mogg.scalar.create`, a variadic run is packed into a
+    `mogg.tuple.create`, and a trait-bound argument (`Tensor` / `DenseTensor` /
+    `TileTensorable`) is wrapped in a `mogg.trait.create` so the raw
     `!mogg.tensor_` reaches the kernel as the conforming trait argument.
     Deferred out of `MAPToMOGG` to keep the fusion IR simpler and each
     `::emitMojo` a local, 1:1 lowering.

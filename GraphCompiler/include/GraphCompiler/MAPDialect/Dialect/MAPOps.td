@@ -64,7 +64,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     the op. The op result matching each output carries the filled tensor out.
     When every result is produced this way (the common case today), the body
     has no terminator: the output block arguments themselves are the results,
-    the same destination-passing-style convention `mogg._kernel` uses. A
+    the same destination-passing-style convention `mogg.kernel` uses. A
     trailing `map.yield` is only needed if some `map.call.opaque` in the body
     produces an actual (non-DPS) return value that isn't already one of the
     output block arguments.
@@ -84,7 +84,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     A kernel that mutates memory takes an `!mo.chain` through a dedicated
     `$inputChain` operand (rather than an ordinary, ambiguous `$inputs` entry
     found by scanning for a chain-typed value) and returns one as the trailing
-    entry of `results`. Like `mogg._kernel`'s and `map.iter.foreach`'s chain,
+    entry of `results`. Like `mogg.kernel`'s and `map.iter.foreach`'s chain,
     it is pure sequencing plumbing the body never touches: it has NO body block
     argument on either side and never reaches the wrapped `map.call.opaque` --
     no opaque kernel's `execute` takes a chain (it writes memory in place and
@@ -329,7 +329,7 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     Variadic<AnyType>:$inputs,
     Variadic<AnyType>:$outputs,
     // Carries the source op's `MO_SameVariadicOperandSize` trait (lost when the
-    // MO op became a call) so the eventual `mogg._call.opaque` can split a flat
+    // MO op became a call) so the eventual `mogg.call.opaque` can split a flat
     // operand list into equal-length variadic groups -- a bundled collective's
     // N peer inputs and N signal buffers, say.
     DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize

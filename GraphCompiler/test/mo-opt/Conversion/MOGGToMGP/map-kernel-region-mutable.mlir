@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-mutable-loads --map-outline-structured-kernel-bodies --map-to-mogg --mogg-conform-call-operands --mogg-outline-kernels-into-functions --mogg-to-mgp > %t
 // RUN: FileCheck %s < %t
 
-// A `!mo.buffer` operand of a new-path mogg._kernel is written in place by the
+// A `!mo.buffer` operand of a new-path mogg.kernel is written in place by the
 // body, so the region must give it the mutable signature (`m`) and not the
 // input one (`i`): MGP reads that signature to decide whether the kernel writes
 // the buffer, so an input-signature buffer makes it treat the write as a read

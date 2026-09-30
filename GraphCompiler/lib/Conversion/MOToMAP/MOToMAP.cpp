@@ -153,7 +153,7 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
   // last result (the codebase-wide convention -- see e.g. mo.mutable.store).
   // `map.iter.opaque` threads it through a dedicated `$inputChain` operand and
   // a trailing result instead of an ordinary, ambiguous `inputs`/`results`
-  // entry -- and, like `map.iter.foreach`/`mogg._kernel`, keeps it out of the
+  // entry -- and, like `map.iter.foreach`/`mogg.kernel`, keeps it out of the
   // body entirely (no block argument, never a `map.call.opaque` operand): it
   // is pure sequencing plumbing no opaque kernel's `execute` reads.
   ValueRange operands = op->getOperands();

@@ -8,7 +8,7 @@
 // nested regions.
 
 // CHECK-LABEL: mo.graph @broadcast_add_in_while
-// CHECK:       mogg._tensor.create.broadcast
+// CHECK:       mogg.tensor.create.broadcast
 // CHECK-NOT:   map.index.broadcast<
 mo.graph @broadcast_add_in_while(
     %arg0: !mo.tensor<[2], f32>,
@@ -28,7 +28,7 @@ mo.graph @broadcast_add_in_while(
 // way, so cover a branch too.
 
 // CHECK-LABEL: mo.graph @broadcast_add_in_if
-// CHECK:       mogg._tensor.create.broadcast
+// CHECK:       mogg.tensor.create.broadcast
 // CHECK-NOT:   map.index.broadcast<
 mo.graph @broadcast_add_in_if(
     %arg0: !mo.tensor<[2], f32>,

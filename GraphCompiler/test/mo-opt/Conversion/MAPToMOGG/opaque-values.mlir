@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mogg-rewrite-opaque-types --mo-to-map --map-to-mogg | FileCheck %s
 
-// An `!mo.opaque` crosses a `mogg._kernel` boundary as itself, not as a
+// An `!mo.opaque` crosses a `mogg.kernel` boundary as itself, not as a
 // `!mogg.pointer_` it is rebuilt from: it carries no shape, so there is
 // nothing to reconstruct. Which side it sits on decides whether it gets a body
 // block argument at all.
@@ -9,7 +9,7 @@
 // argument -- typed with the opaque itself, and passed straight to the call.
 // As a RESULT it is not: the kernel allocates it internally and returns it, so
 // there is no caller-allocated destination to point at. It gets no block
-// argument, `mogg._call.opaque` grows a real result for it, and the kernel
+// argument, `mogg.call.opaque` grows a real result for it, and the kernel
 // hands it out with `mogg.output`.
 //
 // Tensors keep their existing treatment throughout, so the consumer below
@@ -17,10 +17,10 @@
 
 // An opaque RESULT: no `inputs`/`outputs` groups at all, just the context.
 // CHECK-LABEL: mo.graph @opaque_result
-// CHECK: mogg._kernel () -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
+// CHECK: mogg.kernel () -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 // CHECK-NOT: outputs (
 // CHECK: context (%[[CTX:.*]]: !mogg.context)
-// CHECK: %[[CALL:.*]] = mogg._call.opaque @{{.*}}MakeSimdPair {kernel_param = {P0 = 4 : i64, P1 = 8 : i64}} -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
+// CHECK: %[[CALL:.*]] = mogg.call.opaque @{{.*}}MakeSimdPair {kernel_param = {P0 = 4 : i64, P1 = 8 : i64}} -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 // CHECK: mogg.output %[[CALL]] : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 mo.graph @opaque_result() -> !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> {
   %pair = mo.custom {
@@ -33,15 +33,15 @@ mo.graph @opaque_result() -> !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> {
 
 // An opaque INPUT beside a tensor output: the opaque is its own block arg and
 // reaches the call directly, while the tensor still goes through
-// `mogg._shape.create` / `mogg._tensor.create` from a pointer.
+// `mogg.shape.create` / `mogg.tensor.create` from a pointer.
 // CHECK-LABEL: mo.graph @opaque_input
-// CHECK: mogg._kernel (%{{.*}} : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>) -> !mo.tensor<[12], si32>
+// CHECK: mogg.kernel (%{{.*}} : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>) -> !mo.tensor<[12], si32>
 // CHECK: inputs (%[[IN:.*]]: !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>)
 // CHECK: outputs (%[[OP:.*]]: !mogg.pointer_)
 // CHECK: context (%[[CTX:.*]]: !mogg.context)
-// CHECK: %[[SH:.*]] = mogg._shape.create() {shape = #mosh<ape[12]> : !mosh.ape} : () -> !mogg.shape
-// CHECK: %[[OT:.*]] = mogg._tensor.create(%[[OP]], %[[SH]]) {{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK: mogg._call.opaque @{{.*}}ParameterizedOpaqueType inputs(%[[IN]] : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>) outputs(%[[OT]] : !mogg.tensor_)
+// CHECK: %[[SH:.*]] = mogg.shape.create() {shape = #mosh<ape[12]> : !mosh.ape} : () -> !mogg.shape
+// CHECK: %[[OT:.*]] = mogg.tensor.create(%[[OP]], %[[SH]]) {{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: mogg.call.opaque @{{.*}}ParameterizedOpaqueType inputs(%[[IN]] : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>) outputs(%[[OT]] : !mogg.tensor_)
 mo.graph @opaque_input(
     %pair: !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>
 ) -> !mo.tensor<[12], si32> {

@@ -20,7 +20,7 @@
 // CHECK-LABEL: mogg.kernel.stub @relu_mogg
 // CHECK:         mogg.try {
 // CHECK:           mogg.with_trace
-// CHECK:             mogg._call.foreach
+// CHECK:             mogg.call.foreach
 // CHECK:           }
 // CHECK:           mogg.yield
 // CHECK:         } except {

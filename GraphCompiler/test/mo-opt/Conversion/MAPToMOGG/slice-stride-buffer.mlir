@@ -3,14 +3,14 @@
 // A hoisted slice view whose $input is a buffer rather than a tensor -- what
 // `LoopInvariantViewMotion` produces once `FuseMutableLoads` has retyped an
 // in-place kernel's load target. The view re-addresses mutable storage, so
-// `mogg._tensor.create.slice` has to carry `mut = true`; its result stays a
+// `mogg.tensor.create.slice` has to carry `mut = true`; its result stays a
 // `!mogg.tensor_`, since the view is only loaded from. The tensor case is
 // the contrast: same lowering, `mut = false`.
 
 // CHECK-LABEL: mo.graph @sliceStrideOverBuffer
-// CHECK:       mogg._tensor.create({{%[^ ]+}}, {{%[^ ]+}})
+// CHECK:       mogg.tensor.create({{%[^ ]+}}, {{%[^ ]+}})
 // CHECK-SAME:    -> !mogg.buffer_
-// CHECK:       mogg._tensor.create.slice
+// CHECK:       mogg.tensor.create.slice
 // CHECK-SAME:    mut = true
 // CHECK-SAME:    (!mogg.buffer_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
 mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
@@ -32,7 +32,7 @@ mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[
 }
 
 // CHECK-LABEL: mo.graph @sliceStrideOverTensor
-// CHECK:       mogg._tensor.create.slice
+// CHECK:       mogg.tensor.create.slice
 // CHECK-SAME:    mut = false
 // CHECK-SAME:    (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
 mo.graph @sliceStrideOverTensor(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {

@@ -5,7 +5,7 @@
 
 // CHECK-LABEL: mogg.kernel.stub @add_mogg
 // CHECK:         mogg.with_trace {
-// CHECK:           mogg._call.foreach
+// CHECK:           mogg.call.foreach
 // CHECK:           mogg.yield
 // CHECK:         }
 // CHECK:         mogg.output

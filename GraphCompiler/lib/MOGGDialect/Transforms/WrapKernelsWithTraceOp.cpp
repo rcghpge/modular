@@ -43,8 +43,8 @@ struct WrapKernelsWithTraceOp
     for (Operation &op : body) {
       if (&op == terminator || isa<MOGG::WithTraceOp>(op))
         continue;
-      seenCall |= isa<MOGG::CallOpaqueOp, MOGG::CallForeachRegionOp,
-                      MOGG::CallShapeV2Op>(op);
+      seenCall |=
+          isa<MOGG::CallOpaqueOp, MOGG::CallForeachOp, MOGG::CallShapeOp>(op);
       if (seenCall)
         traced.push_back(&op);
     }

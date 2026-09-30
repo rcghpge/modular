@@ -78,7 +78,7 @@ void collectDynamicDims(Operation *root, MAPToMOGGState &state) {
   });
 }
 
-// Materializes a `!mogg.shape` for `shapeAttr` via `mogg._shape.create`.
+// Materializes a `!mogg.shape` for `shapeAttr` via `mogg.shape.create`.
 // Canonicalizes every dynamic dim in the shape ATTR to one uniform `dyn`
 // placeholder so shapes carrying different symbols (e.g. `[M, K]` vs `[N,
 // K]`) dedup to `[dyn, dyn]` / `[dyn, K]`. The `!mogg.dim_` OPERANDS stay the
@@ -107,8 +107,8 @@ Value buildShape(Location loc, MOSH::ShapeAttr shapeAttr,
 // Reconstructs an `!mogg.tensor_` for `tensorType` (a tensor, or a buffer --
 // e.g. one `FuseMutableLoads` fused a load's buffer into in place of the
 // tensor operand it used to read -- read via `MO::castFromTensorLike`) from
-// the `!mogg.pointer_` block argument `ptr`, via `mogg._shape.create` +
-// `mogg._tensor.create`. `io`/`isMut` distinguish immutable inputs from
+// the `!mogg.pointer_` block argument `ptr`, via `mogg.shape.create` +
+// `mogg.tensor.create`. `io`/`isMut` distinguish immutable inputs from
 // mutable outputs.
 Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
                   bool isMut, MAPToMOGGState &state) {
@@ -121,7 +121,7 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
   // (`Buffer` kind); a `!mo.tensor` -- even a mutable output -- reconstructs as
   // a `!mogg.tensor_` (`Tensor` kind). Buffer-ness (the kind) is thus a
   // property of the operand type, while `$mut` is the store-side mutability
-  // (true for buffers and for output tensors alike); `mogg._tensor.create`'s
+  // (true for buffers and for output tensors alike); `mogg.tensor.create`'s
   // verifier only requires a `!mogg.buffer_` to be mutable.
   bool isBuffer = isa<MO::BufferType>(tensorType);
   Type resultType = isBuffer ? Type(MOGG::BufferType::get(ctx))
@@ -135,7 +135,7 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
 
 } // namespace
 
-// mo.invoke_shape_func -> mogg._kernel wrapping a mogg._call.shape. The one
+// mo.invoke_shape_func -> mogg.kernel wrapping a mogg.call.shape. The one
 // kernel here that is not destination-passing: the shape leaves by value, and
 // the dims it defines ride in `outputParamDecls`.
 LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
@@ -164,7 +164,7 @@ LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
   // Host-only.
   state.device = MO::getDeviceOrDefaultAny(op);
 
-  auto kernel = MOGG::KernelRegionOp::create(
+  auto kernel = MOGG::KernelOp::create(
       builder, loc, /*resultTypes=*/TypeRange{shapeResultType}, inputs,
       /*chain=*/Value(),
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)),
@@ -204,7 +204,7 @@ LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
           param.getName(), normalizeKernelParameter(param.getValue())));
 
   bool isThrows = shapeDecl.getFunction().getSignature().isThrows();
-  auto call = MOGG::CallShapeV2Op::create(
+  auto call = MOGG::CallShapeOp::create(
       builder, loc, shapeResultType,
       FlatSymbolRefAttr::get(shapeDecl.getSymNameAttr()),
       isThrows ? builder.getUnitAttr() : nullptr, callOperands,
@@ -217,7 +217,7 @@ LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
   return success();
 }
 
-// map.constant -> mogg.buffer.constant + mogg._tensor.create. The constant has
+// map.constant -> mogg.buffer.constant + mogg.tensor.create. The constant has
 // no operand to arrive on, so its bytes become a constant buffer and the tensor
 // is rebuilt from that pointer like any input. `MOGGToMGP` turns the buffer
 // into an `mgp.buffer.constant` at the call site, where the pipeline's minimum
@@ -232,16 +232,16 @@ LogicalResult ConstantOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.constant.scalar -> mogg._constant.scalar. Unlike `map.constant` above,
+// map.constant.scalar -> mogg.constant.scalar. Unlike `map.constant` above,
 // there is no buffer to reconstruct: the value is a literal at both ends.
 LogicalResult ConstantScalarOp::lowerToMOGG(MAPToMOGGState &state) {
-  auto constant = MOGG::ConstantScalarV2Op::create(
+  auto constant = MOGG::ConstantScalarOp::create(
       state.builder, getLoc(), getResult().getType(), getValue());
   state.mapping.map(getResult(), constant.getResult());
   return success();
 }
 
-// map.load -> mogg._tensor.load.
+// map.load -> mogg.tensor.load.
 LogicalResult LoadOp::lowerToMOGG(MAPToMOGGState &state) {
   Value result = MOGG::TensorLoadOp::create(
       state.builder, getLoc(), getResult().getType(),
@@ -250,7 +250,7 @@ LogicalResult LoadOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.store -> mogg._tensor.store.
+// map.store -> mogg.tensor.store.
 LogicalResult StoreOp::lowerToMOGG(MAPToMOGGState &state) {
   MOGG::TensorStoreOp::create(
       state.builder, getLoc(), state.mapping.lookup(getTensor()),
@@ -258,7 +258,7 @@ LogicalResult StoreOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.call.elementwise -> mogg._call.elementwise. `$moOpName` isn't carried
+// map.call.elementwise -> mogg.call.elementwise. `$moOpName` isn't carried
 // on the MAP op, so it's read from the kernel decl `getCallee()` names.
 LogicalResult CallElementwiseOp::lowerToMOGG(MAPToMOGGState &state) {
   StringRef kernelSymName = getCallee();
@@ -277,7 +277,7 @@ LogicalResult CallElementwiseOp::lowerToMOGG(MAPToMOGGState &state) {
       fn.inputArguments.back().isOpaqueWithTypeName(
           MOGG::kMojoInternalDpsIndexListTypeQualifiedName))
     index = state.mapping.lookup(getIndex());
-  auto moggCall = MOGG::CallElementwiseV2Op::create(
+  auto moggCall = MOGG::CallElementwiseOp::create(
       state.builder, getLoc(), getResult().getType(), kernelSymName,
       adaptor.registeredOpName.strref(), inputs, index, getParamsAttr());
   state.mapping.map(getResult(), moggCall.getOutputs()[0]);
@@ -392,7 +392,7 @@ consumingFusedContract(Value mapResult, bool isOutput, MAPToMOGGState &state) {
   return MOGG::tensorArgContractToAttr(state.builder.getContext(), *contract);
 }
 
-// map.iter.epilogue -> mogg._tensor.create.epilogue. Its body is lowered via
+// map.iter.epilogue -> mogg.tensor.create.epilogue. Its body is lowered via
 // `state.lowerRegionBody`, then the resulting tensor is mapped into
 // `state.mapping` under the epilogue's own result, so `CallOpaqueOp` can
 // resolve it exactly like a plain kernel output.
@@ -542,7 +542,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.iter.prologue -> mogg._tensor.create.prologue. Load-side mirror of
+// map.iter.prologue -> mogg.tensor.create.prologue. Load-side mirror of
 // `IterEpilogueOp::lowerToMOGG`: the body is lowered via
 // `state.lowerRegionBody` and the resulting tensor is mapped into
 // `state.mapping` under the prologue's own result, so `CallOpaqueOp` resolves
@@ -673,7 +673,7 @@ static bool prologueRecomputesValue(MOGG::TensorCreatePrologueOp prologue) {
          load.getTensor() != body.getArgument(1);
 }
 
-// map.call.opaque -> mogg._call.opaque. Each call output -- a plain opaque
+// map.call.opaque -> mogg.call.opaque. Each call output -- a plain opaque
 // output block arg or a `map.iter.epilogue` result -- is already in
 // `state.mapping`, lowered earlier by `IterOpaqueOp::lowerToMOGG`'s
 // whole-block walk.
@@ -739,7 +739,7 @@ static bool viewsMutableStorage(Value input) {
   return isa<MO::BufferType>(input.getType());
 }
 
-// map.index.slice.stride -> mogg._tensor.create.slice. Reads its own
+// map.index.slice.stride -> mogg.tensor.create.slice. Reads its own
 // input/starts/stops/steps out of `state.mapping`, same as any other kernel
 // input.
 LogicalResult SliceStrideOp::lowerToMOGG(MAPToMOGGState &state) {
@@ -772,7 +772,7 @@ LogicalResult SliceStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.index.broadcast.stride -> mogg._tensor.create.broadcast. Reads its own
+// map.index.broadcast.stride -> mogg.tensor.create.broadcast. Reads its own
 // input out of `state.mapping`, same as any other kernel input.
 LogicalResult BroadcastStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
@@ -788,7 +788,7 @@ LogicalResult BroadcastStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.index.reshape.stride -> mogg._tensor.create.reshape. Reads its own
+// map.index.reshape.stride -> mogg.tensor.create.reshape. Reads its own
 // input out of `state.mapping`, same as any other kernel input.
 //
 // Unlike broadcast/transpose, reshape's own runtime stride is computed
@@ -796,7 +796,7 @@ LogicalResult BroadcastStrideOp::lowerToMOGG(MAPToMOGGState &state) {
 // no input stride to fall back on), so a target shape with more than one
 // dim genuinely unknown at compile time -- e.g. reshaping into another
 // tensor's own dynamic shape -- needs a real runtime `!mogg.shape`, built via
-// the same `buildShape` helper `mogg._tensor.create` uses -- letting CSE fold
+// the same `buildShape` helper `mogg.tensor.create` uses -- letting CSE fold
 // it with an identical shape built elsewhere in the same kernel.
 LogicalResult ReshapeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
@@ -845,7 +845,7 @@ LogicalResult ReshapeIndexOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.index.transpose.stride -> mogg._tensor.create.transpose. Reads its own
+// map.index.transpose.stride -> mogg.tensor.create.transpose. Reads its own
 // input out of `state.mapping`, same as any other kernel input.
 LogicalResult TransposeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
@@ -862,7 +862,7 @@ LogicalResult TransposeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.iter.foreach.body -> mogg._call.foreach. Builds the loop shape and the
+// map.iter.foreach.body -> mogg.call.foreach. Builds the loop shape and the
 // captured tensors, then lowers the body into the new region via
 // `state.lowerRegionBody`.
 LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
@@ -875,8 +875,8 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   Value loopShape = buildShape(loc, getShape(), state);
 
   // The foreach driver is one generic primitive, not a per-kernel lookup.
-  MOGG::PrimitiveDeclOp foreachPrim = state.registry.lookupPrimitive(
-      MOGG::CallForeachRegionOp::getOperationName());
+  MOGG::PrimitiveDeclOp foreachPrim =
+      state.registry.lookupPrimitive(MOGG::CallForeachOp::getOperationName());
 
   // `$captures` already covers the kernel's inputs/output and any hoisted
   // view uniformly (`map.iter.foreach.body` is isolated from above, so every
@@ -896,7 +896,7 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
 
   // A foreach kernel is elementwise and single-device, so it always has the one
   // context arg `IterOpaqueOp::lowerToMOGG` created.
-  auto callForeach = MOGG::CallForeachRegionOp::create(
+  auto callForeach = MOGG::CallForeachOp::create(
       state.builder, loc, FlatSymbolRefAttr::get(ctx, foreachPrim.getSymName()),
       loopShape, state.contextArgs.front(), capturing,
       state.builder.getStringAttr(state.device.getLabel()));
@@ -917,7 +917,7 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.iter.opaque -> mogg._kernel. Builds the kernel region, device and
+// map.iter.opaque -> mogg.kernel. Builds the kernel region, device and
 // fusion-info attrs, dynamic-dim block args, and the reconstructed
 // input/output tensors, then lowers the body (a `map.call.opaque` or a
 // `map.iter.foreach.body`) via `state.lowerRegionBody`.
@@ -928,8 +928,8 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   TypeRange resultTypes = getResultTypes();
 
   // `map.iter.opaque` threads its chain through a dedicated `$inputChain`
-  // operand and a trailing output-chain result, mirroring `mogg._kernel` --
-  // but (unlike `mogg._kernel`'s own body) still shadows it as a body block
+  // operand and a trailing output-chain result, mirroring `mogg.kernel` --
+  // but (unlike `mogg.kernel`'s own body) still shadows it as a body block
   // argument on both sides, since `map.call.opaque` has no return channel of
   // its own for a wrapped call that consumes/produces a chain directly.
   Value inputChain = getInputChain();
@@ -939,7 +939,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // (`MO_ExplicitDevice`), stamped by whoever built the op from the tensor
   // types back when they were still annotated. Only the label is recorded on
   // each reconstructed tensor (a string -- codegen picks host vs GPU from it);
-  // the full ref is kept on the `mogg._kernel` for device-context resolution.
+  // the full ref is kept on the `mogg.kernel` for device-context resolution.
   state.device = MO::getDeviceOrDefault(*this);
 
   // Forward the fusion-tree provenance `MOToMAP` recorded on `map.iter.opaque`
@@ -952,8 +952,8 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
           : MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(*this));
 
   OpBuilder &builder = state.builder;
-  auto kernel = MOGG::KernelRegionOp::create(builder, loc, resultTypes, inputs,
-                                             inputChain, fusionInfo);
+  auto kernel = MOGG::KernelOp::create(builder, loc, resultTypes, inputs,
+                                       inputChain, fusionInfo);
   // The `MOExplicitDevice` verifier requires a device; record the same
   // device used for the reconstructed tensors so outlining and `MOGGToMGP`
   // resolve the real execution device instead of the host fallback.
@@ -991,7 +991,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   for (Value in : inputs)
     inputArgs.push_back(addBodyArg(in.getType()));
   // Neither the trailing chain nor a by-value opaque gets a block arg, so both
-  // are skipped -- matching `mogg._kernel`'s verifier.
+  // are skipped -- matching `mogg.kernel`'s verifier.
   for (size_t i = 0, e = resultTypes.size(); i < e; ++i) {
     if (hasOutputChain && i + 1 == e)
       break;
@@ -1049,7 +1049,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // shadowed input block args, not `inputs`/`$inputChain` (its outer
   // operands) directly, so the mapping must be keyed on the block args.
   // The chain has no block argument on either side: `$inputChain` is already
-  // the kernel's own chain operand (passed to `KernelRegionOp::create` above)
+  // the kernel's own chain operand (passed to `KernelOp::create` above)
   // and the trailing chain result is the kernel's own chain result (wired by
   // `replaceAllUsesWith` below). Nothing in the body references it, so the
   // block args here are exactly the non-chain inputs then the non-chain

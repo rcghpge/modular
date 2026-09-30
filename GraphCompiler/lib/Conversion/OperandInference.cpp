@@ -50,7 +50,7 @@ matchConvertedMOTypeToKernelDeclType(const KernelDeclOperandVariant &moType,
   // A mutable operand may satisfy an immutable kernel operand -- reading
   // mutable storage as an immutable snapshot is sound (the converse is not).
   // Only ConformCallOperands opts in (`allowMutToImmut`): a
-  // `mogg._tensor.create` that `MAPToMOGG` built as a mutable buffer for a
+  // `mogg.tensor.create` that `MAPToMOGG` built as a mutable buffer for a
   // fused mutable-load can back a read-only kernel input, and conform recreates
   // it immutable afterwards.
   if (allowMutToImmut) {

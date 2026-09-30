@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Outlines each `mogg._kernel` body into a module-level `mogg.kernel.stub`
+// Outlines each `mogg.kernel` body into a module-level `mogg.kernel.stub`
 // (labeled with the `MAP` ABI) and replaces the kernel body with a single
 // `mogg.call.stub` forwarding the kernel's `!mogg.pointer_` / `!mogg.dim_` /
-// `!mogg.context` block arguments. The `mogg._kernel` container survives: it
+// `!mogg.context` block arguments. The `mogg.kernel` container survives: it
 // keeps the `!mo.tensor` interface that `MOGGToMGP` later lowers.
 //
 //===----------------------------------------------------------------------===//
@@ -32,10 +32,10 @@ namespace M::MOGG {
 
 namespace {
 
-// Outlines one `mogg._kernel`: its body moves into `stub`; the kernel's body is
+// Outlines one `mogg.kernel`: its body moves into `stub`; the kernel's body is
 // rebuilt as a single `mogg.call.stub` forwarding fresh block args to `stub`.
 void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
-                   MOGG::KernelRegionOp kernel) {
+                   MOGG::KernelOp kernel) {
   MLIRContext *ctx = kernel.getContext();
   Location loc = kernel.getLoc();
 
@@ -68,7 +68,7 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   auto functionType =
       TypeAttr::get(FunctionType::get(ctx, stubArgTypes, stubResultTypes));
 
-  // Forward the fusion-tree provenance `MAPToMOGG` threaded onto `mogg._kernel`
+  // Forward the fusion-tree provenance `MAPToMOGG` threaded onto `mogg.kernel`
   // from the source `map.iter.opaque`; fall back to a fresh leaf only if it's
   // absent (e.g. a kernel region built by hand in a test).
   MOGG::FusionInfoAttr fusionInfo = kernel.getFusionInfoAttr();
@@ -142,13 +142,13 @@ struct OutlineKernelsIntoFunctionsPass
     // downstream consumers.
     SymbolTable &symtab =
         getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
-    SmallVector<MOGG::KernelRegionOp> kernels;
-    getOperation().walk([&](MOGG::KernelRegionOp k) {
+    SmallVector<MOGG::KernelOp> kernels;
+    getOperation().walk([&](MOGG::KernelOp k) {
       kernels.push_back(k);
-      // No need to recurse inside a `mogg._kernel`.
+      // No need to recurse inside a `mogg.kernel`.
       return WalkResult::skip();
     });
-    for (MOGG::KernelRegionOp kernel : kernels)
+    for (MOGG::KernelOp kernel : kernels)
       outlineKernel(builder, symtab, kernel);
   }
 };

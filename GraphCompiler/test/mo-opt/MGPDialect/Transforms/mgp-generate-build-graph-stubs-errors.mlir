@@ -4,14 +4,14 @@
 // position) -- a context materialized inside the body leaves no argument slot
 // for the builder to take over.
 
-mogg.primitive.decl @foreach_impl registration = "mogg._call.foreach" function = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
+mogg.primitive.decl @foreach_impl registration = "mogg.call.foreach" function = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
 
 // expected-error @below {{device-graph recording stub generation: expected the producer launch context to be an argument of the kernel stub}}
 mogg.kernel.stub @stub_1 (%p: !mogg.pointer_) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   %ctx = "test.make_ctx"() : () -> !mogg.context
   %shape = "test.shape"() : () -> !mogg.shape
   %t = "test.tensor"() : () -> !mogg.tensor_
-  mogg._call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor_) attributes {device = "gpu"} {
+  mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor_) attributes {device = "gpu"} {
   ^bb0(%a: !mogg.tensor_, %i: !map.index<2>):
   }
   mogg.output

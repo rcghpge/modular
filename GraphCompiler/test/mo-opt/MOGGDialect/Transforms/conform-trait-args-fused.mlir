@@ -2,9 +2,9 @@
 // RUN:   --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" \
 // RUN:   --mo-to-map --map-to-mogg | FileCheck %s
 
-// A fused trait argument cannot be wrapped by `mogg._trait.create` downstream:
+// A fused trait argument cannot be wrapped by `mogg.trait.create` downstream:
 // its fusion functor is a local of the prologue/epilogue emit. So the contract
-// is stamped onto the `mogg._tensor.create.prologue` / `.epilogue` producer at
+// is stamped onto the `mogg.tensor.create.prologue` / `.epilogue` producer at
 // MAP lowering (where the fused-tensor -> call edge is still explicit), and emit
 // reads that attr to wrap the functor in the conforming trait tensor rather than
 // binding it onto a `ManagedTensorSlice`. Here we only assert the stamp on the
@@ -15,7 +15,7 @@
 // so the `mo.add` producer fuses into it and the prologue carries a `load` input
 // contract.
 // CHECK-LABEL: mo.graph @fused_load
-// CHECK: mogg._tensor.create.prologue
+// CHECK: mogg.tensor.create.prologue
 // CHECK-SAME: contract = #mogg.tensor_arg<{role = input, fused = true, access = load
 mo.graph @fused_load(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %p = mo.add(%x, %x) : !mo.tensor<[4], f32>

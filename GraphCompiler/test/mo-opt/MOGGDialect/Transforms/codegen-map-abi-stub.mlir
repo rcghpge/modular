@@ -12,7 +12,7 @@
 // codegen tensors internally before invoking the opaque kernel's execute
 // function.
 //
-// The pipeline is stopped right after emission: the surrounding `mogg._kernel`
+// The pipeline is stopped right after emission: the surrounding `mogg.kernel`
 // container is only consumed later (MOGGToMGP + region outlining), so its
 // `mogg.call.stub` dangles once emit erases the stub -- `-verify-each=false`
 // tolerates that. The emitted Mojo is read from the `ir-output-dir` dump rather

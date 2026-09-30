@@ -2,8 +2,8 @@
 
 // Full pipeline from a real mo.slice op through MOToMAP, outlining, view
 // motion, and MAPToMOGG: map.index.slice.stride lowers to
-// mogg._tensor.create.slice, and only the slice result and the output tensor
-// are captured by mogg._call.foreach, since the loop body only references
+// mogg.tensor.create.slice, and only the slice result and the output tensor
+// are captured by mogg.call.foreach, since the loop body only references
 // those two. The `canonicalize` right after LoopInvariantViewMotion drops
 // the closure's now-dead original captures (the raw input tensor and the
 // starts/stops/steps bounds, all unused once the hoisted view replaces the
@@ -13,26 +13,26 @@
 // Static bounds (mo.constant starts/stops/steps): every bound is a literal.
 
 // CHECK-LABEL: mo.graph @sliceStaticBounds
-// CHECK:       [[KERNEL:%[^ ]+]] = mogg._kernel ({{.*}} : !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
+// CHECK:       [[KERNEL:%[^ ]+]] = mogg.kernel ({{.*}} : !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
 // CHECK-NEXT:  inputs ([[IP0:%[^ :,]+]]: !mogg.pointer_, [[IP1:%[^ :,]+]]: !mogg.pointer_, [[IP2:%[^ :,]+]]: !mogg.pointer_, [[IP3:%[^ :,]+]]: !mogg.pointer_)
 // CHECK-NEXT:  outputs ([[OP:%[^ :,]+]]: !mogg.pointer_)
 // CHECK-NEXT:  context ([[CTX:%[^ :,]+]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK-NEXT:    [[ISH0:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[10, 64]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    [[IT0:%[^ ]+]] = mogg._tensor.create([[IP0]], [[ISH0]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK-NEXT:    [[ISH1:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    [[IT1:%[^ ]+]] = mogg._tensor.create([[IP1]], [[ISH1]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK-NEXT:    [[ISH2:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    [[IT2:%[^ ]+]] = mogg._tensor.create([[IP2]], [[ISH2]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK-NEXT:    [[ISH3:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    [[IT3:%[^ ]+]] = mogg._tensor.create([[IP3]], [[ISH3]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[3, 32]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg._tensor.create([[OP]], [[OSH]]) {{.*}}io = 0{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK-NEXT:    [[STRIDED:%[^ ]+]] = mogg._tensor.create.slice([[IT0]], [[IT1]], [[IT2]], [[IT3]]) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}staticStart = array<i64: 1, 32>{{.*}}staticStep = array<i64: 1, 1>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
-// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg._shape.create() {shape = #mosh<ape[3, 32]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    mogg._call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[STRIDED]] : !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
+// CHECK-NEXT:    [[ISH0:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[10, 64]> : !mosh.ape} : () -> !mogg.shape
+// CHECK-NEXT:    [[IT0:%[^ ]+]] = mogg.tensor.create([[IP0]], [[ISH0]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:    [[ISH1:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[2]> : !mosh.ape} : () -> !mogg.shape
+// CHECK-NEXT:    [[IT1:%[^ ]+]] = mogg.tensor.create([[IP1]], [[ISH1]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:    [[ISH2:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[2]> : !mosh.ape} : () -> !mogg.shape
+// CHECK-NEXT:    [[IT2:%[^ ]+]] = mogg.tensor.create([[IP2]], [[ISH2]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:    [[ISH3:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[2]> : !mosh.ape} : () -> !mogg.shape
+// CHECK-NEXT:    [[IT3:%[^ ]+]] = mogg.tensor.create([[IP3]], [[ISH3]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[3, 32]> : !mosh.ape} : () -> !mogg.shape
+// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = 0{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:    [[STRIDED:%[^ ]+]] = mogg.tensor.create.slice([[IT0]], [[IT1]], [[IT2]], [[IT3]]) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}staticStart = array<i64: 1, 32>{{.*}}staticStep = array<i64: 1, 1>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
+// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[3, 32]> : !mosh.ape} : () -> !mogg.shape
+// CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[STRIDED]] : !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
 // CHECK-NEXT:    ^bb0([[OUT:%[^ :,]+]]: !mogg.tensor_, [[STRIDEDARG:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
-// CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg._tensor.load [[STRIDEDARG]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
-// CHECK-NEXT:      mogg._tensor.store [[OUT]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor_, !map.index<2>, f32
+// CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[STRIDEDARG]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
+// CHECK-NEXT:      mogg.tensor.store [[OUT]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor_, !map.index<2>, f32
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 mo.graph @sliceStaticBounds(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
@@ -49,7 +49,7 @@ mo.graph @sliceStaticBounds(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3,
 // unresolved at compile time.
 
 // CHECK-LABEL: mo.graph @sliceDynamicBounds
-// CHECK: mogg._tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}
+// CHECK: mogg.tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}
 mo.graph @sliceDynamicBounds(
     %input: !mo.tensor<[10, 64], f32>,
     %start: !mo.tensor<[2], si64>,
@@ -71,7 +71,7 @@ mo.graph @sliceDynamicBounds(
 // mixed-shape LLM snifftest gap). The static dim1 start (0) stays static.
 
 // CHECK-LABEL: mo.graph @sliceNegativeStartDynamicInDim
-// CHECK: mogg._tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}staticStart = array<i64: -9223372036854775808, 0>{{.*}}staticStep = array<i64: 1, 1>{{.*}}
+// CHECK: mogg.tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}staticStart = array<i64: -9223372036854775808, 0>{{.*}}staticStep = array<i64: 1, 1>{{.*}}
 mo.graph @sliceNegativeStartDynamicInDim(
     %input: !mo.tensor<[?, 64], f32>,
     %stop: !mo.tensor<[2], si64>)
@@ -90,7 +90,7 @@ mo.graph @sliceNegativeStartDynamicInDim(
 // the unknown extent to normalize, must lower to `?`.
 
 // CHECK-LABEL: mo.graph @slicePositiveStartDynamicInDim
-// CHECK: mogg._tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}staticStart = array<i64: 2, 0>{{.*}}staticStep = array<i64: 1, 1>{{.*}}
+// CHECK: mogg.tensor.create.slice(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {{.*}}staticStart = array<i64: 2, 0>{{.*}}staticStep = array<i64: 1, 1>{{.*}}
 mo.graph @slicePositiveStartDynamicInDim(
     %input: !mo.tensor<[?, 64], f32>,
     %stop: !mo.tensor<[2], si64>)

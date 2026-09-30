@@ -79,7 +79,7 @@ struct MAPToMOGGState {
           [](mlir::Operation *) { return true; });
 };
 
-/// Lowers a `mo.invoke_shape_func` into a `mogg._kernel`, and erases it.
+/// Lowers a `mo.invoke_shape_func` into a `mogg.kernel`, and erases it.
 mlir::LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp op,
                                                MAPToMOGGState &state);
 

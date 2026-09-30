@@ -1852,7 +1852,7 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
             MO::MutableLoadOp, MO::BufferCreateOp, MO::BufferTransferOp,
             MO::CallOp>([this](auto op) { return lower(op); })
       // Interface-based lowering for externally-defined ops. Includes the
-      // advanced-fusion new-path kernel (`mogg._kernel`), which implements this
+      // advanced-fusion new-path kernel (`mogg.kernel`), which implements this
       // interface directly.
       .Case<MGP::LowerableToMGPInterface>(
           [this](auto op) { return lowerInterface(op); })
@@ -2188,7 +2188,7 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   SmallVector<Operation *> kernelOps;
   SmallVector<MO::BundledExpandOp> expandOps;
   for (Operation &op : bodyBlock.without_terminator()) {
-    if (isa<MOGG::KernelRegionOp>(&op)) {
+    if (isa<MOGG::KernelOp>(&op)) {
       kernelOps.push_back(&op);
     } else if (auto expand = dyn_cast<MO::BundledExpandOp>(&op)) {
       expandOps.push_back(expand);
@@ -2202,7 +2202,7 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     return parallelOp.emitOpError("body must contain at least one kernel");
 
   // For each kernel in the body, clone it once per launch, lower each clone
-  // via `KernelRegionOp::lowerToCompiledRegion`, then fuse and convert to
+  // via `KernelOp::lowerToCompiledRegion`, then fuse and convert to
   // async.
   //
   // Fusion is per kernel group (not across groups) to avoid creating dataflow
@@ -2293,9 +2293,9 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       }
 
       // Lower the clone to its compiled region via
-      // `KernelRegionOp::lowerToCompiledRegion`, the same hook its top-level
+      // `KernelOp::lowerToCompiledRegion`, the same hook its top-level
       // `lower()` wraps.
-      auto clonedKernel = cast<MOGG::KernelRegionOp>(clonedOp);
+      auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
       if (retarget)
         clonedKernel.setDeviceRef(launchDevice);
       MOGG::GenericCompiledRegionOp launchRegion =
@@ -2586,7 +2586,7 @@ void MOGGToMGPPass::runOnOperation() {
   }
 
   // Anonymize every kernel stub's dim-arg names in one sweep over the whole
-  // module, now that every mogg._kernel has been lowered and its dim-typed
+  // module, now that every mogg.kernel has been lowered and its dim-typed
   // operands rebound to anonymous dims -- a named dim surviving on a stub's
   // boundary would otherwise block MergeIdenticalKernelStubs from treating
   // two structurally-identical stubs as duplicates. Nested (rather than

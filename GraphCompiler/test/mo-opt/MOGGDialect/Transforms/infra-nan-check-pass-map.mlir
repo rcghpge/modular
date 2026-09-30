@@ -6,11 +6,11 @@
 // compiles the injected `mo.custom` checks alongside the graph's own kernels.
 // It walks `map.iter.foreach` / `map.iter.opaque`, whose float results are the
 // compiled-region boundaries; after `--map-to-mogg` every kernel here (the
-// checked region and the two check kernels) is a `mogg._kernel`.
+// checked region and the two check kernels) is a `mogg.kernel`.
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Test 1: nan_check inserted after each compiled region (mogg._kernel), not
+// Test 1: nan_check inserted after each compiled region (mogg.kernel), not
 // after each individual MO op. Three elementwise ops fuse into ONE kernel,
 // so only ONE nan_check_count + nan_check_raise pair should appear.
 //===----------------------------------------------------------------------===//
@@ -19,7 +19,7 @@
 // CHECK:       mo.constant
 // CHECK:       mo.constant
 //     One fused kernel for all three elementwise ops:
-// CHECK:       mogg._kernel
+// CHECK:       mogg.kernel
 //     nan_check_count reduction kernel:
 // CHECK:       custom__nan_check_count
 //     nan_check_raise kernel on host (no mo.transfer for CPU-only graphs):
@@ -44,12 +44,12 @@ mo.graph @fused_elementwise() -> !mo.tensor<[4], f32> {
 // CHECK-LABEL: mo.graph @two_regions
 // CHECK:       mo.constant
 //     First kernel (add):
-// CHECK:       mogg._kernel
+// CHECK:       mogg.kernel
 //     nan_check for first kernel:
 // CHECK:       custom__nan_check_count
 // CHECK:       custom__nan_check_raise
 //     Second kernel (custom op boundary + relu):
-// CHECK:       mogg._kernel
+// CHECK:       mogg.kernel
 //     nan_check for second kernel:
 // CHECK:       custom__nan_check_count
 // CHECK:       custom__nan_check_raise
@@ -68,7 +68,7 @@ mo.graph @two_regions(%arg0: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @integer_skipped
-// CHECK:       mogg._kernel
+// CHECK:       mogg.kernel
 // CHECK-NOT:   nan_check
 // CHECK:       mo.output
 
@@ -83,10 +83,10 @@ mo.graph @integer_skipped(%arg0: !mo.tensor<[4], si32>) -> !mo.tensor<[4], si32>
 
 // CHECK-LABEL: mo.graph @mixed_types
 //     Float kernel result gets nan_check:
-// CHECK:       mogg._kernel
+// CHECK:       mogg.kernel
 // CHECK:       custom__nan_check_count
 //     Integer kernel result does NOT get its own nan_check_count:
-// CHECK:       mogg._kernel
+// CHECK:       mogg.kernel
 // CHECK-NOT:   custom__nan_check_count
 // CHECK:       mo.output
 
@@ -101,7 +101,7 @@ mo.graph @mixed_types(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], si32>)
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: mo.graph @label_present
-// CHECK:       mogg._kernel
+// CHECK:       mogg.kernel
 // CHECK:       custom__nan_check_count
 // CHECK:       custom__nan_check_raise
 

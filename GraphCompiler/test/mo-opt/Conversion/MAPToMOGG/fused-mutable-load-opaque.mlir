@@ -7,24 +7,24 @@
 
 // `FuseMutableLoads` fuses a `mo.mutable.load` into an opaque kernel operand the
 // kernel only reads -- here `map_lower_inplace_copy`'s immutable `src`. MAPToMOGG
-// reconstructs every buffer operand as a mutable `mogg._tensor.create`
+// reconstructs every buffer operand as a mutable `mogg.tensor.create`
 // (a `!mogg.buffer_`), so both `dst` and the fused-read `src` come out mutable.
 // `ConformCallOperands` then reconciles the read-only `src`: it accepts the
 // mut->immut widening (OperandInference) and clones that operand's
-// `mogg._tensor.create` immutable (`cloneWithMut`), yielding a `!mogg.tensor_`
+// `mogg.tensor.create` immutable (`cloneWithMut`), yielding a `!mogg.tensor_`
 // whose codegen slice matches the kernel's `Input` parameter. `dst`, which the
 // kernel genuinely writes, stays a mutable `!mogg.buffer_`.
 
 // Before conform: MAPToMOGG makes both operands mutable buffers.
 // CHECK-LABEL: mo.graph @fused_mutable_load_into_immutable_input
-// CHECK:     mogg._tensor.create({{.*}}) {{.*}}mut = true{{.*}}-> !mogg.buffer_
-// CHECK:     mogg._tensor.create({{.*}}) {{.*}}mut = true{{.*}}-> !mogg.buffer_
-// CHECK:     mogg._call.opaque @{{.*}}MapLowerInplaceCopy inputs(%{{.*}}, %{{.*}} : !mogg.buffer_, !mogg.buffer_)
+// CHECK:     mogg.tensor.create({{.*}}) {{.*}}mut = true{{.*}}-> !mogg.buffer_
+// CHECK:     mogg.tensor.create({{.*}}) {{.*}}mut = true{{.*}}-> !mogg.buffer_
+// CHECK:     mogg.call.opaque @{{.*}}MapLowerInplaceCopy inputs(%{{.*}}, %{{.*}} : !mogg.buffer_, !mogg.buffer_)
 
 // After conform: the read-only src is recreated immutable and the call uses it.
 // CONFORM-LABEL: mo.graph @fused_mutable_load_into_immutable_input
-// CONFORM:     mogg._tensor.create({{.*}}) {{.*}}mut = false{{.*}}-> !mogg.tensor_
-// CONFORM:     mogg._call.opaque @{{.*}}MapLowerInplaceCopy inputs(%{{.*}}, %{{.*}} : !mogg.buffer_, !mogg.tensor_)
+// CONFORM:     mogg.tensor.create({{.*}}) {{.*}}mut = false{{.*}}-> !mogg.tensor_
+// CONFORM:     mogg.call.opaque @{{.*}}MapLowerInplaceCopy inputs(%{{.*}}, %{{.*}} : !mogg.buffer_, !mogg.tensor_)
 mo.graph @fused_mutable_load_into_immutable_input(%dst: !mo.buffer<[2, 2], f32>, %srcbuf: !mo.buffer<[2, 2], f32>) -> !mo.chain {
   %chain = mo.chain.create()
   %src, %loadchain = mo.mutable.load(%srcbuf, %chain) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)

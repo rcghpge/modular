@@ -35,7 +35,7 @@ ProducerDispatch matchProducerDispatch(Operation *op) {
     return {op, contexts.empty() ? Value() : contexts.front()};
   }
 
-  if (auto foreachRegion = dyn_cast<CallForeachRegionOp>(op))
+  if (auto foreachRegion = dyn_cast<CallForeachOp>(op))
     return {op, foreachRegion.getContext()};
 
   return {};
@@ -106,7 +106,7 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
         "context to be an argument of the kernel stub");
   }
 
-  // A `mogg._call.opaque` whose kernel declares a node-free `build_graph`
+  // A `mogg.call.opaque` whose kernel declares a node-free `build_graph`
   // method records through `mogg.call.build_graph`. Everything else records by
   // dispatching the producer against a recording device context.
   auto opaque = dyn_cast<CallOpaqueOp>(producer.op);
@@ -121,7 +121,7 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
       (opaque.getHasEpilogueFusion() || opaque.getHasPrologueFusion())) {
     return original.emitError(
         "device-graph recording stub generation: cannot record a fused "
-        "`mogg._call.opaque` through `mogg.call.build_graph`");
+        "`mogg.call.opaque` through `mogg.call.build_graph`");
   }
 
   // Snapshot the producer's operands/attrs *before* retyping the launch arg:

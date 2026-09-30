@@ -2,7 +2,7 @@
 
 // A dynamic index reshape in a PROLOGUE gets its runtime from/to shapes the
 // same way the epilogue's store-side one does: the lowering builds them, hands
-// them to `mogg._tensor.create.prologue` as `shapes(...)`, and they arrive as
+// them to `mogg.tensor.create.prologue` as `shapes(...)`, and they arrive as
 // block args trailing the tensor captures. `mogg.index.reshape` then reads them
 // as `$dynamicShapes`.
 //
@@ -12,12 +12,12 @@
 // covered by `max/tests/integration/graph/test_reshape_prologue_fusion.py`.
 
 // CHECK-LABEL: mo.graph @dyn_reshape_into_prologue
-// CHECK: mogg._tensor.create.prologue %{{.*}} capturing(%{{.*}}, %{{.*}} : !mogg.tensor_, !mogg.tensor_) shapes(%{{.*}}, %{{.*}} : !mogg.shape, !mogg.shape)
+// CHECK: mogg.tensor.create.prologue %{{.*}} capturing(%{{.*}}, %{{.*}} : !mogg.tensor_, !mogg.tensor_) shapes(%{{.*}}, %{{.*}} : !mogg.shape, !mogg.shape)
 // The shape captures trail the tensor captures, after the index -- and the
 // reshape reads those block args rather than falling back to the static shape.
 // CHECK: ^bb0(%[[IDX:.*]]: !map.index<2>, %{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[FROMARG:.*]]: !mogg.shape, %[[TOARG:.*]]: !mogg.shape):
 // CHECK:   mogg.index.reshape(%[[IDX]], %[[FROMARG]], %[[TOARG]]) {fromShape = #mosh<ape[2, D]> : !mosh.ape, toShape = #mosh<ape[D, 2]> : !mosh.ape}
-// CHECK: mogg._call.opaque @{{.*}}MapLowerPartialFusedInputs {{.*}}hasPrologueFusion = true
+// CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs {{.*}}hasPrologueFusion = true
 mo.graph @dyn_reshape_into_prologue<D>(
   %x: !mo.tensor<[D, 2], f32>,
   %y: !mo.tensor<[2, D], f32>

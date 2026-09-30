@@ -62,7 +62,7 @@ def MOGG_StubCallOpInterface : OpInterface<"StubCallOpInterface"> {
 
 def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
   let description = [{
-    Common interface for the five `mogg._tensor.create*` ops (the plain
+    Common interface for the five `mogg.tensor.create*` ops (the plain
     tensor and each view kind: slice/broadcast/transpose/reshape) -- all
     carry `$elementType`/`$mut` as identically-named attributes, so a
     capture's producer can be read through this instead of dispatched on
@@ -112,12 +112,12 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
   // A `!mogg.buffer_` result is mutable memory -- `getKernelOperandKind()`
   // reads the mutable `Buffer` kind straight off the type -- so it must be
   // marked mutable. Enforced on the interface (rather than one op) so every
-  // current and future `mogg._tensor.create*` producer is covered.
+  // current and future `mogg.tensor.create*` producer is covered.
   //
   // The converse is intentionally NOT checked: a `!mogg.tensor_` may be
   // mutable too -- a DPS output (`io = Output`) and a mutable view are both
   // mutable `!mogg.tensor_` -- so `mut` does not pin the kind down the other
-  // way, and only the plain `mogg._tensor.create` even carries the `$io` that
+  // way, and only the plain `mogg.tensor.create` even carries the `$io` that
   // scoping an input-only immutability rule would need.
   //
   // Defined out of line in MOGGOps.cpp so it can name `!mogg.buffer_`, which

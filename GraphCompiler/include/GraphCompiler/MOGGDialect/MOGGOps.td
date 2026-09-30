@@ -762,9 +762,9 @@ def MOGG_YieldOp : MOGG_Op<"yield", [
   let summary = "MOGG yield operation";
   let description = [{
     The "mogg.yield" operation specifies the output values for a mogg.try /
-    except statement, the value a `mogg._tensor.create.prologue` body hands back
+    except statement, the value a `mogg.tensor.create.prologue` body hands back
     to the kernel reading through it, or the value a COMPUTE-lambda
-    `mogg._tensor.create.epilogue` body hands back for the kernel to store.
+    `mogg.tensor.create.epilogue` body hands back for the kernel to store.
     ```
   }];
 
@@ -1135,7 +1135,7 @@ def MOGG_ShapeFunctionDeclOp
 // wired yet.
 //===----------------------------------------------------------------------===//
 
-def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
+def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
@@ -1209,7 +1209,7 @@ def MOGG_KernelRegionOp : MOGG_LowerableOp<"_kernel", [
   }];
 }
 
-def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [
+def MOGG_ShapeCreateOp : MOGG_Op<"shape.create", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
@@ -1217,7 +1217,7 @@ def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [
   let description = [{
     New-path counterpart of `mogg.shape.__init__`: materializes a `!mogg.shape`
     from a static `#mosh.ape` and the `!mogg.dim_` handles for its dynamic
-    dimensions (in shape order). The dims come from the enclosing `mogg._kernel`
+    dimensions (in shape order). The dims come from the enclosing `mogg.kernel`
     block arguments.
   }];
   let arguments = (ins Variadic<MOGG_Dim>:$dynamic_dims, MOSH_ShapeAttr:$shape);
@@ -1227,7 +1227,7 @@ def MOGG_ShapeCreateOp : MOGG_Op<"_shape.create", [
   }];
 }
 
-def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [
+def MOGG_TensorCreateOp : MOGG_Op<"tensor.create", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_TensorCreateInterface>,
@@ -1260,7 +1260,7 @@ def MOGG_TensorCreateOp : MOGG_Op<"_tensor.create", [
   }];
 }
 
-def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
+def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
   AttrSizedOperandSegments,
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
@@ -1279,7 +1279,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
     reaching out to the enclosing kernel stub. Scaffolding: not yet wired.
 
     The body comes in two shapes. A STORE lambda owns its store: the body ends
-    with a `mogg._tensor.store` into the store-target capture and has no
+    with a `mogg.tensor.store` into the store-target capture and has no
     terminator. A COMPUTE lambda leaves the store to the kernel: the body ends
     with `mogg.yield` of the value that store would have written, and the
     store-target capture survives unused so emit still has a slice to bind
@@ -1324,14 +1324,14 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"_tensor.create.epilogue", [
   let hasVerifier = 1;
 }
 
-def MOGG_TensorGetPtrOp : MOGG_Op<"_tensor.get_ptr", [
+def MOGG_TensorGetPtrOp : MOGG_Op<"tensor.get_ptr", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Extract the raw `!mogg.pointer_` backing a codegen tensor.";
   let description = [{
     Reads the raw base pointer of `$tensor`'s `ManagedTensorSlice`. Used by
-    `MAPToMOGG` to hand a `mogg._tensor.create.epilogue` the pointer of the
+    `MAPToMOGG` to hand a `mogg.tensor.create.epilogue` the pointer of the
     tensor its body stores into (or, for a mixed-precision accumulating kernel,
     the pointer of the pre-cast accumulation buffer `AllocateAccumulatingBuffers`
     added), so emit can build the kernel's fused-output `ManagedTensorSlice` over
@@ -1341,7 +1341,7 @@ def MOGG_TensorGetPtrOp : MOGG_Op<"_tensor.get_ptr", [
   }];
   // A buffer as well as a tensor: an epilogue that stores into a fused
   // `mo.mutable.store`'s buffer has that buffer as its store target, and
-  // `mogg._tensor.load`/`_tensor.store` already take either.
+  // `mogg.tensor.load`/`_tensor.store` already take either.
   let arguments = (ins MOGG_TensorLike:$tensor);
   let results = (outs MOGG_Pointer:$ptr);
   let assemblyFormat = [{
@@ -1349,14 +1349,14 @@ def MOGG_TensorGetPtrOp : MOGG_Op<"_tensor.get_ptr", [
   }];
 }
 
-def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
+def MOGG_TensorCreatePrologueOp : MOGG_Op<"tensor.create.prologue", [
   AttrSizedOperandSegments,
   SingleBlock,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "A fused-input tensor bound to its own prologue body.";
   let description = [{
-    Load-side counterpart of `mogg._tensor.create.epilogue`: produces a
+    Load-side counterpart of `mogg.tensor.create.epilogue`: produces a
     `!mogg.tensor_` (of `$shape`) the consuming kernel reads through its own
     prologue body, rather than from a separately materialized tensor. The
     body's entry-block arguments are the index the callback is evaluated at
@@ -1396,7 +1396,7 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"_tensor.create.prologue", [
   }];
 }
 
-def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", [
+def MOGG_TensorStoreOp : MOGG_Op<"tensor.store", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Store a scalar value into a codegen tensor at an index.";
@@ -1411,7 +1411,7 @@ def MOGG_TensorStoreOp : MOGG_Op<"_tensor.store", [
   }];
 }
 
-def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
+def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
@@ -1427,7 +1427,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
     `$hasEpilogueFusion` / `$hasPrologueFusion` record whether an output is a
     fused-epilogue tensor and whether an input is a fused-prologue tensor, so
     emit never inspects an operand's own producer for this. Not a terminator
-    (the enclosing `mogg._kernel` body is terminated by `mogg.output`).
+    (the enclosing `mogg.kernel` body is terminated by `mogg.output`).
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
@@ -1449,7 +1449,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   // An `!mo.opaque` result is allocated inside the kernel body (see
   // `MOGGKernelOpLoweringState`), so unlike a tensor it has no destination to
   // pass as an `$output`. It leaves through this result instead, and the
-  // enclosing `mogg._kernel` forwards it with `mogg.output`.
+  // enclosing `mogg.kernel` forwards it with `mogg.output`.
   let results = (outs Optional<MO_Opaque>:$opaqueResult);
   let assemblyFormat = [{
     $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
@@ -1459,7 +1459,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"_call.opaque", [
   }];
 }
 
-def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [
+def MOGG_ScalarCreateOp : MOGG_Op<"scalar.create", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
@@ -1477,14 +1477,14 @@ def MOGG_ScalarCreateOp : MOGG_Op<"_scalar.create", [
   }];
 }
 
-def MOGG_TraitCreateOp : MOGG_Op<"_trait.create", [
+def MOGG_TraitCreateOp : MOGG_Op<"trait.create", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Re-present a codegen tensor as its conforming trait argument.";
   let description = [{
     Inserted by `ConformCallOperands` between a tensor-producing op and a
-    `mogg._call.opaque` / `mogg._call.shape` whenever the callee declares that
+    `mogg.call.opaque` / `mogg.call.shape` whenever the callee declares that
     operand against a trait bound (`Tensor` / `DenseTensor` / `TileTensorable`).
     A raw `!mogg.tensor_` reconstructs as a `ManagedTensorSlice`, which conforms
     to none of those bounds; this op's emit wraps it in the conforming
@@ -1496,9 +1496,9 @@ def MOGG_TraitCreateOp : MOGG_Op<"_trait.create", [
     context-sensitive logic at the call.
 
     `$device` records the execution device so emit picks the preferred alignment
-    and device-passable flavor locally, exactly as `mogg._tensor.create` does,
+    and device-passable flavor locally, exactly as `mogg.tensor.create` does,
     without reaching out to the enclosing kernel stub. It wraps a finished
-    handle, so it works over any producer -- a direct `mogg._tensor.create` or a
+    handle, so it works over any producer -- a direct `mogg.tensor.create` or a
     hoisted view whose layout is not row-major.
   }];
   let arguments = (ins
@@ -1512,7 +1512,7 @@ def MOGG_TraitCreateOp : MOGG_Op<"_trait.create", [
   }];
 }
 
-def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [
+def MOGG_TupleCreateOp : MOGG_Op<"tuple.create", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
@@ -1534,7 +1534,7 @@ def MOGG_TupleCreateOp : MOGG_Op<"_tuple.create", [
   }];
 }
 
-def MOGG_RebindOp : MOGG_Op<"_rebind", [Pure,
+def MOGG_RebindOp : MOGG_Op<"rebind", [Pure,
     DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "A cast between an unpacked async handle and a codegen handle.";
   let description = [{
@@ -1568,7 +1568,7 @@ def MOGG_BufferConstantOp : MOGG_Op<"buffer.constant", [Pure]> {
     Unlike `mgp.buffer.constant` this carries the attribute as written, with no
     alignment: the MEF alignment depends on the pipeline's minimum CPU
     alignment, known only in `MOGGToMGP`. That pass rewrites this into an
-    `mgp.buffer.constant` plus a `mogg._rebind` back to a pointer, running the
+    `mgp.buffer.constant` plus a `mogg.rebind` back to a pointer, running the
     value through `lowerElementsAttr` on the way and recording the blob in the
     enclosing region's `constantResources`.
   }];
@@ -1577,14 +1577,14 @@ def MOGG_BufferConstantOp : MOGG_Op<"buffer.constant", [Pure]> {
   let assemblyFormat = [{ $value attr-dict `:` type($pointer) }];
 }
 
-def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", [
+def MOGG_TensorLoadOp : MOGG_Op<"tensor.load", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Load a scalar value from a codegen tensor at an index.";
   let description = [{
     New-path counterpart of `mogg.tensor.load`: the load half of a fusion
     callback body, reading `$tensor` at `$index`. Mirrors
-    `mogg._tensor.store`'s shape minus the write side; not `Pure`, since a
+    `mogg.tensor.store`'s shape minus the write side; not `Pure`, since a
     load shouldn't be freely reordered relative to a store through the same
     tensor any more than the store itself is.
   }];
@@ -1596,7 +1596,7 @@ def MOGG_TensorLoadOp : MOGG_Op<"_tensor.load", [
   }];
 }
 
-def MOGG_ConstantScalarV2Op : MOGG_Op<"_constant.scalar", [
+def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
@@ -1604,7 +1604,7 @@ def MOGG_ConstantScalarV2Op : MOGG_Op<"_constant.scalar", [
   let description = [{
     New-path counterpart of `mogg.constant.scalar`. It differs only in the
     result type: a builtin scalar (`f32`, `si32`, ...) rather than an
-    `!mo.scalar`, which is the type `mogg._tensor.load` already produces, so
+    `!mo.scalar`, which is the type `mogg.tensor.load` already produces, so
     an inlined constant is interchangeable with the load it replaces
     everywhere the new path consumes element values.
 
@@ -1616,7 +1616,7 @@ def MOGG_ConstantScalarV2Op : MOGG_Op<"_constant.scalar", [
 
     Example:
     ```mlir
-    %cst = mogg._constant.scalar {value = 2.000000e+00 : f32} : f32
+    %cst = mogg.constant.scalar {value = 2.000000e+00 : f32} : f32
     ```
   }];
 
@@ -1626,7 +1626,7 @@ def MOGG_ConstantScalarV2Op : MOGG_Op<"_constant.scalar", [
   let hasVerifier = 1;
 }
 
-def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
+def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
@@ -1634,14 +1634,14 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
   let description = [{
     New-path counterpart of `mogg.call.foreach`: dispatches to the Mojo
     foreach driver named by `$callee` (resolved once, at construction time,
-    from the registered `mogg._call.foreach` primitive -- there is no
-    per-kernel lookup the way `mogg._call.opaque` has, since this always
+    from the registered `mogg.call.foreach` primitive -- there is no
+    per-kernel lookup the way `mogg.call.opaque` has, since this always
     calls the same generic driver) over `$shape` many indices. Unlike the
     opaque-kernel path, the region owns the full per-index computation
     directly: its entry block has one block argument per `$capturing` tensor
     (in order) followed by a trailing index block argument, and the body does
-    its own load-compute-store round trip through `mogg._tensor.load` /
-    `mogg.call.elementwise` / `mogg._tensor.store`. `MAPToMOGG` lowers a
+    its own load-compute-store round trip through `mogg.tensor.load` /
+    `mogg.call.elementwise` / `mogg.tensor.store`. `MAPToMOGG` lowers a
     `map.iter.opaque` wrapping a `map.iter.foreach.body` into one of these.
 
     Captured tensors may have a different shape than `$shape` (e.g. a
@@ -1667,7 +1667,7 @@ def MOGG_CallForeachRegionOp : MOGG_Op<"_call.foreach", [
   }];
 }
 
-def MOGG_CallShapeV2Op : MOGG_Op<"_call.shape", [
+def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
@@ -1689,12 +1689,12 @@ def MOGG_CallShapeV2Op : MOGG_Op<"_call.shape", [
   }];
 }
 
-def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
+def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  ParentOneOf<["MOGG::CallForeachRegionOp", "MOGG::TensorCreateEpilogueOp", "MOGG::TensorCreatePrologueOp"]>,
+  ParentOneOf<["MOGG::CallForeachOp", "MOGG::TensorCreateEpilogueOp", "MOGG::TensorCreatePrologueOp"]>,
   Pure,
 ]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";
@@ -1705,7 +1705,7 @@ def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
 
     Example:
     ```mlir
-    mogg._call.elementwise["mo.add"](...)
+    mogg.call.elementwise["mo.add"](...)
     ```
   }];
   let arguments = (ins
@@ -1722,7 +1722,7 @@ def MOGG_CallElementwiseV2Op : MOGG_Op<"_call.elementwise", [
   }];
 }
 
-def MOGG_TensorCreateSliceOp : MOGG_Op<"_tensor.create.slice", [
+def MOGG_TensorCreateSliceOp : MOGG_Op<"tensor.create.slice", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_TensorCreateInterface>,
@@ -1756,7 +1756,7 @@ def MOGG_TensorCreateSliceOp : MOGG_Op<"_tensor.create.slice", [
   }];
 }
 
-def MOGG_TensorCreateBroadcastOp : MOGG_Op<"_tensor.create.broadcast", [
+def MOGG_TensorCreateBroadcastOp : MOGG_Op<"tensor.create.broadcast", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_TensorCreateInterface>,
@@ -1783,7 +1783,7 @@ def MOGG_TensorCreateBroadcastOp : MOGG_Op<"_tensor.create.broadcast", [
   }];
 }
 
-def MOGG_TensorCreateTransposeOp : MOGG_Op<"_tensor.create.transpose", [
+def MOGG_TensorCreateTransposeOp : MOGG_Op<"tensor.create.transpose", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_TensorCreateInterface>,
@@ -1816,7 +1816,7 @@ def MOGG_TensorCreateTransposeOp : MOGG_Op<"_tensor.create.transpose", [
   }];
 }
 
-def MOGG_TensorCreateReshapeOp : MOGG_Op<"_tensor.create.reshape", [
+def MOGG_TensorCreateReshapeOp : MOGG_Op<"tensor.create.reshape", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_TensorCreateInterface>,
@@ -1828,7 +1828,7 @@ def MOGG_TensorCreateReshapeOp : MOGG_Op<"_tensor.create.reshape", [
     de-linearization -- nothing is copied. `$outShape` carries the view's
     static shape (a `dyn` placeholder where a dim isn't known at compile
     time); `$shape` is the runtime `!mogg.shape` for it -- built the same way
-    `mogg._tensor.create`'s own `$shape` is (`mogg._shape.create`), so an
+    `mogg.tensor.create`'s own `$shape` is (`mogg.shape.create`), so an
     identical shape built elsewhere for the same kernel CSEs into one op --
     unlike broadcast/transpose, reshape computes its result's *stride*
     directly from the output shape's own values (row-major de-linearization
@@ -1859,7 +1859,7 @@ def MOGG_IndexReshapeOp : MOGG_Op<"index.reshape", [
   let description = [{
     Reindexes `$index` (a point in `$fromShape`) to the point in `$toShape`
     with the same row-major linear offset -- the per-index counterpart of
-    `mogg._tensor.create.reshape`, used when a reshape is fused into an
+    `mogg.tensor.create.reshape`, used when a reshape is fused into an
     epilogue's STORE (transforming the store index) rather than materialized
     as a whole-tensor view. `MAPToMOGG` lowers an in-epilogue
     `map.index.reshape` into this (it is deliberately NOT hoisted, unlike the

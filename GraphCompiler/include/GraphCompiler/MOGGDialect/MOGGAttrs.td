@@ -55,7 +55,7 @@ def MOGG_ProfileScopeLocationAttr
 }
 
 //===----------------------------------------------------------------------===//
-// VariadicABIAttr -- how a `mogg._tuple.create` run must be packed
+// VariadicABIAttr -- how a `mogg.tuple.create` run must be packed
 //===----------------------------------------------------------------------===//
 
 def MOGG_VariadicABIAttr

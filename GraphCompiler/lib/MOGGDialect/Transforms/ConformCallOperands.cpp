@@ -8,8 +8,8 @@
 // `MAPToMOGG` leaves every operand as a plain `!mogg.tensor_`; this pass
 // re-runs operand inference against the callee `mogg.kernel.decl` /
 // `mogg.shape_func.decl` and, per its classification, wraps a scalar operand in
-// `mogg._scalar.create`, packs each variadic run into a `mogg._tuple.create`,
-// and wraps a trait-bound argument in a `mogg._trait.create`. Doing this here
+// `mogg.scalar.create`, packs each variadic run into a `mogg.tuple.create`,
+// and wraps a trait-bound argument in a `mogg.trait.create`. Doing this here
 // keeps each `::emitMojo` a local, 1:1 lowering: the call emit forwards
 // whatever handle the IR gives it.
 //
@@ -36,9 +36,9 @@ namespace {
 
 // Packs one operand list (a call's inputs or outputs) into the scalar / tuple
 // forms the kernel expects, per `mapping`: a scalar kernel argument gets its
-// `!mogg.tensor_` operand wrapped in `mogg._scalar.create`; a variadic argument
+// `!mogg.tensor_` operand wrapped in `mogg.scalar.create`; a variadic argument
 // gets its run of consecutive `!mogg.tensor_` operands (same kernel-argument
-// position) packed into one `mogg._tuple.create`. `changed` is set if anything
+// position) packed into one `mogg.tuple.create`. `changed` is set if anything
 // was rewritten.
 SmallVector<Value>
 packOperands(OpBuilder &builder, Location loc, ValueRange operands,
@@ -94,11 +94,11 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
 
     // A NON-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
     // `TileTensorable`) has its raw `!mogg.tensor_` re-presented as the
-    // conforming trait argument by `mogg._trait.create`, which carries the
+    // conforming trait argument by `mogg.trait.create`, which carries the
     // distilled contract and the execution device (for the emit-side layout /
     // alignment). A FUSED trait argument is handled at its producer instead:
     // its fusion functor is a local of the prologue/epilogue emit, so the
-    // contract is stamped onto the `mogg._tensor.create.prologue`/`.epilogue`
+    // contract is stamped onto the `mogg.tensor.create.prologue`/`.epilogue`
     // at MAP lowering (see `consumingFusedContract`), and this pass leaves the
     // operand alone.
     if (std::optional<TensorArgContract> contract = arg.getTraitContract();
@@ -145,7 +145,7 @@ packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
   OpBuilder builder(call);
 
   // `MAPToMOGG` reconstructs a fused mutable-load operand as a mutable
-  // `mogg._tensor.create` (a `!mogg.buffer_`). When it backs a read-only kernel
+  // `mogg.tensor.create` (a `!mogg.buffer_`). When it backs a read-only kernel
   // input, the mapping above accepts the mut->immut widening, but codegen would
   // still emit a mutable slice the kernel's immutable parameter rejects.
   // Recreate that producer immutable so the emitted slice matches; DCE drops
@@ -179,12 +179,12 @@ packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
   return packed;
 }
 
-// The execution device recorded on the enclosing `mogg._kernel`, which every
-// `mogg` call lowered by `MAPToMOGG` sits inside. `mogg._trait.create` needs it
+// The execution device recorded on the enclosing `mogg.kernel`, which every
+// `mogg` call lowered by `MAPToMOGG` sits inside. `mogg.trait.create` needs it
 // to pick the preferred alignment and device-passable flavor at emit, locally,
-// the same way `mogg._tensor.create` does.
+// the same way `mogg.tensor.create` does.
 static M::DeviceRefAttr enclosingKernelDevice(Operation *call) {
-  if (auto kernel = call->getParentOfType<KernelRegionOp>())
+  if (auto kernel = call->getParentOfType<KernelOp>())
     return MO::getDeviceOrDefault(kernel);
   return {};
 }
@@ -251,7 +251,7 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
 // Same as `packCall`, against the `mogg.shape_func.decl` signature: no
 // outputs, but `range_shape` still wants `Scalar[dtype]`, not a
 // `!mogg.tensor_`.
-LogicalResult packShapeCall(CallShapeV2Op call, const MojoRegistry &registry) {
+LogicalResult packShapeCall(CallShapeOp call, const MojoRegistry &registry) {
   ShapeFunctionDeclOp decl =
       registry.lookupShapeFunctionBySymName(call.getCallee());
   if (!decl)
@@ -270,7 +270,7 @@ LogicalResult packShapeCall(CallShapeV2Op call, const MojoRegistry &registry) {
     return success();
 
   OpBuilder builder(call);
-  auto replacement = CallShapeV2Op::create(
+  auto replacement = CallShapeOp::create(
       builder, call.getLoc(), call.getResult().getType(), call.getCalleeAttr(),
       call.getIsThrowsAttr(), packed->inputs, call.getKernelParamAttr());
   call.getResult().replaceAllUsesWith(replacement.getResult());
@@ -289,7 +289,7 @@ struct ConformCallOperandsPass
       LogicalResult packed = success();
       if (auto call = dyn_cast<CallOpaqueOp>(op))
         packed = packCall(call, registry);
-      else if (auto shapeCall = dyn_cast<CallShapeV2Op>(op))
+      else if (auto shapeCall = dyn_cast<CallShapeOp>(op))
         packed = packShapeCall(shapeCall, registry);
       return failed(packed) ? WalkResult::interrupt() : WalkResult::advance();
     });

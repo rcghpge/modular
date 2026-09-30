@@ -13,17 +13,17 @@
 // RUN:     | FileCheck %s --check-prefix=CHECK-FUSED
 
 // After create+merge + the MAP fusion pipeline, relu is fused into the
-// allreduce as an epilogue, so a single mogg._kernel remains inside
+// allreduce as an epilogue, so a single mogg.kernel remains inside
 // mo.parallel, its fusion_epilogue joining the allreduce and the relu.
 // CHECK-FUSED-LABEL: mo.graph @bundled_allreduce_relu_outside
 // CHECK-FUSED:      mo.parallel
-// CHECK-FUSED:        mogg._kernel
+// CHECK-FUSED:        mogg.kernel
 // CHECK-FUSED:          fusion_epilogue<[
 // CHECK-FUSED-SAME:       "mo.bundled.allreduce.sum"
 // CHECK-FUSED-SAME:       "mo.relu"
-// CHECK-FUSED:          mogg._tensor.create.epilogue
-// CHECK-FUSED:            mogg._call.elementwise["{{.*}}.ReLU"]
-// CHECK-FUSED:          mogg._call.opaque @{{.*}}BundledAllReduceSum
+// CHECK-FUSED:          mogg.tensor.create.epilogue
+// CHECK-FUSED:            mogg.call.elementwise["{{.*}}.ReLU"]
+// CHECK-FUSED:          mogg.call.opaque @{{.*}}BundledAllReduceSum
 
 mo.graph @bundled_allreduce_relu_outside(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,

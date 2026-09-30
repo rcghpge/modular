@@ -2,7 +2,7 @@
 // RUN: FileCheck %s < %t
 // RUN: FileCheck %s --check-prefix=NONAME < %t
 
-// MOGGToMGP lowers a new-path mogg._kernel into a mogg.generic.compiled.region:
+// MOGGToMGP lowers a new-path mogg.kernel into a mogg.generic.compiled.region:
 // its !mo.tensor inputs become !mgp.buffer operands, outputs are freshly
 // allocated, and inside the body each async block arg is unpacked + rebound to
 // the handle the already-outlined mogg.call.stub expects. Dim args are rebound
@@ -21,19 +21,19 @@
 // CHECK-LABEL: mgp.model @one_plain
 // CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
 // CHECK: mogg.async.unpack(%{{.*}}) : !mgp.buffer
-// CHECK: mogg._rebind %{{.*}} : !mgp.buffer to !mogg.pointer_
-// CHECK: mogg._rebind %{{.*}} to !mogg.context
+// CHECK: mogg.rebind %{{.*}} : !mgp.buffer to !mogg.pointer_
+// CHECK: mogg.rebind %{{.*}} to !mogg.context
 // CHECK: mogg.call.stub @[[STUB0:[A-Za-z0-9_]+_mogg[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.context
 // CHECK: mogg.async.ready
 // CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio.">
 // Async op: the region keeps `isAsync = true` (was hardcoded `false` before
-// KernelRegionOp had an `isAsync` attribute).
+// KernelOp had an `isAsync` attribute).
 // CHECK-SAME: isAsync = true
 // CHECK: mogg.kernel.stub @[[STUB0]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.context)
 // CHECK-SAME: device = "cpu"
-// CHECK: mogg._shape.create() {shape = #mosh<ape[2, 2]>{{.*}}} : () -> !mogg.shape
-// CHECK: mogg._tensor.create(%arg0, %{{.*}}) {device = {{.*}}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
-// CHECK: mogg._call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%arg2 : !mogg.context)
+// CHECK: mogg.shape.create() {shape = #mosh<ape[2, 2]>{{.*}}} : () -> !mogg.shape
+// CHECK: mogg.tensor.create(%arg0, %{{.*}}) {device = {{.*}}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK: mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%arg2 : !mogg.context)
 mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_plain_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
@@ -44,14 +44,14 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // stub's dim arg and its in-body shape.create use the anonymous !mogg.dim_ too.
 // CHECK-LABEL: mgp.model @dyn
 // CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
-// CHECK: mogg._rebind %{{.*}} : !kgen.scalar<si64> to !mogg.dim_{{$}}
+// CHECK: mogg.rebind %{{.*}} : !kgen.scalar<si64> to !mogg.dim_{{$}}
 // CHECK: mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_mogg[0-9_]*]] %{{.*}} : !mogg.pointer_, !mogg.pointer_, !mogg.dim_, !mogg.context
 // CHECK: mogg.async.ready
 // CHECK: device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"iio..">
 // CHECK: mogg.kernel.stub @[[STUB1]] (%arg0: !mogg.pointer_, %arg1: !mogg.pointer_, %arg2: !mogg.dim_, %arg3: !mogg.context)
 // CHECK-SAME: device = "cpu"
-// CHECK: mogg._shape.create(%arg2) {shape = #mosh<ape[dyn, 4]>{{.*}}} : (!mogg.dim_) -> !mogg.shape
-// CHECK: mogg._call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%arg3 : !mogg.context)
+// CHECK: mogg.shape.create(%arg2) {shape = #mosh<ape[dyn, 4]>{{.*}}} : (!mogg.dim_) -> !mogg.shape
+// CHECK: mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor_) outputs(%{{.*}} : !mogg.tensor_) context(%arg3 : !mogg.context)
 mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_plain_output"}(%a) : (!mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>
   mo.output %c : !mo.tensor<[batch, 4], f32>

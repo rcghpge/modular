@@ -11,7 +11,7 @@
 
 // End-to-end MAP-ABI emission of the three variadic packing ABIs. The
 // `$variadic_abi` attribute `ConformCallOperands` stamps on
-// `mogg._tuple.create` (from the callee's variadic parameter type) selects the
+// `mogg.tuple.create` (from the callee's variadic parameter type) selects the
 // aggregate `TupleCreateOp::emitMojo` builds, so emission never inspects the
 // producing ops.
 

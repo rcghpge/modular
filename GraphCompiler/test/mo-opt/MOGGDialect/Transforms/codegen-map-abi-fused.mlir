@@ -13,11 +13,11 @@
 
 // End-to-end Mojo emission for MAP-ABI fused (store-epilogue) outputs
 // (TensorCreateEpilogueOp::emitMojo plus the CallOpaqueOp fused branch). A
-// `map.iter.epilogue` store lowers directly to a `mogg._tensor.create.epilogue`
+// `map.iter.epilogue` store lowers directly to a `mogg.tensor.create.epilogue`
 // holding its own epilogue body (no separate lambda op); emission builds an
 // explicit-capture `EpilogueStoreFunctor` conforming to `OutputFusion`
 // (managed_tensor_slice.mojo) by recursively lowering the epilogue body's own
-// ops (its `mogg._tensor.store` becomes `store`'s own store statement), then
+// ops (its `mogg.tensor.store` becomes `store`'s own store statement), then
 // binds it directly onto the store target's own (unfused) ManagedTensorSlice
 // via `._bind_to_fused_output(...)` -- the same mechanism the MOGG-ABI
 // `TensorFusedOp::emitMojo` non-variadic path uses. The whole path is
@@ -119,7 +119,7 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // `store` body produced by recursively lowering the epilogue's own body ops
 // (`emitLegacyManagedTensorSliceEpilogue` / `TensorStoreOp::emitMojo`) instead
 // of substituted into a fixed Mojo template. Each capture's `dtype` / `mut`
-// are concrete literals read from its own defining `mogg._tensor.create` and
+// are concrete literals read from its own defining `mogg.tensor.create` and
 // baked directly into its field types; only `LayoutType` is a struct param
 // (one per capture), since its value is a `type_of(<enclosing-function
 // local>)` expression a struct can't close over. Bare (ptr, layout) fields,
@@ -157,7 +157,7 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // the only two-`LayoutType`-param functor. Note the second capture (the fused
 // `bias` input, only ever loaded) carries its OWN `mut = False` rather than
 // inheriting the store target's mutability: each capture's dtype/mut come from
-// its own defining `mogg._tensor.create`.
+// its own defining `mogg.tensor.create`.
 // CHECK-COUNT-4: struct EpilogueStoreFunctor{{[0-9_]*}}[{{[a-zA-Z0-9_]+}}: {{.*}}StaticTensorSpec[DType.float32, _, ...]](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
 // CHECK:      struct EpilogueStoreFunctor{{[0-9_]*}}[[[SPEC0:[a-zA-Z0-9_]+]]: {{.*}}StaticTensorSpec[DType.float32, _, ...], [[SPEC1:[a-zA-Z0-9_]+]]: {{.*}}StaticTensorSpec[DType.float32, _, ...]](managed_tensor_slice.OutputFusion, TrivialRegisterPassable):
 // CHECK-NEXT:     @__allow_legacy_any_origin_fields

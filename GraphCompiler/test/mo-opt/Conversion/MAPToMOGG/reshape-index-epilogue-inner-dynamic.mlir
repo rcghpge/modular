@@ -8,14 +8,14 @@
 // wired onto the in-body `mogg.index.reshape` as its dynamic-shape operands.
 
 // CHECK-LABEL: mo.graph @custom_reshape_inner_dynamic
-// CHECK: mogg._tensor.get_ptr
-// CHECK: mogg._tensor.create.epilogue
+// CHECK: mogg.tensor.get_ptr
+// CHECK: mogg.tensor.create.epilogue
 // CHECK-SAME: shapes(%[[FROM:.*]], %[[TO:.*]])
 // The epilogue body carries the two shape captures as trailing block args after
 // the tensor captures; the store-index reshape reads them as dynamic shapes.
 // CHECK: ^bb0(%[[V:.*]]: f32, %[[I:.*]]: !map.index<2>, %[[CAP0:.*]]: !mogg.tensor_, %[[CAP1:.*]]: !mogg.tensor_, %[[SFROM:.*]]: !mogg.shape, %[[STO:.*]]: !mogg.shape):
 // CHECK: %[[SIDX:.*]] = mogg.index.reshape(%[[I]], %[[SFROM]], %[[STO]]) {fromShape = {{.*}}, toShape = {{.*}}} : (!map.index<2>, !mogg.shape, !mogg.shape) -> !map.index<2>
-// CHECK: mogg._tensor.store %[[CAP0]][%[[SIDX]]]
+// CHECK: mogg.tensor.store %[[CAP0]][%[[SIDX]]]
 mo.graph @custom_reshape_inner_dynamic<D>(
   %x: !mo.tensor<[D, 2], f32>,
   %z: !mo.tensor<[2, D], f32>

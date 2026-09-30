@@ -4,24 +4,24 @@
 // post-MAPToMOGG form, with plain !mogg.tensor_ operands). It re-runs operand
 // inference against the callee mogg.kernel.decl and materializes the non-tensor
 // operands the kernel expects: a scalar operand is wrapped in
-// mogg._scalar.create, and a run of variadic tensor operands is packed into one
-// mogg._tuple.create.
+// mogg.scalar.create, and a run of variadic tensor operands is packed into one
+// mogg.tuple.create.
 
 // The second input is a scalar kernel argument.
 // CHECK-LABEL: func.func @scalar
-// CHECK: %[[SC:.*]] = mogg._scalar.create(%{{.*}}) : (!mogg.tensor_) -> !mogg.scalar_
-// CHECK: mogg._call.opaque @{{.*}}MapLowerScalar inputs(%{{.*}}, %[[SC]] : !mogg.tensor_, !mogg.scalar_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context)
+// CHECK: %[[SC:.*]] = mogg.scalar.create(%{{.*}}) : (!mogg.tensor_) -> !mogg.scalar_
+// CHECK: mogg.call.opaque @{{.*}}MapLowerScalar inputs(%{{.*}}, %[[SC]] : !mogg.tensor_, !mogg.scalar_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context)
 func.func @scalar(%in: !mogg.tensor_, %scalar: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) {
-  mogg._call.opaque @testing_kernels.testing_kernels.MapLowerScalar inputs(%in, %scalar : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
+  mogg.call.opaque @testing_kernels.testing_kernels.MapLowerScalar inputs(%in, %scalar : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   return
 }
 
 // The two inputs satisfy one variadic kernel argument.
 // CHECK-LABEL: func.func @variadic
-// CHECK: %[[TUP:.*]] = mogg._tuple.create(%{{.*}}, %{{.*}}) : (!mogg.tensor_, !mogg.tensor_) -> !mogg.tuple_
-// CHECK: mogg._call.opaque @{{.*}}MapLowerVariadic inputs(%[[TUP]] : !mogg.tuple_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context)
+// CHECK: %[[TUP:.*]] = mogg.tuple.create(%{{.*}}, %{{.*}}) : (!mogg.tensor_, !mogg.tensor_) -> !mogg.tuple_
+// CHECK: mogg.call.opaque @{{.*}}MapLowerVariadic inputs(%[[TUP]] : !mogg.tuple_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context)
 func.func @variadic(%a: !mogg.tensor_, %b: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) {
-  mogg._call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
+  mogg.call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context)
   return
 }
 
@@ -29,8 +29,8 @@ func.func @variadic(%a: !mogg.tensor_, %b: !mogg.tensor_, %out: !mogg.tensor_, %
 // reads them instead of inspecting an output's producer, and packing is what
 // replaces that producer -- dropping them silently disables the epilogue.
 // CHECK-LABEL: func.func @variadicKeepsFusionFlags
-// CHECK: mogg._call.opaque @{{.*}}MapLowerVariadic inputs(%{{.*}} : !mogg.tuple_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
+// CHECK: mogg.call.opaque @{{.*}}MapLowerVariadic inputs(%{{.*}} : !mogg.tuple_) outputs(%{{.*}} : !mogg.tensor_) context(%{{.*}} : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
 func.func @variadicKeepsFusionFlags(%a: !mogg.tensor_, %b: !mogg.tensor_, %out: !mogg.tensor_, %ctx: !mogg.context) {
-  mogg._call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
+  mogg.call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor_, !mogg.tensor_) outputs(%out : !mogg.tensor_) context(%ctx : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
   return
 }

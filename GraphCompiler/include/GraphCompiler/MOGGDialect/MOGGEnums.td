@@ -21,7 +21,7 @@ def MOGG_BindLambdaKind : I32EnumAttr<"BindLambdaKind", "lambda kind", [
   let cppNamespace = "::M::MOGG";
 }
 
-// How a run of variadic tensor operands packed into a `mogg._tuple.create`
+// How a run of variadic tensor operands packed into a `mogg.tuple.create`
 // must be materialized in Mojo. `ConformCallOperands` sets this from the
 // callee's variadic parameter type, so `emitMojo` chooses the aggregate
 // (`VariadicTensors` / `_FusedInputVariadicTensors` /
@@ -41,7 +41,7 @@ def MOGG_VariadicABI
 def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
   I32EnumAttrCase<"MGP", 1, "MGP">,
   // Advanced-fusion MOGG kernel-stub ABI: a `mogg.kernel.stub` outlined from a
-  // `mogg._kernel` (see OutlineKernelsIntoFunctions). Labeled here so `EmitMojo`
+  // `mogg.kernel` (see OutlineKernelsIntoFunctions). Labeled here so `EmitMojo`
   // can branch on it without touching the separate MGP ABI emission.
   I32EnumAttrCase<"MOGG", 2, "MOGG">,
 ]> {

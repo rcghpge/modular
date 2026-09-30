@@ -36,14 +36,14 @@ struct KernelDeclOperandMapping {
 /// ranges) to the kernel's arguments. This is the general entry point: it does
 /// not require an `Operation` and so also serves destination-passing-style call
 /// ops whose outputs are operands rather than results (e.g.
-/// `mogg._call.opaque`). `opName` names the caller in diagnostics; the first
+/// `mogg.call.opaque`). `opName` names the caller in diagnostics; the first
 /// two flags mirror the `SameVariadicOperandSize` / extra-output-shape-argument
 /// op properties. Set `resultLeavesByValue` when the kernel's function result
 /// is returned rather than written through a destination, so `results` carries
 /// no entry standing in for it.
 /// `allowMutToImmut` lets a mutable operand satisfy an immutable kernel operand
 /// (a sound read-only widening; the converse is never allowed). Only
-/// ConformCallOperands opts in, so it can accept a `mogg._tensor.create` that
+/// ConformCallOperands opts in, so it can accept a `mogg.tensor.create` that
 /// MAPToMOGG built as a mutable buffer for a fused mutable-load and then
 /// recreate it immutable to match the callee.
 ErrorOr<KernelDeclOperandMapping> mapToKernelImplementation(
