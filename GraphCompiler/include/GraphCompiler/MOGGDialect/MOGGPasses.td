@@ -330,11 +330,7 @@ def EmitMojo: Pass<"mogg-emit-mojo", "ModuleOp"> {
     Option<"enableComputeLambdas", "enable-compute-lambdas", "bool", "true",
       "Enable compute lambdas for the fused I/O kernels">,
     Option<"moggDebugDumpFusedTensorSpecs", "mogg-debug-dump-fused-tensor-specs", "bool", "false",
-      "Flag to add prints for the fused tensor specs in the lambdas">,
-    Option<"enableProfileScopeTracing", "enable-profile-scope-tracing", "bool", "false",
-      "Synthesize profiler trace ranges from contiguous runs of ops carrying the same profile scope.">,
-    Option<"profileScopeTracingTraceUnlabelled", "profile-scope-tracing-trace-unlabelled", "bool", "false",
-      "Emit ranges for regions carrying no profile scope. Useful for visualizing compiler output.">
+      "Flag to add prints for the fused tensor specs in the lambdas">
   ];
 
   let dependentDialects = ["MEF::MEFDialect",

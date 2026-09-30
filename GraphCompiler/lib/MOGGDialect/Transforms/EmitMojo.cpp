@@ -4,9 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
-#include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGInterfaces.h" // IWYU: needed for type declarations used via MOGG::
@@ -18,8 +16,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "mlir/Dialect/Index/IR/IndexOps.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/Passes.h"
 
 #include <filesystem>
 
@@ -298,73 +294,10 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     moduleOp->removeAttr(MO::DeviceInfoMapping::kAttrName);
   }
 
-  // This pass emits Mojo text. [optional] phases exist strictly as compilation
-  // time optimizations.
-  void runOnOperation() override {
-    auto moduleOp = getOperation();
-
-    // [optional] Lift inline `index.constant` ops feeding
-    // `mgp.buffer.get_cached`'s slot operand out of kernel bodies and into
-    // kernel-stub function arguments, so that kernels that previously
-    // differed only in those constant slot indices become structurally
-    // identical and `MergeIdenticalKernelStubs` (below) can collapse them.
-    // See `liftBufferCacheSlots` for the full rationale.
-    liftBufferCacheSlots(moduleOp);
-
-    // The following passes run nested within the current pass.
-    MLIRContext *ctx = &getContext();
-    mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
-        ctx, mlir::OpPassManager::Nesting::Implicit);
-
-    // [optional]
-    // Erase device ids inside kernel stubs (they only differ by which physical
-    // device the kernel runs on -- e.g. across EP shards -- and the emitted
-    // Mojo reads the device label, not the id) so that otherwise-identical
-    // per-device copies hash equal and the merge below can collapse them.
-    pm.addPass(MOGG::createCanonicalizeKernelStubDeviceIds());
-
-    // [optional]
-    // Merge identical kernel stubs using their hashes.
-    pm.addPass(MOGG::createMergeIdenticalKernelStubs());
-
-    // [optional]
-    // Any remaining kernel that has the lowering ops of an index.constant op
-    // will have that code replaced back with the index.constant because it's
-    // fewer lines of Mojo.
-    pm.addPass(MGP::createRaiseBackIndexConstant());
-
-    // TODO: FixupOverhangsPass doesn't work well if ran before this pass
-    // without EmitMojo enabled. Once the transition to EmitMojo is complete, we
-    // should maybe move some of these passes to GraphCompiler.cpp.
-    // Canonicalizer should follow suit.
-    pm.addPass(MGP::createFixupOverhangsPass());
-    pm.addNestedPass<MOGG::KernelStubOp>(mlir::createCanonicalizerPass());
-
-    // Eliminate all stubs that have no callers (because of
-    // mergeIdenticalKernelStubs).
-    pm.addPass(mlir::createSymbolDCEPass());
-
-    // Profile-scope range bracketing runs just before try/except wrapping: the
-    // begin/end Trace calls are raising, so they need that wrapping to keep the
-    // MGP-ABI entry point non-raising.
-    if (this->enableProfileScopeTracing) {
-      MOGG::AddProfileScopeTracingOptions profileScopeOptions;
-      profileScopeOptions.profileScopeTracingTraceUnlabelled =
-          this->profileScopeTracingTraceUnlabelled;
-      pm.addPass(MOGG::createAddProfileScopeTracing(profileScopeOptions));
-    }
-
-    // This pass is run nested in the current pass because
-    // recoverIndexConstantFromUniqueKernels can cause a kernel to become
-    // non-raising again. This causes Mojo compiler warning because we would
-    // have a try-except clause around non-raising code.
-    pm.addPass(MOGG::createAddTryExceptBlocks());
-
-    if (pm.run(moduleOp).failed())
-      return signalPassFailure();
-
-    emitMojoText();
-  }
+  // This pass emits Mojo text. The kernel-dedup and try/except preparation
+  // passes it used to run in a nested pass manager now live in
+  // `buildMgpPipeline`, immediately before this pass.
+  void runOnOperation() override { emitMojoText(); }
 };
 
 } // namespace

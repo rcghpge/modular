@@ -19,6 +19,7 @@
 #include "GraphCompiler/MODialect/Transforms/ConstantFoldPass.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
+#include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
 #include "GraphCompiler/MOSHDialect/MOSHDialect.h"
 #include "GraphCompiler/Passes.h"
@@ -471,15 +472,58 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createOutlineKernels());
   pm.addPass(MOGG::createLookupConstantResources());
 
+  // Kernel-stub dedup and try/except preparation. These run just before
+  // `EmitMojo`, which now only emits Mojo text.
+
+  // Lift inline `index.constant` ops feeding `mgp.buffer.get_cached`'s slot
+  // operand out of kernel bodies and into kernel-stub function arguments, so
+  // that kernels that previously differed only in those constant slot indices
+  // become structurally identical and `MergeIdenticalKernelStubs` (below) can
+  // collapse them. See `liftBufferCacheSlots` for the full rationale.
+  pm.addPass(MOGG::createLiftBufferCacheSlots());
+
+  // Erase device ids inside kernel stubs (they only differ by which physical
+  // device the kernel runs on -- e.g. across EP shards -- and the emitted Mojo
+  // reads the device label, not the id) so that otherwise-identical per-device
+  // copies hash equal and the merge below can collapse them.
+  pm.addPass(MOGG::createCanonicalizeKernelStubDeviceIds());
+
+  // Merge identical kernel stubs using their hashes.
+  pm.addPass(MOGG::createMergeIdenticalKernelStubs());
+
+  // Any remaining kernel that has the lowering ops of an index.constant op will
+  // have that code replaced back with the index.constant because it's fewer
+  // lines of Mojo.
+  pm.addPass(MGP::createRaiseBackIndexConstant());
+
+  pm.addPass(MGP::createFixupOverhangsPass());
+  pm.addNestedPass<MOGG::KernelStubOp>(mlir::createCanonicalizerPass());
+
+  // Eliminate all stubs that have no callers (because of
+  // MergeIdenticalKernelStubs).
+  pm.addPass(mlir::createSymbolDCEPass());
+
+  // Profile-scope range bracketing runs just before try/except wrapping: the
+  // begin/end Trace calls are raising, so they need that wrapping to keep the
+  // MGP-ABI entry point non-raising.
+  if (opts.enableProfileScopeTracing) {
+    MOGG::AddProfileScopeTracingOptions profileScopeOptions;
+    profileScopeOptions.profileScopeTracingTraceUnlabelled =
+        opts.profileScopeTracingTraceUnlabelled;
+    pm.addPass(MOGG::createAddProfileScopeTracing(profileScopeOptions));
+  }
+
+  // RaiseBackIndexConstant can make a kernel non-raising again, which would
+  // leave a try/except around non-raising code and warn in the Mojo compiler;
+  // wrapping runs last so it sees the final raising set.
+  pm.addPass(MOGG::createAddTryExceptBlocks());
+
   MOGG::EmitMojoOptions emitMojoOptions;
   emitMojoOptions.kernelLibraryPaths = kernelLibraryPaths;
   emitMojoOptions.enableOpTraceComments = opts.enableOpTraceComments;
   emitMojoOptions.enableComputeLambdas = opts.enableComputeLambdas;
   emitMojoOptions.moggDebugDumpFusedTensorSpecs =
       opts.moggDebugDumpFusedTensorSpecs;
-  emitMojoOptions.enableProfileScopeTracing = opts.enableProfileScopeTracing;
-  emitMojoOptions.profileScopeTracingTraceUnlabelled =
-      opts.profileScopeTracingTraceUnlabelled;
   pm.addPass(MOGG::createEmitMojo(emitMojoOptions));
 
   if (opts.dumpMojoText)
