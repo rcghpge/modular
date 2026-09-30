@@ -269,6 +269,25 @@ def MergeIdenticalKernelStubs: Pass<"mogg-merge-identical-kernel-stubs", "Module
   ];
 }
 
+def CanonicalizeKernelStubDeviceIds:
+    Pass<"mogg-canonicalize-kernel-stub-device-ids", "ModuleOp"> {
+  let summary = "Erase device ids inside kernel stubs so per-device copies merge";
+  let description = [{
+    Rewrites every `#M.device_ref<label, id>` reachable inside each
+    `mogg.kernel.stub` (in attributes and, crucially, in the `!mgp.tensor` types
+    the stub operates on) to the canonical id 0, keeping the label. A kernel
+    replicated across N devices (e.g. an EP-sharded MoE on 8
+    GPUs) is otherwise N distinct stubs that differ only in that numeric id, so
+    they hash differently and `MergeIdenticalKernelStubs` cannot collapse them,
+    even though the emitted Mojo is identical (emission reads the device *label*
+    only, never the id). Running this immediately before the merge restores the
+    dedup. Only the stub bodies are touched; call sites and the surrounding MGP
+    graph keep their real device ids. See GEX-4239.
+  }];
+
+  let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
+}
+
 def LiftBufferCacheSlots: Pass<"mogg-lift-buffer-cache-slots", "ModuleOp"> {
   let summary = "Lift inline `index.constant` slot operands of mgp.buffer.get_cached to kernel args";
   let description = [{

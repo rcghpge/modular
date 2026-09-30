@@ -317,6 +317,13 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
         ctx, mlir::OpPassManager::Nesting::Implicit);
 
     // [optional]
+    // Erase device ids inside kernel stubs (they only differ by which physical
+    // device the kernel runs on -- e.g. across EP shards -- and the emitted
+    // Mojo reads the device label, not the id) so that otherwise-identical
+    // per-device copies hash equal and the merge below can collapse them.
+    pm.addPass(MOGG::createCanonicalizeKernelStubDeviceIds());
+
+    // [optional]
     // Merge identical kernel stubs using their hashes.
     pm.addPass(MOGG::createMergeIdenticalKernelStubs());
 

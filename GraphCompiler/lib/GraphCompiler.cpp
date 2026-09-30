@@ -159,6 +159,7 @@ void M::MO::registerPasses() {
   MOGG::registerOutlineKernelsIntoFunctionsPass();
   MGP::registerMOGGToMGP();
 
+  MOGG::registerCanonicalizeKernelStubDeviceIds();
   MOGG::registerMergeIdenticalKernelStubs();
   MOGG::registerAddProfileScopeTracingPass();
   MOGG::registerWrapKernelsWithTraceOpPass();
