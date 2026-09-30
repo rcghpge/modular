@@ -3925,6 +3925,57 @@ void EPDispatchBlockScaledNVOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// EPDispatchBlockScaledNVDynGlobalScalesOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult EPDispatchBlockScaledNVDynGlobalScalesOp::verify() {
+  auto inputTokens = getInputTokens();
+  if (inputTokens.empty())
+    return emitError("ep.dispatch.block.scaled.nv.dyn_global_scales requires "
+                     "at least one device");
+
+  size_t numDevices = inputTokens.size();
+
+  // Verify all variadic operand groups have the same size.
+  if (getTopkIds().size() != numDevices)
+    return emitError("topkIds count must match inputTokens count");
+  if (getSendPtrs().size() != numDevices)
+    return emitError("sendPtrs count must match inputTokens count");
+  if (getRecvPtrs().size() != numDevices)
+    return emitError("recvPtrs count must match inputTokens count");
+  if (getRecvCountPtrs().size() != numDevices)
+    return emitError("recvCountPtrs count must match inputTokens count");
+  if (getAtomicCounters().size() != numDevices)
+    return emitError("atomicCounters count must match inputTokens count");
+
+  // Verify all variadic result groups have the same size.
+  if (getOutputTokens().size() != numDevices)
+    return emitError("outputTokens count must match inputTokens count");
+  if (getOutputScales().size() != numDevices)
+    return emitError("outputScales count must match inputTokens count");
+  if (getOutputRowwiseScales().size() != numDevices)
+    return emitError("outputRowwiseScales count must match inputTokens count");
+  if (getRowOffsets().size() != numDevices)
+    return emitError("rowOffsets count must match inputTokens count");
+  if (getScalesOffsets().size() != numDevices)
+    return emitError("scalesOffsets count must match inputTokens count");
+  if (getExpertIds().size() != numDevices)
+    return emitError("expertIds count must match inputTokens count");
+  if (getSrcInfo().size() != numDevices)
+    return emitError("srcInfo count must match inputTokens count");
+
+  return success();
+}
+
+void EPDispatchBlockScaledNVDynGlobalScalesOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  MutableOperandRange atomicCounters = getAtomicCountersMutable();
+
+  for (auto &counter : atomicCounters)
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &counter);
+}
+
+//===----------------------------------------------------------------------===//
 // EPDispatchMXFP4Op
 //===----------------------------------------------------------------------===//
 

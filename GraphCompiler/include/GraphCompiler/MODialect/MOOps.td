@@ -5891,6 +5891,59 @@ def MO_EPDispatchBlockScaledNVOp : MO_DistributedOp<"distributed.ep.dispatch.blo
   }];
 }
 
+def MO_EPDispatchBlockScaledNVDynGlobalScalesOp : MO_DistributedOp<
+    "distributed.ep.dispatch.block.scaled.nv.dyn_global_scales", [
+  MO_MultiDeviceFrom<"inputTokens">,
+]> {
+  let summary = [{
+    Multi-device Expert Parallelism NVFP4 dispatch with per-token global
+    scales.
+  }];
+  let description = [{
+    Dispatches input tokens to expert devices across N GPUs like
+    `mo.distributed.ep.dispatch.block.scaled.nv` in NVFP4, but quantizes each
+    token against its own global scale, `2688 / rowmax`, instead of a
+    caller-supplied input scale. The scale's BF16 inverse travels with the
+    token, and each receiver stores it in `outputRowwiseScales`, one entry per
+    row of `outputTokens`.
+
+    All variadic operands and results have the same size (one per device).
+    The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer
+    tensors that are typically identical across devices (replicated N times
+    to satisfy the same-variadic-size constraint).
+  }];
+  let hasVerifier = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputTokens,
+    Variadic<MO_Tensor>:$topkIds,
+    Variadic<MO_Tensor>:$sendPtrs,
+    Variadic<MO_Tensor>:$recvPtrs,
+    Variadic<MO_Tensor>:$recvCountPtrs,
+    Variadic<MO_Buffer>:$atomicCounters,
+    MO_Chain:$inChain,
+    I64Attr:$hidden_size,
+    I64Attr:$top_k,
+    I64Attr:$n_experts,
+    I64Attr:$max_token_per_rank,
+    I64Attr:$n_gpus_per_node,
+    I64Attr:$n_nodes,
+    BoolAttr:$fused_shared_expert
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputTokens,
+    Variadic<MO_Tensor>:$outputScales,
+    Variadic<MO_Tensor>:$outputRowwiseScales,
+    Variadic<MO_Tensor>:$rowOffsets,
+    Variadic<MO_Tensor>:$scalesOffsets,
+    Variadic<MO_Tensor>:$expertIds,
+    Variadic<MO_Tensor>:$srcInfo,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
   MO_MultiDeviceFrom<"inputTokens">,
 ]> {
