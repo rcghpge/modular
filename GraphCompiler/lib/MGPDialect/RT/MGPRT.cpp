@@ -187,47 +187,6 @@ MGP_RT_AssignAsyncValue(AsyncRTWrapper<AnyAsyncValueRef> slot,
   }
 }
 
-/// TAKES an already-owning DeviceBuffer handle the producer surrendered instead
-/// of minting a fresh owner with createBufferOwning. Used by mgp.buffer.alloc:
-/// the Mojo side hands
-/// over the live DeviceBuffer from enqueue_create_buffer via
-/// DeviceBuffer.take_handle() (deinit self, which suppresses __del__/release),
-/// and this entrypoint adopts that single reference net-zero.
-COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
-MGP_RT_CreateAsyncDeviceBufferRefByTakingHandle(
-    Driver::DeviceBuffer *handle, void *data, size_t size,
-    AsyncRTWrapper<AnyAsyncValueRef> async) {
-  CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
-  AnyAsyncValueRef &value = unwrap(async);
-
-  // TAKE the reference the Mojo owner just surrendered via take_handle(). The
-  // pairing is load-bearing: take_handle is `deinit self` (no release) and
-  // takeRCRef adopts the handle WITHOUT addRef, so the single live reference is
-  // transferred net-zero -- no addRef, no fresh DeviceBuffer
-  // (createBufferOwning would double-own the same allocation -> double free),
-  // no releasePtr. Using copyRCRef here would leak +1, since the Mojo side no
-  // longer releases.
-#if MODULAR_HAL_DEVICE_CONTEXT
-  // Under HAL the consumed handle is the heap-boxed Mojo DeviceBuffer;
-  // wrap it in a fresh shim DeviceBuffer that owns the box.
-  Driver::DeviceBufferRef buf = Driver::DeviceBuffer::adoptMojoBox(
-      reinterpret_cast<MojoHALBufferBox *>(handle), data, size);
-#else
-  Driver::DeviceBufferRef buf = M::takeRCRef(handle);
-#endif
-
-  // Wrap the DeviceBuffer in an AsyncValue.
-  auto asyncDeviceBufferRef =
-      AnyAsyncValueRef::createReady<Driver::DeviceBufferRef>(cpuDevice,
-                                                             std::move(buf));
-
-  // Finally, wrap the pointer and the AsyncValue wrapper in a TensorBufferRef.
-  auto tensorBufferRef = ::M::MLRT::TensorBufferRef::create(
-      data, size, std::move(asyncDeviceBufferRef));
-
-  fulfillReady<TensorBufferRef>(value, std::move(tensorBufferRef));
-}
-
 /// Builds a *new* AsyncValue holding a TensorBufferRef from a data view (ptr +
 /// size) and an owning storage handle (surrendered net-zero), returning the
 /// owning AsyncValue* (refcount 1) for a Mojo AnyAsyncValueRef to adopt.

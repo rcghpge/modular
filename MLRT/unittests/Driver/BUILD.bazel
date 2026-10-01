@@ -558,6 +558,27 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "AsyncValueFromDeviceBufferTest",
+    size = "small",
+    srcs = ["AsyncValueFromDeviceBufferTest.cpp"],
+    # The HAL backend creates even the CPU context through a driver plugin;
+    # the legacy backend ignores the variable.
+    data = ["//Target:CPUPlugin.so"],
+    env = {
+        "MODULAR_DRIVER_PLUGINS": "CPU@$(rootpath //Target:CPUPlugin.so)",
+    },
+    deps = [
+        ":TestUtils",
+        "//AsyncRT:RuntimeGlobals",
+        # Carries AsyncRT_AsyncValue_createFromDeviceBuffer for both backends.
+        "//MLRT:Driver/DeviceContext",
+        "//AsyncRT:Runtime",
+        "//Support:Base",
+        "//Support:TypeID",
+    ],
+)
+
+modular_cc_test(
     name = "VirtualDeviceContextTest",
     size = "small",
     srcs = [

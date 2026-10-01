@@ -270,8 +270,9 @@ public:
 
   /// Wraps a heap-boxed Mojo `DeviceBuffer` surrendered by the Mojo side (the
   /// `take_handle` exchange) in an owning shim `DeviceBuffer`; the box is
-  /// released when the last reference drops. The shim-side context reference
-  /// is not populated -- the box carries its Mojo-side context.
+  /// released when the last reference drops. The result has no shim context:
+  /// it only keeps the storage alive, so `context()` and the operations that
+  /// use it must not be called on it.
   static DeviceBufferRef adoptMojoBox(MojoHALBufferBox *mojoBox, void *ptr,
                                       size_t byteSize) {
     return DeviceBufferRef::take(new DeviceBuffer(
@@ -281,8 +282,14 @@ public:
   size_t byteSize() const { return byteSize_; }
   bool isHost() const { return isHost_; }
 
-  DeviceContext &context() { return *context_; }
-  const DeviceContext &context() const { return *context_; }
+  DeviceContext &context() {
+    assert(context_ && "DeviceBuffer from adoptMojoBox has no shim context");
+    return *context_;
+  }
+  const DeviceContext &context() const {
+    assert(context_ && "DeviceBuffer from adoptMojoBox has no shim context");
+    return *context_;
+  }
 
   /// Returns a view of [byteOffset, byteOffset + byteSize) of this buffer.
   /// The view keeps this buffer alive.

@@ -391,17 +391,18 @@ ErrorOr<bool> Device::canAccess(const Device &other) const {
 // ===-- DeviceBuffer ----------------------------------------------------=== //
 
 DeviceBuffer::~DeviceBuffer() {
-  // After the custom destructor, relinquish ownership of the wrapped memory
-  // before releasing the Mojo box so nothing is freed twice. Only Device boxes
-  // (the createBufferOwning path, the sole setDestructorFn consumer) support
-  // the ownership flip.
+  // Relinquish first: the custom destructor can drop the memory's real owner
+  // (e.g. a graph arena), after which the plugin handle refers to freed memory.
+  // Only Device boxes (createBufferOwning, the sole setDestructorFn consumer)
+  // support the ownership flip.
   if (destructorFn_ && kind_ == BoxKind::Device) {
+    const char *err = MojoHAL_DeviceBuffer_relinquishOwnership(mojoBox_);
     destructorFn_();
-    if (const char *err = MojoHAL_DeviceBuffer_relinquishOwnership(mojoBox_)) {
+    if (err)
+      // The box still owns the memory; leaking it avoids a double free.
       MojoHAL_strfree(err);
-      return;
-    }
-    MojoHAL_DeviceBuffer_release(mojoBox_);
+    else
+      MojoHAL_DeviceBuffer_release(mojoBox_);
     return;
   }
   switch (kind_) {
@@ -476,7 +477,7 @@ ErrorOrSuccess DeviceBuffer::copyTo(DeviceBuffer &dst, size_t srcByteOffset,
   }
   if (srcApi == dstApi) {
     if (const char *err = MojoHAL_DeviceContext_enqueueCopy(
-            dst.context_->mojoCtx_, dst.ptr_, srcAt, srcByteSize))
+            dst.context().mojoCtx_, dst.ptr_, srcAt, srcByteSize))
       return takeError(err);
     return {};
   }
@@ -489,14 +490,14 @@ ErrorOrSuccess DeviceBuffer::synchronize(void *external_stream) {
   // unimplemented). Fall back to a full host-blocking synchronize of the
   // producer's context.
   (void)external_stream;
-  return context_->synchronize();
+  return context().synchronize();
 }
 
 ErrorOrSuccess DeviceBuffer::reassignOwnershipTo(DeviceContext &ctx) {
   if (ctx.device_->isVirtual())
     return virtualDeviceError("buffer ownership transfer");
   if (const char *err =
-          MojoHAL_DeviceContext_reassignWait(ctx.mojoCtx_, context_->mojoCtx_))
+          MojoHAL_DeviceContext_reassignWait(ctx.mojoCtx_, context().mojoCtx_))
     return takeError(err);
   context_ = DeviceContextRef::copy(&ctx);
   return {};
@@ -1195,6 +1196,14 @@ using M::AsyncRT::AnyAsyncValueRef;
 using M::AsyncRT::CPUDevice;
 using M::Driver::DeviceBuffer;
 using M::Driver::DeviceBufferRef;
+
+// Backs the HAL Mojo `DeviceBuffer.take_handle()`, so `takeRCRef` consumers
+// receive a refcount-1 shim `DeviceBuffer`, as with the legacy handle.
+MODULAR_EXPORT DeviceBuffer *
+AsyncRT_DeviceBuffer_adoptMojoBox(MojoHALBufferBox *box, void *ptr,
+                                  size_t byteSize) {
+  return DeviceBuffer::adoptMojoBox(box, ptr, byteSize).release();
+}
 
 // Wraps an already-owning `DeviceBuffer` handle (surrendered net-zero by the
 // Mojo side via `DeviceBuffer.take_handle()`) in an
