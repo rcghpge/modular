@@ -54,6 +54,13 @@ static inline bool canFuseOp(Operation *op) {
   if (isa<MGP::SyncOp>(op))
     return false;
 
+  // A fused task starts once all of its inputs are ready, and a side-stream
+  // join waits for the inputs of its consumer. Fused with the side-stream body,
+  // it would hold back the body's launches until then.
+  if (auto wait = dyn_cast<MGP::DeviceWaitOp>(op);
+      wait && wait.getIsSideStreamJoin())
+    return false;
+
   // Do not fused buffer.constant.external as doing it would lead to a HUGE
   // region.
   if (isa<MGP::BufferAllocOp, MGP::BufferConstantExternalOp>(*op))

@@ -17,7 +17,7 @@
 // CHECK: mgp.buffer.alloc %[[BODYCHAIN]]
 
 // The main-stream consumer chains on producer + join, never the fork.
-// CHECK: %[[JOIN:[0-9]+]] = mgp.device_wait({{.*}}, {{.*}}, %{{[a-z0-9]+}}, %[[VIEW]]) {bDevice = #M.device_ref<"gpu", 0>}
+// CHECK: %[[JOIN:[0-9]+]] = mgp.device_wait({{.*}}, {{.*}}, %{{[a-z0-9]+}}, %[[VIEW]]) {bDevice = #M.device_ref<"gpu", 0>, isSideStreamJoin}
 // CHECK: grt.chain.create (%{{[a-z0-9]+}}, %[[JOIN]], %{{[a-z0-9]+}})
 mo.graph @seqcap(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 2], f32, gpu:0> {
   %prod = mo.relu(%a) : !mo.tensor<[2, 2], f32, gpu:0>

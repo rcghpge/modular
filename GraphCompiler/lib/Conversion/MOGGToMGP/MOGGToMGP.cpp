@@ -2008,6 +2008,7 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
 
   // Join: per device, a device_wait that makes the base stream wait for the
   // side stream, gated on the guard chains of that device's body outputs.
+  // deferSideStreamJoins later moves it to the first consumer of the results.
   auto yieldOp = cast<MO::YieldOp>(body.getTerminator());
   llvm::SmallDenseMap<DeviceRefAttr, Value> joinChainFor;
   if (bindStream) {
@@ -2020,12 +2021,24 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
       for (Value out : yieldOp.getOperands())
         if (deviceOf(out) == dev)
           outGuards.push_back(guardOf(out));
-      joinChainFor[dev] = MGP::DeviceWaitOp::create(
-                              b, loc, /*inChain=*/combineChains(outGuards),
-                              execContext, /*waitingDeviceContext=*/base,
-                              /*signalingDeviceContext=*/viewFor[dev],
-                              /*bDevice=*/dev)
-                              .getResult();
+      auto join = MGP::DeviceWaitOp::create(
+          b, loc, /*inChain=*/combineChains(outGuards), execContext,
+          /*waitingDeviceContext=*/base,
+          /*signalingDeviceContext=*/viewFor[dev], /*bDevice=*/dev);
+      join.setIsSideStreamJoin(true);
+      joinChainFor[dev] = join.getResult();
+
+      // A freed buffer goes back to its owner stream's free list, which hands
+      // it out again right away without knowing the side stream still reads
+      // it. Hold this device's inputs until the join has queued the base
+      // stream's wait on the side stream.
+      SmallVector<Value> held;
+      for (Value in : inputs)
+        if (deviceOf(in) == dev)
+          if (Value lowered = loweringState.lookupExecuteLoweredValue(in))
+            held.push_back(lowered);
+      if (!held.empty())
+        MGP::ExtendLifetimeOp::create(b, loc, joinChainFor[dev], held);
     }
   }
 
@@ -2505,6 +2518,58 @@ LogicalResult MOGraphLowering::lower(MO::CallOp callOp) {
 // MOGGToMGPPass
 //===----------------------------------------------------------------------===//
 
+/// A side-stream join is created at the end of its region, gated only on the
+/// body's outputs, so the host enqueues the base stream's wait as soon as the
+/// body is enqueued. Every base-stream op enqueued after that waits for the
+/// side stream, data dependency or not. Move each join to the first consumer of
+/// the region's results and gate it on that consumer's other chains, so the
+/// host enqueues the independent base-stream work first.
+static void deferSideStreamJoins(ModuleOp module) {
+  SmallVector<MGP::DeviceWaitOp> joins;
+  module.walk([&](MGP::DeviceWaitOp join) {
+    if (join.getIsSideStreamJoin())
+      joins.push_back(join);
+  });
+  llvm::SmallPtrSet<Value, 16> joinChains;
+  for (MGP::DeviceWaitOp join : joins)
+    joinChains.insert(join.getResult());
+
+  for (MGP::DeviceWaitOp join : joins) {
+    Block *block = join->getBlock();
+    // The input holds made with the join move with it; they are not consumers.
+    SmallVector<Operation *> holds;
+    Operation *first = nullptr;
+    for (Operation *user : join.getResult().getUsers()) {
+      if (isa<MGP::ExtendLifetimeOp>(user)) {
+        holds.push_back(user);
+        continue;
+      }
+      Operation *op = block->findAncestorOpInBlock(*user);
+      if (op && (!first || op->isBeforeInBlock(first)))
+        first = op;
+    }
+    if (!first)
+      continue;
+
+    // Other joins in the consumer's chain are left out: gating joins on each
+    // other would form a cycle.
+    SmallVector<Value> chains{join.getInChain()};
+    if (auto create = dyn_cast<GRT::ChainCreateOp>(first))
+      for (Value chain : create->getOperands())
+        if (!joinChains.contains(chain) && !llvm::is_contained(chains, chain))
+          chains.push_back(chain);
+
+    join->moveBefore(first);
+    for (Operation *hold : holds)
+      hold->moveAfter(join);
+    if (chains.size() > 1) {
+      OpBuilder b(join);
+      join.getInChainMutable().assign(
+          GRT::ChainCreateOp::create(b, join.getLoc(), chains).getResult());
+    }
+  }
+}
+
 namespace {
 struct MOGGToMGPPass : public MGP::impl::MOGGToMGPBase<MOGGToMGPPass> {
   using MOGGToMGPBase::MOGGToMGPBase;
@@ -2584,6 +2649,8 @@ void MOGGToMGPPass::runOnOperation() {
 
     lastProcessed = 0;
   }
+
+  deferSideStreamJoins(theModule);
 
   // Anonymize every kernel stub's dim-arg names in one sweep over the whole
   // module, now that every mogg.kernel has been lowered and its dim-typed

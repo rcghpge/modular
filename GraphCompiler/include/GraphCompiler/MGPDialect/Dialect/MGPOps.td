@@ -2126,6 +2126,11 @@ def MGP_DeviceWaitOp : MGP_DeviceOp<"device_wait", [
     The `bDevice` attribute is the waiting device (the device whose stream
     receives the wait). It must be an accelerator for the op to be meaningful
     and is used for the op's device dispatch.
+
+    The `isSideStreamJoin` attribute marks the wait that joins a side stream
+    back into its base stream. MOGGToMGP moves such a wait to the first
+    consumer of the side stream's results, and LowerPrimitives keeps it out of
+    sequence fusion.
   }];
 
   let arguments = (ins
@@ -2133,7 +2138,8 @@ def MGP_DeviceWaitOp : MGP_DeviceOp<"device_wait", [
     MGP_ContextType:$theContext,
     MGP_DeviceContextType:$waitingDeviceContext,
     MGP_DeviceContextType:$signalingDeviceContext,
-    M_DeviceRefAttr:$bDevice
+    M_DeviceRefAttr:$bDevice,
+    UnitAttr:$isSideStreamJoin
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
