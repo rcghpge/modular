@@ -665,8 +665,11 @@ LogicalResult GraphOp::verify() {
     found = true;
     return WalkResult::interrupt();
   });
-  for (auto ty : getArgumentTypes())
+  for (auto ty : getArgumentTypes()) {
     walker.walk(ty);
+    if (found)
+      break;
+  }
   if (found) {
     return emitError(
         "Expressions are not (currently) allowed in function signatures");

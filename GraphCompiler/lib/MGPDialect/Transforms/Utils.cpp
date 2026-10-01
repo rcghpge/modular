@@ -457,7 +457,10 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
 
 InitState::InitState(ModelOp model)
     : init(model.getInitBlock()), builder(model.getContext()), model(model) {
-  init->walk([this](ContextCreateOp op) { contextCreateOp = op; });
+  init->walk([this](ContextCreateOp op) {
+    contextCreateOp = op;
+    return WalkResult::interrupt();
+  });
   ASSERT_STREAM(contextCreateOp,
                 << "model is missing mgp.context.create op in init block");
   builder.setInsertionPoint(&init->back());

@@ -114,20 +114,20 @@ void hoistChain(LoadOp loadOp, ArrayRef<IndexTransformOpInterface> chain,
 // same way a fused load does; rewire it to the chain's outermost index too,
 // with no tensor/view to hoist.
 void rewireElementwiseIndices(Region &body) {
-  SmallVector<CallElementwiseOp> calls;
-  body.walk([&](CallElementwiseOp op) { calls.push_back(op); });
-  for (CallElementwiseOp call : calls) {
+  // Rewiring only reassigns each call's own index operand, so it is safe to do
+  // in-walk: no op is created, erased, or moved within `body`.
+  body.walk([&](CallElementwiseOp call) {
     SmallVector<IndexTransformOpInterface> chain =
         collectIndexTransformChain(call.getIndex());
     size_t prefix = hoistablePrefixLen(chain);
     if (prefix == 0)
-      continue; // Indexes with the loop's own index, or computes at (or
-                // through) a store-index-transformed position, which stays.
+      return; // Indexes with the loop's own index, or computes at (or
+              // through) a store-index-transformed position, which stays.
     // The hoistable prefix's views are gone; rewire to the input of the last
     // hoisted op -- the loop index when the whole chain hoisted, else the first
     // store-index transform's result the pinned suffix still computes at.
     call.getIndexMutable().assign(chain[prefix - 1].getIndex());
-  }
+  });
 }
 
 LogicalResult loopInvariantViewMotionInClosure(CapturingFusionClosure closure) {

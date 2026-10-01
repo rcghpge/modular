@@ -1026,13 +1026,17 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
     MOGG::KernelDeclOp decl =
         state.registry.lookupKernelBySymName(call.getCallee());
     if (!decl)
-      return;
+      return WalkResult::advance();
     MOGG::KernelDeclAdaptor adaptor(decl);
     if (!adaptor.executeFunction)
-      return;
+      return WalkResult::advance();
     for (const auto &arg : adaptor.executeFunction->inputArguments)
-      if (arg.isVariadicContextType())
+      if (arg.isVariadicContextType()) {
+        // The flag is monotonic, so stop at the first variadic-context arg.
         variadicContext = true;
+        return WalkResult::interrupt();
+      }
+    return WalkResult::advance();
   });
   size_t numContexts =
       variadicContext
