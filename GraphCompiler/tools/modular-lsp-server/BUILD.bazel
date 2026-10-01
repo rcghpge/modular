@@ -10,6 +10,7 @@ modular_cc_binary(
     srcs = glob(["*.cpp"]),
     deps = [
         "//Cache",
+        "//GraphCompiler:MAPDialect",
         "//GraphCompiler:MGPDialect",
         "//GraphCompiler:MODialect",
         "//GraphCompiler:MOGGDialect",

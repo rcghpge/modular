@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Cache/CachedTransform.h"
+#include "GraphCompiler/MAPDialect/Dialect/MAPDialect.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPDialect.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MOGGDialect/MOGGDialect.h"
@@ -43,7 +44,7 @@ int main(int argc, char **argv) {
       // Add the Modular Dialects.
       MEF::MEFDialect, DebugInfo::DebugInfoDialect, GRT::GRTDialect, MDialect,
       MGP::MGPDialect, RMO::RMODialect, MOSH::MOSHDialect, MO::MODialect,
-      MOGG::MOGGDialect>();
+      MOGG::MOGGDialect, MAP::MAPDialect>();
   // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));
