@@ -277,8 +277,10 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
     StrAttr:$kernelSymName,
     StrAttr:$moOpName,
     UnitAttr:$isThrows,
-    Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$outputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple,
+                        MO_Opaque]>>:$inputs,
+    Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple,
+                        MO_Opaque]>>:$outputs,
     MGP_DeviceGraphBuilderType:$graphBuilder,
     OptionalAttr<DictionaryAttr>:$kernel_param
   );
@@ -1295,7 +1297,6 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
   let arguments = (ins
     MOGG_Shape:$shape,
     Variadic<MOGG_TensorLike>:$captures,
-    Variadic<AnyType>:$args,
     Variadic<MOGG_Shape>:$shapeCaptures,
     MOGG_Pointer:$outputPtr,
     StrAttr:$device,
@@ -1314,7 +1315,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
-    $shape (`(` $args^ `:` type($args) `)`)?
+    $shape
     (`capturing` `(` $captures^ `:` type($captures) `)`)?
     (`shapes` `(` $shapeCaptures^ `)`)?
     `ptr` $outputPtr `:` type($outputPtr)

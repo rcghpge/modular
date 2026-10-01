@@ -28,12 +28,11 @@ func.func @codegen_ops(%ptr: !mogg.pointer_, %dim: !mogg.dim_,
   // CHECK: mogg.rebind %{{.*}} : !mogg.async<!mgp.buffer> to !mogg.pointer_
   %cp = mogg.rebind %ab : !mogg.async<!mgp.buffer> to !mogg.pointer_
 
-  // epilogue tensor: a `!mogg.shape` operand + extra operands (an index) +
-  // captured tensors + device kind, holding its own body (block args + a
-  // store), and the call that writes into it (with an explicit device
-  // context).
-  // CHECK: mogg.tensor.create.epilogue %{{.*}}(%{{.*}} : !mogg.dim_) capturing(%{{.*}} : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_
-  %epi = mogg.tensor.create.epilogue %s0(%dim : !mogg.dim_) capturing (%t1 : !mogg.tensor_) ptr %cp : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_
+  // epilogue tensor: a `!mogg.shape` operand + captured tensors + device kind,
+  // holding its own body (block args + a store), and the call that writes into
+  // it (with an explicit device context).
+  // CHECK: mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor_) ptr %{{.*}} : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_
+  %epi = mogg.tensor.create.epilogue %s0 capturing (%t1 : !mogg.tensor_) ptr %cp : !mogg.pointer_ : !mogg.shape -> !mogg.tensor_
       attributes {device = "gpu", elementType = f32, io = 1 : i32, mut = true} {
   ^bb0(%val: f32, %i: !mogg.dim_):
     // CHECK: mogg.tensor.store %{{.*}}[%{{.*}}] = %{{.*}} : !mogg.tensor_, !mogg.dim_, f32

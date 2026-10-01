@@ -481,7 +481,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   auto epilogueOp = MOGG::TensorCreateEpilogueOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), outShape, moggCaptures,
-      /*args=*/ValueRange{}, /*shapeCaptures=*/shapeCaptures,
+      /*shapeCaptures=*/shapeCaptures,
       /*outputPtr=*/outputPtr,
       state.builder.getStringAttr(state.device.getLabel()),
       TypeAttr::get(outElemType), state.builder.getBoolAttr(true),

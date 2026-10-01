@@ -91,7 +91,11 @@ def DeviceGraphYieldOp : MGP_DeviceGraphOp<"yield", [
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$outputs);
+  // A device graph's outputs are the device-side values it produces: host-side
+  // ordering chains are stripped from the signature at finalization (see
+  // `FinalizeDeviceGraphsPass`), so only buffers and tensors reach this yield.
+  let arguments = (ins
+    Variadic<AnyTypeOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>>:$outputs);
   let assemblyFormat = "attr-dict ($outputs^ `:` type($outputs))?";
 
   // No-operand builder for the parent's `SingleBlockImplicitTerminator` trait
@@ -853,7 +857,12 @@ def DeviceGraphCollectiveExecuteOp : MGP_DeviceGraphOp<"collective.execute", [
     Variadic<MGP_DeviceGraphType>:$graphs,
     Variadic<AnyType>:$inputs
   );
-  let results = (outs ChainType:$chain, Variadic<AnyType>:$outputs);
+  // The `$chain` is the fresh host-ordering chain; the value `$outputs` mirror
+  // the replayed graphs' signature results, which are chain-free buffers and
+  // tensors (see `FinalizeDeviceGraphsPass` and `DeviceGraphYieldOp`).
+  let results = (outs
+    ChainType:$chain,
+    Variadic<AnyTypeOf<[MGP_DeviceBufferType, MGP_DeviceTensorType]>>:$outputs);
 
   let assemblyFormat = [{
     $graphs `inputs` `(` ($inputs^ `:` qualified(type($inputs)))? `)` attr-dict

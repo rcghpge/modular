@@ -434,7 +434,10 @@ def IfOp : MO_ControlOp<"if", [
     AnyTypeOf<[MO_CondLike, MO_BoolScalar]>:$cond,
     MO_ParamDecls:$outputParamDecls
   );
-  let results = (outs Variadic<AnyType>:$results);
+  // Results are forwarded 1:1 from each region's `mo.yield`, which already
+  // excludes `!mo.buffer` (no alias analysis for forwarded buffers; see
+  // `MO_AnyNonBufferType`), so the results cannot be buffers either.
+  let results = (outs Variadic<MO_AnyNonBufferType>:$results);
   let regions = (region
     SizedRegion<1>:$thenRegion,
     SizedRegion<1>:$elseRegion
@@ -522,8 +525,12 @@ def WhileOp : MO_ControlOp<"while", [
     ```
   }];
 
-  let arguments = (ins Variadic<AnyType>:$inputs);
-  let results = (outs Variadic<AnyType>:$results);
+  // Inputs, results, the body's `mo.yield`, and the `mo.while.condition`'s
+  // forwarded args all share one signature; the latter two already exclude
+  // `!mo.buffer` (see `MO_AnyNonBufferType`), so the loop-carried inputs and
+  // results cannot be buffers either.
+  let arguments = (ins Variadic<MO_AnyNonBufferType>:$inputs);
+  let results = (outs Variadic<MO_AnyNonBufferType>:$results);
   let regions = (region
     SizedRegion<1>:$condRegion,
     SizedRegion<1>:$bodyRegion
@@ -880,11 +887,15 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
     ```
   }];
 
+  // Inputs map 1:1 into the body's block arguments and results come from the
+  // body's `mo.yield`, which already excludes `!mo.buffer` (see
+  // `MO_AnyNonBufferType`); mutable ordering is carried by chains, not by
+  // threading buffers through the boundary.
   let arguments = (ins
-    Variadic<AnyType>:$inputs,
+    Variadic<MO_AnyNonBufferType>:$inputs,
     DefaultValuedAttr<UI64Attr, "0">:$streamId
   );
-  let results = (outs Variadic<AnyType>:$results);
+  let results = (outs Variadic<MO_AnyNonBufferType>:$results);
   let regions = (region SizedRegion<1>:$bodyRegion);
 
   let builders = [

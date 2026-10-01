@@ -112,14 +112,14 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
   }];
 
   let arguments = (ins
-    Variadic<AnyType>:$inputs,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer, MO_Opaque]>>:$inputs,
     Optional<MO_Chain>:$inputChain,
     OptionalAttr<AnyAttr>:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
   );
-  let results = (outs Variadic<AnyType>:$results);
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
@@ -226,7 +226,7 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
   }];
 
   let arguments = (ins
-    Variadic<AnyType>:$captures,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$captures,
     Optional<AnyType>:$intermediateTensor
   );
   let results = (outs AnyType:$result);
@@ -259,7 +259,7 @@ def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
     `map.yield`.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$captures);
+  let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$captures);
   let results = (outs AnyType:$result);
   let regions = (region SizedRegion<1>:$body);
 
@@ -483,7 +483,8 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
     ```
   }];
 
-  let arguments = (ins MOSH_ShapeAttr:$shape, Variadic<AnyType>:$captures);
+  let arguments = (ins MOSH_ShapeAttr:$shape,
+                       Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$captures);
   let regions = (region SizedRegion<1>:$body);
 
   let hasCustomAssemblyFormat = 1;
