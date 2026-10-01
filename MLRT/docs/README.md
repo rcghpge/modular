@@ -6,17 +6,16 @@ The Modular Low-level Runtime (MLRT) is a collection of low-level C++ runtime
 components which service many of the high-level Max and Mojo components within
 the Modular stack.
 
-MLRT contains the following libraries:
+MLRT contains the following libraries, under `MLRT/lib` with their public
+headers under `MLRT/include/MLRT`:
 
-- AsyncRT - Parallel C++ runtime with threadpools
 - Core - Core C++ runtime utilities
 - GraphRT - Graph runtime infrastructure
 - Driver - Cross-vendor kernel execution runtime
 
-## [AsyncRT](../../AsyncRT/docs/README.md)
-
-AsyncRT contains low level support for domain independent parallel CPU
-computation, including a thread pool implementation.
+It builds on [AsyncRT](../../AsyncRT/docs/README.md), which is a top-level
+module rather than part of MLRT. AsyncRT contains low level support for domain
+independent parallel CPU computation, including a thread pool implementation.
 
 ## Core
 
