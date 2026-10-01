@@ -1589,9 +1589,10 @@ struct AddComputeFusion:
         comptime has_compute_lambda = type_of(z)._has_compute_fusion
         print("has_compute_lambda =", has_compute_lambda)
 
-        @__parameter
         @inline(.always)
-        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+        def func[
+            width: Int, alignment: Int = 1
+        ](idx: Coord) {var x, var y, var z}:
             var val = rebind[SIMD[dtype, width]](x.load[width](idx)) + rebind[
                 SIMD[dtype, width]
             ](y.load[width](idx))
@@ -1603,7 +1604,7 @@ struct AddComputeFusion:
             else:
                 z._fused_store[element_alignment=alignment](idx, val)
 
-        elementwise[func, 1, target=target](z.shape_coord(), ctx)
+        elementwise[1, target=target](func, z.shape_coord(), ctx)
 
 
 @extensibility.register_shape_function("imposter_add_compute_fusion")
@@ -2671,14 +2672,13 @@ struct DeviceGraphFill:
         x: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+        def func[width: Int, alignment: Int = 1](idx: Coord) {var output}:
             output._fused_store[element_alignment=alignment](
                 idx, SIMD[dtype, width](Self._fill_value)
             )
 
-        elementwise[func, 1, target="gpu"](output.shape_coord(), ctx)
+        elementwise[1, target="gpu"](func, output.shape_coord(), ctx)
 
     @staticmethod
     def build_graph[
@@ -2802,15 +2802,16 @@ struct DeviceGraphIncrement:
         x: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+        def func[
+            width: Int, alignment: Int = 1
+        ](idx: Coord) {var x, var output}:
             var val = rebind[SIMD[dtype, width]](x.load[width](idx)) + (
                 Self._increment
             )
             output._fused_store[element_alignment=alignment](idx, val)
 
-        elementwise[func, 1, target="gpu"](output.shape_coord(), ctx)
+        elementwise[1, target="gpu"](func, output.shape_coord(), ctx)
 
     @staticmethod
     def build_graph[
@@ -2854,13 +2855,12 @@ struct AddOneCPU:
     ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
         print("AddOne CPU kernel")
 
-        @__parameter
         @inline(.always)
-        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+        def func[width: Int, alignment: Int = 1](idx: Coord) {var x, var outp}:
             var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
             outp._fused_store[element_alignment=alignment](idx, val)
 
-        elementwise[func, 1, target="cpu"](outp.shape_coord(), ctx)
+        elementwise[1, target="cpu"](func, outp.shape_coord(), ctx)
 
 
 @extensibility.register("gpu_only_kernel", type="gpu")
@@ -2880,13 +2880,12 @@ struct AddOneGPU:
     ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext,) raises:
         print("AddOne GPU kernel")
 
-        @__parameter
         @inline(.always)
-        def func[width: Int, alignment: Int = 1](idx: Coord) capturing:
+        def func[width: Int, alignment: Int = 1](idx: Coord) {var x, var outp}:
             var val = rebind[SIMD[outp.dtype, width]](x.load[width](idx)) + 1
             outp._fused_store[element_alignment=alignment](idx, val)
 
-        elementwise[func, 1, target="gpu"](outp.shape_coord(), ctx)
+        elementwise[1, target="gpu"](func, outp.shape_coord(), ctx)
 
 
 # Mixed-lane e2e proof: a trait-bound dense output alongside two legacy
