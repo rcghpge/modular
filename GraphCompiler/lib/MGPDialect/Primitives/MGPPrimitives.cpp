@@ -136,8 +136,8 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
 
 /// Extract device hint from DeviceContext if present in operands.
 /// Returns kNoDevicePreference if no single accelerator device is found.
-/// Also returns the DeviceContextRef for pinning if exactly one accelerator
-/// context is found.
+/// Also returns a DeviceContextRef for pinning if every accelerator context is
+/// on that one device.
 static std::pair<int, M::Driver::DeviceContextRef>
 deviceHintAndContextFor(const RemainingArguments &operands) {
   TRACY_ZONE_SCOPED_NC("deviceHintAndContextFor", TRACY_COLOR_TEAL);
@@ -159,13 +159,18 @@ deviceHintAndContextFor(const RemainingArguments &operands) {
     }
   }
 
-  // Return valid hint and context only if there's exactly one accelerator
-  // DeviceContextRef.
-  if (acceleratorContexts.size() == 1) {
-    return {acceleratorContexts[0]->device().id(),
-            std::move(acceleratorContexts[0])};
+  // With one accelerator context, always return a valid hint and that context.
+  // With several, return them only if all are on one device. That covers a
+  // task in a side-stream region, which holds the side-stream view and its
+  // base context and must still run on that device's worker.
+  if (!acceleratorContexts.empty()) {
+    int deviceId = acceleratorContexts.front()->device().id();
+    if (llvm::all_of(acceleratorContexts, [&](const auto &ctx) {
+          return ctx->device().id() == deviceId;
+        }))
+      return {deviceId, std::move(acceleratorContexts.front())};
   }
-  // Multiple contexts or CPU context -> no preference.
+  // Contexts on several devices, or only CPU contexts -> no preference.
   return {kNoDevicePreference, M::Driver::DeviceContextRef{}};
 }
 
