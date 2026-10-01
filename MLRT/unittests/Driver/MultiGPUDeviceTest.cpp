@@ -12,6 +12,7 @@
 #include "gtest/gtest.h"
 
 #include <cstdlib>
+#include <dlfcn.h>
 #include <iostream>
 
 using namespace M::Driver;
@@ -21,6 +22,22 @@ using M::ErrorOrSuccess;
 namespace {
 
 class MultiGPUDeviceTest : public ::testing::Test {};
+
+// Takes the HIP runtime's per-thread last error, or 0 off HIP. Looked up in the
+// library the driver already loaded, which is what any other HIP user in the
+// process, torch for one, checks after its own kernel launches.
+int takeHipLastError(const Device &device) {
+  if (device.api() != Device::hipAPI)
+    return 0;
+  void *lib = dlopen("libamdhip64.so", RTLD_NOW | RTLD_NOLOAD);
+  if (lib == nullptr)
+    return -1;
+  auto *getLastError =
+      reinterpret_cast<int (*)()>(dlsym(lib, "hipGetLastError"));
+  int err = getLastError ? getLastError() : -1;
+  dlclose(lib);
+  return err;
+}
 
 TEST_F(MultiGPUDeviceTest, DeviceVisibilityControl) {
   std::string const &arch = Device::getAcceleratorArchOrEmpty();
@@ -86,6 +103,9 @@ TEST_F(MultiGPUDeviceTest, EnablePeerAccessIdempotent) {
       // Idempotency: repeat should also succeed.
       EXPECT_NO_ERR(di->enablePeerAccess(*dj));
       EXPECT_NO_ERR(dj->enablePeerAccess(*di));
+      // HIP reports the repeat as hipErrorPeerAccessAlreadyEnabled, which
+      // must not stay behind as the last error once it has been tolerated.
+      EXPECT_EQ(takeHipLastError(*di), 0);
 
       foundPair = true;
     }

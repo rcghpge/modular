@@ -362,6 +362,10 @@ ErrorOrSuccess HIPDevice::enablePeerAccessImpl(const Device &peer) {
     driver_.hipDrvGetErrorName(res, &name);
     if (!(name && (Twine(name) == "hipErrorPeerAccessAlreadyEnabled")))
       return formatHipError(__FILE__, __LINE__, __FUNCTION__, res);
+    // HIP also left the error as this thread's last error, which other HIP
+    // users in the process (torch, for one) raise after their next launch.
+    // It is handled here, so consume it.
+    driver_.hipGetLastError();
   }
 
   // Also allow access to the peer's stream-ordered allocation pool.

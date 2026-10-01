@@ -833,6 +833,10 @@ public:
            hipCtxGetCurrent_ != nullptr;
   }
 
+  // Declared by hand: HIP_FUNC cannot take a zero-argument entry point, since
+  // an empty argument list still expands to one parameter.
+  Result hipGetLastError() const { return hipGetLastError_(); }
+
   // HSA Runtime methods for getting device architecture info
   hsaStatus_t HsaInit() const {
     return hsa_init_ ? hsa_init_() : 1; // Return error if not available
@@ -884,6 +888,9 @@ private:
   t##name *name##_;
 #include "HIPDriver.inc"
 #undef HIP_FUNC
+
+  using thipGetLastError = Result();
+  thipGetLastError *hipGetLastError_;
 
   // HSA Runtime function pointers (optional - may not be available).
   using thsa_init = hsaStatus_t();

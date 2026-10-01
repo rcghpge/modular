@@ -74,6 +74,14 @@ ErrorOr<std::unique_ptr<HIPDriver>> HIPDriver::allocAndInitDriver() {
 #undef HIP_OPT_FUNC
 #undef HIP_FUNC
 
+  driver->hipGetLastError_ =
+      reinterpret_cast<thipGetLastError *>(dlsym(dl_lib, "hipGetLastError"));
+  if (driver->hipGetLastError_ == nullptr) {
+    return Error(
+        llvm::Twine("Failed to find symbol \"hipGetLastError\" in \"") +
+        lib_name + "\"");
+  }
+
   int driverVersion = 0;
   if (driver->hipDriverGetVersion(&driverVersion) != SUCCESS) {
     return Error("hipDriverGetVersion failed");
