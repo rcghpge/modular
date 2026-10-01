@@ -214,6 +214,237 @@ modular_cc_test(
     ],
 )
 
+# Shared env for the OOM condition tests. Small VMM budget with 32 MiB granules
+# so the conditions trigger cheaply; only-mode disables the driver backdoor so a
+# miss surfaces as an error rather than a fallthrough.
+_MEMORY_MANAGER_OOM_ENV = {
+    "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+    "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "32",
+    "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "268435456",  # 256 MiB
+    "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+    "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+    "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+}
+
+# One target per condition. The device MemoryManager is a process-wide singleton,
+# so each condition runs in its own process to guarantee a clean starting state
+# (a shared process lets one condition's leftover stream/free-list state perturb
+# the next).
+[
+    modular_cc_test(
+        name = "MemoryManagerOom{}Test".format(suffix),
+        size = "medium",
+        srcs = [
+            "MemoryManagerOomTest.cpp",
+        ],
+        args = ["--gtest_filter=MemoryManagerOomTest.{}".format(test)],
+        env = _MEMORY_MANAGER_OOM_ENV,
+        gpu_constraints = select({
+            "//:apple_gpu": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }),
+        tags = ["gpu"],
+        deps = [
+            ":TestUtils",
+            "//MLRT:Driver/DeviceContextImpl",
+            "//Support:Base",
+            "@llvm-project//llvm:Support",
+        ],
+    )
+    for suffix, test in [
+        ("Genuine", "GenuineOutOfMemory"),
+        ("Pending", "PendingMemoryBlocksUntilSync"),
+        ("Fragmented", "FragmentedPartialGranulesBlockWholeGranule"),
+        ("Reclaimable", "SnapshotCountsReclaimableGranule"),
+    ]
+]
+
+modular_cc_test(
+    name = "MemoryManagerOomMeasurementTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerOomMeasurementTest.cpp",
+    ],
+    env = {
+        # 2 MiB pages so sub-page / mid-page regions are cheap to construct; the
+        # budget is set programmatically via makeCache. Self-check off: the test
+        # deliberately builds an unusual mixed state.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "2",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "False",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# Pure classifier/formatter tests: no device, so no gpu tag or env.
+modular_cc_test(
+    name = "MemoryManagerOomClassifyTest",
+    size = "small",
+    srcs = [
+        "MemoryManagerOomClassifyTest.cpp",
+    ],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# The VA condition needs an arena reserved at exactly the physical budget
+# (va_factor 1), so it gets its own target: with the default oversized
+# reservation there is always a large free run at the frontier and the VA gate
+# is unreachable.
+modular_cc_test(
+    name = "MemoryManagerOomVaTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerOomVaTest.cpp",
+    ],
+    env = {
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "2",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "268435456",  # 256 MiB
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_VA_FACTOR": "1",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# The driver-backdoor path: MEMORY_MANAGER_ONLY is deliberately unset, so a
+# manager miss falls through to the driver instead of surfacing
+# allocationMissError. Diagnostics on, since this asserts the accounting
+# attached to the driver's own failure.
+# The size-rejection shape: cheap, needs only a small capped budget.
+modular_cc_test(
+    name = "MemoryManagerOomBackdoorTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerOomBackdoorTest.cpp",
+    ],
+    args = ["--gtest_filter=*DriverRefusalIsNotedOnTheManagersReason"],
+    env = {
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "32",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "268435456",  # 256 MiB
+        # common.bazelrc sets MEMORY_MANAGER_ONLY for every test; this target
+        # exists to exercise the fallthrough, so it switches it back off.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "False",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# The classified shape: needs the whole device, since the condition is the
+# device being exhausted while the manager still has budget. No MEMORY_MANAGER_
+# SIZE cap, so the budget defaults to ~90% of device free and the manager keeps
+# headroom while an untracked allocation exhausts the device.
+modular_cc_test(
+    name = "MemoryManagerOomBackdoorClassifiedTest",
+    size = "large",
+    srcs = [
+        "MemoryManagerOomBackdoorTest.cpp",
+    ],
+    args = ["--gtest_filter=*ClassifiedMissCarriesTheBackdoorNote"],
+    env = {
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "2",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "False",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    exec_properties = {
+        # Consumes essentially all device memory, so reserve a whole GPU to
+        # keep it off shared devices.
+        "test.resources:gpu-memory": "180",
+    },
+    # Reserving GPU memory means this cannot be scheduled at all without a GPU,
+    # so it has to be incompatible on CPU lanes rather than merely skipping at
+    # runtime the way the lighter targets above do.
+    gpu_constraints = ["//:has_gpu"],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+modular_cc_test(
+    name = "MemoryManagerOomSideChannelTest",
+    size = "large",
+    srcs = [
+        "MemoryManagerOomSideChannelTest.cpp",
+    ],
+    env = {
+        # No budget cap: the MM budget defaults to ~90% of device free, so it
+        # keeps headroom while an untracked chunkAlloc exhausts the device.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_PAGE_MB": "2",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_ONLY": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SELF_CHECK": "True",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_LOG": "False",
+    },
+    exec_properties = {
+        # Consumes essentially all device memory (the untracked side-channel
+        # allocation), so reserve a whole GPU to keep it off shared devices.
+        "test.resources:gpu-memory": "180",
+    },
+    # As above: reserving GPU memory has to be paired with requiring a GPU, or
+    # a CPU lane schedules it and fails before the test runs.
+    gpu_constraints = ["//:has_gpu"],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 modular_cc_test(
     name = "GPUMemoryManagerFallthroughTest",
     size = "medium",

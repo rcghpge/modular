@@ -925,18 +925,52 @@ size_t MemoryManager::allocatedSize(void *ptr) const {
   return desc != nullptr ? desc->size_.load() : size_t{0};
 }
 
+static const char *vmmOomCategoryTag(VmmOomCategory c) {
+  switch (c) {
+  case VmmOomCategory::Genuine:
+    return "out of memory";
+  case VmmOomCategory::Avoidable:
+    return "avoidable";
+  case VmmOomCategory::Unaccounted:
+    return "unaccounted";
+  case VmmOomCategory::VaFragmentation:
+    return "VA fragmentation";
+  case VmmOomCategory::ArenaUnavailable:
+    return "arena unavailable";
+  case VmmOomCategory::IllegalDuringCapture:
+    return "illegal during graph capture";
+  }
+  return "unknown";
+}
+
+// Why the most recent ensureRegionBacked on THIS thread failed, so the
+// surfaced OOM can tell a budget shortfall from a driver-side refusal
+// (device-side / side channel). Thread-local rather than a manager member:
+// allocations from several streams share one manager, and a neighbour's reset
+// would otherwise land between this thread's failure and its own read. Cleared
+// at the start of each allocation request.
+static thread_local VmmBackingFailure tlsBackingFailure =
+    VmmBackingFailure::None;
+
 Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
-                                         size_t wrappedSize) const {
+                                         size_t wrappedSize,
+                                         const std::string *backdoorError,
+                                         bool duringCapture) const {
   size_t availableCacheSize = 0;
   size_t chunkSize = 0;
   size_t cacheSize = 0;
   size_t maxCacheSize = 0;
   size_t freeSize = 0;
-
   size_t freeCount = 0;
   size_t chunkCount = 0;
 
   std::string lastChunkAllocFailureDetail;
+  VmmOomSnapshot snap;
+  VmmOomCategory category = VmmOomCategory::Genuine;
+  // Only for failures that got as far as consulting the arena: the chunk-size
+  // rejections below are configuration errors, not allocator states, and keep
+  // the field-list message.
+  bool useSnapshot = false;
 
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -945,11 +979,20 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
     chunkSize = chunkSize_;
     cacheSize = cacheSize_;
     maxCacheSize = maxCacheSize_;
-    freeSize = freeSize_;
-
-    freeCount = freeCount_;
+    useSnapshot = vmmEnabled_ && chunkSize_ != 0 && wrappedSize <= chunkSize_;
+    if (useSnapshot) {
+      snap = computeVmmOomSnapshot(wrappedSize);
+      category = classifyVmmOom(snap, tlsBackingFailure, duringCapture);
+    } else if (vmmEnabled_) {
+      // freeSize_ tracks VA in VMM mode, so the physically allocatable figure
+      // is the budget minus the physical pinned under in-use allocations.
+      freeSize = vmmAllocatableBytes();
+    } else {
+      freeSize = freeSize_;
+      // freeCount_ is only maintained outside VMM mode.
+      freeCount = freeCount_;
+    }
     chunkCount = chunkCount_;
-
     lastChunkAllocFailureDetail = lastChunkAllocFailureDetail_;
   }
 
@@ -959,29 +1002,44 @@ Error MemoryManager::allocationMissError(const MemoryManagerFreeList *freeList,
     missReason = "memory manager chunk size is zero";
   } else if (wrappedSize > chunkSize) {
     missReason = "request exceeds memory manager chunk size";
+  } else if (useSnapshot) {
+    missReason = vmmOomCategoryTag(category);
   } else if (availableCacheSize < wrappedSize) {
     missReason = "remaining memory manager capacity is insufficient";
   }
 
   freeList->logLargestBlocksInfo(wrappedSize, missReason);
-  freeList->dumpFragmentationDiagnostic(wrappedSize, missReason);
+  freeList->dumpFragmentationDiagnostic(wrappedSize, missReason,
+                                        useSnapshot ? &snap : nullptr);
 
   std::string message;
   llvm::raw_string_ostream os(message);
   os << "Memory manager cannot satisfy allocation (" << missReason
      << "): " << getDeviceDescription() << " on "
-     << "[" << freeList->label_ << "]@" << TWINE_PTR(freeList)
-     << " (request: " << humanMemorySize(wrappedSize)
-     << " ; free: " << humanMemorySize(freeSize)
-     << " ; free_blocks: " << freeCount
-     << " ; available: " << humanMemorySize(availableCacheSize)
-     << " ; chunk_size: " << humanMemorySize(chunkSize)
-     << " ; chunk_count: " << chunkCount
-     << " ; cache_size: " << humanMemorySize(cacheSize)
-     << " ; max_cache_size: " << humanMemorySize(maxCacheSize);
-  if (!lastChunkAllocFailureDetail.empty())
-    os << " ; last_chunk_alloc_failure: " << lastChunkAllocFailureDetail;
-  os << ")";
+     << "[" << freeList->label_ << "]@" << TWINE_PTR(freeList);
+  if (useSnapshot) {
+    os << ": " << describeVmmOom(snap, category);
+    if (backdoorError != nullptr)
+      os << " ; direct device allocation also failed: " << *backdoorError;
+    if (!lastChunkAllocFailureDetail.empty())
+      os << " ; last_chunk_alloc_failure: " << lastChunkAllocFailureDetail;
+    os << " [" << dumpVmmOom(snap) << "]";
+  } else {
+    os << " (requested: " << humanMemorySize(wrappedSize)
+       << " ; free: " << humanMemorySize(freeSize);
+    if (!vmmEnabled_)
+      os << " ; free_blocks: " << freeCount;
+    os << " ; available: " << humanMemorySize(availableCacheSize)
+       << " ; chunk_size: " << humanMemorySize(chunkSize)
+       << " ; chunk_count: " << chunkCount
+       << " ; cache_size: " << humanMemorySize(cacheSize)
+       << " ; max_cache_size: " << humanMemorySize(maxCacheSize);
+    if (!lastChunkAllocFailureDetail.empty())
+      os << " ; last_chunk_alloc_failure: " << lastChunkAllocFailureDetail;
+    os << ")";
+    if (backdoorError != nullptr)
+      os << " ; direct device allocation also failed: " << *backdoorError;
+  }
   return Error(os.str());
 }
 
@@ -1012,7 +1070,8 @@ void MemoryManagerFreeList::logLargestBlocksInfo(size_t wrappedSize,
 }
 
 void MemoryManagerFreeList::dumpFragmentationDiagnostic(
-    size_t requestedSize, llvm::Twine reason) const {
+    size_t requestedSize, llvm::Twine reason,
+    const VmmOomSnapshot *snapshot) const {
   // Free list buffers_[i] is sorted non-descending by size: head is smallest,
   // tail is largest. We rely on this to capture the top-N largest blocks in
   // a single forward walk using a ring buffer of size N.
@@ -1038,11 +1097,21 @@ void MemoryManagerFreeList::dumpFragmentationDiagnostic(
     os << "oom log mm max_cache="
        << humanMemorySize(memoryManager_.maxCacheSize_)
        << " cache_used=" << humanMemorySize(memoryManager_.cacheSize_)
-       << " free=" << humanMemorySize(memoryManager_.freeSize_)
-       << " free_blocks=" << memoryManager_.freeCount_
        << " chunk_size=" << humanMemorySize(memoryManager_.chunkSize_)
        << " chunks=" << memoryManager_.chunkCount_;
+    // freeSize_ and freeCount_ track VA under VMM, so they are not reported
+    // there; the accounting line below carries the physical figures, and
+    // vmmAllocatableBytes() would contradict its `available` one line apart
+    // (it folds in pending memory).
+    if (!memoryManager_.vmmEnabled_)
+      os << " free=" << humanMemorySize(memoryManager_.freeSize_)
+         << " free_blocks=" << memoryManager_.freeCount_;
     logLine(os.str());
+    // Logged only when the caller supplies it, so these figures are exactly
+    // the ones its message reports. A caller that passes nothing has no
+    // accounting in its own message either.
+    if (snapshot != nullptr)
+      logLine(dumpVmmOom(*snapshot));
   }
 
   // Walk the free list chain (this + parents).
@@ -1469,6 +1538,215 @@ size_t MemoryManager::inUsePhysicalBytes() const {
   return inUse.count() * chunks_->pageSize_;
 }
 
+VmmOomSnapshot MemoryManager::computeVmmOomSnapshot(size_t needed) const {
+  VmmOomSnapshot s;
+  s.budget = maxCacheSize_;
+  s.needed = needed;
+  s.pooledGranules = freeGranulePool_.size();
+  s.pageSize = pageSize_;
+  if (chunks_ == nullptr || !chunks_->vmmBacked_ || pageSize_ == 0) {
+    // No arena: nothing is committed, so the whole budget is headroom. Leaving
+    // the counts at zero would read as "the budget is committed, nothing to
+    // reclaim", which is the opposite of the truth.
+    s.uncommittedGranules = pageSize_ == 0 ? 0 : maxCacheSize_ / pageSize_;
+    return s;
+  }
+
+  s.arenaReserved = true;
+  const Chunk *c = chunks_.get();
+  const size_t ps = c->pageSize_;
+  s.vaSize = c->size_;
+  const size_t n = c->granuleBacked_.size();
+  const char *base = static_cast<const char *>(c->base_);
+
+  // One desc walk: mark per-granule occupancy (in-use / pending), sum pending
+  // bytes, and track the largest contiguous root-free region (the VA a request
+  // is carved from). State comes from descs; backing comes from the bitvector.
+  llvm::BitVector inUse(n, false);
+  llvm::BitVector pending(n, false);
+  for (const Desc *d = c->descs_; d != nullptr; d = d->next_) {
+    const bool descInUse = d->isInUse();
+    const bool descPending = d->isFree() && d->owner() != freeList_.get();
+    const size_t descSize = d->size_;
+    if (descInUse)
+      s.usedBytes += descSize;
+    if (d->isFree())
+      ++s.freeBlocks;
+    if (descPending)
+      s.pendingTotalBytes += descSize;
+    else if (d->isFree() && descSize > s.largestRootFreeVA)
+      s.largestRootFreeVA = descSize; // root-free
+    if (!descInUse && !descPending)
+      continue;
+    const size_t first = (static_cast<const char *>(d->ptr_) - base) / ps;
+    const size_t last =
+        (static_cast<const char *>(d->ptr_) + descSize - 1 - base) / ps;
+    const size_t end = std::min(last + 1, n);
+    if (first >= end)
+      continue;
+    if (descInUse)
+      inUse.set(first, end);
+    else
+      pending.set(first, end);
+  }
+
+  // Classify each backed granule by strongest occupant (in-use > pending >
+  // root-free). Unbacked granules are pooled or uncommitted, tracked by count.
+  size_t mapped = 0;
+  for (size_t g = 0; g < n; ++g) {
+    if (!c->granuleBacked_[g])
+      continue;
+    ++mapped;
+    if (inUse[g])
+      ++s.inUseGranules;
+    else if (pending[g])
+      ++s.pendingGranules;
+    else
+      ++s.reclaimableGranules;
+  }
+
+  const size_t budgetGranules = maxCacheSize_ / ps;
+  const size_t committed = mapped + s.pooledGranules;
+  s.uncommittedGranules =
+      budgetGranules > committed ? budgetGranules - committed : 0;
+  return s;
+}
+
+VmmOomSnapshot MemoryManager::oomSnapshotForTesting(size_t needed) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  return computeVmmOomSnapshot(needed);
+}
+
+VmmOomCategory classifyVmmOom(const VmmOomSnapshot &s,
+                              VmmBackingFailure backingFailure,
+                              bool duringCapture) {
+  // Mapping is illegal mid-capture, so a refused map there is a pre-backing
+  // gap (preBackForCapture did not cover this region), not memory pressure.
+  if (backingFailure == VmmBackingFailure::MapRefused && duringCapture)
+    return VmmOomCategory::IllegalDuringCapture;
+
+  // The driver refused a create or a map the manager's own accounting said
+  // would succeed, so the physical is held somewhere it does not account for.
+  if (backingFailure == VmmBackingFailure::CreateRefused ||
+      backingFailure == VmmBackingFailure::MapRefused)
+    return VmmOomCategory::Unaccounted;
+
+  // Without an arena there is no VA to carve and no physical mapped, so the
+  // budget figures say nothing about why this failed.
+  if (!s.arenaReserved)
+    return VmmOomCategory::ArenaUnavailable;
+
+  // Physical is claimed in whole pages, so the request rounds up; the VA carve
+  // takes only the bytes asked for.
+  const size_t need = s.neededPhysicalBytes();
+
+  // Physical is sufficient, yet the request failed:
+  //  - no contiguous VA region large enough -> VA fragmentation;
+  //  - VA also fits -> the driver refused a create the budget said was
+  //    creatable, i.e. the physical went to a side channel.
+  if (s.available() >= need) {
+    if (s.largestRootFreeVA < s.needed)
+      return VmmOomCategory::VaFragmentation;
+    return VmmOomCategory::Unaccounted;
+  }
+
+  // Physical is short. The only distinction worth drawing is whether the
+  // levers together reach far enough: if they do this is not an exhaustion,
+  // and the message reports what each may recover rather than picking one.
+  // Compared against the request, not `need`: both levers are page-granularity
+  // effects, so a world where they help is one where the request rounds up
+  // less too. The figures are upper bounds (VA contiguity and placement still
+  // apply), so callers phrase them as suggestions.
+  if (s.available() + s.recoverableBySync() + s.trapped() >= s.needed)
+    return VmmOomCategory::Avoidable;
+  return VmmOomCategory::Genuine;
+}
+
+std::string describeVmmOom(const VmmOomSnapshot &s, VmmOomCategory category) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  // The lever partition is meaningless without an arena to measure, so this
+  // case is phrased on its own rather than as a suffix to an allocatable
+  // figure.
+  if (category == VmmOomCategory::ArenaUnavailable) {
+    os << "requested " << humanMemorySize(s.needed)
+       << ", but the VMM arena is not reserved, so no allocation can be "
+          "served; any reason the reservation reported is appended below";
+    return out;
+  }
+  os << "requested " << humanMemorySize(s.needed) << ", "
+     << humanMemorySize(s.available()) << " allocatable";
+  switch (category) {
+  case VmmOomCategory::Genuine:
+    os << " (out of memory: no combination of synchronizing and reducing the "
+          "page size closes the gap)";
+    break;
+  case VmmOomCategory::Avoidable:
+    os << ". Not an exhaustion: the shortfall is covered by";
+    if (s.recoverableBySync() > 0)
+      os << " up to " << humanMemorySize(s.recoverableBySync())
+         << " that synchronizing would free ("
+         << humanMemorySize(s.pendingTotalBytes) << " pending in total)";
+    if (s.recoverableBySync() > 0 && s.trapped() > 0)
+      os << " and";
+    if (s.trapped() > 0)
+      os << " up to " << humanMemorySize(s.trapped())
+         << " trapped in partially-used " << humanMemorySize(s.pageSize)
+         << " pages, which lowering memory_manager_vmm_page_mb may recover";
+    break;
+  case VmmOomCategory::Unaccounted:
+    if (s.available() >= s.neededPhysicalBytes())
+      os << ", yet the allocation was refused: the accounting shows no "
+            "shortfall, so the physical is held somewhere this manager does "
+            "not account for -- another context on the device, or a direct "
+            "device allocation bypassing it";
+    else
+      os << "; the manager expected to back this region from its pool or "
+            "budget headroom and the driver refused, so the physical is held "
+            "somewhere it does not account for -- another context on the "
+            "device, or a direct device allocation bypassing it";
+    break;
+  case VmmOomCategory::VaFragmentation:
+    os << "; physical is sufficient but the largest contiguous free address "
+          "range is only "
+       << humanMemorySize(s.largestRootFreeVA) << " of a "
+       << humanMemorySize(s.vaSize)
+       << " reservation -- raise memory_manager_vmm_va_factor";
+    break;
+  case VmmOomCategory::IllegalDuringCapture:
+    os << ", but mapping physical memory is illegal during a graph capture "
+          "and this request reached an unbacked region -- the pre-capture "
+          "backing did not cover it";
+    break;
+  case VmmOomCategory::ArenaUnavailable:
+    break; // handled above
+  }
+  return out;
+}
+
+std::string dumpVmmOom(const VmmOomSnapshot &s) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  os << "vmm_oom requested=" << humanMemorySize(s.needed)
+     << " page_size=" << humanMemorySize(s.pageSize)
+     << " budget=" << humanMemorySize(s.budget)
+     << " used=" << humanMemorySize(s.usedBytes)
+     << " available=" << humanMemorySize(s.available())
+     << " recoverable_by_sync=" << humanMemorySize(s.recoverableBySync())
+     << " trapped=" << humanMemorySize(s.trapped())
+     << " pending_total=" << humanMemorySize(s.pendingTotalBytes)
+     << " largest_root_free_va=" << humanMemorySize(s.largestRootFreeVA)
+     << " va_size=" << humanMemorySize(s.vaSize)
+     << " free_blocks=" << s.freeBlocks
+     << " arena_reserved=" << (s.arenaReserved ? 1 : 0)
+     << " page_counts[in_use=" << s.inUseGranules
+     << " pending=" << s.pendingGranules
+     << " reclaimable=" << s.reclaimableGranules
+     << " pooled=" << s.pooledGranules
+     << " uncommitted=" << s.uncommittedGranules << "]";
+  return out;
+}
+
 size_t MemoryManager::reclaimMappedGranules(Chunk *c, size_t count) {
   if (count == 0 || !c->vmmBacked_)
     return 0;
@@ -1536,6 +1814,8 @@ ErrorOrSuccess MemoryManager::ensureRegionBacked(Desc *desc) {
     const size_t toReclaim = needMap - poolAvail - canCreate;
     const size_t got = reclaimMappedGranules(c, toReclaim);
     if (got < toReclaim)
+      // Out of physical within the budget. No reason is recorded: the surfaced
+      // accounting already shows the shortfall.
       return Error("ensureRegionBacked: out of physical budget (need " +
                    humanMemorySize(needMap * ps) + ", reclaimed " +
                    humanMemorySize(got * ps) + ")");
@@ -1569,6 +1849,9 @@ ErrorOrSuccess MemoryManager::ensureRegionBacked(Desc *desc) {
     } else {
       ErrorOr<uint64_t> h = device().vmmCreate(ps);
       if (h.isError()) {
+        // The budget said this was creatable, but the driver refused: the
+        // physical is held outside this manager.
+        tlsBackingFailure = VmmBackingFailure::CreateRefused;
         rollback();
         return Error(std::string("ensureRegionBacked: vmmCreate failed: ") +
                      h.getError());
@@ -1578,6 +1861,10 @@ ErrorOrSuccess MemoryManager::ensureRegionBacked(Desc *desc) {
     void *pageVa = base + i * ps;
     ErrorOrSuccess me = device().vmmMapAndSetAccess(pageVa, ps, handle);
     if (me.isError()) {
+      // Distinct from a refused create: mapping is illegal during a graph
+      // capture, so the caller resolves this against the capture state rather
+      // than reading it as memory pressure.
+      tlsBackingFailure = VmmBackingFailure::MapRefused;
       freeGranulePool_.push_back(handle); // valid handle, just unmapped
       rollback();
       return Error(
@@ -1933,6 +2220,10 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     MemoryManager::Desc *desc = nullptr;
     {
       std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+      // Fresh per request: any ensureRegionBacked failure below records why, so
+      // a stale reason from a prior allocation on this thread cannot leak into
+      // this one's diagnostic.
+      tlsBackingFailure = VmmBackingFailure::None;
       // The chunk-growth heuristic below is for the non-VMM allocator only.
       // The single-arena VMM path reserves one oversized arena up front
       // (allocateVmmArena) with lazily-backed pages, so there is no per-chunk
@@ -2026,7 +2317,9 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     }
 
     if (memoryManager_.useOnlyMemoryManagerMode_)
-      return memoryManager_.allocationMissError(this, wrappedSize);
+      return memoryManager_.allocationMissError(this, wrappedSize,
+                                                /*backdoorError=*/nullptr,
+                                                backingFailedDuringCapture());
 
     // else fall through to allocating from the device driver.
     // This is a "backdoor"; we may exceed memory manager's budget as a result.
@@ -2045,10 +2338,20 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     // verifies this combination so it too will need to be updated if this
     // changes.
 
+    // The manager is live and its accounting explains the failure: a capture
+    // reached an unbacked region, which mapping cannot fix mid-capture. Report
+    // that rather than claiming the manager is disabled.
+    if (!memoryManager_.useOnlyMemoryManagerMode_ && memoryManager_.isEnabled())
+      return memoryManager_.allocationMissError(this, wrappedSize,
+                                                /*backdoorError=*/nullptr,
+                                                backingFailedDuringCapture());
+
     dumpFragmentationDiagnostic(
-        wrappedSize, memoryManager_.useOnlyMemoryManagerMode_
-                         ? "use-only-memory-manager-mode with mm disabled"
-                         : "graph capturing in progress, no driver fallback");
+        wrappedSize,
+        memoryManager_.useOnlyMemoryManagerMode_
+            ? "use-only-memory-manager-mode with mm disabled"
+            : "graph capturing in progress, no driver fallback",
+        /*snapshot=*/nullptr);
     return Error(
         "[Use only memory manager mode]: Memory manager cannot satisfy "
         "allocation (memory manager is disabled): " +
@@ -2073,9 +2376,16 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
   if (err.isError()) {
     LOG_MSG("allocate_buffer(" + TWINE(size) + ") - failed with " +
             err.getError());
-    // The memory manager could not satisfy the request and the device driver
-    // also failed: this is a true OOM. Dump fragmentation state so we can tell
-    // a fragmented-pool OOM apart from a hard out-of-budget OOM.
+    // The manager missed and the driver refused the fallthrough too. Why the
+    // manager missed is the part that names something to change, so report
+    // that and carry the driver's refusal as a note.
+    if (memoryManager_.vmmEnabled_) {
+      const std::string driverError = err.getError();
+      return memoryManager_.allocationMissError(this, wrappedSize, &driverError,
+                                                backingFailedDuringCapture());
+    }
+    // Dump fragmentation state so we can tell a fragmented-pool OOM apart from
+    // a hard out-of-budget OOM.
     dumpFragmentationDiagnostic(wrappedSize, "device driver memAlloc failed: " +
                                                  llvm::Twine(err.getError()));
     return err.takeError();
@@ -2089,6 +2399,11 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
     return finalizeDebugAlloc(ptr, size);
   }
   return ptr;
+}
+
+bool MemoryManagerFreeList::backingFailedDuringCapture() const {
+  return tlsBackingFailure == VmmBackingFailure::MapRefused &&
+         ctx_ != nullptr && ctx_->isGraphCapturing();
 }
 
 MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {

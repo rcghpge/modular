@@ -30,6 +30,122 @@ namespace M::Driver {
 
 class MemoryManagerFreeList;
 
+// Physical/VA accounting captured when a VMM allocation fails, used to classify
+// the failure and build an accurate diagnostic. The granule-state counts
+// partition the budget's whole pages: a budget that is not a whole multiple of
+// the page size leaves its trailing partial page outside the partition, so the
+// counts sum to `budget / pageSize` pages rather than to `budget` bytes. The
+// derived accessors form the "lever" partition (used / available /
+// sync-recoverable / trapped) the category is built from.
+struct VmmOomSnapshot {
+  size_t pageSize = 0;
+  size_t budget = 0; // maxCacheSize_
+  size_t needed = 0; // the request that failed
+  // Size of the VA reservation actually in force, so a VA shortfall can be
+  // read against it. Not the configured factor: allocateVmmArena falls back to
+  // a budget-sized reservation if the oversized one fails, so the config value
+  // can name a factor that was never applied.
+  size_t vaSize = 0;
+
+  // Granule-state partition of the budget (counts). Each budget granule is in
+  // exactly one state.
+  size_t inUseGranules = 0;       // >=1 in-use byte (pinned)
+  size_t pendingGranules = 0;     // pending byte(s), no in-use byte
+  size_t reclaimableGranules = 0; // backed, only root-free descs
+  size_t pooledGranules = 0;      // created but unmapped (freeGranulePool_)
+  size_t uncommittedGranules = 0; // never created; budget headroom
+
+  // Byte totals from the desc walk.
+  size_t usedBytes = 0;         // bytes under in-use descs
+  size_t pendingTotalBytes = 0; // all child-free desc bytes
+
+  // Free descs seen in the walk, root-owned and child-owned. freeCount_ is not
+  // maintained in VMM mode, so this is the free-block count the diagnostics
+  // report.
+  size_t freeBlocks = 0;
+
+  // VA axis: the largest contiguous free (root-owned) region that a request
+  // could be carved from.
+  size_t largestRootFreeVA = 0;
+
+  // Whether the VMM arena is reserved and backed at all. False before the
+  // arena exists (a failed reservation, for instance), where there is neither
+  // VA nor physical to account for and no request can be served whatever the
+  // budget says.
+  bool arenaReserved = false;
+
+  // Physical the request claims as things stand, rounded up to whole pages.
+  // The "can it be served now" gate uses this; the lever sum is compared
+  // against `needed`, since every lever changes the rounding.
+  size_t neededPhysicalBytes() const {
+    return pageSize == 0 ? 0 : ((needed + pageSize - 1) / pageSize) * pageSize;
+  }
+  // Allocatable now: whole free granules + pooled handles + budget headroom.
+  // Sufficient for a request, never necessary: what a request costs depends on
+  // how much of the region it lands in is already backed, so one can succeed
+  // with `available()` below `neededPhysicalBytes()`.
+  size_t available() const {
+    return (reclaimableGranules + pooledGranules + uncommittedGranules) *
+           pageSize;
+  }
+  // Would become allocatable after a synchronize. Whole granules only, so a
+  // pending byte sharing a granule with an in-use desc does not count: that
+  // granule stays pinned.
+  size_t recoverableBySync() const { return pendingGranules * pageSize; }
+  // Free/pending bytes stuck inside in-use granules; only a smaller page size
+  // recovers them.
+  size_t trapped() const {
+    const size_t inUseBytes = inUseGranules * pageSize;
+    return inUseBytes > usedBytes ? inUseBytes - usedBytes : 0;
+  }
+};
+
+// Which step of ensureRegionBacked failed, when known. Recorded at the call
+// site as a plain observation: the manager refused within its own budget, or
+// the driver rejected a create or a map the manager expected to succeed.
+// `None` when no specific reason was captured. Interpreting a MapRefused needs
+// to know whether a graph capture was in progress, which only the freelist can
+// answer, so the caller passes that in separately.
+enum class VmmBackingFailure {
+  None,
+  CreateRefused,
+  MapRefused,
+};
+
+// The distinguishable causes of a VMM allocation failure.
+enum class VmmOomCategory {
+  Genuine, // no lever reaches far enough: a true exhaustion
+  // Not an exhaustion: the shortfall is covered by memory the manager holds
+  // but cannot hand out as it stands, waiting on stream frees or stranded in
+  // partially-used pages. One category, not one per lever: the message reports
+  // both figures and leaves the choice to the caller.
+  Avoidable,
+  // The accounting shows no shortfall, yet the allocation was refused: the
+  // physical is held somewhere this manager does not account for.
+  Unaccounted,
+  VaFragmentation,  // physical fine, no contiguous VA -> larger vmm_va_factor
+  ArenaUnavailable, // the arena is not reserved -> nothing can be served
+  // A map was refused while a graph capture was in progress. Mapping is
+  // illegal mid-capture, so this is a pre-backing gap, not a shortage.
+  IllegalDuringCapture,
+};
+
+// Classify a failure from the snapshot and (if known) why backing failed.
+// `duringCapture` says whether a graph capture was in progress when the
+// backing step failed; it only changes the verdict for a refused map, which is
+// illegal mid-capture. Pure.
+VmmOomCategory classifyVmmOom(const VmmOomSnapshot &snapshot,
+                              VmmBackingFailure backingFailure,
+                              bool duringCapture = false);
+
+// One-line human-readable summary naming the category and the recovery lever.
+// Levers are phrased as bounded suggestions. Pure.
+std::string describeVmmOom(const VmmOomSnapshot &snapshot,
+                           VmmOomCategory category);
+
+// Full multi-field dump of the snapshot for the verbose log. Pure.
+std::string dumpVmmOom(const VmmOomSnapshot &snapshot);
+
 class MemoryManager {
 public:
   class Chunk;
@@ -81,6 +197,12 @@ public:
 
   // Get memory information about the memory manager
   Device::MemInfo getMemoryInfo() const;
+
+  // Test-only: acquire `mu_` and capture the OOM accounting snapshot for
+  // `needed`. Production paths compute this inline under the allocation
+  // lock; this exposes it so tests can assert exact tier values (available,
+  // recoverable_by_sync, trapped, granule counts) against real allocator state.
+  VmmOomSnapshot oomSnapshotForTesting(size_t needed) const;
 
   // Check if the memory manager is enabled (has non-zero capacity)
   bool isEnabled() const;
@@ -145,8 +267,16 @@ private:
   size_t startAlignment(size_t size) const;
 
   void selfCheck() const;
+  // Called once an allocation has definitely failed, so the accounting is
+  // captured here rather than at the failing attempt: the retries and the
+  // driver fallthrough rescue a miss often enough that measuring earlier meant
+  // walking the descs on allocations that went on to succeed.
+  // `backdoorError` is the driver's own failure from the fallthrough attempt,
+  // reported as a note after the manager's reason.
   Error allocationMissError(const MemoryManagerFreeList *freeList,
-                            size_t wrappedSize) const;
+                            size_t wrappedSize,
+                            const std::string *backdoorError = nullptr,
+                            bool duringCapture = false) const;
   bool allocateChunk();
   bool freeLocked(void *buf);
 
@@ -214,6 +344,10 @@ private:
   // Physical bytes currently committed under in-use allocations in the single
   // VMM arena (the unreclaimable portion of the budget). Caller holds `mu_`.
   size_t inUsePhysicalBytes() const;
+  // Capture the physical/VA accounting for `needed` in one desc + granule
+  // pass (the granule-state counts + desc byte totals + largest free VA). Reads
+  // state only; does not poll or reclaim. Caller holds `mu_`.
+  VmmOomSnapshot computeVmmOomSnapshot(size_t needed) const;
 
   // Block until the device work gating every record naming `fl` has completed,
   // so ~MemoryManagerFreeList's unconditional flush cannot release blocks a
@@ -353,6 +487,9 @@ private:
 
   bool doSelfCheck_ = false;
   bool doLog_ = false;
+  // Free desc byte total and count. These track VA, not physical, so under
+  // VMM they can exceed the physical budget; the VMM paths report
+  // vmmAllocatableBytes() instead.
   size_t freeSize_ = 0;
   size_t freeCount_ = 0;
   size_t chunkCount_ = 0;
@@ -395,8 +532,11 @@ public:
   // flag. Intended for OOM diagnostic: call only when an allocation is about
   // to fail (driver memAlloc errored out, or a no-fallback path is taking an
   // Error return). Acquires the memory manager mutex; caller must not hold it.
-  void dumpFragmentationDiagnostic(size_t requestedSize,
-                                   llvm::Twine reason) const;
+  // `snapshot`, when non-null, is logged as-is; it is never measured here, so
+  // the log and the surfaced message cannot disagree.
+  void
+  dumpFragmentationDiagnostic(size_t requestedSize, llvm::Twine reason,
+                              const VmmOomSnapshot *snapshot = nullptr) const;
 
 private:
   friend class MemoryManager;
@@ -422,6 +562,10 @@ private:
   const DeviceContext *context() const;
 
   MemoryManager::Desc *allocateDesc(size_t size);
+  // Whether a graph capture was in progress when the last backing step on this
+  // thread failed. Queried only on the failure path, so the driver call it
+  // needs stays off the hot path.
+  bool backingFailedDuringCapture() const;
   // Allocate a block of `size` bytes whose start address is a multiple of
   // `startAlign` (0 for no constraint beyond the manager's own alignment).
   MemoryManager::Desc *allocateDescAligned(size_t size, size_t startAlign);
