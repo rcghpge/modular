@@ -14,7 +14,7 @@
 //
 // A `map.iter.opaque` becomes a `mogg.kernel`: its `!mo.tensor` inputs stay
 // operands and its outputs stay results, but inside the body each tensor is
-// reconstructed from a `!mogg.pointer_` block argument via
+// reconstructed from a `!mogg.pointer` block argument via
 // `mogg.shape.create` / `mogg.tensor.create`, and a nested
 // `map.call.opaque` becomes a `mogg.call.opaque` over those tensors, or a
 // nested `map.iter.foreach.body` becomes a `mogg.call.foreach` driving the
@@ -26,7 +26,7 @@
 // dispatcher (so a multi-op epilogue, e.g. compute-then-store, lowers just
 // like any other body).
 //
-// Dynamic shapes are handled: the kernel gains one `!mogg.dim_` block
+// Dynamic shapes are handled: the kernel gains one `!mogg.dim` block
 // argument per unique dynamic dimension (deduped across inputs, outputs, and
 // any nested op's own shape attribute, e.g. `map.iter.foreach.body`'s),
 // placed between the pointers and the context, and each `mogg.shape.create`

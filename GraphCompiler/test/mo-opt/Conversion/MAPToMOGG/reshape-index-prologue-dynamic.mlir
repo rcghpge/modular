@@ -12,10 +12,10 @@
 // covered by `max/tests/integration/graph/test_reshape_prologue_fusion.py`.
 
 // CHECK-LABEL: mo.graph @dyn_reshape_into_prologue
-// CHECK: mogg.tensor.create.prologue %{{.*}} capturing(%{{.*}}, %{{.*}} : !mogg.tensor_, !mogg.tensor_) shapes(%{{.*}}, %{{.*}} : !mogg.shape, !mogg.shape)
+// CHECK: mogg.tensor.create.prologue %{{.*}} capturing(%{{.*}}, %{{.*}} : !mogg.tensor, !mogg.tensor) shapes(%{{.*}}, %{{.*}} : !mogg.shape, !mogg.shape)
 // The shape captures trail the tensor captures, after the index -- and the
 // reshape reads those block args rather than falling back to the static shape.
-// CHECK: ^bb0(%[[IDX:.*]]: !map.index<2>, %{{.*}}: !mogg.tensor_, %{{.*}}: !mogg.tensor_, %[[FROMARG:.*]]: !mogg.shape, %[[TOARG:.*]]: !mogg.shape):
+// CHECK: ^bb0(%[[IDX:.*]]: !map.index<2>, %{{.*}}: !mogg.tensor, %{{.*}}: !mogg.tensor, %[[FROMARG:.*]]: !mogg.shape, %[[TOARG:.*]]: !mogg.shape):
 // CHECK:   mogg.index.reshape(%[[IDX]], %[[FROMARG]], %[[TOARG]]) {fromShape = #mosh<ape[2, D]> : !mosh.ape, toShape = #mosh<ape[D, 2]> : !mosh.ape}
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs {{.*}}hasPrologueFusion = true
 mo.graph @dyn_reshape_into_prologue<D>(

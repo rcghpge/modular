@@ -89,7 +89,7 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
     >,
     InterfaceMethod<
       [{Clone this create op with a new mutability, adjusting the result kind
-        (`!mogg.tensor_` when made immutable) so the buffer-implies-mutable
+        (`!mogg.tensor` when made immutable) so the buffer-implies-mutable
         invariant holds. Returns the clone; the original is left for DCE.}],
       "::M::MOGG::TensorCreateInterface", "cloneWithMut",
       (ins "::mlir::OpBuilder &":$builder, "bool":$mut), /*methodBody=*/[{}],
@@ -99,8 +99,8 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
         // at compile time if an op ever drops it); a raw `setAttr` would not.
         cloned.setMut(mut);
         ::mlir::Value result = cloned->getResult(0);
-        // A buffer result is mutable memory; retype to `!mogg.tensor_` when the
-        // clone becomes immutable to keep `!mogg.buffer_ => mut`.
+        // A buffer result is mutable memory; retype to `!mogg.tensor` when the
+        // clone becomes immutable to keep `!mogg.buffer => mut`.
         if (!mut && ::mlir::isa<::M::MOGG::BufferType>(result.getType()))
           result.setType(::M::MOGG::TensorType::get(cloned->getContext()));
         return ::mlir::cast<::M::MOGG::TensorCreateInterface>(
@@ -109,18 +109,18 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
     >,
   ];
 
-  // A `!mogg.buffer_` result is mutable memory -- `getKernelOperandKind()`
+  // A `!mogg.buffer` result is mutable memory -- `getKernelOperandKind()`
   // reads the mutable `Buffer` kind straight off the type -- so it must be
   // marked mutable. Enforced on the interface (rather than one op) so every
   // current and future `mogg.tensor.create*` producer is covered.
   //
-  // The converse is intentionally NOT checked: a `!mogg.tensor_` may be
+  // The converse is intentionally NOT checked: a `!mogg.tensor` may be
   // mutable too -- a DPS output (`io = Output`) and a mutable view are both
-  // mutable `!mogg.tensor_` -- so `mut` does not pin the kind down the other
+  // mutable `!mogg.tensor` -- so `mut` does not pin the kind down the other
   // way, and only the plain `mogg.tensor.create` even carries the `$io` that
   // scoping an input-only immutability rule would need.
   //
-  // Defined out of line in MOGGOps.cpp so it can name `!mogg.buffer_`, which
+  // Defined out of line in MOGGOps.cpp so it can name `!mogg.buffer`, which
   // this generated interface header cannot see.
   let verify = [{
     return ::M::MOGG::verifyTensorCreateInterfaceMutability($_op);

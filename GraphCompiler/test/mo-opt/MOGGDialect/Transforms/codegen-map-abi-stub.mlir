@@ -8,7 +8,7 @@
 // End-to-end Mojo emission for the MOGG-ABI `mogg.kernel.stub`
 // (KernelStubOp::emitMojoMOGGABI plus the shape.create / tensor.create /
 // call.opaque / scalar.create / tuple.create emitters). The MOGG stub takes raw
-// `!mogg.pointer_` / `!mogg.dim_` / `!mogg.context` handles and reconstructs the
+// `!mogg.pointer` / `!mogg.dim` / `!mogg.context` handles and reconstructs the
 // codegen tensors internally before invoking the opaque kernel's execute
 // function.
 //
@@ -32,7 +32,7 @@ mo.graph @plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   mo.output %c : !mo.tensor<[2, 2], f32>
 }
 
-// Dynamic dim: the `!mogg.dim_` handle arrives as a trailing `Int` argument and
+// Dynamic dim: the `!mogg.dim` handle arrives as a trailing `Int` argument and
 // feeds a runtime `Scalar[DType.int]` Coord component.
 // CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}({{.*}}: OpaquePointer[MutAnyOrigin], {{.*}}: OpaquePointer[MutAnyOrigin], [[DIM:.*]]: Int, {{.*}}: {{.*}}DeviceContext) raises:
 // CHECK:   var {{.*}} = layout.Coord(Scalar[DType.int]([[DIM]]), layout.Idx[4])

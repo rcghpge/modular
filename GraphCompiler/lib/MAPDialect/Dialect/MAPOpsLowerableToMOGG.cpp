@@ -81,7 +81,7 @@ void collectDynamicDims(Operation *root, MAPToMOGGState &state) {
 // Materializes a `!mogg.shape` for `shapeAttr` via `mogg.shape.create`.
 // Canonicalizes every dynamic dim in the shape ATTR to one uniform `dyn`
 // placeholder so shapes carrying different symbols (e.g. `[M, K]` vs `[N,
-// K]`) dedup to `[dyn, dyn]` / `[dyn, K]`. The `!mogg.dim_` OPERANDS stay the
+// K]`) dedup to `[dyn, dyn]` / `[dyn, K]`. The `!mogg.dim` OPERANDS stay the
 // real per-dim handles (they carry runtime values); only the attr is folded.
 Value buildShape(Location loc, MOSH::ShapeAttr shapeAttr,
                  MAPToMOGGState &state) {
@@ -104,10 +104,10 @@ Value buildShape(Location loc, MOSH::ShapeAttr shapeAttr,
       state.builder, loc, MOGG::ShapeType::get(ctx), dims, canonicalShapeAttr);
 }
 
-// Reconstructs an `!mogg.tensor_` for `tensorType` (a tensor, or a buffer --
+// Reconstructs an `!mogg.tensor` for `tensorType` (a tensor, or a buffer --
 // e.g. one `FuseMutableLoads` fused a load's buffer into in place of the
 // tensor operand it used to read -- read via `MO::castFromTensorLike`) from
-// the `!mogg.pointer_` block argument `ptr`, via `mogg.shape.create` +
+// the `!mogg.pointer` block argument `ptr`, via `mogg.shape.create` +
 // `mogg.tensor.create`. `io`/`isMut` distinguish immutable inputs from
 // mutable outputs.
 Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
@@ -117,12 +117,12 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
   MOSH::ShapeAttr shapeAttr = tensorTy.getShape();
   Value shape = buildShape(loc, shapeAttr, state);
   // A `!mo.buffer` operand (mutable memory the kernel writes through, e.g. a
-  // collective's signal buffers) reconstructs as a `!mogg.buffer_` handle
+  // collective's signal buffers) reconstructs as a `!mogg.buffer` handle
   // (`Buffer` kind); a `!mo.tensor` -- even a mutable output -- reconstructs as
-  // a `!mogg.tensor_` (`Tensor` kind). Buffer-ness (the kind) is thus a
+  // a `!mogg.tensor` (`Tensor` kind). Buffer-ness (the kind) is thus a
   // property of the operand type, while `$mut` is the store-side mutability
   // (true for buffers and for output tensors alike); `mogg.tensor.create`'s
-  // verifier only requires a `!mogg.buffer_` to be mutable.
+  // verifier only requires a `!mogg.buffer` to be mutable.
   bool isBuffer = isa<MO::BufferType>(tensorType);
   Type resultType = isBuffer ? Type(MOGG::BufferType::get(ctx))
                              : Type(MOGG::TensorType::get(ctx));
@@ -490,7 +490,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
       /*contract=*/contractAttr);
 
   // New block args mirror the old ones 1:1, except captures are typed as
-  // the reconstructed `!mogg.tensor_` instead of the original `!mo.tensor`.
+  // the reconstructed `!mogg.tensor` instead of the original `!mo.tensor`.
   // Shape captures, if any, follow the tensor captures as trailing block args.
   Block *body = state.builder.createBlock(&epilogueOp.getBody());
   for (size_t i = 0; i < numParams; ++i) {
@@ -608,7 +608,7 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   Block *body = state.builder.createBlock(&prologueOp.getBody());
   for (auto [i, arg] : llvm::enumerate(proArgs)) {
     // Arg 0 is the index and carries over; each capture is retyped to the
-    // rebuilt `!mogg.tensor_`.
+    // rebuilt `!mogg.tensor`.
     Type argTy = i == 0 ? arg.getType() : moggCaptures[i - 1].getType();
     state.mapping.map(arg, body->addArgument(argTy, arg.getLoc()));
   }
@@ -732,7 +732,7 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
 }
 
 // A hoisted view whose input is an in-place kernel's fused buffer re-addresses
-// mutable storage, so `mut` has to say so; the result stays a `!mogg.tensor_`
+// mutable storage, so `mut` has to say so; the result stays a `!mogg.tensor`
 // either way, since `LoopInvariantViewMotion` only hoists views that are
 // loaded from.
 static bool viewsMutableStorage(Value input) {
@@ -969,7 +969,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // signature. A dim can live only on an intermediate value or a view's spec:
   // e.g. the reduced axis of a dynamic-perm transpose fused into a reduce is a
   // fresh runtime symbol on the transposed view, absent from both the kernel's
-  // inputs and its result, yet `buildShape` still needs a `!mogg.dim_` handle
+  // inputs and its result, yet `buildShape` still needs a `!mogg.dim` handle
   // for it. `collectDynamicDims` walks for any `MOSH::ShapeAttr`, so the
   // opaque's own I/O plus every op in the body covers all of them.
   collectDynamicDims(getOperation(), state);
@@ -999,8 +999,8 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
       continue;
     outputArgs[i] = addBodyArg(resultTypes[i]);
   }
-  // One `!mogg.dim_` per unique dynamic dim, each carrying that dim's
-  // parameter name (e.g. `!mogg.dim_<batch>`); shapes never hold dim
+  // One `!mogg.dim` per unique dynamic dim, each carrying that dim's
+  // parameter name (e.g. `!mogg.dim<batch>`); shapes never hold dim
   // expressions, so the dynamic dim is always a `ParamDeclRefAttr`.
   for (auto &[dim, blockArg] : state.dimArgs)
     blockArg = body->addArgument(
@@ -1067,8 +1067,8 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
       continue;
     }
     // A `!mo.buffer` input (e.g. a collective's signal buffers) is mutable
-    // memory the kernel writes through, so reconstruct it as a `!mogg.buffer_`
-    // (mut) rather than a `!mogg.tensor_`; the kernel decl expects a mutable
+    // memory the kernel writes through, so reconstruct it as a `!mogg.buffer`
+    // (mut) rather than a `!mogg.tensor`; the kernel decl expects a mutable
     // operand there.
     bool isMut = isa<MO::BufferType>(in.getType());
     state.mapping.map(inputBlockArgs[i],

@@ -84,7 +84,7 @@ matchConvertedMOTypeToKernelDeclType(const KernelDeclOperandVariant &moType,
       return Error("Expected an immutable tensor type");
 
     // Validate rank-0 / on-host only when the operand type carries that
-    // information. MO tensors do; opaque codegen handles (`!mogg.tensor_`) do
+    // information. MO tensors do; opaque codegen handles (`!mogg.tensor`) do
     // not, and were already validated upstream, so they are trusted here.
     if (auto shaped = dyn_cast<MO::MOShapedTypeInterface>(originalMOType))
       if (shaped.getRank() != 0)

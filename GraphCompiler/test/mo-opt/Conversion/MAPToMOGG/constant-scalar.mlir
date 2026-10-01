@@ -4,7 +4,7 @@
 // canonicalizer turns the per-element read of the one-element constant into a
 // `map.constant.scalar`, which lowers to `mogg.constant.scalar` inside the
 // `mogg.call.foreach` region. The constant buffer is not a kernel operand at
-// all -- no `!mogg.pointer_` input, no `mogg.tensor.create` for it.
+// all -- no `!mogg.pointer` input, no `mogg.tensor.create` for it.
 
 // The elementwise-operand shape: the literal takes the place of one of the
 // add's two loads, so the call comes out `f32, f32 -> f32` exactly as it
@@ -12,20 +12,20 @@
 
 // CHECK-LABEL: mo.graph @addConstant
 // CHECK:       mogg.kernel ({{.*}} : !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32>
-// CHECK-NEXT:  inputs ([[IP:%[^ :,]+]]: !mogg.pointer_)
-// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]]: !mogg.pointer_)
+// CHECK-NEXT:  inputs ([[IP:%[^ :,]+]]: !mogg.pointer)
+// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]]: !mogg.pointer)
 // CHECK-NEXT:  context ([[CTX:%[^ :,]+]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK-NEXT:    [[ISH:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[8, 64]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    [[IT:%[^ ]+]] = mogg.tensor.create([[IP]], [[ISH]]) {{.*}}io = 1{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:    [[IT:%[^ ]+]] = mogg.tensor.create([[IP]], [[ISH]]) {{.*}}io = 1{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
 // CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[8, 64]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = 0{{.*}} : (!mogg.pointer_, !mogg.shape) -> !mogg.tensor_
+// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = 0{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
 // CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() {shape = #mosh<ape[8, 64]> : !mosh.ape} : () -> !mogg.shape
-// CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[IT]], [[OT]] : !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
-// CHECK-NEXT:    ^bb0([[IN:%[^ :,]+]]: !mogg.tensor_, [[OUT:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[IT]], [[OT]] : !mogg.tensor, !mogg.tensor) attributes {device = "cpu"} {
+// CHECK-NEXT:    ^bb0([[IN:%[^ :,]+]]: !mogg.tensor, [[OUT:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[CST:%[^ ]+]] = mogg.constant.scalar {value = 2.000000e+00 : f32} : f32
-// CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[IN]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
+// CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[IN]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK-NEXT:      [[SUM:%[^ ]+]] = mogg.call.elementwise["builtin_kernels.elementwise.Add"] ([[VAL]], [[CST]]) {moOpName = "mo.add"} : f32, f32 -> f32
-// CHECK-NEXT:      mogg.tensor.store [[OUT]]{{\[}}[[IDX]]] = [[SUM]] : !mogg.tensor_, !map.index<2>, f32
+// CHECK-NEXT:      mogg.tensor.store [[OUT]]{{\[}}[[IDX]]] = [[SUM]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @addConstant(%x: !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32> {
   %cst = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[8, 64], f32>
@@ -39,11 +39,11 @@ mo.graph @addConstant(%x: !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32> 
 
 // CHECK-LABEL: mo.graph @broadcastConstant
 // CHECK:       mogg.kernel () -> !mo.tensor<[8, 64], f32>
-// CHECK-NEXT:  outputs ([[OP2:%[^ :,]+]]: !mogg.pointer_)
+// CHECK-NEXT:  outputs ([[OP2:%[^ :,]+]]: !mogg.pointer)
 // CHECK:         mogg.call.foreach
-// CHECK-NEXT:    ^bb0([[OUT2:%[^ :,]+]]: !mogg.tensor_, [[IDX2:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:    ^bb0([[OUT2:%[^ :,]+]]: !mogg.tensor, [[IDX2:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[CST2:%[^ ]+]] = mogg.constant.scalar {value = 5.000000e-01 : f32} : f32
-// CHECK-NEXT:      mogg.tensor.store [[OUT2]]{{\[}}[[IDX2]]] = [[CST2]] : !mogg.tensor_, !map.index<2>, f32
+// CHECK-NEXT:      mogg.tensor.store [[OUT2]]{{\[}}[[IDX2]]] = [[CST2]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @broadcastConstant() -> !mo.tensor<[8, 64], f32> {
   %cst = mo.constant {value = #M.dense_array<5.000000e-01> : tensor<f32>} : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[8, 64], f32>

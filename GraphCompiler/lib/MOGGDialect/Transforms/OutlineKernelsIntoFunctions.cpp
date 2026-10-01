@@ -6,7 +6,7 @@
 //
 // Outlines each `mogg.kernel` body into a module-level `mogg.kernel.stub`
 // (labeled with the `MAP` ABI) and replaces the kernel body with a single
-// `mogg.call.stub` forwarding the kernel's `!mogg.pointer_` / `!mogg.dim_` /
+// `mogg.call.stub` forwarding the kernel's `!mogg.pointer` / `!mogg.dim` /
 // `!mogg.context` block arguments. The `mogg.kernel` container survives: it
 // keeps the `!mo.tensor` interface that `MOGGToMGP` later lowers.
 //

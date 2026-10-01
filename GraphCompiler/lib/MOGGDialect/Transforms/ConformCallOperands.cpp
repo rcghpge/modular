@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Conforms each `mogg` call's operands to the callee's declared signature.
-// `MAPToMOGG` leaves every operand as a plain `!mogg.tensor_`; this pass
+// `MAPToMOGG` leaves every operand as a plain `!mogg.tensor`; this pass
 // re-runs operand inference against the callee `mogg.kernel.decl` /
 // `mogg.shape_func.decl` and, per its classification, wraps a scalar operand in
 // `mogg.scalar.create`, packs each variadic run into a `mogg.tuple.create`,
@@ -36,8 +36,8 @@ namespace {
 
 // Packs one operand list (a call's inputs or outputs) into the scalar / tuple
 // forms the kernel expects, per `mapping`: a scalar kernel argument gets its
-// `!mogg.tensor_` operand wrapped in `mogg.scalar.create`; a variadic argument
-// gets its run of consecutive `!mogg.tensor_` operands (same kernel-argument
+// `!mogg.tensor` operand wrapped in `mogg.scalar.create`; a variadic argument
+// gets its run of consecutive `!mogg.tensor` operands (same kernel-argument
 // position) packed into one `mogg.tuple.create`. `changed` is set if anything
 // was rewritten.
 SmallVector<Value>
@@ -93,7 +93,7 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
     }
 
     // A NON-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
-    // `TileTensorable`) has its raw `!mogg.tensor_` re-presented as the
+    // `TileTensorable`) has its raw `!mogg.tensor` re-presented as the
     // conforming trait argument by `mogg.trait.create`, which carries the
     // distilled contract and the execution device (for the emit-side layout /
     // alignment). A FUSED trait argument is handled at its producer instead:
@@ -104,7 +104,7 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
     if (std::optional<TensorArgContract> contract = arg.getTraitContract();
         contract && !contract->fused) {
       // Keep the operand's own kind: a mutable-input trait argument comes in as
-      // a `!mogg.buffer_`, everything else as a `!mogg.tensor_`.
+      // a `!mogg.buffer`, everything else as a `!mogg.tensor`.
       packed.push_back(TraitCreateOp::create(
           builder, loc, operands[i].getType(), operands[i],
           builder.getStringAttr(device.getLabel()),
@@ -145,7 +145,7 @@ packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
   OpBuilder builder(call);
 
   // `MAPToMOGG` reconstructs a fused mutable-load operand as a mutable
-  // `mogg.tensor.create` (a `!mogg.buffer_`). When it backs a read-only kernel
+  // `mogg.tensor.create` (a `!mogg.buffer`). When it backs a read-only kernel
   // input, the mapping above accepts the mut->immut widening, but codegen would
   // still emit a mutable slice the kernel's immutable parameter rejects.
   // Recreate that producer immutable so the emitted slice matches; DCE drops
@@ -250,7 +250,7 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
 
 // Same as `packCall`, against the `mogg.shape_func.decl` signature: no
 // outputs, but `range_shape` still wants `Scalar[dtype]`, not a
-// `!mogg.tensor_`.
+// `!mogg.tensor`.
 LogicalResult packShapeCall(CallShapeOp call, const MojoRegistry &registry) {
   ShapeFunctionDeclOp decl =
       registry.lookupShapeFunctionBySymName(call.getCallee());

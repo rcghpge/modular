@@ -7,12 +7,12 @@
 // two values the loop body actually references).
 
 // CHECK-LABEL: mo.graph @chainedSliceStride
-// CHECK:       [[INNER:%[^ ]+]] = mogg.tensor.create.slice([[IT0:%[^ ]+]], {{.*}}) {{.*}}outShape = #mosh<ape[4, 32]>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
-// CHECK-NEXT:  [[OUTER:%[^ ]+]] = mogg.tensor.create.slice([[INNER]], {{.*}}) {{.*}}outShape = #mosh<ape[2, 16]>{{.*}} : (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
-// CHECK:       mogg.call.foreach @builtin_primitives.primitives._foreach shape({{%[^ ]+}}) context({{%[^ ]+}}) capturing([[OUTER]], [[OT:%[^ ]+]] : !mogg.tensor_, !mogg.tensor_) attributes {device = "cpu"} {
-// CHECK-NEXT:  ^bb0([[ARG:%[^ :,]+]]: !mogg.tensor_, [[OUTARG:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
-// CHECK-NEXT:    [[VAL:%[^ ]+]] = mogg.tensor.load [[ARG]]{{\[}}[[IDX]]] : !mogg.tensor_, !map.index<2> -> f32
-// CHECK-NEXT:    mogg.tensor.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor_, !map.index<2>, f32
+// CHECK:       [[INNER:%[^ ]+]] = mogg.tensor.create.slice([[IT0:%[^ ]+]], {{.*}}) {{.*}}outShape = #mosh<ape[4, 32]>{{.*}} : (!mogg.tensor, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
+// CHECK-NEXT:  [[OUTER:%[^ ]+]] = mogg.tensor.create.slice([[INNER]], {{.*}}) {{.*}}outShape = #mosh<ape[2, 16]>{{.*}} : (!mogg.tensor, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
+// CHECK:       mogg.call.foreach @builtin_primitives.primitives._foreach shape({{%[^ ]+}}) context({{%[^ ]+}}) capturing([[OUTER]], [[OT:%[^ ]+]] : !mogg.tensor, !mogg.tensor) attributes {device = "cpu"} {
+// CHECK-NEXT:  ^bb0([[ARG:%[^ :,]+]]: !mogg.tensor, [[OUTARG:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:    [[VAL:%[^ ]+]] = mogg.tensor.load [[ARG]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
+// CHECK-NEXT:    mogg.tensor.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @chainedSliceStride(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[2, 16], f32> {
   %start0 = mo.constant {value = #M.dense_array<1, 16> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %stop0 = mo.constant {value = #M.dense_array<5, 48> : tensor<2xsi64>} : !mo.tensor<[2], si64>

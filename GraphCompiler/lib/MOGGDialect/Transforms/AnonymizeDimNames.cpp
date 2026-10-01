@@ -22,9 +22,9 @@ namespace M::MOGG {
 
 namespace {
 
-// Drops the param-decl-ref name from every `!mogg.dim_<name>` block arg of
+// Drops the param-decl-ref name from every `!mogg.dim<name>` block arg of
 // `stub` (and its function signature), turning them into anonymous
-// `!mogg.dim_`. Changing a block-arg type updates its in-body uses
+// `!mogg.dim`. Changing a block-arg type updates its in-body uses
 // automatically. Idempotent, so revisiting the same stub is safe.
 void stripStubDimNames(MOGG::KernelStubOp stub) {
   MLIRContext *ctx = stub.getContext();

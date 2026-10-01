@@ -39,7 +39,7 @@ struct MAPToMOGGState {
 
   // Substitution for every value reachable from the kernel currently being
   // lowered: this kernel's own input operands and output block args -> the
-  // `!mogg.tensor_` `IterOpaqueOp::lowerToMOGG` reconstructed for them (grown
+  // `!mogg.tensor` `IterOpaqueOp::lowerToMOGG` reconstructed for them (grown
   // by `IterEpilogueOp::lowerToMOGG` too -- an epilogue's own result resolves
   // exactly like a plain kernel output). A nested region (a foreach body's
   // captures/index, an epilogue body's params/captures) remaps its own
@@ -49,7 +49,7 @@ struct MAPToMOGGState {
   // Context per-op `lowerToMOGG` implementations need, set once by
   // `IterOpaqueOp::lowerToMOGG` before any nested op is lowered.
   DeviceRefAttr device;
-  // Unique dynamic dims (in first-seen order) -> the `!mogg.dim_` block arg
+  // Unique dynamic dims (in first-seen order) -> the `!mogg.dim` block arg
   // reconstructed for each. Collected as null-valued entries before the
   // kernel's block args exist, then filled in once they do.
   llvm::MapVector<mlir::Attribute, mlir::BlockArgument> dimArgs;

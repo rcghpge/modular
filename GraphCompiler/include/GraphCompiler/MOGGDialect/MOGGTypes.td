@@ -172,7 +172,7 @@ def MOGG_ScalarOfAnyRank : ConfinedType<
 // carries its shape / dtype / mutability / io-kind, not the type.
 //===----------------------------------------------------------------------===//
 
-def MOGG_Pointer : MOGG_Type<"Pointer", "pointer_"> {
+def MOGG_Pointer : MOGG_Type<"Pointer", "pointer"> {
   let summary = "An opaque pointer to a tensor's backing data.";
   let description = [{
     Codegen-dialect handle for a raw data pointer. Kernels in the new lowering
@@ -181,15 +181,15 @@ def MOGG_Pointer : MOGG_Type<"Pointer", "pointer_"> {
   }];
 }
 
-def MOGG_Tensor : MOGG_Type<"Tensor", "tensor_",
+def MOGG_Tensor : MOGG_Type<"Tensor", "tensor",
   [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
   let summary = "An opaque codegen tensor handle.";
   let description = [{
     A tensor value in the codegen dialect. Shape, element type and io-kind are
     carried by the op that creates it (`mogg.tensor.create` /
     `mogg.tensor.create.epilogue`), not by this type. Mutability is the one
-    property reflected in the type itself: an immutable operand is `!mogg.tensor_`
-    and a mutable one is `!mogg.buffer_`, so `getKernelOperandKind()` can tell
+    property reflected in the type itself: an immutable operand is `!mogg.tensor`
+    and a mutable one is `!mogg.buffer`, so `getKernelOperandKind()` can tell
     `Tensor` from `Buffer` (which operand inference reads as immutable vs mutable)
     -- a value's type alone has no defining op to consult. Implements
     `MOKernelOperandTypeInterface` (as `Tensor`); the rank/host validation of a
@@ -197,13 +197,13 @@ def MOGG_Tensor : MOGG_Type<"Tensor", "tensor_",
   }];
 }
 
-def MOGG_Buffer : MOGG_Type<"Buffer", "buffer_",
+def MOGG_Buffer : MOGG_Type<"Buffer", "buffer",
   [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
   let summary = "An opaque codegen mutable tensor (buffer) handle.";
   let description = [{
-    The mutable counterpart of `!mogg.tensor_`, the codegen-dialect handle for a
+    The mutable counterpart of `!mogg.tensor`, the codegen-dialect handle for a
     `!mo.buffer` kernel operand (e.g. a collective's signal buffers). Same opaque
-    representation as `!mogg.tensor_` -- shape/element-type/io-kind live on the
+    representation as `!mogg.tensor` -- shape/element-type/io-kind live on the
     creating `mogg.tensor.create`, whose verifier ties this type to `mut = true`
     -- but it implements `MOKernelOperandTypeInterface` as `Buffer`, so operand
     inference matches it to a kernel's `MutableInput`/variadic-mutable argument
@@ -211,34 +211,34 @@ def MOGG_Buffer : MOGG_Type<"Buffer", "buffer_",
   }];
 }
 
-// A codegen tensor handle of either mutability: `!mogg.tensor_` (immutable) or
-// `!mogg.buffer_` (mutable). Use wherever a kernel-operand tensor flows and a
+// A codegen tensor handle of either mutability: `!mogg.tensor` (immutable) or
+// `!mogg.buffer` (mutable). Use wherever a kernel-operand tensor flows and a
 // `!mo.buffer` operand may reach it (e.g. a collective's signal buffers).
 def MOGG_TensorLike : AnyTypeOf<[MOGG_Tensor, MOGG_Buffer]>;
 
-def MOGG_Dim : MOGG_Type<"Dim", "dim_"> {
+def MOGG_Dim : MOGG_Type<"Dim", "dim"> {
   let summary = "An opaque runtime dimension value.";
   let description = [{
     A single runtime dimension in the codegen dialect. Optionally carries the
     source dynamic-dimension parameter (a `#kgen.param.decl.ref`), printed bare
-    as `!mogg.dim_<batch>`. `MOGGToMGP` drops the name — a symbolic dimension
+    as `!mogg.dim<batch>`. `MOGGToMGP` drops the name — a symbolic dimension
     would prevent kernel deduplication, so dims become SSA value handles there.
   }];
   let parameters = (ins OptionalParameter<"::M::KGEN::ParamDeclRefAttr">:$name);
   let assemblyFormat = "(`<` custom<DimName>($name)^ `>`)?";
 }
 
-def MOGG_Scalar : MOGG_Type<"Scalar", "scalar_",
+def MOGG_Scalar : MOGG_Type<"Scalar", "scalar",
   [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
   let summary = "An opaque codegen scalar handle.";
   let description = [{
     A scalar kernel operand in the codegen dialect, produced by
-    `mogg.scalar.create` from a `!mogg.tensor_` (the new-path counterpart of
+    `mogg.scalar.create` from a `!mogg.tensor` (the new-path counterpart of
     `mogg.as_scalar`). Element type is carried by the creating op, not the type.
   }];
 }
 
-def MOGG_Tuple : MOGG_Type<"Tuple", "tuple_"> {
+def MOGG_Tuple : MOGG_Type<"Tuple", "tuple"> {
   let summary = "An opaque codegen tuple handle (a packed variadic).";
   let description = [{
     A packed run of variadic tensor operands, produced by `mogg.tuple.create`

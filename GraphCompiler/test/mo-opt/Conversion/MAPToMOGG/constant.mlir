@@ -11,16 +11,16 @@
 
 // CHECK-LABEL: mo.graph @constant
 // CHECK: mogg.kernel () -> !mo.tensor<[2, 2], f32>
-// CHECK-NEXT: outputs ([[OP:%[^ :,]+]]: !mogg.pointer_)
+// CHECK-NEXT: outputs ([[OP:%[^ :,]+]]: !mogg.pointer)
 // CHECK-NEXT: context ([[CTX:%[^ :,]+]]: !mogg.context)
 // CHECK-NEXT:   [[OSH:%[^ ]+]] = mogg.shape.create()
 // CHECK-NEXT:   [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = 0 : i32, mut = true
-// CHECK-NEXT:   [[CP:%[^ ]+]] = mogg.buffer.constant #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00> : tensor<2x2xf32> : !mogg.pointer_
+// CHECK-NEXT:   [[CP:%[^ ]+]] = mogg.buffer.constant #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00> : tensor<2x2xf32> : !mogg.pointer
 // CHECK-NEXT:   [[CSH:%[^ ]+]] = mogg.shape.create()
 // CHECK-NEXT:   [[CT:%[^ ]+]] = mogg.tensor.create([[CP]], [[CSH]]) {{.*}}io = 1 : i32, mut = false
 // CHECK-NEXT:   [[LSH:%[^ ]+]] = mogg.shape.create()
-// CHECK-NEXT:   mogg.call.foreach {{.*}} capturing([[CT]], [[OT]] : !mogg.tensor_, !mogg.tensor_)
-// CHECK-NEXT:   ^bb0([[CIN:%[^ :,]+]]: !mogg.tensor_, [[OUT:%[^ :,]+]]: !mogg.tensor_, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:   mogg.call.foreach {{.*}} capturing([[CT]], [[OT]] : !mogg.tensor, !mogg.tensor)
+// CHECK-NEXT:   ^bb0([[CIN:%[^ :,]+]]: !mogg.tensor, [[OUT:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:     [[CV:%[^ ]+]] = mogg.tensor.load [[CIN]][[[IDX]]]
 // CHECK-NEXT:     mogg.tensor.store [[OUT]][[[IDX]]] = [[CV]]
 mo.graph @constant() -> !mo.tensor<[2, 2], f32> {

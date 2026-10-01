@@ -558,8 +558,8 @@ LogicalResult KernelOp::verify() {
     return emitOpError("returns more than one opaque result");
 
   // The body block arguments are the codegen handles: one per input then
-  // destination-passing output, then the !mogg.dim_s, then one !mogg.context.
-  // A tensor-like entry gets a !mogg.pointer_; an opaque input carries its own
+  // destination-passing output, then the !mogg.dims, then one !mogg.context.
+  // A tensor-like entry gets a !mogg.pointer; an opaque input carries its own
   // type across. Results that leave by value get none -- a shape function's
   // `!mogg.shape_func_result`, or an `!mo.opaque`.
   SmallVector<Type> boundaryTypes(getInputs().getTypes());
@@ -587,7 +587,7 @@ LogicalResult KernelOp::verify() {
     }
     if (!isa<PointerType>(args[i].getType()))
       return emitOpError() << "body block argument #" << i
-                           << " must be a !mogg.pointer_ (one per input then "
+                           << " must be a !mogg.pointer (one per input then "
                               "output tensor)";
   }
 
@@ -599,7 +599,7 @@ LogicalResult KernelOp::verify() {
   // `DeviceContextArray`.
   if (i >= args.size())
     return emitOpError() << "body block arguments after the pointers must be "
-                            "zero or more !mogg.dim_ followed by one or more "
+                            "zero or more !mogg.dim followed by one or more "
                             "!mogg.context";
   for (; i < args.size(); ++i)
     if (!isa<ContextType>(args[i].getType()))
@@ -669,8 +669,8 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   Location loc = getLoc();
   DeviceRefAttr device = MO::getDeviceOrDefaultAny(getOperation());
 
-  // The body block args are, in order: one `!mogg.pointer_` per input, then per
-  // output, then the `!mogg.dim_<name>`s, then one trailing `!mogg.context`. A
+  // The body block args are, in order: one `!mogg.pointer` per input, then per
+  // output, then the `!mogg.dim<name>`s, then one trailing `!mogg.context`. A
   // trailing output chain, like the (dedicated-operand) input chain, never
   // gets one of its own.
   Block &kernelBody = getBody().front();
@@ -715,7 +715,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   // mutable signature the way `mogg.kernel`'s lowering gives it: declaring it
   // an input lets MGP treat a buffer the kernel writes as read-only, and the
   // write is lost. The signature comes from the operand's own type, since the
-  // body's block arguments are type-erased `!mogg.pointer_`s.
+  // body's block arguments are type-erased `!mogg.pointer`s.
   auto inputs = getInputs();
   unsigned inputIdx = 0;
   for (Value buffer : st.getLoweredOperands()) {
@@ -745,7 +745,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     semantics.push_back(InOutSignatureAttr::kOut);
   }
 
-  // Dims: materialize each `!mogg.dim_<name>` block arg from its param, up to
+  // Dims: materialize each `!mogg.dim<name>` block arg from its param, up to
   // the trailing context(s).
   unsigned argIdx = numInputs + numOutputs;
   for (; argIdx < numArgs &&
@@ -842,12 +842,12 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
         builder, loc, regionBody->getArgument(i + 1));
     // `mogg.rebind` reconciles the unpacked MGP handle (`!mgp.buffer` /
     // `!mgp.device_context` / a dim value) with the stub's codegen handle
-    // (`!mogg.pointer_` / `!mogg.context` / `!mogg.dim_`). For `!mogg.pointer_`
+    // (`!mogg.pointer` / `!mogg.context` / `!mogg.dim`). For `!mogg.pointer`
     // it emits real Mojo -- bridging the unpacked `OwnedByteBuffer` to the raw
     // opaque data pointer the MOGG-ABI stub expects; the context/dim casts are
     // pass-throughs (the unpacked handles already have the right Mojo type).
     // debt: drop once `mogg.async.unpack` folds directly to the typed handle.
-    // For a dim arg, cast to an ANONYMOUS `!mogg.dim_` (name dropped): the
+    // For a dim arg, cast to an ANONYMOUS `!mogg.dim` (name dropped): the
     // symbolic name blocks kernel dedup, and the referenced stub's dim args are
     // stripped in lockstep below so the re-homed call still type-checks.
     Type handleType = kernelBody.getArgument(i).getType();
@@ -1381,8 +1381,8 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
 
 LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
   // The MOGG-ABI stub takes raw runtime handles as arguments -- one
-  // `!mogg.pointer_` per input then per output tensor, then the dynamic
-  // `!mogg.dim_`s, then a `!mogg.context` -- and reconstructs the codegen
+  // `!mogg.pointer` per input then per output tensor, then the dynamic
+  // `!mogg.dim`s, then a `!mogg.context` -- and reconstructs the codegen
   // tensors internally (`mogg.shape.create` / `mogg.tensor.create`) before
   // invoking the opaque kernel's execute function (`mogg.call.opaque`). Unlike
   // the MGP ABI there is no trait lane, no async wrapping, and no `void**`
@@ -1449,7 +1449,7 @@ LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
 LogicalResult ShapeCreateOp::emitMojo(EmitMojoState &state) {
   // Encode the shape as a `Coord` -- static dims as compile-time `Idx[N]`,
   // dynamic dims as runtime `Scalar[DType.int](<dim>)` sourced from the
-  // `!mogg.dim_` operands. `tensor.create` builds a row-major `Layout` from it.
+  // `!mogg.dim` operands. `tensor.create` builds a row-major `Layout` from it.
   MojoValue coord =
       state.getShapeAsCoordMojoValue(getShape(), getDynamicDims());
   state.setMojoValueFor(getResult(), state.builder.var(coord));
@@ -1458,13 +1458,13 @@ LogicalResult ShapeCreateOp::emitMojo(EmitMojoState &state) {
 
 // Shared verifier backing `MOGG_TensorCreateInterface::verifyTrait` (declared
 // in MOGGInterfaces.h). Lives here, not in the generated interface header,
-// because it names `!mogg.buffer_`. See the interface for why only the
+// because it names `!mogg.buffer`. See the interface for why only the
 // buffer-implies-mutable direction is enforced.
 llvm::LogicalResult
 M::MOGG::verifyTensorCreateInterfaceMutability(Operation *op) {
   auto iface = cast<TensorCreateInterface>(op);
   if (isa<BufferType>(op->getResult(0).getType()) && !iface.getMut())
-    return op->emitOpError("!mogg.buffer_ result requires mut = true");
+    return op->emitOpError("!mogg.buffer result requires mut = true");
   return success();
 }
 
@@ -1492,7 +1492,7 @@ LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
 
   // Reuse the legacy `mogg.tensor.__init__` primitive: the two ops build the
   // same `ManagedTensorSlice`, differing only in that the pointer arrives as a
-  // raw `!mogg.pointer_` here instead of being unwrapped from a slice.
+  // raw `!mogg.pointer` here instead of being unwrapped from a slice.
   auto tensorInitPrimDecl =
       state.registry.lookupPrimitive(TensorInitOp::getOperationName());
   ASSERT_STREAM(tensorInitPrimDecl,
@@ -1936,7 +1936,7 @@ LogicalResult TensorStoreOp::emitMojo(EmitMojoState &state) {
 }
 
 /// One fused-region functor capture, as the enclosing function sees it.
-/// `!mogg.tensor_` is an opaque handle (see MOGGTypes.td), so shape / dtype /
+/// `!mogg.tensor` is an opaque handle (see MOGGTypes.td), so shape / dtype /
 /// mutability live on the op that CREATES the capture, not on the SSA value --
 /// they are read from there, exactly as `CallForeachOp::emitMojo` does.
 struct FusedCaptureInfo {

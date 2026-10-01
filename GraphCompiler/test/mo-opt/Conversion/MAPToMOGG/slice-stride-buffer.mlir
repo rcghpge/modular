@@ -4,15 +4,15 @@
 // `LoopInvariantViewMotion` produces once `FuseMutableLoads` has retyped an
 // in-place kernel's load target. The view re-addresses mutable storage, so
 // `mogg.tensor.create.slice` has to carry `mut = true`; its result stays a
-// `!mogg.tensor_`, since the view is only loaded from. The tensor case is
+// `!mogg.tensor`, since the view is only loaded from. The tensor case is
 // the contrast: same lowering, `mut = false`.
 
 // CHECK-LABEL: mo.graph @sliceStrideOverBuffer
 // CHECK:       mogg.tensor.create({{%[^ ]+}}, {{%[^ ]+}})
-// CHECK-SAME:    -> !mogg.buffer_
+// CHECK-SAME:    -> !mogg.buffer
 // CHECK:       mogg.tensor.create.slice
 // CHECK-SAME:    mut = true
-// CHECK-SAME:    (!mogg.buffer_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
+// CHECK-SAME:    (!mogg.buffer, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
 mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
   %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
@@ -34,7 +34,7 @@ mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[
 // CHECK-LABEL: mo.graph @sliceStrideOverTensor
 // CHECK:       mogg.tensor.create.slice
 // CHECK-SAME:    mut = false
-// CHECK-SAME:    (!mogg.tensor_, !mogg.tensor_, !mogg.tensor_, !mogg.tensor_) -> !mogg.tensor_
+// CHECK-SAME:    (!mogg.tensor, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
 mo.graph @sliceStrideOverTensor(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
   %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>

@@ -242,9 +242,9 @@ def OutlineKernelsIntoFunctions
 def AnonymizeDimNames: Pass<"mogg-anonymize-dim-names", "ModuleOp"> {
   let summary = "Drop symbolic dim names from every kernel stub's signature.";
   let description = [{
-    Strips the param-decl-ref name from every `!mogg.dim_<name>` block arg
+    Strips the param-decl-ref name from every `!mogg.dim<name>` block arg
     (and function-type entry) of every `mogg.kernel.stub` in the module,
-    turning them into anonymous `!mogg.dim_`. A symbolic dim name on a stub's
+    turning them into anonymous `!mogg.dim`. A symbolic dim name on a stub's
     boundary would otherwise block `MergeIdenticalKernelStubs` from
     recognizing two structurally-identical stubs that differ only in a dim's
     name as duplicates. Runs nested inside `EmitMojo`, immediately before
@@ -506,7 +506,7 @@ def ConformCallOperands
     in `mogg.scalar.create`, a variadic run is packed into a
     `mogg.tuple.create`, and a trait-bound argument (`Tensor` / `DenseTensor` /
     `TileTensorable`) is wrapped in a `mogg.trait.create` so the raw
-    `!mogg.tensor_` reaches the kernel as the conforming trait argument.
+    `!mogg.tensor` reaches the kernel as the conforming trait argument.
     Deferred out of `MAPToMOGG` to keep the fusion IR simpler and each
     `::emitMojo` a local, 1:1 lowering.
   }];
