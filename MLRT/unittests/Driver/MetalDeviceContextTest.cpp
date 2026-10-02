@@ -1518,6 +1518,52 @@ TEST_F(MetalDeviceContextTestBase, HostCopyDrainsPriorKernel) {
   EXPECT_FLOAT_EQ(observed[63], 1.0f);
 }
 
+// The timer must measure GPU work enqueued between start and stop, not the
+// host's enqueue time: stopTimer returns only after the gated kernel ran, and
+// the elapsed time spans the gate.
+TEST_F(MetalDeviceContextTestBase, TimerCoversEnqueuedWork) {
+  ASSIGN_NO_ERR(DeviceBufferRef, out,
+                ctx_->enqueueCreateBuffer(64 * sizeof(float)));
+  float zeros[64] = {};
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*out, zeros));
+  EXPECT_NO_ERR(ctx_->synchronize());
+
+  constexpr auto kGateHold = std::chrono::milliseconds(100);
+  ASSIGN_NO_ERR(DeviceTimerRef, timer, ctx_->startTimer());
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  launchFillOne(ctx_, out, 64);
+  std::thread releaser([&] {
+    std::this_thread::sleep_for(kGateHold);
+    gate.release();
+  });
+  ErrorOr<std::chrono::nanoseconds> elapsed = ctx_->stopTimer(*timer);
+  releaser.join();
+  ASSERT_FALSE(elapsed.isError()) << elapsed.getError();
+
+  ASSIGN_NO_ERR(void *, outHost, ctx_->getHostAccessiblePointer(out->ptr()));
+  EXPECT_FLOAT_EQ(static_cast<float *>(outHost)[63], 1.0f);
+  // Half the hold leaves room for the start marker's own scheduling latency.
+  EXPECT_GE(*elapsed, kGateHold / 2);
+}
+
+// As with CUDA events, the start marker is ordered behind earlier work, so
+// work queued before startTimer is not counted.
+TEST_F(MetalDeviceContextTestBase, TimerExcludesEarlierWork) {
+  constexpr auto kGateHold = std::chrono::milliseconds(200);
+  HostGate gate = makeGate(ctx_);
+  ASSERT_TRUE(gate.event);
+  ASSIGN_NO_ERR(DeviceTimerRef, timer, ctx_->startTimer());
+  std::thread releaser([&] {
+    std::this_thread::sleep_for(kGateHold);
+    gate.release();
+  });
+  ErrorOr<std::chrono::nanoseconds> elapsed = ctx_->stopTimer(*timer);
+  releaser.join();
+  ASSERT_FALSE(elapsed.isError()) << elapsed.getError();
+  EXPECT_LT(*elapsed, kGateHold / 2);
+}
+
 // A cross-context re-record (value 2, its own queue) must not signal ahead
 // of an earlier record (value 1) still gated behind real prior work.
 TEST_F(MetalDeviceContextTestBase,

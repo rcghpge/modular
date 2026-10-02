@@ -1183,14 +1183,43 @@ ErrorOrSuccess MetalDeviceContext::enqueueWaitFor(DeviceContext &ctx) {
   return enqueueWaitFor(*event);
 }
 
+// Like CUDA's timer events, the start and stop markers are ordered behind
+// earlier work and the elapsed time is read from the GPU timeline, so it covers
+// the work enqueued between them rather than the host's enqueue time.
 ErrorOr<DeviceTimerRef> MetalDeviceContext::startTimer() {
-  return MetalDeviceTimerRef::create(*this, std::chrono::steady_clock::now());
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::startTimer", TRACY_COLOR_PURPLE);
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  if (!orderFence_)
+    RETURN_ERROR("Metal ordering fence unavailable");
+  DEFINE_OR_RETURN_ERROR(MTL::CommandBuffer *, startMarker,
+                         commitOrderedMarker());
+  return MetalDeviceTimerRef::create(*this, startMarker);
 }
 
 ErrorOr<std::chrono::nanoseconds>
 MetalDeviceContext::stopTimer(const DeviceTimer &timer) {
-  return std::chrono::steady_clock::now() -
-         MetalDeviceTimer::cast(timer).cpu_start();
+  TRACY_ZONE_SCOPED_NC("MetalDeviceContext::stopTimer", TRACY_COLOR_PURPLE);
+
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+  if (!orderFence_)
+    RETURN_ERROR("Metal ordering fence unavailable");
+  MTL::CommandBuffer *startMarker = MetalDeviceTimer::cast(timer).startMarker();
+  DEFINE_OR_RETURN_ERROR(MTL::CommandBuffer *, stopMarker,
+                         commitOrderedMarker());
+  stopMarker->waitUntilCompleted();
+  startMarker->waitUntilCompleted();
+  if (startMarker->status() != MTL::CommandBufferStatusCompleted ||
+      stopMarker->status() != MTL::CommandBufferStatusCompleted)
+    RETURN_ERROR("Metal timer marker command buffer failed");
+
+  std::chrono::duration<double> elapsed(stopMarker->GPUEndTime() -
+                                        startMarker->GPUEndTime());
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed);
 }
 
 ErrorOr<Device::MemInfo> MetalDeviceContext::getDeviceMemoryInfo() const {
@@ -1349,22 +1378,27 @@ void *MetalDeviceContext::driverContext() const {
   return const_cast<MetalDeviceContext *>(this);
 }
 
-ErrorOrSuccess MetalDeviceContext::drainQueue() const {
-  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
-      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+ErrorOr<MTL::CommandBuffer *> MetalDeviceContext::commitOrderedMarker() const {
   MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
   if (cmdBuffer == nullptr)
-    RETURN_ERROR("Failed to create command buffer for drain");
+    RETURN_ERROR("Failed to create command buffer for ordered marker");
   if (orderFence_) {
     MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
     if (blit == nullptr)
-      RETURN_ERROR("Failed to create blit encoder for drain");
+      RETURN_ERROR("Failed to create blit encoder for ordered marker");
     blit->waitForFence(orderFence_.get());
     blit->updateFence(orderFence_.get());
     blit->endEncoding();
   }
   cmdBuffer->commit();
-  cmdBuffer->waitUntilCompleted();
+  return cmdBuffer;
+}
+
+ErrorOrSuccess MetalDeviceContext::drainQueue() const {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  DEFINE_OR_RETURN_ERROR(MTL::CommandBuffer *, marker, commitOrderedMarker());
+  marker->waitUntilCompleted();
   return success();
 }
 
@@ -1714,15 +1748,11 @@ MetalDeviceEvent &MetalDeviceEvent::cast(DeviceEvent &event) {
 // ===== MetalDeviceTimer ===== //
 //
 
-MetalDeviceTimer::MetalDeviceTimer(
-    MetalDeviceContext &context,
-    std::chrono::time_point<std::chrono::steady_clock> start)
-    : DeviceTimer(context), start_(start) {}
-
-std::chrono::time_point<std::chrono::steady_clock>
-MetalDeviceTimer::cpu_start() const {
-  return start_;
-}
+// The marker is autoreleased by the pool in startTimer; retain it until
+// stopTimer reads its end time.
+MetalDeviceTimer::MetalDeviceTimer(MetalDeviceContext &context,
+                                   MTL::CommandBuffer *startMarker)
+    : DeviceTimer(context), startMarker_(NS::RetainPtr(startMarker)) {}
 
 const MetalDeviceTimer &MetalDeviceTimer::cast(const DeviceTimer &timer) {
   return static_cast<const MetalDeviceTimer &>(timer);

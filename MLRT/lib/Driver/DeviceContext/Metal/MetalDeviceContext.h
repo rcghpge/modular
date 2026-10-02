@@ -247,6 +247,10 @@ private:
   // FIFO ordering spine: every committed command buffer waits on then updates
   // this fence, so buffers finish in commit order (Metal only orders starts).
   NS::SharedPtr<MTL::Fence> orderFence_;
+  // Commits an empty, autoreleased command buffer that completes after all
+  // previously committed work, so its GPUEndTime marks that point on the GPU
+  // timeline.
+  ErrorOr<MTL::CommandBuffer *> commitOrderedMarker() const;
   // Blocks the host until all previously committed work completes.
   ErrorOrSuccess drainQueue() const;
 
@@ -299,15 +303,15 @@ private:
 class MetalDeviceTimer : public DeviceTimer {
 public:
   MetalDeviceTimer(MetalDeviceContext &context,
-                   std::chrono::time_point<std::chrono::steady_clock> start);
+                   MTL::CommandBuffer *startMarker);
   ~MetalDeviceTimer() override = default;
 
-  std::chrono::time_point<std::chrono::steady_clock> cpu_start() const;
+  MTL::CommandBuffer *startMarker() const { return startMarker_.get(); }
 
   static const MetalDeviceTimer &cast(const DeviceTimer &timer);
 
 private:
-  const std::chrono::time_point<std::chrono::steady_clock> start_;
+  const NS::SharedPtr<MTL::CommandBuffer> startMarker_;
 };
 
 // Cacheable half of a loaded Metal function: owns the compiled compute
