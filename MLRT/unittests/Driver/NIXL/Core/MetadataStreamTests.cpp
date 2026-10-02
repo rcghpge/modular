@@ -15,9 +15,9 @@ TEST(MetadataStreamTest, ListenerSocketIsNonBlocking) {
   nixlMDStreamListener listener(19876);
   listener.setupListener();
 
-  int csock = listener.acceptClient();
+  nixl::scopedFd csock = listener.acceptClient();
 
-  EXPECT_EQ(csock, -1);
+  EXPECT_FALSE(csock.valid());
   EXPECT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK)
       << "Expected EAGAIN or EWOULDBLOCK, got errno=" << errno;
 }

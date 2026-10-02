@@ -9,8 +9,9 @@ if one is ever needed.
 ## How to bump the upstream NIXL version
 
 The version is pinned in a `BEGIN_NIXL_GENERATED` / `END_NIXL_GENERATED`
-block inside `MODULE.bazel` (the `nixl_upstream` `http_archive`: its tag,
-URL, `strip_prefix`, and `sha256`). Use the `update-nixl` helper to update it:
+block inside `oss/modular/bazel/common.MODULE.bazel` (the `nixl_upstream`
+`http_archive`: its tag, URL, `strip_prefix`, and `sha256`). Use the
+`update-nixl` helper to update it:
 
 ```bash
 git checkout -b nixl-bump main
@@ -21,12 +22,62 @@ update-nixl 1.2.0 --commit  # same, plus create a git commit
 
 `update-nixl` downloads the release tarball for the given tag from
 `github.com/ai-dynamo/nixl`, computes its `sha256`, and rewrites the generated
-block in `MODULE.bazel`. The script lives at `utils/update_nixl.py` and mirrors
-`utils/update_llvm.py`.
+block in `oss/modular/bazel/common.MODULE.bazel`. The script lives at
+`utils/update_nixl.py` and mirrors `utils/update_llvm.py`.
 
 If upstream's source layout or build inputs changed, you may also need to
-update the Bazel overlay at `bazel/third-party/nixl_upstream.BUILD`. After
-bumping, rebuild and re-test (see [Testing](#testing-after-an-update)).
+update the Bazel overlay at `bazel/public-patches/nixl_upstream.BUILD`. It
+lists every `.cpp` explicitly and globs only headers. The plugin `.so`s link
+with `-Wl,-z,undefs`, so a source file that upstream added and the overlay
+missed does not fail the link. It fails at `dlopen` time, or stays quiet
+until something calls the missing symbol. Diff each library's source list
+against the corresponding `meson.build` on every bump. After bumping,
+rebuild and re-test (see [Testing](#testing-after-an-update)).
+
+## Bumping the Rust bindings in lockstep
+
+The Rust side consumes NIXL through the `nixl-sys` crate, pinned in
+`dkv/Cargo.toml` and locked in both `dkv/Cargo.lock` and `mach/Cargo.lock`.
+Move it to the same version as `@nixl_upstream`, or the crate's headers and
+`libnixl.so` disagree at the symbol level.
+
+Bazel disables the crate's build script, so the bindgen output it would
+normally produce is vendored by
+`bazel/third-party/nixl-sys-vendor-bindings.patch`. Regenerate that patch
+whenever the crate's `wrapper.h` changes, which a version bump usually
+implies. Generate the bindings with the same tool the existing patch used,
+then rebuild the patch as a `diff -ruN` between a pristine copy of the crate
+and a copy carrying the generated file:
+
+```bash
+cargo install bindgen-cli --version 0.71.1 --locked
+(cd dkv && cargo fetch)  # unpacks the crate into the registry
+
+repo=$(git rev-parse --show-toplevel)
+work=$(mktemp -d)
+crates=(~/.cargo/registry/src/*/nixl-sys-<version>)
+[[ ${#crates[@]} -eq 1 ]] || { echo "expected 1 dir, got ${crates[*]}"; exit 1; }
+cp -r "${crates[0]}" "$work/a" && cp -r "${crates[0]}" "$work/b"
+(cd "$work/b" && bindgen wrapper.h -o src/bindings.rs -- -std=c++20 -x c++)
+sed -i 's|include!(concat!(env!("OUT_DIR"), "/bindings.rs"));|include!("bindings.rs");|' \
+  "$work/b/src/lib.rs"
+(cd "$work" && diff -ruN a/src b/src) \
+  > "$repo/bazel/third-party/nixl-sys-vendor-bindings.patch"
+```
+
+Four things about that recipe matter:
+
+- The `lib.rs` hunk is what lets the crate find the vendored file with its
+  build script disabled. Keep it.
+- Run `diff` from inside the scratch directory, with the two copies named
+  `a` and `b`, so the paths in the patch are the `a/src/...` and `b/src/...`
+  that `patch -p1` expects.
+- `bindgen` formats its output with `rustfmt`, resolved through the
+  `rust-toolchain.toml` in the crate copy. Run it from inside `$work/b`, not
+  from the monorepo, or you get the monorepo's toolchain instead.
+- The output depends on the libclang that `bindgen` loads. A stray
+  `pub type rsize_t = ...` typedef from the host's libc headers is the tell;
+  the committed patch has no such line. If yours does, drop it.
 
 ## Dealing with NIXL patches
 

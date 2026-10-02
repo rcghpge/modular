@@ -1,10 +1,11 @@
 # Validating NIXL after bumping the upstream pin
 
 NIXL is vendored as an unmodified http_archive snapshot of
-`ai-dynamo/nixl` (see `MODULE.bazel` for the current pin). To upgrade
-to a new release, bump the `version` and `sha256` in `MODULE.bazel` and
-update the overlay in `bazel/third-party/nixl_upstream.BUILD` if the
-upstream source layout changed. The old backport workflow (copying
+`ai-dynamo/nixl` (see `oss/modular/bazel/common.MODULE.bazel` for the
+current pin). To upgrade to a new release, bump the `version` and
+`sha256` there and update the overlay in
+`bazel/public-patches/nixl_upstream.BUILD` if the upstream source
+layout changed. The old backport workflow (copying
 upstream commits into `MLRT/Driver/NIXL`) is retired; that fork has
 been deleted.
 
@@ -26,14 +27,13 @@ the run's red/green and which are informational.
 
 ## In-tree unit tests
 
-These run via `bazel test` and cover the agent core, UCX plugin, and
-libfabric plugin. Run on a host with a CUDA GPU (`bt-b200` if
-you're on a CPU box):
+These run via `bazel test` and cover the agent core and the UCX
+plugin. Run on a host with a CUDA GPU (`bt-b200` if you're on a CPU
+box):
 
 ```bash
 bt //MLRT/unittests/Driver/NIXL/Core/...
 bt //MLRT/unittests/Driver/NIXL/UCX/...
-bt //MLRT/unittests/Driver/NIXL/Libfabric/...
 ```
 
 What each subtree covers:
