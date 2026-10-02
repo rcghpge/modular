@@ -732,6 +732,40 @@ ErrorOrSuccess MetalDeviceContext::memCopyDtoD(DeviceBuffer &dst,
   return success();
 }
 
+// Fills bytes [begin, end) of `dst` with a pattern that repeats every 16
+// bytes: byte `p` gets `pattern` byte `p % 16`. Whole 16-byte blocks take one
+// vector store each; only the two edge blocks are written byte by byte, so the
+// bytes around the range are left alone.
+static constexpr const char kPatternFillSource[] = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+struct PatternFillArgs {
+  uint4 pattern;
+  ulong begin;
+  ulong end;
+  ulong blocks;
+};
+
+kernel void pattern_fill(device uint4 *dst [[buffer(0)]],
+                         constant PatternFillArgs &args [[buffer(1)]],
+                         uint tid [[thread_position_in_grid]],
+                         uint threads [[threads_per_grid]]) {
+  for (ulong i = tid; i < args.blocks; i += threads) {
+    ulong lo = i * 16;
+    if (lo >= args.begin && lo + 16 <= args.end) {
+      dst[i] = args.pattern;
+      continue;
+    }
+    device uchar *out = reinterpret_cast<device uchar *>(dst + i);
+    constant uchar *pat = reinterpret_cast<constant uchar *>(&args.pattern);
+    for (uint b = 0; b < 16; ++b)
+      if (lo + b >= args.begin && lo + b < args.end)
+        out[b] = pat[b];
+  }
+}
+)";
+
 ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
                                                     uint64_t val,
                                                     size_t valSize) {
@@ -744,52 +778,106 @@ ErrorOrSuccess MetalDeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   if (byteSize == 0)
     return success(); // no-op
 
+  if (valSize != 1 && valSize != 2 && valSize != 4 && valSize != 8)
+    RETURN_ERROR("unsupported valSize");
+  if (byteSize % valSize != 0)
+    RETURN_ERROR("byteSize of buffer is misaligned");
+
   // Get the Metal buffer for the destination with offset (handles sub-buffers)
   MetalDevice::BufferLookupResult dstResult = getMetalBufferWithOffset(dst);
   if (!dstResult.isValid())
     RETURN_ERROR("Destination buffer is null");
-
-  void *dstContents = dstResult.buffer->contents();
-  if (dstContents == nullptr)
-    RETURN_ERROR("Shared buffer contents() returned null");
-
-  // Apply offset to get actual destination pointer
-  void *dstPtr = static_cast<char *>(dstContents) + dstResult.offset;
-
-  size_t count = byteSize / valSize;
-  if (reinterpret_cast<uintptr_t>(dstPtr) % valSize != 0)
+  if (dstResult.offset % valSize != 0)
     RETURN_ERROR("destination buffer not properly aligned");
+  if (dstResult.offset + byteSize > dstResult.buffer->length())
+    RETURN_ERROR("memset size exceeds Metal buffer length");
 
-  // Drain any kernel reading `dst` before overwriting its shared storage
-  // on this thread.
-  RETURN_IF_ERROR(drainQueue());
+  // The fill runs on this queue rather than as a host memset of the shared
+  // storage, so it orders behind in-flight kernels on the GPU instead of
+  // draining the queue first (a drain idles the GPU until the host resubmits).
+  // `fillBuffer` takes one byte; a wider pattern whose bytes differ goes to a
+  // one-dispatch helper kernel.
+  const uint8_t fillByte = static_cast<uint8_t>(val);
+  bool byteUniform = true;
+  for (size_t i = 1; i < valSize; ++i)
+    byteUniform &= static_cast<uint8_t>(val >> (8 * i)) == fillByte;
 
-  switch (valSize) {
-  case 1:
-    std::memset(dstPtr, static_cast<uint8_t>(val), byteSize);
-    break;
-  case 2: {
-    uint16_t v16 = static_cast<uint16_t>(val);
-    uint16_t *p16 = static_cast<uint16_t *>(dstPtr);
-    for (size_t i = 0; i < count; ++i)
-      p16[i] = v16;
-    break;
-  }
-  case 4: {
-    uint32_t v32 = static_cast<uint32_t>(val);
-    uint32_t *p32 = static_cast<uint32_t *>(dstPtr);
-    for (size_t i = 0; i < count; ++i)
-      p32[i] = v32;
-    break;
-  }
-  case 8: {
-    uint64_t *p64 = static_cast<uint64_t *>(dstPtr);
-    for (size_t i = 0; i < count; ++i)
-      p64[i] = val;
-    break;
-  }
+  if (byteUniform) {
+    MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+    if (cmdBuffer == nullptr)
+      RETURN_ERROR("Failed to create command buffer for memset");
+    MTL::BlitCommandEncoder *blit = cmdBuffer->blitCommandEncoder();
+    if (blit == nullptr)
+      RETURN_ERROR("Failed to create blit encoder for memset");
+    if (orderFence_)
+      blit->waitForFence(orderFence_.get());
+    blit->fillBuffer(dstResult.buffer, NS::Range(dstResult.offset, byteSize),
+                     fillByte);
+    if (orderFence_)
+      blit->updateFence(orderFence_.get());
+    blit->endEncoding();
+    cmdBuffer->commit();
+    METAL_MAYBE_SYNC(*this);
+    return success();
   }
 
+  // Must match `PatternFillArgs` in kPatternFillSource.
+  struct PatternFillArgs {
+    alignas(16) uint8_t pattern[16];
+    uint64_t begin;
+    uint64_t end;
+    uint64_t blocks;
+  };
+  static_assert(sizeof(PatternFillArgs) == 48, "layout of the MSL struct");
+
+  // Bind at the 16-byte boundary at or below `dst` so the kernel's vector
+  // stores are aligned. The pattern size divides 16 and the offset is a
+  // multiple of it, so byte `i` of every 16-byte block takes pattern byte
+  // `i % valSize`.
+  const size_t bindOffset = dstResult.offset & ~size_t(15);
+  PatternFillArgs fillArgs;
+  for (size_t i = 0; i < sizeof(fillArgs.pattern); ++i)
+    fillArgs.pattern[i] = static_cast<uint8_t>(val >> (8 * (i % valSize)));
+  fillArgs.begin = dstResult.offset - bindOffset;
+  fillArgs.end = fillArgs.begin + byteSize;
+  fillArgs.blocks = (fillArgs.end + 15) / 16;
+
+  // Cached in the device's function cache after the first compile.
+  DEFINE_OR_RETURN_ERROR(DeviceFunctionRef, fillFn,
+                         loadFunction("ModularMetalPatternFill", "pattern_fill",
+                                      kPatternFillSource,
+                                      /*maxDynamicSharedBytes=*/-1,
+                                      /*debugLevel=*/"",
+                                      /*optimizationLevel=*/-1));
+  MTL::ComputePipelineState *pipeline =
+      MetalDeviceFunction::cast(*fillFn).getPipelineState();
+  // The kernel loops over the range, so the grid only has to fill the GPU.
+  static constexpr uint64_t kMaxThreadgroups = 1 << 16;
+  const NS::UInteger threadgroupSize =
+      std::min<NS::UInteger>(256, pipeline->maxTotalThreadsPerThreadgroup());
+  const NS::UInteger threadgroups = std::min<uint64_t>(
+      (fillArgs.blocks + threadgroupSize - 1) / threadgroupSize,
+      kMaxThreadgroups);
+
+  MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+  if (cmdBuffer == nullptr)
+    RETURN_ERROR("Failed to create command buffer for memset");
+  MTL::ComputeCommandEncoder *encoder = cmdBuffer->computeCommandEncoder();
+  if (encoder == nullptr)
+    RETURN_ERROR("Failed to create compute encoder for memset");
+  if (orderFence_)
+    encoder->waitForFence(orderFence_.get());
+  encoder->setComputePipelineState(pipeline);
+  encoder->setBuffer(dstResult.buffer, bindOffset, 0);
+  encoder->setBytes(&fillArgs, sizeof(fillArgs), 1);
+  encoder->dispatchThreadgroups(MTL::Size{threadgroups, 1, 1},
+                                MTL::Size{threadgroupSize, 1, 1});
+  if (orderFence_)
+    encoder->updateFence(orderFence_.get());
+  encoder->endEncoding();
+  cmdBuffer->commit();
+
+  METAL_MAYBE_SYNC(*this);
   return success();
 }
 

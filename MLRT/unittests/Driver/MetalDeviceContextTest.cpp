@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <thread>
@@ -1708,6 +1709,292 @@ TEST_F(MetalDeviceContextTestBase, MemCopyDtoDRejectsForeignDestination) {
 
   EXPECT_ERR_MSG(ctx_->enqueueCopyDeviceToDevice(*dst, *src),
                  "does not match context of dst");
+}
+
+// Runs `enqueue` while the queue is gated and reports whether it returned
+// before the gate opened. A call that drains the queue blocks until the
+// timeout releases the gate instead.
+static bool returnsWhileGated(const std::function<void()> &enqueue,
+                              std::function<void()> releaseGate) {
+  std::atomic<bool> returned{false};
+  std::atomic<bool> timedOut{false};
+  std::thread releaser([&] {
+    for (int i = 0; i < 200 && !returned.load(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    timedOut = !returned.load();
+    releaseGate();
+  });
+  enqueue();
+  returned = true;
+  releaser.join();
+  return !timedOut.load();
+}
+
+template <typename T>
+static void expectAllEqual(const void *data, size_t count, T expected) {
+  const T *words = static_cast<const T *>(data);
+  for (size_t i = 0; i < count; ++i)
+    ASSERT_EQ(words[i], expected) << "index " << i;
+}
+
+// A memset behind a pending kernel that writes the same buffer must land
+// after that kernel on the GPU without the host waiting for it. Byte-uniform
+// patterns take a blit and wider ones a helper kernel, so both are covered.
+TEST_F(MetalDeviceContextTestBase, SetMemoryOrdersBehindPendingWriter) {
+  if (ctx_->syncMode())
+    GTEST_SKIP() << "asserts an asynchronous memset; device-sync-mode is on";
+  constexpr uint32_t kLen = 64;
+  ASSIGN_NO_ERR(DeviceBufferRef, out,
+                ctx_->enqueueCreateBuffer(kLen * sizeof(float)));
+  ASSIGN_NO_ERR(void *, outHost, ctx_->getHostAccessiblePointer(out->ptr()));
+
+  struct Pattern {
+    uint64_t val;
+    size_t valSize;
+  };
+  for (Pattern p :
+       {Pattern{0, 4}, Pattern{0xA5, 1}, Pattern{0x3C00, 2},
+        Pattern{0xFF800000, 4}, Pattern{0x0123456789ABCDEFull, 8}}) {
+    SCOPED_TRACE(testing::Message()
+                 << "val=" << p.val << " valSize=" << p.valSize);
+    HostGate gate = makeGate(ctx_);
+    ASSERT_TRUE(gate.event);
+    launchFillOne(ctx_, out, kLen);
+    EXPECT_TRUE(returnsWhileGated(
+        [&] { EXPECT_NO_ERR(ctx_->enqueueSetMemory(*out, p.val, p.valSize)); },
+        [&] { gate.release(); }));
+    EXPECT_NO_ERR(ctx_->synchronize());
+
+    const size_t count = out->byteSize() / p.valSize;
+    switch (p.valSize) {
+    case 1:
+      expectAllEqual<uint8_t>(outHost, count, static_cast<uint8_t>(p.val));
+      break;
+    case 2:
+      expectAllEqual<uint16_t>(outHost, count, static_cast<uint16_t>(p.val));
+      break;
+    case 4:
+      expectAllEqual<uint32_t>(outHost, count, static_cast<uint32_t>(p.val));
+      break;
+    default:
+      expectAllEqual<uint64_t>(outHost, count, p.val);
+    }
+  }
+}
+
+// A memset must not overwrite a buffer that a pending kernel still reads,
+// on either the blit or the helper-kernel path.
+TEST_F(MetalDeviceContextTestBase, SetMemoryWaitsForPendingReader) {
+  if (ctx_->syncMode())
+    GTEST_SKIP() << "asserts an asynchronous memset; device-sync-mode is on";
+  ASSIGN_NO_ERR(DeviceFunctionRef, fn,
+                ctx_->loadFunction("vec_add_module", "vec_add_msl",
+                                   getMetalShaderSource()));
+  constexpr uint32_t kLen = 256;
+  const size_t bytes = kLen * sizeof(float);
+  ASSIGN_NO_ERR(DeviceBufferRef, out, ctx_->enqueueCreateBuffer(bytes));
+  ASSIGN_NO_ERR(DeviceBufferRef, in0, ctx_->enqueueCreateBuffer(bytes));
+  ASSIGN_NO_ERR(DeviceBufferRef, in1, ctx_->enqueueCreateBuffer(bytes));
+  ASSIGN_NO_ERR(void *, outHost, ctx_->getHostAccessiblePointer(out->ptr()));
+  ASSIGN_NO_ERR(void *, in0Host, ctx_->getHostAccessiblePointer(in0->ptr()));
+  std::vector<float> a(kLen), b(kLen, 2.0f);
+  for (uint32_t i = 0; i < kLen; ++i)
+    a[i] = static_cast<float>(i);
+  EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in1, b.data()));
+
+  for (uint32_t fill : {0u, 0xFF800000u}) {
+    SCOPED_TRACE(testing::Message() << "fill=" << fill);
+    EXPECT_NO_ERR(ctx_->enqueueCopyToDevice(*in0, a.data()));
+    EXPECT_NO_ERR(ctx_->synchronize());
+
+    HostGate gate = makeGate(ctx_);
+    ASSERT_TRUE(gate.event);
+    void *outPtr = out->ptr();
+    void *in0Ptr = in0->ptr();
+    void *in1Ptr = in1->ptr();
+    uint32_t length = kLen;
+    void *kernelArgs[] = {&outPtr, &in0Ptr, &in1Ptr, &length};
+    size_t argSizes[] = {sizeof(outPtr), sizeof(in0Ptr), sizeof(in1Ptr),
+                         sizeof(length)};
+    bool argIsDevicePtr[] = {true, true, true, false};
+    DeviceBuffer *kernelBuffers[] = {out.getPointer(), in0.getPointer(),
+                                     in1.getPointer()};
+    MetalEnqueueFunctionArgs metalArgs = {kernelArgs, argSizes, argIsDevicePtr,
+                                          kernelBuffers, 3};
+    void *args[] = {&metalArgs};
+    EXPECT_NO_ERR(ctx_->enqueueFunctionExecDirect(
+        *fn, 1, 1, 1, kLen, 1, 1, 0, nullptr, 0, args, 4, argSizes));
+    EXPECT_TRUE(returnsWhileGated(
+        [&] { EXPECT_NO_ERR(ctx_->enqueueSetMemory(*in0, fill, 4)); },
+        [&] { gate.release(); }));
+    EXPECT_NO_ERR(ctx_->synchronize());
+
+    for (uint32_t i = 0; i < kLen; ++i)
+      ASSERT_FLOAT_EQ(static_cast<float *>(outHost)[i], a[i] + b[i])
+          << "index " << i;
+    expectAllEqual<uint32_t>(in0Host, kLen, fill);
+  }
+}
+
+// Interior ranges keep their neighbors, a multi-MiB fill covers its ragged
+// tail, host buffers take the same path, and a size that is not a whole
+// number of elements is rejected as on CUDA.
+TEST_F(MetalDeviceContextTestBase, SetMemoryRangesAndSizes) {
+  constexpr size_t kLen = 64;
+  ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx_->enqueueCreateBuffer(kLen * 4));
+  ASSIGN_NO_ERR(void *, host, ctx_->getHostAccessiblePointer(buf->ptr()));
+  char *base = static_cast<char *>(buf->ptr());
+  auto *bytes = static_cast<uint8_t *>(host);
+
+  EXPECT_NO_ERR(ctx_->enqueueSetMemory(*buf, 0x11, 1));
+  EXPECT_NO_ERR(ctx_->enqueueSetMemory(base + 3, 5, 0xEE, 1));
+  EXPECT_NO_ERR(ctx_->enqueueSetMemory(base + 16, 128, 0x3C00, 2));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  for (size_t i = 0; i < kLen * 4; ++i) {
+    uint8_t expected = 0x11;
+    if (i >= 3 && i < 8)
+      expected = 0xEE;
+    else if (i >= 16 && i < 144)
+      expected = (i % 2 == 0) ? 0x00 : 0x3C;
+    ASSERT_EQ(bytes[i], expected) << "byte " << i;
+  }
+
+  const size_t bigBytes = 3 * (size_t(1) << 20) + 40;
+  ASSIGN_NO_ERR(DeviceBufferRef, big, ctx_->enqueueCreateBuffer(bigBytes));
+  EXPECT_NO_ERR(ctx_->enqueueSetMemory(*big, 0x0123456789ABCDEFull, 8));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  ASSIGN_NO_ERR(void *, bigHost, ctx_->getHostAccessiblePointer(big->ptr()));
+  expectAllEqual<uint64_t>(bigHost, bigBytes / 8, 0x0123456789ABCDEFull);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, hostBuf, ctx_->createHostBuffer(256));
+  EXPECT_NO_ERR(ctx_->enqueueSetMemory(*hostBuf, 0xDEADBEEF, 4));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  expectAllEqual<uint32_t>(hostBuf->ptr(), 64, 0xDEADBEEF);
+
+  EXPECT_ERR_MSG(ctx_->enqueueSetMemory(base, 6, 0, 4), "misaligned");
+  EXPECT_ERR_MSG(ctx_->enqueueSetMemory(base + 2, 4, 0, 4), "aligned");
+}
+
+// Byte `i` of a fill of `val` (pattern size `valSize`) starting at `dst`.
+static uint8_t patternByte(uint64_t val, size_t valSize, size_t i) {
+  return static_cast<uint8_t>(val >> (8 * (i % valSize)));
+}
+
+// The helper kernel writes whole 16-byte blocks with vector stores and the
+// edge blocks byte by byte. Sweep element-aligned offsets that are not
+// 16-byte aligned, ranges inside one block, across a block boundary, and
+// longer than a threadgroup's worth of blocks with a ragged tail, plus one
+// range longer than one pass of the kernel's capped grid. The bytes around
+// each range must keep their old value.
+TEST_F(MetalDeviceContextTestBase, SetMemoryPatternKernelEdges) {
+  constexpr uint8_t kGuard = 0x5A;
+  constexpr size_t kBufBytes = 64 * 1024;
+  ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx_->enqueueCreateBuffer(kBufBytes));
+  ASSIGN_NO_ERR(void *, host, ctx_->getHostAccessiblePointer(buf->ptr()));
+  char *base = static_cast<char *>(buf->ptr());
+  const auto *bytes = static_cast<const uint8_t *>(host);
+
+  for (size_t valSize : {size_t(2), size_t(4), size_t(8)}) {
+    const uint64_t val = 0x0123456789ABCDEFull & (~0ull >> (64 - 8 * valSize));
+    for (size_t offset :
+         {size_t(0), valSize, 16 - valSize, 16 + valSize, size_t(40)}) {
+      for (size_t len : {valSize, 2 * valSize, size_t(16), 48 + valSize,
+                         size_t(256 * 16 * 3 + 8)}) {
+        SCOPED_TRACE(testing::Message() << "valSize=" << valSize << " offset="
+                                        << offset << " len=" << len);
+        EXPECT_NO_ERR(ctx_->enqueueSetMemory(*buf, kGuard, 1));
+        EXPECT_NO_ERR(ctx_->enqueueSetMemory(base + offset, len, val, valSize));
+        EXPECT_NO_ERR(ctx_->synchronize());
+        for (size_t i = 0; i < kBufBytes; ++i) {
+          const uint8_t expected = (i >= offset && i < offset + len)
+                                       ? patternByte(val, valSize, i - offset)
+                                       : kGuard;
+          ASSERT_EQ(bytes[i], expected) << "byte " << i;
+        }
+      }
+    }
+  }
+
+  // 256 MiB is one pass of the kernel's grid (65536 threadgroups of 256
+  // threads, 16 bytes each); go past it so threads loop.
+  const size_t bigBytes = (size_t(256) << 20) + 4096 + 64;
+  ASSIGN_NO_ERR(DeviceBufferRef, big, ctx_->enqueueCreateBuffer(bigBytes));
+  ASSIGN_NO_ERR(void *, bigHost, ctx_->getHostAccessiblePointer(big->ptr()));
+  const auto *bigBytesHost = static_cast<const uint8_t *>(bigHost);
+  const size_t bigOffset = 6;
+  const size_t bigLen = bigBytes - 32;
+  EXPECT_NO_ERR(ctx_->enqueueSetMemory(*big, kGuard, 1));
+  EXPECT_NO_ERR(ctx_->enqueueSetMemory(
+      static_cast<char *>(big->ptr()) + bigOffset, bigLen, 0xFF80, 2));
+  EXPECT_NO_ERR(ctx_->synchronize());
+  for (size_t i = 0; i < bigBytes; ++i) {
+    const uint8_t expected = (i >= bigOffset && i < bigOffset + bigLen)
+                                 ? patternByte(0xFF80, 2, i - bigOffset)
+                                 : kGuard;
+    if (bigBytesHost[i] != expected) {
+      ADD_FAILURE() << "byte " << i << ": " << int(bigBytesHost[i])
+                    << " != " << int(expected);
+      break;
+    }
+  }
+}
+
+// Microbenchmark, run on demand with
+//   ./bazelw test --config=release
+//     //MLRT/unittests/Driver:MetalDeviceContextTest --test_output=streamed
+//     --test_arg=--gtest_also_run_disabled_tests
+//     --test_arg=--gtest_filter=*SetMemoryFillTiming*
+// Times a BF16 -inf fill (a 2-byte pattern whose bytes differ) of 2 MiB and
+// 1 GiB on an idle queue: the time for enqueueSetMemory to return, and the
+// time until the fill has completed.
+TEST_F(MetalDeviceContextTestBase, DISABLED_SetMemoryFillTiming) {
+  using Clock = std::chrono::steady_clock;
+  constexpr uint64_t kBf16NegInf = 0xFF80;
+  struct Case {
+    const char *name;
+    size_t bytes;
+    int iters;
+  };
+  for (Case c : {Case{"2 MiB", size_t(2) << 20, 50},
+                 Case{"1 GiB", size_t(1) << 30, 10}}) {
+    ASSIGN_NO_ERR(DeviceBufferRef, buf, ctx_->enqueueCreateBuffer(c.bytes));
+    EXPECT_NO_ERR(ctx_->synchronize());
+
+    std::vector<double> enqueueUs, totalUs;
+    for (int i = -1; i < c.iters; ++i) {
+      Clock::time_point t0 = Clock::now();
+      EXPECT_NO_ERR(ctx_->enqueueSetMemory(*buf, kBf16NegInf, 2));
+      Clock::time_point t1 = Clock::now();
+      EXPECT_NO_ERR(ctx_->synchronize());
+      Clock::time_point t2 = Clock::now();
+      // The first call pays one-time costs (the helper pipeline's compile,
+      // the first touch of the pages), so it is reported apart.
+      if (i < 0) {
+        std::cout << "[fill-timing] " << c.name << " first call: "
+                  << std::chrono::duration<double, std::micro>(t2 - t0).count()
+                  << " us\n";
+        continue;
+      }
+      enqueueUs.push_back(
+          std::chrono::duration<double, std::micro>(t1 - t0).count());
+      totalUs.push_back(
+          std::chrono::duration<double, std::micro>(t2 - t0).count());
+    }
+
+    ASSIGN_NO_ERR(void *, host, ctx_->getHostAccessiblePointer(buf->ptr()));
+    const auto *words = static_cast<const uint16_t *>(host);
+    EXPECT_EQ(words[0], kBf16NegInf);
+    EXPECT_EQ(words[c.bytes / 2 - 1], kBf16NegInf);
+
+    auto report = [&](const char *what, std::vector<double> &us) {
+      std::sort(us.begin(), us.end());
+      std::cout << "[fill-timing] " << c.name << " " << what << ": median "
+                << us[us.size() / 2] << " us, min " << us.front() << " us, max "
+                << us.back() << " us (n=" << us.size() << ")\n";
+    };
+    report("enqueue", enqueueUs);
+    report("enqueue+sync", totalUs);
+  }
 }
 
 } // namespace M::Driver
