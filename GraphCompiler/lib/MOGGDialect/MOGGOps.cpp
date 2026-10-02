@@ -3903,7 +3903,7 @@ CallElementwiseOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       *this, symbolTable, [this](KernelDeclOp decl) -> LogicalResult {
         if (!decl.getElementwise())
           return emitOpError("kernel '")
-                 << getKernelSymName() << "' has no 'elementwise' function";
+                 << getCallee() << "' has no 'elementwise' function";
         return success();
       });
 }
@@ -3923,8 +3923,7 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
     inputs.push_back(
         MojoValue(kFnCoordToIndexList)({}, {state.getMojoValueFor(index)}));
 
-  KernelDeclOp ewKernelDecl =
-      state.registry.lookupKernelBySymName(getKernelSymName());
+  KernelDeclOp ewKernelDecl = state.registry.lookupKernelBySymName(getCallee());
   KernelDeclAdaptor ewAdaptor(ewKernelDecl);
   const KernelDeclFunctionAdaptor &ewFnAdaptor =
       ewAdaptor.isElementwise() ? *ewAdaptor.elementwiseFunction

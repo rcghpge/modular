@@ -22,7 +22,7 @@
 // CHECK-FUSED-SAME:       "mo.bundled.allreduce.sum"
 // CHECK-FUSED-SAME:       "mo.relu"
 // CHECK-FUSED:          mogg.tensor.create.epilogue
-// CHECK-FUSED:            mogg.call.elementwise["{{.*}}.ReLU"]
+// CHECK-FUSED:            mogg.call.elementwise @{{.*}}.ReLU
 // CHECK-FUSED:          mogg.call.opaque @{{.*}}BundledAllReduceSum
 
 mo.graph @bundled_allreduce_relu_outside(

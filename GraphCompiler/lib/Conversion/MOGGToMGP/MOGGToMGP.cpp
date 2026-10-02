@@ -473,7 +473,7 @@ LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
 
     // The model's results expect mgp.opaque. ToMGPFromOpaqueOp is a type
     // rebind, folded away once the input becomes mgp.opaque (e.g. after
-    // OutlineKernels).
+    // OutlineGenericCompiledRegionsToFunctions).
     if (auto moOpaqueType = dyn_cast<MO::OpaqueType>(loweredValue.getType())) {
       Type mgpOpaqueType =
           MGP::OpaqueType::get(output->getContext(), moOpaqueType.getSymbol(),

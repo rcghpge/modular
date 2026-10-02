@@ -73,7 +73,7 @@ mo.graph @two_partial(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, 
 // flag is set. The mirror of @fused_producer in fused-input-opaque.mlir.
 
 // CHECK-LABEL: mo.graph @fused_consumer
-// CHECK: mogg.call.elementwise[
+// CHECK: mogg.call.elementwise @
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOneFusedOutput {{.*}}hasEpilogueFusion = true
 mo.graph @fused_consumer(%a: !mo.tensor<[2, 2], f32>, %z: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
@@ -98,7 +98,7 @@ mo.graph @reshape_only(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[4], f32> {
 
 // CHECK-LABEL: mo.graph @reshape_and_add
 // CHECK: mogg.index.reshape
-// CHECK: mogg.call.elementwise[
+// CHECK: mogg.call.elementwise @
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOneFusedOutput {{.*}}hasEpilogueFusion = true
 mo.graph @reshape_and_add(%a: !mo.tensor<[2, 2], f32>, %z: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>

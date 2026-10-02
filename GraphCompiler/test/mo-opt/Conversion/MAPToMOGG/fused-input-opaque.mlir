@@ -34,7 +34,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) ->
 // CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[A0:.*]]: !mogg.tensor, %[[A1:.*]]: !mogg.tensor):
 // CHECK:   %[[L0:.*]] = mogg.tensor.load %[[A0]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK:   %[[L1:.*]] = mogg.tensor.load %[[A1]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
-// CHECK:   %[[ADD:.*]] = mogg.call.elementwise["{{.*}}Add"] (%[[L0]], %[[L1]]) {moOpName = "mo.add"} : f32, f32 -> f32
+// CHECK:   %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add(%[[L0]], %[[L1]]) {moOpName = "mo.add"} : f32, f32 -> f32
 // CHECK:   mogg.yield %[[ADD]] : f32
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs inputs(%[[PRO]], %{{.*}} : !mogg.tensor, !mogg.tensor) {{.*}}hasPrologueFusion = true
 // CHECK-NOT: map.iter.prologue
@@ -46,8 +46,8 @@ mo.graph @fused_producer(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32
 
 // CHECK-LABEL: mo.graph @two_fused_producers
 // CHECK: fusionInfo = #mogg.fusion<#mogg.fusion_prologue<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"custom__map_lower_two_fused_inputs"{{.*}}], operandIndices = [0, 1]>>
-// CHECK: mogg.call.elementwise["{{.*}}Add"]
-// CHECK: mogg.call.elementwise["{{.*}}Mul"]
+// CHECK: mogg.call.elementwise @{{.*}}Add
+// CHECK: mogg.call.elementwise @{{.*}}Mul
 // CHECK: mogg.call.opaque @{{.*}}MapLowerTwoFusedInputs
 mo.graph @two_fused_producers(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %p0 = mo.add(%a, %b) : !mo.tensor<[2, 2], f32>

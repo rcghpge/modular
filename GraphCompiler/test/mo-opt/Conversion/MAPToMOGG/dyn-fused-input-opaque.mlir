@@ -16,7 +16,7 @@
 // CHECK-SAME: %[[A1:.*]]: !mogg.tensor):
 // CHECK: %[[L0:.*]] = mogg.tensor.load %[[A0]][%[[I]]]
 // CHECK: %[[L1:.*]] = mogg.tensor.load %[[A1]][%[[I]]]
-// CHECK: %[[ADD:.*]] = mogg.call.elementwise["{{.*}}Add"] (%[[L0]], %[[L1]])
+// CHECK: %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add(%[[L0]], %[[L1]])
 // CHECK: mogg.yield %[[ADD]] : f32
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs
 // CHECK-SAME: inputs(%[[PRO]], %{{.*}} : !mogg.tensor, !mogg.tensor)

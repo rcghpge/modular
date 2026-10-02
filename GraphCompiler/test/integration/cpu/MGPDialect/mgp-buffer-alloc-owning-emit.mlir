@@ -9,7 +9,7 @@
 // rather than executing; the end-to-end behavior is covered by
 // mgp-cpu-buffer.mlir.
 
-// RUN: mo-opt %s --mogg-import-packages --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-generic-compiled-regions-to-functions --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo | FileCheck %s
 
 // The composite type is referenced as the alloc primitive's result type...
 // CHECK-DAG: !OwnedByteBuffer = !lit.struct<{{.*}}@OwnedByteBuffer>

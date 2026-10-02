@@ -1,9 +1,9 @@
-// RUN: mo-opt %s --mogg-import-packages -mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-pipeline -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-pipeline -mogg-to-mgp -canonicalize -mogg-outline-generic-compiled-regions-to-functions -mogg-add-try-except-blocks 2>&1 | FileCheck %s
 
 // Verify that the three ops introduced by the MOGG ABI lowering are present
-// after mogg-outline-kernels and mogg-add-try-except-blocks:
+// after mogg-outline-generic-compiled-regions-to-functions and mogg-add-try-except-blocks:
 //
-//   mogg.with_trace  -- created by mogg-outline-kernels (createKernelStub)
+//   mogg.with_trace  -- created by mogg-outline-generic-compiled-regions-to-functions (createKernelStub)
 //                       to wrap the kernel terminator in a Trace context
 //   mogg.try / mogg.raise -- created by mogg-add-try-except-blocks for MOGG
 //                            ABI stubs; the except block re-raises via mogg.raise

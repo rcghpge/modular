@@ -723,7 +723,7 @@ Source:
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.td>
 
-### OutlineKernels
+### OutlineGenericCompiledRegionsToFunctions
 
 #### Description
 
@@ -749,7 +749,7 @@ resource attributes. Uses `ABIKind::MGP` (void-style; multiple results via
 opaque buffers) for the stub.
 
 Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/OutlineKernels.cpp>
+<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/OutlineGenericCompiledRegionsToFunctions.cpp>
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 

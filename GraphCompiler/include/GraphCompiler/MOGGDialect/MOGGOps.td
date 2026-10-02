@@ -1407,15 +1407,16 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
 ]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";
   let description = [{
-    Takes the iteration index as an explicit operand.
+    Calls the `::elementwise` function of the kernel named by `$callee`,
+    taking the iteration index as an explicit operand.
 
     Example:
     ```mlir
-    mogg.call.elementwise["mo.add"](...)
+    mogg.call.elementwise @"mo.add"(...)
     ```
   }];
   let arguments = (ins
-    StrAttr:$kernelSymName,
+    FlatSymbolRefAttr:$callee,
     StrAttr:$moOpName,
     Variadic<AnyType>:$inputs,
     Optional<AnyType>:$index,
@@ -1424,7 +1425,18 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
   let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
-    `[` $kernelSymName `]` `(` $inputs (`,` $index^)? `)` attr-dict `:` type($inputs) (`,` type($index)^)? `->` type($outputs)
+    $callee `(` $inputs (`,` $index^)? `)` attr-dict `:` type($inputs) (`,` type($index)^)? `->` type($outputs)
+  }];
+
+  // `KernelCallInterface::getKernelSymNameAttr` must hand back the leaf
+  // `StringAttr` (the same interned attr the kernel decl's `sym_name` carries,
+  // so symbol-liveness set membership still works); the callee is stored as a
+  // `FlatSymbolRefAttr` here rather than a bare string the way `call.opaque`
+  // does.
+  let extraClassDeclaration = [{
+    mlir::StringAttr getKernelSymNameAttr() {
+      return getCalleeAttr().getLeafReference();
+    }
   }];
 }
 

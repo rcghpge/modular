@@ -16,7 +16,7 @@
 // CHECK-NEXT:   ^bb0([[IN0:%[^ :,]+]]: !mogg.tensor, [[IN1:%[^ :,]+]]: !mogg.tensor, [[OUT:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:     [[V0:%[^ ]+]] = mogg.tensor.load [[IN0]][[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK-NEXT:     [[V1:%[^ ]+]] = mogg.tensor.load [[IN1]][[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
-// CHECK-NEXT:     [[SUM:%[^ ]+]] = mogg.call.elementwise["testing_kernels.testing_kernels.AddElementwise"] ([[V0]], [[V1]]) {moOpName = "imposter_add_elementwise"} : f32, f32 -> f32
+// CHECK-NEXT:     [[SUM:%[^ ]+]] = mogg.call.elementwise @testing_kernels.testing_kernels.AddElementwise([[V0]], [[V1]]) {moOpName = "imposter_add_elementwise"} : f32, f32 -> f32
 // CHECK-NEXT:     mogg.tensor.store [[OUT]][[[IDX]]] = [[SUM]] : !mogg.tensor, !map.index<2>, f32
 // CHECK-NEXT:   }
 // CHECK-NEXT: }

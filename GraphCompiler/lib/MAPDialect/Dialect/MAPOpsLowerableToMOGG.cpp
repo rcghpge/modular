@@ -245,6 +245,8 @@ LogicalResult CallElementwiseOp::lowerToMOGG(MAPToMOGGState &state) {
       fn.inputArguments.back().isOpaqueWithTypeName(
           MOGG::kMojoInternalDpsIndexListTypeQualifiedName))
     index = state.mapping.lookup(getIndex());
+  // `kernelSymName` is a plain name; the builder wraps it into the op's
+  // `$callee` `FlatSymbolRefAttr`.
   auto moggCall = MOGG::CallElementwiseOp::create(
       state.builder, getLoc(), getResult().getType(), kernelSymName,
       adaptor.registeredOpName.strref(), inputs, index, getParamsAttr());

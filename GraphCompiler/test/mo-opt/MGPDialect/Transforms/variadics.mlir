@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages -mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg --mogg-pipeline -mogg-to-mgp -canonicalize -mogg-outline-kernels -mogg-add-try-except-blocks -mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg --mogg-pipeline -mogg-to-mgp -canonicalize -mogg-outline-generic-compiled-regions-to-functions -mogg-add-try-except-blocks -mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
 
 // Test that mo.concat with variadic inputs properly generates VariadicTensors in the emitted Mojo code
 

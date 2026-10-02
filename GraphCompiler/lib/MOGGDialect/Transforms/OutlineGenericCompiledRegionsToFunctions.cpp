@@ -16,7 +16,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_OUTLINEKERNELS
+#define GEN_PASS_DEF_OUTLINEGENERICCOMPILEDREGIONSTOFUNCTIONS
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 } // namespace M::MOGG
@@ -25,8 +25,11 @@ namespace M::MOGG {
 
 namespace {
 
-struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
-  using OutlineKernelsBase::OutlineKernelsBase;
+struct OutlineGenericCompiledRegionsToFunctions
+    : public MOGG::impl::OutlineGenericCompiledRegionsToFunctionsBase<
+          OutlineGenericCompiledRegionsToFunctions> {
+  using OutlineGenericCompiledRegionsToFunctionsBase::
+      OutlineGenericCompiledRegionsToFunctionsBase;
 
   void runOnOperation() override {
     auto moduleOp = getOperation();

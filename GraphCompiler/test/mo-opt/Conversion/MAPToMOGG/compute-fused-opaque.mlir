@@ -10,7 +10,7 @@
 // CHECK:       mogg.tensor.create.epilogue {{.*}}capturing({{[^)]*}}) {{.*}}computeOutputArg = true
 // CHECK-NEXT:  ^bb0(%[[VAL:.*]]: f32, %[[IDX:.*]]: !map.index<2>, %[[COUT:.*]]: !mogg.tensor, %[[CZ:.*]]: !mogg.tensor):
 // CHECK-NEXT:    %[[ZV:.*]] = mogg.tensor.load %[[CZ]][%[[IDX]]]
-// CHECK-NEXT:    %[[SUM:.*]] = mogg.call.elementwise[{{.*}}Add{{.*}}] (%[[VAL]], %[[ZV]])
+// CHECK-NEXT:    %[[SUM:.*]] = mogg.call.elementwise @{{.*}}Add{{.*}}(%[[VAL]], %[[ZV]])
 // CHECK-NEXT:    mogg.yield %[[SUM]] : f32
 
 // With compute lambdas off the same graph keeps a classic store lambda, but

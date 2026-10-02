@@ -190,7 +190,7 @@ def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp">
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
 }
 
-def OutlineKernels: Pass<"mogg-outline-kernels", "ModuleOp"> {
+def OutlineGenericCompiledRegionsToFunctions: Pass<"mogg-outline-generic-compiled-regions-to-functions", "ModuleOp"> {
   let summary = "Outline kernels into stubs";
   let description = [{
     Outlines GenericCompiledRegionOp into KernelStubOp so identical stubs can

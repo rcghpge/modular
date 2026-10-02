@@ -24,7 +24,7 @@
 // CHECK-NEXT:    ^bb0([[IN:%[^ :,]+]]: !mogg.tensor, [[OUT:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[CST:%[^ ]+]] = mogg.constant.scalar {value = 2.000000e+00 : f32} : f32
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[IN]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
-// CHECK-NEXT:      [[SUM:%[^ ]+]] = mogg.call.elementwise["builtin_kernels.elementwise.Add"] ([[VAL]], [[CST]]) {moOpName = "mo.add"} : f32, f32 -> f32
+// CHECK-NEXT:      [[SUM:%[^ ]+]] = mogg.call.elementwise @builtin_kernels.elementwise.Add([[VAL]], [[CST]]) {moOpName = "mo.add"} : f32, f32 -> f32
 // CHECK-NEXT:      mogg.tensor.store [[OUT]]{{\[}}[[IDX]]] = [[SUM]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @addConstant(%x: !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32> {
   %cst = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>

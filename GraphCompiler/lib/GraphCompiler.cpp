@@ -166,7 +166,7 @@ void M::MO::registerPasses() {
   MOGG::registerAddTryExceptBlocksPass();
   MOGG::registerLookupConstantResources();
   MGP::registerRaiseBackIndexConstant();
-  MOGG::registerOutlineKernelsPass();
+  MOGG::registerOutlineGenericCompiledRegionsToFunctionsPass();
   MOGG::registerEmitMojo();
   MOGG::registerDumpMojo();
   MOGG::registerLoadMojo();
@@ -428,7 +428,7 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 
-  pm.addPass(MOGG::createOutlineKernels());
+  pm.addPass(MOGG::createOutlineGenericCompiledRegionsToFunctions());
   pm.addPass(MOGG::createLookupConstantResources());
 
   // Lifting slot-index constants into stub arguments lets kernels differing

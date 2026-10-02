@@ -1,4 +1,4 @@
-// RUN: mo-opt --mogg-import-packages %s --mgp-lower-primitives --mogg-outline-kernels --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-strip-kernel-decls --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t
+// RUN: mo-opt --mogg-import-packages %s --mgp-lower-primitives --mogg-outline-generic-compiled-regions-to-functions --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --jit --mogg-strip-kernel-decls --mogg-lower-mogg-region-compile --mgp-outline-models-to-callables -o %t
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t
 
 // CHECK-LABEL: --- Running 'sync'
