@@ -17,11 +17,9 @@ class Pass;
 
 namespace M::MGP {
 
-/// Generate the code for declaring the passes.
 #define GEN_PASS_DECL
 #include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h.inc"
 
-/// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h.inc"
 

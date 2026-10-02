@@ -83,11 +83,9 @@ ErrorOrSuccess M::MOGG::graphCompilerCacheKey(llvm::raw_ostream &keyBuf,
   keyBuf << "target(" << target.getTripleStr() << ';' << target.getArch() << ';'
          << target.getFeatures() << ')';
 
-  // Compilation target information
   createCompilationOptions(target, buildType, debug, saveTempsPrefix)
       .print(keyBuf);
 
-  // Full version information for the graph compiler.
   keyBuf << MO::getGraphCompilerVersionString();
 
   return success();

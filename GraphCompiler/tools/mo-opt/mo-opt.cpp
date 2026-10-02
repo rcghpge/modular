@@ -21,10 +21,7 @@
 using namespace M;
 
 int main(int argc, char **argv) {
-  // Don't create an object of type llvm::InitLLVM here, as it will be created
-  // in the call to `mlir::MlirOptMain` later (and we can only create one
-  // instance of it). We do, however, want to register a message specific to the
-  // graph compiler to show the user if we crash.
+  // No llvm::InitLLVM here: `mlir::MlirOptMain` creates the only one.
   llvm::setBugReportMsg(M::MO::BugReportMessage.data());
 
   DialectRegistry registry;
@@ -34,7 +31,6 @@ int main(int argc, char **argv) {
   MO::registerPasses();
   mlir::registerDefaultTimingManagerCLOptions();
 
-  // Create our context.
   ErrorOr<ContextRef> ctxOr = Init::createContext(
       "mo-opt", Init::Options().withCPUDeviceOptions(
                     AsyncRT::CPUDeviceOptions().withLeakCheckedAllocator()));

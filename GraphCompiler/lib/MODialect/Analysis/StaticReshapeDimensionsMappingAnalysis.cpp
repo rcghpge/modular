@@ -45,12 +45,8 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
   bool beforeEnabled = true;
   bool afterEnabled = true;
 
-  /// TODO: Identify all ranges of static dimensions and apply the algorithm on
-  /// them. This will increase the coverage of this analysis. Right now, it
-  /// would fail if dynamic and static dimensions alternate even if they don't
-  /// mix. Here are examples where "Does not work" would work if we used ranges
-  /// instead.
-  /// EXAMPLE:
+  /// TODO: Apply the algorithm per range of static dimensions; today it fails
+  /// whenever dynamic and static dimensions alternate, even without mixing.
   /// Works: 3, 5, 6, D0 -> 15, 3, 2, D0
   /// Works: D0, 3, 5, 6 -> D0, 15, 3, 2
   /// Does not work: 3, D0, 5, 6 -> 3, D0, 30
@@ -76,8 +72,8 @@ StaticReshapeDimensionsMappingAnalysis::StaticReshapeDimensionsMappingAnalysis(
       int64_t beforeDim = beforeIntegerAttr.value();
       int64_t afterDim = afterIntegerAttr.value();
 
-      // 0 dims allow ambiguous mappings so it doesn't make sense to continue
-      // E.g. consider [0, 1, 2] --> [5000, 0, 500, 42, 0]
+      // 0 dims make the mapping ambiguous:
+      // [0, 1, 2] -> [5000, 0, 500, 42, 0].
       if (beforeDim == 0 || afterDim == 0) {
         isSupported = false;
         return;

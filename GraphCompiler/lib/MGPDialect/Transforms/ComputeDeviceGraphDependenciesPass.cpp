@@ -18,26 +18,21 @@ using namespace mlir;
 
 namespace {
 
-/// Reconcile `v` to `target` by inserting a single `mogg.async` pack/unpack at
-/// the dissolved region boundary. A compiled region wraps its operands into
-/// `!mogg.async<T>` on entry and packs its results back out, so when the
-/// boundary is dissolved the verbatim body's pack/unpack ops must still see an
-/// `!mogg.async<...>` while the outer values are plain `T` (and vice-versa for
-/// results). Returns nullptr (after emitting an error) if the types are not
-/// bridgeable by one async wrap/unwrap.
+/// Reconciles `v` to `target` with one `mogg.async` pack/unpack at the
+/// dissolved region boundary: the verbatim body still expects
+/// `!mogg.async<T>` where the outer values are plain `T`, and vice versa for
+/// results. Emits an error and returns nullptr if one wrap/unwrap cannot
+/// bridge the types.
 Value reconcileAcrossBoundary(OpBuilder &builder, Location loc, Value value,
                               Type target, Operation *errorOp) {
   Type valueType = value.getType();
   if (valueType == target)
     return value;
 
-  // `target` is `!mogg.async<vTy>`: pack `v` up so the body's unpack still has
-  // an async input.
   if (auto targetAsync = dyn_cast<AsyncType>(target);
       targetAsync && targetAsync.getElementType() == valueType)
     return AsyncPackOp::create(builder, loc, target, value);
 
-  // `v` is `!mogg.async<target>`: unpack it down for the outside consumers.
   if (auto vAsync = dyn_cast<AsyncType>(valueType);
       vAsync && vAsync.getElementType() == target)
     return AsyncUnpackOp::create(builder, loc, target, value);
@@ -49,44 +44,30 @@ Value reconcileAcrossBoundary(OpBuilder &builder, Location loc, Value value,
   return nullptr;
 }
 
-/// Populate the body of a `mgp.device_graph.dependencies` op (via its callback
-/// builder, so `builder` is already positioned in the empty body block, which
-/// already carries the `graphBuilder` block arg) from the verbatim contents of
-/// `region`, dissolving the compiled region's dataflow boundary: the region's
-/// block args are remapped to the actual outer values (`oldValueToNew`
-/// redirects values produced by already-converted sibling regions to their new
-/// `bodyResults`), and `mogg.async` pack/unpack ops are inserted at the seam so
-/// the body still type-checks. Device-context block args are special-cased:
-/// they are re-sourced from `graphBuilder` via a
-/// `builtin.unrealized_conversion_cast` so the body is tied to the device graph
-/// under construction rather than the outer device context. Emits the
-/// `dependencies.yield`. Returns failure if a boundary type cannot be
-/// reconciled.
+/// Populates a `mgp.device_graph.dependencies` body with the verbatim contents
+/// of `region`, dissolving its dataflow boundary. Block args map to the outer
+/// values (`oldValueToNew` redirects results of already-converted siblings),
+/// with `mogg.async` pack/unpack at the seam. Device-context block args are
+/// re-sourced from `graphBuilder` via `builtin.unrealized_conversion_cast`, so
+/// the body is tied to the device graph under construction.
 LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
                                     Value graphBuilder,
                                     GenericCompiledRegionOp region,
                                     const IRMapping &oldValueToNew) {
   Block &srcBlock = region.getBody().front();
 
-  // The builder -> device context bridges, created lazily (one per context
-  // type) so context-free bodies emit no cast. They are unrealized for now and
-  // resolved later, when the recording stub is rewritten to accept a
-  // `!mgp.device_graph.builder` directly.
+  // Created lazily, one per context type, so context-free bodies emit no cast.
+  // Resolved once the recording stub accepts a `!mgp.device_graph.builder`.
   llvm::SmallDenseMap<Type, Value> deviceContextCast;
 
-  // Entry mediation: map each region block arg to the (reconciled) outer value
-  // it was passed. Values produced by already-converted siblings are redirected
-  // to their new `bodyResults`; everything else (model inputs, outer SSA) is
-  // referenced directly since this op is not `IsolatedFromAbove`.
+  // Other outer values are referenced directly; the op is not
+  // `IsolatedFromAbove`.
   IRMapping mapper;
   for (auto [blockArg, operand] :
        llvm::zip(srcBlock.getArguments(), region.getOperands())) {
-    // A device-context block arg (the launch context) -- which the region's
-    // ABI wraps as `!mogg.async<!mgp.device_context>` -- is re-sourced from the
-    // builder block arg rather than the outer device context, so the body is
-    // self-contained. The cast is reconciled across the boundary exactly like
-    // any other value (re-packed to async here, the body's verbatim
-    // `mogg.async.unpack` then folds the round-trip away in Stage 3).
+    // The launch context (`!mogg.async<!mgp.device_context>` in the region
+    // ABI) is re-sourced from the builder; the re-pack here folds away against
+    // the body's `mogg.async.unpack`.
     Type elementType = blockArg.getType();
     if (auto async = llvm::dyn_cast<AsyncType>(elementType))
       elementType = async.getElementType();
@@ -113,13 +94,10 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
     mapper.map(blockArg, mapped);
   }
 
-  // Clone the body verbatim (clone remaps operand uses through `mapper`).
   for (Operation &op : srcBlock.without_terminator())
     builder.clone(op, mapper);
 
-  // Exit mediation: the `mogg.output` operands are the region's (async-packed)
-  // results; reconcile each down to the plain region result type so the yield
-  // matches the op's `bodyResults`.
+  // Unpack the async-packed `mogg.output` operands to the region result types.
   OutputOp outputOp = region.getBodyTerminator();
   SmallVector<Value> yielded;
   yielded.reserve(outputOp.getNumOperands());
@@ -135,16 +113,14 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
   return success();
 }
 
-/// Replace every `mogg.generic.compiled.region` in each device region of
-/// `collectiveOp` with a `mgp.device_graph.dependencies` op, preserving the
-/// per-device ordering and dissolving each compiled region's dataflow boundary.
+/// Replaces every `mogg.generic.compiled.region` in `collectiveOp` with a
+/// `mgp.device_graph.dependencies` op, preserving per-device ordering.
 LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
   llvm::MapVector<GenericCompiledRegionOp, DeviceGraphDependenciesOp> oldToNew;
   IRMapping oldValueToNew;
 
-  // Each device region has its own `!mgp.device_graph.builder` block argument.
-  // Convert the compiled regions inside each region independently; edges across
-  // regions are derived below using the same global `oldToNew` map.
+  // Regions are converted per device; edges, including cross-device ones, are
+  // derived below from the shared `oldToNew` map.
   for (DeviceGraphCollectiveOp::CollectiveRegion graph :
        collectiveOp.graphs()) {
     Value regionBuilder = graph.builder;
@@ -169,9 +145,6 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
     }
   }
 
-  // Derive dependency edges. Operands defined by another converted region
-  // (within the same or another device region) become edges to that region's
-  // node; other operands are model inputs or outer SSA and contribute no edge.
   for (auto [region, dependencies] : oldToNew) {
     llvm::SmallSetVector<Value, 8> edges;
     for (Value operand : region.getOperands()) {
@@ -183,8 +156,6 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
     dependencies.getDependenciesMutable().assign(edges.getArrayRef());
   }
 
-  // Rewire all uses of the original regions' results to the new body results,
-  // then erase the originals.
   for (auto [region, dependencies] : oldToNew) {
     for (auto [oldResult, newResult] :
          llvm::zip(region.getResults(), dependencies.getBodyResults()))
@@ -205,15 +176,11 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
   return success();
 }
 
-/// Convert the `mogg.generic.compiled.region` ops staged by
-/// `mgp-stage-device-graphs` (or already bundled by
-/// `mgp.device_graph.collective`) into `mgp.device_graph.dependencies` ops,
-/// capturing the dependency DAG explicitly.
+/// Converts the staged `mogg.generic.compiled.region` ops into
+/// `mgp.device_graph.dependencies` ops, making the dependency DAG explicit.
 LogicalResult computeDeviceGraphDependencies(ModelOp model) {
   Block *execute = model.getExecuteBlock();
 
-  // The same lowering applies to `mgp.device_graph.collective`, where each
-  // device region is processed separately.
   for (DeviceGraphCollectiveOp collectiveOp :
        llvm::make_early_inc_range(execute->getOps<DeviceGraphCollectiveOp>())) {
     if (failed(convertCollectiveRegions(collectiveOp)))

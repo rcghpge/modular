@@ -42,9 +42,8 @@ void MAPDialect::initialize() {
 // SliceSpecAttr
 //===----------------------------------------------------------------------===//
 
-// Parses `[` (`?` | int) (`,` (`?` | int))* `]`, using `?` for
-// `ShapedType::kDynamic` -- the same convention MLIR shaped types use for an
-// unknown dimension (e.g. `tensor<?x4xf32>`).
+// Parses `[` (`?` | int) (`,` (`?` | int))* `]`, with `?` for
+// `ShapedType::kDynamic`.
 static ParseResult parseSliceSpecBounds(AsmParser &parser,
                                         SmallVectorImpl<int64_t> &out) {
   if (parser.parseLSquare())
@@ -88,9 +87,8 @@ static ParseResult parseSliceSpecBoundsField(AsmParser &parser,
 // ViewSignatureAttr
 //===----------------------------------------------------------------------===//
 
-// Parses `[in-shape] -> [out-shape]` (no surrounding `<...>` -- shared by
-// ViewSignatureAttr's own custom format and SliceSpecAttr's inline embedding
-// of it, the same convention MOSH::ShapeAttr's printer/parser helpers use).
+// Parses `[in-shape] -> [out-shape]` without the surrounding `<...>`, so the
+// spec attrs can embed it inline.
 static ParseResult parseViewSignatureBody(AsmParser &parser,
                                           MOSH::ShapeAttr &in,
                                           MOSH::ShapeAttr &out) {
@@ -196,8 +194,7 @@ LogicalResult SliceSpecAttr::verify(
     mlir::DenseI64ArrayAttr stops, mlir::DenseI64ArrayAttr steps) {
   MOSH::ShapeAttr in = signature.getIn();
   MOSH::ShapeAttr out = signature.getOut();
-  // Slice never changes rank -- the one invariant ViewSignatureAttr itself
-  // does not enforce, since other views (e.g. a future reshape) can.
+  // ViewSignatureAttr allows rank changes; slice does not.
   if (in.getRank() != out.getRank())
     return emitError() << "in/out shapes must have the same rank, got "
                        << in.getRank() << " and " << out.getRank();
@@ -341,9 +338,7 @@ void ReshapeSpecAttr::print(AsmPrinter &printer) const {
 LogicalResult
 ReshapeSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                         MAP::ViewSignatureAttr signature) {
-  // Reshape can change rank arbitrarily -- the only invariant to check is
-  // that the total element count matches, shared with
-  // MO::Static::ReshapeOp's own verifier.
+  // Only the element count must match, as in MO::Static::ReshapeOp.
   return MO::checkReshapeShapesCompatible(signature.getIn(), signature.getOut(),
                                           emitError);
 }
@@ -392,10 +387,7 @@ TransposeSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 
   SmallVector<int64_t> permVec(perm.asArrayRef());
   // A dynamic perm (the eager interpreter's one-graph-per-op transpose) is
-  // resolved at runtime; the permutation-validity and dim-match checks below
-  // only apply to the entries known at compile time. `mo.transpose`'s own perm
-  // is all-or-nothing (the whole tensor is constant or it isn't), so in
-  // practice this is either fully static or fully dynamic.
+  // resolved at runtime. In practice a perm is fully static or fully dynamic.
   bool fullyStatic = llvm::none_of(permVec, ShapedType::isDynamic);
   if (fullyStatic) {
     SmallVector<int64_t> sortedPerm(permVec);

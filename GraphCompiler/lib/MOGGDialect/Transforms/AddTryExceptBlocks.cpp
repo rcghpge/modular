@@ -34,13 +34,9 @@ struct AddTryExceptBlocks
     auto terminator = kernelBody.getTerminator();
     Location loc = kernelOp->getLoc();
 
-    // Handle MOGG ABI stubs: wrap all ops (except TryOp and OutputOp) in a
-    // TryOp. The try block contains the setup ops and WithTraceOp (added by
-    // createKernelStub). The except block contains a RaiseOp that formats
-    // the error with full kernel context (name, fusion info, traceback).
-    //
-    // MOGG stubs take this arm, or nothing renders their error context. The
-    // terminator stays outside the try, so its values are forwarded through.
+    // MOGG ABI: wrap every op except the terminator in a TryOp whose except
+    // block raises with the kernel context (name, fusion info, traceback). The
+    // terminator stays outside, so its values are forwarded through.
     if (kernelOp.getAbi() == MOGG::ABIKind::MOGG) {
       builder.setInsertionPointToStart(&kernelBody);
       auto tryOp =
@@ -67,9 +63,8 @@ struct AddTryExceptBlocks
     if (kernelOp.getAbi() != MOGG::ABIKind::MGP || !kernelOp.isThrows())
       return;
 
-    // For throwing kernels, wrap the compute ops in a TryOp. Local
-    // destructors still run during exception unwinding, so cleanup is handled
-    // implicitly in both paths.
+    // Local destructors still run during unwinding, so cleanup needs no
+    // explicit handling on either path.
     builder.setInsertionPointToStart(&kernelBody);
     auto tryOp =
         MOGG::TryOp::create(builder, loc, terminator->getOperandTypes());
@@ -90,8 +85,7 @@ struct AddTryExceptBlocks
         exceptBlock.addArgument(MOGG::ErrorType::get(loc->getContext()), loc);
     builder.setInsertionPointToStart(&exceptBlock);
 
-    // Create individual AsyncErrorOp for each output (chain and non-chain).
-    // Each AsyncErrorOp represents setting an error on one specific output.
+    // One AsyncErrorOp per output, chain and non-chain.
     SmallVector<Value> exceptYieldValues;
     exceptYieldValues.reserve(tryOp.getOutputs().size());
     for (Value tryYieldOperand : tryOp.getOutputs()) {
@@ -102,7 +96,6 @@ struct AddTryExceptBlocks
 
     MOGG::YieldOp::create(builder, loc, exceptYieldValues);
 
-    // Update the final terminator outputs to the try op results.
     terminator->setOperands(tryOp.getOutputs());
   }
 };

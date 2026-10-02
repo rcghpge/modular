@@ -55,8 +55,6 @@ ParseResult genericParseMayBeDynamicBuffer(AsmParser &parser,
     return parser.emitError(loc)
            << "expecting !" << TensorType::getMnemonic() << " type";
   if (!hasBufferTypeAnnotation) {
-    // No buffer type annotation -- buffer operand's type is uniquely determined
-    // from the result tensor type.
     bufferRawType = BufferType::get(resultTensorType);
   }
   return success();
@@ -97,13 +95,11 @@ LogicalResult genericTensorCreateVerify(Operation *op, BufferType bufferType,
   bool bufferIsStatic = bufferType.getOptSize().has_value();
   bool expectedBufferIsStatic = expectedBufferType.getOptSize().has_value();
   if (bufferIsStatic != expectedBufferIsStatic) {
-    // The buffer type and tensor spec types don't agree on whether they
-    // are static. This can arise when lowering value-semantic reshapes
-    // into buffer-semantic form. For example:
+    // Buffer and tensor spec may disagree on staticness when lowering
+    // value-semantic reshapes. Here %z reuses %x's buffer with a known size:
     //   %z = reshape %x, %y : (tensor<?x?xf32>, tensor<2xui32>) ->
     //   tensor<8x16xf32>
-    // Here %z will be created from the same buffer as %x, but will now have
-    // a known size. Conversely, in:
+    // Conversely, in:
     //   %z = reshape %x, %y : (tensor<8x4xf32>, tensor<2xui32>) ->
     //   tensor<?x?xf32>
     // the buffer for %z will now have an unknown size.
@@ -191,7 +187,6 @@ public:
   /// found.
   TypedValue<ContextType> getContextForOp(Operation *op);
 
-  /// Returns this builder's device.
   DeviceRefAttr getDevice() { return device; }
 
   /// Returns the constant buffer with given attribute as its contents.
@@ -282,14 +277,10 @@ public:
   /// to this builder.
   Value chainCreate(OpBuilder &builder, Location loc, ArrayRef<Value> inChains);
 
-  /// Places the given buffer into a freshly allocated slot within the
-  /// given !mgp.context. Returns the chain which indicates when the buffer
-  /// has been placed, and the index of the slot from which the buffer may
-  /// later be retrieved. Note that the input and output chains are always
-  /// !mef.chain, irrespective of the native chain type for this builder.
-  ///
-  /// Generally this is only appropriate within the 'init' block of an
-  /// mgp.model op.
+  /// Places buffer into a fresh slot of context. Returns the chain indicating
+  /// placement and the slot index for later retrieval. Chains are always
+  /// !mef.chain, irrespective of this builder's native chain type. Generally
+  /// only appropriate within the 'init' block of an mgp.model op.
   std::pair<TypedValue<MEF::ChainType>, uint64_t>
   cache(OpBuilder &builder, Location loc, TypedValue<ContextType> context,
         TypedValue<MEF::ChainType> inChain, ContextCreateOp contextCreateOp,
@@ -371,10 +362,8 @@ private:
 /// The tensor spec is always an TensorSpecType, but the buffer type
 /// depends on the device being lowered to.
 struct BufferizedTensor {
-  /// The buffer holding the lowered tensor's contents. Will be written into
-  /// by the producing op, then read by all consuming ops. The actual type
-  /// representing the buffer (mgp.cpu.buffer, cuda.buffer, etc) depends
-  /// on the device it is to be stored on.
+  /// Written by the producing op, then read by all consumers. Its type
+  /// (mgp.cpu.buffer, cuda.buffer, etc) depends on the storage device.
   Value buffer;
 
   /// The mgp.tensor_spec describing the shape and dtype of tensor
@@ -445,10 +434,8 @@ public:
   }
 
 private:
-  /// The type builder to use for each device.
   llvm::DenseMap<DeviceRefAttr, MGPTypeBuilder> typeBuilderMap;
 
-  /// The buffer builder to use for each device.
   llvm::DenseMap<DeviceRefAttr, std::unique_ptr<MGPBufferBuilder>>
       bufferBuilderMap;
 };

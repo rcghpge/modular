@@ -28,10 +28,9 @@ namespace M::MAP {
 /// elementwise kernel has none.
 bool isViewForeach(IterForeachOp op);
 
-/// Whether `store`'s value flows from a transformed load -- i.e. the kernel it
-/// terminates is a view producer. Follows the actual store dataflow rather than
-/// mere presence of a transform, and takes the store directly so it makes no
-/// assumption about the producer having a single output.
+/// Whether `store`'s value flows from a transformed load, i.e. its kernel is a
+/// view producer. Follows the store's dataflow, not mere presence of a
+/// transform.
 bool producesThroughView(StoreOp store);
 
 /// Whether `op` is a view and nothing else: it has an index transform but no
@@ -41,8 +40,7 @@ bool isPureViewForeach(IterForeachOp op);
 
 /// Whether duplicating `op` into each of its consumers is not a net
 /// memory-traffic loss: at most one of its inputs is a large tensor, since
-/// every extra copy re-reads all of them. Mirrors MOGG's
-/// FuseElementwiseKernels.cpp (JSC-30 / MSTDL-2759).
+/// every extra copy re-reads all of them (JSC-30 / MSTDL-2759).
 bool isCheapToDuplicate(IterForeachOp op);
 
 /// The policy a wrapper supplies to narrow generic input fusion.
@@ -54,13 +52,10 @@ struct InputFusionConfig {
   /// Whether a producer with more than one use may be duplicated (the splice
   /// clones it into each consumer). A single-use producer always fuses.
   std::function<bool(IterForeachOp src)> canDuplicate;
-  /// Cap on how many kernels may be fused into a single consumer, mirroring the
-  /// legacy `kMaximumFusionSetSize`. Duplication lets a cheap multi-use
-  /// producer be cloned into every consumer, so an unbounded elementwise chain
-  /// with fan-out would otherwise grow a handful of enormous kernels. Draining
-  /// stops once a consumer reaches this many fused kernel calls. Defaults to
-  /// unbounded so callers that never duplicate (e.g. prologue fusion) are
-  /// unaffected.
+  /// Cap on kernels fused into one consumer. Duplication clones a cheap
+  /// multi-use producer into every consumer, so an elementwise chain with
+  /// fan-out could otherwise grow a few enormous kernels. Unbounded by default
+  /// for callers that never duplicate.
   uint64_t maxFusionSetSize = UINT64_MAX;
 };
 

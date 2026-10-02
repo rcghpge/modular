@@ -18,16 +18,14 @@
 namespace M::GML {
 
 enum class MaxEngineErrorCode : uint32_t {
-  // # Error in user supplied data.
+  // Error in user supplied data.
   UserInputError = 0,
 
-  // These are specific cases of the above error that we are separately
-  // tracking.
+  // Separately tracked cases of the above.
   FileNotFoundError = 1,
   UnknownFormatError = 2,
 
-  // Error in deserializing the framework to appropriate graph
-  // level representation
+  // Error importing the framework model to a graph representation.
   TFImportError = 100,
   TorchImportError = 101,
 
@@ -41,9 +39,8 @@ enum class MaxEngineErrorCode : uint32_t {
 
 std::string stringifyErrorCode(MaxEngineErrorCode code);
 
-/// This is a convenience wrapper over telemetry counter to specialize
-/// a counter for an error code. This helps us to store in a context
-/// object and reuse across frameworks and models.
+/// Telemetry counter for one error code, stored in a context and reused across
+/// frameworks and models.
 class ErrorCodeCounter {
 public:
   ErrorCodeCounter(Telemetry::TelemetryContext &ctx)
@@ -93,18 +90,14 @@ public:
   void flush() { telemetryContext->flush(); }
 
 private:
-  // MaxEngineTelemetryContext is stored inside M::ContextRef and the
-  // pointer here is for the parent M::Context. So this is safe to hold
-  // as raw pointer.
+  // Safe as a raw pointer: this object lives inside the parent M::Context.
   M::Context *context;
   Telemetry::TelemetryContext *telemetryContext;
   std::string apiLanguage;
 };
 
-/// Increment the count for a particular error code. This function will
-/// internally increment a session scoped counter and emit telemetry metrics for
-/// the error code. This function is useful if we want to count the error
-/// occurrence but no associated error logs to emit along with it.
+/// Increments the session-scoped counter and emits metrics for an error code,
+/// without emitting error logs.
 template <MaxEngineErrorCode ErrorCode>
 void incrementTelemetryErrorCount(MaxEngineTelemetryContext &ctx) {
   auto &counter = ctx.getErrorCounter();
@@ -112,9 +105,8 @@ void incrementTelemetryErrorCount(MaxEngineTelemetryContext &ctx) {
   ctx.flush();
 }
 
-/// Increment error count and emit error logs into appropriate telemetry end
-/// points. The error logs can be found under the event domain `compiler` with
-/// event name `compile.failure`.
+/// Increment the error count and emit error logs, under event domain
+/// `compiler` with event name `compile.failure`.
 template <MaxEngineErrorCode ErrorCode>
 void emitErrorTelemetry(MaxEngineTelemetryContext &ctx, Error error) {
   incrementTelemetryErrorCount<ErrorCode>(ctx);
@@ -141,7 +133,7 @@ struct MaxEngineTelemetryScope {
             GML::emitErrorTelemetry<ErrorCode>(*telemetryContext,
                                                Error(errorMessage));
           }
-          // Return failure to allow the main handler to process the diagnostic.
+          // Let the main handler process the diagnostic too.
           return failure();
         }) {}
 

@@ -82,8 +82,7 @@ def DeviceGraphYieldOp : MGP_DeviceGraphOp<"yield", [
     `mgp.device_graph.create` or `mgp.device_graph.collective.create`, yielding
     the graph's output values. The operand types form the result
     `!mgp.device_graph` signature's results; the parent op instantiates the
-    recorded builder into that graph after the body returns. A body with no
-    graph outputs yields nothing (the operand list is empty).
+    recorded builder into that graph after the body returns.
 
     Example:
     ```mlir
@@ -224,42 +223,30 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
 ]> {
   let summary = "A compiled region with explicit device-graph dependency edges.";
   let description = [{
-    An operation used to model dependencies between regions of IR. In the
-    incremental lowering process towards device-graph based execution, one
-    `mgp.device_graph.dependencies` operation is created per
-    `mogg.generic.compiled.region`.
+    One is created per `mogg.generic.compiled.region` when lowering towards
+    device-graph execution. It separates the region's dataflow from its
+    ordering, so region bodies can be merged while their execution order
+    dependencies are still tracked.
 
-    It separates the two things a compiled region entangles -- dataflow and
-    ordering. It allows us to gradually merge the bodies of the
-    `mogg.generic.compiled.region` operations in a model, while still tracking
-    their execution order dependencies.
-
-    Important features of this operation:
-
-    - It is **not** `IsolatedFromAbove`: the body's operations
-      reference enclosing SSA values directly (the region's dataflow boundary is
-      dissolved at conversion time rather than re-threaded through operands).
-      Execution order dependencies are encoded purely through the `dependencies`
+    - It is **not** `IsolatedFromAbove`: the body references enclosing SSA
+      values directly (the region's dataflow boundary is dissolved at
+      conversion time). Execution order is encoded only by the `dependencies`
       operands.
-    - It takes the **device-graph builder as the `graphBuilder` operand** -- the
-      enclosing builder recording into the graph under construction (it maps onto
-      the `mgp.device_graph.staging` / `mgp.device_graph.create` builder). The
-      operand makes the builder dependency explicit in the def-use graph.
-    - Its body has exactly **one block argument**, a `!mgp.device_graph.builder`
-      (arg #0), bound to the `graphBuilder` operand. The body's device-context
-      uses are re-sourced from this block-arg builder via a
-      `builtin.unrealized_conversion_cast` rather than referencing the outer
-      device context, so the body is self-contained (local lowering).
-    - Its remaining **operands are the dependency edges** --
-      `!mgp.device_graph.node` values produced by the units this one must run
-      after. That operand list is *only* those edges, not dataflow.
-    - It **produces a `!mgp.device_graph.node`** representing this unit's
-      contribution (successors depend on it), plus the values the former region
-      yielded (so existing users are untouched). The node is synthesized by the
-      op; it is not yielded by the body.
-    - Its body's nodes are **recorded in order**: `DeviceGraphBuilder.region`
-      chains each node it records after the previous one, and the `dependencies`
-      edges gate the first. The node result is therefore the body's last node.
+    - The `graphBuilder` operand is the enclosing builder (the
+      `mgp.device_graph.staging` / `mgp.device_graph.create` builder), making
+      the builder dependency explicit in the def-use graph.
+    - The body has exactly one block argument, a `!mgp.device_graph.builder`
+      bound to `graphBuilder`. The body's device-context uses are re-sourced
+      from it via a `builtin.unrealized_conversion_cast`, so the body is
+      self-contained (local lowering).
+    - The `dependencies` operands are only the dependency edges:
+      `!mgp.device_graph.node` values of the units this one must run after.
+    - It produces a `!mgp.device_graph.node` for this unit (successors depend
+      on it), synthesized by the op rather than yielded, plus the former
+      region's results (so existing users are untouched).
+    - The body's nodes are recorded in order: `DeviceGraphBuilder.region`
+      chains each node after the previous one and the `dependencies` edges
+      gate the first, so the node result is the body's last node.
 
     The body terminates with `mgp.device_graph.dependencies.yield`, whose operand
     types must match the op's `bodyResults`.
@@ -311,13 +298,11 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
     Block &getBodyBlock();
 
     /// Returns the body's `!mgp.device_graph.builder` block argument (bound to
-    /// the `graphBuilder` operand) -- the builder the body's recording work
-    /// uses.
+    /// the `graphBuilder` operand).
     TypedValue<MGP::DeviceGraphBuilderType> getBuilderBlockArgument();
 
-    /// Returns true if the body region _may_ enqueue new device graph nodes,
-    /// otherwise returns false. This is best effort based on the uses of the
-    /// body region's builder operand.
+    /// Returns true if the body _may_ enqueue new device graph nodes. Best
+    /// effort, based on the uses of the body's builder.
     bool producesNewNodes();
   }];
 
@@ -366,28 +351,23 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
 ]> {
   let summary = "Container operation for staging the device-graph build body.";
   let description = [{
-    A staging operation used by `--mgp-stage-device-graphs` to hold the
-    device-graph build body *while it is being assembled* -- the
-    `mgp.device_graph.dependencies` ops plus the `mogg.async` pack/unpack ops that
-    mediate the `!mgp.*`/`!mogg.async<...>` and `!mo.tensor` type domains. It is
-    eliminated when its cleaned contents are lifted into the
-    `mgp.device_graph.create`, so it never reaches EmitMojo.
+    Holds the device-graph build body while `--mgp-stage-device-graphs`
+    assembles it: the `mgp.device_graph.dependencies` ops plus the
+    `mogg.async` pack/unpack ops mediating the `!mgp.*`/`!mogg.async<...>` and
+    `!mo.tensor` type domains. It is eliminated when its contents are lifted
+    into `mgp.device_graph.create`, so it never reaches EmitMojo.
 
-    Structurally it mirrors `mogg.generic.compiled.region`: it is
-    `IsolatedFromAbove`, so the values its body needs come in as `inputs`
-    operands of type `T` and are passed to the body as block arguments of the
-    same bare type `T`. The body yields bare `T` values and the op's
-    `stagedResults` are those same types. The boundary carries no
-    `!mogg.async<T>` -- the verifier requires the block-arg and yield types to
-    match the operand/result types exactly. The async pack/unpack needed to
-    dissolve a `mogg.generic.compiled.region` body is injected locally by
-    `mgp-compute-device-graph-dependencies` when it lowers each region.
+    Like `mogg.generic.compiled.region` it is `IsolatedFromAbove`: `inputs`
+    operands of type `T` enter as block arguments of the same bare `T`, and the
+    body yields bare `T` values typed as `stagedResults`. The verifier requires
+    these types to match exactly; no `!mogg.async<T>` crosses the boundary.
+    `mgp-compute-device-graph-dependencies` injects the async pack/unpack
+    locally when it lowers each region.
 
-    The body's first block argument is the `!mgp.device_graph.builder` (it has no
-    corresponding operand); the builder the recording calls thread maps onto the
-    `mgp.device_graph.create` builder block arg at finalization. It remains a
-    graph region (the staged `mgp.device_graph.dependencies` ops carry forward
-    node edges).
+    The first block argument is the `!mgp.device_graph.builder` (with no
+    corresponding operand), which maps onto the `mgp.device_graph.create`
+    builder at finalization. It remains a graph region, since the staged
+    dependencies ops carry node edges.
 
     Example:
     ```mlir
@@ -402,10 +382,8 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
 
   let arguments = (ins
     Variadic<AnyType>:$inputs,
-    // As mogg.generic.compiled.region ops are inlined away, we will need a
-    // place to store the constant resource attributes.
-    // This operation is eventually synthesized back into a
-    // mogg.generic.compiled.region, so it is the natural place.
+    // Constant resources of the inlined mogg.generic.compiled.region ops; this
+    // op is later synthesized back into one.
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources
   );
 
@@ -544,10 +522,8 @@ def DeviceGraphStableGetOp : MGP_DeviceGraphOp<"stable.get", [
     At construction time the stable-address mapping is recorded on the device
     graph itself, so that the patched pointer resolves at launch time.
 
-    A `!mgp.stable_addr<T>` produces a `!mgp.device_tensor<T, ..., stable>`
-    whose shape/device are taken from the slot's element type `T`. The returned
-    tensor is marked `stable` because its backing address is provided by the
-    stable-address slot.
+    The result is a `stable` `!mgp.device_tensor` whose shape/device come from
+    the slot's element type `T`, since the slot provides its backing address.
   }];
 
   let arguments = (ins
@@ -654,12 +630,9 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
     Each region terminates with `mgp.device_graph.collective.yield`, whose
     operands append to the parent op's `$outputs` in region order.
 
-    The printed form hoists the entry-block arguments into two clauses:
-    `builder(...)` for the shared `!mgp.device_graph.builder` block argument,
-    followed by `stable(...)` for the shared stable-address block arguments.
-    Each per-device region is introduced by the `DeviceRefAttr` of the device it
-    runs on, and the region body is printed without its entry-block arguments
-    because they are determined by the `builder(...)` and `stable(...)` clauses.
+    The printed form hoists the shared entry-block arguments into
+    `builder(...)` and `stable(...)` clauses, and introduces each region by the
+    `DeviceRefAttr` of its device.
 
     Example:
     ```mlir
@@ -676,11 +649,8 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
 
   let arguments = (ins
     M_DeviceRefsAttr:$devices,
-    // As mogg.generic.compiled.region ops are inlined away, we need to
-    // preserve the constant resource attributes.
-    //
-    // This operation is eventually synthesized back into a
-    // mogg.generic.compiled.region, so it is the natural place.
+    // Constant resources of the inlined mogg.generic.compiled.region ops; this
+    // op is later synthesized back into one.
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources
   );
 
@@ -784,13 +754,9 @@ def DeviceGraphCollectiveCreateOp : MGP_DeviceGraphOp<"collective.create", [
     with `mgp.device_graph.yield`; the yielded value types define the output
     signature of that region's graph.
 
-    The printed form hoists the per-region argument lists next to the region
-    they belong to: each region is prefixed with `graph(...)`, the builder
-    block argument name, and the input block argument names and types. The
-    shared `theContext` operand appears after the op name; the `cache` operand,
-    when present, is printed after it. The region bodies are printed without
-    their entry-block arguments because those arguments are declared by the
-    prefix clauses.
+    The printed form declares each region's entry-block arguments in
+    `graph(...)`, `builder(...)` and `inputs(...)` prefix clauses. The shared
+    `theContext` follows the op name, then the optional `cache`.
 
     Example:
     ```mlir
@@ -845,9 +811,8 @@ def DeviceGraphCollectiveExecuteOp : MGP_DeviceGraphOp<"collective.execute", [
     The `graphs` operands are the per-device graphs, in the same order as the
     regions of the creating op. The `inputs` operands are the union of the
     live inputs for all graphs, laid out flat as
-    `[graph0_inputs..., graph1_inputs..., ...]`; each graph itself knows how
-    many inputs it consumes, so no extra per-graph segmentation metadata is
-    required by the runtime primitive.
+    `[graph0_inputs..., graph1_inputs..., ...]`; each graph knows how many
+    inputs it consumes, so the runtime primitive needs no segmentation.
 
     The op produces a fresh `!mef.chain` for host-side ordering and a variadic
     set of value outputs, one per graph-output in graph order.

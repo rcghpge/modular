@@ -17,13 +17,9 @@ namespace M::MO::ShapeInferencePassCommon {
 // Common Patterns
 //===----------------------------------------------------------------------===//
 
-/// A pattern that folds/flattens a chain of rebinds into a tree of rebinds that
-/// share the same input.
-///
-/// It serves 2 purposes:
-/// 1. Get rid of intermediate rebinds to unknown shapes (see example below).
-/// 2. Minimizes the number of rebinds we must look through when checking for
-/// constants.
+/// Flattens a chain of rebinds into rebinds of the same input, dropping
+/// intermediate rebinds to unknown shapes and shortening the chains constant
+/// checks must look through.
 ///
 /// Example:
 ///

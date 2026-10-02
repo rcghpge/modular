@@ -60,21 +60,19 @@ public:
   }
 
 private:
-  /// Parse the optional fields of the tensor-like type (e.g. deviceRef and
-  /// metadata).
+  /// Parse the optional deviceRef and metadata fields.
   ParseResult parseOptionalFields();
 
   /// Try to parse the current token as the metadata field.
   ParseResult parseMetadata();
 
-  /// Parse the last part of the tensor type, the closing '>'.
+  /// Parse the closing '>'.
   ParseResult parseComplete();
 
 private:
   AsmParser &parser;
   mlir::SMLoc startLoc;
 
-  // Fields of tensor-like types
   MOSH::ShapeAttr shape;
   DType dtype;
   DeviceRefAttr deviceRef;
@@ -86,13 +84,11 @@ ParseResult TensorLikeTypeParser::parseComplete() {
 }
 
 ParseResult TensorLikeTypeParser::parseMetadata() {
-  // Metadata is the last field of the tensor type, so there are no
-  // alternatives to try.
+  // Metadata is the last field.
   if (parser.parseAttribute(metadata))
     return failure();
 
-  // There should be no more commas at this point, check anyway to provide
-  // a better error message.
+  // A trailing comma means the fields are out of order.
   if (parser.parseOptionalComma())
     return parseComplete();
 
@@ -103,30 +99,26 @@ ParseResult TensorLikeTypeParser::parseMetadata() {
 }
 
 ParseResult TensorLikeTypeParser::parseOptionalFields() {
-  // No optional commas, so we must be at the end.
   if (parser.parseOptionalComma()) {
-    // By default, if the device is not included, assume we are on host.
+    // An omitted device defaults to host.
     deviceRef = DeviceRefAttr::getDefault(parser.getContext());
     return parseComplete();
   }
 
   StringRef deviceLabel;
 
-  // The device section is expected to start with a keyword, if that fails,
-  // check if the current token is for the metadata field.
+  // No device keyword, so the field is metadata.
   if (parser.parseOptionalKeyword(&deviceLabel)) {
-    // By default, if the device is not included, assume we are on host.
+    // An omitted device defaults to host.
     deviceRef = DeviceRefAttr::getDefault(parser.getContext());
     return parseMetadata();
   }
 
   DeviceId deviceId;
 
-  // Parse the colon separator and integer device ID
   if (parser.parseColon() || parser.parseInteger(deviceId))
     return failure();
 
-  // Successfully parsed a device ref
   deviceRef = DeviceRefAttr::get(parser.getContext(), deviceLabel, deviceId);
 
   if (parser.parseOptionalComma())
@@ -138,15 +130,12 @@ ParseResult TensorLikeTypeParser::parseOptionalFields() {
 ParseResult TensorLikeTypeParser::parse() {
   startLoc = parser.getCurrentLocation();
 
-  // parse '<'
   if (parser.parseLess())
     return failure();
 
-  // parse shape
   if (parseShapeParam(parser, shape))
     return failure();
 
-  // parse dtype
   if (parser.parseComma())
     return failure();
 
@@ -167,7 +156,6 @@ void printTensorLikeType(AsmPrinter &printer, TypedAttr shape, DType dtype,
   MOSH::printShapeTypedAttr(printer, shape);
   printer << ", " << dtype.getAsString();
 
-  // Only print the device if it is not the default/host device.
   if (device && device != DeviceRefAttr::getDefault(device.getContext()))
     printer << ", " << device.getLabel() << ":" << device.getId();
   else if (!device)
@@ -203,16 +191,9 @@ static std::string asString(Type type) {
 // TensorType
 //===----------------------------------------------------------------------===//
 
-/// A layout attribute will always be stored in the metadata `DictionaryAttr` of
-/// `MO::TensorType` with this name as the key.
+/// `MO::TensorType` metadata keys.
 static constexpr StringRef kLayoutMetadataName = "layout";
-
-/// A iospec attribute will always be stored in the metadata `DictionaryAttr` of
-/// `MO::TensorType` with this name as the key.
 static constexpr StringRef kIOKindMetadataName = "io";
-
-/// A mutability attribute will always be stored in the metadata
-/// `DictionaryAttr` of `MO::TensorType` with this name as the key.
 static constexpr StringRef kIsMutableMetadataName = "mut";
 
 Type TensorType::parse(AsmParser &parser) {
@@ -250,8 +231,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
     }
   }
 
-  // The device specification used to reside in the metadata dictionary,
-  // sanity check that the tensor type is not using the old format.
+  // Reject the legacy format that kept the device in metadata.
   if (metadata && metadata.contains("device"))
     return emitError()
            << "device attribute no longer resides in the metadata dictionary";
@@ -259,7 +239,7 @@ LogicalResult TensorType::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-// TODO : These are shamelessly copied out of MGP. Need to align
+// TODO: Copied from MGP; align the two.
 ErrorOr<DType> M::MO::fromMLIRType(Type mlirType) {
   if (auto unkType = llvm::dyn_cast<NoneType>(mlirType))
     return DType(); // invalid denotes unknown.
@@ -313,7 +293,6 @@ TypedAttr M::MO::getShape(Type ty) {
 TensorType TensorType::get(::mlir::MLIRContext *context,
                            MOSH::ShapeAttr shapeAttr, DType dtype,
                            DeviceRefAttr deviceRef, DictionaryAttr metadata) {
-  // Ensure device ref is always populated
   if (!deviceRef)
     deviceRef = DeviceRefAttr::getDefault(context);
 
@@ -321,7 +300,6 @@ TensorType TensorType::get(::mlir::MLIRContext *context,
                    std::move(deviceRef), std::move(metadata));
 }
 
-// Checked base builder
 TensorType TensorType::getChecked(function_ref<InFlightDiagnostic()> emitError,
                                   ::mlir::MLIRContext *context,
                                   MOSH::ShapeAttr shapeAttr, DType dtype,
@@ -547,8 +525,7 @@ TensorType TensorType::cloneWith(DeviceRefAttr deviceRef) const {
 }
 
 bool TensorType::hasRank() const {
-  // TensorType::verify guarantees the shape attr is a ShapeAttr, which is
-  // always ranked. Kept for source-compatibility with callers and for parity
+  // verify guarantees a ShapeAttr, which is always ranked. Kept for parity
   // with ShapedTypeInterface.
   return true;
 }
@@ -679,25 +656,23 @@ Type ListType::cloneWithNewDevice(DeviceRefAttr device) const {
 
 namespace {
 
-/// Description of a bundle whose element tensor types can all be reconstructed
-/// from a single shape/dtype/device-range tuple. Used by the BundleType
-/// printer and parser to share the compact-form representation.
+/// A bundle whose element tensor types are reconstructible from one
+/// shape/dtype/device-range tuple; the compact form shared by the BundleType
+/// printer and parser.
 struct CompactBundleInfo {
   TypedAttr shapeAttr;
   DType dtype;
-  // Shared device of every element. Non-null.
+  // Non-null.
   DeviceRefAttr deviceRef;
   DictionaryAttr metadata;
-  // ID of element 0 and element N-1. These are equal for single-element
-  // bundles.
+  // IDs of elements 0 and N-1.
   DeviceId firstId;
   DeviceId lastId;
 };
 
-/// Returns a CompactBundleInfo if `elementTypes` can be pretty-printed in the
-/// compact form. A bundle is compact-eligible iff all elements are TensorTypes
-/// with identical shape, dtype, device label, and metadata, and their device
-/// IDs are ordered and contiguous (`ids[i] == ids[0] + i`).
+/// Returns a CompactBundleInfo iff all elements are TensorTypes with identical
+/// shape, dtype, device label, and metadata, and contiguous device IDs
+/// (`ids[i] == ids[0] + i`).
 std::optional<CompactBundleInfo>
 computeCompactBundleInfo(ArrayRef<Type> elementTypes) {
   if (elementTypes.empty())
@@ -740,16 +715,15 @@ Type BundleType::parse(AsmParser &parser) {
   if (parser.parseLess() || parser.parseLSquare())
     return {};
 
-  // Lookahead: the verbose form has a tensor type at this point; the compact
-  // form has a shape `[...]` dim list (integers / `?` / param refs), which is
-  // not a type.
+  // The verbose form has a tensor type here; the compact form has shape dims,
+  // which are not a type.
   Type firstType;
   OptionalParseResult typeRes = parser.parseOptionalType(firstType);
   if (typeRes.has_value()) {
     if (failed(*typeRes))
       return {};
 
-    // Verbose form: finish parsing the remaining tensor types.
+    // Verbose form.
     SmallVector<Type> elementTypes{firstType};
     while (succeeded(parser.parseOptionalComma())) {
       Type ty;
@@ -762,8 +736,7 @@ Type BundleType::parse(AsmParser &parser) {
     return BundleType::get(parser.getContext(), elementTypes);
   }
 
-  // Compact form: the outer `[` has been consumed; parse the shape dims that
-  // would normally live inside it.
+  // Compact form; the outer `[` doubles as the shape's bracket.
   MLIRContext *ctx = parser.getContext();
   auto shapeTy = parser.getBuilder().getType<ShapeType>();
   SmallVector<TypedAttr> shapeDims;
@@ -796,10 +769,8 @@ Type BundleType::parse(AsmParser &parser) {
         return {};
       lastId = firstId;
 
-      // MLIR's AsmParser lacks a parseMinus primitive. Use the fact that the
-      // lexer tokenizes `-1` as a signed integer literal: try to consume an
-      // optional signed integer; if present it must be negative, and its
-      // absolute value is the range end.
+      // AsmParser has no parseMinus, but the lexer tokenizes `-3` as one
+      // signed integer whose absolute value is the range end.
       int64_t rangeEnd = 0;
       OptionalParseResult rangeRes = parser.parseOptionalInteger(rangeEnd);
       if (rangeRes.has_value()) {
@@ -821,13 +792,11 @@ Type BundleType::parse(AsmParser &parser) {
 
       firstDevice = DeviceRefAttr::get(ctx, deviceLabel, firstId);
 
-      // Optional metadata after the device section.
       if (succeeded(parser.parseOptionalComma())) {
         if (parser.parseAttribute(metadata))
           return {};
       }
     } else {
-      // No device keyword; the comma introduces a metadata attribute.
       if (parser.parseAttribute(metadata))
         return {};
     }
@@ -841,7 +810,6 @@ Type BundleType::parse(AsmParser &parser) {
   if (!metadata)
     metadata = DictionaryAttr::get(ctx);
 
-  // Materialize one TensorType per device ID in the range.
   size_t numElements =
       hasExplicitDevice ? static_cast<size_t>(lastId - firstId + 1) : 1;
   SmallVector<Type> elementTypes;
@@ -868,9 +836,8 @@ void BundleType::print(AsmPrinter &printer) const {
     MOSH::printShapeTypedAttr(printer, info->shapeAttr);
     printer << ", " << info->dtype.getAsString();
 
-    // Elide the device section only when the parser would re-derive the
-    // correct bundle from its absence: a single element on the default host
-    // device.
+    // Elide the device only when the parser would re-derive it: a single
+    // element on the default host device.
     auto defaultDev = DeviceRefAttr::getDefault(getContext());
     bool singleDefault =
         elementTypes.size() == 1 && info->deviceRef == defaultDev;
@@ -887,7 +854,6 @@ void BundleType::print(AsmPrinter &printer) const {
     return;
   }
 
-  // Verbose fallback: print the full list of element tensor types.
   printer << "<[";
   llvm::interleaveComma(elementTypes, printer,
                         [&](Type ty) { printer.printType(ty); });
@@ -915,8 +881,8 @@ void printDeviceList(AsmPrinter &printer, ArrayRef<DeviceRefAttr> devices) {
   if (devices.empty())
     return;
 
-  // Try the compact `label:first[-last]` form when all devices share a label
-  // and have consecutive IDs starting at firstId.
+  // Compact `label:first[-last]` form when labels match and IDs are
+  // consecutive.
   StringRef label = devices.front().getLabel();
   DeviceId firstId = devices.front().getId();
   bool isContiguous = true;
@@ -934,7 +900,6 @@ void printDeviceList(AsmPrinter &printer, ArrayRef<DeviceRefAttr> devices) {
     return;
   }
 
-  // Fallback: comma-separated `label:id` pairs.
   llvm::interleaveComma(devices, printer, [&](DeviceRefAttr d) {
     printer << d.getLabel() << ':' << d.getId();
   });
@@ -944,9 +909,8 @@ ParseResult parseDeviceList(AsmParser &parser,
                             SmallVectorImpl<DeviceRefAttr> &devices) {
   MLIRContext *ctx = parser.getContext();
 
-  // Parse one entry: `label:id[-lastId]` (compact range) or just `label:id`.
-  // We accept a comma-separated list of these.  The first entry may be a
-  // range, e.g. `gpu:0-3, cpu:0` -- ranges and single entries can mix.
+  // Entries are `label:id` or `label:id-lastId` and may mix, e.g.
+  // `gpu:0-3, cpu:0`.
   auto parseOneEntry = [&]() -> ParseResult {
     StringRef label;
     if (parser.parseKeyword(&label))
@@ -956,8 +920,7 @@ ParseResult parseDeviceList(AsmParser &parser,
       return failure();
     DeviceId lastId = firstId;
 
-    // Lookahead for `-<lastId>` as a signed integer literal (lexer
-    // tokenizes `-1` as a single signed integer).
+    // The lexer tokenizes `-<lastId>` as one signed integer.
     int64_t rangeEnd = 0;
     OptionalParseResult rangeRes = parser.parseOptionalInteger(rangeEnd);
     if (rangeRes.has_value()) {
@@ -1076,8 +1039,7 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (!llvm::all_of(shape.getValues(), ShapeAttr::isDim))
     return emitError() << "buffer dimensions must be a getDimType()";
 
-  // The device specification used to reside in the metadata dictionary,
-  // sanity check that the buffer type is not using the old format.
+  // Reject the legacy format that kept the device in metadata.
   if (metadata && metadata.contains("device"))
     return emitError()
            << "device attribute no longer resides in the metadata dictionary";
@@ -1089,7 +1051,6 @@ LogicalResult BufferType::verify(function_ref<InFlightDiagnostic()> emitError,
 BufferType BufferType::get(::mlir::MLIRContext *context, MOSH::ShapeAttr shape,
                            DType dtype, DeviceRefAttr deviceRef,
                            DictionaryAttr metadata) {
-  // Ensure device ref is always populated
   if (!deviceRef)
     deviceRef = DeviceRefAttr::getDefault(context);
 
@@ -1097,7 +1058,6 @@ BufferType BufferType::get(::mlir::MLIRContext *context, MOSH::ShapeAttr shape,
                    std::move(deviceRef), std::move(metadata));
 }
 
-// Checked base builder
 BufferType BufferType::getChecked(function_ref<InFlightDiagnostic()> emitError,
                                   ::mlir::MLIRContext *context,
                                   MOSH::ShapeAttr shape, DType dtype,

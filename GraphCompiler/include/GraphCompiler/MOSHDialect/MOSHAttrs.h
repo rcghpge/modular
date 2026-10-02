@@ -29,22 +29,17 @@ void printShapeTypedAttr(AsmPrinter &p, TypedAttr shapeAttr);
 /// Convert an attribute that has MOSH::ShapeType to string.
 std::string shapeTypedAttrToStr(TypedAttr attr);
 
-/// Helper to find the location of a parameter in a shape. Returns -1 if the
-/// parameter does not appear in the shape.
+/// Returns the index of `decl` in `shape`, or -1 if absent.
 int64_t findDeclIdx(ShapeAttr shape, KGEN::ParamDeclAttr decl);
 
 /// Parse the parametric dimensions of a MOSH::ShapeAttr.
 ParseResult parseShapeValue(AsmParser &p, SmallVectorImpl<TypedAttr> &values);
-
-/// Parse the parametric dimensions of a MOSH::ShapeAttr.
 ParseResult parseShapeValue(AsmParser &p, SmallVectorImpl<TypedAttr> &values,
                             MOSH::ShapeType type);
 
 /// Print the parametric dimensions of a MOSH::ShapeAttr.
 void printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values,
                      MOSH::ShapeType type);
-
-/// Print the parametric dimensions of a MOSH::ShapeAttr.
 void printShapeValue(AsmPrinter &p, ArrayRef<TypedAttr> values);
 
 /// Print a single parametric dimensions from a MOSH::ShapeAttr.

@@ -9,10 +9,7 @@
 // to that kernel (with a trivial store epilogue per result), or, for
 // elementwise kernels, a `map.iter.foreach` expressing the loop body
 // explicitly as scalar `map.load` / `map.call.elementwise` / `map.store` ops.
-// Kernel selection
-// reuses the same `mogg.kernel.decl` machinery as MOToMOGG (MojoRegistry /
-// getMojoKernelAdaptor). Contexts, variadics and scalars are intentionally
-// NOT materialized here; that is deferred until after fusion.
+// Contexts, variadics and scalars are materialized after fusion, not here.
 //
 //===----------------------------------------------------------------------===//
 
@@ -43,19 +40,11 @@ namespace M::MO {
 
 namespace {
 
-// The runtime tensor representation caps rank at `kMaxRank` (see
-// Support/ML/TensorShape.h; `MGP::TensorSpecType::verify` enforces it and
-// `TensorSpecType::get` asserts on a violation). A ranked tensor above that cap
-// has no valid runtime representation. The legacy MO->MOGG path rejects such an
-// op with a graceful diagnostic (`opHasCompatibleTypes` in MOToMOGG.cpp); MAP
-// must not claim it, or it lowers to a rank>kMaxRank `map.iter` kernel that
-// then aborts building the MGP tensor spec. Deferring it here lets the op fall
-// through to MO->MOGG and get the same graceful error.
+// The runtime tensor representation caps rank at `kMaxRank`
+// (Support/ML/TensorShape.h); `MGP::TensorSpecType::get` asserts above it.
 static bool hasLowerableRank(Operation *op) {
   auto rankOk = [](Type t) {
     MO::TensorType tt = MO::dynCastFromTensorLike(t);
-    // Unranked / non-tensor operands are unchanged from prior behavior; only a
-    // ranked tensor above the cap is deferred.
     return !tt || !tt.hasRank() ||
            tt.getRank() <= static_cast<int64_t>(kMaxRank);
   };
@@ -66,7 +55,7 @@ static bool hasLowerableRank(Operation *op) {
 bool shouldLower(Operation *op) {
   if (isa<MO::PreservedDuringKernelLowering>(op))
     return false;
-  // No MAP form: returns by value. Left for the MOGG conversion.
+  // No MAP form: returns by value. Lowered by MAPToMOGG.
   if (isa<MO::InvokeShapeFuncOp>(op))
     return false;
   Dialect *dialect = op->getDialect();
@@ -80,10 +69,9 @@ MAP::IterEpilogueOp buildStoreEpilogue(OpBuilder &builder, Location loc,
   auto outType = cast<MO::TensorType>(out.getType());
   auto indexType = MAP::IndexType::get(builder.getContext(), outType.getRank());
 
-  // `$intermediateTensor` must be passed (as null): dropping it binds the call
-  // to the generic `(TypeRange, ValueRange operands)` builder, which does not
-  // set `operandSegmentSizes`. `AllocateAccumulatingBuffers` fills it in after
-  // fusion.
+  // Pass a null `$intermediateTensor` explicitly; omitting it picks the
+  // generic builder, which does not set `operandSegmentSizes`.
+  // `AllocateAccumulatingBuffers` fills it in after fusion.
   auto epilogue =
       MAP::IterEpilogueOp::create(builder, loc, out.getType(), ValueRange{out},
                                   /*intermediateTensor=*/Value());
@@ -118,9 +106,8 @@ MAP::IterPrologueOp buildLoadPrologue(OpBuilder &builder, Location loc,
   return prologue;
 }
 
-// Reads the memory effects of an op about to be replaced by a kernel, so the
-// kernel can carry them forward and downstream passes see accurate effects
-// instead of the conservative "unknown" default.
+// Effects for the replacing kernel to carry, instead of the conservative
+// "unknown" default.
 std::pair<bool, bool> getReadWriteEffects(Operation *op) {
   auto memEffectOp = dyn_cast<MemoryEffectOpInterface>(op);
   if (!memEffectOp)
@@ -129,7 +116,6 @@ std::pair<bool, bool> getReadWriteEffects(Operation *op) {
           memEffectOp.hasEffect<MemoryEffects::Write>()};
 }
 
-// Stamp the async launch policy the old MO->MOGG path derives from `srcOp`.
 template <typename OpT>
 void stampAsyncLaunch(OpT iterOp, Operation *srcOp) {
   iterOp.setIsAsync(!MO::kernelRequiresSyncLaunch(srcOp));
@@ -149,13 +135,9 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
   OpBuilder builder(op);
   Location loc = op->getLoc();
 
-  // A mutating op's chain, when present, is always its own last operand and
-  // last result (the codebase-wide convention -- see e.g. mo.mutable.store).
-  // `map.iter.opaque` threads it through a dedicated `$inputChain` operand and
-  // a trailing result instead of an ordinary, ambiguous `inputs`/`results`
-  // entry -- and, like `map.iter.foreach`/`mogg.kernel`, keeps it out of the
-  // body entirely (no block argument, never a `map.call.opaque` operand): it
-  // is pure sequencing plumbing no opaque kernel's `execute` reads.
+  // A mutating op's chain is its last operand and last result.
+  // `map.iter.opaque` threads it through `$inputChain` and a trailing result,
+  // and keeps it out of the body: no kernel's `execute` reads it.
   ValueRange operands = op->getOperands();
   bool hasInputChain =
       !operands.empty() && isa<MO::ChainType>(operands.back().getType());
@@ -167,10 +149,9 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
   auto opaque = MAP::IterOpaqueOp::create(builder, loc, resultTypes,
                                           nonChainOperands, inputChain,
                                           /*fusionInfo=*/Attribute());
-  // A collective executes on every device it reduces across, so the singular
-  // getExecutionDevice() behind getDeviceOrDefaultAny asserts on one. Take the
-  // first, as MO-to-MOGG lowering does -- the label only picks host
-  // or GPU codegen. TODO: carry all of them, see GEX-2278.
+  // A collective executes on several devices, on which getDeviceOrDefaultAny
+  // asserts. Take the first; the label only picks host or GPU codegen.
+  // TODO(GEX-2278): carry all of them.
   DeviceRefAttr device;
   if (auto hasDevice = dyn_cast<MO::MOHasDeviceInterface>(op)) {
     SmallVector<DeviceRefAttr> devices = hasDevice.getExecutionDevices();
@@ -186,10 +167,6 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
   stampAsyncLaunch(opaque, op);
 
   // Body block args shadow the non-chain inputs then the non-chain outputs.
-  // The chain (in and out) is pure MGP sequencing threaded through the op's
-  // dedicated `$inputChain` operand and trailing chain result; it is never a
-  // body block arg and never reaches the wrapped `map.call.opaque` -- no opaque
-  // kernel's `execute` takes a chain, so the body has nothing to do with it.
   Block *body = builder.createBlock(&opaque.getBody());
   SmallVector<BlockArgument> ins;
   for (Value operand : nonChainOperands)
@@ -199,9 +176,8 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
   for (Type resultType : resultTypes) {
     if (isa<MO::ChainType>(resultType))
       continue;
-    // A kernel allocates its `!mo.opaque` result internally and returns it, so
-    // there is no destination to fill and no block argument for it: the body's
-    // `map.yield` carries it out instead.
+    // A `!mo.opaque` result is returned by value and carried out by
+    // `map.yield`, so it has no block argument.
     if (isa<MO::OpaqueType>(resultType)) {
       opaqueResultType = resultType;
       continue;
@@ -238,14 +214,10 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
     callOutputs.push_back(buildStoreEpilogue(builder, loc, out).getResult());
   }
 
-  // A kernel parameterized only through an opaque operand or result (e.g.
-  // `MakeSimdPair.execute[P0, P1]() -> SIMDPair[P0, P1]`) names those
-  // parameters nowhere in the op's own dictionary, so resolve them from the
-  // opaque types the way MO->MOGG does.
+  // Parameters named only by opaque types (e.g.
+  // `MakeSimdPair.execute[P0, P1]() -> SIMDPair[P0, P1]`).
   DictionaryAttr params = inferParameters(op, builder);
   if (adaptor.executeFunction && adaptor.executeFunction->attr) {
-    // `inferOpaqueParameters` appends to `withOpaque`, which starts as a copy
-    // of what is already inferred.
     SmallVector<NamedAttribute> withOpaque(params.begin(), params.end());
     MOGG::inferOpaqueParameters(withOpaque, op, *adaptor.executeFunction,
                                 adaptor.executeFunction->attr.getParams());
@@ -261,15 +233,12 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
       adaptor.registeredOpName, params,
       /*inputs=*/callInputs,
       /*outputs=*/callOutputs);
-  // Carry the source op's same-variadic-operand-size property forward: it is
-  // needed later to split the call's flat operands back into equal-length
-  // variadic groups (e.g. a bundled collective's N peers and N signal buffers).
+  // Needed later to split the flat operands back into equal-length variadic
+  // groups (e.g. a bundled collective's N peers and N signal buffers).
   callOp.setHasSameVariadicOperandSize(
       isa<MO::SameVariadicOperandSizeInterface>(op));
 
-  // A DPS output needs no terminator -- the output block args themselves are
-  // the op's results. A by-value opaque does: `map.yield` is what connects the
-  // call's return value to the enclosing op's result.
+  // Only a by-value opaque result needs a terminator.
   if (opaqueResultType)
     MAP::YieldOp::create(builder, loc, callOp.getOpaqueResult());
 
@@ -285,7 +254,6 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
 LogicalResult
 lowerElementwiseToForeach(Operation *op,
                           const MOGG::KernelDeclAdaptor &adaptor) {
-  // Multi-output elementwise kernels are not supported yet.
   if (op->getNumResults() != 1)
     return op->emitOpError(
         "MOToMAP: elementwise op must have exactly one result");
@@ -322,7 +290,6 @@ lowerElementwiseToForeach(Operation *op,
   OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
   BlockArgument idxArg = body->getArguments().back();
 
-  // map.load for each input.
   SmallVector<Value> scalarLoads;
   for (auto [i, operand] : llvm::enumerate(op->getOperands())) {
     BlockArgument inputArg = body->getArgument(i);
@@ -332,7 +299,6 @@ lowerElementwiseToForeach(Operation *op,
     scalarLoads.push_back(loaded);
   }
 
-  // map.call.elementwise — kernel symbol from the fully resolved Mojo name.
   auto kernelSymbol =
       FlatSymbolRefAttr::get(ctx, adaptor.fullyResolvedName.strref());
   DictionaryAttr params = inferParameters(op, builder);
@@ -341,7 +307,6 @@ lowerElementwiseToForeach(Operation *op,
   Value scalar = MAP::CallElementwiseOp::create(
       bodyBuilder, loc, elemTy, kernelSymbol, params, idxArg, scalarLoads);
 
-  // map.store into the output block argument.
   BlockArgument outputArg =
       body->getArgument(static_cast<unsigned>(op->getNumOperands()));
   MAP::StoreOp::create(bodyBuilder, loc, outputArg, idxArg, scalar);
@@ -351,17 +316,10 @@ lowerElementwiseToForeach(Operation *op,
   return success();
 }
 
-// Lowers mo.mutable.store to a map.iter.foreach that writes directly into
-// its buffer operand (folded into `inputs`, per map.iter.foreach's "operands
-// shadowed as block args" convention) and threads a chain in and out. Its
-// elementwise function is a scalar identity (see gather_scatter.mojo's
-// MutableStore); the actual in-place write happens via `map.store` into the
-// buffer instead of a materialized tensor output.
-//
-// mo.mutable.store is the one op MOGG lowering itself special-cases by
-// identity for this (`isa<MO::MutableStoreOp>(moOp)`, TODO GEX-2360
-// acknowledges there's no generic mechanism to generalize) -- mirrored
-// here rather than generalized, for the same reason.
+// Lowers mo.mutable.store to a map.iter.foreach that `map.store`s directly
+// into its buffer input and threads a chain in and out. Its elementwise
+// function is a scalar identity (gather_scatter.mojo's MutableStore).
+// Special-cased by identity, as there is no generic mechanism (GEX-2360).
 LogicalResult
 lowerMutableStoreToForeach(MO::MutableStoreOp op,
                            const MOGG::KernelDeclAdaptor &adaptor) {
@@ -388,9 +346,8 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
       /*hasWriteEffect=*/hasWriteEffect);
   stampAsyncLaunch(foreachOp, op);
 
-  // Body block args: [tensor value, buffer, map.index<rank>]. No "outputs"
-  // block arg at all -- the buffer input itself is the store target, and
-  // the sole result (the output chain) has no body block argument.
+  // Body block args: [tensor value, buffer, map.index<rank>]; the buffer is
+  // the store target.
   Block *body = &foreachOp.getBody().emplaceBlock();
   BlockArgument valueArg = body->addArgument(op.getInTensor().getType(), loc);
   BlockArgument bufferArg = body->addArgument(op.getInBuffer().getType(), loc);
@@ -416,12 +373,9 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
   return success();
 }
 
-// Lowers mo.slice to a standalone (unfused) map.iter.foreach over the
-// *output* shape (the "pull" model: each output index computes the input
-// index it reads from, rather than each input index computing where it
-// writes): the body computes the corresponding input index via
-// map.index.slice, loads, and stores unchanged. One kernel per mo.slice,
-// same as lowerElementwiseToForeach's starting point.
+// Lowers mo.slice to a map.iter.foreach over the *output* shape (the "pull"
+// model): the body computes the input index via map.index.slice, loads, and
+// stores unchanged.
 LogicalResult lowerSliceToForeach(MO::SliceOp op) {
   MLIRContext *ctx = op->getContext();
   Location loc = op->getLoc();
@@ -435,9 +389,7 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
     return op->emitOpError("MOToMAP: slice must preserve rank");
   int64_t rank = outShape.getRank();
 
-  // A bound is a compile-time constant only if the *whole* start/stop/step
-  // tensor operand is one: MO has no per-dimension constant tracking finer
-  // than "is this whole tensor a mo.constant".
+  // MO tracks constness per tensor, not per dimension.
   auto boundsOrDynamic = [&](Value v) {
     if (auto constVec = MO::tryGetConstantIntVector(cast<MO::TensorValue>(v)))
       return mlir::DenseI64ArrayAttr::get(ctx, *constVec);
@@ -450,9 +402,8 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
   SmallVector<int64_t> stops(boundsOrDynamic(op.getStop()).asArrayRef());
   SmallVector<int64_t> steps(boundsOrDynamic(op.getStep()).asArrayRef());
 
-  // The spec stores resolved bounds, but MO accepts Python-style negative
-  // indices and out-of-range values and normalizes them in its own shape
-  // function. Do the same here, matching materializeSliceShape's clamp.
+  // Normalize Python-style negative and out-of-range bounds, matching
+  // materializeSliceShape's clamp.
   for (int64_t i = 0; i < rank; ++i) {
     if (ShapedType::isDynamic(inDims[i]) || ShapedType::isDynamic(steps[i]) ||
         steps[i] == 0)
@@ -471,8 +422,7 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
     stops[i] = normalize(stops[i]);
   }
 
-  // Verify before constructing: the plain `get` asserts on a rejected spec,
-  // which turns an unsupported slice into a crash instead of a diagnostic.
+  // Verify first: `get` asserts on a rejected spec.
   auto emitSliceError = [&] { return op->emitOpError("MOToMAP: "); };
   if (failed(MAP::SliceSpecAttr::verify(
           emitSliceError, MAP::ViewSignatureAttr::get(ctx, inShape, outShape),
@@ -520,12 +470,9 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
   return success();
 }
 
-// Lowers mo.static.broadcast_to to a standalone (unfused) map.iter.foreach
-// over the *output* shape (same pull model as lowerSliceToForeach): the body
-// computes the input index via map.index.broadcast, loads, and stores
-// unchanged. Unlike slice, broadcast can add rank (numpy semantics), so the
-// loop's own index (output rank) and the projected load index (input rank)
-// can differ.
+// Lowers mo.static.broadcast_to like lowerSliceToForeach, via
+// map.index.broadcast. Broadcast can add rank, so the load index rank may
+// differ from the loop's.
 LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
   MLIRContext *ctx = op->getContext();
   Location loc = op->getLoc();
@@ -576,13 +523,8 @@ LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
   return success();
 }
 
-// Lowers mo.static.reshape to a standalone (unfused) map.iter.foreach over
-// the *output* shape (same pull model as lowerSliceToForeach): the body
-// computes the input index via map.index.reshape, loads, and stores
-// unchanged. Unlike slice/broadcast/transpose, rank can change in either
-// direction -- reshape only preserves the total element count -- so the
-// loop's own index (output rank) and the projected load index (input rank)
-// can differ arbitrarily.
+// Lowers mo.static.reshape like lowerSliceToForeach, via map.index.reshape.
+// Rank may change in either direction.
 LogicalResult lowerReshapeToForeach(MO::Static::ReshapeOp op) {
   MLIRContext *ctx = op->getContext();
   Location loc = op->getLoc();
@@ -631,15 +573,9 @@ LogicalResult lowerReshapeToForeach(MO::Static::ReshapeOp op) {
   return success();
 }
 
-// Lowers mo.transpose to a standalone (unfused) map.iter.foreach over the
-// *output* shape (same pull model as lowerSliceToForeach): the body computes
-// the input index via map.index.transpose, loads, and stores unchanged. The
-// perm rides in as a runtime operand, exactly like slice's starts/stops/steps:
-// where the whole perm tensor is a compile-time constant its values are also
-// baked into `spec` (so a fully-static transpose keeps a static view and never
-// reads the operand), and where it isn't -- the eager interpreter's
-// one-graph-per-op transpose -- `spec` marks every entry dynamic and the
-// operand supplies the permutation at runtime.
+// Lowers mo.transpose like lowerSliceToForeach, via map.index.transpose. The
+// perm is a runtime operand, also baked into `spec` when constant; otherwise
+// (the eager interpreter's one-graph-per-op transpose) `spec` is all-dynamic.
 LogicalResult lowerTransposeToForeach(MO::TransposeOp op) {
   MLIRContext *ctx = op->getContext();
   Location loc = op->getLoc();
@@ -653,10 +589,6 @@ LogicalResult lowerTransposeToForeach(MO::TransposeOp op) {
     return op->emitOpError("MOToMAP: transpose must preserve rank");
   int64_t rank = outShape.getRank();
 
-  // A perm is compile-time only if the *whole* perm tensor operand is a
-  // constant -- MO has no per-dimension constant tracking -- so it is
-  // all-or-nothing, the same rule slice's bounds follow. Default to the
-  // all-dynamic spec, then override when the operand is a constant.
   auto permAttr = mlir::DenseI64ArrayAttr::get(
       ctx, SmallVector<int64_t>(rank, ShapedType::kDynamic));
   if (auto permVec =
@@ -699,11 +631,7 @@ LogicalResult lowerTransposeToForeach(MO::TransposeOp op) {
   return success();
 }
 
-// Lowers a single MO kernel op to its MAP form in place. Returns the created
-// MAP kernel op for the opaque path (the only case a caller currently needs the
-// op back), a null `Operation *` for the other successful paths (lowered, no op
-// tracked) and for an op with no kernel adaptor (left unchanged), or
-// `failure()` on a lowering error.
+// See `lowerMOOpToMAP`.
 FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
@@ -716,9 +644,7 @@ FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
     return static_cast<Operation *>(nullptr);
   }
 
-  // Elementwise kernels don't have an executeFunction (only
-  // elementwiseFunction), so this must be checked before the executeFunction
-  // gate below.
+  // Elementwise kernels have no executeFunction.
   if (adaptor->isElementwise()) {
     if (failed(lowerElementwiseToForeach(op, *adaptor)))
       return failure();
@@ -769,10 +695,6 @@ struct MOToMAPPass : public M::MO::impl::MOToMAPBase<MOToMAPPass> {
 
     SmallVector<Operation *> worklist;
     WalkResult walkResult = getOperation()->walk([&](Operation *op) {
-      // A tensor whose rank exceeds the runtime cap (kMaxRank) has no valid
-      // runtime representation and would abort MGP tensor-spec construction
-      // later. The legacy MO->MOGG path used to reject these with a
-      // diagnostic; reject them here now that it is gone.
       Dialect *dialect = op->getDialect();
       if (dialect && isa<MO::MODialect>(dialect) && !hasLowerableRank(op)) {
         op->emitError() << "'" << op->getName().getStringRef()

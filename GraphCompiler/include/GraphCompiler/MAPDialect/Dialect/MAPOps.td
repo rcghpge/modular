@@ -58,16 +58,10 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     (`map.iter.prologue` / `map.iter.epilogue`) plus the `map.call.opaque` that
     invokes the kernel; it is not a sequence of computation ops.
 
-    The region is isolated from above: both `inputs` and `outputs` are shadowed
-    as body block arguments (same convention as `map.iter.foreach`) so the
-    callbacks and the `map.call.opaque` address them without reaching outside
-    the op. The op result matching each output carries the filled tensor out.
-    When every result is produced this way (the common case today), the body
-    has no terminator: the output block arguments themselves are the results,
-    the same destination-passing-style convention `mogg.kernel` uses. A
-    trailing `map.yield` is only needed if some `map.call.opaque` in the body
-    produces an actual (non-DPS) return value that isn't already one of the
-    output block arguments.
+    The region is isolated from above: `inputs` and `outputs` are shadowed as
+    body block arguments. Outputs are destination-passing, so the body needs no
+    terminator unless a `map.call.opaque` returns a by-value result, which
+    `map.yield` carries out.
 
     ```mlir
     %mm = map.iter.opaque
@@ -81,34 +75,20 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     }
     ```
 
-    A kernel that mutates memory takes an `!mo.chain` through a dedicated
-    `$inputChain` operand (rather than an ordinary, ambiguous `$inputs` entry
-    found by scanning for a chain-typed value) and returns one as the trailing
-    entry of `results`. Like `mogg.kernel`'s and `map.iter.foreach`'s chain,
-    it is pure sequencing plumbing the body never touches: it has NO body block
-    argument on either side and never reaches the wrapped `map.call.opaque` --
-    no opaque kernel's `execute` takes a chain (it writes memory in place and
-    the chain only orders that against other ops). The body's block arguments
-    are exactly the non-chain inputs then the non-chain outputs.
+    A mutating kernel takes an `!mo.chain` through `$inputChain` and returns
+    one as the trailing result. The chain is pure sequencing: it has no block
+    argument and never reaches the `map.call.opaque`.
 
-    `hasReadEffect`/`hasWriteEffect` carry forward the memory effects of the
-    original op this kernel lowers, so downstream passes (DCE, CSE, invariant
-    code motion) see accurate effect information via `MemoryEffectsOpInterface`
-    instead of the conservative "unknown effects" default.
+    `hasReadEffect`/`hasWriteEffect` carry forward the original op's memory
+    effects instead of the conservative "unknown effects" default.
 
-    `fusionInfo` records the fusion-tree provenance of the kernel (a
-    `mogg.fusion` attribute), taking over the role the attribute of the same
-    name played on `mogg.kernel`. It is typed as `AnyAttr` here so the `map`
-    dialect need not depend on `mogg`.
+    `fusionInfo` records the kernel's fusion-tree provenance (a `mogg.fusion`
+    attribute), typed `AnyAttr` so `map` need not depend on `mogg`.
 
-    The execution device is an explicit `#M.device_ref` attribute
-    (`MO_ExplicitDevice`), the same convention `mogg.kernel` uses, rather than
-    something inferred from the operand and result types the way
-    `map.iter.foreach` does it. Inference has no answer for a kernel whose
-    tensors carry no device annotation -- it cannot tell "runs on the host"
-    from "don't know" -- which matters for passes that must refuse to act on
-    device kernels. Whoever builds the op stamps the device; the trait's
-    verifier requires it.
+    The execution device is an explicit `#M.device_ref` (`MO_ExplicitDevice`)
+    rather than inferred from types as on `map.iter.foreach`: inference cannot
+    tell "runs on the host" from "don't know" for unannotated tensors, which
+    matters for passes that must refuse to act on device kernels.
   }];
 
   let arguments = (ins
@@ -124,32 +104,22 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
 
   let extraClassDeclaration = [{
     /// The number of results that have a body block argument. `$results` is
-    /// ordered [DPS results..., by-value opaque?, chain?], and only the DPS
-    /// ones are filled through a block argument: a by-value opaque is returned
-    /// by the body's `map.yield` and the chain is pure plumbing.
+    /// ordered [DPS results..., by-value opaque?, chain?]; only the DPS ones
+    /// have one.
     unsigned getNumNonChainResults();
 
-    /// The by-value `!mo.opaque` result, or null when there is none. Yielded
-    /// by the body rather than written through a destination.
+    /// The by-value `!mo.opaque` result, or null when there is none.
     ::mlir::Value getOpaqueResult();
 
-    /// The subrange of body entry-block arguments that are the DPS outputs:
-    /// the trailing `getNumNonChainResults()` arguments (block arguments are
-    /// ordered [non-chain inputs..., non-chain outputs...], outputs last;
-    /// neither the chain nor a by-value opaque has a block argument).
+    /// The trailing `getNumNonChainResults()` body block arguments (block
+    /// arguments are ordered [non-chain inputs..., DPS outputs...]).
     ::mlir::Block::BlockArgListType getOutputBlockArgs();
 
-    /// The subrange of body entry-block arguments shadowing `$inputs` -- the
-    /// arguments that precede the output block args. The `$inputChain` has no
-    /// block argument, so this maps one-to-one to `$inputs`.
+    /// The body block arguments shadowing `$inputs`, one-to-one.
     ::mlir::Block::BlockArgListType getInputBlockArgs();
 
     /// Returns the `$inputs` operand `arg` shadows, or null when `arg` shadows
-    /// none (an output block arg, or an argument of some other op entirely).
-    ///
-    /// The inverse of `getInputBlockArgs()`, matched by identity rather than
-    /// by indexing `$inputs` with a raw argument number, so a caller walking
-    /// outward from a block argument never restates where the inputs end.
+    /// none (e.g. an output block arg). The inverse of `getInputBlockArgs()`.
     ::mlir::Value getInputFor(::mlir::BlockArgument arg);
 
     /// Inserts `vals` as new (non-chain) inputs starting at `idx`, updating
@@ -160,13 +130,10 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     /// both operands and the corresponding shadowed body block arguments.
     void eraseInputsAt(unsigned idx, size_t len = 1);
 
-    /// Returns the output chain, or null when there is none -- always the
-    /// last entry of `results` when present (mirrors
-    /// `IterForeachOp::getOutputChain()`/`KernelOp::maybeGetOutChain()`).
+    /// Returns the output chain (always the last result), or null.
     ::mlir::Value getOutputChain();
 
-    /// Sets the input chain operand. No-op when `chain` is null (mirrors
-    /// `IterForeachOp::setChain()`/`MOGG::KernelOp::setChain()`). Requires a
+    /// Sets the input chain operand. No-op when `chain` is null. Requires a
     /// chain input to already exist.
     void setChain(::mlir::Value chain);
   }];
@@ -183,10 +150,8 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
 def MAP_YieldOp : MAP_Op<"yield", [Terminator]> {
   let summary = "Terminates a map.iter.opaque body, yielding its results.";
   let description = [{
-    An optional terminator of a `map.iter.opaque` body, needed only when some
-    `map.call.opaque` produces a return value that is not already one of the
-    body's output block arguments (the DPS case, the common one today, has no
-    terminator at all).
+    Terminates a `map.iter.prologue`, or a `map.iter.opaque` body whose
+    `map.call.opaque` returns a by-value result.
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
@@ -209,20 +174,15 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
   ]> {
   let summary = "A store-path callback inlined into an opaque kernel's output.";
   let description = [{
-    An SSA callback the enclosing kernel's `map.call` consumes on its `outputs`:
-    it is handed a value and an index and stores (or further transforms then
-    stores) it. The leading block arguments are the value and the index; any
-    remaining block arguments are the captured operands (the tensors the body
-    stores into), which are the op's actual operands. The region is isolated
-    from above; the `capturing (...)` clause is print/parse sugar over those
-    operands.
+    An SSA callback the enclosing `map.call.opaque` consumes on its `outputs`:
+    it is handed a value and an index and stores (or transforms then stores)
+    it. The leading block arguments are the value and the index; the rest
+    shadow the captured operands. The `capturing (...)` clause is print/parse
+    sugar over those operands.
 
-    `$intermediateTensor` is an optional operand (NOT a capture, so it has no block
-    argument): the tensor whose base pointer the kernel-facing epilogue slice is
-    built over. `AllocateAccumulatingBuffers` sets it -- to the store target
-    normally, or to a freshly-allocated pre-cast accumulation buffer for a
-    mixed-precision accumulating kernel -- so `MAPToMOGG` can always hand the
-    lowered epilogue a real tensor instead of a dangling one.
+    `$intermediateTensor` (not a capture, so no block argument) is the tensor
+    whose base pointer the kernel-facing epilogue slice is built over. Set by
+    `AllocateAccumulatingBuffers`.
   }];
 
   let arguments = (ins
@@ -249,14 +209,10 @@ def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
   ]> {
   let summary = "A load-path callback inlined into an opaque kernel's input.";
   let description = [{
-    An SSA callback the enclosing kernel's `map.call` consumes on its `inputs`:
-    it is handed an index and produces the value the kernel should read at
-    that index, as if it had loaded the bound tensor directly. The leading
-    block argument is the index; any remaining block arguments are the
-    captured operands (the tensors the body reads from), which are the op's
-    actual operands. The region is isolated from above; the `capturing (...)`
-    clause is print/parse sugar over those operands. Terminated by
-    `map.yield`.
+    An SSA callback the enclosing `map.call.opaque` consumes on its `inputs`:
+    it is handed an index and yields the value the kernel reads there. The
+    leading block argument is the index; the rest shadow the captured operands.
+    The `capturing (...)` clause is print/parse sugar over those operands.
   }];
 
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$captures);
@@ -278,19 +234,10 @@ def MAP_ConstantOp : MAP_Op<"constant", [
   ]> {
   let summary = "A constant folded into a kernel body.";
   let description = [{
-    Carries the value of an `mo.constant` that
-    `FuseConstantIterOpaqueInputs` folded into a `map.iter.opaque` body, where
-    it has no operand to arrive on. It reads like any other tensor in the body,
-    so `map.load` and prologue/epilogue captures need no special casing.
-
-    This exists rather than cloning the `mo.constant` itself because a
-    `map.iter.opaque` body must hold only MAP ops: `MAPToMOGG` lowers its body
-    through `LowerableToMOGGInterface`, and `mo.constant` cannot implement that
-    interface -- `MODialect` would have to define a method that builds `mogg`
-    ops, and `mogg` is already built on `mo` types.
-
-    `ConstantLike` and `Pure` mirror `mo.constant`, so the folder still uniques
-    duplicates within a body and DCE still collects an unused one.
+    Carries an `mo.constant` that `FuseConstantIterOpaqueInputs` folded into a
+    `map.iter.opaque` body. A clone of the `mo.constant` cannot be used: the
+    body must hold only `LowerableToMOGGInterface` ops, and `mo` cannot
+    implement it without depending on `mogg`.
   }];
   let arguments = (ins ElementsAttr:$value);
   let results = (outs MO_Tensor:$result);
@@ -312,14 +259,10 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     immediately after the callee symbol, e.g.
     `@...Matmul[packed_b = false, transpose_b = false]`.
 
-    `kernelName` is the name the callee is registered under -- the
-    `registration` on its `mogg.kernel.decl`, e.g. `mo.matmul`. It cannot be
-    derived from `callee`: that is the Mojo struct's own symbol, and several
-    structs may register under the same name. Passes that must know which MO op
-    a kernel implements (e.g. to decline fusing into an accumulating kernel)
-    match on `kernelName`, so renaming a Mojo struct cannot silently change
-    their behavior. `mogg.call.execute` carries the same name in its
-    `moOpName` attribute.
+    `kernelName` is the callee's `registration` (e.g. `mo.matmul`). Several
+    structs may register under one name, so it cannot be derived from
+    `callee`. Passes that need the implemented MO op match on it, so renaming
+    a Mojo struct cannot change their behavior.
   }];
 
   let arguments = (ins
@@ -328,16 +271,12 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     DictionaryAttr:$params,
     Variadic<AnyType>:$inputs,
     Variadic<AnyType>:$outputs,
-    // Carries the source op's `MO_SameVariadicOperandSize` trait (lost when the
-    // MO op became a call) so the eventual `mogg.call.opaque` can split a flat
-    // operand list into equal-length variadic groups -- a bundled collective's
-    // N peer inputs and N signal buffers, say.
+    // The source op's `MO_SameVariadicOperandSize` trait, so `mogg.call.opaque`
+    // can split the flat operands into equal-length variadic groups.
     DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize
   );
 
-  // A kernel that allocates its result internally returns it rather than
-  // filling a destination, so it has no `$outputs` entry standing in for it.
-  // The enclosing `map.iter.opaque` carries it out with `map.yield`.
+  // A by-value result, with no `$outputs` entry; carried out by `map.yield`.
   let results = (outs Optional<MO_Opaque>:$opaqueResult);
 
   let hasVerifier = 1;
@@ -369,25 +308,16 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
     static integer dims, named symbolic parameters (D0, D1, …), or parametric
     expressions.
 
-    Inputs are op operands that are also shadowed as body block arguments
-    (same convention as `mogg.kernel`) -- a tensor or, for in-place kernels,
-    a buffer. Outputs are extra body block arguments with no corresponding op
-    operand; their types match the non-chain op results. The index is a
-    single extra block argument of type `map.index<N>`.
+    Inputs (tensors or, for in-place kernels, buffers) are shadowed as body
+    block arguments. Outputs are extra block arguments matching the non-chain
+    results. Block arguments are ordered [inputs..., outputs..., index].
 
-    The optional `chain` operand/result models in-place/mutating kernels
-    (e.g. `mo.mutable.store`), mirroring `mogg.kernel`'s chain support: it is
-    pure sequencing plumbing and never gets a body block argument on either
-    side. When present, the output chain is always the last entry of
-    `results` (same convention as `KernelOp::maybeGetOutChain()`).
+    The optional `chain` operand/result models mutating kernels (e.g.
+    `mo.mutable.store`). It has no block argument, and the output chain is
+    always the last result.
 
-    `hasReadEffect`/`hasWriteEffect` mirror `mogg.kernel`'s fields of the same
-    name: they carry forward the memory effects of the original MO op this
-    kernel lowers, so downstream passes (DCE, CSE, invariant code motion) see
-    accurate effect information via `MemoryEffectsOpInterface` instead of the
-    conservative "unknown effects" default.
-
-    Block arguments are ordered: [input_args..., output_args..., index_arg].
+    `hasReadEffect`/`hasWriteEffect` carry forward the original op's memory
+    effects instead of the conservative "unknown effects" default.
 
     Example:
     ```mlir
@@ -419,20 +349,14 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
-    // Insert a range of new inputs at `idx`, this updates both operands and
-    // body block arguments.
+    // Inserts/erases inputs along with their body block arguments.
     void insertInputsAt(unsigned idx, ValueRange vals);
-    // Remove a range of inputs at `[idx, idx + len)`, updating both operands
-    // and the corresponding body block arguments.
     void eraseInputsAt(unsigned idx, size_t len = 1);
 
-    // Returns the input chain operand, or null if this op has none.
     Value getInputChain() { return getChain(); }
-    // Returns the output chain result, or null if the last result isn't a
-    // chain (mirrors MOGG::KernelOp::maybeGetOutChain()).
+    // Null if the last result isn't a chain.
     Value getOutputChain();
-    // Sets the input chain operand. No-op when null (mirrors
-    // MOGG::KernelOp::setChain).
+    // No-op when `chain` is null.
     void setChain(Value chain);
   }];
 }
@@ -452,18 +376,10 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
   let summary = "The per-index body of a structured MAP loop, wrapped for outlining.";
   let description = [{
     Holds the per-index computation of a `map.iter.foreach` after
-    `OutlineStructuredKernelBodies` has wrapped it in a `map.iter.opaque`.
-    Unlike the flat `map.iter.foreach`, this op carries no `inputs`/`outputs`
-    of its own: the enclosing `map.iter.opaque`'s own (shadowed) input and
-    output block arguments are threaded in as this op's `$captures`, shadowed
-    in turn as its own trailing block arguments -- the same
-    isolated-from-above/capturing shape `map.iter.prologue`/`map.iter.epilogue`
-    already use (see `CapturingFusionClosure`), so all three closure kinds can
-    be hoisted out of generically by `LoopInvariantViewMotion`. The leading
-    block argument is the index.
-
-    The `shape` attribute is copied unchanged from the wrapped
-    `map.iter.foreach`.
+    `OutlineStructuredKernelBodies` wraps it in a `map.iter.opaque`. The
+    opaque's input and output block arguments are its `$captures` (see
+    `CapturingFusionClosure`); the leading block argument is the index.
+    `shape` is copied from the wrapped `map.iter.foreach`.
 
     Example:
     ```mlir
@@ -503,15 +419,9 @@ def MAP_ConstantScalarOp : MAP_Op<"constant.scalar", [
 ]> {
   let summary = "A compile-time scalar constant, as a value not a tensor";
   let description = [{
-    The single element of a compile-time constant, inlined into a closure body
-    in place of the `map.load` that would otherwise read it out of memory --
-    see `LoadOp`'s canonicalizer. The result is a builtin scalar of the loaded
-    tensor's element type, exactly what `map.load` produces, so the two are
-    interchangeable wherever a body consumes element values.
-
-    `ConstantLike` hoists it to the top of the enclosing closure's body (the
-    nearest `IsolatedFromAbove` region) and dedups identical constants there,
-    the same place the legacy MOGG lane puts its own `mogg.constant.scalar`.
+    The single element of a compile-time constant, replacing the `map.load`
+    that would read it (see `LoadOp`'s canonicalizer). The result has the
+    loaded tensor's element type, so it is interchangeable with `map.load`.
 
     Example:
     ```mlir
@@ -545,14 +455,9 @@ def MAP_LoadOp : MAP_Op<"load", [
 ]> {
   let summary = "Load a value from a tensor at an N-D index";
   let description = [{
-    Loads the value at an N-dimensional index from a tensor (or, for a load
-    fused into an in-place kernel body, a buffer) that is a block argument of
-    the enclosing `map.iter.foreach`. Logically a single scalar element per
-    index; the actual lowering may load a wider vector or tile instead,
-    depending on the target hardware and how the surrounding loop is
-    vectorized/tiled. The tensor/buffer type is spelled out in the assembly;
-    the result type is inferred as its element type (same convention as
-    `memref.load`).
+    Loads the element at an N-dimensional index from a tensor (or, fused into
+    an in-place kernel, a buffer). Logically one scalar per index; the lowering
+    may load a wider vector or tile.
 
     Example:
     ```mlir
@@ -583,14 +488,9 @@ def MAP_StoreOp : MAP_Op<"store", [
 ]> {
   let summary = "Store a value into a tensor (or buffer) at an N-D index";
   let description = [{
-    Stores a value at an N-dimensional index into a tensor that is an output
-    block argument of the enclosing `map.iter.foreach`, or, for in-place
-    kernels like `mo.mutable.store`, a buffer that is an input block
-    argument. Logically a single scalar element per index; the actual
-    lowering may store a wider vector or tile instead, depending on the
-    target hardware and how the surrounding loop is vectorized/tiled. The
-    tensor/buffer type is spelled out in the assembly; the scalar type is
-    inferred from its element type (same convention as `memref.store`).
+    Stores an element at an N-dimensional index into an output tensor or, for
+    in-place kernels like `mo.mutable.store`, an input buffer. Logically one
+    scalar per index; the lowering may store a wider vector or tile.
 
     Example:
     ```mlir
@@ -616,17 +516,10 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
 ]> {
   let summary = "Call a named pointwise kernel on the current index and scalar arguments";
   let description = [{
-    Calls a named pointwise kernel identified by a flat symbol reference,
-    given the enclosing loop's current index and the scalar operands, and
-    returns a single scalar result. All operands other than the index, and
-    the result, must be scalar (non-tensor) types. Only valid inside a
-    `map.iter.foreach` body, or, after outlining, inside a
-    `map.iter.foreach.body`, or inside a `map.iter.prologue` /
-    `map.iter.epilogue` callback that has had such a body fused into it.
-
-    `params` carries the kernel's compile-time parameters (e.g. a
-    custom kernel's `bias`), inferred from the originating MO op. Absent when
-    the kernel has none.
+    Calls a named pointwise kernel with the loop's current index and scalar
+    operands, returning one scalar. `params` carries the kernel's
+    compile-time parameters (e.g. a custom kernel's `bias`), absent when there
+    are none.
 
     Example:
     ```mlir
@@ -656,18 +549,10 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
 ]> {
   let summary = "Project an output-shape index to the input-shape index for a slice view";
   let description = [{
-    Used inside a `map.iter.foreach` (or, after outlining, a
-    `map.iter.foreach.body`) lowered from `mo.slice`. Takes the loop's
-    current (output-shape) index and the slice's `starts`/`stops`/`steps`
-    tensors, and produces the corresponding input-shape index:
-    `result[d] = index[d] * steps[d] + starts[d]` for each dimension `d`,
-    reading each of `starts`/`stops`/`steps` from `spec` when it's a
-    compile-time constant there, and from the corresponding operand tensor
-    at position `d` otherwise. `stops` isn't needed to compute the
-    projection itself but is carried for verification and by later passes.
-
-    Also valid inside a `map.iter.prologue` body once `ViewFuser` has fused
-    this view into an opaque kernel's existing prologue.
+    Projects the loop's output-shape index to the input-shape index of a
+    `mo.slice`: `result[d] = index[d] * steps[d] + starts[d]`, reading each
+    bound from `spec` when constant and from its operand tensor otherwise.
+    `stops` is carried for verification and later passes.
 
     Example:
     ```mlir
@@ -708,16 +593,12 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
 ]> {
   let summary = "Materialize a slice view of `input`, addressable directly by the loop's own index";
   let description = [{
-    Produces a single tensor value -- of the slice's *output* shape -- that a
-    `map.load` can address directly with the loop's own (untransformed)
-    index, instead of transforming the index on every iteration. Logically
-    still a view over `input`'s storage (nothing is copied).
+    A view of `input` with the slice's *output* shape, which a `map.load`
+    addresses with the loop's own index. Nothing is copied.
 
-    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
-    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself. `input` is a buffer rather than a tensor when the view
-    feeds an in-place kernel's fused load; the result is a tensor either way,
-    since the view is only ever loaded from.
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    whose loads it feeds. `input` is a buffer when the view feeds an in-place
+    kernel's fused load.
 
     Example:
     ```mlir
@@ -757,18 +638,10 @@ def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
 ]> {
   let summary = "Project an output-shape index to the input-shape index for a broadcast view";
   let description = [{
-    Used inside a `map.iter.foreach` (or, after outlining, a
-    `map.iter.foreach.body`) lowered from `mo.static.broadcast_to`. Takes the
-    loop's current (output-shape) index and produces the corresponding
-    input-shape index, following numpy broadcasting semantics: `spec`'s `in`
-    shape aligns with the index's trailing dimensions, any leading
-    dimensions `in` doesn't have are dropped, and any aligned dimension where
-    `in`'s size is 1 always projects to index 0 -- deciding which dimensions
-    those are is deferred to `createStridedView`'s primitive, not resolved by
-    this op itself.
-
-    Also valid inside a `map.iter.prologue` body once `ViewFuser` has fused
-    this view into an opaque kernel's existing prologue.
+    Projects the loop's output-shape index to the input-shape index of a
+    `mo.static.broadcast_to`, with numpy semantics: leading dimensions `in`
+    lacks are dropped and size-1 dimensions project to 0. Which dimensions
+    those are is decided by `createStridedView`'s primitive.
 
     Example:
     ```mlir
@@ -803,18 +676,12 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
 ]> {
   let summary = "Materialize a broadcast view of `input`, addressable directly by the loop's own index";
   let description = [{
-    Produces a single tensor value -- of the broadcast's *output* shape --
-    that a `map.load` can address directly with the loop's own
-    (untransformed) index, instead of transforming the index on every
-    iteration. Logically still a view over `input`'s storage (nothing is
-    copied); a replicated dimension reads the same element regardless of the
-    index passed for it.
+    A view of `input` with the broadcast's *output* shape, which a `map.load`
+    addresses with the loop's own index. Nothing is copied.
 
-    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
-    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself. `input` is a buffer rather than a tensor when the view
-    feeds an in-place kernel's fused load; the result is a tensor either way,
-    since the view is only ever loaded from.
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    whose loads it feeds. `input` is a buffer when the view feeds an in-place
+    kernel's fused load.
 
     Example:
     ```mlir
@@ -848,26 +715,14 @@ def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
 ]> {
   let summary = "Project an output-shape index to the input-shape index for a transpose view";
   let description = [{
-    Used inside a `map.iter.foreach` (or, after outlining, a
-    `map.iter.foreach.body`) lowered from `mo.transpose`. Takes the loop's
-    current (output-shape) index and produces the corresponding input-shape
-    index: dimension `i` of the result is dimension `spec`'s inverse
-    permutation of `i` in `index` -- `mo.transpose`'s own `perm` says which
-    *input* dimension each *output* dimension came from
-    (`out.dim[i] == in.dim[perm[i]]`), so projecting an output index back to
-    the input needs `perm`'s inverse, not `perm` itself. Rank-preserving,
-    unlike broadcast -- transpose only ever reorders dimensions.
+    Projects the loop's output-shape index to the input-shape index of a
+    `mo.transpose`. Since `out.dim[i] == in.dim[perm[i]]`, this applies
+    `perm`'s inverse.
 
-    Also valid inside a `map.iter.prologue` body once `ViewFuser` has fused
-    this view into an opaque kernel's existing prologue.
-
-    `permutations` carries the runtime permutation, read only for the dimensions
-    `spec` leaves dynamic (the whole permutation is static for a
-    compile-time-constant `mo.transpose`, dynamic for the eager interpreter's
-    one-graph-per-op transpose). Like slice's bounds operands, it rides along
-    so `LoopInvariantViewMotion` can hand it to the hoisted
-    `map.index.transpose.stride` -- this per-index op is never lowered to MOGG
-    directly (a load-side transform is always hoisted first).
+    `permutations` is the runtime permutation, read only where `spec` is
+    dynamic (the eager interpreter's one-graph-per-op transpose). It rides
+    along for the hoisted `map.index.transpose.stride`; this op is never
+    lowered to MOGG directly.
 
     Example:
     ```mlir
@@ -904,23 +759,16 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
 ]> {
   let summary = "Materialize a transpose view of `input`, addressable directly by the loop's own index";
   let description = [{
-    Produces a single tensor value -- of the transpose's *output* shape --
-    that a `map.load` can address directly with the loop's own
-    (untransformed) index, instead of transforming the index on every
-    iteration. Logically still a view over `input`'s storage (nothing is
-    copied); the view's strides are `input`'s own strides reordered by
-    `spec`'s `perm`.
+    A view of `input` with the transpose's *output* shape, which a `map.load`
+    addresses with the loop's own index. Nothing is copied; the strides are
+    `input`'s reordered by `perm`.
 
-    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
-    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself. `input` is a buffer rather than a tensor when the view
-    feeds an in-place kernel's fused load; the result is a tensor either way,
-    since the view is only ever loaded from.
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    whose loads it feeds. `input` is a buffer when the view feeds an in-place
+    kernel's fused load.
 
-    `permutations` carries the runtime permutation, read only for the dimensions
-    `spec` leaves dynamic. A fully-static perm never reads it (emission elides
-    the load behind a `comptime if`); the eager interpreter's one-graph-per-op
-    transpose supplies it at runtime.
+    `permutations` is read only where `spec` is dynamic; emission elides the
+    read behind a `comptime if` for a static perm.
 
     Example:
     ```mlir
@@ -958,21 +806,12 @@ def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
 ]> {
   let summary = "Project an output-shape index to the input-shape index for a reshape view";
   let description = [{
-    Used inside a `map.iter.foreach` (or, after outlining, a
-    `map.iter.foreach.body`) lowered from `mo.static.reshape`. Takes the
-    loop's current (output-shape) index and produces the corresponding
-    input-shape index by de-linearizing through the shared linear index the
-    two shapes' row-major layouts agree on -- unlike slice/broadcast/
-    transpose, operand and result rank can differ by more than a fixed
-    amount, since reshape only preserves the total element count.
+    Projects the loop's output-shape index to the input-shape index of a
+    `mo.static.reshape` through the shared row-major linear index.
 
-    Also valid inside a `map.iter.epilogue`, where it transforms the STORE
-    index instead of a load index: a reshape fused into an epilogue projects
-    the producer's (output-shape) loop index to the store target's index. It
-    is the exact inverse of the load direction, obtained by swapping the
-    spec's `in`/`out` shapes -- sound because a reshape preserves the row-
-    major linear offset. `LoopInvariantViewMotion` must not hoist this
-    occurrence: it depends on the loop index and feeds the store.
+    In a `map.iter.epilogue` it transforms the STORE index instead, with the
+    spec's `in`/`out` swapped; `LoopInvariantViewMotion` does not hoist it
+    there.
 
     Example:
     ```mlir
@@ -1007,16 +846,12 @@ def MAP_ReshapeStrideOp : MAP_Op<"index.reshape.stride", [
 ]> {
   let summary = "Materialize a reshape view of `input`, addressable directly by the loop's own index";
   let description = [{
-    Produces a single tensor value -- of the reshape's *output* shape -- that
-    a `map.load` can address directly with the loop's own (untransformed)
-    index, instead of transforming the index on every iteration. Logically
-    still a view over `input`'s storage (nothing is copied).
+    A view of `input` with the reshape's *output* shape, which a `map.load`
+    addresses with the loop's own index. Nothing is copied.
 
-    Sits directly in a `map.iter.opaque`'s body, alongside (and before) the
-    `map.iter.foreach.body` whose loads it feeds -- not inside the nested
-    loop body itself. `input` is a buffer rather than a tensor when the view
-    feeds an in-place kernel's fused load; the result is a tensor either way,
-    since the view is only ever loaded from.
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    whose loads it feeds. `input` is a buffer when the view feeds an in-place
+    kernel's fused load.
 
     Example:
     ```mlir

@@ -112,14 +112,11 @@ def MGP_LiftableChainCreateOpInterface : OpInterface<"MGPLiftableChainCreateOpIn
 
 def MGP_SelectiveLowerAttrOpInterface : OpInterface<"MGPSelectiveLowerAttrOpInterface"> {
   let description = [{
-    Interface for ops that require selectively converting a static attribute into
-    runtime values when lowering to mogg.call.
-
-    The interface categorize attributes into 3 categories:
-    1. the "liftable" attributes, which need to be lifted to runtime value to avoid
-       unnecessary elaboration.
-    2. the "ignorable" attribute, which will simply be dropped during lowering.
-    3. the "parameterizable" attribute, which need to be lowered into static parameters.
+    Interface for ops whose static attributes are selectively converted when
+    lowering to mogg.call:
+    1. "liftable": lifted to runtime values to avoid unnecessary elaboration.
+    2. "ignorable": dropped.
+    3. "parameterizable": lowered into static parameters.
   }];
   let cppNamespace = "::M::MGP";
   let methods = [
@@ -149,7 +146,6 @@ def MGP_SelectiveLowerAttrOpInterface : OpInterface<"MGPSelectiveLowerAttrOpInte
         auto liftables = cast<MGP::MGPSelectiveLowerAttrOpInterface>(*$_op).getLiftableAttributes();
         auto ignorables = cast<MGP::MGPSelectiveLowerAttrOpInterface>(*$_op).getIgnorableAttributes();
         for (auto attr : $_op->getAttrs()) {
-          // Skip liftable/ignorable attrs.
           if (llvm::find(liftables, attr.getValue()) != liftables.end())
              continue;
           if (llvm::find(ignorables, attr.getValue()) != ignorables.end())
@@ -287,8 +283,8 @@ def MGP_HasDeviceOpInterface : OpInterface<"MGPHasDeviceOpInterface"> {
   let description = [{
     Interface for ops which have an #M.device_ref attribute.
 
-    Some ops actually involve both a 'host' and 'other' device. For these ops
-    this interface provides the 'other' device.
+    For ops involving both a 'host' and 'other' device, this provides the
+    'other' device.
 
     Ops with this interface are dispatched at runtime to an op registered
     with the name:
@@ -310,10 +306,8 @@ def MGP_HasRuntimeSlotOpInterface : OpInterface<"MGPHasRuntimeSlotOpInterface"> 
     Interface for ops which access a device-specific runtime via an !mgp.context
     slot index.
 
-    Some ops actually involve both a 'host' and 'other' device. For these ops
-    this interface provides the 'other' device runtime. This is the same
-    convention used by `MGP_HasDeviceOpInterface`, thus the runtime slot and
-    devices will always match.
+    For ops involving both a 'host' and 'other' device, this provides the
+    'other' device runtime, matching `MGP_HasDeviceOpInterface`'s device.
   }];
   let cppNamespace = "::M::MGP";
   let methods = [

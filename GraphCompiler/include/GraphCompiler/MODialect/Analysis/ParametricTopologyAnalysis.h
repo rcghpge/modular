@@ -12,16 +12,11 @@
 
 namespace M::MO {
 
-// (1) Parameters cannot be discovered using MLIR's builtin dataflow API such as
-// op->getUsers() because they are attributes. Operations (value) can create
-// parameters (attributes) that other operations (value) consume. This
-// dependency is not directly observable via the dataflow API. This analysis
-// aims at extending it.
-// (2) Furthermore, operations that aren't isolated from above can contain
-// nested operations that depend on other operations in superseding blocks
-// (contained in). Therefore, it is not directly obvious if an operation
-// provides another one if it is only providing nested operations. This analysis
-// aims at extending the regular SSA dataflow with this information.
+// Extends SSA dataflow with two dependencies it can't see:
+// (1) Parameters are attributes, so an op consuming a parameter another op
+//     creates isn't visible through op->getUsers().
+// (2) An op not isolated from above depends on whatever its nested ops use
+//     from enclosing blocks.
 // Example:
 // %0 = ...
 // %1 = op1 {
@@ -30,15 +25,11 @@ namespace M::MO {
 // Here, %0 is a provider of both op2 AND op1.
 class ParametricTopologyAnalysis {
 public:
-  // Construct the state necessary rooted at the given operation.
   ParametricTopologyAnalysis(mlir::Operation *root);
   ~ParametricTopologyAnalysis() = default;
 
-  // Returns {op->getUsers()} U {parametricUsers(op)}.
-  /// NOTE: Passes that leverage this analysis have to emit deterministic IR
-  /// meaning two invocations of the same pass over the same input should output
-  /// the same IR. Therefore, the output of this function is a SmallSetVector
-  /// which preserves insertion order.
+  // Returns {op->getUsers()} U {parametricUsers(op)}, in insertion order so
+  // passes using it emit deterministic IR.
   llvm::SmallSetVector<mlir::Operation *, 4> users(mlir::Operation *op) const;
 
   template <typename Func>
@@ -59,11 +50,8 @@ public:
     return true;
   }
 
-  // Returns {dataflowProviders(op)} U {parametricProviders(op)}.
-  /// NOTE: Passes that leverage this analysis have to emit deterministic IR
-  /// meaning two invocations of the same pass over the same input should output
-  /// the same IR. Therefore, the output of this function is a SmallSetVector
-  /// which preserves insertion order.
+  // Returns {dataflowProviders(op)} U {parametricProviders(op)}, in insertion
+  // order so passes using it emit deterministic IR.
   llvm::SmallSetVector<mlir::Operation *, 4>
   providers(mlir::Operation *op) const;
 
@@ -87,8 +75,7 @@ public:
     return true;
   }
 
-  // Will compute the topological sort of a set of operations but accounting
-  // for parametric dependencies.
+  // Topologically sorts `ops`, accounting for parametric dependencies.
   void computeTopologicalSorting(mlir::MutableArrayRef<mlir::Operation *> ops);
 
   // Topologically sort operations within `region` in place, accounting for
@@ -114,14 +101,9 @@ private:
   mlir::DenseMap<mlir::Operation *, OperationRankAndDependency> metadata;
 };
 
-// Given an op, define a list of components that are connected to the
-// results of the operation. These components are formed by assuming all edges
-// between mlir nodes are undirected and the root `op` is connected to no values
-// but its results.
-//
-// Return a list of ops in the components in topological order.
-//
-// This is useful for cleaning up machinery around raising functions.
+// Returns, in topological order, the ops connected to `op`'s results when
+// edges are treated as undirected and `op` connects only through its results.
+// Used to clean up machinery around raising functions.
 mlir::SmallVector<mlir::Operation *> getRootedComponents(mlir::Operation *op);
 
 } // namespace M::MO

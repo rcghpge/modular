@@ -32,17 +32,15 @@ namespace {
 // DeferAllocsPass
 //===----------------------------------------------------------------------===//
 
-/// This pass defers buffer allocations until the operations which write to
-/// them are ready to execute.
+/// Defers buffer allocations until their writers are ready to execute.
 class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
   void runOnOperation() override {
     ModelOp model = getOperation();
     ExecuteState execState(model.getContext(), model);
-    // Recover type and buffer builders appropriate for the model.
     BufferBuilderContext builderContext =
         TensorBufferDialectInterface::getAllBufferBuilders(model);
 
-    // This helps prevent infinite loop in case an op write to multiple buffers
+    // Guards against revisiting allocs when an op writes multiple buffers.
     DenseSet<Operation *> movedAllocOps;
 
     auto defer = [&](Operation *op) {
@@ -57,12 +55,9 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
       if (!mutator)
         return;
 
-      // Move the allocation to just before the mutating op.
-      // (Note that this may mean we revisit the same allocation again.)
       allocOp->moveBefore(mutator->getOwner());
       movedAllocOps.insert(allocOp);
 
-      // Make the allocation depend on the same chains as the mutator.
       SmallVector<Value> additionalChainsToWaitOn;
       for (OpOperand *mutatorChainOpOperand :
            getInputChainOpOperands(mutator->getOwner())) {
@@ -77,7 +72,6 @@ class DeferAllocsPass : public impl::DeferAllocsPassBase<DeferAllocsPass> {
                        "chain to control their timing");
     };
 
-    // For each mgp.buffer.alloc.*...
     model.getExecute().walk(defer);
     model.getInit().walk(defer);
   }

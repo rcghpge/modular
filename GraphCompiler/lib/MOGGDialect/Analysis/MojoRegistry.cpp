@@ -138,11 +138,9 @@ static int deviceInfoSpecificity(DeviceInfoAttr infos) {
          !infos.getArch().empty() + !infos.getModel().empty();
 }
 
-// Transitional tile-codegen gate (remove per GEX-3941): returns true when the
-// kernel's `execute` declares a tile-based fused output
-// (_FusedComputeOutputTileTensor or _FusedOutputTileTensor). Such a kernel is
-// only lowerable on a device configured for tile codegen (tile_based_fusion),
-// so `getResolvedKernel` discounts it as a candidate on non-tile devices.
+// Whether the kernel's `execute` declares a tile-based fused output
+// (_FusedComputeOutputTileTensor or _FusedOutputTileTensor), which only
+// lowers on a tile_based_fusion device. Transitional, remove per GEX-3941.
 static bool kernelDeclaresTileOutput(KernelDeclOp decl) {
   KernelDeclAdaptor adaptor(decl);
   if (!adaptor.executeFunction.has_value())
@@ -175,10 +173,8 @@ MojoRegistry::getResolvedKernel(llvm::StringRef name,
     DeviceInfoAttr kernelInfo = decl.getRegistrationDeviceInfo();
     if (!deviceInfoMatches(kernelInfo, deviceInfo))
       continue;
-    // TODO(GEX-3941): transitional — discount any candidate whose fused output
-    // is tile-based on a device not configured for tile_based_fusion, so the
-    // generic (SIMD) registration is selected instead. Remove once the
-    // tile-codegen transition completes.
+    // TODO(GEX-3941): on non-tile devices, skip tile-output candidates so the
+    // generic (SIMD) registration is selected.
     if (!deviceInfo.getTileBasedFusion() && kernelDeclaresTileOutput(decl))
       continue;
     int specificity = deviceInfoSpecificity(kernelInfo);
@@ -231,10 +227,9 @@ DeviceRefAttr MojoRegistry::getDeviceRefForOp(mlir::Operation *op) {
 }
 
 void M::MOGG::copyKernelDecls(mlir::ModuleOp src, mlir::ModuleOp dst) {
-  // Idempotent: if `dst` already carries the opaque-type mapping attribute
-  // it has already been seeded (e.g. from a prior compile of the same graph
-  // module, or from textual MLIR that was exported after a previous seed).
-  // Re-cloning the decls would redefine their symbols.
+  // Idempotent: a mapping attribute means `dst` is already seeded (e.g. by a
+  // prior compile, or in re-imported textual MLIR), and re-cloning the decls
+  // would redefine their symbols.
   if (dst->hasAttr(kOpaqueTypeMappingAttrName))
     return;
 
@@ -411,10 +406,8 @@ static StringAttr maybeDemangleName(StringAttr name) {
 }
 
 /// Return the "root::leaf" name of a parameter's declared struct type, or
-/// null if the type is not a recognisable struct (e.g. primitive scalars).
-/// Used by `validateCustomOpParameters` to dispatch on Mojo class names
-/// like `std::StaticString` vs `std::StringSpan` — information not carried
-/// by the bare KGEN type alone.
+/// null for non-structs. Distinguishes e.g. `std::StaticString` from
+/// `std::StringSpan`, which the bare KGEN type does not.
 static StringAttr getParamTypeName(MLIRContext *ctx, Type paramType) {
   if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(paramType))
     paramType = ref.getElementType();
@@ -474,8 +467,6 @@ static ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
   };
   llvm::DenseMap<StringAttr, MojoParameterAdaptor> paramDecls;
 
-  // Compute the param type-name on demand from each ParamDeclAttr instead of
-  // caching strings on KernelDeclOp.
   MLIRContext *ctx = customOp.getContext();
   for (auto param : inputParams)
     paramDecls[maybeDemangleName(param.getName())] = {
@@ -628,7 +619,6 @@ static ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
 
 ErrorOrSuccess M::MOGG::verifyCustomOp(const MojoRegistry &registry,
                                        mlir::Operation *op) {
-  // Map operation to its registered Mojo kernel name + function label.
   MojoOperationInfo info = getMojoOperationInfo(op);
   if (info.operationName.empty())
     return Error(llvm::formatv("operation '{}' has no registered Mojo kernel",
@@ -641,9 +631,7 @@ ErrorOrSuccess M::MOGG::verifyCustomOp(const MojoRegistry &registry,
             .str());
   }
 
-  // Decode the kernel signature and check that operand types line up. This
-  // catches mismatches between MO operand types and the kernel's argument
-  // types before lowering attempts to emit Mojo.
+  // Catch MO-vs-kernel operand type mismatches before lowering emits Mojo.
   DeviceRefAttr device = MojoRegistry::getDeviceRefForOp(op);
   auto declOpOr = registry.getResolvedKernel(info.operationName, device);
   if (declOpOr.isError())

@@ -155,7 +155,6 @@ ensureStreamCountForDevices(ArrayRef<AnyAsyncValueRef> deviceContextArgs,
     return success();
 
   for (const AnyAsyncValueRef &deviceContextArg : deviceContextArgs) {
-    // Cast AsyncValueRef to DeviceContextRef
     auto *ctxRefPtr = dyn_cast<Driver::DeviceContextRef>(deviceContextArg);
     if (!ctxRefPtr || !ctxRefPtr->getPointer())
       return Error("DeviceContextRef is null");
@@ -182,12 +181,11 @@ Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
   SmallVector<AnyAsyncValueRef> initArgs;
   initArgs.reserve(kMgpModelNumFixedImplicitInitArgs + devices.size());
 
-  // Populate init block args with a borrowed ref to the weights registry.
+  // Borrowed.
   initArgs.push_back(AnyAsyncValueRef::createReady<MojoValue>(
       cpuDevice, MojoValue::createRef(
                      weightsRegistry ? weightsRegistry->opaque() : nullptr)));
 
-  // Set device contexts from the device ref to device mapping.
   auto deviceContextsOr = GraphCompiler::Driver::mapDeviceRefsToDevices(
       getDevices(), deviceMap, cpuDevice);
   if (deviceContextsOr.isError())
@@ -199,9 +197,8 @@ Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
   initArgs.append(std::make_move_iterator(deviceContextsOr->begin()),
                   std::make_move_iterator(deviceContextsOr->end()));
 
-  // Pre-create the side streams each device's context may use, before any
-  // capture begins. The count defaults to 2 (base + one side stream) and is
-  // overridable via the device-context.stream-count config key.
+  // Pre-create side streams before any capture begins. Defaults to 2 (base +
+  // one side); see the device-context.stream-count config key.
   const int64_t streamCount =
       Driver::DeviceContext::configAsInt("stream-count", 2);
   ErrorOrSuccess streamError = ensureStreamCountForDevices(
@@ -212,7 +209,6 @@ Model::setup(CPUDevice &cpuDevice, const WeightsRegistry *weightsRegistry,
             " failed to create device streams: " + streamError.getError(),
         location.copy());
 
-  // Run the init block.
   auto results = initFn->invoke(initArgs, cpuDevice);
 
   for (AnyAsyncValueRef &result : results) {
@@ -361,11 +357,8 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
 
   checkUniqueCPUDevice(getCPUDevice());
 
-  // Pass fixed execute args (chain, context, and weights registry), devices,
-  // init->exec context bundles, and inputs to the forward pass.
-  // Number of devices and model inputs come from the graph op definition and
-  // vary independently in general.
-  // See ModelOp in MGPOps.td for a detailed spec of mgp.model.
+  // Fixed args (chain, context, weights registry), devices, init->exec context
+  // bundles, then inputs. See ModelOp in MGPOps.td.
   SmallVector<AnyAsyncValueRef> passedArgs;
   passedArgs.reserve(kMgpModelNumFixedImplicitExecArgs + extraArgs.size() +
                      args.size());
@@ -377,8 +370,7 @@ ExecutableModel::execute(MutableArrayRef<AnyAsyncValueRef> args) const {
   for (AnyAsyncValueRef &arg : args)
     passedArgs.emplace_back(std::move(arg));
 
-  // Set the thread local singleton cpuDevice to the provided cpuDevice. This is
-  // referenced internally by some kernels.
+  // Some kernels read the thread-local cpuDevice.
   AsyncRT::CompactCPUDevicePtr::setCurrentCPUDevice(getCPUDevice());
 
   return getModel()->getExecuteFn()->invoke(passedArgs, getCPUDevice());
@@ -400,20 +392,14 @@ ErrorOrSuccess ExecutableModel::waitForModelSetup() {
   return success();
 }
 
-// A buffer is host-resident either because the buffer itself is pinned host
-// memory, or because the owning context's device is the CPU. Mirrors
-// GenericML DeviceMemory::isHost.
+// Pinned host memory or a CPU context. Mirrors GenericML DeviceMemory::isHost.
 static bool isHostResident(const Driver::DeviceBufferRef &buffer) {
   return buffer->isHost() ||
          buffer->context().device().api() == Driver::Device::cpuAPI;
 }
 
-// Compute a stable device-local input-signature hash
-// (input index + memory address + shape + dtype).
-//
-// Only non-host inputs resident on the same cpuDevice device are included. This
-// keeps per-device safety checks compatible with replay that mixes device keys
-// from different capture sessions.
+// Stable hash of (index, address, shape, dtype) over the non-host inputs on
+// this device only, so replay can mix device keys from different captures.
 static uint64_t computeInputKeyForDevice(ArrayRef<ModelInputBuffer> inputs,
                                          const Driver::Device &device) {
   raw_xxhash64_stream hasher;
@@ -493,8 +479,8 @@ static std::string graphKeysToString(ArrayRef<uint64_t> graphKeys) {
   return os.str();
 }
 
-// Return all graph-capture-capable streams from the model's device contexts.
-// This keeps capture/replay tied to the same cpuDevice devices as execution.
+// Graph-capture-capable streams of the model's device contexts, so
+// capture/replay use the same devices as execution.
 static ErrorOr<SmallVector<Driver::DeviceStreamRef>>
 captureStreams(MutableArrayRef<AnyAsyncValueRef> extraArgs) {
   if (auto err = AsyncRT::awaitOrError(extraArgs))
@@ -577,8 +563,7 @@ ExecutableModel::capture(ArrayRef<uint64_t> graphKeys,
                  keysString + ". Use replay() for existing keys.");
   }
 
-  // Capture-time signatures used only for per-device graph-key safety
-  // validation.
+  // Only for per-device graph-key safety validation.
   SmallVector<uint64_t> inputSignatures =
       computePerDeviceInputSignatures(inputs, *streamsOr);
 
@@ -598,9 +583,8 @@ ExecutableModel::capture(ArrayRef<uint64_t> graphKeys,
   if (graphOrErr.isError())
     return Error(Twine("Failed to capture graph: ") + graphOrErr.getError());
 
-  // Await the error, but don't propagate yet.
-  // We want to ensure the capture results are materialized before extracting
-  // the captured graphs, even if an error was present.
+  // Don't propagate yet: materialize capture results before extracting the
+  // graphs, even on error.
   ErrorOrSuccess err = AsyncRT::awaitOrError(graphResults);
 
   if (err.isError())
@@ -698,9 +682,7 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
       errors[deviceIdx] = err.takeError();
   };
 
-  // Directly execute the graph if there is only one to launch,
-  // otherwise use launchDeviceCollective to launch each per-device graph in
-  // parallel.
+  // Several graphs launch in parallel via launchDeviceCollective.
   if (normalizedKeys.size() == 1) {
     launchGraph(0);
   } else {
@@ -757,9 +739,8 @@ ExecutableModel::debugVerifyReplay(ArrayRef<uint64_t> graphKeys,
     return normalizedKeysOr.takeError();
   ArrayRef<uint64_t> normalizedKeys = *normalizedKeysOr;
 
-  // debugVerifyReplay validates eager launch traces, not replay safety.
-  // Allow non-capture input signatures so cpuDevice-shaped eager executions can
-  // be compared against captured graphs.
+  // This validates eager launch traces, not replay safety, so non-capture
+  // input signatures are allowed.
   if (ErrorOrSuccess err = validateCapturedPerDeviceKeys(normalizedKeys))
     return err.takeError();
 
@@ -798,10 +779,8 @@ ExecutableModel::releaseCapturedGraphs(ArrayRef<uint64_t> graphKeys) {
   if (perDeviceGraphs.empty())
     return success();
 
-  // Derive device count from the live capture streams (matching capture/
-  // replay/debugVerifyReplay) rather than from perDeviceGraphs.size(), so
-  // that key-count mismatch errors are reported against the same device set
-  // the sibling APIs validate against.
+  // Count devices from the live capture streams, not perDeviceGraphs.size(),
+  // so key-count errors match capture/replay/debugVerifyReplay.
   ErrorOr<SmallVector<Driver::DeviceStreamRef>> streamsOr =
       captureStreams(extraArgs);
   if (streamsOr.isError())

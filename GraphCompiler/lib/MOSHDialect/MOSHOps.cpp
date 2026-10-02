@@ -53,8 +53,7 @@ void ParamToValueOp::walkDefinitions(
 // ParamFromValueOp support
 //===----------------------------------------------------------------------===//
 
-/// Try to turn the given value into a constant. Extra effort is applied to
-/// support mosh.param.to_value, cannot be modeled as an MLIR constant op.
+/// Also handles mosh.param.to_value, which can't be an MLIR constant op.
 static TypedAttr getConstantValue(Value value) {
   TypedAttr constant;
   if (matchPattern(value, m_Constant(&constant)))
@@ -88,30 +87,18 @@ M::MOSH::ParamFromValueOp::canonicalize(ParamFromValueOp op,
 // Shape ops
 //===----------------------------------------------------------------------===//
 
-// NOTE Why do we need these folders?
-// Shape inference does symbolic simplifications like `add(X, 0) --> X`, and
-// these simplification logic are rooted in the constructors of
-// `KGEN::ParamOperatorAttr` (the attribute we use to represent symbolic
-// expressions). However KGEN has a pre-defined set of "ops" they support in
-// `KGEN::ParamOperatorAttr`, how do we define the shape ops (like concat) that
-// need simplification? The answer is `KGEN::MLIROpAttr`, which requires us to
-// define the simplification logic of the shape ops as MLIR folders.
-
-// Below are some abstractions to help us get the same outcome from running
-// `--canonicalize` on some MOSH ops, as if `MOSH::ParamToValueOp` is a
-// ConstantLike, without having to duplicate the folding across `fold` and
-// `canonicalize`. (Recall that folders are necessary, but we can't materialize
-// their output attribute into `MOSH::ParamToValueOp` anymore so
-// `--canonicalize` won't work without these canonicalizers).
-
-// Try to apply `op`'s folder to its input attributes (if any), and return the
-// result attribute if successful, else return an error.
+// Symbolic simplification (`add(X, 0) --> X`) lives in the constructors of
+// `KGEN::ParamOperatorAttr`, which only knows KGEN's built-in ops. Shape ops
+// like concat are expressed as `KGEN::MLIROpAttr`, so their simplification must
+// be MLIR folders.
+//
+// Folder results can't be materialized into `MOSH::ParamToValueOp`, so the
+// canonicalizers below reuse the folders to make `--canonicalize` behave as if
+// `ParamToValueOp` were ConstantLike.
 ErrorOr<TypedAttr> M::MOSH::tryFoldOp(Operation *op) {
   ASSERT_STREAM(isa<MOSHDialect>(op->getDialect()), << "expected MOSH op");
 
-  // Turn inputs into attributes, this works because we know as far as mosh ops
-  // are concerned, the inputs are either parametric shape/dimension or index
-  // constant, and we know what ops they'd come from.
+  // MOSH op inputs are always parametric shapes/dims or index constants.
   SmallVector<Attribute> attrs;
   attrs.reserve(op->getNumOperands());
 
@@ -123,12 +110,10 @@ ErrorOr<TypedAttr> M::MOSH::tryFoldOp(Operation *op) {
     }
   }
 
-  // Run this op's folder.
   SmallVector<OpFoldResult> foldResults;
   if (failed(op->fold(attrs, foldResults)))
     return Error("Failed to fold the op");
 
-  // Collect the singular `TypedAttr` result from folder, or fail.
   if (foldResults.size() != 1)
     return Error("Multiple results from fold");
 
@@ -139,21 +124,17 @@ ErrorOr<TypedAttr> M::MOSH::tryFoldOp(Operation *op) {
   return Error("Fold result isn't a typed attribute");
 }
 
-// Canonicalize `op` based on its folder; that is, apply `tryFoldOp` to `op` and
-// convert the result to a `ParamToValueOp` if possible.
+// Replaces `op` with a `ParamToValueOp` holding its folded result.
 static LogicalResult genericCanonicalize(Operation *op,
                                          PatternRewriter &rewriter) {
   ASSERT_STREAM(isa<MOSHDialect>(op->getDialect()), << "expected MOSH op");
   Location loc = op->getLoc();
 
-  // Apply op's folder
   ErrorOr<TypedAttr> resultAttrOr = tryFoldOp(op);
   if (resultAttrOr.isError())
     return rewriter.notifyMatchFailure(loc, resultAttrOr.getError());
 
   TypedAttr resultAttr = resultAttrOr.get();
-  // For the folder's result, we support converting these types of attributes
-  // into a `ParamToValueOp`.
   if (isa<KGEN::ParamDeclRefAttr, KGEN::ParamOperatorAttr, IntegerAttr,
           KGEN::SIMDAttr, ShapeAttr>(resultAttr)) {
     rewriter.replaceOpWithNewOp<ParamToValueOp>(op, resultAttr);
@@ -212,11 +193,9 @@ void ConcatOp::build(OpBuilder &builder, OperationState &state,
 }
 
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
-  // Single shape parameter or dimension parameters.
   if (adaptor.getInputs().size() == 1)
     return adaptor.getInputs().front();
 
-  // Collect dimension parameters from all inputs
   SmallVector<TypedAttr> finalDims;
   for (Attribute input : adaptor.getInputs()) {
     if (auto inputDims = dyn_cast_or_null<ShapeAttr>(input))
@@ -282,11 +261,9 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
   if (!shape1 || !shape2)
     return {};
 
-  // If the inputs are different rank, we can fold.
   if (shape1.getRank() != shape2.getRank())
     return KGEN::splatIntLiteralToSIMD(false, cast<KGEN::SIMDType>(getType()));
 
-  // If both inputs have the same static rank, we fold into an expression.
   return asExpression(shape1, shape2);
 }
 
@@ -349,14 +326,12 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   if (!inputAttr || !startOr || !endOr)
     return {};
 
-  // Clamp `start` and `end` to the range [0, rank], since based on slice
-  // semantics these arguments may fall outside the rank of the `ShapeAttr`.
+  // Slice semantics allow `start`/`end` outside [0, rank].
   // TODO: is this really needed? Maybe we should just enforce this in IR.
   int64_t rank = inputAttr.getRank();
   int64_t end = clampAxis(*endOr, rank);
   int64_t start = clampAxis(*startOr, rank);
 
-  // Ensure that the indices we use to create slicedDims are valid.
   if (start > end) {
     ASSERT_STREAM(false, << "start index (" << start
                          << ") must be less than end index (" << end << ")");
@@ -368,10 +343,6 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   auto shapeTy = ShapeType::get(getContext());
   return ShapeAttr::get(slicedDims, shapeTy);
 }
-
-//===----------------------------------------------------------------------===//
-// ODS-Generated Definitions
-//===----------------------------------------------------------------------===//
 
 using KGEN::parseIndexParamValue;
 using KGEN::parseStringParam;

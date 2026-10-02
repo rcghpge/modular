@@ -4,8 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Bindings between C++ primitive implementation and mojo. This is the successor
-// to putting things in Mojo/lib/CompilerRT/AsyncRT.cpp
+// Bindings between C++ primitive implementations and Mojo.
 //
 //===----------------------------------------------------------------------===//
 
@@ -82,21 +81,20 @@ COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void MGP_RT_TEST() {
 // Actual functions called from Mojo
 //===----------------------------------------------------------------------===//
 
-/// This is the C++ implementation of mgp.int.cached.
+/// Implements mgp.int.cached.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void
 MGP_RT_SetCachedInt(size_t bufferSlot, StateContext *stateCtx, size_t value) {
   stateCtx->emplaceStateSlot<IntStateSlot>(bufferSlot, value);
 }
 
-/// This is the C++ implementation of mgp.int.get_cached.
+/// Implements mgp.int.get_cached.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT size_t
 MGP_RT_GetCachedInt(size_t bufferSlot, StateContext *stateCtx) {
   auto &slot = stateCtx->getStateSlotPayload<IntStateSlot>(bufferSlot);
   return slot.getValue();
 }
 
-/// This is the new C++ implementation of the mgp.buffer.get_cached primitive.
-/// The old one is not prefixed with TMP_.
+/// Implements mgp.buffer.get_cached.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
 MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx, size_t *size,
                        void **data) {
@@ -111,15 +109,13 @@ MGP_RT_GetCachedBuffer(size_t bufferSlot, StateContext *stateCtx, size_t *size,
   *size = ref.getSize();
   *data = ref.getBuffer();
 
-  // Return an owning reference to the buffer's backing storage so the Mojo
-  // caller can keep the memory alive without punning AnyAsyncValueRef layout.
+  // An owning storage reference lets Mojo keep the memory alive without
+  // punning AnyAsyncValueRef layout.
   return ref.getMemStorageHandle().copy().releasePointer();
 }
 
-/// This is the C++ implementation of mgp.device_graph.cache. The Mojo
-/// `DeviceGraphCache` is created on first use by calling back into Mojo:
-/// `createFn` allocates and initializes it in one step, and `destructorFn`
-/// destroys it and frees that allocation.
+/// Implements mgp.device_graph.cache. The Mojo `DeviceGraphCache` is created
+/// on first use via `createFn` and freed via `destructorFn`.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT void *
 MGP_RT_GetOrCreateDeviceGraphCache(StateContext *stateCtx, void *(*createFn)(),
                                    void (*destructorFn)(void *)) {
@@ -187,9 +183,8 @@ MGP_RT_AssignAsyncValue(AsyncRTWrapper<AnyAsyncValueRef> slot,
   }
 }
 
-/// Builds a *new* AsyncValue holding a TensorBufferRef from a data view (ptr +
-/// size) and an owning storage handle (surrendered net-zero), returning the
-/// owning AsyncValue* (refcount 1) for a Mojo AnyAsyncValueRef to adopt.
+/// Returns a new owning AsyncValue* (refcount 1) holding a TensorBufferRef
+/// over `data`, taking ownership of `storage`.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
 MGP_RT_CreateBufferRefAsyncValue(AsyncValue *storage, void *data, size_t size) {
   CPUDevice &cpuDevice = *CPUDevice::getCurrentCPUDeviceOrNull();
@@ -201,9 +196,7 @@ MGP_RT_CreateBufferRefAsyncValue(AsyncValue *storage, void *data, size_t size) {
   return value.releasePointer();
 }
 
-/// Builds a *new* AsyncValue holding a Tensor (TensorBufferRef + spec) from a
-/// data view and an owning storage handle, returning the owning AsyncValue*.
-/// The tensor counterpart of MGP_RT_CreateBufferRefAsyncValue.
+/// The Tensor counterpart of MGP_RT_CreateBufferRefAsyncValue.
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT AsyncValue *
 MGP_RT_CreateTensorRefAsyncValue(AsyncValue *storage, void *data, size_t size,
                                  size_t rank, size_t *dims, int8_t type) {
@@ -263,10 +256,8 @@ MGP_RT_UnpackDeviceContext(AsyncValue *async) {
   assert(ptr != nullptr &&
          "MGP_RT_UnpackDeviceContext: DeviceContextRef holds a null pointer");
 #if MODULAR_HAL_DEVICE_CONTEXT
-  // Under the HAL backend the Mojo `DeviceContext` is the source of truth and
-  // the C++ object merely wraps it. The kernel ABI reconstructs a Mojo
-  // `DeviceContext` from this handle (DeviceContext._from_unsafe_cpp_handle),
-  // so hand out the boxed Mojo `DeviceContext` rather than the C++ wrapper.
+  // Under HAL the Mojo `DeviceContext` is the source of truth; the kernel ABI
+  // rebuilds it from this handle (DeviceContext._from_unsafe_cpp_handle).
   return ptr->mojoHandle();
 #else
   return ptr;
@@ -319,10 +310,8 @@ MGP_RT_DebugTensorPrint(const char *label, size_t labelLen, uint8_t dtype,
     llvm::outs() << "Tensor(" << spec << ", " << buffer << ")\n";
     llvm::outs().flush();
   } else {
-    // Buffer contents, using tensor spec for shape. This is only possible for
-    // CPU buffers. The printTensor function will crash for GPU buffers, so this
-    // primitive assumes that the buffer is a CPU buffer. I don't see a good way
-    // to assert on this condition though.
+    // Assumes a CPU buffer: printTensor crashes on GPU buffers, and there is no
+    // good way to assert on this.
     ContextRef context = Init::getContext();
 
     DebugTensorPrintOptions defaultOptions;

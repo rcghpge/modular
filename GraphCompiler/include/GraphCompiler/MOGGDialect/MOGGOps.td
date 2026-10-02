@@ -41,7 +41,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 
 
-// Base class for ops in this dialect.
 class MOGG_Op<string mnemonic, list<Trait> traits = []> :
   Op<MOGGDialect, mnemonic, traits>;
 
@@ -71,8 +70,6 @@ def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [
 ]> {
   let summary = "Concat Operation along axis zero";
   let description = [{
-    Concat input tensors along axis zero.
-
     Example:
 
     ```mlir
@@ -97,13 +94,8 @@ def MOGG_ConcatOp : MOGG_LowerableOp<"concat", [
 def MOGG_SplitOp : MOGG_LowerableOp<"split", [Pure]> {
   let summary = "Split Operation along axis zero";
   let description = [{
-    Split input tensors into multiple tensors along axis zero.
-
-    Each of the output tensors has the same shape as `input` except along axis
-    zero where the sum of the zero dimensions from all output tensors should be
-    equal to the one of the input tensor. Note that this op is a special case
-    of `mo.split` where `axis` is zero. The `split_sizes` is implicitly defined
-    by `mogg.split`'s output tensors.
+    `mo.split` with `axis` zero; the split sizes are implied by the result
+    types.
 
     Example:
 
@@ -133,11 +125,8 @@ def MOGG_SliceOp : MOGG_Op<"slice", [
 ]> {
   let summary = "Contiguous zero-copy slice op lowerable to mgp.tensor.slice";
   let description = [{
-    Represents a contiguous slice of a tensor that is known to be lowerable
-    without data copies. Unlike mo.slice, this op is not lowered to a kernel
-    by MOToMOGG. During FuseViews it is temporarily lowered to a mogg.kernel
-    for fusion and raised back if unfused. It is finally lowered to
-    mgp.tensor.slice in MOGGToMGP.
+    Unlike mo.slice, not lowered to a kernel by MOToMOGG. FuseViews lowers it
+    to a mogg.kernel temporarily and raises it back if unfused.
   }];
 
   let arguments = (ins
@@ -163,9 +152,7 @@ def MOGG_OutputOp : MOGG_Op<"output", [
 ]> {
   let summary = "MOGG output operation";
   let description = [{
-    The "mogg.output" operation specifies the output values for a region in a
-    MOGG operation. It is intended to allow the regions of mogg operations to
-    grow in complexity with specific outputs.
+    Specifies the output values of a region in a MOGG operation.
 
     ```mlir
       mogg.op foo() {
@@ -210,16 +197,9 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
 ]> {
   let summary = "Calls into an outlined stub asynchronously";
   let description = [{
-    Dispatches an async call to an outlined kernel stub using Mojo-native
-    `create_task`. When `affinity_device_id` is set, the emitter passes a
-    `desired_worker_id = task_id_for_device(affinity_device_id)` to the
-    AsyncRT scheduler to pin the task to a CPU core with NUMA affinity for
-    that GPU. When absent the standard `create_task` form (no affinity hint)
-    is emitted.
-
-    The device ordinal is stored as a plain integer rather than as a
-    DeviceRefAttr because the codegen device refs in the kernel layer are
-    label-only (no numeric id), so the per-launch ordinal must ride separately.
+    Dispatches via Mojo `create_task`. `affinity_device_id` pins the task to a
+    CPU core with NUMA affinity for that GPU. It is a plain integer because
+    kernel-layer device refs are label-only.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$name,
@@ -242,24 +222,11 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
 ]> {
   let summary = "Record a kernel's `build_graph` function into a device-graph builder";
   let description = [{
-    The device-graph counterpart of `mogg.call.execute`. Instead of dispatching
-    the kernel's `execute` method against a `!mogg.context`, this op invokes the
-    kernel's `build_graph` method against a `!mgp.device_graph.builder`, which
-    records a node into the graph under construction rather than running the
-    kernel immediately.
-
-    The tensor signature (`inputs` / `outputs`) matches the `execute` call the
-    op was synthesized from; only the launch argument differs -- a builder in
-    place of a context.
-
-    The op is node-free: it records into the builder but produces no SSA result.
-    Node ordering is expressed entirely by the enclosing
-    `mgp.device_graph.dependencies` op (which lowers to
-    `DeviceGraphBuilder.region(work, dependencies=...)`), so no
-    `!mgp.device_graph.node` is threaded through the kernel-facing ABI.
-
-    Unlike `mogg.call.execute`, this is not a kernel terminator and is not
-    wrapped in `mogg.with_trace`.
+    The device-graph counterpart of `mogg.call.execute`: invokes `build_graph`
+    against a builder instead of `execute` against a context, recording a node
+    rather than running the kernel. Produces no result; the enclosing
+    `mgp.device_graph.dependencies` op orders nodes. Not a kernel terminator,
+    and not wrapped in `mogg.with_trace`.
 
     Example:
     ```mlir
@@ -305,29 +272,13 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
 ]> {
   let summary = "An abstract function representing a compiled body of code";
   let description = [{
-    This function takes and returns any number of AsyncValues and operates on
-    them by compiling the code contained within its body.
+    Takes and returns AsyncValues and runs its body to completion (always
+    blocking). A generic form of mogg.kernel; the first result is a mef.chain.
 
-    Currently this is always blocking and the code will run to completion
-    within the body.
-
-    This is a more generic version of the MOGG.kernel which specifically
-    operates on Tensors and other MO level structures. It is intended that
-    eventually we lower mogg.kernel into this form directly. The first
-    return output is always a mef.chain for now.
-
-    `canFuseIntoOther`, `canBeFusedInto`, and `canDuplicate` dictate how
-    sequence fusion (e.g. fusion which just concatenates code without
-    additional optimization) can interact with the compiled region.
-
-    Sequence fusion looks at potential `parent --> child` relationships
-    between compiled regions and tries to fuse the parent into the child.
-    `canFuseIntoOther` determines if this region can fuse as `parent`.
-    `canBeFusedInto` determines if this region can fuse as `child`.
-    `canDuplicate` determines whether we can duplicate kernels in the
-    fusion process (usually small ones). E.g. consider a region A with
-    children B and C, if `canDuplicate` for A, then we may allow A
-    to inline into B AND C, effectively copying the code for A twice.
+    Sequence fusion (concatenating code) fuses a parent region into a child:
+    `canFuseIntoOther` allows this region as parent, `canBeFusedInto` as
+    child. `canDuplicate` lets a region with several children be copied into
+    each of them.
   }];
 
   let arguments = (ins
@@ -352,23 +303,17 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
   }];
 
   let extraClassDeclaration = [{
-    /// Returns the KGEN input parameters this depends on. Necessary to
-    /// implement the DeclInterface.
+    /// Required by DeclInterface.
     ArrayRef<ParamDeclAttr> getInputParams() { return {}; }
 
-    /// Return the single body block for the operation.
     Block &getBodyBlock() { return getBody().front(); }
 
-    /// Return the `mogg.output` op terminating the body block.
     MOGG::OutputOp getBodyTerminator();
   }];
 }
 
 def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
   let summary = "Returns the runtime representation of a dimension";
-  let description = [{
-    Returns the runtime representation for a single dimension
-  }];
 
   let arguments = (ins Builtin_StringAttr:$dimension);
   let results = (outs DimensionType:$result);
@@ -386,14 +331,9 @@ def MOGG_ToMGPFromOpaqueOp : MOGG_Op<"to_mgp_from_opaque", [
   let results = (outs AnyType:$dataPointer);
   let summary = "Get the opaque pointer from the kgen value";
   let description = [{
-    `input` is a KGEN object, and `dataPointer` is an !mgp.opaque
-    Get the opaque pointer from the kgen opaque tensor.
-    At the implementation level, it's just a bitcast / rebind / no-op.
-    But it helps preserving the correct types in the IR during lowering.
-
-    In emit-mojo path, this op is a no-op that converts mo.opaque to mgp.opaque
-    for graph outputs. The emitMojo implementation just passes through the value.
-    The op is folded away if input and output types become the same.
+    A no-op that keeps IR types correct while converting a KGEN opaque value
+    (e.g. mo.opaque for graph outputs) to !mgp.opaque. Folds away when the
+    types match.
   }];
 
   let assemblyFormat = [{
@@ -409,16 +349,13 @@ def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders"> {
 
   let summary = "Represents scratch buffer tensors that are not returned from the kernel";
   let description = [{
-    Similar to `mogg.output_placeholders`, this operation produces tensors for use within a kernel op.
-    However, unlike output placeholders, these scratch tensors will not be returned from the kernel.
+    Like `mogg.output_placeholders`, but the tensors are not returned from the
+    kernel.
 
     Example:
     ```mlir
       %scratch = mogg.scratch_placeholders : !mo.tensor<[2, 3], f32>
     ```
-
-    This provides a `%scratch` SSA value which corresponds to a temporary buffer
-    that can be used within the kernel but will not be part of the kernel's results.
   }];
 
   let assemblyFormat = [{
@@ -430,13 +367,9 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
   let summary = "Loads pairs of (symbol, compiled object) into the runtime "
                 "for a given device.";
   let description = [{
-    For each of the input symbol/resource pair, associates the symbol with
-    the resource (a blob of compiled kernel object) in the runtime (so the
-    symbol names can be used by other ops like `ExecuteCompiledOp`).
-
-    The compiled objects are with respect to the op's device attribute. The
-    final representation for the compiled objects, and how they are registered
-    with the runtime, depends on the device.
+    Registers each symbol with its compiled-object blob in the runtime, for
+    use by ops like `ExecuteCompiledOp`. The object format and registration
+    depend on the op's device.
   }];
 
   let arguments = (ins
@@ -457,23 +390,13 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
 ]> {
   let summary = "Executes a compiled kernel on a given device.";
   let description = [{
-    Executes a compiled kernel with the given name and operands on the given
-    device.
+    Looks up the compiled object (loaded by `LoadCompiledKernelOp`) by name
+    and calls it with the lowered operands.
 
-    This will use the kernel name to look up the compiled object (loaded by
-    `LoadCompiledKernelOp`), and call into the kernel with the lowered operands and
-    other values required by the ABI.
-
-    The `usedParams` attribute represent unique shape parameters used inside the
-    compiled kernel; they will be lowered to runtime values and passed into the
-    kernel, which will use them to reconstruct the tensor shapes.
-
-    `outputParamDecls` allows this compiled operation to define a parameter
-    values. These are exported into MGP land where they will be translated
-    into calls into the parameter system.
-
-    If `isAsync` is true, the kernel is implemented using the Mojo async/await
-    scheme. Otherwise the kernel is synchronous.
+    `usedParams` are the shape parameters the kernel uses; they are passed at
+    runtime to reconstruct tensor shapes. `outputParamDecls` defines parameter
+    values, which MGP translates into parameter system calls. `isAsync` means
+    the kernel uses Mojo async/await.
   }];
 
   let arguments = (ins
@@ -503,7 +426,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
 ]> {
   let summary = "Op that outlines a kernel";
   let description = [{
-    This op defines a kernel that will eventually be compiled to Mojo text.
+    A kernel that will be compiled to Mojo text.
   }];
   let arguments = (ins
     SymbolNameAttr:$sym_name,
@@ -512,13 +435,12 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     OptionalAttr<BoolAttr>:$isAsync,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
     MOGG_ABIKind:$abi,
-    // Execution-device label (host vs GPU). Codegen reads it for each kernel's
-    // `target` compile-time parameter; only the label matters, so it is a plain
-    // string rather than a `#M.device_ref` (no numeric id).
+    // Execution-device label for each kernel's `target` parameter. A string
+    // rather than `#M.device_ref` because only the label matters.
     StrAttr:$device,
     OptionalAttr<ArrayAttr>:$trait_stub_buffer_capture,
     OptionalAttr<ArrayAttr>:$trait_stub_arg_bounds,
-    // The following is necessary for -symbol-dce
+    // Needed by -symbol-dce.
     DefaultValuedAttr<StrAttr, "\"private\"">:$sym_visibility
   );
 
@@ -557,8 +479,8 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
 ]> {
   let summary = "Represents the construction of a tensor";
   let description = [{
-    Takes a data pointer and a list of dimensions. Will lower this into a call
-    to the constructor of a ManagedTensorSlice.
+    Lowers to a ManagedTensorSlice constructor call from a data pointer and
+    dimensions.
   }];
 
   let arguments = (ins
@@ -581,23 +503,12 @@ def MOGG_TensorArgInitOp : MOGG_Op<"tensor_arg.__init__", [
 ]> {
   let summary = "Construct a trait-lane tensor argument from its contract";
   let description = [{
-    The trait-lane counterpart of `mogg.tensor.__init__`. Where the legacy op
-    builds a `ManagedTensorSlice` parameterized by `{io, mut}`, this op carries
-    the distilled `#mogg.tensor_arg` contract and (in a later slice) builds the
-    composable `TensorArg` struct that satisfies the kernel's trait bound. The
-    two ops run side by side; the legacy op is unchanged (D5).
+    Like `mogg.tensor.__init__`, but carries the `#mogg.tensor_arg` contract
+    for an argument satisfying a kernel trait bound, instead of `{io, mut}`.
+    `role`/`access` are read from the contract, not the result type.
 
-    Dense-slice operands: a device buffer `$buffer` and the dynamic dimensions
-    `$dims`, exactly as `mogg.tensor.__init__`. The optional `$device_context`
-    operand is defined for the Slice-3 GPU emit path (ctor 2 in D11) but is left
-    unpopulated in this slice -- the unconditional context wiring in
-    `findExtraKernelArguments` is Slice 3. The fused storage arm (a `mogg.bind`
-    lambda in place of `$buffer`) and the `access`-driven fusion work are later
-    slices; here `contract.fused` is always false and `contract.access` is
-    always `none`.
-
-    The contract is the single source of truth (D1): `role`/`access` are read
-    off the attribute, never re-stamped onto the result `!mo.tensor` type (D4).
+    `$device_context` is for the GPU emit path and is not yet populated.
+    `contract.fused` is currently always false and `contract.access` `none`.
   }];
 
   let arguments = (ins
@@ -621,8 +532,8 @@ def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
 
   let summary = "Represents a chain output placeholder";
   let description = [{
-    This is to help resolve any chain dependencies for data-dependent operations
-    and help elide chains during fusion when lowering down to a compiled region.
+    Resolves chain dependencies for data-dependent operations and lets fusion
+    elide chains when lowering to a compiled region.
   }];
 
   let assemblyFormat = [{
@@ -637,11 +548,8 @@ def MOGG_AsyncJoinOp : MOGG_Op<"async.join", [
 
   let summary = "Waits for async task handles and raises on error";
   let description = [{
-    Waits for all task handles to complete (via Task.wait()), then checks
-    for errors. If any task failed, raises the first error.
-
-    This is a synchronization-only op with no results. Use a separate
-    `mogg.async.ready` to produce the output chain for `mogg.output`.
+    Waits for all tasks, then raises the first error, if any. Has no results;
+    use `mogg.async.ready` for the output chain.
 
     Example:
     ```mlir
@@ -666,13 +574,8 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   let results = (outs AnyType:$output);
   let summary = "Unpacks an async value and returns it as sync";
   let description = [{
-    The values outside of a `mogg.generic.compiled.region` are asynchronous.
-    This operation projects an `!mogg.async<T>` to its underlying `T`, modeling
-    the fact that the async value is really a handle/pointer that must be
-    unpacked before use. It is the inverse of `mogg.async.pack`.
-
-    Only the unpacked element type `T` is printed; the `!mogg.async<T>` operand
-    type is inferred from it.
+    Projects `!mogg.async<T>` (values outside a `mogg.generic.compiled.region`)
+    to `T`. Inverse of `mogg.async.pack`. Only `T` is printed.
   }];
 
   let assemblyFormat = [{
@@ -693,11 +596,7 @@ def MOGG_AsyncPackOp : MOGG_Op<"async.pack", [
   let results = (outs MOGG_Async:$output);
   let summary = "Packs an sync value and returns it as async";
   let description = [{
-    This is the opposite of the unpacking operation. It injects a synchronous
-    `T` value into an `!mogg.async<T>`.
-
-    Only the input element type `T` is printed; the `!mogg.async<T>` result type
-    is inferred from it.
+    Inverse of `mogg.async.unpack`. Only `T` is printed.
   }];
 
   let assemblyFormat = [{
@@ -713,7 +612,7 @@ def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
 ]> {
   let summary = "Represents an empty buffer (actually of size 1) allocated on the stack";
   let description = [{
-    This op is used to build empty tensors objects passed to some kernels after fusion.
+    Backs empty tensors passed to some kernels after fusion.
   }];
 
   let results = (outs MGP_DeviceBufferType:$result);
@@ -727,10 +626,8 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
 ]> {
   let summary = "Reshape a ManagedTensorSlice object into a new aliased tensor with a different shape";
   let description = [{
-    Reshape the ManagedTensorSlcie `tensor` into a new tensor.
-    If the output shape has dynamic dimensions, they must be specified with `dynamic_dims`.
-    Both `tensor` and `result` must have a compatible shape.
-    This op is used to represent the reshape operation before the kernel call with a fused output lambda with an affine operation.
+    Dynamic output dimensions come from `dynamic_dims`. Represents the reshape
+    before a kernel call whose fused output lambda applies an affine op.
 
     Example:
     ```
@@ -763,11 +660,10 @@ def MOGG_YieldOp : MOGG_Op<"yield", [
 ]> {
   let summary = "MOGG yield operation";
   let description = [{
-    The "mogg.yield" operation specifies the output values for a mogg.try /
-    except statement, the value a `mogg.tensor.create.prologue` body hands back
-    to the kernel reading through it, or the value a COMPUTE-lambda
-    `mogg.tensor.create.epilogue` body hands back for the kernel to store.
-    ```
+    Yields the results of a mogg.try / except, the value a
+    `mogg.tensor.create.prologue` body returns to the reading kernel, or the
+    value a compute `mogg.tensor.create.epilogue` body returns for the kernel
+    to store.
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
@@ -779,10 +675,8 @@ def MOGG_WithTraceOp : MOGG_Op<"with_trace", [
 ]> {
   let summary = "Wraps a kernel terminator in a Trace context manager";
   let description = [{
-    Models the `with Trace[...]` clause emitted around the kernel terminator
-    in MOGG ABI kernel stubs.  The body region contains exactly one block
-    whose terminator is the KernelTerminator for the stub.  This op is
-    always considered throwing because Trace.__enter__ raises.
+    Models `with Trace[...]` around the KernelTerminator of a MOGG ABI stub.
+    Always throwing because Trace.__enter__ raises.
   }];
   let results = (outs Variadic<AnyType>:$outputs);
   let regions = (region SizedRegion<1>:$body);
@@ -796,22 +690,13 @@ def MOGG_ProfileScopeBeginOp : MOGG_Op<"profile_scope.begin", [
   let description = [{
     Lowers to `var t = Trace[...](name, color=...); t.start()`.
 
-    This is `mogg.with_trace`'s region-less sibling. `with_trace` owns its ops
-    in a nested region, so a value defined inside it is invisible to later ops
-    both in MLIR (dominance) and in the emitted Mojo (`var` is block-scoped).
-    Sequence-fused region bodies routinely have SSA values live across the
-    scope boundaries this op is meant to bracket, so the range is expressed as
-    a begin/end pair of siblings instead, and the bracketed ops stay exactly
-    where they were.
+    A region-less sibling of `mogg.with_trace`: values defined inside a region
+    would be invisible to later ops, and sequence-fused bodies have SSA values
+    live across scope boundaries.
 
-    `color`, when present, is the single `Graph.profile_scope(..., color=...)`
-    color every op this range covers agreed on (see
-    `resolveProfileScopeColor`); absent when the range covers no color at all,
-    or when its ops disagree. Region-only by design: `mogg.with_trace`'s
-    per-kernel trace name never carries a color, regardless of what
-    `Graph.profile_scope()` was given.
-
-    Always considered throwing because `Trace.start()` raises.
+    `color` is set only when every covered op agrees on one (see
+    `resolveProfileScopeColor`). Always throwing because `Trace.start()`
+    raises.
   }];
   let arguments = (ins StrAttr:$name, OptionalAttr<StrAttr>:$color);
   let results = (outs MOGG_ProfileScopeRange:$range);
@@ -823,8 +708,7 @@ def MOGG_ProfileScopeEndOp : MOGG_Op<"profile_scope.end", [
 ]> {
   let summary = "Closes the trace range opened by a `mogg.profile_scope.begin`";
   let description = [{
-    Lowers to `t.end()` on the `Trace` variable its `mogg.profile_scope.begin`
-    declared. Always considered throwing because `Trace.end()` raises.
+    Lowers to `t.end()`. Always throwing because `Trace.end()` raises.
   }];
   let arguments = (ins MOGG_ProfileScopeRange:$range);
   let assemblyFormat = "$range attr-dict `:` qualified(type($range))";
@@ -836,10 +720,8 @@ def MOGG_RaiseOp : MOGG_Op<"raise", [
 ]> {
   let summary = "Re-raises a kernel error with full context";
   let description = [{
-    Emitted as the terminator of the except block in MOGG ABI kernel stubs.
-    Formats the caught error with the enclosing stub name, fusion info, and
-    Python source traceback, then re-raises it so the caller sees the full
-    context.
+    Terminates the except block of a MOGG ABI stub, adding the stub name,
+    fusion info, and Python traceback to the error.
   }];
   let arguments = (ins MOGG_Error:$error);
   let assemblyFormat = "$error attr-dict";
@@ -849,9 +731,6 @@ def MOGG_TryOp : MOGG_Op<"try", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
   let summary = "Op that represent a try / except statement";
-  let description = [{
-    This op defines a try / except statement that will be lowered to mojo.
-  }];
   let regions = (region SizedRegion<1>:$tryRegion, SizedRegion<1>:$exceptRegion);
   let results = (outs Variadic<AnyType>:$outputs);
 
@@ -872,8 +751,8 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
 
   let summary = "Represents setting an error on a kernel output";
   let description = [{
-    This represent setting an error on a chain or non-tensor output of a kernel
-    and is emitted in the except block of a raising kernel.
+    Sets an error on a chain or non-tensor output in a raising kernel's except
+    block.
 
     ```
     mogg.try {
@@ -885,8 +764,7 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
     }
     ```
 
-    This op gets lowered to a mojo call to `mogg_async_error_value`, which
-    returns a fresh error `AnyAsyncValueRef`.
+    Lowers to `mogg_async_error_value`, returning an error `AnyAsyncValueRef`.
   }];
 
   let assemblyFormat = [{
@@ -900,9 +778,6 @@ def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [
 ]> {
   let summary = "Gets a single dimension from a shape function result";
   let description = [{
-    This operation extracts a single dimension at the specified index from a
-    !mogg.shape_func_result<rank> value.
-
     Example:
     ```
     %dim0 = mogg.shape_result.__getitem__(%shape, 0) : (!mogg.shape_func_result<4>) -> !kgen.scalar<si64>
@@ -929,8 +804,8 @@ def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
 ]> {
   let summary = "Construct a mojo shape object";
   let description = [{
-    Given a list of dimensions, build a mojo shape object (IndexList)
-    The op supports dynamic shapes by including both the static shape attribute and a list of dynamic dimensions.
+    Builds an IndexList from the static shape attribute and its dynamic
+    dimensions.
 
     Example:
     ```
@@ -956,12 +831,9 @@ def MOGG_ChainDummyOp : MOGG_Op<"chain.dummy", [
 ]> {
   let summary = "Returns a chain to feed MRP primitives";
   let description = [{
-    MGP primitives that consume a chain and get lowered into a kernel still need
-    a chain internally. During sequence fusion, those input chains may become
-    intermediate results. Instead of handling those specially after sequence
-    fusion, we always feed them with this dummy op that does absolutely nothing.
-    The better approach would be to change the signature of the op when we lower
-    it into a kernel. Tracked here in GEX-2764.
+    MGP primitives lowered into a kernel still consume a chain, which sequence
+    fusion may turn into an intermediate result, so they are fed this no-op.
+    TODO(GEX-2764): drop the chain from the signature when lowering instead.
   }];
 
   let arguments = (ins);
@@ -977,9 +849,8 @@ def MOGG_ChainSinkOp : MOGG_Op<"chain.sink", [
 ]> {
   let summary = "Consumes a chain and does nothing with it";
   let description = [{
-    This is the same as ChainDummyOp but it consumes a chain for the sake of not
-    DCE-ing MGP primitives that lower to kernels but don't end up having a
-    consumer for their result.
+    Keeps MGP primitives that lower to kernels from being DCE'd when their
+    result has no consumer.
   }];
 
   let arguments = (ins ChainType:$chain);
@@ -1001,31 +872,15 @@ def MOGG_KernelDeclOp
     : MOGG_Op<"kernel.decl", [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declares a Mojo kernel's signatures inline in the module";
   let description = [{
-    Holds the full function-type signatures (without bodies) for a Mojo kernel
-    struct registered under a given MO op name. Multiple `mogg.kernel.decl` ops
-    may share the same `registration` value when several structs are registered
-    for the same op (e.g. different device implementations).
+    Holds the signatures of a Mojo kernel struct registered under an MO op
+    name. Several decls may share a `registration` (e.g. per-device
+    implementations). A kernel with `update_view` is a view kernel. A
+    user-defined decl (`is_user_defined`) overrides built-ins with the same
+    registration. The shape function lives in a separate
+    `mogg.shape_func.decl`.
 
-    All function attributes are optional. A kernel carrying an `update_view`
-    signature is implicitly a view kernel.
-
-    `is_user_defined` marks a kernel loaded from a user-supplied package
-    rather than a built-in one. MojoRegistry uses this flag to implement
-    override semantics: a user-defined decl takes precedence over any
-    built-in decl with the same registration name.
-
-    Each function variant (`execute` / `elementwise` / `tile_elementwise` /
-    `update_view` / `build_graph`) is a `MOGG_KernelFunctionAttr` that
-    bundles its signature, its fn-level `ParamDeclAttr` list, and the
-    cached per-result parameter mapping.
-
-    Shape inference is decoupled: the shape function for a registration lives
-    in a separate `mogg.shape_func.decl` op looked up by registration string.
-
-    A kernel may carry a `build_graph` signature alongside `execute`. The
-    `build_graph` function has the same tensor signature as `execute` but
-    takes a `DeviceGraphBuilder` as its launch argument in place of the
-    `DeviceContext`.
+    `build_graph` has the same tensor signature as `execute` but takes a
+    `DeviceGraphBuilder` in place of the `DeviceContext`.
   }];
 
   let arguments = (ins
@@ -1060,21 +915,11 @@ def MOGG_PrimitiveDeclOp
     : MOGG_Op<"primitive.decl", [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declares a primitive Mojo function inline in the module";
   let description = [{
-    Records the `FnTypeGeneratorType` signature of a standalone (non-struct)
-    Mojo function decorated with `@register_internal`, such as the singleton
-    `foreach` driver or the view-materialisation kernel.
-
-    `sym_name` is the fully-qualified Mojo source name of the function
-    (e.g. `MOGGPrimitives.MOGGPrimitives.foreach`). `registration` is the
-    intrinsic string the function is registered under (e.g.
-    `"mogg.elemwise_for_each"` or `"mogg.call.materialize"`). Each
-    `@register_internal` site produces exactly one `mogg.primitive.decl`;
-    primitives must not be registered under multiple registration strings
-    (the MLIR symbol table would reject the duplicate `sym_name`).
-
-    `function` is a `MOGG_KernelFunctionAttr` that bundles the signature
-    and the fn-level `ParamDeclAttr` list. Result-side slot-name mappings
-    are not populated for primitives.
+    Records the signature of a standalone `@register_internal` Mojo function
+    (e.g. the `foreach` driver). `sym_name` is its fully-qualified name and
+    `registration` its intrinsic string (e.g. `"mogg.elemwise_for_each"`). A
+    primitive must have exactly one registration, since the symbol table
+    rejects a duplicate `sym_name`. `result_params` is not populated.
   }];
 
   let arguments = (ins
@@ -1098,19 +943,10 @@ def MOGG_ShapeFunctionDeclOp
     : MOGG_Op<"shape_func.decl", [SymbolName, SymbolVisibility, Symbol]> {
   let summary = "Declares the shape function for a kernel op registration";
   let description = [{
-    Records the signature of the shape function for a given op registration.
-    There is at most one `mogg.shape_func.decl` per registration string; the
-    import pass enforces this and errors on duplicates.
-
-    `sym_name` is the fully-qualified Mojo source name of the shape function.
-    For a struct-internal `shape` method it is `"<struct_sym>.shape"` (e.g.
-    `"MOGGBuiltins.MOGGBuiltins.AvgPool.shape"`).
-
-    `registration` is the op registration string (e.g. `"mo.avg_pool"`).
-
-    `function` is a `MOGG_KernelFunctionAttr` that bundles the signature and
-    the fn-level `ParamDeclAttr` list. Result-side slot-name mappings are
-    populated in strict mode (shape functions always return stdlib `IndexList`).
+    At most one per registration (e.g. `"mo.avg_pool"`); import errors on
+    duplicates. For a struct `shape` method, `sym_name` is
+    `"<struct_sym>.shape"`. `result_params` is always populated, since shape
+    functions return stdlib `IndexList`.
   }];
 
   let arguments = (ins
@@ -1129,12 +965,8 @@ def MOGG_ShapeFunctionDeclOp
 //===----------------------------------------------------------------------===//
 // Advanced-fusion codegen ops
 //
-// `MAPToMOGG` lowers the `map` dialect into the ops below. Everything ABOVE is
-// the legacy MOGG op set, to be removed now that advanced fusion is the only
-// path; new codegen ops are appended here so the cleanup is a clean
-// cut at this line. Values are opaque handles (`!mogg.pointer` / `!mogg.tensor`
-// / `!mogg.dim`); shape/dtype/mut/io live on the creating op. No lowering is
-// wired yet.
+// `MAPToMOGG` lowers the `map` dialect into the ops below. Values are opaque
+// handles; shape/dtype/mut/io live on the creating op.
 //===----------------------------------------------------------------------===//
 
 def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
@@ -1149,31 +981,16 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
       "A codegen kernel: `!mo.tensor` inputs/outputs outside, `!mogg.pointer` "
       "inside.";
   let description = [{
-    The new-path counterpart of `mogg.generic.compiled.region` / `mogg.kernel`.
-    Inputs are `!mo.tensor` (or, for an in-place kernel a `FuseMutableLoads`
-    fused a buffer into, `!mo.buffer`) operands and outputs are `!mo.tensor`
-    results; inside the body both become `!mogg.pointer` block arguments
-    (outputs turn into externally-allocated operands only later, in
-    `MOGGToMGP`). The body's entry-block arguments are, in order: one
-    `!mogg.pointer` per input, one `!mogg.pointer` per output, then the
-    runtime `!mogg.dim`s (dynamic dimensions), then one `!mogg.context`. Like
-    `mogg.kernel` there is no terminator and no `mogg.output`: the output
-    pointer block arguments are the outputs. `MAPToMOGG` lowers a
-    `map.iter.opaque` into one of these.
+    Lowered from `map.iter.opaque`. Inputs are `!mo.tensor` (or `!mo.buffer`
+    for an in-place kernel `FuseMutableLoads` fused a buffer into) and outputs
+    `!mo.tensor`. The entry-block arguments are one `!mogg.pointer` per input,
+    one per output, then the dynamic `!mogg.dim`s, then a `!mogg.context`.
+    There is no terminator: the output pointer arguments are the outputs.
 
-    The optional `chain` operand/result models an in-place/mutating kernel,
-    mirroring `mogg.kernel`'s and `map.iter.foreach`'s chain support: it is pure
-    sequencing plumbing and never gets a body block argument on either side.
-    When present, the output chain is always the last entry of `outputs`.
-
-    Like `mogg.kernel.stub`, the op carries a `#M.device_ref` `device` attribute
-    (the `MOExplicitDevice` trait) so device assignment and outlining resolve the
-    kernel's execution device from the op itself rather than falling back to the
-    host.
-
-    `fusionInfo` carries the fusion-tree provenance forwarded from the source
-    `map.iter.opaque`; absent only for a kernel region built by hand (e.g. in a
-    test) rather than through `MAPToMOGG`.
+    The optional `chain` sequences an in-place kernel and has no block
+    argument; the output chain is the last of `outputs`. `device` gives the
+    execution device so outlining need not fall back to the host. `fusionInfo`
+    is absent only for hand-built kernels (e.g. in tests).
   }];
 
   let arguments = (ins
@@ -1181,9 +998,7 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     Optional<MO_Chain>:$chain,
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
     MO_ParamDecls:$outputParamDecls,
-    // Carried from `map.iter.foreach`/`map.iter.opaque`, which carry them from
-    // the op they lower. Without them a kernel whose only observable effect is
-    // a mutable store reports none and is dead.
+    // Without these, a kernel whose only effect is a mutable store looks dead.
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
@@ -1195,17 +1010,12 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
   let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
-    /// Returns the output chain, or null when there is none -- always the
-    /// last entry of `outputs` when present (mirrors
-    /// `IterForeachOp::getOutputChain()`/`KernelOp::maybeGetOutChain()`).
+    /// Returns the last entry of `outputs` if it is a chain, else null.
     ::mlir::Value getOutputChain();
 
-    /// Lowers this kernel to a `mogg.generic.compiled.region`, registers its
-    /// outputs against the graph, and returns the created region -- or a null
-    /// `GenericCompiledRegionOp` on error (like a failed `LogicalResult`). The
-    /// `LowerableToMGPInterface` `lower()` hook is a thin wrapper around this;
-    /// the `mo.parallel` orchestrator calls it directly, once per launch, to
-    /// collect the per-launch regions it then fuses into one async region.
+    /// Lowers to a `mogg.generic.compiled.region` and registers its outputs;
+    /// returns null on error. `mo.parallel` calls it per launch to collect
+    /// regions it fuses into one async region.
     GenericCompiledRegionOp
     lowerToCompiledRegion(::M::MGP::MOGraphLoweringState &loweringState);
   }];
@@ -1217,10 +1027,8 @@ def MOGG_ShapeCreateOp : MOGG_Op<"shape.create", [
 ]> {
   let summary = "Build a codegen shape from a static shape attr + dynamic dims.";
   let description = [{
-    New-path counterpart of `mogg.shape.__init__`: materializes a `!mogg.shape`
-    from a static `#mosh.ape` and the `!mogg.dim` handles for its dynamic
-    dimensions (in shape order). The dims come from the enclosing `mogg.kernel`
-    block arguments.
+    `dynamic_dims` are in shape order, from the enclosing `mogg.kernel` block
+    arguments.
   }];
   let arguments = (ins Variadic<MOGG_Dim>:$dynamic_dims, MOSH_ShapeAttr:$shape);
   let results = (outs MOGG_Shape:$result);
@@ -1236,12 +1044,8 @@ def MOGG_TensorCreateOp : MOGG_Op<"tensor.create", [
 ]> {
   let summary = "Build a codegen tensor from a pointer, shape and static metadata.";
   let description = [{
-    New-path counterpart of `mogg.tensor.__init__`: reconstructs a `!mogg.tensor`
-    inside a kernel body from a data pointer and a shape. Element type,
-    mutability, io-kind, and the static shape are all attributes (the opaque
-    `!mogg.tensor` and `!mogg.shape` types carry none of them). The `$device`
-    records the device kind (cpu vs gpu) so emit can pick the preferred
-    alignment locally instead of reaching out to the enclosing kernel stub.
+    Reconstructs a tensor inside a kernel body. `$device` (cpu vs gpu) lets
+    emit pick the preferred alignment without consulting the kernel stub.
   }];
   let arguments = (ins
     MOGG_Pointer:$ptr,
@@ -1252,10 +1056,8 @@ def MOGG_TensorCreateOp : MOGG_Op<"tensor.create", [
     BoolAttr:$mut,
     MO_IOKind:$io
   );
-  // A `!mo.buffer` operand reconstructs as a mutable `!mogg.buffer`, a
-  // `!mo.tensor` as a `!mogg.tensor`, so `getKernelOperandKind()` resolves
-  // `Buffer` vs `Tensor` from the type alone. `MOGG_TensorCreateInterface`'s
-  // verifier holds the shared `!mogg.buffer => mut` invariant.
+  // `!mo.buffer` reconstructs as `!mogg.buffer`, so `getKernelOperandKind()`
+  // resolves `Buffer` vs `Tensor` from the type alone.
   let results = (outs AnyTypeOf<[MOGG_Tensor, MOGG_Buffer]>:$tensor);
   let assemblyFormat = [{
     `(` operands `)` attr-dict `:` functional-type(operands, results)
@@ -1269,30 +1071,20 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
 ]> {
   let summary = "A fused-output tensor bound to its own epilogue body.";
   let description = [{
-    New-path counterpart of `mogg.tensor.fused` for the output (store) side:
-    produces a `!mogg.tensor` (of `$shape`) that writes through its own
-    epilogue body, rather than referencing a separate named lambda op. The
-    body takes a variadic list of captured tensors plus an arbitrary list of
-    extra operands (e.g. an index the callback is evaluated at); the body's
-    own scalar parameters are the entry-block arguments. `MAPToMOGG` lowers a
-    `map.iter.epilogue` into one of these. Element type / mutability /
-    io-kind are attributes, and `$device` records the device kind (cpu vs
-    gpu) so emit can pick the preferred alignment locally instead of
-    reaching out to the enclosing kernel stub. Scaffolding: not yet wired.
+    A `!mogg.tensor` that writes through its own epilogue body, lowered from
+    `map.iter.epilogue`. The body's entry-block arguments are its scalar
+    parameters. `$device` (cpu vs gpu) lets emit pick the preferred alignment.
 
-    The body comes in two shapes. A STORE lambda owns its store: the body ends
-    with a `mogg.tensor.store` into the store-target capture and has no
-    terminator. A COMPUTE lambda leaves the store to the kernel: the body ends
-    with `mogg.yield` of the value that store would have written, and the
-    store-target capture survives unused so emit still has a slice to bind
-    onto. `MAPToMOGG` picks the shape.
+    A store body ends with `mogg.tensor.store` into the store-target capture.
+    A compute body ends with `mogg.yield` of the value to store, leaving the
+    store to the kernel; the store-target capture stays so emit has a slice to
+    bind onto.
 
-    `$computeOutputArg` records whether the consuming kernel declares the output
-    this epilogue feeds as a `_FusedComputeOutputTensor`. It is a separate
-    question from the body shape: a dtype-changing epilogue, or the
-    `enable-compute-lambdas` opt-out, keeps a store body against a
-    compute-capable argument. Emit reads it for one purpose, choosing between
-    `_bind_to_fused_output` and `_bind_to_fused_compute_output`.
+    `$computeOutputArg` records whether the kernel declares this output as a
+    `_FusedComputeOutputTensor`, choosing `_bind_to_fused_compute_output` over
+    `_bind_to_fused_output`. It is independent of the body shape: a
+    dtype-changing epilogue or `enable-compute-lambdas=false` keeps a store
+    body against a compute-capable argument.
   }];
   let arguments = (ins
     MOGG_Shape:$shape,
@@ -1304,12 +1096,9 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
     BoolAttr:$mut,
     MO_IOKind:$io,
     DefaultValuedAttr<BoolAttr, "false">:$computeOutputArg,
-    // Present iff the consuming kernel declares this fused output against a
-    // trait bound (`Fused & Output & StoreAccess` / `... & TransformAccess`).
-    // Stamped at MAP lowering (where the epilogue -> call edge is explicit);
-    // emit reads it to wrap the fusion functor in the conforming trait tensor
-    // instead of binding it onto a `ManagedTensorSlice`. Absent for the legacy
-    // `FusedOutputTensor` (MTS-API) lane.
+    // Present iff the kernel declares this output against a trait bound, so
+    // emit wraps the functor in the trait tensor instead of a
+    // `ManagedTensorSlice`. Set at MAP lowering, where the call edge is known.
     OptionalAttr<MOGG_TensorArgContractAttr>:$contract
   );
   let results = (outs MOGG_Tensor:$tensor);
@@ -1331,18 +1120,12 @@ def MOGG_TensorGetPtrOp : MOGG_Op<"tensor.get_ptr", [
 ]> {
   let summary = "Extract the raw `!mogg.pointer` backing a codegen tensor.";
   let description = [{
-    Reads the raw base pointer of `$tensor`'s `ManagedTensorSlice`. Used by
-    `MAPToMOGG` to hand a `mogg.tensor.create.epilogue` the pointer of the
-    tensor its body stores into (or, for a mixed-precision accumulating kernel,
-    the pointer of the pre-cast accumulation buffer `AllocateAccumulatingBuffers`
-    added), so emit can build the kernel's fused-output `ManagedTensorSlice` over
-    real storage. An accumulating kernel then has a valid pointer to accumulate
-    through, while a non-accumulating one simply ignores it and the lambda does
-    the store.
+    Gives a `mogg.tensor.create.epilogue` the pointer of its store target (or
+    of the pre-cast accumulation buffer for a mixed-precision accumulating
+    kernel), so the fused output is built over real storage that an
+    accumulating kernel can accumulate through.
   }];
-  // A buffer as well as a tensor: an epilogue that stores into a fused
-  // `mo.mutable.store`'s buffer has that buffer as its store target, and
-  // `mogg.tensor.load`/`_tensor.store` already take either.
+  // A buffer when the epilogue stores into a fused `mo.mutable.store`.
   let arguments = (ins MOGG_TensorLike:$tensor);
   let results = (outs MOGG_Pointer:$ptr);
   let assemblyFormat = [{
@@ -1357,34 +1140,22 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"tensor.create.prologue", [
 ]> {
   let summary = "A fused-input tensor bound to its own prologue body.";
   let description = [{
-    Load-side counterpart of `mogg.tensor.create.epilogue`: produces a
-    `!mogg.tensor` (of `$shape`) the consuming kernel reads through its own
-    prologue body, rather than from a separately materialized tensor. The
-    body's entry-block arguments are the index the callback is evaluated at
-    followed by one rebuilt tile per captured tensor, and it hands back the
-    value the kernel should see via `mogg.yield`. `MAPToMOGG` lowers a
-    `map.iter.prologue` into one of these. Element type / mutability / io-kind
-    are attributes, and `$device` records the device kind (cpu vs gpu) so emit
-    can pick the preferred alignment locally instead of reaching out to the
-    enclosing kernel stub.
+    Load-side counterpart of `mogg.tensor.create.epilogue`, lowered from
+    `map.iter.prologue`. The body takes the index followed by one rebuilt tile
+    per capture and yields the value the kernel reads.
   }];
   let arguments = (ins
     MOGG_Shape:$shape,
     Variadic<MOGG_TensorLike>:$captures,
-    // Runtime from/to shapes for a dynamic `mogg.index.reshape` in the body,
-    // which cannot read them from the static signature. Same role as the
-    // epilogue's: they become trailing `IndexList` fields on the fusion
-    // functor.
+    // Runtime shapes for a dynamic `mogg.index.reshape` in the body; they
+    // become trailing `IndexList` fields on the fusion functor.
     Variadic<MOGG_Shape>:$shapeCaptures,
     StrAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
     MO_IOKind:$io,
-    // Present iff the consuming kernel declares this fused input against a trait
-    // bound (`Fused & Input & LoadAccess`). Stamped at MAP lowering; emit reads
-    // it to wrap the fusion functor in `_MoggInputLoadFusionTensor` instead of
-    // binding it onto a `ManagedTensorSlice`. Absent for the legacy
-    // `FusedInputTensor` (MTS-API) lane.
+    // Present iff the kernel declares this input against a trait bound, so emit
+    // wraps the functor in `_MoggInputLoadFusionTensor`.
     OptionalAttr<MOGG_TensorArgContractAttr>:$contract
   );
   let results = (outs MOGG_Tensor:$tensor);
@@ -1401,10 +1172,6 @@ def MOGG_TensorStoreOp : MOGG_Op<"tensor.store", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
   let summary = "Store a scalar value into a codegen tensor at an index.";
-  let description = [{
-    Store path of a fusion callback body: writes `$value` into `$tensor` at
-    `$index`.
-  }];
   let arguments = (ins MOGG_TensorLike:$tensor, AnyType:$index, AnyType:$value);
   let assemblyFormat = [{
     $tensor `[` $index `]` `=` $value attr-dict `:`
@@ -1418,17 +1185,11 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
 ]> {
   let summary = "Call a registered opaque kernel's execute function.";
   let description = [{
-    New-path counterpart of `mogg.call.execute`: invokes the kernel named by
-    `$callee` over `!mogg.tensor` inputs/outputs. `$device_contexts` wires the
-    callee's device context(s) explicitly instead of scavenging them from the
-    enclosing kernel stub's block arguments at emit time. It is variadic: a
-    single-device kernel takes one `!mogg.context`; a distributed kernel whose
-    execute signature takes a `DeviceContextArray` takes one per device, which
-    `ConformCallOperands` packs into a single `!mogg.tuple` of contexts.
-    `$hasEpilogueFusion` / `$hasPrologueFusion` record whether an output is a
-    fused-epilogue tensor and whether an input is a fused-prologue tensor, so
-    emit never inspects an operand's own producer for this. Not a terminator
-    (the enclosing `mogg.kernel` body is terminated by `mogg.output`).
+    Invokes `$callee`'s `execute`. `$device_contexts` passes the device
+    contexts explicitly: one for a single-device kernel, or one per device for
+    a `DeviceContextArray`, which `ConformCallOperands` packs into a tuple.
+    `$hasEpilogueFusion` / `$hasPrologueFusion` spare emit from inspecting
+    operand producers.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
@@ -1440,17 +1201,13 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
     OptionalAttr<DictionaryAttr>:$kernel_param,
     DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion,
     DefaultValuedAttr<BoolAttr, "false">:$hasPrologueFusion,
-    // Forwarded from the source op's `MO_SameVariadicOperandSize` trait so
-    // `ConformCallOperands` can split a flat operand list into several
-    // equal-length variadic groups (e.g. a bundled collective's N peer inputs
-    // and N signal buffers). The trait is lost when the MO op becomes a call,
-    // so it rides along as this attribute.
+    // The source op's `MO_SameVariadicOperandSize` trait, lost when it becomes
+    // a call, so `ConformCallOperands` can split operands into equal-length
+    // variadic groups (e.g. a collective's N inputs and N signal buffers).
     DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize
   );
-  // An `!mo.opaque` result is allocated inside the kernel body (see
-  // `MOGGKernelOpLoweringState`), so unlike a tensor it has no destination to
-  // pass as an `$output`. It leaves through this result instead, and the
-  // enclosing `mogg.kernel` forwards it with `mogg.output`.
+  // An `!mo.opaque` result is allocated inside the kernel body, so it has no
+  // destination `$output`; `mogg.kernel` forwards it with `mogg.output`.
   let results = (outs Optional<MO_Opaque>:$opaqueResult);
   let assemblyFormat = [{
     $callee (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
@@ -1466,10 +1223,8 @@ def MOGG_ScalarCreateOp : MOGG_Op<"scalar.create", [
 ]> {
   let summary = "Pack a single-element tensor operand into a scalar operand.";
   let description = [{
-    New-path counterpart of `mogg.as_scalar`: `ConformCallOperands`
-    inserts this to convert a `!mogg.tensor` operand that a kernel expects as a
-    scalar into a `!mogg.scalar`. Element type is carried by the source tensor's
-    creating op, not restated here.
+    Inserted by `ConformCallOperands` for an operand the kernel expects as a
+    scalar.
   }];
   let arguments = (ins MOGG_Tensor:$tensor);
   let results = (outs MOGG_Scalar:$scalar);
@@ -1484,23 +1239,14 @@ def MOGG_TraitCreateOp : MOGG_Op<"trait.create", [
 ]> {
   let summary = "Re-present a codegen tensor as its conforming trait argument.";
   let description = [{
-    Inserted by `ConformCallOperands` between a tensor-producing op and a
-    `mogg.call.opaque` / `mogg.call.shape` whenever the callee declares that
-    operand against a trait bound (`Tensor` / `DenseTensor` / `TileTensorable`).
-    A raw `!mogg.tensor` reconstructs as a `ManagedTensorSlice`, which conforms
-    to none of those bounds; this op's emit wraps it in the conforming
-    `_MoggDenseTensorArg` (execute lane) or `_MoggShapeTensorArg` (shape lane,
-    `role = none`), keyed on `$contract`. The result keeps the operand's own
-    `!mogg.tensor`/`!mogg.buffer` kind (a mutable-input trait argument
-    reconstructs as a `!mogg.buffer`), so the call op's operand list and its own
-    emit are unchanged -- the wrap is a local, 1:1 lowering here, not
-    context-sensitive logic at the call.
-
-    `$device` records the execution device so emit picks the preferred alignment
-    and device-passable flavor locally, exactly as `mogg.tensor.create` does,
-    without reaching out to the enclosing kernel stub. It wraps a finished
-    handle, so it works over any producer -- a direct `mogg.tensor.create` or a
-    hoisted view whose layout is not row-major.
+    Inserted by `ConformCallOperands` for an operand the callee declares
+    against a trait bound (`Tensor` / `DenseTensor` / `TileTensorable`), which
+    a `ManagedTensorSlice` does not satisfy. Emit wraps it in
+    `_MoggDenseTensorArg` (execute) or `_MoggShapeTensorArg` (shape,
+    `role = none`) per `$contract`. The result keeps the operand's
+    tensor/buffer kind, so the call's emit is unchanged. Works over any
+    producer, including non-row-major views. `$device` is as for
+    `mogg.tensor.create`.
   }];
   let arguments = (ins
     MOGG_TensorLike:$tensor,
@@ -1519,11 +1265,9 @@ def MOGG_TupleCreateOp : MOGG_Op<"tuple.create", [
 ]> {
   let summary = "Pack a run of variadic tensor operands into a tuple operand.";
   let description = [{
-    New-path counterpart of `mogg.as_tuple`: `ConformCallOperands`
-    inserts this to pack the consecutive `!mogg.tensor` operands that satisfy a
-    single variadic kernel argument into one `!mogg.tuple`. It also packs the
-    per-device `!mogg.context` operands of a distributed kernel into a
-    tuple-of-contexts, which emit renders as a `DeviceContextArray`.
+    Inserted by `ConformCallOperands` to pack the operands of one variadic
+    kernel argument, or a distributed kernel's per-device contexts (emitted as
+    a `DeviceContextArray`).
   }];
   let arguments = (ins
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Context]>>:$elements,
@@ -1539,16 +1283,11 @@ def MOGG_RebindOp : MOGG_Op<"rebind", [Pure,
     DeclareOpInterfaceMethods<EmitsMojoInterface>]> {
   let summary = "A cast between an unpacked async handle and a codegen handle.";
   let description = [{
-    Reconciles the type system during the async-unpack transition (e.g.
-    `!mgp.buffer` -> `!mogg.pointer`). For a `!mogg.pointer` result it emits
-    real Mojo, bridging the unpacked `OwnedByteBuffer` to the raw opaque data
-    pointer the MOGG-ABI stub expects; the `!mogg.context` / `!mogg.dim` casts
-    are code-generation no-ops (the unpacked handle already has the right Mojo
-    type).
+    E.g. `!mgp.buffer` -> `!mogg.pointer`, which emits Mojo extracting the raw
+    data pointer from the `OwnedByteBuffer`; `!mogg.context` / `!mogg.dim`
+    casts emit nothing.
 
-    TODO (debt): remove once `mogg.async.unpack` folds directly to the typed
-    handle; sequence fusion currently expects `async.unpack` to fold, so a
-    conversion op is needed to please the type system.
+    TODO: remove once `mogg.async.unpack` folds directly to the typed handle.
   }];
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
@@ -1560,18 +1299,10 @@ def MOGG_RebindOp : MOGG_Op<"rebind", [Pure,
 def MOGG_BufferConstantOp : MOGG_Op<"buffer.constant", [Pure]> {
   let summary = "A constant buffer, as a raw codegen pointer.";
   let description = [{
-    Holds the bytes of a `mo.constant` that `FuseConstantIterOpaqueInputs`
-    folded into a `map.iter.opaque` body, where there is no operand for it to
-    arrive on. `MAPToMOGG` emits one of these in place of the `mo.constant` and
-    reconstructs the tensor from its `!mogg.pointer` result, exactly as it
-    would from an input pointer.
-
-    Unlike `mgp.buffer.constant` this carries the attribute as written, with no
-    alignment: the MEF alignment depends on the pipeline's minimum CPU
-    alignment, known only in `MOGGToMGP`. That pass rewrites this into an
-    `mgp.buffer.constant` plus a `mogg.rebind` back to a pointer, running the
-    value through `lowerElementsAttr` on the way and recording the blob in the
-    enclosing region's `constantResources`.
+    A `mo.constant` that `FuseConstantIterOpaqueInputs` folded into a
+    `map.iter.opaque` body, used like an input pointer. Carries no alignment,
+    since the minimum CPU alignment is known only in `MOGGToMGP`, which
+    rewrites it to `mgp.buffer.constant` plus a `mogg.rebind`.
   }];
   let arguments = (ins ElementsAttr:$value);
   let results = (outs MOGG_Pointer:$pointer);
@@ -1583,11 +1314,7 @@ def MOGG_TensorLoadOp : MOGG_Op<"tensor.load", [
 ]> {
   let summary = "Load a scalar value from a codegen tensor at an index.";
   let description = [{
-    New-path counterpart of `mogg.tensor.load`: the load half of a fusion
-    callback body, reading `$tensor` at `$index`. Mirrors
-    `mogg.tensor.store`'s shape minus the write side; not `Pure`, since a
-    load shouldn't be freely reordered relative to a store through the same
-    tensor any more than the store itself is.
+    Not `Pure`, so it is not reordered across a store to the same tensor.
   }];
   let arguments = (ins MOGG_TensorLike:$tensor, AnyType:$index);
   let results = (outs AnyType:$result);
@@ -1603,17 +1330,10 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 ]> {
   let summary = "A scalar constant inlined into a fusion body as a literal.";
   let description = [{
-    New-path counterpart of `mogg.constant.scalar`. It differs only in the
-    result type: a builtin scalar (`f32`, `si32`, ...) rather than an
-    `!mo.scalar`, which is the type `mogg.tensor.load` already produces, so
-    an inlined constant is interchangeable with the load it replaces
-    everywhere the new path consumes element values.
-
-    Emits no statement of its own -- the value becomes a Mojo literal at each
-    use -- splatted to the enclosing closure's SIMD width so it works as an
-    elementwise operand in any position. Not `ConstantLike`: CSE dedups it,
-    and the constant hoisting that trait brings is only wanted MAP-side,
-    where `map.constant.scalar` carries it.
+    The result is a builtin scalar, as `mogg.tensor.load` produces, so it can
+    replace a load. Emitted as a Mojo literal at each use, splatted to the
+    closure's SIMD width. Not `ConstantLike`, since that hoisting is wanted
+    only on `map.constant.scalar`.
 
     Example:
     ```mlir
@@ -1633,25 +1353,14 @@ def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
 ]> {
   let summary = "Drive a parallel foreach loop over a fused elementwise body.";
   let description = [{
-    New-path counterpart of `mogg.call.foreach`: dispatches to the Mojo
-    foreach driver named by `$callee` (resolved once, at construction time,
-    from the registered `mogg.call.foreach` primitive -- there is no
-    per-kernel lookup the way `mogg.call.opaque` has, since this always
-    calls the same generic driver) over `$shape` many indices. Unlike the
-    opaque-kernel path, the region owns the full per-index computation
-    directly: its entry block has one block argument per `$capturing` tensor
-    (in order) followed by a trailing index block argument, and the body does
-    its own load-compute-store round trip through `mogg.tensor.load` /
-    `mogg.call.elementwise` / `mogg.tensor.store`. `MAPToMOGG` lowers a
-    `map.iter.opaque` wrapping a `map.iter.foreach.body` into one of these.
+    Runs the generic foreach driver `$callee` over `$shape`. The body does the
+    per-index load-compute-store; its arguments are one per `$capturing`
+    tensor, then the index. Lowered from a `map.iter.opaque` wrapping a
+    `map.iter.foreach.body`.
 
-    Captured tensors may have a different shape than `$shape` (e.g. a
-    broadcast operand) and from each other, so this op deliberately has no
-    verifier enforcing shape agreement. A capture is a `!mogg.buffer`
-    wherever in-place fusion folded a load's mutable buffer into a position a
-    tensor used to hold. `$device` records the target device
-    kind (cpu vs gpu), set once at construction time rather than read back
-    from the enclosing kernel stub at emit time.
+    Captures may differ in shape from `$shape` and each other (e.g.
+    broadcasts), so there is no shape verifier. A capture is a `!mogg.buffer`
+    where in-place fusion folded in a mutable buffer.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
@@ -1674,9 +1383,7 @@ def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
 ]> {
   let summary = "Call a registered shape function, returning its shape by value.";
   let description = [{
-    New-path counterpart of `mogg.call.shape`: not a terminator, and yields
-    its `IndexList` as an ordinary SSA result. `$kernel_param` carries
-    `output_rank`, the rank of `$result`.
+    `$kernel_param` carries `output_rank`, the rank of `$result`.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
@@ -1700,9 +1407,7 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
 ]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";
   let description = [{
-    Like `mogg.call.elementwise`, but also takes the current iteration index
-    explicitly as an operand instead of relying on the kernel's registered
-    signature to conditionally request one.
+    Takes the iteration index as an explicit operand.
 
     Example:
     ```mlir
@@ -1730,12 +1435,9 @@ def MOGG_TensorCreateSliceOp : MOGG_Op<"tensor.create.slice", [
 ]> {
   let summary = "Build a codegen tensor that is a strided slice view of another codegen tensor.";
   let description = [{
-    Produces a `!mogg.tensor` addressable directly by the consuming loop's
-    own index, reading `$input`'s underlying storage through a start/step
-    reindexing -- nothing is copied. `$outShape`/`$staticStart`/`$staticStep`
-    carry the compile-time-known parts of the view's shape and bounds (`?`
-    for a dimension that is only known at runtime); the input's own shape is
-    read off `$input` directly rather than duplicated here.
+    A zero-copy view indexed by the consuming loop's index.
+    `$outShape`/`$staticStart`/`$staticStep` hold the static parts (`?` for
+    runtime-only dimensions).
   }];
   let arguments = (ins
     MOSH_ShapeAttr:$outShape,
@@ -1764,11 +1466,8 @@ def MOGG_TensorCreateBroadcastOp : MOGG_Op<"tensor.create.broadcast", [
 ]> {
   let summary = "Build a codegen tensor that is a broadcast view of another codegen tensor.";
   let description = [{
-    Produces a `!mogg.tensor` addressable directly by the consuming loop's
-    own index, reading `$input`'s underlying storage through a
-    replicated-dimension reindexing (numpy broadcasting semantics) --
-    nothing is copied. `$outShape` carries the view's shape; the input's own
-    shape is read off `$input` directly rather than duplicated here.
+    A zero-copy view with numpy broadcasting semantics, indexed by the
+    consuming loop's index.
   }];
   let arguments = (ins
     MOSH_ShapeAttr:$outShape,
@@ -1791,15 +1490,10 @@ def MOGG_TensorCreateTransposeOp : MOGG_Op<"tensor.create.transpose", [
 ]> {
   let summary = "Build a codegen tensor that is a transpose view of another codegen tensor.";
   let description = [{
-    Produces a `!mogg.tensor` addressable directly by the consuming loop's
-    own index, reading `$input`'s underlying storage through a
-    dimension-reordering reindexing -- nothing is copied. `$outShape` and
-    `$staticPermutations` carry the compile-time-known parts of the view's shape and
-    permutation (`$staticPermutations[i]` names which `$input` dimension became output
-    dimension `i`, `?` for a dimension whose source is only known at runtime);
-    `$permutations` is the runtime permutation tensor, read only for the dimensions
-    `$staticPermutations` leaves dynamic. The input's own shape is read off `$input`
-    directly rather than duplicated here.
+    A zero-copy view indexed by the consuming loop's index.
+    `$staticPermutations[i]` is the `$input` dimension that becomes output
+    dimension `i` (`?` if known only at runtime, then read from
+    `$permutations`).
   }];
   let arguments = (ins
     MOSH_ShapeAttr:$outShape,
@@ -1824,20 +1518,12 @@ def MOGG_TensorCreateReshapeOp : MOGG_Op<"tensor.create.reshape", [
 ]> {
   let summary = "Build a codegen tensor that is a reshape view of another codegen tensor.";
   let description = [{
-    Produces a `!mogg.tensor` addressable directly by the consuming loop's
-    own index, reindexing `$input`'s underlying storage via row-major
-    de-linearization -- nothing is copied. `$outShape` carries the view's
-    static shape (a `dyn` placeholder where a dim isn't known at compile
-    time); `$shape` is the runtime `!mogg.shape` for it -- built the same way
-    `mogg.tensor.create`'s own `$shape` is (`mogg.shape.create`), so an
-    identical shape built elsewhere for the same kernel CSEs into one op --
-    unlike broadcast/transpose, reshape computes its result's *stride*
-    directly from the output shape's own values (row-major de-linearization
-    has no other source of truth to fall back on, the way broadcast/transpose
-    fall back to the input's own real stride), so a dim this op doesn't
-    actually know at runtime would corrupt every element beyond the first row
-    rather than just misreport shape metadata. The input's own shape is read
-    off `$input` directly rather than duplicated here.
+    A zero-copy row-major view indexed by the consuming loop's index.
+    `$outShape` is the static shape (`dyn` where unknown) and `$shape` the
+    runtime one, built with `mogg.shape.create` so identical shapes CSE.
+    Unlike broadcast/transpose, the result's stride comes from the output
+    shape alone, so a wrong runtime dim corrupts every element past the first
+    row.
   }];
   let arguments = (ins
     MOSH_ShapeAttr:$outShape,
@@ -1858,19 +1544,10 @@ def MOGG_IndexReshapeOp : MOGG_Op<"index.reshape", [
 ]> {
   let summary = "Reindex an N-D index into an M-D index preserving row-major offset.";
   let description = [{
-    Reindexes `$index` (a point in `$fromShape`) to the point in `$toShape`
-    with the same row-major linear offset -- the per-index counterpart of
-    `mogg.tensor.create.reshape`, used when a reshape is fused into an
-    epilogue's STORE (transforming the store index) rather than materialized
-    as a whole-tensor view. `MAPToMOGG` lowers an in-epilogue
-    `map.index.reshape` into this (it is deliberately NOT hoisted, unlike the
-    `.stride` view ops, since it depends on the loop index and feeds a store).
-
-    `$fromShape`/`$toShape` carry the static shapes (`dyn` where a dim isn't
-    known at compile time). `$dynamicShapes` supplies the runtime `!mogg.shape`
-    for a shape that has a dynamic dim (row-major (de)linearization onto a
-    dynamic shape has no other source of truth) -- empty when both shapes are
-    fully static.
+    The per-index counterpart of `mogg.tensor.create.reshape`, for a reshape
+    fused into an epilogue's store. Not hoisted, since it depends on the loop
+    index. `$dynamicShapes` supplies runtime shapes for any dynamic dims and
+    is empty when both shapes are static.
 
     Example:
     ```mlir

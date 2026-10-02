@@ -193,8 +193,7 @@ ParseResult parseChildren(AsmParser &p, SmallVectorImpl<Attribute> &children,
                           SmallVectorImpl<uint32_t> &operandIndices);
 
 /// Recursively parse a fusion info tree node. Group nodes (e.g. "Sequence",
-/// "Epilogue") are parsed by matching the keyword, then calling parseChildren
-/// which in turn calls parseNode for each child.
+/// "Epilogue") recurse through parseChildren.
 Attribute parseNode(AsmParser &p) {
   MLIRContext *ctx = p.getContext();
 
@@ -239,9 +238,7 @@ Attribute parseNode(AsmParser &p) {
       return {};
   }
 
-  // NOTE: The custom textual format does not encode location or signature.
-  // If this parser is ever used to round-trip through textual IR, those
-  // fields will be lost. Currently only used in lit tests.
+  // The textual format drops location and signature; only lit tests parse it.
   LocationAttr loc;
   if (lineNumber)
     loc = FileLineColLoc::get(ctx, "", lineNumber, 0);
@@ -249,9 +246,8 @@ Attribute parseNode(AsmParser &p) {
                              /*signature=*/{});
 }
 
-/// Parse a parenthesized, comma-separated list of child nodes. Each child is
-/// parsed via parseNode. An optional trailing "operand=<N>" is parsed for
-/// epilogue/prologue groups.
+/// Parse a parenthesized, comma-separated list of child nodes, with an
+/// optional trailing "operand=<N>" for epilogue/prologue groups.
 ParseResult parseChildren(AsmParser &p, SmallVectorImpl<Attribute> &children,
                           SmallVectorImpl<uint32_t> &operandIndices) {
   if (p.parseLParen())

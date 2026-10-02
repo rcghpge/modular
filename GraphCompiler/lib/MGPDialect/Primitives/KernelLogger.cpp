@@ -20,23 +20,22 @@
 namespace M {
 namespace MGP {
 
-/// Generate unique kernel ID to correlate async launches and completions for
-/// logging
+/// Correlates async launches with their completions in the log.
 uint64_t generateKernelId() {
   static std::atomic<uint64_t> counter{1};
   return counter.fetch_add(1, std::memory_order_relaxed);
 }
 
-/// Get relative timestamp in milliseconds since first kernel launch
+/// Milliseconds since the first kernel launch.
 double getRelativeTimestampMs() {
   static auto startTime = std::chrono::high_resolution_clock::now();
   auto now = std::chrono::high_resolution_clock::now();
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(now - startTime);
-  return duration.count() / 1000.0; // Convert microseconds to milliseconds
+  return duration.count() / 1000.0;
 }
 
-/// Thread-safe kernel logging function to prevent interleaved output
+/// Serialized so concurrent events do not interleave.
 void logKernelEvent(llvm::StringRef eventType, llvm::StringRef kernelName,
                     llvm::StringRef deviceInfo, uint64_t kernelId,
                     double timestampMs, llvm::raw_ostream &os) {
@@ -48,7 +47,6 @@ void logKernelEvent(llvm::StringRef eventType, llvm::StringRef kernelName,
      << "ms\n";
 }
 
-/// Extract device contexts from operands
 template <typename OperandContainer>
 llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts(const OperandContainer &operands) {
@@ -64,7 +62,6 @@ extractDeviceContexts(const OperandContainer &operands) {
   return deviceContexts;
 }
 
-/// Get device information string for logging (CPU vs GPU:id)
 template <typename OperandContainer>
 std::string getDeviceInfoString(const OperandContainer &operands) {
   llvm::SmallVector<std::string> deviceInfos;
@@ -77,17 +74,15 @@ std::string getDeviceInfoString(const OperandContainer &operands) {
     if (device.api() == M::Driver::Device::cpuAPI)
       deviceInfo = "CPU";
     else
-      // All non-CPU devices are considered GPU with device ID
       deviceInfo = "GPU:" + std::to_string(device.id());
 
     deviceInfos.push_back(std::move(deviceInfo));
   }
 
   if (deviceInfos.empty())
-    return "CPU"; // Default assumption if no device contexts found
+    return "CPU";
   if (deviceInfos.size() == 1)
     return deviceInfos[0];
-  // Multiple devices - join with comma
   std::string result = "Multi(";
   llvm::raw_string_ostream os(result);
   llvm::interleaveComma(deviceInfos, os);
@@ -95,7 +90,6 @@ std::string getDeviceInfoString(const OperandContainer &operands) {
   return result;
 }
 
-// Explicit template instantiations for common operand container types
 template llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>>(
     const llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef> &operands);
@@ -119,7 +113,6 @@ extractDeviceContexts<M::RemainingArguments>(
 template std::string getDeviceInfoString<M::RemainingArguments>(
     const M::RemainingArguments &operands);
 
-/// KernelLogger implementation
 template <typename OperandContainer, typename LoggingPolicy>
 KernelLogger<OperandContainer, LoggingPolicy>::KernelLogger(
     llvm::StringRef kernelName, const OperandContainer &operands,
@@ -147,7 +140,6 @@ KernelLogger<OperandContainer, LoggingPolicy>::~KernelLogger() {
   }
 }
 
-// Explicit template instantiations for common types
 template class KernelLogger<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>,
                             SyncLoggingPolicy>;
 template class KernelLogger<llvm::ArrayRef<M::AsyncRT::AnyAsyncValueRef>,

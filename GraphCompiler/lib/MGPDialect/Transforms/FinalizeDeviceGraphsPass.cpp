@@ -25,12 +25,9 @@ namespace {
 
 using DeviceContextValue = mlir::TypedValue<DeviceContextType>;
 
-// device graphs have no chain concept: a host-side sequencing chain is
-// neither a real graph input nor output (in the staged body the chain inputs
-// are dead pass-throughs and the chain outputs come from host-side
-// `mogg.async.ready`). Drop chain-typed values from the graph's I/O; the
-// ordering chain is produced fresh by the `mgp.device_graph.execute` op
-// below.
+// Device graphs have no chains: staged chain inputs are dead pass-throughs and
+// chain outputs come from host-side `mogg.async.ready`. Chains are dropped
+// from the graph I/O; the execute op produces a fresh one.
 bool isChain(Value v) { return isa<MEF::ChainType>(v.getType()); }
 
 SmallVector<Value> nonChainValues(ValueRange v) {
@@ -40,14 +37,11 @@ SmallVector<Value> nonChainValues(ValueRange v) {
 /// Replace the builder -> device-context bridges that survive synthesis with
 /// `mgp.device_graph.device_context` ops.
 ///
-/// `mgp-compute-device-graph-dependencies` re-sources an in-body device context
-/// from the recording builder through a `builtin.unrealized_conversion_cast`,
-/// expecting `mgp-generate-build-graph-stubs` to rewrite the consumer to take
-/// the builder directly -- as it does for `mgp.buffer.alloc` -- so the round
-/// trip folds away. A consumer that genuinely needs a device context (e.g.
-/// `mgp.buffer.bulk_slice`, which only does host-side sub-buffer math) leaves
-/// its cast live, and an unrealized cast cannot be emitted to Mojo. Fold the
-/// round trips first: converting one of a pair early would strand its inverse.
+/// Most such casts fold away once consumers take the builder directly, but one
+/// that genuinely needs a device context (e.g. `mgp.buffer.bulk_slice`, which
+/// does host-side sub-buffer math) keeps it live, and unrealized casts cannot
+/// be emitted to Mojo. Round trips are folded first: converting one of a pair
+/// early would strand its inverse.
 LogicalResult resolveBuilderCasts(Region &region) {
   SmallVector<UnrealizedConversionCastOp> casts;
   region.walk([&](UnrealizedConversionCastOp cast) { casts.push_back(cast); });
@@ -71,13 +65,10 @@ LogicalResult resolveBuilderCasts(Region &region) {
                 "`!mgp.device_graph.builder` to "
              << cast.getResult(0).getType();
 
-    // Work dispatched against the backing context runs eagerly while the graph
-    // is being built instead of being recorded, so only ops audited to use the
-    // context purely for host-side buffer views may have it. The list is an
-    // allow-list rather than an effect-freedom test on purpose: `mgp.sync` is
-    // `Pure` yet records a device event, so effect-freedom does not imply
-    // "enqueues nothing". An op that must record needs either a builder-native
-    // form (as `mgp.device_graph.alloc` is to `mgp.buffer.alloc`) or a
+    // Work against the backing context runs eagerly at build time instead of
+    // being recorded, so only ops audited to make host-side buffer views may
+    // use it. Effect-freedom is not enough: `mgp.sync` is `Pure` yet records a
+    // device event. Ops that record need a builder-native form or a
     // `mgp.device_graph.recording_context`.
     for (Operation *user : cast->getUsers())
       if (!isa<BufferSliceOp, BufferBulkSliceOp, TensorSliceOp>(user))
@@ -98,10 +89,8 @@ LogicalResult resolveBuilderCasts(Region &region) {
 
 /// Build a `mogg.generic.compiled.region` around a device-graph build callback.
 ///
-/// `operands` are the live values the region needs from the outside. The region
-/// body receives them as `!mogg.async<T>` block arguments, unpacks them, and
-/// passes the unpacked values to `bodyBuilder`. The values returned by
-/// `bodyBuilder` are packed back into async and yielded.
+/// `operands` enter as `!mogg.async<T>` block arguments and are unpacked for
+/// `bodyBuilder`, whose returned values are packed and yielded.
 static FailureOr<MOGG::GenericCompiledRegionOp> wrapDeviceGraphBuildRegion(
     IRRewriter &rewriter, Location loc, DeviceRefAttr deviceRef,
     TypeRange resultTypes, ValueRange operands, StringRef fusionName,
@@ -161,16 +150,13 @@ static LogicalResult collectRegionInputs(Region &region,
   return mlir::success();
 }
 
-/// A region of a `mgp.device_graph.collective` after we have computed its
-/// captures and the non-chain values it yields.
+/// The captures and non-chain yields of a `mgp.device_graph.collective` region.
 struct RegionInterface {
   Region *region;
   SmallVector<Value> inputs;
   SmallVector<Value> outputs;
 };
 
-/// Build a `RegionInterface` for each graph body in `collectiveOp`, computing
-/// the values it captures from outside and the value outputs it contributes.
 static LogicalResult
 createRegionInterfaces(DeviceGraphCollectiveOp collectiveOp,
                        SmallVectorImpl<RegionInterface> &interfaces) {
@@ -229,7 +215,6 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
 
   Value theContext = model.getExecuteContext();
 
-  // Map each region to its execute-block device context.
   auto deviceContextsResult = collectDeviceContexts(collectiveOp, model);
   if (failed(deviceContextsResult))
     return mlir::failure();
@@ -237,13 +222,10 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
   SmallVector<DeviceContextValue> deviceContexts =
       std::move(*deviceContextsResult);
 
-  // Determine per-region inputs and outputs. Chain outputs are dropped from the
-  // graph signature and later rewired to the execute op's fresh chain.
   SmallVector<RegionInterface> regionInterfaces;
   if (failed(createRegionInterfaces(collectiveOp, regionInterfaces)))
     return failure();
 
-  // Flatten per-region inputs in region order for the new create/execute ops.
   SmallVector<Value> allInputs;
   SmallVector<unsigned> inputCounts;
   inputCounts.reserve(regionInterfaces.size());
@@ -257,9 +239,8 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
         return DeviceGraphType::get(ctx, info.inputs, info.outputs);
       });
 
-  // Wrap the build work in a compiled region: context + all device contexts +
-  // all graph inputs enter via the async ABI, and the region yields the built
-  // graphs (one per device).
+  // The context, device contexts, and graph inputs enter via the async ABI;
+  // the region yields one built graph per device.
   SmallVector<Value> regionOperands{theContext};
   llvm::append_range(regionOperands, deviceContexts);
   llvm::append_range(regionOperands, allInputs);
@@ -320,8 +301,6 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
     return mlir::failure();
   auto regionOp = *regionOpResult;
 
-  // The output types is the flattened sequence of output types for each
-  // graph.
   SmallVector<Type> outputTypes;
   for (RegionInterface &info : regionInterfaces)
     llvm::append_range(outputTypes, TypeRange(info.outputs));
@@ -333,8 +312,6 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
       /*graphs=*/regionOp.getResults(),
       /*inputs=*/allInputs);
 
-  // Rewire the collective op's results: chain results map to the execute chain,
-  // value results map to the execute value outputs in region/yield order.
   Value executeChain = executeOp.getChain();
   unsigned outputIdx = 0;
   for (Value result : collectiveOp.getResults()) {

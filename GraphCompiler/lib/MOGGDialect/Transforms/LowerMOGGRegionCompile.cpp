@@ -89,15 +89,10 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
   oldKernel.erase();
 }
 
-// Take all the compiled JIT Kernels and lower them
-// -- Lower MOGG::LoadCompiledKernelOp to MGP::ModuleLoadOp
-//    1. Determine the potential insertion point based off following rules
-//       --> After RuntimeCreateOp
-//    2. Housekeeping to keep track of the kernel index
-// -- Lower MOGG::ExecuteCompiledOp to MGP::ExecuteGenericOp
-//    1. Special consideration has to be taken into account for init block and
-//       ordering of the operations
-//    2. Both init and execute blocks are processed.
+// Lowers compiled JIT kernels:
+// - MOGG::LoadCompiledKernelOp -> MGP::ModuleLoadOp, after the RuntimeCreateOp.
+// - MOGG::ExecuteCompiledOp -> MGP::ExecuteGenericOp in the init and execute
+//   blocks, preserving init-block ordering.
 void LowerMOGGRegionCompilesPass::runOnOperation() {
   MLIRContext *ctx = getOperation().getContext();
   for (auto model :
@@ -106,11 +101,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     Block &execute = *model.getExecuteBlock();
     OpBuilder builder{ctx};
 
-    // Set up the exec state
     MGP::ExecuteState execState(ctx, model);
 
-    // MOGG::LoadCompiledKernelOp only on CPU and no other device. We just
-    // need to make sure we use and count the right one for moduleIndex
+    // MOGG::LoadCompiledKernelOp is CPU-only; count the right one for
+    // moduleIndex.
     const auto hostDevice = DeviceRefAttr::get(ctx, kCPULabel, 0);
 
     // Collect the chains for all module load and runtime creates.
@@ -121,9 +115,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // the load of the specific module it calls into.
     SmallVector<Value> moduleLoadResultByIndex;
 
-    // Track the RuntimeCreateOp
-    // Mainly used to make sure we target the right module load and device
-    // runtime for the executions
+    // So executions target the right module load and device runtime.
     MGP::RuntimeCreateOp lastDeviceRuntimeOp;
     for (auto op : init.getOps<MGP::RuntimeCreateOp>()) {
       moduleLoadChains.push_back(op.getResult());
@@ -150,7 +142,6 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
         deviceKernelNameAttrs.push_back(attr);
       }
 
-      // Rewrite the MOGG::LoadCompiledKernelOp into a MGP::ModuleLoadOp
       builder.setInsertionPointAfter(insertionOp);
       auto loadArchive = MGP::ModuleLoadOp::create(
           builder, insertionOp->getLoc(),
@@ -270,10 +261,8 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       exec.getTheContextMutable().assign(guard.getResult(0));
     });
 
-    // In emit-mojo path, ToMGPFromOpaqueOp is used to convert mo.opaque to
-    // mgp.opaque for graph outputs. At this point, the Mojo code has already
-    // been emitted and handles the value correctly. Remove the op by replacing
-    // with its input since the runtime doesn't need this type conversion.
+    // In the emit-mojo path the emitted Mojo already handles the mo.opaque ->
+    // mgp.opaque conversion for graph outputs, so forward ToMGPFromOpaqueOp.
     for (auto toMgpOp : llvm::make_early_inc_range(
              execute.getOps<MOGG::ToMGPFromOpaqueOp>())) {
       toMgpOp.getDataPointer().replaceAllUsesWith(toMgpOp.getInput());

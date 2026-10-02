@@ -69,8 +69,8 @@ Type DeviceBufferType::getElementType() const {
 
 bool DeviceBufferType::hasRank() const { return true; }
 
-// DeviceBufferType::getShape() implemented in MGPTypes.cpp since must see
-// ODS implementation.
+// DeviceBufferType::getShape() is in MGPTypes.cpp, which sees the ODS
+// definitions.
 
 //===----------------------------------------------------------------------===//
 // DeviceTensorType

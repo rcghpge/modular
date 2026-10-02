@@ -23,8 +23,7 @@ namespace MO {
 struct GCPipelineOptions;
 }
 
-// TODO: It would be nice if we didn't have to export these... Unsure how else
-// MT would get access to the symbols it needs though.
+// TODO: Avoid exporting these; mt currently needs the symbols.
 #define EXPORT_FOR_MT DRIVER_VISIBILITY_EXPORT
 
 class MOFContext final {
@@ -47,16 +46,12 @@ public:
 
   ErrorOrSuccess setConfigs(ArrayRef<std::unique_ptr<DriverConfig>> configs);
 
-  /// Given an input buffer with a known format, try to compile it to a model
-  /// binary. On success, this returns a BufferRef that contains the compiled
-  /// model in MEF format.
+  /// Compile an input buffer of a known format to an MEF model binary.
   EXPORT_FOR_MT ErrorOr<M::BufferRef> compileToBinary(M::BufferRef file,
                                                       FileFormat format);
 
-  /// Given an input with a known format, try to compile it to a model
-  /// binary. The type of input is unknown at this stage, is transparently
-  /// passed to framework driver. On success, this returns a BufferRef that
-  /// contains the compiled model in MEF format.
+  /// Compile an opaque input of a known format, passed through to the
+  /// framework driver, to an MEF model binary.
   ErrorOr<M::BufferRef> compileToBinary(void *source, FileFormat format);
 
 private:

@@ -46,12 +46,8 @@ static void initLLVM() {
   std::call_once(flag, []() { llvm::InitializeNativeTarget(); });
 }
 
-// Try to pull target info off of the graph operation.
-// Mostly for testing purposes to ensure changing the host does not affect
-// the tests.
-//
-// If we cannot find such an attribute, extract the target information for
-// the current host.
+// Reads target info from the graph's `target` attribute (so tests are
+// host-independent), or from the current host when `useHostSystem` is set.
 static ErrorOr<TargetInfoAttr> getTargetInfoForHost(GraphOp graph,
                                                     bool useHostSystem) {
   if (!useHostSystem) {
@@ -68,17 +64,9 @@ static ErrorOr<TargetInfoAttr> getTargetInfoForHost(GraphOp graph,
                              M::getHostCPUFeatures());
 }
 
-// This function adds sanity checks for the C++ implementations called by this
-// pass. Runtime checks are added which compare the computed shapes against
-// those computed by the Mojo implementations of the shape functions.
-//
-//
-// For each newly declared binding, generate an assertion that the value of the
-// new binding matches the result of directly calling the shape function.
-//
-// This renames the output parameters of the existing mo.invoke_shape_func
-// and generates assertions that the results of calling that shape function
-// match the newly declared shape parameters.
+// Adds runtime assertions that the C++-computed shapes match the Mojo shape
+// functions, by renaming each mo.invoke_shape_func output parameter and
+// asserting it equals the computed one.
 //
 // clang-format off
 //
@@ -109,7 +97,6 @@ static void addSanityChecks(GraphOp graph, InvokeShapeFuncOp invoke,
   for (auto [newDecl, oldParam] :
        llvm::zip(newDecls, invoke.getOutputParamDecls())) {
 
-    // Create new output parameters for the mo.invoke_shape_func operation
     KGEN::ParamDeclAttr newOutputParam = graph.getNewParamOfType(
         oldParam.getName().strref(), oldParam.getType());
     newOutputParams.push_back(newOutputParam);
@@ -118,8 +105,6 @@ static void addSanityChecks(GraphOp graph, InvokeShapeFuncOp invoke,
     auto newDeclParamRef =
         KGEN::ParamDeclRefAttr::get(newDecl.getParamDeclAttr());
 
-    // Assert that the new declaration matches what was computed by the
-    // by calling the shape function.
     auto outputParamVar = exprBuilder.createVar(outputParamRef);
     auto newDeclParamVar = exprBuilder.createVar(newDeclParamRef);
     exprBuilder.createAssert(
@@ -128,10 +113,8 @@ static void addSanityChecks(GraphOp graph, InvokeShapeFuncOp invoke,
         "implementation");
   }
 
-  // Update the mo.invoke_shape_func operation with new output parameters.
   invoke.setOutputParamDecls(newOutputParams);
 
-  // Materialize the new bindings into the IR.
   OpBuilder builder(invoke.getContext());
   builder.setInsertionPointAfter(invoke);
 
@@ -162,12 +145,10 @@ struct InvokeShapePackingFunctions
     TargetInfoAttr targetInfo = targetOr.takeValue();
 
     graph.walk([&](InvokeShapeFuncOp invoke) {
-      // Find corresponding inference function
       ShapeInferenceFunction infer = getShapeInferencePackingFunction(invoke);
       if (!infer)
         return WalkResult::advance();
 
-      // Try to infer the concrete values of the output parameters
       std::optional<llvm::SmallVector<int64_t>> maybeInferredShapes =
           infer(invoke, targetInfo);
 
@@ -188,8 +169,6 @@ struct InvokeShapePackingFunctions
       SmallVector<KGEN::ParamDeclareOp> newDecls;
       newDecls.reserve(outputDecls.size());
 
-      // Emit a sequence of `kgen.param.declare` ops mapping each output
-      // parameter of the `mo.invoke_shape_func` to an inferred value.
       OpBuilder rewriter(invoke);
       for (auto [decl, value] : llvm::zip(outputDecls, inferredShapes)) {
         auto valueAttr = ShapeAttr::getDim(&getContext(), value);
@@ -198,7 +177,6 @@ struct InvokeShapePackingFunctions
         newDecls.push_back(newDecl);
       }
 
-      // Add sanity checks if needed, otherwise erase the invoke shape op.
       if (sanityCheckShapeFuncs)
         addSanityChecks(graph, invoke, newDecls);
       else

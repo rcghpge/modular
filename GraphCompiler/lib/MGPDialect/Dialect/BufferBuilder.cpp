@@ -24,7 +24,6 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
     Location loc, TypedValue<MEF::ChainType> inChain) {
   this->hostBufferBuilder = hostBufferBuilder;
 
-  // Allocate a runtime slot to hold the runtime.
   TypedValue<ContextType> context;
   modelOp.walk([&](ContextCreateOp contextCreateOp) {
     runtimeSlot = contextCreateOp.getNumSlots();
@@ -33,7 +32,6 @@ TypedValue<MEF::ChainType> MGPBufferBuilder::setupForModel(
     return WalkResult::interrupt();
   });
 
-  // Create a runtime for the host device.
   if (this->hostBufferBuilder == this) {
     auto runtime = MGP::RuntimeCreateOp::create(builder, loc,
                                                 /*inChain=*/inChain,
@@ -49,17 +47,12 @@ void MGPBufferBuilder::recoverFromModel(ModelOp modelOp,
                                         MGPBufferBuilder *hostBufferBuilder) {
   this->hostBufferBuilder = hostBufferBuilder;
 
-  // Recover the runtime slot index from the unique mgp.runtime.create op
-  // for this device.
+  // Without an mgp.runtime.create (unit tests), the slot index stays 0.
   modelOp.walk([&](RuntimeCreateOp runtimeCreateOp) {
     runtimeSlot = runtimeCreateOp.getARuntimeSlot();
     return WalkResult::interrupt();
   });
-  // If there's no mgp.runtime.create, leave the slot index as 0.
-  // (Helps unit tests.)
 
-  // Recover the function and constant from all mgp.module.load ops for
-  // this device.
   size_t moduleIndex = 0;
   modelOp.walk([&](ModuleLoadOp moduleLoadOp) {
     for (auto [functionIndex, name] :
@@ -168,16 +161,10 @@ Value MGPBufferBuilder::bufferTransferFromHost(OpBuilder &builder, Location loc,
                           /*bDevice=*/device);
 
   MGP::ExtendLifetimeOp::create(builder, loc, syncChain, ValueRange{srcBuffer});
-  // return the copyChain and not the syncChain here because we can continue to
-  // run ops that use the same deviceContext and their execution is enqueued
-  // after the h2d copy. Note that this is different than bufferTransferToHost.
-  // Care needs to be taken on d2d's using this result as the src buffer. In
-  // that case, the copyChain is not sufficient because the d2d copy runs on a
-  // different stream and does not wait for us to finish writing to this op's
-  // dst buffer.
-  // We could return the syncChain here, but that would be inefficient when only
-  // one deviceContext is in use (would prevent us from enqueu'ing a bunch of
-  // ops on the stream in advance of them actually running on the stream).
+  // Return copyChain, not syncChain: ops on the same deviceContext are
+  // stream-ordered after the h2d copy, and waiting on syncChain would block
+  // enqueueing ahead. A d2d copy using this dst as its src runs on another
+  // stream, so it does not get that ordering for free.
   return copyChain;
 }
 
@@ -204,9 +191,7 @@ Value MGPBufferBuilder::bufferTransferToHost(OpBuilder &builder, Location loc,
 
   MGP::ExtendLifetimeOp::create(builder, loc, syncChain, ValueRange{dstBuffer});
 
-  // return the syncChain here because the dstBuffer is not available on the
-  // host until the d2h copy is complete. Note that this is different from
-  // bufferTransferFromHost.
+  // The host cannot read dstBuffer until the d2h copy completes.
   return syncChain;
 }
 
@@ -217,18 +202,14 @@ Value MGPBufferBuilder::bufferTransferDevice(
   DeviceRefAttr srcDevice = device;
   DeviceRefAttr dstDevice = dstBufferBuilder->device;
 
-  // When the source and destination live on different (virtual) devices they
-  // use different streams, so the copy (which runs on the destination stream)
-  // must be explicitly synchronized with the source stream. This duplex
-  // synchronization used to be hidden inside the driver's memCopyDtoD; we now
-  // make it explicit in the graph via mgp.device_wait ops. Same-device
-  // transfers run on a single stream and need no cross-stream sync.
+  // Different (virtual) devices use different streams, so the copy (on the
+  // destination stream) is synchronized with the source stream via
+  // mgp.device_wait on both sides.
   bool needsCrossStreamSync = srcDevice != dstDevice;
 
   Value copyInChain = inChain;
   if (needsCrossStreamSync) {
-    // Before the copy: the destination stream waits for the source stream so
-    // the source data is ready before the copy reads it.
+    // Source data must be ready before the copy reads it.
     copyInChain =
         MGP::DeviceWaitOp::create(builder, loc, /*inChain=*/inChain, context,
                                   /*waitingDeviceContext=*/dstDeviceContext,
@@ -254,8 +235,7 @@ Value MGPBufferBuilder::bufferTransferDevice(
   if (!needsCrossStreamSync)
     return copyChain;
 
-  // After the copy: the source stream waits for the destination stream so the
-  // source buffer is not overwritten or freed until the copy completes.
+  // The source must not be overwritten or freed until the copy completes.
   return MGP::DeviceWaitOp::create(builder, loc, /*inChain=*/copyChain, context,
                                    /*waitingDeviceContext=*/srcDeviceContext,
                                    /*signalingDeviceContext=*/dstDeviceContext,

@@ -34,11 +34,9 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
     builder.setInsertionPointToStart(moduleOp.getBody(0));
     auto ctx = moduleOp->getContext();
 
-    // Register newly outlined kernel stubs through the module's cached
-    // `SymbolTableAnalysis` so it stays consistent for any downstream consumer.
-    // The analysis is never invalidated by the pass manager, so a stub added
-    // only via the builder would be invisible to passes that read the cached
-    // table. We keep it up to date here, hence we can mark it preserved.
+    // The pass manager never invalidates the cached `SymbolTableAnalysis`, so
+    // register new stubs in it (and mark it preserved); otherwise passes that
+    // read the cached table would not see them.
     SymbolTable &symtab =
         getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
 
@@ -47,10 +45,9 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
         [&](MOGG::GenericCompiledRegionOp kernelOp) {
           auto loc = kernelOp.getLoc();
           auto resultTypes = kernelOp->getResultTypes();
-          // The MGP-ABI stub takes the region body verbatim, whose block
-          // arguments are `!mogg.async<T>` (the void** runtime slots). The
-          // function signature must match those body argument types, not the
-          // region's `T` operand types.
+          // The MGP-ABI stub takes the region body verbatim, so the signature
+          // uses its `!mogg.async<T>` block arg types (the void** runtime
+          // slots), not the region's `T` operand types.
           auto functionType = TypeAttr::get(
               FunctionType::get(ctx, kernelOp.getBodyBlock().getArgumentTypes(),
                                 kernelOp.getResultTypes()));
@@ -75,9 +72,8 @@ struct OutlineKernels : public MOGG::impl::OutlineKernelsBase<OutlineKernels> {
               builder.getStringAttr(device.getLabel()), nullptr, nullptr);
           stubOp.getBody().takeBody(kernelOp.getBody());
 
-          // Register the stub in the cached symbol table. `create` already
-          // linked it into the module, so this only updates the table's name
-          // map; reuse the returned name for the call site in case of uniquing.
+          // `create` already linked the stub into the module; this updates the
+          // table's name map, which may unique the name.
           stubName = symtab.insert(stubOp);
 
           builder.setInsertionPoint(kernelOp);

@@ -62,7 +62,6 @@ Var ParamExprBuilder::createCond(const Var &condV, const Var &thenV,
   if (!KGEN::isScalarOf<KGEN::KGENDType::kBool>(staticCond.getType())) {
     if (!isa<KGEN::SIMDType>(staticCond.getType()))
       staticCond = KGEN::CastFromBuiltinAttr::get(staticCond);
-    // cast to scalar<bool>.
     MLIRContext *ctx = staticCond.getContext();
     staticCond = KGEN::POP::CastAttr::get(
         ctx, staticCond, KGEN::SIMDType::get(ctx, 1, KGEN::KGENDType::kBool));
@@ -91,14 +90,12 @@ ShapeAttr ParamExprBuilder::getShapeAttr(ArrayRef<TypedAttr> dimAttrs) {
 void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
   TypedAttr condAttr = condVar.getAttr();
 
-  // Don't bother emitting trivially true assertions.
   if (KGEN::isTriviallyTrueProposition(condAttr))
     return;
 
   MLIRContext *ctx = condAttr.getContext();
   Type chainType = MO::ChainType::get(ctx);
 
-  // Build a new operand list which starts with MLIROpAttr.
   auto signature = FuncTypeGeneratorType::get(
       /*inputParamTypes=*/{},
       FunctionType::get(ctx, {condAttr.getType()}, chainType));
@@ -113,14 +110,10 @@ void ParamExprBuilder::createAssert(const Var &condVar, StringRef errorMsg) {
 }
 
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TypedAttr attr) {
-  // First check `attr` is an array of attrs.
   auto shapeAttr = dyn_cast<ShapeAttr>(attr);
   if (!shapeAttr)
     return std::nullopt;
 
-  // Check each element attribute in the array, collect the constant integers,
-  // or short-circuit if any attribute cannot be converted to a constant
-  // integer.
   SmallVector<int64_t> result;
   for (TypedAttr maybeIntAttr : shapeAttr.getValues()) {
     if (auto intOr = tryGetConstantInt(maybeIntAttr))
@@ -146,8 +139,8 @@ static Var getSlidingWindowOutDim(const Var &inputDim, const Var &filterDim,
 // Compute the size of a range (assuming validity of input values).
 static Var computeRangeSize(const Var &start, const Var &stop,
                             const Var &step) {
-  // We need to be careful with offset and negatives, think range(0, 3, 2) and
-  // range(0, -3, -2);
+  // The offset must round away from zero for either sign, e.g. range(0, 3, 2)
+  // and range(0, -3, -2).
   ParamExprBuilder &b = start.getBuilder();
   Var diff = stop - start;
   Var offset = b.createCond(step > 0, step - 1, step + 1);
@@ -155,8 +148,7 @@ static Var computeRangeSize(const Var &start, const Var &stop,
   return size;
 }
 
-// Generate an error message when dimensions of a shape are
-// not equivalent or broadcastable. This is meant for use with RMO ops.
+// Error for dims that are neither equal nor broadcastable, for RMO ops.
 static std::string
 shapeBroadcastingErrorMessage(StringRef lhsName, ShapeAttr lhsShapeAttr,
                               size_t lhsAxis, StringRef rhsName,
@@ -203,9 +195,7 @@ static std::string matmulInnerDimErrorMessage(ShapeAttr lhsShapeAttr,
   return errorMsg;
 }
 
-// Calculates the full rank shapes for matmul inputs.
-// These shapes should be equivalent after broadcasting.
-// The new dimensions will just be static 1 dimensions.
+// Expands matmul inputs to a common full rank, padding with static 1s.
 std::pair<SmallVector<TypedAttr>, SmallVector<TypedAttr>>
 expandMatmulInputsForBroadcasting(ShapeAttr lhsShape, ShapeAttr rhsShape) {
   size_t lhsRank = lhsShape.getRank();
@@ -240,24 +230,17 @@ expandMatmulInputsForBroadcasting(ShapeAttr lhsShape, ShapeAttr rhsShape) {
 //----------------------------------------------------------------------------//
 //------------------------Shape functions begin-------------------------------//
 
-// NOTE these helpers will eventually be shared between shape inference and
-// GraphAPI shape propagation.
-//
-// These helpers have pretty uniform input types, where
-// - `GraphOp` is used for new parameter name generation
-// - `Location` is used for newly created instructions
-// - All the `TypedAttr`s are parametric representation of the op's input
+// Common arguments: `GraphOp` names new parameters, `Location` locates new
+// ops, and each `TypedAttr` is a parametric representation of an op input.
 
-/// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
+/// Materialize the shape logic for `MO::BatchMatmulOp`.
 ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
                                                    Location loc,
                                                    TypedAttr lhsShapeAttr,
                                                    TypedAttr rhsShapeAttr) {
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
   ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
   if (!lhsShape || !rhsShape)
@@ -270,7 +253,6 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
   }
 
   SmallVector<TypedAttr> resDims;
-  // Check batch dimensions are equal and collect them into `resDims`.
   for (size_t batchDim = 0; batchDim < inputRank - 2; ++batchDim) {
     Var lhsDim = b.createVar(lhsShape[batchDim]);
     Var rhsDim = b.createVar(rhsShape[batchDim]);
@@ -279,13 +261,11 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
     resDims.push_back(lhsDim.getAttr());
   }
 
-  // Check inner dimensions are equal
   Var lhsInnerDim = b.createVar(lhsShape[inputRank - 1]);
   Var rhsInnerDim = b.createVar(rhsShape[inputRank - 2]);
   b.createAssert(lhsInnerDim == rhsInnerDim,
                  "[batch_matmul] inputs inner dimensions must match");
 
-  // Collect outer dims.
   resDims.push_back(lhsShape[inputRank - 2]);
   resDims.push_back(rhsShape[inputRank - 1]);
   ShapeAttr resShape = b.getShapeAttr(resDims);
@@ -295,36 +275,29 @@ ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
 ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
                                                  TypedAttr lhsShapeAttr,
                                                  TypedAttr rhsShapeAttr) {
-  // Create builder and track generated parameter bindings.
   mlir::MLIRContext *ctx = lhsShapeAttr.getContext();
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
   ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
   if (!lhsShape || !rhsShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Note: this supports both vector and matrix matmuls.
-  // Fundamentally, vectors are consider a `1xD` or `Dx1` matrix.
-  // That said, the resulting `1` dimensions in the output is squeezed away.
-  // All dimensions outside of the innermost 2 are broadcasted.
+  // Vectors act as `1xD` / `Dx1` matrices whose `1` is squeezed from the
+  // output. Dimensions outside the innermost 2 are broadcast.
   size_t lhsRank = lhsShape.getRank();
   size_t rhsRank = rhsShape.getRank();
   if (lhsRank == 0 || rhsRank == 0)
     return ShapeMaterializeResult::error("Scalar inputs are not supported");
 
-  // The full shape/rank has all of the dimensions that the underlying
-  // mo.matmul/mo.batch_matmul will execute with.
-  // The new dimensions will just be static 1 dimensions.
+  // The rank the underlying mo.matmul/mo.batch_matmul executes with.
   size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
 
   auto intDim1 = ShapeAttr::getDim(ctx, 1ll);
   auto [lhsFullShape, rhsFullShape] =
       expandMatmulInputsForBroadcasting(lhsShape, rhsShape);
 
-  // Check inner dimensions are equal
   TypedAttr lhsInnerDim = lhsFullShape[fullRank - 1];
   TypedAttr rhsInnerDim = rhsFullShape[fullRank - 2];
   std::string errorMsg =
@@ -334,19 +307,14 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
 
   SmallVector<TypedAttr> resDims;
   resDims.reserve(fullRank);
-  // Check batch dimensions are equal or broadcastable and collect them into
-  // `resDims`.
   size_t lhsRankOffset = fullRank - lhsRank;
   size_t rhsRankOffset = fullRank - rhsRank;
   for (size_t batchDim = 0; batchDim < fullRank - 2; ++batchDim) {
     if (lhsFullShape[batchDim] == intDim1) {
-      // lhs broadcastable, pick rhs dim as output.
       resDims.push_back(rhsFullShape[batchDim]);
     } else if (rhsFullShape[batchDim] == intDim1) {
-      // rhs broadcastable, pick lhs dim as output.
       resDims.push_back(lhsFullShape[batchDim]);
     } else {
-      // Neither broadcastable, must be equal.
       TypedAttr lhsDim = lhsFullShape[batchDim];
       TypedAttr rhsDim = rhsFullShape[batchDim];
 
@@ -358,7 +326,6 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
     }
   }
 
-  // Collect inner dims if inputs were not 1d.
   if (lhsRank != 1)
     resDims.push_back(lhsFullShape[fullRank - 2]);
   if (rhsRank != 1)
@@ -371,7 +338,6 @@ ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult
 materializeRmoBinaryElementwiseShape(GraphOp graphOp, Location loc,
                                      ShapeAttr lhsShape, ShapeAttr rhsShape) {
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
@@ -419,7 +385,6 @@ ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
                                                  ShapeAttr condShape,
                                                  ShapeAttr xShape,
                                                  ShapeAttr yShape) {
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
@@ -474,24 +439,18 @@ ShapeMaterializeResult
 materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
                          ShapeAttr starts, ShapeAttr stops,
                          const SmallVector<int64_t> &steps) {
-  // Create builder and track generated parameter bindings.
   SmallVector<MO::ParamBinding> paramBindings;
   MO::ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // NOTE: The following defers constraints not verifiable at op staging time
-  // to the op lowering.
-
-  // Compute and collect output spatial dimensions.
+  // Constraints not verifiable at staging time are deferred to the lowering.
   SmallVector<TypedAttr> outDims;
   for (size_t axis = 0; axis < inputShape.getRank(); ++axis) {
-    // Get start/stop/step for this axis.
     Var inputDim = b.createVar(inputShape[axis]);
     int64_t step = steps[axis];
     Var start = b.createVar(starts[axis]);
     Var stop = b.createVar(stops[axis]);
 
-    // Check statically verifiable preconditions using asserts here because the
-    // caller should verify inputs.
+    // The caller verifies inputs, so this is an assert.
     ASSERT_STREAM(step != 0,
                   << llvm::formatv("rmo.slice step should be != 0 but got {0}",
                                    step));
@@ -508,14 +467,11 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     // Offset for computing ceil((stop - start) / step).
     int64_t stepOffset = step > 0 ? step - 1 : step + 1;
 
-    // NOTE: if start/stop aren't statically known to be < 0 they are assumed to
-    // be greater than 0.
-    // This is checked with an assert staged in the RMO to MO lowering.
-    // Doing so avoids conds in the result shapes here, while still handling the
-    // common case of slicing by a dim (guaranteed to be positive).
+    // Start/stop not statically < 0 are assumed positive (asserted in the RMO
+    // to MO lowering). This keeps conds out of the result shape while handling
+    // the common slice-by-dim case.
 
-    // Check for potential overflow conditions early - this should be done
-    // before bounds checking to preserve existing overflow detection behavior
+    // Overflow is checked before bounds so it is reported first.
     maybeStartConst = tryGetConstantInt(start.getAttr());
     maybeStopConst = tryGetConstantInt(stop.getAttr());
     if (maybeStartConst && maybeStopConst) {
@@ -523,7 +479,6 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
       int64_t stopConst = *maybeStopConst;
       int64_t diff;
       int64_t dim;
-      // Check for overflow early to preserve existing overflow detection
       if (llvm::SubOverflow(stopConst, startConst, diff) ||
           llvm::AddOverflow(diff, stepOffset, dim)) {
         return ShapeMaterializeResult::error(llvm::formatv(
@@ -533,7 +488,6 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
       }
     }
 
-    // Validate bounds for static dimensions to prevent memory out of bounds
     auto maybeInputDimConst = tryGetConstantInt(inputDim.getAttr());
     if (maybeInputDimConst) {
       int64_t inputDimConst = *maybeInputDimConst;
@@ -557,10 +511,7 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
       }
     }
 
-    // Make sure start and stop don't cross each other.
-    // This ensures normalized (stop - start) has the same sign as step if both
-    // are statically known.
-    // Otherwise we'll compute the wrong outDim and fail elsewhere.
+    // (stop - start) must have the sign of step, or outDim is wrong.
     maybeStartConst = tryGetConstantInt(start.getAttr());
     maybeStopConst = tryGetConstantInt(stop.getAttr());
     if (maybeStartConst && maybeStopConst) {
@@ -581,10 +532,8 @@ materializeRmoSliceShape(GraphOp graphOp, Location loc, ShapeAttr inputShape,
     // TODO(AIPIPE-109): step < 0 is disallowed currently, but almost works.
     // - step < 0 => stop < start
     // - start, stop both in [0, inputDim)
-    // NOTE: since start and stop may be symbolic, their invariants may be
-    // checked at runtime in the worst case.
+    // Symbolic start/stop may only be checked at runtime.
 
-    // Compute the out dim as the size of the range:
     // ceil((stop - start) / step).
     Var outDim = ((stop - start) + stepOffset) / step;
     outDims.push_back(outDim.getAttr());
@@ -598,19 +547,16 @@ ShapeMaterializeResult materializeBroadcastShapeShape(GraphOp graphOp,
                                                       Location loc,
                                                       TypedAttr lhsShapeAttr,
                                                       TypedAttr rhsShapeAttr) {
-  // Make sure both lhs and rhs shapes are ranked.
   ShapeAttr lhsShape = dyn_cast<ShapeAttr>(lhsShapeAttr);
   ShapeAttr rhsShape = dyn_cast<ShapeAttr>(rhsShapeAttr);
   if (!lhsShape || !rhsShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Simple rank check.
   if (lhsShape.getRank() != 1 || rhsShape.getRank() != 1) {
     return ShapeMaterializeResult::error(
         "[broadcast_shape] inputs must be rank 1 shape tensors");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
   Var lhsDim = b.createVar(lhsShape[0]);
@@ -624,11 +570,9 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
                                                    Location loc,
                                                    TypedAttr inputShapeAttr,
                                                    TypedAttr targetShapeAttr) {
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr targetShape = dyn_cast<ShapeAttr>(targetShapeAttr);
   if (!inputShape || !targetShape)
@@ -656,7 +600,6 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
             outputAxis, KGEN::getParamAsString(outputDim.getAttr()))
             .str();
 
-    // Insert assertions
     b.createAssert(inputDim == 1 || inputDim == outputDim, message);
   }
   return ShapeMaterializeResult::success(std::move(paramBindings), targetShape);
@@ -666,49 +609,40 @@ ShapeMaterializeResult materializeBroadcastToShape(GraphOp graphOp,
 ShapeMaterializeResult
 materializeConcatShape(GraphOp graphOp, Location loc, TypedAttr axisAttr,
                        ArrayRef<TypedAttr> inputShapeAttrs) {
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Check for constant axis
   std::optional<int64_t> axisOr = tryGetConstantInt(axisAttr);
   if (!axisOr.has_value())
     return ShapeMaterializeResult::nonMaterializable();
   int64_t axis = axisOr.value();
 
-  // Check for statically-ranked input shapes.
   SmallVector<ShapeAttr> inputShapes;
   for (TypedAttr inputShapeAttr : inputShapeAttrs) {
     if (auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr)) {
       inputShapes.push_back(inputShape);
     } else {
-      // Give up on any dyn-ranked input shape
       return ShapeMaterializeResult::nonMaterializable();
     }
   }
 
-  // `MO::ConcatOp` verifier ensures there's at least 1 input, and ranks of
-  // inputs all match.
+  // The verifier ensures at least 1 input and matching ranks.
   ShapeAttr firstInputShape = inputShapes.front();
   auto restInputShapes = ArrayRef(inputShapes).drop_front();
   int64_t inputRank = firstInputShape.getRank();
 
-  // Normalize axis and make sure it's in bound.
   axis = axis < 0 ? axis + inputRank : axis;
   if (axis < 0 || inputRank <= axis) {
     return ShapeMaterializeResult::error(
         "[concat] normalized axis must be within range [0, input_rank)");
   }
 
-  // Construct output shape and make sure input shapes are compatible.
   SmallVector<TypedAttr> resDims(firstInputShape.getValues());
-  // Sum the axis dims in one variadic `add`, the way `LowerConcat` spells the
-  // same sum, rather than accumulating through `Var`. Accumulating mints a
-  // fresh graph parameter per partial sum and KGEN orders a commutative operand
-  // list by parameter NAME, which makes the term order a function of the
-  // graph's parameter counter rather than of the dims. Inference runs again to
-  // verify the op, by then with a larger counter, and a reordered (if
-  // numerically identical) sum reads there as a result-type mismatch.
+  // Sum the axis dims in one variadic `add`, as `LowerConcat` does, not via
+  // `Var`. Accumulating mints a parameter per partial sum, and KGEN orders
+  // commutative operands by parameter name, so the term order would depend on
+  // the parameter counter. Re-running inference for verification, with a
+  // larger counter, would then see a reordered sum as a type mismatch.
   SmallVector<TypedAttr> axisDims{firstInputShape[axis]};
   for (ShapeAttr inputShape : restInputShapes) {
     for (auto [idx, firstInputDimAttr, inputDimAttr] :
@@ -739,13 +673,11 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   auto strides = dyn_cast<ShapeAttr>(stridesAttr);
   auto dilations = dyn_cast<ShapeAttr>(dilationsAttr);
   auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
-  // Make sure both input and target shapes are ranked symbolic shapes.
-  // No need to check for `numGroupsAttr` because it's just an integer.
+  // `numGroupsAttr` is a scalar, not a shape.
   if (!inputShape || !filterShape || !strides || !dilations || !paddings) {
     return ShapeMaterializeResult::nonMaterializable();
   }
 
-  // Preliminary rank checks.
   size_t inputRank = inputShape.getRank();
   if (inputRank < 3) {
     return ShapeMaterializeResult::error(
@@ -766,14 +698,11 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
         "[convolution] requires (len(paddings) == 2 * (input rank - 2))");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // NOTE
-  // - input and output have layout [batch_size, ...spatial_dims...,
-  //   input_channels]
-  // - filter has layout [...spatial_dims..., filter_channels, output_channels]
+  // Default layouts: input/output [batch, ...spatial..., channels], filter
+  // [...spatial..., filter_channels, output_channels].
   bool isNCHW = inputLayoutAttr == "NCHW";
   bool isFCRS = filterLayoutAttr && (filterLayoutAttr.getFormat() == "FCRS" ||
                                      filterLayoutAttr.getFormat() == "FCQRS");
@@ -788,7 +717,6 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     numGroupsAttr = KGEN::CastFromBuiltinAttr::get(numGroupsAttr);
   Var numGroups = b.createVar(numGroupsAttr);
 
-  // More checks on channels and numGroups.
   b.createAssert(inputChannels == (numGroups * filterChannels),
                  "[convolution] requires (input_channels == num_groups * "
                  "filter_channels)");
@@ -796,7 +724,6 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
       (outputChannels % numGroups) == 0,
       "[convolution] output_channels must be divisible by num_groups");
 
-  // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> resDims;
   resDims.push_back(batchSize.getAttr());
   for (size_t axis = 0; axis < inputRank - 2; ++axis) {
@@ -816,7 +743,6 @@ materializeConvShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     resDims.push_back(outputSpatialDim.getAttr());
   }
 
-  // Create output shape
   resDims.push_back(outputChannels.getAttr());
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
@@ -833,14 +759,11 @@ ShapeMaterializeResult materializeConvTransposeShape(
   auto dilations = dyn_cast<ShapeAttr>(dilationsAttr);
   auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
   auto outPaddings = dyn_cast<ShapeAttr>(outputPaddingsAttr);
-  // Make sure both input and target shapes are ranked symbolic shapes.
-  // No need to check for `numGroupsAttr` because it's just an integer.
   if (!inputShape || !filterShape || !strides || !dilations || !paddings ||
       !outPaddings) {
     return ShapeMaterializeResult::nonMaterializable();
   }
 
-  // Preliminary rank checks.
   size_t inputRank = inputShape.getRank();
   if (inputRank != 4 && inputRank != 5) {
     return ShapeMaterializeResult::error(
@@ -861,17 +784,11 @@ ShapeMaterializeResult materializeConvTransposeShape(
         "[conv_transpose] requires (len(paddings) == 2 * (input rank - 2))");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // NOTE
-  // - input and output have layout [batch_size, ...spatial_dims...,
-  // input_channels]
-  // - filter has layout [...spatial_dims..., filter_channels, output_channels]
-  //
-  // BUT since ConvTranspose is the inverse of Conv w.r.t. the input, the output
-  // shape would have layout [batch_size, ...spatial_dims..., filter_channels]
+  // Default layouts as for conv, but being conv's inverse w.r.t. the input,
+  // the output is [batch, ...spatial..., filter_channels].
   bool isNCHW = inputLayoutAttr == "NCHW";
   bool isCFRS = filterLayoutAttr && filterLayoutAttr.getFormat() == "CFRS";
   size_t filterChannelIdx = isCFRS ? 0 : inputRank - 1;
@@ -882,7 +799,6 @@ ShapeMaterializeResult materializeConvTransposeShape(
   Var filterChannels = b.createVar(filterShape[filterChannelIdx]);
   Var outputChannels = b.createVar(filterShape[outputChannelIdx]);
 
-  // Check input and kernel channels.
   b.createAssert(inputChannels == filterChannels,
                  "[conv_transpose] requires input channel to match filter "
                  "channel in kernel");
@@ -890,11 +806,9 @@ ShapeMaterializeResult materializeConvTransposeShape(
   SmallVector<TypedAttr> resDims;
   resDims.push_back(batchSize.getAttr());
 
-  // Output has same layout input
   if (isNCHW)
     resDims.push_back(outputChannels.getAttr());
 
-  // Compute a specific output spatial dimension.
   auto computeOutDim = [](const Var &inputDim, const Var &filterDim,
                           const Var &dilation, const Var &stride,
                           const Var &prePad, const Var &postPad,
@@ -903,7 +817,6 @@ ShapeMaterializeResult materializeConvTransposeShape(
            prePad - postPad;
   };
 
-  // Compute and collect output spatial dimensions;
   for (size_t axis = 0; axis < inputRank - 2; ++axis) {
     Var inputSpatialDim = b.createVar(inputShape[isNCHW ? axis + 2 : axis + 1]);
     Var filterSpatialDim = b.createVar(filterShape[isCFRS ? axis + 2 : axis]);
@@ -921,7 +834,6 @@ ShapeMaterializeResult materializeConvTransposeShape(
     resDims.push_back(outputSpatialDim.getAttr());
   }
 
-  // Create output shape
   if (!isNCHW)
     resDims.push_back(outputChannels.getAttr());
 
@@ -934,24 +846,19 @@ ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
                                            TypedAttr paddingsAttr) {
   auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
-  // Make sure input shape is ranked and paddings is a list of symbolic integers
-  // with known length.
   if (!inputShape || !paddings) {
     return ShapeMaterializeResult::nonMaterializable();
   }
 
-  // Preliminary rank checks.
   size_t inputRank = inputShape.getRank();
   if (2 * inputRank != paddings.getSize()) {
     return ShapeMaterializeResult::error(
         "[pad] paddings shape must be (2 * input_rank)");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
   for (size_t axis = 0; axis < inputRank; ++axis) {
     Var inputDim = b.createVar(inputShape[axis]);
@@ -961,7 +868,6 @@ ShapeMaterializeResult materializePadShape(GraphOp graphOp, Location loc,
     resDims.push_back(outputDim.getAttr());
   }
 
-  // Create output shape
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
@@ -976,15 +882,12 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
   auto strides = dyn_cast<ShapeAttr>(stridesAttr);
   auto dilations = dyn_cast<ShapeAttr>(dilationsAttr);
   auto paddings = dyn_cast<ShapeAttr>(paddingsAttr);
-  // Make sure both input and target shapes are ranked symbolic shapes.
   if (!inputShape || !filter || !strides || !dilations || !paddings) {
     return ShapeMaterializeResult::nonMaterializable();
   }
 
-  // Preliminary rank checks.
   size_t inputRank = inputShape.getRank();
-  // NOTE it's a trivial extension to enable this on arbitrary ranks, but I'm
-  // keeping it the same as the mojo shape function for now.
+  // Arbitrary ranks would be trivial; kept matching the Mojo shape function.
   if (inputRank != 4) {
     return ShapeMaterializeResult::error(
         "[pooling] requires (input_rank == 4)");
@@ -1002,18 +905,13 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
         "[pooling] requires (len(paddings) == 2 * (input rank - 2))");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // NOTE
-  // - input and output have layout [batch_size, ...spatial_dims...,
-  // input_channels]
-  // - filter has layout [...spatial_dims..., filter_channels, output_channels]
+  // Input/output layout is [batch, ...spatial..., channels].
   Var batchSize = b.createVar(inputShape[0]);
   Var inputChannels = b.createVar(inputShape[inputRank - 1]);
 
-  // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> resDims;
   resDims.push_back(batchSize.getAttr());
   for (size_t axis = 0; axis < inputRank - 2; ++axis) {
@@ -1032,7 +930,6 @@ materializePoolShape(GraphOp graphOp, Location loc, TypedAttr inputShapeAttr,
     resDims.push_back(outputSpatialDim.getAttr());
   }
 
-  // Create output shape
   resDims.push_back(inputChannels.getAttr());
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
@@ -1042,14 +939,12 @@ ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
                                               TypedAttr inputShapeAttr,
                                               TypedAttr indicesShapeAttr,
                                               TypedAttr axisAttr) {
-  // Make sure input and indices shapes are ranked, and axis is constant.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
   auto axisOr = tryGetConstantInt(axisAttr);
   if (!inputShape || !indicesShape || !axisOr.has_value())
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Normalize constant and make sure it's in bound.
   size_t inputRank = inputShape.getRank();
   int64_t axis = axisOr.value();
   axis = axis < 0 ? axis + inputRank : axis;
@@ -1058,25 +953,17 @@ ShapeMaterializeResult materializeGatherShape(GraphOp graphOp, Location loc,
         "[gather] normalized axis must be within range [0, input_rank)");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Compute and collect output dimensions.
-  // Note the output shape is essentially replacing the `axis` dimension of
-  // `input_shape` with `indices_shape`, i.e.,
-  //   output_shape := input_shape[:axis] + indices_shape + input_shape[axis+1:]
+  // output_shape := input_shape[:axis] + indices_shape + input_shape[axis+1:]
   SmallVector<TypedAttr> resDims;
-  // input_shape[:axis]
   for (int64_t idx = 0; idx < axis; ++idx)
     resDims.push_back(inputShape[idx]);
-  // indices_shape
   llvm::append_range(resDims, indicesShape.getValues());
-  // input_shape[axis+1:]
   for (size_t idx = axis + 1; idx < inputRank; ++idx)
     resDims.push_back(inputShape[idx]);
 
-  // Create and return output shape.
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
@@ -1085,13 +972,11 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
                                                 TypedAttr inputShapeAttr,
                                                 TypedAttr indicesShapeAttr,
                                                 int64_t batchDims) {
-  // Make sure input and indices shapes are ranked.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
   if (!inputShape || !indicesShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Preliminary rank checks
   size_t inputRank = inputShape.getRank();
   size_t indicesRank = indicesShape.getRank();
   if (inputRank < 1 || indicesRank < 1) {
@@ -1099,13 +984,11 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
         "[gather_nd] input_rank and indices_rank must be >= 1");
   }
 
-  // Size of the indexing dimension must be a constant
   auto idxSizeOr = tryGetConstantInt(indicesShape[indicesRank - 1]);
   if (!idxSizeOr.has_value())
     return ShapeMaterializeResult::nonMaterializable();
   int64_t idxSize = idxSizeOr.value();
 
-  // More shape checks.
   if (idxSize < 1 || inputRank - batchDims < static_cast<size_t>(idxSize)) {
     return ShapeMaterializeResult::error(
         "[gather_nd] index size must be within range [1, input_rank - "
@@ -1116,33 +999,26 @@ ShapeMaterializeResult materializeGatherNdShape(GraphOp graphOp, Location loc,
         "[gather_nd] requires (batch_dims < indices_rank)");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Compute and collect output dimensions.
   //   output_shape = input_shape[:batch_dims]
   //                  + indices_shape[batch_dims:-1]
   //                  + input_shape[batch_dims + indices_shape[-1]:]
   SmallVector<TypedAttr> resDims;
 
-  // input_shape[:batch_dims]
   for (int64_t idx = 0; idx < batchDims; ++idx)
     resDims.push_back(inputShape[idx]);
-  // indices_shape[batch_dims:-1]
   llvm::append_range(resDims,
                      indicesShape.getValues().slice(batchDims).drop_back());
-  // input_shape[batch_dims + indices_shape[-1]:]
   for (size_t idx = batchDims + idxSize; idx < inputRank; ++idx)
     resDims.push_back(inputShape[idx]);
 
-  // Create and return output shape.
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
 
-// Materialize the shape logic for operation's shape is stored as the *value*
-// of the given input.
+// Materialize the shape logic for ops whose shape is the *value* of an input.
 ShapeMaterializeResult materializeTargetShapeLike(GraphOp graphOp, Location loc,
                                                   TypedAttr targetShapeAttr) {
   auto asShapeAttr = dyn_cast<ShapeAttr>(targetShapeAttr);
@@ -1157,7 +1033,6 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
                                              TypedAttr startAttr,
                                              TypedAttr stopAttr,
                                              TypedAttr stepAttr) {
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
@@ -1165,10 +1040,8 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
   Var stop = b.createVar(stopAttr);
   Var step = b.createVar(stepAttr);
 
-  // Check step != 0
   b.createAssert(step != 0, "[range] step must be non-zero");
 
-  // Check start/stop are in bounds
   b.createAssert(start <= stop || step < 0,
                  "[range] requires (start <= stop) for positive step");
   b.createAssert(stop <= start || step > 0,
@@ -1209,8 +1082,6 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
                                                TypedAttr updatesShapeAttr,
                                                TypedAttr indicesShapeAttr,
                                                TypedAttr axisAttr) {
-  // Make sure input, updates and indices shapes are ranked, and axis is
-  // constant.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr updatesShape = dyn_cast<ShapeAttr>(updatesShapeAttr);
   ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
@@ -1218,7 +1089,6 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
   if (!inputShape || !updatesShape, !indicesShape || !axisOr.has_value())
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Basic rank check
   size_t inputRank = inputShape.getRank();
   if (!llvm::all_equal(
           {inputRank, updatesShape.getRank(), indicesShape.getRank()})) {
@@ -1226,7 +1096,6 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
         "[scatter] rank of inputs must be equal");
   }
 
-  // Normalize constant and make sure it's in bound.
   int64_t axis = axisOr.value();
   axis = axis < 0 ? axis + inputRank : axis;
   if (axis < 0 || inputRank <= static_cast<size_t>(axis)) {
@@ -1234,11 +1103,9 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
         "[scatter] normalized axis must be within range [0, input_rank)");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Check dimensions of input shapes.
   for (size_t i = 0; i < inputRank; ++i) {
     Var inputDim = b.createVar(inputShape[i]);
     Var updatesDim = b.createVar(updatesShape[i]);
@@ -1249,7 +1116,6 @@ ShapeMaterializeResult materializeScatterShape(GraphOp graphOp, Location loc,
                    "[scatter] indices shape cannot be bigger than input shape");
   }
 
-  // Create and return output shape.
   return ShapeMaterializeResult::success(std::move(paramBindings), inputShape);
 }
 
@@ -1257,15 +1123,12 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
                                                  TypedAttr inputShapeAttr,
                                                  TypedAttr updatesShapeAttr,
                                                  TypedAttr indicesShapeAttr) {
-  // Make sure input, updates and indices shapes are ranked, and axis is
-  // constant.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr updatesShape = dyn_cast<ShapeAttr>(updatesShapeAttr);
   ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
   if (!inputShape || !updatesShape, !indicesShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Basic rank check.
   int64_t inputRank = inputShape.getRank();
   int64_t updatesRank = updatesShape.getRank();
   int64_t indicesRank = indicesShape.getRank();
@@ -1274,17 +1137,14 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
         "[scatter_nd] indices cannot be a scalar");
   }
 
-  // Number of sliced dimensions must be constant
   auto numSlicedDimsOr = tryGetConstantInt(indicesShape[indicesRank - 1]);
   if (!numSlicedDimsOr.has_value())
     return ShapeMaterializeResult::nonMaterializable();
   int64_t numSlicedDims = numSlicedDimsOr.value();
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // More rank checks.
   if (numSlicedDims > inputRank) {
     return ShapeMaterializeResult::error(
         "[scatter_nd] cannot slice more dimensions than what input has");
@@ -1295,7 +1155,6 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
         "- num_sliced_dims)");
   }
 
-  // Check dimensions of input shapes.
   for (int64_t i = 0; i < indicesRank - 1; ++i) {
     Var indicesDim = b.createVar(indicesShape[i]);
     Var updatesDim = b.createVar(updatesShape[i]);
@@ -1311,21 +1170,12 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
         "[scatter_nd] updated dimensions of input and updates don't match");
   }
 
-  // Create and return output shape.
   return ShapeMaterializeResult::success(std::move(paramBindings), inputShape);
 }
 
-/// Materialize the shape logic for `MO::ReshapeOp`.
-///
-/// Specifically, if target shape contains a `-1`, infer it based on the
-/// invariant that `inputShapeAttr` and `targetShapeAttr` represent equal number
-/// of elements.
-///
-/// The `-1` dimension is computed as mul(input_dims) / mul(target_dims).
-/// Constant zero dimensions in the target shape are excluded from the
-/// denominator to avoid division by zero.
-///
-/// Example:
+/// Materialize the shape logic for `MO::ReshapeOp`. A `-1` target dim is
+/// mul(input_dims) / mul(target_dims), with constant zero dims excluded from
+/// the denominator to avoid division by zero. Example:
 ///   inputShape = [3, D4]
 ///   targetShape = [D0, -1, 42]
 ///   returns [D0, RS0, 42]
@@ -1334,18 +1184,14 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr) {
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Make sure both input and target shapes are ranked symbolic shapes.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr targetShape = dyn_cast<ShapeAttr>(targetShapeAttr);
   if (!inputShape || !targetShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Find index of `-1` dimension (if any) and collect all other non-zero
-  // dimensions from input and target shapes.
   SmallVector<TypedAttr> targetNonNegOneDims;
   SmallVector<TypedAttr> inputNonZeroDims;
   std::optional<size_t> maybeTargetNegOneDimIdx = std::nullopt;
@@ -1354,7 +1200,6 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
   for (auto inputDim : inputDims) {
     std::optional<int64_t> inputIntDim = tryGetConstantInt(inputDim);
 
-    // Check if input is 0
     if (!inputIntDim || *inputIntDim != 0)
       inputNonZeroDims.push_back(inputDim);
   }
@@ -1363,10 +1208,7 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
   for (auto [idx, targetDim] : llvm::enumerate(targetDims)) {
     std::optional<int64_t> targetIntDim = tryGetConstantInt(targetDim);
 
-    // Check if target is -1
     if (targetIntDim && *targetIntDim == -1) {
-      // Detected multiple negative one, gives up and let runtime handle the
-      // error via a shape function call.
       if (maybeTargetNegOneDimIdx.has_value()) {
         return ShapeMaterializeResult::error(
             "[reshape] multiple -1 detected in target shape");
@@ -1374,30 +1216,26 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
 
       maybeTargetNegOneDimIdx = idx;
     } else {
-      // TODO: we are using the assumption that all non-integer attribute
-      // (e.g., `D0` or `mul(D0, D1)`) will be non-negative. To make this
-      // completely safe, we'll need to extend and leverage the range
-      // analysis here.
-
-      // Use only non-zero dimensions
+      // TODO: This assumes non-integer dims (e.g. `D0`, `mul(D0, D1)`) are
+      // non-negative; making it safe needs range analysis.
       if (!targetIntDim || *targetIntDim != 0)
         targetNonNegOneDims.push_back(targetDim);
     }
   }
 
   auto calculateResolvedDim = [&]() -> Var {
-    // Correctly handle scalar tensors -> []
+    // Scalar input.
     if (inputDims.empty())
       return b.createVar(1);
 
-    // Handle a special case where input is just [0].
+    // Input is just [0].
     if (inputNonZeroDims.empty())
       return b.createVar(0);
 
     Var numerator = b.createVar(
         KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, inputNonZeroDims));
 
-    // Add a 1 to the shapes to multiply to ensure the denominator is valid.
+    // A trailing 1 keeps the product valid when no dims remain.
     auto mulDims = targetNonNegOneDims;
     mulDims.emplace_back(
         ShapeAttr::getDim(numerator.getAttr().getContext(), 1));
@@ -1407,17 +1245,14 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
     return numerator / denominator;
   };
 
-  // resolve the `-1` in output shape if needed.
   ShapeAttr outputShape = targetShape;
   if (maybeTargetNegOneDimIdx.has_value()) {
-    // Now infer the actual value of `-1` dimension based on other dimensions
     Var resolvedDim = calculateResolvedDim();
     SmallVector<TypedAttr> resolvedDims(targetDims.begin(), targetDims.end());
     resolvedDims[maybeTargetNegOneDimIdx.value()] = resolvedDim.getAttr();
     outputShape = b.getShapeAttr(resolvedDims);
   }
 
-  // Insert assertions
   Var inputNumElems = b.createVar(inputShape.getSymbolicNumElements());
   Var outputNumElems = b.createVar(outputShape.getSymbolicNumElements());
   b.createAssert(
@@ -1442,13 +1277,11 @@ ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,
                                                 TypedAttr roisShapeAttr,
                                                 TypedAttr outHeightAttr,
                                                 TypedAttr outWidthAttr) {
-  // Make sure input and rois shapes are ranked.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr roisShape = dyn_cast<ShapeAttr>(roisShapeAttr);
   if (!inputShape || !roisShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Basic rank check.
   if (inputShape.getRank() != 4) {
     return ShapeMaterializeResult::error(
         "[roi_align] input shape must have rank 4");
@@ -1466,11 +1299,9 @@ ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,
         "[roi_align] output width must be a single integer");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Check height and width
   Var outHeight = b.createVar(outHeightAttr);
   Var outWidth = b.createVar(outWidthAttr);
   b.createAssert(outHeight >= 0,
@@ -1478,7 +1309,6 @@ ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,
   b.createAssert(outWidth >= 0,
                  "[roi_align] output width must be non-negative");
 
-  // Create and return output shape
   ShapeAttr outShape = b.getShapeAttr(
       {roisShape[0], outHeightAttr, outWidthAttr, inputShape[3]});
   return ShapeMaterializeResult::success(std::move(paramBindings), outShape);
@@ -1490,8 +1320,6 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
                                              TypedAttr startsAttr,
                                              TypedAttr stopsAttr,
                                              TypedAttr stepsAttr) {
-  // Make sure input shape is ranked, and bounds are list of symbolic integers
-  // with known sizes.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr starts = dyn_cast<ShapeAttr>(startsAttr);
   ShapeAttr stops = dyn_cast<ShapeAttr>(stopsAttr);
@@ -1507,11 +1335,9 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
         "bounds");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Compute and collect output spatial dimensions.
   SmallVector<TypedAttr> outDims;
   for (size_t axis = 0; axis < inputRank; ++axis) {
     Var inDim = b.createVar(inputShape[axis]);
@@ -1519,14 +1345,11 @@ ShapeMaterializeResult materializeSliceShape(GraphOp graphOp, Location loc,
     Var stop = b.createVar(stops[axis]);
     Var step = b.createVar(steps[axis]);
 
-    // Check step != 0
     b.createAssert(step != 0, "[slice] step must be non-zero");
 
-    // Compute the min/max for clamping start/end
     Var idxMin = b.createCond(step > 0, b.createVar(0), b.createVar(-1));
     Var idxMax = b.createCond(step > 0, inDim, inDim - 1);
 
-    // Normalize and clamp start/stop values.
     start = b.createCond(start < 0, start + inDim, start);
     start = b.createMax(idxMin, b.createMin(idxMax, start));
     stop = b.createCond(stop < 0, stop + inDim, stop);
@@ -1553,19 +1376,16 @@ ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
                                                     TypedAttr inputShapeAttr,
                                                     TypedAttr splitSizesAttr,
                                                     TypedAttr axisAttr) {
-  // Make sure input is ranked.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr splitSizes = dyn_cast<ShapeAttr>(splitSizesAttr);
   if (!inputShape || !splitSizes)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Check for constant axis
   std::optional<int64_t> axisOr = tryGetConstantInt(axisAttr);
   if (!axisOr.has_value())
     return ShapeMaterializeResult::nonMaterializable();
   int64_t axis = axisOr.value();
 
-  // Normalize axis and check it's in range.
   size_t inputRank = inputShape.getRank();
   axis = axis < 0 ? axis + inputRank : axis;
   if (axis < 0 || inputRank <= static_cast<size_t>(axis)) {
@@ -1573,11 +1393,9 @@ ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
         "[split] normalized axis must be within range [0, rank)");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Check for sum of splitSizes.
   Var splitSizesSum = b.createVar(0);
   for (TypedAttr splitSize : splitSizes.getValues())
     splitSizesSum = splitSizesSum + b.createVar(splitSize);
@@ -1586,7 +1404,6 @@ ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
       splitSizesSum == b.createVar(inputShape[axis]),
       "[split] sum of split sizes must match input dimension at split axis");
 
-  // Create output shape.
   SmallVector<ShapeAttr> outShapes;
   for (size_t i = 0; i < splitSizes.getRank(); ++i) {
     SmallVector<TypedAttr> outDims(inputShape.getValues());
@@ -1602,19 +1419,16 @@ ShapeMaterializeResult
 materializeSqueezeShapeShape(GraphOp graphOp, Location loc,
                              TypedAttr inputShapeAttr,
                              TypedAttr indicesShapeAttr) {
-  // Make sure both lhs and rhs shapes are ranked.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
   if (!inputShape || !indicesShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Simple rank check.
   if (inputShape.getRank() != 1 || indicesShape.getRank() != 1) {
     return ShapeMaterializeResult::error(
         "[squeeze_shape] inputs must be rank 1 shape tensors");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
   Var inputNumElems = b.createVar(inputShape[0]);
@@ -1623,7 +1437,6 @@ materializeSqueezeShapeShape(GraphOp graphOp, Location loc,
       inputNumElems >= indicesNumElems,
       "[squeeze_shape] cannot remove more dimensions than there exists");
 
-  // Create output shape.
   Var outputNumElems = inputNumElems - indicesNumElems;
   ShapeAttr outShape = b.getShapeAttr(outputNumElems);
   return ShapeMaterializeResult::success(std::move(paramBindings), outShape);
@@ -1634,23 +1447,18 @@ ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
                                             TypedAttr repeatsAttr) {
   auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   auto repeats = dyn_cast<ShapeAttr>(repeatsAttr);
-  // Make sure input shape is ranked and repeats is a list of symbolic integers
-  // with known length.
   if (!inputShape || !repeats)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Preliminary rank checks.
   size_t inputRank = inputShape.getRank();
   if (inputRank != repeats.getSize()) {
     return ShapeMaterializeResult::error(
         "[tile] requires (len(repeats) == input_rank)");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
   for (size_t axis = 0; axis < inputRank; ++axis) {
     Var inputDim = b.createVar(inputShape[axis]);
@@ -1659,7 +1467,6 @@ ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
     resDims.push_back(outputDim.getAttr());
   }
 
-  // Create output shape
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
@@ -1667,12 +1474,10 @@ ShapeMaterializeResult materializeTileShape(GraphOp graphOp, Location loc,
 ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
                                                  TypedAttr inputShapeAttr,
                                                  TypedAttr permutationsAttr) {
-  // Make sure input shape is ranked.
   auto inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   if (!inputShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Preliminary rank checks.
   auto permutations = dyn_cast<ShapeAttr>(permutationsAttr);
   size_t inputRank = inputShape.getRank();
   if (inputRank != permutations.getSize()) {
@@ -1680,7 +1485,6 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
         "[transpose] permutation size must match input rank");
   }
 
-  // Make sure permutations is a list of constant integers with known length.
   SmallVector<int64_t> permInts;
   for (TypedAttr permAttr : permutations.getValues()) {
     if (auto permInt = tryGetConstantInt(permAttr)) {
@@ -1690,25 +1494,20 @@ ShapeMaterializeResult materializeTransposeShape(GraphOp graphOp, Location loc,
     }
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  // Compute and collect output dimensions.
   SmallVector<TypedAttr> resDims;
   for (size_t axis = 0; axis < inputRank; ++axis) {
-    // Retrieve and validate the constant permutation index.
     int64_t perm = permInts[axis];
     if (perm < 0 || inputRank <= static_cast<size_t>(perm)) {
       return ShapeMaterializeResult::error(
           "[transpose] each permutation must be within range [0, rank)");
     }
-    // Retrieve the output dimension.
     TypedAttr outputDim = inputShape[perm];
     resDims.push_back(outputDim);
   }
 
-  // Create output shape
   ShapeAttr resShape = b.getShapeAttr(resDims);
   return ShapeMaterializeResult::success(std::move(paramBindings), resShape);
 }
@@ -1747,25 +1546,21 @@ ShapeMaterializeResult
 materializeUnsqueezeShapeShape(GraphOp graphOp, Location loc,
                                TypedAttr inputShapeAttr,
                                TypedAttr indicesShapeAttr) {
-  // Make sure both lhs and rhs shapes are ranked.
   ShapeAttr inputShape = dyn_cast<ShapeAttr>(inputShapeAttr);
   ShapeAttr indicesShape = dyn_cast<ShapeAttr>(indicesShapeAttr);
   if (!inputShape || !indicesShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  // Simple rank check.
   if (inputShape.getRank() != 1 || indicesShape.getRank() != 1) {
     return ShapeMaterializeResult::error(
         "[squeeze_shape] inputs must be rank 1 shape tensors");
   }
 
-  // Create builder and track generated parameter bindings.
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
   Var inputNumElems = b.createVar(inputShape[0]);
   Var indicesNumElems = b.createVar(indicesShape[0]);
 
-  // Create output shape
   ShapeAttr outShape = b.getShapeAttr(inputNumElems + indicesNumElems);
   return ShapeMaterializeResult::success(std::move(paramBindings), outShape);
 }
@@ -1773,21 +1568,17 @@ materializeUnsqueezeShapeShape(GraphOp graphOp, Location loc,
 //------------------------Shape functions end---------------------------------//
 //----------------------------------------------------------------------------//
 
-/// Try to unpack the given attribute as a `KGEN::ParamOperatorAttr` that is
-/// representing a `mo.assert`, and return the `(condAttr, errorMsgAttr)` pair.
+/// Returns `(condAttr, errorMsgAttr)` if `attr` encodes a `mo.assert`.
 static std::optional<std::pair<TypedAttr, StringAttr>>
 tryGetAssertCondAndMsg(TypedAttr attr) {
-  // Check it's an expression attribute.
   auto paramOperatorAttr = dyn_cast<KGEN::ParamOperatorAttr>(attr);
   if (!paramOperatorAttr)
     return std::nullopt;
 
-  // Check it's a `mo.assert`.
   auto mlirOpAttr = dyn_cast<KGEN::MLIROpAttr>(paramOperatorAttr.getOperand(0));
   if (!mlirOpAttr || mlirOpAttr.getName() != MO::AssertOp::getOperationName())
     return std::nullopt;
 
-  // Package the condition attribute and error message.
   TypedAttr cond = paramOperatorAttr.getOperand(1);
   auto msgAttr = mlirOpAttr.getAttrs().getAs<StringAttr>("message");
   return std::make_pair(cond, msgAttr);
@@ -1809,7 +1600,6 @@ ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
                                                ArrayRef<ShapeAttr> targetShapes,
                                                bool validateAsserts) {
 
-  // Setting things up
   KGEN::ParameterEvaluator evaluator;
   mlir::AttrTypeReplacer replacer;
   replacer.addReplacement([&](KGEN::ParamDeclRefAttr declRef) -> Attribute {
@@ -1821,10 +1611,8 @@ ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
     KGEN::ParamDeclAttr lhsAttr = binding.decl;
     TypedAttr rhsAttr = binding.value;
 
-    // Apply accumulated substitutions to the binding value.
     rhsAttr = cast<TypedAttr>(replacer.replace(rhsAttr));
 
-    // Check for assert.
     if (auto condAndMsg = tryGetAssertCondAndMsg(rhsAttr)) {
       TypedAttr cond = condAndMsg.value().first;
       StringAttr errMsg = condAndMsg.value().second;
@@ -1837,11 +1625,9 @@ ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
       }
     }
 
-    // Otherwise remember this substitution.
     evaluator.setDeclBinding(lhsAttr, rhsAttr);
   }
 
-  // Apply accumulated substitutions to target shape.
   SmallVector<ShapeAttr> resultShapes;
   for (ShapeAttr targetShape : targetShapes) {
     auto resultShape = cast<ShapeAttr>(replacer.replace(targetShape));

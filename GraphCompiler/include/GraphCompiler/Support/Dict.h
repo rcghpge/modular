@@ -33,9 +33,7 @@ struct DenseMapInfo<M::GML::Variant> {
 
 namespace M::GML {
 
-/// `Dict`-like (pythonic) container class with `map` implementation. An
-/// insertion order preserving `map` is used such that printing dictionary
-/// contents for tests and debugging is consistent.
+/// Pythonic `Dict`. Preserves insertion order so printing is deterministic.
 class Dict : public Container {
 public:
   Dict() = default;
@@ -55,12 +53,10 @@ private:
   llvm::MapVector<Variant, Variant> elements;
 };
 
-/// Returns true if two `Dict`s are equal. Equality is defined by the map
-/// contents.
+/// Compares map contents.
 bool operator==(const Dict &lhs, const Dict &rhs);
 
-/// Returns true if two `Dict`s are inequal. Inequality is defined by the
-/// map contents.
+/// Compares map contents.
 bool operator!=(const Dict &lhs, const Dict &rhs);
 
 /// Always returns false, since `<` is not supported on `Dict`.

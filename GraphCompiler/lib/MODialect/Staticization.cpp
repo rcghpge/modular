@@ -50,19 +50,16 @@ static TypedAttr tryStaticizeReshapeLikeOp(TensorType inputTy,
                                            TensorType outputTy,
                                            TypedAttr inputAttr,
                                            ParamExprBuilder &b) {
-  // Only handle ranked input and output shapes.
   auto inputShape = inputTy.getShape();
   auto outputShape = outputTy.getShape();
   if (!inputShape || !outputShape)
     return TypedAttr{};
 
-  // Handle [1] -> [] case.
   if (is1dTensorWithOneElem(inputTy) && isScalar(outputTy)) {
     if (auto inputElems = dyn_cast<ShapeAttr>(inputAttr))
       return inputElems[0];
 
   } else if (isScalar(inputTy) && is1dTensorWithOneElem(outputTy)) {
-    // Handle [] -> [1] case.
     return b.getShapeAttr({inputAttr});
   }
 
@@ -74,7 +71,6 @@ static TypedAttr tryStaticizeReshapeLikeOp(TensorType inputTy,
 TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
                                       TypedAttr staticizedInput,
                                       ParamExprBuilder &b) {
-  // Check target shape is rank 1
   if (!resultTy.hasRank() || resultTy.getRank() != 1)
     return TypedAttr{};
   auto resultDimIntAttr =
@@ -83,18 +79,14 @@ TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
     return TypedAttr{};
   int64_t resultDimInt = resultDimIntAttr.value();
 
-  // Input must be ranked
   if (!inputTy.hasRank())
     return TypedAttr{};
 
-  // Extract a single staticized input attr.
   TypedAttr inputScalarAttr;
   if (isScalar(inputTy)) {
-    // Handle scalar input
     inputScalarAttr = staticizedInput;
 
   } else if (is1dTensorWithOneElem(inputTy)) {
-    // Handle 1d tensor input
     inputScalarAttr = cast<ShapeAttr>(staticizedInput)[0];
   }
 
@@ -103,41 +95,32 @@ TypedAttr tryStaticizeBroadcastLikeOp(TensorType inputTy, TensorType resultTy,
   if (!maybeInt.has_value())
     return TypedAttr{};
 
-  // Build and return the staticized output.
   SmallVector<TypedAttr> broadcastedConst(resultDimInt, inputScalarAttr);
   return b.getShapeAttr(broadcastedConst);
 }
 
-/// Staticization implementation for elementwise ops (e.g., `mo.add`).  `func`
-/// is a function that takes in scalar inputs and return the corresponding
-/// version of the output. For instance, assume the underlying op is `mo.add`,
-/// given
+/// Staticization implementation for elementwise ops (e.g., `mo.add`). `func`
+/// maps scalar inputs to the scalar output, applied per index:
 ///   inputs[0] := ShapeAttr([N0, N1])
 ///   inputs[1] := ShapeAttr([1, 2])
-///
-/// The result would be
+/// yields
 ///   ShapeAttr([func({N0, 1}), func({N1, 2}))
 template <typename OpTy>
 static ErrorOr<TypedAttr> tryStaticizeElemWiseOp(
     TensorType outTy, ArrayRef<TypedAttr> inputs, ParamExprBuilder &b,
     llvm::function_ref<TypedAttr(StaticizeAdaptor<OpTy> adaptor)> func) {
-  // Give up on dynamically ranked elementwise op.
   if (!outTy.hasRank())
     return TypedAttr{};
 
-  // Handle scalar case.
   if (outTy.getRank() == 0)
     return func(inputs);
 
-  // Handle non-scalar case -- when inputs are lists of param exprs.
   SmallVector<ShapeAttr> inputShapeAttrs;
   for (auto [i, input] : llvm::enumerate(inputs)) {
-    // Give up if any input is a shape of a dynamically ranked tensor.
     auto inputShapeAttr = dyn_cast<ShapeAttr>(input);
     if (!inputShapeAttr)
       return TypedAttr{};
 
-    // Make sure all inputs have the same # of elements; this is a sanity check.
     if (!inputShapeAttrs.empty() &&
         inputShapeAttrs.front().getSize() != inputShapeAttr.getSize()) {
       std::string msg;
@@ -151,7 +134,6 @@ static ErrorOr<TypedAttr> tryStaticizeElemWiseOp(
     inputShapeAttrs.push_back(inputShapeAttr);
   }
 
-  // Build up output shape
   SmallVector<TypedAttr> outVals;
   size_t inputNumElems = inputShapeAttrs.front().getSize();
   for (size_t i = 0; i < inputNumElems; ++i) {
@@ -171,34 +153,22 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                   ParamExprBuilder &b) {
   StaticizeAdaptor<BroadcastShapeOp> adaptor(inputs);
 
-  // Requires inputs to be lists of param exprs.
   auto lhsShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputX());
   auto rhsShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputY());
   if (lhsShapeAttr && rhsShapeAttr) {
 
-    // Ensure rank(lhsShapeAttr) >= rank(rhsShapeAttr)
     if (lhsShapeAttr.getRank() < rhsShapeAttr.getRank())
       std::swap(lhsShapeAttr, rhsShapeAttr);
 
-    // Build up output value.
     SmallVector<TypedAttr> resDims;
     size_t rankDiff = lhsShapeAttr.getRank() - rhsShapeAttr.getRank();
     for (size_t axis = 0; axis < lhsShapeAttr.getRank(); ++axis) {
       if (axis < rankDiff) {
-        // Extra leading dimensions get broadcasted trivially.
         resDims.push_back(lhsShapeAttr[axis]);
 
       } else {
-        // Otherwise this dimension is broadcasted by the following rule:
-        //   def bcast(D1, D2):
-        //       assert `D1 == D2 or D1 == 1 or D2 == 1`
-        //       if D1 == 1:
-        //           return D2
-        //       else:
-        //           return D1
         Var dim1 = b.createVar(lhsShapeAttr[axis]);
         Var dim2 = b.createVar(rhsShapeAttr[axis - rankDiff]);
-        // Insert assertion
         b.createAssert(dim1 == 1 || dim2 == 1 || dim1 == dim2,
                        "[broadcast_shape] dimensions are not broadcastable");
 
@@ -210,7 +180,6 @@ ErrorOr<TypedAttr> BroadcastShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     return res;
   }
 
-  // Can't staticize.
   return TypedAttr{};
 }
 
@@ -256,15 +225,12 @@ ErrorOr<TypedAttr> ConcatOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   if (getAxisAttr().getInt() != 0)
     return TypedAttr{};
 
-  // Build up staticized version of values from individual inputs.
   SmallVector<TypedAttr> outVals;
   for (TypedAttr input : inputs) {
     if (auto inputShapeAttr = dyn_cast<ShapeAttr>(input)) {
-      // Accumulate staticized values from this input.
       llvm::append_range(outVals, inputShapeAttr.getValues());
 
     } else {
-      // Give up if any input can't be staticized as a 1D tensor.
       return TypedAttr{};
     }
   }
@@ -276,18 +242,15 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                           ParamExprBuilder &b) {
   StaticizeAdaptor<GatherOp> adaptor(inputs);
 
-  // We only staticize over 1D tensors for now, so axis must be 0. `axis` is a
-  // compile-time `index` attribute.
+  // We only staticize over 1D tensors for now, so axis must be 0.
   if (getAxisAttr().getInt() != 0)
     return TypedAttr{};
 
-  // We require the input to be staticized to a list of symbolic values.
   auto inputElems = dyn_cast<ShapeAttr>(adaptor.getInput());
   if (!inputElems)
     return TypedAttr{};
   int64_t numInputElems = inputElems.getSize();
 
-  // Collect constant indices.
   SmallVector<int64_t> indices;
   bool isIndicesScalar = false;
   if (auto indicesOr = tryGetConstantIntVector(adaptor.getIndices())) {
@@ -298,12 +261,9 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     isIndicesScalar = true;
 
   } else {
-    // Give up if indices isn't a constant scalar/1D tensor.
     return TypedAttr{};
   }
 
-  // Normalize & validate individual index, and collect the corresponding
-  // input elements.
   SmallVector<TypedAttr> outElems;
   for (int64_t idx : indices) {
     int64_t normalizedIdx = normalizeAxis(idx, numInputElems);
@@ -316,8 +276,6 @@ ErrorOr<TypedAttr> GatherOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     outElems.push_back(inputElems[normalizedIdx]);
   }
 
-  // Return a dimension attribute or shape attribute based on whether indices
-  // was a scalar or 1D tensor.
   if (isIndicesScalar)
     return outElems.front();
   return b.getShapeAttr(outElems);
@@ -342,7 +300,6 @@ ErrorOr<TypedAttr> GreaterOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                            ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp<GreaterOp>(
       getType(), inputs, b, [&](auto adaptor) {
-        // Reverse inputs
         return b.createKgenExpr(KGEN::POC::LE,
                                 {adaptor.getInputY(), adaptor.getInputX()});
       });
@@ -352,7 +309,6 @@ ErrorOr<TypedAttr> GreaterEqualOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                 ParamExprBuilder &b) {
   return tryStaticizeElemWiseOp<GreaterEqualOp>(
       getType(), inputs, b, [&](auto adaptor) {
-        // Reverse inputs
         return b.createKgenExpr(KGEN::POC::LT,
                                 {adaptor.getInputY(), adaptor.getInputX()});
       });
@@ -416,7 +372,6 @@ ErrorOr<TypedAttr> RangeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                          ParamExprBuilder &b) {
   StaticizeAdaptor<RangeOp> adaptor(inputs);
 
-  // Make sure inputs are constants.
   std::optional<int64_t> startOr = tryGetConstantInt(adaptor.getStart());
   std::optional<int64_t> limitOr = tryGetConstantInt(adaptor.getLimit());
   std::optional<int64_t> stepOr = tryGetConstantInt(adaptor.getStep());
@@ -426,13 +381,11 @@ ErrorOr<TypedAttr> RangeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   int64_t limit = limitOr.value();
   int64_t step = stepOr.value();
 
-  // Use a helper validate the input bounds.
   ErrorOr<int64_t> numOutElemsOr = getRangeNumElements(start, limit, step);
   if (numOutElemsOr.isError())
     return numOutElemsOr.takeError();
   int64_t numOutElems = numOutElemsOr.get();
 
-  // Collect output elements and return an attribute.
   SmallVector<TypedAttr> outElems;
   int64_t elem = start;
   for (int64_t i = 0; i < numOutElems; ++i) {
@@ -457,13 +410,10 @@ ErrorOr<TypedAttr> ReduceMulOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                              ParamExprBuilder &b) {
   StaticizeAdaptor<ReduceMulOp> adaptor(inputs);
 
-  // We only staticize over 1D tensors for now, so axis must be 0. `axis` is a
-  // compile-time `index` attribute.
+  // We only staticize over 1D tensors for now, so axis must be 0.
   if (getAxisAttr().getInt() != 0)
     return TypedAttr{};
 
-  // The result is just the product of individual symbolic elements from the
-  // staticized input.
   auto inputElems = dyn_cast<ShapeAttr>(adaptor.getInput());
   if (!inputElems)
     return TypedAttr{};
@@ -496,12 +446,10 @@ ErrorOr<TypedAttr> SliceOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                          ParamExprBuilder &b) {
   StaticizeAdaptor<SliceOp> adaptor(inputs);
 
-  // Make sure input is a list of symbolic values.
   auto inputElems = dyn_cast<ShapeAttr>(adaptor.getInput());
   if (!inputElems)
     return TypedAttr{};
 
-  // Make sure each bound is a constant vector of 1 integer.
   std::optional<SmallVector<int64_t>> startOr =
       tryGetConstantIntVector(adaptor.getStart());
   std::optional<SmallVector<int64_t>> stopOr =
@@ -516,7 +464,6 @@ ErrorOr<TypedAttr> SliceOp::tryStaticize(ArrayRef<TypedAttr> inputs,
   if (stepOr->front() != 1)
     return TypedAttr{};
 
-  // Normalize and validate start/stop values.
   int64_t inputSize = inputElems.getSize();
   int64_t normalizedStart = clampAxis(startOr->front(), inputSize);
   int64_t normalizedStop = clampAxis(stopOr->front(), inputSize);
@@ -527,7 +474,6 @@ ErrorOr<TypedAttr> SliceOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     return Error(ss.str());
   }
 
-  // Do the actual slice and return the result.
   ArrayRef<TypedAttr> slicedInputElems = inputElems.getValues().slice(
       normalizedStart, normalizedStop - normalizedStart);
   auto resultAttr = b.getShapeAttr(slicedInputElems);
@@ -538,13 +484,11 @@ ErrorOr<TypedAttr> SqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                 ParamExprBuilder &b) {
   StaticizeAdaptor<SqueezeShapeOp> adaptor(inputs);
 
-  // Make sure inputs aren't too dynamic.
   auto inputShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputShape());
   auto squeezeAxesOr = tryGetConstantIntVector(adaptor.getRemoveIndices());
   if (!inputShapeAttr || !squeezeAxesOr.has_value())
     return TypedAttr{};
 
-  // Check, normalize and collect squeeze axes into a set.
   SmallVector<int64_t> &squeezeAxes = squeezeAxesOr.value();
   DenseSet<int64_t> normalizedSqueezeAxisSet;
   int64_t inputShapeLen = inputShapeAttr.getValues().size();
@@ -552,16 +496,13 @@ ErrorOr<TypedAttr> SqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     if (squeezeAxis < -inputShapeLen || squeezeAxis >= inputShapeLen)
       return Error("Squeeze axis not in [-in_rank, in_rank).");
 
-    // normalize negative indexing
     if (squeezeAxis < 0)
       squeezeAxis += inputShapeLen;
     normalizedSqueezeAxisSet.insert(squeezeAxis);
   }
 
-  // Compute the unsqueezed symbolic shape.
   SmallVector<TypedAttr> finalShape;
   for (auto [axis, dimAttr] : llvm::enumerate(inputShapeAttr.getValues())) {
-    // Skip if this axis is to be squeezed.
     if (normalizedSqueezeAxisSet.contains(axis)) {
       b.createAssert(b.createVar(dimAttr) == 1,
                      "Attempting to unsqueeze a dimension that is not 1.");
@@ -595,13 +536,11 @@ ErrorOr<TypedAttr> UnsqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
                                                   ParamExprBuilder &b) {
   StaticizeAdaptor<UnsqueezeShapeOp> adaptor(inputs);
 
-  // Make sure inputs aren't too dynamic.
   auto inputShapeAttr = dyn_cast<ShapeAttr>(adaptor.getInputShape());
   auto unsqueezeAxesOr = tryGetConstantIntVector(adaptor.getPaddingIndices());
   if (!inputShapeAttr || !unsqueezeAxesOr.has_value())
     return TypedAttr{};
 
-  // Check, normalize and collect unsqueeze axes into a set.
   const SmallVector<int64_t> &unsqueezeAxes = unsqueezeAxesOr.value();
   DenseSet<int64_t> unsqueezeAxesSet;
   int64_t outputShapeLen =
@@ -610,13 +549,11 @@ ErrorOr<TypedAttr> UnsqueezeShapeOp::tryStaticize(ArrayRef<TypedAttr> inputs,
     if (unsqueezeAxis < -outputShapeLen || unsqueezeAxis >= outputShapeLen)
       return Error("Unsqueeze axis not in [-out_rank, out_rank).");
 
-    // normalize negative indexing
     if (unsqueezeAxis < 0)
       unsqueezeAxis += outputShapeLen;
     unsqueezeAxesSet.insert(unsqueezeAxis);
   }
 
-  // Compute the unsqueezed symbolic shape.
   SmallVector<TypedAttr> unsqueezedDims;
   TypedAttr intOneAttr = b.createVar(1).getAttr();
   for (int64_t idx = 0, nextDimAttrIdx = 0; idx < outputShapeLen; ++idx) {

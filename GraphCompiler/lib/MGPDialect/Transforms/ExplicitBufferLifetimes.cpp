@@ -37,10 +37,7 @@ class ExplicitBufferLifetimesPass
     markAnalysesPreserved<BufferLifetimeAnalysisPass>();
 
     modelOp->walk([&](Block *block) {
-      // Walk each block, then for each alloc in each block, insert a
-      // buffer free at the op that is guaranteed to execute after all of the
-      // alloc's uses
-
+      // Free each alloc at an op guaranteed to run after all of its uses.
       for (Operation &op : block->getOperations()) {
         auto allocOp = dyn_cast<MGP::BufferAllocOp>(op);
         if (!allocOp)
@@ -52,8 +49,7 @@ class ExplicitBufferLifetimesPass
           continue;
         auto lcaNode = analysis.getDepTree(block).findLCA(*allocUses);
 
-        // Traverse up the dependency tree until we find a node that has an
-        // MGPDeviceChain output, meaning we can insert our free after it
+        // The free goes after the nearest ancestor with a chain output.
         while (lcaNode) {
           bool hasMGPChainOutput = false;
           for (auto result : lcaNode->op->getResults())

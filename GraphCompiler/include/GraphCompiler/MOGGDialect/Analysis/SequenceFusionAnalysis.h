@@ -24,14 +24,13 @@ using BooleanFunctionOnOperation =
 /// Eligibility is defined as ops that should be considered fusible.
 using EligibilityFunction = BooleanFunctionOnOperation;
 
-/// Comparability means that the operations are eligible but we should still
-/// see if they can be fused together (ex: same device, fusion interfaces, etc).
+/// Whether two eligible ops can fuse together (e.g. same device, fusion
+/// interfaces).
 using CompatibilityFunction =
     const std::function<bool(mlir::Operation *, mlir::Operation *)> &;
 
-// If an operation matters when preserving parallelism (computationally
-// significant) aka is this operation computationally heavy so we should care
-// about how it ends up being scheduled.
+/// Whether an op is heavy enough that its scheduling matters when preserving
+/// parallelism.
 using ComputationallySignificantFunction = BooleanFunctionOnOperation;
 
 /// If an operation can be duplicated during sequence fusion.
@@ -39,10 +38,8 @@ using CanDuplicate = BooleanFunctionOnOperation;
 
 using FusionSubGraphs = llvm::SmallVector<llvm::SmallVector<mlir::Operation *>>;
 
-/// NOTE: Passes that leverage this analysis have to emit deterministic IR
-/// meaning two invocations of the same pass over the same input should output
-/// the same IR. Therefore, all functions in this analysis guarantee that the
-/// returned values are always deterministic (mainly same order).
+/// All functions here return deterministically ordered results, because passes
+/// using this analysis must emit deterministic IR.
 
 /// Returns subgraphs of operations that can be fused together while maintaining
 /// the following guarantee: Any eligible ops that has a path in G or reverse(G)
@@ -61,10 +58,9 @@ FusionSubGraphs transitiveDependencySequenceFusionAnalysis(
     ComputationallySignificantFunction computationallySignificant,
     bool preserveParallelism);
 
-/// Fuses in compatible operands that would be DCE-ed after fusion. In other
-/// words, an operation is fused down if it can fuse with all its users. If
-/// allowDuplication is set to false, operations with more than one user can't
-/// be fused down.
+/// Fuses an operation down if it can fuse with all its users. Unless
+/// `canDuplicate` holds, operations with more than one user can't be fused
+/// down.
 FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
     EligibilityFunction isEligible, CompatibilityFunction areCompatible,

@@ -39,12 +39,9 @@ class RMO_Op<string mnemonic, list<Trait> traits = []> :
 def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDTypeOperandsAndResults]> {
   let summary = "Rebind the input tensor's shape with runtime check.";
   let description = [{
-    Unlike `mo.rebind` this also has the semantics of doing a runtime check
-    that the given shapes are compatible.
-
-    Right now this is modeled as a side-effect of the operation due to
-    limitations of modeling assertions in our stack. In the future this will
-    change and this operation may return either an error or a tensor.
+    Unlike `mo.rebind`, this also checks at runtime that the shapes are
+    compatible. The check is modeled as a side effect because our stack cannot
+    yet model assertions.
   }];
 
   let arguments = (ins
@@ -70,7 +67,7 @@ def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDType
     )>,
   ];
 
-  // If we can prove the rebind is rebinding to the same shape, become no-op
+  // Folds away when the rebind provably keeps the same shape.
   let hasFolder = 1;
 }
 
@@ -109,58 +106,58 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []> :
 def RMO_AddOp : RMO_PureBinaryElementWiseOp<"add", [Commutative]> {
   let summary = "Flexible binary add op";
   let description = [{
-    A flexible binary elementwise add operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise add with implicit broadcasting and dtype promotion.
   }];
 }
 
 def RMO_SubOp : RMO_PureBinaryElementWiseOp<"sub", []> {
   let summary = "Flexible binary sub op";
   let description = [{
-    A flexible binary elementwise sub operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise sub with implicit broadcasting and dtype promotion.
   }];
 }
 
 def RMO_MulOp : RMO_PureBinaryElementWiseOp<"mul", [Commutative]> {
   let summary = "Flexible binary mul op";
   let description = [{
-    A flexible binary elementwise mul operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise mul with implicit broadcasting and dtype promotion.
   }];
 }
 
 def RMO_DivOp : RMO_PureBinaryElementWiseOp<"div", []> {
   let summary = "Flexible binary div op";
   let description = [{
-    A flexible binary elementwise div operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise div with implicit broadcasting and dtype promotion.
   }];
 }
 
 def RMO_ModOp : RMO_PureBinaryElementWiseOp<"mod", []> {
   let summary = "Flexible binary mod op";
   let description = [{
-    A flexible binary elementwise mod operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise mod with implicit broadcasting and dtype promotion.
   }];
 }
 
-// TODO(GEX-568): investigate pow. It looks like the MO op allows for different input types without casting.
-// For example, raising a float to the power of an integer. We update the lowering to avoid unnecessary casts.
+// TODO(GEX-568): The MO pow op accepts mixed input dtypes (e.g. float ** int);
+// update the lowering to avoid unnecessary casts.
 def RMO_PowOp : RMO_PureBinaryElementWiseOp<"pow", []> {
   let summary = "Flexible binary pow op";
   let description = [{
-    A flexible binary elementwise pow operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise pow with implicit broadcasting and dtype promotion.
   }];
 }
 
 def RMO_MinOp : RMO_PureBinaryElementWiseOp<"min", [Commutative]> {
   let summary = "Flexible binary min op";
   let description = [{
-    A flexible binary elementwise min operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise min with implicit broadcasting and dtype promotion.
   }];
 }
 
 def RMO_MaxOp : RMO_PureBinaryElementWiseOp<"max", [Commutative]> {
   let summary = "Flexible binary max op";
   let description = [{
-    A flexible binary elementwise max operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise max with implicit broadcasting and dtype promotion.
   }];
 }
 
@@ -199,7 +196,7 @@ class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []> :
 def RMO_EqualOp : RMO_PureBinaryComparisonOp<"equal", [Commutative]> {
   let summary = "Flexible equality comparison op";
   let description = [{
-    A flexible binary elementwise equality comparison operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise equality comparison with implicit broadcasting and dtype promotion.
 
     Returns `x == y`, where `x` and `y` are input tensors.
 
@@ -218,7 +215,7 @@ def RMO_EqualOp : RMO_PureBinaryComparisonOp<"equal", [Commutative]> {
 def RMO_GreaterOp : RMO_PureBinaryComparisonOp<"greater"> {
   let summary = "Flexible greater than comparison op";
   let description = [{
-    A flexible binary elementwise greater than comparison operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise greater than comparison with implicit broadcasting and dtype promotion.
 
     Returns `x > y`, where `x` and `y` are input tensors.
 
@@ -237,7 +234,7 @@ def RMO_GreaterOp : RMO_PureBinaryComparisonOp<"greater"> {
 def RMO_GreaterEqualOp : RMO_PureBinaryComparisonOp<"greater_equal"> {
   let summary = "Flexible greater than or equal to comparison op";
   let description = [{
-    A flexible binary elementwise greater than or equal to comparison operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise greater than or equal comparison with implicit broadcasting and dtype promotion.
 
     Returns `x >= y`, where `x` and `y` are input tensors.
 
@@ -256,7 +253,7 @@ def RMO_GreaterEqualOp : RMO_PureBinaryComparisonOp<"greater_equal"> {
 def RMO_NotEqualOp : RMO_PureBinaryComparisonOp<"not_equal", [Commutative]> {
   let summary = "Flexible not equal to op";
   let description = [{
-    A flexible binary elementwise not equal comparison operation with implicit broadcasting and implicit dtype promotion.
+    Elementwise not equal comparison with implicit broadcasting and dtype promotion.
 
     Returns elementwise `x != y`, where `x` and `y` are input tensors.
 
@@ -307,7 +304,7 @@ class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []> :
 def RMO_AndOp : RMO_PureBinaryLogicalOp<"and", [Commutative]> {
   let summary = "Flexible and op";
   let description = [{
-    A flexible binary elementwise and comparison operation with implicit broadcasting.
+    Elementwise logical and with implicit broadcasting.
 
     Returns elementwise `x & y`, where `x` and `y` are boolean input tensors.
 
@@ -326,7 +323,7 @@ def RMO_AndOp : RMO_PureBinaryLogicalOp<"and", [Commutative]> {
 def RMO_OrOp : RMO_PureBinaryLogicalOp<"or", [Commutative]> {
   let summary = "Flexible or op";
   let description = [{
-    A flexible binary elementwise or comparison operation with implicit broadcasting.
+    Elementwise logical or with implicit broadcasting.
 
     Returns elementwise `x | y`, where `x` and `y` are boolean input tensors.
 
@@ -345,7 +342,7 @@ def RMO_OrOp : RMO_PureBinaryLogicalOp<"or", [Commutative]> {
 def RMO_XorOp : RMO_PureBinaryLogicalOp<"xor", [Commutative]> {
   let summary = "Flexible xor op";
   let description = [{
-    A flexible binary elementwise xor comparison operation with implicit broadcasting.
+    Elementwise logical xor with implicit broadcasting.
 
     Returns elementwise `x ^ y`, where `x` and `y` are boolean input tensors.
 
@@ -392,16 +389,8 @@ def RMO_ConcatOp : RMO_Op<"concat", [
 ]> {
   let summary = "Concatenation operation";
   let description = [{
-    Concatenates the input tensors along a given dimension.
-
-    `mo.concat` concatenates the `inputs` tensors into an output tensor. There
-    must be at least 1 input tensor. The input tensors and output tensors all
-    has the same shape except along the constant concatenation dimension `axis`.
-    The size of the concatenation dimension in output tensor would have be the
-    sum of sizes of the concatenation dimension in input tensors.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Concatenates one or more `inputs` along `axis` (numpy semantics, so -1 is
+    the last axis). The output's `axis` dimension is the sum of the inputs'.
 
     Shape restrictions:
     1. All inputs must have known and equal ranks.
@@ -438,9 +427,7 @@ def RMO_ReshapeOp : RMO_Op<"reshape", [
 ]> {
   let summary = "Reshape a tensor";
   let description = [{
-    Returns a tensor with the same underlying data as `input`, but the shape of `newShape`.
-
-    A static dimension set to `-1` will be automatically computed.
+    Returns `input` reshaped to `newShape`. A `-1` dimension is inferred.
 
     Shape restrictions:
     1. `newShape` must have known rank.
@@ -484,7 +471,7 @@ def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
 ]> {
   let summary = "Converts a shape to a tensor";
   let description = [{
-    Converts a statically known shape attr into a 1d tensor of the shape.
+    Converts a static shape attr into a 1d tensor.
   }];
   let arguments = (ins MOSH_ShapeAttr:$shape);
   let results = (outs MO_ShapeLike:$result);
@@ -503,17 +490,9 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
   let description = [{
     Performs general matrix multiplication with broadcasting.
 
-    If the lhs is 1d, it will be reshaped to `1xD`.
-    If the rhs is 1d, it will be reshaped to `Dx1`.
-    In both cases, the addition `1` dimensions will be removed from the output shape.
-
-    For the multiplication, the innermost (rightmost) 2 dimensions are treated as a maxtrix.
-    The lhs matrix will have the shape `MxK`.
-    The rhs matrix will have the shape `KxN`.
-    The output will have the shape `MxN`
-    The `K` dimensions must be equivalent in both matrices.
-
-    The remaining outer dimensions will be broadcasted.
+    The innermost 2 dimensions are the matrices (`MxK @ KxN -> MxN`); outer
+    dimensions broadcast. A 1d lhs is treated as `1xK` and a 1d rhs as `Kx1`,
+    and the added `1` dimension is dropped from the output.
 
     Example shapes with outputs:
     [K] @ [K] -> []
@@ -545,28 +524,16 @@ def RMO_ConvOp : RMO_Op<"conv", [
     Computes the convolution product of the input with the given filter,
     strides, dilations, paddings, and groups.
 
-    The op supports 1D-3D convolution, with the following layout assumptions:
-    - input has channel last layout. For 2D, that's NHWC, i.e.,
-      (batch_size, height, width, in_channels)
-    - filter has layout FCRS, i.e.,
-      (out_channels, in_channels / num_groups, height, width)
+    Supports 1D-3D convolution. The input is channel-last (NHWC for 2D). The
+    filter layout comes from the filter tensor type's layout attribute: FCRS
+    (default, `(out_channels, in_channels / num_groups, height, width)`), RSCF
+    (legacy), or packed variants like FRSCf.
 
-    The filter layout is determined by the layout attribute on the filter
-    tensor type. Supported layouts include FCRS (default), RSCF (legacy),
-    and packed variants like FRSCf.
-
-    `strides`, `dilations`, and `padding` are all shape attributes.
-    If the input has static rank, and must have have sizes of `input_rank - 2`,
-    except padding, which must have size `2 * (input_rank - 2)`. Individual
-    elements in the hyperparameters apply to corresponding dimensions of the
-    input (after ignoring the batch and channel dimensions), with padding
-    representing a before/after pair for each axis.
-
-    The padding values are expected to take the form (pad_dim1_before,
-    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
-    0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    Convolution, dim1 here represents H and dim2 represents W. In python like
-    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+    `strides` and `dilations` have `input_rank - 2` elements, one per spatial
+    dimension. `paddings` has `2 * (input_rank - 2)` elements of the form
+    (dim1_before, dim1_after, dim2_before, ...) and zero-pads the spatial
+    dimensions of `input` (dim1 is H, dim2 is W in 2D). For example, padding a
+    2x3 spatial `input` with [0, 1, 2, 1] yields:
 
     ```python
     input = [
@@ -583,10 +550,8 @@ def RMO_ConvOp : RMO_Op<"conv", [
     # Shape is 3x6
     ```
 
-    The input, output and filter tensors' ranks must match.
-
-    The number of input and output channels must both be divisible by the number
-    of groups `num_groups`.
+    The input, output and filter ranks must match, and input and output
+    channels must both be divisible by `num_groups`.
 
     Example:
 
@@ -629,31 +594,20 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
 ]> {
   let summary = "Transposed convolution operation";
   let description = [{
-    This op effectively computes the gradient of a convolution with
-    respect to its input (as if the original convolution operation had the same
-    filter and hyperparameters as this op). A visualization of the computation
-    can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
+    Computes the gradient of a convolution with the same filter and
+    hyperparameters with respect to its input. See
+    https://d2l.ai/chapter_computer-vision/transposed-conv.html.
 
-    The op supports 1D-3D spatial dimensions, with the following layout
-    assumptions (note the `out_channel` is w.r.t. the original convolution):
-    - input has channel last layout.For 2D, that's NHWC, i.e.,
-      (batch_size, height, width, out_channels)
+    Supports 1D-3D spatial dimensions (`out_channels` is w.r.t. the original
+    convolution):
+    - input is channel-last (NHWC for 2D)
     - filter has layout RSFC, i.e., (height, width, out_channels, in_channels)
 
-    All hyperparameters (i.e. strides, dilations, padding, output_paddings) must
-    be of rank 1, or unranked. If the input has static rank, all hyperparameters
-    with static shape must have sizes of `input_rank - 2`, except padding, which
-    must have size `2 * (input_rank - 2)`. Individual elements in the
-    hyperparameters applies to corresponding dimensions of the input (after
-    ignoring the batch and channel dimensions), with padding representing a
-    before/after pair for each axis.
-
-    The padding values are expected to take the form (pad_dim1_before,
-    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
-    0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    ConvTranspose, dim1 here represents H_out and dim2 represents W_out. In
-    python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
-    yield:
+    All hyperparameters are rank 1 with `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (dim1_before, dim1_after, dim2_before, ...) over the output's spatial
+    dimensions (dim1 is H_out, dim2 is W_out in 2D). For example,
+    padding a 2x4 spatial `output` with [0, 1, 2, 1] yields:
 
     ```python
     output = [
@@ -668,12 +622,11 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
     # Shape is 1x1
     ```
 
-    The `output_paddings` argument is meant to resolve the ambiguity of multiple
-    potential output shapes when any stride is greater than 1. Basically,
-    we'll add `output_paddings[i]` number of zeros at the end of output's ith
-    axis. We only support output_paddings = 0.
+    `output_paddings` disambiguates the output shape when a stride is greater
+    than 1 by appending `output_paddings[i]` zeros to output axis `i`. Only 0 is
+    supported.
 
-    The input, output and filter tensors' ranks must match if statically known.
+    The input, output and filter ranks must match if statically known.
 
     Example:
 
@@ -730,18 +683,11 @@ def RMO_AvgPoolOp : RMO_PoolOp<"avg_pool"> {
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
 
-    For now the op only supports 2d average pooling (so input must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Only 2D pooling on a 4D NHWC input is supported.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
+    All hyperparameters are rank 1 with `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (H_before, H_after, W_before, W_after).
 
     Example:
 
@@ -775,18 +721,11 @@ def RMO_MaxPoolOp : RMO_PoolOp<"max_pool"> {
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
 
-    For now the op only supports 2d max pooling (so input must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Only 2D pooling on a 4D NHWC input is supported.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
+    All hyperparameters are rank 1 with `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (H_before, H_after, W_before, W_after).
 
     Example:
 
@@ -814,11 +753,8 @@ def RMO_SelectOp : RMO_Op<"select", [
     Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input
     tensors.
 
-    Broadcasting is handled by first calculating the common shape between `x` and `y`.
-    Then, the `cond` shape and common shape are merged to figure out the final shape.
-    All inputs are broadcast to the same final shape.
-
-    Dtype casting only applies to the `x` and `y` inputs. `cond` must be a bool.
+    All inputs broadcast to the common shape of `cond`, `x` and `y`. Dtype
+    promotion applies only to `x` and `y`; `cond` must be bool.
 
     Example:
 
@@ -848,13 +784,8 @@ def RMO_TopKOp : RMO_Op<"top_k", [
 ]> {
   let summary = "Top-K operation";
   let description = [{
-    Computes the largest values and their corresponding indices in a tensor
-    along a specified axis.
-    Returns values sorted along the axis.
-
-    axis: The axis to compute the largest values over.
-      The axis must be in [-rank, rank).
-    k: The number of values to compute.
+    Returns the `k` largest values along `axis` (in [-rank, rank)), sorted,
+    and their indices.
 
     Example:
     ```mlir
@@ -885,31 +816,15 @@ def RMO_SliceOp : RMO_Op<"slice", [
 ]> {
   let summary = "Slice operation with type inference.""";
   let description = [{
-    Returns a new tensor with a subset of the elements from an N-dimensional
-    `input` tensor. The subset is chosen using the `starts`, `stops`, and
-    `steps` shape attributes.
-    Each shape attributes has N elements, one for each dimension of the `input`
-    tensor.
+    Slices an N-dimensional `input` with numpy semantics: dimension `i` is
+    indexed by `starts[i]:stops[i]:steps[i]`, each attribute having N elements.
+    - Negative `starts`/`stops` are supported; -1 is the last index.
+    - Unlike `mo.slice`, `starts` and `stops` must be in [-dim, dim].
+    - `steps` must be nonzero; negative steps are supported.
 
-    The semantics follows the numpy index semantics, such that
-    1. For each dimension `i`, `starts[i]:stops[i]:steps[i]` represents the
-       "indexing" along that dimension.
-    2. Negative indices are supported for `starts` and `stops`, e.g., -1
-       represents the largest axis.
-    3. Unlike `mo.slice`, Out of bound indices in `starts` and `stops` are not
-       allowed and each must be in [-dim, dim], where `dim` is the dimension in
-       the corresponding axis.
-    4. `step` must contain nonzero elements. Negative steps are supported.
-
-    Note: the order in which negative indices are resolved matches that of
-    python for `start:
-
-    1. Normalize negative indices by adding the dimension size.
-    2. Apply clipping logic.
-
-    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
-    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
-    N is the dimension size. Numbers smaller than -N-1 should also work.
+    As in Python, negative indices are normalized before clipping, so
+    `l[:-1:-1]` is empty; reverse with `l[:-N-1:-1]` where N is the dimension
+    size.
 
     Example:
     ```mlir

@@ -37,10 +37,8 @@ def MOGG_KernelCallInterface : OpInterface<"KernelCallInterface"> {
 
 def MOGG_StubCallOpInterface : OpInterface<"StubCallOpInterface"> {
   let description = [{
-    Common interface for ops that call an outlined `mogg.kernel.stub` by symbol
-    (`mogg.call.stub` and `mogg.call.stub.async`). The callee symbol is stored
-    as the `$name` `FlatSymbolRefAttr`, so the default implementations forward
-    to the generated `getNameAttr`/`setNameAttr` accessors.
+    Ops that call an outlined `mogg.kernel.stub` by symbol (`mogg.call.stub`,
+    `mogg.call.stub.async`). The callee is the `$name` attribute.
   }];
 
   let cppNamespace = "::M::MOGG";
@@ -62,11 +60,8 @@ def MOGG_StubCallOpInterface : OpInterface<"StubCallOpInterface"> {
 
 def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
   let description = [{
-    Common interface for the five `mogg.tensor.create*` ops (the plain
-    tensor and each view kind: slice/broadcast/transpose/reshape) -- all
-    carry `$elementType`/`$mut` as identically-named attributes, so a
-    capture's producer can be read through this instead of dispatched on
-    each concrete op type.
+    Common interface for the `mogg.tensor.create*` ops (plain and each view
+    kind), which all carry `$elementType`/`$mut`.
   }];
 
   let cppNamespace = "::M::MOGG";
@@ -95,12 +90,10 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
       (ins "::mlir::OpBuilder &":$builder, "bool":$mut), /*methodBody=*/[{}],
       /*defaultImplementation=*/[{
         auto cloned = ::mlir::cast<ConcreteOp>(builder.clone(*$_op.getOperation()));
-        // Concrete `setMut` writes the `mut` property `getMut` reads (and errs
-        // at compile time if an op ever drops it); a raw `setAttr` would not.
+        // Unlike a raw `setAttr`, concrete `setMut` writes the property that
+        // `getMut` reads, and fails to compile if an op drops it.
         cloned.setMut(mut);
         ::mlir::Value result = cloned->getResult(0);
-        // A buffer result is mutable memory; retype to `!mogg.tensor` when the
-        // clone becomes immutable to keep `!mogg.buffer => mut`.
         if (!mut && ::mlir::isa<::M::MOGG::BufferType>(result.getType()))
           result.setType(::M::MOGG::TensorType::get(cloned->getContext()));
         return ::mlir::cast<::M::MOGG::TensorCreateInterface>(
@@ -109,19 +102,9 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
     >,
   ];
 
-  // A `!mogg.buffer` result is mutable memory -- `getKernelOperandKind()`
-  // reads the mutable `Buffer` kind straight off the type -- so it must be
-  // marked mutable. Enforced on the interface (rather than one op) so every
-  // current and future `mogg.tensor.create*` producer is covered.
-  //
-  // The converse is intentionally NOT checked: a `!mogg.tensor` may be
-  // mutable too -- a DPS output (`io = Output`) and a mutable view are both
-  // mutable `!mogg.tensor` -- so `mut` does not pin the kind down the other
-  // way, and only the plain `mogg.tensor.create` even carries the `$io` that
-  // scoping an input-only immutability rule would need.
-  //
-  // Defined out of line in MOGGOps.cpp so it can name `!mogg.buffer`, which
-  // this generated interface header cannot see.
+  // `getKernelOperandKind()` reads the mutable `Buffer` kind off a
+  // `!mogg.buffer`, so it must be `mut`. The converse does not hold: DPS
+  // outputs and mutable views are mutable `!mogg.tensor`s.
   let verify = [{
     return ::M::MOGG::verifyTensorCreateInterfaceMutability($_op);
   }];
@@ -156,7 +139,7 @@ def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
       "mlir::Value", "getDeviceContext", (ins)
     >,
     InterfaceMethod<
-      "Returns the dps output values of the kernel (a argument but with dps semantics)",
+      "Returns the DPS output values of the kernel",
       "mlir::SmallVector<mlir::Value>", "getKernelDPSOutputs", (ins)
     >,
     InterfaceMethod<

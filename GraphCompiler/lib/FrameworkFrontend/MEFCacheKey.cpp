@@ -45,20 +45,11 @@ private:
   uint64_t pos = 0;
 };
 
-// Clears the absolute-path-valued options on `options` in place, so the cache
-// key derived from it does not depend on the install location (MOCO-4152).
-// These paths leak into the key via `print` (which emits every option) and the
-// textual pipeline string, but they are not relevant to the compiled result
-// *as paths*:
-//   - kernel-library-paths: their file *contents* are hashed separately (see
-//     `feedFile` in `build`), so the path strings are redundant for
-//     correctness.
-//   - save-temp-prefix / mlir-timing-out-dir: pure diagnostic output locations
-//     (debug temp-saving and pass-timing JSON); no effect on the artifact.
-//   - cache-dir: set-vs-unset DOES change the artifact (it toggles CAS
-//     dense-attribute outlining), but the path value only selects where the CAS
-//     store lives. So we strip the path here and instead fold a boolean
-//     "CAS enabled" into the key in `build`.
+// Clears absolute-path options so the cache key is relocatable (MOCO-4152):
+//   - kernel-library-paths: contents are hashed separately in `build`.
+//   - save-temp-prefix / mlir-timing-out-dir: diagnostic outputs only.
+//   - cache-dir: only set-vs-unset affects the artifact (CAS outlining), so
+//     `build` folds in a "CAS enabled" bit instead.
 void stripInstallPaths(MO::GCPipelineOptions &options) {
   options.cacheDir = "";
   options.kernelLibraryPaths = {};
@@ -102,11 +93,8 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
   llvm::BLAKE3 &b3 = hasher.prefixHasher;
   BLAKE3Stream os(b3);
 
-  // Pipeline options + textual pipeline. `stripInstallPaths` removes the
-  // path options so the key is relocatable (MOCO-4152); since it also strips
-  // cache-dir, fold in a "CAS enabled" bit separately (set-vs-unset changes
-  // the artifact even though the path does not). `GCPipelineOptions` is
-  // non-copyable, hence the local + `copyOptionValuesFrom`.
+  // Pipeline options + textual pipeline, path-stripped, plus a "CAS enabled"
+  // bit. `GCPipelineOptions` is non-copyable, hence `copyOptionValuesFrom`.
   MO::GCPipelineOptions keyOptions;
   keyOptions.copyOptionValuesFrom(gcPipelineOptions);
   stripInstallPaths(keyOptions);
@@ -120,8 +108,7 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
   if (auto *compilationCtx = maxContext->get<KGEN::CompilationContext>())
     compilationCtx->print(os);
 
-  // Graph compiler version, pipeline, config. The host target is resolved
-  // here, outside the key computation itself.
+  // Graph compiler version, pipeline, config.
   auto hostTargetOr = MOGG::getHostTargetInfoAttr(&mlirCtx);
   if (hostTargetOr.isError())
     return hostTargetOr.takeError();
@@ -137,8 +124,7 @@ MEFCacheKeyHasher::build(mlir::MLIRContext &mlirCtx,
   }
 
   // Built-in kernel packages plus every binary package on the module import
-  // path (see `getKernelPackagePathsForCacheKey` for why both must reach the
-  // key). Only contents are hashed, not paths, so the key stays relocatable
+  // path (see `getKernelPackagePathsForCacheKey`). Contents only, not paths
   // (MOCO-4152).
   auto kernelPackagePathsOr = MOGG::getKernelPackagePathsForCacheKey(&mlirCtx);
   if (kernelPackagePathsOr.isError())

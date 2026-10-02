@@ -29,9 +29,7 @@ namespace M::MOGG {
 
 namespace {
 
-// Instead of storing `KernelStubOp` directly, we can store it with its
-// precomputed hash. This speeds up multiple insertions of the same stub op
-// because the part of the code that inserts the op also has access to the hash.
+// A stub with its precomputed hash, so repeated insertions don't rehash.
 struct KernelStubHashEntry {
   MOGG::KernelStubOp op;
   unsigned hash;
@@ -45,11 +43,6 @@ struct KernelStubHashEntry {
 struct KernelStubOpEquivalenceInfo
     : public llvm::DenseMapInfo<KernelStubHashEntry> {
 
-  // We first compute the hash of a node and store it with the entry in the
-  // dense set. This is an optimization where subsequent insertions of the same
-  // op will not rehash. We will be comparing two entries when the hash collides
-  // though but this is less frequent than rehashing every time we try to insert
-  // something.
   static unsigned getHashValue(const KernelStubHashEntry cStubOp) {
     return cStubOp.hash;
   }
@@ -133,11 +126,9 @@ static unsigned getHashValue(const MOGG::KernelStubOp cStubOp) {
   return hash;
 }
 
-// The call graph edge is a `StubCallOpInterface`, implemented by both
-// `mogg.call.stub` and `mogg.call.stub.async`. Using the interface as the
-// edge type lets the generic `CallGraphBase::build` discover both synchronous
-// and asynchronous stub calls as edges, so a caller stub is canonicalized
-// before it is hashed for deduplication.
+// The edge type is `StubCallOpInterface` so `CallGraphBase::build` finds both
+// `mogg.call.stub` and `mogg.call.stub.async` edges, and a caller stub is
+// canonicalized before it is hashed.
 struct CallGraphNode : public KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp,
                                             MOGG::StubCallOpInterface> {
   using Base = KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp,
@@ -159,21 +150,17 @@ struct CallStubOrCalleeName {
 struct CallGraph : public KGEN::SCCGraph<CallGraph, CallGraphNode,
                                          /*BottomUpRewrite=*/true> {
   bool doAnalysis(CallGraphNode *node) { return false; }
-  // For all callsites inside the current node, rewrite them if you aren't
-  // able to insert them in the hash table.
+  // Rewrites callsites in `node` that couldn't be inserted in the hash table.
   void doRewrite(CallGraphNode *node);
 
   DenseSet<KernelStubHashEntry, KernelStubOpEquivalenceInfo> uniqueFuncSet;
 
-  // A mapping that shows the renaming of kernels that aren't called by any
-  // other kernel (top-level). This is necessary because the CallGraph will only
-  // replace the ones that get called. At the very end in runOnOperation, we do
-  // the replacement for the top-level kernels using this mapping.
+  // Renamings of top-level kernels (no kernel callers), which the CallGraph
+  // doesn't replace; applied at the end of runOnOperation.
   llvm::DenseMap<StringAttr, StringAttr> topLevelReplacements;
 
-  // A map of replacement-replaced that will be used at the very end to
-  // stabilize the replacements (execution order will determine the replacement
-  // without this which is non deterministic).
+  // Replacement -> replaced, used at the end to make the choice independent of
+  // the non-deterministic execution order.
   llvm::DenseMap<StringAttr, SmallVector<CallStubOrCalleeName>>
       reverseReplacements;
 
@@ -194,9 +181,8 @@ void CallGraph::doRewrite(CallGraphNode *node) {
     }
 
     if (replacementCallee != callee->func) {
-      // Merge locations so source notes from all merged stubs survive.
-      // This preserves Python call site metadata for error messages and
-      // NVTX trace detail strings.
+      // Merge locations so error messages and NVTX trace details keep every
+      // merged stub's Python call site.
       replacementCallee->setLoc(mlir::FusedLoc::get(
           replacementCallee->getContext(),
           {replacementCallee->getLoc(), callee->func->getLoc()}));
@@ -206,10 +192,9 @@ void CallGraph::doRewrite(CallGraphNode *node) {
   }
 
   node->hash = getHashValue(node->func);
-  // Try to insert yourself if no CallGraphNode is calling you. If another top
-  // level stub (that has no callers) hashes to the same value, store the
-  // replacement in another map that will be used after the analysis to replace
-  // the external calls (see mergeIdenticalKernelStubs below).
+  // A stub with no callers inserts itself; a collision with another top-level
+  // stub is recorded to replace external calls afterwards (see
+  // mergeIdenticalKernelStubs below).
   if (node->callers.empty()) {
     MOGG::KernelStubOp replacementCallee = nullptr;
     std::lock_guard<std::mutex> lock(setAccessMutex);
@@ -234,11 +219,8 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
   cg.build(module, symTable);
   cg.run(*loadContext(module.getContext())->get<AsyncRT::CPUDevice>());
 
-  // At this point, the replacement is valid but non deterministic because the
-  // analysis will pick the first candidate when deduplicating. The first
-  // candidate is a function of the execution order. To fix this, we keep track
-  // of all the stubs that got renamed and then sort them by name. Then, we pick
-  // the first candidate, which makes the analysis deterministic.
+  // Dedup picked the first candidate, which depends on execution order. Sort
+  // the renamed stubs by name and pick the first for determinism.
   llvm::DenseMap<StringAttr, StringAttr> finalReplacements;
   for (auto &[replacement, replacedCallOps] : cg.reverseReplacements) {
     if (replacedCallOps.size() == 1)
@@ -260,29 +242,19 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
               finalOp->getContext(),
               {finalOp->getLoc(), accumulatedOp->getLoc()}));
 
-    // Rewrite any in-graph callsite entries (CallStubOp / CallStubAsyncOp) to
-    // point at the chosen canonical name. The list may also hold pure
-    // StringAttr entries (callOp == nullptr) for top-level KernelStubOps
-    // recorded on the `node->callers.empty()` path above; those have no
-    // in-graph callsite to rewrite here and are separately handled by the
-    // ExecuteCompiledOp/CallStubAsyncOp walk below via `topLevelReplacements` +
-    // `finalReplacements`.
+    // Entries with a null callOp are top-level stubs from the
+    // `node->callers.empty()` path; the walk below handles those.
     for (auto &callOp : replacedCallOps)
       if (callOp.callOp)
         callOp.callOp.setCalleeSymbol(
             FlatSymbolRefAttr::get(finalCandidate.name));
   }
 
-  // Rewrite external callers that are not call-graph nodes. Stub calls *inside
-  // KernelStubOp bodies* are graph edges (already rewritten in doRewrite), but
-  // two callers are not graph nodes and still need their symbol references
-  // updated to the deduplicated (top-level) callee:
-  //   - ExecuteCompiledOp in mgp.ModelOps (ModelOp -> region), and
-  //   - StubCallOpInterface ops (mogg.call.stub{,.async}) inside pre-outline
-  //     mogg.generic.compiled.region ops (before kernels are outlined into
-  //     KernelStubOp bodies).
-  // For stub calls that *are* graph edges, the callee has a graph caller and
-  // so is never in `topLevelReplacements`, making this walk a no-op for them.
+  // Rewrite callers that aren't call-graph nodes to the deduplicated callee:
+  //   - ExecuteCompiledOp in mgp.ModelOps, and
+  //   - StubCallOpInterface ops inside pre-outline
+  //     mogg.generic.compiled.region ops.
+  // A graph-edge callee has a caller, so is never in `topLevelReplacements`.
   module.walk([&](Operation *op) {
     StringAttr calleeName;
     if (auto execOp = dyn_cast<MOGG::ExecuteCompiledOp>(op))

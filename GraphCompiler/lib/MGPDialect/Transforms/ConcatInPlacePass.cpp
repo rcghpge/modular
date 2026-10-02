@@ -69,14 +69,11 @@ class ConcatInPlacePass
     if (sliceSizes.empty())
       return result;
 
-    // If all inputs are the same size, we can emit a sequence of independent
-    // multiplication operations to compute the offset, rather than a chained
-    // sequence of additions.
+    // Equal sizes allow independent multiplies instead of a chain of adds.
     if (llvm::all_equal(sliceSizes)) {
       Value sliceSize = sliceSizes.front();
 
       for (auto index : llvm::seq(sliceSizes.size())) {
-        // Insert the slices just after the producing op for readability
         auto indexCst = mlir::index::ConstantOp::create(
             builder, loc, static_cast<int64_t>(index));
 
@@ -89,7 +86,6 @@ class ConcatInPlacePass
       Value offset = mlir::index::ConstantOp::create(builder, loc, 0);
       result.push_back(offset);
 
-      // For each concat input buffer...
       for (Value sliceSize : sliceSizes.drop_back()) {
         offset =
             builder.createOrFold<mlir::index::AddOp>(loc, offset, sliceSize);
@@ -131,8 +127,6 @@ class ConcatInPlacePass
         // The concat input buffers are not distinct.
         return;
 
-      // We are now ready to create the split op.
-      // For the moment, place it before the concat it will replace.
       execState.builder.setInsertionPoint(concatOp);
       TypedValue<MGP::DeviceBufferType> concatBuffer = concatOp.getOutBuffer();
 
@@ -142,7 +136,6 @@ class ConcatInPlacePass
           builderContext.getBufferBuilder(concatBuffer.getType().getDevice());
       OpBuilder &builder = execState.builder;
 
-      // Get sizes of each buffer.
       auto sliceSizes =
           llvm::map_to_vector(concatOp.getInBuffers(), [&](Value inBuffer) {
             auto alloc = inBuffer.getDefiningOp<MGP::BufferAllocOp>();
@@ -151,14 +144,11 @@ class ConcatInPlacePass
             return alloc.getRuntimeSize();
           });
 
-      // Each slice starts at the running sum of the preceding operand sizes,
-      // so it only inherits the concat buffer's alignment when that sum is a
-      // provable multiple of it. Every kernel tensor is told its base carries
-      // the device's preferred alignment (`MOGGOps.cpp` stamps that constant
-      // into every `mogg_tensor_init`), and vector loads and stores are
-      // emitted against that claim -- so an unprovable offset here is a
-      // misaligned-address fault in whichever kernel writes the operand, not a
-      // missed optimization. The last operand's size feeds no offset.
+      // A slice is only aligned when the preceding sizes sum to a provable
+      // multiple of the alignment. Kernels assume every tensor base has the
+      // device's preferred alignment (stamped into `mogg_tensor_init` by
+      // `MOGGOps.cpp`), so an unprovable offset is a misaligned-address fault,
+      // not a missed optimization. The last size feeds no offset.
       uint64_t alignment = M::Driver::getPreferredAlignment(
           concatBuffer.getType().getDevice().getLabel().str());
       if (!llvm::all_of(llvm::drop_end(sliceSizes), [&](Value size) {
@@ -166,12 +156,12 @@ class ConcatInPlacePass
           }))
         return;
 
-      // Compute the per-buffer offsets for each input buffer.
       auto offsets = computeOffsets(builder, loc, sliceSizes);
 
       SmallVector<Value> outBuffers;
       for (auto [inBuffer, sliceSize, offset] :
            llvm::zip_equal(concatOp.getInBuffers(), sliceSizes, offsets)) {
+        // Place each slice at its producer, for readability.
         if (Operation *op = inBuffer.getDefiningOp())
           execState.builder.setInsertionPoint(op);
 
@@ -184,17 +174,14 @@ class ConcatInPlacePass
       concatBuffer.getDefiningOp()->moveBefore(
           outBuffers.front().getDefiningOp());
 
-      // The input buffers are now provided by the split.
       for (auto [origInBuffer, newOutBuffer] :
            llvm::zip(concatOp.getInBuffers(), outBuffers)) {
         origInBuffer.replaceAllUsesWith(newOutBuffer);
         origInBuffer.getDefiningOp()->erase();
       }
 
-      // Short circuit the concat op chains.
       concatOp.getOutChain().replaceAllUsesWith(concatOp.getInChain());
 
-      // The concat is now dead.
       concatOp->erase();
     });
   }

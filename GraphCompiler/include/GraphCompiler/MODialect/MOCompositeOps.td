@@ -4,11 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This defines "composite" operations in the MO dialect: dedicated MO ops that
-// represent a fused subgraph emitted for a pattern-matching fusion. They live in
-// the `mo.composite.*` namespace to distinguish them from core MO operators.
-// Pattern-based fusions should replace a matched subgraph with one of these ops
-// (never an `mo.custom`); they can still be emitted directly.
+// Composite ops (`mo.composite.*`): dedicated ops for fused subgraphs.
+// Pattern-based fusions replace a matched subgraph with one of these, never an
+// `mo.custom`; they can also be emitted directly.
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,13 +15,9 @@
 
 include "GraphCompiler/MODialect/MOOps.td"
 
-// Base class for composite ops. Forces the `mo.composite.` mnemonic namespace,
-// emits the generated C++ classes into the `::M::MO::Composite` namespace (like
-// `::M::MO::Static` for `mo.static.*`), and tags the op with the `MOComposite`
-// marker trait so composite ops are easy to identify. Ops whose semantics need a
-// more specialized base (e.g. `MO_DotBase`, `MO_DistributedOp`) instead spell
-// out the `composite.` mnemonic prefix, set the `Composite` cppNamespace, and
-// add `MO_CompositeOpTrait` to their trait list directly.
+// Ops needing a more specialized base (e.g. `MO_DotBase`, `MO_DistributedOp`)
+// instead spell out the `composite.` prefix, the `Composite` cppNamespace, and
+// `MO_CompositeOpTrait` directly.
 class MO_CompositeOp<string mnemonic, list<Trait> traits = []>
   : MO_TensorOp<"composite." # mnemonic, [MO_CompositeOpTrait] # traits> {
   string cppNamespace = MODialect.cppNamespace # "::Composite";
@@ -41,9 +35,6 @@ def MOComposite_ReduceRMSNormRoPEOp : MO_CompositeOp<"rms_norm_rope", [
   let hasVerifier = 1;
   let summary = "Fused RMS normalization with Rotary Position Embedding";
   let description = [{
-    Fused operation computing RMS normalization followed by Rotary Position
-    Embedding (RoPE):
-
       normed = rms_norm(input, weight, epsilon, weight_offset)
       x1, x2 = split(normed, axis=-1)
       rotated = concat(-x2, x1, axis=-1)
@@ -91,17 +82,12 @@ def MOComposite_RopeRaggedOp : MO_CompositeOp<"rope.ragged", [
 ]> {
   let summary = "Applies Rotary Position Embedding to ragged, cache-position-aware input";
   let description = [{
-    Applies Rotary Position Embedding (RoPE) to `input`, a ragged batch of
-    tokens. Per-token absolute positions are derived from `inputRowOffsets`
-    (the ragged batch boundaries) and `startPos` (each sequence's current
-    cache length) and used to index `freqsCis`. When `freqsCis`'s last
-    dimension is smaller than `input`'s, RoPE is applied to only
-    `freqsCis`-many columns of each head and the rest pass through
-    unrotated: the trailing columns are rotated by default (the MLA
-    layout), or the leading ones when `rope_first` is set (the
-    DeepSeekV3.2/GLM Indexer layout, where Q and K are chunked as
-    `pe, nope`). `rope_first` is meaningless -- and must be false -- when
-    `freqsCis` is as wide as `input`, since then no column passes through.
+    Per-token positions come from `inputRowOffsets` (ragged batch boundaries)
+    and `startPos` (each sequence's cache length) and index `freqsCis`. When
+    `freqsCis` is narrower than `input`, only that many columns per head are
+    rotated: the trailing ones by default (MLA layout), or the leading ones
+    when `rope_first` is set (DeepSeekV3.2/GLM Indexer layout, `pe, nope`).
+    `rope_first` must be false when `freqsCis` is as wide as `input`.
 
     Example:
 
@@ -144,16 +130,12 @@ def MOComposite_LayerNormRopeRaggedOp : MO_CompositeOp<"layer_norm_rope_ragged",
 ]> {
   let summary = "Fused LayerNorm with partial ragged Rotary Position Embedding";
   let description = [{
-    Fused operation computing LayerNorm followed by ragged RoPE applied to a
-    leading slice of the normalized output, with the remaining columns passed
-    through unrotated:
-
       normed = layer_norm(input, gamma, beta, epsilon)
       roped, passthrough = split(normed, axis=-1)
       roped = rope.ragged(roped, input_row_offsets, start_pos, freqs_cis)
       result = concat(roped, passthrough, axis=-1)
 
-    The RoPE width is taken from `freqsCis`'s last dimension.
+    The RoPE width is `freqsCis`'s last dimension.
 
     Example:
 
@@ -200,11 +182,8 @@ def MOComposite_ReduceRMSNormFusedResidualAddOp : MO_CompositeOp<"rms_norm_fused
 ]> {
   let summary = "Fused RMS norm with residual add operation";
   let description = [{
-    Fused operation computing:
       intermediate = rms_norm(input, gamma1, epsilon1, weight_offset1) + residual_input
       output = rms_norm(intermediate, gamma2, epsilon2, weight_offset2)
-
-    Returns both the final output and the post-add intermediate tensor.
 
     Example:
 
@@ -247,15 +226,12 @@ def MOComposite_RMSNormResidualAddOp : MO_CompositeOp<"rms_norm_residual_add", [
 ]> {
   let summary = "Fused single-norm residual add + RMS norm operation";
   let description = [{
-    Fused operation computing:
       intermediate = input + residual_input
       output = rms_norm(intermediate, gamma, epsilon, weight_offset)
 
-    Returns both the final normalized output and the post-add intermediate
-    tensor. This is the canonical transformer/mamba pre-norm boundary
-    `rms_norm(residual + out)`, where the pre-add value is carried forward as
-    the next block's residual. Unlike `rms_norm_fused_residual_add`, there is a
-    single RMS norm (no inner norm on `input`).
+    The transformer/mamba pre-norm boundary, where `intermediate` is the next
+    block's residual. Unlike `rms_norm_fused_residual_add`, `input` is not
+    normalized first.
 
     Example:
 
@@ -294,10 +270,9 @@ def MOComposite_FusedConcatSliceOp : MO_CompositeOp<"concat_slice", [
 ]> {
   let summary = "Fused Concatenation + slice operation";
   let description = [{
-    This operation performs two operations at once:
+    Returns both results of:
     %concat = mo.concat[axis](inputs)
     %slice = mo.slice(%concat)
-    And returns both the concat and the slice result.
   }];
 
   let arguments = (ins
@@ -323,14 +298,9 @@ def MOComposite_FusedMatmulAddOp : MO_DotBase<"composite.matmul_add", [MO_Compos
   string cppNamespace = MODialect.cppNamespace # "::Composite";
   let summary = "Fused matrix-matrix multiplication with element-wise add";
   let description = [{
-    Computes C = A @ B (optionally transposed) + residual, fusing the matmul
-    and the residual addition into a single kernel call.
-
-    `residual` may be rank-2 (same shape as the output, element-wise add) or
-    rank-1 (broadcast along the row dimension, i.e. a bias vector).
-
-    This operation is currently only lowered for SM100 (B200) targets, where
-    the residual is passed directly to the matmul kernel as an epilogue tensor.
+    Computes C = A @ B (optionally transposed) + residual in one kernel.
+    `residual` is rank-2 (output shape) or rank-1 (a bias broadcast along
+    rows). Only lowered for SM100 (B200), as a matmul epilogue tensor.
 
     Example (2-D residual):
 
@@ -377,16 +347,10 @@ def MOComposite_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"composite.dist
   string cppNamespace = MODialect.cppNamespace # "::Composite";
   let summary = "Fused AllreduceSum + Add + RMSNorm + Quant across N devices for a single device.";
   let description = [{
-    Allreduce takes in inputs each coming from a different device with
-    the same shape as the final output and performs a sum reduction
-    across the devices. This op instance executes on a specific device
-    (specified by the device attribute) and produces the output for that device.
-
-    This op also applies a residual (add), then RMSNorm and dynamic FP8 quantization to the output of AllReduce.
-    It returns both the quantized output value and the quantization scale.
-    It also returns the intermediate output of the residual (add) op.
+    Sum-reduces same-shaped per-device inputs, adds the residual, then applies
+    RMSNorm and dynamic FP8 quantization. Returns the quantized output, its
+    scale, and the post-add residual.
   }];
-  // Variadic allreduce has a folder since it can take 1 input.
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
@@ -423,17 +387,10 @@ def MOComposite_BundledAllReduceAddRMSNormQuantFP8Op : MO_CompositeOp<
   let summary = "Per-device fused allreduce.sum + add + rms_norm + fp8 "
                 "quantize, for use inside mo.parallel.";
   let description = [{
-    Per-device entry point for the fused `allreduce.sum` +
-    residual add + RMS norm + dynamic-scaled FP8 quantize chain, used inside
-    an `mo.parallel` region.  Takes N peer tensor inputs (from
-    `mo.bundled.expand`), N signal buffers (captured from graph scope),
-    per-device residual and gamma tensors, the epsilon / weight offset /
-    scale-upper-bound scalars, and a chain.
-
-    Returns the FP8 quantized output for this device, its scale tensor, the
-    intermediate residual (post-add) tensor, and an output chain.  This is
-    the bundled analog of
-    `mo.composite.distributed.allreduce_add_rms_norm_quant_fp8`.
+    Bundled analog of
+    `mo.composite.distributed.allreduce_add_rms_norm_quant_fp8`, used inside
+    an `mo.parallel` region. Takes N peer inputs (from `mo.bundled.expand`)
+    and N signal buffers (captured from graph scope).
   }];
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
@@ -460,11 +417,9 @@ def MOComposite_BundledAllReduceAddRMSNormQuantFP8Op : MO_CompositeOp<
 // Flash attention ops
 //===----------------------------------------------------------------------===//
 //
-// The multi-head-attention fusion produces one of these device/mask-specific
-// ops, each a 1:1 wrapper around an existing flash-attention kernel (the kernel
-// is unchanged, just registered under the op name). Splitting per (device,
-// mask) keeps every kernel's existing signature intact and avoids any dispatch
-// in the graph compiler.
+// Each is a 1:1 wrapper around an existing flash-attention kernel. Splitting
+// per (device, mask) keeps each kernel's signature and avoids dispatch in the
+// graph compiler.
 
 def MOComposite_NoMaskFlashAttentionCPUOp
     : MO_CompositeOp<"no_mask_flash_attention_cpu", [
@@ -545,15 +500,11 @@ def MOComposite_RMSNormFusedQuantizeDynamicScaledFP8Op
 ]> {
   let summary = "Fused RMS norm + dynamic-scaled FP8 quantize";
   let description = [{
-    Fused operation computing token-wise dynamic-scaled FP8 quantization of an
-    RMS-normalized input:
-
       normed = rms_norm(input, weight, epsilon, weight_offset)
                  {multiply_before_cast = true}
       output, scale = quantize_dynamic_scaled_float8(normed, scale_ub)
 
-    Returns the FP8 quantized output and its per-token scale tensor. Produced by
-    the RMS-norm + quantize fusion pattern (GPU only).
+    `scale` is per-token. GPU only.
   }];
 
   let arguments = (ins
@@ -580,15 +531,11 @@ def MOComposite_MatmulFusedPartialRMSNormOp
 ]> {
   let summary = "Fused matmul + partial RMS norm";
   let description = [{
-    Fused operation computing a matmul followed by an RMS norm of the result,
-    returning both the normalized output and the un-normalized matmul output:
-
       unnormed = input_a @ input_b   {transpose_b = true}
       normed   = rms_norm(unnormed, gamma, epsilon, weight_offset)
                    {multiply_before_cast = true}
 
-    The kernel hardcodes `transpose_b = true` and `multiply_before_cast = true`.
-    Produced by the matmul + partial-RMS-norm fusion pattern (GPU only).
+    The kernel hardcodes both attributes above. GPU only.
   }];
 
   let arguments = (ins
@@ -615,23 +562,18 @@ def MOComposite_DistributedMatmulReduceScatterSumOp : MO_DistributedOp<"composit
   string cppNamespace = MODialect.cppNamespace # "::Composite";
   let summary = "Fused Matmul + ReduceScatter sum across N devices.";
   let description = [{
-    Each device computes a matmul (A_i @ B_i^T) and the results are
-    reduce-scattered across devices along the M axis. On Blackwell GPUs
-    this maps to a fused kernel that overlaps compute with cross-GPU TMA
-    reductions; on other targets it falls back to separate matmul + reduce-scatter.
+    Each device computes A_i @ B_i^T and the results are reduce-scattered
+    along M. On Blackwell this is a fused kernel overlapping compute with
+    cross-GPU TMA reductions; elsewhere it falls back to separate ops.
 
-    All A inputs must be rank-2 with the same shape, and all B inputs must be
-    rank-2 with the same shape. The matmul is always performed with B transposed
-    (K-major layout).
+    All A inputs are rank-2 with one shape, likewise all B inputs. B is always
+    transposed (K-major).
 
-    When `has_residual` is true, the `residual` tensor is added to the matmul
-    output on the device it resides on before the reduce-scatter communication.
-    The `residual_peer` attribute identifies which input index (and thus
-    device) holds the residual; the add is applied only on that peer so the
-    reduce-scatter sum yields `sum_j(A_j @ B_j) + residual`.
-    This fuses the `add(residual, matmul) -> reduce_scatter` pattern from
-    tensor-parallel attention (e.g. DeepseekV3/KimiK2.5 with TP+EP).
-    When `has_residual` is false, `residual` and `residual_peer` are ignored.
+    When `has_residual` is true, `residual` is added only on peer
+    `residual_peer` before communication, so the sum yields
+    `sum_j(A_j @ B_j) + residual` (the TP attention
+    `add(residual, matmul) -> reduce_scatter`, e.g. DeepseekV3/KimiK2.5 with
+    TP+EP). Otherwise `residual` and `residual_peer` are ignored.
   }];
   let hasVerifier = 1;
   let arguments = (ins
@@ -663,32 +605,24 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
   string cppNamespace = MODialect.cppNamespace # "::Composite";
   let summary = "Fused ReduceScatter sum + RMSNorm across N devices for a single device.";
   let description = [{
-    ReduceScatter takes in inputs each coming from a different device and
-    partitions the reduction so each device receives a disjoint row shard of the
-    sum. This op keeps that shard's sum in f32 registers and RMSNorm-normalizes
-    it in the same launch, avoiding the HBM round-trip of a separate norm kernel.
+    Each device receives a disjoint row shard of the sum, kept in f32 and
+    RMSNorm-normalized in the same launch (no separate-norm HBM round-trip).
+    Returns the normed shard (`output`) and the sum shard (`outResidual`, the
+    residual stream). The norm is `multiply_before_cast=true`. bf16 in/out
+    only.
 
-    It returns both the normed shard (`output`, fed to the next layer) and the
-    reduce-scatter sum shard (`outResidual`, the residual stream). The norm is
-    inherently `multiply_before_cast=true`: gamma is folded in f32 and the value
-    is cast to the input dtype once, last. bf16 in/out only (no quantization).
+    When `has_residual` is true, each device adds its row shard of
+    `residuals` in f32 before the norm. `residuals` must be REPLICATED
+    (bit-identical on every rank of a group) so the per-rank add reproduces
+    the leader-side pre-add it replaces. When false, the operands stay
+    present and group-sized (variadic groups must match), filled with the
+    inputs and never read, as with `has_residual` on
+    `mo.composite.distributed.matmul_reduce_scatter.sum`.
 
-    When `has_residual` is true, `residuals` is added to the sum in f32 before
-    the pre-norm round, each device adding only its own row shard. It must be
-    REPLICATED -- bit-identical on every rank of a group -- which is what lets
-    a per-rank add reproduce the leader-side pre-add it replaces.
-
-    When false it is ignored and the op is a plain reduce-scatter + norm. The
-    operands stay present and group-sized (the variadic groups must all match
-    in size), filled with the inputs and never indexed -- the same convention
-    as `has_residual` on `mo.composite.distributed.matmul_reduce_scatter.sum`.
-
-    `group_size` matches `mo.distributed.reducescatter.sum`: the devices split
-    into contiguous groups of that many, each reducing independently, so the op
-    works under TP-within-DP topologies. It must be at least 2 and must divide
-    the device count; `group_size == num_devices` is a full-world collective.
-    The builder always sets it -- the `0` attribute default is not a usable
-    value.
+    `group_size` matches `mo.distributed.reducescatter.sum`: devices split
+    into contiguous groups that reduce independently (TP-within-DP). It must
+    be at least 2 and divide the device count. The builder always sets it;
+    the `0` default is not usable.
   }];
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
@@ -722,20 +656,15 @@ def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.dist
   string cppNamespace = MODialect.cppNamespace # "::Composite";
   let summary = "Fused AllGather + RMSNorm across N devices for a single device.";
   let description = [{
-    AllGather concatenates the per-device row shards (`inputs`) so every device
-    holds the full replicated tensor, then RMSNorms it in the same launch (no
-    separate-norm HBM round-trip). Returns the normed tensor (`output`) and the
-    raw gathered residual (`outResidual`); a gathered row is a verbatim copy, so
-    the residual is bit-identical to a standalone all-gather (no f32 peer-sum).
-    `multiply_before_cast=true`, bf16 in/out only (no quantization).
+    Gathers the per-device row shards and RMSNorms the result in the same
+    launch. Returns the normed tensor (`output`) and the raw gathered residual
+    (`outResidual`), bit-identical to a standalone all-gather.
+    `multiply_before_cast=true`, bf16 in/out only.
 
-    `group_size` matches `mo.distributed.allgather`: the devices split into
-    contiguous groups of that many, each gathering independently, so the op
-    works under TP-within-DP topologies and every output is the group's gathered
-    tensor rather than the whole world's. It must be at least 2 and must divide
-    the device count; `group_size == num_devices` is a full-world collective.
-    The builder always sets it -- the `0` attribute default is not a usable
-    value.
+    `group_size` matches `mo.distributed.allgather`: devices split into
+    contiguous groups that gather independently (TP-within-DP), so each output
+    is its group's tensor. It must be at least 2 and divide the device count.
+    The builder always sets it; the `0` default is not usable.
   }];
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
@@ -800,23 +729,13 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"comp
   let summary = "Fused AllGather + RMSNorm + MXFP6 quant across N devices for a single device.";
   let description = [{
     The MXFP6 sibling of
-    `mo.composite.distributed.allgather_rms_norm_quant_mxfp8`. It is a separate
-    op rather than an encoding attribute on that one because the result shapes
-    differ: MXFP6 packs four six-bit codes into three bytes, so `outQuant` is
-    `ui8` with `[rows, cols * 3 / 4]`, three quarters the normed width, where
-    the MXFP8 op's quantized result is a same-shaped float8.
+    `mo.composite.distributed.allgather_rms_norm_quant_mxfp8`, a separate op
+    because the result shape differs: four six-bit codes pack into three
+    bytes, so `outQuant` is `ui8` `[rows, cols * 3 / 4]`. `outScale` and the
+    `group_size` contract match the MXFP8 op.
 
-    `outScale` is unchanged from the MXFP8 op: `float8_e8m0fnu`,
-    `[rows, cols / 32]`, plain rank-2 row-major -- what
-    `block_scaled_matmul_amd` takes as `a_scales`, NOT the SM100 SF-atom
-    interleave and NOT the preshuffled atom order
-    `block_scaled_matmul_amd_preb` requires. Quantized from the bf16 written to
-    `output`, so byte-identical to a standalone quantize. Same `group_size`
-    contract.
-
-    `fp6_format` selects the OCP encoding, 0 for E2M3 and 1 for E3M2. It has to
-    be carried explicitly: both encodings are six bits and arrive packed as
-    `ui8`, so the result type cannot record which one the bytes hold.
+    `fp6_format` selects the OCP encoding, 0 for E2M3 and 1 for E3M2. It must
+    be explicit because the packed `ui8` result type cannot record it.
   }];
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
@@ -843,18 +762,12 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"comp
 // Grouped-matmul MoE FFN composite ops (NVFP4 expert-parallel path)
 //===----------------------------------------------------------------------===//
 //
-// First-class composite versions of the two grouped-matmul custom ops that make
-// up an NVFP4 MoE FFN: the gate-up GEMM + SwiGLU + bf16->nvfp4 quant (L1), and
-// the down GEMM (L2). These are emitted directly by the model graph (in place of
-// the `mo.composite.grouped_matmul_swiglu_nvfp4` /
-// `mo.composite.grouped_matmul_block_scaled` `mo.custom` ops) so the MegaFFN
-// fusion below can match typed ops with named
-// operands instead of string-keyed customs. Each lowers 1:1 to the same kernel,
-// re-registered under the composite op name.
+// The two legs of an NVFP4 MoE FFN: gate-up GEMM + SwiGLU + bf16->nvfp4 quant
+// (L1) and down GEMM (L2). The model graph emits these typed ops so the MegaFFN
+// fusion below can match named operands. Each lowers 1:1 to its kernel.
 //
-// Routing operands (`expert_start_indices`, `expert_ids`, `a_scale_offsets`) and
-// the expert-usage scalars are produced on-device by the EP gate; the kernel's
-// host contract (front-packed active experts, `num_experts <= 64`,
+// Routing operands and expert-usage scalars come from the EP gate on-device;
+// the kernel's host contract (front-packed active experts, `num_experts <= 64`,
 // `ids[e] >= 0 => tokens[e] > 0`) is an upstream guarantee, not verified here.
 
 def MOComposite_GroupedMatmulSwigluNvfp4Op
@@ -866,22 +779,17 @@ def MOComposite_GroupedMatmulSwigluNvfp4Op
 ]> {
   let summary = "Grouped gate-up GEMM + SwiGLU + bf16->nvfp4 quantize (MoE L1)";
   let description = [{
-    The gate-up leg of an NVFP4 MoE FFN: a per-expert (ragged) grouped matmul of
-    the packed-NVFP4 activations by the gate-up weights, followed by a SwiGLU
-    activation and a bf16->nvfp4 quantization of the result. Returns the packed
-    NVFP4 activations for the down leg (`c_packed`) and their per-expert SwiGLU
-    scale tile (`c_swiglu_scales`).
+    Per-expert (ragged) grouped matmul of packed-NVFP4 activations by the
+    gate-up weights, then SwiGLU and bf16->nvfp4 quantization. Returns the
+    packed activations for the down leg (`c_packed`) and their per-expert
+    SwiGLU scale tile (`c_swiglu_scales`).
 
-    `swiglu_alpha`/`swiglu_limit` are host scalars parameterizing the clamped
-    SwiGLU (swigluoai) activation, enabled by the `clamp_activation` attribute.
+    `swiglu_alpha`/`swiglu_limit` parameterize the clamped SwiGLU (swigluoai),
+    enabled by `clamp_activation`.
 
     When `has_a_row_scales` is set, `a_row_scales` holds one bf16 scale per
-    `hidden_states` row, multiplied into that row together with its expert
-    scale before the SwiGLU. Otherwise `a_row_scales` is an unread
-    placeholder.
-
-    Composite form of the `mo.composite.grouped_matmul_swiglu_nvfp4` kernel;
-    lowers 1:1.
+    `hidden_states` row, applied with its expert scale before the SwiGLU.
+    Otherwise it is an unread placeholder.
   }];
 
   let arguments = (ins
@@ -915,16 +823,12 @@ def MOComposite_GroupedMatmulBlockScaledOp
 ]> {
   let summary = "Grouped block-scaled down GEMM (MoE L2)";
   let description = [{
-    The down leg of an NVFP4 MoE FFN: a per-expert (ragged) block-scaled grouped
-    matmul of the packed-NVFP4 activations by the down weights, producing the
-    bf16 hidden-state output.
+    Per-expert (ragged) block-scaled grouped matmul of packed-NVFP4
+    activations by the down weights, producing bf16 output.
 
     When `has_a_row_scales` is set, `a_row_scales` holds one bf16 scale per
-    `hidden_states` row, multiplied into that output row together with its
-    expert scale. Otherwise `a_row_scales` is an unread placeholder.
-
-    Composite form of the `mo.composite.grouped_matmul_block_scaled` kernel;
-    lowers 1:1.
+    `hidden_states` row, applied to that output row with its expert scale.
+    Otherwise it is an unread placeholder.
   }];
 
   let arguments = (ins
@@ -952,12 +856,8 @@ def MOComposite_GroupedMatmulBlockScaledOp
 //===----------------------------------------------------------------------===//
 
 def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
-  // NOT `Pure`: the op writes the persistent `arrival_count` pool-slot buffer
-  // in place (cross-CTA scheduler hand-off), so it carries a memory effect and
-  // threads a chain. The `MO_MutableOpInterface` + chain interface methods
-  // auto-derive from the `inChain`/`outChain`-named operand/result (see
-  // MOInterfaces.td default impls); `MemoryEffectsOpInterface::getEffects` is
-  // hand-written in MOOps.cpp (a Write on `arrival_count`).
+  // Not `Pure`: writes `arrival_count` in place. `getEffects` is hand-written
+  // in MOOps.cpp.
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_SingleDeviceWithHostOperands<[
@@ -967,45 +867,26 @@ def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
   let summary = "Fused NVFP4 MoE FFN (gate-up + SwiGLU + quant + down) in one "
                 "kernel";
   let description = [{
-    Single-kernel NVFP4 MoE FFN: collapses the gate-up GEMM + SwiGLU +
-    bf16->nvfp4 quantize leg (`mo.composite.grouped_matmul_swiglu_nvfp4`) and the
-    block-scaled down GEMM leg (`mo.composite.grouped_matmul_block_scaled`) into
-    one launch with an in-kernel cross-CTA hand-off between the two legs.
-    Produced by the MegaFFN fusion pattern; the intermediate packed activations
-    and SwiGLU scales are kept entirely on-chip and are not graph values.
+    Collapses `mo.composite.grouped_matmul_swiglu_nvfp4` and
+    `mo.composite.grouped_matmul_block_scaled` into one launch with an
+    in-kernel cross-CTA hand-off. The intermediate activations and SwiGLU
+    scales stay on-chip. B200 (SM100) only; elsewhere the unfused chain is
+    kept. Operands are the union of both legs' inputs minus the intermediate.
 
-    B200 (SM100) only. The fusion pattern fires on SM100 targets when enabled;
-    on any other target the unfused two-composite chain is preserved.
+    `arrival_count` holds the cross-CTA pool-slot arrival counters. It is a
+    PERSISTENT buffer (`mo.buffer.create` with zero `initValue`) zeroed once at
+    model load. Under `POST_SELF_CLEAN_UP` each launch accumulates into the
+    half of each slot its generation parity selects and clears the half its
+    predecessor used, so it is NOT all-zero between launches. Nothing may
+    reset it per launch: that pins the generation and disarms the rotation.
+    `inChain`/`outChain` sequence the write and are dropped before kernel-arg
+    binding, so `arrival_count` binds to the `MutableInputTensor` arg.
 
-    Operands are the union of the two legs' inputs (minus the dead intermediate):
-    the gate-up leg's `hidden_states`/`weight`/`a_scales`/`b_scales`/
-    `expert_scales`/`a_row_scales`/`c_input_scales`, the down leg's
-    `weight`/`b_scales`/`expert_scales`, the shared routing tensors
-    (`expert_start_indices`, `expert_ids`, `a_scale_offsets`,
-    `estimated_total_m`), and each leg's `num_active_experts`.
+    The discardable `clamp_activation` attribute selects swigluoai, with the
+    kernel supplying the alpha/limit constants.
 
-    The `arrival_count` buffer holds the cross-CTA pool-slot arrival counters
-    the kernel uses to hand off between the two legs. It is a PERSISTENT device
-    buffer minted once by the fusion pattern (`mo.buffer.create` with a zero
-    `initValue`) and initialized once at model load. Under the kernel's
-    `POST_SELF_CLEAN_UP` policy each launch accumulates into the half of every
-    slot its generation parity selects and clears the half its predecessor
-    used, so the buffer is NOT all-zero between launches: it carries the last
-    launch's counts. The single zeroing at load is still all the kernel needs,
-    and there is still no per-launch memset, but nothing may reset the buffer
-    per launch -- that pins the generation and disarms the rotation.
-    `inChain`/`outChain` sequence the in-place write (required
-    for any op with an `mo.buffer` operand; the chain is GC-internal and is
-    dropped before the kernel-arg binding, so `arrival_count` binds to the
-    registration's `MutableInputTensor` arg).
-
-    The clamped-SwiGLU (`swigluoai`) activation is selected by the discardable
-    `clamp_activation` attribute; the kernel supplies the canonical swigluoai
-    alpha/limit constants when it is set.
-
-    `gate_up_a_row_scales` and `has_gate_up_a_row_scales` carry the gate-up
-    leg's per-row input scales (see `mo.composite.grouped_matmul_swiglu_nvfp4`).
-    The down leg takes none.
+    `gate_up_a_row_scales`/`has_gate_up_a_row_scales` are the gate-up leg's
+    per-row input scales (see `mo.composite.grouped_matmul_swiglu_nvfp4`).
   }];
 
   let arguments = (ins

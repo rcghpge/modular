@@ -4,9 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares a series of utilities that are useful for materializing
-// shape function as parametric expressions. They can be used by components like
-// GraphAPI or Graph Compiler Shape Inference.
+// Utilities for materializing shape functions as parametric expressions, used
+// by GraphAPI and Graph Compiler shape inference.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,93 +17,56 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_SHAPE_FUNCTIONS_H
 
 namespace M::MO {
-// Forward declaration for `Var`.
 class Var;
 
-/// This class helps one create parameter expression in a less elaborate way.
+/// Builds parameter expressions, recording each non-trivial one as a
+/// `ParamBinding` in `createdOps`. `graphOp` generates parameter names.
 class ParamExprBuilder {
 public:
-  /// Create a `ParamExprBuilder` with the given metadata.
-  /// - `graphOp` is used for new parameter generation.
-  /// - `loc` is used for newly created ops like `kgen.param.declare X = <...>`.
-  /// - `createdOps` will be appended with newly created ops.
   ParamExprBuilder(GraphOp graphOp, Location loc,
                    SmallVectorImpl<ParamBinding> *createdOps)
       : graphOp(graphOp), loc(loc), createdOps(createdOps) {}
 
-  /// No copy and no move. The builder classes need pointer stability for
-  /// the Var mechanism to work correctly.
+  /// `Var` holds a pointer to its builder.
   ParamExprBuilder(const ParamExprBuilder &other) = delete;
   ParamExprBuilder(ParamExprBuilder &&other) = delete;
 
-  /// Create a Var that wraps around given `attr`, and allows one to build more
-  /// parameter expression with the returned Var.
   Var createVar(TypedAttr attr);
 
-  /// Create a Var that wraps around a newly created that contains  `n` of
-  /// DimType, and allows one to build more parameter expression with the
-  /// returned Var.
+  /// Wraps the constant `n` of DimType.
   Var createVar(int64_t n);
 
-  /// Create a parameter expression `<poc(operands...)>`, and if it doesn't get
-  /// folded into a trivial attribute (parameter reference or constant), create
-  /// and track a `ParamBinding` which models the following op:
-  ///
-  ///   kgen.param.declare declPrefix... = <poc(operands...)>
-  ///
-  /// Return either the folded attribute or a parameter reference.
+  /// Builds `<poc(operands...)>`. If it doesn't fold to a trivial attribute
+  /// (parameter reference or constant), tracks a binding for
+  /// `kgen.param.declare declPrefix... = <poc(operands...)>` and returns a
+  /// reference to it.
   TypedAttr createKgenExpr(KGEN::POC poc, ArrayRef<TypedAttr> operands,
                            StringRef declPrefix = "expr");
 
-  /// If `attr` is a a trivial attribute (parameter reference or constant),
-  /// return it as is, otherwise create and track a `ParamBinding` which models
-  /// the following op:
-  ///
-  ///   kgen.param.declare declPrefix... = <poc(operands...)>
-  ///
-  /// Return either `attr` itself or a parameter reference.
+  /// Returns `attr` if trivial (parameter reference or constant); otherwise
+  /// tracks a binding `kgen.param.declare declPrefix... = attr` and returns a
+  /// reference to it.
   TypedAttr wrapNonTrivialAttrWithDecl(TypedAttr attr,
                                        StringRef declPrefix = "expr");
 
-  /// Creates and tracks a `ParamBinding` which represents an assert on the
-  /// boolean parameter expression in `condVar`, with given error message.
-  ///
-  /// Create and tracks a `ParamBinding` which models the following op:
-  ///   kgen.param.declare ... = <...assert(condAttr, errorMsg)...>
-  ///
-  /// Where `condAttr` is the parameter expression within `condVar`.
+  /// Tracks `kgen.param.declare ... = <...assert(condVar, errorMsg)...>`.
   void createAssert(const Var &condVar, StringRef errorMsg);
 
-  /// Create and tracks a `ParamBinding` which models the following op:
-  ///   kgen.param.declare ... = <cond(condAttr, thenAttr, elseAttr)>
-  ///
-  /// Where `(condAttr, thenAttr, elseAttr)` are parameter expressions within
-  /// `(convV, thenV, elseV)` respectively.
+  /// Tracks `kgen.param.declare ... = <cond(condV, thenV, elseV)>`.
   Var createCond(const Var &condV, const Var &thenV, const Var &elseV);
 
-  /// Create and tracks a `ParamBinding` which models the following op:
-  ///   kgen.param.declare ... = <max(lhsAttr, rhsAttr)>
-  ///
-  /// Where `(lhsAttr, rhsAttr)` are parameter expressions within `(lhs, rhs)`
-  /// respectively.
+  /// Tracks `kgen.param.declare ... = <max(lhs, rhs)>`.
   Var createMax(const Var &lhs, const Var &rhs);
 
-  /// Create an op of the following form
-  ///   kgen.param.declare ... = <min(lhsAttr, rhsAttr)>
-  ///
-  /// Where `(lhsAttr, rhsAttr)` are parameter expressions within `(lhs, rhs)`
-  /// respectively.
+  /// Tracks `kgen.param.declare ... = <min(lhs, rhs)>`.
   Var createMin(const Var &lhs, const Var &rhs);
 
-  /// Assume given a variadic number of Var instances, create a new `ShapeAttr`
-  /// consisted of the TypedAttr within those Var, in the given order.
   template <class... V, typename = std::enable_if_t<(true && ... &&
                                                      std::is_same_v<V, Var>)>>
   ShapeAttr getShapeAttr(const V &...dim) {
     return getShapeAttr({dim.getAttr()...});
   }
 
-  /// Create a new `ShapeAttr` consisted of the `dimAttrs` in the given order.
   ShapeAttr getShapeAttr(ArrayRef<TypedAttr> dimAttrs);
 
 private:
@@ -113,8 +75,7 @@ private:
   SmallVectorImpl<ParamBinding> *createdOps;
 };
 
-/// This class wraps around a parameter attribute and allows one to build new
-/// parameter expression easily via operator overloading.
+/// Wraps a parameter attribute to build expressions via operator overloading.
 ///
 /// Example:
 ///   ParamExprBuilder b(...);
@@ -128,18 +89,15 @@ private:
   TypedAttr attr;
   ParamExprBuilder *builder;
 
-  // Tightly control how one can construct a `Var`.
   Var(TypedAttr attr, ParamExprBuilder *builder)
       : attr(attr), builder(builder) {
     ASSERT_STREAM(
         builder, << "Var should be constructed with non-null builder");
   }
 
-  // Allow access to the controlled constructor of Var.
   friend class ParamExprBuilder;
 
 public:
-  // Disallow default construction since this always needs a builder.
   Var() = delete;
   Var(const Var &other) = default;
   Var &operator=(const Var &other) = default;
@@ -150,7 +108,6 @@ public:
   // Arithmetic
   //===--------------------------------------------------------------------===//
 
-  // Allows one to write `v1 + v2` where v2 is a TypedAtr.
   Var operator+(TypedAttr otherAttr) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Add, attr, otherAttr),
@@ -158,41 +115,32 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 + v2`.
   Var operator+(const Var &other) const { return *this + other.attr; }
 
-  // v1 += v2 with TypedAttr.
   Var &operator+=(TypedAttr otherAttr) {
     *this = *this + otherAttr;
     return *this;
   }
 
-  // v1 += v2
   Var &operator+=(const Var &other) { return *this += other.attr; }
 
-  // Allows one to write `v1 + 42`.
   Var operator+(int64_t other) const {
     return *this + builder->createVar(other);
   }
 
-  // Allows one to write `v1 - v2`.
   Var operator-(const Var &other) const { return *this + (other * -1); }
 
-  // v1 -= v2
   Var operator-=(const Var &other) {
     *this = *this - other;
     return *this;
   }
 
-  // Allows one to write `v1 - 42`.
   Var operator-(int64_t other) const {
     return *this - builder->createVar(other);
   }
 
-  // Unary minus: `-v`.
   Var operator-() const { return *this * -1; }
 
-  // Allows one to write `v1 * v2`.
   Var operator*(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, attr, other.attr),
@@ -200,12 +148,10 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 * 42`.
   Var operator*(int64_t other) const {
     return *this * builder->createVar(other);
   }
 
-  // Allows one to write `v1 / v2`.
   Var operator/(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Div, attr, other.attr),
@@ -213,12 +159,10 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 / 42`.
   Var operator/(int64_t other) const {
     return *this / builder->createVar(other);
   }
 
-  // Allows one to write `v1 % v2`.
   Var operator%(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Mod, attr, other.attr),
@@ -226,7 +170,6 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 % 42`.
   Var operator%(int64_t other) const {
     return *this % builder->createVar(other);
   }
@@ -235,14 +178,12 @@ public:
   // Comparison
   //===--------------------------------------------------------------------===//
 
-  // Allows one to write `v1 != v2`.
   Var operator!=(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::getNE(attr, other.attr), "var_ne");
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 == v2`.
   Var operator==(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::EQ, {attr, other.attr}),
@@ -250,7 +191,6 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 < v2`.
   Var operator<(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::LT, attr, other.attr),
@@ -258,7 +198,6 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 <= v2`.
   Var operator<=(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::LE, attr, other.attr),
@@ -266,13 +205,10 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 > v2`.
   Var operator>(const Var &other) const { return other < *this; }
 
-  // Allows one to write `v1 >= v2`.
   Var operator>=(const Var &other) const { return other <= *this; }
 
-  // Allows one to write `v1 != 42`.
   Var operator!=(int64_t other) const {
     return *this != builder->createVar(other);
   }
@@ -281,22 +217,18 @@ public:
     return *this == builder->createVar(other);
   }
 
-  // Allows one to write `v1 < 42`.
   Var operator<(int64_t other) const {
     return *this < builder->createVar(other);
   }
 
-  // Allows one to write `v1 <= 42`.
   Var operator<=(int64_t other) const {
     return *this <= builder->createVar(other);
   }
 
-  // Allows one to write `v1 > 42`.
   Var operator>(int64_t other) const {
     return *this > builder->createVar(other);
   }
 
-  // Allows one to write `v1 >= 42`.
   Var operator>=(int64_t other) const {
     return *this >= builder->createVar(other);
   }
@@ -305,7 +237,6 @@ public:
   // Logical
   //===--------------------------------------------------------------------===//
 
-  // Allows one to write `v1 && v2`.
   Var operator&&(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::And, attr, other.attr),
@@ -313,7 +244,6 @@ public:
     return Var(resDeclRef, builder);
   }
 
-  // Allows one to write `v1 || v2`.
   Var operator||(const Var &other) const {
     TypedAttr resDeclRef = builder->wrapNonTrivialAttrWithDecl(
         KGEN::ParamOperatorAttr::get(KGEN::POC::Or, attr, other.attr),
@@ -325,60 +255,47 @@ public:
   ParamExprBuilder &getBuilder() const { return *builder; }
 };
 
-/// Try converting `attr` to a constant integer.
 inline std::optional<int64_t> tryGetConstantInt(TypedAttr attr) {
   if (auto intAttr = dyn_cast<IntegerAttr>(attr))
     return intAttr.getValue().getSExtValue();
   return MOSH::ShapeAttr::getStaticDim(attr);
 }
 
-/// Try converting `attr` to a constant double.
 inline std::optional<double> tryGetConstantFloat(TypedAttr attr) {
   if (auto floatAttr = dyn_cast<FloatAttr>(attr))
     return floatAttr.getValueAsDouble();
   return std::nullopt;
 }
 
-/// Return true if `attr` is a statically known integer dimension
 inline bool isStaticDimAttr(TypedAttr attr) {
   return tryGetConstantInt(attr).has_value();
 }
 
-/// Try converting `attr` to a vector of constant integers.
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TypedAttr attr);
 
-// Calculates the full rank shapes for matmul inputs.
-// These shapes should be equivalent after broadcasting.
-// The new dimensions will just be static 1 dimensions.
+// Rank-extends matmul input shapes with static 1 dims so they match after
+// broadcasting.
 std::pair<SmallVector<TypedAttr>, SmallVector<TypedAttr>>
 expandMatmulInputsForBroadcasting(ShapeAttr lhsShape, ShapeAttr rhsShape);
 
 //----------------------------------------------------------------------------//
 //------------------------Shape functions begin-------------------------------//
 
-// NOTE these helpers will eventually be shared between shape inference and
-// GraphAPI shape propagation.
-//
-// These helpers have pretty uniform input types, where
-// - `GraphOp` is used for new parameter name generation
-// - `Location` is used for newly created instructions
-// - All the `TypedAttr`s are parametric representation of the op's input,
-//   specifically, it should be one of the following:
+// `GraphOp` generates parameter names and `Location` is used for created
+// ops. Each `TypedAttr` input is one of:
 //   - `IntegerAttr` (a constant integer)
 //   - `KGEN::ParamDeclRefAttr` (a parameter)
 //   - `KGEN::ParamOperatorAttr` (a parameter expression)
 //   - `MOSH::ShapeAttr` (a list of the aforementioned integers)
 
-/// Materialize the shape logic for `MO::BatchMatmulOp`, assuming given
+/// Materialize the shape logic for `MO::BatchMatmulOp`.
 ShapeMaterializeResult materializeBatchMatmulShape(GraphOp graphOp,
                                                    Location loc,
                                                    TypedAttr lhsShapeAttr,
                                                    TypedAttr rhsShapeAttr);
 
-/// Materialize the shape logic for `RMO::MatmulOp`.
-/// Note, this is a high level op that broadcasts.
-/// That said, it is restricted to only broadcasting static `1` dimensions at
-/// construction time.
+/// Materialize the shape logic for `RMO::MatmulOp`, which broadcasts only
+/// static `1` dimensions.
 ShapeMaterializeResult materializeRmoMatmulShape(GraphOp graphOp, Location loc,
                                                  TypedAttr lhsShapeAttr,
                                                  TypedAttr rhsShapeAttr);
@@ -396,7 +313,7 @@ ShapeMaterializeResult materializeRmoSelectShape(GraphOp graphOp, Location loc,
                                                  ShapeAttr yShape);
 
 /// Materialize the shape logic for RMO slice ops.
-/// NOTE: the following preconditions should be checked by the caller:
+/// The caller checks:
 /// - step != 0
 /// - step > 0 => start < stop
 /// - step < 0 => stop < start
@@ -473,15 +390,9 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
                                               TypedAttr inputShape,
                                               TypedAttr axis);
 
-/// Materialize the shape logic for `MO::ReshapeOp`.
-///
-/// Specifically, if target shape contains a `-1`, infer it based on the
-/// invariant that `inputShapeAttr` and `targetShapeAttr` represent equal number
-/// of elements.
-///
-/// The `-1` dimension is computed as mul(input_dims) / mul(target_dims).
-/// Constant zero dimensions in the target shape are excluded from the
-/// denominator to avoid division by zero.
+/// Materialize the shape logic for `MO::ReshapeOp`. A `-1` target dim is
+/// inferred as mul(input_dims) / mul(target_dims), excluding constant zero
+/// target dims from the denominator.
 ///
 /// Example:
 ///   inputShape = [3, D4]
@@ -527,9 +438,8 @@ ShapeMaterializeResult materializeSplitOutputShapes(GraphOp graphOp,
                                                     TypedAttr splitSizesAttr,
                                                     TypedAttr axisAttr);
 
-/// Materialize shape logic for operations whose output shape is equal to one
-/// operand `targetShapeAttr`. E.g. `mo.resize_*` family of operations allows
-/// resizing of image to arbitrary dimension.
+/// Materialize shape logic for ops whose output shape is `targetShapeAttr`
+/// (e.g. `mo.resize_*`).
 ShapeMaterializeResult materializeTargetShapeLike(GraphOp graphOp, Location loc,
                                                   TypedAttr targetShapeAttr);
 
@@ -567,24 +477,16 @@ materializeUnsqueezeShapeShape(GraphOp graphOp, Location loc,
 /// with it, else return null.
 StringAttr tryGetAssertFalseErrMsg(TypedAttr attr);
 
-/// A naive shape propagator that takes all the `ParamBinding`s materialized by
-/// the shape functions, and do a substitute & fold via a single traverse. At
-/// the end it returns a simplified version of `targetShapes` after digesting
-/// all the bindings.
-///
-/// It returns an error when it encounters an assert whose condition doesn't
-/// fold to `true`. The error message will be the same as the assert error
-/// message.
+/// Substitutes and folds `bindings` in a single pass and returns the simplified
+/// `targetShapes`. Fails with the assert's message on an assert that doesn't
+/// fold to `true`.
 ErrorOr<SmallVector<ShapeAttr>> propagateShape(ArrayRef<ParamBinding> bindings,
                                                ArrayRef<ShapeAttr> targetShapes,
                                                bool validateAsserts = true);
 
-// TODO move the following into a new interface.
-// NOTE some of the input arguments will be removed once we move the
-// implementation to a MLIR interface:
-// - we won't need `kgenParams` anymore because it's really a temporary backward
-//   compatibility thing for the fallback shape function.
-// - `loc` will just become the location of the operation itself.;
+// TODO move the following into a new interface, which drops `kgenParams`
+// (backward compatibility for the fallback shape function) and `loc` (the op's
+// own location).
 using MaterializeShapeFuncTy = std::function<ShapeMaterializeResult(
     ArrayRef<TypedAttr> inputs, DictionaryAttr kgenParams, GraphOp graphOp,
     Location loc)>;

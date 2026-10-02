@@ -36,10 +36,8 @@ namespace {
 template <class>
 [[maybe_unused]] constexpr bool FALSE = false;
 
-// Eventually all MO types will implement this function and we will instantiate
-// all of them using the macros in the MLIR generated headers. Once we flip the
-// switch on that adding a MO op without a fallback or a placeholder entry
-// designating that it has no fallback will produce a compile time error.
+// Once every MO op is instantiated from the generated headers, an op without a
+// fallback or NEEDS_NO_FALLBACK entry becomes a compile-time error.
 template <typename T>
 struct Fallback {
   static_assert(
@@ -121,8 +119,6 @@ struct Fallback<MO::CustomOp> {
                        StringSet<> &inputParamsNeeded);
 };
 
-// Eventually all ops must be accounted for here. They either must have a
-// fallback or an explicit vouch that they need no fallback.
 NEEDS_NO_FALLBACK(MO::MatmulOp)
 NEEDS_NO_FALLBACK(MO::Static::BroadcastToOp)
 
@@ -159,7 +155,6 @@ struct AddFallbackShapeFunctions
       if (op.getOutputParamDecls().empty())
         return mlir::WalkResult::advance();
 
-      // Call the fallbacks.
       builder.setInsertionPoint(op);
       CALL_FALLBACK(MO::ArgMaxOp)
       CALL_FALLBACK(MO::ArgMinOp)
@@ -237,10 +232,8 @@ struct AddFallbackShapeFunctions
           return mlir::WalkResult::interrupt();
         }
 
-        // Collect compile-time parameter names so the fallback can forward
-        // matching custom-op attributes to the shape function call. Sourced
-        // from the shape fn's own params (it may differ from execute, e.g.
-        // shape typically omits `target`/`_trace_name`).
+        // Forward custom-op attributes matching the shape fn's own params,
+        // which may differ from execute's (e.g. no `target`/`_trace_name`).
         StringSet<> inputParams;
         auto shapeFn =
             registry.lookupShapeFunction(asOp.getSymbol()).getFunction();
@@ -271,10 +264,8 @@ struct AddFallbackShapeFunctions
 // Fallback helpers
 //===----------------------------------------------------------------------===//
 
-// Each fallback needs to produce a parameter for every dimension in the output
-// even if those dimensions are static. This simplifies the lowering as without
-// doing this we would need the lowering to know how many should be produced and
-// to which dimension they should be referring to.
+// Fallbacks produce a parameter for every output dim, even static ones, so the
+// lowering needn't know how many there are or which dims they refer to.
 KGEN::ParamDeclArrayAttr
 getNewParameterMapping(GraphOp &graph, TensorType outTy,
                        ArrayRef<ParamDeclAttr> outputParamDecls) {
@@ -288,24 +279,17 @@ getNewParameterMapping(GraphOp &graph, TensorType outTy,
   llvm::SmallSetVector<ParamDeclAttr, 10> outputParamDeclSet(
       outputParamDecls.begin(), outputParamDecls.end());
 
-  // New attrs. These are either the exact same as the old attribute or a new
-  // attribute
   SmallVector<KGEN::ParamDeclAttr> params;
 
-  // We want to move all parameters declared by the associated operator to
-  // to be defined by the new shape func invocation.
-  //
-  // In the case of a dim whose results we don't need to define, we add a new
-  // "F"allback dim which is useless but needed to ensure the contract of the
-  // shape func.
+  // The op's declared parameters move to the shape func invocation. Other dims
+  // (static, or defined elsewhere) get a placeholder "F"allback param to keep
+  // the shape func contract.
   auto getShapeFuncSymbol = [&](TypedAttr dim) -> KGEN::ParamDeclAttr {
     auto asSymbolic = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
 
-    // Is an integer we already know.
     if (!asSymbolic)
       return graph.getNewDimParam("F");
 
-    // Is defined by some other shape.
     auto asParamDeclAttr = KGEN::ParamDeclAttr::get(asSymbolic);
     if (!outputParamDeclSet.contains(asParamDeclAttr))
       return graph.getNewDimParam("F");
@@ -313,8 +297,7 @@ getNewParameterMapping(GraphOp &graph, TensorType outTy,
     return asParamDeclAttr;
   };
 
-  // Parameters assumed to be in order. Add the index of each symbolic
-  // dimension.
+  // Parameters are positional, one per dim.
   for (auto dim : outTy.getShape().getValues()) {
     params.push_back(getShapeFuncSymbol(dim));
   }
@@ -330,7 +313,6 @@ static ErrorOrSuccess buildForReductionOp(GraphOp &graph, OpBuilder &builder,
   KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
       graph, op.getResult().getType(), op.getOutputParamDecls());
 
-  // Create the shape function.
   MO::InvokeShapeFuncOp::create(
       builder, op.getLoc(), op->getOperands(), op->getName().getStringRef(),
       shapeParams,
@@ -345,7 +327,6 @@ static ErrorOrSuccess buildForScatterLikeOp(GraphOp &graph, OpBuilder &builder,
   KGEN::ParamDeclArrayAttr shapeParams = getNewParameterMapping(
       graph, op.getResult().getType(), op.getOutputParamDecls());
 
-  // Create the shape function.
   MO::InvokeShapeFuncOp::create(
       builder, op.getLoc(), op->getOperands(),
       op.getOperation()->getName().getStringRef(), shapeParams,
@@ -372,7 +353,6 @@ void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
     kgenParamAttrs = builder.getDictionaryAttr(namedAttrs);
   }
 
-  // Create the shape function.
   Location loc = res.getLoc();
   MO::InvokeShapeFuncOp::create(builder, loc, operands, shapeFuncName,
                                 shapeParams, kgenParamAttrs,
@@ -494,10 +474,9 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
 ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
                                              MO::CustomOp op,
                                              StringSet<> &inputParamsNeeded) {
-  // Mark all inputs by default.
   SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
 
-  // If any of the operands is a buffer, we must load it and update the chain.
+  // Buffer operands are loaded, threading the chain.
   Value currentChain = nullptr;
   MO::MutableLoadOp firstLoadOp = nullptr;
   if (!operands.empty() && isa<MO::ChainType>(operands.back().getType())) {
@@ -510,7 +489,6 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
     if (!bufferTy)
       continue;
 
-    // Replace the buffer with the loaded tensor and update the chain.
     auto bufferLoadOp = MO::MutableLoadOp::create(
         builder, op.getLoc(), bufferTy.toTensorType(), currentChain.getType(),
         operand, currentChain);
@@ -520,11 +498,9 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
     currentChain = bufferLoadOp.getOutChain();
   }
 
-  // TODO(GEX-4093): this op's shape function may move entirely onto
-  // trait-bound tensor args. After that move, derive per-operand
-  // data-dependence from the bounds it declares. Today this marks every
-  // operand as data-dependent, conservatively. A bare `Tensor` bound
-  // cannot read element values, so such operands are not data-dependent.
+  // TODO(GEX-4093): Conservatively marks every operand data-dependent. Once
+  // the shape function moves onto trait-bound tensor args, derive this from
+  // their bounds (a bare `Tensor` bound can't read element values).
   SmallVector<int32_t> dataDepInputIdxs(operands.size());
   std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
 
@@ -532,12 +508,9 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
     SmallVector<std::pair<StringRef, Attribute>> kgenParams;
     kgenParams.emplace_back("output_idx", builder.getIndexAttr(idx));
 
-    // Shape functions are only needed for the tensor outputs.
     if (!isa<MO::TensorType>(res.getType()))
       continue;
 
-    // Add other bespoke kgen params declared by the custom operator if they are
-    // needed
     for (const NamedAttribute &namedAttr : op.getParameters())
       if (inputParamsNeeded.contains(namedAttr.getName()))
         kgenParams.emplace_back(namedAttr.getName(), namedAttr.getValue());
@@ -548,8 +521,7 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
                      /*dataDepInputIdxs=*/dataDepInputIdxs);
   }
 
-  // Replace the input chain of the custom op with the final chain after loading
-  // all buffers.
+  // The custom op consumes the chain after all buffer loads.
   if (currentChain)
     op->getOperands().back().replaceAllUsesExcept(currentChain, firstLoadOp);
 
@@ -729,9 +701,8 @@ ErrorOrSuccess Fallback<MO::RoiAlignOp>::build(GraphOp &graph,
   return success();
 }
 
-// `mo.scatter` carries its axis as a compile-time `index` attribute (threaded
-// to the shape function), so it uses the generic op-result builder rather than
-// the scatter-like one used by the reduction variants.
+// Unlike the scatter-like reduction variants, `mo.scatter`'s axis is a
+// compile-time attribute threaded to the shape function.
 ErrorOrSuccess Fallback<MO::ScatterOp>::build(GraphOp &graph,
                                               OpBuilder &builder,
                                               MO::ScatterOp op) {
@@ -785,9 +756,8 @@ ErrorOrSuccess Fallback<MO::SliceOp>::build(GraphOp &graph, OpBuilder &builder,
 ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
                                             MO::SplitOp op) {
   Location loc = op->getLoc();
-  // The `split_ith_output_shape` Mojo shape function takes `split_axis` and
-  // `output_idx` as runtime scalar operands. `axis` is now a compile-time
-  // attribute on the op, so materialize it as a constant operand here.
+  // `split_ith_output_shape` takes `split_axis` and `output_idx` as runtime
+  // scalar operands, so materialize the axis attribute as a constant.
   SmallVector<Value> operands(op->getOperands());
   operands.push_back(
       MO::ConstantOp::create(builder, loc, op.getAxisAttr().getInt()));
@@ -795,7 +765,6 @@ ErrorOrSuccess Fallback<MO::SplitOp>::build(GraphOp &graph, OpBuilder &builder,
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     operands.back() =
         MO::ConstantOp::create(builder, loc, static_cast<int64_t>(idx));
-    // This uses some special handling
     buildForOpResult(graph, builder, cast<TensorValue>(res),
                      "split_ith_output_shape", operands,
                      op.getOutputParamDecls(),

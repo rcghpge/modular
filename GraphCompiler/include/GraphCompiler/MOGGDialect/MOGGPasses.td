@@ -12,12 +12,9 @@ include "mlir/Pass/PassBase.td"
 def JitCompileKernels: Pass<"jit", "ModuleOp"> {
   let summary = "Replace kernel op with calls into compiled kernel";
   let description = [{
-    This pass finds all the kernels ops, compile the kernels with the KGEN
-    pipeline, and replaces the orinal kernel ops with calls into the compiled
-    code.
-
-    Note that the compiled kernels are stored as resource blobs, and the pass
-    inserts an op to associate the generated kernel names with those blobs.
+    Compiles kernel ops with the KGEN pipeline into resource blobs and replaces
+    them with calls into the compiled code, inserting an op that maps kernel
+    names to blobs.
   }];
   let dependentDialects = [
     "M::MDialect",
@@ -68,19 +65,17 @@ def JitCompileKernels: Pass<"jit", "ModuleOp"> {
       "this triple names a GPU target.">,
     Option<"compileForHostExecution", "compile-for-host-execution", "bool",
       /*default=*/"false",
-      "Compile kernels for the machine running this compilation, ignoring any "
-      "process-global virtual CPU target override. For sub-compilations whose "
-      "artifacts execute in the compiling process (constant folding), where a "
-      "cross-target object cannot be JIT-linked.">
+      "Compile kernels for this machine, ignoring any virtual CPU target "
+      "override. For artifacts that execute in the compiling process "
+      "(constant folding).">
   ];
 }
 
 def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
   let summary = "Fuse kernels based on patterns.";
   let description = [{
-    This pass includes a variety of pattern rewrites which replaces a series of
-    operations with a primitive call to a hand-fused (instead of synthesized)
-    kernel, or more specific operations (e.g., concat with axis 0).
+    Replaces op sequences with a call to a hand-fused kernel, or with more
+    specific ops (e.g. concat with axis 0).
   }];
   let dependentDialects = ["M::MOGG::MOGGDialect"];
   let options = [
@@ -107,9 +102,7 @@ def PatternFusion: Pass<"mo-pattern-fusion", "MO::GraphOp"> {
 def HashModuleContents: Pass<"mogg-hash-module-contents", "mlir::ModuleOp"> {
   let summary = "Compute and attach hash of module contents";
   let description = [{
-    This pass computes a hash of the module contents and attaches it as an
-    attribute. This can be used for caching, verification, or tracking changes
-    to the module.
+    Attaches a hash of the module contents as an attribute, for caching.
   }];
   let dependentDialects = [
     "M::MOGG::MOGGDialect",
@@ -120,10 +113,8 @@ def HashModuleContents: Pass<"mogg-hash-module-contents", "mlir::ModuleOp"> {
 def NormalizeAllNames: Pass<"mogg-normalize-all-names", "mlir::ModuleOp"> {
   let summary = "Normalize all names in the module";
   let description = [{
-    This pass normalizes all symbol and parameter names to a canonical form.
-    Symbol names are renamed to __S0, __S1, etc., and parameter names are
-    renamed to __P0, __P1, etc. This makes the IR less sensitive to naming
-    variations, which is useful for caching and hashing purposes.
+    Renames symbols to __S0, __S1, ... and parameters to __P0, __P1, ... so
+    caching and hashing ignore naming variations.
   }];
   let dependentDialects = [
     "M::MOGG::MOGGDialect",
@@ -131,12 +122,11 @@ def NormalizeAllNames: Pass<"mogg-normalize-all-names", "mlir::ModuleOp"> {
   ];
 }
 
-// Passes moved from MOGGToMGP (mogg-* passes that operate on MOGG dialect)
 def LowerMOGGRegionCompiles: Pass<"mogg-lower-mogg-region-compile", "ModuleOp"> {
   let summary = "Convert MOGG compile ops into MGP versions";
   let description = [{
-    After lowering we will have raw MOGG compiled kernels in the graph, this
-    converts them into the same MGP format used for the other compiled code.
+    Converts raw MOGG compiled kernels into the MGP format used by other
+    compiled code.
   }];
 
   let dependentDialects = ["MEF::MEFDialect",
@@ -167,10 +157,8 @@ def AddProfileScopeTracing: Pass<"mogg-add-profile-scope-tracing", "MOGG::Kernel
     `Graph.profile_scope(...)` layer set, plus coarser ancestor ranges over
     adjacent runs nested under a common outer scope.
 
-    This runs just before `mogg-add-try-except-blocks`: the begin/end ranges are
-    raising, so they must land inside the try/except that pass wraps around the
-    body to keep the MGP-ABI entry point non-raising. Only MGP-ABI kernel stubs
-    are bracketed.
+    Only MGP-ABI stubs are bracketed. Runs before `mogg-add-try-except-blocks`
+    because begin/end can raise and must land inside its try/except.
   }];
 
   let options = [
@@ -184,12 +172,9 @@ def AddProfileScopeTracing: Pass<"mogg-add-profile-scope-tracing", "MOGG::Kernel
 def WrapKernelsWithTraceOp: Pass<"mogg-wrap-kernels-with-trace-op", "MOGG::KernelStubOp"> {
   let summary = "Wraps a MOGG ABI kernel stub's body in a trace range";
   let description = [{
-    `mogg.with_trace` emits the kernel's per-kernel `Trace` range. A MOGG-ABI
-    stub gets one from `createKernelStub` and an MGP-ABI one from
-    `mogg-add-profile-scope-tracing`, so only MOGG-ABI stubs are handled here.
-
-    Runs before `mogg-add-try-except-blocks`, which moves this op into the try
-    it builds.
+    `mogg.with_trace` emits the per-kernel `Trace` range. MGP-ABI stubs get
+    theirs from `mogg-add-profile-scope-tracing`. Runs before
+    `mogg-add-try-except-blocks`, which moves this op into its try.
   }];
 
   let dependentDialects = ["MOGG::MOGGDialect"];
@@ -198,9 +183,8 @@ def WrapKernelsWithTraceOp: Pass<"mogg-wrap-kernels-with-trace-op", "MOGG::Kerne
 def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp"> {
   let summary = "Adds a try-except block to raising kernels";
   let description = [{
-    This pass should be run after sequence fusion and before Mojo codegen. It
-    adds a try-except block to raising kernels such that the emit mojo pass can
-    generate adequate Mojo.
+    Runs after sequence fusion and before Mojo codegen, so emitted Mojo for
+    raising kernels handles errors.
   }];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
@@ -209,10 +193,8 @@ def AddTryExceptBlocks: Pass<"mogg-add-try-except-blocks", "MOGG::KernelStubOp">
 def OutlineKernels: Pass<"mogg-outline-kernels", "ModuleOp"> {
   let summary = "Outline kernels into stubs";
   let description = [{
-    The same way MOGG kernels are outlined into KernelStubOp as we lower to MGP,
-    outline GenericCompiledRegionOp into KernelStubOp. This should be done after
-    all optimization passes, just before Mojo codegen. The purpose of this pass
-    is to stage things for the merging of identical kernel stubs.
+    Outlines GenericCompiledRegionOp into KernelStubOp so identical stubs can
+    be merged. Runs after all optimization passes, just before Mojo codegen.
   }];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
@@ -222,15 +204,10 @@ def OutlineKernelsIntoFunctions
     : Pass<"mogg-outline-kernels-into-functions", "mlir::ModuleOp"> {
   let summary = "Outline each `mogg.kernel` body into a `mogg.kernel.stub`.";
   let description = [{
-    Moves each `mogg.kernel` body into a module-level `mogg.kernel.stub`
-    labeled with the `MAP` ABI, and replaces the kernel body with a single
-    `mogg.call.stub` forwarding the kernel's pointer/dim/context block arguments
-    to the stub. The `mogg.kernel` container is kept: it carries the
-    `!mo.tensor` interface that `MOGGToMGP` later lowers by unpacking the async
-    operands into the handles the stub consumes.
-
-    The `MAP` ABI label lets `EmitMojo` branch on the advanced-fusion path
-    without touching the legacy MOGG/MGP emission.
+    Moves each `mogg.kernel` body into a module-level `mogg.kernel.stub` with
+    the `MAP` ABI (so `EmitMojo` can branch on it), leaving a single
+    `mogg.call.stub` that forwards the block arguments. The `mogg.kernel` is
+    kept for its `!mo.tensor` interface, which `MOGGToMGP` lowers.
   }];
 
   let dependentDialects = [
@@ -242,13 +219,9 @@ def OutlineKernelsIntoFunctions
 def AnonymizeDimNames: Pass<"mogg-anonymize-dim-names", "ModuleOp"> {
   let summary = "Drop symbolic dim names from every kernel stub's signature.";
   let description = [{
-    Strips the param-decl-ref name from every `!mogg.dim<name>` block arg
-    (and function-type entry) of every `mogg.kernel.stub` in the module,
-    turning them into anonymous `!mogg.dim`. A symbolic dim name on a stub's
-    boundary would otherwise block `MergeIdenticalKernelStubs` from
-    recognizing two structurally-identical stubs that differ only in a dim's
-    name as duplicates. Runs nested inside `EmitMojo`, immediately before
-    `MergeIdenticalKernelStubs`, so it can be tested independently of both.
+    Turns every `!mogg.dim<name>` in a `mogg.kernel.stub` signature into
+    `!mogg.dim`, so `MergeIdenticalKernelStubs` can merge stubs that differ
+    only in dim names. Runs inside `EmitMojo` just before that merge.
   }];
 
   let dependentDialects = ["MOGG::MOGGDialect"];
@@ -258,8 +231,7 @@ def AnonymizeDimNames: Pass<"mogg-anonymize-dim-names", "ModuleOp"> {
 def MergeIdenticalKernelStubs: Pass<"mogg-merge-identical-kernel-stubs", "ModuleOp"> {
   let summary = "Merge kernel stubs that are identical";
   let description = [{
-    This is the equivalent of CSE but for MOGG::KernelStubOp. It can improve
-    compilation time by reducing the IR size and emitted Mojo text.
+    CSE for MOGG::KernelStubOp, reducing IR size and emitted Mojo.
   }];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
@@ -273,16 +245,10 @@ def CanonicalizeKernelStubDeviceIds:
     Pass<"mogg-canonicalize-kernel-stub-device-ids", "ModuleOp"> {
   let summary = "Erase device ids inside kernel stubs so per-device copies merge";
   let description = [{
-    Rewrites every `#M.device_ref<label, id>` reachable inside each
-    `mogg.kernel.stub` (in attributes and, crucially, in the `!mgp.tensor` types
-    the stub operates on) to the canonical id 0, keeping the label. A kernel
-    replicated across N devices (e.g. an EP-sharded MoE on 8
-    GPUs) is otherwise N distinct stubs that differ only in that numeric id, so
-    they hash differently and `MergeIdenticalKernelStubs` cannot collapse them,
-    even though the emitted Mojo is identical (emission reads the device *label*
-    only, never the id). Running this immediately before the merge restores the
-    dedup. Only the stub bodies are touched; call sites and the surrounding MGP
-    graph keep their real device ids. See GEX-4239.
+    Rewrites every `#M.device_ref<label, id>` inside each `mogg.kernel.stub`
+    body (attributes and `!mgp.tensor` types) to id 0. Emission reads only the
+    label, so per-device copies of a kernel (e.g. an EP-sharded MoE) then merge
+    in `MergeIdenticalKernelStubs`. Call sites keep real ids. See GEX-4239.
   }];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];
@@ -291,14 +257,10 @@ def CanonicalizeKernelStubDeviceIds:
 def LiftBufferCacheSlots: Pass<"mogg-lift-buffer-cache-slots", "ModuleOp"> {
   let summary = "Lift inline `index.constant` slot operands of mgp.buffer.get_cached to kernel args";
   let description = [{
-    For each MGP-ABI `mogg.kernel.stub`, finds inline `index.constant` ops
-    whose only uses are as the slot operand of `mgp.buffer.get_cached`, and
-    promotes each such constant to a new `index`-typed kernel argument. The
-    original constant is materialized at every `mogg.execute_kernel` call
-    site as a new trailing operand. After this pass, two kernels that
-    previously differed only in their cached-buffer slot indices have
-    structurally identical bodies and become merge candidates for
-    `MergeIdenticalKernelStubs`. See GEX-3685.
+    In each MGP-ABI `mogg.kernel.stub`, promotes `index.constant` ops used
+    only as `mgp.buffer.get_cached` slots to trailing kernel arguments,
+    materialized at each `mogg.execute_kernel` call site. Kernels differing
+    only in slot indices can then merge. See GEX-3685.
   }];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect", "mlir::index::IndexDialect"];
@@ -307,10 +269,8 @@ def LiftBufferCacheSlots: Pass<"mogg-lift-buffer-cache-slots", "ModuleOp"> {
 def LookupConstantResources: Pass<"mogg-lookup-constant-resources", "MOGG::KernelStubOp"> {
   let summary = "Replace mgp.buffer.constant with mgp.resource.constant";
   let description = [{
-    Retrieves a pointer to the corresponding constant resources attached to the
-    parent `mogg.kernel.stub` operation. This makes compilation faster because
-    the value of the constant can be different but identical kernels will still
-    merge if the index is the same.
+    Reads constants from resources attached to the parent `mogg.kernel.stub`,
+    so kernels differing only in constant values still merge.
   }];
 
   let dependentDialects = ["MGP::MGPDialect"];
@@ -319,8 +279,8 @@ def LookupConstantResources: Pass<"mogg-lookup-constant-resources", "MOGG::Kerne
 def EmitMojo: Pass<"mogg-emit-mojo", "ModuleOp"> {
   let summary = "Emit Mojo text";
   let description = [{
-    Emit Mojo text from kernel stubs and `mogg.generic.compiled.region`. The
-    Mojo is put in a stub that will be held until JIT compilation.
+    Emits Mojo from kernel stubs and `mogg.generic.compiled.region`, held
+    until JIT compilation.
   }];
 
   let options = [
@@ -351,7 +311,7 @@ def EmitMojo: Pass<"mogg-emit-mojo", "ModuleOp"> {
 def DumpMojo: Pass<"mogg-dump-mojo", "ModuleOp"> {
   let summary = "Dump Mojo text";
   let description = [{
-    Dump to stderr the previously emitted Mojo as text.
+    Dumps the emitted Mojo to stderr.
   }];
 
   let dependentDialects = ["MEF::MEFDialect",
@@ -372,9 +332,8 @@ def DumpMojo: Pass<"mogg-dump-mojo", "ModuleOp"> {
 def LoadMojo: Pass<"mogg-load-mojo", "ModuleOp"> {
   let summary = "Load Mojo text";
   let description = [{
-    Load the provided Mojo text and replace the existing module. This can be
-    achieved by dumping Mojo, modifying it and then running this pass. Then, the
-    -jit-pipeline can be run to compile all the way to the end.
+    Replaces the module's Mojo with the given file, for editing dumped Mojo
+    before running -jit-pipeline.
 
     Example:
     mo-opt program.mlir -gc-pipeline -o /dev/null -mlir-print-ir-after=mogg-emit-mojo &> program.mgp.mlir
@@ -406,19 +365,13 @@ def LoadMojo: Pass<"mogg-load-mojo", "ModuleOp"> {
 def ImportPackages : Pass<"mogg-import-packages", "ModuleOp"> {
   let summary = "Import Mojo kernel packages and emit mogg.kernel.decl ops";
   let description = [{
-    Loads Mojo kernel packages and emits one mogg.kernel.decl op per registered
-    kernel into the module, recording the execute/shape/elementwise
-    FnTypeGeneratorType signatures.
+    Emits one mogg.kernel.decl per registered kernel, recording its signatures,
+    so later passes read them from the IR instead of loading packages. Runs
+    early in the pipeline.
 
-    Two input modes are supported:
-    - mojo-pkg-paths: paths to compiled .mojoc files (production use).
-    - lit-mlir-paths: paths to MLIR text files produced by kgen-translate
-      -import-mojo; no built-in packages are loaded, making this mode suitable
-      for self-contained lit tests.
-
-    This pass is intended to run early in the graph compiler pipeline so that
-    subsequent passes can look up kernel signatures from the IR rather than
-    loading Mojo packages themselves.
+    - mojo-pkg-paths: compiled .mojoc files.
+    - lit-mlir-paths: kgen-translate -import-mojo output; skips built-in
+      packages, for self-contained lit tests.
   }];
   let options = [
     ListOption<"mojoPkgPaths", "mojo-pkg-paths", "std::string",
@@ -448,52 +401,34 @@ def ImportPackages : Pass<"mogg-import-packages", "ModuleOp"> {
 def RewriteOpaqueTypes : Pass<"mogg-rewrite-opaque-types", "ModuleOp"> {
   let summary = "Rewrite !mo.opaque<\"simple\"> to !mo.opaque<\"fully.qualified\">";
   let description = [{
-    Reads the `mogg.opaque_type_mapping` DictionaryAttr from the module
-    (populated by `mogg-import-packages` when it walks the loaded packages'
-    `StructDeclOp`s) and rewrites every `!mo.opaque<"simple_name">` in the
-    module to its fully-qualified Mojo name. Types whose symbol is not in
-    the mapping are left unchanged.
-
-    The mapping is the canonical persistence form of simple → qualified
-    name resolution. `mogg-import-packages` writes it after loading; this
-    pass is what actually applies it. Splitting them lets callers that
-    have already loaded packages elsewhere (e.g. via `MAXG_addKernelPackage`
-    on a separate `Analysis` module) copy the mapping over and run only
-    the rewrite step at compile time -- see the `kernel-decls-pre-populated`
-    GC pipeline option.
-
-    Running this pass on a module that has no mapping attr (or whose
-    `!mo.opaque` types are already fully-qualified) is a safe no-op.
+    Rewrites each `!mo.opaque<"simple_name">` to its fully-qualified name using
+    the module's `mogg.opaque_type_mapping` (written by `mogg-import-packages`).
+    Unmapped types are unchanged. Kept separate so callers that loaded packages
+    elsewhere (e.g. `MAXG_addKernelPackage`) can copy the mapping and run only
+    this step; see the `kernel-decls-pre-populated` pipeline option.
   }];
 }
 
 def StripKernelDecls : Pass<"mogg-strip-kernel-decls", "ModuleOp"> {
   let summary = "Remove mogg.kernel.decl and mogg.primitive.decl ops from a module";
   let description = [{
-    Erases all mogg.kernel.decl and mogg.primitive.decl ops from the module.
-    These ops are emitted by mogg-import-packages and consumed by passes such
-    as mo-to-mogg. They are not part of the final output format. This pass can
-    be placed after the last pass that reads the kernel registry to clean up
-    the module for inspection or further lowering.
+    Run after the last pass that reads the kernel registry; the decls are not
+    part of the final output.
   }];
 }
 
 def VerifyKernels: Pass<"mogg-verify-kernels", "ModuleOp"> {
   let summary = "Verifies that kernels are well constructed";
   let description = [{
-    Walks `mogg.kernel.decl` ops via `KernelDeclAdaptor` and emits the
-    user-facing diagnostics that a kernel author sees when their kernel
-    signature is malformed (missing `execute`, mismatched shape/execute
-    inputs, unsupported argument conventions, ...).
+    Emits user-facing diagnostics for malformed `mogg.kernel.decl` signatures
+    (missing `execute`, mismatched shape/execute inputs, ...).
   }];
 }
 
 def DumpKernels: Pass<"mogg-dump-kernels", "ModuleOp"> {
   let summary = "Prints the internal representation of kernels";
   let description = [{
-    Prints the internal in-memory representation of kernels for debugging
-    purposes. This pass can be run on both `LIT` and `KGEN` kernels because the
-    underlying representation is compatible with both.
+    For debugging. Works on both `LIT` and `KGEN` kernels.
   }];
 }
 
@@ -501,14 +436,10 @@ def ConformCallOperands
     : Pass<"mogg-conform-call-operands", "mlir::ModuleOp"> {
   let summary = "Conform `mogg` call operands to the callee's signature.";
   let description = [{
-    Inspects the signatures of `mogg` call ops and inserts the operand
-    conversion ops each callee requires: a scalar argument's tensor is wrapped
-    in `mogg.scalar.create`, a variadic run is packed into a
-    `mogg.tuple.create`, and a trait-bound argument (`Tensor` / `DenseTensor` /
-    `TileTensorable`) is wrapped in a `mogg.trait.create` so the raw
-    `!mogg.tensor` reaches the kernel as the conforming trait argument.
-    Deferred out of `MAPToMOGG` to keep the fusion IR simpler and each
-    `::emitMojo` a local, 1:1 lowering.
+    Wraps scalar arguments in `mogg.scalar.create`, packs variadic runs into
+    `mogg.tuple.create`, and wraps trait-bound arguments in
+    `mogg.trait.create`. Kept out of `MAPToMOGG` so fusion IR stays simpler and
+    each `::emitMojo` is a local, 1:1 lowering.
   }];
 
   let dependentDialects = [

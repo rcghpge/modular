@@ -16,11 +16,7 @@
 
 namespace M {
 
-/// `ModelTensorSpec` is a class describing the semantics of a tensor.
-/// For example, `ModelTensorSpec` holds the tensor's name, shape, and element
-/// dtype.
-/// This class is intended to be extended with further semantics over time,
-/// such as whether or not this tensor represents an image.
+/// Describes the semantics of a tensor, e.g. its name, shape, and dtype.
 class ModelTensorSpec {
 public:
   ModelTensorSpec(StringRef tensorName) : tensorName(tensorName) {}

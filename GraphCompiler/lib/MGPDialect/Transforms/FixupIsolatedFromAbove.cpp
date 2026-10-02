@@ -30,7 +30,6 @@ using namespace mlir;
 }
 
 /// Returns false if a value is shared between inOp and outOp.
-/// The caller is expected to then assert fail.
 [[maybe_unused]] static bool checkRewrite(Operation *inOp, Operation *outOp) {
 #ifdef MODULAR_DEBUG
   SetVector<Value> inValues = getValues(inOp);
@@ -67,14 +66,12 @@ static void fixup(OpBuilder &builder, Block *inBlock,
 
   LLVM_DEBUG(llvm::dbgs() << "fixup begin\n");
 
-  // Transfer existing block arguments.
   for (BlockArgument inArg : inBlock->getArguments()) {
     BlockArgument outArg =
         outBlock->addArgument(inArg.getType(), inArg.getLoc());
     LLVM_DEBUG(llvm::dbgs() << "mapping " << inArg << " to " << outArg << "\n");
     mapping.map(inArg, outArg);
   }
-  // Add arguments for each free var.
   for (Value inFreeValue : freeValues) {
     BlockArgument outArg =
         outBlock->addArgument(inFreeValue.getType(), inFreeValue.getLoc());
@@ -122,7 +119,6 @@ static void fixup(OpBuilder &builder, Block *inBlock,
     if (auto inCfOp = dyn_cast<GRT::GRTControlFlowInterface>(inOp)) {
       bool subMustAlsoReturn = inCfOp.getFlavor() == GRT::kLoopLike;
 
-      // Collect the free values for the control flow op sub-blocks.
       SetVector<Value> nestedFreeValues;
       for (Region &region : inCfOp->getRegions())
         accumFreeValues(nestedFreeValues, &region.front(), &region.front());
@@ -131,7 +127,6 @@ static void fixup(OpBuilder &builder, Block *inBlock,
                freeValues.contains(nestedFreeValue);
       }));
 
-      // Rewrite existing operands.
       SmallVector<Value> outOperands;
       for (Value operand : inCfOp->getOperands()) {
         Value outOperand = mapping.lookupOrNull(operand);
@@ -163,14 +158,12 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         // Account for last result.
         outResultTypes.emplace_back(inCfOp->getResult(n).getType());
 
-      // Create the new control flow op with empty sub-regions.
       GRT::GRTControlFlowInterface outCfOp =
           cloneWithArgs(builder, inCfOp, outResultTypes, outOperands);
       ASSERT_STREAM(checkRewrite(inCfOp, outCfOp),
                     << "invalid rewrite for control flow op");
 
-      // Capture mappings for op results. Any additional results,
-      // corresponding to the subOutputValues, can be ignored.
+      // Additional results for the free values need no mapping.
       for (const auto [inResult, outResult] :
            llvm::zip(inCfOp->getResults(), outCfOp->getResults())) {
         LLVM_DEBUG(llvm::dbgs()
@@ -178,12 +171,10 @@ static void fixup(OpBuilder &builder, Block *inBlock,
         mapping.map(inResult, outResult);
       }
 
-      // Rewrite the sub-blocks.
       auto insertPoint = builder.saveInsertionPoint();
       for (size_t i = 0, m = inCfOp->getNumRegions(); i < m; ++i) {
-        // The 'cond' sub-block for a grt.while must always return the
-        // condition as the last argument. So any new values must go before
-        // that.
+        // A grt.while 'cond' block returns the condition last, so new values
+        // go before it.
         bool subBeforeLastOutput = inCfOp.getFlavor() == GRT::kLoopLike &&
                                    inCfOp->getNumRegions() == 2 && i == 0;
         Block *inSubBlock = &inCfOp->getRegion(i).front();
@@ -195,7 +186,6 @@ static void fixup(OpBuilder &builder, Block *inBlock,
       continue;
     }
 
-    // Default case is just clone the op w.r.t. mapping.
     [[maybe_unused]] Operation *outOp = builder.clone(*inOp, mapping);
     ASSERT_STREAM(checkRewrite(inOp, outOp), << "invalid rewrite of op");
   }

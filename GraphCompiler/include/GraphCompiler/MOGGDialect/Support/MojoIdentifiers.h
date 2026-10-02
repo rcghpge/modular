@@ -7,14 +7,9 @@
 // Central catalog of every Mojo-side identifier the GraphCompiler depends on
 // and the matching C++ wrappers for high-traffic Mojo types.
 //
-// Anything the GC encodes about a Mojo struct, free function, method, field,
-// parameter name, decorator, package, or MLIR attribute key lives here. The
-// goal is that a rename or file-move on the Mojo side becomes a one-line edit
-// here, with the rest of the GC unchanged.
+// A rename or file-move on the Mojo side should be a one-line edit here.
 //
-// Conventions:
-//   - All constants use `kCamelCase`.
-//   - Prefixes communicate role:
+// Prefixes communicate role:
 //       kStruct*    Mojo struct names emitted into source.
 //       kFn*        Mojo free-function names emitted into source.
 //       kField*     Mojo field/method names accessed on values (`.foo`).
@@ -27,11 +22,7 @@
 //                   parameter names, kernel parameter inference keys).
 //       kPackage*   Mojo package names.
 //       kAttr*      MLIR attribute keys carried on KGEN/MOGG ops.
-//       kMogg*      MOGG-internal label strings (also MLIR attribute keys,
-//                   but with the `mogg.` namespace prefix baked in).
-//
-// All constants are at namespace `M::MOGG`; code that already lives in that
-// namespace can reference them unqualified.
+//       kMogg*      MOGG-internal labels and `mogg.`-prefixed attribute keys.
 //
 //===----------------------------------------------------------------------===//
 
@@ -52,14 +43,10 @@ namespace M::MOGG {
 // MLIR attribute keys (carried on MOGG ops)
 //===----------------------------------------------------------------------===//
 
-/// Module-level `DictionaryAttr` mapping simple struct names (e.g.
-/// "MyStruct") to their fully-qualified Mojo names (e.g.
-/// "foo.bar.MyStruct"). Populated by `mogg-import-packages` while walking
-/// the loaded packages' `StructDeclOp` trees, and consumed by
-/// `mogg-rewrite-opaque-types` to rewrite `!mo.opaque<"...">` references
-/// in the module. The mapping is the canonical persistence form: it
-/// travels with the module (e.g. when constant folding copies decls into
-/// a sub-module) so downstream callers don't need to re-walk packages.
+/// Module-level map from simple struct names ("MyStruct") to fully-qualified
+/// Mojo names ("foo.bar.MyStruct"). Written by `mogg-import-packages`, read by
+/// `mogg-rewrite-opaque-types`; it travels with the module so callers needn't
+/// re-walk packages.
 constexpr llvm::StringLiteral kOpaqueTypeMappingAttrName =
     "mogg.opaque_type_mapping";
 
@@ -76,11 +63,8 @@ constexpr llvm::StringLiteral kMoggTileElementwiseFunctionLabel =
     "tile_elementwise";
 constexpr llvm::StringLiteral kMoggBuildGraphFunctionLabel = "mogg.build_graph";
 
-/// Mojo source method names of extensibility kernels (`@register`-decorated
-/// structs) and the decorator-spelling constants. `kFnRegister`,
-/// `kFnRegisterInternal`, and `kMoggExecuteFuncName` are owned by KGEN's
-/// `LITUtils.h` (the Mojo parser uses them to drive value-witness generation
-/// and decorator recognition) and re-exported here.
+/// Method names of `@register`-decorated kernel structs. Some are owned by
+/// KGEN's `LITUtils.h`, which the Mojo parser also uses.
 using KGEN::kFnRegister;
 using KGEN::kFnRegisterInternal;
 using KGEN::kMoggExecuteFuncName;
@@ -89,8 +73,7 @@ constexpr llvm::StringLiteral kMoggElementwiseFuncName = "elementwise";
 constexpr llvm::StringLiteral kMoggUpdateViewFuncName = "update_input_view";
 constexpr llvm::StringLiteral kMoggBuildGraphFuncName = "build_graph";
 
-/// Argument indices into the vector returned by `getDecoratorLambdaArgument`
-/// for the `@extensibility.register` decorator (name, type, api, arch, model).
+/// Indices into `getDecoratorLambdaArgument` for `@extensibility.register`.
 constexpr size_t kRegisterDecoratorArgName = 0;
 constexpr size_t kRegisterDecoratorArgType = 1;
 constexpr size_t kRegisterDecoratorArgApi = 2;
@@ -99,53 +82,41 @@ constexpr size_t kRegisterDecoratorArgModel = 4;
 
 constexpr llvm::StringLiteral kMoggTargetParameterName = "target";
 
-/// The name of the output_rank parameter which we support lowering specially.
+/// Lowered specially.
 constexpr llvm::StringLiteral kMoggOutputRankParameterName = "output_rank";
 
-/// The number of DPS (Destination Passing Style) output operands there are.
 constexpr llvm::StringLiteral kMoggNumDpsOutputs = "mogg.num_dps_outputs";
 
-/// Per-stub-argument buffer-capture metadata. A trait tensor entry is
-/// `{dtype}`; other entries are empty strings. Stub emission infers
-/// `_MoggTensorBufferCapture[dtype, L]`'s `L` from the argument because dynamic
-/// extents cannot be encoded in shape-only metadata.
+/// Per-stub-argument metadata: `{dtype}` for a trait tensor, else "". The
+/// layout `L` of `_MoggTensorBufferCapture[dtype, L]` is inferred from the
+/// argument, since metadata cannot encode dynamic extents.
 constexpr llvm::StringLiteral kTraitStubBufferCaptureAttrName =
     "mogg.trait_stub_buffer_capture";
 
-/// Legacy D9 generic trait bounds (superseded by buffer capture for trait
-/// tensor operands). Retained for shape-function stubs that still use generic
-/// `DenseTensor` parameters.
+/// Generic trait bounds for shape-function stubs with generic `DenseTensor`
+/// parameters.
 constexpr llvm::StringLiteral kTraitStubArgBoundsAttrName =
     "mogg.trait_stub_arg_bounds";
 
-/// `has_epilogue_fusion` parameter on accumulation-style fused kernels.
+/// On accumulation-style fused kernels.
 constexpr llvm::StringLiteral kMoggHasEpilogueFusionParameterName =
     "has_epilogue_fusion";
 
-/// `has_prologue_fusion` parameter: true iff a producer is fused into the
-/// kernel's input
+/// True iff a producer is fused into the kernel's input.
 constexpr llvm::StringLiteral kMoggHasPrologueFusionParameterName =
     "has_prologue_fusion";
 
 constexpr llvm::StringLiteral kMoggTraceNameParameterName = "_trace_name";
 
-/// Roots of Mojo packages that hold the MAX compiler's internal-only
-/// decorators (used to recognise `@register_internal` and friends without a
-/// symbol-table lookup into dependency packages). `kPackageStd` and
-/// `kPackageExtensibility` are owned by KGEN's `LITUtils.h` (the Mojo parser
-/// tests against them too) and re-exported here.
+/// Package roots used to recognise `@register_internal` and friends without a
+/// symbol-table lookup into dependency packages.
 constexpr llvm::StringLiteral kPackageMax = "max";
 using KGEN::kPackageExtensibility;
 using KGEN::kPackageStd;
 constexpr llvm::StringLiteral kPackageManagedTensorSlice =
     "managed_tensor_slice";
 
-/// Symbol-path leaf names used in MLIR symbol-tree matching (these are the
-/// last segments of a `SymbolRefAttr` path; they don't appear dotted in
-/// emitted source the way the `kStruct*` constants do).
-/// `kLeafManagedTensorSlice` and `kLeafDeviceContext` are owned by KGEN's
-/// `LITUtils.h` (the Mojo parser tests against them too) and re-exported
-/// here.
+/// Last segments of `SymbolRefAttr` paths, for symbol-tree matching.
 using KGEN::kLeafDeviceContext;
 using KGEN::kLeafManagedTensorSlice;
 constexpr llvm::StringLiteral kLeafVariadicTensors = "VariadicTensors";
@@ -163,10 +134,9 @@ constexpr llvm::StringLiteral kLeafDeviceGraphBuilder = "DeviceGraphBuilder";
 constexpr llvm::StringLiteral kMoggKernelsModuleName = "builtin_kernels";
 constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "builtin_primitives";
 
-/// `@register_internal` name of the helper that prefixes an async error with
-/// its region name. Called from `AsyncErrorOp::emitMojo` alongside the op's
-/// own primitive (`mogg.async.error`), so this one can't be derived from
-/// `getOperationName()`.
+/// Prefixes an async error with its region name. Called from
+/// `AsyncErrorOp::emitMojo` besides the op's own primitive, so it can't come
+/// from `getOperationName()`.
 constexpr llvm::StringLiteral kMoggPrimitiveFormatRegionError =
     "mogg.format_region_error";
 
@@ -174,7 +144,6 @@ constexpr llvm::StringLiteral kMoggPrimitiveFormatRegionError =
 // Mojo type symbol names (as stored in MLIR by the Mojo compiler)
 //===----------------------------------------------------------------------===//
 
-/// The stored Mojo type symbol name of Tensor type in extensibility kernels.
 constexpr llvm::StringLiteral kMojoDpsTensorTypeName =
     "extensibility::managed_tensor_slice::ManagedTensorSlice";
 
@@ -185,16 +154,12 @@ constexpr llvm::StringLiteral kMojoInternalDpsBoolTypeName = "std::Bool";
 constexpr llvm::StringLiteral kMojoInternalDpsIndexListTypeName =
     "std::IndexList";
 
-/// Fully-qualified form of IndexList's type name, matching the dotted format
-/// produced by KernelDeclAdaptor's `buildOpaqueSymbol` (every segment joined
-/// by '.', usable directly as a Mojo qualified name). The KernelDeclAdaptor-
-/// based code path stores opaque type names in this form, so
-/// `isOpaqueWithTypeName` checks against it directly.
+/// In `buildOpaqueSymbol`'s dotted form, for `isOpaqueWithTypeName`.
 constexpr llvm::StringLiteral kMojoInternalDpsIndexListTypeQualifiedName =
     "std.utils.index.IndexList";
 
-/// VariadicTensors is the unfused variant; the fused variants carry per-
-/// element fusion structs via a heterogeneous Tuple.
+/// The fused variants carry per-element fusion structs in a heterogeneous
+/// Tuple.
 constexpr llvm::StringLiteral kMojoVariadicTensorsName =
     "extensibility::managed_tensor_slice::VariadicTensors";
 constexpr llvm::StringLiteral kMojoFusedInputVariadicTensorsName =
@@ -202,18 +167,14 @@ constexpr llvm::StringLiteral kMojoFusedInputVariadicTensorsName =
 constexpr llvm::StringLiteral kMojoFusedOutputVariadicTensorsName =
     "extensibility::managed_tensor_slice::_FusedOutputVariadicTensors";
 
-/// The stored Mojo type symbol name of device contexts in extensibility
-/// kernels.
 constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextTypeName =
     "max::DeviceContext";
 
-/// The stored Mojo type symbol name of device-context arrays in
-/// extensibility kernels (used by multi-device custom ops).
+/// Used by multi-device custom ops.
 constexpr llvm::StringLiteral kMojoExtensibilityApiDeviceContextArrayTypeName =
     "max::DeviceContextArray";
 
-/// These type names can be confusing. Inside the Graph Compiler code, the
-/// types show up like this:
+/// Inside the Graph Compiler these types show up as:
 ///   - StaticString -> std::StringSpan
 ///   - String -> std::String
 ///   - StringSpan -> std::Origin
@@ -235,11 +196,8 @@ constexpr llvm::StringLiteral kMojoInternalStringSliceTypeName = "std::Origin";
 constexpr llvm::StringLiteral kStructIO = "extensibility.IO";
 constexpr llvm::StringLiteral kStructIndexList = "std.utils.IndexList";
 constexpr llvm::StringLiteral kStructPointer = "Pointer";
-/// Generic (parametrizable) origin struct, e.g. `UntrackedOrigin[mut=...]`.
-/// Distinct from the FIXED `kComptimeMutUntrackedOrigin`/
-/// `kComptimeMutAnyOrigin` aliases below, which bake in a specific
-/// mutability and so can't be used where `mut` must stay a generic
-/// parameter.
+/// `UntrackedOrigin[mut=...]`, for where `mut` must stay generic (unlike
+/// `kComptimeMutUntrackedOrigin`).
 constexpr llvm::StringLiteral kStructUntrackedOrigin = "UntrackedOrigin";
 constexpr llvm::StringLiteral kStructOptional = "Optional";
 constexpr llvm::StringLiteral kStructString = "String";
@@ -255,8 +213,6 @@ constexpr llvm::StringLiteral kStructDeviceGraphNode =
     "max.gpu.host.device_graph.DeviceGraphNode";
 constexpr llvm::StringLiteral kStructDeviceGraphCache =
     "max.gpu.host.device_graph.DeviceGraphCache";
-// Device-graph method and keyword-argument names live on `DeviceGraphRef` and
-// `DeviceGraphBuilderRef` below, beside the accessors that emit them.
 constexpr llvm::StringLiteral kStructManagedTensorSlice =
     "extensibility.ManagedTensorSlice";
 constexpr llvm::StringLiteral kStructInt = "Int";
@@ -266,17 +222,12 @@ constexpr llvm::StringLiteral kStructBool = "Bool";
 constexpr llvm::StringLiteral kStructAddressSpace = "std.memory.AddressSpace";
 constexpr llvm::StringLiteral kStructDType = "DType";
 constexpr llvm::StringLiteral kStructSIMD = "SIMD";
-// Qualified so the emitted tile `compute` signature/body is import-resolvable:
-// the generated Mojo module imports packages qualified (`import layout`, etc.),
-// so bare `TileTensor`/`TensorLayout`/`TileCopier` don't bind when the tile
-// path is actually compiled. `TileTensor`/`TensorLayout` are re-exported from
-// `layout`; `TileCopier` lives in `layout.tile_io` (imported below).
+// Qualified because the generated module imports packages qualified
+// (`import layout`), so bare names don't bind.
 constexpr llvm::StringLiteral kStructTileTensor = "layout.TileTensor";
 constexpr llvm::StringLiteral kStructTensorLayout = "layout.TensorLayout";
 constexpr llvm::StringLiteral kStructTileCopier = "layout.tile_io.TileCopier";
 constexpr llvm::StringLiteral kStructTileLayout = "layout.tile_layout.Layout";
-/// Trait-lane wrapper carrying the graph-visible `StoreAccess` marker over an
-/// output-store fusion functor (`OutputStoreFusion` conformance).
 constexpr llvm::StringLiteral kStructMoggOutputStoreFusionTensor =
     "_MoggOutputStoreFusionTensor";
 constexpr llvm::StringLiteral kStructStateContext =
@@ -284,7 +235,6 @@ constexpr llvm::StringLiteral kStructStateContext =
 constexpr llvm::StringLiteral kStructStaticTuple = "std.utils.StaticTuple";
 constexpr llvm::StringLiteral kStructArray = "std.collections.Array";
 
-/// Returns a Mojo type expression `std.collections.Array[ElementType, N]`.
 inline MojoValue makeMojoArrayType(llvm::StringRef elementType, size_t size) {
   return MojoValue(
       llvm::formatv("{}[{}, {}]", kStructArray, elementType, size).str());
@@ -309,13 +259,10 @@ constexpr llvm::StringLiteral kStructMsFusedOutputVariadicTensors =
 constexpr llvm::StringLiteral kStructTrace = "max.runtime.tracing.Trace";
 constexpr llvm::StringLiteral kStructAnyAsyncValueRef =
     "max.runtime.async_value.AnyAsyncValueRef";
-/// `Color` is re-exported through `max.runtime.tracing` along with `Trace`, so
-/// this qualified path resolves without importing the internal `_tracing`
-/// module directly.
+/// Re-exported through `max.runtime.tracing`, avoiding an `_tracing` import.
 constexpr llvm::StringLiteral kStructColor = "max.runtime.tracing.Color";
 constexpr llvm::StringLiteral kFnTraceStart = "start";
 constexpr llvm::StringLiteral kFnTraceEnd = "end";
-/// `Trace(..., color=Color("orange"))` kwarg name.
 constexpr llvm::StringLiteral kParameterColor = "color";
 constexpr llvm::StringLiteral kStructIntTuple = "layout.IntTuple";
 constexpr llvm::StringLiteral kStructCoord = "layout.Coord";
@@ -333,23 +280,18 @@ constexpr llvm::StringLiteral kEnumAddressSpaceGeneric = "GENERIC";
 constexpr llvm::StringLiteral kEnumIoInput = "extensibility.IO.Input";
 constexpr llvm::StringLiteral kEnumTraceLevelOp =
     "max.runtime.tracing.TraceLevel.OP";
-/// `DType.int8` member used to spell out a one-byte dtype.
 constexpr llvm::StringLiteral kEnumDTypeInt8 = "int8";
-/// `DType.int` member: the native index-sized integer dtype used for the
-/// dynamic (runtime) elements of layout `Coord`s.
+/// The index-sized dtype of dynamic layout `Coord` elements.
 constexpr llvm::StringLiteral kEnumDTypeInt = "int";
 
 //===----------------------------------------------------------------------===//
 // Mojo free-function names (emitted into Mojo source)
 //===----------------------------------------------------------------------===//
 
-// Qualified (std.memory is imported qualified) so the tile `compute` body's
-// staging allocation binds when the tile path is compiled.
+// Qualified because std.memory is imported qualified.
 constexpr llvm::StringLiteral kFnStackAllocation =
     "std.memory.stack_allocation";
-/// `std.utils.numerics.nan[dtype]()` / `inf[dtype]()`: dtype-parameterized
-/// constructors for the special float values that have no Mojo literal
-/// spelling.
+/// For special float values with no Mojo literal spelling.
 constexpr llvm::StringLiteral kFnNumericsNan = "std.utils.numerics.nan";
 constexpr llvm::StringLiteral kFnNumericsInf = "std.utils.numerics.inf";
 constexpr llvm::StringLiteral kFnToManagedTensorSlice =
@@ -400,23 +342,18 @@ constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =
     "managed_tensor_slice.simd_store_into_tensor_pointer";
-/// Comptime hook returning the `(rows, cols)` tile shape a tile-programming
-/// kernel operates on, matching the driver's `foreach_fusion_tile` default.
+/// Returns a tile kernel's `(rows, cols)` tile shape.
 constexpr llvm::StringLiteral kFnGetKernelTileShape =
     "managed_tensor_slice.get_kernel_tile_shape";
 constexpr llvm::StringLiteral kFnToIndexList = "layout.to_index_list";
-/// Converts a `layout.Coord` into an `IndexList[rank]`; `std.utils.coord` is
-/// not re-exported from `std.utils`, so this needs its own qualified name.
+/// Fully qualified because `std.utils` does not re-export `coord`.
 constexpr llvm::StringLiteral kFnCoordToIndexList =
     "std.utils.coord.coord_to_index_list";
-/// The async task primitives are package-private: `std.runtime` does not
-/// re-export them, so these need the qualified `_asyncrt` module name.
+/// Package-private, so qualified with `_asyncrt`.
 constexpr llvm::StringLiteral kFnCreateTask =
     "std.runtime._asyncrt.create_task";
 
-/// Affinity-aware variant: `_create_task(handle, *, desired_worker_id=<id>)`.
-/// Only emitted for GPU-device launches; maps to the package-private function
-/// added alongside `task_id_for_device` in `max.runtime.asyncrt`.
+/// Affinity-aware variant (`desired_worker_id=<id>`), for GPU-device launches.
 constexpr llvm::StringLiteral kFnCreateTaskWithAffinity =
     "std.runtime._asyncrt._create_task";
 constexpr llvm::StringLiteral kFnTaskIdForDevice =
@@ -424,14 +361,10 @@ constexpr llvm::StringLiteral kFnTaskIdForDevice =
 constexpr llvm::StringLiteral kFnGetSafeTaskId =
     "max.runtime.tracing.get_safe_task_id";
 
-/// Mojo functions emitted directly.
 constexpr llvm::StringLiteral kFnMax = "std.math.max";
 constexpr llvm::StringLiteral kFnPrint = "print";
 
-// NOTE: Mojo field / method names accessed on values via `.foo` are no longer
-// free constants. Each one is a `static constexpr llvm::StringLiteral` member
-// of the wrapper class for the type that owns it (see "Wrapper classes for
-// high-traffic Mojo types" below).
+// Field / method names accessed via `.foo` live on the wrapper classes below.
 
 //===----------------------------------------------------------------------===//
 // Trait names (used in struct conformance declarations)
@@ -483,9 +416,8 @@ constexpr llvm::StringLiteral kStructOwnedByteBuffer =
     "builtin_primitives.primitives.OwnedByteBuffer";
 constexpr llvm::StringLiteral kStructOwnedTensor =
     "builtin_primitives.primitives.OwnedTensor";
-/// `async_pack()` method on `OwnedByteBuffer` / `OwnedTensor`: builds a fresh
-/// `AsyncValue` over the composite's backing memory, used to register a
-/// device-graph output.
+/// Builds an `AsyncValue` over an `OwnedByteBuffer` / `OwnedTensor`'s memory,
+/// to register a device-graph output.
 constexpr llvm::StringLiteral kFnAsyncPack = "async_pack";
 constexpr llvm::StringLiteral kComptimeDTypeNoneType = "NoneType";
 
@@ -498,20 +430,15 @@ constexpr llvm::StringLiteral kParameterHost = "host";
 constexpr llvm::StringLiteral kParameterInput = "input";
 constexpr llvm::StringLiteral kParameterDType = "dtype";
 constexpr llvm::StringLiteral kParameterRank = "rank";
-/// SIMD width parameter name in a fusion functor's `__call__`/`load`/`store`
-/// method signature (paired with `dtype`/`rank`/`element_alignment`).
 constexpr llvm::StringLiteral kParameterWidth = "width";
 constexpr llvm::StringLiteral kParameterIOSpec = "io_spec";
 constexpr llvm::StringLiteral kParameterStaticSpec = "static_spec";
 constexpr llvm::StringLiteral kParameterSize = "size";
-/// `DeviceContextArray[length=N]`'s parameter keyword.
 constexpr llvm::StringLiteral kParameterLength = "length";
 constexpr llvm::StringLiteral kParameterStaticSpecs = "static_specs";
 constexpr llvm::StringLiteral kParameterSimdWidth = "simd_width";
 constexpr llvm::StringLiteral kParameterElementAlignment = "element_alignment";
-/// The source tensor's own static byte alignment, threaded into the
-/// stride-aware fused load/store primitives so they match
-/// `simd_load/store_*_managed_tensor_slice` (a `TileTensor` carries none).
+/// The source tensor's static alignment, which a `TileTensor` does not carry.
 constexpr llvm::StringLiteral kParameterTensorAlignment = "tensor_alignment";
 constexpr llvm::StringLiteral kParameterElementSize = "element_size";
 constexpr llvm::StringLiteral kParameterOutputStaticShape =
@@ -528,26 +455,22 @@ constexpr llvm::StringLiteral kParameterStorage = "Storage";
 constexpr llvm::StringLiteral kParameterTaskId = "task_id";
 constexpr llvm::StringLiteral kParameterOutput = "output";
 constexpr llvm::StringLiteral kParameterElementType = "element_type";
-/// `Pointer.__init__(to=<value>)` kwarg.
 constexpr llvm::StringLiteral kParameterTo = "to";
-/// Runtime kwargs of `foreach_fusion` (`tensor`/`elem`/`ctx`). Keep in sync
-/// with `max/kernels/src/graph_compiler/builtin_primitives/primitives.mojo`.
+/// Keep in sync with `foreach_fusion` in
+/// `max/kernels/src/graph_compiler/builtin_primitives/primitives.mojo`.
 constexpr llvm::StringLiteral kParameterForeachTensor = "tensor";
 constexpr llvm::StringLiteral kParameterForeachElem = "elem";
 constexpr llvm::StringLiteral kParameterForeachCtx = "ctx";
 constexpr llvm::StringLiteral kMoggForeachTileRegistration =
     "mogg.call.foreach_tile";
-/// Argument names used in trait-conforming fusion struct methods
-/// (`load`/`store`/`compute`).
 constexpr llvm::StringLiteral kParameterSelf = "self";
 constexpr llvm::StringLiteral kParameterIdx = "idx";
 constexpr llvm::StringLiteral kParameterVal = "val";
 constexpr llvm::StringLiteral kParameterDst = "dst";
 constexpr llvm::StringLiteral kParameterTileCoords = "tile_coords";
 constexpr llvm::StringLiteral kParameterCopier = "copier";
-/// The comptime copier-*type* parameter in the tile `compute` signature. It
-/// must differ from the runtime arg name (`kParameterCopier`), or the emitted
-/// method redefines `copier`. Mirrors the trait's `Copier`/`copier` split.
+/// Must differ from `kParameterCopier`, or the emitted method redefines
+/// `copier`.
 constexpr llvm::StringLiteral kParameterCopierType = "Copier";
 constexpr llvm::StringLiteral kParameterStoreCopier = "store_copier";
 constexpr llvm::StringLiteral kParameterStoreCopierType = "StoreCopier";
@@ -556,9 +479,8 @@ constexpr llvm::StringLiteral kParameterStoreCopierType = "StoreCopier";
 // Stdlib package names
 //===----------------------------------------------------------------------===//
 
-/// Packages that the emit-Mojo path imports unconditionally into every
-/// generated Mojo module. TODO(GEX-2488): Do this programmatically by
-/// checking the Modular config rather than hardcoding.
+/// Imported into every generated Mojo module. TODO(GEX-2488): Derive from the
+/// Modular config rather than hardcoding.
 constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
     kPackagesToImport[] = {
         {"builtin_primitives.primitives", ""},
@@ -577,17 +499,13 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"max.runtime.tracing", ""},
         {"max.runtime.async_value", ""},
         {"layout", ""},
-        // Makes `layout.tile_io.TileCopier` resolvable in the tile `compute`
-        // signature when the tile path is compiled.
+        // For `layout.tile_io.TileCopier`.
         {"layout.tile_io", ""},
 };
 
 /// TODO(GEX-2488): Find another way to detect that a type is an `IOSpec`
 /// without relying on package / type name.
 inline bool isMojoIOSpecTypeName(llvm::ArrayRef<mlir::FlatSymbolRefAttr> refs) {
-  // After the extensibility fuse, `IOSpec` lives in
-  // `extensibility/managed_tensor_slice.mojo` and the Mojo compiler emits
-  // it under the dotted path `managed_tensor_slice.IOSpec`.
   constexpr llvm::StringLiteral mojoTypeName = "IOSpec";
   if (refs.empty())
     return false;
@@ -622,9 +540,8 @@ constexpr llvm::StringLiteral kFusedComputeOutputTileTensor =
     "FusedComputeOutputTileTensor";
 constexpr llvm::StringLiteral kFusedOutputTileTensor = "FusedOutputTileTensor";
 
-/// Mojo `IO` enum member-alias short names (the names that appear inside
-/// `KGEN::SugarKind::MemberAlias` attributes when an `IOSpec` parameter is
-/// stored in elaborated bytecode).
+/// Mojo `IO` member names, as they appear in `KGEN::SugarKind::MemberAlias`
+/// attributes of a stored `IOSpec` parameter.
 constexpr llvm::StringLiteral kIoInput = "Input";
 constexpr llvm::StringLiteral kIoOutput = "Output";
 constexpr llvm::StringLiteral kIoFusedInput = "FusedInput";
@@ -638,24 +555,15 @@ constexpr llvm::StringLiteral kIoFusedOutputTile = "_FusedOutputTile";
 // Wrapper classes for high-traffic Mojo types
 //===----------------------------------------------------------------------===//
 //
-// Each wrapper holds a `MojoValue` and exposes typed accessors that use the
-// centralized field/method-name constants above. They make the Mojo ABI the
-// GraphCompiler relies on visible at the C++ call site: instead of
-// `value.get("unsafe_ptr")()` you write `mts.unsafePtr()`. A rename in Mojo
-// becomes a one-line edit in the wrapper rather than a grep across the GC.
-//
-// The wrappers are intentionally thin (no validation, no caching). They are
-// pass-by-value, hold a `MojoValue`, and inline trivially.
+// Thin typed accessors over a `MojoValue` (e.g. `mts.unsafePtr()` instead of
+// `value.get("unsafe_ptr")()`), so a Mojo rename is a one-line edit.
 //
 //===----------------------------------------------------------------------===//
 
-/// Wrapper around a Mojo `ManagedTensorSlice` value. Exposes the fields and
-/// fusion-bind methods the GC accesses during Mojo emission.
 class ManagedTensorSliceRef {
 public:
   explicit ManagedTensorSliceRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field / method symbol names on `ManagedTensorSlice`.
   static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
   static constexpr llvm::StringLiteral kShape = "shape";
   static constexpr llvm::StringLiteral kStrides = "strides";
@@ -666,8 +574,7 @@ public:
   static constexpr llvm::StringLiteral kStaticStridesTuple =
       "_static_strides_tuple";
   static constexpr llvm::StringLiteral kAlignment = "alignment";
-  /// `_ptr` is the underlying-storage pointer field used by VariadicTensors
-  /// elements.
+  /// Storage pointer of VariadicTensors elements.
   static constexpr llvm::StringLiteral kPtr = "_ptr";
   static constexpr llvm::StringLiteral kIoSpec = "io_spec";
   /// Bind methods for fusion lambdas.
@@ -682,14 +589,12 @@ public:
   static constexpr llvm::StringLiteral kBindToFusedOutputTile =
       "_bind_to_fused_output_tile";
 
-  /// Fusion functor field names, and the matching struct type parameters
-  /// (`type_of(slice).InFusion` / `.OutFusion`).
+  /// Fusion functor fields and the matching type parameters.
   static constexpr llvm::StringLiteral kInFusion = "in_fusion";
   static constexpr llvm::StringLiteral kOutFusion = "out_fusion";
   static constexpr llvm::StringLiteral kInFusionParam = "InFusion";
   static constexpr llvm::StringLiteral kOutFusionParam = "OutFusion";
 
-  /// Field accessors (return the raw field value, not a call).
   MojoValue staticSpec() const { return value.get(kStaticSpec); }
   MojoValue staticShapeTuple() const { return value.get(kStaticShapeTuple); }
   MojoValue staticStridesTuple() const {
@@ -700,7 +605,6 @@ public:
   MojoValue rawPtr() const { return value.get(kPtr); }
   MojoValue inFusion() const { return value.get(kInFusion); }
   MojoValue outFusion() const { return value.get(kOutFusion); }
-  /// The fusion struct types, read off the slice's own type parameters.
   MojoValue inFusionType() const {
     return MojoValue("type_of")({}, {value}).get(kInFusionParam);
   }
@@ -708,14 +612,12 @@ public:
     return MojoValue("type_of")({}, {value}).get(kOutFusionParam);
   }
 
-  /// Method calls (parens included).
   MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
   MojoValue shape() const { return value.get(kShape)(); }
   MojoValue strides() const { return value.get(kStrides)(); }
   MojoValue toTileTensor() const { return value.get(kToTileTensor)(); }
 
-  /// Fusion bind method invocations. Returns the method handle (uncalled);
-  /// the caller appends `({}, args)` to invoke.
+  /// Return the uncalled method handle.
   MojoValue bindToFusedInput() const { return value.get(kBindToFusedInput); }
   MojoValue bindToFusedOutput() const { return value.get(kBindToFusedOutput); }
   MojoValue bindToFusedComputeOutput() const {
@@ -725,19 +627,15 @@ public:
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `StaticTensorSpec` value.
 class StaticTensorSpecRef {
 public:
   explicit StaticTensorSpecRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field / method symbol names on `StaticTensorSpec`.
   static constexpr llvm::StringLiteral kStaticLayout = "static_layout";
   static constexpr llvm::StringLiteral kAlignment = "alignment";
   static constexpr llvm::StringLiteral kRank = "rank";
   static constexpr llvm::StringLiteral kGetInternals = "get_internals";
-  /// `shape_tuple` / `strides_tuple` are comptime members of `StaticTensorSpec`
-  /// itself (not of the `get_internals()` result, which only carries the
-  /// runtime `alignment` / `address_space`).
+  /// Comptime members of `StaticTensorSpec`, not of `get_internals()`.
   static constexpr llvm::StringLiteral kShapeTuple = "shape_tuple";
   static constexpr llvm::StringLiteral kStridesTuple = "strides_tuple";
 
@@ -747,62 +645,48 @@ public:
   MojoValue shapeTuple() const { return value.get(kShapeTuple); }
   MojoValue stridesTuple() const { return value.get(kStridesTuple); }
 
-  /// `get_internals()` returns a `StaticTensorSpecInternal` carrying the
-  /// runtime `alignment` / `address_space`.
+  /// Carries the runtime `alignment` / `address_space`.
   MojoValue getInternals() const { return value.get(kGetInternals)(); }
 
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `OwnedByteBuffer` value: the storage-carrying
-/// composite every `!mgp.buffer` value lowers to (a non-owning `MutByteBuffer`
-/// view plus an `AnyAsyncValueRef` storage handle, mirroring the C++
-/// `TensorBufferRef`). Consumers unwrap `.view` before handing the value to a
-/// kernel stub or a register-passable container.
+/// What `!mgp.buffer` lowers to: a `MutByteBuffer` view plus an
+/// `AnyAsyncValueRef` storage handle. Unwrap `.view` before passing to a
+/// kernel stub or register-passable container.
 class OwnedByteBufferRef {
 public:
   explicit OwnedByteBufferRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field / method symbol names on `OwnedByteBuffer`.
   static constexpr llvm::StringLiteral kView = "view";
   static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
 
-  /// `val.view` — the non-owning `MutByteBuffer` view over the memory.
   MojoValue view() const { return value.get(kView); }
 
-  /// `val.unsafe_ptr()` — the view's raw device data pointer
-  /// (`Pointer[Int8, MutAnyOrigin]`).
+  /// `Pointer[Int8, MutAnyOrigin]`.
   MojoValue unsafePtr() const { return value.get(kUnsafePtr)(); }
 
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `OwnedTensor` value: the storage-carrying composite
-/// every `!mgp.tensor` value lowers to (a non-owning `DynamicTensor` view plus
-/// an `AnyAsyncValueRef` storage handle, the tensor-typed analogue of
-/// `OwnedByteBuffer`). Consumers unwrap `.tensor` before handing the value to a
-/// kernel stub.
+/// What `!mgp.tensor` lowers to: a `DynamicTensor` view plus a storage
+/// handle. Unwrap `.tensor` before passing to a kernel stub.
 class OwnedTensorRef {
 public:
   explicit OwnedTensorRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field symbol name on `OwnedTensor`.
   static constexpr llvm::StringLiteral kTensor = "tensor";
 
-  /// `val.tensor` — the non-owning `DynamicTensor` view over the memory.
   MojoValue tensor() const { return value.get(kTensor); }
 
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `DeviceGraphBuilder` value: the recorder handed to the
-/// build closure of `mgp.device_graph.create`, which every node in the graph is
-/// recorded into.
+/// The recorder handed to the build closure of `mgp.device_graph.create`.
 class DeviceGraphBuilderRef {
 public:
   explicit DeviceGraphBuilderRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo method / keyword-argument symbol names on `DeviceGraphBuilder`.
   static constexpr llvm::StringLiteral kAddInput = "add_input";
   static constexpr llvm::StringLiteral kAddOutput = "add_output";
   static constexpr llvm::StringLiteral kRegion = "region";
@@ -810,19 +694,17 @@ public:
   static constexpr llvm::StringLiteral kRecordingContext = "recording_context";
   static constexpr llvm::StringLiteral kDependencies = "dependencies";
 
-  /// `builder.add_input(input)` — the graph-owned stable location the body
-  /// records against in place of the caller's buffer, so a replay does not
-  /// depend on the caller's address surviving.
+  /// A graph-owned stable location recorded in place of the caller's buffer,
+  /// so replay does not depend on the caller's address.
   MojoValue addInput(MojoValue input) const {
     return value.get(kAddInput)(/*parameters=*/{}, {std::move(input)});
   }
 
-  /// `builder.add_output` — the method handle, uncalled; the caller appends
-  /// `({}, args)` or hands it to `MojoBuilder::call`.
+  /// Returns the uncalled method handle.
   MojoValue addOutput() const { return value.get(kAddOutput); }
 
-  /// `builder.region(work, dependencies = deps)` — chains every node `work`
-  /// records and returns the last, usable as one downstream dependency.
+  /// Chains every node `work` records and returns the last as a single
+  /// dependency.
   MojoValue region(MojoValue work, MojoValue dependencies) const {
     return value.get(kRegion)(
         /*parameters=*/{},
@@ -830,47 +712,37 @@ public:
          MojoValue(kDependencies).equal(std::move(dependencies))});
   }
 
-  /// `builder.context()` — the device context backing the graph.
   MojoValue context() const { return value.get(kContext)(); }
 
-  /// `builder.recording_context()` — a context facade that records enqueued
-  /// work into this builder rather than executing it.
+  /// A context that records enqueued work instead of executing it.
   MojoValue recordingContext() const { return value.get(kRecordingContext)(); }
 
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `DeviceGraph` value: an instantiated graph that can be
-/// replayed. Construction goes through the static `create` factory below rather
-/// than through a value.
+/// An instantiated, replayable graph.
 class DeviceGraphRef {
 public:
   explicit DeviceGraphRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo static-method / keyword-argument symbol names on `DeviceGraph`.
   static constexpr llvm::StringLiteral kCreate = "create";
   static constexpr llvm::StringLiteral kCreateCollective = "create_collective";
   static constexpr llvm::StringLiteral kCache = "cache";
 
-  /// `DeviceGraph.create(args...)` — the static factory that creates a builder,
-  /// runs the build closure and instantiates the recorded graph. `args` is the
-  /// device context, the build closure, then the cache key inputs.
+  /// `args`: device context, build closure, then cache key inputs.
   static MojoValue create(llvm::ArrayRef<MojoValue> args) {
     return MojoValue(kStructDeviceGraph).get(kCreate)(/*parameters=*/{}, args);
   }
 
-  /// `DeviceGraph.create_collective(args...)` — the static factory that
-  /// builds one graph per device from a shared build callback indexed by the
-  /// device ordinal. `args` is the array of device contexts, the build
-  /// callback, the cache-key callback, and the `cache = ...` keyword argument.
-  /// The comptime `N` is inferred from the `Array[DeviceContext, N]` argument.
+  /// Builds one graph per device from a build callback indexed by ordinal.
+  /// `args`: device contexts array, build callback, cache-key callback, and
+  /// `cache = ...`.
   static MojoValue createCollective(llvm::ArrayRef<MojoValue> args) {
     return MojoValue(kStructDeviceGraph)
         .get(kCreateCollective)(/*parameters=*/{}, args);
   }
 
-  /// `cache = <value>` — the keyword argument selecting the caching overload of
-  /// `create`, which reuses a graph an earlier call built.
+  /// Selects the caching overload of `create`.
   static MojoValue cacheArg(MojoValue cache) {
     return MojoValue(kCache).equal(std::move(cache));
   }
@@ -878,20 +750,15 @@ public:
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `StateContext` value: the per-model state the execute
-/// block threads through, holding the cached buffers and the device graph
-/// cache.
+/// Per-model state holding cached buffers and the device graph cache.
 class StateContextRef {
 public:
   explicit StateContextRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo method symbol name on `StateContext`.
   static constexpr llvm::StringLiteral kGetDeviceGraphCache =
       "get_device_graph_cache";
 
-  /// `ctx.get_device_graph_cache()` — a reference to the model's device graph
-  /// cache, created on first use. Not copyable, so callers take a pointer to
-  /// the result rather than binding it to a variable.
+  /// Created on first use. Not copyable, so callers take a pointer to it.
   MojoValue getDeviceGraphCache() const {
     return value.get(kGetDeviceGraphCache)();
   }
@@ -899,38 +766,29 @@ public:
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `OpaquePointer[MutAnyOrigin]` value.
 class OpaquePointerRef {
 public:
   explicit OpaquePointerRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo method symbol names on `Pointer` / `OpaquePointer`. The
-  /// `unsafe_`-prefixed spellings are the current API; the unprefixed ones
-  /// are deprecated aliases kept for source compatibility.
   static constexpr llvm::StringLiteral kBitcast = "unsafe_bitcast";
   static constexpr llvm::StringLiteral kTakePointee = "unsafe_take_pointee";
-  /// Type-level constructor (`OpaquePointer.unsafe_dangling()`); invoked on the
-  /// type rather than an instance, so there's no member accessor for it.
+  /// Invoked on the type, so it has no accessor.
   static constexpr llvm::StringLiteral kUnsafeDangling = "unsafe_dangling";
 
-  /// `unsafe_bitcast[Type]` — caller does `.bitcast(type)()` to invoke after
-  /// supplying the type parameter.
+  /// Returns the uncalled `unsafe_bitcast[Type]`.
   MojoValue bitcast(const MojoValue &targetType) const {
     return value.get(kBitcast)[targetType];
   }
 
-  /// `unsafe_take_pointee()` reads through the pointer.
   MojoValue takePointee() const { return value.get(kTakePointee)(); }
 
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `Task` value returned by `create_task`.
 class MojoTaskRef {
 public:
   explicit MojoTaskRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo method symbol name on `Task`.
   static constexpr llvm::StringLiteral kWait = "wait";
 
   MojoValue wait() const { return value.get(kWait)(); }
@@ -938,13 +796,10 @@ public:
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `StaticString` / `String` value, exposing the
-/// `unsafe_ptr` + `byte_length` accessor pair.
 class MojoStringRef {
 public:
   explicit MojoStringRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field / method symbol names on `String` / `StaticString`.
   static constexpr llvm::StringLiteral kUnsafePtr = "unsafe_ptr";
   static constexpr llvm::StringLiteral kByteLength = "byte_length";
 
@@ -954,14 +809,10 @@ public:
   MojoValue value;
 };
 
-/// Wrapper around a Mojo `TileTensor` value. Encapsulates construction and
-/// field-access patterns used during tile-based epilogue fusion emission.
 class TileTensorRef {
 public:
   explicit TileTensorRef(MojoValue v) : value(std::move(v)) {}
 
-  /// Mojo field / method symbol names on `TileTensor` (and the
-  /// `Pointer` it is built from).
   static constexpr llvm::StringLiteral kLayout = "layout";
   static constexpr llvm::StringLiteral kPtr = "ptr";
   static constexpr llvm::StringLiteral kUnsafeOriginCast = "unsafe_origin_cast";
@@ -972,34 +823,22 @@ public:
       "unsafe_address_space_cast";
   static constexpr llvm::StringLiteral kStaticProduct = "static_product";
 
-  /// `val.layout` — the runtime tile layout.
   MojoValue layout() const { return value.get(kLayout); }
 
-  /// `val.ptr` — the tile's base pointer. A magic `__getattr_param__` field
-  /// access on `TileTensor` (see `layout/tile_tensor.mojo`), not a callable
-  /// method the way `ManagedTensorSlice.unsafe_ptr()` is -- do not add `()`.
+  /// A `__getattr_param__` field, not a method: do not add `()`.
   MojoValue ptr() const { return value.get(kPtr); }
 
-  /// `value.unsafe_address_space_cast[Copier.src_address_space]()` — casts a
-  /// tile into the copier's source address space so it matches the abstract
-  /// `Copier.copy` signature, whose `src` parameter requires
-  /// `address_space = Copier.src_address_space`. The staging destination tile
-  /// is already allocated in `Copier.dst_address_space` (see `makeStorage`), so
-  /// only the source (global-memory) tile needs this cast.
+  /// Casts to `Copier.src_address_space`, as `Copier.copy`'s `src` requires.
+  /// The staging tile is already in the dst space (see `makeStorage`).
   MojoValue castToSrcAddressSpace() const {
     MojoValue space = MojoValue(kParameterCopierType).get(kSrcAddressSpace);
     return value.get(kAddressSpaceCast)[space]();
   }
 
-  /// Constructs a GENERIC-address-space `TileTensor` over stack-allocated
-  /// staging storage (which lives in `Copier.dst_address_space`). The copier
-  /// stages a tile into this storage in `Copier.dst_address_space`, but the
-  /// tile `*.elementwise(TileTensor[dtype, LayoutType, MutAnyOrigin])` overload
-  /// reads it through a GENERIC / `MutAnyOrigin` view. The pointer is cast to
-  /// GENERIC *before* wrapping so the resulting tile's `linear_idx_type` is
-  /// recomputed for the GENERIC address space (a whole-tile
-  /// `unsafe_address_space_cast` would instead preserve the dst-space
-  /// `linear_idx_type` and fail to match):
+  /// A GENERIC-address-space view over staging storage, as the tile
+  /// `*.elementwise` overload expects. The pointer is cast before wrapping so
+  /// `linear_idx_type` is recomputed for GENERIC; casting the whole tile would
+  /// keep the dst-space type and fail to match:
   ///   `TileTensor(storage.unsafe_address_space_cast[AddressSpace.GENERIC]()
   ///               .unsafe_origin_cast[MutAnyOrigin](), layout)`
   static MojoValue fromGenericStorage(const MojoValue &storage,
@@ -1011,23 +850,19 @@ public:
     return MojoValue(kStructTileTensor)({}, {ptr, layout});
   }
 
-  /// `Int(val.dim[d]())` — compile-time dimension query. Wrapped in `Int`
-  /// because `TileTensor.dim()` returns a layout index-type `Scalar`, but the
-  /// tile-offset arithmetic mixes it with `Int` (`tile_coords`, strides).
+  /// `Int(val.dim[d]())`: `dim()` returns a `Scalar`, but tile-offset
+  /// arithmetic mixes it with `Int`.
   MojoValue dim(unsigned d) const {
     return MojoValue(kStructInt)({}, {value.get("dim")[d]()});
   }
 
-  /// Emits the backing stack-allocated storage pointer for a local tile, in
-  /// the address space the copier stages into:
+  /// Stack storage for a local tile in the copier's staging address space:
   ///   `stack_allocation[LayoutType.static_product, dtype,
   ///   address_space = copier.dst_address_space]()`
   static MojoValue makeStorage() {
     MojoValue layoutProduct =
         MojoValue(kParameterLayoutType).get(kStaticProduct);
-    // `dst_address_space` is a comptime field of `TileCopier`, so it must be
-    // read from the comptime type parameter (`Copier`), not the runtime arg
-    // (`copier`).
+    // A comptime field, so read it from `Copier`, not `copier`.
     MojoValue addressSpace =
         MojoValue(kAddressSpace)
             .equal(MojoValue(kParameterCopierType).get(kDstAddressSpace));
@@ -1035,8 +870,6 @@ public:
         layoutProduct, MojoValue(kParameterDType), addressSpace}]();
   }
 
-  /// Constructs a mutable `TileTensor` backed by stack-allocated storage with
-  /// the given layout:
   ///   `TileTensor(storage.unsafe_origin_cast[MutAnyOrigin](), layout)`
   static MojoValue fromMutStorage(const MojoValue &storage,
                                   const MojoValue &layout) {
@@ -1044,10 +877,8 @@ public:
     return MojoValue(kStructTileTensor)({}, {ptr, layout});
   }
 
-  /// Constructs a `TileTensor` from a raw pointer into global (HBM) memory:
+  /// From a global-memory pointer, parenthesised for compound expressions:
   ///   `TileTensor((ptr).unsafe_origin_cast[MutUntrackedOrigin](), layout)`
-  /// The pointer expression is parenthesised to handle compound expressions
-  /// (e.g. `self.ptr_N + offset`) before the method dispatch.
   static MojoValue fromExternalPtr(const MojoValue &ptr,
                                    const MojoValue &layout) {
     MojoValue parenPtr(llvm::formatv("({})", ptr.text).str());
@@ -1056,10 +887,9 @@ public:
     return MojoValue(kStructTileTensor)({}, {castPtr, layout});
   }
 
-  /// The `TileTensor` field type that captures a tensor in a tile-based fusion
-  /// struct: `dtype` plus a `TileLayout` rebuilt from the capture's comptime
-  /// `StaticTensorSpec` parameter `specParam` (e.g. `Self.spec_0`). Matches the
-  /// type of `ManagedTensorSlice.to_tile_tensor()`, so the field accepts it.
+  /// Field type capturing a tensor in a tile fusion struct, with the layout
+  /// rebuilt from `specParam` (e.g. `Self.spec_0`). Matches
+  /// `ManagedTensorSlice.to_tile_tensor()`.
   static MojoValue captureFieldType(llvm::StringRef dtypeText,
                                     llvm::StringRef specParam) {
     return MojoValue(
@@ -1071,14 +901,9 @@ public:
             .str());
   }
 
-  /// Constructs a `TileTensor` from a raw pointer plus fully explicit
-  /// dtype/LayoutType/mut, for callers where none of those are statically
-  /// known (e.g. rebuilding a captured tensor's own tile from its own
-  /// per-capture struct parameters):
+  /// Like `fromExternalPtr` but with explicit dtype/LayoutType/mut:
   ///   `TileTensor[dtype=<dtype>, LayoutType=<layoutType>,
   ///   origin=UntrackedOrigin[mut=<mut>]](ptr=<ptr>, layout=<layout>)`
-  /// Unlike `fromExternalPtr`, mutability is a caller-supplied value rather
-  /// than the fixed `MutUntrackedOrigin` alias.
   static MojoValue fromExternalPtrExplicit(const MojoValue &ptr,
                                            const MojoValue &layout,
                                            const MojoValue &dtype,
@@ -1097,16 +922,12 @@ public:
   MojoValue value;
 };
 
-/// Type-level helper for `ParameterList`. Wraps the `of` comptime factory used
-/// to pack a heterogeneous list of comptime values into a single
-/// `ParameterList`. Unlike the other wrappers this holds no instance — `of` is
-/// invoked on the `ParameterList` type itself.
+/// Packs heterogeneous comptime values into a `ParameterList`. Holds no
+/// instance, since `of` is invoked on the type.
 class ParameterListRef {
 public:
-  /// Mojo method symbol name on `ParameterList`.
   static constexpr llvm::StringLiteral kOf = "of";
 
-  /// `ParameterList.of[elements]()`.
   static MojoValue of(llvm::ArrayRef<MojoValue> elements) {
     return MojoValue(kStructParameterList).get(kOf)[elements]();
   }

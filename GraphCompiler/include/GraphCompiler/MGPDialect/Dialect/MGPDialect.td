@@ -19,88 +19,38 @@ def MGPDialect : Dialect {
   let summary = "Buffers, contexts and other framework/kernel independent "
                 "glue.";
   let description = [{
-    The MGP dialect is intended to provide the 'glue' for binding
-    framework-specific (eg `mo.add`) and KGENned kernels/ops together into a
-    single executable model.
+    The MGP dialect is the 'glue' binding framework-specific ops (eg `mo.add`)
+    and KGENned kernels into a single executable model.
 
-    MGP itself does not provide any op implementations. MGP is directly
-    translatable to MEF (see MLIRToMEF.cpp) without any additional passes,
-    however MGP supports source-to-source optimizations to hoist allocations,
-    avoid unnecessary conversions, avoid unnecessary shape calculations,
-    and avoid unnecessary use of tensor wrappers. Framework-specific dialects
-    may depend on MGP, but not vice versa. MGP supports ops both in the
-    'value semantic' style (take and return values) and the 'buffer semantic'
-    style (take buffers, some of which are pre-allocated to hold outputs).
+    MGP provides no op implementations and translates directly to MEF (see
+    MLIRToMEF.cpp), but supports source-to-source optimizations: hoisting
+    allocations and avoiding unnecessary conversions, shape calculations and
+    tensor wrappers. Framework-specific dialects may depend on MGP, not vice
+    versa. Ops may be 'value semantic' (take and return values) or 'buffer
+    semantic' (take buffers, some pre-allocated to hold outputs).
 
-    Currently MGP is focused exclusively on CPU with a view to allowing both
-    tfl and tf models to mix their native ops with KGEN ops.
+    MGP provides:
+    1. `mgp.model`, holding the model's 'init' and 'execute' invokables and a
+       framework name telling the runtime which framework-specific API
+       (generally an `M::Model` subclass) to wrap around them.
+    2. `!mgp.context`, backed by `M::MGP::Context`, holding any number of
+       `M::MGP::StateSlot`s. Returned by 'init' and reused by each 'execute',
+       it gives ops a place to cache op-specific values. A well-known slot can
+       hold a framework-specific context, giving all ops access to global
+       state.
+    3. `!mgp.buffer`, backed by `M::MLRT::BufferRef`, a (possibly owned) array
+       of uninterpreted bytes (no rank, dims, dtype or endianness). This
+       supports non-tensor types and packed representations, and is the
+       least-common denominator between ops using different tensor wrappers.
+       Buffers may be cached in state slots for reuse as temporaries and
+       outputs.
+    4. `!mgp.tensor`, a statically-ranked tensor with shape, dtype and buffer,
+       for framework-independent use. It is created from an `!mgp.tensor_spec`
+       (backed by `M::TensorSpec`, buildable from dynamic index dims) and a
+       buffer, giving baseline dynamic shape support.
 
-    MGP has five aspects:
-    1. Provides a generic `mgp.model` op holding the compiled model’s ‘init’ and
-       ‘execute’ invokables. Models supply a framework name attribute to
-       indicate to the Modular runtime which framework-specific API to
-       instantiate around those two entry points. Generally this includes a
-       framework-specific subclass of `M::Model`.
-    2. Provides a generic `!mgp.context type`, backed by `M::MGP::Context`,
-       which provides an arbitrary number of `M::MGP::StateSlot` 'state slots'.
-       Contexts can be returned by model 'init' blocks and then be reused by
-       each call to a model 'execute' block. The compiler can use those slots
-       to give operations a place to construct and retrieve operation-specific
-       cached values. (This mimics the tfl 'Node' struct and the tf OpKernel
-       base class). A well-known slot can also be used by the compiler to hold
-       a framework-specific context object, thus giving all operations access
-       to all global context state.
-    3. Provides a generic `!mgp.buffer type`, backed by
-       `M::MLRT::BufferRef`, which represents a (possibly owned) array of
-       bytes. The bytes are 'uninterpreted', ie we do not attempt to capture
-       rank, dimensions, element type or endianness. In this way we support
-       future third-party types beyond tensors, support library-specific
-       'packed' representations, and act as a least-common denominator for
-       conveying tensor values between ops which may use different tensor
-       wrapper types. Buffers may also be cached in ‘buffer slots’ within
-       state slots, thus giving every operation the ability to re-use already
-       allocated buffers for temporary and output results if desired.
-    4. Provides a generic `!mgp.tensor` type, backed by `Tensor`,
-       which provides an uncontroversial CPU-only runtime representation for
-       a statically-ranked tensor with a shape, dtype and underlying buffer.
-       Ops (including the implementations of MO ops) and conversions (see
-       below) are free to use this type when convenient so as to be framework
-       independent. However it is not a one-size-fits-all universal tensor
-       type (and it is very unlikely if it should be generalized to support
-       non-CPU memory and layouts). It is possible to create `!mgp.tensors`
-       from a pair of `!mgp.tensor_spec` (backed by `M::TensorSpec`) and
-       `!mgp.buffer`. It is also possible to create a `!mgp.tensor_spec`
-       from its dynamic dimensions (as the MLIR builtin index type, backed
-       by a size_t). In this way MGP provides baseline support for dynamic
-       shapes.
-    5. [Pending for D] Provides a `mgp.kgen.invoke` primitive for invoking
-       KGENed ops whose signatures, due to fusion, may not be known until model
-       compile time. The implementations are drawn from the mojo_cache and
-       stored in object form in the MEF file. Shim code is also generated at
-       model compile time to mediate between the MEF Frame and the ops native
-       calling convention (as per an ABI), and similarly stored in object form
-       in the MEF file. These shims and ops are linked and registered at model
-       setup time and can then be invoked as for any MEF primitive.
-
-    Though not in MGP directly, MGP requires co-operation from the host
-    framework in the form of:
-    - Conversion primitives between `!mgp.tensor` and any framework native
-      types (eg `TfLiteTensor`). For example `tflp.to_mtensor` and
-      `tflp.from_mtensor` (see `Conversions.cpp`). These conversions alias the
-      underlying buffers when memory safety and memory layout permit. However
-      in general these conversions may need to copy or transform buffers.
-    - A subclass of `M::Model`, such as `M::TFLModel`, to ensure model
-      arguments and results match the native framework representation.
-
-    MGP does not include:
-    - Primitives/kernels, such as `MGP.add`. These must be supplied by a
-      supporting dialect and runtime implementation.
-    - GPU or other non-CPU buffer or tensor representations. These will be
-      added by supporting dialects.
-    - Transformations into and out of the `!mgp.tensor` representation.
-      These must be supplied by the host framework primitive dialect.
-
-    Commented examples of MGP reside in `TFLite/test/tfl/mgp-examples.mlir`.
+    MGP does not include primitives/kernels (such as `MGP.add`); a supporting
+    dialect and runtime must supply them.
   }];
 
   let cppNamespace = "::M::MGP";
@@ -112,11 +62,8 @@ def MGPDialect : Dialect {
 
   let extraClassDeclaration = [{
    private:
-    /// Register all dialect types.
     void registerTypes();
-    /// Register all dialect attributes.
     void registerAttributes();
-    /// Register all dialect ops.
     void registerOperations();
   }];
 

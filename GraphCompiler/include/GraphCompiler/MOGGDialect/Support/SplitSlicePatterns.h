@@ -4,9 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Rewrite patterns for converting between adjacent slice ops and a single
-// split op. These are shared between SymbolicOptimization.cpp and
-// PatternFusion.cpp.
+// Patterns converting between adjacent slice ops and a single split op, shared
+// by SymbolicOptimization.cpp and PatternFusion.cpp.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,8 +19,8 @@
 
 namespace M::MO {
 
-/// Replaces adjacent slice ops that together partition one axis of a common
-/// input with a single split op. This is the inverse of SplitToSlicePattern.
+/// Replaces slice ops that together partition one axis of a common input with
+/// a single split op.
 template <bool AllowDynamicStop = false>
 struct SliceToSplitPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, SliceOp> {
@@ -108,38 +107,29 @@ struct SliceToSplitPattern
           .getSExtValue();
     };
 
-    // A split's results are consecutive chunks in result order, so the slices
-    // have to be ordered by where they actually start. `mo.slice` takes
-    // numpy-style bounds, where the raw constant is not that position: -8 on a
-    // 32-wide axis starts at 24, and an out-of-bound bound is clamped onto the
-    // axis. `clampAxis` is what shape inference normalizes with, so using it
-    // here keeps the ordering and overlap checks on the same positions the
-    // slices actually read.
+    // Split results are consecutive chunks, so order slices by their real
+    // start. `mo.slice` bounds are numpy-style (-8 on a 32-wide axis starts at
+    // 24); `clampAxis` matches shape inference's normalization.
     const int64_t sliceDimSize = inputType.getIntDim(sliceDimension);
     const auto sliceStart = [&](SliceOp sliceOp) {
       return clampAxis(getSliceValue(sliceOp.getStart()), sliceDimSize);
     };
-    // The result type already carries the clamped extent, which a stop bound
-    // does not: it may be negative, or the `int64` max that spells
-    // "to the end of the axis".
+    // Use the result type's clamped extent; a stop bound may be negative or
+    // `int64` max.
     const auto sliceSize = [&](SliceOp sliceOp) {
       return sliceOp.getType().getIntDim(sliceDimension);
     };
 
-    // Only step 1 walks an axis as the contiguous chunk a split result is. A
-    // strided set of slices can still cover every element of the axis (two
-    // step-2 slices of a 32-wide axis sum to 32) while interleaving rather
-    // than partitioning it.
+    // Strided slices can cover an axis while interleaving rather than
+    // partitioning it (two step-2 slices of a 32-wide axis).
     if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
           return getSliceValue(sliceOp.getStep()) != 1;
         })) {
       return rewriter.notifyMatchFailure(op, "Sliced dimension step must be 1");
     }
 
-    // Every chunk has to land inside the axis it claims to partition. A clamped
-    // start cannot run past it, but an extent can: under `AllowDynamicStop` the
-    // extent is whatever the result type declares rather than something shape
-    // inference derived from the bounds.
+    // Under `AllowDynamicStop` the extent comes from the declared result type,
+    // not shape inference, so it can run past the axis.
     if (llvm::any_of(sliceOps, [&](SliceOp sliceOp) {
           return sliceStart(sliceOp) + sliceSize(sliceOp) > sliceDimSize;
         })) {
@@ -174,7 +164,6 @@ struct SliceToSplitPattern
     for (SliceOp sliceOp : sliceOps)
       originalSliceValues.push_back(sliceOp.getResult());
 
-    // `axis` is a compile-time `index` attribute.
     auto splitOp = rewriter.create<SplitOp>(loc, splitTypes, input,
                                             splitSizesOp.getResult(),
                                             llvm::APInt(64, sliceDimension));
@@ -187,11 +176,8 @@ struct SliceToSplitPattern
   }
 };
 
-/// Replaces a split op with individual slice ops for each result.
-/// This is the inverse of SliceToSplitPattern.
-///
-/// When SkipAxisZero is true the pattern rejects splits on axis 0 to avoid
-/// clashing with MGP optimizations that operate on that axis.
+/// Replaces a split op with one slice op per result. `SkipAxisZero` avoids
+/// clashing with MGP optimizations on axis 0.
 template <bool SkipAxisZero = false>
 struct SplitToSlicePattern
     : public DeviceAwareRewritePattern<OpRewritePattern, SplitOp> {
@@ -212,8 +198,7 @@ struct SplitToSlicePattern
       return rewriter.notifyMatchFailure(op, "Pattern needs known input shape");
     size_t rank = inTy.getRank();
 
-    // If all of the users are output ops, don't run as we know they won't be
-    // fused in.
+    // Output users won't be fused in.
     for (Value out : op.getResults()) {
       for (Operation *user : out.getUsers()) {
         if (isa<OutputOp>(user))
@@ -221,14 +206,12 @@ struct SplitToSlicePattern
       }
     }
 
-    // All the output shapes must have a known shape and be of same rank.
     if (llvm::any_of(op.getResultTypes(), [&](Type type) {
           auto tensor = cast<TensorType>(type);
           return !tensor.hasRank() || tensor.getRank() != rank;
         }))
       return rewriter.notifyMatchFailure(op, "Output shape is unknown.");
 
-    // `axis` is a compile-time `index` attribute.
     int64_t axis = op.getAxisAttr().getInt();
 
     if constexpr (SkipAxisZero) {
@@ -239,7 +222,6 @@ struct SplitToSlicePattern
 
     axis = M::normalizeAxis(axis, rank);
 
-    // We must have constant split sizes.
     std::optional<SmallVector<int64_t>> maybeSplits =
         tryGetConstantIntVector(op.getSplitSizes());
     if (!maybeSplits.has_value())

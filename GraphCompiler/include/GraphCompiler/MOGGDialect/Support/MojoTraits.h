@@ -4,11 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Verbatim Mojo-source string constants the GraphCompiler emits once per module
-// for the advanced-fusion MOGG-ABI lane: the buffer-capture identity plus the
-// input-load / output-store / transform fusion functor definitions. Split out
-// of MOGGOps.cpp so the emit paths there stay readable; the consumers there
-// reference these constants directly.
+// Mojo source emitted once per module for the advanced-fusion MOGG-ABI lane:
+// the buffer capture and the input-load / output-store / transform fusion
+// argument definitions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,9 +17,8 @@
 
 namespace M::MOGG {
 
-// Minimal buffer identity at the MOGG-ABI region→stub boundary (pointer +
-// layout only; no trait conformances). Execute-facing dense/fused wrappers are
-// assembled inside the stub body from capture + contract metadata.
+// Buffer identity (pointer + layout) at the region->stub boundary. The stub
+// body builds the dense/fused wrappers from it and the contract metadata.
 static constexpr llvm::StringLiteral kTensorBufferCaptureDefs = R"mojo(
 from layout import TensorLayout
 
@@ -49,42 +46,21 @@ struct _MoggTensorBufferCapture[
         return self._layout
 )mojo";
 
-// Inline definitions for the trait-lane FUSED input-load argument (Phase 5),
-// emitted once per module (like `kDenseTensorArgDefs`). Modeled directly on
-// `tensor-trait-mockups/fused_tensor_args.mojo` -- NO `ManagedTensorSlice` and
-// none of the legacy fusion machinery (`InputFusion` / `FusionStruct_N` /
-// `_bind_to_fused_input` / `simd_load_from_tensor_pointer`):
-//   * `InputLoadFusion` is the trait the GC-emitted fusion FUNCTOR conforms to.
-//     The functor (emitted per fusion by `emitInputLoadFusionFunctor`) captures
-//     its producer's source tensor(s) as a `TileTensor` view and replays the
-//     producer body via dense `tile.load(idx)` -- exactly the mockup
-//     `AddTwoInputLoadFusion.__call__` shape.
-//   * `_MoggInputLoadFusionTensor` is the arg the kernel binds to: it holds the
-//     functor + a layout and presents the landed `Input & Fused & LoadAccess`
-//     surface. Its callable `Loadable` view delegates `load(idx)` straight to
-//     the functor's `__call__` only when `_access_enabled` is true. It is
-//     passed directly to `execute` and the kernel infers its generic `T`.
-// ONE struct serves both CPU and GPU (mirroring `_MoggDenseTensorArg` and the
-// mockup `EmitMojoInputLoadFusionTensor`). `_device_passable` controls whether
-// the host proxy also crosses to the device; `_access_enabled` separately
-// controls whether the callable `Loadable`/`Storable` surface is available on
-// this view of the wrapper. CPU wrappers access directly. GPU host proxies only
-// carry graph-visible access markers and project through `device_type` to the
-// access-enabled device view. `_to_device_type` still projects the functor
-// field-by-field for GPU launches. The functor's captured pointers (bare
-// `Pointer`s) translate to device addresses through their own
-// `_to_device_type`, exactly as `_MoggDenseTensorArg` forwards its handle. (A
-// `TileTensor` field would NOT translate -- the encoder bit-copies it -- which
-// is why the functor captures bare pointers and rebuilds the tile in
-// `__call__`.)
+// The fused input-load argument (`Input & Fused & LoadAccess`):
+//   * `InputLoadFusion` is the trait of the per-fusion functor emitted by
+//     `emitInputLoadFusionFunctor`, which replays the producer body via dense
+//     `tile.load(idx)`.
+//   * `_MoggInputLoadFusionTensor` holds the functor and a layout and is
+//     passed directly to `execute`; `load(idx)` delegates to the functor.
+// One struct serves CPU and GPU. `_device_passable` lets the host proxy cross
+// to the device; `_access_enabled` gates the callable surface, so GPU host
+// proxies project through `device_type` to the access-enabled view. The
+// functor captures bare `Pointer`s, which translate to device addresses; a
+// `TileTensor` field would be bit-copied, so the tile is rebuilt in `__call__`.
 //
-// NOTE: `kInputLoadFusionDefs` and its siblings `kOutputStoreFusionDefs` /
-// `kTransformFusionDefs` below are near-identical raw Mojo-source string
-// literals (same field layout, `_to_device_type`, `shape()`), differing
-// mainly in trait name, the one access method, and the transform variant's
-// extra tile field. Being string literals they are hard to single-source
-// today; if a fourth fused form appears, generate these from a small builder
-// rather than adding a fourth verbatim block.
+// NOTE: this and `kOutputStoreFusionDefs` / `kTransformFusionDefs` are
+// near-identical. If a fourth fused form appears, generate them from a
+// builder instead of adding another verbatim block.
 static constexpr llvm::StringLiteral kInputLoadFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
 from extensibility import Fused, Input, LoadAccess, Loadable, Tensor, UnsafeFusedView
@@ -204,15 +180,10 @@ struct _MoggInputLoadFusionTensor[
         ](idx)
 )mojo";
 
-// Inline definitions for the trait-lane FUSED output-store argument (Phase 5),
-// the epilogue counterpart of `kInputLoadFusionDefs`. Modeled on the mockup
-// `OutputStoreFusion` / `EmitMojoOutputStoreFusionTensor` -- NO
-// `ManagedTensorSlice`. `OutputStoreFusion.__call__(idx, value)` runs the fused
-// consumer epilogue and writes; `_MoggOutputStoreFusionTensor` presents the
-// landed `Output & Fused & StoreAccess` surface. The callable `Storable`
-// conformance is gated by `_access_enabled` for the same reason as fused load:
-// GPU host proxies can be enqueued and projected, but cannot directly
-// dereference; the projected `device_type` enables the store surface.
+// The fused output-store argument (`Output & Fused & StoreAccess`), the
+// epilogue counterpart of `kInputLoadFusionDefs`. `OutputStoreFusion.__call__`
+// runs the fused consumer epilogue and writes. `Storable` is gated by
+// `_access_enabled` as for fused load.
 static constexpr llvm::StringLiteral kOutputStoreFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
 from extensibility import Fused, Output, StoreAccess, Storable, Tensor, UnsafeFusedView
@@ -335,22 +306,13 @@ struct _MoggOutputStoreFusionTensor[
         ](idx, value)
 )mojo";
 
-// Inline definitions for the trait-lane FUSED output-TRANSFORM (compute-output)
-// argument (Phase 5). Element compute-output is ONE output edge that the kernel
-// both transforms and writes, so `_MoggTransformFusionTensor` composes
-// `Transformable` (apply the fused transform, returns the value) and
-// `TileTensorable` (project the real output buffer so the parent stores the
-// result) on a single operand -- NOT two operands. The transform functor is
-// pure value->value (it does NOT write); the parent kernel performs the final
-// store via `to_tile_tensor(z).store(...)`. The graph-visible marker
-// `TransformAccess` is UNCONDITIONAL (so the wrapper satisfies an
-// `Output & Fused & TransformAccess` bound on both host and device); the
-// callable `Transformable` / `TileTensorable` surfaces are gated by
-// `_access_enabled` and the device kernel refines through `downcast[...,
-// Transformable & TileTensorable]`. The output buffer is held as a bare
-// `Pointer` (NOT a `TileTensor`) so it translates to a device address;
-// `to_tile_tensor` rebuilds the tile. Modeled on the mockup
-// `EmitMojoTransformFusionTensor`.
+// The fused output-transform (compute-output) argument. The kernel both
+// transforms and writes one output edge, so a single operand composes
+// `Transformable` (pure value->value) and `TileTensorable` (projects the output
+// buffer for the parent's final store). The callable surfaces are gated by
+// `_access_enabled`; the device kernel refines via `downcast[...,
+// Transformable & TileTensorable]`. The buffer is a bare `Pointer` so it
+// translates to a device address.
 static constexpr llvm::StringLiteral kTransformFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
 from extensibility import DenseTensor, Fused, Output, TileTensorable, TransformAccess, Transformable, UnsafeFusedView

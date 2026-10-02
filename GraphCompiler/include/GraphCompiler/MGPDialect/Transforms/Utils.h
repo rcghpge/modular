@@ -19,8 +19,7 @@
 
 namespace M::MGP {
 
-/// Finds the first of type T in a valueRange and returns that in
-/// an optional
+/// Returns the first value in args of type T.
 template <typename T>
 std::optional<Value> findFirstOf(const ValueRange &args) {
   for (const auto &arg : args) {
@@ -30,8 +29,7 @@ std::optional<Value> findFirstOf(const ValueRange &args) {
   return std::nullopt;
 }
 
-/// Finds all of type T in the argument list of a valueRange and returns that in
-/// a SmallVector
+/// Returns all values in args of type T.
 template <typename T>
 llvm::SmallVector<Value> findAllOf(const ValueRange &args) {
   llvm::SmallVector<Value> res;
@@ -119,11 +117,9 @@ using ValueSetVector = llvm::SetVector<Value, SmallVector<Value>>;
 /// chain directly to primitiveChains.
 void accumulatePrimitiveChains(ValueSetVector &primitiveChains, Value chain);
 
-/// If targetOp is not before anchorOp, move it. If targetOp then has an
-/// operand that is not before itself, move that also, and so on.
-/// If your graph is not a DAG you're gonna have a bad time.
-/// Though not required for correct MEF execution, it helps the
-/// readability of the generated MLIR.
+/// Moves targetOp before anchorOp, then transitively any operand def not
+/// before its user. Requires a DAG. Not needed for MEF correctness, only for
+/// readable generated MLIR.
 void moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp);
 
 /// Returns a chain value which will be ready only when all of chains (which

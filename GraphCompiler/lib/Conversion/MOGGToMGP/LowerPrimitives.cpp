@@ -48,8 +48,7 @@ struct LowerPrimitivesPass
   void runOnOperation() override;
 };
 
-// All POP, index and MGP Primitives that are registered we will allow fusion
-// of.
+// Registered POP, index and MGP primitives may fuse.
 static inline bool canFuseOp(Operation *op) {
   if (isa<MGP::SyncOp>(op))
     return false;
@@ -61,12 +60,11 @@ static inline bool canFuseOp(Operation *op) {
       wait && wait.getIsSideStreamJoin())
     return false;
 
-  // Do not fused buffer.constant.external as doing it would lead to a HUGE
-  // region.
+  // Fusing buffer.constant.external would create a huge region.
   if (isa<MGP::BufferAllocOp, MGP::BufferConstantExternalOp>(*op))
     return false;
 
-  // Allow for custom ops starting with "testfuse." for testing purposes.
+  // "testfuse." ops are for testing.
   return isa_and_nonnull<MGPDialect, KGEN::POP::POPDialect,
                          mlir::index::IndexDialect>(op->getDialect()) ||
          isa<KGEN::ParamConstantOp>(op) ||
@@ -79,7 +77,6 @@ static inline bool isAsync(Operation *op) {
 }
 
 static inline bool canDuplicate(Operation *op) {
-  // Allow for custom ops with "testfuse" for testing purposes.
   if (op->getName().getIdentifier().strref().starts_with("testfuse."))
     return true;
 
@@ -92,7 +89,6 @@ static inline bool canDuplicate(Operation *op) {
              mlir::index::IndexDialect>(op->getDialect());
 }
 
-// Wrap a mogg.generic_compiled_region around the given operation.
 static ErrorOr<MOGG::GenericCompiledRegionOp>
 wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
                         CompiledRegionBodyBuilder bodyBuilder) {
@@ -100,7 +96,6 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
   if (auto attrToValOp = dyn_cast<MGP::MGPSelectiveLowerAttrOpInterface>(op))
     constResources = builder.getArrayAttr(attrToValOp.getLiftableAttributes());
 
-  // Build compile region operation.
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
       op->getNumOperands(), InOutSignatureAttr::InOutSemantics::kNone);
   auto newKernel = MOGG::GenericCompiledRegionOp::create(
@@ -129,7 +124,6 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
     kernelBody.addArgument(MOGG::AsyncType::get(operand.getType()),
                            operand.getLoc());
 
-  // Build the kernel body.
   builder.setInsertionPoint(&kernelBody, kernelBody.begin());
   ErrorOr<SmallVector<Value>> outputs =
       bodyBuilder(builder, loc, op, kernelBody.getArguments());
@@ -159,7 +153,6 @@ void LowerPrimitivesPass::runOnOperation() {
   auto cloneOperationBuilder =
       [](OpBuilder &builder, Location loc, Operation *op,
          ValueRange inputs) -> ErrorOr<SmallVector<Value>> {
-    // Simply clone the operation into the compiled region.
     mlir::IRMapping mapping;
     for (auto [from, to] : llvm::zip_equal(op->getOperands(), inputs))
       mapping.map(from, to);
@@ -168,7 +161,6 @@ void LowerPrimitivesPass::runOnOperation() {
   };
 
   const auto walkerFn = [&](Operation *op) {
-    // Skip any operations nested within a region.
     if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
       return mlir::WalkResult::skip();
 
@@ -203,10 +195,8 @@ void LowerPrimitivesPass::runOnOperation() {
 
     MOGraphLoweringState::lowerMOGGABI(*newKernel);
 
-    // If the op to lower is an index constant op, we should replace it with a
-    // mgp.buffer.constant and a resource attribute. This improves compilation
-    // time because we won't be hashing kernels based on the value of the
-    // constant.
+    // Lower an index constant to a mgp.buffer.constant resource so kernels
+    // are not hashed on the constant's value, improving compile time.
     if (isa<mlir::index::ConstantOp>(op)) {
       auto loweredIndexOp =
           *newKernel->getBodyBlock().getOps<mlir::index::ConstantOp>().begin();

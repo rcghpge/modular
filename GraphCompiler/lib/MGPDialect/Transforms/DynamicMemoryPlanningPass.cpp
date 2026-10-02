@@ -36,22 +36,15 @@ struct AllocInfo {
   SmallVector<Operation *> uses;
 };
 
-/// Return true if the given value is trivially computable (i.e.,
-/// arithmetic and tensor_spec ops) from a block argument. This is used to
-/// determine if a given value representing the size of an allocation is
-/// data-dependent.
-///
-/// The results of the analysis are cached on a per-operation basis in the
-/// `trivial` cache. The 'isTrivial' property is determined on a per-operation
-/// basis, so we cache the results as a mapping from operations to bools.
+/// Returns true if `v` is computable from block arguments by arithmetic and
+/// tensor_spec ops alone, i.e. an allocation size that is not data-dependent.
+/// Results are cached per producing op in `trivial`.
 bool isTriviallyComputable(Value v, DenseMap<Operation *, bool> &trivial) {
   Operation *producer = v.getDefiningOp();
 
-  // Block argument is trivial
   if (!producer)
     return true;
 
-  // If we already know this is trivial, continue
   if (auto it = trivial.find(producer); it != trivial.end())
     return it->second;
 
@@ -60,7 +53,6 @@ bool isTriviallyComputable(Value v, DenseMap<Operation *, bool> &trivial) {
     return result;
   };
 
-  // If the producing op isn't trivial, this isn't a trivial value
   bool isTrivialOp = producer->hasTrait<OpTrait::ConstantLike>() ||
                      isa<KGEN::POP::POPDialect>(*producer->getDialect()) ||
                      isa<mlir::index::IndexDialect>(*producer->getDialect()) ||
@@ -69,8 +61,6 @@ bool isTriviallyComputable(Value v, DenseMap<Operation *, bool> &trivial) {
   if (!isTrivialOp)
     return cacheResult(false);
 
-  // If all operands of the defining op aren't trivial, this isn't a trivial
-  // value
   auto trivialOperands =
       llvm::all_of(producer->getOperands(), [&](Value operand) {
         return isTriviallyComputable(operand, trivial);
@@ -105,7 +95,6 @@ class DynamicMemoryPlanningPass
     ExecuteState execState(modelOp->getContext(), modelOp);
     OpBuilder &execBuilder = execState.builder;
 
-    // Get dependency tree for the current block
     DependencyTree &tree = analysis.getDepTree(execState.execute);
 
     llvm::MapVector<DeviceRefAttr, SmallVector<AllocInfo>> deviceToAllocs;
@@ -113,17 +102,15 @@ class DynamicMemoryPlanningPass
     DenseMap<Operation *, bool> trivialVals;
 
     for (auto allocOp : execState.execute->getOps<MGP::BufferAllocOp>()) {
-      // Ignore CPU allocations for now. Will be addressed by GEX-557
+      // TODO(GEX-557): Plan CPU allocations too.
       if (allocOp.getDevice().getLabel() == kCPULabel)
         continue;
 
       ErrorOr<SmallVector<Operation *>> allocUses = getAllocUses(allocOp);
 
-      // Skip any allocations that have no uses or have untraceable aliases
       if (allocUses.isError() || allocUses->empty())
         continue;
 
-      // Ignore data-dependent allocations
       if (!isTriviallyComputable(allocOp.getRuntimeSize(), trivialVals))
         continue;
 
@@ -137,8 +124,6 @@ class DynamicMemoryPlanningPass
         uses.push_back(use);
       }
 
-      // If the tree didn't have information on every use of this alloc, skip
-      // it to be safe
       if (ineligibleAlloc)
         continue;
 
@@ -147,8 +132,7 @@ class DynamicMemoryPlanningPass
                         allocOp.getRawAlign(), std::move(uses)});
     }
 
-    // Set insertion point before the new chain because it makes the IR easier
-    // to read.
+    // At the block start, for readability.
     execBuilder.setInsertionPointToStart(modelOp.getExecuteBlock());
 
     SmallVector<BufferAllocOp> allocsToDelete;
@@ -156,8 +140,7 @@ class DynamicMemoryPlanningPass
       if (allocs.size() <= 1)
         continue;
 
-      // Sort allocs by the topological index of their earliest use so that
-      // allocations needed sooner are planned first.
+      // Plan allocations needed sooner first.
       auto firstTopoIndex = [&](const AllocInfo &info) {
         unsigned minIdx = std::numeric_limits<unsigned>::max();
         for (Operation *use : info.uses)
@@ -168,12 +151,10 @@ class DynamicMemoryPlanningPass
         return firstTopoIndex(a) < firstTopoIndex(b);
       });
 
-      // Construct and populate BufferPlanOp input arrays
       SmallVector<uint64_t> alignments;
       SmallVector<Value> runtimeSizes;
 
-      // Keep track of the LCM of all alignments so we can use this alignment
-      // for the main allocation
+      // The pool is aligned to the LCM of all alignments.
       uint64_t totalAlignment = 1;
       for (const AllocInfo &a : allocs) {
         runtimeSizes.push_back(a.runtimeSize);
@@ -181,9 +162,8 @@ class DynamicMemoryPlanningPass
         totalAlignment = std::lcm(totalAlignment, a.alignment);
       }
 
-      // Compute the NxN sharing matrix. canShare[i][j] = 1 iff all uses of
-      // allocation i are guaranteed to execute after all uses of allocation j,
-      // or vice versa. This is checked directly via the runsAfter sets.
+      // canShare[i][j] = 1 iff all uses of i run after all uses of j, or vice
+      // versa.
       size_t n = allocs.size();
       SmallVector<uint8_t> canShare(n * n, 0);
       for (size_t i : llvm::seq(n)) {
@@ -209,24 +189,20 @@ class DynamicMemoryPlanningPass
           getDeviceContext(device, modelOp.getExecuteDevices());
       ASSERT_STREAM(deviceContext, "Could not find device context for device");
 
-      // Create BufferPlanOp in execute block
       auto bufferPlanOp = BufferPlanOp::create(execBuilder, loc, runtimeSizes,
                                                alignments, canShare,
                                                /*staticSizes=*/{});
 
       TypedValue<IndexType> poolSize = bufferPlanOp.getHighWatermark();
 
-      // Allocate a larger buffer.
       Value alloc = bufferBuilder.bufferAlloc(
           execBuilder, loc, execState.getContext(), execState.getRootChain(),
           poolSize, deviceContext.value(), totalAlignment);
 
       auto memPoolBuffer = cast<TypedValue<DeviceBufferType>>(alloc);
 
-      // Replace all allocations with slices into the memPoolBuffer via a single
-      // bulk-slice op.  Using one op instead of N individual buffer.slice ops
-      // avoids stressing sequence fusion, which can duplicate each slice op
-      // independently (O(N) fan-out).
+      // One bulk-slice op rather than N buffer.slice ops: sequence fusion can
+      // duplicate each slice op independently (O(N) fan-out).
       SmallVector<Value> offsets(bufferPlanOp.getOffsets().begin(),
                                  bufferPlanOp.getOffsets().end());
       SmallVector<Value> sizes;
@@ -244,7 +220,6 @@ class DynamicMemoryPlanningPass
       }
     }
 
-    // Finally delete all the old allocations.
     for (BufferAllocOp alloc : allocsToDelete)
       alloc.erase();
   }

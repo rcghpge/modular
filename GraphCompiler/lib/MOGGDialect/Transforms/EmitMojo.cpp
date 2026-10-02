@@ -34,9 +34,8 @@ namespace M::MOGG {
 namespace {
 
 // Returns true if every use of `constOp` is as the slot operand of an
-// `mgp.buffer.get_cached`. Used to decide whether the constant can be safely
-// lifted to a kernel argument without breaking other ops that depend on its
-// compile-time value.
+// `mgp.buffer.get_cached`, so lifting it to a kernel argument breaks no op
+// that needs its compile-time value.
 static bool allUsesAreCachedBufferSlot(mlir::index::ConstantOp constOp) {
   for (mlir::Operation *user : constOp->getUsers()) {
     auto cached = mlir::dyn_cast<MGP::BufferGetCachedOp>(user);
@@ -48,35 +47,21 @@ static bool allUsesAreCachedBufferSlot(mlir::index::ConstantOp constOp) {
 
 } // namespace
 
-// GEX-3685: Lift inline `index.constant` ops feeding into
-// `mgp.buffer.get_cached` slot operands to kernel-stub function arguments,
-// so that two kernels that differ only in the cached-buffer slot index get
-// structurally identical bodies and `MergeIdenticalKernelStubs` can collapse
-// them. Without this, kernels like `region_1078` and `region_1065` (a
-// 537-line near-duplicate pair in gemma-4 vision) survive into Mojo emission
-// as separate functions that the Mojo compiler then has to elaborate
-// independently.
+// GEX-3685: Lift `index.constant` ops feeding `mgp.buffer.get_cached` slot
+// operands to kernel-stub arguments, materialized at each `ExecuteCompiledOp`
+// caller, so kernels differing only in the slot index become identical and
+// `MergeIdenticalKernelStubs` collapses them (e.g. a 537-line near-duplicate
+// pair in gemma-4 vision).
 //
-// Approach: for each MGP-ABI KernelStubOp body, find every `index.constant`
-// whose sole uses are as the slot operand of `mgp.buffer.get_cached`.
-// Promote each such constant to a new `index`-typed kernel argument; erase
-// the constant; rewrite the kernel's `ExecuteCompiledOp` callers to
-// materialize the constant at the call site and pass it as a new operand.
-//
-// Only MGP-ABI kernels are touched: `mgp.buffer.get_cached` lives in the
-// MGP dialect and is only emitted into MGP-ABI kernel bodies (cf.
-// `RaiseBackIndexConstant`, which gates on the same invariant), so a
-// MOGG-ABI kernel can never have `index.constant` ops feeding `get_cached`.
-// And the only caller op of an MGP-ABI kernel is `ExecuteCompiledOp` --
-// `CallStubOp` / `CallStubAsyncOp` only target MOGG-ABI kernels (enforced
-// by `CallStubOp::verifySymbolUses`).
+// Only MGP-ABI kernel bodies contain `get_cached` (cf.
+// `RaiseBackIndexConstant`), and their only caller op is `ExecuteCompiledOp`:
+// `CallStubOp` / `CallStubAsyncOp` target MOGG-ABI kernels only (enforced by
+// `CallStubOp::verifySymbolUses`).
 void liftBufferCacheSlots(mlir::ModuleOp moduleOp) {
   mlir::MLIRContext *ctx = moduleOp.getContext();
   mlir::Type indexType = mlir::IndexType::get(ctx);
 
-  // Build symbol-name → callers map by walking ExecuteCompiledOp ops once.
-  // CallStubOp / CallStubAsyncOp only target MOGG-ABI kernels and so cannot
-  // be callers of the MGP-ABI kernels we transform here.
+  // Symbol name -> ExecuteCompiledOp callers.
   llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<mlir::Operation *, 4>>
       callersByName;
   moduleOp.walk([&](MOGG::ExecuteCompiledOp exec) {
@@ -84,9 +69,6 @@ void liftBufferCacheSlots(mlir::ModuleOp moduleOp) {
   });
 
   for (auto kernel : moduleOp.getOps<MOGG::KernelStubOp>()) {
-    // See doc comment: only MGP-ABI kernel bodies can contain
-    // `mgp.buffer.get_cached` and therefore the inline `index.constant`
-    // ops we want to lift.
     if (kernel.getAbi() != MOGG::ABIKind::MGP)
       continue;
     mlir::Block &body = kernel.getBodyBlock();
@@ -180,13 +162,10 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
       state.builder.import(moduleName.string());
     }
 
-    // Each emitted kernel call uses the kernel's fully-qualified path
-    // (`<module>.<Struct>.<method>`). The library imports above only bind the
-    // top-level package, not the submodule the kernel lives in, so under
-    // submodule-visibility gating that path isn't navigable. Import each
-    // kernel's module explicitly. A `KernelDeclOp`'s `sym_name` is the struct's
-    // fully-resolved name (`<module>.<Struct>`), so the module is everything
-    // before the final segment.
+    // Library imports bind only the top-level package, so under
+    // submodule-visibility gating a kernel's fully-qualified path
+    // (`<module>.<Struct>.<method>`) isn't navigable. Import each kernel's
+    // module: its `KernelDeclOp` `sym_name` minus the final segment.
     llvm::StringSet<> importedKernelModules;
     for (auto kernelDecl : moduleOp.getOps<MOGG::KernelDeclOp>()) {
       auto [moduleName, structName] =
@@ -199,7 +178,6 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
 
     state.builder.newline();
 
-    // Emit mojo for all the kernel stubs that exist in the current module.
     for (auto &&kernelStub : llvm::make_early_inc_range(
              moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
       if (kernelStub.emitMojo(state).failed()) {
@@ -294,9 +272,8 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     moduleOp->removeAttr(MO::DeviceInfoMapping::kAttrName);
   }
 
-  // This pass emits Mojo text. The kernel-dedup and try/except preparation
-  // passes it used to run in a nested pass manager now live in
-  // `buildMgpPipeline`, immediately before this pass.
+  // Kernel-dedup and try/except preparation run in `buildMgpPipeline`
+  // immediately before this pass.
   void runOnOperation() override { emitMojoText(); }
 };
 

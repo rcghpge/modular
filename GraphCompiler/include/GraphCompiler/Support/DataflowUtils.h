@@ -19,19 +19,13 @@ namespace M {
 
 enum class WalkDirection { Producers, Consumers };
 
-/// The dataflow-walk engine: the single traversal every other helper here
-/// composes. Visits every non-visited op reachable from `op` in `Dir`,
-/// including `op` itself. Neighbors are the producing ops of `op`'s operands
-/// (`Producers`) or the users of `op`'s results (`Consumers`).
-///
-/// The functor returns an `mlir::WalkResult`:
+/// The traversal every other helper here composes. Visits each op reachable
+/// from `op` (inclusive) once, via operand producers (`Producers`) or result
+/// users (`Consumers`). The functor returns an `mlir::WalkResult`:
 ///   - `advance()`   expand this op's neighbors,
 ///   - `skip()`      do not expand this op's neighbors (prune this branch),
 ///   - `interrupt()` stop the whole walk.
-/// Returns the overall walk result; inspect `.wasInterrupted()`.
-///
-/// A null neighbor (an operand that is a block argument, i.e. has no defining
-/// op) is skipped rather than visited.
+/// Block-argument operands (null producers) are skipped.
 template <WalkDirection Dir>
 inline mlir::WalkResult walkDataflowGraph(
     mlir::Operation *op,
@@ -96,9 +90,7 @@ inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Value target) {
   mlir::Operation *startDef = start.getDefiningOp();
   if (!startDef)
     return false;
-  // A reachable value equals `target` iff `target` is an operand of some op in
-  // the producer cone (block-arg targets included, hence the operand scan
-  // rather than a defining-op comparison).
+  // Scan operands rather than defining ops so block-arg targets match too.
   return dataflowGraphContains<WalkDirection::Producers>(
       startDef, [&](mlir::Operation *op) {
         return llvm::is_contained(op->getOperands(), target);
@@ -112,16 +104,13 @@ inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Value target) {
 /// %2 = bar(%1)
 /// ```
 /// `dataflowGraphDependsOn(%2, foo) == true`.
-/// Same as `llvm::any_of(target->getResults(), [](Value r) { return
-/// dataflowGraphDependsOn(start, r); })`.
 inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Operation *target) {
   return dataflowGraphContains<WalkDirection::Producers>(
       start.getDefiningOp(), [&](mlir::Operation *op) { return op == target; });
 }
 
-/// True iff `op`'s producer cone bottoms out entirely in ops of `ConstantTypes`
-/// (checked only at operand-less source ops). Any op reached with a block-arg
-/// operand makes the result false: it is not constant-foldable.
+/// True iff every operand-less source op in `op`'s producer cone is one of
+/// `ConstantTypes` and no op in it has a block-arg operand.
 template <typename... ConstantTypes>
 inline bool dataflowGraphFoldsToConstants(mlir::Operation *op) {
   if (!op)

@@ -18,12 +18,9 @@
 
 namespace M {
 
-/// Class holding a Value or an mlir::InFlightDiagnostic. Use this class to
-/// indicate that an error has already been emitted and a new one does not need
-/// to be emitted. Functions receiving this error can modify it if necessary.
-/// Use this on functions that either propagate an error or those that can emit
-/// an error on an operation. Use `CompileDiagnosticOr` for functions that do
-/// not have an operation to report an error on.
+/// Holds a Value or an already-emitted mlir::InFlightDiagnostic, which
+/// receivers may amend. For functions that propagate an error or emit one on
+/// an operation; use `CompileDiagnosticOr` when there's no operation.
 template <typename Value>
 class [[nodiscard]] CompileDiagnosticOr {
 public:
@@ -49,7 +46,6 @@ public:
                               std::is_convertible<OtherT, Value>::value>>
   CompileDiagnosticOr(ErrorOr<OtherT> &&other) : data(other) {}
 
-  /// Check if this object contains an error.
   bool isError() const { return data.index() == 0; }
   explicit operator bool() const { return isError(); }
 
@@ -67,11 +63,9 @@ class [[nodiscard]] CompileDiagnosticOrSuccess
     : public CompileDiagnosticOr<Detail::Empty> {
 public:
   using CompileDiagnosticOr::CompileDiagnosticOr;
-  // This allows initialization from success().
   /*implicit*/ CompileDiagnosticOrSuccess(SuccessType success)
       : CompileDiagnosticOr(Detail::Empty()) {}
 
-  // Allow default initialization to success.
   CompileDiagnosticOrSuccess() : CompileDiagnosticOr(Detail::Empty()) {}
 };
 

@@ -53,16 +53,13 @@ def SimplifyChainsPass : Pass<"mgp-simplify-chains", "MGP::ModelOp"> {
     ```mlir
       %a = grt.chain.create (%x, %y, %z)
     ```
-    where AsyncValueDependencies::impliesReady(%x, %y) then there's no need
-    to include %y and we can rewrite to:
+    where AsyncValueDependencies::impliesReady(%x, %y), %y is dropped:
     ```mlir
       %a = grt.chain.create (%x, %z)
     ```
 
-    If in addition AsyncValueDependencies::impliesReady(%x, %z) then we can
-    simply replace %a for %x and remove the merge.
-
-    If any operand is known to be isAlwaysReady then it can be removed.
+    If also impliesReady(%x, %z), %a is replaced by %x. Operands known to be
+    isAlwaysReady are removed.
   }];
 
   let statistics = [
@@ -103,9 +100,8 @@ def DeferAllocsPass : Pass<"mgp-defer-allocs", "MGP::ModelOp"> {
 def ConcatInPlacePass : Pass<"mgp-concat-in-place", "MGP::ModelOp"> {
   let summary = "Replaces `mgp.buffer.concat` with `mgp.buffer.split.borrow`.";
   let description = [{
-    This pass replaces `mgp.buffer.concat` with `mgp.buffer.split.borrow`,
-    provided all writers to the operand buffers of the concat can be rewritten
-    to instead write to the result buffers of the split.
+    Applies when all writers to the concat's operand buffers can be rewritten
+    to write to the split's result buffers instead.
 
     For example:
     ```mlir
@@ -132,9 +128,8 @@ def ConcatInPlacePass : Pass<"mgp-concat-in-place", "MGP::ModelOp"> {
     %ch2 = grt.chain.create (%in1_ch, %in2_ch)
     ```
 
-    Note that this pass simply assumes that the argument chain to the
-    concat op will only be ready once all argument buffers are ready. In
-    this way we simply replace uses of %ch2 with %ch1.
+    Assumes the concat's argument chain is ready only once all argument
+    buffers are, so uses of %ch2 are replaced with %ch1.
   }];
 }
 
@@ -155,32 +150,20 @@ def ExecInvariantCodeMotionPass : Pass<"mgp-exec-invariant-code-motion", "MGP::M
       - avoid caching results which are now only needed within the 'init' block.
 
     Notes:
-      1. We want to lift buffer-producing ops into the 'init' block. In order
-         to reference such lifted buffers in the 'execute' block, we need to
-         leverage the buffer cache mechanism, i.e., cache in the 'init' block,
-         and look up the cache in the 'execute' block. Note that
-          (a). If all users of a lifted buffer are also lifted, we don't cache
-               such buffers, thereby minimizing the number of buffer cache ops
-               inserted.
-          (b). If no user of a buffer op is lifted, we don't lift the buffer op
-               because it merely adds more caching without saving us any
-               computation.
+      1. Lifted buffers are cached in 'init' and looked up in 'execute'.
+          (a). Buffers whose users are all lifted are not cached.
+          (b). Buffer ops with no lifted user are not lifted, since that only
+               adds caching without saving computation.
 
-      2. We want to lift ops that modify the lifted buffers into the init
-         phase (e.g., matmul weights pre-packing). Usually such ops produces a
-         chain; in order to preserve control dependency, we must:
-          (a). Update the 'init' block to output a chain that accounts for the
-               lifted chain.
-          (b). Update the 'execute' block to use the input chain instead of the
-               lifted chain.
+      2. Ops modifying lifted buffers (e.g., matmul weights pre-packing) are
+         lifted too. To preserve their chain dependency:
+          (a). 'init' outputs a chain accounting for the lifted chain.
+          (b). 'execute' uses the input chain instead of the lifted chain.
 
-      3. We want to lift ops that produce non-buffer outputs. In order to
-         reference such lifted values in the 'execute' block, we need to perform
-         re-computation, i.e., leave a clone of the computation inside the
-         'execute' block, and lift the original computation (unless we introduce
-         caching mechanism for these output types too). For instance, the output
-         spec of matmul weight packing is used by both the lifted packing
-         computation, and the actual matmul computation in the exec phase.
+      3. Lifted ops with non-buffer outputs are recomputed: a clone stays in
+         'execute', since these types have no cache. For instance, the output
+         spec of matmul weight packing is used by both the lifted packing and
+         the matmul in 'execute'.
 
     For example:
     ```mlir
@@ -203,7 +186,7 @@ def ExecInvariantCodeMotionPass : Pass<"mgp-exec-invariant-code-motion", "MGP::M
       mef.output %ch0, %out_tensor : !mef.chain, !mgp.tensor<?xf32>
     }
     ```
-    is rewritten to (note all the clarifying comments):
+    is rewritten to:
     ```mlir
     mgp.model @example : mof init {
       %ch0 = grt.chain.create ()
@@ -286,10 +269,8 @@ def PredicateAssertDependenciesPass : Pass<"mgp-predicate-asserts-deps", "MGP::M
     %ch2 = grt.chain.create %ch, %1
     some_user %ch2, %0
 
-    Operations that do not take in a chain will ignore asserts meaning they no
-    additional dependency is inserted. The result of those operations could
-    still be dependent on the assert which would be invalid if the assertion
-    fails.
+    Ops that take no chain get no added dependency, so their results may still
+    be computed from values whose assert fails.
   }];
 }
 
@@ -301,9 +282,8 @@ def VerifyModelArgumentsPass : Pass<"mgp-verify-model-arguments", "MGP::ModelOp"
   let summary = "Ensures that user provided model arguments match the static "
                 "expectations";
   let description = [{
-    This pass will add runtime shape comparison checks to dynamically verify
-    that the tensors a user provides match the statically known expectations of
-    the model arguments.
+    Adds runtime shape checks that user-provided tensors match the model
+    arguments' static expectations.
 
     Example:
     ```mlir
@@ -324,14 +304,12 @@ def PrepareDevicePrimitivesPass : Pass<"mgp-prepare-device-primitives"> {
   let summary = "Prepares device-generic MGP primitives for execution by the "
                 "GraphRT.";
   let description = [{
-    This pass will:
-      - rename device-generic MGP primitives to include the label
-        of the primitive's 'main' device in the primitive name. In this way the
-        GraphRT primitive dispatch mechanism can be used to support multiple
-        devices without the need for any additional indirection.
-      - replaces #M.device_ref attributes with just the device id. In this way
-        we avoid reconstructing device labels at runtime which are ignored
-        anyway.
+    This pass:
+      - appends the label of each device-generic MGP primitive's 'main' device
+        to its name, so GraphRT primitive dispatch supports multiple devices
+        without extra indirection.
+      - replaces #M.device_ref attributes with just the device id, avoiding
+        reconstructing device labels at runtime that are ignored anyway.
 
     For example:
     ```mlir
@@ -356,14 +334,12 @@ def PrepareDevicePrimitivesPass : Pass<"mgp-prepare-device-primitives"> {
 def ExplicitBufferLifetimesPass : Pass<"mgp-buffer-lifetimes", "MGP::ModelOp"> {
   let summary = "Inserts mgp.buffer.free ops based on the results of MGPBufferLifetimeAnalysis";
   let description = [{
-    This pass tries to insert an mgp.buffer.free op for each mgp.alloc
-    at a location in the graph where it is guaranteed that there will be no more
-    accesses to the buffer. If there is no such location before the end of the
-    graph, no free will be inserted.
+    Inserts an mgp.buffer.free op for each mgp.alloc where the buffer is
+    guaranteed to have no more accesses, if such a point exists before the end
+    of the graph.
 
-    Note that the buffer.free ops do not actually free the buffer. Buffer memory
-    management is handled by refcounting in the runtime. This pass exists purely
-    as a way to debug and validate BufferLifetimeAnalysisPass.
+    The buffer.free ops do not free anything (the runtime refcounts buffers);
+    this pass only exists to debug and validate BufferLifetimeAnalysisPass.
   }];
 }
 
@@ -406,7 +382,6 @@ def SimpleBufferReusePass : Pass<"mgp-simple-buffer-reuse", "MGP::ModelOp"> {
       %outChain_1 = use(%outChain_0, %buf0, %buf1)
       %outChain_2 = use(%outChain_1, %buf1, %buf0)
     ```
-
   }];
 }
 
@@ -447,16 +422,10 @@ def AttachPythonStackTraces : Pass<"mgp-attach-python-stack-traces", "mlir::Modu
 def GlobalizeSlotIndicesPass : Pass<"mgp-globalize-slot-indices", "mlir::ModuleOp"> {
     let summary = "Globalizes slot indices across all models in the module";
     let description = [{
-     Globalizes all slot indices used across all `mgp.model` operations within the module.
-     This pass iterates through the models in their definition order, assigns a unique
-     range of slot indices to each model based on the cumulative count of slots from
-     previously processed models, and updates the slot indices used within each model
-     accordingly. Finally, it updates the `num_slots` attribute of *all*
-     `mgp.context.create` operations to reflect the total number of slots required
-     across the entire module.
-
-     This ensures that slot indices are globally unique, preventing conflicts when models
-     are potentially combined or inlined later.
+     Gives each `mgp.model`, in definition order, a unique slot index range
+     offset by the slots of preceding models, and sets `num_slots` of *all*
+     `mgp.context.create` ops to the module total. This prevents slot conflicts
+     when models are combined or inlined later.
 
      Example:
 
@@ -513,31 +482,18 @@ def GlobalizeSlotIndicesPass : Pass<"mgp-globalize-slot-indices", "mlir::ModuleO
 def InlineMGPCallsPass : Pass<"mgp-inline-mgp-calls", "mlir::ModuleOp"> {
   let summary = "Inlines the `execute` block of subgraphs at `mgp.call` sites";
   let description = [{
-    Inline `mgp.call` operations into their calling `mgp.model` operations.
+    Visits the `mgp.model` call graph in post-order so callees are inlined
+    before callers. Recursion is an error.
 
-    This pass constructs a call graph of `mgp.model` operations within a module.
-    It performs a post-order traversal (reverse topological sort) of the call
-    graph to determine a safe inlining order, ensuring that callees are inlined
-    before their callers. Recursion is detected and reported as an error, as it
-    is not supported for inlining.
+    For each `mgp.call` in the caller's `init` and `execute` regions:
+    1.  Once per callee, the callee's `init` ops (excluding `mgp.context.create`
+        and the terminator) are cloned before the caller's `init` terminator,
+        mapping the weights registry, devices and context.
+    2.  The callee's `execute` ops (excluding the terminator) are cloned at the
+        call site, mapping call operands to block arguments and results back.
+    3.  The `mgp.call` is replaced with the inlined results and erased.
 
-    For each `mgp.call` operation encountered during the traversal of the calling
-    model's `init` and `execute` regions:
-    1.  **Init Block Inlining (Once per Callee):** If the callee's `init` block
-        has not been inlined into the caller's `init` block yet, its operations
-        (excluding `mgp.context.create` and the terminator) are cloned into the
-        caller's `init` block before the terminator. Arguments (weights registry,
-        devices, context) are mapped appropriately.
-    2.  **Execute Block Inlining:** Operations from the callee's `execute` block
-        (excluding the terminator) are cloned at the call site. Operands of the
-        call are mapped to the callee's block arguments, and results are mapped
-        back.
-    3.  The `mgp.call` operation is replaced with the results of the inlined
-        execute block and then erased.
-
-    After all possible calls have been inlined, the pass attempts to erase any
-    `mgp.model` operations that were targets of inlining and now have no remaining
-    uses.
+    Inlined `mgp.model`s left without uses are then erased.
   }];
 }
 
@@ -548,30 +504,20 @@ def InlineMGPCallsPass : Pass<"mgp-inline-mgp-calls", "mlir::ModuleOp"> {
 def OutlineModelsToCallables : Pass<"mgp-outline-models-to-callables", "mlir::ModuleOp"> {
   let summary = "Converts all MGP::ModelOps into component MEF::CallableOps and wrapping MEF::ModelOps";
   let description = [{
-    Lowers all `MGP::ModelOps` into a structure directly executable by GraphRT,
-    including subgraphs.
+    Lowers all `MGP::ModelOps`, including subgraphs, into a structure directly
+    executable by GraphRT, in two steps:
+    1) Propagate prefix handling through the model call graph.
+    2) Lower the denormalized `mgp.model` ops to:
+        a) `mef.model` entry points, packaging the init and exec regions for
+           the executor, and
+        b) `mef.callable` ops holding the model's component regions, callable
+           by `grt.invoke` from other regions.
 
-    This pass has two major conceptual steps:
-    1) Propagate prefix handling through model call graph
-    2) Take the (now, and progressively moreso) denormalized `mgp.model` ops
-        and lower them fully to a series of:
-        a) `mef.model` ops that represent entry points to the module,
-            and that package the init and exec regions in a form
-            our executor can interpret without too much magic, and
-        b) `mef.callable` ops holding the component regions
-            of the model, which can be directly called by
-            `grt.invoke` ops in other regions.
+    Subgraphs are thus reused at runtime across invocations rather than
+    inlined and monomorphised.
 
-    This allows for reuse of subgraphs without fully inlining and
-    monomorphising their contents. Instead, subgraphs are
-    reused at runtime by the executor across all their invocations.
-
-    A `mef.model` is used to encapsulate this new form with a relaxed
-    relationship between `init` and `exec`. The only requirement
-    that is placed on that relationship is that the output
-    of init be a prefix to the input to exec, and that the
-    remainder of the input to exec match the input signature
-    for the model itself.
+    `mef.model` only requires that init's output be a prefix of exec's input,
+    with the rest of exec's input matching the model's input signature.
 
     Example:
 
@@ -752,8 +698,7 @@ def ComputeDeviceGraphDependenciesPass :
     `mogg.async.pack` / `mogg.async.unpack` inserted to keep the verbatim body's
     types consistent), and the dependency edges are derived from the region's
     chain and tensor inputs. The conversion is 1:1 and local; the edge set is
-    complete at this point (no later stage adds an edge). See
-    `device_graph_synthesis_design.md`.
+    complete at this point (no later stage adds an edge).
 
     For models without `isDeviceGraph`, the pass is a no-op.
   }];
@@ -777,11 +722,9 @@ def SimplifyDeviceGraphDependenciesPass :
       %node_a, ... = mgp.device_graph.dependencies ... dependencies(%node_b, %node_c) ...
     ```
     the direct `%node_c` edge on `%node_a` is redundant: a dependencies op's
-    node result transitively gates on the op's own dependency edges (its edges
-    gate the first node the body records and the body's nodes are chained from
-    there, and an empty body degenerates to an empty node that still carries
-    them), so `%node_b` already orders `%node_a` after `%node_c`. Such edges
-    are removed:
+    node result transitively gates on its own edges (even for an empty body),
+    so `%node_b` already orders `%node_a` after `%node_c`. Such edges are
+    removed:
     ```mlir
       %node_a, ... = mgp.device_graph.dependencies ... dependencies(%node_b) ...
     ```
@@ -805,9 +748,9 @@ def GenerateBuildGraphStubsPass :
   let summary = "Generate `@stub_N_build_graph` recording stubs and retarget the "
                 "staged kernel-stub calls of `isDeviceGraph` models to them.";
   let description = [{
-    Part of device-graph synthesis (stage 4); runs after
-    `mgp-compute-device-graph-dependencies`. Operates on the module so it can
-    add the new module-scope recording stubs. For each `mgp.model` marked
+    Part of device-graph synthesis; runs after
+    `mgp-compute-device-graph-dependencies`. Runs on the module so it can add
+    module-scope recording stubs. For each `mgp.model` marked
     `isDeviceGraph`, finds every `mogg.call.stub @stub_N` inside the
     `mgp.device_graph.staging` op of the model's execute block and, for each
     distinct callee, generates a sibling recording stub `@stub_N_build_graph`.

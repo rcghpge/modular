@@ -6,13 +6,10 @@
 //
 // Implementations of `Staticization` interface for various `mo` ops.
 //
-// TODO(GEX-4093): the shape-function trait migration does not touch
-// `getDataDependentInputIndices` below. It still hand-maintains which
-// inputs are data-dependent.
-// An op's shape function may move entirely onto trait-bound tensor args.
-// After that move, this could instead derive the answer from the bounds
-// the shape function declares. A bare `Tensor` bound cannot read element
-// values, so such inputs are not data-dependent.
+// TODO(GEX-4093): `getDataDependentInputIndices` is hand-maintained. Once a
+// shape function takes only trait-bound tensor args, derive it from the
+// declared bounds: a bare `Tensor` bound cannot read element values, so such
+// inputs are not data-dependent.
 //
 //===----------------------------------------------------------------------===//
 
@@ -496,8 +493,8 @@ SqueezeShapeOp::materializeShapeDefs(ArrayRef<TypedAttr> inputAttrs) {
 // SplitOp
 //===----------------------------------------------------------------------===//
 
-// `axis` is a compile-time `index` attribute; only `splitSizes` (operand 1) is
-// a data-dependent input affecting the output shapes.
+// `axis` is a compile-time attribute; only `splitSizes` (operand 1) is
+// data-dependent.
 SmallVector<int32_t> SplitOp::getDataDependentInputIndices() { return {1}; }
 
 ShapeMaterializeResult

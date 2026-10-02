@@ -27,7 +27,7 @@ namespace M::RMO {
 
 namespace {
 
-/// A cache of for assertion operations.
+/// Dedupes asserts by (condition, message, block).
 using AssertCache = llvm::DenseSet<std::tuple<TypedAttr, StringRef, Block *>>;
 
 TensorValue shapeToIndicesTensor(OpBuilder &builder, Location loc,
@@ -56,11 +56,9 @@ bool isCompatibleShape(TensorType a, TensorType b) {
   return true;
 }
 
-/// Helpers for synthesizing the shape_of / broadcast_shape / broadcast_to
-/// chain that elementwise composite patterns lower into. Each helper passes an
-/// explicit result type to the underlying op so that no fresh `RMO_D*` symbols
-/// are minted — the broadcast destination is `targetType`, whose dim names are
-/// user-declared on the parent op.
+/// Helpers for the shape_of / broadcast_shape / broadcast_to chain that
+/// composite elementwise ops lower to. Results get explicit types whose dims
+/// are user-declared on the composite op, so no `RMO_D*` symbols are minted.
 
 /// Build a rank-1 si64 shape tensor describing `tensor.getType()`'s shape.
 static TensorValue buildShapeOf(OpBuilder &b, Location loc,
@@ -72,9 +70,7 @@ static TensorValue buildShapeOf(OpBuilder &b, Location loc,
   return RMO::MOShapeOfOp::create(b, loc, shapeTy, tensor);
 }
 
-/// Build an `rmo.mo.broadcast_shape` whose result is rank-1 of length
-/// `outputRank` (the broadcasted destination's rank — statically known from
-/// the composite op being lowered).
+/// Builds an `rmo.mo.broadcast_shape` with result length `outputRank`.
 static TensorValue buildBroadcastShape(OpBuilder &b, Location loc,
                                        TensorValue lhsShape,
                                        TensorValue rhsShape,
@@ -85,10 +81,8 @@ static TensorValue buildBroadcastShape(OpBuilder &b, Location loc,
   return RMO::MOBroadcastShapeOp::create(b, loc, resultTy, lhsShape, rhsShape);
 }
 
-/// Broadcast `tensor` to `targetType`'s shape via an `rmo.mo.broadcast_to`
-/// keyed by the runtime shape `shape`. The result type is `targetType` with
-/// `tensor`'s dtype — every dim name in `targetType` is user-declared on the
-/// composite op being lowered, so no fresh dims are needed.
+/// Broadcasts `tensor` to runtime shape `shape`, typed as `targetType` with
+/// `tensor`'s dtype.
 static TensorValue buildBroadcastTo(OpBuilder &b, Location loc,
                                     TensorValue tensor, TensorValue shape,
                                     TensorType targetType) {
@@ -179,9 +173,8 @@ TensorValue rebindToShape(MO::GraphOp graphOp, OpResult input, TensorType newTy,
   return val;
 }
 
-/// `outputParamDecls` contains the param declarations for all outputs.
-/// This function fills `outParamDecls` with only the param declaration needed
-/// for `targetTy`. Needed for multi-outputs op.
+/// Collects the decls in `allParamDecls` that `targetTy` references, so
+/// multi-result ops don't redeclare params.
 void getParamDeclsFor(TensorType targetTy,
                       ArrayRef<KGEN::ParamDeclAttr> allParamDecls,
                       llvm::SmallVectorImpl<ParamDeclAttr> &outParamDecls) {
@@ -212,7 +205,6 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
   size_t numOperands = op->getNumOperands();
   size_t numResults = op->getNumResults();
 
-  // Infer the MO types to binds
   SmallVector<Type> moOperandTypes, moResultTypes;
   SmallVector<SmallVector<KGEN::ParamDeclAttr>> moInputParamDecls;
   SmallVector<SmallVector<KGEN::ParamDeclAttr>> moOutputParamDecls;
@@ -240,14 +232,10 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
     newOperands.push_back(reboundValue);
   }
 
-  // Build the MO op.
-  //
-  // When `inferMOTypes` returns the RMO op's declared result types verbatim
-  // (the "passthrough" case — see `requireRmoResults`), the new MO op
-  // inherits the RMO op's `output_param_decls`: the dims referenced in the
-  // result are exactly the ones the RMO op declared, and the RMO op is about
-  // to be deleted. Otherwise, fall back to `inferMOTypes`'s decls (the new
-  // result type uses minted or input-derived dims that the op itself owns).
+  // If `inferMOTypes` returned the declared result types verbatim (see
+  // `requireRmoResults`), the MO op inherits the RMO op's
+  // `output_param_decls`, since the RMO op is about to be erased. Otherwise it
+  // owns the decls from `inferMOTypes`.
   MO::ParamDeclarationInterface newOp =
       generator(rewriter, op->getLoc(), moResultTypes, newOperands);
 
@@ -275,9 +263,8 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
 
     TensorValue newTensorValue = dyn_cast<TensorValue>(newValue);
 
-    // For now, we don't have very strong verifiers around devices. To avoid
-    // rebinds which change the device reference, copy the device in the
-    // output annotation.
+    // Device verifiers are weak; copy the declared device to avoid rebinds
+    // that change it.
     newTensorValue.setType(
         newTensorValue.getType().cloneWith(targetType.getDeviceRef()));
 
@@ -292,10 +279,8 @@ lowerMOAnalogue(RMO::MOAnalogue op, PatternRewriter &rewriter,
           rebindToShape(graphOp, newOp->getOpResult(i), targetType, rewriter,
                         op.getMOAnalogueOutputParamDecls());
     } else {
-      // For multiple-output ops, op.getMOAnalogueOutputParamDecls() returns all
-      // param declarations with all outputs. We need to filter and keep only
-      // the param decls for every different output (to avoid param
-      // redefinitions).
+      // The decls cover all outputs; keep only this output's to avoid
+      // redefinitions.
       llvm::SmallVector<KGEN::ParamDeclAttr> outputParamDecls;
       getParamDeclsFor(targetType, op.getMOAnalogueOutputParamDecls(),
                        outputParamDecls);
@@ -495,7 +480,6 @@ struct LowerRebindTensorShapeOp
     MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
     Location loc = op->getLoc();
 
-    // Create KGEN parameter containing result of shape equality statement
     auto boolTy =
         KGEN::SIMDType::get(op.getContext(), 1, KGEN::KGENDType::kBool);
     TypedAttr cmpAttr =
@@ -505,7 +489,6 @@ struct LowerRebindTensorShapeOp
         graphOp.getNewParamOfType("RMO_SH_EQ", boolTy);
     KGEN::ParamDeclareOp::create(rewriter, loc, condAttr, cmpAttr);
 
-    // Add assertion, then return a rebind.
     std::string fullMsg = "rebind shape check failed: expected shape ";
     llvm::raw_string_ostream ss(fullMsg);
     ss << MOSH::shapeTypedAttrToStr(resultShape) << " but got "
@@ -523,7 +506,6 @@ struct LowerRebindTensorShapeOp
         graphOp.getNewParamOfType("RMO_SH_CH", chainTy);
     KGEN::ParamDeclareOp::create(rewriter, loc, chainAttr, assertAttr);
 
-    // Return rebound result
     auto moRebind = MO::RebindOp::create(rewriter, loc, result.getType(),
                                          operand, op.getOutputParamDecls());
     rewriter.replaceOp(op, moRebind);
@@ -547,7 +529,6 @@ struct LowerCompositeBinaryElemwiseOp : public OpRewritePattern<RMOOpT> {
     auto yDtype = y.getType().getDtype();
     auto resultDtype = op.getResult().getType().getDtype();
 
-    // Deal with dtype casting if it is needed.
     if (xDtype != resultDtype) {
       x = RMO::MOCastOp::create(rewriter, loc,
                                 x.getType().cloneWith(resultDtype), x);
@@ -596,7 +577,6 @@ struct LowerCompositeBinaryComparisonOp : public OpRewritePattern<RMOOpT> {
     auto xDtype = x.getType().getDtype();
     auto yDtype = y.getType().getDtype();
 
-    // Deal with dtype casting if it is needed.
     ErrorOr<DType> promotedDtype = M::RMO::promoteDtype(xDtype, yDtype);
     ASSERT_STREAM(
         !promotedDtype.isError(),
@@ -671,7 +651,6 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
     Location loc = op->getLoc();
     int64_t axisInt = op.getAxis().getInt();
 
-    // Replace the `rmo.concat` op with a new `mo.concat` op.
     TensorValue concat = MO::ConcatOp::create(
         rewriter, loc, op.getResult().getType(), op.getAxis().getValue(),
         op.getInputs(), op.getOutputParamDecls());
@@ -699,7 +678,6 @@ struct LowerConcat : public OpRewritePattern<RMO::ConcatOp> {
                      "[concat] out_dim must be equivalent to the sum of the "
                      "input dims along the concat axis");
 
-      // Add all ops for the assert to the graph.
       for (auto binding : paramBindings)
         binding.toOp(loc, rewriter);
     }
@@ -715,8 +693,7 @@ struct LowerReshape : public OpRewritePattern<RMO::ReshapeOp> {
 
   LogicalResult matchAndRewrite(RMO::ReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    // Since the shape is already resolved and can't contain any unknown dims,
-    // simply lower to static reshape.
+    // The shape is fully resolved, so lower to the static op.
     rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(
         op, op.getResult().getType(), op.getInput());
     return success();
@@ -728,8 +705,7 @@ struct LowerBroadcastTo : public OpRewritePattern<RMO::BroadcastToOp> {
 
   LogicalResult matchAndRewrite(RMO::BroadcastToOp op,
                                 PatternRewriter &rewriter) const override {
-    // Since the shape is already resolved and can't contain any unknown dims,
-    // simply lower to static broadcast_to.
+    // The shape is fully resolved, so lower to the static op.
     rewriter.replaceOpWithNewOp<MO::Static::BroadcastToOp>(
         op, op.getResult().getType(), op.getInput());
     return success();
@@ -754,7 +730,6 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
     size_t rhsRank = rhsShape.getRank();
     size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
 
-    // Deal with dtype casting if it is needed.
     auto lhsDtype = lhsType.getDtype();
     auto rhsDtype = rhsType.getDtype();
     auto resultDtype = op.getResult().getType().getDtype();
@@ -808,7 +783,6 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
       rhs = MO::Static::BroadcastToOp::create(
           rewriter, loc, rhsType.cloneWith(rhsBroadcastShape), rhs);
 
-    // Execute the actual matmul.
     SmallVector<TypedAttr> matmulTarget{lhsBroadcastTarget};
     matmulTarget[fullRank - 1] = rhsBroadcastTarget[fullRank - 1];
     auto matmulShape = ShapeAttr::get(matmulTarget, rhsShape.getType());
@@ -845,7 +819,6 @@ struct LowerConv : public OpRewritePattern<RMO::ConvOp> {
 
     auto resultType = conv.getType();
 
-    // Promote inputs
     auto [promotedInput, promotedFilter] =
         promoteDTypes(rewriter, conv.getLoc(), resultType.getDtype(),
                       conv.getInput(), conv.getFilter());
@@ -884,12 +857,10 @@ struct LowerConvTranspose : public OpRewritePattern<RMO::ConvTransposeOp> {
 
     TensorType resultType = conv.getType();
 
-    // Promote inputs
     auto [promotedInput, promotedFilter] =
         promoteDTypes(rewriter, conv.getLoc(), resultType.getDtype(),
                       conv.getInput(), conv.getFilter());
 
-    // DeviceRefAttr device = promotedInput.getType().getDeviceRef();
     auto device = getHostDevice(conv.getContext());
     TensorValue stridesConstant =
         shapeToIndicesTensor(rewriter, loc, strides, device);
@@ -926,7 +897,6 @@ struct LowerAvgPool : public OpRewritePattern<RMO::AvgPoolOp> {
     auto countBoundary = avg_pool.getCountBoundary();
     TensorType resultType = avg_pool.getType();
 
-    // Promote inputs
     auto [promotedInput] =
         promoteDTypes(rewriter, avg_pool.getLoc(), resultType.getDtype(),
                       avg_pool.getInput());
@@ -973,7 +943,6 @@ struct LowerMaxPool : public OpRewritePattern<RMO::MaxPoolOp> {
 
     TensorType resultType = max_pool.getType();
 
-    // Promote inputs
     auto [promotedInput] =
         promoteDTypes(rewriter, max_pool.getLoc(), resultType.getDtype(),
                       max_pool.getInput());
@@ -1020,7 +989,6 @@ struct LowerSelect : public OpRewritePattern<RMO::SelectOp> {
     auto yDtype = y.getType().getDtype();
     auto resultDtype = op.getResult().getType().getDtype();
 
-    // Deal with dtype casting if it is needed.
     if (xDtype != resultDtype) {
       x = RMO::MOCastOp::create(rewriter, loc,
                                 x.getType().cloneWith(resultDtype), x);
@@ -1075,14 +1043,12 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
     Location loc = op.getLoc();
     MLIRContext *ctx = getContext();
 
-    // Get the device from the input tensor
     TensorValue input = op.getInput();
     DeviceRefAttr deviceRef = input.getType().getDeviceRef();
     if (!deviceRef)
       return op.emitError() << "rmo.top_k lowering requires input tensor to "
                                "have an assigned device";
 
-    // Marshal out dimension information for assertion.
     auto inputType = input.getType();
     auto inputShape = inputType.getShape();
     const int64_t kVal = op.getK();
@@ -1091,21 +1057,17 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
     int64_t axisVal = op.getAxis();
     axisVal = axisVal < 0 ? axisVal + rank : axisVal;
 
-    // Add parametric check for k <= axis dimension
     MO::GraphOp graphOp = op->getParentOfType<MO::GraphOp>();
     SmallVector<ParamBinding> paramBindings;
     ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-    // Get the dimension along the axis (could be symbolic).
     TypedAttr axisDimAttr = inputShape[axisVal];
     Var axisDim = b.createVar(axisDimAttr);
     Var kVar = b.createVar(ShapeAttr::getDim(ctx, kVal));
 
-    // Create assertion that k <= dimension size
     b.createAssert(kVar <= axisDim,
                    "k value exceeds dimension size along specified axis");
 
-    // Add parameter bindings to the graph.
     for (const ParamBinding &binding : paramBindings)
       binding.toOp(loc, rewriter);
 
@@ -1117,7 +1079,6 @@ struct LowerTopK : public OpRewritePattern<RMO::TopKOp> {
     auto sorted = MO::ConstantOp::create(rewriter, loc, /*value=*/true,
                                          getHostDevice(ctx));
 
-    // Create the MO::TopKOp with proper result types
     auto topkOp =
         MO::TopKOp::create(rewriter, op.getLoc(), op.getValues().getType(),
                            op.getIndices().getType(), input, k, axis, sorted,
@@ -1150,8 +1111,7 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
     // Note that rmo.slice has special restrictions compared to mo.slice:
     // - Requires start to be in [-dim, dim) and stop in [-dim, dim].
     // - Requires steps to be a statically known positive integer.
-    // These are to simplify rmo.slice's shape function, reducing bloat in
-    // algebraic dims computed in the rmo.slice type.
+    // These keep the algebraic dims in the rmo.slice type small.
     Location loc = op.getLoc();
     MLIRContext *ctx = getContext();
     TensorValue input = op.getInput();
@@ -1185,12 +1145,8 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
     SmallVector<ParamBinding> paramBindings;
     ParamExprBuilder b(graphOp, loc, &paramBindings);
     for (size_t axis = 0; axis < input.getType().getRank(); ++axis) {
-      // NOTE: checking for:
-      // - step != 0
-      // - step > 0 => start <= stop
-      // - step < 0 => start >= stop
-      // is handled in the mo.slice shape function.
-
+      // The mo.slice shape function checks step != 0 and the start/stop
+      // ordering implied by the step's sign.
       Var start = b.createVar(startsAttr[axis]);
       Var stop = b.createVar(stopsAttr[axis]);
       auto maybeStartConst = tryGetConstantInt(startsAttr[axis]);
@@ -1202,10 +1158,8 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
         createAssert(b, op, stop >= 0,
                      "[rmo.slice] requires positive stop when symbolic");
 
-      // Restrict start to [-dim, dim) and stop to [-dim, dim].
-      // Stop uses an inclusive upper bound because stop=dim is the
-      // natural exclusive end-of-dimension value (e.g. selecting the
-      // last element produces stop = dim-1+1 = dim).
+      // Stop's upper bound is inclusive since stop = dim is the natural
+      // exclusive end.
       Var dim = b.createVar(inputShape[axis]);
       createAssert(b, op, start >= -dim && start < dim,
                    "[rmo.slice] requires start in [-dim, dim)");
@@ -1213,7 +1167,6 @@ struct LowerSlice : public OpRewritePattern<RMO::SliceOp> {
                    "[rmo.slice] requires stop in [-dim, dim]");
     }
 
-    // Create the mo.slice op.
     auto res = MO::SliceOp::create(rewriter, op->getLoc(), op.getType(), input,
                                    starts, stops, steps);
     res->setDiscardableAttrs(op->getRawDictionaryAttrs());
@@ -1245,8 +1198,7 @@ struct LegalizeRMOOps
 
     RewritePatternSet blockPatterns(context);
 
-    // Default lowering of MOAnalogue Operations.
-    // Setting benefit to zero so that more specific patterns may override.
+    // Benefit 0 so more specific patterns override the default lowering.
     blockPatterns.add<LegalizeRMOMOAnalogue>(context, /*benefit=*/0);
 
     // Override for rmo.mo.transfer to handle chain and avoid param decls.
@@ -1255,11 +1207,9 @@ struct LegalizeRMOOps
     blockPatterns.add<LegalizeMutableLoadOp, LegalizeMutableStoreOp,
                       LegalizeMutableStoreSliceOp>(context);
 
-    // Lowering rebind
     if (!skipRMORebind)
       blockPatterns.add<LowerRebindTensorShapeOp>(context);
 
-    // Lowering composite operations
     blockPatterns.add<
         LowerCompositeBinaryElemwiseOp<RMO::AddOp, RMO::MOAddOp>,
         LowerCompositeBinaryElemwiseOp<RMO::SubOp, RMO::MOSubOp>,
@@ -1269,7 +1219,6 @@ struct LegalizeRMOOps
         LowerCompositeBinaryElemwiseOp<RMO::PowOp, RMO::MOPowOp>,
         LowerCompositeBinaryElemwiseOp<RMO::MinOp, RMO::MOMinOp>,
         LowerCompositeBinaryElemwiseOp<RMO::MaxOp, RMO::MOMaxOp>,
-        // Comparison ops lower the same as other elemwise ops.
         LowerCompositeBinaryComparisonOp<RMO::EqualOp, RMO::MOEqualOp>,
         LowerCompositeBinaryComparisonOp<RMO::NotEqualOp, RMO::MONotEqualOp>,
         LowerCompositeBinaryComparisonOp<RMO::GreaterOp, RMO::MOGreaterOp>,

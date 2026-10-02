@@ -37,15 +37,14 @@ using namespace M;
 int main(int argc, char **argv) {
   DialectRegistry registry;
   registry.insert<
-      // Add the MLIR Dialects.
+      // MLIR.
       arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
       index::IndexDialect, LLVM::LLVMDialect, quant::QuantDialect,
       mlir::ub::UBDialect,
-      // Add the Modular Dialects.
+      // Modular.
       MEF::MEFDialect, DebugInfo::DebugInfoDialect, GRT::GRTDialect, MDialect,
       MGP::MGPDialect, RMO::RMODialect, MOSH::MOSHDialect, MO::MODialect,
       MOGG::MOGGDialect, MAP::MAPDialect>();
-  // Add the KGEN Dialects.
   registerAllKGENDialects(registry);
   return failed(MlirLspServerMain(argc, argv, registry));
 }

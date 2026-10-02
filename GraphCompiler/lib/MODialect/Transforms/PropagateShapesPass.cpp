@@ -38,9 +38,8 @@ namespace M::MO {
 
 } // namespace M::MO
 
-// Collect unique parameter declarations referenced by the shape of a tensor
-// type; used to populate rebind's outputParamDecls when the expected type
-// refers to params not yet declared in the caller graph.
+// Collects the param decls `ty`'s shape references, for a rebind's
+// outputParamDecls.
 static SmallVector<KGEN::ParamDeclAttr> collectDeclsFromShape(TensorType ty) {
   llvm::SmallSetVector<KGEN::ParamDeclAttr, 4> decls;
   auto shape = ty.getShape();
@@ -59,20 +58,15 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
 
   SymbolTable symbolTable(moduleOp);
 
-  // Collect all parameter names already declared in the graph's Region.
-  // This prevents redeclaration when multiple call sites need the same
-  // parameter.
+  // Prevents redeclaring a parameter needed by multiple call sites.
   llvm::DenseSet<StringAttr> declaredInRegion;
 
-  // Add graph input parameters.
   for (KGEN::ParamDeclAttr decl : graphOp.getInputParameters())
     declaredInRegion.insert(decl.getName());
 
-  // Add graph result parameters.
   for (KGEN::ParamDeclAttr decl : graphOp.getResultParameters())
     declaredInRegion.insert(decl.getName());
 
-  // Walk existing ops to collect their declared parameters.
   graphOp.walk([&](KGEN::ParamOpInterface paramOp) {
     paramOp.walkDeclarations([&](KGEN::ParamDeclAttr paramDecl) {
       declaredInRegion.insert(paramDecl.getName());
@@ -104,7 +98,6 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
           (expected.getDeviceRef() != actual.getDeviceRef()))
         continue;
 
-      // Compute expected decls and filter out already declared names.
       SmallVector<KGEN::ParamDeclAttr> expectedDecls =
           collectDeclsFromShape(expected);
       SmallVector<KGEN::ParamDeclAttr> filteredDecls;
@@ -116,7 +109,6 @@ static void normalizeCallOperandsToCallee(GraphOp graphOp) {
       Value reb = RebindOp::create(b, loc, expected, operand, filteredDecls);
       call->setOperand(idx, reb);
 
-      // Add newly declared names to the set for subsequent call sites.
       for (KGEN::ParamDeclAttr decl : filteredDecls)
         declaredInRegion.insert(decl.getName());
     }
@@ -147,9 +139,8 @@ bool isParamDeclOpPure(KGEN::ParamDeclareOp paramDeclOp) {
   return true;
 }
 
-// Assume `useDefGraph` is constructed for `graphOp`, remove all the dead
-// `kgen.param.declare` ops (basically aggressive DCE applied to
-// `kgen.param.declare`s).
+// Aggressive DCE of `kgen.param.declare` ops. `useDefGraph` must be built for
+// `graphOp`.
 void removeDeadParamDeclares(GraphOp graphOp,
                              const KGEN::ParameterUseDefGraph &useDefGraph) {
   // Invariants:
@@ -163,11 +154,8 @@ void removeDeadParamDeclares(GraphOp graphOp,
       worklist.push_back(op);
   };
 
-  // Initialize worklist
   graphOp.walk([&](Operation *op) {
-    // Conservatively collect seeding ops which must be alive -- the only
-    // exceptions are `kgen.param.declare` that are pure (they _might_ not
-    // need to be alive), everything else must be alive.
+    // Seed with every op except pure `kgen.param.declare`s, which may be dead.
     auto paramDeclOp = dyn_cast<KGEN::ParamDeclareOp>(op);
     if (paramDeclOp && isParamDeclOpPure(paramDeclOp))
       return;
@@ -175,12 +163,10 @@ void removeDeadParamDeclares(GraphOp graphOp,
       pushOntoWorklist(op);
   });
 
-  // Process the worklist and find more ops that must be alive.
   while (!worklist.empty()) {
     Operation *op = worklist.pop_back_val();
 
-    // `op` is considered alive, so all of the parameter it uses must be
-    // alive, so the definition ops of those parameters must be alive.
+    // A live op keeps the definitions of the parameters it uses alive.
     for (KGEN::ParamDeclRefAttr usedParamDeclRef :
          useDefGraph.opUses.lookup(op)) {
       const KGEN::ParamDefinition &usedParamDef =
@@ -189,24 +175,18 @@ void removeDeadParamDeclares(GraphOp graphOp,
     }
   }
 
-  // Remove all the `kgen.param.declarle` ops that do not have to be alive.
   graphOp.walk([&](KGEN::ParamDeclareOp paramDeclOp) {
     if (!processed.contains(paramDeclOp))
       paramDeclOp.erase();
   });
 }
 
-/// Handle output op and graph result parameters. This is special in that
-/// 1. We need to manually check for the binding parameters, because they
-/// never materialize kgen.param.decl (the result params are declared in the
-/// graph signature).
-/// 2. We need to be careful about mapping graph result parameters.
-///
-/// NOTE this assumes we've run shape propagation for all the ops within a
-/// `mo.graph`.
+/// Binds graph result parameters to the output op's binding parameters. Result
+/// params are declared in the signature and never materialize a
+/// kgen.param.declare, so bindings are checked manually. Assumes shape
+/// propagation already ran on the whole `mo.graph`.
 void handleOutputBindings(GraphOp graphOp,
                           KGEN::ParameterEvaluator &evaluator) {
-  // First we collect the declared parameter names so we can check for them.
   SmallPtrSet<StringAttr, 4> resDeclNames;
   for (KGEN::ParamDeclAttr decl : graphOp.getResultParameters())
     resDeclNames.insert(decl.getName());
@@ -214,7 +194,6 @@ void handleOutputBindings(GraphOp graphOp,
   for (KGEN::ParamDeclAttr decl : graphOp.getInputParameters())
     argDeclNames.insert(decl.getName());
 
-  // Check if `attr` can appear as a dimension attribute in graph output.
   auto isValidOutputDim = [&](Attribute dimAttr) {
     // Don't allow any reference to parameters declared inside the graph.
     if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(dimAttr))
@@ -226,9 +205,7 @@ void handleOutputBindings(GraphOp graphOp,
     return false;
   };
 
-  // Check if `attr` can appear as a dimension attribute in graph output.
   auto isValidOutputShape = [&](Attribute attr) {
-    // Don't allow any reference to parameters declared inside the graph.
     if (auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(attr))
       return argDeclNames.contains(declRef.getName());
 
@@ -241,16 +218,13 @@ void handleOutputBindings(GraphOp graphOp,
   auto outputOp = graphOp.getOutputOp();
   for (auto [bindingParam, resultParam] :
        llvm::zip(outputOp.getParameters(), graphOp.getResultParameters())) {
-    // NOTE the binding parameter has already been rebound.
-    // Output parameter could be either a shape or dimension, we check to make
-    // sure the resolved parameter is valid.
+    // The binding parameter is already rebound and may be a shape or dim.
     if ((isa<ShapeType>(bindingParam.getType()) &&
          isValidOutputShape(bindingParam)) ||
         isValidOutputDim(bindingParam)) {
       evaluator.setDeclBinding(resultParam.getName(), bindingParam);
     }
-    // Otherwise `KGEN::ParameterEvaluator` will map the result parameter to
-    // itself by default, meaning it won't change in the signature.
+    // Otherwise the evaluator maps the result parameter to itself.
   }
 }
 
@@ -276,7 +250,6 @@ void updateGraphSignature(GraphOp graphOp) {
 
   outputOp.setParameters(newBindingParams);
 
-  // Update the result parameters.
   auto newResultParamsAttr =
       KGEN::ParamDeclArrayAttr::get(graphOp->getContext(), newResultParams);
   NamedAttrList attrs = graphOp->getAttrDictionary();
@@ -297,28 +270,22 @@ void updateGraphSignature(GraphOp graphOp) {
 class StaticizeResult {
 public:
   struct Success {
-    // A series of bindings which model `kgen.param.declare` ops that define
-    // either
-    // - parameter expressions like `D2 = <add(D0, D1)>`
-    // - assertions like `Chain = <...assert(cond, msg)...>`
-    //
-    // These could then be consumed by shape propagation logic which does
-    // substitution & folding, and handles these asserts.
+    // Bindings modeling `kgen.param.declare`s of expressions like
+    // `D2 = <add(D0, D1)>` or asserts like `Chain = <...assert(cond, msg)...>`,
+    // which shape propagation substitutes, folds, and checks.
     SmallVector<ParamBinding> bindings;
 
-    // This is the result of staticization, which could be either
+    // One of:
     // - `IntegerAttr` for a constant integer or boolean.
     // - `ParamDeclRefAttr` for an integer or boolean parameter.
     // - `ParamOperatorAttr` for an integer or boolean parameter expression.
     // - `ShapeAttr` which is a list where each item could be any of the above.
     TypedAttr resultAttr;
 
-    // Constructors
     Success() = default;
     Success(SmallVector<ParamBinding> &&bindings, TypedAttr resultAttr)
         : bindings(std::move(bindings)), resultAttr(resultAttr) {}
 
-    // Disable copy and move.
     Success(const Success &) = delete;
     Success(Success &&) = delete;
     Success &operator=(const Success &) = delete;
@@ -328,10 +295,8 @@ public:
   struct Error {
     std::string msg;
 
-    // Constructors
     Error(const Twine &msg) : msg(msg.str()) {}
 
-    // Disable copy and move.
     Error(const Error &) = delete;
     Error(Error &&) = delete;
     Error &operator=(const Error &) = delete;
@@ -344,9 +309,6 @@ public:
   }
   bool isError() { return std::holds_alternative<Error>(result); }
 
-  /// Returning a reference so that we could either use return as
-  /// - a rvalue, e.g., `res.getSuccess().bindings` or
-  /// - a lvalue, e.g., `const auto& success = res.getSuccess()`
   Success &getSuccess() { return std::get<Success>(result); }
   Error &getError() { return std::get<Error>(result); }
 
@@ -387,17 +349,14 @@ static ErrorOr<TypedAttr> tryStaticizeImpl(Value val, ParamExprBuilder &b) {
             paramToValue.getType()))
       return paramToValue.getValue();
 
-  // Only staticize tensor.
   auto tensorVal = dyn_cast<TensorValue>(val);
   if (!tensorVal)
     return TypedAttr{};
 
-  // Only staticize scalar, 1D or 2D tensor.
   TensorType tensorTy = tensorVal.getType();
   if (!tensorTy.hasRank() || tensorTy.getRank() > 2)
     return TypedAttr{};
 
-  // Only staticize int/bool tensor.
   if (!isa<IntegerType>(tensorTy.getElementType()))
     return TypedAttr{};
 
@@ -411,27 +370,20 @@ static ErrorOr<TypedAttr> tryStaticizeImpl(Value val, ParamExprBuilder &b) {
   if (auto shapeAttr = tryGetShapeAttr(val))
     return shapeAttr;
 
-  // Handle ops that implement the Staticization interface.
   if (auto staticization = val.getDefiningOp<Staticization>()) {
-    // Staticize inputs and collect the results.
     SmallVector<TypedAttr> staticizedInputs;
     for (Value input : staticization->getOperands()) {
-      // Recur on the input value.
       ErrorOr<TypedAttr> staticizedInputOr = tryStaticizeImpl(input, b);
 
-      // Short-circuit on error.
       if (staticizedInputOr.isError())
         return Error(staticizedInputOr.getError());
 
-      // Short-circuit on non-staticizable inputs.
       TypedAttr staticizedInput = staticizedInputOr.get();
       if (!staticizedInput)
         return TypedAttr{};
 
-      // Collect the staticized input.
       staticizedInputs.push_back(staticizedInput);
     }
-    // Invoke the interface method.
     return staticization.tryStaticize(staticizedInputs, b);
   }
 
@@ -450,12 +402,8 @@ static TypedAttr tryFoldMoshOp(Value val) {
   return *attr;
 }
 
-/// Try converting `val` to either
-/// - a symbolic int/bool (if `val` is a scalar tensor) or
-/// - a list of the above (if `val` is a 1D tensor)
+/// Like `tryStaticizeImpl`, but tries the cheaper MOSH folding first.
 static StaticizeResult tryStaticize(Value val) {
-  // First, try folding, which is likely to be cheaper than the staticization
-  // interfaces.
   if (TypedAttr folded = tryFoldMoshOp(val))
     return StaticizeResult::success({}, folded);
 
@@ -472,29 +420,23 @@ static StaticizeResult tryStaticize(Value val) {
   return StaticizeResult::nonStaticizable();
 }
 
-/// Try to shape infer the input op if possible, given the input shapes or
-/// staticized input data. Return either
-/// - a failure as fatal failure (e.g., some shape assertion failed)
-/// - a list of decomposed ops (ordered by SSA and parametric dependencies) if
-///   materialization was possible
-/// - else return an empty vector.
+/// Shape-infers `op` from its input shapes or staticized input data. Returns
+/// an error on fatal failure (e.g. a failed shape assertion), the decomposed
+/// ops (ordered by SSA and parametric dependencies), or an empty vector if the
+/// shape logic can't be materialized.
 static ErrorOr<SmallVector<KGEN::ParamDeclareOp>>
 shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
 
   ShapeMaterializeResult result = op.materializeShapeDefs(inputAttrs);
 
-  // Give up if we can't materialize the shape logic.
   if (result.isNonMaterializable())
     return SmallVector<KGEN::ParamDeclareOp>();
 
-  // Propagate error to caller.
   if (result.isError())
     return Error(result.getError().msg);
 
-  // Successfully inferred, package and propagate information to caller.
   SmallVector<ParamBinding> bindings;
   if (result.isSuccess()) {
-    // Create new declaration of the shape function call's output parameter;
     auto &success = result.getSuccess();
     llvm::append_range(bindings, success.bindings);
 
@@ -510,11 +452,9 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
                     << "expect a single output");
       ShapeAttr outputShape = success.resultShapes.front();
 
-      // Case 0 (output decl is a shape)
+      // Output decl is a shape:
       //   mo.reshape<() -> Sh0: !mosh.ape> : ... -> Sh0
-      //
-      // Create binding for the output shape parameter to output shape which
-      // models ops like the following:
+      // binds
       //   kgen.param.decare Sh0 = <[N0, N1, ...]>
       bindings.push_back(ParamBinding(outputDecls.front(), outputShape));
     } else {
@@ -523,12 +463,10 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
       llvm::DenseSet<KGEN::ParamDeclRefAttr> processedDeclRefs;
       for (auto [i, res, outputShape] :
            llvm::enumerate(op->getResults(), success.resultShapes)) {
-        // Case 1 (output decls are dimensions)
+        // Output decls are dimensions:
         //   mo.reshape<() -> D1, D2> : ... -> [D1, D2]
         //   mo.reshape<() -> D1> : ... -> [10, D1]
-        //
-        // Create binding for the output shape parameter to output dims which
-        // models ops like the following:
+        // bind
         //   kgen.param.decare D1 = <N0>
         //   kgen.param.decare D2 = <add(N1, 10)>
         ShapeAttr annotatedOutShape =
@@ -548,12 +486,10 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
         //   D1 = <outputShape[1]>
         for (auto [axis, dim] :
              llvm::enumerate(annotatedOutShape.getValues())) {
-          // Skip if `dim` is not a dimension parameter
           auto paramDim = dyn_cast<KGEN::ParamDeclRefAttr>(dim);
           if (!paramDim)
             continue;
 
-          // Skip if already added binding to define this parameter.
           if (auto [_, inserted] = processedDeclRefs.insert(paramDim);
               !inserted)
             continue;
@@ -569,7 +505,6 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
     }
   }
 
-  // Convert the bindings to actual `kgen.param.declare` ops.
   OpBuilder builder(op.getContext());
   SmallVector<KGEN::ParamDeclareOp> ops;
   Location loc = op->getLoc();
@@ -611,10 +546,8 @@ struct PropagateShapes {
     if (!isParamOperatorPure(paramOperator))
       return false;
 
-    // A heuristic to avoid having super nested KGEN expression which cannot be
-    // folded away. `kMaxDepth` should be picked such that, folding for
-    // practical models should only require at most this amount of expression
-    // nesting.
+    // Bounds unfoldable expression nesting; practical models need at most
+    // this depth.
     constexpr size_t kMaxDepth = 4;
     auto size = getParamAttrDepth(paramOperator);
     if (size > kMaxDepth)
@@ -659,11 +592,9 @@ struct PropagateShapes {
 
   mlir::ConstantIntRanges
   getRange(KGEN::POC opcode, ArrayRef<TypedAttr> operands, Type resultType) {
-    // Get ranges for operands.
     auto inputs = llvm::map_to_vector(
         operands, [&](TypedAttr arg) { return getRange(arg); });
 
-    // Evaluate the range of comparison operations.
     auto evaluateCmp = [&](mlir::intrange::CmpPredicate pred) {
       const mlir::ConstantIntRanges &lhs = inputs[0], &rhs = inputs[1];
 
@@ -756,7 +687,6 @@ struct PropagateShapes {
       if (identical.getNumOperands() == 2)
         return getRange(KGEN::POC::EQ, identical.getOperands(),
                         identical.getType());
-      // Bail out for attributes we don't recognize.
       return getMaxRange(attr.getType());
     }
 
@@ -794,8 +724,7 @@ struct PropagateShapes {
     return false;
   }
 
-  /// A conservative predicate that returns true iff `attr` is provable to be
-  /// non-negative, and return false we can't claim anything.
+  /// Returns true iff `attr` is provably non-negative.
   bool isDefinitelyNonNegative(TypedAttr attr) {
     auto pred = isSignedType(attr.getType())
                     ? mlir::intrange::CmpPredicate::sge
@@ -813,12 +742,8 @@ struct PropagateShapes {
     return false;
   }
 
-  /// This function serves as shape inference system's extension to KGEN folder
-  /// on `POC::Cond`. It leverages things like range information to enable more
-  /// expression folding, and applies it only to `cond(operands)`, assuming
-  /// `operands` have been folded as much as possible.
-  ///
-  /// Return null if we can't apply any special folding.
+  /// Range-based extension of the KGEN folder for `cond(operands)`, with
+  /// `operands` already folded. Returns null if nothing applies.
   TypedAttr tryFoldCond(ArrayRef<TypedAttr> operands) {
     // Cond is a scalar<bool>, `getRange` need a builtin type.
     if (auto constant = getRange(operands[0]).getConstantValue())
@@ -826,12 +751,8 @@ struct PropagateShapes {
     return {};
   }
 
-  /// This function serves as shape inference system's extension to KGEN
-  /// folders. It leverages things like range information to enable more
-  /// expression folding, and applies it only to `opcode(operands)`, assuming
-  /// `operands` have been folded as much as possible.
-  ///
-  /// Return null if we can't apply any special folding.
+  /// Range-based extension of the KGEN folders for `opcode(operands)`, with
+  /// `operands` already folded. Returns null if nothing applies.
   TypedAttr tryFoldExprAttr(KGEN::POC opcode, ArrayRef<TypedAttr> operands) {
     if (opcode == KGEN::POC::Cond)
       return tryFoldCond(operands);
@@ -846,9 +767,8 @@ struct PropagateShapes {
     TypedAttr rhs = operands[1];
 
     if (opcode == KGEN::POC::Max) {
-      // TODO: need a pattern matcher real bad...
+      // TODO: Use a pattern matcher.
       // <max(add(A, B), B)>
-      // `lhs` and `rhs` are the operands to the max
       auto maxAddOptimization = [&](TypedAttr maxLHS,
                                     TypedAttr maxRHS) -> TypedAttr {
         // Assume add operand is on the lhs.
@@ -859,7 +779,6 @@ struct PropagateShapes {
         if (lhsOp.getNumOperands() != 2)
           return {};
 
-        // ensure add operands are parameters
         TypedAttr addLHS = lhsOp.getOperand(0);
         TypedAttr addRHS = lhsOp.getOperand(1);
 
@@ -875,7 +794,6 @@ struct PropagateShapes {
 
         return {};
       };
-      // Check with both permutations
       if (auto maybeMaxAddOptimization = maxAddOptimization(lhs, rhs))
         return maybeMaxAddOptimization;
       if (auto maybeMaxAddOptimization = maxAddOptimization(rhs, lhs))
@@ -893,12 +811,8 @@ struct PropagateShapes {
       if (isDefinitelyGreater(rhs, lhs))
         return lhs;
     } else if (opcode == KGEN::POC::LT || opcode == KGEN::POC::LE) {
-      // Try more things, since we get this pattern from slice: lt(add(X, Y), X)
-      //     lhs < rhs
-      // <=> lhs - rhs < 0
-      //
-      // This works due to the symbolic optimizations which simplify add
-      // opcodes.
+      // Slice produces lt(add(X, Y), X); rewrite lhs < rhs as lhs - rhs < 0,
+      // which symbolic add simplification can fold.
       auto zero = splatIntLiteralToSIMD(0, cast<KGEN::SIMDType>(lhs.getType()));
       auto diff = KGEN::ParamOperatorAttr::getSub(lhs, rhs);
       auto i1Type = IntegerType::get(lhs.getContext(), 1);
@@ -926,10 +840,8 @@ struct PropagateShapes {
     return IntegerAttr::get(integerType, constant.value());
   }
 
-  /// This function serves as shape inference system's extension to KGEN
-  /// folders. It leverages things like range information to enable more
-  /// expression folding, and applies it recursively to all expression nested
-  /// inside `attr`.
+  /// Applies the range-based folding recursively to every expression nested
+  /// in `attr`.
   TypedAttr tryFoldExprAttr(TypedAttr attr) {
     if (auto identical = dyn_cast<KGEN::ParamIdenticalAttr>(attr)) {
       SmallVector<TypedAttr> foldedOperands;
@@ -957,13 +869,11 @@ struct PropagateShapes {
     return KGEN::ParamOperatorAttr::get(opcode, foldedOperands);
   }
 
-  /// Try to shape infer through given op. If successful, replace `op` with the
-  /// newly generated ops, and push the new ops onto `worklist` so they will be
-  /// processed next immediately.
+  /// Shape-infers `op`. On success, replaces it with the generated ops and
+  /// pushes them onto `worklist` to be processed next.
   static ErrorOrSuccess shapeInferOp(ShapeMaterialization op,
                                      std::deque<Operation *> &worklist) {
-    // Turn inputs into parameter attributes; the mechanism depends on whether
-    // they are data-dependent or not.
+    // Data-dependent inputs are staticized; the rest contribute their shape.
     SmallVector<ParamBinding> staticizationBindings;
     DenseSet<int32_t> dataDepInputIdxs;
     for (int32_t idx : op.getDataDependentInputIndices()) {
@@ -977,11 +887,9 @@ struct PropagateShapes {
       if (dataDepInputIdxs.contains(idx)) {
         StaticizeResult res = tryStaticize(input);
 
-        // Short circuit if a data-dependent input can't be staticized.
         if (res.isNonStaticizable())
           return success();
 
-        // Short circuit on any fatal error.
         if (res.isError())
           return Error(res.getError().msg);
 
@@ -990,8 +898,7 @@ struct PropagateShapes {
         inputAttrs.push_back(success.resultAttr);
 
       } else {
-        // Short circuit if a non-data-dependent input doesn't have a shape; not
-        // exactly sure how this could happen but just in case.
+        // Not expected, but bail if a non-data-dependent input has no shape.
         TensorValue tensorInput = dyn_cast<TensorValue>(input);
         if (!tensorInput)
           return success();
@@ -1000,7 +907,6 @@ struct PropagateShapes {
       }
     }
 
-    // Try shape infer the op, and check if it was successful.
     ErrorOr<SmallVector<KGEN::ParamDeclareOp>> paramDeclOpsOr =
         shapeInferOpImpl(op, inputAttrs);
     if (paramDeclOpsOr.isError())
@@ -1010,10 +916,8 @@ struct PropagateShapes {
     if (paramDeclOps.empty())
       return success();
 
-    // Materialize staticized values; we do this because for certain ops (e.g.,
-    // `mo.slice`), the data dependent input might still get fed to the op
-    // itself, even after the op has been shape inferred. In such cases it's
-    // better to have those input something like
+    // Some ops (e.g. `mo.slice`) still consume the data-dependent input after
+    // shape inference, so materialize the staticized value:
     //   %tmp = mosh.param.to_value: !mosh.ape = <[10, D0]>
     //   %input = mo.shape.to_tensor(%tmp) : !mo.tensor<[2], si32>
     // rather than
@@ -1022,25 +926,24 @@ struct PropagateShapes {
     //   %input = mo.concat(%ten, %d0) : ... -> !mo.tensor<[2], si32>
     OpBuilder builder(op);
     Location loc = op.getLoc();
-    SmallVector<Operation *> newOps; // Tracks all the newly created ops.
+    SmallVector<Operation *> newOps;
     for (ParamBinding &binding : staticizationBindings)
       newOps.push_back(binding.toOp(loc, builder));
     for (auto [idx, input] : llvm::enumerate(op->getOperands())) {
-      // Skip if it's not a data dependent input, or if it's already been
-      // materialized (this occurs if the input is shared between multiple ops).
+      // Skip inputs that aren't data-dependent or that another op sharing them
+      // already materialized.
       if (!dataDepInputIdxs.contains(idx) ||
           !input.getDefiningOp<Staticization>())
         continue;
 
       TensorType inputTensorTy = cast<TensorType>(input.getType());
       DType inputDtype = inputTensorTy.getDtype();
-      // We only staticize input of type `si32` or `si64`, this is a practical
-      // restriction we can easily extend if there are perf needs.
+      // Only si32/si64 for now; easy to extend if perf needs it.
       if (!inputDtype.isInt() ||
           !llvm::is_contained({32, 64}, inputDtype.getWidthInBits()))
         continue;
 
-      // Grab the saved staticization result, and create
+      // Create
       //   %tmp   = mosh.param.to_value: !mosh.ape = <[10, D0]>
       //   %input = mo.shape.to_tensor(%tmp) : !mo.tensor<...>
       TypedAttr inputAttr = inputAttrs[idx];
@@ -1054,17 +957,13 @@ struct PropagateShapes {
         newInputVal = IndexToTensorOp::create(builder, loc, inputTensorTy,
                                               paramToValOp.getResult());
       }
-      // Track the new ops so they'll get processed in the worklist loop later.
       newOps.push_back(paramToValOp);
       newOps.push_back(newInputVal.getDefiningOp());
 
-      // Replace old uses with the new op.
       input.replaceAllUsesWith(newInputVal);
     }
 
-    // Replace the original op with param decl ops in correct order.
-    // Note that the ops from staticization has already been inserted correctly
-    // since they were built with `builder`.
+    // Staticization ops were already inserted by `builder`.
     for (Operation *declOp : paramDeclOps)
       builder.insert(declOp);
 
@@ -1073,13 +972,9 @@ struct PropagateShapes {
                      "before PropagateShape!");
     op.setOutputParamDecls({});
 
-    // The first new op must be processed next in the worklist, so we push the
-    // new ops onto the worklist in reversed order.
+    // Push in reverse so the first new op is processed next. `op` is revisited
+    // after them, once there is enough information to update its output shape.
     llvm::append_range(newOps, paramDeclOps);
-    // Note that we also put `op` itself back onto the worklist, to be
-    // re-visited after we visit all the new ops, since that's when we'll have
-    // all the information needede to update the output shape of `op` (if
-    // needed).
     worklist.push_back(op);
     for (Operation *newOp : llvm::reverse(newOps))
       worklist.push_back(newOp);
@@ -1088,76 +983,60 @@ struct PropagateShapes {
   }
 
   LogicalResult propagateShape(GraphOp graphOp) {
-    // Clear state variables (in case the pass instance is reused)
     topoSortWithParameters(graphOp);
 
-    // There are 3 special cases for adding param mappings:
-    // 1. Input parameters of the graph, e.g., `mo.graph<D0, Sh1 -> ...>`
-    // 2. Output param decls in an op that could not be resolved by
-    // shape inference, e.g., `mo.reshape<() -> D0>`.
-    // 3. Mappings to selected expressions, to avoid extremely large expressions
-    // that cannot be folded, e.g., `max(D42, max(D772, 42, add(...)), ...))`.
-    // TODO this limits folding as well, we need a better approach.
-    //
-    // In these cases, we map the declared parameters to themselves, so that
-    // evaluator won't panic when looking them up. Note that (1) and (2) are
-    // handled by default in `KGEN::ParameterEvaluator`, and (3) is handled in
-    // the worklist loop below.
+    // These parameters map to themselves so the evaluator can look them up:
+    // 1. Graph input parameters, e.g. `mo.graph<D0, Sh1 -> ...>`.
+    // 2. Op output param decls shape inference can't resolve, e.g.
+    //    `mo.reshape<() -> D0>`.
+    // 3. Selected expressions, to avoid huge unfoldable ones like
+    //    `max(D42, max(D772, 42, add(...)), ...))`.
+    //    TODO this limits folding as well, we need a better approach.
+    // (1) and (2) are the evaluator's default; (3) is handled in the loop
+    // below.
     KGEN::ParameterEvaluator evaluator;
     auto markIntParamDeclAsNonNegative = [&](KGEN::ParamDeclAttr paramDecl) {
       if (MOSH::ShapeAttr::isDimType(paramDecl.getType()))
         markDefinitelyNonNegative(KGEN::ParamDeclRefAttr::get(paramDecl));
     };
-    // The integer input parameters to graph are dynamic dimensions, so they
-    // must be non-negative.
+    // Integer graph input parameters are dynamic dims, hence non-negative.
     llvm::for_each(graphOp.getInputParameters(), markIntParamDeclAsNonNegative);
 
     // TODO(#9008) inline inputs to `mo.assert`
-    // A replacer to help replacing parameters in an op with its evaluated form.
-    // TODO(#26115) we should switch to replacing manually via
-    // `evaluator.getReboundAttribute(shapeAttr)` for each op, since we only
-    // care about specific region of an op, and to avoid having 2 caches -- 1 in
-    // replacer and 1 in evaluator.
+    // TODO(#26115) replace manually via `evaluator.getReboundAttribute` per op,
+    // since only parts of an op matter, and to avoid caching in both the
+    // replacer and the evaluator.
     mlir::AttrTypeReplacer replacer;
     replacer.addReplacement([&](KGEN::ParamDeclRefAttr declRef) -> Attribute {
       return evaluator.getReboundAttribute(declRef);
     });
 
-    // A stack of ops to be "evaluated", i.e., the op in the back is the one to
-    // be processed next.
+    // The back op is processed next.
     std::deque<Operation *> worklist;
     graphOp.walk([&](Operation *op) {
-      // Skip the graph op itself since it'll be handled at the very end, after
-      // we process all the ops inside the graph.
+      // The graph op itself is handled after its body.
       if (!isa<GraphOp>(op))
         worklist.push_front(op);
     });
 
-    // A loop to process ops from worklist.
     while (!worklist.empty()) {
       Operation *op = worklist.back();
       worklist.pop_back();
 
       if (auto shapeMaterialization = dyn_cast<ShapeMaterialization>(op)) {
-        // If output param decl is empty, then we skip this branch, and proceed
-        // to then end of this loop body, where replacer updates the parameter
-        // within `op`.
+        // Ops without output param decls fall through to the replacer below.
         if (!shapeMaterialization.getOutputParamDecls().empty()) {
           ErrorOrSuccess result = shapeInferOp(shapeMaterialization, worklist);
-          // Short-circuit on fatal error.
           if (result.isError()) {
             op->emitError(result.getError());
             return failure();
           }
-          // Otherwise the op has been shape-inferred, continue to process the
-          // new ops that were pushed onto the worklist.
           continue;
         }
 
       } else if (auto shapeOfOp = dyn_cast<ShapeOfOp>(op)) {
-        // Skip if input shape is still dynamically ranked. At this stage, it
-        // indicates a rare scenario where there might be a real dynamic rank,
-        // which our stack doesn't support at the moment.
+        // A still dynamically ranked input here means a real dynamic rank,
+        // which isn't supported.
         if (auto inputShape = shapeOfOp.getInput().getType().getShape()) {
           // Change
           //   mo.shape_of<() -> D1> : [N1, N2] -> [D1]
@@ -1178,39 +1057,29 @@ struct PropagateShapes {
             shapeOfOp.setOutputParamDecls({});
             worklist.push_back(op);
             worklist.push_back(declOp);
-            // Continue to let worklist process the new ops.
             continue;
           }
         }
       }
 
-      // Then handle existing `kgen.param.declare`.
       if (auto declOp = dyn_cast<KGEN::ParamDeclareOp>(op)) {
         KGEN::ParamDeclAttr declAttr = declOp.getParamDecl();
         auto foldedRhsAttr = evaluator.getReboundAttribute(declOp.getValue());
 
-        // Apply shape-inference specific folding
         foldedRhsAttr = tryFoldExprAttr(foldedRhsAttr);
         declOp.setValueAttr(foldedRhsAttr);
 
         auto paramOpAttr = dyn_cast<KGEN::ParamOperatorAttr>(foldedRhsAttr);
-        // If the param expression cannot be nested, we either map the decl to
-        // itself or to a previous decl that has the same expression. The goal
-        // here is maximize textual equality for expression, e.g.,
-        // - `D0` and `D0` for decls that map to themselves or other decls.
-        // - `add(D0, 2)` and `add(D0, 2)` for decls that map to expressions.
-        // This enables more simplifications.
+        // An un-nestable expression's decl maps to itself or to an earlier
+        // decl with the same expression, maximizing textual equality for later
+        // simplification.
         if (paramOpAttr && !canParamOperatorBeNested(paramOpAttr)) {
-          // CSE on the fly for expression that cannot be nested, which helps
-          // the following scenario, where we'd otherwise lose textual equality
-          // for `D0` and `D1`:
+          // On-the-fly CSE keeps `D0` and `D1` textually equal here:
           //   kgen.param.declare D0 = <...nested_expr_e1...>
           //   kgen.param.declare D1 = <...nested_expr_e1...>
           //   static.broadcast_to(...) : <[D0], f32> -> <[D1], f32>
           //
-          // NOTE this CSE formulation is limited when the expression appears
-          // within a _nested_ region of where it was defined, for instance,
-          // currently we _do not_ CSE in this scenario:
+          // It doesn't CSE across nested regions:
           //   if {
           //     D0 = expr
           //     if {
@@ -1225,8 +1094,7 @@ struct PropagateShapes {
             evaluator.setDeclBinding(declAttr, existingDeclRef);
             declOp.setValueAttr(existingDeclRef);
 
-            // Else we remember this decl has this expression (if pure), and map
-            // the parameter to itself since we don't want to inline it.
+            // Otherwise record the (pure) expression and keep it un-inlined.
           } else {
             auto declRefAttr = KGEN::ParamDeclRefAttr::get(declAttr);
             if (isParamOperatorPure(paramOpAttr))
@@ -1235,7 +1103,6 @@ struct PropagateShapes {
           }
 
         } else {
-          // The param expression can be nested, so we just record it as is.
           evaluator.setDeclBinding(declAttr, foldedRhsAttr);
         }
 
@@ -1269,10 +1136,8 @@ struct PropagateShapes {
         }
       }
 
-      // At this point, we know replacer has absorbed as much relevant parameter
-      // definitions as possible in order to update parameters in `op`. So we
-      // just use the accumulated param-to-expression mapping to simplify the
-      // op. This helps DCE get rid of the decls with simplified exprs.
+      // Rewrite `op` with the bindings accumulated so far, letting DCE drop the
+      // decls of simplified expressions.
       replacer.replaceElementsIn(op, /*replaceAttrs=*/true,
                                  /*replaceLocs=*/true, /*replaceTypes=*/true);
     }
@@ -1287,23 +1152,15 @@ struct PropagateShapes {
     useDefGraph.calculate(paramCache);
     removeDeadParamDeclares(graphOp, useDefGraph);
 
-    // Extra processing to convert
+    // Convert
     //   mo.shape_of(%input) : [N1, 32] -> ...
     // to
     //   const_shape = mosh.param.to_value <N, 32>
     //   shape       = mo.shape.to_tensor(const_shape) : ...
-    //
-    // We need this because it allows us to get rid of the false data dependency
-    // from this op (and all its immediate & transitive users) to the `%input`
-    // value.
-    //
-    // We put them here because
-    // 1. Putting it in the worklist loop above doesn't enable more shape
-    //    propagation, and it adds more complexity to the loop.
-    // 2. Putting it in `ShapeOfOp` canonicalizer would make this happen in _too
-    //    many_ places, which might affect debugging, especially when we want to
-    //    examine the output of frontend lowering (e.g., to check correctness or
-    //    understand model semantics)
+    // to drop the false data dependency of the op and its users on `%input`.
+    // In the worklist loop it would enable no further propagation, and as a
+    // `ShapeOfOp` canonicalization it would fire too widely, obscuring frontend
+    // lowering output when debugging.
     graphOp.walk([&](ShapeOfOp op) {
       ImplicitLocOpBuilder builder(op.getLoc(), op);
       TypedAttr inputShape = op.getInput().getType().getShape();
@@ -1314,7 +1171,6 @@ struct PropagateShapes {
       return WalkResult::advance();
     });
 
-    // Normalize cross-graph call sites.
     normalizeCallOperandsToCallee(graphOp);
 
     return success();
@@ -1325,18 +1181,10 @@ struct PropagateShapes {
 
   KGEN::ParameterCollector::Analysis &paramCache;
 
-  // State variables used by the pass
   DenseMap<KGEN::ParamOperatorAttr, size_t> paramAttrToDepth{};
   DenseMap<TypedAttr, mlir::ConstantIntRanges> ranges;
-  // This maps from
-  // - expressions that we have processed, but decided not to inline (i.e.,
-  //   we'll keep it as a `kgen.param.declare X = <expr>` and refer to `X`
-  //   elsewheres).
-  // to another map from
-  // - the immediately enclosing region where the expression was defined.
-  // to
-  // - Reference to the definition parameter of the expression, for instance,
-  //   given `kgen.param.declare X = <expr>`, this would be `X`.
+  // Un-inlined expressions (kept as `kgen.param.declare X = <expr>`), mapped
+  // per enclosing region to `X`.
   DenseMap<KGEN::ParamOperatorAttr, DenseMap<Region *, KGEN::ParamDeclRefAttr>>
       exprToRegionToDeclRef{};
 };

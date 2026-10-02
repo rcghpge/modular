@@ -5,32 +5,20 @@
 //===----------------------------------------------------------------------===//
 //
 // Lowers `map` dialect kernels into `mogg` codegen ops. Each `map` op that can
-// appear inside (or as) a kernel implements `LowerableToMOGGInterface`'s
-// `lowerToMOGG(MAPToMOGGState &)` -- see `MAPOpsLowerableToMOGG.cpp` for the
-// per-op implementations. `MAPToMOGGState::lowerOp`/`lowerRegionBody` walk
-// each `map.iter.opaque` and everything nested inside it, dispatching purely
-// on whatever op the walk finds (`map.call.opaque` or
-// `map.iter.foreach.body`) -- there is no separate opaque-vs-foreach branch.
+// appear in a kernel implements `LowerableToMOGGInterface` (see
+// `MAPOpsLowerableToMOGG.cpp`); `MAPToMOGGState` walks each `map.iter.opaque`
+// and dispatches on whatever op it finds.
 //
-// A `map.iter.opaque` becomes a `mogg.kernel`: its `!mo.tensor` inputs stay
-// operands and its outputs stay results, but inside the body each tensor is
-// reconstructed from a `!mogg.pointer` block argument via
-// `mogg.shape.create` / `mogg.tensor.create`, and a nested
-// `map.call.opaque` becomes a `mogg.call.opaque` over those tensors, or a
-// nested `map.iter.foreach.body` becomes a `mogg.call.foreach` driving the
-// cloned per-index computation.
+// A `map.iter.opaque` becomes a `mogg.kernel` whose body rebuilds each tensor
+// from a `!mogg.pointer` block argument via `mogg.shape.create` /
+// `mogg.tensor.create`. A nested `map.call.opaque` becomes a
+// `mogg.call.opaque`, a `map.iter.foreach.body` a `mogg.call.foreach`, and a
+// `map.iter.epilogue` a `mogg.tensor.create.epilogue` whose body is lowered by
+// the same dispatcher.
 //
-// A fused (store-epilogue) output -- a `map.iter.epilogue` feeding a call's
-// outputs -- becomes a `mogg.tensor.create.epilogue` holding its per-index
-// computation directly in its own body, recursed into by the same
-// dispatcher (so a multi-op epilogue, e.g. compute-then-store, lowers just
-// like any other body).
-//
-// Dynamic shapes are handled: the kernel gains one `!mogg.dim` block
-// argument per unique dynamic dimension (deduped across inputs, outputs, and
-// any nested op's own shape attribute, e.g. `map.iter.foreach.body`'s),
-// placed between the pointers and the context, and each `mogg.shape.create`
-// is fed the dims for its own tensor.
+// The kernel gains one `!mogg.dim` block argument per unique dynamic dimension
+// (deduped across inputs, outputs, and nested shape attributes), placed
+// between the pointers and the context.
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,7 +52,6 @@ struct MAPToMOGGPass : public MAP::impl::MAPToMOGGBase<MAPToMOGGPass> {
     SmallVector<MAP::IterOpaqueOp> worklist;
     getOperation()->walk([&](MAP::IterOpaqueOp op) {
       worklist.push_back(op);
-      // No need to recurse inside a `map.iter.opaque`.
       return WalkResult::skip();
     });
 

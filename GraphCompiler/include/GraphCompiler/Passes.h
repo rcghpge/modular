@@ -14,11 +14,8 @@
 
 namespace M::MO {
 
-/// Collects mlir options which influence `buildGCPipeline` and
-/// `buildGCPipelineThroughEmitMojo`.
-///
-/// See also GraphCompilerCLOptions for the corresponding mt command line
-/// options.
+/// MLIR options for `buildGCPipeline` and `buildGCPipelineThroughEmitMojo`.
+/// See GraphCompilerCLOptions for the mt equivalents.
 struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
   Option<std::string> compiledFrameworkLabel{
       *this, "compiled-framework-label",
@@ -57,9 +54,8 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
       llvm::cl::desc("Emit ranges for regions carrying no profile scope."
                      " Useful for visualizing compiler output."),
       llvm::cl::init(false)};
-  // The in-process equivalent of the `gc-pipeline-pre-jit` pipeline: a caller
-  // that wants the emitted Mojo (see `ir-output-dir`) and not the compiled
-  // kernels. The emitted text is identical either way; only the JIT is skipped.
+  // In-process `gc-pipeline-pre-jit`, for callers that want only the emitted
+  // Mojo (see `ir-output-dir`).
   Option<bool> preJit{
       *this, "pre-jit",
       llvm::cl::desc("Stop after emit-mojo instead of JIT-compiling the "
@@ -238,9 +234,8 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
       llvm::cl::desc("If true, the Graph Compiler will generate compute "
                      "lambdas when possible"),
       llvm::cl::init(true)};
-  // Set either from mo-opt's command line, or on the in-process compile path
-  // via the max-debug.mlir-timing-out-dir config key, since lowering models
-  // with torch.compile doesn't support passing cl options to MLIR utilities.
+  // In-process, set via the max-debug.mlir-timing-out-dir config key since
+  // torch.compile lowering can't pass cl options to MLIR utilities.
   Option<std::string> mlirTimingOutDir{
       *this,
       "mlir-timing-out-dir",
@@ -264,9 +259,8 @@ struct GCPipelineOptions : public mlir::PassPipelineOptions<GCPipelineOptions> {
       llvm::cl::init(false)};
 };
 
-/// Registers all graph-compiler pipelines and sub-pipelines for use by testing
-/// tools. The passes will use the current runtime, which must be established by
-/// the tool.
+/// Registers the graph-compiler pipelines for testing tools, which must
+/// establish the runtime the passes use.
 void registerGCPipeline();
 void registerGCPipelineThroughEmitMojo();
 void registerMoPipeline();
@@ -278,8 +272,7 @@ void registerJitPipeline();
 /// Builds the complete graph-compiler pipeline (MO → MGP → JIT).
 void buildGCPipeline(mlir::OpPassManager &pm, const GCPipelineOptions &opts);
 
-/// Same lowering as `gc-pipeline` but stops after emit-mojo (excludes JIT and
-/// post-JIT passes).
+/// `gc-pipeline` stopping after emit-mojo.
 void buildGCPipelineThroughEmitMojo(mlir::OpPassManager &pm,
                                     const GCPipelineOptions &opts);
 
@@ -289,14 +282,9 @@ void registerShapeInferencePipeline();
 // Create the end-to-end shape inference pipeline.
 void buildShapeInferencePipeline(mlir::OpPassManager &pm);
 
-// ---------------------------------------------------------------------------
-// Lean option structs for sub-pipelines.
-//
-// Each struct exposes only the options actually consumed by that stage.
-// ---------------------------------------------------------------------------
+// Sub-pipeline option structs expose only the options their stage consumes.
 
-/// Options for `mo-pipeline`: all passes from graph input up to (but not
-/// including) the `mo-to-mogg` conversion.
+/// Options for `mo-pipeline`.
 struct MoPipelineOptions : public mlir::PassPipelineOptions<MoPipelineOptions> {
   Option<bool> debugPrintAllTensors{
       *this, "debug-print-all-tensors",
@@ -408,8 +396,7 @@ struct MoPipelineOptions : public mlir::PassPipelineOptions<MoPipelineOptions> {
       llvm::cl::init(true)};
 };
 
-/// Options for `map-pipeline`: all passes between `mo-to-map` and
-/// `mogg-to-mgp` (both endpoints excluded).
+/// Options for `map-pipeline`.
 struct MapPipelineOptions
     : public mlir::PassPipelineOptions<MapPipelineOptions> {
   Option<bool> fuseMutableLoadStore{
@@ -420,13 +407,11 @@ struct MapPipelineOptions
       llvm::cl::init(true)};
 };
 
-/// Options for `mogg-pipeline`: all passes between `mo-to-mogg` and
-/// `mogg-to-mgp` (both endpoints excluded).
+/// Options for `mogg-pipeline`.
 struct MoggPipelineOptions
     : public mlir::PassPipelineOptions<MoggPipelineOptions> {};
 
-/// Options for `mgp-pipeline`: all passes between `mogg-to-mgp` and `jit`
-/// (both endpoints excluded).
+/// Options for `mgp-pipeline`.
 struct MgpPipelineOptions
     : public mlir::PassPipelineOptions<MgpPipelineOptions> {
   ListOption<std::string> kernelLibraryPaths{
@@ -476,18 +461,11 @@ void buildMapPipeline(mlir::OpPassManager &pm, const MapPipelineOptions &opts);
 void buildMoggPipeline(mlir::OpPassManager &pm,
                        const MoggPipelineOptions &opts);
 void buildMgpPipeline(mlir::OpPassManager &pm, const MgpPipelineOptions &opts);
-/// Builds all passes that run after `jit` (i.e., after JitCompileKernels).
+/// Builds the passes that run after JitCompileKernels.
 void buildJitPipeline(mlir::OpPassManager &pm);
 
-/// Runs the full gc-pipeline on `moduleOp`.  When `dumpIntermediates` is true,
-/// each stage runs in its own pass manager and intermediate IR is written via
-/// writeIntermediateFileIfRequested at each phase boundary:
-///   mo-pre-mogg      — after mo-pipeline, before mo-to-mogg
-///   mogg             — after mo-to-mogg, before mogg-pipeline
-///   mogg-pre-mgp     — after mogg-pipeline, before mogg-to-mgp
-///   mgp-pre-pipeline — after mogg-to-mgp, before mgp-pipeline
-/// When `dumpIntermediates` is false, all stages run in a single pass manager.
-/// The final mgp dump and MEF conversion are left to the caller.
+/// Runs the full gc-pipeline on `moduleOp`. With `dumpIntermediates`, writes
+/// each stage's IR at its boundary. MEF conversion is left to the caller.
 LogicalResult runGCPipeline(ModuleOp moduleOp, const GCPipelineOptions &opts,
                             bool dumpIntermediates = false);
 

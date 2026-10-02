@@ -29,9 +29,8 @@ namespace {
 // ValidateDevicesPass
 //===----------------------------------------------------------------------===//
 //
-// Verify that each input and result tensor uses data types that are valid for
-// the assigned device architecture. This pass will report an error for only the
-// first invalid combination it finds.
+// Verifies every input and result tensor dtype is valid for the device
+// architecture. Reports only the first invalid combination.
 
 struct ValidateDevicesPass
     : public impl::ValidateDevicesPassBase<ValidateDevicesPass> {
@@ -39,12 +38,8 @@ struct ValidateDevicesPass
 
   bool isSupportedArchDTypeCombination(llvm::Triple::ArchType arch,
                                        DType dtype) {
-    // Return True if the architecture does not support the data type.
-    // On CPUs, we currently do not support the float8* type.
-    // On ARM systems, we do not support float16.
-    // Note that CPU also does not truly support bf16 or f16, but bf16 is
-    // permitted on both x86_64 and aarch64, and f16 is permitted on x86_64,
-    // for casting purposes.
+    // CPUs don't support sub-32-bit floats, but bf16 (x86_64, aarch64) and f16
+    // (x86_64) are permitted for casting.
     if ((arch == llvm::Triple::ArchType::x86_64 ||
          arch == llvm::Triple::ArchType::aarch64) &&
         dtype == DType::bf16)
@@ -76,7 +71,6 @@ struct ValidateDevicesPass
   }
 
   LogicalResult process(llvm::Triple::ArchType targetArch, Block *block) {
-    // Check the inputs first
     for (Value arg : block->getArguments()) {
       if (isa<MO::TensorType>(arg.getType())) {
         TensorType tensorType = dynCastFromTensorLike(arg.getType());
@@ -90,7 +84,6 @@ struct ValidateDevicesPass
       }
     }
 
-    // Check the outputs now
     WalkResult result = graphOp->walk([&](Operation *op) {
       for (Value res : op->getResults()) {
         if (isa<MO::TensorType>(res.getType())) {
@@ -112,10 +105,6 @@ struct ValidateDevicesPass
 
     return success();
   }
-
-  //===--------------------------------------------------------------------===//
-  // Entry point
-  //===--------------------------------------------------------------------===//
 
   void runOnOperation() override {
     graphOp = getOperation();

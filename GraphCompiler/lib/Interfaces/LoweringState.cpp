@@ -51,7 +51,6 @@ ErrorOr<ElementsAttr>
 MOGraphLoweringState::lowerElementsAttr(ElementsAttr elementsAttr) {
   MLIRContext *ctx = getExecuteOpBuilder().getContext();
 
-  // All attributes must have a minimum alignment of this value.
   uint64_t alignment = static_cast<uint64_t>(getMinimumCpuAlignment());
 
   auto hasAlignedAttr = dyn_cast<HasAlignedBytesInterface>(elementsAttr);
@@ -59,22 +58,16 @@ MOGraphLoweringState::lowerElementsAttr(ElementsAttr elementsAttr) {
     return Error("unsupported constant attribute type");
   auto origType = hasAlignedAttr.getAlignedBytesType();
 
-  // Increase alignment to respect what the attribute requests.
   alignment = std::max(alignment, origType.getAlign());
 
-  // Incorporate the alignment and size into an AlignedBytesType.
   auto finalType = AlignedBytesType::get(ctx, origType.getSize(), alignment);
 
   if (auto arrayAttr = dyn_cast<ArrayElementsAttr>(elementsAttr)) {
-    // In the following we'll reuse the underlying array elements data as is,
-    // ignoring its current alignment. The desired MEF alignment is instead
-    // conveyed via the aligned_bytes type.
+    // Reuse the data as is; the aligned_bytes type conveys the MEF alignment.
     static constexpr size_t kLargeDataThreshold = 512;
     if (arrayAttr.getRawData().size() < kLargeDataThreshold) {
-      // Small attributes can remain inline.
       return AlignedBytesAttr::get(ctx, arrayAttr.getRawData(), alignment);
     } else {
-      // Push large attributes to dense_resources.
       std::string name = "const_" + std::to_string(getExecuteNextConstId());
       ArrayRef<char> data(
           reinterpret_cast<const char *>(arrayAttr.getRawData().data()),
@@ -88,8 +81,7 @@ MOGraphLoweringState::lowerElementsAttr(ElementsAttr elementsAttr) {
   }
 
   if (auto resourceAttr = dyn_cast<DenseResourceElementsAttr>(elementsAttr)) {
-    // We'll not try to allocate a new blob. Instead we'll reuse the original
-    // blob and rely on the type annotation to capture our desired alignment.
+    // Reuse the blob; the type carries the alignment.
     return DenseResourceElementsAttr::get(finalType,
                                           resourceAttr.getRawHandle());
   }
@@ -114,9 +106,8 @@ MGP::TensorSpecGetDimOp MOGraphLoweringState::getDim(Location loc,
                                                      uint64_t axis,
                                                      DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
-  // NOTE: We could use getShape here, however usually we'll also require the
-  // loweredTensor's buffer in which case we'll be emitting a full
-  // tensor.extract op anyway.
+  // Not getShape: callers usually also need the buffer, i.e. a full
+  // tensor.extract anyway.
   TypedValue<MGP::TensorSpecType> tensorSpec =
       getBufferBuilder(device).tensorExtractTensorSpec(builder, loc,
                                                        loweredTensor);
@@ -128,9 +119,8 @@ SmallVector<Value> MOGraphLoweringState::getDynamicDims(Location loc,
                                                         Value loweredTensor,
                                                         DeviceRefAttr device) {
   OpBuilder &builder = getExecuteOpBuilder();
-  // NOTE: We could use getShape here, however usually we'll also require the
-  // loweredTensor's buffer in which case we'll be emitting a full
-  // tensor.extract op anyway.
+  // Not getShape: callers usually also need the buffer, i.e. a full
+  // tensor.extract anyway.
   TypedValue<MGP::TensorSpecType> tensorSpec =
       getBufferBuilder(device).tensorExtractTensorSpec(builder, loc,
                                                        loweredTensor);
@@ -150,7 +140,7 @@ static Value assertSymbolicDimensionMatchesPreviousValue(
     KGEN::ParamDeclRefAttr symbolicDimension, unsigned argumentIndex) {
 
   FailureOr<Type> targetType = previousValue.getType();
-  // TODO: cast?loweringstate.cpp
+  // TODO: cast?
   Value isEqual = KGEN::POP::CmpOp::create(builder, loc, KGEN::CmpPredicate::EQ,
                                            previousValue, newValue);
 
@@ -182,31 +172,22 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
     DeviceRefAttr argDevice = MO::getDeviceOrDefault(argType);
     if (argType.hasStaticShape()) {
       // No parameters to deal with.
-      /* no-op */
     } else if (auto inShapeParam =
                    dyn_cast<KGEN::ParamDeclRefAttr>(argType.getShape())) {
-      // The argument's whole shape is a single parameter. The parameter needs
-      // to be represented by the runtime MGP 'shape' of the tensor, ie a
-      // tensor_spec with unknown dtype. However, we only need to capture the
-      // mapping for the first occurrence of the parameter.
+      // A whole-shape parameter maps to the runtime MGP shape (a tensor_spec
+      // of unknown dtype), on its first occurrence only.
       hasParams = true;
       if (!params.lookupLowered(parentRegion, inShapeParam))
         params.emplaceLowered(parentRegion, inShapeParam,
                               getShape(loc, outArg, argDevice));
     } else {
-      // Argument has at least one dynamic dimension. The parameters need to
-      // be represented by the corresponding runtime dimensions. Since
-      // parameters may be shared we only update the parameter map for the
-      // first occurrence of each parameter. However, since dimensions are
-      // extract as a group, we always do the extraction, and rely on DCE to
-      // cleanup if all the parameters turn out to have already been mapped.
+      // Map each dim parameter to its runtime dimension on first occurrence.
+      // Dims are extracted as a group regardless; DCE cleans up if all were
+      // already mapped.
       hasParams = true;
 
       SmallVector<Value> dynDims = getDynamicDims(loc, outArg, argDevice);
-      // getDynamicDims returns indexes only for dimensions
-      // which are unknown at compile time. So build the corresponding
-      // vector of parameters. Note we do not support arbitrary expressions in
-      // the MO shape signature.
+      // Arbitrary expressions in the MO shape signature are unsupported.
       SmallVector<KGEN::ParamDeclRefAttr> inDimParams;
       for (TypedAttr inDim : argType.getDims()) {
         if (auto inDimParam = dyn_cast<KGEN::ParamDeclRefAttr>(inDim))
@@ -220,29 +201,21 @@ MOGraphLoweringState::lowerArg(Region *parentRegion, BlockArgument inArg,
       OpBuilder &builder = getExecuteOpBuilder();
       SmallVector<Value> assertChains;
       for (auto [inDimParam, outDim] : llvm::zip_equal(inDimParams, dynDims)) {
-        // Only update the parameter mapping for the first parameter
-        // occurrence.
         auto existingValue = params.lookupLowered(parentRegion, inDimParam);
         auto loweredValue = indexToDimension(builder, loc, outDim);
 
         if (existingValue && !isSubgraphRegion(parentRegion)) {
-          // If the parameter has been lowered previously, then assert that the
-          // current instance is equal to the previously lowered value.
-          // This check is only needed for entry-point graphs, as subgraphs
-          // will inherit correctness from their caller.
+          // Subgraphs inherit this check from their caller.
           auto assert = assertSymbolicDimensionMatchesPreviousValue(
               builder, loc, existingValue, loweredValue, inDimParam,
               inArg.getArgNumber());
 
           assertChains.push_back(assert);
         } else {
-          // Otherwise lower the dimension value and record the lowering.
           params.emplaceLowered(parentRegion, inDimParam, loweredValue);
         }
       }
 
-      // If any assertions were generated, guard the outArg tensor value by
-      // those assertions.
       if (!assertChains.empty()) {
         auto consolidatedChains =
             GRT::ChainCreateOp::create(builder, loc, assertChains);
@@ -268,8 +241,7 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpression(Region *parentRegion,
     return newValOr.takeError();
   auto newVal = std::move(*newValOr);
 
-  // If we got a placeholder, we need to remember it, in case we map an SSA
-  // value to it.
+  // Remember placeholders in case an SSA value maps to one later.
   if (auto placeholder = newVal.getDefiningOp<ParamPlaceholderOp>())
     placeholderMap.try_emplace(placeholder, SmallVector<Value>{});
   return newVal;
@@ -280,8 +252,7 @@ ErrorOrSuccess MOGraphLoweringState::lowerParamDecl(
   Value maybePlaceholder = params.lowerParamDecl(parentRegion, declAttr, value);
 
   if (maybePlaceholder) {
-    // If we just resolved a placeholder, we need to make sure no one will
-    // ever map to it in the future.
+    // A resolved placeholder must never be mapped to again.
     if (auto it = placeholderMap.find(maybePlaceholder);
         it != placeholderMap.end()) {
       for (Value key : it->second) {
@@ -291,7 +262,6 @@ ErrorOrSuccess MOGraphLoweringState::lowerParamDecl(
       placeholderMap.erase(it);
     }
 
-    // We also need to replace all its existing uses.
     maybePlaceholder.replaceAllUsesWith(value);
     maybePlaceholder.getDefiningOp<ParamPlaceholderOp>().erase();
   }
@@ -313,9 +283,7 @@ ErrorOr<SmallVector<Value>> MOGraphLoweringState::lowerShapeAttrDynDims(
   return runtimeDims;
 }
 
-/// Build a sequence of binary operations reducing the given set of values
-/// to a single value. This is used to convert variadic KGEN::POC ops to
-/// the binary op implementing them.
+/// Reduces `values` with binary ops, lowering variadic KGEN::POC ops.
 template <typename Op>
 static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
                                       ValueRange operands, Type resultType) {
@@ -332,9 +300,7 @@ static ErrorOr<Value> buildVariadicOp(OpBuilder &builder, Location loc,
   return std::accumulate(rest.begin(), rest.end(), start, createBinop);
 }
 
-/// Convert the given KGEN::POC operation to the equivalent operation in
-/// in the POP dialect. This function assumes that input/output types
-/// are !kgen.scalar values.
+/// Convert a KGEN::POC operation on !kgen.scalar values to the POP dialect.
 static ErrorOr<Value> pocToMopInteger(KGEN::POC poc, OpBuilder &builder,
                                       Location loc, ValueRange operands,
                                       Type resultType) {
@@ -418,14 +384,12 @@ MOGraphLoweringState::lowerParamOperator(OpBuilder &builder, Location loc,
   SmallVector<Value> popOperands;
   popOperands.reserve(operands.size());
 
-  // Convert operands to equivalent !kgen.scalar type
   for (auto operand : operands) {
     ASSERT_STREAM(isa<KGEN::SIMDType>(operand.getType()),
                   "must be a simd parameter expression");
     popOperands.push_back(operand);
   }
 
-  // Create the implementing pop dialect operation.
   auto maybeResult = pocToMopInteger(opAttr.getOpcode(), builder, loc,
                                      popOperands, resultType);
 
@@ -441,12 +405,11 @@ Operation *MOGraphLoweringState::lowerKGENConstantAttr(OpBuilder &builder,
   return KGEN::ParamConstantOp::create(builder, loc, value);
 }
 
-/// sequenced assert lowering helper functions
+/// Sequenced assert lowering helpers.
 namespace {
 
 bool followOperands(Operation *op) {
-  // We uses POP::And/Or/XOrOp instead of index::And/Or/XOr so that we can
-  // handle more than IndexType.
+  // POP::And/Or/XOrOp rather than index::*, to handle more than IndexType.
   return isa<KGEN::POP::POPDialect>(op->getDialect());
 }
 
@@ -510,10 +473,8 @@ getBoundaryOpOperands(Operation *root,
   return {boundaryOpOperands.begin(), boundaryOpOperands.end()};
 }
 
-/// Given the operand chain and condition to an assertion gather all
-/// expressions rooted at the current condition and the condition from the
-/// previous producing assertion. The values (OpOperands really) that cross
-/// from the previous assertion's tree to the current assertion's tree.
+/// Returns the OpOperands crossing from the previous assertion's condition tree
+/// into the current assertion's.
 SmallVector<OpOperand *> getSequencedAssertBoundaryOperands(
     Value cond, const SmallVector<Operation *> &parentAsserts) {
 
@@ -607,19 +568,11 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
         SmallVector<Operation *> parentAsserts =
             getParentAsserts(chain.getDefiningOp(), execute.parentAssert);
 
-        // collects the values (OpOperands really) that span from the tree
-        // of expressions forming condition for the assertion we're looking
-        // at and the assertion that produced the chain
         auto bOperands =
             getSequencedAssertBoundaryOperands(cond, parentAsserts);
 
-        // This logic will materialize guards only in the case where there were
-        // shared values between the expression tree rooted at the previous
-        // assertion and the current
-        //
-        // This is desirable as the mgp.guard op doesn't have a Mojo
-        // implementation (and consequently KGEN lowering), blocking the
-        // possibility of sequence fusion
+        // Guard only shared values: mgp.guard has no Mojo implementation, so
+        // it blocks sequence fusion.
         if (!bOperands.empty()) {
           SmallVector<Value> v;
           for (OpOperand *opOperand : bOperands) {
@@ -648,9 +601,8 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
       cond = builder.createOrFold<KGEN::POP::CastToBuiltinOp>(
           loc, builder.getIntegerType(1), cond);
     }
-    // We must be dealing with an assert. The dictionary is carried over from
-    // an arbitrary op, so the inherent `message` has to be split out into
-    // properties by name, which the aggregate builder used to do itself.
+    // An assert. The dictionary comes from an arbitrary op, so split the
+    // inherent `message` into properties by name.
     MGP::AssertOp::Properties properties;
     SmallVector<NamedAttribute> discardableAttributes;
     StringRef messageName = MGP::AssertOp::getAttributeNames().front();
@@ -668,7 +620,6 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
     if (maybeParentAssert)
       execute.parentAssert[newOp] = maybeParentAssert;
   } else if (auto shapeAttr = dyn_cast<MOSH::ShapeAttr>(attr)) {
-    // Lower dimensions recursively.
     SmallVector<Value> dimVals;
     for (TypedAttr dim : shapeAttr.getValues()) {
       auto dimValOr =
@@ -679,8 +630,7 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
       dimVals.emplace_back(std::move(*dimValOr));
     }
 
-    // There is no runtime shape type in MGP, so we map shape attributes to
-    // a fully dynamic spec.
+    // MGP has no runtime shape type; use a fully dynamic spec.
     SmallVector<std::optional<uint64_t>> dummyShape(dimVals.size());
     auto specTy =
         MGP::TensorSpecType::get(loc.getContext(), dummyShape, DType::si64);
@@ -694,19 +644,15 @@ ErrorOr<Value> MOGraphLoweringState::lowerExpressionImpl(
   return newOp->getResult(0);
 }
 
-/// Returns the element type of a `!mogg.async<T>`, or the type itself if it is
-/// not an async type. Region body arguments are async-wrapped, so checks on the
-/// underlying value type (e.g. chain detection) must unwrap first.
+/// Returns `T` for `!mogg.async<T>`, else `type`.
 static Type getAsyncElementOrSelf(Type type) {
   if (auto asyncType = dyn_cast<MOGG::AsyncType>(type))
     return asyncType.getElementType();
   return type;
 }
 
-/// Rewires the consumers of an async value `asyncValue` to its synchronous
-/// `projection` (an unpack or a pass-through reinterpret). The projection op's
-/// own use of `asyncValue` is left untouched, as are the async-consuming ops
-/// (`mogg.async.unpack`) that must keep operating on the async value directly.
+/// Rewires consumers of `asyncValue` to its synchronous `projection`, except
+/// the projection itself and `mogg.async.unpack` ops.
 static void rewireAsyncConsumersToProjection(Value asyncValue,
                                              Value projection) {
   Operation *projectionOp = projection.getDefiningOp();
@@ -722,8 +668,7 @@ void MOGraphLoweringState::lowerMOGGABI(MOGG::GenericCompiledRegionOp kernel) {
   auto loc = kernel->getLoc();
   MOGG::OutputOp terminator = kernel.getBodyTerminator();
 
-  // Chain inputs should never be used by any ops. Replace them with a dummy
-  // chain. Block arguments are `!mogg.async<T>`, so unwrap before checking.
+  // Chain inputs should never be used; replace them with a dummy chain.
   for (BlockArgument arg : kernel.getBodyBlock().getArguments()) {
     if (isa<MEF::ChainType>(getAsyncElementOrSelf(arg.getType()))) {
       arg.replaceAllUsesWith(
@@ -731,24 +676,20 @@ void MOGraphLoweringState::lowerMOGGABI(MOGG::GenericCompiledRegionOp kernel) {
     }
   }
 
-  // Unpack all inputs that should be unpacked first, so the body ops consume
-  // the unpacked `T` values. This must happen before packing outputs below,
-  // which inspects the (now unpacked) operands of the body ops.
+  // Unpack inputs before packing outputs, which inspects the unpacked body
+  // operands.
   builder.setInsertionPointToStart(&kernel.getBody().front());
   for (auto v : kernel.getBody().getArguments()) {
-    // Chains are left as `!mogg.async<chain>` (already replaced with a dummy
-    // chain above); nothing consumes them directly.
     if (isa<MEF::ChainType>(getAsyncElementOrSelf(v.getType())))
       continue;
 
-    // Project the `!mogg.async<T>` argument to `T` and rewire consumers.
     auto unpackOp = MOGG::AsyncUnpackOp::create(builder, loc, v);
     rewireAsyncConsumersToProjection(v, unpackOp);
   }
 
   builder.setInsertionPoint(terminator);
-  // Track chain operands to create AsyncReadyOp AFTER all other pack ops.
-  // This ensures downstream consumers don't start before all outputs are ready.
+  // Chain AsyncReadyOps go after all other packs so consumers wait for every
+  // output.
   SmallVector<std::pair<size_t, Value>> deferredChainOps;
 
   for (auto [i, value] : llvm::enumerate(terminator->getOperands())) {
@@ -757,32 +698,26 @@ void MOGraphLoweringState::lowerMOGGABI(MOGG::GenericCompiledRegionOp kernel) {
       continue;
     }
 
-    // Every non-chain output carries its own storage handle (an
-    // `OwnedByteBuffer` / `OwnedTensor` composite), so it is packed uniformly
-    // through the owned pack path -- no borrow/lifetime-extension plumbing
-    // and no separate device context.
+    // Non-chain outputs carry their own storage handle, so all take the owned
+    // pack path.
     Value newValue = MOGG::AsyncPackOp::create(
         builder, loc, MOGG::AsyncType::get(value.getType()), value);
 
     value.replaceUsesWithIf(
         newValue, [&](OpOperand &use) { return use.getOwner() == terminator; });
 
-    // If the value being replaced is a chain, be sure to drop it in a
-    // ChainSinkOp to avoid it being DCE-ed if it's the only output.
+    // Sink chains so a sole chain output isn't DCE-ed.
     if (isa<MEF::ChainType>(value.getType()) &&
         !isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
       MOGG::ChainSinkOp::create(builder, loc, value);
   }
 
-  // Create AsyncReadyOp for chain outputs AFTER all other pack ops.
-  // This ensures downstream consumers don't start until all outputs are packed.
   for (auto [i, value] : deferredChainOps) {
     Value newValue = MOGG::AsyncReadyOp::create(builder, loc);
     value.replaceUsesWithIf(
         newValue, [&](OpOperand &use) { return use.getOwner() == terminator; });
 
-    // If the value being replaced is a chain, be sure to drop it in a
-    // ChainSinkOp to avoid it being DCE-ed if it's the only output.
+    // Sink chains so a sole chain output isn't DCE-ed.
     if (!isa<MOGG::AsyncReadyOp>(value.getDefiningOp()))
       MOGG::ChainSinkOp::create(builder, loc, value);
   }
@@ -835,8 +770,7 @@ FailureOr<SmallVector<MOOutputStorage>> MOOpLoweringState::createOutputStorage(
   SmallVector<BufferizedTensor> bufferizedTensors;
   bufferizedTensors.reserve(outSpecs.size());
 
-  // We only create the mgp storage for the pre-allocated tensors. For those
-  // have in-place allocation, we skip them.
+  // In-place allocations get no mgp storage.
   DenseSet<int> inplaceAllocIndicesSet;
 
   SmallVector<Value> results;
@@ -874,8 +808,7 @@ BufferizedTensor MOOpLoweringState::getBufferizedInput(Value moTensor) {
   auto tensorSpec =
       bufferBuilder.tensorExtractTensorSpec(builder, loc, loweredTensor);
 
-  // we are extracting a buffer from a tensor, so the buffer needs to be guarded
-  // by the same chain as the tensor
+  // The buffer shares the tensor's chain.
   loweringState.guardValueWithChain(
       buffer, loweringState.getChainGuardingValueOrNull(loweredTensor));
 
@@ -886,13 +819,11 @@ FailureOr<TypedValue<MGP::TensorSpecType>>
 MOOpLoweringState::createTensorSpec(MO::TensorType moTensorType) {
   MGP::TensorSpecType tensorSpecType = MGP::createTensorSpecType(moTensorType);
   if (tensorSpecType.getSizeInBytes()) {
-    // Statically shaped.
     return MGP::TensorSpecCreateOp::create(builder, loc,
                                            /*spec=*/tensorSpecType)
         .getResult();
   }
 
-  // Dynamically shaped.
   auto runtimeDimsOr = loweringState.lowerShapeAttrDynDims(
       opBeingLowered->getParentRegion(), moTensorType.getShape(), loc);
   if (runtimeDimsOr)
@@ -915,8 +846,7 @@ MOOpLoweringState::createOutputTensorSpecs() {
     if (inplaceAllocIndicesSet.contains(idx))
       continue;
 
-    // Skip non-tensor types like chains and opaques - they are handled
-    // separately by the kernel lowering logic, as is a shape result.
+    // The kernel lowering handles these separately.
     if (isa<MO::ChainType, MO::OpaqueType, MOGG::ShapeFuncResultType>(type))
       continue;
 

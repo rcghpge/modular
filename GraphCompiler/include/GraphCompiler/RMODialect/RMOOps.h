@@ -25,9 +25,7 @@ using M::MOSH::ShapeAttr;
 
 namespace M::RMO {
 
-/// Given two tensor types which are meant to represent the same shape
-/// return a new type which returns a more "refined type" using information
-/// from both existing types
+/// Combines two types describing the same shape into the most refined type.
 MO::TensorType refineShape(MO::TensorType ty1, MO::TensorType ty2);
 MO::TensorType refineShapeWithDType(MO::TensorType ty1, MO::TensorType ty2,
                                     DType dtype);
@@ -42,8 +40,7 @@ void inferMOTypesScatterImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
 
-/// inferMoTypesImpl for `scatter`, whose axis is a compile-time `index`
-/// attribute (so it contributes no MO operand type).
+/// inferMoTypesImpl for `scatter`, whose axis is an attribute, not an operand.
 void inferMOTypesScatterImpl(
     MLIRContext *context, MO::GraphOp graphOp, TensorValue input,
     TensorValue updates, TensorValue indices,
@@ -85,24 +82,18 @@ void inferMOTypesScatterNdImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls);
 
-/// Given two dtypes, returns the promotion dtype or an error.
-/// The rules are:
-/// 1. Category is an ordered hierarchy: `bool < unsigned int < signed int <
-/// float`
-/// 2. Promotion of values `x` and `y` picks:
-///    (max(category(x), category(y)), max(bitwidth(x), bitwidth(y))
-/// 3. Promotion raises an error if either input dtype might contain a value
-///    unrepresentable by the chosen promotion type.
-/// 4. Promotion raises an error if two dtypes have the same category and
-/// bitwidth
-///    but different representations.
+/// Returns the promotion dtype of `x` and `y`:
+///   (max(category(x), category(y)), max(bitwidth(x), bitwidth(y)))
+/// with categories ordered `bool < unsigned int < signed int < float`. Errors
+/// if either input may hold a value the result cannot represent, or if the
+/// dtypes share category and bitwidth but differ in representation.
 ErrorOr<DType> promoteDtype(DType x, DType y);
 
-/// Return the device attached to the type if has a device.
+/// Returns the device attached to the type, if any.
 std::optional<M::DeviceRefAttr> getDeviceIfAvailable(Type t);
 std::optional<M::DeviceRefAttr> getDeviceIfAvailable(Value v);
 
-/// As `getDeviceIfAvailable` but assume device exists, otherwise get exception.
+/// As `getDeviceIfAvailable`, but the device must exist.
 M::DeviceRefAttr getDevice(Type t);
 M::DeviceRefAttr getDevice(Value v);
 

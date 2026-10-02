@@ -34,19 +34,15 @@ enum class FileFormat : uint8_t {
 
 inline FileFormat frameworkToFileFormat() { return FileFormat::kMODialect; }
 
-/// Use heuristics to determine what kind of file the input file contents
-/// represent.
+/// Guess the format of the input file contents.
 FileFormat sniffInputFormat(StringRef fileExtension, StringRef fileContents);
 
 struct DriverInputFormatOptions {
 public:
-  /// Allow the user to override the input file format.  The default is to
-  /// autosense what the input is.
+  /// User override of the input format; autosensed by default.
   FileFormat inputFormat{FileFormat::kUnknown};
 
-  /// Return the input format the user specified, allowing them to specify
-  /// something manually on the command line, but otherwise autosensing an
-  /// answer.
+  /// Returns the user-specified input format, or an autosensed one.
   FileFormat getInputFormat(StringRef fileExtension,
                             StringRef fileContents) const;
 };
@@ -60,8 +56,7 @@ public:
 private:
   llvm::cl::OptionCategory DriverInputFormatCategory{
       "Driver input format options"};
-  /// Allow the user to override the input file format.  The default is to
-  /// autosense what the input is.
+  /// User override of the input format; autosensed by default.
   M::cl::MOpt<FileFormat, true> inputFormat{
       "input-format", cl::desc("input file format override"),
       cl::values(clEnumValN(FileFormat::kMODialect, "mo", "Input is a MO file"),

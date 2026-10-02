@@ -22,8 +22,6 @@ namespace M::MO {
 namespace {
 
 static bool isUnusedOp(Operation *op) {
-  // Only MO ops without regions and without users.
-  // Skip InvokeShapeFunc and Terminator ops.
   return isa<MO::MODialect>(op->getDialect()) && op->getNumRegions() == 0 &&
          !op->hasTrait<mlir::OpTrait::IsTerminator>() &&
          !isa<MO::InvokeShapeFuncOp>(op) && op->use_empty();
@@ -43,15 +41,10 @@ struct EraseDeadOpPattern : RewritePattern {
     if (!isUnusedOp(op))
       return failure();
 
-    // TODO(GEX-3289): Even if the op is unused, it might still have some side
-    // effects expected by the user. In theory the output chain should be
-    // propagated correctly, and no uses should mean dead. But currently we
-    // never pass chains as outputs to the graph, because the Graph / Executor
-    // Python API doesn't support it. So we can't know if an unused op is safe
-    // to delete or not. A few ops like AllReduce are exceptions (eg it has side
-    // effects like mutating the signal buffers, but if the output tensor is
-    // unused it's still safe to remove). Once this is fixed, remove this
-    // condition.
+    // TODO(GEX-3289): An unused op may still have user-visible side effects:
+    // the Graph/Executor Python API never returns chains as graph outputs, so
+    // no uses does not imply dead. Ops like AllReduce are safe to drop when
+    // their output is unused. Remove this check once chains are returned.
     if (!isSafeToErase(op))
       return failure();
 

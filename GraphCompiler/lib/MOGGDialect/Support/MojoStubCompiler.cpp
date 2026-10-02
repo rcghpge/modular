@@ -17,16 +17,12 @@
 
 namespace M::MOGG {
 
-// Builds the canonical vendor-prefixed accelerator string ("nvidia:sm_90a",
-// "amdgpu:gfx942") from an explicit {arch, triple} override, or empty if the
-// override does not describe a GPU target. The override carries the graph's
-// default-device arch/triple, which may describe a *CPU* (e.g. "graniterapids"
-// on an x86_64 host when the default device is the host) — that must not be
-// used as an accelerator, so a non-GPU triple maps to empty and the caller
-// falls back to probing the host GPU. GPU classification and the vendor prefix
-// come from the triple (authoritative), not from guessing the arch mnemonic.
-// The prefix matches what downstream consumers (e.g. the NVPTX backend's ptxas
-// invocation) parse by splitting on ':'.
+// Builds the vendor-prefixed accelerator string ("nvidia:sm_90a",
+// "amdgpu:gfx942") from an {arch, triple} override. The override carries the
+// default device, which may be a CPU (e.g. "graniterapids"); a non-GPU triple
+// maps to empty so the caller probes the host GPU. The triple, not the arch
+// mnemonic, decides GPU-ness and the prefix, which consumers (e.g. the ptxas
+// invocation) split on ':'.
 static std::string overrideAcceleratorArch(StringRef arch,
                                            StringRef tripleStr) {
   if (arch.empty() || tripleStr.empty())
@@ -120,12 +116,9 @@ ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
   std::string cpu = llvm::sys::getHostCPUName().str();
   std::string features = getHostCPUFeatures();
 
-  // Cross-compilation: when the override describes a GPU target, honor it
-  // instead of probing the host GPU, so a target GPU can be selected on a
-  // machine that lacks it (or has no GPU at all). A non-GPU override (e.g. a
-  // CPU default device) falls back to host detection so GPU kernels still
-  // target the real GPU. Only the accelerator is overridden; the host CPU
-  // triple/CPU/features still describe the machine running codegen.
+  // A GPU override wins over probing the host, so a GPU can be targeted from a
+  // machine without one; a non-GPU override falls back to host detection. Only
+  // the accelerator is overridden; host triple/CPU/features stay as-is.
   auto acceleratorArch = [&]() -> std::string {
     if (std::string gpu = overrideAcceleratorArch(acceleratorArchOverride,
                                                   acceleratorTripleOverride);
@@ -158,8 +151,7 @@ ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
 
   TargetInfoAttr target = targetOr.takeValue();
 
-  // Retrieve the target info from the device spec, however 'complete' it with
-  // additional fields derived from the 'core' fields.
+  // Completes the target info with fields derived from the spec's core fields.
   ErrorOr<TargetInfoAttr> targetInfoOr = getTargetInfoFor(
       ctx, target.getTripleStr(), target.getArch(), target.getFeatures(),
       target.getTuneCpu(), acceleratorArch());
@@ -179,7 +171,7 @@ DenseResourceElementsAttr createArchiveAttr(MLIRContext *ctx, BufferRef buffer,
       {buffer->getBufferStart(), buffer->getBufferSize()}, /*dataAlignment=*/8,
       /*deleter=*/
       [buffer = std::move(buffer)](void *, size_t, size_t) mutable {
-        buffer.reset(); // Shouldn't need to do this, but just to be explicit.
+        buffer.reset();
       },
       /*isMutable=*/false);
   return DenseResourceElementsAttr::get(

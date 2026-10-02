@@ -29,7 +29,6 @@ void logKernelEvent(llvm::StringRef eventType, llvm::StringRef kernelName,
                     llvm::StringRef deviceInfo, uint64_t kernelId,
                     double timestampMs, llvm::raw_ostream &os = llvm::errs());
 
-/// Extract device contexts from operands
 template <typename OperandContainer>
 llvm::SmallVector<M::Driver::DeviceContextRef>
 extractDeviceContexts(const OperandContainer &operands);
@@ -51,9 +50,8 @@ struct AsyncLoggingPolicy {
   static constexpr const char *errorEvent() { return "ASYNC ERROR"; }
 };
 
-/// Policy-based design here eliminates the need for a vtable that we would have
-/// with OO design. That should make these logging helpers lower overhead so
-/// they don't impact the normal case when logging is disabled as much.
+/// Policy-based instead of virtual to avoid a vtable, keeping overhead low
+/// when logging is disabled.
 template <typename OperandContainer, typename LoggingPolicy>
 class KernelLogger {
 public:
@@ -63,7 +61,6 @@ public:
 
   ~KernelLogger();
 
-  // Non-copyable, non-movable
   KernelLogger(const KernelLogger &) = delete;
   KernelLogger &operator=(const KernelLogger &) = delete;
   KernelLogger(KernelLogger &&) = delete;
@@ -77,7 +74,6 @@ private:
   llvm::raw_ostream &outputStream;
 };
 
-// Type aliases for clean usage
 template <typename OperandContainer>
 using KernelSyncLogger = KernelLogger<OperandContainer, SyncLoggingPolicy>;
 

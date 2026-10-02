@@ -105,12 +105,8 @@ struct IndexLowering {
   }
 };
 
-/// This class orchestrates lowering of one mo.graph operation to a mgp.model,
-/// consisting of nad 'init' phase, and 'execute' phase, and a model descriptor.
-///
-/// The construction state for the init/execute invokables are kept in 'init'
-/// and 'execute' members which are mutated as each operation in the input graph
-/// is lowered.
+/// Lowers one mo.graph to an mgp.model with an 'init' phase, an 'execute'
+/// phase, and a model descriptor.
 class MOGraphLowering {
 public:
   MOGraphLowering(MO::GraphOp graph, llvm::StringRef compiledFrameworkLabel,
@@ -210,13 +206,9 @@ private:
 } // namespace
 
 static SmallVector<DeviceRefAttr> getAllDevicesUsedInGraph(MO::GraphOp graph) {
-
-  // This is not a list of devices that are actually available on a given
-  // machine, but rather devices that are used in the graph. Each device is
-  // in the list exactly once.
   llvm::DenseSet<DeviceRefAttr> devices;
 
-  // Always add the host device, it may not be explicitly in the graph.
+  // The host device may not appear in the graph.
   DeviceRefAttr hostDevice = DeviceRefAttr::getDefault(graph->getContext());
   devices.insert(hostDevice);
 
@@ -234,9 +226,7 @@ static SmallVector<DeviceRefAttr> getAllDevicesUsedInGraph(MO::GraphOp graph) {
     }
   });
 
-  // Sort the results so that the host device is always listed first. The sort
-  // other devices in alphabetical order by their string representation. This
-  // allows the device attributes on the graph to have a consistent sorting.
+  // Host first, then the rest by string representation, for a stable order.
   SmallVector<DeviceRefAttr> sorted = llvm::to_vector(devices);
   llvm::sort(sorted.begin(), sorted.end(),
              [hostDevice](DeviceRefAttr left, DeviceRefAttr right) {
@@ -280,11 +270,9 @@ CompileDiagnosticOrSuccess MOGraphLowering::setupBufferBuildersForAllDevices() {
     return success();
   };
 
-  // Make the host buffer builder first.
   if (auto err = makeBufferBuilder(hostDevice); err.isError())
     return err;
 
-  // Add the buffer builders for other supported devices.
   for (auto device : getAllDevicesUsedInGraph(loweringState.getGraph())) {
     if (device != hostDevice) {
       if (auto err = makeBufferBuilder(device); err.isError())
@@ -337,14 +325,12 @@ LogicalResult MOGraphLowering::createModelOp() {
       << "expected either both or neither of the `argument_names` and "
          "`result_names` attributes.");
   if (argNamesAttr) {
-    // Set the `argument_names` and `result_names` attributes.
     extraAttrs.emplace_back(b.getStringAttr(kMgpModelArgumentNames),
                             argNamesAttr);
     extraAttrs.emplace_back(b.getStringAttr(kMgpModelResultNames),
                             resultNamesAttr);
   }
 
-  // Get all the devices
   ErrorOrSuccess err(success());
   auto devices = llvm::map_to_vector(getAllDevicesUsedInGraph(graph),
                                      [&err](DeviceRefAttr attr) {
@@ -359,7 +345,6 @@ LogicalResult MOGraphLowering::createModelOp() {
   if (err.isError())
     return err;
 
-  // Go through Input Output types and their device and add to extraAttrs.
   auto ctx = graph->getContext();
   SmallDenseMap<DeviceRefAttr, IntegerAttr> deviceIndexMap;
   auto idxType = IntegerType::get(ctx, 32, IntegerType::Unsigned);
@@ -373,18 +358,14 @@ LogicalResult MOGraphLowering::createModelOp() {
       if (auto hasDeviceType = dyn_cast<MGP::MGPHasDeviceTypeInterface>(type))
         deviceIndices.push_back(deviceIndexMap[hasDeviceType.getDevice()]);
     }
-    // Set the attribute.
     if (!deviceIndices.empty()) {
       ArrayAttr deviceIndicesAttr = ArrayAttr::get(ctx, deviceIndices);
       extraAttrs.emplace_back(b.getStringAttr(label), deviceIndicesAttr);
     }
   };
-  // Set the `argument_device_indices` attribute.
   populateDeviceIndicesExtraAttr(kMgpModelArgumentDeviceIndices, inputTypes);
-  // Set the `result_device_indices` attribute.
   populateDeviceIndicesExtraAttr(kMgpModelResultDeviceIndices, outputTypes);
 
-  // Create the mgp.model and the regions for the init/execute phases.
   b.setInsertionPoint(graph);
   auto modelOp = MGP::ModelOp::create(
       b, graph.getLoc(),
@@ -400,23 +381,16 @@ LogicalResult MOGraphLowering::createModelOp() {
 
   loweringState.setModelOp(modelOp);
 
-  // Maintain the cached module symbol table: the new `mgp.model` supersedes the
-  // `mo.graph` under the same symbol name. Drop the graph's now-stale entry
-  // before registering the model so the name stays free; the graph itself stays
-  // in the IR (its body is lowered into the model below) until it is erased at
-  // the end of `run()`. Without this, the cached `SymbolTableAnalysis` -- never
-  // invalidated by the pass manager -- would keep a dangling entry for the
-  // erased graph and omit the model.
+  // The model takes over the graph's symbol name. The cached
+  // `SymbolTableAnalysis` is never invalidated by the pass manager, so update
+  // it by hand; the graph stays in the IR until the end of `run()`.
   mlir::SymbolTable &moduleSymbolTable = loweringState.getModuleSymbolTable();
   moduleSymbolTable.remove(graph);
   moduleSymbolTable.insert(modelOp);
 
-  // Initialize the init state.
   loweringState.getInitOpBuilder().setInsertionPointToEnd(
       loweringState.getModelOp().getInitBlock());
-  // Get the chain and context values for the body.
-  // This field tracks the current output chain as we lower into the init
-  // body.
+  // Tracks the current init output chain.
   loweringState.setInitChain(GRT::ChainCreateOp::create(
       loweringState.getInitOpBuilder(), graph.getLoc()));
 
@@ -475,9 +449,7 @@ LogicalResult MOGraphLowering::cloneTrivialOp(Operation *trivialOp) {
 }
 
 LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
-  // Init phase lowering.
-
-  // Return the final chain.
+  // Init phase.
   SmallVector<Value> outputs;
   outputs.push_back(loweringState.getInitChain());
   outputs.push_back(loweringState.getInitMgpContext());
@@ -488,9 +460,7 @@ LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
   MEF::OutputOp::create(loweringState.getInitOpBuilder(), output.getLoc(),
                         outputs);
 
-  // Execute phase lowering.
-
-  // Figure out what values to return.  We always return a chain.
+  // Execute phase. Always returns a chain.
   SmallVector<Value> operands;
   operands.push_back(loweringState.getCurrentExecuteChain());
 
@@ -501,13 +471,10 @@ LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
              << idx << " of type " << operand.getType()
              << " was never lowered into the execute block";
 
-    // In emit-mojo path, mo.opaque types need to be converted to mgp.opaque
-    // for graph outputs. The model's result types expect mgp.opaque.
-    // ToMGPFromOpaqueOp is essentially a no-op/rebind that converts the type.
-    // This op should be folded away when the input type gets converted to
-    // mgp.opaque later in the pipeline (e.g., after OutlineKernels).
+    // The model's results expect mgp.opaque. ToMGPFromOpaqueOp is a type
+    // rebind, folded away once the input becomes mgp.opaque (e.g. after
+    // OutlineKernels).
     if (auto moOpaqueType = dyn_cast<MO::OpaqueType>(loweredValue.getType())) {
-      // Preserve type parameters when converting mo.opaque to mgp.opaque.
       Type mgpOpaqueType =
           MGP::OpaqueType::get(output->getContext(), moOpaqueType.getSymbol(),
                                moOpaqueType.getOptionalParameters());
@@ -519,17 +486,13 @@ LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
     operands.push_back(loweredValue);
   }
 
-  // Finally, we can create the mef.output op.
   MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), output.getLoc(),
                         operands);
   return success();
 }
 
 LogicalResult MOGraphLowering::lower(MO::YieldOp yield) {
-  // Execute phase lowering.
-
-  // Figure out what values to return. We always implicitly return the current
-  // 'execute' block chain.
+  // Always implicitly returns the current 'execute' block chain.
   SmallVector<Value> operands;
   operands.push_back(loweringState.getCurrentExecuteChain());
 
@@ -544,24 +507,19 @@ LogicalResult MOGraphLowering::lower(MO::YieldOp yield) {
     operands.push_back(*valueOr);
   }
 
-  // Finally, we can create the mef.output op.
   MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), yield.getLoc(),
                         operands);
   return success();
 }
 
 LogicalResult MOGraphLowering::lower(MO::WhileConditionOp condition) {
-  // Execute phase lowering.
-
-  // Figure out what values to return. We always implicitly return the current
-  // 'execute' block chain.
+  // Always implicitly returns the current 'execute' block chain.
   SmallVector<Value> operands;
   operands.push_back(loweringState.getCurrentExecuteChain());
 
   for (Value operand : condition.getOperands())
     operands.push_back(loweringState.lookupExecuteLoweredValue(operand));
 
-  // Finally, we can create the mef.output op.
   MEF::OutputOp::create(loweringState.getExecuteOpBuilder(), condition.getLoc(),
                         operands);
   return success();
@@ -569,14 +527,12 @@ LogicalResult MOGraphLowering::lower(MO::WhileConditionOp condition) {
 
 LogicalResult MOGraphLowering::lowerParam(Region *parentRegion,
                                           KGEN::ParamDeclareOp declOp) {
-  // We first lower the expression.
   auto valueOr = loweringState.lowerExpression(parentRegion, declOp->getLoc(),
                                                declOp.getValue());
   if (valueOr.isError())
     return declOp->emitOpError(valueOr.getError());
 
   Value value = *valueOr;
-  // Then map the parameter declaration to it.
   if (auto err = loweringState.lowerParamDecl(parentRegion,
                                               declOp.getParamDecl(), value))
     return declOp->emitOpError(err.getError());
@@ -708,11 +664,9 @@ LogicalResult MOGraphLowering::lower(MO::Shape::FromTensorOp fromTensorOp) {
     Value offset = indexLowering.constant(dim);
     Value offsetInBytes = indexLowering.mul(offset, sizeInBytes);
 
-    // Slice the input tensor to the correct size.
     Value sliced = opLoweringState.bufferSlice(
         inputBuffer.buffer, offsetInBytes, sizeInBytes, tensorType);
 
-    // Convert the tensor to an index value.
     Value indexValue =
         opLoweringState.create<MGP::BufferToIndexOp>(inChain, sliced);
 
@@ -740,42 +694,32 @@ static Value getRebindResTensor(MO::RebindOp rebindOp,
   MO::TensorType inputTy = inputTensor.getType();
   MO::TensorType resTy = rebindOp.getResult().getType();
 
-  // If the input and output specs are the same, we can just map to the
-  // already lowered tensor.
   auto outSpecTy = MGP::createTensorSpecType(resTy);
   auto inSpecTy = MGP::createTensorSpecType(inputTy);
   Value loweredInput = loweringState.lookupExecuteLoweredValue(inputTensor);
   if (outSpecTy == inSpecTy)
     return loweredInput;
 
-  // We will collect the runtime dimensions for the result spec.
   SmallVector<Value> runtimeDims;
   Location loc = opLoweringState.loc;
   for (auto [idx, inDim, resDim] :
        llvm::enumerate(inputTy.getDims(), resTy.getDims())) {
 
-    // If the result dimension is static, nothing to do.
     if (MOSH::ShapeAttr::getStaticDim(resDim))
       continue;
 
-    // If the input dimension is static, and the result is dynamic, we create
-    // a constant runtime dimension.
     if (std::optional<int64_t> intDim = MOSH::ShapeAttr::getStaticDim(inDim)) {
       auto constOp = opLoweringState.create<mlir::index::ConstantOp>(*intDim);
       runtimeDims.emplace_back(constOp.getResult());
       continue;
     }
 
-    // At this point we are dealing with dynamic input and result dimensions.
-    // We extract the dynamic dimensions only once.
+    // Both dims are dynamic.
     auto getDimOp = loweringState.getDim(loc, loweredInput, idx,
                                          getDeviceOrDefault(inputTy));
-
-    // Forward the appropriate dynamic dimension from the input.
     runtimeDims.emplace_back(getDimOp);
   }
 
-  // Create the output tensor.
   Value buffer = opLoweringState.tensorExtract(loweredInput, inputTy).first;
   TypedValue<MGP::TensorSpecType> tensorSpec =
       opLoweringState.create<MGP::TensorSpecCreateOp>(outSpecTy, runtimeDims);
@@ -795,8 +739,7 @@ LogicalResult MOGraphLowering::lower(MO::RebindOp rebindOp) {
     return rebindOp.emitOpError(
         "rebind lowering doesn't support unknown shapes");
 
-  // The input chain is propagated to also guard the users of the reshaped
-  // buffer.
+  // The input chain also guards the users of the reshaped buffer.
   Value inChain =
       opLoweringState.getGuardChain(loweringState.getExecuteChain());
 
@@ -854,14 +797,12 @@ constHostBufferToTarget(MGP::MOOpLoweringState &opLoweringState,
   DeviceRefAttr device = MO::getDeviceOrDefault(moTensorType);
   DeviceRefAttr hostDevice = graphLoweringState.getHostDevice();
 
-  // If targetDevice is on host, then we just create output tensor and return.
-  // Otherwise, we allocate a device buffer and explicitly transfer HtoD.
+  // Off host, allocate a device buffer and transfer HtoD.
   if (device == hostDevice) {
     opLoweringState.createOutputTensor(opResult, chain, hostBuffer, tensorSpec);
     return success();
   }
 
-  // Default alignment to the preferred alignment for device if not passed.
   uint64_t alignment = maybeAlignment.value_or(
       M::Driver::getPreferredAlignment(device.getLabel().str()));
 
@@ -870,9 +811,8 @@ constHostBufferToTarget(MGP::MOOpLoweringState &opLoweringState,
       opLoweringState.create<mlir::index::ConstantOp>(sizeInBytes);
   Value deviceBuffer =
       opLoweringState.bufferAlloc(chain, bufferSize, alignment, moTensorType);
-  // Use bufferTransferFromHost to also take care of the stream sync.
-  // Note that this is needlessly conservative because the constant external's
-  // lifetime is controlled outside the graph.
+  // bufferTransferFromHost also handles the stream sync, which is needlessly
+  // conservative since a constant external's lifetime is outside the graph.
   Value outChain = opLoweringState.bufferTransferFromHost(
       chain, cast<TypedValue<MGP::DeviceBufferType>>(hostBuffer), deviceBuffer,
       moTensorType);
@@ -892,7 +832,6 @@ LogicalResult MOGraphLowering::lower(MO::ConstantOp constOp) {
   TypedValue<MO::TensorType> opResult = constOp.getResult();
   TypedValue<MEF::ChainType> chain = loweringState.getExecuteChain();
 
-  // Create the mgp.buffer.constant op.
   Value hostBuffer = opLoweringState.hostBufferConstant(chain, *elementsOr,
                                                         opResult.getType());
   return constHostBufferToTarget(opLoweringState, loweringState, hostBuffer,
@@ -912,22 +851,17 @@ LogicalResult MOGraphLowering::lower(MO::ConstantExternalOp constExternalOp) {
   bool hasAlias = constExternalOp.getHasAlias();
   bool isPlaceholder = constExternalOp.getIsPlaceholder();
 
-  // Create mgp.string.create op for the weight name.
   auto mojoStringType = MGP::OpaqueType::get(
       builder.getContext(), builder.getStringAttr("mojo_string"), {});
   auto name = MGP::StringCreateOp::create(
       builder, loc, mojoStringType,
       builder.getStringAttr(constExternalOp.getName()));
 
-  // Lower mo.constant.external depending on its device attribute.
   DeviceRefAttr opDevice = constExternalOp.getExecutionDevice();
-  // If not present, use the default host device.
   opDevice =
       opDevice ? opDevice : DeviceRefAttr::getDefault(chain.getContext());
   if (opDevice.getLabel() == kCPULabel) {
-    // If the external constant is on CPU, lower similarly to mo.constant.
-
-    // Create the mgp.buffer.constant.external op.
+    // Lowered like mo.constant.
     Value hostBuffer = opLoweringState.hostBufferConstantExternal(
         chain, name, sizeInBytes, alignment, hasAlias, isPlaceholder);
 
@@ -935,14 +869,13 @@ LogicalResult MOGraphLowering::lower(MO::ConstantExternalOp constExternalOp) {
                                    chain, opResult, alignment);
   }
 
-  // If the external constant is already on device, it should stay on device.
+  // A device external constant stays on device, with no copy.
   DeviceRefAttr resultDevice = MO::getDeviceOrDefault(opResult.getType());
   if (resultDevice != opDevice)
     return constExternalOp->emitOpError(
         Twine("expected op device ") + opDevice.getLabel() +
         " and result device " + resultDevice.getLabel() + " to match");
 
-  // Create the MGP device buffer without copying or allocations.
   Value deviceBuffer = opLoweringState.deviceBufferConstantExternal(
       opDevice, chain, name, sizeInBytes, alignment, hasAlias, isPlaceholder);
 
@@ -989,19 +922,16 @@ LogicalResult MOGraphLowering::lower(MO::ConstantScalarOp constOp) {
 static LogicalResult lowerReshapeImpl(MGP::MOOpLoweringState &opLoweringState,
                                       Value input, Value output, Value chain,
                                       MO::TensorType outputType) {
-  // Get the bufferized input.
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(input);
   Value buffer = bufferizedInput.buffer;
 
-  // Create a tensor result with spec matching the result type.
   FailureOr<TypedValue<MGP::TensorSpecType>> tensorSpecOr =
       opLoweringState.createTensorSpec(outputType);
   if (failed(tensorSpecOr))
     return failure();
 
-  // The input chain is propagated to also guard the users of the reshaped
-  // buffer.
+  // The input chain also guards the users of the reshaped buffer.
   Value inChain = opLoweringState.getGuardChain(chain);
 
   opLoweringState.createOutputTensor(output, inChain, buffer, *tensorSpecOr);
@@ -1013,20 +943,18 @@ static LogicalResult lowerMoggSliceImpl(MGP::MOOpLoweringState &opLoweringState,
                                         MOGG::SliceOp sliceOp, Value chain) {
   MO::TensorType outputType = sliceOp.getType();
 
-  // Create the output tensor spec from the output type.
   FailureOr<TypedValue<MGP::TensorSpecType>> outputSpecOr =
       opLoweringState.createTensorSpec(outputType);
   if (failed(outputSpecOr))
     return failure();
 
-  // Get the lowered input tensor and start tensor.
   Value loweredInput = opLoweringState.loweringState.lookupExecuteLoweredValue(
       sliceOp.getInput());
   Value loweredStart = opLoweringState.loweringState.lookupExecuteLoweredValue(
       sliceOp.getStart());
 
-  // Emit a single mgp.tensor.slice op. The Mojo primitive computes the sliced
-  // dimension, stride, and start offset at runtime from the operands.
+  // The Mojo primitive computes the sliced dimension, stride, and start offset
+  // at runtime.
   auto inputDevice =
       cast<MGP::DeviceTensorType>(loweredInput.getType()).getDevice();
   TypedValue<MGP::DeviceContextType> deviceContext =
@@ -1034,7 +962,6 @@ static LogicalResult lowerMoggSliceImpl(MGP::MOOpLoweringState &opLoweringState,
   Value slicedTensor = opLoweringState.create<MGP::TensorSliceOp>(
       loweredInput, *outputSpecOr, loweredStart, deviceContext);
 
-  // Associate the sliced tensor with the MOGG slice result.
   Value inChain = opLoweringState.getGuardChain(chain);
   opLoweringState.loweringState.emplaceExecuteLoweredBufferValue(
       sliceOp.getResult(), slicedTensor, inChain);
@@ -1077,7 +1004,6 @@ LogicalResult MOGraphLowering::lower(MO::DebugTensorPrintOp printOp) {
   DeviceRefAttr targetDevice = MO::getDeviceOrDefault(moTensorType);
   DeviceRefAttr hostDevice = loweringState.getHostDevice();
 
-  // Get the bufferized input.
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(printOp.getInput());
 
@@ -1097,10 +1023,7 @@ LogicalResult MOGraphLowering::lower(MO::DebugTensorPrintOp printOp) {
     return success();
   }
 
-  // If the device we are trying to print from is not the host, insert an
-  // explicit DtoH + sync for the buffer before printing using the host.
-  // This is a safe assumption since the is what happens in the device
-  // version of the primitive already
+  // Off host, copy DtoH and print on the host, as the device primitive does.
   auto maybeTensorSizeInBytes = tensorSpec.getType().getSizeInBytes();
   Value bufferSize;
   if (maybeTensorSizeInBytes.has_value())
@@ -1122,7 +1045,7 @@ LogicalResult MOGraphLowering::lower(MO::DebugTensorPrintOp printOp) {
   return success();
 }
 
-// Common implementation for buffer transfers between devices
+// Returns null for an unsupported device pair.
 static Value lowerTransferImpl(MGP::MOOpLoweringState &opLoweringState,
                                DeviceRefAttr hostDevice,
                                MGP::BufferizedTensor &srcBuffer,
@@ -1148,7 +1071,7 @@ static Value lowerTransferImpl(MGP::MOOpLoweringState &opLoweringState,
                                                 dstBuffer, srcType, dstType);
   }
 
-  return nullptr; // Indicates unsupported device transfer
+  return nullptr;
 }
 
 LogicalResult MOGraphLowering::lower(MO::TransferOp transferOp) {
@@ -1163,7 +1086,6 @@ LogicalResult MOGraphLowering::lower(MO::TransferOp transferOp) {
   MGP::BufferizedTensor bufferizedInput =
       opLoweringState.getBufferizedInput(transferOp.getInput());
 
-  // Respect explicit chain threading for transfer.
   Value inChain =
       loweringState.lookupExecuteLoweredValue(transferOp.getInChain());
   inChain = opLoweringState.getGuardChain(inChain);
@@ -1186,7 +1108,6 @@ LogicalResult MOGraphLowering::lower(MO::TransferOp transferOp) {
 
   opLoweringState.createOutputs(outChain, loweredOutputsStorage);
 
-  // Map explicit outChain result.
   loweringState.emplaceExecuteLoweredValue(transferOp.getOutChain(), outChain);
 
   return success();
@@ -1291,23 +1212,17 @@ LogicalResult MOGraphLowering::lower(MO::MutableStoreOp mutableStoreOp) {
   return success();
 }
 
-/// Computes the little-endian bit pattern of a scalar `initValue` attribute,
-/// zero-extended to 64 bits, for use as the `valueBits` of an
-/// mgp.buffer.memset. Handles the single-element elements attribute the Python
-/// API emits (so any dtype is represented exactly), as well as scalar
-/// integer/bool and float attributes. Returns failure for any other attribute
-/// kind, which the verifier is expected to have already rejected.
+/// The little-endian bit pattern of a scalar `initValue`, zero-extended to 64
+/// bits, for mgp.buffer.memset's `valueBits`. Accepts a single-element
+/// elements attribute (as the Python API emits) or a scalar integer/bool/float.
 static FailureOr<uint64_t> initValueBits(Attribute initValue) {
-  // The Python API encodes the scalar as a single-element elements attribute.
-  // `M::ArrayElementsAttr` only supports iteration as `Attribute`, so pull out
-  // the element as a scalar attribute and reuse the scalar handling below.
+  // `M::ArrayElementsAttr` only iterates as `Attribute`.
   if (auto elts = dyn_cast<ElementsAttr>(initValue)) {
     if (elts.getNumElements() != 1)
       return failure();
     initValue = *elts.value_begin<Attribute>();
   }
-  // A BoolAttr is an IntegerAttr with an i1 type, so the integer branch also
-  // covers booleans.
+  // Also covers BoolAttr.
   if (auto intAttr = dyn_cast<IntegerAttr>(initValue))
     return intAttr.getValue().zextOrTrunc(64).getZExtValue();
   if (auto floatAttr = dyn_cast<FloatAttr>(initValue))
@@ -1323,8 +1238,7 @@ LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
 
   Attribute initValue = bufferCreateOp.getInitValueAttr();
   if (!initValue) {
-    // Uninitialized per-call scratch buffer: allocate a fresh buffer in the
-    // 'execute' block on every invocation (the original behavior).
+    // Uninitialized per-call scratch buffer, allocated on every 'execute'.
     Value inChain = loweringState.getCurrentExecuteChain();
     inChain = opLoweringState.getGuardChain(inChain);
 
@@ -1343,13 +1257,9 @@ LogicalResult MOGraphLowering::lower(MO::BufferCreateOp bufferCreateOp) {
     return success();
   }
 
-  // Persistent, once-initialized state buffer. The buffer is allocated and
-  // filled with `initValue` exactly once in the 'init' region, cached in the
-  // context, then retrieved (as the same allocation) on every 'execute' call so
-  // that kernel mutations persist across calls.
-
-  // Persistent buffers must have a statically known byte size so that a single
-  // memset can fill them during init.
+  // Persistent state buffer: allocated and filled with `initValue` once in
+  // 'init', cached in the context, and retrieved on every 'execute' so kernel
+  // mutations persist across calls. A single memset needs a static size.
   std::optional<int64_t> numElements = resTensorType.getNumElements();
   if (!numElements)
     return bufferCreateOp->emitOpError(
@@ -1461,8 +1371,7 @@ LogicalResult MOGraphLowering::lower(MO::IfOp ifOp) {
   ASSERT_STREAM(MO::isOnHost(ifOp), << "mo.if is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, ifOp);
 
-  // We'll need to thread the current 'execute' chain through the if
-  // 'then' and 'else' blocks.
+  // Thread the current 'execute' chain through both branches.
   Value currentChain = loweringState.getCurrentExecuteChain();
   currentChain = opLoweringState.getGuardChain(currentChain);
 
@@ -1474,7 +1383,6 @@ LogicalResult MOGraphLowering::lower(MO::IfOp ifOp) {
   if (isScalarCond) {
     condBool = loweringState.lookupExecuteLoweredValue(cond);
   } else {
-    // Lower the condition.
     MGP::BufferizedTensor bufferizedCond =
         opLoweringState.getBufferizedInput(cond);
     condBool = opLoweringState.bufferToBool(currentChain, bufferizedCond.buffer,
@@ -1498,10 +1406,8 @@ LogicalResult MOGraphLowering::lower(MO::IfOp ifOp) {
     resultTypes.emplace_back(converted ? converted : declType);
   }
 
-  // Create grt.if op
   auto outputIf = opLoweringState.create<GRT::IfOp>(resultTypes, operands);
 
-  // Lower optional output parameters
   size_t paramStartIdx = 1 + ifOp.getNumResults(); // After chain + tensors
   for (auto [decl, result] :
        llvm::zip(ifOp.getOutputParamDecls(),
@@ -1522,20 +1428,16 @@ LogicalResult MOGraphLowering::lower(MO::IfOp ifOp) {
     return success();
   };
 
-  // Lower Then Block
   if (failed(enterLowerBlock(ifOp.getThenRegion(), outputIf.getThenRegion())))
     return failure();
 
-  // Reset the main chain between blocks
   loweringState.setCurrentExecuteChain(currentChain);
 
-  // Lower Else Block
   if (failed(enterLowerBlock(ifOp.getElseRegion(), outputIf.getElseRegion())))
     return failure();
 
   Value outChain = outputIf.getResult(0);
 
-  // Set the outputs
   loweringState.setCurrentExecuteChain(outChain);
 
   for (auto [origResult, loweredResult] :
@@ -1549,8 +1451,6 @@ LogicalResult MOGraphLowering::lower(MO::IfOp ifOp) {
     }
   }
 
-  // Since we moved the insertion points for the then/else, reset to the main
-  // block.
   opLoweringState.builder.setInsertionPointAfter(outputIf);
 
   return success();
@@ -1560,8 +1460,7 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
   ASSERT_STREAM(MO::isOnHost(whileOp), << "mo.while is for host only");
   MGP::MOOpLoweringState opLoweringState(loweringState, whileOp);
 
-  // We'll need to thread the current 'execute' chain through the while loop's
-  // 'cond' and 'body' blocks.
+  // Thread the current 'execute' chain through 'cond' and 'body'.
   Value rootChain = loweringState.getExecuteChain();
   Value currentChain = loweringState.getCurrentExecuteChain();
   bool currentIsRoot = currentChain == rootChain;
@@ -1576,7 +1475,6 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
     loweredFreeValues.emplace_back(
         loweringState.lookupExecuteLoweredValue(value));
 
-  // We now know the grt.while op's result types and signature.
   SmallVector<Value> operands;
   operands.reserve(loweredFreeValues.size());
   SmallVector<Type> resultTypes;
@@ -1594,20 +1492,15 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
     Block &newBlock = outputRegion.emplaceBlock();
     opLoweringState.builder.setInsertionPointToEnd(&newBlock);
 
-    // Establish the block's arguments. The current 'execute' chain comes
-    // first.
+    // The current 'execute' chain comes first.
     auto loweredChainArg =
         outputRegion.addArgument(currentChain.getType(), whileOp.getLoc());
     loweringState.setCurrentExecuteChain(loweredChainArg);
     if (currentIsRoot)
       loweringState.setRootExecuteChain(loweredChainArg);
-    // else: if the block needs to reference the root chain then an
-    //       additional block argument will be added by
-    //       fixupIsolatedFromAbove.
+    // Otherwise fixupIsolatedFromAbove adds a root-chain argument if needed.
 
-    // Then an arg for each of the original region args.
-    // We'll use the loweredFreeValues since they have the lowered types
-    // already, though we skip the chain.
+    // Then one arg per original region arg, typed like loweredFreeValues.
     for (auto [loweredFreeValue, arg] : llvm::zip(
              llvm::drop_begin(loweredFreeValues), inputRegion.getArguments())) {
       Value loweredArg =
@@ -1620,34 +1513,22 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
       }
     }
 
-    // Lower the block, including its terminating mo.yield.
     if (failed(lowerBlock(&inputRegion.getBlocks().front())))
       return failure();
 
     return success();
   };
 
-  // Lower the 'cond' block. We'll later need to make 2 adjustments:
-  // 1) The mo.while 'cond' block will mo.yield only the condition result.
-  // That
-  //    mo.yield will be lowered to a mef.output with the 'execute' chain and
-  //    lowered condition results. However, the grt.while requires the 'cond'
-  //    block to return a result for all signature arguments plus the
-  //    condition, so we'll need to include those.
-  // 2) The lowered condition will be a mgp.tensor<bool>, which we need to
-  //    convert to an i1.
+  // The lowered 'cond' mef.output is fixed up below: grt.while needs every
+  // signature value plus an i1 condition, not a mgp.tensor<bool>.
   if (failed(enterLowerBlock(whileOp.getCondRegion(),
                              loweredWhileOp.getCondRegion())))
     return failure();
 
-  // Lower the 'body' block.
   if (failed(enterLowerBlock(whileOp.getBodyRegion(),
                              loweredWhileOp.getBodyRegion())))
     return failure();
 
-  // Now repair the lowered 'cond' block's mef.output to include all the
-  // additional variables between the output chain and the condition,
-  // and fix the condition to be an i1.
   {
     MO::WhileConditionOp origYieldOp = whileOp.getCondTerminator();
 
@@ -1667,11 +1548,7 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
     SmallVector<Value> condOutputOpOperands;
     condOutputOpOperands.reserve(loweredWhileOp->getNumResults() + 1);
 
-    // chain
     condOutputOpOperands.push_back(loweredOutputChain);
-
-    // Pass along any additional values, substituting out the chain values for
-    // the corresponding chain arguments from the mo.yield.
     llvm::append_range(condOutputOpOperands, loweredArgs);
 
     // i1 condition
@@ -1696,7 +1573,6 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
     loweredCondOutputOp.getOperandsMutable().append(condOutputOpOperands);
   }
 
-  // Capture the lowered outputs.
   assert(loweredWhileOp.getNumResults() == 1 + whileOp.getNumResults());
 
   Value outChain = loweredWhileOp.getResult(0);
@@ -1715,8 +1591,6 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
     }
   }
 
-  // Since we moved the insertion points for the 'cond' and 'body' blocks,
-  // reset back to the main block
   opLoweringState.builder.setInsertionPointAfter(loweredWhileOp);
 
   return success();
@@ -1725,7 +1599,6 @@ LogicalResult MOGraphLowering::lower(MO::WhileOp whileOp) {
 // level-wise topological sort
 static LogicalResult levelwiseTopologicalSort(Block *block) {
   llvm::iterator_range<Block::iterator> ops = *block;
-  // If the block has a terminator, we need to exclude it from the sort.
   if (block->back().hasTrait<OpTrait::IsTerminator>())
     ops = block->without_terminator();
 
@@ -1736,7 +1609,6 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
   llvm::DenseMap<Operation *, unsigned> inDegree;
   llvm::DenseMap<Operation *, llvm::SmallVector<Operation *>> dependents;
 
-  // Collect all operations and find their dependents
   for (Operation &op : ops) {
     allOps.push_back(&op);
     inDegree[&op] = 0;
@@ -1757,21 +1629,16 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
           parent = parent->getParentOp();
         }
 
-        // Only consider dependencies within the same block
         if (parent->getBlock() == block && parent != op) {
           dependencies.insert(parent);
         }
       }
 
-      // If the operation IsIsolatedFromAbove, then we can skip any child
-      // regions since we know they cannot refer to values defined outside
-      // their bodies.
       if (nestedOp->hasTrait<mlir::OpTrait::IsIsolatedFromAbove>())
         return WalkResult::skip();
       return WalkResult::advance();
     });
 
-    // Update in-degrees and dependent lists
     for (Operation *dep : dependencies) {
       dependents[dep].push_back(op);
       inDegree[op]++;
@@ -1781,7 +1648,6 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
   Block::iterator nextScheduledOp = block->begin();
   [[maybe_unused]] unsigned sortedOps = 0;
 
-  // Initialize queue with operations that have no dependencies
   llvm::SmallVector<Operation *> readyQueue;
   for (Operation *op : allOps) {
     if (inDegree[op] == 0) {
@@ -1789,12 +1655,10 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
     }
   }
 
-  // Process operations level by level
   while (!readyQueue.empty()) {
     llvm::SmallVector<Operation *> currentLevel = std::move(readyQueue);
     readyQueue.clear();
 
-    // Schedule all operations at current level
     for (Operation *op : currentLevel) {
       ++sortedOps;
       op->moveBefore(block, nextScheduledOp);
@@ -1803,7 +1667,6 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
         ++nextScheduledOp;
       }
 
-      // Update in-degrees of dependent operations
       for (Operation *dependent : dependents[op]) {
         inDegree[dependent]--;
         if (inDegree[dependent] == 0) {
@@ -1813,7 +1676,6 @@ static LogicalResult levelwiseTopologicalSort(Block *block) {
     }
   }
 
-  // Check if all operations were scheduled
   ASSERT_STREAM(sortedOps == allOps.size(),
                 << "Failed to sort the MO operations topologically.");
 
@@ -1851,9 +1713,7 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
             MO::GuardOp, MO::ChainCreateOp, MO::MutableStoreOp,
             MO::MutableLoadOp, MO::BufferCreateOp, MO::BufferTransferOp,
             MO::CallOp>([this](auto op) { return lower(op); })
-      // Interface-based lowering for externally-defined ops. Includes the
-      // advanced-fusion new-path kernel (`mogg.kernel`), which implements this
-      // interface directly.
+      // Externally-defined ops, e.g. `mogg.kernel`.
       .Case<MGP::LowerableToMGPInterface>(
           [this](auto op) { return lowerInterface(op); })
       .Default([](Operation *op) -> LogicalResult {
@@ -1863,8 +1723,6 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
 }
 
 LogicalResult MOGraphLowering::lowerBlock(Block *block) {
-  // Ensure the block is sorted with operands to operations appearing before
-  // their use.
   if (failed(levelwiseTopologicalSort(block)))
     return failure();
 
@@ -1910,9 +1768,8 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
       return MO::getDeviceOrDefault(devTy);
     return {};
   };
-  // Guard-chain lookup mirroring the canonical pattern (see
-  // lower(MO::TensorUnbundleOp)): a value may be guarded under its MO key or
-  // its lowered key. Try the MO value first, then its lowered value.
+  // A value may be guarded under its MO key or its lowered key (see
+  // lower(MO::TensorUnbundleOp)).
   auto guardOf = [&](Value moVal) -> Value {
     if (Value g = loweringState.getChainGuardingValueOrNull(moVal))
       return g;
@@ -1937,12 +1794,9 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
     addDevice(res);
   const bool bindStream = streamId != 0 && !devices.empty();
 
-  // mo.sequence is intentionally not IsolatedFromAbove: the body may read
-  // constants and weights from the enclosing scope, and some lowerings need to
-  // see those constant operands directly. A capture with a producer chain is
-  // an unlisted input, though: promote it to a block argument so the body
-  // reads it through the fork-guarded argument below, exactly like a listed
-  // input. Only chain-free captures (constants, weights) stay captured.
+  // mo.sequence is not IsolatedFromAbove so the body can read constants and
+  // weights directly. A capture with a producer chain is promoted to a block
+  // argument so it is fork-guarded like a listed input.
   SmallVector<Value> inputs(seq.getInputs());
   llvm::SetVector<Value> captured;
   mlir::getUsedValuesDefinedAbove(seq.getBodyRegion(), captured);
@@ -1982,12 +1836,9 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
     }
   }
 
-  // Map each body block argument to its lowered input and guard the (region-
-  // local) block argument on the device's fork chain, so the body's ops wait
-  // for the fork. We guard the block argument -- not the shared input value --
-  // so unrelated main-stream consumers of the same input are not serialized.
-  // A device with no fork (not bound, or a promoted capture living on a device
-  // the body neither takes inputs from nor yields to) keeps producer ordering.
+  // Guard each body block argument (not the shared input, so unrelated
+  // main-stream consumers are not serialized) on its device's fork chain. A
+  // device with no fork keeps producer ordering.
   for (auto [arg, operand] : llvm::zip_equal(body.getArguments(), inputs)) {
     loweringState.emplaceExecuteLoweredValue(
         arg, loweringState.lookupExecuteLoweredValue(operand));
@@ -2060,11 +1911,9 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
 LogicalResult MOGraphLowering::run() {
   MO::GraphOp &graph = loweringState.getGraph();
 
-  // Create the mgp.model and the regions for the init/execute phases.
   if (failed(createModelOp()))
     return failure();
 
-  // Enter the main body of the graph
   for (auto [graphArg, exeArg] :
        llvm::zip(graph.getBody().front().getArguments(),
                  loweringState.getModelOp().getExecuteInputs())) {
@@ -2073,7 +1922,6 @@ LogicalResult MOGraphLowering::run() {
     if (loweringResult.isError())
       return graph->emitOpError(loweringResult.getError());
 
-    // If the argument has no uses (and no parameters) then just ignore it.
     if (!loweringResult->hasParameters && graphArg.use_empty())
       continue;
 
@@ -2081,19 +1929,16 @@ LogicalResult MOGraphLowering::run() {
                                              loweringResult->loweredArg);
   }
 
-  // Lower all of the operations in the graph.
   if (failed(lowerBlock(graph.getBodyBlock())))
     return failure();
 
   OpBuilder b(graph);
   MGP::ModelOp model = loweringState.getModelOp();
 
-  // Bind any free variables in grt.if and grt.while control flow ops.
-  // Adds and returns the new model to the module.
+  // Binds free variables in grt.if/grt.while and adds a new model to the
+  // module, replacing this one.
   (void)MGP::fixupIsolatedFromAbove(b, model);
-  // We've fixed up the MGP model, so remove the old one.
   model.erase();
-  // We're also done with the original mo.graph.
   graph.erase();
 
   return success();
@@ -2121,14 +1966,11 @@ fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
       fusedRegion->getNumOperands(), InOutSignatureAttr::kNone);
   fusedRegion.setInOutSignatureAttr(InOutSignatureAttr::get(ctx, sig));
 
-  // Replace each synchronous mogg.call.stub with mogg.call.stub.async.
-  // Propagate the optional $device attribute so the emitter can choose an
-  // affinity-aware create_task form for GPU launches.
+  // Forward the affinity device ordinal (set only on GPU launches) so the
+  // emitter can choose an affinity-aware create_task.
   Block &body = fusedRegion.getBody().front();
   SmallVector<Value> taskHandles;
   body.walk([&](MOGG::CallStubOp callStub) {
-    // Forward the affinity device ordinal (set on GPU launches only by the
-    // parallel orchestrator) straight from CallStubOp to CallStubAsyncOp.
     OpBuilder b(ctx);
     b.setInsertionPoint(callStub);
     MOGG::CallStubAsyncOp asyncCall = MOGG::CallStubAsyncOp::create(
@@ -2138,7 +1980,6 @@ fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
     callStub.erase();
   });
 
-  // Insert the join barrier before the output terminator.
   Operation *outputOp = body.getTerminator();
   OpBuilder b(ctx);
   b.setInsertionPoint(outputOp);
@@ -2180,9 +2021,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   // out-chain. The lowering is a pass-through: it maps the chain block arg to
   // the lowered in-chain and the out-chain to the lowered yielded chain.
 
-  // Resolve per-launch MO-level values from each bundle input via the
-  // lowering state (populated by lower(TensorBundleOp)).  The optional buffer
-  // group comes directly from the parallel op's buffers() operand list.
+  // Per-launch MO-level values of each bundle input, from
+  // lower(TensorBundleOp).
   size_t numGroups = numBundleGroups;
   SmallVector<SmallVector<Value>> bundleElements(numGroups);
 
@@ -2193,11 +2033,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       bundleElements[group].push_back(moElements[launch]);
   }
 
-  // Single body walk: collect the body kernels and bundled.expand ops, and
-  // reject any other op the lowering can't handle. The verifier accepts a
-  // few preserved ops as transient intermediate IR (see ParallelOp::verify),
-  // but by lowering time only kernels and bundled.expand should remain --
-  // anything else indicates a missing cleanup pass or an unsupported pattern.
+  // Only kernels and bundled.expand should remain by now; the verifier's other
+  // transient ops (see ParallelOp::verify) mean a missing cleanup.
   SmallVector<Operation *> kernelOps;
   SmallVector<MO::BundledExpandOp> expandOps;
   for (Operation &op : bodyBlock.without_terminator()) {
@@ -2214,29 +2051,19 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   if (kernelOps.empty())
     return parallelOp.emitOpError("body must contain at least one kernel");
 
-  // For each kernel in the body, clone it once per launch, lower each clone
-  // via `KernelOp::lowerToCompiledRegion`, then fuse and convert to
-  // async.
+  // Each kernel is cloned per launch, lowered via
+  // `KernelOp::lowerToCompiledRegion`, then fused and made async. Fusion is per
+  // kernel group, since a later group's buffer allocs may depend on an earlier
+  // group's chain. Bundled kernels (collectives) are N-expanded so each clone
+  // sees every launch's inputs.
   //
-  // Fusion is per kernel group (not across groups) to avoid creating dataflow
-  // cycles: a later group's buffer allocs may depend on the earlier group's
-  // chain output.
-  //
-  // Bundled kernels (collectives like allreduce) are cloned per launch like
-  // regular kernels, but each clone is N-expanded to receive inputs from ALL
-  // launches so the collective can see every device's data.
-  //
-  // perLaunchCloneResults tracks inter-kernel dependencies: for each original
-  // kernel result in the parallel body, we record the per-launch clone result
-  // so that subsequent kernel clones can resolve their operands via IRMapping.
-  // Clone ops are kept alive until after all kernels are processed because
-  // lookupExecuteLoweredValue needs the clone result SSA values.
+  // perLaunchCloneResults maps each body result to its per-launch clone
+  // results for later clones' IRMapping; clones stay alive until all kernels
+  // are processed.
   DenseMap<Value, SmallVector<Value>> perLaunchCloneResults;
   SmallVector<Operation *> allClones;
 
-  // The in-chain enters the body through the trailing chain block argument
-  // (present iff the parallel is chained); map it to the lowered in-chain so
-  // the body's buffer ops thread the real predecessor.
+  // A chained parallel's in-chain is the body's trailing block argument.
   Value loweredInChain;
   if (parallelOp.hasChain()) {
     loweredInChain =
@@ -2248,12 +2075,10 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   // result values, so the yielded out-chain can be resolved to it.
   DenseMap<Value, Value> resultToFusedChain;
 
-  // Resolve mo.bundled.expand ops: each result maps to the per-launch element
-  // of the input's source bundle.  The expand op is a no-op placeholder that
-  // makes N-expansion explicit in the IR.
+  // Each mo.bundled.expand result maps to the per-launch elements of its
+  // source bundle.
   for (MO::BundledExpandOp expandOp : expandOps) {
     Value input = expandOp.getInput();
-    // Find which bundle group this input comes from.
     for (size_t group = 0; group < numBundleGroups; ++group) {
       if (input != bodyBlock.getArgument(group))
         continue;
@@ -2278,9 +2103,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       IRMapping mapper;
       for (size_t group = 0; group < numGroups; ++group)
         mapper.map(bodyBlock.getArgument(group), bundleElements[group][launch]);
-      // Trailing chain block arg (chained parallels): map it to the MO-level
-      // in-chain so the cloned body op carries an MO chain operand; the
-      // compiled-region lowering resolves its lowered value.
+      // Mapped to the MO-level in-chain; the compiled-region lowering
+      // resolves its lowered value.
       if (parallelOp.hasChain())
         mapper.map(bodyBlock.getArgument(numBundleGroups),
                    parallelOp.getInChain());
@@ -2291,12 +2115,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       cloneBuilder.setInsertionPointAfter(parallelOp);
       Operation *clonedOp = cloneBuilder.clone(*kernelOp, mapper);
 
-      // The parallel body uses the first input's device as a representative.
-      // For launches on other devices, retarget the clone to this launch's
-      // device (from the `launchDevices` attribute on `mo.parallel`): update
-      // its result tensor types, then its device attribute, so the lowering
-      // allocates output buffers and picks a device context on the right
-      // device.
+      // The body is typed for the first input's device; retarget the clone's
+      // result types and device to this launch's device.
       DeviceRefAttr launchDevice = parallelOp.getLaunchDeviceList()[launch];
       const bool retarget = launchDevice != MO::getDeviceOrDefaultAny(clonedOp);
       for (OpResult result : clonedOp->getResults()) {
@@ -2305,9 +2125,6 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
             result.setType(resTy.cloneWith(launchDevice));
       }
 
-      // Lower the clone to its compiled region via
-      // `KernelOp::lowerToCompiledRegion`, the same hook its top-level
-      // `lower()` wraps.
       auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
       if (retarget)
         clonedKernel.setDeviceRef(launchDevice);
@@ -2316,11 +2133,9 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       if (!launchRegion)
         return failure();
 
-      // For GPU launches, stamp the integer device ordinal onto every
-      // CallStubOp so that fuseAndConvertToAsync can forward it unchanged
-      // to the async variant.  The ordinal is stored as a plain I64Attr
-      // rather than a DeviceRefAttr because the codegen device refs in the
-      // kernel layer are label-only (no numeric id).
+      // Stamp the GPU device ordinal on each CallStubOp for
+      // fuseAndConvertToAsync. A plain I64Attr, since kernel-layer device refs
+      // are label-only.
       if (launchDevice && launchDevice.getLabel() == M::kGPULabel) {
         auto affinityId =
             mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),
@@ -2344,15 +2159,11 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     MOGG::GenericCompiledRegionOp fusedRegion =
         fuseAndConvertToAsync(ctx, loc, groupRegions);
     Value fusedChain = fusedRegion.getResult(0);
-    // Record this group's completion chain against its MO-level results, so the
-    // yielded out-chain (produced by the body's buffer op) resolves to it.
     for (Value res : kernelOp->getResults())
       resultToFusedChain[res] = fusedChain;
 
-    // The compiled-region lowering registered chain guards against individual
-    // compiled region chains, which fuseAndConvertToAsync just erased. Repoint
-    // them to the fused region's chain so subsequent kernel groups see valid
-    // guards.
+    // Repoint guards from the erased per-launch region chains to the fused
+    // chain.
     for (Operation *clone : kernelClones) {
       for (Value cloneRes : clone->getResults()) {
         loweringState.replaceChainGuard(cloneRes, fusedChain);
@@ -2363,8 +2174,8 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     }
   }
 
-  // Register per-element clone results as the bundle elements for each
-  // parallel result so that lower(TensorUnbundleOp) can resolve them.
+  // Register clone results as each result's bundle elements for
+  // lower(TensorUnbundleOp).
   auto yieldOp = cast<MO::YieldOp>(bodyBlock.getTerminator());
   size_t resultIdx = 0;
   for (Value yieldOperand : yieldOp.getOperands()) {
@@ -2372,24 +2183,18 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
       continue;
     Value bundleResult = parallelOp.getResult(resultIdx++);
     SmallVector<Value> &cloneResults = perLaunchCloneResults[yieldOperand];
-
-    // Register clone results as the bundle elements for this result so that
-    // lower(TensorUnbundleOp) can resolve them via lookupBundleElements.
     loweringState.emplaceBundleElements(bundleResult,
                                         SmallVector<Value>(cloneResults));
   }
 
-  // The out-chain is the lowered completion of the body's yielded chain (the
-  // buffer ops' threaded chain). The IR states this explicitly, so the lowering
-  // is a pass-through: no spine advance, no buffer-op detection.
+  // The out-chain is the lowered completion of the body's yielded chain.
   if (parallelOp.hasChain()) {
     Value yieldedChain = yieldOp.getOperands().back();
     ASSERT_STREAM(
         isa<MO::ChainType>(yieldedChain.getType()),
         << "chained parallel must yield a trailing chain (enforced by verify)");
     auto it = resultToFusedChain.find(yieldedChain);
-    // If the body merely passes the in-chain through (no buffer op produced
-    // it), the out-chain is the in-chain itself.
+    // Or the in-chain, if the body passes it through.
     Value outChain =
         it != resultToFusedChain.end() ? it->second : loweredInChain;
 
@@ -2397,11 +2202,9 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
                                              outChain);
   }
 
-  // Clone shells must stay alive: their result Values are referenced by
-  // loweredValues (and potentially bundleElements in downstream passes).
-  // Move them into the parallel op's body region so lowerBlock's
-  // graph-level iterator doesn't re-encounter them.  They become dead
-  // code destroyed when the MO graph region is replaced by MGP.
+  // Clones must stay alive, since loweredValues references their results.
+  // Moving them into the body keeps lowerBlock from revisiting them; they die
+  // with the MO graph.
   Block &bodyFront = parallelOp.getBodyRegion().front();
   for (Operation *clone : allClones)
     clone->moveBefore(&bodyFront, bodyFront.begin());
@@ -2436,10 +2239,8 @@ LogicalResult MOGraphLowering::lower(MO::CallOp callOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, callOp);
   OpBuilder b(callOp);
 
-  // Get the target model name
   StringRef targetModelName = callOp.getCallee();
 
-  // Lookup the target model in the module
   auto moduleOp = callOp->getParentOfType<ModuleOp>();
   if (!moduleOp)
     return callOp.emitError() << "Failed to find parent ModuleOp";
@@ -2449,26 +2250,18 @@ LogicalResult MOGraphLowering::lower(MO::CallOp callOp) {
     return callOp.emitError()
            << "Failed to find target model with name: " << targetModelName;
 
-  // The MGP call needs all the implicit arguments plus the explicit ones
-  // The implicit args are: chain, context, weights registry, and devices
+  // Implicit args first: chain, context, weights registry, devices.
   SmallVector<Value> callOperands;
-
-  // First, we need the implicit arguments
-  // Get chain, context, weights registry from the current model's execute block
   callOperands.push_back(loweringState.getCurrentExecuteChain());
   callOperands.push_back(loweringState.getExecuteMgpContext());
   callOperands.push_back(loweringState.getExecuteWeightsRegistry());
 
-  // Add device contexts
   for (auto deviceAttr : targetModel.getDevices()) {
     DeviceRefAttr deviceRef = cast<DeviceRefAttr>(deviceAttr);
     callOperands.push_back(loweringState.getExecuteDevice(deviceRef));
   }
 
-  // Now add the explicit operands from the mo.call op
-  // These need to be mapped to their lowered MGP equivalents
   for (auto operand : callOp.getOperands()) {
-    // Get the lowered value (must have been lowered earlier)
     Value loweredValue = loweringState.lookupExecuteLoweredValue(operand);
     if (!loweredValue)
       return callOp.emitError() << "Operand not lowered yet: " << operand;
@@ -2476,13 +2269,9 @@ LogicalResult MOGraphLowering::lower(MO::CallOp callOp) {
     callOperands.push_back(loweredValue);
   }
 
-  // Determine result types for the call
+  // The chain, then the explicit results.
   SmallVector<Type> resultTypes;
-
-  // First result is always chain
   resultTypes.push_back(b.getType<MEF::ChainType>());
-
-  // Add the explicit result types
   for (auto result : callOp.getResults()) {
     Type loweredType =
         loweringState.getTypeConverter().convertType(result.getType());
@@ -2493,19 +2282,14 @@ LogicalResult MOGraphLowering::lower(MO::CallOp callOp) {
     resultTypes.push_back(loweredType);
   }
 
-  // Create the mgp.call operation
   auto targetSymbol = SymbolRefAttr::get(targetModel.getSymNameAttr());
   auto mgpCallOp = opLoweringState.create<MGP::CallOp>(
       resultTypes, targetSymbol, callOp.getPrefixAttr(), callOperands);
   Value callOutChain = mgpCallOp.getResult(0);
 
-  // Map the results back
-  // Skip the first result (chain) for mapping back to original results
   for (unsigned i = 0; i < callOp.getNumResults(); ++i) {
     loweringState.emplaceExecuteLoweredValue(callOp.getResult(i),
                                              mgpCallOp.getResult(i + 1));
-
-    // Guard every result with the chain
     loweringState.guardValueWithChain(mgpCallOp.getResult(i + 1), callOutChain);
   }
 
@@ -2587,12 +2371,8 @@ void MOGGToMGPPass::getDependentDialects(DialectRegistry &registry) const {
 void MOGGToMGPPass::runOnOperation() {
   ModuleOp theModule = getOperation();
 
-  // Kernel stubs are created at module scope during lowering. Register them
-  // through the module's `SymbolTableAnalysis` so the cached table stays
-  // consistent for later passes -- the analysis is never invalidated by the
-  // pass manager, so symbols added via a raw builder would otherwise be
-  // invisible to consumers that read the cached table. We keep it up to date
-  // here, hence we can mark it preserved.
+  // Kernel stubs created during lowering are registered through the cached
+  // `SymbolTableAnalysis`, which the pass manager never invalidates.
   SymbolTable &moduleSymbolTable =
       getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
 
@@ -2612,10 +2392,9 @@ void MOGGToMGPPass::runOnOperation() {
   }
 
   size_t lastProcessed = 0;
-  // Process graphs in dependency order until all graphs are processed.
+  // Process graphs in dependency order.
   while (!worklist.empty()) {
-    // If no graphs have been processed after one full iteration through
-    // the worklist, then there must be a cycle.
+    // A full pass with no progress means a cycle.
     if (lastProcessed > worklist.size()) {
       theModule.emitError("cycle detected in graph ops");
       return signalPassFailure();
@@ -2626,21 +2405,14 @@ void MOGGToMGPPass::runOnOperation() {
     MO::GraphOp graph = worklist.back();
     worklist.pop_back();
 
-    // Check if all our dependencies have been processed.
     auto &dependencies = graphDependencies[graph.getNameAttr()];
 
     if (!llvm::set_is_subset(dependencies, completedGraphs)) {
-      // There are still unprocessed dependencies, so push the graph onto the
-      // front of the worklist and move on.
       worklist.push_front(graph);
       continue;
     }
 
-    // Mark the graph as processed.
     completedGraphs.insert(graph.getNameAttr());
-
-    // All dependencies are processed, so we can convert this graph
-    // Convert each mo.graph into a mgp.model using MOGraphLowering
     if (failed(MOGraphLowering(graph, compiledFrameworkLabel.getValue(),
                                minimumCpuAlignment.getValue(),
                                moduleSymbolTable)
@@ -2652,13 +2424,9 @@ void MOGGToMGPPass::runOnOperation() {
 
   deferSideStreamJoins(theModule);
 
-  // Anonymize every kernel stub's dim-arg names in one sweep over the whole
-  // module, now that every mogg.kernel has been lowered and its dim-typed
-  // operands rebound to anonymous dims -- a named dim surviving on a stub's
-  // boundary would otherwise block MergeIdenticalKernelStubs from treating
-  // two structurally-identical stubs as duplicates. Nested (rather than
-  // folded into the per-graph lowering above) so it stays independently
-  // testable without running MOGGToMGP itself.
+  // A named dim on a stub's boundary would block MergeIdenticalKernelStubs
+  // from deduplicating identical stubs. A nested pass so it stays testable on
+  // its own.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       &getContext(), mlir::OpPassManager::Nesting::Implicit);
   pm.addPass(MOGG::createAnonymizeDimNames());

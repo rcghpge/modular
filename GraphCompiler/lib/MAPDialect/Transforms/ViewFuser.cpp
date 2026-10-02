@@ -31,8 +31,8 @@ struct FuseViewsPass : public MAP::impl::FuseViewsBase<FuseViewsPass> {
 
   void runOnOperation() override {
     InputFusionConfig config;
-    // A view producer, decided from its store's dataflow. The consumer is a
-    // foreach or an opaque -- the only kinds generic input fusion offers.
+    // The consumer is a foreach or an opaque, the only kinds input fusion
+    // offers.
     config.shouldFuse = [](StoreOp srcStore, LoadOp) {
       return producesThroughView(srcStore);
     };
@@ -40,8 +40,8 @@ struct FuseViewsPass : public MAP::impl::FuseViewsBase<FuseViewsPass> {
     // consumer. A view already fused into elementwise compute is not: cloning
     // it re-reads all of its inputs, and on a residual chain
     // (h = h + reshape(matmul(h))) that recomputes every earlier layer in each
-    // later one. Such a kernel is held to the elementwise duplication rule, as
-    // legacy does by fusing only view-only kernels here (GEX-4234).
+    // later one, so it is held to the elementwise duplication rule
+    // (GEX-4234).
     config.canDuplicate = [](IterForeachOp src) {
       return isPureViewForeach(src) || isCheapToDuplicate(src);
     };

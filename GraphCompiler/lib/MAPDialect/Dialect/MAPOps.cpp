@@ -27,10 +27,7 @@ using namespace M::MAP;
 //===----------------------------------------------------------------------===//
 
 // Parses the `key = value, ...` body between the brackets in `@callee[...]`
-// into a dictionary (the `[` and `]` are literals in the op's assembly format).
-// The bracket form (rather than the builtin `{...}` dictionary syntax) keeps
-// the call reading as `@callee[params]`; `@callee` is parsed by the builtin
-// symbol parser, which stops at the `[`.
+// into a dictionary.
 static ParseResult parseKernelParamsBody(OpAsmParser &parser,
                                          DictionaryAttr &params) {
   SmallVector<NamedAttribute> entries;
@@ -78,9 +75,8 @@ CallOpaqueOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 }
 
 LogicalResult CallOpaqueOp::verify() {
-  // `$outputs` is destination-passing, so an `!mo.opaque` never belongs there:
-  // a kernel allocates one internally and returns it through `$opaqueResult`.
-  // `$outputs` is `AnyType`, so only this check keeps the two apart.
+  // `$outputs` is `AnyType`; a by-value `!mo.opaque` belongs in
+  // `$opaqueResult`.
   for (Value output : getOutputs())
     if (isa<MO::OpaqueType>(output.getType()))
       return emitOpError("an opaque is returned through its result, not passed "
@@ -120,10 +116,8 @@ static void printValuesWithTypes(OpAsmPrinter &p, ValueRange values) {
 //===----------------------------------------------------------------------===//
 
 ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
-  // inputs ( %A : tA, ... ) -- shadowed as body block arguments (isolated).
-  // Written exactly like every other input, a trailing chain included; split
-  // out below once its type is known, so `$inputChain` stays a dedicated
-  // operand without changing this syntax at all.
+  // inputs ( %A : tA, ... ), a trailing chain included; the chain is split
+  // out into `$inputChain` below.
   SmallVector<OpAsmParser::Argument> allArgInfo;
   if (parser.parseKeyword("inputs") ||
       parseParenOperandListWithShadowing(parser, result, allArgInfo,
@@ -133,30 +127,25 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
       !allArgInfo.empty() && isa<MO::ChainType>(allArgInfo.back().type);
   int32_t numInputOperands =
       static_cast<int32_t>(result.operands.size()) - (hasInputChain ? 1 : 0);
-  // The input chain stays an operand ($inputChain) but has no body block
-  // argument -- it is pure sequencing the body never touches -- so drop the
-  // block-arg entry the shadowing parse just created for it.
+  // The chain has no body block argument.
   if (hasInputChain)
     allArgInfo.pop_back();
 
-  // outputs ( %out : tOut, ... ) -> region entry args + op result types.
-  // The trailing output chain (if any) is a result but, like the input chain,
-  // never a block argument.
+  // outputs ( %out : tOut, ... ); a trailing chain is a result without a
+  // block argument.
   SmallVector<OpAsmParser::Argument> outArgs;
   if (parser.parseKeyword("outputs") ||
       parser.parseArgumentList(outArgs, OpAsmParser::Delimiter::Paren,
                                /*allowType=*/true))
     return mlir::failure();
-  // `returns tOpaque` -- a by-value result the body yields instead of filling,
-  // so it contributes a result type but no block argument.
+  // `returns tOpaque`: a by-value result with no block argument.
   Type opaqueResultType;
   if (succeeded(parser.parseOptionalKeyword("returns")) &&
       parser.parseType(opaqueResultType))
     return mlir::failure();
 
-  // `$results` is ordered [DPS results..., by-value opaque?, chain?], which the
-  // block-arg accessors and the epilogue fusers both index against -- so the
-  // types go in that order rather than in the order they were written.
+  // `$results` is ordered [DPS results..., by-value opaque?, chain?],
+  // regardless of the written order.
   Type chainResultType;
   for (const OpAsmParser::Argument &arg : outArgs) {
     if (isa<MO::ChainType>(arg.type)) {
@@ -175,7 +164,6 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
                       parser.getBuilder().getDenseI32ArrayAttr(
                           {numInputOperands, hasInputChain ? 1 : 0}));
 
-  // body region (entry block args are ordered [inputs..., outputs...])
   Region *body = result.addRegion();
   if (parseRegion(parser, allArgInfo, *body, /*isIsolatedFromAbove=*/true))
     return mlir::failure();
@@ -187,12 +175,8 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
   p.increaseIndent();
   p.printNewline();
   p << "inputs ";
-  // Non-chain inputs are shadowed as body block args (`%operand as %arg: type`,
-  // or just `%operand: type` when the operand's own name already prints). The
-  // `$inputChain`, when present, is a dedicated operand with NO block arg and
-  // prints as a trailing `%chain: !mo.chain` -- pure sequencing the body never
-  // touches. Inlines `printParenOperandListWithShadowing` (which needs a real
-  // `OperandRange`, not a synthesized combined list).
+  // Inlines `printParenOperandListWithShadowing`, which needs a real
+  // `OperandRange`, then appends `$inputChain` as a trailing `%chain: type`.
   ValueRange inputs = getInputs();
   Block::BlockArgListType inputArgs = getInputBlockArgs();
   {
@@ -220,8 +204,6 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
     p << ")";
   }
   p.printNewline();
-  // Non-chain outputs print as their DPS block args; the trailing output chain,
-  // when present, is a result with no block arg and prints after them.
   p << "outputs (";
   printValuesWithTypes(p, getOutputBlockArgs());
   if (Value outputChain = getOutputChain()) {
@@ -234,10 +216,7 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
     p << "returns " << opaqueResult.getType() << " ";
   p.decreaseIndent();
 
-  // Shadow the region so inner references to the inputs print with the outer
-  // operand's own SSA name (mirrors IterForeachOp::print). Only the non-chain
-  // inputs and the output block args have region args to shadow; the chain has
-  // none.
+  // Inner references to the inputs print with the outer operand's SSA name.
   {
     llvm::DenseSet<Value> seen;
     bool inputsDistinct = true;
@@ -262,16 +241,10 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict((*this)->getAttrs(), elided);
 }
 
-// The body shadows the non-chain inputs then the non-chain outputs; the chain
-// (in and out) is threaded through the dedicated `$inputChain` operand and
-// trailing chain result and never gets a block arg. So the split is on the
-// non-chain result count, not `getNumResults()`.
 LogicalResult IterOpaqueOp::verify() {
-  // `$results` must read [DPS results..., by-value opaque?, chain?]. Both the
-  // block-arg accessors (`take_back`/`drop_back` of the DPS count) and the
-  // epilogue fusers, which pair result `i` with output block arg `i`, index
-  // against that order -- so a by-value result appearing before a DPS one
-  // would silently misalign them rather than fail.
+  // The block-arg accessors and the epilogue fusers (result `i` <-> output
+  // block arg `i`) rely on [DPS results..., by-value opaque?, chain?]; any
+  // other order would silently misalign them.
   bool seenByValue = false;
   for (Value result : getResults()) {
     Type ty = result.getType();
@@ -284,11 +257,8 @@ LogicalResult IterOpaqueOp::verify() {
                          "opaque result and the output chain");
   }
 
-  // A by-value result reaches the op only through `map.yield`, so the body
-  // must end in one carrying a value that is not merely a restatement of a DPS
-  // output block arg. (A yield of an output block arg alone is redundant but
-  // legal -- the op's own docs call the terminator optional for the DPS case --
-  // so its presence is not by itself enough.)
+  // A by-value result needs a `map.yield` of something other than a DPS
+  // output block arg (yielding only those is legal but redundant).
   if (getOpaqueResult()) {
     auto yieldOp = dyn_cast<YieldOp>(getBody().front().back());
     Block::BlockArgListType outputArgs = getOutputBlockArgs();
@@ -325,8 +295,6 @@ Block::BlockArgListType IterOpaqueOp::getInputBlockArgs() {
 }
 
 Value IterOpaqueOp::getInputFor(BlockArgument arg) {
-  // `getInputBlockArgs()` shadows `$inputs` exactly (the chain has no block
-  // arg), so every one has an operand to hand back.
   ValueRange inputs = getInputs();
   Block::BlockArgListType inputArgs = getInputBlockArgs();
   for (unsigned i = 0, e = inputs.size(); i < e; ++i)
@@ -370,10 +338,8 @@ void IterOpaqueOp::setChain(Value chain) {
     getInputChainMutable().assign(chain);
 }
 
-// hasReadEffect/hasWriteEffect carry forward the memory effects of the original
-// op a kernel lowers. Report them per mutable operand so downstream passes see
-// *which* memory is touched, falling back to an unattributed write for a kernel
-// that mutates something no operand names.
+// Reports hasReadEffect/hasWriteEffect per mutable operand, falling back to an
+// unattributed write when no operand is mutable.
 static void
 collectKernelEffects(Operation *op, bool hasReadEffect, bool hasWriteEffect,
                      SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
@@ -418,10 +384,8 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
                                /*allowType=*/true))
     return mlir::failure();
 
-  // capturing ( %inner = %outer : type, ... ): the region is isolated from
-  // above, so each captured value is an operand (%outer, resolved in the
-  // enclosing scope) exposed inside the body as a fresh block argument
-  // (%inner). The `%inner = %outer` sugar names that block argument.
+  // capturing ( %inner = %outer : type, ... ): each %outer is an operand
+  // shadowed by the block argument %inner.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
   if (parser.parseKeyword("capturing") || parser.parseLParen())
@@ -446,11 +410,8 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
                              parser.getCurrentLocation(), result.operands))
     return mlir::failure();
 
-  // Optional `intermediate %outer : type` -- the intermediate-tensor operand.
-  // Unlike the captures it gets no block argument (the body never reads it; it
-  // only tells lowering whose storage to build the slice over), so it is
-  // resolved as a plain trailing operand and split out via the operand-segment
-  // sizes.
+  // Optional `intermediate %outer : type`, a trailing operand with no block
+  // argument.
   int32_t numIntermediateTensor = 0;
   if (succeeded(parser.parseOptionalKeyword("intermediate"))) {
     OpAsmParser::UnresolvedOperand srcOperand;
@@ -465,10 +426,8 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.getBuilder().getDenseI32ArrayAttr(
           {static_cast<int32_t>(captures.size()), numIntermediateTensor}));
 
-  // body region (isolated; entry args are [leading..., captures...]).
-  // enableNameShadowing lets the capture block args reuse the same SSA names as
-  // the captured operands, so the body reads as if it referenced them directly
-  // (valid only because the region is IsolatedFromAbove).
+  // Entry args are [leading..., captures...]. Name shadowing is valid because
+  // the region is IsolatedFromAbove.
   Region *body = result.addRegion();
   if (parser.parseRegion(*body, entryArgs, /*enableNameShadowing=*/true))
     return mlir::failure();
@@ -534,10 +493,7 @@ ParseResult IterPrologueOp::parse(OpAsmParser &parser, OperationState &result) {
                                /*allowType=*/true))
     return failure();
 
-  // capturing ( %inner = %outer : type, ... ): same sugar as
-  // map.iter.epilogue -- see there for why the region can be isolated from
-  // above yet have the body read as if it referenced the outer values
-  // directly.
+  // capturing ( %inner = %outer : type, ... ), as in map.iter.epilogue.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
   if (parser.parseKeyword("capturing") || parser.parseLParen())
@@ -562,7 +518,6 @@ ParseResult IterPrologueOp::parse(OpAsmParser &parser, OperationState &result) {
                              parser.getCurrentLocation(), result.operands))
     return failure();
 
-  // body region (isolated; entry args are [idx, captures...]).
   Region *body = result.addRegion();
   if (parser.parseRegion(*body, entryArgs, /*enableNameShadowing=*/true))
     return failure();
@@ -617,8 +572,7 @@ void IterPrologueOp::getAsmBlockArgumentNames(Region &region,
 // map.iter.foreach
 //===----------------------------------------------------------------------===//
 
-// Parse a parenthesized list of block-argument-only entries: (name: type, ...).
-// Does NOT add operands to the state — only populates argumentInfo.
+// Parses `(name: type, ...)` block arguments without operands.
 static ParseResult
 parseBlockArgList(OpAsmParser &parser,
                   SmallVectorImpl<OpAsmParser::Argument> &argInfo) {
@@ -635,7 +589,6 @@ parseBlockArgList(OpAsmParser &parser,
   return parser.parseRParen();
 }
 
-// Print a parenthesized list of block arguments (name: type) without operands.
 static void printBlockArgList(OpAsmPrinter &p, Block::BlockArgListType args) {
   p << "(";
   llvm::interleaveComma(args, p, [&](BlockArgument arg) {
@@ -647,9 +600,7 @@ static void printBlockArgList(OpAsmPrinter &p, Block::BlockArgListType args) {
 }
 
 ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
-  // Parse shape: <[d0, d1, ...]>
-  // Uses MOSH::parseShapeAttr which handles static ints, symbolic params,
-  // and parametric expressions inside the [...] brackets.
+  // <[d0, d1, ...]>
   if (parser.parseLess())
     return mlir::failure();
   mlir::TypedAttr shapeTypedAttr;
@@ -663,7 +614,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
     return mlir::failure();
   state.addAttribute(getShapeAttrName(state.name), shapeTypedAttr);
 
-  // Parse inputs with shadowing: inputs (%x: T, %y: T)
+  // inputs (%x: T, %y: T)
   SmallVector<OpAsmParser::Argument> allArgInfo;
   if (parser.parseKeyword("inputs") ||
       parseParenOperandListWithShadowing(parser, state, allArgInfo,
@@ -671,7 +622,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
     return mlir::failure();
   int32_t numInputOperands = static_cast<int32_t>(state.operands.size());
 
-  // Parse outputs (block args only): outputs (%out: T)
+  // outputs (%out: T), block args only.
   SmallVector<OpAsmParser::Argument> outputArgInfo;
   if (parser.parseKeyword("outputs") ||
       parseBlockArgList(parser, outputArgInfo))
@@ -679,7 +630,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
   for (auto &arg : outputArgInfo)
     allArgInfo.push_back(arg);
 
-  // Parse index (block arg only): index (%idx: map.index<N>)
+  // index (%idx: map.index<N>), block arg only.
   SmallVector<OpAsmParser::Argument> indexArgInfo;
   if (parser.parseKeyword("index") || parseBlockArgList(parser, indexArgInfo))
     return mlir::failure();
@@ -689,9 +640,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
         "'map.iter.foreach' expects exactly one index argument");
   allArgInfo.push_back(indexArgInfo.front());
 
-  // Parse optional chain (%c) clause -- a plain operand, never a block arg:
-  // nothing in the per-element body ever touches the chain (pure sequencing
-  // plumbing, mirrors mogg.kernel's `chain(...)`).
+  // Optional chain (%c), an operand with no block arg.
   int32_t numChainOperands = 0;
   if (succeeded(parser.parseOptionalKeyword("chain"))) {
     OpAsmParser::UnresolvedOperand chainOperand;
@@ -708,11 +657,9 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
                      parser.getBuilder().getDenseI32ArrayAttr(
                          {numInputOperands, numChainOperands}));
 
-  // Parse result types: -> T or (T, T, ...)
   if (parser.parseArrowTypeList(state.types))
     return mlir::failure();
 
-  // Parse body region with all block args.
   if (parseRegion(parser, allArgInfo, *state.addRegion(),
                   /*isIsolatedFromAbove=*/true))
     return mlir::failure();
@@ -721,9 +668,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
 }
 
 void IterForeachOp::print(OpAsmPrinter &p) {
-  // Print shape: <[d0, d1, ...]>
-  // Uses MOSH::printShapeValue to render each dim (integer, symbolic, or
-  // parametric expression) without the outer "#mosh<ape[...]>" envelope.
+  // Without the outer "#mosh<ape[...]>" envelope.
   p << "<[";
   MOSH::printShapeValue(p, getShape().getValues());
   p << "]>";
@@ -731,44 +676,31 @@ void IterForeachOp::print(OpAsmPrinter &p) {
 
   Block &body = getBody().front();
   unsigned numInputs = getInputs().size();
-  // The output chain (if any) is always the last result and, like the input
-  // chain, never has a body block argument -- only tensor results do.
   bool hasOutChain = getOutputChain() != nullptr;
   unsigned numOutputs = getResults().size() - (hasOutChain ? 1 : 0);
 
-  // inputs (%x: T, ...) — operands shadowed as block args
   p << "inputs  ";
   printParenOperandListWithShadowing(p, getInputs(),
                                      body.getArguments().slice(0, numInputs),
                                      /*isIsolatedFromAbove=*/true);
   p << "\n    ";
 
-  // outputs (%out: T, ...) — block args only
   p << "outputs ";
   printBlockArgList(p, body.getArguments().slice(numInputs, numOutputs));
   p << "\n    ";
 
-  // index (%idx: map.index<N>) — block arg only
   p << "index   ";
   printBlockArgList(p, body.getArguments().slice(numInputs + numOutputs, 1));
   p << " ";
 
-  // chain (%c) — optional plain operand, no block arg.
   if (Value chain = getInputChain())
     p << "chain(" << chain << ") ";
 
-  // -> result types (on same line as index, opening brace follows inline)
   p.printArrowTypeList(getResultTypes());
   p << " ";
 
-  // Body region.
-  // printRegion() from ParserUtils requires operands.size() ==
-  // region.getNumArguments(), but IterForeachOp's region has inputs + outputs +
-  // index block args, while getInputs() covers only the input operands.
-  // Instead: shadow input block args with their outer operand SSA names so
-  // the body prints "%x", "%y", etc.  Output and index block args were
-  // already assigned names by the printBlockArgList calls above; shadowing
-  // them with themselves is a no-op that keeps those names consistent.
+  // ParserUtils' printRegion() needs one operand per region argument, so
+  // shadow manually; outputs and index shadow themselves.
   {
     llvm::DenseSet<Value> seen;
     bool inputsDistinct = true;
@@ -799,9 +731,7 @@ LogicalResult IterForeachOp::verify() {
   Block &body = getBody().front();
   unsigned numInputs = getInputs().size();
 
-  // A chain result, if present, is always last (mirrors
-  // MOGG::KernelOp::maybeGetOutChain()) and, like the input chain, never
-  // gets a body block argument -- only the preceding tensor results do.
+  // A chain result must be last and has no block argument.
   ResultRange results = getResults();
   for (unsigned i = 0; i < results.size(); ++i) {
     bool isChain = llvm::isa<MO::ChainType>(results[i].getType());
@@ -818,21 +748,18 @@ LogicalResult IterForeachOp::verify() {
                          << numOutputs << " outputs + 1 index), "
                          << "got " << body.getNumArguments();
 
-  // Input block arg types must match input operand types.
   for (unsigned i = 0; i < numInputs; ++i) {
     if (body.getArgument(i).getType() != getInputs()[i].getType())
       return emitOpError() << "input block argument " << i
                            << " type mismatch with operand";
   }
 
-  // Output block arg types must match the non-chain result types.
   for (unsigned i = 0; i < numOutputs; ++i) {
     if (body.getArgument(numInputs + i).getType() != results[i].getType())
       return emitOpError() << "output block argument " << i
                            << " type mismatch with result";
   }
 
-  // Index arg must be map.index<N> where N == shape.size().
   BlockArgument indexArg = body.getArgument(numInputs + numOutputs);
   auto indexTy = llvm::dyn_cast<IndexType>(indexArg.getType());
   if (!indexTy)
@@ -904,7 +831,6 @@ void IterForeachOp::setChain(Value chain) {
 
 ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
                                      OperationState &state) {
-  // Parse shape: <[d0, d1, ...]>
   if (parser.parseLess())
     return mlir::failure();
   mlir::TypedAttr shapeTypedAttr;
@@ -918,7 +844,6 @@ ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
     return mlir::failure();
   state.addAttribute(getShapeAttrName(state.name), shapeTypedAttr);
 
-  // Parse index (block arg only): index (%idx: map.index<N>)
   SmallVector<OpAsmParser::Argument> entryArgs;
   if (parser.parseKeyword("index") || parseBlockArgList(parser, entryArgs))
     return mlir::failure();
@@ -927,10 +852,7 @@ ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
         parser.getCurrentLocation(),
         "'map.iter.foreach.body' expects exactly one index argument");
 
-  // capturing ( %inner = %outer : type, ... ): same sugar as
-  // map.iter.prologue/map.iter.epilogue -- see there for why the region can
-  // be isolated from above yet have the body read as if it referenced the
-  // outer values directly.
+  // capturing ( %inner = %outer : type, ... ), as in map.iter.epilogue.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
   if (parser.parseKeyword("capturing") || parser.parseLParen())
@@ -955,7 +877,6 @@ ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
                              parser.getCurrentLocation(), state.operands))
     return mlir::failure();
 
-  // Body region (isolated; entry args are [index, captures...]).
   Region *body = state.addRegion();
   if (parser.parseRegion(*body, entryArgs, /*enableNameShadowing=*/true))
     return mlir::failure();
@@ -1040,8 +961,6 @@ LogicalResult StoreOp::verify() {
 // map.index.slice
 //===----------------------------------------------------------------------===//
 
-// Shared by every view op's starts/stops/steps operands (map.index.slice,
-// map.index.slice.stride): each must be a rank-1 !mo.tensor.
 static LogicalResult verifySliceBoundsOperandsAreRank1(
     Operation *op, ArrayRef<std::pair<StringRef, Value>> bounds) {
   for (auto [name, value] : bounds) {

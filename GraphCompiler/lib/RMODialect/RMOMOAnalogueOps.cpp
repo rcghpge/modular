@@ -33,15 +33,11 @@ static TypedAttr createStaticDimensionType(MO::GraphOp op, int64_t dimSize) {
   return ShapeAttr::getDim(op.getContext(), dimSize);
 }
 
-/// Verify that the RMO op was constructed with an explicit result type.
-///
-/// RMO MO-analogue ops have outputs whose symbolic dimensions are user-
-/// declared per the Graph API contract — the compiler must not invent fresh
-/// `RMO_D*` symbols. This helper asserts that the caller supplied an explicit
-/// result type and emits an MLIR diagnostic if not, surfacing as a Python
-/// exception rather than an abort. Callers should early-return on `false` so
-/// `inferMOTypesImpl` leaves `moResultTypes` empty; the failed op
-/// construction surfaces the diagnostic at verification time.
+/// Emits a diagnostic and returns false if no explicit result type was given.
+/// Output symbolic dims are user-declared per the Graph API contract, so the
+/// compiler must not invent `RMO_D*` symbols. On false, callers return early,
+/// leaving `moResultTypes` empty so verification surfaces the error as a
+/// Python exception rather than an abort.
 static bool requireRmoResults(MO::GraphOp graphOp,
                               std::optional<ValueRange> rmoResults,
                               llvm::StringRef opMnemonic) {
@@ -53,12 +49,8 @@ static bool requireRmoResults(MO::GraphOp graphOp,
   return false;
 }
 
-/// Given an optional set of output values, and an index, return the dtype
-/// of the underlying tensor at the index.
-///
-/// Assumes we are dealing with TensorType.
-///
-/// If `values` is not present, return the fallbackDType.
+/// Returns the dtype of tensor `values[index]`, or `fallbackDType` if `values`
+/// is absent.
 static DType getDType(std::optional<ValueRange> values, size_t index,
                       DType fallbackDType) {
   if (!values.has_value())
@@ -67,15 +59,10 @@ static DType getDType(std::optional<ValueRange> values, size_t index,
   return cast<TensorType>(values.value()[index].getType()).getDtype();
 }
 
-/// Given two tensor types which are meant to represent the same shape
-/// return a new type which returns a more "refined type" using information
-/// from both existing types
 TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
                                      DType dtype) {
-  // TODO(AIPIPE-312): Re-enable once the graph API propagates devices.
-  // ASSERT_STREAM(ty1.getDeviceRef() == ty2.getDeviceRef(),
-  //               << " tried to refine types with different devices");
-  // Refine each dimension individually
+  // TODO(AIPIPE-312): Assert matching devices once the graph API propagates
+  // them.
   ASSERT_STREAM(ty1.getRank() == ty2.getRank(),
                 << " tried to refine types with different ranks");
   SmallVector<TypedAttr> newDims;
@@ -102,9 +89,7 @@ TensorType RMO::refineShapeWithDType(TensorType ty1, TensorType ty2,
                          /*deviceRef=*/ty1.getDeviceRef(), ty1.getMetadata());
 }
 
-// Return a TensorType with refined shape information given ty1 and ty2 which
-// represent the same underlying shape. Returned type will have a DType matching
-// ty1.
+// Keeps ty1's dtype.
 TensorType RMO::refineShape(TensorType ty1, TensorType ty2) {
   return refineShapeWithDType(ty1, ty2, ty1.getDtype());
 }
@@ -119,7 +104,7 @@ void MOShapeOfOp::inferMOTypesImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // We should match the dtype of the outputs if we have that information
+  // Match the declared result dtype when known.
   DType outDType = getDType(rmoResults, 0, DType::si64);
   TensorValue input = cast<TensorValue>(operands.getInput());
 
@@ -158,9 +143,7 @@ void MOReshapeOp::inferMOTypesImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // `input` and `new_shape` pass through (new_shape is rank-1 by typed
-  // constraint). The result type comes from the user-declared rmo.reshape
-  // output.
+  // `new_shape` is rank-1 by typed constraint.
   moOperandTypes.push_back(cast<TensorType>(operands.getInput().getType()));
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(cast<TensorType>(operands.getNewShape().getType()));
@@ -178,8 +161,7 @@ void MOBroadcastToOp::inferMOTypesImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // `input` and `new_shape` pass through (new_shape is rank-1 by typed
-  // constraint).
+  // `new_shape` is rank-1 by typed constraint.
   moOperandTypes.push_back(cast<TensorType>(operands.getInput().getType()));
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(cast<TensorType>(operands.getNewShape().getType()));
@@ -197,13 +179,11 @@ void MOCastOp::inferMOTypesImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // If no dtype is given, recast to the current type.
-  // This is useless but so is the default inferred type builder! Define a
-  // useful inferred type builder below.
+  // Without a declared result this is a no-op cast; the `build` below is the
+  // useful inferred-type builder.
   TensorValue input = cast<TensorValue>(operands.getInput());
   DType outputDType = getDType(rmoResults, 0, input.getType().getDtype());
 
-  // Operand remains the same
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
@@ -223,8 +203,7 @@ static void inferMOTypesReduceImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls,
     bool returnIndices) {
-  // input type remains the same. `axis` is a compile-time `index` attribute,
-  // not an operand, so it contributes no MO operand.
+  // `axis` is an attribute, so it contributes no MO operand.
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
@@ -266,12 +245,10 @@ void RMO::inferMOTypesScatterImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
 
-  // Input type is unchanged
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
-  // Updates and indices must have the same shape, but updates have the
-  // same datatype as the input
+  // Updates and indices must have the same shape.
   auto updatesTy = cast<MO::TensorType>(updates.getType());
   auto indicesTy = cast<MO::TensorType>(indices.getType());
   auto newUpdatesTy =
@@ -284,7 +261,6 @@ void RMO::inferMOTypesScatterImpl(
   moInputParamDecls.push_back({});
   moInputParamDecls.push_back({});
 
-  // The output of scatter has the same type as the input
   moResultTypes.push_back(input.getType());
   moOutputParamDecls.push_back({});
 }
@@ -297,15 +273,11 @@ void RMO::inferMOTypesScatterImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
 
-  // The input/updates/indices operands and result type are identical to the
-  // attribute-axis `scatter` op.
+  // Same as the attribute-axis `scatter`, plus a scalar `axis` operand.
   inferMOTypesScatterImpl(context, graphOp, input, updates, indices, rmoResults,
                           moOperandTypes, moResultTypes, moInputParamDecls,
                           moOutputParamDecls);
 
-  // The scatter-reduction ops additionally take the axis as a scalar operand.
-  // It is appended after `indices`; the result type lives in a separate vector,
-  // so operand ordering is preserved.
   moOperandTypes.push_back(axis.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
 }
@@ -319,11 +291,9 @@ void RMO::inferMOTypesElemwiseUnaryImpl(
 
   auto inputTy = cast<MO::TensorType>(input.getType());
 
-  // Expected input type
   moOperandTypes.push_back(inputTy);
   moInputParamDecls.push_back({});
 
-  // Expected output type
   moResultTypes.push_back(inputTy);
   moOutputParamDecls.push_back({});
 }
@@ -586,10 +556,8 @@ void MOSelectOp::inferMOTypesImpl(
   MO::TensorType xType = cast<MO::TensorType>(operands.getX().getType());
   MO::TensorType yType = cast<MO::TensorType>(operands.getY().getType());
 
-  // Refine shape with all 3 operands.
   MO::TensorType refinedShape = refineShapeWithDType(
       refineShape(xType, yType), condType, xType.getDtype());
-  // Condition is boolean.
   moOperandTypes.push_back(refinedShape.cloneWith(DType::kBool));
   moOperandTypes.push_back(refinedShape);
   moOperandTypes.push_back(refinedShape);
@@ -610,8 +578,7 @@ void MOGatherOp::inferMOTypesImpl(
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue indices = cast<TensorValue>(operands.getIndices());
 
-  // `input` and `indices` types pass through. `axis` is a compile-time `index`
-  // attribute and contributes no MO operand.
+  // `axis` is an attribute, so it contributes no MO operand.
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(indices.getType());
@@ -629,7 +596,6 @@ void MOGatherNdOp::inferMOTypesImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // `input` and `indices` pass through.
   moOperandTypes.push_back(operands.getInput().getType());
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(operands.getIndices().getType());
@@ -650,7 +616,6 @@ void MOTileOp::inferMOTypesImpl(
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue repeats = cast<TensorValue>(operands.getRepeats());
 
-  // `input` passes through.
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
@@ -705,7 +670,6 @@ void MOTransposeOp::inferMOTypesImpl(
   TensorValue input = cast<TensorValue>(operands.getInput());
   TensorValue perm = cast<TensorValue>(operands.getPerm());
 
-  // `input` passes through.
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
@@ -727,7 +691,6 @@ void RMO::inferMOTypesTopKImpl(
     SmallVectorImpl<Type> &moOperandTypes, SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // `input` passes through.
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
@@ -759,7 +722,6 @@ void LinAlg::MOBandPartOp::inferMOTypesImpl(
   TensorValue numUpper = cast<TensorValue>(operands.getNumUpper());
   TensorValue exclude = cast<TensorValue>(operands.getExclude());
 
-  // Input type is unchanged.
   TensorType inputTy = input.getType();
   moOperandTypes.push_back(inputTy);
   moInputParamDecls.push_back({});
@@ -772,7 +734,6 @@ void LinAlg::MOBandPartOp::inferMOTypesImpl(
   moOperandTypes.push_back(exclude.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
 
-  // Output type is identical to input type
   moResultTypes.push_back(inputTy);
   moOutputParamDecls.push_back({});
 }
@@ -787,7 +748,6 @@ static void inferMOTypesPadImpl(
   TensorType inputTy = input.getType();
   int64_t rank = inputTy.getRank();
 
-  // `input` passes through.
   moOperandTypes.push_back(inputTy);
   moInputParamDecls.push_back({});
 
@@ -860,7 +820,6 @@ void MOSliceOp::inferMOTypesImpl(
   TensorType inputTy = input.getType();
   int64_t rank = inputTy.getRank();
 
-  // `input` passes through.
   moOperandTypes.push_back(inputTy);
   moInputParamDecls.push_back({});
 
@@ -890,14 +849,12 @@ void MORoiAlignOp::inferMOTypesImpl(
   TensorValue spatialScale = cast<TensorValue>(operands.getSpatialScale());
   TensorValue samplingRatio = cast<TensorValue>(operands.getSamplingRatio());
 
-  // `input` and `rois` pass through.
   moOperandTypes.push_back(operands.getInput().getType());
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(operands.getRois().getType());
   moInputParamDecls.push_back({});
 
-  // `output_height` / `output_width` / `spatial_scale` / `sampling_ratio`
-  // must be scalars.
+  // The remaining operands are scalars.
   moOperandTypes.push_back(
       outputHeight.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
@@ -988,14 +945,12 @@ void RMO::inferMOTypesScatterNdImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // `input` / `output` types are identical.
   TensorType inOutTy = input.getType();
   moOperandTypes.push_back(inOutTy);
   moInputParamDecls.push_back({});
   moResultTypes.push_back(inOutTy);
   moOutputParamDecls.push_back({});
 
-  // `updates` and `indices` pass through.
   moOperandTypes.push_back(updates.getType());
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(indices.getType());
@@ -1013,14 +968,12 @@ void MONonMaximumSuppressionOp::inferMOTypesImpl(
   TensorValue iouThreshold = cast<TensorValue>(operands.getIouThreshold());
   TensorValue scoreThreshold = cast<TensorValue>(operands.getScoreThreshold());
 
-  // `boxes` and `scores` pass through.
   moOperandTypes.push_back(operands.getBoxes().getType());
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(operands.getScores().getType());
   moInputParamDecls.push_back({});
 
-  // `maxOutputBoxesPerClass` / `iouThreshold` / `scoreThreshold` must be
-  // scalars.
+  // The remaining operands are scalars.
   moOperandTypes.push_back(
       maxOutputBoxesPerClass.getType().cloneWith(ArrayRef<TypedAttr>{}));
   moInputParamDecls.push_back({});
@@ -1043,9 +996,7 @@ void MOArgNonzeroOp::inferMOTypesImpl(
     SmallVectorImpl<Type> &moResultTypes,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
-  // `input` passes through. Result is the user-declared rank-2 si64 type
-  // (MO_Rank2I64Tensor; the count dim is user-supplied per the Graph API
-  // contract).
+  // The result's count dim is user-declared per the Graph API contract.
   moOperandTypes.push_back(operands.getInput().getType());
   moInputParamDecls.push_back({});
 
@@ -1063,8 +1014,7 @@ void MOCumSumOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
   TensorValue input = cast<TensorValue>(operands.getInput());
 
-  // `input` / `output` types are identical. `axis` is a compile-time `index`
-  // attribute and contributes no MO operand.
+  // `axis` is an attribute, so it contributes no MO operand.
   TensorType inOutTy = input.getType();
   moOperandTypes.push_back(inOutTy);
   moInputParamDecls.push_back({});
@@ -1129,7 +1079,6 @@ void MOMutableStoreSliceOp::inferMOTypesImpl(
   TensorValue step = cast<TensorValue>(operands.getStep());
   auto rank = inTensorTy.getRank();
 
-  // `in_buffer` and `slice` pass through.
   moOperandTypes.push_back(inBufferTy);
   moInputParamDecls.push_back({});
   moOperandTypes.push_back(operands.getSlice().getType());
@@ -1179,17 +1128,15 @@ void MOTransferOp::inferMOTypesImpl(
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moInputParamDecls,
     SmallVectorImpl<SmallVector<KGEN::ParamDeclAttr>> &moOutputParamDecls) {
 
-  // Input tensor type (first operand for mo.transfer).
   auto inputType = cast<TensorType>(operands.getInput().getType());
   moOperandTypes.push_back(inputType);
   moInputParamDecls.push_back({});
 
-  // Input chain type (second operand for mo.transfer).
   Type chainType = operands.getInChain().getType();
   moOperandTypes.push_back(chainType);
   moInputParamDecls.push_back({});
 
-  // Result tensor type - same as input but potentially different device.
+  // The declared result may be on a different device than the input.
   TensorType resultType = inputType;
   if (rmoResults && !rmoResults->empty())
     resultType = cast<TensorValue>((*rmoResults)[0]).getType();
@@ -1197,7 +1144,6 @@ void MOTransferOp::inferMOTypesImpl(
   moResultTypes.push_back(resultType);
   moOutputParamDecls.push_back({});
 
-  // Output chain type.
   moResultTypes.push_back(chainType);
   moOutputParamDecls.push_back({});
 }

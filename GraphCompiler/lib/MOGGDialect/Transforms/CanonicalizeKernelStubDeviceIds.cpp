@@ -19,13 +19,10 @@ namespace M::MOGG {
 
 namespace {
 
-// The canonical device id every id inside a kernel stub is rewritten to. It
-// must be 0, not an out-of-range sentinel: some ops carry an
-// `InferTypeOpInterface` whose inferred result device is `DeviceRefAttr::
-// getDefault` (id 0, e.g. `MGP::BufferConstantOp`), and this runs as a real
-// (re-verified) pass, so a non-zero id on such an op would fail type
-// verification. Id 0 is the default those ops already infer, and the emitted
-// Mojo reads only the device label, never the id.
+// Must be 0, not an out-of-range sentinel: some ops (e.g.
+// `MGP::BufferConstantOp`) infer `DeviceRefAttr::getDefault` (id 0) as their
+// result device and would fail re-verification otherwise. The emitted Mojo
+// reads only the device label, never the id.
 constexpr uint64_t kCanonicalDeviceId = 0;
 
 struct CanonicalizeKernelStubDeviceIds
@@ -38,9 +35,8 @@ struct CanonicalizeKernelStubDeviceIds
     mlir::ModuleOp moduleOp = getOperation();
     mlir::MLIRContext *ctx = moduleOp.getContext();
 
-    // The device id lives on the `#M.device_ref` carried by the `!mgp.tensor`
-    // types the stub operates on (and by a few op attributes). Walk both attrs
-    // and types so every id inside a stub collapses to the same sentinel.
+    // Device ids live on `#M.device_ref` in `!mgp.tensor` types and in a few
+    // op attributes, so replace in both.
     mlir::AttrTypeReplacer replacer;
     replacer.addReplacement([ctx](DeviceRefAttr deviceRef) -> DeviceRefAttr {
       if (deviceRef.getId() == kCanonicalDeviceId)

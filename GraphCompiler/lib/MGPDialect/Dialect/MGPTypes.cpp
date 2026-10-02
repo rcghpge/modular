@@ -45,7 +45,6 @@ static ParseResult parseDType(AsmParser &p, std::optional<DType> &optDType) {
   if (failed(failOrDType))
     return p.emitError(dtypeLoc) << "unrecognized dtype '" << keyword << "'.";
   if (failOrDType->isInvalid()) {
-    // Invalid is not legal.
     return p.emitError(dtypeLoc) << "invalid dtype.";
   }
 
@@ -103,8 +102,7 @@ ParseResult M::MGP::parseTensorSpec(AsmParser &p, TensorSpecType &tensorSpec) {
   if (p.getCurrentLocation(&loc) || parseDimsAndDType(p, dims, optDType, shape))
     return failure();
 
-  // Though the following get calls will invoke verify, the resulting errors
-  // will be locationless and trigger a core dump. Try to be friendlier.
+  // Verify here for a located error; `get` would fail locationless and crash.
   if (failed(TensorSpecType::verify([&]() { return p.emitError(loc); }, dims,
                                     optDType, shape)))
     return failure();
@@ -124,9 +122,8 @@ ParseResult M::MGP::parseDeviceTensorTail(AsmParser &p, DeviceRefAttr &device,
   mut = false;
   stable = false;
 
-  // The optional tail is a comma-separated list of `mut`, `stable`, and/or a
-  // device reference. They may appear in any order, but each keyword may only
-  // appear once.
+  // Optional tail: `mut`, `stable`, and/or a device reference, comma-separated,
+  // in any order, each at most once.
   if (failed(p.parseOptionalComma()))
     return success();
 
@@ -357,8 +354,7 @@ TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
 
 TensorSpecType TensorSpecType::get(IntArrayElementsAttr rawShape,
                                    IntegerAttr rawDTypeOrNull) {
-  // The null rawDType is a convenience for unknown,
-  // and the invalid DType encodes unknown.
+  // A null rawDType means unknown, encoded as the invalid DType.
   uint8_t rawDTypeValue =
       rawDTypeOrNull ? rawDTypeOrNull.getUInt() : DType().getValue();
   return TensorSpecType::get(rawShape.getContext(),
@@ -375,9 +371,8 @@ TensorSpecType::getChecked(function_ref<::mlir::InFlightDiagnostic()> emitError,
 /// ShapedTypeInterface::hasRank. Tensor specs are always ranked.
 bool TensorSpecType::hasRank() const { return true; }
 
-/// ShapedTypeInterface::cloneWith.
-/// Returns clone with given element type, which must be representable as a
-/// dtype.
+/// ShapedTypeInterface::cloneWith. The element type must be representable as
+/// a dtype.
 ShapedType TensorSpecType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
                                      Type elementType) const {
   ArrayRef<int64_t> newShape = shape.value_or(getShape());
@@ -385,9 +380,7 @@ ShapedType TensorSpecType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   return TensorSpecType::get(newShape, newElementType);
 }
 
-/// ShapedTypeInterface::getElementType.
-/// Returns dtype as an MLIR type. This is always well defined thanks to
-/// verify above.
+/// ShapedTypeInterface::getElementType. Well defined thanks to verify.
 Type TensorSpecType::getElementType() const {
   return *DTypeType::toMLIRType(getContext(), getOptDType());
 }

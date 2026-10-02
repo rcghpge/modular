@@ -35,9 +35,8 @@ FusionInfoAttr createFusionInfo(MLIRContext *ctx, ArrayRef<Operation *> ops,
                                       operandIndices.end());
   for (auto *op : ops) {
     Attribute child = getFusionInfo(op);
-    // Flatten fusion info in cases where multiple same type fusions were
-    // applied sequentially.
-    // E.g. Elementwise(a, Elementwise(b, c)) -> Elementwise(a, b, c)
+    // Flatten nested same-type fusions, e.g.
+    // Elementwise(a, Elementwise(b, c)) -> Elementwise(a, b, c).
     if (auto sameGroup = dyn_cast<GroupAttr>(child)) {
       children.append(sameGroup.getChildren().begin(),
                       sameGroup.getChildren().end());
@@ -59,62 +58,42 @@ FusionInfoAttr createFusionInfo(MLIRContext *ctx, ArrayRef<Operation *> ops,
     return FusionInfoAttr::get(ctx, GroupAttr::get(ctx, children));
 }
 
-/// Fuse a topologically-sorted list of GenericCompiledRegionOps into a single
-/// region.  All uses of the old regions' results are replaced with the fused
-/// region's results.  The caller must erase the old regions afterward.
-/// Returns the newly created fused region.
+/// Fuses topologically-sorted GenericCompiledRegionOps into one region and
+/// replaces uses of their results. The caller must erase the old regions.
 GenericCompiledRegionOp
 fuseAndReplaceCompiledRegions(bool allowDuplication,
                               ArrayRef<Operation *> toFuse);
 
-/// Callback type to intercept inlining on a specific operation.
-/// Return true if the operation is handled by the callback, false otherwise.
-///
-/// Parameters:
-///   OpBuilder &: the builder being used
-///   IRMapping &: the current IRMapping for the callback to lookup/update
-///   Operation *: the operation being inlined
-///   GenericCompiledRegionOp src: parent of the operation being inlined
-///   GenericCompiledRegionOp dst: region that the operation is inlining into
+/// Intercepts inlining of an operation; returns true if handled. Arguments are
+/// the builder, the IRMapping to look up/update, the op, its source region,
+/// and the destination region.
 using fuseRegionInlineCallBackT = llvm::function_ref<bool(
     OpBuilder &, mlir::IRMapping &, Operation *, MOGG::GenericCompiledRegionOp,
     MOGG::GenericCompiledRegionOp)>;
 
-// Aliased constant (introduced in MAXPLAT-70) will not be lifted to init, which
-// might reduce the performance gains from certain optimization. We probably
-// need to revisit it when the aliased constant is handled correctly.
+// Aliased constants (MAXPLAT-70) are not lifted to init, so optimizations that
+// rely on that lifting skip them.
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation);
 
-// As we transition from output to compute lambda, this represent currently the
-// 3 different kind of fused tensor types that we can have when build a lambda
-// and its corresponding fuser tensor object in the graph compiler.
+// Kind of fused-tensor lambda built for a kernel output, and the kernel
+// operand type it pairs with.
 enum class KernelOutputFusionLambdaType {
-  Output, // Classic output fusion lambda with a store (kernel operand is
-          // FusedOutputTensor).
-  OutputLegacyForCompute, // Classic output fusion lambda with a store for
-                          // legacy support of mixed-precision (kernel operand
-                          // is _FusedComputeOutputTensor).
-  Compute,     // New compute fusion lambda with a return (kernel operand is
-               // _FusedComputeOutputTensor).
-  ComputeTile, // Tile-based compute fusion lambda with a TileTensor return
-               // (kernel operand is _FusedComputeOutputTileTensor).
-  OutputTile,  // Tile-based output fusion lambda with a store (the fusion owns
-               // the store; kernel operand is _FusedOutputTileTensor). Tile
-               // analog of Output.
-  // TODO(GEX-3912): unlike SIMD (which reuses `Compute` for both standalone and
-  // epilogue fusion, distinguishing them by bind kind), tile needs a separate
-  // `ElementwiseTile` only because the standalone path manufactures into `dst`
-  // while the epilogue transforms `val`. Unifying the tile compute interface
-  // (GEX-3912, inout `dst`) would let this collapse into the tile compute value
-  // and restore the SIMD symmetry.
-  ElementwiseTile, // Tile-based pure elementwise fusion (ElementwiseFusionTile,
-                   // manufactures its result via the `dst` destination tile).
+  Output,                 // Store lambda (FusedOutputTensor).
+  OutputLegacyForCompute, // Store lambda for mixed-precision
+                          // (_FusedComputeOutputTensor).
+  Compute,                // Return lambda (_FusedComputeOutputTensor).
+  ComputeTile, // TileTensor return lambda (_FusedComputeOutputTileTensor).
+  OutputTile,  // Tile store lambda; the fusion owns the store
+               // (_FusedOutputTileTensor).
+  // TODO(GEX-3912): SIMD reuses `Compute` for standalone and epilogue fusion,
+  // but tile needs `ElementwiseTile` because standalone writes into `dst` while
+  // the epilogue transforms `val`. An inout-`dst` tile compute interface would
+  // collapse this into `ComputeTile`.
+  ElementwiseTile, // Pure elementwise tile fusion writing into `dst`.
 };
 
-// Returns true if the device `op` runs on is configured for tile codegen, i.e.
-// its `#M.device_info` entry in `moduleOp`'s `mo.device_info_mapping` has
-// `tile_based_fusion = true`. The device is taken from the enclosing kernel
-// stub when present, else from `op` directly.
+// Returns true if `op`'s device (from the enclosing kernel stub, else `op`) has
+// `tile_based_fusion = true` in `moduleOp`'s `mo.device_info_mapping`.
 bool isTileCodegenForOp(mlir::Operation *op, mlir::ModuleOp moduleOp);
 
 } // namespace M::MOGG

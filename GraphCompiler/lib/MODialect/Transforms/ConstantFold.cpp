@@ -65,14 +65,11 @@ struct SubgraphsInfo {
 
 using RuntimeTensor = std::pair<ElementsAttr, TensorShape>;
 
-/// Simple struct holding results of a model execution.
 struct ModelResult {
-  /// Mapping from subgraph output operation to the constants that should
-  /// replace it. Also includes the output shape so that unknown shapes in the
-  /// constant graph can be resolved.
+  /// Subgraph output op to its replacement constants, with runtime shapes so
+  /// unknown dims can be resolved.
   llvm::DenseMap<Operation *, SmallVector<RuntimeTensor>> constants;
-  /// Mapping from parameter name in subgraph to the value that it should be
-  /// defined as.
+  /// Subgraph parameter name to its folded value.
   llvm::DenseMap<StringAttr, int64_t> parameters;
 };
 
@@ -136,7 +133,6 @@ sortParams(llvm::ArrayRef<Operation *> ops) {
 
   llvm::SetVector<Operation *> sorted;
   llvm::SetVector<StringAttr> inserted;
-  // Sort topologically. Probably not quite optimal, but should do.
   llvm::SmallVector<StringAttr> workQueue;
   for (auto [k, _] : uses)
     workQueue.push_back(k);
@@ -166,21 +162,19 @@ sortParams(llvm::ArrayRef<Operation *> ops) {
   return sorted.takeVector();
 }
 
-/// Marker for ops that are constant foldable. Currently MO ops and KGEN param
-/// ops. If true, might be constant foldable, if false, definitely not.
+/// Returns false if `op` (an MO or KGEN param op) is definitely not constant
+/// foldable.
 static bool isMaybeConstantFoldable(Operation *op) {
-  // Don't constant fold any op with regions.
   if (op->getNumRegions() != 0)
     return false;
 
-  // Don't include transfers between devices.
   if (isa<MO::TransferOp>(op))
     return false;
 
   if (isa<MO::ConstantExternalOp>(op))
     return false;
 
-  // Skip ops with parameterized shape
+  // Skip ops with parameterized shapes.
   auto findParamDeclRefAttr = [](KGEN::ParamDeclRefAttr paramRef) {
     return WalkResult::interrupt();
   };
@@ -235,10 +229,8 @@ static bool isMaybeConstantFoldable(Operation *op) {
          !isa<MOControlOpInterface>(op);
 }
 
-/// Creates a a tensor from a `dense_resource`.
-/// If the constant op's users are all in this subgraph, then this returns a
-/// tensor that owns the underlying resource blob.
-/// Otherwise the returned tensor's data is borrowed.
+/// Wraps a `dense_resource` as a tensor that owns the blob when all of the
+/// constant's users are in `subgraph`, and borrows it otherwise.
 static Tensor denseResourceAsTensor(AsyncRT::CPUDevice &cpuDevice,
                                     ConstantOp constant,
                                     DenseResourceElementsAttr denseResource,
@@ -247,7 +239,6 @@ static Tensor denseResourceAsTensor(AsyncRT::CPUDevice &cpuDevice,
   TensorType ttype = dyn_cast<TensorType>(constant.getType());
   TensorSpec spec(ttype.getShape().getIntDims(), ttype.getDtype());
 
-  // Find all users of this constant op.
   llvm::SetVector<Operation *> constantUsers;
   for (Operation *user : constant->getUsers())
     constantUsers.insert(user);
@@ -255,20 +246,14 @@ static Tensor denseResourceAsTensor(AsyncRT::CPUDevice &cpuDevice,
   llvm::SetVector<Operation *> usersOutsideSubgraph(constantUsers);
   usersOutsideSubgraph.set_subtract(subgraph.ops);
 
-  // This optimization is used to aggressively free DenseResource allocations
-  // during execution. The buffers borrow dense resources which have no other
-  // uses and we free the dense resources when the buffers are dead rather
-  // than waiting for the MLIRContext to die.
+  // Frees the blob when the buffer dies instead of with the MLIRContext.
   if (usersOutsideSubgraph.empty() && blob->getDeleter()) {
-    // Take ownership of the deleting function.
     auto async = AsyncValue::createReady<GML::BlobLifetimeManager>(
         cpuDevice.getCompactPtr(), std::move(blob->getDeleter()),
         blob->getData(), blob->getDataAlignment());
     blob->getDeleter() = nullptr;
     auto ref = AnyAsyncValueRef::take(async);
 
-    // It is safe to take ownership of blob data if all users are in this
-    // subgraph.
     TensorBufferRef blobBuffer = TensorBufferRef::create(
         reinterpret_cast<void *>(const_cast<char *>(blob->getData().data())),
         blob->getData().size(), std::move(ref), blob->getDataAlignment());
@@ -279,12 +264,10 @@ static Tensor denseResourceAsTensor(AsyncRT::CPUDevice &cpuDevice,
                                 blob->getDataAlignment());
 }
 
-/// Creates or retrieves an `ElementsAttr` with the same data as `ref`
-/// `ref` is expected to hold a reference to a tensor object.
+/// Creates an `ElementsAttr` with the same data as the tensor in `ref`.
 static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
                                            MLIRContext *ctx) {
-  // Output shape has cpuDevice-dependent size so we need to read out what
-  // the size is.
+  // The size is only known at runtime.
   Tensor &tensor = ref.get<Tensor>();
   TensorShape shape = tensor.getShape();
   size_t numElements = shape.getNumElements();
@@ -293,7 +276,6 @@ static ElementsAttr elementsAttrFromTensor(const AnyAsyncValueRef &ref,
   ArrayRef<char> tensorData(tensor.getBuffer<char>(), tensor.getSizeInBytes());
   size_t elementByteAlign = llvm::PowerOf2Ceil(
       llvm::divideCeil(arrayType.getElementTypeBitWidth(), CHAR_BIT));
-  // 1. Create an inline attribute for small tensor data.
   if (!shouldUseOutOfLineAttrStorage(arrayType.getNumElements()))
     return getInlineAttrForTensorDataCopy(arrayType, tensorData);
 
@@ -323,16 +305,14 @@ static RuntimeTensor extractRuntimeOutput(
     auto [it, inserted] =
         cachedConstants.try_emplace(ref.getPointer(), nullptr);
     if (!inserted) {
-      // The same output value was returned multiple times by the graph.
-      // There is no need to create the same attribute another time, just
-      // reuse the existing one. This avoids creating twice the same
-      // dense_resources. For example, if we constant-fold the following IR:
+      // Reuse the attribute for a value returned more than once, avoiding
+      // duplicate dense_resources. For example, folding:
       //  mo.if(...) {
       //     %1 = some_op(%cst0)
       //  } else {
       //     %1 = some_op(%cst0)
       // }
-      // Without this cache, it would generate:
+      // would otherwise generate:
       // mo.if(...) {
       //   %1 = constant { value=<folded_constant_1> }
       // } else {
@@ -340,8 +320,6 @@ static RuntimeTensor extractRuntimeOutput(
       // }
       constantsArr = it->second;
     } else {
-      // Create an `ElementsAttr`, possibly by taking ownership of
-      // `ref/tensor`'s buffer.
       constantsArr = elementsAttrFromTensor(ref, ctx);
       it->second = constantsArr;
     }
@@ -352,9 +330,8 @@ static RuntimeTensor extractRuntimeOutput(
   }
 }
 
-/// Run a Model to get the constant outputs to a subgraph. Returns a mapping
-/// from output Value to ElementsAttr containing the constant resulting from
-/// folding.
+/// Executes `model` and returns the folded constants and parameters of its
+/// subgraphs.
 static AsyncRT::ErrorDiagnosticOr<ModelResult>
 executeModel(MLIRContext *ctx, const Model *model,
              const SubgraphsInfo &subgraphsInfo) {
@@ -403,7 +380,6 @@ executeModel(MLIRContext *ctx, const Model *model,
                 << "first result must be a ready chain");
   resultCopy = resultCopy.drop_front();
 
-  // Get the constant values.
   llvm::DenseMap<M::AsyncRT::AsyncValue *, ElementsAttr> cachedConstants;
   llvm::DenseMap<Operation *, SmallVector<RuntimeTensor>> opToTensors;
   auto resourceManager = DenseResourceElementsHandle::getManagerInterface(ctx);
@@ -416,7 +392,6 @@ executeModel(MLIRContext *ctx, const Model *model,
         if (tensorRef.isError())
           return AsyncRT::EncodedDiagnostic(tensorRef.takeDiagnostic());
 
-        // Move output tensor into storage.
         ASSERT_STREAM(tensorRef.isReady(),
                       << "We already awaited, tensor should be ready");
         opTensors.push_back(
@@ -427,7 +402,7 @@ executeModel(MLIRContext *ctx, const Model *model,
     }
   }
 
-  // Get parameters now. They come after the constants.
+  // Parameters follow the constants.
   llvm::DenseMap<StringAttr, int64_t> params;
   for (const Subgraph &subgraph : subgraphsInfo.subgraphs) {
     for (auto paramName : subgraph.paramDeclarations()) {
@@ -449,31 +424,20 @@ executeModel(MLIRContext *ctx, const Model *model,
 SmallVector<Subgraph>
 M::MO::constantSubgraphs(MO::GraphOp graph,
                          KGEN::ParameterCollector::Analysis &paramCache) {
-  // Recurse down consumers of ConstantOps, marking ops with all constant
-  // inputs as constant. If inputs have not been visited yet, then we
-  // recurse up the use chain on inputs until we determine if they are const
-  // or not. This process also applies to parameter in the outputs of each op.
-  // We track operations instead of values so that we can track parameters in
-  // addition to regular ops.
+  // Grows constant subgraphs from mo.constant users: an op is constant when
+  // all its inputs are, resolving unvisited inputs first. Tracks ops rather
+  // than values so parameters are covered too.
 
-  // Set containing operations that are known to not be constant. That is one or
-  // more inputs to the operation are not constant.
   llvm::DenseSet<Operation *> nonConst;
 
-  // Disjoint set containing constant operations. A constant operations is
-  // either a mo.constant or an operation who has all constant inputs.
-  // Each equivalence class is a connected DAG of values which depend on each
-  // other.
+  // Constant ops (mo.constant, or all inputs constant); each class is a
+  // connected DAG.
   llvm::EquivalenceClasses<Operation *> constSubgraphs;
-  // Stack of operations that need to be visited. Values may be popped and then
-  // pushed back on the queue if all parent values have not been resolved.
-  // New values are added when the parents of an operation are unknown or
-  // the users of a value when it has been determined to be constant.
+  // An op is re-pushed until its operands are resolved.
   llvm::SmallVector<Operation *> workQueue;
   graph.walk([&](ConstantOp op) {
     auto dense = dyn_cast<DenseResourceElementsAttr>(op.getValueAttr());
-    // If dense is present but doesn't have a resource behind it
-    // i.e., the blob is a nullptr, then skip it for constant folding
+    // Skip a dense_resource with no blob behind it.
     if (dense && !(dense.getRawHandle().getBlob())) {
       nonConst.insert(op);
       return;
@@ -483,8 +447,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
       workQueue.push_back(user);
   });
 
-  // Run for a fixed amount of iterations. This avoids unexpected infinite
-  // recursion within a graphop.
+  // Bounded to catch unexpected infinite recursion.
   size_t iter = 0;
   size_t boundForMaximumIterations = 1000000;
   for (; iter < boundForMaximumIterations; ++iter) {
@@ -494,11 +457,9 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
     Operation *op = workQueue.back();
     workQueue.pop_back();
 
-    // already visited
     if (constSubgraphs.contains(op))
       continue;
 
-    // Value is already non-const, skip to next on work queue.
     if (nonConst.contains(op))
       continue;
 
@@ -507,18 +468,15 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
       continue;
     }
 
-    // Check all operands are const
     llvm::DenseSet<Operation *> unvisitedOperands;
     bool foundNonConst = false;
     for (auto operand : op->getOperands()) {
-      // If any operand is non-const then this op/value is also non-const
       Operation *definition = operand.getDefiningOp();
       if (!definition || nonConst.contains(definition)) {
         foundNonConst = true;
         break;
       }
       if (!constSubgraphs.contains(definition)) {
-        // Operand has not been visited yet.
         unvisitedOperands.insert(definition);
       }
     }
@@ -527,8 +485,7 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
       continue;
     }
 
-    // All operands have not been visited, push the current value, then
-    // the unvisited operands (so they get handled first).
+    // Revisit this op after its unvisited operands.
     if (!unvisitedOperands.empty()) {
       workQueue.push_back(op);
       for (auto definition : unvisitedOperands)
@@ -536,12 +493,10 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
       continue;
     }
 
-    // All operands are const, union this value with all operands.
     constSubgraphs.insert(op);
     for (auto operand : op->getOperands())
       constSubgraphs.unionSets(op, operand.getDefiningOp());
 
-    // Check if users of this now constant value are themselves constant.
     for (auto result : op->getResults())
       for (auto user : result.getUsers())
         workQueue.push_back(user);
@@ -553,7 +508,6 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
          "bound should be increased), or else somehow there is infinite "
          "recursion (which is a bug)");
 
-  // Collect subgraphs from equivalence sets.
   SmallVector<Subgraph> subgraphs;
   for (auto it = constSubgraphs.begin(), end = constSubgraphs.end(); it != end;
        ++it) {
@@ -576,16 +530,12 @@ M::MO::constantSubgraphs(MO::GraphOp graph,
   return subgraphs;
 }
 
-/// Copy a subgraph out of its original GraphOp and into a new GraphOp in a
-/// different module. Adds OutputOps for all the outputs of the subgraph.
-/// Return information to identify the new GraphOp.
-/// Large constants in the subgraph are transformed into inputs to the new
-/// graph.
+/// Clones `subgraphs` into a new GraphOp in `module` that outputs their
+/// results. Large constants become inputs of the new graph.
 static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
                                     ModuleOp module,
                                     const SmallVector<Subgraph> &subgraphs,
                                     int64_t &name_counter) {
-  // Add large constants as inputs
   llvm::SmallVector<Type> argTypes;
   for (const Subgraph &subgraph : subgraphs) {
     for (ConstantOp constant : subgraph.constants()) {
@@ -625,8 +575,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
   for (const Subgraph &subgraph : subgraphs)
     for (auto op : subgraph.ops)
       opsSorted.push_back(op);
-  // Topologically sort so definitions come before uses.
-  // Sort param first, doesn't necessarily maintain topological order.
+  // Param sorting alone doesn't keep definitions before uses.
   MLIRContext *ctx = module.getContext();
   Location loc = module.getLoc();
   opsSorted = sortParams(opsSorted);
@@ -634,7 +583,6 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
   IRMapping oldToNew;
   for (auto oldOp : opsSorted) {
     ConstantOp oldConst = dyn_cast<ConstantOp>(oldOp);
-    // Replace large constants with the inputs to this new graph
     if (oldConst) {
       auto it = inputConstants.find(oldConst);
       if (it != inputConstants.end()) {
@@ -651,8 +599,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
       for (auto result : op->getResults()) {
         Value newOutput = oldToNew.lookup<Value>(result);
         if (llvm::isa<MOSH::ShapeType>(newOutput.getType())) {
-          // Can't output shapes so we convert it to a rank 1 tensor of unknown
-          // size.
+          // Shapes can't be outputs; emit a rank-1 tensor of unknown size.
           newOutput = Shape::ToTensorOp::create(
               builder, loc,
               TensorType::get(
@@ -671,9 +618,7 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
     }
   }
 
-  // Add parameter declaration/definitions that are used in the subgraph.
-  // Materialize each as `!kgen.scalar<si64>` then `mo.index.to_tensor` so the
-  // folded graph exposes rank-0 int tensors.
+  // Expose each subgraph parameter as a rank-0 int tensor output.
   Type dimTy = MOSH::ShapeAttr::getDimType(ctx);
   for (const Subgraph &subgraph : subgraphs) {
     for (auto param : subgraph.paramDeclarations()) {
@@ -689,7 +634,6 @@ static SubgraphsInfo cloneSubgraphs(OpBuilder builder, GraphOp orig,
   // No output parameters because we bind them all locally.
   auto out = OutputOp::create(builder, loc, newOutputs,
                               KGEN::ParameterExprArrayAttr{});
-  // Have to update the GraphOp's signature.
   auto functionType =
       mlir::FunctionType::get(ctx, argTypes, out.getOperandTypes());
   graphop.setSignature(
@@ -713,16 +657,13 @@ static Value runtimeTensorToConstant(OpBuilder &builder, Location loc,
   return ConstantOp::create(builder, loc, type, constant);
 }
 
-/// Replace a constant subgraph with results from executing it. Replaces outputs
-/// with constant values, removes ops internal to the subgraph (DCE), and add
-/// parameters defined within the subgraph.
+/// Replaces subgraph outputs with the executed constants, erases internal ops,
+/// and declares the parameters the subgraph defined.
 static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
                                const ModelResult &modelResult,
                                const SubgraphsInfo &subgraphsInfo) {
   MLIRContext *ctx = graph.getContext();
-  // Find ops that are not used outside of the subgraph. Collect them now before
-  // we have removed anything, then remove them later when they are not depended
-  // on.
+  // Collect ops unused outside the subgraph before anything is erased.
   SmallVector<Operation *> allOps;
   for (const Subgraph &subgraph : subgraphsInfo.subgraphs)
     for (auto op : subgraph.ops)
@@ -745,7 +686,6 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
     for (auto [opResult, constantTensor] :
          llvm::zip(op->getResults(), tensors)) {
       Type type = opResult.getType();
-      // Each result can either be a tensor or a shape.
       if (llvm::isa<TensorType>(type)) {
         newResults.push_back(runtimeTensorToConstant(builder, op->getLoc(),
                                                      constantTensor, type));
@@ -764,12 +704,10 @@ static void replaceConstantOps(GraphOp graph, OpBuilder &builder,
     op->replaceAllUsesWith(newResults);
     op->erase();
   }
-  // Remove internal ops (DCE). Ops are removed in reverse topological ordering
-  // so we don't erase a dependency of another op.
+  // Erase users before their operands.
   for (auto op : llvm::reverse(internalOps))
     op->erase();
 
-  // Add parameters that were defined in the subgraph.
   Type dimTy = MOSH::ShapeAttr::getDimType(ctx);
   builder.setInsertionPointToStart(graph.getBodyBlock());
   for (auto [name, val] : modelResult.parameters) {
@@ -798,10 +736,8 @@ struct ConstantFoldPass
         kernelLibraryPaths(kernelLibraryPathsArg.vec()) {}
 
 private:
-  // Lower a ModuleOp all the way to MGP, export it as MEF, then load it
-  // for execution. Returns the models along with a buffer that needs to
-  // live as long as they do. This needs to be a member of the pass so it
-  // can access runPipeline.
+  // Lowers `module` to MGP and MEF, then loads its models along with the
+  // buffer that must outlive them. A member so it can call runPipeline.
   ErrorOr<ModelsWithBuffer> lowerSubgraphs(ModuleOp module);
 
   std::shared_ptr<const ConstantFoldPolicy> policy;
@@ -812,21 +748,14 @@ private:
 };
 
 ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
-  // Seed the sub-module with kernel decl ops cloned from the parent module
-  // (which already ran `mogg-import-packages` earlier in the GC pipeline).
-  // This lets the sub-pipeline skip re-loading the built-in `kernels` /
-  // `primitives` packages — see `kernelDeclsPrePopulated` below.
-  //
-  // Skip the optimization when the parent module has no decls / mapping
-  // (e.g. when `mo-constant-fold` is invoked standalone via `mo-opt`
-  // without a preceding `mogg-import-packages`). In that case the
-  // sub-pipeline must run `mogg-import-packages` itself to load packages.
+  // Seed the sub-module with the parent's kernel decls so the sub-pipeline
+  // skips re-importing the `kernels` / `primitives` packages. A standalone
+  // `mo-opt` run has no decls, so the sub-pipeline imports them itself.
   bool parentHasDecls =
       (*getOperation()).hasAttr(MOGG::kOpaqueTypeMappingAttrName);
   if (parentHasDecls)
     MOGG::copyKernelDecls(getOperation(), module);
 
-  // Lower module to MGP.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module.getContext(), mlir::OpPassManager::Nesting::Implicit);
   MO::GCPipelineOptions moOpts;
@@ -834,9 +763,7 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
     moOpts.cacheDir = cacheDir.value();
   if (kernelLibraryPaths)
     moOpts.kernelLibraryPaths = kernelLibraryPaths.value();
-  // Tell the GC pipeline to skip `mogg-import-packages`; everything it
-  // would build (decl ops + opaque-type mapping) is already in `module`
-  // courtesy of `copyKernelDecls` above.
+  // `copyKernelDecls` already provided the decls and opaque-type mapping.
   moOpts.kernelDeclsPrePopulated = parentHasDecls;
   // Avoid infinite recursion.
   moOpts.constantFold = false;
@@ -849,24 +776,21 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
   moOpts.performTrivialKernelOpt = false;
   // Assign ops to CPU so we can constant fold there.
   moOpts.defaultDeviceLabel = kCPULabel;
-  // The folded sub-model executes in this process, so its kernels must be
-  // compiled for this machine even when a virtual CPU target retargets the
-  // outer compile: a cross-target object cannot be JIT-linked here (a
-  // Windows-ABI object, for one, dies materializing `__chkstk`).
+  // The folded model runs in this process, so compile for the host even when
+  // a virtual CPU target retargets the outer compile (e.g. a Windows-ABI
+  // object fails JIT-linking `__chkstk`).
   moOpts.compileForHostExecution = true;
   // Force all kernels to be synchronous. This prevents higher memory usage.
   moOpts.forceSync = true;
-  // We gain little benefit by enabling post-abi as most constant subgraphs are
-  // isolated, besides, it hurts compilation time.
+  // Constant subgraphs are mostly isolated, so post-ABI fusion only costs
+  // compile time.
   moOpts.enablePostABIRegionFusion = false;
   MO::buildGCPipeline(pm, moOpts);
-  // Run pipeline needs to run on a module.
   if (failed(runPipeline(pm, module)))
     return Error("Failed to run MOToMGP pipeline");
 
-  // NOTE: `convertMGPToMEF` destroys `dense_resource`s, so it is only safe to
-  // call here without further precaution because all `dense_resource`s in
-  // constant folding are operands, not attributes in the subgraph.
+  // `convertMGPToMEF` destroys `dense_resource`s; this is safe only because
+  // folded subgraphs take them as operands, not attributes.
   auto bufOr = MO::convertMGPToMEF(module, false);
   if (bufOr)
     return bufOr.takeError();
@@ -882,29 +806,17 @@ ErrorOr<ModelsWithBuffer> ConstantFoldPass::lowerSubgraphs(ModuleOp module) {
 }
 
 void ConstantFoldPass::runOnOperation() {
-  // At a high level, this pass:
-  // 1. Extracts all constant subgraphs.
-  // 2. Clones each subgraph into its own GraphOp.
-  // 3. Lowers and executes each GraphOp from the previous step.
-  // 4. Replaces subgraph outputs with outputs from the previous step.
-
   MLIRContext *ctx = &getContext();
 
   for (auto _ : llvm::seq(iterations.getValue())) {
     OpBuilder builder(ctx);
     builder.setInsertionPointToStart(getOperation().getBody());
-    // We have to create the copy of each subgraph somewhere under the
-    // original model because passes can't create ops outside of what they
-    // are operating on. We create a nested module in the current module
-    // where we do everything. At the end we remove it.
+    // Passes can't create ops outside their operation, so subgraph copies
+    // live in a temporary nested module.
     OwningOpRef<ModuleOp> module = ModuleOp::create(
         builder, getOperation().getLoc(), "constant_fold_subgraphs");
 
-    // For each constant subgraph, we clone it into our submodule as a new
-    // GraphOp. The outputs of the GraphOp are the outputs of the subgraph.
-    //
-    // An alternative approach could be to combine each subgraph into one
-    // large constant graph so we only have one thing to execute.
+    // Alternative: merge all subgraphs into one graph and execute it once.
     SmallVector<SubgraphsInfo> subgraphReplacements;
     int64_t nameCounter = 0;
 

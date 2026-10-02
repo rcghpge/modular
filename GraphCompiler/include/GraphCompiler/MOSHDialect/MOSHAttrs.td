@@ -28,9 +28,8 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     3. `KGEN::SIMDAttr` for a concrete integer dimension, e.g., `42` (typed as
     `kgen.scalar<si64>`).
 
-    Note that -1 can be used as a special dimension value that denotes a
-    dimension to be inferred from other dimensions and total number of elements
-    in the tensor. At most 1 dimension can be -1.
+    -1 denotes a dimension inferred from the others and the element count. At
+    most one dimension can be -1.
 
     Example:
 
@@ -63,18 +62,14 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
   ];
 
   let extraClassDeclaration = [{
-    /// Get the integer type representing the preferred type for dimensions
-    /// of a shape.
+    /// Preferred type for shape dimensions.
     static KGEN::SIMDType getDimType(MLIRContext* ctx);
 
-    /// Create an attribute to represent the given values as a dimension in
-    /// shaped type.
     static KGEN::SIMDAttr getDim(MLIRContext* ctx, int64_t value);
 
     /// Is the given type a legal dimension (scalar `si64` SIMD lane)?
     static bool isDimType(::mlir::Type type);
 
-    /// Is the given attribute able to represent a dimension.
     static bool isDim(TypedAttr attr) {
       return isDimType(attr.getType());
     }
@@ -91,12 +86,10 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// represent a rank-0 shape as rank-1 extent-1.
     size_t getRankNonZero() const { return getRank() == 0 ? 1 : getRank(); }
 
-    /// Returns the number of elements inside the shape. This mainly serves to
-    /// calls less confusing when `ShapeAttr` is used to represent a list of
-    /// ints, rather than shape (e.g., bounds for a slice op).
+    /// Same as `getRank`, for when `ShapeAttr` holds a list of ints rather
+    /// than a shape (e.g., slice bounds).
     size_t getSize() const { return getValues().size(); }
 
-    /// Returns the dimension attribute at given axis.
     TypedAttr operator[](int axis) const { return getValues()[axis]; }
 
     /// Whether the shape is static, i.e. all dims are known constants.
@@ -122,16 +115,9 @@ def MOSH_ShapeAttr : KGEN_ExprAttr<"Shape", "ape"> {
     /// can be broadcasted to. If not possible, returns a null attribute.
     static TypedAttr getCommonBroadcastShape(ArrayRef<TypedAttr> shapeParams);
 
-    /// Calculate which dimension indices in the final bcastedShape which are
-    /// the result of broadcasting. Returns indices in sorted order.
-    /// E.g. [1, 3, 4, 5].
-    ///
-    /// A dimension is the result of broadcasting if it is a newly introduced
-    /// dim or is the result of a 1 dim becoming a non-one-dim.
-    ///
-    /// Note, in the case we have two parameters A, B which broadcast to each
-    /// other, we must return an error, as whether the dimension is broadcasted
-    /// depends on runtime values.
+    /// Returns the sorted axes of `bcastedShape` produced by broadcasting:
+    /// newly introduced dims and 1 --> non-1 dims. Errors when two parameters
+    /// A, B broadcast to each other, since that depends on runtime values.
     static ErrorOr<SmallVector<int64_t>> getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape);
   }];
 

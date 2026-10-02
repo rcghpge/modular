@@ -135,12 +135,10 @@ Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
   attrs.push_back(rewriter.getNamedAttr(
       "c_shape", rewriter.getI64VectorAttr(resultType.getIntDims())));
 
-  // Create a pair of parameters for the new type.
   auto newParams = KGEN::ParamDeclArrayAttr::get(
       graphOp.getContext(),
       {graphOp.getNewDimParam("MMPackSh"), graphOp.getNewDimParam("MMPackSh")});
 
-  // Create the packed B shape function.
   // TODO(#18770) Find a better registration mechanism.
   SmallVector<mlir::NamedAttribute> shapeFuncAttrs = attrs;
   shapeFuncAttrs.push_back(
@@ -171,7 +169,6 @@ Value lowerMatmulPackingFunc(Location loc, MO::DeviceAwareRewriter &rewriter,
   }
 
   mlir::DictionaryAttr kgenParams = rewriter.getDictionaryAttr(attrs);
-  // Pack the mm weights.
   return rewriter.create<MO::LayoutTransformOp>(
       loc, /*outputTypes=*/packedWeightsType, weight, kgenParams);
 }
@@ -185,8 +182,8 @@ struct GatherSumPattern
                              MO::DeviceAwareRewriter &rewriter) const override {
     Value input, indices, reduceAxis;
 
-    // The gather `axis` is now a compile-time `index` attribute, so it is no
-    // longer a matchable operand; we check it explicitly below.
+    // The gather `axis` is an attribute, not a matchable operand; it is
+    // checked below.
     if (!m_Op<MO::ReduceAddOp>(m_Op<MO::GatherOp>(m_MOMatrix(m_Any(&input)),
                                                   m_MOMatrix(m_Any(&indices))),
                                m_ScalarConstant(&reduceAxis, 1))
@@ -196,7 +193,6 @@ struct GatherSumPattern
     if (!input || !indices || !reduceAxis)
       return rewriter.notifyMatchFailure(op, "null input value");
 
-    // The gather axis must be 0.
     auto gatherOp = op.getInput().getDefiningOp<MO::GatherOp>();
     if (!gatherOp || gatherOp.getAxisAttr().getInt() != 0)
       return rewriter.notifyMatchFailure(op, "gather axis must be 0");
@@ -209,7 +205,7 @@ struct GatherSumPattern
 };
 
 // Decomposes `reduce.add(input, axis)` over a small, static-extent axis (the
-// other dims may be dynamic) into a sum of
+// other dims may be dynamic) into a sum of per-index slices.
 struct DecomposeSmallReduceAddPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::ReduceAddOp> {
   // Only decompose reductions whose extent is in (1, kMaxDecomposeExtent];
@@ -241,7 +237,6 @@ struct DecomposeSmallReduceAddPattern
                              MO::DeviceAwareRewriter &rewriter) const override {
     Value input = op.getInput();
 
-    // Leave gather + reduce.add to GatherSumPattern.
     if (input.getDefiningOp<MO::GatherOp>())
       return rewriter.notifyMatchFailure(
           op, "gather + reduce handled by GatherSumPattern");
@@ -283,9 +278,8 @@ struct DecomposeSmallReduceAddPattern
       SmallVector<int64_t> start(rank, 0);
       SmallVector<int64_t> stop;
       stop.reserve(rank);
-      // Non-reduced dims span their full extent. A dynamic dim uses INT64_MAX,
-      // which slice's numpy semantics clamp to the runtime size; static dims
-      // keep their exact size so the all-static path stays byte-identical.
+      // A dynamic dim uses INT64_MAX, which slice's numpy semantics clamp to
+      // the runtime size.
       for (int64_t i = 0; i < rank; ++i) {
         int64_t dim = inputType.getIntDim(i);
         stop.push_back(mlir::ShapedType::isDynamic(dim)
@@ -345,7 +339,6 @@ struct MatmulConstBPattern
     Value weight, perm;
     Operation *transpose = nullptr;
 
-    // If all matmul sizes kTinyMatmulSize.
     if (isMatmulSmall(op))
       return rewriter.notifyMatchFailure(op, "Matmul is too small");
 
@@ -464,7 +457,6 @@ struct MatmulTranspBPattern
       return rewriter.notifyMatchFailure(
           op, "can't update layout for non-constant");
     }
-    // Let matmul take in the non-transposed weight, and update weight layout
 
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
@@ -484,16 +476,10 @@ struct MatmulTranspBPattern
   }
 };
 
-// A pattern which detects `matmul(A, B)` where B is a constant and makes things
-// `matmul(A, transpose(B), transpose_b=true)`. We expect constant-folding to
-// materialize transpose(B) at compile time. Only for GPU at the moment.
-//
-// It differs from `MatmulTranspBPattern` in that it will force even regular
-// matmuls into a transposed form if it's weights are constants.
-//
-// In combination with `MatmulTranspBPattern` this pattern will make most
-// matmuls operate on transposed pre-packed weights, which are faster on GPU
-// type architectures.
+// Rewrites `matmul(A, B)` with constant B on GPU into
+// `matmul(A, transpose(B), transpose_b=true)`, expecting constant-folding to
+// materialize transpose(B). Unlike `MatmulTranspBPattern`, this forces regular
+// matmuls into the transposed form, which is faster on GPU.
 struct ForceMatmulTransposeBForGPU
     : public MO::DeviceAwareRewritePattern<OpRewritePattern, MO::MatmulOp> {
   DeviceRefAttr targetDevice;
@@ -542,11 +528,10 @@ struct ForceMatmulTransposeBForGPU
             matmulUser, "Found matmul user with incorrect devices");
     }
 
-    // Rewrite the weights
     rewriter.setInsertionPointAfter(weightProducer);
     LayoutAttr matmulWeightsLayout = LayoutAttr::get(getContext(), "NK");
 
-    // Transpose weights (assume to be folded by constant-folding)
+    // Assumed to be folded by constant-folding.
     auto oldShape = weights.getType().getShape().getValues();
     SmallVector<TypedAttr> newShape = {oldShape[1], oldShape[0]};
     auto newTransposeTy =
@@ -621,10 +606,7 @@ struct BatchMatmulAdjBPattern
     }
 
     rewriter.modifyOpInPlace(op, [&] {
-      // Take the non-transposed weight.
       op.setOperand(1, weight);
-
-      // Mark this matmul as being a transposed kernel.
       op.setTransposeBAttr(rewriter.getBoolAttr(true));
     });
 
@@ -639,8 +621,7 @@ struct ConcatZeroAxisPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ConcatOp concat,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Doing this manually, I don't think the patterns can support variadic
-    // inputs yet
+    // Matched manually; the matchers don't support variadic inputs.
     if (concat.getAxisAttr().getInt() != 0)
       return rewriter.notifyMatchFailure(concat, "axis not constant 0");
 
@@ -715,7 +696,6 @@ struct ConvConstFilterPattern
       return rewriter.notifyMatchFailure(op,
                                          "CUDA does not support prepacking.");
 
-    // Define some meta variables.
     MLIRContext *ctx = op.getContext();
     Location loc = op.getLoc();
     MO::TensorValue filter = op.getFilter();
@@ -759,10 +739,8 @@ struct ConvConstFilterPattern
       perm.push_back(1);
       perm.push_back(0);
 
-      // Create permutation constant.
       auto permConstant = rewriter.createHostConstant(loc, perm);
 
-      // Build the RSCF shape from the FCRS shape.
       SmallVector<TypedAttr> rscfDims;
       for (auto idx : perm)
         rscfDims.push_back(filterType.getShape().getValues()[idx]);
@@ -779,7 +757,6 @@ struct ConvConstFilterPattern
       filterLayout = filterType.getLayoutAttr();
     }
 
-    // Create shape parameters for the new type.
     auto graphOp = op->getParentOfType<MO::GraphOp>();
 
     size_t filterRank = filterType.getRank();
@@ -807,12 +784,8 @@ struct ConvConstFilterPattern
 
     auto paramDeclsAttr = KGEN::ParamDeclArrayAttr::get(ctx, paramDecls);
 
-    // Pass `num_groups` as a parameter to the `pack_conv_filter_shape` and
-    // `pack_conv_filter` kernels, and optionally pass static output width to
-    // pack_conv_filter_shape.
-    //
-    // Do so through the `kgenParams` attribute dictionary, which `mogg.call`
-    // passes to the KGEN function call as parameters.
+    // `mogg.call` passes `kgenParams` to the KGEN function as parameters, which
+    // is how `num_groups` reaches the packing kernels.
     int64_t numGroups = *maybeNumGroups;
     auto numGroupsAttr =
         rewriter.getNamedAttr("num_groups", rewriter.getIndexAttr(numGroups));
@@ -830,7 +803,6 @@ struct ConvConstFilterPattern
     namedParams.push_back(rewriter.getNamedAttr(
         "output_shape", rewriter.getI64VectorAttr(outputType.getIntDims())));
 
-    // Get static or default dynamic values.
     auto getMaybeStaticI64VectorAttr = [&](MO::TensorValue val) {
       if (auto maybeVal = MO::tryGetConstantIntVector(val)) {
         return rewriter.getI64VectorAttr(maybeVal.value());
@@ -875,7 +847,6 @@ struct ConvConstFilterPattern
     auto packedFilterType =
         filterType.cloneWith(shapeAttr).cloneWith(packedFilterLayout);
 
-    // Pack the filter.
     auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
         loc, /*outputTypes=*/packedFilterType, filter, kernelKgenParams);
     rewriter.modifyOpInPlace(op, [&] { op.setOperand(1, packedFilter); });
@@ -892,7 +863,6 @@ struct ConvTransposeConstFilterPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ConvTransposeOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Define some meta variables.
     MLIRContext *ctx = op.getContext();
     Location loc = op.getLoc();
     MO::TensorValue filter = op.getFilter();
@@ -915,7 +885,6 @@ struct ConvTransposeConstFilterPattern
       return rewriter.notifyMatchFailure(op,
                                          "Packing CFRS format isn't supported");
 
-    // Create shape parameters for the new type.
     auto graphOp = op->getParentOfType<MO::GraphOp>();
 
     size_t filterRank = filterType.getRank();
@@ -959,7 +928,6 @@ struct ConvTransposeConstFilterPattern
     auto packedFilterType =
         filterType.cloneWith(shapeAttr).cloneWith(packedFilterLayout);
 
-    // Pack the filter.
     auto packedFilter = rewriter.create<MO::LayoutTransformOp>(
         loc, /*outputTypes=*/packedFilterType, filter,
         MO::LayoutTransformOp::Properties{});
@@ -979,7 +947,6 @@ struct SplitZeroAxisPattern
     if (axis != 0)
       return rewriter.notifyMatchFailure(op, "axis not 0");
 
-    // Ensure input isn't constant
     if (op.getInput().getDefiningOp<MO::ConstantOp>())
       return rewriter.notifyMatchFailure(op, "input is a constant");
 
@@ -1005,7 +972,6 @@ struct LayerNormPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::AddOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Abbreviate the helper to try to keep things readable.
     auto po = [&rewriter]() { return rewriter.pushOp(); };
 
     // x = input
@@ -1015,9 +981,8 @@ struct LayerNormPattern
     auto bet = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&beta));
     auto ep = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&eps));
 
-    // `axis` is a compile-time `index` attribute on `mo.reduce.mean`, so it is
-    // no longer matched as an operand; the mean ops are captured here and their
-    // axis attributes are validated (must be the last axis) after the match.
+    // `axis` is an attribute on `mo.reduce.mean`, so the mean ops are captured
+    // and their axes validated after the match.
     mlir::Operation *meanOp = nullptr;
     mlir::Operation *varOp = nullptr;
     // TODO: Current capture system can't distinguish multiple uses of the same
@@ -1147,27 +1112,18 @@ ErrorOrSuccess checkRank(TensorValue value, const std::string &valueName,
 
 template <typename pInT>
 auto inline pOptionalBroadcast(Operation **bindDest, pInT patternIn) {
-  // Allows optional insertion of reshapes and bcasts between this pattern
-  // Specifically patternIn --> (optional) mo.static.reshape
-  //  --> (optional) mo.static.broadcast
   auto bcast = m_Op<Static::BroadcastToOp>(bindDest, patternIn);
   return m_Optional(bcast, patternIn);
 }
 
 template <typename pInT>
 auto inline pOptionalReshape(Operation **bindDest, pInT patternIn) {
-  // Allows optional insertion of reshapes and bcasts between this pattern
-  // Specifically patternIn --> (optional) mo.static.reshape
-  //  --> (optional) mo.static.broadcast
   auto reshape = m_Op<Static::ReshapeOp>(bindDest, patternIn);
   return m_Optional(reshape, patternIn);
 }
 
 template <typename pInT>
 auto inline pOptionalCast(Operation **bindDest, pInT patternIn) {
-  // Allows optional insertion of reshapes and bcasts between this pattern
-  // Specifically patternIn --> (optional) mo.static.reshape
-  //  --> (optional) mo.static.broadcast
   auto reshape = m_Op<CastOp>(bindDest, patternIn);
   return m_Optional(reshape, patternIn);
 }
@@ -1229,7 +1185,6 @@ public:
       return Error("[MultiHeadAttentionEpilogueMatcher]: " +
                    getPatternMatchingError(matcher.patternMatcherLogger));
 
-    // `axis` is a compile-time `index` attribute on the softmax op.
     int64_t axis =
         cast<SoftmaxOp>(matcher.softmaxProducer).getAxisAttr().getInt();
     if (size_t(axis) != matcher.softmaxInput.getType().getRank() - 1)
@@ -1266,9 +1221,8 @@ public:
   }
 };
 
-/// A helper for matching against attention masking for fused attention
-/// Supports masking through select statements. This is usually done for
-/// implementing causal masking of the attentionMatrix.
+/// Matches attention masking through select, usually causal masking of the
+/// attentionMatrix.
 ///
 /// %cond : ...
 /// %true : ...
@@ -1279,8 +1233,8 @@ public:
 /// diagonal are "false" and the upper part is "true". The %true branch
 /// is usually a scalar -inf broadcasted and %false is the attentionMatrix.
 ///
-/// Essentially this sets the upper triangle of attentionMatrix to "-inf".
-/// Note, %cond and true/false can be switched because why not?
+/// This sets the upper triangle of attentionMatrix to "-inf". The %true and
+/// %false branches may be swapped.
 ///
 /// Notes on masking:
 /// https://www.notion.so/modularai/Multi-Head-Attention-bbc2d300937a495da40c18b6a2028d22
@@ -1316,8 +1270,7 @@ private:
   MultiHeadAttentionSelectMaskingMatcher() = default;
 
   ErrorOrSuccess verifyScalarNegInf() {
-    // Returns whether the detected scalar is -inf or something close
-    // NOTE: in the future consider different thresholds for different DTypes
+    // Per-dtype thresholds may be needed.
     if (!scalarMask)
       return Error("scalar mask is nullptr!");
 
@@ -1403,18 +1356,15 @@ public:
   }
 
   TensorValue getAttentionMask(mlir::OpBuilder &builder) {
-    // NOTE: in general `select(%cond, %true, %false)` is:
-    //   - %cond * %true + not(%cond) * %false
+    // In general `select(%cond, %true, %false)` is:
+    //   %cond * %true + not(%cond) * %false
     //
-    // But we've checked the scalar is -inf so will assume dominate any value in
-    // the addition mask. Note it is expected this masked result will be
-    // soft-maxed. For example, assume `attentionMatrixTrueBranch` so the mask
-    // will occur in %false. Then the following is equivalent:
+    // Since the scalar is -inf it dominates in the addition, and the result is
+    // softmaxed, so with the mask in %false:
     //
     // select(%cond, %true, %false) ~= [not(%cond) * %false] + %true
     //
-    // This is nice because it is essentially explicit masking with the mask
-    // in brackets.
+    // which is explicit masking with the mask in brackets.
     TensorValue bcastedMask = cast<TensorValue>(scalarMaskBCast->getResult(0));
     Location loc = bcastedMask.getLoc();
 
@@ -1449,11 +1399,8 @@ public:
   }
 };
 
-/// A helper for matching against attention masking for fused attention
-/// Supports explicit masking:
-///
-/// Explicit masking occurs when we add a tensor directly to our attention
-/// matrix
+/// Matches explicit attention masking, where a tensor is added directly to the
+/// attention matrix:
 ///
 /// %attentionMatrix
 /// %attentionMask
@@ -1558,21 +1505,14 @@ public:
   }
 };
 
-/// MHA Masking multiplexer. In practice models are allowed to have both
-/// explicit and causal masking and some models have no masking at all!
-///
-/// What more, models can vary the order of explicit and causal masking freely.
-///
-/// So in total, there are 5 variations of masking in transformer models which
-/// seem common:
+/// MHA masking multiplexer. Handles the common masking variations:
 ///
 /// - No masking at all
 /// - Only causal masking
 /// - Only explicit masking
-/// - Causal and explicit masking
-///    - Order we apply them maybe different
-/// This is designed to handle all of these cases and return a single compatible
-/// "attention mask" which combines the details of every masking pattern.
+/// - Causal and explicit masking, in either order
+///
+/// and returns a single "attention mask" combining every matched pattern.
 class MultiHeadAttentionMaskingMuxMatcher {
 private:
   TensorValue patternInput;
@@ -1590,7 +1530,6 @@ public:
         bool allowInternalReshape, bool debugMHAPattern) {
     MultiHeadAttentionMaskingMuxMatcher matcher;
 
-    // See if any masking patterns match
     Operation *curProducingOp = producingOp;
     matcher.causalMask = MultiHeadAttentionSelectMaskingMatcher::match(
         curProducingOp, allowUnsafeBCast, allowInternalReshape,
@@ -1631,8 +1570,8 @@ public:
         matcher.patternInput = matcher.causalMask->getTopOfPattern();
     }
 
-    // the two masks however may be different shapes (they most def. are not)
-    // but ignoring this is only allowed if `allowUnsafeBCast`
+    // The two masks may have different shapes, which is only allowed with
+    // `allowUnsafeBCast`.
     if (!matcher.causalMask.isError() && !matcher.explicitMask.isError()) {
       bool shapesMatch = matcher.causalMask->getAttentionMaskShape() ==
                          matcher.explicitMask->getAttentionMaskShape();
@@ -1738,8 +1677,6 @@ public:
 /// attentionMatrixNorm = attentionMatrix ./ scalarConstant
 ///   OR
 /// attentionMatrixNorm = attentionMatrix (no normalization)
-///
-/// Note normalization is optional!
 class MultiHeadAttentionNormalizationMatcher {
 private:
   // Will be nullptr if no normalization
@@ -1776,9 +1713,8 @@ public:
     MultiHeadAttentionNormalizationMatcher matcher;
     auto scalarConstant = m_Any(&matcher.scalarConstant);
 
-    // NOTE: normScalar is derived in some scenarios, it is usually 1 / sqrt(D)
-    // So this may be able to made into an implicit match of some sort in the
-    // kernel.
+    // normScalar is usually 1 / sqrt(D), so the kernel could match it
+    // implicitly.
     auto pNorm = m_Op<Static::BroadcastToOp>(&matcher.scalarBcastProducer,
                                              scalarConstant);
     auto pAttentionMatrix = m_Any(&matcher.attentionMatrix);
@@ -1826,7 +1762,6 @@ public:
   }
 
   TensorValue getScalarValueForMul(OpBuilder &builder) {
-    // Get the scalar value which is appropriate to use for normalizing via mul
     Location loc = attentionMatrix.getLoc();
     DeviceRefAttr device = attentionMatrix.getType().getDeviceRef();
     if (!scalarConstant) {
@@ -1893,7 +1828,6 @@ public:
     auto pQ = m_Any(&matcher.query);
     auto pKT = m_Any(&matcher.keyT);
 
-    // match Q @ K_T
     Operation *attentionMatrixProducer = nullptr;
     auto pAttentionMatrix =
         m_Op<BatchMatmulOp>(&attentionMatrixProducer, pQ, pKT);
@@ -2025,45 +1959,25 @@ public:
     MultiHeadAttentionPatternHelper matcher;
     matcher.builder = &rewriter.rewriter;
 
-    // Note we match things in a reverse-ward direction as we are given the
-    // very final operation.
-    //
-    // This is done by using a set of composable patterns:
+    // We match backwards from finalOp (`D`) with composable patterns:
     //
     //   D                     C                      B                   A
     // <----[BOTTOM PATTERN] <---- [MIDDLE PATTERN] <---- [TOP PATTERN] <----
     //
-    // In general each pattern matches against the **output** and we derive
-    // the **input**. This input is the output of the next pattern to match
-    // against. For example, we match BOTTOM against `D` and derive `C`
-    // we use against MIDDLE.
-    //
-    // The initial finalOp corresponds to `D` in this diagram.
+    // Each pattern matches an output and derives its input, which is the
+    // output the next pattern matches against.
 
-    // *** NOTE ON `allowUnsafeBCast`
-    // This special flag allows the pattern to ignore/match through single
-    // optional instances of `mo.static.reshape`.
-    //
-    // This is done to overcome limitations in shape inference where we are
-    // unable to prove two dimension are compatible for an operation like
-    // monnx.add (which supports implicit broadcasting), so in lowering we
-    // have a broadcast operation remain. In practice, this is extraneous in
-    // 100% of the cases currently examined and could be removed given
-    // improvements to shape inference and constraint solving.
-    //
-    // Where should these be inserted? We should generally put these optional
-    // bcasts next to ops which might have analogues in other frameworks which
-    // are commonly broadcast. For example, "addition" and "multiplication" and
-    // even "matmul" may have elements of this. Generally we place the
-    // optional broadcast patterns before the operation of interest e.g.
-    // `mo.static.broadcast_to --> mo.add`
-    //
-    // Note, an adversarial example could potentially lead to this pattern
-    // replacing things with a non-equivalent kernel, but we determine it to
-    // be very unlikely in the wild.
+    // `allowUnsafeBCast` lets the patterns match through single optional
+    // broadcasts. Shape inference can't always prove dims compatible for
+    // implicitly-broadcasting ops like monnx.add, so a broadcast remains after
+    // lowering; it has been extraneous in every case examined. The optional
+    // broadcasts sit before ops that commonly broadcast in other frameworks
+    // (add, mul, matmul), e.g. `mo.static.broadcast_to --> mo.add`. An
+    // adversarial graph could yield a non-equivalent kernel, but that is
+    // unlikely in the wild.
 
-    // This helper functions ensures the input to each pattern has a defining
-    // op and has one use and returns the next Operation* to match against.
+    // Ensures the pattern input has a defining op and one use, and returns the
+    // next Operation* to match against.
     auto checkInputToPattern =
         [](TensorValue topOfPattern,
            const std::string &name) -> ErrorOr<Operation *> {
@@ -2126,7 +2040,6 @@ public:
     if (matcher.prologueMatcher.isError())
       return matcher.prologueMatcher.takeError();
 
-    // Do additional verification
     ErrorOrSuccess hasExpectedRanks = matcher.hasExpectedRanks();
     if (hasExpectedRanks.isError())
       return hasExpectedRanks.takeError();
@@ -2213,21 +2126,16 @@ struct MultiHeadAttentionPattern
 
   void guardUnsafeBCast(Static::BroadcastToOp unsafeBCast,
                         DeviceAwareRewriter &rewriter) const {
-    // We expect all bcasts matched in the pattern with `allowUnsafeBCast`
-    // to be no-ops (e.g. they don't change shape). This guards against this
-    // condition by inserting cpuDevice checks against a potentially unsafe
-    // bcast.
+    // Bcasts matched under `allowUnsafeBCast` are expected to be no-ops; this
+    // inserts a cpuDevice check that they don't change shape.
     //
-    // Note, at this point in the program it is assumed shape functions have
-    // been inlined so no internal ops of the pattern produce result parameters.
-    //
-    // E.g. the following is assumed to be impossible
+    // Shape functions are assumed inlined by now, so no internal op of the
+    // pattern produces result parameters. E.g. this is assumed impossible:
     // %bmm1 = mo.batch_matmul<() -> N1, N2, N3>(%0, %1) ...
     //            -> !mo.tensor<[N1, N2, N3]>
     // mo.static.broadcast(%something): ... -> !mo.tensor<[N1, N2, N3]>
     //
-    // Where the issue is rewriting the pattern would rewrite %bmm1 and
-    // remove the definition of `N1` `N2` and `N3`.
+    // since rewriting %bmm1 would remove the definitions of N1, N2 and N3.
 
     TypedAttr beforeShape = unsafeBCast.getInput().getType().getShape();
     TypedAttr afterShape = unsafeBCast.getResult().getType().getShape();
@@ -2235,43 +2143,22 @@ struct MultiHeadAttentionPattern
     GraphOp graphOp = unsafeBCast->getParentOfType<GraphOp>();
     Location loc = unsafeBCast->getLoc();
 
-    // Make comparison of shapes operator
     insertShapeGuard(rewriter, graphOp, beforeShape, afterShape, loc,
                      "MHA_BCAST_CHECK",
                      "MHA Pattern Detected unsafe broadcast. This is of great "
                      "interest so please report!");
   }
 
-  // The matcher's for QKV returns values with the following layouts:
-  // Q: BHSD
-  // K: BHDS
-  // V: BHSD
-  //
-  // However, some kernels expect all of these layouts to be `BSHD`.
-  // Within most models with attention, tensors with the layout `BSHD` will be
-  // transposed to the above. Therefore capturing this transformation in the
-  // model is of great importance.
-  //
-  // Unfortunately, because we are importing from ONNX which has super loose
-  // semantics around ops, the transpose may have random `static_reshapes`
-  // and `static_broadcasts` sprinkled throughout. The pattern we support is
+  // The QKV matchers return Q: BHSD, K: BHDS, V: BHSD, but the kernels expect
+  // `BSHD`, which models usually transpose into the above. ONNX imports may
+  // sprinkle reshapes and broadcasts through the transpose, so we support
   //
   // BSHD_tensor --> transpose --> *static_reshape --> *static_broadcast
   //             --> Q/K/V tensor
   //
-  // Where all the * are optional.
-  //
-  // We ultimately want to extract the BSHD tensor for these special kernels.
-  // We also must make sure the intermediate `static_reshapes/broadcasts` are
-  // no-ops and do not modify shape (since that is the assumption).
-  //
-  // In addition, we must account for the case that sometimes Q/K/V is rank 3
-  // with the batch dimension elided.
-  //
-  // Finally, we are using this in a rewrite step, which by MLIR contracts means
-  // we cannot fail a rewrite. If the user requests a BSHD tensor when there
-  // is no parent transpose, we must still give it to them by inserting a
-  // transpose.
+  // where * is optional, and guard that the intermediates don't change shape.
+  // Q/K/V may be rank 3 with the batch dimension elided. A rewrite cannot
+  // fail, so without a parent transpose we insert one.
   struct TransposeTensorHelper {
     static TensorValue backwardGetBSHDTensor(
         // indices for a transpose operator to move the layout of `start` to
@@ -2303,8 +2190,7 @@ struct MultiHeadAttentionPattern
 
       TensorValue tensorBSHD = transposeOp.getInput();
 
-      // We must make validate our assumption that initial tensor given
-      // permutation gives us BSHD layout, otherwise just re-transpose.
+      // Validate that the permutation gives BSHD, otherwise re-transpose.
       SmallVector<TypedAttr> tensorStartDimsRank4Permuted =
           permute(getRank4Dims(start, rewriter), transposeToBSHD);
       SmallVector<TypedAttr> tensorBSHDDimsRank4 =
@@ -2341,8 +2227,7 @@ struct MultiHeadAttentionPattern
       return answer;
     }
 
-    // If we cannot find a parent, transpose, move from the current layout back
-    // to BSHD.
+    // Without a parent transpose, transposes the current layout to BSHD.
     static TensorValue
     backwardFallbackGetBSHDTensor(ArrayRef<int64_t> transposeToBSHD,
                                   TensorValue start,
@@ -2370,19 +2255,13 @@ struct MultiHeadAttentionPattern
       return transposedTensor;
     }
 
-    // Given a tensor given `backwardGetBSHDTensor`, find the grouped attention
-    // weight tensor.
-    //
-    // Grouped attention is a parameter-compression technique which reuses the
-    // same K and V weights across attention heads.
-    //
-    // Consider a Q @ K multiplication:
+    // Given a tensor from `backwardGetBSHDTensor`, finds the grouped attention
+    // weight tensor (K and V shared across heads). Consider Q @ K:
     //
     // mo.batch_matmul(%Q, %K) : (!mo.tensor<[B, H, S, D], f32>, !mo.tensor<[B,
     // H, D, S], f32>) -> !mo.tensor<[B, H, S, S], f32>
     //
-    // Under grouped attention, we have g groups, and H = g * h. We match the
-    // following pattern:
+    // With g groups and H = g * h, we match:
     //
     // %K_compressed: !mo.tensor<[B, h, D, S], f32>
     // %stg1 = mo.static.reshape(%K_compressed): !mo.tensor<[B, h, D, S], f32>
@@ -2393,9 +2272,7 @@ struct MultiHeadAttentionPattern
     // mo.transpose(%K_orig, %permutes): (!mo.tensor<[B, H, S, D], f32>, ...) ->
     // !mo.tensor<[B, H, D, S], f32>
     //
-    // We want to extract `K_compressed`.
-    //
-    // Returns std::nullopt if we cannot grab the compressed tensor.
+    // and extract `K_compressed`, or return an error.
     static ErrorOr<TensorValue>
     extractGroupedAttentionTensorBSHD(TensorValue tensorBSHD,
                                       DeviceAwareRewriter &rewriter,
@@ -2403,7 +2280,6 @@ struct MultiHeadAttentionPattern
       // Go through optional transposes and reshapes which do not matter
       TensorValue startTensor = tensorBSHD;
 
-      // Dump identity permutation.
       SmallVector<int64_t> identityPermutation = {0, 1, 2, 3};
 
       // Keep track the layout of `startTensor` as we push through transposes.
@@ -2451,8 +2327,7 @@ struct MultiHeadAttentionPattern
 
       TensorValue compressedValue = reshape2.getInput();
 
-      // We want to go back to curLayout --> identityPermutation.
-      // So figure this out.
+      // Map curLayout back to identityPermutation.
       SmallVector<int64_t> permutationBackToBSHD =
           solvePermutation(identityPermutation, curLayout);
       return backwardGetBSHDTensor(permutationBackToBSHD, compressedValue,
@@ -2463,12 +2338,8 @@ struct MultiHeadAttentionPattern
   void rewriteRootOp(BatchMatmulOp rootOp, DeviceAwareRewriter &rewriter,
                      MultiHeadAttentionPatternHelper &matcher,
                      bool isCPUDevice) const {
-    // The matcher returns QKV with the following layouts:
-    // Q: BHSD
-    // K: BHDS
-    // V: BHSD
-    //
-    // With possible elided batch dimension.
+    // The matcher returns Q: BHSD, K: BHDS, V: BHSD, possibly with the batch
+    // dimension elided.
     TensorValue initQuery = matcher.getQuery();
     TensorValue initKey = matcher.getKeyT();
     TensorValue initValue = matcher.getValue();
@@ -2480,8 +2351,7 @@ struct MultiHeadAttentionPattern
     auto permuteBSHD2BHSDValue =
         rewriter.createHostConstant(rootOp.getLoc(), permuteBSHD2BHSD);
 
-    // However the kernel wants the layout `BSHD` which we get below
-    // (this also handles elided batch dimensions gracefully).
+    // The kernel wants `BSHD` (this also handles elided batch dimensions).
     auto graphOp = rootOp->getParentOfType<MO::GraphOp>();
     TensorValue query = TransposeTensorHelper::backwardGetBSHDTensor(
         permuteBHSD2BSHD, initQuery, rewriter, graphOp);
@@ -2499,7 +2369,7 @@ struct MultiHeadAttentionPattern
         TransposeTensorHelper::extractGroupedAttentionTensorBSHD(
             value, rewriter, graphOp);
     if (!maybeGroupedKey.isError() && !maybeGroupedValue.isError()) {
-      // Both must extracted both grouped weights to work properly
+      // Both grouped weights must be extracted.
       key = maybeGroupedKey.takeValue();
       value = maybeGroupedValue.takeValue();
     }
@@ -2593,13 +2463,9 @@ struct MultiHeadAttentionPattern
     bool oneUseBMM = rootOp->hasOneUse();
     Operation *curOp = oneUseBMM ? *rootOp->getUsers().begin() : nullptr;
 
-    // Single user ops between the `rootOp` and a future transpose. If we
-    // find a transpose, we will replace the transpose with the kernel call.
-    // Then, we must delete the chain of ops leading from `rootOp` to follow
-    // the pattern rewriter contract (which states the root op must be
-    // modified somehow).
-    //
-    // Includes the `rootOp`, does not include the transpose.
+    // Single-user ops from `rootOp` (inclusive) to a transpose (exclusive). If
+    // a transpose is found it is replaced with the kernel call and this chain
+    // is erased, since the rewriter contract requires modifying the root op.
     SmallVector<Operation *> trailingOpsToTranspose = {rootOp};
     while (curOp && curOp->hasOneUse() &&
            isa<Static::ReshapeOp, Static::BroadcastToOp>(curOp)) {
@@ -2610,21 +2476,9 @@ struct MultiHeadAttentionPattern
       }
     }
 
-    // We only want to take the final transpose as part of our pattern if we
-    // know the final shape is potentially as we expect. Specifically we want
-    //
-    // The transpose to turn the layout from BHSD --> BSHD.
-    //
-    // In practice this is impossible to always prove so for many models
-    // we assume the transpose is to BSHD and insert a dynamic cpuDevice check
-    // later in case this is violated.
-    //
-    // However if we can prove this is false at compile time, e.g. if the shapes
-    // are all integral, we can just check directly and avoid this optimizing
-    // pass instead.
-    //
-    // This is a bit odd and may be a good target of spring cleaning to see
-    // if we need this anymore.
+    // Only absorb the final transpose if it may turn BHSD into BSHD. This
+    // can't always be proven, so we assume it and insert a cpuDevice check,
+    // unless static shapes prove it wrong at compile time.
     auto finalTranspose = dyn_cast<TransposeOp>(curOp);
     auto transposeIsStaticallyWrong = [&]() {
       ArrayRef<TypedAttr> transposeShapeAttr =
@@ -2641,13 +2495,12 @@ struct MultiHeadAttentionPattern
     };
 
     if (finalTranspose && !transposeIsStaticallyWrong() && oneUseBMM) {
-      // The idea is we now have a chain of ops like
+      // We have a chain like
       // *rootOp (BHSD) --> *bcast/reshape --> *bcast/reshape
       //                --> transpose (BSHD)
       //
-      // Where the * appear in `oneUseOps`. We now want to replace the final
-      // transpose with the result of the pattern and delete all the previous
-      // operations in `oneUseOps`.
+      // where * are in `trailingOpsToTranspose`. Replace the transpose with
+      // the result and erase the rest.
 
       // Runtime Check 1: make sure all the ops in `oneUseOps` have the same
       // shape. This guarantees the bcasts/reshapes we collected do nothing.
@@ -2675,20 +2528,14 @@ struct MultiHeadAttentionPattern
                        "BSHD layout. This is of great "
                        "interest so please report!");
 
-      // Replace ops, and delete the rest.
       rewriter.replaceAllOpUsesWith(finalTranspose, mhaResult);
       rewriter.eraseOp(finalTranspose);
       for (Operation *op : llvm::reverse(trailingOpsToTranspose)) {
         rewriter.eraseOp(op);
       }
     } else {
-      // There is not a transpose or we can not otherwise replace the BMM
-      // operation.
-      //
-      // Instead we must manually add a transpose from BSHD --> BHSD.
-      //
-      // Insert a final transpose to move from BSHD --> BHSD.
-      // This will be canonicalized away in case of adjacent transposes.
+      // Otherwise add a BSHD --> BHSD transpose, which canonicalization folds
+      // with any adjacent transpose.
       SmallVector<TypedAttr> finalOutputShape =
           permute(mhaResult.getType().getShape().getValues(), permuteBHSD2BSHD);
       TensorType finalTy = mhaResult.getType().cloneWith(finalOutputShape);
@@ -2710,12 +2557,10 @@ struct MultiHeadAttentionPattern
         matcher->getQuery().getType().getRank() != 3)
       return Error("GPU Kernel expects rank 3 or 4 QKV.");
 
-    // CHECK 2: D == 128 and static H due to kernel limitation.
+    // CHECK 2: D in {64, 128} and static H due to kernel limitation.
     // TODO: lift to static D once kernel is generalized.
-    // Query is BHSD, Key is BHDS and Value is BHSD.
-    // If rank 3, B is elided.
-    // Note due to bcasts, only some of QKV might have static int dimensions.
-    // The rest may be parameters;
+    // Q is BHSD, K is BHDS, V is BHSD, with B elided if rank 3. Due to bcasts
+    // only some of QKV may have static dims.
     bool isRank3 = matcher->getQuery().getType().getRank() == 3;
     int64_t dimD = -1;
     dimD = std::max(dimD, matcher->getQuery().getType().getIntDim(3 - isRank3));
@@ -2732,9 +2577,6 @@ struct MultiHeadAttentionPattern
           return value != mlir::ShapedType::kDynamic;
         });
 
-    // Original guard was `dimD != 128 || !isDimHStatic` to restrict the GPU
-    // MHA fusion to Llama2's head_dim. This was blocking GPT-2 124M fused
-    // attention. Relax the guard to add dimD != 64.
     if ((dimD != 64 && dimD != 128) || !isDimHStatic)
       return Error("Right now must prove (D == 128 || D == 64) && static H.");
 
@@ -2752,10 +2594,7 @@ struct MultiHeadAttentionPattern
     if (!device)
       device = getTargetDevice(op, targetDevice);
 
-    // Just assume we want to use the CPU kernel only if the default device
-    // is cpu (e.g. if the default was CUDA, run on CUDA).
-    //
-    // That way avoid device logic for now.
+    // Use the CPU kernel only if the default device is CPU.
     if (device && device.getLabel() != M::kCPULabel &&
         device.getLabel() != M::kGPULabel)
       return rewriter.notifyMatchFailure(
@@ -2764,7 +2603,6 @@ struct MultiHeadAttentionPattern
     // if not CPU, assume CUDA
     bool isCPUDevice = !device || device.getLabel() == M::kCPULabel;
 
-    // Matching portion of pattern.
     ErrorOr<MultiHeadAttentionPatternHelper> matcher =
         MultiHeadAttentionPatternHelper::match(op, rewriter, allowUnsafeBCast,
                                                allowInternalReshape,
@@ -2786,12 +2624,7 @@ struct MultiHeadAttentionPattern
         return rewriter.notifyMatchFailure(op.getLoc(), gpuCheck.getError());
     }
 
-    // Rewrite portion of pattern. Note: it is unsafe to now abort rewrites in
-    // the middle of the pattern so we must be 100% sure the rewrite will
-    // succeed now.
-
-    // If we have unsafe broadcasts, we want to add cpuDevice guards against
-    // them.
+    // The rewrite must not abort past this point.
     for (Static::BroadcastToOp unsafeBCast : matcher->getUnsafeBroadcasts())
       guardUnsafeBCast(unsafeBCast, rewriter);
 
@@ -2810,17 +2643,12 @@ struct RMSNormFusedResidualAddPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ReduceRMSNormOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Match the pattern: rms_norm(rms_norm(input) + residual_input)
-    // This means we're looking for a RMSNormOp whose input is the result of
-    // (rms_norm(input) + residual_input)
-
-    // Look for an add operation feeding into this rms_norm's input
+    // Matches rms_norm(rms_norm(input) + residual_input).
     auto addOp = op.getInput().getDefiningOp<MO::AddOp>();
     if (!addOp)
       return rewriter.notifyMatchFailure(
           op, "first operand not from add operation");
 
-    // One of the add operands should be the result of an inner rms_norm
     if (addOp.getOperands().size() != 2)
       return rewriter.notifyMatchFailure(op,
                                          "add operation expects 2 operands");
@@ -2836,22 +2664,18 @@ struct RMSNormFusedResidualAddPattern
         return rewriter.notifyMatchFailure(op, "inner rms_norm not found");
     }
 
-    // Extract the original input fed into the inner rms_norm
     Value originalInput = innerRmsNorm.getInput();
 
-    // Extract parameters from outer rms_norm
     Value gamma2 = op.getWeight();
     Value eps2 = op.getEpsilon();
     Value weightOffset2 = op.getWeightOffset();
     // Use outer op's multiply_before_cast (inner assumed to match outer)
     BoolAttr multiplyBeforeCast = op.getMultiplyBeforeCastAttr();
 
-    // Extract parameters from inner rms_norm
     Value gamma1 = innerRmsNorm.getWeight();
     Value eps1 = innerRmsNorm.getEpsilon();
     Value weightOffset1 = innerRmsNorm.getWeightOffset();
 
-    // Check device consistency
     if (!rewriter.addOps({addOp, innerRmsNorm})) {
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
@@ -2867,26 +2691,18 @@ struct RMSNormFusedResidualAddPattern
             weightOffset1, weightOffset2, multiplyBeforeCast.getValue(),
             op.getOutputParamDecls());
 
-    // Replace the outer rms_norm with the first output of the fused operation
     rewriter.replaceOp(op, fusedOp.getOutput());
-
-    // Replace all consumers of the add operation with the second output of the
-    // fused operation
     rewriter.replaceAllUsesWith(addOp.getResult(), fusedOp.getIntermediate());
 
     return mlir::success();
   }
 };
 
-// Fuses the single-norm residual-add + RMSNorm boundary
-// `rms_norm(add(a, b))` into one `mo.composite.rms_norm_residual_add` launch,
-// emitting both the normalized output and the `a + b` intermediate (so the
-// pre-add residual carried to the next block reuses the fused op's second
-// output instead of a separate add). This is the canonical transformer/mamba
-// pre-norm boundary. It is intentionally distinct from
-// `RMSNormFusedResidualAddPattern` (which handles the double-norm topology
-// `rms_norm(rms_norm(x) + r)`); this pattern deliberately declines that case
-// and runs at lower benefit so the double-norm pattern wins where both apply.
+// Fuses the pre-norm boundary `rms_norm(add(a, b))` into one
+// `mo.composite.rms_norm_residual_add`, emitting both the normalized output and
+// the `a + b` intermediate so the carried residual needs no separate add. The
+// double-norm topology `rms_norm(rms_norm(x) + r)` is left to the
+// higher-benefit `RMSNormFusedResidualAddPattern`.
 struct RMSNormResidualAddPattern
     : public MO::DeviceAwareRewritePattern<OpRewritePattern,
                                            MO::ReduceRMSNormOp> {
@@ -2896,7 +2712,6 @@ struct RMSNormResidualAddPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ReduceRMSNormOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Match `rms_norm(add(a, b))`.
     auto addOp = op.getInput().getDefiningOp<MO::AddOp>();
     if (!addOp)
       return rewriter.notifyMatchFailure(
@@ -2905,9 +2720,6 @@ struct RMSNormResidualAddPattern
       return rewriter.notifyMatchFailure(op,
                                          "add operation expects 2 operands");
 
-    // Leave the double-norm topology `rms_norm(rms_norm(x) + r)` to
-    // RMSNormFusedResidualAddPattern (higher benefit): if either add operand is
-    // itself an inner rms_norm, decline here.
     Value lhs = addOp.getOperand(0);
     Value rhs = addOp.getOperand(1);
     if (lhs.getDefiningOp<MO::ReduceRMSNormOp>() ||
@@ -2915,7 +2727,6 @@ struct RMSNormResidualAddPattern
       return rewriter.notifyMatchFailure(
           op, "double-norm topology handled by RMSNormFusedResidualAddPattern");
 
-    // Check device consistency across the matched ops.
     if (!rewriter.addOps({addOp}))
       return rewriter.notifyMatchFailure(
           op, "matched ops have inconsistent devices");
@@ -2933,8 +2744,7 @@ struct RMSNormResidualAddPattern
         rhs, gamma, eps, weightOffset, multiplyBeforeCast.getValue(),
         op.getOutputParamDecls());
 
-    // Replace the rms_norm with the normalized output, and rewire the add's
-    // other consumers (the carried residual) to the intermediate output.
+    // The add's other consumers (the carried residual) take the intermediate.
     rewriter.replaceOp(op, fusedOp.getOutput());
     rewriter.replaceAllUsesWith(addOp.getResult(), fusedOp.getIntermediate());
 
@@ -2986,8 +2796,6 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
     if (!groupSizeAttr)
       return rewriter.notifyMatchFailure(op, "missing group_size_or_per_token");
     if (auto groupSizeIntAttr = dyn_cast<IntegerAttr>(groupSizeAttr)) {
-      // Verify that the token size matches the inner dimension of the input
-      // operand.
       int64_t groupSize = groupSizeIntAttr.getInt();
       if (groupSize != -1 && groupSize != inputTy.getIntDim(rank - 1))
         return rewriter.notifyMatchFailure(op,
@@ -3000,7 +2808,6 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
     if (!rmsNormOp.getMultiplyBeforeCast())
       return rewriter.notifyMatchFailure(op, "multiply_before_cast required");
 
-    // Otherwise only fuse the RMSNorm + Quant into a dedicated composite op.
     SmallVector<Value> fusedOperands = {
         rmsNormOp.getInput(),        // rms_norm.input
         rmsNormOp.getWeight(),       // rms_norm.gamma
@@ -3018,8 +2825,8 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
 };
 
 //===----------------------------------------------------------------------===//
-// Shared helpers used by both the distributed and bundled allreduce-add-
-// rms_norm-quant-fp8 pattern matchers below.
+// Helpers for the distributed and bundled allreduce-add-rms_norm-quant-fp8
+// matchers.
 //===----------------------------------------------------------------------===//
 
 /// Finds an `mo.add` consumer of `val` that uses `val` on the RHS.  On success,
@@ -3030,11 +2837,8 @@ static bool matchResidualOp(Value val, MO::AddOp &residualOp,
                             Value &residualValue) {
   for (Operation *user : val.getUsers()) {
     auto addOp = dyn_cast<MO::AddOp>(user);
-    // The pattern must match exactly the rhs operand for the AllReduce.
-    // Otherwise we match suboptimal ops when subgraphs are disabled.
-    // (The Add has two AllReduce operands, and we match with the wrong one).
-    // TODO: This is very brittle, though this should be fixed once we switch
-    // to mo.parallel.
+    // TODO: Matching only the RHS is brittle; it should go away with
+    // mo.parallel.
     if (!addOp || addOp.getRhsInput() != val)
       continue;
     residualValue = addOp.getLhsInput();
@@ -3138,7 +2942,6 @@ public:
     int64_t groupSize = allReduceOp.getGroupSizeAttr().getInt();
     if (groupSize != 0 && groupSize != static_cast<int64_t>(devicesCount))
       return;
-    // Start from AllReduce outputs to match everything
     for (Value out : allReduceOp.getOutputs()) {
       if (!matchFusedAllReducePath(cast<TensorValue>(out)))
         return;
@@ -3150,14 +2953,12 @@ public:
     if (quantizes && quantizeOps.size() != devicesCount)
       return;
 
-    // Let's build the new op
     builder.setInsertionPointAfter(allReduceOp);
     if (!quantizes)
       unreadScaleUb =
           MO::ConstantOp::create(builder, allReduceOp.getLoc(), 1.0f)
               .getResult();
 
-    // Prepare the operands
     llvm::SmallVector<Type> outputTypes;
     llvm::SmallVector<Type> outScaleTypes;
     llvm::SmallVector<Type> outResidualTypes;
@@ -3179,8 +2980,6 @@ public:
       weightOffsetOperands.push_back(rmsNormOp.getWeightOffset());
     }
 
-    // Build the op
-
     auto allReduceFusedOp =
         MO::Composite::AllReduceAddRMSNormQuantFP8Op::create(
             builder, allReduceOp.getLoc(),
@@ -3197,8 +2996,6 @@ public:
             /*scaleUb=*/scaleUbOperands,
             /*inChain=*/allReduceOp.getInChain());
 
-    // Replace the original outputs with the new op.
-    // Replace the output chain.
     allReduceOp.getOutChain().replaceAllUsesWith(
         allReduceFusedOp.getOutChain());
 
@@ -3249,7 +3046,7 @@ private:
     DeviceRefAttr device = allReduceOut.getType().getDeviceRef();
     ASSERT_STREAM(device,
                   "all reduce outputs must be assigned to a specific device");
-    // Check if we haven't already match the ops of this device.
+    // This device's ops were already matched.
     if (residualOps.contains(device))
       return false;
 
@@ -3285,7 +3082,7 @@ private:
 //===----------------------------------------------------------------------===//
 // FuseParallelBundledAllReduceAddRMSNormQuantFP8PatternMatcher
 //
-// Cross-boundary parallel-region matcher.  Given
+// Cross-boundary parallel-region matcher. Given
 //
 //   mo.parallel(%arg) in (%inBundle : ...) buffers(...) chain(%c) -> ... {
 //     ... = mo.bundled.expand(%arg) ...
@@ -3378,7 +3175,7 @@ private:
     yieldOp = cast<MO::YieldOp>(body.getTerminator());
 
     // 2. The seed's tensor result has exactly one use, and that use is
-    //    the body's mo.yield.  Record which yield operand it occupies.
+    //    the body's mo.yield.
     Value seedOut = allReduceOp.getOutput();
     if (!seedOut.hasOneUse())
       return false;
@@ -3409,9 +3206,8 @@ private:
       return false;
 
     // 4. Walk the per-launch add -> rms_norm -> quantize chain on each
-    //    unbundled result using the existing helpers.  Track claimed ops
-    //    so a single op cannot be nominated as the peer for more than
-    //    one launch.
+    //    unbundled result. Track claimed ops so no op is the peer for more
+    //    than one launch.
     addOps.assign(numLaunches, nullptr);
     rmsNormOps.assign(numLaunches, nullptr);
     quantizeOps.assign(numLaunches, nullptr);
@@ -3548,16 +3344,13 @@ private:
         MO::ParallelOp::create(builder, loc, newInputs, parallelOp.getBuffers(),
                                parallelOp.getInChain(), newResultTypes);
 
-    // 3. Splice the body via IRMapping.  Clone every op in the old body
+    // 3. Splice the body via IRMapping. Clone every op in the old body
     //    except the seed (which we replace with the fused op).
     Block &oldBody = parallelOp.getBodyRegion().front();
     Block &newBody = newParallel.getBodyRegion().front();
     IRMapping mapping;
-    // Map the per-bundle block args 1:1 (same leading positions in both
-    // bodies). The new body appends residual+gamma args before the trailing
-    // !mo.chain block arg, so map the chain arg explicitly (old last -> new
-    // last) rather than via a contiguous take_front, which would misalign the
-    // chain arg with residual/gamma.
+    // The new body appends residual+gamma args before the trailing !mo.chain
+    // arg, so the chain arg is mapped explicitly (old last -> new last).
     size_t numOrigInputs = parallelOp.getInputs().size();
     for (size_t i = 0; i < numOrigInputs; ++i)
       mapping.map(oldBody.getArgument(i), newBody.getArgument(i));
@@ -3574,7 +3367,7 @@ private:
       bodyBuilder.clone(op, mapping);
     }
 
-    // Build the fused op in place of the seed.  Peer inputs and the
+    // Build the fused op in place of the seed. Peer inputs and the
     // chain operand come through the IRMapping; signal buffers, eps, wo
     // and scale_ub are captured from outer scope (the graph region
     // permits direct outer-SSA references).
@@ -3603,9 +3396,8 @@ private:
         /*scaleUb=*/scaleUbValue,
         /*inChain=*/fusedChain);
 
-    // The body yields the seed collective's out-chain (chained parallels).
-    // The fused op subsumes the seed, so route the yielded chain to it; the
-    // rebuilt yield below then threads the correct completion chain.
+    // The body yields the seed's out-chain (chained parallels); route it to the
+    // fused op, which subsumes the seed.
     if (parallelOp.hasChain())
       mapping.map(allReduceOp.getOutChain(), fusedOp.getOutChain());
 
@@ -3623,11 +3415,9 @@ private:
     }
     MO::YieldOp::create(bodyBuilder, yieldOp.getLoc(), newYieldOperands);
 
-    // 4. External rewire: unbundle each new bundle result and rewrite the
-    //    per-device users.  The post-add residual may have non-rms_norm
-    //    consumers (e.g. an external `mo.add(%other, %add)` reading the
-    //    residual); replaceAllUsesExcept skips the rms_norm we're about
-    //    to erase.
+    // 4. Unbundle each new bundle result and rewrite the per-device users.
+    //    The post-add residual may have non-rms_norm consumers;
+    //    replaceAllUsesExcept skips the rms_norm we're about to erase.
     builder.setInsertionPointAfter(newParallel);
     size_t newOutIdx = *oldResultToNewIdx[yieldOperandIdx];
     Value outBundle = newParallel.getResult(newOutIdx);
@@ -3753,21 +3543,15 @@ struct ReduceRMSNormRoPEPattern
     }
 
     // ---- 0. Step over a narrowing downcast between rms_norm and RoPE -------
-    // Model code commonly computes RMSNorm "in float32" and casts back to the
-    // activation dtype *before* RoPE:
+    // Model code commonly computes RMSNorm in f32 and casts back before RoPE:
     //
     //   normed_hi = reduce.rms_norm(cast(x_lo, f32), w, ...)   // f32
     //   normed_lo = cast(normed_hi, lo)                         // bf16/fp16
     //   x1, x2 = split(normed_lo, -1); ...
     //
-    // The split/mul then consume `normed_lo`, not the rms_norm result, so the
-    // RoPE ops below must be matched against the cast result. The resulting
-    // composite is f32-in / lo-out (the kernel decouples output dtype), keeping
-    // weight/epsilon in f32. The input upcast is left in place for downstream
-    // prologue (FusedInput) fusion to absorb. RMSNorm accumulates in f32
-    // regardless of I/O dtype, so for an f32 norm the internal pre-cast is a
-    // no-op and the up/down-cast idiom is exactly `multiply_before_cast =
-    // true`.
+    // so the RoPE ops are matched against the cast result. The composite is
+    // f32-in / lo-out with weight/epsilon in f32; the input upcast is left for
+    // prologue (FusedInput) fusion to absorb.
     Value ropeRoot = normed;
     MO::CastOp rmsDowncast = nullptr;
     bool forceMultiplyBeforeCast = false;
@@ -3793,7 +3577,6 @@ struct ReduceRMSNormRoPEPattern
       auto splitOp = dyn_cast<MO::SplitOp>(user);
       if (!splitOp || splitOp.getNumResults() != 2)
         continue;
-      // `axis` is a compile-time `index` attribute.
       if (normalizeAxis(splitOp.getAxisAttr().getInt(), rank) != rmsAxis)
         continue;
       normSplit = splitOp;
@@ -3812,9 +3595,8 @@ struct ReduceRMSNormRoPEPattern
     // ---- 2. x2 must feed a NegativeOp ------------------------------------
     if (!x2.hasOneUse())
       return rewriter.notifyMatchFailure(rmsNormOp, "x2 has multiple uses");
-    // x2 having a single use does not guarantee that use is a negate (e.g. the
-    // Gemma4 vision RoPE feeds the split halves elsewhere). dyn_cast + bail
-    // rather than an unchecked cast, which would abort on a non-negate user.
+    // The single use need not be a negate (e.g. Gemma4 vision RoPE feeds the
+    // split halves elsewhere).
     auto negOp = dyn_cast<MO::NegativeOp>(*x2.getUsers().begin());
     if (!negOp)
       return rewriter.notifyMatchFailure(rmsNormOp,
@@ -3976,8 +3758,6 @@ struct ReduceRMSNormRoPEPattern
     *rewriter.pushOp() = addOp;
     if (downcastOp)
       *rewriter.pushOp() = downcastOp;
-    // The downcast we fused through (rms_norm result -> RoPE input) is a GPU
-    // op.
     if (rmsDowncast)
       *rewriter.pushOp() = rmsDowncast;
     if (!rewriter.addOps()) {
@@ -3989,9 +3769,8 @@ struct ReduceRMSNormRoPEPattern
     auto outputTy = downcastOp ? downcastOp.getResult().getType()
                                : cast<MO::TensorType>(addResult.getType());
 
-    // When we fused through an f32->lo downcast, the rms_norm's internal cast
-    // to its (f32) result dtype was a no-op, so the up/down-cast idiom is
-    // exactly `multiply_before_cast = true` regardless of the original flag.
+    // After fusing through an f32->lo downcast, the rms_norm's internal cast
+    // to f32 is a no-op, so the idiom is exactly `multiply_before_cast = true`.
     bool multiplyBeforeCast =
         forceMultiplyBeforeCast
             ? true
@@ -4029,9 +3808,7 @@ struct ReduceRMSNormRoPEPattern
     rewriter.eraseOp(concatOp);
     rewriter.eraseOp(negOp);
     rewriter.eraseOp(normSplit);
-    // The downcast we fused through is now dead (its only uses were the RoPE
-    // ops just erased); remove it before the rms_norm that feeds it. The input
-    // upcast is intentionally left for downstream prologue fusion.
+    // The input upcast is intentionally left for prologue fusion.
     if (rmsDowncast)
       rewriter.eraseOp(rmsDowncast);
     rewriter.eraseOp(rmsNormOp);
@@ -4055,12 +3832,10 @@ struct ReduceRMSNormRoPEPattern
 //
 // into a single mo.composite.layer_norm_rope_ragged op.
 //
-// Confirmed against a real DeepSeekV3.2/GLM-5.2 Indexer graph: the unsqueeze
-// applies to the whole normed tensor, not just the roped half, so roped and
-// passthrough are two independent `mo.slice`s on different source values
-// rather than one `mo.split`'s two results. There's no even-split
-// assumption -- the rope width comes entirely from mo.composite.rope.ragged's
-// own freqsCis operand.
+// The unsqueeze applies to the whole normed tensor (as in the DeepSeekV3.2 /
+// GLM-5.2 Indexer), so roped and passthrough are independent `mo.slice`s, not
+// one `mo.split`. The rope width comes from rope.ragged's freqsCis operand, so
+// the halves need not be even.
 //===----------------------------------------------------------------------===//
 
 /// True if `outTy` is `inTy` with one extra size-1 dimension inserted at
@@ -4079,9 +3854,7 @@ static bool insertsSingletonAtAxis1(MO::TensorType inTy, MO::TensorType outTy) {
   return true;
 }
 
-/// True if `slice`'s result differs from its input only along the last axis
-/// (i.e. it narrows exactly one trailing dimension, leaving all others
-/// untouched).
+/// True if `slice`'s result differs from its input only along the last axis.
 static bool sliceOnlyNarrowsLastAxis(MO::SliceOp slice) {
   auto inTy = cast<MO::TensorType>(slice.getInput().getType());
   auto outTy = cast<MO::TensorType>(slice.getResult().getType());
@@ -4127,9 +3900,8 @@ struct ReduceLayerNormRopeRaggedPattern
     int64_t lastAxis = rank - 1;
 
     // ---- 0. Step over a narrowing downcast between layer_norm and the ----
-    // roped/passthrough slices. Model code commonly computes LayerNorm "in
-    // float32" and casts back to the activation dtype before consuming it
-    // (see LayerNorm.__call__).
+    // roped/passthrough slices (LayerNorm computed in f32, see
+    // LayerNorm.__call__).
     Value ropeRoot = normed;
     MO::CastOp layerNormDowncast = nullptr;
     if (normed.hasOneUse()) {
@@ -4211,10 +3983,8 @@ struct ReduceLayerNormRopeRaggedPattern
     }
 
     // ---- 3. Verify roped/passthrough are complementary, contiguous, ------
-    // roped-first partitions of ropeRoot's last axis. mo.slice carries no
-    // axis attr (its start/stop/step cover every dim), so this can't be read
-    // off a split-like attribute -- it's checked directly against the
-    // constant last-axis start of each slice.
+    // roped-first partitions of ropeRoot's last axis. mo.slice has no axis
+    // attr, so check each slice's constant last-axis start.
     auto ropedTy = cast<MO::TensorType>(ropedSliceOp.getResult().getType());
     auto passthroughTy =
         cast<MO::TensorType>(passthroughSliceOp.getResult().getType());
@@ -4269,9 +4039,8 @@ struct ReduceLayerNormRopeRaggedPattern
       return rewriter.notifyMatchFailure(
           layerNormOp, "concat axis differs from layer_norm axis");
     }
-    // Verify operand order: concat(roped, passthrough) -- NOT
-    // concat(passthrough, roped). The fused op always emits roped columns
-    // first, so a reversed concat would silently transpose the output.
+    // The fused op emits roped columns first, so a reversed concat would
+    // silently transpose the output.
     if (concatOp.getInputs().size() != 2 ||
         concatOp.getInputs()[0] != concatRopedOperand ||
         concatOp.getInputs()[1] != passthroughSliceOp.getResult()) {
@@ -4329,26 +4098,17 @@ struct ReduceLayerNormRopeRaggedPattern
 //                                                 start_pos, freqs_cis)
 //   result             = concat(roped', passthrough, axis=-1)
 //
-// into a single full-width `mo.composite.rope.ragged` carrying
-// `rope_first = true`, which rotates the leading `freqs_cis`-width columns
-// of each head and passes the rest through -- exactly what the split/concat
-// pair spelled out, minus the concat's copy and the fusion barrier it puts
-// between the RoPE and whatever consumes the result.
+// into a single full-width `mo.composite.rope.ragged` with `rope_first = true`,
+// which rotates the leading `freqs_cis`-width columns of each head and passes
+// the rest through, dropping the concat's copy and fusion barrier.
 //
-// The model spells this as two `ops.chunk` slices, not a split; PatternFusion
-// runs SliceToSplitPattern over the graph before this pass's own patterns
-// (and SplitToSlicePattern after), so by the time this pattern runs, a pair
-// of slices that partitions the last axis has already become one `mo.split`.
+// The model uses two `ops.chunk` slices; PatternFusion runs
+// SliceToSplitPattern first, so they have already become one `mo.split`.
 //
-// This is the DeepSeekV3.2/GLM-5.2 Indexer Q path, where the model chunks
-// the wq_b output as `q_pe, q_nope` and concatenates it back in the same
-// order. The K path in that same block runs through a LayerNorm and is
-// fused by ReduceLayerNormRopeRaggedPattern into a strictly better op. The
-// two patterns cannot collide over one subgraph: that one requires the
-// rope result's single use to be a `mo.static.reshape` (K is unsqueezed to
-// rank 3 for the RoPE and squeezed back), while this one requires it to be
-// the concat itself. K also keeps two independent `mo.slice`s rather than a
-// split, since its halves are sliced off two different values.
+// This is the DeepSeekV3.2/GLM-5.2 Indexer Q path. The K path is fused by
+// ReduceLayerNormRopeRaggedPattern; the two cannot collide since that one
+// requires the rope result's single use to be a `mo.static.reshape` and this
+// one requires the concat.
 //===----------------------------------------------------------------------===//
 
 struct RopeRaggedSplitConcatPattern
@@ -4526,7 +4286,6 @@ private:
   // epilogue fused because fused_matmul_add does not support epilogue fusion.
   static bool wouldBlockEpilogueFusion(Value val) {
     while (true) {
-      // We can't fuse if the value has multiple uses.
       if (!val.hasOneUse())
         return false;
       Operation *user = *val.getUsers().begin();
@@ -4574,7 +4333,6 @@ private:
   LogicalResult
   deviceAwareMatchAndRewrite(MO::AddOp addOp,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Only fuse on GPU.
     auto resultTy = cast<MO::TensorType>(addOp.getResult().getType());
     DeviceRefAttr device = resultTy.getDeviceRef();
     if (!device || device.getLabel() != M::kGPULabel) {
@@ -4582,7 +4340,6 @@ private:
                                          "matmul+add fusion only on GPU");
     }
 
-    // Only apply for SM100 devices.
     DeviceInfoAttr deviceInfo = _deviceInfoMapping.get(device);
     if (deviceInfo.getArch() != "sm_100a") {
       return rewriter.notifyMatchFailure(
@@ -4611,7 +4368,6 @@ private:
                                          "neither input is a matmul result");
     }
 
-    // Only fuse if matmul has a single use (add).
     if (!matmulOp.getResult().hasOneUse()) {
       return rewriter.notifyMatchFailure(addOp,
                                          "matmul result has multiple uses");
@@ -4638,17 +4394,12 @@ private:
           addOp, "residual cannot be an elementwise op");
     }
 
-    // Collect device annotations from both matched ops.
     if (!rewriter.addOps({matmulOp})) {
       return rewriter.notifyMatchFailure(
           addOp, "matched ops have inconsistent devices");
     }
 
-    // Replace add(matmul(a, b), residual) -> matmul_add(a, b, residual).
-
     if (reshapeOp) {
-      // If there was a reshape, the residual must be reshaped back to the
-      // matmul output.
       residual = rewriter.create<MO::Static::ReshapeOp>(
           residual.getLoc(), matmulOp.getResult().getType(), residual);
     }
@@ -4658,8 +4409,6 @@ private:
         matmulOp.getInputB(), residual,
         rewriter.getBoolAttr(matmulOp.getTransposeB()));
 
-    // If there was a reshape, we need to insert a a new one for the fused
-    // matmul output.
     if (reshapeOp) {
       newOutput = rewriter.create<MO::Static::ReshapeOp>(
           reshapeOp.getLoc(), reshapeOp.getResult().getType(), newOutput);
@@ -4682,20 +4431,14 @@ private:
 //       %down_in, %down_w, %silu_scales, ...)                // L2: down
 //       (anchor)
 //
-// into a single `mo.composite.mega_ffn_nvfp4`. Anchored on the down op (L2);
-// the gate-up op (L1) is reached as the producer of L2's activations. The
-// intermediate (`down_in`, `silu_scales`) is consumed only by L2 and is
-// dropped.
+// into a single `mo.composite.mega_ffn_nvfp4`, anchored on L2. The
+// intermediate (`down_in`, `silu_scales`) is consumed only by L2 and dropped.
 //
-// SM100/B200 only — arch-gated internally via DeviceInfoMapping (mirroring
-// MatmulAddPattern) and additionally behind the `mega-ffn-enable` driver pass
-// option (see populateFusionMegaFFNPatterns and PatternFusion). The
-// host-contract invariants
-// the kernel relies on (front-packed active experts, ids[e] >= 0 => tokens > 0,
-// device-only routing buffers) are upstream EP-gate guarantees: the pattern
-// does not — and cannot statically — prove them. It only fires when the
-// producer is the matching gate-up composite, which is the path that already
-// satisfies them.
+// SM100 only, and behind the `mega-ffn-enable` pass option. The kernel's host
+// invariants (front-packed active experts, ids[e] >= 0 => tokens > 0,
+// device-only routing buffers) are upstream EP-gate guarantees the pattern
+// cannot prove statically; it only fires on the gate-up composite producer,
+// which satisfies them.
 struct MegaFFNNvfp4Pattern
     : public MO::DeviceAwareRewritePattern<
           OpRewritePattern, MO::Composite::GroupedMatmulBlockScaledOp> {
@@ -4714,13 +4457,11 @@ public:
   LogicalResult
   deviceAwareMatchAndRewrite(MO::Composite::GroupedMatmulBlockScaledOp downOp,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Fuse only on GPU.
     auto resultTy = cast<MO::TensorType>(downOp.getOutput().getType());
     DeviceRefAttr device = resultTy.getDeviceRef();
     if (!device || device.getLabel() != M::kGPULabel)
       return rewriter.notifyMatchFailure(downOp, "mega_ffn fusion only on GPU");
 
-    // Only apply for SM100 devices; the fused kernel is sm_100a-only.
     DeviceInfoAttr deviceInfo = _deviceInfoMapping.get(device);
     if (deviceInfo.getArch() != "sm_100a")
       return rewriter.notifyMatchFailure(
@@ -4776,7 +4517,6 @@ public:
       return rewriter.notifyMatchFailure(downOp,
                                          "mega_ffn output must be bfloat16");
 
-    // Device-consistency check across both fused ops.
     if (!rewriter.addOps({l1, downOp}))
       return rewriter.notifyMatchFailure(
           downOp, "matched ops have inconsistent devices");
@@ -4786,26 +4526,19 @@ public:
 
     // ---- Mint the persistent `arrival_count` pool-slot buffer. ----
     //
-    // The kernel uses cross-CTA pool-slot arrival counters (strided by
-    // ATOMIC_PAD=32) to hand off between the two legs. Under the registration's
-    // `POST_SELF_CLEAN_UP` policy each launch claims one half of every slot and
-    // clears the half its predecessor used, so a buffer that starts all-zero
-    // carries the last launch's counts rather than zeros -- one zeroing is
-    // still all it needs, and nothing may re-zero it per launch. We
-    // mint it here as a PERSISTENT buffer via `mo.buffer.create` with a zero
-    // `initValue`: the runtime allocates and zeroes it ONCE at model load and
-    // reuses it across executions -- no per-launch alloc/memset, and no
-    // in-graph fill that would race under ExecInvariantCodeMotion or break
-    // under stream capture.
+    // The kernel hands off between legs via cross-CTA arrival counters
+    // (strided by ATOMIC_PAD=32). Under `POST_SELF_CLEAN_UP` each launch
+    // clears the half of each slot its predecessor used, so the buffer needs
+    // one zeroing and must never be re-zeroed per launch. A persistent
+    // `mo.buffer.create` with zero `initValue` is zeroed once at model load,
+    // avoiding an in-graph fill that would race under ExecInvariantCodeMotion
+    // or break under stream capture.
     //
-    // Sized to a static upper bound on `total_m_blocks` (sum over experts of
-    // `ceildiv(tokens_e, MMA_N)`, which the kernel indexes in
-    // `[0, total_m_blocks)`): with the smallest decode tile MMA_N=8 and at most
-    // `numExperts` partial blocks, `ceildiv(M, 8) + numExperts + 1` bounds it.
-    // Over-allocation is safe (untouched slots are never read). This needs a
-    // static token bound, so bail if either M or numExperts is dynamic (the
-    // >64 guard above only rejects a statically-known oversize). The EP path
-    // that emits these composites uses statically-shaped activation buffers.
+    // Sized to bound `total_m_blocks` (sum over experts of
+    // `ceildiv(tokens_e, MMA_N)`): with the smallest tile MMA_N=8 and at most
+    // `numExperts` partial blocks, `ceildiv(M, 8) + numExperts + 1` suffices.
+    // Over-allocation is safe. This needs static M and numExperts; the EP path
+    // uses statically-shaped activation buffers.
     int64_t m =
         cast<MO::TensorType>(l1.getHiddenStates().getType()).getIntDim(0);
     if (m == mlir::ShapedType::kDynamic ||
@@ -4899,7 +4632,6 @@ struct MatmulFusedPartialRMSNormPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ReduceRMSNormOp rmsNormOp,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    // Only fuse on GPU - the kernel is GPU-only
     auto normedOutputTy = cast<MO::TensorType>(rmsNormOp.getResult().getType());
     DeviceRefAttr device = normedOutputTy.getDeviceRef();
     if (!device || device.getLabel() != M::kGPULabel) {
@@ -4907,7 +4639,6 @@ struct MatmulFusedPartialRMSNormPattern
           rmsNormOp, "GEMV+partial RMS norm fusion only supported on GPU");
     }
 
-    // Check that RMS norm input comes from a split of a matmul output
     Value rmsInput = rmsNormOp.getInput();
     auto rmsInputSplitOp = rmsInput.getDefiningOp<MO::SplitOp>();
     if (!rmsInputSplitOp) {
@@ -4915,7 +4646,6 @@ struct MatmulFusedPartialRMSNormPattern
                                          "RMS norm input is not from a split");
     }
 
-    // Check that the split input is from a matmul
     Value splitInput = rmsInputSplitOp.getInput();
     auto matmulOp = splitInput.getDefiningOp<MO::MatmulOp>();
     if (!matmulOp) {
@@ -4923,7 +4653,6 @@ struct MatmulFusedPartialRMSNormPattern
                                          "Split input is not from a matmul");
     }
 
-    // Verify matmul has transpose_b = true (required for the kernel)
     if (!matmulOp.getTransposeB()) {
       return rewriter.notifyMatchFailure(
           rmsNormOp, "matmul must have transpose_b=true for fusion");
@@ -4937,7 +4666,6 @@ struct MatmulFusedPartialRMSNormPattern
           "multiply_before_cast=true required (kernel hardcodes this)");
     }
 
-    // Check matmul output is M=1 (GEMV)
     auto matmulResultTy = cast<MO::TensorType>(matmulOp.getResult().getType());
     auto matmulShape = matmulResultTy.getIntDims();
     if (matmulShape.size() != 2 || matmulShape[0] != 1) {
@@ -4945,44 +4673,34 @@ struct MatmulFusedPartialRMSNormPattern
           rmsNormOp, "matmul must be GEMV (M=1) for fusion");
     }
 
-    // The split must produce exactly 2 results
     if (rmsInputSplitOp.getNumResults() != 2) {
       return rewriter.notifyMatchFailure(
           rmsNormOp, "split must produce exactly 2 results");
     }
 
-    // Check that the split is on the last axis (axis=1 for rank-2). `axis` is
-    // a compile-time `index` attribute.
     int64_t axis = normalizeAxis(rmsInputSplitOp.getAxisAttr().getInt(), 2);
     if (axis != 1) {
       return rewriter.notifyMatchFailure(rmsNormOp,
                                          "split must be on the last axis");
     }
 
-    // Get the split sizes - must be constant with 2 elements
     auto splitSizes =
         MO::tryGetConstantIntVector(rmsInputSplitOp.getSplitSizes());
     assert(splitSizes && splitSizes->size() == 2 &&
            "split must have 2 constant sizes");
 
-    // The RMS norm input must be the first result of the split (normed portion)
-    // Check that rmsInput is result(0) of the split
     if (rmsInput != rmsInputSplitOp.getResult(0)) {
       return rewriter.notifyMatchFailure(
           rmsNormOp, "RMS norm must consume the first split result");
     }
 
-    // Check normed split result has single use (the rms_norm op)
     if (!rmsInputSplitOp.getResult(0).hasOneUse()) {
       return rewriter.notifyMatchFailure(
           rmsNormOp, "normed split result must have exactly one use");
     }
 
-    // The unnormed output is the second result of the split
     Value unnormedOutput = rmsInputSplitOp.getResult(1);
 
-    // Verify matmul users are exactly the split op
-    // This prevents fusion when the GEMV output has other consumers
     for (Operation *user : matmulOp.getResult().getUsers()) {
       if (user != rmsInputSplitOp) {
         return rewriter.notifyMatchFailure(
@@ -4990,26 +4708,21 @@ struct MatmulFusedPartialRMSNormPattern
       }
     }
 
-    // Check device consistency (include all matched ops)
     if (!rewriter.addOps({rmsInputSplitOp, matmulOp})) {
       return rewriter.notifyMatchFailure(
           rmsNormOp, "matched ops have inconsistent devices");
     }
 
-    // Create the fused custom op at the RMSNorm location (default insertion
-    // point)
     auto normedResultTy = rmsNormOp.getResult().getType();
     auto unnormedResultTy = cast<MO::TensorType>(unnormedOutput.getType());
 
-    // Create the fused composite op. The kernel hardcodes
-    // multiply_before_cast=True and transpose_b=True, so we don't need to pass
-    // these as attributes.
+    // The kernel hardcodes multiply_before_cast=True and transpose_b=True.
     auto fusedOp = rewriter.create<MO::Composite::MatmulFusedPartialRMSNormOp>(
         rmsNormOp->getLoc(), normedResultTy, unnormedResultTy,
         matmulOp.getInputA(), matmulOp.getInputB(), rmsNormOp.getWeight(),
         rmsNormOp.getEpsilon(), rmsNormOp.getWeightOffset());
 
-    // Replace uses - CSE will clean up unused ops
+    // CSE cleans up the unused ops.
     rewriter.replaceAllUsesWith(rmsNormOp.getResult(), fusedOp.getNormed());
     rewriter.replaceAllUsesWith(unnormedOutput, fusedOp.getUnnormed());
 
@@ -5117,13 +4830,12 @@ private:
 // Fuse matmuls -> reduce_scatter pattern (with optional residual_add) into a
 // single mo.composite.distributed.matmul_reduce_scatter.sum op.
 //
-// At most one input to the reduce_scatter may carry a residual add (the
-// asymmetric DeepseekV3/KimiK2.5 TP+EP pattern). The fused kernel
-// hardcodes `transpose_b=true` for the matmul and expects each B in [N, K].
+// At most one input may carry a residual add (the asymmetric DeepseekV3/
+// KimiK2.5 TP+EP pattern). The kernel hardcodes `transpose_b=true` and expects
+// each B in [N, K].
 //
-// GPU-only: the fused kernel currently exists only for SM100 (B200). For now,
-// we only refuse to fuse on non-GPU targets, but ideally we would filter by
-// arch.
+// GPU-only. The kernel exists only for SM100, but only non-GPU targets are
+// refused; ideally this would filter by arch.
 struct FuseMatmulReduceScatterPattern
     : public OpRewritePattern<MO::ReduceScatterSumOp> {
   DeviceRefAttr targetDevice;
@@ -5134,7 +4846,6 @@ struct FuseMatmulReduceScatterPattern
 
   LogicalResult matchAndRewrite(MO::ReduceScatterSumOp rsOp,
                                 PatternRewriter &rewriter) const override {
-    // Check we're building for GPU
     DeviceRefAttr device;
     if (!rsOp.getInputs().empty())
       device = cast<TensorValue>(rsOp.getInputs()[0]).getType().getDeviceRef();
@@ -5165,9 +4876,8 @@ struct FuseMatmulReduceScatterPattern
       auto tv = cast<TensorValue>(in);
       if (matchMatmulInput(tv, matmulOps))
         continue;
-      // matchAddMatmulInput allows at most one residual
-      // across all inputs (it returns false once one is claimed), so a second
-      // residual-bearing input fails to match here and we bail out of fusion.
+      // matchAddMatmulInput fails once a residual is claimed, so a second
+      // residual-bearing input bails out of fusion.
       if (!matchAddMatmulInput(tv, matmulOps, residualValue))
         return rewriter.notifyMatchFailure(rsOp, "input not matchable");
       // Reached only on the single input that carries the residual.

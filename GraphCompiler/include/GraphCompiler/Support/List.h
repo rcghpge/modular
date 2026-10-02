@@ -49,16 +49,13 @@ public:
   std::string to_string() const override;
 };
 
-/// Returns true if two `Tuple`s are equal. Equality is defined by the vector
-/// contents.
+/// Compares vector contents.
 bool operator==(const Tuple &lhs, const Tuple &rhs);
 
-/// Returns true if two `Tuple`s are inequal. Inequality is defined by the
-/// vector contents.
+/// Compares vector contents.
 bool operator!=(const Tuple &lhs, const Tuple &rhs);
 
-/// Returns true if one `Tuple` is less than the other. Comparison is defined by
-/// the vector contents.
+/// Compares vector contents.
 bool operator<(const Tuple &lhs, const Tuple &rhs);
 
 /// `List`-like (pythonic) container class with `vector` implementation.
@@ -78,16 +75,13 @@ public:
   std::string to_string() const override;
 };
 
-/// Returns true if two `List`s are equal. Equality is defined by the vector
-/// contents.
+/// Compares vector contents.
 bool operator==(const List &lhs, const List &rhs);
 
-/// Returns true if two `List`s are inequal. Inequality is defined by the
-/// vector contents.
+/// Compares vector contents.
 bool operator!=(const List &lhs, const List &rhs);
 
-/// Returns true if one `List` is less than the other. Comparison is defined by
-/// the vector contents.
+/// Compares vector contents.
 bool operator<(const List &lhs, const List &rhs);
 
 raw_ostream &operator<<(raw_ostream &os, const ListLike &list);
@@ -103,8 +97,7 @@ std::string to_string(const M::GML::List &list);
 /// Returns the string representation.
 std::string to_string(const M::GML::Tuple &tuple);
 
-/// Computes the hash for `List` and `Dict`, which is based on the vector
-/// contents.
+/// Hashes the vector contents.
 template <>
 struct hash<M::GML::ListLike> {
   size_t operator()(const M::GML::ListLike &listLike) const;

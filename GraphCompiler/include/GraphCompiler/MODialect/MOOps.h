@@ -53,18 +53,14 @@ class CoordinateTransformModeAttr;
 
 namespace M::MO {
 
-/// Parse param decls in MO dialect
 ParseResult parseParamDecls(OpAsmParser &p,
                             KGEN::ParamDeclArrayAttr &paramDecls);
 
-/// Print param decls in MO dialect
 void printParamDecls(OpAsmPrinter &p, Operation *,
                      KGEN::ParamDeclArrayAttr paramDecls);
 
-/// Parse transfer result in MO dialect.
 ParseResult parseTransferResult(AsmParser &p, Type inputType, Type &resultType);
 
-/// Print transfer result in MO dialect.
 void printTransferResult(AsmPrinter &p, Operation *, TensorType inputType,
                          TensorType resultType);
 
@@ -84,7 +80,6 @@ static std::optional<SmallVector<T>> tryGetConstantOfRank(TensorValue val,
     return std::nullopt;
 
   SmallVector<T> vec;
-  // Multiple constant operations: Concatenation of constant ops.
   for (ConstantOp constantOp : constantOps) {
     std::optional<SmallVector<T>> blob = tryGetConstantBlob<T>(
         constantOp.getValueAttr(), constantOp.getType().getDtype());
@@ -95,30 +90,13 @@ static std::optional<SmallVector<T>> tryGetConstantOfRank(TensorValue val,
   return vec;
 }
 
-/// If `val` comes from a constant scalar tensor (defined by a
-/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
-/// float, else return None.
+/// If `val` comes from a constant scalar tensor (defined by a ConstantOp or
+/// RebindOp that takes in a ConstantOp), return its value, else None.
 std::optional<float> tryGetConstantFloat(TensorValue val);
 std::optional<double> tryGetConstantDouble(TensorValue val);
-
-/// If `val` comes from a constant scalar tensor (defined by a
-/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
-/// integer, else return None.
 std::optional<int64_t> tryGetConstantInt(TensorValue val);
-
-/// If `val` comes from a constant scalar tensor (defined by a
-/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
-/// boolean, else return None.
 std::optional<bool> tryGetConstantBool(TensorValue val);
-
-/// If `val` comes from a constant scalar tensor (defined by a
-/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
-/// APFloat, else return None.
 std::optional<APFloat> tryGetConstantAPFloat(TensorValue val);
-
-/// If `val` comes from a constant scalar tensor (defined by a
-/// ConstantOp or RebindOp that takes in a ConstantOp), convert it to a raw
-/// APInt, else return None.
 std::optional<APInt> tryGetConstantAPInt(TensorValue val);
 
 /// If `val` comes from a constant 1D tensor (defined by a ConstantOp or
@@ -132,15 +110,9 @@ std::optional<SmallVector<int64_t>> tryGetConstantIntVector(TensorValue val);
 std::optional<SmallVector<bool>> tryGetConstantBoolVector(TensorValue val);
 
 /// If `val` comes from a list.create op whose inputs are all scalar
-/// constants, convert it to an integer vector, else return None.
+/// constants, return their values, else None.
 std::optional<SmallVector<int64_t>> tryGetConstantIntVector(ListValue val);
-
-/// If `val` comes from a list.create op whose inputs are all scalar
-/// constants, convert it to an APFloat vector, else return None.
 std::optional<SmallVector<APFloat>> tryGetConstantAPFloatVector(ListValue val);
-
-/// If `val` comes from a list.create op whose inputs are all scalar
-/// constants, convert it to an APInt vector, else return None.
 std::optional<SmallVector<APInt>> tryGetConstantAPIntVector(ListValue val);
 
 /// Extract the `MOSH::ShapeAttr` represented by `val` if possible, else return
@@ -157,10 +129,9 @@ void synchronizeMetadataUpdates(GraphOp op);
 
 /// Return the set of MO ops which are expected to only run on host.
 ///
-/// TODO: This is a temporary deny-list for ops which have not had CUDA
-/// kernels implemented and the corresponding MOGG entry point extended.
-/// Will diminish to zero as ops are implemented and/or augmented with the
-/// MODeviceConstraintsInterface to constrain their device assignment.
+/// TODO: Temporary deny-list of ops without CUDA kernels and MOGG entry
+/// points; remove entries as ops gain kernels or
+/// MODeviceConstraintsInterface.
 const llvm::DenseSet<mlir::TypeID> &getHostOnlyMOOps();
 } // namespace M::MO
 

@@ -43,11 +43,10 @@
 
 #define DEBUG_TYPE "mgp"
 
-// For convenience this can be set here or in the BUILD.bazel file.
+// Set to 1 (here or in BUILD.bazel) to log each MGP kernel launch and
+// completion to stderr.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmacro-redefined"
-// Change the value below to 1 to log each MGP kernel launch and completion to
-// stderr.
 #define ENABLE_MGP_KERNEL_LOGGING 0
 #pragma clang diagnostic pop
 
@@ -86,8 +85,8 @@ static void mgp_context_create(Result<StateContext> result,
 // mgp.generic.execute
 //===----------------------------------------------------------------------===//
 
-/// The kernel expects the inputs to be a list of pointers to async values. This
-/// function just packs the input / output asyncs into one array.
+/// Packs pointers to the input and output async values (then the constant
+/// resources) into the array the kernel ABI expects.
 template <typename OperandTy, typename ResultTy>
 llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
                                           ResultTy &results,
@@ -109,7 +108,6 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
     appendInput(res);
 
   for (MEFDynamicAttr attr : constantResources) {
-    // Append read-only pointer to attributes.
     kernelInputs.push_back(
         const_cast<void *>(reinterpret_cast<const void *>(attr.get())));
 
@@ -134,10 +132,8 @@ llvm::SmallVector<void *> getKernelInputs(OperandTy &operands,
   return kernelInputs;
 }
 
-/// Extract device hint from DeviceContext if present in operands.
-/// Returns kNoDevicePreference if no single accelerator device is found.
-/// Also returns a DeviceContextRef for pinning if every accelerator context is
-/// on that one device.
+/// Returns the accelerator device all operand device contexts share, and one
+/// such context for pinning; otherwise kNoDevicePreference and null.
 static std::pair<int, M::Driver::DeviceContextRef>
 deviceHintAndContextFor(const RemainingArguments &operands) {
   TRACY_ZONE_SCOPED_NC("deviceHintAndContextFor", TRACY_COLOR_TEAL);
@@ -145,24 +141,20 @@ deviceHintAndContextFor(const RemainingArguments &operands) {
   llvm::SmallVector<M::Driver::DeviceContextRef, 8> acceleratorContexts;
 
   for (const AnyAsyncValueRef &operand : operands) {
-    // Check for DeviceContextRef.
     if (operand.isType<M::Driver::DeviceContextRef>()) {
-      // getPointerToData() returns a pointer to the payload (DeviceContextRef).
       const auto &deviceCtxRef =
           *static_cast<const M::Driver::DeviceContextRef *>(
               operand.getPointerToData());
       if (deviceCtxRef->device().api() != M::Driver::Device::cpuAPI) {
-        // Track only accelerator contexts.
         acceleratorContexts.push_back(
             M::Driver::DeviceContextRef::copy(deviceCtxRef.getPointer()));
       }
     }
   }
 
-  // With one accelerator context, always return a valid hint and that context.
-  // With several, return them only if all are on one device. That covers a
-  // task in a side-stream region, which holds the side-stream view and its
-  // base context and must still run on that device's worker.
+  // Several contexts on one device occur in side-stream regions (the
+  // side-stream view plus its base context); the task still belongs on that
+  // device's worker.
   if (!acceleratorContexts.empty()) {
     int deviceId = acceleratorContexts.front()->device().id();
     if (llvm::all_of(acceleratorContexts, [&](const auto &ctx) {
@@ -170,7 +162,6 @@ deviceHintAndContextFor(const RemainingArguments &operands) {
         }))
       return {deviceId, std::move(acceleratorContexts.front())};
   }
-  // Contexts on several devices, or only CPU contexts -> no preference.
   return {kNoDevicePreference, M::Driver::DeviceContextRef{}};
 }
 
@@ -190,36 +181,27 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
   CompiledKernelAsyncABIFn *kernelPtr = kernelExecutionState.getKernelAsyncABI(
       static_cast<size_t>(*bModuleIndex), static_cast<size_t>(*cFunctionIndex));
 
-  // Extract device hint and context from DeviceContext if present in operands.
-  // deviceCtx is only valid (non-null) when deviceHint != kNoDevicePreference.
+  // deviceCtx is non-null only when deviceHint != kNoDevicePreference.
   auto [deviceHint, deviceCtx] = deviceHintAndContextFor(operands);
 
-  // Compute taskId for worker affinity via the shared DeviceAffinity logic.
   AsyncRT::WorkQueue *workQueue = cpuDevice.getWorkQueue();
   int taskId =
       (deviceHint == kNoDevicePreference)
           ? kDefaultTaskId
           : MLRT::taskIdForDevice(deviceHint, workQueue->getParallelismLevel());
 
-  // Launch the kernel on a new thread when:
-  // - isAsync = true: always run out of line.
-  // - Otherwise, sync kernel:
-  //   - Kernel has no task affinity => run inline.
-  //   - Otherwise, kernel has task affinity:
-  //     - Run out of line if we're on the wrong worker for this taskId.
-  //     - Otherwise, already on preferred worker: run inline.
+  // Async kernels always run out of line. Sync kernels run inline unless they
+  // have task affinity and this is the wrong worker.
   if (eIsAsync.get() || !workQueue->shouldRunInlineForTask(taskId)) {
     TRACY_ZONE_SCOPED_NCT("-> mgp_generic_execute (async)", TRACY_COLOR_TEAL,
                           "(Summary: " + dSummary.get().str() + ")");
 
-    // Allocate indirect results as GraphRT is expecting result async values to
-    // be allocated. The kernel will set them to ready when it is finished. We
-    // only need to do this for async primitives as they outlive this function.
+    // GraphRT expects allocated results; only needed here because the task
+    // outlives this function.
     outResults.allocateIndirectResults();
 
-    // Run the kernel and extend the lifetime of the input and output async
-    // values until it completes by capturing them.
-    // Also capture the device context for pinning optimization when valid.
+    // Captures keep the inputs, outputs, and pinned device context alive until
+    // the kernel completes.
     auto runKernelAndExtendLifetimes =
         [outResults = outResults.copyAsVector(),
          takenOperands = operands.takeAsVector(),
@@ -228,18 +210,14 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
           TRACY_ZONE_SCOPED_NCT("runKernelAndExtendLifetimes", TRACY_COLOR_TEAL,
                                 "(Summary: " + dSummary.get().str() + ")");
 
-          // The kernel writes its results into these closure-local slots; they
-          // are published into `outResults` as the task's last action.
-          // This is to ensure no downstream work starts before the full
-          // completion of `kernelPtr`.
+          // Results are published into `outResults` as the task's last action
+          // so no downstream work starts before `kernelPtr` fully completes.
           llvm::SmallVector<AnyAsyncValueRef> localResults(outResults.size());
 
           llvm::SmallVector<void *> kernelInputs =
               getKernelInputs(takenOperands, localResults, constantResources);
           MAYBE_LOG_ASYNC_KERNEL(*dSummary, takenOperands, localResults);
 
-          // Bind the device context to this thread for the duration of kernel
-          // execution.
           if (deviceCtx.getPointer() != nullptr)
             (void)deviceCtx->bindToCurrentThread();
 
@@ -263,8 +241,6 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
           takenOperands.clear();
           deviceCtx = M::Driver::DeviceContextRef();
 
-          // Publish the kernel's results by resolving the pre-allocated
-          // indirect result values.
           for (const auto &[local, output] :
                llvm::zip_equal(localResults, outResults)) {
             assert(local && "compiled kernel did not fulfill a result slot");
@@ -272,7 +248,6 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
           }
         };
 
-    // Launch the kernel on a new thread with worker affinity.
     AsyncRT::WorkItem workItem(std::move(runKernelAndExtendLifetimes));
     workQueue->addTask(std::move(workItem), taskId);
   } else {
@@ -280,12 +255,9 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
                           TRACY_COLOR_TEAL,
                           "(Summary: " + dSummary.get().str() + ")");
 
-    // Bind the device context to this thread for the duration of kernel
-    // execution.
     if (deviceCtx.getPointer() != nullptr)
       (void)deviceCtx->bindToCurrentThread();
 
-    // Run the kernel on this thread.
     llvm::SmallVector<void *> kernelInputs =
         getKernelInputs(operands, outResults, fConstantResources);
     MAYBE_LOG_SYNC_KERNEL(*dSummary, operands, outResults.get());
@@ -310,15 +282,12 @@ mgp_generic_execute(StateContext &ctx, RemainingArguments operands,
 // mgp.device_graph.execute
 //===----------------------------------------------------------------------===//
 
-/// Returns the raw data pointer and byte size of a graph input operand, or
-/// nullopt if the operand is not one (the device context and `!mgp.context`
-/// operands ride in the same list).
+/// Returns the data pointer and byte size of a graph input operand, or nullopt
+/// for context operands.
 ///
-/// The two cases mirror the MLIR types the emitter selects on: `!mgp.tensor`
-/// arrives as a `Tensor` and `!mgp.buffer` as a `TensorBufferRef`, so this
-/// predicate must stay in step with `DeviceGraphCollectiveCreateOp::emitMojo`,
-/// which decides which operands get an `add_input` stable location. If the two
-/// disagree, inputs pair with the wrong stable buffers.
+/// Must stay in step with `DeviceGraphCollectiveCreateOp::emitMojo`, which
+/// picks the operands that get an `add_input` stable location, or inputs pair
+/// with the wrong stable buffers.
 static std::optional<std::pair<void *, size_t>>
 graphInputData(const AnyAsyncValueRef &operand) {
   if (auto *tensor = dyn_cast<MLRT::Tensor>(operand))
@@ -328,9 +297,8 @@ graphInputData(const AnyAsyncValueRef &operand) {
   return std::nullopt;
 }
 
-/// Copies the live `inputs` for a single `graph` into the stable input buffers
-/// it was built with. Returns an Error on mismatch. The caller is responsible
-/// for passing exactly the slice of operands that belong to this graph.
+/// Copies the live `inputs` into `graph`'s stable input buffers. `inputs` must
+/// be exactly this graph's slice of the operands.
 static M::ErrorOrSuccess
 copyDeviceGraphInputs(M::Driver::DeviceGraph &graph,
                       ArrayRef<AnyAsyncValueRef> inputs) {
@@ -376,20 +344,15 @@ copyDeviceGraphInputs(M::Driver::DeviceGraph &graph,
 // mgp.device_graph.collective.execute
 //===----------------------------------------------------------------------===//
 
-// Replays a set of device graphs built by `mgp.device_graph.collective.create`.
-// The leading operands are the per-device `DeviceGraphRef`s; the remaining
-// operands are the union of live inputs for all graphs, laid out in graph
-// order. Each graph's recorded signature determines how many of those inputs it
-// consumes. The op surfaces the graphs' recorded outputs as its value results.
+// Replays the graphs built by `mgp.device_graph.collective.create`. Operands
+// are the per-device `DeviceGraphRef`s, then every graph's live inputs in graph
+// order; each graph's recorded signature sets how many it consumes.
 static void mgp_device_graph_collective_execute(RemainingArguments operands,
                                                 Result<Chain> outChain,
                                                 RemainingResults outputs,
                                                 EncodedLocation loc) {
   TRACY_ZONE_SCOPED_NC("mgp_device_graph_collective_execute", TRACY_COLOR_TEAL);
 
-  // Separate the leading graph operands from the flat input list. The
-  // mgp.device_graph.collective.execute operation places all device graphs
-  // as the first set of operands.
   SmallVector<M::Driver::DeviceGraph *, 8> graphs;
 
   for (const AnyAsyncValueRef &operand : operands) {
@@ -401,7 +364,6 @@ static void mgp_device_graph_collective_execute(RemainingArguments operands,
     graphs.push_back(graph->getPointer());
   }
 
-  // The remaining operands are the inputs to each device graph.
   MutableArrayRef<AnyAsyncValueRef> remainingInputs =
       operands.get().slice(graphs.size());
 
@@ -477,7 +439,6 @@ static void mgp_list_append(List &inputList, AnyAsyncValueRef element,
     }
   }
 
-  // Copy input list then append element into it.
   List newList = inputList.copy();
   newList.getElements().push_back(element.copy());
   std::move(output).emplace(std::move(newList));
@@ -524,7 +485,6 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
       .template when<DType::si32, DType::si64>([&](auto *idxDataPtr) {
         auto idx = *idxDataPtr;
 
-        // Check index is in bound.
         int64_t listSize = inputList.getElements().size();
         if (idx < -listSize || listSize <= idx) {
           return std::move(outputs).setAllToError(
@@ -533,15 +493,11 @@ static void mgp_list_get(List &inputList, Tensor &idxTensor,
               loc);
         }
 
-        // Normalize index.
         if (idx < 0)
           idx += listSize;
 
-        // We must set the output this way because
-        // (1). list can contain arbitrary types of values, so we can't put a
-        // single type into `Result<...>`> (2). we want to share the
-        // underlying value as `AsyncValueRef` to avoid deep copying expensive
-        // objects like `Tensor`.
+        // Elements have arbitrary types, so no typed `Result<...>`; sharing
+        // the `AsyncValueRef` also avoids deep-copying values like `Tensor`.
         *outputs.begin() = inputList.getElements()[idx].getValue().copy();
       });
 }
@@ -561,7 +517,6 @@ static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
       .template when<DType::si32, DType::si64>([&](auto *idxDataPtr) {
         auto idx = *idxDataPtr;
 
-        // Check index is in bound.
         int64_t listSize = inputList.getElements().size();
         if (idx < -listSize || listSize < idx) {
           return std::move(output).setToError(
@@ -569,11 +524,9 @@ static void mgp_list_insert(List &inputList, AnyAsyncValueRef element,
               " is out of bound for list of size " + Twine(listSize));
         }
 
-        // Normalize index.
         if (idx < 0)
           idx += listSize;
 
-        // Copy input list then insert element into it.
         List newList = inputList.copy();
         newList.getElements().insert(newList.getElements().begin() + idx,
                                      element.copy());
@@ -595,7 +548,6 @@ static void mgp_list_slice(List &inputList, Tensor &startTensor,
 
     auto &elems = inputList.getElements();
 
-    // start/end/step
     ssize_t length = elems.size();
 
     if (step == 0) {
@@ -605,7 +557,6 @@ static void mgp_list_slice(List &inputList, Tensor &startTensor,
 
     const bool stepIsPositive = step > 0;
 
-    // normalize negative start and end values
     if (start < 0) {
       start += length;
     }
@@ -688,8 +639,7 @@ static void mgp_model() {
 // mgp.extend.lifetime
 //===----------------------------------------------------------------------===//
 
-// No-op, will be scheduled once all are ready (preventing the inputs from being
-// freed).
+// Runs once all operands are ready, keeping them alive until then.
 static void mgp_nop(RemainingArguments operands, Result<Chain> outChain) {
   TRACY_ZONE_SCOPED_NC("mgp_nop", TRACY_COLOR_TEAL);
 
@@ -705,21 +655,17 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
                         CPUDevice &cpuDevice) {
   TRACY_ZONE_SCOPED_NC("mgp_runtime_create", TRACY_COLOR_TEAL);
 
-  // Primitives are invoked by the MEF executor with a fixed frame (chain,
-  // state, cpuDevice, etc.); Context is not in the invocation ABI. Callers
-  // (engine, mt, mo-opt) create the M::Context, and this is then retrieved
-  // here by calling Init::getContext().
+  // M::Context is not in the primitive invocation ABI; callers (engine, mt,
+  // mo-opt) create it and it is retrieved here.
   M::ContextRef ctxRef = Init::getContext();
 
-  // Establish an execution engine, to be shared amongst all loaded models
-  // across all models using this cpuDevice.
+  // One execution engine is shared by all models using this cpuDevice.
   //
   // TODO(#30647): Currently there's no garbage collection of dylibs loaded into
   //               this engine.
   ErrorOr<KGEN::ExecutionEngine *> engineOr =
       ctxRef->createIfMissing<KGEN::ExecutionEngine>(
           [&]() -> ErrorOr<std::unique_ptr<KGEN::ExecutionEngine>> {
-            // Initialize the host target.
             llvm::InitializeNativeTarget();
             llvm::InitializeNativeTargetAsmParser();
             llvm::InitializeNativeTargetAsmPrinter();
@@ -732,7 +678,6 @@ void mgp_runtime_create(Chain inChain, StateContext &theContext,
               return cfgOr.takeError();
             KGEN::MojoConfig cfg = std::move(*cfgOr);
 
-            // Create the execution engine.
             KGEN::ExecutionEngineOptions options;
             options.registerPerfPlugins =
                 cpuDevice.getProfilerDebuginfo() ==

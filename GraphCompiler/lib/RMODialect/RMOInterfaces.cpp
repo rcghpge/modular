@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the MO dialect interfaces.
+// This file implements the RMO dialect interfaces.
 //
 //===----------------------------------------------------------------------===//
 

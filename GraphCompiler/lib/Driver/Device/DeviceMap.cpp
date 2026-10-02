@@ -19,9 +19,8 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
     const ArrayRef<DeviceRef> deviceRefs, const DeviceMap &deviceMap,
     CPUDevice &cpuDevice) {
 
-  // We need to explicitly synchronize the device here until MGP shares the same
-  // DeviceContext as the driver. Otherwise there may be an async alloc/copy
-  // pending on the driver when the first kernel tries to access the resource.
+  // Until MGP shares the driver's DeviceContext, sync so no driver alloc/copy
+  // is pending when the first kernel touches the resource.
   for (auto &dev : deviceMap) {
     if (dev.second) {
       if (auto err = dev.second->synchronize())
@@ -49,10 +48,9 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
       } else {
         ASSERT_STREAM(devRef.label == kGPULabel || devRef.label == kNPULabel,
                       "Only accelerator device context supported");
-        // In this case we use the device ref id as the device id. THIS IS NOT
-        // THE CASE WHEN THE DEVICE IS PASSED IN TO THE GRAPH.
-        // We should eventually push the device selection up the stack into the
-        // mt command and remove all of the code in this else branch.
+        // Uses the device ref id as the device id, unlike when the device is
+        // passed to the graph.
+        // TODO: Move device selection into the mt command and drop this branch.
         size_t numPhysicalDevices =
             M::Driver::Device::numberOfDevices(M::Driver::Device::gpuAPI);
         if (devRef.id >= numPhysicalDevices)

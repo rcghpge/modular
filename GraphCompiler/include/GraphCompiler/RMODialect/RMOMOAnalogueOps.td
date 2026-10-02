@@ -25,8 +25,7 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []> :
     MO_BufferOpConformance,
   ]> {
   let builders = [
-    /// This builder is an implicit return type based on "inferMOTypes" from
-    /// the RMO_MOAnalogue interface.
+    /// Infers result types via `inferMOTypes`.
     OpBuilder<
       (ins "ValueRange":$inputValues, "MO::GraphOp":$graphOp),
       [{
@@ -38,7 +37,6 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []> :
                          std::nullopt, _moOperandTypes, moResultTypes,
                          moInputParamDecls, moOutputParamDecls);
 
-        // Flatten all decls to be used by the main operation
         SmallVector<KGEN::ParamDeclAttr> moOutputParamDeclsFlattened;
         for (const auto &resultDecls : moOutputParamDecls) {
           moOutputParamDeclsFlattened.append(resultDecls);
@@ -49,7 +47,6 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []> :
                                   $_state.getOrAddProperties<Properties>());
         $_state.addTypes(mlir::TypeRange{moResultTypes});
 
-        // Manually set outputParamDecls field
         $_state.addAttribute(
             getOutputParamDeclsAttrName($_state.name),
             $_builder.getAttr<ParamDeclArrayAttr>(moOutputParamDeclsFlattened));
@@ -59,7 +56,7 @@ class RMO_MOAnalogueOp<string mnemonic, list<Trait> traits = []> :
 
   let extraClassDeclaration = [{
 
-    /// Implementation of `inferMOTypes` using operand adaptor
+    /// Adaptor-based implementation of `inferMOTypes`.
     static void inferMOTypesImpl(
       MLIRContext* context,
       MO::GraphOp graphOp,
@@ -168,7 +165,7 @@ class RMO_MOAnaloguePureBinaryElementWiseMonoTypeOp<string name, list<Trait> tra
 def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"abs"> {
   let summary = "Absolute value operation";
   let description = [{
-    Returns `abs(x)`, where `x` is the input tensors.
+    Returns `abs(x)`.
 
     Example:
 
@@ -182,7 +179,7 @@ def RMO_MOAbsOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"abs"> {
 def RMO_MOCosOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"cos"> {
   let summary = "Cosine operation";
   let description = [{
-    Returns `cos(x)`, where `x` is input tensor.
+    Returns `cos(x)`.
 
     Example:
     ```mlir
@@ -209,7 +206,7 @@ def RMO_MOErfOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"erf"> {
 def RMO_MOExpOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"exp"> {
   let summary = "Exponential function operation";
   let description = [{
-    Returns `exp(x)`, where `x` is the input tensor.
+    Returns `exp(x)`.
 
     Example:
 
@@ -223,8 +220,7 @@ def RMO_MOExpOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"exp"> {
 def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"ceil"> {
   let summary = "Ceil operation";
   let description = [{
-    Returns the elementwise smallest integer greater than `x`, where `x` is
-    input tensor.
+    Returns the elementwise smallest integer not less than `x`.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
@@ -236,8 +232,7 @@ def RMO_MOCeilOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"ceil"> {
 def RMO_MOFloorOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"floor"> {
   let summary = "Floor operation";
   let description = [{
-    Returns the elementwise largest integer not greater than `x`, where `x` is
-    input tensor.
+    Returns the elementwise largest integer not greater than `x`.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
@@ -311,9 +306,7 @@ class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :
 def RMO_MOLogSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.logsoftmax"> {
   let summary = "Logarithmic softmax operation";
   let description = [{
-    Returns `log(softmax(x))`, where `x` is input tensor.
-
-    The softmax is applied along the last axis.
+    Returns `log(softmax(x))` along the last axis.
 
     Example:
 
@@ -327,7 +320,7 @@ def RMO_MOLogSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.logsoftmax"> {
 def RMO_MONegativeOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"negative"> {
   let summary = "Negation operation";
   let description = [{
-    Returns `-x`, where `x` is input tensor.
+    Returns `-x`.
 
     Example:
 
@@ -341,7 +334,7 @@ def RMO_MONegativeOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"negative"> 
 def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
   let summary = "Logical negation operation";
   let description = [{
-    Returns `not x` on given input, where input is a boolean tensor.
+    Returns elementwise `not x` for a boolean tensor.
 
     Example:
 
@@ -371,7 +364,7 @@ def RMO_MONotOp : RMO_MOAnaloguePureTensorOp<"not"> {
 def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"relu"> {
   let summary = "Rectified linear unit operation";
   let description = [{
-    Returns `max(0, x)`, where `x` is the input tensor.
+    Returns `max(0, x)`.
 
     Example:
 
@@ -385,8 +378,7 @@ def RMO_MOReluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"relu"> {
 def RMO_MOGeluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu"> {
   let summary = "Gaussian error linear unit operation";
   let description = [{
-    Returns the exact GELU activation `0.5 * x * (1 + erf(x / sqrt(2)))`, where
-    `x` is the input tensor.
+    Returns the exact GELU activation `0.5 * x * (1 + erf(x / sqrt(2)))`.
 
     Example:
 
@@ -401,8 +393,7 @@ def RMO_MOGeluTanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu_tanh">
   let summary = "Tanh approximation of the GELU operation";
   let description = [{
     Returns the tanh approximation of GELU
-    `0.5 * x * (1 + tanh(0.7978845608028654 * (x + 0.044715 * x^3)))`, where
-    `x` is the input tensor.
+    `0.5 * x * (1 + tanh(0.7978845608028654 * (x + 0.044715 * x^3)))`.
 
     Example:
 
@@ -416,8 +407,7 @@ def RMO_MOGeluTanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu_tanh">
 def RMO_MOGeluQuickOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu_quick"> {
   let summary = "Quick (sigmoid) approximation of the GELU operation";
   let description = [{
-    Returns the quick approximation of GELU `x * sigmoid(1.702 * x)`, where `x`
-    is the input tensor.
+    Returns the quick approximation of GELU `x * sigmoid(1.702 * x)`.
 
     Example:
 
@@ -431,8 +421,7 @@ def RMO_MOGeluQuickOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"gelu_quick
 def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sigmoid"> {
   let summary = "Sigmoid operation";
   let description = [{
-    Returns the sigmoid activation `1 / (1 + exp(-x))`, where `x` is the input
-    tensor.
+    Returns the sigmoid activation `1 / (1 + exp(-x))`.
 
     Example:
 
@@ -446,8 +435,7 @@ def RMO_MOSigmoidOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sigmoid"> {
 def RMO_MOSiluOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"silu"> {
   let summary = "SiLU (Swish) operation";
   let description = [{
-    Returns the SiLU (Swish) activation `x * sigmoid(x)`, where `x` is the input
-    tensor.
+    Returns the SiLU (Swish) activation `x * sigmoid(x)`.
 
     Example:
 
@@ -473,7 +461,7 @@ def RMO_MORoundOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"round"> {
 def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"rsqrt"> {
   let summary = "Reciprocal square root operation";
   let description = [{
-    Returns `1/sqrt(x)`, where `x` is the input tensor.
+    Returns `1/sqrt(x)`.
 
     Example:
 
@@ -487,7 +475,7 @@ def RMO_MORsqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"rsqrt"> {
 def RMO_MOSinOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sin"> {
   let summary = "Sine operation";
   let description = [{
-    Returns `sin(x)`, where `x` is input tensor.
+    Returns `sin(x)`.
 
     Example:
     ```mlir
@@ -500,7 +488,7 @@ def RMO_MOSinOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sin"> {
 def RMO_MOSqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sqrt"> {
   let summary = "Square root operation";
   let description = [{
-    Returns `sqrt(x)`, where `x` is the input tensor.
+    Returns `sqrt(x)`.
 
     Example:
 
@@ -514,7 +502,7 @@ def RMO_MOSqrtOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"sqrt"> {
 def RMO_MOTanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"tanh"> {
   let summary = "Hyperbolic tangent operation";
   let description = [{
-    Computes `tanh(x)`, where `x` is input tensor.
+    Computes `tanh(x)`.
 
     Example:
 
@@ -528,7 +516,7 @@ def RMO_MOTanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"tanh"> {
 def RMO_MOATanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"atanh"> {
   let summary = "AHyperbolic tangent operation";
   let description = [{
-    Computes `atanh(x)`, where `x` is input tensor.
+    Computes `atanh(x)`.
 
     Example:
 
@@ -542,8 +530,7 @@ def RMO_MOATanhOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"atanh"> {
 def RMO_MOTruncOp : RMO_MOAnaloguePureUnaryElementWiseMonoTypeOp<"trunc"> {
   let summary = "Truncation operation";
   let description = [{
-    Returns the elementwise integer from truncating the decimal. Also known
-    as round-toward-zero.
+    Returns the elementwise round-toward-zero.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
@@ -571,8 +558,7 @@ def RMO_MOShapeOfOp : RMO_MOAnaloguePureTensorOp<"shape_of"> {
 def RMO_MOBroadcastShapeOp : RMO_MOAnaloguePureTensorOp<"broadcast_shape"> {
   let summary = "Apply broadcasting rules";
   let description = [{
-    Given two tensors representing shapes, calculate the result of broadcasting
-    the shapes.
+    Returns the broadcast of two shape tensors.
   }];
   let arguments = (ins
     MO_ShapeLikeIfRanked:$input_x,
@@ -612,7 +598,7 @@ def RMO_MOBroadcastToOp : RMO_MOAnaloguePureTensorOp<"broadcast_to"> {
 def RMO_MOCastOp : RMO_MOAnaloguePureTensorOp<"cast"> {
   let summary = "Cast a tensor to another dtype";
   let description = [{
-    Casts the given data, changing from one dtype to another.
+    Casts `input` to another dtype.
   }];
   let arguments = (ins MO_Tensor:$input, MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
@@ -691,11 +677,8 @@ class RMO_MOAnaloguePureReductionOp<
 def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"reduce.mean"> {
   let summary = "Mean reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their mean value, changng that
-    axis's dimension to 1.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics, -1 is the last axis) to
+    its mean, setting that dimension to 1.
 
     Example:
 
@@ -710,11 +693,8 @@ def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"reduce.mean"> {
 def RMO_MOReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
   let summary = "Product reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their product, changing that
-    axis's dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics, -1 is the last axis) to
+    its product, setting that dimension to 1.
 
     Example:
 
@@ -729,11 +709,8 @@ def RMO_MOReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
 def RMO_MOReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
   let summary = "Sum reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their sum, changing that axis's
-    dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics, -1 is the last axis) to
+    its sum, setting that dimension to 1.
 
     Example:
 
@@ -748,11 +725,8 @@ def RMO_MOReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
 def MO_MOReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
   let summary = "Minimum reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their minimum, changing that
-    axis's dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics, -1 is the last axis) to
+    its minimum, setting that dimension to 1.
 
     Example:
 
@@ -767,11 +741,8 @@ def MO_MOReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
 def MO_MOReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
   let summary = "Maximum reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their maximum, changing that
-    axis's dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics, -1 is the last axis) to
+    its maximum, setting that dimension to 1.
 
     Example:
 
@@ -791,15 +762,8 @@ class RMO_MOAnalogueArgMinMaxOp<string mnemonic> :
 def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_max"> {
   let summary = "Maximum-value indices operation";
   let description = [{
-    This op is equivalent to reduce_max, but returns indices instead of values.
-
-    The axis attribute specifies the reduction axis.
-
-    Like reductions, the output shape is the same as the input shape, except for
-    the reduced axis which is set to 1. Moreover, the value of `axis` follows
-    numpy semantics, e.g., -1 represents the last axis.
-
-    For identical maximum values, the lowest index is returned.
+    Like `reduce_max`, but returns indices instead of values. Ties return the
+    lowest index.
 
     Example:
 
@@ -815,15 +779,8 @@ def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_max"> {
 def MO_MOArgMinOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_min"> {
   let summary = "Minimum-value indices operation";
   let description = [{
-    This op is equivalent to reduce_min, but returns indices instead of values.
-
-    The axis attribute specifies the reduction axis.
-
-    Like reductions, the output shape is the same as the input shape, except for
-    the reduced axis which is set to 1. Moreover, the value of `axis` follows
-    numpy semantics, e.g., -1 represents the last axis.
-
-    For identical minimum values, the lowest index is returned.
+    Like `reduce_min`, but returns indices instead of values. Ties return the
+    lowest index.
 
     Example:
 
@@ -867,28 +824,16 @@ class RMO_MOAnaloguePureScatterOp<string name> :
   }];
 }
 
-// `rmo.mo.scatter` takes its axis as a compile-time `index` attribute (unlike
-// the `scatter.add/max/min/mul` reduction variants, which still take a scalar
-// axis tensor operand via `RMO_MOAnaloguePureScatterOp`). It therefore defines
-// its operands and `inferMOTypes` directly instead of through that base class.
+// Unlike the `scatter.*` reduction variants, `scatter` takes `axis` as an
+// attribute, so it does not use `RMO_MOAnaloguePureScatterOp`.
 def RMO_MOScatterOp : RMO_MOAnaloguePureTensorOp<"scatter",
   [AllDTypesMatch<["input", "updates", "result"]>]> {
   let summary = "`scatter` operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar `axis` compile-time `index` attribute. The output is a copy of the
-    input, with certain elements updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is updated to the corresponding entry in `updates`.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Returns a copy of `input` with elements from `updates` scattered at
+    `indices` along `axis`. `input`, `updates` and `indices` have the same
+    rank. Each entry's target index is its own index with the `axis` component
+    replaced by the `indices` value. In 2D:
     ```
       output[indices[i][j]][j] = updates[i][j] if axis = 0,
       output[i][indices[i][j]] = updates[i][j] if axis = 1,
@@ -931,21 +876,8 @@ def RMO_MOScatterOp : RMO_MOAnaloguePureTensorOp<"scatter",
 def RMO_MOScatterAddOp : RMO_MOAnaloguePureScatterOp<"scatter.add"> {
   let summary = "`scatter-add` operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the sum of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via addition.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `scatter`, but takes a scalar `axis` operand and combines each update
+    with the existing element via addition. In 2D:
     ```
       output[indices[i][j]][j] += updates[i][j] if axis = 0,
       output[i][indices[i][j]] += updates[i][j] if axis = 1,
@@ -967,21 +899,8 @@ def RMO_MOScatterAddOp : RMO_MOAnaloguePureScatterOp<"scatter.add"> {
 def RMO_MOScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max"> {
   let summary = "scatter-max operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the maximum of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via maximum.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `scatter`, but takes a scalar `axis` operand and combines each update
+    with the existing element via maximum. In 2D:
     ```
       output[indices[i][j]][j] = max(output[indices[i][j]][j], updates[i][j]) if axis = 0,
       output[i][indices[i][j]] = max(output[i][indices[i][j]], updates[i][j]) if axis = 1,
@@ -1003,21 +922,8 @@ def RMO_MOScatterMaxOp : RMO_MOAnaloguePureScatterOp<"scatter.max"> {
 def RMO_MOScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min"> {
   let summary = "`scatter-min` operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the minimum of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via minimum.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `scatter`, but takes a scalar `axis` operand and combines each update
+    with the existing element via minimum. In 2D:
     ```
       output[indices[i][j]][j] = min(output[indices[i][j]][j], updates[i][j]) if axis = 0,
       output[i][indices[i][j]] = min(output[i][indices[i][j]], updates[i][j]) if axis = 1,
@@ -1039,21 +945,8 @@ def RMO_MOScatterMinOp : RMO_MOAnaloguePureScatterOp<"scatter.min"> {
 def RMO_MOScatterMulOp : RMO_MOAnaloguePureScatterOp<"scatter.mul"> {
   let summary = "scatter-mul operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the product of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via multiplication.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `scatter`, but takes a scalar `axis` operand and combines each update
+    with the existing element via multiplication. In 2D:
     ```
       output[indices[i][j]][j] *= updates[i][j] if axis = 0,
       output[i][indices[i][j]] *= updates[i][j] if axis = 1,
@@ -1078,25 +971,16 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv"> {
     Computes the convolution product of the input with the given filter,
     strides, dilations, paddings, and groups.
 
-    The op supports 1D-3D convolution, with the following layout assumptions:
-    - input has channel last layout. For 2D, that's NHWC, i.e.,
-      (batch_size, height, width, in_channels)
-    - filter has layout RSCF, i.e.,
-      (height, width, in_channels / num_groups, out_channels)
+    Supports 1D-3D convolution with a channel-last input (NHWC for 2D) and an
+    RSCF filter, i.e. (height, width, in_channels / num_groups, out_channels).
 
-    `strides`, `dilations`, and `padding` must be of rank 1, or unranked.
-    If the input has static rank, all hyperparameters with static shape must
-    have sizes of `input_rank - 2`, except padding, which must have
-    size `2 * (input_rank - 2)`. Individual elements in the hyperparameters
-    apply to corresponding dimensions of the input (after ignoring the batch
-    and channel dimensions), with padding representing a before/after pair for
-    each axis.
-
-    The padding values are expected to take the form (pad_dim1_before,
-    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
-    0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    Convolution, dim1 here represents H and dim2 represents W. In python like
-    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+    `strides`, `dilations`, and `paddings` are rank 1 or unranked. With a
+    static input rank, statically shaped hyperparameters have `input_rank - 2`
+    elements, one per spatial dimension, except `paddings`, which has
+    `2 * (input_rank - 2)` elements of the form (dim1_before, dim1_after,
+    dim2_before, ...) and zero-pads the spatial dimensions of `input` (dim1 is
+    H, dim2 is W in 2D). For example, padding a 2x3 spatial `input` with
+    [0, 1, 2, 1] yields:
 
     ```python
     input = [
@@ -1113,12 +997,9 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv"> {
     # Shape is 3x6
     ```
 
-    The input, output and filter tensors' ranks must match if statically known.
-
-    `num_groups` must be a ranked scalar. The number of input and output
-    channels must both be divisible by the number of groups `num_groups`.
-
-    This op currently only supports strides and padding on the input.
+    The input, output and filter ranks must match if statically known.
+    `num_groups` is a ranked scalar that divides both input and output
+    channels. Strides and padding apply only to the input.
 
     Example:
 
@@ -1163,31 +1044,21 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv"> {
 def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose"> {
   let summary = "Transposed convolution operation";
   let description = [{
-    This op effectively computes the gradient of a convolution with
-    respect to its input (as if the original convolution operation had the same
-    filter and hyperparameters as this op). A visualization of the computation
-    can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
+    Computes the gradient of a convolution with the same filter and
+    hyperparameters with respect to its input. See
+    https://d2l.ai/chapter_computer-vision/transposed-conv.html.
 
-    The op supports 1D-3D spatial dimensions, with the following layout
-    assumptions (note the `out_channel` is w.r.t. the original convolution):
-    - input has channel last layout.For 2D, that's NHWC, i.e.,
-      (batch_size, height, width, out_channels)
+    Supports 1D-3D spatial dimensions (`out_channels` is w.r.t. the original
+    convolution):
+    - input is channel-last (NHWC for 2D)
     - filter has layout RSFC, i.e., (height, width, out_channels, in_channels)
 
-    All hyperparameters (i.e. strides, dilations, padding, output_paddings) must
-    be of rank 1, or unranked. If the input has static rank, all hyperparameters
-    with static shape must have sizes of `input_rank - 2`, except padding, which
-    must have size `2 * (input_rank - 2)`. Individual elements in the
-    hyperparameters applies to corresponding dimensions of the input (after
-    ignoring the batch and channel dimensions), with padding representing a
-    before/after pair for each axis.
-
-    The padding values are expected to take the form (pad_dim1_before,
-    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
-    0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    ConvTranspose, dim1 here represents H_out and dim2 represents W_out. In
-    python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
-    yield:
+    All hyperparameters are rank 1 or unranked. With a static input rank,
+    statically shaped hyperparameters have `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (dim1_before, dim1_after, dim2_before, ...) over the output's spatial
+    dimensions (dim1 is H_out, dim2 is W_out in 2D). For example, padding a
+    2x4 spatial `output` with [0, 1, 2, 1] yields:
 
     ```python
     output = [
@@ -1202,12 +1073,11 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose"> {
     # Shape is 1x1
     ```
 
-    The `output_paddings` argument is meant to resolve the ambiguity of multiple
-    potential output shapes when any stride is greater than 1. Basically,
-    we'll add `output_paddings[i]` number of zeros at the end of output's ith
-    axis. We only support output_paddings = 0.
+    `output_paddings` disambiguates the output shape when a stride is greater
+    than 1 by appending `output_paddings[i]` zeros to output axis `i`. Only 0 is
+    supported.
 
-    The input, output and filter tensors' ranks must match if statically known.
+    The input, output and filter ranks must match if statically known.
 
     Example:
 
@@ -1275,20 +1145,13 @@ def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool"> {
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
 
-    The op supports 2D avg pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Only 2D pooling on a 4D NHWC input is supported.
 
-    All hyperparameters (i.e. `strides`, `dilations`, `padding`) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    All hyperparameters are rank 1 or unranked. With a static input rank,
+    statically shaped hyperparameters have `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (H_before, H_after, W_before, W_after). Strides and dilations apply only to
+    the filter.
 
     Example:
 
@@ -1326,20 +1189,13 @@ def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true"> {
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
 
-    The op supports 2d avg pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Only 2D pooling on a 4D NHWC input is supported.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    All hyperparameters are rank 1 or unranked. With a static input rank,
+    statically shaped hyperparameters have `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (H_before, H_after, W_before, W_after). Strides and dilations apply only to
+    the filter.
 
     Example:
 
@@ -1377,20 +1233,13 @@ def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool"> {
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
 
-    For now the op only supports 2d max pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Only 2D pooling on a 4D NHWC input is supported.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    All hyperparameters are rank 1 or unranked. With a static input rank,
+    statically shaped hyperparameters have `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (H_before, H_after, W_before, W_after). Strides and dilations apply only to
+    the filter.
 
     Example:
 
@@ -1418,20 +1267,13 @@ def RMO_MOMaxPoolCeilOp : RMO_MOAnaloguePurePoolOp<"max_pool_ceil_mode_true"> {
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
 
-    The op supports 2d max pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Only 2D pooling on a 4D NHWC input is supported.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    All hyperparameters are rank 1 or unranked. With a static input rank,
+    statically shaped hyperparameters have `input_rank - 2` elements, except
+    `paddings`, which has `2 * (input_rank - 2)` elements of the form
+    (H_before, H_after, W_before, W_after). Strides and dilations apply only to
+    the filter.
 
     Example:
 
@@ -1493,7 +1335,7 @@ class RMO_MOAnaloguePureBinaryComparisonOp<string name, list<Trait> traits = []>
 def RMO_MOEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"equal", [Commutative]> {
   let summary = "Equality test operation";
   let description = [{
-    Returns `x == y`, where `x` and `y` are input tensors.
+    Returns elementwise `x == y`.
 
     Example:
 
@@ -1510,7 +1352,7 @@ def RMO_MOEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"equal", [Commutative]>
 def RMO_MOGreaterOp : RMO_MOAnaloguePureBinaryComparisonOp<"greater"> {
   let summary = "Comparison operation";
   let description = [{
-    Returns `x > y`, where `x` and `y` are input tensors.
+    Returns elementwise `x > y`.
 
     Example:
 
@@ -1527,7 +1369,7 @@ def RMO_MOGreaterOp : RMO_MOAnaloguePureBinaryComparisonOp<"greater"> {
 def RMO_MOGreaterEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"greater_equal"> {
   let summary = "Comparison operation";
   let description = [{
-    Returns `x >= y`, where `x` and `y` are input tensors.
+    Returns elementwise `x >= y`.
 
     Example:
 
@@ -1544,7 +1386,7 @@ def RMO_MOGreaterEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"greater_equal">
 def RMO_MONotEqualOp : RMO_MOAnaloguePureBinaryComparisonOp<"not_equal", [Commutative]> {
   let summary = "Comparison operation";
   let description = [{
-    Returns elementwise `x != y`, where `x` and `y` are input tensors.
+    Returns elementwise `x != y`.
 
     Example:
 
@@ -1563,13 +1405,9 @@ def RMO_MORangeOp : RMO_MOAnaloguePureTensorOp<"range", [
 ]> {
   let summary = "Range operation";
   let description = [{
-    Creates a sequence of numbers. The sequence goes from `start` with
-    increments of size `step` up to (but not including) `limit`. All arguments
-    are mandatory and must have the same element type.
-
-    Note the following restrictions on input values:
-    1. `step` must be non-zero
-    2. `limit - start` must be zero or have the same sign as `step`
+    Returns the sequence from `start` up to (excluding) `limit` in increments
+    of `step`. `step` must be non-zero, and `limit - start` must be zero or
+    have the same sign as `step`.
 
     Example:
 
@@ -1616,8 +1454,7 @@ def RMO_MOResizeLinearOp : RMO_MOAnaloguePureTensorOp<"resize.linear"> {
 
     The coordinate transform mode can be half-pixel, align-corners or asymmetric.
 
-    When set to true, the antialias attribute causes an antialiasing filter to be applied
-    when downscaling.
+    `antialias` applies an antialiasing filter when downscaling.
   }];
   let arguments = (ins
     MO_Tensor:$input,
@@ -1675,9 +1512,7 @@ def RMO_MOResizeBicubicOp : RMO_MOAnaloguePureTensorOp<"resize.bicubic"> {
   let description = [{
     Resizes a tensor to a new shape using the bicubic interpolation algorithm.
 
-    Bicubic interpolation uses a 4x4 pixel neighborhood and cubic polynomials
-    to produce smoother results than linear interpolation. This implementation
-    uses Keys' cubic convolution with a = -0.5.
+    Uses Keys' cubic convolution (a = -0.5) over a 4x4 pixel neighborhood.
 
     Example:
     ```mlir
@@ -1711,7 +1546,7 @@ class RMO_MOAnaloguePureLogicalBinaryOp<string name, list<Trait> traits = []> :
 def RMO_MOAndOp : RMO_MOAnaloguePureLogicalBinaryOp<"and"> {
   let summary = "Conjunction operation";
   let description = [{
-    Returns `x and y`, where `x` and `y` are input boolean tensors.
+    Returns elementwise `x and y` on boolean tensors.
 
     Example:
 
@@ -1728,7 +1563,7 @@ def RMO_MOAndOp : RMO_MOAnaloguePureLogicalBinaryOp<"and"> {
 def RMO_MOOrOp : RMO_MOAnaloguePureLogicalBinaryOp<"or"> {
   let summary = "Disjunction operation";
   let description = [{
-    Returns `x or y`, where `x` and `y` are input boolean tensors.
+    Returns elementwise `x or y` on boolean tensors.
 
     Example:
 
@@ -1745,7 +1580,7 @@ def RMO_MOOrOp : RMO_MOAnaloguePureLogicalBinaryOp<"or"> {
 def RMO_MOXorOp : RMO_MOAnaloguePureLogicalBinaryOp<"xor"> {
   let summary = "Exclusive disjunction operation";
   let description = [{
-    Returns `x xor y`, where `x` and `y` are input boolean tensors.
+    Returns elementwise `x xor y` on boolean tensors.
 
     Example:
 
@@ -1799,11 +1634,9 @@ class RMO_MOAnaloguePureUnaryComparisonOp<string name, list<Trait> traits = []> 
 
         auto inputTy = cast<MO::TensorType>(operands.getInputX().getType());
 
-        // Expected input type
         moOperandTypes.push_back(inputTy);
         moInputParamDecls.push_back({});
 
-        // Expected output type
         moResultTypes.push_back(inputTy.cloneWith(DType::kBool));
         moOutputParamDecls.push_back({});
     }
@@ -1849,17 +1682,14 @@ def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather", [
   let description = [{
     Gathers slices from input's axis according to indices.
 
-    If input and indices are statically ranked, the output rank must be
-    `inputRank - 1 + indicesRank`. In general, the output satisfies the
-    following:
+    The output rank is `inputRank - 1 + indicesRank`, and:
     ```
     output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
       input[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
     ```
     where `indices` appears at given axis of input.
 
-    The values of `axis` and `indices` follows numpy semantics, e.g., -1
-    represents the last axis. `axis` is a compile-time `index` attribute.
+    `axis` and `indices` follow numpy semantics (-1 is the last).
 
     Example:
 
@@ -1887,11 +1717,9 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd", [
   let description = [{
     Variant of `mo.gather` that accepts multi-dimensional indices.
 
-    The last dimension stores the index whereas
-    the outer dimensions act like batch dimensions. The size of the last
-    dimension is at most the rank of the input. When the dimension size is less
-    than the rank of the input, slices of the input are gathered, starting from
-    the leftmost dimension.
+    The last dimension of `indices` is an index of length at most the input
+    rank; outer dimensions act as batch dimensions. A shorter index gathers
+    slices over the leading input dimensions.
 
     ```
     output_shape = (
@@ -1930,9 +1758,7 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd", [
 def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.softmax"> {
   let summary = "Softmax operation";
   let description = [{
-    Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
-
-    The `sum` reduction is applieed along the last axis.
+    Returns `exp(input) / sum(exp(input))`, with the sum along the last axis.
 
     Example:
 
@@ -1948,11 +1774,7 @@ def RMO_MOTileOp : RMO_MOAnaloguePureTensorOp<"tile", [
 ]> {
   let summary = "Tiling operation";
   let description = [{
-    Returns a new Tensor as the result of copying the input tensor N_i times
-    on each dimension, where N_i = tiles[i].
-
-    The i-th dimension of output shape will be the ith dimension of input shape
-    multiplied by N_i.
+    Repeats `input` `repeats[i]` times along each dimension `i`.
 
     Example:
 
@@ -1977,19 +1799,10 @@ def RMO_MOSqueezeShapeOp : RMO_MOAnaloguePureTensorOp<"squeeze_shape", [
 ]> {
   let summary = "Squeeze-shape operation";
   let description = [{
-    Calculates the shape from squeeze like operators. Given an input shape
-    vector representing a tensor of rank `N`, and a list of indices of length
-    `M`, returns a new shape vector representing a tensor of rank `N - M`. The
-    indices represent the 0-based index of dimensions in the original rank `N`
-    tensor.
-
-    The indicated indices must represent dimensions of size 1. If
-    an index does not point to a dimension to size 1, an error is thrown
-    instead.
-
-    This operator supports negative indexing with python-like semantics.
-    That is all indices must be in [-N, N), if an index is < 0, it is as if
-    we added `N` to it.
+    Removes the `M` dimensions at `remove_indices` from a rank-`N` shape,
+    returning a rank `N - M` shape. Each removed dimension must have size 1,
+    otherwise it errors. Indices are in [-N, N), with Python-style negative
+    indexing.
 
     Example:
 
@@ -2013,10 +1826,8 @@ def RMO_MOTransposeOp : RMO_MOAnaloguePureTensorOp<"transpose", [
 ]> {
   let summary = "Transposition operation";
   let description = [{
-    Returns a new Tensor as the result of permuting the dimensions of the input
-    tensor according to the value of perm.
-
-    Note that `perm` must contain unique values from `[0, input_rank)`.
+    Permutes the dimensions of `input` by `perm`, which must hold unique values
+    in `[0, input_rank)`.
 
     Example:
 
@@ -2076,8 +1887,7 @@ class RMO_MOAnaloguePureTopKOp<string name> :
 def RMO_MOBottomKOp : RMO_MOAnaloguePureTopKOp<"bottom_k"> {
   let summary = "Bottom-K operation";
   let description = [{
-    Computes the bottom (lowest) values and their corresponding indices in a
-    tensor along a specified axis. Returned values along the axis are always
+    Returns the `K` lowest values along `axis` and their indices, always
     sorted (stable).
 
     Example:
@@ -2107,12 +1917,8 @@ def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part", [
 ]> {
   let summary = "Matrix band part operation";
   let description = [{
-    Copies a tensor setting everything outside central (diagonal) band of the
-    matrices to zero, where all but the last two axes are effectively batches,
-    and the last two axes define sub matrices.
-
-    Assumes the input has dimensions [I, J, ..., M, N], then the output tensor
-    has the same shape as the input, and the values values are given by
+    Zeroes everything outside the central band of each matrix formed by the
+    last two axes; leading axes are batches. For input [I, J, ..., M, N]:
 
     out[i, j, ..., m, n] = in_band(m, n) * input[i, j,  ..., m, n].
 
@@ -2121,12 +1927,8 @@ def RMO_MOBandPartOp : RMO_MOAnaloguePureLinalgOp<"band_part", [
     in_band(m, n) = ((num_lower < 0 || (m - n) <= num_lower)) &&
                      (num_upper < 0 || (n - m) <= num_upper))
 
-    If `exclude` is set, the selection is reverted: The elements in band are set
-    to zero while the elements outside the band are copied to the output tensor.
-
-    Please explicitly note that with negative values, this kernel returns the
-    entire lower or upper triangle of the matrix, and otherwise returns
-    a diagonal band around the main diagonal of the matrix.
+    A negative `num_lower`/`num_upper` keeps the whole lower/upper triangle.
+    `exclude` inverts the selection, zeroing the band instead.
 
     Example:
 
@@ -2161,12 +1963,9 @@ def RMO_MOPadConstantOp : RMO_MOAnaloguePureTensorOp<"pad.constant", [
 ]> {
   let summary = "Constant-mode padding operation";
   let description = [{
-    Pads the `input` tensor with a scalar tensor `constant` according to the
-    `paddings`. Assumes input has rank `N`, the `paddings` tensor should have
-    shape `(2 * N)`, where each consecutive pair of elements has the form
-    `[before, after]`, indicating how many of `constant` to add before and after
-    the contents of `input` in that dimension. The size of each dimension D of
-    the padded output is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
+    Pads a rank-`N` `input` with the scalar `constant`. `paddings` has `2 * N`
+    elements, a `[before, after]` pair per dimension, so output dimension D is
+    `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
 
     Example:
 
@@ -2197,14 +1996,7 @@ def RMO_MOPadReflectOp : RMO_MOAnaloguePureTensorOp<"pad.reflect", [
 ]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
-    Pads the `input` tensor by reflecting it according to the `paddings`.
-    Assumes input has rank `N`, the `paddings` tensor should have shape `(2 *
-    N)`, where each consecutive pair of elements has the form `[before, after]`,
-    indicating how many of `constant` to add before and after the contents of
-    `input` in that dimension. The size of each dimension D of the padded output
-    is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
-
-    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+    Pads a rank-`N` `input` by reflection. `paddings` is as in `pad.constant`.
 
     Example:
 
@@ -2232,14 +2024,8 @@ def RMO_MOPadRepeatOp : RMO_MOAnaloguePureTensorOp<"pad.repeat", [
 ]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
-    Pads the `input` tensor by repeating border values according to `paddings`.
-    Assumes input has rank `N`, the `paddings` tensor should have shape `(2 *
-    N)`, where each consecutive pair of elements has the form `[before, after]`,
-    indicating how many of `constant` to add before and after the contents of
-    `input` in that dimension. The size of each dimension D of the padded output
-    is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
-
-    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+    Pads a rank-`N` `input` by repeating border values. `paddings` is as in
+    `pad.constant`.
 
     Example:
 
@@ -2267,29 +2053,15 @@ def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice", [
 ]> {
   let summary = "Slice operation";
   let description = [{
-    Returns a new tensor with a subset of the elements from an N-dimensional
-    `input` tensor. The subset is chosen using the `start`, `stop`, and `step`
-    1D index tensors; each index tensor has N elements, one for each dimension
-    of the `input` tensor.
+    Slices an N-dimensional `input` with numpy semantics: dimension `i` is
+    indexed by `start[i]:stop[i]:step[i]`, each a 1D index tensor of N elements.
+    - Negative `start`/`stop` are supported; -1 is the last index.
+    - Out-of-bound `start`/`stop` are clamped to [-dim, dim].
+    - `step` must be nonzero; negative steps are supported.
 
-    The semantics follows the numpy index semantics, such that
-    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the
-       "indexing" along that dimension.
-    2. Negative indices are supported for `start` and `stop`, e.g., -1
-       represents the largest axis.
-    3. Out of bound indices in `start` and `stop` will be clamped to
-       [-dim, dim], where `dim` is the dimension in the corresponding axis.
-    4. `step` must contain nonzero elements. Negative steps are supported.
-
-    Note: the order in which negative indices are resolved matches that of
-    python for `start:
-
-    1. Normalize negative indices by adding the dimension size.
-    2. Apply clipping logic.
-
-    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
-    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
-    N is the dimension size. Numbers smaller than -N-1 should also work.
+    As in Python, negative indices are normalized before clipping, so
+    `l[:-1:-1]` is empty; reverse with `l[:-N-1:-1]` where N is the dimension
+    size.
 
     Example:
     ```mlir
@@ -2319,7 +2091,7 @@ def RMO_MOSliceOp : RMO_MOAnaloguePureTensorOp<"slice", [
 def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
   let summary = "ROI alignment operation";
   let description = [{
-    ROI align consumes an input tensor and regions of interest in which to apply pooling.
+    Pools `input` over the regions of interest `rois`.
 
     Example:
     ```mlir
@@ -2360,9 +2132,8 @@ def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal", [
 ]> {
   let summary = "Normal distribution operation";
   let description = [{
-    Returns a tensor with shape `shape` populated with random values from a
-    normal distribution, with the mean of the distribution equal to `mean`
-    and the standard deviation equal to `variance`.
+    Returns a `shape` tensor sampled from a normal distribution with mean
+    `mean` and standard deviation `variance`.
 
   Example:
     ```mlir
@@ -2396,8 +2167,7 @@ def RMO_MORandomUniformOp : RMO_MOAnaloguePureTensorOp<"random.uniform", [
 ]> {
   let summary = "Uniform distribution operation";
   let description = [{
-    Returns a tensor with shape `shape` populated with random values from a
-    uniform distribution on the half-open interval [lowerBound, upperBound).
+    Returns a `shape` tensor sampled uniformly from [lowerBound, upperBound).
 
     Example:
     ```mlir
@@ -2455,17 +2225,9 @@ class RMO_MOAnaloguePureScatterNdOp<string name> :
 def RMO_MOScatterNdOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd"> {
   let summary = "Multi-dimensional `scatter` operation";
   let description = [{
-    Produces an output tensor by scattering slices from updates to input
-    according to indices.
-
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Returns a copy of `input` with slices from `updates` scattered at
+    `indices`. The last dimension of `indices` indexes into `input`; an index
+    shorter than the input rank addresses a slice of the leading dimensions.
 
     Example:
 
@@ -2483,17 +2245,7 @@ def RMO_MOScatterNdOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd"> {
 def RMO_MOScatterNdAddOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.add"> {
   let summary = "Multi-dimensional `scatter-add` operation";
   let description = [{
-    Produces an output tensor by scattering slices from updates to input
-    according to indices, and it stores the sum of any duplicate indices.
-
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Like `scatter_nd`, but stores the sum for duplicate indices.
 
     Example:
 
@@ -2511,17 +2263,7 @@ def RMO_MOScatterNdAddOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.add"> {
 def RMO_MOScatterNdMaxOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.max"> {
   let summary = "Multi-dimensional `scatter-max` operation";
   let description = [{
-    Produces an output tensor by scattering slices from updates to input
-    according to indices, and it stores the maximum of any duplicate indices.
-
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Like `scatter_nd`, but stores the maximum for duplicate indices.
 
     Example:
 
@@ -2539,17 +2281,7 @@ def RMO_MOScatterNdMaxOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.max"> {
 def RMO_MOScatterNdMinOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.min"> {
   let summary = "Multi-dimensional `scatter-min` operation";
   let description = [{
-    Produces an output tensor by scattering slices from updates to input
-    according to indices, and it stores the minimum of any duplicate indices.
-
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Like `scatter_nd`, but stores the minimum for duplicate indices.
 
     Example:
 
@@ -2567,17 +2299,7 @@ def RMO_MOScatterNdMinOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.min"> {
 def RMO_MOScatterNdMulOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.mul"> {
   let summary = "Multi-dimensional `scatter-mul` operation";
   let description = [{
-    Produces an output tensor by scattering slices from updates to input
-    according to indices, and it stores the product of any duplicate indices.
-
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Like `scatter_nd`, but stores the product for duplicate indices.
 
     Example:
 
@@ -2595,11 +2317,10 @@ def RMO_MOScatterNdMulOp : RMO_MOAnaloguePureScatterNdOp<"scatter_nd.mul"> {
 def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_suppression"> {
   let summary = "Non-max suppression operation";
   let description = [{
-   Filters out boxes that have high intersection-over-union (IOU).
+   Filters out boxes with high intersection-over-union (IOU).
 
-   `boxes` is supplied as [y1, x1, y2, x2] where (y1, x1) and (y2, x2) are the
-   coordinates of any diagonal pair of box corners and the coordinates can be
-   provided as normalized (i.e., lying in the interval [0, 1]) or absolute.
+   `boxes` are [y1, x1, y2, x2] for any diagonal pair of corners, normalized
+   to [0, 1] or absolute.
 
     Example:
 
@@ -2628,10 +2349,8 @@ def RMO_MONonMaximumSuppressionOp : RMO_MOAnaloguePureTensorOp<"non_maximum_supp
 def RMO_MOArgNonzeroOp : RMO_MOAnaloguePureTensorOp<"arg_nonzero"> {
   let summary = "Nonzero-value indices operation";
   let description = [{
-    Returns a tensor of coordinates of the nonzero values in the given tensor.
-    The return value is a 2D tensor of shape [nnz x rank_in], where nnz is the
-    number of nonzero elements in the input tensor, and rank_in is the rank of
-    the input tensor. Coordinates are generated in row-major order.
+    Returns the row-major coordinates of the nonzero values of `input` as a
+    [nnz, rank] tensor.
 
     Example:
 
@@ -2652,13 +2371,8 @@ def RMO_MOCumSumOp : RMO_MOAnaloguePureTensorOp<"cumsum", [
 ]> {
   let summary = "Cumulative summation operation";
   let description = [{
-    Returns the cumulative summation of input tensors along an axis. By default,
-    it copies the first element as is. If the `exclusive` attribute is set to 1,
-    then the first element is excluded. The `reverse` attribute causes the
-    summation to be done in the opposite direction of the axis.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Returns the cumulative sum along `axis` (numpy semantics). `exclusive = 1`
+    excludes the current element; `reverse = 1` sums in the opposite direction.
 
     Example of outputs:
 

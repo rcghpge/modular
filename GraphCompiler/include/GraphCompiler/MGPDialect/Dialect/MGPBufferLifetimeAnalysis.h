@@ -29,29 +29,12 @@ struct DependencyTreeNode {
   explicit DependencyTreeNode(Operation *operation) : op(operation) {}
 };
 
-/**
- * @class DependencyTree
- * @brief Represents a dependency tree for a block of operations.
- *
- * The DependencyTree class computes and represents the dependency
- * relationships between operations in a given block, forming a tree that allows
- * for efficient queries about execution order guarantees between operations.
- * Each node represents an operation and its ancestors in the tree are the
- * operations that depend on it, meaning that they are guaranteed to execute
- * afterward.
- *
- * Construction complexity:
- * The tree is built using an iterative dataflow analysis algorithm. In the
- * worst case, this algorithm has a time complexity of O(N^2).
- *
- * Usage notes:
- * - The tree is constructed statically and does not update with changes to the
- * block
- * - Dominance queries are performed in constant time
- * - LCA computation between 2 nodes is done in O(h) time where h is the height
- * of the tree
- * - LCA computation among a list of Q nodes is done in O(Q*h) time
- */
+/// Dependency tree over a block's operations. A node's ancestors are the ops
+/// that depend on it, i.e. are guaranteed to execute after it.
+///
+/// Built once by iterative dataflow analysis (O(N^2) worst case) and not
+/// updated when the block changes. Dominance queries are O(1); the LCA of 2
+/// nodes is O(h) and of Q nodes O(Q*h), for tree height h.
 class DependencyTree {
 public:
   DependencyTree();
@@ -68,13 +51,11 @@ public:
   // indicating uses of allocs
   void dumpToDot(llvm::raw_ostream &os) const;
 
-  // Return the DependencyTreeNode* corresponding to the given Operation*,
-  // and nullptr if it doesn't exist in the tree.
+  // Returns nullptr if the op is not in the tree.
   DependencyTreeNode *get(Operation *) const;
 
   Block *getBlock() const;
 
-  // Return true if the tree contains the node corresponding to the Operation*
   bool contains(Operation *) const;
 
   // Returns true if a is guaranteed to execute after b
@@ -116,8 +97,6 @@ private:
   DependencyTreeNode *cloneNode(DependencyTreeNode *node,
                                 DependencyTreeNode *parent);
 
-  // Return the corresponding DependencyTreeNode* if it exists; otherwise,
-  // create a new node and return it
   DependencyTreeNode *getOrCreate(Operation *);
 };
 

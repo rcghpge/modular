@@ -69,12 +69,8 @@ using DeclMapScope =
 // Walk IR recursively, renaming parameters in a predictable away to help dedup
 // compilation of identical code.
 //
-// `paramRenaming` contains the renaming for uses of parameters which are in
-// scope. `totalParamsSeen` is as it sounds, and is used for generating unique
-// parameter renames.
-//
-// It is important to keep the `paramRenaming` up to date, and a majority of
-// complexity comes from this.
+// `paramRenaming` holds the renaming for in-scope parameters; keeping it up to
+// date is most of the complexity. `totalParamsSeen` generates unique names.
 //
 // Parameters are in scope if they are declared in the same block as an
 // operation using it:
@@ -95,12 +91,7 @@ using DeclMapScope =
 static void uniqueAllParamsHelper(Operation *current, DeclMap &paramRenaming,
                                   size_t &totalParamsSeen) {
 
-  // First process any new parameters added to the current scope.
-  // Parameters have graph-dependencies (e.g. order doesn't matter).
-  //
-  // Ops can declare parameters which are in-scope for the op and underlying
-  // regions.
-  // Give a new name to `oldDecl` and bookkeep it's insertion to given list.
+  // Gives `oldDecl` a new name and records it in the given list.
   auto getNewDecl = [&](KGEN::ParamDeclAttr oldDecl) -> KGEN::ParamDeclAttr {
     auto oldRef = KGEN::ParamDeclRefAttr::get(oldDecl);
     std::string newName = "__P" + std::to_string(totalParamsSeen++);
@@ -118,10 +109,8 @@ static void uniqueAllParamsHelper(Operation *current, DeclMap &paramRenaming,
 
   DeclMapScope regionScope(paramRenaming);
 
-  // Pre-order processing:
-  // If current op declares input parameters, those become in-scope for this op.
-  // This should be done for any DeclInterface operation, but the interface
-  // does not generally support updating the set of declared parameters.
+  // Pre-order: an op's declared input parameters are in scope for it. Ideally
+  // any DeclInterface op, but the interface can't update its declared params.
   if (auto op = dyn_cast<KGEN::ParamDeclareRegionOp>(current)) {
     auto inputDecls = op.getInputParams();
     auto newInputDecls = getNewDecls(inputDecls);
@@ -167,11 +156,8 @@ static void uniqueAllParamsHelper(Operation *current, DeclMap &paramRenaming,
 
 // Unique all the parameters to be less sensitive to the name of the parameter.
 void uniqueAllParams(Operation *graph) {
-  // Mappings of old to new parameter names in the current scope.
-  //
-  // We choose unordered_map since it is implemented via open chaining vs
-  // open addressing in DenseMap. We prefer open chaining in situations where
-  // deletions may be common.
+  // unordered_map (open chaining) over DenseMap (open addressing) because
+  // deletions are common.
   DeclMap paramRenaming;
 
   size_t totalParamsRenamed = 0;

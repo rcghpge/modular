@@ -57,7 +57,6 @@ ErrorOr<Value> M::ParameterLoweringState::lowerExpression(OpBuilder &b,
     newValue = std::move(*newValueOr);
   }
 
-  // We update the map and return the lowered value.
   emplaceLowered(parentRegion, attr, newValue);
   return newValue;
 }
@@ -68,11 +67,8 @@ Value M::ParameterLoweringState::lowerParamDecl(Region *parentRegion,
   auto declRef = KGEN::ParamDeclRefAttr::get(declAttr);
   if (Value lowered = lookupLowered(parentRegion, declRef)) {
     auto placeholder = lowered.getDefiningOp<PlaceholderOp>();
-    // The parameter verification should ensure we don't have duplicate
-    // declarations, so we just assert
+    // Parameter verification rejects duplicate declarations.
     ASSERT_STREAM(placeholder, << "duplicate declaration of parameter");
-
-    // Otherwise, we update the mapping and return the placeholder.
     eraseLowered(parentRegion, declRef);
     emplaceLowered(parentRegion, declRef, value);
     return placeholder;
@@ -87,7 +83,6 @@ ErrorOr<SmallVector<Value>> M::ParameterLoweringState::lowerOperands(
     ArrayRef<TypedAttr> operands, LowerExprFunc func) {
   SmallVector<Value> newOperands;
   for (TypedAttr operand : operands) {
-    // Expressions can be nested, so we lower the operands recursively.
     auto newOperandOr = lowerExpression(b, loc, parentRegion, operand, func);
     if (newOperandOr.isError())
       return newOperandOr.takeError();

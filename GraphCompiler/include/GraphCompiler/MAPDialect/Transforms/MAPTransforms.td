@@ -22,7 +22,6 @@ def FuseKernels : Pass<"map-fuse-kernels", "MO::GraphOp"> {
 
     Repeats epilogue, elementwise, view, then prologue fusion until a round
     fuses nothing, since folding one link of a chain can expose the next.
-    Reports the total number of kernels fused as a pass statistic.
   }];
 
   let dependentDialects = [
@@ -38,10 +37,8 @@ def FuseKernels : Pass<"map-fuse-kernels", "MO::GraphOp"> {
 def FuseEpilogue : Pass<"map-fuse-epilogue", "MO::GraphOp"> {
   let summary = "Fuse MAP kernels via EpilogueFuser only. For testing only.";
   let description = [{
-    Runs `EpilogueFuser` in isolation over `mo.graph`, skipping the other
-    fusers `FuseKernels` also runs. Lets a lit test exercise epilogue fusion
-    without depending on the other fusers having already run. Not part of
-    `buildMapPipeline`.
+    Runs `EpilogueFuser` alone so a lit test can exercise it in isolation.
+    Not part of `buildMapPipeline`.
   }];
 
   let dependentDialects = [
@@ -54,10 +51,8 @@ def FuseReshapeEpilogue : Pass<"map-fuse-reshape-epilogue", "MO::GraphOp"> {
   let summary =
       "Fuse MAP kernels via ReshapeEpilogueFuser only. For testing only.";
   let description = [{
-    Runs `ReshapeEpilogueFuser` in isolation over `mo.graph`, skipping the
-    other fusers `FuseKernels` also runs. Lets a lit test exercise
-    reshape-into-epilogue fusion without depending on the other fusers having
-    already run. Not part of `buildMapPipeline`.
+    Runs `ReshapeEpilogueFuser` alone so a lit test can exercise it in
+    isolation. Not part of `buildMapPipeline`.
   }];
 
   let dependentDialects = [
@@ -69,10 +64,8 @@ def FuseReshapeEpilogue : Pass<"map-fuse-reshape-epilogue", "MO::GraphOp"> {
 def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
   let summary = "Fuse MAP kernels via ElementwiseFuser only. For testing only.";
   let description = [{
-    Runs `ElementwiseFuser` in isolation over `mo.graph`, skipping the other
-    fusers `FuseKernels` also runs. Lets a lit test exercise elementwise
-    fusion without depending on the other fusers having already run. Not
-    part of `buildMapPipeline`.
+    Runs `ElementwiseFuser` alone so a lit test can exercise it in isolation.
+    Not part of `buildMapPipeline`.
   }];
 
   let options = [
@@ -86,7 +79,7 @@ def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
            /*default=*/"64",
            "Cap on the number of kernels fused into one consumer, bounding the "
            "duplication of a cheap multi-use producer across an elementwise "
-           "chain with fan-out. Mirrors the legacy kMaximumFusionSetSize.">,
+           "chain with fan-out.">,
   ];
 
   let dependentDialects = [
@@ -98,10 +91,8 @@ def FuseElementwise : Pass<"map-fuse-elementwise", "MO::GraphOp"> {
 def FuseViews : Pass<"map-fuse-views", "MO::GraphOp"> {
   let summary = "Fuse MAP kernels via ViewFuser only. For testing only.";
   let description = [{
-    Runs `ViewFuser` in isolation over `mo.graph`, skipping the other fusers
-    `FuseKernels` also runs. Lets a lit test exercise view fusion without
-    depending on the other fusers having already run. Not part of
-    `buildMapPipeline`.
+    Runs `ViewFuser` alone so a lit test can exercise it in isolation. Not
+    part of `buildMapPipeline`.
   }];
 
   let dependentDialects = [
@@ -117,10 +108,8 @@ def FuseViews : Pass<"map-fuse-views", "MO::GraphOp"> {
 def FusePrologue : Pass<"map-fuse-prologue", "MO::GraphOp"> {
   let summary = "Fuse MAP kernels via PrologueFuser only. For testing only.";
   let description = [{
-    Runs `PrologueFuser` in isolation over `mo.graph`, skipping the other
-    fusers `FuseKernels` also runs. Lets a lit test exercise prologue fusion
-    without depending on the other fusers having already run. Not part of
-    `buildMapPipeline`.
+    Runs `PrologueFuser` alone so a lit test can exercise it in isolation.
+    Not part of `buildMapPipeline`.
   }];
 
   let dependentDialects = [
@@ -132,11 +121,9 @@ def FusePrologue : Pass<"map-fuse-prologue", "MO::GraphOp"> {
 def FuseInput : Pass<"map-fuse-input", "MO::GraphOp"> {
   let summary = "Unconstrained generic input fusion. For testing only.";
   let description = [{
-    Runs generic input fusion over `mo.graph` with no wrapper constraint --
-    every eligible producer/consumer edge fuses, subject only to the shared
-    correctness constraints. Lets a lit test exercise the generic directly,
-    unconstrained by the elementwise/view/prologue narrowing. Not part of
-    `buildMapPipeline`.
+    Runs generic input fusion with no wrapper constraint: every eligible
+    producer/consumer edge fuses, subject only to the shared correctness
+    constraints. Not part of `buildMapPipeline`.
   }];
 
   let dependentDialects = [
@@ -148,10 +135,9 @@ def FuseInput : Pass<"map-fuse-input", "MO::GraphOp"> {
 def FuseOutput : Pass<"map-fuse-output", "MO::GraphOp"> {
   let summary = "Unconstrained generic output fusion. For testing only.";
   let description = [{
-    Runs generic output fusion over `mo.graph` with no wrapper constraint --
-    every eligible epilogue edge fuses, subject only to the shared correctness
-    constraints. Lets a lit test exercise the generic directly, unconstrained by
-    the epilogue/reshape-epilogue narrowing. Not part of `buildMapPipeline`.
+    Runs generic output fusion with no wrapper constraint: every eligible
+    epilogue edge fuses, subject only to the shared correctness constraints.
+    Not part of `buildMapPipeline`.
   }];
 
   let dependentDialects = [
@@ -182,34 +168,22 @@ def LoopInvariantViewMotion : Pass<"map-livm", "MO::GraphOp"> {
   let summary =
       "Hoist chains of index-transform ops out of a structured loop body.";
   let description = [{
-    Runs after `OutlineStructuredKernelBodies`, once per `mo.graph`, over every
-    `map.iter.opaque` in the body and in any nested control-flow region.
+    Runs after `OutlineStructuredKernelBodies`, over every `map.iter.opaque`
+    in the graph, including ones nested in control-flow regions. It anchors on
+    `mo.graph` because a pass adaptor does not descend into an `mo.while`,
+    `mo.if` or `mo.parallel` body. The rewrite is mandatory: an unhoisted
+    index-transform op has no `LowerableToMOGGInterface` and strands
+    `map-to-mogg`.
 
-    Anchoring on the graph rather than on `map.iter.opaque` is load-bearing:
-    a pass adaptor iterates only the ops directly inside its anchor's regions
-    and descends no further, so an opaque nested in an `mo.while`, `mo.if` or
-    `mo.parallel` body is never reached. This rewrite is mandatory, not an optimisation -- an
-    unhoisted index-transform op has no `LowerableToMOGGInterface` and strands
-    `map-to-mogg` -- so skipping a region is a hard compile failure, not a
-    missed speedup.
+    For each `map.load` in a `map.iter.foreach.body`, walks back from its index
+    through any chain of `MAP::IndexTransformOpInterface` ops (today:
+    `map.index.slice`) to the loop's own index, hoists each hop into a "stride"
+    op (today: `map.index.slice.stride`) in the enclosing `map.iter.opaque`, so
+    it runs once per kernel invocation rather than once per index, and rewrites
+    the load to index the hoisted tensor with the untransformed index. Loads
+    that hoist an SSA-identical chain share one hoisted op.
 
-    For each `map.load` inside a nested `map.iter.foreach.body`, walks
-    backward from its index operand through any chain of index-transform ops
-    (ops implementing `MAP::IndexTransformOpInterface`; today:
-    `map.index.slice`) back to the loop's own (untransformed) index. When
-    such a chain exists, hoists it, hop by hop, into a chain of "stride" ops
-    (today: `map.index.slice.stride`) placed in the enclosing
-    `map.iter.opaque`'s body -- outside the loop, so each transform runs once
-    per kernel invocation rather than once per index -- and rewrites the load
-    to read the fully-hoisted tensor with the chain's outermost
-    (untransformed) index directly.
-
-    Loads with no such chain (already indexing directly with the loop's own
-    index) are left untouched. Multiple loads that hoist the exact same chain
-    (SSA-identical, not just structurally similar) share one hoisted op.
-
-    Invariant enforced at the end of the pass: no index-transform op survives
-    inside any `map.iter.foreach.body`.
+    Invariant: only index-transform ops that feed a store index survive.
   }];
 
   let dependentDialects = [
@@ -221,15 +195,11 @@ def RaiseBackContiguousViews
     : Pass<"map-raise-back-contiguous-views", "MO::GraphOp"> {
   let summary = "Raise unfused slice/reshape view kernels back to MO/MOGG ops.";
   let description = [{
-    Runs after `FuseKernels` reaches a fixed point, before
-    `OutlineStructuredKernelBodies`. Finds `map.iter.foreach` view kernels
-    that never got fused into anything and raises them back into ops the
-    pre-advanced-fusion pipeline already knows how to lower without a copy: a
-    contiguous slice becomes `mogg.slice` (a zero-copy buffer slice, later
-    lowered by `MOGGToMGP` to `mgp.tensor.slice`), and a reshape becomes
-    `mo.static.reshape` (which `MOGGToMGP` turns into a non-copying
-    primitive). Scope mirrors the legacy `mogg-fuse-views` pass's own
-    raise-back step: slice and reshape only, not broadcast/transpose.
+    Runs after `FuseKernels`, before `OutlineStructuredKernelBodies`. Raises
+    unfused `map.iter.foreach` view kernels back into ops `MOGGToMGP` lowers
+    without a copy: a contiguous slice becomes `mogg.slice`
+    (`mgp.tensor.slice`), and a reshape becomes `mo.static.reshape`. Like
+    `mogg-fuse-views`, only slice and reshape, not broadcast/transpose.
   }];
 
   let dependentDialects = [
@@ -264,9 +234,8 @@ def AllocateAccumulatingBuffers
     : Pass<"map-allocate-accumulating-buffers", "MO::GraphOp"> {
   let summary = "Give every fused-output epilogue a real store pointer.";
   let description = [{
-    Runs after `FuseKernels`. Sets each `map.iter.epilogue`'s `$intermediateTensor`
-    so `MAPToMOGG` can always hand the lowered epilogue a real base pointer
-    instead of a dangling one:
+    Runs after `FuseKernels`. Sets each `map.iter.epilogue`'s
+    `$intermediateTensor` so `MAPToMOGG` always has a real base pointer:
 
     - Normally the pointer source is the tensor the epilogue stores into.
     - For a mixed-precision accumulating kernel (`containsMatmulOrConvOrConcat`
@@ -274,9 +243,6 @@ def AllocateAccumulatingBuffers
       dtype before the lambda casts and stores. A fresh accumulation buffer of
       that dtype is allocated as an extra kernel output and used as the pointer
       source; the store target stays the real (post-cast) output.
-
-    No buffer is allocated for a non-accumulating kernel -- it only needs a
-    valid pointer, which the store target already provides.
   }];
   let dependentDialects = [
     "M::MAP::MAPDialect",

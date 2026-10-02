@@ -27,7 +27,6 @@ void ForwardsRelationDataflowAnalysis::flowSimpleLoop(
   assert(cfOp->getNumRegions() == 1);
   Block *bodyBlock = &cfOp->getRegion(0).front();
 
-  // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
 
   // Flow from the sub-block outputs back around to sub-block arguments, but
@@ -46,7 +45,6 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
   Block *condBlock = &cfOp->getRegion(0).front();
   Block *bodyBlock = &cfOp->getRegion(1).front();
 
-  // Flow the cond sub block.
   LLVM_DEBUG(llvm::dbgs() << "flow cond block\n");
   flowBlock(condBlock, domainMap, flowOp);
 
@@ -57,7 +55,6 @@ void ForwardsRelationDataflowAnalysis::flowConditionedLoop(
                  bodyBlock->getArguments()))
     setEntries(domainMap, bodyArg, getEntriesAndId(domainMap, condOutput));
 
-  // Flow the body sub block.
   LLVM_DEBUG(llvm::dbgs() << "flow body block\n");
   flowBlock(bodyBlock, domainMap, flowOp);
 
@@ -203,12 +200,11 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     // For 1-subregion loops we assume all traces are of the form:
     //  loop_body*
     //
-    // For 2-subregion loops without approximateLoops false we assume
-    // all traces are of the form:
+    // For 2-subregion loops with approximateLoops false we assume all traces
+    // are of the form:
     //  loop_cond (loop_body loop_cond)*
     //
-    // Finally, if approximateLoops is true we use the much more approximate
-    // trace form of:
+    // If approximateLoops is true we use the trace form:
     //  (loop_cond|loop_body)*
     //
     // In all cases we tie the knot using the first sub-block's arguments.
@@ -218,7 +214,6 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
          llvm::zip(cfOp.getInputs(), cfOp->getRegions().front().getArguments()))
       setEntries(domainMap, arg, getEntriesAndId(domainMap, input));
 
-    // Until fixed point...
     [[maybe_unused]] size_t n = 0;
     bool outerChanged = domainMap.changed;
     do {
@@ -248,7 +243,6 @@ void ForwardsRelationDataflowAnalysis::flowControlFlow(
     break;
   }
   case GRT::kBranchLike: {
-    // Flow each sub-block.
     flowBranch(cfOp, domainMap, flowOp);
     break;
   }
@@ -279,7 +273,6 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   for (Value arg : initBlock->getArguments())
     setDefault(domainMap, arg);
 
-  // Flow forwards through 'init' block.
   flowBlock(initBlock, domainMap, flowOp);
 
   // Flow from 'init' outputs {0, 1} to 'execute' args {0, 1}.
@@ -292,7 +285,6 @@ void ForwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   for (Value arg : modelOp.getExecuteInputs())
     setDefault(domainMap, arg);
 
-  // Flow forwards through 'execute' block.
   flowBlock(executeBlock, domainMap, flowOp);
 }
 
@@ -315,7 +307,6 @@ void BackwardsRelationDataflowAnalysis::flowSimpleLoop(
   assert(cfOp->getNumRegions() == 1);
   Block *bodyBlock = &cfOp->getRegion(0).front();
 
-  // Flow the body sub block.
   flowBlock(bodyBlock, domainMap, flowOp);
 
   // Flow from the sub-block arguments back around to the block outputs,
@@ -335,7 +326,6 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
   Block *condBlock = &cfOp->getRegion(0).front();
   Block *bodyBlock = &cfOp->getRegion(1).front();
 
-  // Flow the cond sub block.
   LLVM_DEBUG(llvm::dbgs() << "flow cond block\n");
   flowBlock(condBlock, domainMap, flowOp);
 
@@ -346,7 +336,6 @@ void BackwardsRelationDataflowAnalysis::flowConditionedLoop(
                  bodyBlock->getTerminator()->getOpOperands()))
     setEntries(domainMap, &bodyOutput, operandCombination(domainMap, condArg));
 
-  // Flow the body sub block.
   LLVM_DEBUG(llvm::dbgs() << "flow body block\n");
   flowBlock(bodyBlock, domainMap, flowOp);
 
@@ -393,7 +382,6 @@ void BackwardsRelationDataflowAnalysis::flowBranch(
 
   for (Region &region : cfOp->getRegions()) {
     Block *subBlock = &region.front();
-    // Flow the sub block.
     flowBlock(subBlock, domainMap, flowOp);
   }
 
@@ -443,7 +431,6 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
       setDefault(domainMap, &firstOutput->getOpOperands().back());
     }
 
-    // Until fixed point...
     bool outerChanged = domainMap.changed;
     [[maybe_unused]] size_t n = 0;
     do {
@@ -475,7 +462,6 @@ void BackwardsRelationDataflowAnalysis::flowControlFlow(
     break;
   }
   case GRT::kBranchLike: {
-    // Flow each sub-block.
     flowBranch(cfOp, domainMap, flowOp);
     break;
   }
@@ -510,7 +496,6 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
   for (const OpOperand &output : execBlock->getTerminator()->getOpOperands())
     setDefault(domainMap, &output);
 
-  // Flow backwards through 'execute' block.
   flowBlock(execBlock, domainMap, flowOp);
 
   // Flow from 'execute' args {0, 1} backwards to 'init' outputs {0, 1}.
@@ -519,9 +504,8 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
                  initBlock->getTerminator()->getOpOperands()))
     setEntries(domainMap, &output, operandCombination(domainMap, arg));
 
-  // Flow up devices. Have to be careful here. If the init output op is the only
-  // user of the device, then we cannot set it as a regular entry, we need to
-  // set it as empty.
+  // A device the init output only passes through must be set empty, not as a
+  // regular entry.
   for (const auto &[arg, output] :
        llvm::zip(modelOp.getExecuteDevices(),
                  initBlock->getTerminator()->getOpOperands().drop_front(
@@ -537,6 +521,5 @@ void BackwardsRelationDataflowAnalysis::flowModel(ModelOp modelOp,
            &initBlock->getTerminator()
                 ->getOpOperands()[kMgpModelNumFixedImplicitExecArgs - 1]);
 
-  // Flow backwards through 'init' block.
   flowBlock(initBlock, domainMap, flowOp);
 }

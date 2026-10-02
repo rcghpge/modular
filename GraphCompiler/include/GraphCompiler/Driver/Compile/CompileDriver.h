@@ -23,31 +23,25 @@ MODULAR_CXX_EXPORT std::optional<std::filesystem::path> getMaxCacheDir();
 /// Gets the location for storing externalized weights.
 std::optional<std::filesystem::path> getWeightsCacheDir();
 
-/// Checks if caching is enabled to IR.
+/// Checks if IR caching is enabled.
 bool isModelIRCacheEnabled();
 
-/// Given a transformation function that produces MEF buffer this will run the
-/// function and store the MEF in cache, and returns the buffer if cache is
-/// enabled. If cache is not enabled  we will skip storing to cache and return
-/// the buffer.
+/// Returns the MEF from `loweringFunction`, served from and stored to the cache
+/// when caching is enabled.
 ErrorOr<BufferRef>
 cacheMEFTransform(StringRef frameworkName,
                   llvm::function_ref<ErrorOr<BufferRef>()> loweringFunction,
                   WriteableBufferRef key);
 
-/// A convenience function to create cache key given a file buffer and a set of
-/// options. It is assumed that all options contain a method `print`  that takes
-/// a raw_ostream by reference to get a representation of it.
+/// Builds a cache key from a file buffer and options, each of which must have
+/// a `print(raw_ostream &)` method.
 template <typename... Options>
 WriteableBufferRef makeCacheKey(BufferRef buffer, Options &...options) {
-  // Make key for MEF.
   WriteableBufferRef keyBuffer = WriteableBuffer::get();
 
-  /// Add options to key.
   auto insertOptionToKey = [&](auto &option) { option.print(*keyBuffer); };
   (insertOptionToKey(options), ...);
 
-  /// Add source buffer.
   std::string bufferKey = Cache::Keys::BufferKey::hashKey(std::move(buffer));
   keyBuffer->write(bufferKey.data(), bufferKey.size());
   return keyBuffer;

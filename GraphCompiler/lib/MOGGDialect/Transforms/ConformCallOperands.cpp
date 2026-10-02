@@ -5,13 +5,10 @@
 //===----------------------------------------------------------------------===//
 //
 // Conforms each `mogg` call's operands to the callee's declared signature.
-// `MAPToMOGG` leaves every operand as a plain `!mogg.tensor`; this pass
-// re-runs operand inference against the callee `mogg.kernel.decl` /
-// `mogg.shape_func.decl` and, per its classification, wraps a scalar operand in
-// `mogg.scalar.create`, packs each variadic run into a `mogg.tuple.create`,
-// and wraps a trait-bound argument in a `mogg.trait.create`. Doing this here
-// keeps each `::emitMojo` a local, 1:1 lowering: the call emit forwards
-// whatever handle the IR gives it.
+// `MAPToMOGG` leaves plain `!mogg.tensor` operands; this pass re-runs operand
+// inference against the callee decl and wraps scalars in `mogg.scalar.create`,
+// variadic runs in `mogg.tuple.create`, and trait-bound args in
+// `mogg.trait.create`, so each `::emitMojo` stays a local, 1:1 lowering.
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,12 +31,10 @@ namespace M::MOGG {
 
 namespace {
 
-// Packs one operand list (a call's inputs or outputs) into the scalar / tuple
-// forms the kernel expects, per `mapping`: a scalar kernel argument gets its
-// `!mogg.tensor` operand wrapped in `mogg.scalar.create`; a variadic argument
-// gets its run of consecutive `!mogg.tensor` operands (same kernel-argument
-// position) packed into one `mogg.tuple.create`. `changed` is set if anything
-// was rewritten.
+// Packs one operand list (inputs or outputs) per `mapping`: a scalar kernel
+// argument's `!mogg.tensor` is wrapped in `mogg.scalar.create`; a variadic
+// argument's consecutive `!mogg.tensor` operands go into one
+// `mogg.tuple.create`. Sets `changed` on any rewrite.
 SmallVector<Value>
 packOperands(OpBuilder &builder, Location loc, ValueRange operands,
              const KernelDeclIndexToOperandAdaptorMapping &mapping,
@@ -92,15 +87,11 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
       continue;
     }
 
-    // A NON-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
-    // `TileTensorable`) has its raw `!mogg.tensor` re-presented as the
-    // conforming trait argument by `mogg.trait.create`, which carries the
-    // distilled contract and the execution device (for the emit-side layout /
-    // alignment). A FUSED trait argument is handled at its producer instead:
-    // its fusion functor is a local of the prologue/epilogue emit, so the
-    // contract is stamped onto the `mogg.tensor.create.prologue`/`.epilogue`
-    // at MAP lowering (see `consumingFusedContract`), and this pass leaves the
-    // operand alone.
+    // A non-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
+    // `TileTensorable`) is re-presented by `mogg.trait.create`, carrying the
+    // distilled contract and execution device. A fused one is handled at its
+    // producer: MAP lowering stamps the contract onto
+    // `mogg.tensor.create.prologue`/`.epilogue` (see `consumingFusedContract`).
     if (std::optional<TensorArgContract> contract = arg.getTraitContract();
         contract && !contract->fused) {
       // Keep the operand's own kind: a mutable-input trait argument comes in as
@@ -144,12 +135,10 @@ packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
 
   OpBuilder builder(call);
 
-  // `MAPToMOGG` reconstructs a fused mutable-load operand as a mutable
-  // `mogg.tensor.create` (a `!mogg.buffer`). When it backs a read-only kernel
-  // input, the mapping above accepts the mut->immut widening, but codegen would
-  // still emit a mutable slice the kernel's immutable parameter rejects.
-  // Recreate that producer immutable so the emitted slice matches; DCE drops
-  // the now-unused mutable original.
+  // `MAPToMOGG` rebuilds a fused mutable-load operand as a mutable
+  // `mogg.tensor.create`. Backing a read-only input, the mapping accepts
+  // mut->immut, but codegen would emit a mutable slice the immutable parameter
+  // rejects, so recreate the producer immutable (DCE drops the original).
   SmallVector<Value> reconciledInputs(inputs.begin(), inputs.end());
   bool reconciled = false;
   if (allowMutToImmut) {
@@ -179,10 +168,9 @@ packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
   return packed;
 }
 
-// The execution device recorded on the enclosing `mogg.kernel`, which every
-// `mogg` call lowered by `MAPToMOGG` sits inside. `mogg.trait.create` needs it
-// to pick the preferred alignment and device-passable flavor at emit, locally,
-// the same way `mogg.tensor.create` does.
+// The enclosing `mogg.kernel`'s execution device, which `mogg.trait.create`
+// needs at emit to pick alignment and device-passable flavor, as
+// `mogg.tensor.create` does.
 static M::DeviceRefAttr enclosingKernelDevice(Operation *call) {
   if (auto kernel = call->getParentOfType<KernelOp>())
     return MO::getDeviceOrDefault(kernel);
@@ -213,11 +201,9 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
 
   OpBuilder builder(call);
 
-  // A distributed kernel whose execute signature takes a `DeviceContextArray`
-  // gets its per-device `!mogg.context` operands packed into one
-  // tuple-of-contexts -- exactly as a variadic tensor argument is packed --
-  // which emit renders as the `DeviceContextArray`. An ordinary single-context
-  // kernel passes its one context through untouched.
+  // A distributed kernel taking a `DeviceContextArray` gets its per-device
+  // `!mogg.context` operands packed into one tuple, as for a variadic tensor
+  // argument.
   bool variadicContext = llvm::any_of(adaptor.executeFunction->inputArguments,
                                       [](const KernelDeclOperandAdaptor &arg) {
                                         return arg.isVariadicContextType();

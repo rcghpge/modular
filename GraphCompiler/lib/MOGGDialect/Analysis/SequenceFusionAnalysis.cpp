@@ -88,10 +88,8 @@ FusionSubGraphs floodFillSequenceFusionAnalysis(
     Region &region, MO::ParametricTopologyAnalysis &completeDataflowGraph,
     EligibilityFunction isEligible, CompatibilityFunction areCompatible) {
   FusionSubGraphs subgraphs;
-  // For every block in the graph (recursively).
   region.walk([&](Block *block) {
     mlir::DenseSet<mlir::Operation *> alreadyProcessedKernelOps;
-    // For every operation directly in the block.
     for (mlir::Operation &root : block->getOperations()) {
       if (!isEligible(&root))
         continue;
@@ -104,8 +102,7 @@ FusionSubGraphs floodFillSequenceFusionAnalysis(
       auto opsToFuseTogetherDownward = floodFillFrom<Direction::Down>(
           {&root}, isEligible, areCompatible, completeDataflowGraph);
 
-      // Find all the leaves from the subgraph that was found by the previous
-      // step.
+      // Find the leaves of that subgraph.
       const auto isALeaf = [&](mlir::Operation *op) {
         bool userContained = false;
         completeDataflowGraph.forEachUser(op, [&](auto user) {
@@ -124,7 +121,6 @@ FusionSubGraphs floodFillSequenceFusionAnalysis(
       auto opsToFuseTogetherUpward = floodFillFrom<Direction::Up>(
           leaves, isEligible, areCompatible, completeDataflowGraph);
 
-      // Combine the two sets.
       opsToFuseTogetherDownward.set_union(opsToFuseTogetherUpward);
 
       for (mlir::Operation *kernelOpInFusionSet : opsToFuseTogetherDownward)
@@ -200,8 +196,6 @@ gatherDependencies(
   mlir::DenseMap<mlir::Operation *, uint64_t> opToIndexInBitVector;
   // The return value which maps an eligible op to its transitive dependencies.
   llvm::MapVector<mlir::Operation *, OperationDependency> dependencies;
-  // A mask that can zero-out eligible ops. Useful later, when checking
-  // parallelism.
   uint64_t opIndex = 0;
   SmallVector<Operation *> allOps;
   for (auto &op : block->getOperations())
@@ -496,10 +490,8 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
 
       using FusionPair = std::tuple<mlir::Operation *, Operation *>;
 
-      // Comparator ensures the highest priority items are those whose "parents"
-      // in FusionPair (e.g. the first element of the tuple) has a higher
-      // topographical order. E.g. we want to visit pairs in a reverse
-      // topological order.
+      // Visit pairs in reverse topological order of their parent (the first
+      // FusionPair element).
       auto comp = [&operationToTopoIndex](const FusionPair &a,
                                           const FusionPair &b) {
         auto parentA = std::get<0>(a);
@@ -519,8 +511,8 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
         auto parentChild = workQueue.top();
         workQueue.pop();
 
-        // Can't use structured bindings because a lambda captures parent which
-        // is possible only in >C++20
+        // A lambda captures parent, which structured bindings allow only in
+        // C++20.
         auto parent = std::get<0>(parentChild);
         auto child = std::get<1>(parentChild);
 

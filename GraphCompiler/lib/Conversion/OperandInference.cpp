@@ -47,12 +47,8 @@ matchConvertedMOTypeToKernelDeclType(const KernelDeclOperandVariant &moType,
   if (moType == kernelType)
     return success();
 
-  // A mutable operand may satisfy an immutable kernel operand -- reading
-  // mutable storage as an immutable snapshot is sound (the converse is not).
-  // Only ConformCallOperands opts in (`allowMutToImmut`): a
-  // `mogg.tensor.create` that `MAPToMOGG` built as a mutable buffer for a
-  // fused mutable-load can back a read-only kernel input, and conform recreates
-  // it immutable afterwards.
+  // Reading mutable storage as an immutable snapshot is sound (the converse
+  // is not); see `allowMutToImmut`.
   if (allowMutToImmut) {
     if (const auto *kernelTensor =
             std::get_if<KernelDeclTensorAdaptor>(&kernelType)) {
@@ -83,9 +79,8 @@ matchConvertedMOTypeToKernelDeclType(const KernelDeclOperandVariant &moType,
     if (tensorType->mut)
       return Error("Expected an immutable tensor type");
 
-    // Validate rank-0 / on-host only when the operand type carries that
-    // information. MO tensors do; opaque codegen handles (`!mogg.tensor`) do
-    // not, and were already validated upstream, so they are trusted here.
+    // Opaque codegen handles (`!mogg.tensor`) carry no rank/device and were
+    // validated upstream.
     if (auto shaped = dyn_cast<MO::MOShapedTypeInterface>(originalMOType))
       if (shaped.getRank() != 0)
         return Error("MO tensor type should have a rank of 0");
@@ -254,11 +249,8 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
 
   auto moType = skipChainType(values.getTypes(), moOpIndex);
 
-  // A by-ref result with an unrecognized underlying type
-  // (KernelDeclUnsupported) is treated as absent, matching the old
-  // MojoKernelFunctionAdaptor behavior which skipped null argTypeName entries.
-  // A result returned rather than written through a destination has no entry
-  // in `values`, so there is nothing to match it against.
+  // A by-ref result of unrecognized type (KernelDeclUnsupported) is treated as
+  // absent. A by-value result has no entry in `values` to match.
   bool hasValidOutputResult =
       !resultLeavesByValue && adaptor.outputResult.has_value() &&
       !std::holds_alternative<KernelDeclUnsupportedAdaptor>(

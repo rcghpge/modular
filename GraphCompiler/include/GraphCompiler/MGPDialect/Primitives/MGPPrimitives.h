@@ -16,8 +16,7 @@ class PrimitiveRegistry;
 
 namespace MGP {
 
-/// Represents the State for kernel execution on CPU/Host device.
-/// This is explicitly the storage of kernel and loaded modules
+/// Storage of the loaded kernel modules for CPU/host kernel execution.
 struct KernelExecutionState : public ReferenceCounted<KernelExecutionState> {
   // Execution engine held by the cpuDevice and shared by all loaded modules.
   KGEN::ExecutionEngine *engine;
@@ -31,18 +30,11 @@ struct KernelExecutionState : public ReferenceCounted<KernelExecutionState> {
   ~KernelExecutionState() {
     if constexpr (ProfilerEntry<Trace::EnableTrace(Trace::kMojo, 1),
                                 Trace::kMojo>::isEnabled()) {
-      // Mojo static strings are part of the data section of their compiled
-      // object files, which are jitted by the `KGEN::ExecutionEngine`.
-      // Then the `mgp.load.module.cpu` op loads the object files into this
-      // `KernelExecutionState` (`!mgp.runtime`).
-      // However, the profiler borrows pointers to those static string data on
-      // Mojo kernel `Trace.__enter__()` and `Trace.__exit__()` calls.
-      // Since this dtor is about to unload the object files rendering the
-      // string pointers invalid, intern the strings into the profiler so that
-      // the strings are accessible upon `TimeTraceProfiler::write()` call.
+      // The profiler borrows pointers to Mojo static strings (on
+      // `Trace.__enter__()`/`__exit__()`) that live in the jitted object files
+      // this dtor unloads. Intern them so `TimeTraceProfiler::write()` still
+      // sees valid strings.
       if (auto cpuDevice = AsyncRT::CPUDevice::getCurrentCPUDeviceOrNull()) {
-        // Make sure any borrowed strings accumulated during profiling are
-        // converted to owned strings.
         if (std::optional<TimeTraceProfiler> &profiler =
                 cpuDevice->getProfiler())
           profiler->intern();

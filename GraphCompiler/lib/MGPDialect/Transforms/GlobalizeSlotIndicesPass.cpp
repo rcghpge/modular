@@ -78,8 +78,6 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
   if (node->visited)
     return false;
 
-  // Capture the context create operation and the number of context slots used
-  // by the model.
   node->contextCreateOp = node->func.getInitContext();
   if (!node->contextCreateOp) {
     node->func.emitError("unable to find context");
@@ -93,8 +91,6 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
 }
 
 void MGPCallGraph::doRewrite(const MGPCallGraphNode *node) {
-  // If we've encountered errors during analysis or rewriting of child nodes,
-  // do not bother processing.
   if (numErrors > 0)
     return;
 
@@ -120,7 +116,6 @@ struct GlobalizeSlotIndicesPass
 
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
-    // No work to do if there's only one model.
     auto models = moduleOp.getOps<ModelOp>();
     if (models.empty() || llvm::hasSingleElement(models))
       return;

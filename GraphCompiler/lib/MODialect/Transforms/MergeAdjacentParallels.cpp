@@ -6,47 +6,31 @@
 //
 // mo-merge-adjacent-parallels
 //
-// Peephole pass that fuses two adjacent `mo.parallel` regions (a producer
-// and a consumer) whenever the consumer takes one or more of the producer's
-// bundle results directly as inputs.  The match is strict SSA equality: the
-// upstream `bundle(unbundle(X)...) -> X` canonicalization is what makes this
-// shape appear in the first place.
+// Fuses a producer and consumer `mo.parallel` when the consumer takes one or
+// more producer bundle results directly as inputs (strict SSA equality, made
+// possible by the upstream `bundle(unbundle(X)...) -> X` fold).
 //
-// When the consumer fans in from more than one parallel producer (e.g. a
-// per-device residual `mo.add` whose two operands come from two different
-// upstream allreduce parallels), the pass picks the first producer (in
-// consumer-input order) whose merge satisfies the dependence check.
-// Outputs of the other parallel producers stay as ordinary non-shared
-// inputs of the merged op and may be folded in by a later iteration of
-// the pass driver.
+// With several parallel producers (e.g. a residual `mo.add` fed by two
+// allreduce parallels), the first one in consumer-input order that passes the
+// dependence check is merged; the rest may merge in a later iteration.
 //
 // Mechanics:
 //
-//   * Inputs shared between consumer and producer short-circuit: the
-//     consumer's block argument for that input is remapped to the
-//     producer's corresponding yield operand, avoiding the bundle
-//     round-trip.
-//   * Non-shared consumer inputs are appended to the merged input list with
-//     a fresh block arg each.
-//   * The producer's body ops are cloned into the merged block, then the
-//     consumer's body ops are cloned with consumer-side block args
-//     rewritten per the remap above.  A fresh `mo.yield` joins the
-//     surviving producer yields with the consumer's yields.
+//   * A shared input's consumer block arg is remapped to the producer's
+//     yield operand, skipping the bundle round-trip.
+//   * Non-shared consumer inputs get a fresh merged block arg each.
+//   * Producer then consumer body ops are cloned into the merged block, and a
+//     new `mo.yield` joins the surviving producer yields with the consumer's.
 //
-// Dead-yield elimination: any producer bundle result whose sole external
-// user was the consumer's now-absorbed input is dropped from the merged
-// yield and result list.  Without this the downstream MOGG epilogue fusion
-// stalls on a spurious "live" output path out of the merged body.
+// Producer results used only by the consumer are dropped from the merged
+// results; otherwise MOGG epilogue fusion stalls on a spurious live output.
 //
-// Buffer + chain policy (strict, matching what allreduce signal buffers
-// actually need):
+// Buffer + chain policy (strict, matching allreduce signal buffers):
 //
-//   * Both sides have buffers + chain: buffer lists must be structurally
-//     identical and the consumer's in-chain must be the producer's
-//     out-chain with no other external users.  The merged op reuses the
-//     producer's buffers and in-chain; its out-chain replaces both the
-//     producer's and the consumer's.
-//   * Only one side has buffers + chain: the merged op inherits that side.
+//   * Both chained: buffer lists must be identical and the consumer's in-chain
+//     must be the producer's out-chain with no other users. The merged op
+//     reuses the producer's buffers and in-chain.
+//   * Only one side chained: the merged op inherits that side.
 //   * Neither: the merged op is chainless.
 //   * Buffer mismatch: leave the pair unmerged.
 //
@@ -83,8 +67,8 @@ static size_t numBundleResults(ParallelOp op) {
   return op.getNumResults() - (op.hasChain() ? 1 : 0);
 }
 
-/// Returns true if \p producer's buffer operand list is structurally
-/// identical to \p consumer's (same SSA values, same order, same length).
+/// Returns true if \p producer and \p consumer have the same buffer operands
+/// in the same order.
 static bool buffersMatch(ParallelOp producer, ParallelOp consumer) {
   auto producerBuffers = producer.getBuffers();
   auto consumerBuffers = consumer.getBuffers();
@@ -97,8 +81,7 @@ static bool buffersMatch(ParallelOp producer, ParallelOp consumer) {
   return true;
 }
 
-/// Return true if \p root transitively depends on a result of \p target,
-/// by performing a depth-first search of the operand closure of \p root.
+/// Returns true if \p root transitively depends on a result of \p target.
 static bool dependsOn(Value root, Operation *target) {
   llvm::DenseSet<Value> visited;
   llvm::SmallVector<Value> stack;
@@ -122,22 +105,17 @@ static bool dependsOn(Value root, Operation *target) {
 // Candidate discovery
 //===----------------------------------------------------------------------===//
 
-/// A single merge site.  `sharedInputs[i] = producerIdx` means the
-/// consumer's input #i is the producer's result #producerIdx; nullopt means
-/// the consumer's input #i is sourced elsewhere and must be carried into
-/// the merged op.
+/// `sharedInputs[i] = producerIdx` means consumer input #i is producer result
+/// #producerIdx; nullopt means it is carried into the merged op.
 struct MergeCandidate {
   ParallelOp producer;
   ParallelOp consumer;
   SmallVector<std::optional<size_t>> sharedInputs;
 };
 
-/// Returns true if any consumer input that is NOT a result of \p producer
-/// transitively depends on \p producer's results, which would create a
-/// dependence cycle if the consumer were merged into the producer.  This
-/// is what disqualifies the wrong choice in the multi-producer case
-/// (e.g. picking an upstream producer when a downstream producer's
-/// output is also fed in through another consumer input).
+/// Returns true if a non-shared consumer input transitively depends on
+/// \p producer, so merging would create a cycle. This rejects an upstream
+/// producer when a downstream producer also feeds the consumer.
 static bool
 nonSharedInputDependsOnProducer(ParallelOp consumer, ParallelOp producer,
                                 ArrayRef<std::optional<size_t>> sharedInputs) {
@@ -150,23 +128,10 @@ nonSharedInputDependsOnProducer(ParallelOp consumer, ParallelOp producer,
   return false;
 }
 
-/// If \p consumer can be merged into an upstream producer ParallelOp,
-/// returns the candidate.  When the consumer fans in from multiple parallel
-/// producers, iterates them in consumer-input order and returns the first
-/// one that satisfies all checks; the pass driver's fixed-point loop then
-/// picks up any further cascades.  Requires:
-///
-///   * At least one consumer input is a result of the chosen producer op.
-///   * Producer and consumer share the same block.
-///   * Every non-shared consumer input is independent of the chosen
-///     producer's results (no dependence cycle through the producer).
-///
-/// Other parallel producers that the consumer fans in from are kept as
-/// regular non-shared inputs of the merged op; they may merge in a later
-/// iteration if their own dependence checks pass.
+/// Returns the first producer, in consumer-input order, in the same block as
+/// \p consumer and with no dependence cycle through it.
 static std::optional<MergeCandidate> findMergeCandidate(ParallelOp consumer) {
-  // Collect unique parallel producers in first-seen input order so the
-  // selection is deterministic.
+  // First-seen input order keeps selection deterministic.
   SmallVector<ParallelOp> candidatesInOrder;
   llvm::SmallDenseSet<Operation *> seen;
   for (Value input : consumer.getInputs()) {
@@ -206,10 +171,9 @@ struct BufferChainPlan {
   Value inChain;
 };
 
-/// Applies the strict buffer+chain rules described at the top of the file.
-/// Returns std::nullopt if the candidate must be rejected.
-/// NOTE: Once GEX-3527 lands, we no longer need to handle mo.buffer within
-/// mo.parallel.
+/// Applies the buffer+chain rules from the file header, or returns
+/// std::nullopt to reject the candidate. mo.buffer handling can go once
+/// GEX-3527 lands.
 static std::optional<BufferChainPlan>
 resolveBufferChain(const MergeCandidate &candidate) {
   ParallelOp producer = candidate.producer;
@@ -249,38 +213,23 @@ resolveBufferChain(const MergeCandidate &candidate) {
 // Merge plan
 //===----------------------------------------------------------------------===//
 
-/// All the bookkeeping needed to build the merged op and rewrite uses
-/// afterwards.  Computed up front so the actual construction is
-/// straightforward.
 struct MergePlan {
-  /// Merged input SSA values (producer's inputs + consumer's non-shared
-  /// inputs).
+  /// Producer inputs, then consumer non-shared inputs.
   SmallVector<Value> mergedInputs;
-  /// For each shared consumer input, the producer yield operand to
-  /// substitute (for the non-shared entries, this stays null and
-  /// `consumerAppendedArgIdx[bi]` is used instead).
+  /// Per shared consumer input, the producer yield operand to substitute; null
+  /// for non-shared inputs.
   SmallVector<Value> consumerSharedYieldOperand;
-  /// For each non-shared consumer input, the block-arg index in the merged
-  /// block that carries that input's per-launch value.  Meaningless for
-  /// shared inputs.
+  /// Per non-shared consumer input, its merged block-arg index.
   SmallVector<size_t> consumerAppendedArgIdx;
-  /// dropProducerYield[i] = true means the producer's bundle result #i has
-  /// no external users beyond the now-absorbed consumer and can be omitted
-  /// from the merged yield list.
+  /// Producer bundle results used only by the consumer.
   llvm::BitVector dropProducerYield;
-  /// Merged result types (kept producer bundles, then consumer bundles,
-  /// then optional trailing chain).
+  /// Kept producer bundles, consumer bundles, then optional trailing chain.
   SmallVector<Type> mergedResultTypes;
-  /// For each producer bundle index, the merged result index it maps to,
-  /// or nullopt if dropped.
+  /// Per producer bundle, its merged result index, or nullopt if dropped.
   SmallVector<std::optional<size_t>> producerMergedIdx;
-  /// Index of the first merged result corresponding to a consumer bundle
-  /// result.
   size_t consumerMergedStart = 0;
 };
 
-/// Builds the merge plan.  The heavy lifting lives here so the actual IR
-/// manipulation in `mergeCandidate` reads as a linear recipe.
 static MergePlan planMerge(const MergeCandidate &candidate,
                            const BufferChainPlan &bufferChain) {
   ParallelOp producer = candidate.producer;
@@ -294,7 +243,6 @@ static MergePlan planMerge(const MergeCandidate &candidate,
   plan.mergedInputs.assign(producer.getInputs().begin(),
                            producer.getInputs().end());
 
-  // Drop any yield in the producer that is only used by the consumer.
   plan.dropProducerYield.resize(producerNumBundles);
   for (size_t i = 0; i < producerNumBundles; ++i) {
     bool hasExternalUser = false;
@@ -306,16 +254,10 @@ static MergePlan planMerge(const MergeCandidate &candidate,
     plan.dropProducerYield[i] = !hasExternalUser;
   }
 
-  // For each consumer input, precompute either the producer yield operand
-  // to substitute (shared case) or the merged-block-arg index it will
-  // occupy (non-shared case).  This keeps `spliceBodies` a straight O(n)
-  // rewrite.
   plan.consumerSharedYieldOperand.assign(consumer.getInputs().size(), Value{});
   plan.consumerAppendedArgIdx.assign(consumer.getInputs().size(), 0);
-  // Non-shared consumer inputs occupy the merged block args right after the
-  // producer's bundle args, BEFORE the trailing chain arg -- so index from the
-  // producer's bundle-input count, not producerBody.getNumArguments() (which
-  // now includes the producer's chain block arg).
+  // Non-shared inputs follow the producer's bundle args and precede the
+  // trailing chain arg, so don't index from producerBody.getNumArguments().
   size_t appendedIdx = producer.getInputs().size();
   for (auto [bi, input] : llvm::enumerate(consumer.getInputs())) {
     if (candidate.sharedInputs[bi].has_value()) {
@@ -327,7 +269,6 @@ static MergePlan planMerge(const MergeCandidate &candidate,
     plan.consumerAppendedArgIdx[bi] = appendedIdx++;
   }
 
-  // --- Merged result types + producer result index mapping ---
   plan.producerMergedIdx.assign(producerNumBundles, std::nullopt);
   for (size_t i = 0; i < producerNumBundles; ++i) {
     if (plan.dropProducerYield[i])
@@ -348,12 +289,8 @@ static MergePlan planMerge(const MergeCandidate &candidate,
 // Merge
 //===----------------------------------------------------------------------===//
 
-/// Clones the producer's body ops then the consumer's body ops into
-/// \p merged's block, using an IRMapping that wires the producer's block
-/// args to the merged block args and the consumer's block args either to
-/// the matching producer yield operand (for shared inputs, post-clone so
-/// the cloned yield operand is used) or to the appended merged block arg
-/// (for non-shared inputs).  Emits the combined yield.
+/// Clones the producer's then the consumer's body ops into \p merged's block
+/// and emits the combined yield.
 static void spliceBodies(ParallelOp producer, ParallelOp consumer,
                          ParallelOp merged, const MergeCandidate &candidate,
                          const MergePlan &plan) {
@@ -368,15 +305,12 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
   size_t producerNumBundles = numBundleResults(producer);
   size_t consumerNumBundles = numBundleResults(consumer);
 
-  // The merged block's trailing arg (when chained) carries the merged
-  // in-chain. Body args are laid out as
+  // Body args are
   //   [producer bundle args..., consumer non-shared bundle args..., chain?]
-  // so the chain arg must be mapped explicitly (last->last) rather than by a
-  // positional zip, which would misalign it with the appended consumer args.
+  // so the chain arg is mapped explicitly, not by position.
   Value mergedChainArg =
       merged.hasChain() ? mergedBlock->getArguments().back() : Value{};
 
-  // Clone the producer's body into the merged parallel op.
   IRMapping mapping;
   for (size_t i = 0; i < producerNumInputs; ++i)
     mapping.map(producerBody.getArgument(i), mergedBlock->getArgument(i));
@@ -389,11 +323,8 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
   for (Operation &op : producerBody.without_terminator())
     bodyBuilder.clone(op, mapping);
 
-  // With the producer's body cloned, the consumer's shared-input block
-  // args map to the *cloned* producer yield operand (via
-  // `mapping.lookupOrDefault`).  Non-shared consumer args map to merged
-  // block args at positions precomputed in the plan.  Only the bundle args
-  // are remapped here; the chain arg is handled separately below.
+  // Shared-input args map to the *cloned* producer yield operand, so this must
+  // run after the producer body is cloned.
   for (size_t bi = 0; bi < consumerNumInputs; ++bi) {
     Value consumerArg = consumerBody.getArgument(bi);
     if (candidate.sharedInputs[bi].has_value())
@@ -403,11 +334,8 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
       mapping.map(consumerArg,
                   mergedBlock->getArgument(plan.consumerAppendedArgIdx[bi]));
   }
-  // The consumer's collective threads from the producer collective's out-chain
-  // when both are chained (consumer.getInChain() == producer.getOutChain(),
-  // enforced in resolveBufferChain), which after cloning is the producer's
-  // yielded chain.  When only the consumer is chained, it threads from the
-  // merged in-chain.
+  // When both are chained, resolveBufferChain guarantees the consumer's
+  // in-chain is the producer's out-chain, i.e. its cloned yielded chain.
   if (consumer.hasChain()) {
     Value consumerChainArg = consumerBody.getArguments().back();
     if (producer.hasChain())
@@ -419,11 +347,8 @@ static void spliceBodies(ParallelOp producer, ParallelOp consumer,
   for (Operation &op : consumerBody.without_terminator())
     bodyBuilder.clone(op, mapping);
 
-  // Build the merged yield: surviving producer bundle yields, then consumer
-  // bundle yields, then the merged out-chain.  The out-chain is the downstream
-  // side's yielded chain (the consumer's when chained, else the producer's);
-  // the producer's yielded chain in the both-chained case is an internal edge
-  // consumed by the consumer's collective and is not re-yielded.
+  // The merged out-chain is the downstream side's yielded chain; when both are
+  // chained, the producer's is an internal edge and is not re-yielded.
   SmallVector<Value> yieldValues;
   for (size_t i = 0; i < producerNumBundles; ++i)
     if (!plan.dropProducerYield[i])
@@ -482,24 +407,12 @@ static void mergeCandidate(MergeCandidate &candidate,
 // Pass driver
 //===----------------------------------------------------------------------===//
 
-/// Walks every ParallelOp and tries to merge it into its producer, if any.
-/// Returns true if at least one merge fired.
+/// Performs at most one merge and returns whether it fired.
 ///
-/// We interrupt the walk after the first successful merge.  Continuing the
-/// walk in-place is unsafe: a producer-side ParallelOp whose only bundle
-/// yield was consumed by this merge still has the absorbed (not-yet-erased)
-/// consumer as a live user, so the walk's `use_empty()` skip lets the
-/// walk visit it again -- and if it has its own upstream producer, it
-/// gets merged a second time.  The second merge clones the producer's
-/// body redundantly and pushes the same op onto the erase worklist
-/// twice, causing a double-erase / use-after-free at end of iteration
-/// (in assert builds, ~Operation()'s "operation destroyed but still has
-/// uses" check fires and crashes inside the diagnostic printer).
-///
-/// Doing one merge per walk also keeps the merged-body output minimal:
-/// every merge happens against fully-replaced producers, so no op gets
-/// cloned twice.  The outer fixed-point loop in `runOnOperation` keeps
-/// re-walking until no merge fires.  See GEX-3756.
+/// Continuing the walk after a merge is unsafe (GEX-3756): a producer whose
+/// only yield was absorbed still has the not-yet-erased consumer as a user, so
+/// it can be visited and merged again, double-erasing it. One merge per walk
+/// also guarantees no op is cloned twice.
 static bool runOneIteration(Operation *root, OpBuilder &builder) {
   bool changed = false;
   root->walk([&](ParallelOp parallelOp) {

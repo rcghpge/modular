@@ -21,11 +21,10 @@ def MOGG_BindLambdaKind : I32EnumAttr<"BindLambdaKind", "lambda kind", [
   let cppNamespace = "::M::MOGG";
 }
 
-// How a run of variadic tensor operands packed into a `mogg.tuple.create`
-// must be materialized in Mojo. `ConformCallOperands` sets this from the
-// callee's variadic parameter type, so `emitMojo` chooses the aggregate
-// (`VariadicTensors` / `_FusedInputVariadicTensors` /
-// `_FusedOutputVariadicTensors`) without inspecting the producing ops.
+// How variadic tensor operands packed into a `mogg.tuple.create` materialize
+// in Mojo. `ConformCallOperands` sets this from the callee's variadic
+// parameter type, so `emitMojo` picks the aggregate without inspecting the
+// producing ops.
 def MOGG_VariadicABI
     : I32EnumAttr<"VariadicABI", "variadic tensor packing ABI", [
   I32EnumAttrCase<"Plain", 0, "plain">,
@@ -33,33 +32,25 @@ def MOGG_VariadicABI
   I32EnumAttrCase<"FusedOutput", 2, "fused_output">,
 ]> {
   let cppNamespace = "::M::MOGG";
-  // Emit the symbolic dialect-attribute form (see `MOGG_VariadicABIAttr` in
-  // MOGGAttrs.td) rather than a bare `i32`.
+  // Use `MOGG_VariadicABIAttr` (MOGGAttrs.td) rather than a bare `i32`.
   let genSpecializedAttr = 0;
 }
 
 def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
   I32EnumAttrCase<"MGP", 1, "MGP">,
-  // Advanced-fusion MOGG kernel-stub ABI: a `mogg.kernel.stub` outlined from a
-  // `mogg.kernel` (see OutlineKernelsIntoFunctions). Labeled here so `EmitMojo`
-  // can branch on it without touching the separate MGP ABI emission.
+  // A `mogg.kernel.stub` outlined from a `mogg.kernel` (advanced fusion), so
+  // `EmitMojo` can branch on it separately from MGP emission.
   I32EnumAttrCase<"MOGG", 2, "MOGG">,
 ]> {
   let cppNamespace = "::M::MOGG";
 }
 
-// Role a trait-bound tensor argument plays in the graph signature (the trait
-// lane). Mirrors `TensorArgRole` in KernelDeclAdaptor.h and the role traits in
-// `extensibility.tensor_arg_traits`. `mut` is not a separate case: an argument
-// is mutable iff its role is not `input` (see D2 in the execution plan).
-//
-// Named `*Kind` to avoid colliding with the existing C++ `M::MOGG`
-// classification enums `TensorArgRole` / `TensorArgAccess` in
-// KernelDeclAdaptor.h, with which the case spellings are kept in lockstep
-// (`tensorArgContractToAttr` maps between them).
-// `none` is the no-role flavor carried by a shape-function tensor argument: it
-// reads only metadata and is always read-only, so it has no io-role. Kept in
-// lockstep with `TensorArgRole::none` in KernelDeclAdaptor.h.
+// Role a trait-bound tensor argument plays in the graph signature. Kept in
+// lockstep with `TensorArgRole` in KernelDeclAdaptor.h (named `*Kind` to avoid
+// colliding with it; `tensorArgContractToAttr` maps between them) and the role
+// traits in `extensibility.tensor_arg_traits`. An argument is mutable iff its
+// role is not `input`. `none` is for shape-function tensor arguments, which
+// read only metadata.
 def MOGG_TensorArgRole
     : I32EnumAttr<"TensorArgRoleKind", "tensor-argument role", [
         I32EnumAttrCase<"input", 0, "input">,
@@ -70,13 +61,11 @@ def MOGG_TensorArgRole
   let cppNamespace = "::M::MOGG";
 }
 
-// Element-access forms a trait-bound tensor argument exposes -- a SET of fusion
-// access kinds, or the empty set `none` for a plain dense argument with no
-// element access. Mirrors the access/capability bitmasks of `TensorArgContract`
-// in KernelDeclAdaptor.h. A bit enum so a non-fused dense argument can carry
-// several forms at once (e.g. `load | store` for in-place read-modify-write);
-// a fused argument carries exactly one. The same bit-enum type is reused for
-// the contract's capability set.
+// Set of element-access forms a trait-bound tensor argument exposes (`none`
+// for a plain dense argument). Mirrors the access/capability bitmasks of
+// `TensorArgContract` in KernelDeclAdaptor.h. A non-fused dense argument can
+// carry several (e.g. `load | store` for read-modify-write); a fused argument
+// carries exactly one.
 def MOGG_TensorArgAccess
     : I32BitEnumAttr<"TensorArgAccessKind", "tensor-argument access form set", [
         I32BitEnumAttrCaseNone<"none">,
@@ -88,14 +77,10 @@ def MOGG_TensorArgAccess
   let genSpecializedAttr = 0;
 }
 
-// The deepest tensor-argument trait bound written on a shape-function
-// tensor argument. This applies to the shape-fn lane only. See
-// `TensorArgBound` in KernelDeclAdaptor.h.
-// `unspecified` is the default value. Every execute-lane contract also
-// carries `unspecified`. For this reason, printing
-// `MOGG_TensorArgContractAttr` elides `unspecified`, and the baked
-// `tensor_arg_contracts` dict omits it too. Every existing execute-lane
-// encoding then stays byte-identical.
+// The deepest trait bound written on a shape-function tensor argument (see
+// `TensorArgBound` in KernelDeclAdaptor.h). Execute-lane contracts always
+// carry the default `unspecified`, so printing and the baked
+// `tensor_arg_contracts` dict elide it.
 def MOGG_TensorArgBound
     : I32EnumAttr<"TensorArgBoundKind", "tensor-argument written bound", [
         I32EnumAttrCase<"unspecified", 0, "unspecified">,

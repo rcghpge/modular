@@ -57,14 +57,12 @@ struct TensorBufferDialectInterface
   virtual DeviceRefAttr addBuilders(ModelOp modelOp,
                                     BufferBuilderContext &builderContext) = 0;
 
-  /// Returns the device on which the op will be executed, given the builder
-  /// context for the entire MGP::ModelOp we are working on.
+  /// Returns the device that will execute op.
   virtual DeviceRefAttr
   getExecutionDevice(const BufferBuilderContext &builderContext,
                      Operation *op) = 0;
 
-  /// Returns the device on which a value of type will be stored, given the
-  /// builder context for the entire MGP::ModelOp we are working on.
+  /// Returns the device that will store values of type.
   virtual DeviceRefAttr
   getStorageDevice(const BufferBuilderContext &builderContext, Type type) = 0;
 

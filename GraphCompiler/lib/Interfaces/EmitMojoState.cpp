@@ -158,11 +158,9 @@ LogicalResult emitMojo(mlir::index::AddOp op, EmitMojoState &state) {
 }
 
 LogicalResult emitMojo(mlir::index::CastSOp op, EmitMojoState &state) {
-  /// TODO: Check if this has any ramifications. The reason this op is emitted
-  /// at all in MGP is just to please the type system (pop operations need pop
-  /// types to operate on, not index). Therefore, it's likely that keeping them
-  /// as-is (Int) is perfectly fine for the index calculations we do in MGP
-  /// (shape function stuff only).
+  // TODO: Verify. This op exists in MGP only because pop ops need pop types,
+  // not index, so keeping Int is likely fine for MGP's shape-function index
+  // math.
   state.setMojoValueFor(op.getResult(), state.getMojoValueFor(op.getInput()));
   return success();
 }
@@ -493,13 +491,9 @@ EmitMojoState::getResultParamNameFor(const KernelDeclFunctionAdaptor &fnAdaptor,
                                      StringRef paramName) {
   if (!fnAdaptor.attr.getResultParams())
     return std::nullopt;
-  // Each entry in resultParamMappings corresponds to one result type. It is a
-  // DictionaryAttr {struct-param-name: value} if the result is a struct whose
-  // declaration was visible to ImportPackages; otherwise it is a UnitAttr
-  // placeholder. The value at `paramName` is a ParamDeclRefAttr only when the
-  // struct parameter is bound to a free function/struct parameter (i.e. the
-  // dtype is unresolved). If the value is concrete (e.g. DTypeConstantAttr),
-  // there is no name to return.
+  // One entry per result: a {struct-param-name: value} DictionaryAttr if
+  // ImportPackages saw the struct's declaration, else a UnitAttr. Only an
+  // unresolved value (a ParamDeclRefAttr) has a name to return.
   for (auto resultParam : fnAdaptor.attr.getResultParams()) {
     auto resultParamDict = dyn_cast<DictionaryAttr>(resultParam);
     if (!resultParamDict)
@@ -521,10 +515,8 @@ static MojoValue getTraceNameValue(FusionInfoAttr fusionInfo) {
 }
 
 static MojoValue getHasEpilogueFusionValue(mlir::Operation *) {
-  // The advanced-fusion path carries epilogue fusion as an explicit op flag
-  // (`CallOpaqueOp::getHasEpilogueFusion`), which the call's own `emitMojo`
-  // forces on. This fallback answers for a kernel that has no such flag set,
-  // which never has fused epilogue work.
+  // Fused epilogues set `CallOpaqueOp::getHasEpilogueFusion`, which the call's
+  // `emitMojo` honors; a kernel without that flag has none.
   return false;
 }
 
@@ -542,18 +534,14 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
 
   auto inferFromMlirParam = [&](Attribute customParam) -> ErrorOr<MojoValue> {
-    // Convert it to mojo
-    // TODO: Convert custom mlir parameter to the right mojo parameter type is
-    // hardcoded here and brittle. Besides the param name, we would also need
-    // the type from the kernel infos to convert it correctly.
+    // TODO: This conversion is hardcoded and brittle; it needs the parameter
+    // type from the kernel infos, not just the name.
     if (auto strAttr = dyn_cast<StringAttr>(customParam))
       return MojoValue(strAttr.getValue()).quote();
     else if (auto boolAttr = dyn_cast<BoolAttr>(customParam))
       return boolAttr.getValue();
     else if (auto intAttr = dyn_cast<IntegerAttr>(customParam))
-      // Use getValue().getSExtValue() instead of getInt() because getInt()
-      // asserts that the type must be signless or index, but we may have
-      // signed integer types (like si32).
+      // getInt() asserts signless or index; this may be signed (e.g. si32).
       return intAttr.getValue().getSExtValue();
     else if (auto dtypeAttr = dyn_cast<KGEN::DTypeConstantAttr>(customParam))
       return EmitMojoState::mlirDTypeToMojoType(dtypeAttr.getDType());
@@ -568,7 +556,6 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
                                  paramName));
   };
 
-  // Look at the provided list of kernel parameters first
   if (auto kernelCallOp = dyn_cast<KernelCallInterface>(callOp);
       kernelCallOp && kernelCallOp.getKernelParams()) {
     if (auto customParam = kernelCallOp.getKernelParams().get(paramName))
@@ -581,11 +568,9 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   }
 
   // Some special parameters are common to all kernels.
-  /// TODO(GEX-2847): Do not check it on the KernelStubOp but instead directly
-  /// on the op itself in case these get sequence fused. Today, this won't
-  /// happen because we outline the stubs before sequence fusion and the ones
-  /// that do get sequence fused will always be on the host and have matching
-  /// devices.
+  // TODO(GEX-2847): Check the op, not the KernelStubOp, in case these get
+  // sequence fused. Safe today: stubs are outlined before sequence fusion, and
+  // sequence-fused ones are all on the host.
   if (paramName == MOGG::kMoggTargetParameterName) {
     auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
     return MojoValue(kernelStubOp.getDevice()).quote();
@@ -630,12 +615,10 @@ MojoValue EmitMojoState::getShapeAsCoordMojoValue(MOSH::ShapeAttr shapeAttr,
   unsigned nextDynDim = 0;
   for (TypedAttr dim : shapeAttr.getValues()) {
     if (auto staticDim = MOSH::ShapeAttr::getStaticDim(dim)) {
-      // Static dim: compile-time `Idx[N]` component.
       coordElems.push_back(MojoValue(kAliasIdx)[*staticDim]);
     } else {
-      // Dynamic dim: runtime `Scalar[DType.int](<dim>)` component. The dynamic
-      // element type must be Scalar[DType.int] (not Int) so it matches the
-      // element-type the ManagedTensorSlice layout machinery rebinds to.
+      // Scalar[DType.int], not Int, to match what the ManagedTensorSlice
+      // layout machinery rebinds to.
       ASSERT_STREAM(nextDynDim < dynamicDims.size(),
                     "Missing dynamic dimension");
       MojoValue scalarInt =
@@ -693,9 +676,7 @@ void EmitMojoState::addDebugPrintLambdaParam(MOGG::BindLambdaKind lambdaKind,
 }
 
 MojoValue EmitMojoState::mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType) {
-  // ImportPackagesPass rewrites !mo.opaque<"Leaf"> to !mo.opaque<"a.b.Leaf">
-  // (dotted Mojo qualified name), so the symbol can be used directly as a
-  // Mojo identifier with no further rewriting.
+  // ImportPackagesPass already rewrote the symbol to a qualified Mojo name.
   return MojoValue(opaqueType.getSymbol().getValue());
 }
 
@@ -711,9 +692,7 @@ EmitMojoState::getOpaqueTypeParameters(MO::OpaqueType opaqueType) {
     StringRef name = param.getName().getValue();
     std::string valueStr;
     if (auto intAttr = dyn_cast<IntegerAttr>(param.getValue())) {
-      // Use getValue().getSExtValue() instead of getInt() because getInt()
-      // asserts that the type must be signless or index, but we may have
-      // signed integer types (like si32).
+      // getInt() asserts signless or index; this may be signed (e.g. si32).
       valueStr = std::to_string(intAttr.getValue().getSExtValue());
     } else {
       // Fallback: use the attribute's string representation.

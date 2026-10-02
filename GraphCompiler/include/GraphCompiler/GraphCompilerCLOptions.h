@@ -12,11 +12,8 @@
 
 namespace M::MO {
 
-/// Collects mt command line options which influence
-/// M::MO::buildGCPipeline.
-///
-/// See also GCPipelineOptions for the corresponding MLIR xxx-opt command line
-/// options.
+/// mt command line options that influence M::MO::buildGCPipeline. See
+/// GCPipelineOptions for the xxx-opt equivalents.
 class GraphCompilerOptions {
 
 public:

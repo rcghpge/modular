@@ -504,8 +504,7 @@ void TextViewer::Render() {
                            lineNo + (int)floor((scrollY + contentSize.y) /
                                                mCharAdvance.y)));
 
-  // Deduce mTextStart by evaluating mLines size (global lineMax) plus two
-  // spaces as text width
+  // mTextStart: width of the largest line number plus two spaces.
   char buf[16];
   snprintf(buf, 16, " %d ", globalLineMax);
   mTextStart = ImGui::GetFont()
@@ -559,16 +558,15 @@ void TextViewer::Render() {
                                 mPalette[(int)PaletteIndex::Selection]);
       }
 
-      // Compute line number width first — used for both circle anchoring and
-      // the line number text draw below.
+      // Also anchors the bookmark circles.
       snprintf(buf, 16, "%d  ", lineNo + 1);
       auto lineNoWidth = ImGui::GetFont()
                              ->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX,
                                              -1.0f, buf, nullptr, nullptr)
                              .x;
 
-      // Draw bookmark color circles in the gutter margin, right-anchored just
-      // before the line number so adding more circles shifts the group left.
+      // Bookmark circles, right-anchored before the line number so more
+      // circles grow leftward.
       auto markerIt = mLineMarkers.find(lineNo + 1);
       if (markerIt != mLineMarkers.end() && !markerIt->second.empty()) {
         const auto &colors = markerIt->second;

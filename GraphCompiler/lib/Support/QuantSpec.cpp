@@ -41,11 +41,9 @@ QuantSpec::Kind QuantSpec::kindFromString(StringRef kind) {
       .Default(QuantSpec::Kind::invalid);
 }
 
-/// Returns a string representation of the kind and the quantized dimension if
-/// the latter is relevant to the kind.
+/// Returns the kind, plus the quantized dimension if relevant to the kind.
 static std::string getKindAndDimAsString(const QuantSpec *qSpec) {
   StringRef kind = QuantSpec::kindAsString(qSpec->getKind());
-  // Add the quantDim to the string if it the kind is uniformPerAxis.
   if (qSpec->getKind() == QuantSpec::Kind::uniformPerAxis)
     return (Twine(kind) + ":" + Twine(qSpec->getQuantDim())).str();
   return kind.str();
@@ -134,6 +132,6 @@ ErrorOr<QuantTensorSpec> QuantTensorSpec::get(MEFType type) {
         TensorSpec(dims, style, storageType.getKind()),
         QuantSpec::getUniformPerAxis(quantDim, scales, zeroPoints));
   }
-  // MEFType are GraphCompiler DType kinds.
+  // MEFType kinds are GraphCompiler DType kinds.
   return QuantTensorSpec(TensorSpec(dims, style, mefType.getKind()), {});
 }

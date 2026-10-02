@@ -111,7 +111,7 @@ struct ElementwiseBodyRenderer {
   virtual StringRef simdWidthParamName() const = 0;
 };
 
-/// Legacy fusion-struct body: loads through `self.{ptr,shape,strides}_<i>` on
+/// Fusion-struct body: loads through `self.{ptr,shape,strides}_<i>` on
 /// the struct's `simd_width` method parameter.
 struct FusionStructRenderer final : ElementwiseBodyRenderer {
   std::string buildLoadExpr(unsigned captureIdx,
@@ -121,22 +121,18 @@ struct FusionStructRenderer final : ElementwiseBodyRenderer {
   StringRef simdWidthParamName() const override { return "simd_width"; }
 };
 
-/// Trait-lane fusion-functor body (Phase 5): loads through a `TileTensor` built
-/// from the captured `(ptr, layout)` of capture <i> via the dense
-/// `tile.load(idx)` API -- NO `ManagedTensorSlice` /
-/// `simd_load_from_tensor_pointer`. Matches the mockup
-/// `AddTwoInputLoadFusion.__call__`. The functor `__call__`'s width param is
-/// `width` and its index `idx` is a `Coord`; loads are at the iteration index
-/// (`indicesExpr` is ignored -- the only form simple elementwise prologue
-/// fusion produces).
+/// Trait-lane fusion-functor body: loads through a dense `TileTensor` built
+/// from capture <i>'s `(ptr, layout)` via `tile.load(idx)`. The functor
+/// `__call__`'s width param is `width` and `idx` is a `Coord`; loads are at the
+/// iteration index (`indicesExpr` is ignored, the only form simple elementwise
+/// prologue fusion produces).
 struct DenseFusionRenderer final : ElementwiseBodyRenderer {
   std::string buildLoadExpr(unsigned captureIdx,
                             StringRef /*indicesExpr*/) const override {
-    // The functor captures each source as a bare pointer + layout (NOT a
-    // `TileTensor` -- a `TileTensor` field would not translate to a device
-    // address, since the encoder bit-copies it; a bare `Pointer`
-    // translates through its own `_to_device_type`). Rebuild the dense tile
-    // here and load from it, so the same functor body serves CPU and GPU.
+    // Captures are a bare pointer + layout, not a `TileTensor`: the encoder
+    // bit-copies fields, so only a `Pointer` translates to a device address
+    // (via `_to_device_type`). Rebuilding the tile here lets one body serve CPU
+    // and GPU.
     auto ci = std::to_string(captureIdx);
     return llvm::formatv(
                "TileTensor[dtype=Self.dtype_{0}, LayoutType=Self.LayoutType_{0}"
@@ -165,10 +161,8 @@ static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
 LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
-  // Gather the input buffers.
   SmallVector<Value> loweredOperands = opLoweringState.getLoweredOperands();
 
-  // Allocate the output buffer.
   FailureOr<SmallVector<MGP::MOOutputStorage>> loweredOutputsStorageOr =
       opLoweringState.createOutputStorage(loweringState.getExecuteChain());
   if (failed(loweredOutputsStorageOr))
@@ -195,22 +189,19 @@ LogicalResult ConcatOp::lower(MGP::MOGraphLoweringState &loweringState) {
 LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState opLoweringState(loweringState, *this);
 
-  // Gather the input buffer.
   Value inputBuffer = opLoweringState.getBufferizedInput(getInput()).buffer;
 
   // TODO Enable this.
   if (inputBuffer.getDefiningOp<MGP::BufferConstantOp>())
     return emitOpError("constant input buffer is unsupported");
 
-  // Create specs for the outputs. We don't need any buffers since this is
-  // a split.
+  // A split needs output specs only, no buffers.
   FailureOr<SmallVector<TypedValue<MGP::TensorSpecType>>> outputSpecsOr =
       opLoweringState.createOutputTensorSpecs();
   if (failed(outputSpecsOr))
     return failure();
   auto &outputSpecs = *outputSpecsOr;
 
-  // Build/collect inputs to the MGP buffer split op
   SmallVector<Value> outputBuffers;
 
   // The slices stay on the input buffer's device.
@@ -222,7 +213,6 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
   Value offset = opLoweringState.create<mlir::index::ConstantOp>(0).getResult();
   Value sliceSize;
   for (TypedValue<MGP::TensorSpecType> outSpec : outputSpecs) {
-    // Increment the offset for each iteration after the first.
     if (sliceSize)
       offset = opLoweringState.create<mlir::index::AddOp>(offset, sliceSize);
 
@@ -247,8 +237,7 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
     outputBuffers.push_back(outSlice);
   }
 
-  // The split can only be accessed once it's safe to access the inputs. Though
-  // fine to perform the actual split.
+  // The slices are only accessible once the inputs are.
   Value guardChain =
       opLoweringState.getGuardChain(loweringState.getCurrentExecuteChain());
 
@@ -268,11 +257,9 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
       loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(*this));
   Value outChain = bufferBuilder.moduleLoad(
       builder, getLoc(), loweringState.getInitMgpContext(),
-      // DANGER: init chain is the result of device context creation which is a
-      // result of runtime creation. Module load does not actually depend on the
-      // device context. And the device context creation is turned into another
-      // module load later. But we need to order module loads by when they are
-      // created, so we make this module load depend only on the runtime
+      // DANGER: the init chain comes from device context creation, which module
+      // load doesn't depend on (and which later becomes another module load).
+      // Module loads must be ordered by creation, so depend only on runtime
       // creation.
       /*inChain=*/
       cast<TypedValue<MEF::ChainType>>(
@@ -361,9 +348,8 @@ static void printRegionArguments(OpAsmPrinter &p, TypeRange resTypes,
 // MOGG CallOp
 //===----------------------------------------------------------------------===//
 
-// Returns the fully-qualified Mojo source name for a PrimitiveDeclOp.
-// sym_name is set to the fully-qualified Mojo source name by ImportPackages,
-// so it doubles as the identifier to emit in Mojo source.
+// Returns the fully-qualified Mojo source name for a PrimitiveDeclOp, which
+// ImportPackages stores as its sym_name.
 static llvm::StringRef primitiveMojoName(PrimitiveDeclOp decl) {
   return decl.getSymNameAttr().strref();
 }
@@ -528,7 +514,7 @@ void KernelOp::print(OpAsmPrinter &p) {
   printGroup("dims", dimArgs);
   p.decreaseIndent();
 
-  // Elided when empty, so every other kernel prints as before.
+  // Elided when empty.
   SmallVector<StringRef> elided{getOperandSegmentSizesAttrName().getValue()};
   if (getOutputParamDecls().empty())
     elided.push_back(getOutputParamDeclsAttrName().getValue());
@@ -541,10 +527,8 @@ void KernelOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult KernelOp::verify() {
-  // A chain result, if present, is always last (mirrors
-  // `IterForeachOp::verify()`/`KernelOp::maybeGetOutChain()`) and, like the
-  // input chain, never gets a body block argument -- only the preceding
-  // tensor outputs do.
+  // A chain result, if present, is last (mirrors `IterForeachOp::verify()` /
+  // `KernelOp::maybeGetOutChain()`) and never gets a body block argument.
   mlir::ResultRange outputs = getOutputs();
   for (auto [i, output] : llvm::enumerate(outputs))
     if (isa<MO::ChainType>(output.getType()) && i + 1 != outputs.size())
@@ -649,12 +633,10 @@ Value KernelOp::getOutputChain() {
   return isa<MO::ChainType>(last.getType()) ? last : Value();
 }
 
-// Lowers a `mogg.kernel` into a `mogg.generic.compiled.region`: the kernel
-// stub is already outlined (OutlineKernelsIntoFunctions), so we only
-// materialize the region operands (input buffers, freshly-allocated output
-// buffers, dim values, device context), build the region, unpack + cast each
-// async block arg to the handle the stub expects, and re-home the existing
-// `mogg.call.stub`.
+// Lowers a `mogg.kernel` into a `mogg.generic.compiled.region` around its
+// already-outlined stub: materialize the region operands (input buffers, new
+// output buffers, dims, device context), unpack + cast each async block arg to
+// the stub's handle, and re-home the `mogg.call.stub`.
 //
 // TODO(GEX-3965): buffer allocation / context / dim materialization should move
 // to dedicated pre-MGP passes, leaving this a genuinely thin lowering.
@@ -686,11 +668,9 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     return nullptr;
   }
 
-  // The op's own `$chain` carries its ordering against the kernels that wrote
-  // the buffers it reads and writes, so it is what the region must wait on.
-  // Falling back to the ambient execute chain drops that edge, and two kernels
-  // writing one buffer end up ordered only by how their chains happen to be
-  // joined. `mogg.kernel`'s lowering takes the same in-chain when it has one.
+  // The op's own `$chain` orders it against the kernels that wrote its
+  // buffers, so the region waits on it; the ambient execute chain would drop
+  // that edge.
   Value inChain = loweringState.getCurrentExecuteChain();
   if (Value opChain = getChain()) {
     Value lowered = loweringState.lookupExecuteLoweredValue(opChain);
@@ -701,21 +681,17 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   inChain = st.getGuardChain(inChain);
 
   // Region operands (plain sync values) + their in/out signature. The chain
-  // leads, as in `mogg.kernel`'s lowering, so block arg i is operand i + 1.
+  // leads, so block arg i is operand i + 1.
   SmallVector<Value> operands{inChain};
   SmallVector<InOutSignatureAttr::InOutSemantics> semantics{
       InOutSignatureAttr::kIn};
 
-  // Inputs: `!mo.tensor`/`!mo.buffer` operands lower to `!mgp.buffer`. The
-  // optional input chain (`$chain`) is pure sequencing plumbing -- threaded via
-  // `inChain` and the region's own chain result -- and has no kernel body block
-  // argument, so drop it here; otherwise it would shift every following operand
-  // out of alignment with the body's input pointers, outputs, and context.
-  // A `!mo.buffer` input is written in place by the body, so it takes the
-  // mutable signature the way `mogg.kernel`'s lowering gives it: declaring it
-  // an input lets MGP treat a buffer the kernel writes as read-only, and the
-  // write is lost. The signature comes from the operand's own type, since the
-  // body's block arguments are type-erased `!mogg.pointer`s.
+  // Inputs lower to `!mgp.buffer`. The input chain has no body block argument
+  // (it is threaded via `inChain`), so drop it to keep operands aligned with
+  // the body. A `!mo.buffer` input is written in place, so it takes the
+  // mutable signature (as an input MGP would treat it as read-only and lose
+  // the write), read off the operand type since body args are type-erased
+  // `!mogg.pointer`s.
   auto inputs = getInputs();
   unsigned inputIdx = 0;
   for (Value buffer : st.getLoweredOperands()) {
@@ -735,9 +711,8 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   if (failed(storageOr))
     return nullptr;
   SmallVector<MGP::MOOutputStorage> storage = *storageOr;
-  // `createOutputStorage` itself already skips a chain-typed result (no
-  // buffer to allocate for a sequencing token), so it produces one entry per
-  // non-chain result -- `numOutputs`, not the unfiltered `getNumResults()`.
+  // `createOutputStorage` skips chain-typed results, so it yields `numOutputs`
+  // entries.
   assert(storage.size() == numOutputs &&
          "expected one output storage per non-chain mogg.kernel result");
   for (const MGP::MOOutputStorage &out : storage) {
@@ -767,12 +742,10 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     semantics.push_back(InOutSignatureAttr::kNone);
   }
 
-  // Context(s): one `!mogg.context` block arg for an ordinary kernel; one per
-  // device for a distributed kernel that takes a `DeviceContextArray`, in
-  // `getUniqueDevicesFromKernel` order (the same order
-  // `IterOpaqueOp::lowerToMOGG` created the context args).
-  // `ConformCallOperands` packed them into a tuple at the call, but each
-  // still becomes its own region operand here.
+  // Context(s): one `!mogg.context` block arg, or one per device for a
+  // `DeviceContextArray` kernel in `getUniqueDevicesFromKernel` order (as
+  // `IterOpaqueOp::lowerToMOGG` created them). Each is its own region operand,
+  // though `ConformCallOperands` packed them into a tuple at the call.
   unsigned numContexts = numArgs - argIdx;
   if (numContexts <= 1) {
     operands.push_back(loweringState.getExecuteDevice(device));
@@ -794,7 +767,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
 
   // Result 0 is the chain, then one dim per declared parameter, then a
   // by-value `!mo.opaque` if there is one. Allocated inside the kernel, so it
-  // leaves as a region result rather than an output buffer -- as legacy does.
+  // leaves as a region result rather than an output buffer.
   ArrayRef<KGEN::ParamDeclAttr> decls = getOutputParamDecls();
   Type dimType = MOSH::ShapeAttr::getDimType(ctx);
   SmallVector<Type> regionResultTypes{MEF::ChainType::get(ctx)};
@@ -840,16 +813,12 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   for (unsigned i = 0; i < numArgs; ++i) {
     Value unpacked = MOGG::AsyncUnpackOp::create(
         builder, loc, regionBody->getArgument(i + 1));
-    // `mogg.rebind` reconciles the unpacked MGP handle (`!mgp.buffer` /
-    // `!mgp.device_context` / a dim value) with the stub's codegen handle
-    // (`!mogg.pointer` / `!mogg.context` / `!mogg.dim`). For `!mogg.pointer`
-    // it emits real Mojo -- bridging the unpacked `OwnedByteBuffer` to the raw
-    // opaque data pointer the MOGG-ABI stub expects; the context/dim casts are
-    // pass-throughs (the unpacked handles already have the right Mojo type).
+    // `mogg.rebind` reconciles the unpacked MGP handle with the stub's codegen
+    // handle. For `!mogg.pointer` it emits real Mojo (`OwnedByteBuffer` -> raw
+    // opaque data pointer); context/dim casts are pass-throughs.
     // debt: drop once `mogg.async.unpack` folds directly to the typed handle.
-    // For a dim arg, cast to an ANONYMOUS `!mogg.dim` (name dropped): the
-    // symbolic name blocks kernel dedup, and the referenced stub's dim args are
-    // stripped in lockstep below so the re-homed call still type-checks.
+    // A dim arg is cast to an anonymous `!mogg.dim`: the symbolic name blocks
+    // kernel dedup, and the stub's dim args are stripped to match.
     Type handleType = kernelBody.getArgument(i).getType();
     if (isa<MOGG::DimType>(handleType))
       handleType = MOGG::DimType::get(ctx, /*name=*/{});
@@ -857,12 +826,10 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     stubArgs.push_back(handle);
   }
 
-  // Re-home `kernelBody`'s contents (a `mogg.call.stub` plus whatever constants
-  // `OutlineKernelsIntoFunctions` kept at the call site) by cloning them into
-  // the region body with `kernelBody`'s block args mapped to `stubArgs` -- no
-  // need to inspect what's inside to rebuild it. The referenced stub's own
-  // dim-arg names are anonymized separately, by `mgp-anonymize-dim-names`
-  // walking every stub in the module after all kernels have been lowered.
+  // Re-home `kernelBody`'s contents (the `mogg.call.stub` plus constants kept
+  // at the call site) by cloning with block args mapped to `stubArgs`.
+  // `mgp-anonymize-dim-names` strips the stub's dim names once all kernels are
+  // lowered.
   IRMapping mapping;
   for (unsigned i = 0; i < numArgs; ++i)
     mapping.map(kernelBody.getArgument(i), stubArgs[i]);
@@ -870,11 +837,9 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   Value shapeResult;
   Value opaqueResult;
   for (Operation &calleeOp : kernelBody) {
-    // A `mogg.buffer.constant` carries its attribute as written, because the
-    // MEF alignment is only known here. Swap it for the real
-    // `mgp.buffer.constant`, which has to live in this region: resources reach
-    // the runtime through the `void**` of the MGP-ABI entry point, which the
-    // MOGG-ABI stub the call forwards to does not have.
+    // The MEF alignment is only known here, so swap a `mogg.buffer.constant`
+    // for the real `mgp.buffer.constant` in this region: resources reach the
+    // runtime through the MGP-ABI `void**`, which the MOGG-ABI stub lacks.
     if (auto cst = dyn_cast<MOGG::BufferConstantOp>(calleeOp)) {
       ErrorOr<ElementsAttr> blob =
           loweringState.lowerElementsAttr(cst.getValue());
@@ -978,25 +943,21 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
   auto tensorType = cast<MO::TensorType>(input.getType());
   MojoValue inputValue = state.getMojoValueFor(input);
 
-  // Extract dtype
   ErrorOr<DType> dTypeOr = M::MO::fromMLIRType(tensorType.getElementType());
   ASSERT_STREAM(!dTypeOr.isError(),
                 "Failed to extract dtype from mutable input tensor");
   MojoValue dtype = state.mlirDTypeToMojoType(*dTypeOr);
 
-  // Extract rank
   ASSERT_STREAM(tensorType.hasRank(),
                 "Mutable input tensor must have statically known rank");
   MojoValue rank(static_cast<int64_t>(tensorType.getRankNonZero()));
 
-  // Get static_spec fields
   ManagedTensorSliceRef mts(inputValue);
   StaticTensorSpecRef staticSpec(mts.staticSpec());
 
   // Build template parameters. The static layout is conveyed through the
   // layout argument's type (below), so no separate layout param.
-  SmallVector<MojoValue> templateParams = {dtype, rank,
-                                           MojoValue(false), // False constant
+  SmallVector<MojoValue> templateParams = {dtype, rank, MojoValue(false),
                                            MojoValue(kEnumIoInput),
                                            staticSpec.alignment()};
 
@@ -1007,7 +968,6 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
           .bitcast(MojoValue(kComptimeDTypeNoneType))(),
       inputValue.get("runtime_layout")()};
 
-  // Generate the mogg_tensor_init call
   auto tensorInitPrimDecl =
       state.registry.lookupPrimitive(TensorInitOp::getOperationName());
   MojoValue moggTensorInit(primitiveMojoName(tensorInitPrimDecl));
@@ -1097,10 +1057,8 @@ LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
   MojoValue structType = prefixSymbolName[maybeParams->structParameters];
   MojoValue fullBuildGraphFunc = structType.get(buildGraphFunc);
 
-  // The `build_graph` method records the dispatch into the builder. The op is
-  // node-free -- ordering is expressed by the enclosing
-  // `mgp.device_graph.dependencies` op's `region` call -- so this is a plain
-  // void call with no result to capture.
+  // `build_graph` records the dispatch into the builder; ordering comes from
+  // the enclosing `mgp.device_graph.dependencies` op, so this is a void call.
   state.builder.call(fullBuildGraphFunc, maybeParams->functionParameters,
                      kernelOperands);
   state.genAllKeepAliveStatements();
@@ -1195,14 +1153,10 @@ static unsigned getTraceMaxFrames() {
   return cached;
 }
 
-/// Collect compact source notes for NVTX trace detail strings. Delegates to
-/// collectSourceNotes for the FusedLoc tree walk, then reformats each trace
-/// to show only the bottom N frames in compact `path:line:func` form.
-/// N is controlled by MODULAR_TRACE_MAX_FRAMES (default 10). Source detail is
-/// non-empty only when the `max-debug.source-tracebacks` config key was
-/// enabled at graph construction time (for example, via
-/// `Graph.debug.source_tracebacks = True` or
-/// `MODULAR_DEBUG=source-tracebacks`).
+/// Collect source notes for NVTX trace detail strings, each trace cut to its
+/// bottom N frames (MODULAR_TRACE_MAX_FRAMES, default 10) in `path:line:func`
+/// form. Non-empty only if `max-debug.source-tracebacks` was enabled at graph
+/// construction (e.g. `MODULAR_DEBUG=source-tracebacks`).
 static std::string collectCompactSourceNotes(Location rootLoc) {
   unsigned maxFrames = getTraceMaxFrames();
   auto notes = collectSourceNotes(rootLoc);
@@ -1249,8 +1203,7 @@ OutputOp KernelStubOp::getBodyTerminator() {
 }
 
 LogicalResult KernelStubOp::verify() {
-  // No need to verify arguments because the FunctionOpInterface already does
-  // it.
+  // FunctionOpInterface already verifies the arguments.
   return success();
 }
 
@@ -1282,7 +1235,6 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
-  // Clear any previous kernel's return values from the state.
   state.mojoReturnValues.clear();
   state.mojoConstantResources.clear();
 
@@ -1304,20 +1256,13 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
 
         auto runtimeArgument = functionBody.arguments.front();
         auto &kernelBody = getBody().front();
-        // The order of arguments in runtimeArgument:
-        // 1. Inputs and DPS outputs
-        // 2. Return values (chain and non DPS outputs)
+        // runtimeArgument order: inputs and DPS outputs, then return values
+        // (chain and non-DPS outputs).
         //
-        // For each input in the void** argument vector that is an AsyncValue,
-        // emit:
+        // The runtime expects the generated Mojo to take ownership of every
+        // AsyncValue input slot, even if unused:
         //
         //     var val = AnyAsyncValueRef(take_slot=args[i])
-        //
-        // This takes ownership of the AsyncValue held at that `args[i]`,
-        // nulling out the slot afterward. This must be emitted for all
-        // inputs that are AsyncValues. The runtime expects the generated Mojo
-        // code to take ownership of all AsyncValue input slots, so these
-        // statements must be emitted, even if the value is unused.
         //
         // Non-async arguments (e.g. buffer constants) remain raw pointer slots.
         for (auto argument : kernelBody.getArguments()) {
@@ -1339,19 +1284,15 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
             state.setMojoValueFor(argument, slotPtr);
           }
         }
-        // Return values, although in DPS form from the runtime's perspective,
-        // are still in value semantics inside of the kernel. Therefore, there
-        // is no value to associate them with. Instead, we have a mapping that
-        // mogg.return and mogg.async.pack will use.
+        // Return values are DPS to the runtime but value-semantic inside the
+        // kernel, so they get a mapping for mogg.return and mogg.async.pack.
         uint64_t numArguments = getBodyBlock().getNumArguments();
         for (uint64_t i = 0; i < getNumResults(); ++i) {
           state.mojoReturnValues.emplace_back(
               runtimeArgument.pointerOffsetGet(i + numArguments));
         }
 
-        // After inputs and outputs, there are constant resources appended to
-        // the void** array. These come in pairs of ptr + size which is
-        // handled here.
+        // Constant resources follow in the void** array as ptr + size pairs.
         for (uint64_t i = 0; i < getConstantResources().size(); ++i) {
           uint64_t flatIndex = i * 2 + numArguments + getNumResults();
           MOGG::MojoValue ptr = runtimeArgument.pointerOffsetGet(flatIndex);
@@ -1380,16 +1321,11 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
 }
 
 LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
-  // The MOGG-ABI stub takes raw runtime handles as arguments -- one
-  // `!mogg.pointer` per input then per output tensor, then the dynamic
-  // `!mogg.dim`s, then a `!mogg.context` -- and reconstructs the codegen
-  // tensors internally (`mogg.shape.create` / `mogg.tensor.create`) before
-  // invoking the opaque kernel's execute function (`mogg.call.opaque`). Unlike
-  // the MGP ABI there is no trait lane, no async wrapping, and no `void**`
-  // marshalling: the body ops emit straight-line Mojo.
-  // `mlirTypeToMojoType` renders any opaque as a bare `OpaquePointer`, but an
-  // opaque crosses this boundary as the kernel's own struct, so it needs the
-  // parameterized spelling (`SIMDPair[4, 8]`).
+  // The MOGG-ABI stub takes raw runtime handles (a `!mogg.pointer` per input
+  // then output, the dynamic `!mogg.dim`s, a `!mogg.context`) and emits
+  // straight-line Mojo, with no async wrapping or `void**` marshalling.
+  // `mlirTypeToMojoType` renders an opaque as a bare `OpaquePointer`, but here
+  // it crosses as the kernel's own struct (`SIMDPair[4, 8]`).
   auto typeToMojo = [&](Type type) -> MOGG::MojoValue {
     if (auto opaqueType = dyn_cast<MO::OpaqueType>(type)) {
       MOGG::MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
@@ -1490,9 +1426,8 @@ LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
   auto layoutVar = state.builder.var(
       MojoValue(kFnRowMajor)({}, {state.getMojoValueFor(getShape())}));
 
-  // Reuse the legacy `mogg.tensor.__init__` primitive: the two ops build the
-  // same `ManagedTensorSlice`, differing only in that the pointer arrives as a
-  // raw `!mogg.pointer` here instead of being unwrapped from a slice.
+  // Reuse `mogg.tensor.__init__`: both build the same `ManagedTensorSlice`,
+  // but here the pointer arrives as a raw `!mogg.pointer`.
   auto tensorInitPrimDecl =
       state.registry.lookupPrimitive(TensorInitOp::getOperationName());
   ASSERT_STREAM(tensorInitPrimDecl,
@@ -1510,11 +1445,9 @@ LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorCreateSliceOp::emitMojo(EmitMojoState &state) {
-  // dtype/rank/start_type/stop_type/step_type are all tied to an argument
-  // type in the primitive's own signature, so Mojo infers them at the call
-  // site. output_static_shape/static_starts/static_steps carry whatever is
-  // statically known about the view (an entry is dynamic where it isn't),
-  // straight off this op's own attributes.
+  // Mojo infers dtype/rank/start_type/stop_type/step_type from the argument
+  // types. output_static_shape/static_starts/static_steps carry what is
+  // statically known about the view, from this op's attributes.
   auto sliceCreatePrimDecl =
       state.registry.lookupPrimitive(TensorCreateSliceOp::getOperationName());
   ASSERT_STREAM(sliceCreatePrimDecl,
@@ -1538,11 +1471,9 @@ LogicalResult TensorCreateSliceOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorCreateBroadcastOp::emitMojo(EmitMojoState &state) {
-  // dtype/rank are tied to $input's own argument type, so Mojo infers them
-  // at the call site. output_static_shape carries the view's shape -- unlike
-  // slice's starts/stops/steps, broadcast's shape is always statically known
-  // by emission time (see `mo.static.broadcast_to`'s own docstring), so
-  // there is no separate dynamic-vs-static split to carry here.
+  // Mojo infers dtype/rank from $input. A broadcast's shape is always static
+  // by emission time (see `mo.static.broadcast_to`), so output_static_shape
+  // carries all of it.
   auto broadcastCreatePrimDecl = state.registry.lookupPrimitive(
       TensorCreateBroadcastOp::getOperationName());
   ASSERT_STREAM(broadcastCreatePrimDecl,
@@ -1559,16 +1490,10 @@ LogicalResult TensorCreateBroadcastOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorCreateReshapeOp::emitMojo(EmitMojoState &state) {
-  // dtype/rank are tied to $input's own argument type, so Mojo infers them
-  // at the call site. output_static_shape is still passed as a comptime
-  // param -- it keeps whatever dims ARE statically known typed as such in
-  // the primitive's return type -- but unlike broadcast/transpose (whose
-  // runtime stride always comes from the input's own real stride, never
-  // from this shape), reshape's runtime stride is a row-major
-  // de-linearization of its output shape's own values, so any dim this op
-  // doesn't know until runtime has to arrive as a real argument: `$shape`
-  // (the same `!mogg.shape` Coord `mogg.tensor.create` builds) converted to
-  // an `IndexList` via `coord_to_index_list`.
+  // Mojo infers dtype/rank from $input; output_static_shape keeps the static
+  // dims typed as such. Unlike broadcast/transpose (strides from the input),
+  // reshape's runtime stride de-linearizes its output shape, so runtime dims
+  // arrive as `$shape`, converted to an `IndexList` via `coord_to_index_list`.
   auto reshapeCreatePrimDecl =
       state.registry.lookupPrimitive(TensorCreateReshapeOp::getOperationName());
   ASSERT_STREAM(reshapeCreatePrimDecl,
@@ -1587,17 +1512,12 @@ LogicalResult TensorCreateReshapeOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
-  // Per-index reshape (store-side, inside an epilogue functor body): convert
-  // the incoming index -- a `Coord` here -- to an `IndexList`, remap it to the
-  // output shape's coordinates preserving the row-major linear offset via the
-  // `mogg.index.reshape` primitive, then wrap the result back into a `Coord`
-  // for the downstream `mogg.tensor.store`. Static dims ride as comptime
-  // `IntTuple`s so the primitive specializes the (de)linearization. When an
-  // inner dim is dynamic, its runtime from/to shapes were threaded in as
-  // epilogue shape captures (`$dynamicShapes`) and passed as extra `IndexList`
-  // args; the one primitive reads them only where the static shape is dynamic,
-  // and the backend drops them otherwise (so the static case needs no runtime
-  // shape at all -- the primitive's defaults cover it).
+  // Per-index reshape (store side, inside an epilogue functor): convert the
+  // `Coord` index to an `IndexList`, remap it to the output shape preserving
+  // the row-major offset via `mogg.index.reshape`, and wrap it back into a
+  // `Coord` for `mogg.tensor.store`. Static dims are comptime `IntTuple`s;
+  // dynamic inner dims' from/to shapes arrive as epilogue shape captures
+  // (`$dynamicShapes`), read only where the static shape is dynamic.
   bool isDynamic = !getDynamicShapes().empty();
   auto primDecl =
       state.registry.lookupPrimitive(IndexReshapeOp::getOperationName());
@@ -1605,11 +1525,8 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
                               << IndexReshapeOp::getOperationName());
   MojoValue primitive(primitiveMojoName(primDecl));
 
-  // This op lives inside a fusion-lambda body (the epilogue functor), so its
-  // statements must be emitted through that lambda's own builder -- not
-  // `state.builder` (the enclosing kernel scope), which would put the vars in
-  // the wrong scope and leave the cross-references undeclared. Same pattern as
-  // `TensorLoadOp`/`TensorStoreOp`.
+  // Inside the epilogue functor, emit through the lambda's builder, not
+  // `state.builder` (the kernel scope), as `TensorLoadOp`/`TensorStoreOp` do.
   const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
   ASSERT_STREAM(
       lambdaInfo.lambdaBuilder,
@@ -1633,12 +1550,9 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
       MojoValue("to_static_shape").equal(toStaticShape)};
   SmallVector<MojoValue> primArgs = {idxList};
   if (isDynamic) {
-    // Inside the functor the index carries the store method's ABSTRACT rank
-    // param, so the primitive's inferred `from_rank` cannot unify with the
-    // concrete-rank runtime `from_shape`. Rebind the index list to its own
-    // concrete from-rank first (equal at every instantiation); then the from/to
-    // shapes, bound to `IndexList` functor fields (converted from their
-    // `!mogg.shape` Coord at instantiation), feed the primitive directly.
+    // The index carries the store method's abstract rank param, which can't
+    // unify with the concrete-rank runtime `from_shape`, so rebind it to the
+    // concrete from-rank first (equal at every instantiation).
     // `$dynamicShapes` is [from-shape, to-shape] (see the MAPToMOGG lowering).
     primArgs[0] =
         builder.var(idxList.rebind(MojoValue(kStructIndexList)[MojoValue(
@@ -1654,12 +1568,10 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorCreateTransposeOp::emitMojo(EmitMojoState &state) {
-  // dtype/rank/perm_type are tied to the $input/$perm argument types, so Mojo
-  // infers them at the call site. output_static_shape/static_permutations carry
-  // the compile-time-known parts of the view's shape and permutation (`?` where
-  // a dim's source is only known at runtime); the runtime `$perm` operand
-  // supplies the rest. A fully-static perm never reads it (the primitive elides
-  // the load behind a `comptime if`).
+  // Mojo infers dtype/rank/perm_type from $input/$perm.
+  // output_static_shape/static_permutations carry the compile-time-known parts
+  // (`?` where runtime-only); the runtime `$perm` supplies the rest, and a
+  // fully static perm never reads it.
   auto transposeCreatePrimDecl = state.registry.lookupPrimitive(
       TensorCreateTransposeOp::getOperationName());
   ASSERT_STREAM(transposeCreatePrimDecl,
@@ -1680,10 +1592,8 @@ LogicalResult TensorCreateTransposeOp::emitMojo(EmitMojoState &state) {
 }
 
 bool CallOpaqueOp::isThrows() {
-  // Whether the stub raises depends on the callee kernel, exactly like
-  // `CallExecuteOp::isThrows` reads the flag baked from its execute signature.
-  // Resolve the callee `mogg.kernel.decl` and read its execute function's
-  // signature `raises` bit.
+  // Raises iff the callee's execute signature does, as in
+  // `CallExecuteOp::isThrows`.
   auto decl = mlir::SymbolTable::lookupNearestSymbolFrom<KernelDeclOp>(
       *this, getCalleeAttr());
   if (!decl)
@@ -1702,13 +1612,10 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
   KernelDeclAdaptor execAdaptor(execKernelDecl);
   const KernelDeclFunctionAdaptor &execFnAdaptor = *execAdaptor.executeFunction;
 
-  // Destination-passing-style: outputs first, then inputs, then the device
-  // context(s). The context is the op's own `$device_contexts` operand (wired
-  // by `MAPToMOGG`); append it last to match the execute signature's trailing
-  // `ctx: DeviceContext`. It is variadic: a single `DeviceContext` for an
-  // ordinary kernel, or -- after `ConformCallOperands` -- a single tuple
-  // operand that emits as a `DeviceContextArray` for a distributed kernel.
-  // Either way it is one Mojo value per remaining operand.
+  // DPS: outputs, then inputs, then `$device_contexts` (wired by `MAPToMOGG`)
+  // to match the execute signature's trailing `ctx`. For a distributed kernel
+  // `ConformCallOperands` packed it into one tuple that emits as a
+  // `DeviceContextArray`.
   SmallVector<MojoValue> kernelOperands;
   for (Value out : getOutputs())
     kernelOperands.push_back(state.getMojoValueFor(out));
@@ -1717,10 +1624,9 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
   for (Value ctx : getDeviceContexts())
     kernelOperands.push_back(state.getMojoValueFor(ctx));
 
-  // Unlike the MOGG-ABI path there is no `mogg.bind` for
-  // `getHasEpilogueFusionValue` to detect, so force the kernel's
-  // `has_epilogue_fusion` / `has_prologue_fusion` parameters True here to
-  // match the execute-call wiring.
+  // There is no `mogg.bind` for `getHasEpilogueFusionValue` to detect, so
+  // force `has_epilogue_fusion` / `has_prologue_fusion` True to match the
+  // execute-call wiring.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     if (getHasEpilogueFusion() &&
         paramName == MOGG::kMoggHasEpilogueFusionParameterName)
@@ -1759,7 +1665,7 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult ScalarCreateOp::emitMojo(EmitMojoState &state) {
   const MojoValue &input = state.getMojoValueFor(getTensor());
-  // Reuse the legacy `mogg.as_scalar` primitive: both pack a single-element
+  // Reuse the `mogg.as_scalar` primitive: both pack a single-element
   // tensor operand into the scalar the kernel expects.
   static constexpr llvm::StringLiteral kAsScalarPrimitive = "mogg.as_scalar";
   auto asScalarPrimDecl = state.registry.lookupPrimitive(kAsScalarPrimitive);
@@ -1772,11 +1678,9 @@ LogicalResult ScalarCreateOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
-  // Packs the run of tensor operands into the aggregate their kernel's
-  // `execute` expects. `$variadic_abi` -- set by `ConformCallOperands`
-  // from the callee's variadic parameter type -- selects `VariadicTensors`,
+  // `$variadic_abi` (set by `ConformCallOperands`) selects `VariadicTensors`,
   // `_FusedInputVariadicTensors`, or `_FusedOutputVariadicTensors`, so this
-  // emitter never inspects the producing ops to learn whether they are fused.
+  // never inspects the producing ops.
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getElements());
 
   // Contexts pack into a `DeviceContextArray[N]` instead, via its variadic
@@ -1872,16 +1776,11 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorLoadOp::emitMojo(EmitMojoState &state) {
-  // Reached recursively from whichever caller sets up `currentLambdaInfo`
-  // before lowering its own body -- reads builder/width/alignment by role
-  // rather than assuming a specific caller. Every fusion lane (the foreach
-  // closure and the prologue/epilogue functor) records its receiver's
-  // decomposed `ManagedTensorSlice` (ptr/shape/strides + comptime
-  // `StaticTensorSpec`) via `setFusedTensorArgFor`, so the load goes through
-  // `simd_load_from_tensor_pointer`, which honors the spec's static layout --
-  // stride-correct for a fused view (transpose, non-unit slice, broadcast) --
-  // and its alignment, exactly as the legacy `ManagedTensorSlice.load` did,
-  // with no `TileTensor` materialized.
+  // Several callers set up `currentLambdaInfo`, so builder/width/alignment are
+  // read by role. Every fusion lane records its receiver's decomposed
+  // `ManagedTensorSlice` (ptr/shape/strides + comptime `StaticTensorSpec`) via
+  // `setFusedTensorArgFor`, so `simd_load_from_tensor_pointer` honors the
+  // spec's static layout (stride-correct for fused views) and alignment.
   const FusedTensorArg &arg = state.getFusedTensorArgFor(getTensor());
   const MojoValue &idx = state.getMojoValueFor(getIndex());
   const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
@@ -1936,17 +1835,13 @@ LogicalResult TensorStoreOp::emitMojo(EmitMojoState &state) {
 }
 
 /// One fused-region functor capture, as the enclosing function sees it.
-/// `!mogg.tensor` is an opaque handle (see MOGGTypes.td), so shape / dtype /
-/// mutability live on the op that CREATES the capture, not on the SSA value --
-/// they are read from there, exactly as `CallForeachOp::emitMojo` does.
+/// `!mogg.tensor` is opaque, so shape / dtype / mutability are read from the
+/// op that creates the capture, as in `CallForeachOp::emitMojo`.
 struct FusedCaptureInfo {
   /// The capture's `ManagedTensorSlice`, decomposed into device-passable parts:
-  /// a bare pointer and its runtime shape/strides are enclosing-function locals
-  /// (the functor's instance args, or the closure's captures), and `spec` is
-  /// the comptime `StaticTensorSpec` (the functor's comptime arg, or a
-  /// closure-scope comptime alias). Load/store go through
-  /// `simd_{load_from,store_into}` on these, so no `TileTensor` is ever
-  /// materialized.
+  /// pointer and runtime shape/strides as enclosing-function locals, and
+  /// `spec`, the comptime `StaticTensorSpec`. Load/store go through
+  /// `simd_{load_from,store_into}` on these.
   MojoValue ptr;
   MojoValue shape;
   MojoValue strides;
@@ -1957,19 +1852,15 @@ struct FusedCaptureInfo {
 };
 
 /// Collects per-capture metadata for a fused-region functor. Baking dtype/mut
-/// in as literals (rather than making them struct params) is what keeps values
-/// loaded from a capture statically typed inside the functor's method body, so
-/// a fused producer's `elementwise` call resolves without a rebind at each
-/// load site.
+/// as literals rather than struct params keeps capture loads statically typed
+/// in the method body, so no rebind is needed per load site.
 static FailureOr<SmallVector<FusedCaptureInfo>>
 collectFusedCaptureInfos(EmitMojoState &state, Operation *op,
                          ValueRange captures) {
   SmallVector<FusedCaptureInfo> infos;
   for (Value cap : captures) {
-    // Element type / mutability are read off whichever `mogg.tensor.create*`
-    // op produced this capture through `TensorCreateInterface` -- everything
-    // else here comes off the capture's own already-emitted Mojo value
-    // instead (see below).
+    // Element type / mutability come from the producing `mogg.tensor.create*`
+    // op; everything else from the capture's emitted Mojo value.
     auto create = cap.getDefiningOp<TensorCreateInterface>();
     if (!create)
       return op->emitOpError(
@@ -1979,21 +1870,14 @@ collectFusedCaptureInfos(EmitMojoState &state, Operation *op,
     if (capDtypeOr.isError())
       return op->emitOpError("failed to convert capture dtype to Mojo");
 
-    // Decompose the capture's `ManagedTensorSlice` into device-passable parts:
-    // a bare pointer plus its runtime shape/strides, and its comptime
-    // `StaticTensorSpec`. A view (slice/broadcast/transpose/reshape) has
-    // already folded its access pattern into these -- strided for a slice,
-    // zero-strided for a broadcast, permuted for a transpose -- so
-    // `simd_load_from_tensor_ pointer` reads exactly what the slice would.
-    // `spec` is a comptime alias in the enclosing scope so it is nameable both
-    // where the functor is instantiated and inside a foreach closure that
-    // captures trivial values only (the raw `mts.static_spec` would reference
-    // the un-captured slice there).
+    // Views have already folded their access pattern into the decomposed
+    // pointer/shape/strides. `spec` is a comptime alias in the enclosing scope
+    // so it is nameable where the functor is instantiated and inside a
+    // trivially-capturing foreach closure (where `mts.static_spec` would
+    // reference the uncaptured slice).
     ManagedTensorSliceRef capRef(state.getMojoValueFor(cap));
-    // `unsafe_ptr()` erases the origin to `MutAnyOrigin`, matching both the
-    // functor's `@__allow_legacy_any_origin_fields` pointer field and
-    // `simd_*_tensor_pointer`'s own `ptr` parameter (mutable-any, even for an
-    // input load) -- exactly as the legacy `FusionStruct` captured it.
+    // `unsafe_ptr()` erases the origin to `MutAnyOrigin`, matching the
+    // functor's pointer field and `simd_*_tensor_pointer`'s `ptr` parameter.
     MojoValue ptr = state.builder.var(capRef.unsafePtr());
     MojoValue shape = state.builder.var(capRef.shape());
     MojoValue strides = state.builder.var(capRef.strides());
@@ -2005,17 +1889,6 @@ collectFusedCaptureInfos(EmitMojoState &state, Operation *op,
   return infos;
 }
 
-/// A zero-size, dangling `ManagedTensorSlice` that exists purely to carry a
-/// TYPE: nothing is ever read or written through its pointer, because every
-/// access goes through the fusion functor bound onto it.
-///
-/// A dtype-changing epilogue needs this. The kernel must receive a slice of the
-/// dtype it COMPUTES (f32), while the real output it ultimately lands in has
-/// the stored dtype (si32) and reaches the functor as capture 0 instead. Since
-/// `_bind_to_fused_output` preserves its receiver's dtype, binding onto the
-/// real output would hand the kernel the wrong one. Mirrors what the MOGG-ABI
-/// path materializes as `mogg.empty_buffer` + `mogg.tensor.__init__`, and what
-/// `TensorCreatePrologueOp::emitMojo`'s MTS lane already builds.
 // Builds a `ManagedTensorSlice` over `ptr` with `layout`/`dtype`/`rank`, via
 // the `mogg.tensor.__init__` primitive. `ptr` may be a real base pointer (so an
 // accumulating kernel can accumulate through it) or a dangling one (for a
@@ -2035,6 +1908,11 @@ static MojoValue emitBaseSliceFromPtr(EmitMojoState &state, MojoValue dtype,
        layout}));
 }
 
+/// A dangling `ManagedTensorSlice` that only carries a type; every access goes
+/// through the fusion functor bound onto it. A dtype-changing epilogue needs
+/// it: the kernel gets a slice of its compute dtype (f32), while the real
+/// output (si32) reaches the functor as capture 0, since
+/// `_bind_to_fused_output` preserves its receiver's dtype.
 static MojoValue emitDanglingBaseSlice(EmitMojoState &state, MojoValue dtype,
                                        unsigned rank, MojoValue layout,
                                        MojoValue alignment) {
@@ -2069,15 +1947,12 @@ static FailureOr<unsigned> fusedRegionRank(Operation *op, Value shape) {
 namespace {
 
 /// One MOGG-ABI fusion-lambda flavor. The load side (`map.iter.prologue`) and
-/// the store side (`map.iter.epilogue`) differ only in the trait they conform
-/// to, the method they implement, and whether that method returns a value --
-/// everything else (capture fields, the `TileTensor` rebuild, the recursive
-/// body walk, instantiation) is identical. Mirrors the MOGG-ABI
-/// `emitFusionStruct`'s trait/method selection for the MAP ops.
+/// the store side (`map.iter.epilogue`) differ only in the trait, the method,
+/// and whether it returns a value. Mirrors `emitFusionStruct`'s trait/method
+/// selection.
 struct FusionLambdaInfo {
-  /// A prefix handed to `getIdentifier`, which mints a unique struct name from
-  /// it (`EpilogueStoreFunctor_6`). Not a Mojo expression, so it stays a plain
-  /// string.
+  /// Prefix for `getIdentifier`, which mints a unique struct name from it
+  /// (`EpilogueStoreFunctor_6`).
   llvm::StringRef structName;
   MojoValue traitName;
   MojoValue methodName;
@@ -2089,11 +1964,9 @@ struct FusionLambdaInfo {
   /// one.
   bool takesValue = false;
   /// The MTS-bind traits (`managed_tensor_slice.InputFusion`/`OutputFusion`)
-  /// spell the method's index `IndexList[rank]`; the inline trait-wrapper
-  /// traits
+  /// spell the index `IndexList[rank]`; the trait-wrapper traits
   /// (`InputLoadFusion`/`OutputStoreFusion`/`TransformFusion`) spell it `Coord`
-  /// and name the method `__call__`. When true the method takes `idx: Coord`
-  /// directly (the body already works in `Coord`, so no conversion is emitted).
+  /// and name the method `__call__`, which then takes `idx: Coord` directly.
   bool coordIndex = false;
 };
 
@@ -2113,11 +1986,9 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
   unsigned numShapeCaptures = shapeCaptureRanks.size();
   MojoValue structNameVal = state.structDefsBuilder.newVar(
       state.structDefsBuilder.getIdentifier(lane.structName.str()));
-  // One comptime `StaticTensorSpec` param per capture, with a CONCRETE dtype
-  // (so the method body's `simd_*_tensor_pointer` calls infer `dtype` from
-  // `Self.spec_j`) but an inferred rank/layout (`_`, since a view capture's
-  // spec carries a symbolic rank -- `len[IntTuple](...)` -- that would not
-  // unify with a spelled literal). Read back positionally as
+  // One comptime `StaticTensorSpec` param per capture with a concrete dtype
+  // (so `simd_*_tensor_pointer` infers it) but inferred rank/layout (`_`: a
+  // view's symbolic rank wouldn't unify with a literal). Read back as
   // `sb.parameters[j]`.
   SmallVector<NamedMojoDef> structParams;
   for (unsigned j = 0; j < numCaptures; ++j)
@@ -2128,16 +1999,12 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
                       .str())));
 
   // Shape captures (dynamic reshape runtime shapes) become trailing
-  // `IndexList[rank]` fields -- their rank is a compile-time literal, so unlike
-  // the tensor captures' layout they need no struct param. Minted in the field
-  // loop, read back when the body binds the shape-capture block args.
+  // `IndexList[rank]` fields; their literal rank needs no struct param.
   SmallVector<MojoValue> shapeCaptureFields(numShapeCaptures);
 
-  // The functor-side names for each capture -- the (ptr, shape, strides) field
-  // identifiers and the `Self.`-qualified `StaticTensorSpec` param. Minted in
-  // the struct-declaration callback below, read back where the method body
-  // records each capture's decomposed MTS components. Local to this function
-  // since that is the only place they are meaningful.
+  // Functor-side names per capture: the (ptr, shape, strides) fields and the
+  // `Self.`-qualified spec param, minted in the struct callback below and read
+  // back in the method body.
   SmallVector<MojoValue> selfPtrFields(numCaptures);
   SmallVector<MojoValue> selfShapeFields(numCaptures);
   SmallVector<MojoValue> selfStridesFields(numCaptures);
@@ -2172,17 +2039,13 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
               MojoValue(kStructIndexList)[MojoValue(
                   static_cast<uint64_t>(shapeCaptureRanks[k]))]);
 
-        // The method must match the conformed trait's shape
-        // (managed_tensor_slice.mojo) -- the corresponding `_bind_to_fused_*`
-        // only accepts a functor conforming to it. Parameter NAMES are not
-        // part of that: Mojo matches trait parameters positionally, and the
-        // body references them by position too. They are spelled as the traits
-        // spell them anyway, so the generated source reads like the trait.
+        // The method must match the conformed trait (managed_tensor_slice.mojo)
+        // for `_bind_to_fused_*` to accept it. Parameters match positionally;
+        // names follow the trait for readability.
         //
-        // A body terminated by `mogg.yield` is one whose method returns that
-        // value; a store-lane body owns its store and returns nothing. That is
-        // a property of the region, so read it from there rather than carrying
-        // it on the lane, where it could disagree.
+        // A `mogg.yield`-terminated body returns that value; a store-lane body
+        // returns nothing. Read it off the region so it can't disagree with the
+        // lane.
         bool returnsValue = isa<YieldOp>(region.front().back());
         MojoValue simdType = MojoValue(kStructSIMD)[{
             MojoValue(kParameterDType), MojoValue(kParameterSimdWidth)}];
@@ -2214,17 +2077,12 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
                           /*widthParameter=*/fb.parameters[2],
                           /*alignmentParameter=*/fb.parameters[3]});
 
-              // The recursively-lowered body's `TensorLoadOp`/`TensorStoreOp`
-              // call into the stride-aware primitive, which takes a `Coord`,
-              // not an `IndexList` -- `idx` needs converting once, up front.
-              // Uses `Coord`'s own `IndexList`-taking constructor
-              // (coord.mojo), which fills every position from the runtime
-              // index list; `_index_list_to_static_coord` is the wrong tool
-              // here -- it assumes statically-shaped positions are already
-              // known and ignores the input value for them, which is correct
-              // for a shape descriptor but wrong for a genuinely varying
-              // per-element loop index. The trait-wrapper lane already receives
-              // a `Coord`, so it is used directly.
+              // The stride-aware primitive takes a `Coord`, so convert `idx`
+              // once via `Coord`'s `IndexList` constructor (coord.mojo). Not
+              // `_index_list_to_static_coord`, which ignores the input at
+              // statically shaped positions: right for a shape, wrong for a
+              // varying loop index. The trait-wrapper lane already has a
+              // `Coord`.
               MojoValue coordIdx =
                   lane.coordIndex ? fb.arguments[1]
                                   : state.structDefsBuilder.var(MojoValue(
@@ -2234,12 +2092,9 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
               // lane's leads with [index] alone. Captures follow either way.
               unsigned captureBase = 1;
               if (lane.takesValue) {
-                // `value`'s declared type is `SIMD[dtype, width]`, where
-                // `dtype` is the method's own generic parameter -- still
-                // symbolic inside this body. Recursively-lowered elementwise
-                // calls hardcode their own dtype to `valueDtype`'s literal
-                // (computed in the outer, non-generic scope from MLIR), so
-                // rebind `value` to that same concrete type to unify.
+                // `value` is `SIMD[dtype, width]` with the method's generic
+                // `dtype`; nested elementwise calls hardcode `valueDtype`'s
+                // literal, so rebind `value` to it.
                 MojoValue reboundVal = state.structDefsBuilder.var(
                     fb.arguments[2].rebind(MojoValue(
                         kStructSIMD)[{valueDtype, fb.parameters[2]}]));
@@ -2251,14 +2106,9 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
               }
 
               for (unsigned j = 0; j < numCaptures; ++j) {
-                // Each capture gets its own fresh block arg (not an alias to
-                // the outer `capturing(...)` operand). Record its decomposed
-                // MTS components off the struct's own fields/param, so the
-                // body's `TensorLoadOp`/`TensorStoreOp` emit
-                // `simd_{load_from,store_ into}_tensor_pointer` -- no
-                // `TileTensor` is materialized. The `StaticTensorSpec` carries
-                // the source's static alignment, so no separate alignment
-                // threading is needed.
+                // Each capture gets a fresh block arg. Record its decomposed
+                // MTS components off the struct's fields/param for the body's
+                // loads/stores; the spec carries the static alignment.
                 Value captureArg = region.getArgument(captureBase + j);
                 state.setFusedTensorArgFor(
                     captureArg,
@@ -2276,9 +2126,7 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
                     MojoValue(kParameterSelf).get(shapeCaptureFields[k]));
 
               Block &body = region.front();
-              // Every op lowers except a `mogg.yield`, which is handled
-              // separately below: it becomes the method's return rather than a
-              // lowered statement.
+              // A `mogg.yield` becomes the method's return, handled below.
               errOccurred = llvm::any_of(body, [&](Operation &op) {
                 if (isa<YieldOp>(op))
                   return false;
@@ -2349,11 +2197,9 @@ LogicalResult TensorCreateEpilogueOp::verify() {
 }
 
 LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
-  // Emit the MTS-free output-store fusion FUNCTOR +
-  // `_MoggOutputStoreFusionTensor` wrapper for a MOGG-ABI fused output. The
-  // functor's `__call__` body is built by recursively lowering this op's own
-  // epilogue body ops (mirroring `emitMojoMOGGABI`'s stub-body walk) rather
-  // than hand-rendered from a fixed template.
+  // Emit the output-store fusion functor + `_MoggOutputStoreFusionTensor`
+  // wrapper for a MOGG-ABI fused output; `__call__` recursively lowers this
+  // op's epilogue body (as `emitMojoMOGGABI` walks a stub body).
   if (getCaptures().empty())
     return emitOpError(
         "requires at least one (store-target) capture to fuse into");
@@ -2362,40 +2208,33 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   // `_MoggOutputStoreFusionTensor`) once, exactly as the MOGG-ABI store path.
   state.emitOutputStoreFusionDefsOnce();
 
-  // The epilogue's own output dtype, used to rebind the inbound `value` (which
-  // arrives typed by the trait method's own abstract `dtype` param). Each
-  // capture's dtype/layout/mut come from its own defining op instead -- see
-  // `collectFusedCaptureInfos`.
+  // The epilogue's output dtype, to rebind the inbound `value` (typed by the
+  // trait method's abstract `dtype`). Capture dtypes come from their defining
+  // ops (see `collectFusedCaptureInfos`).
   ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(getElementType());
   if (dtypeOr.isError())
     return emitOpError("failed to convert epilogue element type to Mojo");
   MojoValue dtypeParam = state.mlirDTypeToMojoType(*dtypeOr);
 
-  // The dtype the KERNEL hands in, which after a dtype-changing epilogue
-  // fusion (`mo.cast`) is NOT the output dtype: `EpilogueFuser` retypes the
-  // store path to the consumer's type while the body's leading value arg keeps
-  // the producer's. Rebinding the incoming value to `dtypeParam` would emit
-  // `rebind[SIMD[si32, w]](SIMD[f32, w])`, which Mojo rejects -- `rebind`
-  // needs the two types equal at instantiation.
+  // The dtype the kernel hands in, which after a dtype-changing epilogue
+  // fusion (`mo.cast`) is not the output dtype; rebinding to `dtypeParam` would
+  // emit `rebind[SIMD[si32, w]](SIMD[f32, w])`, which Mojo rejects.
   ErrorOr<DType> inDtypeOr =
       M::MO::fromMLIRType(getBody().getArgument(0).getType());
   if (inDtypeOr.isError())
     return emitOpError("failed to convert epilogue input type to Mojo");
   MojoValue inputDtypeParam = state.mlirDTypeToMojoType(*inDtypeOr);
 
-  // The functor conforms to `OutputFusion`: one `LayoutType` param and one
-  // (ptr, layout) field pair PER CAPTURE -- today usually just the store
-  // target, but a fused binary elementwise op adds one per extra input, each
-  // with its own load.
+  // One `LayoutType` param and (ptr, layout) field pair per capture: the store
+  // target, plus one per extra input of a fused binary elementwise op.
   FailureOr<SmallVector<FusedCaptureInfo>> captureInfosOr =
       collectFusedCaptureInfos(state, *this, getCaptures());
   if (failed(captureInfosOr))
     return failure();
   SmallVector<FusedCaptureInfo> captureInfos = *captureInfosOr;
 
-  // The body shape says which flavor: `MAPToMOGG` builds a yield-terminated
-  // body exactly when it decided a compute lambda, so emit reads the decision
-  // off the IR rather than re-deriving it. `compute` is `store` plus a return.
+  // `MAPToMOGG` builds a yield-terminated body exactly for a compute lambda;
+  // `compute` is `store` plus a return.
   bool isCompute = isa<YieldOp>(getBody().front().back());
 
   const FusionLambdaInfo storeLane = {
@@ -2414,12 +2253,9 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   };
 
   // A trait-ABI fused output (`Some[Output & Fused & StoreAccess]`, `$contract`
-  // stamped at MAP lowering) wants the functor in the inline
-  // `OutputStoreFusion` shape (Coord `__call__`, `width: Int`) wrapped in the
-  // device-passable
-  // `_MoggOutputStoreFusionTensor`; the legacy MTS API binds the
-  // `managed_tensor_slice.OutputFusion` shape onto a base slice.
-  // Transform-access trait outputs are a later slice.
+  // stamped at MAP lowering) wants the inline `OutputStoreFusion` functor shape
+  // (Coord `__call__`, `width: Int`) in `_MoggOutputStoreFusionTensor`; the MTS
+  // API binds the `managed_tensor_slice.OutputFusion` shape onto a base slice.
   bool wrapStore =
       getContract() && bitEnumContainsAny(getContract()->getAccess(),
                                           MOGG::TensorArgAccessKind::store);
@@ -2510,10 +2346,8 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   }
 
   if (wrapStore) {
-    // Wrap the functor in the conforming, device-passable
-    // `_MoggOutputStoreFusionTensor` -- the functor already owns its store to
-    // its captured store-target, so no base slice / `_bind_to_fused_output` is
-    // needed. Sourced from this op's own device/shape.
+    // The functor owns its store to the captured target, so no base slice or
+    // `_bind_to_fused_output` is needed.
     StringRef deviceLabel = getDevice();
     bool devicePassable = deviceLabel != kCPULabel;
     MojoValue alignmentParam(static_cast<uint64_t>(
@@ -2532,27 +2366,18 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
     return success();
   }
 
-  // Bind the functor directly onto the store target's own (unfused)
-  // ManagedTensorSlice via `tensorValue._bind_to_fused_output(fusion)`.
-  // `_bind_to_fused_output` returns `ManagedTensorSlice[..., io_spec=
-  // IOSpec.FusedOutput, static_spec=Self.static_spec.with_output_fusion[F]()]`
-  // -- a real ManagedTensorSlice with a real, resolvable `static_spec`, unlike
-  // the standalone `_MoggOutputStoreFusionTensor` wrapper this used to build
-  // (which is not a ManagedTensorSlice at all and cannot convert to the
-  // ManagedTensorSlice-based `FusedOutputTensor` a kernel signature declares).
-  // Exception, as in the legacy lane: a dtype-changing epilogue binds onto a
-  // type-only dangling slice carrying the dtype the kernel COMPUTES, and
-  // reaches the real (differently-typed) output through capture 0 instead.
+  // Bind the functor onto the store target's ManagedTensorSlice via
+  // `_bind_to_fused_output`, giving a ManagedTensorSlice with a resolvable
+  // `static_spec` that converts to the kernel's `FusedOutputTensor`. A
+  // dtype-changing epilogue binds onto a slice of the computed dtype and
+  // reaches the real output through capture 0.
   ASSERT_STREAM(!isCompute || inputDtypeParam.text == dtypeParam.text,
                 "a compute lambda cannot change dtype; `MAPToMOGG` classifies "
                 "a dtype-changing epilogue as a store lambda");
-  // Build the kernel-facing base slice over the epilogue's own `$outputPtr`
-  // (which `AllocateAccumulatingBuffers` set to the store target, or to a
-  // pre-cast accumulation buffer for a mixed-precision accumulating kernel).
-  // It is real storage of the dtype the kernel computes in (`inputDtypeParam`),
-  // so an accumulating kernel accumulates through it; a non-accumulating one
-  // ignores it and the lambda does the store. This replaces the old dangling
-  // null slice that crashed CPU accumulation.
+  // The base slice is over `$outputPtr` (the store target, or a pre-cast
+  // accumulation buffer for a mixed-precision accumulating kernel): real
+  // storage of the compute dtype, so an accumulating kernel accumulates
+  // through it; otherwise the lambda does the store.
   FailureOr<unsigned> baseRank = fusedRegionRank(*this, getShape());
   if (failed(baseRank))
     return failure();
@@ -2577,35 +2402,26 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
-  // Emit the input-load fusion FUNCTOR for a fused input. Load-side sibling of
-  // `TensorCreateEpilogueOp::emitMojo`: the tensor the kernel reads never
-  // materializes (fusion is what produces its values), and the functor RETURNS
-  // the loaded value instead of consuming one, so its body ends by rebinding
-  // the yielded value to the method's own generic dtype. Captures are optional,
-  // where the epilogue must have its store target -- fusing a constant producer
-  // leaves none, and the body reads only literals.
+  // Emit the input-load fusion functor, the load-side sibling of
+  // `TensorCreateEpilogueOp::emitMojo`: the tensor never materializes, and the
+  // functor returns the loaded value, rebound to the method's generic dtype.
+  // Captures are optional; a fused constant producer has none.
   //
-  // Two consumer ABIs, selected by `$contract` (stamped at MAP lowering so emit
-  // never walks to the consumer):
-  //   - trait (`Some[Input & Fused & LoadAccess]`): the functor takes the
-  //   inline
-  //     `InputLoadFusion` shape (Coord `__call__`) and is wrapped in the
-  //     device-passable `_MoggInputLoadFusionTensor`.
-  //   - legacy MTS API (`FusedInputTensor`): the functor takes the
-  //     `managed_tensor_slice.InputFusion` shape (IndexList `load`) and is
-  //     bound onto a type-only dangling base slice.
+  // `$contract` (stamped at MAP lowering) selects the consumer ABI:
+  //   - trait (`Some[Input & Fused & LoadAccess]`): the inline
+  //     `InputLoadFusion` shape (Coord `__call__`), wrapped in
+  //     `_MoggInputLoadFusionTensor`.
+  //   - MTS API (`FusedInputTensor`): the `managed_tensor_slice.InputFusion`
+  //     shape (IndexList `load`), bound onto a type-only dangling base slice.
 
-  // The dtype the kernel reads through this tensor. Each capture's
-  // dtype/layout/mut come from its own defining op instead -- see
-  // `collectFusedCaptureInfos`.
+  // The dtype the kernel reads; capture dtypes come from their defining ops.
   ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(getElementType());
   if (dtypeOr.isError())
     return emitOpError("failed to convert prologue element type to Mojo");
   MojoValue dtypeParam = state.mlirDTypeToMojoType(*dtypeOr);
 
-  // The functor conforms to `InputFusion`: one `LayoutType` param and one
-  // (ptr, layout) field pair PER CAPTURE -- a fused binary elementwise
-  // producer captures both its own inputs, each with its own load.
+  // One `LayoutType` param and (ptr, layout) field pair per capture (a fused
+  // binary producer captures both inputs).
   FailureOr<SmallVector<FusedCaptureInfo>> captureInfosOr =
       collectFusedCaptureInfos(state, *this, getCaptures());
   if (failed(captureInfosOr))
@@ -2640,10 +2456,8 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
     state.emittedInputLoadFusionArgDefs = true;
   }
 
-  // An inner-dynamic load-index reshape carries its runtime from/to shapes as
-  // trailing shape captures, exactly as the epilogue's store-index one does:
-  // convert each `!mogg.shape` Coord to the `IndexList` the reshape primitive
-  // wants, and pass its rank so the functor declares the matching field.
+  // Inner-dynamic load-index reshapes carry runtime shapes as trailing shape
+  // captures, as in the epilogue.
   SmallVector<unsigned> shapeCaptureRanks;
   SmallVector<MojoValue> shapeCaptureArgs;
   for (Value shapeCap : getShapeCaptures()) {
@@ -2671,11 +2485,8 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
       M::Driver::getPreferredAlignment(getDevice().str())));
 
   if (traitFused) {
-    // Wrap the functor in the conforming, device-passable
-    // `_MoggInputLoadFusionTensor`, sourced from this op's own device/shape
-    // rather than a walked capture. On CPU the host proxy runs the load
-    // (`_access_enabled`);
-    // on GPU the projected `device_type` does, so the host proxy disables it.
+    // On CPU the host proxy runs the load (`_access_enabled`); on GPU the
+    // projected `device_type` does, so the host proxy disables it.
     StringRef deviceLabel = getDevice();
     bool devicePassable = deviceLabel != kCPULabel;
     MojoValue wrapper = MojoValue("_MoggInputLoadFusionTensor")(
@@ -2701,9 +2512,7 @@ LogicalResult TensorCreatePrologueOp::emitMojo(EmitMojoState &state) {
 bool CallForeachOp::isThrows() { return true; }
 
 // Collects the distinct MO dtypes touched anywhere in `body` as a
-// `StaticTuple[DType, N]` MojoValue for `get_simd_width_for_dtypes` --
-// mirrors legacy `CallForeachOp::emitMojo`'s dtype-collection walk, but more
-// general (walks the whole body, not just each capture's defining op).
+// `StaticTuple[DType, N]` MojoValue for `get_simd_width_for_dtypes`.
 static FailureOr<MojoValue> collectDtypesTuple(EmitMojoState &state,
                                                Region &body) {
   llvm::SmallSetVector<DType, 4> dtypes;
@@ -2728,26 +2537,18 @@ static FailureOr<MojoValue> collectDtypesTuple(EmitMojoState &state,
 }
 
 LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
-  // Emits the per-index closure directly (not a struct + `__call__` the way
-  // `TensorCreateEpilogueOp` builds one), then calls `_foreach` with it.
-  // `_foreach`'s `Lambda` parameter needs a blanket `{var}` capture clause,
-  // confirmed empirically to be the only convention that works for a closure
-  // capturing register-passable values -- see `MojoBuilder::lambda`'s
-  // `captureConvention` doc. Exactly like the prologue/epilogue functor, each
-  // source is captured as its decomposed `ManagedTensorSlice` components (a
-  // bare pointer + runtime shape/strides, all `DevicePassable`, plus a comptime
-  // `StaticTensorSpec`), so its load/store go through
-  // `simd_{load_from,store_into}_tensor_pointer` -- one uniform fused-access
-  // path across the foreach closure and the fusion functors, with no
-  // `TileTensor`.
+  // Emits the per-index closure directly, then calls `_foreach` with it.
+  // `_foreach`'s `Lambda` parameter needs a blanket `{var}` capture clause, the
+  // only convention that works for a closure capturing register-passable
+  // values (see `MojoBuilder::lambda`'s `captureConvention`). As in the fusion
+  // functors, each source is captured as its decomposed `ManagedTensorSlice`
+  // components, so loads/stores go through
+  // `simd_{load_from,store_into}_tensor_pointer`.
   //
-  // The closure's comptime parameter list is exactly `[width,
-  // element_alignment]`. `TensorLoadOp`/`TensorStoreOp::emitMojo` read
-  // width/alignment/builder by role from `state.currentLambdaInfo` (set up
-  // via `LambdaInfosGuard` below) rather than by position, since
-  // `TensorCreateEpilogueOp::emitMojo`'s `__call__` has a different,
-  // 4-parameter list. Every op in the body dispatches uniformly through
-  // `state.lowerOpToMojo` below.
+  // The closure's comptime parameters are `[width, element_alignment]`;
+  // `TensorLoadOp`/`TensorStoreOp` read them by role from
+  // `state.currentLambdaInfo` (set via `LambdaInfosGuard` below), since the
+  // epilogue `__call__` has a different list.
   MojoValue shape = state.getMojoValueFor(getShape());
   MojoValue context = state.getMojoValueFor(getContext());
   ValueRange capturing = getCapturing();
@@ -2762,11 +2563,9 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
     return failure();
   SmallVector<FusedCaptureInfo> captureInfos = *captureInfosOr;
 
-  // The device is the op's own `$device` attribute.
   MojoValue targetStr = MojoValue(("\"" + getDevice() + "\"").str());
 
-  // Infer simd_width from all dtypes touched anywhere in the closure body,
-  // mirroring legacy `foreach_fusion`'s own computation.
+  // Infer simd_width from all dtypes touched anywhere in the closure body.
   FailureOr<MojoValue> dtypesTuple = collectDtypesTuple(state, getBody());
   if (failed(dtypesTuple))
     return emitOpError("mogg.call.foreach: could not determine capture dtype");
@@ -2793,11 +2592,9 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
         Block &body = getBody().front();
         ArrayRef<BlockArgument> args = body.getArguments();
         for (unsigned i = 0; i < captureInfos.size(); ++i) {
-          // Record the capture's decomposed MTS components (ptr/shape/strides +
-          // comptime spec) the closure captured, so the body's `TensorLoadOp`/
-          // `TensorStoreOp` emit `simd_{load_from,store_into}_tensor_pointer`
-          // with no `TileTensor`. The closure captures trivial values only, so
-          // all are nameable here.
+          // Record the captured decomposed MTS components for the body's
+          // loads/stores; the closure captures trivial values only, so all are
+          // nameable here.
           const FusedCaptureInfo &info = captureInfos[i];
           state.setFusedTensorArgFor(
               args[i], {info.ptr, info.shape, info.strides, info.spec});
@@ -2947,12 +2744,9 @@ LogicalResult GenericCompiledRegionOp::verify() {
     }
   }
 
-  // Each body block argument is a `!mogg.async<T>` wrapping the corresponding
-  // operand type `T`. The region boundary wraps operands into async values on
-  // entry; the body unpacks them via `mogg.async.unpack`. Arguments that are
-  // deliberately consumed as the raw async slot (e.g. a context) may instead be
-  // retyped to the plain operand type `T` during ABI lowering, so both forms
-  // are accepted.
+  // Each body block argument is a `!mogg.async<T>` wrapping its operand type
+  // `T`, unpacked via `mogg.async.unpack`; one consumed as the raw async slot
+  // (e.g. a context) may be retyped to plain `T` during ABI lowering.
   for (auto [operandType, argType] :
        llvm::zip(getOperandTypes(), body.getArgumentTypes())) {
     if (argType == operandType)
@@ -3072,8 +2866,6 @@ static LogicalResult sinkChainCreateOperands(GenericCompiledRegionOp op,
   SmallVector<Value> operandsToKeep;
   SmallVector<Value> newOperands;
 
-  // Collect all operands from grt.chain.create and their corresponding
-  // block arguments when the block argument is unused.
   for (OpOperand &operand : op.getOperandsMutable()) {
     BlockArgument bodyArgument = body.getArgument(operand.getOperandNumber());
 
@@ -3108,13 +2900,11 @@ static LogicalResult sinkChainCreateOperands(GenericCompiledRegionOp op,
     op.getOperandsMutable().append(operandsToKeep);
     op.getOperandsMutable().append(newOperands);
 
-    // Update the body block arguments
-    // Erase block that correspond to the removed chain arguments
+    // Erase the block args of the removed chain operands.
     Block &entryBlock = *op.getBody().begin();
     entryBlock.eraseArguments(blockArgsToRemove);
     entryBlock.addArguments(newTypes, newLocs);
 
-    // Only update the inout signature if we actually have an InOutSignature.
     if (op.getInOutSignature().size() != 0) {
       // Update the InOutSignatureAttr by removing the entries corresponding
       // to removed arguments and appending a `kNone` for each new argument.
@@ -3157,9 +2947,7 @@ static LogicalResult removeRedundantResults(GenericCompiledRegionOp op,
   if (toRemoveBits.none())
     return rewriter.notifyMatchFailure(op, "no removable outputs");
 
-  // Always keep the last chain output (collapsing any duplicates into it) so
-  // error/side-effect propagation and async-completion sequencing are
-  // preserved. Uses of the removed chains are rewired to this one.
+  // The last chain output is always kept; removed chains are rewired to it.
   std::optional<unsigned> keptChainNewIdx;
   for (OpOperand &operand : llvm::reverse(outputOp->getOpOperands())) {
     if (isa<MEF::ChainType>(operand.get().getType())) {
@@ -3245,9 +3033,7 @@ LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ToMGPFromOpaqueOp::emitMojo(EmitMojoState &state) {
-  // This operation is a no-op type conversion from mo.opaque to mgp.opaque.
-  // In emit-mojo path, both types represent the same underlying value, so we
-  // just pass through the Mojo value from the input to the output.
+  // In the emit-mojo path mo.opaque and mgp.opaque are the same value.
   state.setMojoValueFor(getDataPointer(), state.getMojoValueFor(getInput()));
   return success();
 }
@@ -3345,19 +3131,16 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 
   MojoValue finalValue = state.builder.var(unpackedValue);
 
-  // For opaque types, we need to bitcast and dereference from
-  // LegacyOpaquePointer to the actual parameterized type.
-  // Store the pointer in a variable, then dereference at use site.
-  // This generates: var_XX = value.unsafe_bitcast[Type]()
-  //                 ... later: var_XX[]
+  // Opaque types: bitcast from LegacyOpaquePointer to the parameterized type,
+  // then dereference at the use site:
+  //   var_XX = value.unsafe_bitcast[Type]()
+  //   ... later: var_XX[]
   if (auto opaqueType = dyn_cast<MO::OpaqueType>(getType())) {
     MojoValue baseTy = state.mlirOpaqueTypeToMojoType(opaqueType);
     auto params = EmitMojoState::getOpaqueTypeParameters(opaqueType);
     MojoValue opaqueTypeStr = params.empty() ? baseTy : baseTy[params];
     OpaquePointerRef opaquePtr(finalValue);
-    // Store the pointer in a variable
     MojoValue ptrVar = state.builder.var(opaquePtr.bitcast(opaqueTypeStr)());
-    // The value to use is the dereference expression: var_XX[]
     finalValue = state.builder.var(OpaquePointerRef(ptrVar).takePointee());
   }
 
@@ -3461,9 +3244,8 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
       static_cast<uint64_t>(M::Driver::getPreferredAlignment(
           MO::getDeviceOrDefaultAny(tensorTy).getLabel().str())));
   // Encode the shape as a `Coord` (static dims as `Idx[N]`, dynamic dims as
-  // `Scalar[DType.int](<dim>)`), then build a row-major `Layout` from it. The
-  // layout conveys the static/dynamic structure to `mogg_tensor_init` through
-  // its Coord element types instead of a separate static-layout parameter.
+  // `Scalar[DType.int](<dim>)`) and build a row-major `Layout`, whose Coord
+  // element types convey the static/dynamic structure to `mogg_tensor_init`.
   auto shapeVar = state.builder.var(
       state.getShapeAsCoordMojoValue(tensorTy.getShape(), getDims()));
   auto layoutVar = state.builder.var(MojoValue(kFnRowMajor)({}, {shapeVar}));
@@ -3489,22 +3271,14 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 // TensorArgInitOp
 //===----------------------------------------------------------------------===//
 
-// Inline Mojo definitions for the dense trait tensor-argument struct.
-//
-// We do not land a committed library type yet; instead we emit a single struct
-// definition directly into the generated Mojo module (D9 "DenseTensorArg only
-// inside the emitted mojo"). ONE struct serves both CPU and GPU (mirroring the
-// shared `EmitMojoDenseTensor` in tensor-trait-mockups/dense_tensor_args.mojo):
-// the storage is always a pointer, and `_is_device_passable` selects whether
-// the value also crosses to the device. `_can_project_tile_tensor` is an
-// independent boolean that gates top-level `TileTensorable` conformance; it is
-// true for CPU and GPU kernels, where the pointer-backed storage can be viewed
-// as a `TileTensor` at the execute boundary, and false for accelerator targets
-// whose handles cannot be directly reinterpreted as tiles. CPU passes
-// `device_passable = False` and runs the host `TileTensorable` projection; GPU
-// passes `device_passable = True`, and the resulting `TileTensor` is itself
-// `DevicePassable` so it can cross to the device kernel. Emitted once per
-// module, guarded by `EmitMojoState::emittedDenseTensorArgDefs`.
+// Inline Mojo definitions for the dense trait tensor-argument struct, emitted
+// once per module (guarded by `EmitMojoState::emittedDenseTensorArgDefs`). One
+// struct serves CPU and GPU: storage is always a pointer, and
+// `_is_device_passable` selects whether it crosses to the device (the
+// projected `TileTensor` is itself `DevicePassable`).
+// `_can_project_tile_tensor` gates top-level `TileTensorable` conformance:
+// true for CPU and GPU kernels, false for accelerators whose handles can't be
+// reinterpreted as tiles.
 static constexpr llvm::StringLiteral kDenseTensorArgDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
 from extensibility import (
@@ -3712,11 +3486,9 @@ struct _MoggShapeTensorArg[
         ](ptr=self.handle, layout=self.layout())
 )mojo";
 
-/// Returns true when the target device label supports immediate top-level
-/// `TileTensorable` projection for dense tensor arguments. This is
-/// intentionally narrow: only CPU and GPU kernels use pointer-backed storage
-/// that can be viewed as a `TileTensor` at the execute boundary; other
-/// accelerator labels must keep the projection disabled.
+/// Returns true when the device label supports top-level `TileTensorable`
+/// projection for dense tensor arguments: only CPU and GPU kernels'
+/// pointer-backed storage can be viewed as a `TileTensor`.
 static bool canProjectTileTensorForDeviceLabel(StringRef label) {
   return label == kCPULabel || label == kGPULabel;
 }
@@ -3809,13 +3581,10 @@ LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
 }
 
 LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
-  // The operand is the reconstructed codegen tensor -- a `ManagedTensorSlice`
-  // from `mogg.tensor.create`, or a view slice. We re-present it as the
-  // conforming trait argument, sourcing the pointer and layout off the slice
-  // itself so any producer works, including a view whose layout is not
-  // row-major. dtype and the layout's own Mojo type are the struct parameters;
-  // the runtime pointer matches the wrapper ctor's `Pointer[NoneType,
-  // MutAnyOrigin]`.
+  // Re-present the codegen tensor (a `ManagedTensorSlice` from
+  // `mogg.tensor.create`, or a view) as the trait argument, sourcing pointer
+  // and layout off the slice so any producer works, including a non-row-major
+  // view.
   MojoValue slice = state.getMojoValueFor(getTensor());
   MOGG::TensorArgContractAttr contract = getContract();
 
@@ -3827,9 +3596,8 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
                     ManagedTensorSliceRef(slice).unsafePtr().text)
           .str());
 
-  // Device is recorded on the op (like `mogg.tensor.create`), so alignment and
-  // the device-passable / tile-projection flavors are picked locally without
-  // reaching to the enclosing stub.
+  // Device is on the op (like `mogg.tensor.create`), so alignment and the
+  // device-passable / tile-projection flavors are picked locally.
   StringRef deviceLabel = getDevice();
   MojoValue alignmentParam(static_cast<uint64_t>(
       M::Driver::getPreferredAlignment(deviceLabel.str())));
@@ -4018,16 +3786,10 @@ LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
             });
       });
 
-  // 3. Launch the task.
-  //
-  // For GPU launches, pin the task to the CPU worker with NUMA affinity for
-  // that device by using the affinity-aware _create_task variant.  For all
-  // other cases (no affinity hint, CPU/host device) fall back to the standard
-  // create_task which passes desired_worker_id=-1 to the AsyncRT scheduler.
-  //
-  // The device ID is stored as $affinity_device_id (I64Attr) rather than in a
-  // DeviceRefAttr, because the codegen device refs in the kernel layer are
-  // label-only (no numeric id); a plain integer carries the per-launch ordinal.
+  // 3. Launch the task. GPU launches pin it to the device's NUMA-affine CPU
+  // worker via `_create_task`; otherwise `create_task` (desired_worker_id=-1).
+  // The device ID is `$affinity_device_id` (I64Attr) because codegen device
+  // refs are label-only.
   MojoValue taskVar;
   auto affinityId = getAffinityDeviceIdAttr();
   if (affinityId) {
@@ -4113,8 +3875,7 @@ LogicalResult ChainDummyOp::emitMojo(EmitMojoState &) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ChainSinkOp::emitMojo(EmitMojoState &) {
-  // Do nothing because the producing op should never be returning a chain
-  // anyway.
+  // The producing op never returns a chain.
   return success();
 }
 
@@ -4155,10 +3916,9 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
 
   SmallVector<MojoValue> inputs = state.getMojoValuesFor(getInputs());
 
-  // `$index` is present only when `CallElementwiseOp::lowerToMOGG` decided
-  // this kernel wants it; its MLIR-level value is a `layout.Coord` (the only
-  // representation `CallForeachOp::emitMojo`'s closure produces), so
-  // it needs converting to the `IndexList` the kernel expects.
+  // `$index` (present only if `CallElementwiseOp::lowerToMOGG` wanted it) is a
+  // `layout.Coord`, the only form `CallForeachOp::emitMojo`'s closure produces,
+  // so convert it to the kernel's `IndexList`.
   if (Value index = getIndex())
     inputs.push_back(
         MojoValue(kFnCoordToIndexList)({}, {state.getMojoValueFor(index)}));
@@ -4290,7 +4050,6 @@ LogicalResult ShapeResultGetItemOp::emitMojo(EmitMojoState &state) {
   const MojoValue &shapeValue = state.getMojoValueFor(getShape());
   int64_t index = getIndex().getValue().getSExtValue();
 
-  // Access the shape result element by index
   MojoValue indexValue = MojoValue(std::to_string(index));
   state.setMojoValueFor(getResult(), shapeValue[{indexValue}]);
 
@@ -4301,11 +4060,9 @@ LogicalResult ShapeResultGetItemOp::emitMojo(EmitMojoState &state) {
 // ConstantScalarOp
 //===----------------------------------------------------------------------===//
 
-/// Convert a scalar-constant value attribute (an IntegerAttr or FloatAttr) to a
-/// Mojo literal. Integer and float scalar constants can be emitted directly
-/// into a lambda body, letting an elementwise call splat them (e.g.
-/// `Add.elementwise[dtype = ...](lhs_simd, 2.0)`). Returns std::nullopt for
-/// unsupported attribute kinds.
+/// Convert a scalar-constant attribute (IntegerAttr or FloatAttr) to a Mojo
+/// literal an elementwise call can splat (e.g.
+/// `Add.elementwise[dtype = ...](lhs_simd, 2.0)`), or std::nullopt.
 static std::optional<MojoValue>
 scalarConstantAttrToMojoLiteral(TypedAttr attr) {
   if (auto intScalar = MO::tryGetConstantInt(attr))
@@ -4350,12 +4107,10 @@ LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
   if (!literal)
     return emitError("TODO: unsupported scalar type");
 
-  // Splat to the enclosing closure's SIMD width, for the same reason
-  // `resolveScalarCaptureInput` splats the legacy lane's `!mo.scalar`: Mojo
-  // infers an elementwise call's vector width from its SIMD operands, not from
-  // a bare literal, so an unsplatted constant in the first operand position
-  // would fail width inference. Outside a closure there is no width to splat
-  // to -- and no vectorized consumer either -- so the bare literal stands.
+  // Splat to the closure's SIMD width (as `resolveScalarCaptureInput` does for
+  // `!mo.scalar`): Mojo infers an elementwise call's width from its SIMD
+  // operands, so an unsplatted first-operand constant would fail inference.
+  // Outside a closure the bare literal stands.
   const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
   ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(getResult().getType());
   if (lambdaInfo.lambdaBuilder && !dtypeOr.isError()) {
@@ -4442,14 +4197,11 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
     return emitOpError("WithTraceOp must be nested in a KernelStubOp");
 
   std::string deviceLabel = kernelStubOp.getDevice().str();
-  // Distinct chains here means a kernel body genuinely shared by two
-  // non-nested profile_scope()s (MergeIdenticalKernelStubs can merge such a
-  // stub's location onto one surviving symbol, see its fix for the
-  // location-loss bug); formatProfileScope marks that with `:` rather
-  // than the `/` used for one op's own (possibly nested) scope chain. The
-  // scope goes after the kernel name here (unlike the `[scope] region_N`
-  // ordering AddTryExceptBlocks uses for range names) so the kernel's own
-  // fusion-info name stays the more prominent, leading part of the trace.
+  // Distinct chains mean a kernel body shared by two non-nested
+  // profile_scope()s (MergeIdenticalKernelStubs merges their locations);
+  // formatProfileScope marks that with `:` rather than `/`. The scope follows
+  // the kernel name (unlike AddTryExceptBlocks' `[scope] region_N`) so the
+  // fusion-info name leads the trace.
   std::string traceName =
       kernelStubOp.getFusionInfoAttr().toString(/*includeLineNumbers=*/false,
                                                 /*quote=*/false,
@@ -4614,13 +4366,10 @@ LogicalResult RaiseOp::emitMojo(EmitMojoState &state) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TryOp::emitMojo(EmitMojoState &state) {
-  // Declare result variables that both branches will assign. The variables
-  // are visible to the yield ops in each region and to the mogg.output that
-  // consumes this TryOp's results.
-  // MGP forwards async values and its except block sets an error on each one,
-  // so those stay `AnyAsyncValueRef`. Every other ABI forwards the result's
-  // own type and raises instead of yielding, so the variable is declared
-  // untyped-initialized and only the try branch assigns it.
+  // Declare result variables for both branches' yields and the consuming
+  // mogg.output. MGP forwards async values (its except block sets an error on
+  // each), so those are `AnyAsyncValueRef`; other ABIs forward the result type
+  // and raise instead, so only the try branch assigns.
   auto stubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
   bool isMGPAbi = stubOp && stubOp.getAbi() == MOGG::ABIKind::MGP;
   for (OpResult result : getResults()) {
@@ -4632,10 +4381,9 @@ LogicalResult TryOp::emitMojo(EmitMojoState &state) {
     state.setMojoValueFor(result, resultVar);
   }
 
-  // MOGG ABI stubs catch errors, format them with kernel context (name,
-  // fusion info, source traceback), and re-raise. The outer TryOp here
-  // just emits the try/except structure — no caller-side bookkeeping needed.
-  // AsyncErrorOp::emitMojo wraps the formatted error with the region name.
+  // MOGG ABI stubs catch, format with kernel context, and re-raise; this only
+  // emits the try/except structure. AsyncErrorOp::emitMojo adds the region
+  // name.
   bool errOccurred = false;
   state.builder
       .try_([&]() {
@@ -4673,7 +4421,6 @@ struct RemoveUnusedTryResults : public OpRewritePattern<TryOp> {
   LogicalResult matchAndRewrite(TryOp tryOp,
                                 PatternRewriter &rewriter) const override {
 
-    // Collect which results are actually used
     SmallVector<unsigned> usedResultIndices;
     SmallVector<Type> usedResultTypes;
     for (auto [idx, result] : llvm::enumerate(tryOp.getResults())) {
@@ -4683,24 +4430,19 @@ struct RemoveUnusedTryResults : public OpRewritePattern<TryOp> {
       }
     }
 
-    // If all results are used, no change needed
     if (usedResultIndices.size() == tryOp.getNumResults())
       return failure();
 
-    // Create a new try op with only the used result types
     auto newTryOp =
         TryOp::create(rewriter, tryOp.getLoc(), TypeRange(usedResultTypes));
 
-    // Clone the try region
     rewriter.cloneRegionBefore(tryOp.getTryRegion(), newTryOp.getTryRegion(),
                                newTryOp.getTryRegion().begin());
 
-    // Clone the except region
     rewriter.cloneRegionBefore(tryOp.getExceptRegion(),
                                newTryOp.getExceptRegion(),
                                newTryOp.getExceptRegion().begin());
 
-    // Update the yield operation in the try region
     auto tryYield =
         cast<YieldOp>(newTryOp.getTryRegion().front().getTerminator());
     SmallVector<Value> newTryYieldOperands;
@@ -4710,7 +4452,6 @@ struct RemoveUnusedTryResults : public OpRewritePattern<TryOp> {
     rewriter.setInsertionPoint(tryYield);
     rewriter.replaceOpWithNewOp<YieldOp>(tryYield, newTryYieldOperands);
 
-    // Update the yield operation in the except region
     auto exceptYield =
         cast<YieldOp>(newTryOp.getExceptRegion().front().getTerminator());
     SmallVector<Value> newExceptYieldOperands;
@@ -4738,8 +4479,6 @@ struct RemoveUnusedTryResults : public OpRewritePattern<TryOp> {
       rewriter.eraseOp(op);
     }
 
-    // Replace uses of the old try op with the new one
-    // Map old results to new results for used indices
     SmallVector<Value> replacements(tryOp.getNumResults());
     for (auto [newIdx, oldIdx] : llvm::enumerate(usedResultIndices)) {
       replacements[oldIdx] = newTryOp.getResult(newIdx);

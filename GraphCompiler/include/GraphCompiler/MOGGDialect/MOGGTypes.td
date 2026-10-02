@@ -14,7 +14,6 @@
 include "GraphCompiler/MOGGDialect/MOGGDialect.td"
 include "GraphCompiler/MODialect/MOTypes.td"
 
-// Base class for types in this dialect.
 class MOGG_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<MOGGDialect, name, traits> {
   let mnemonic = typeMnemonic;
@@ -27,11 +26,9 @@ class MOGG_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def MOGG_ProfileScopeRange : MOGG_Type<"ProfileScopeRange", "profile_scope_range"> {
   let summary = "An opaque handle correlating a profile_scope.begin with its .end";
   let description = [{
-    Opaque value produced by `mogg.profile_scope.begin` and consumed by
-    `mogg.profile_scope.end`. It represents the `std.runtime.tracing.Trace`
-    variable in the emitted Mojo, correlated through an SSA def-use edge so
-    that ancestor and nested ranges can be open simultaneously (no stack
-    semantics required).
+    Represents the `std.runtime.tracing.Trace` variable in the emitted Mojo.
+    Begin and end are correlated through SSA def-use, so ancestor and nested
+    ranges can be open simultaneously without stack semantics.
   }];
 }
 
@@ -42,33 +39,23 @@ def MOGG_ProfileScopeRange : MOGG_Type<"ProfileScopeRange", "profile_scope_range
 def MOGG_Shape : MOGG_Type<"Shape", "shape"> {
   let summary = "A type mapping onto a shape";
   let description = [{
-    This is the mogg representation of a runtime shape value.
+    A runtime shape value.
   }];
 }
 
-// TODO(GEX-2729): Ideally we'd reuse !mogg.shape but I've chosen not to
-// (at the moment) for two reasons:
-//
-// 1. !mogg.shape is already used in the emit-mojo pipeline to
-//    represent IndexList values.
-//
-// 2. It currently doesn't carry around any notion of the rank of its result
-//    (which we is information we need during lowering).
+// TODO(GEX-2729): Reuse !mogg.shape once it carries a rank; it already
+// represents IndexList values in emit-mojo.
 def MOGG_ShapeFuncResult : MOGG_Type<"ShapeFuncResult", "shape_func_result"> {
   let summary = "A type representing the result of a shape function with known rank";
   let description = [{
-    This represents the result of a shape function computation with a statically
-    known rank. During emit-mojo lowering, this will be lowered to an IndexList
-    of the specified rank.
+    Lowers to an IndexList of the given rank in emit-mojo.
 
-    Examples:
+    Example:
     ```mlir
-    !mogg.shape_func_result<3>     // Shape function result with rank 3
-    !mogg.shape_func_result<5>     // Shape function result with rank 5
+    !mogg.shape_func_result<3>
     ```
   }];
 
-  // Keep this simple: concrete integer parameter so syntax is `<3>`.
   let parameters = (ins "uint64_t":$rank);
   let assemblyFormat = "`<` $rank `>`";
 }
@@ -76,37 +63,33 @@ def MOGG_ShapeFuncResult : MOGG_Type<"ShapeFuncResult", "shape_func_result"> {
 def MOGG_Context : MOGG_Type<"Context", "context"> {
   let summary = "A type mapping onto a context";
   let description = [{
-    This is the mogg representation of a runtime context value.
+    A runtime context value.
   }];
 }
 
 def MOGG_TaskHandle : MOGG_Type<"TaskHandle", "task_handle"> {
   let summary = "Handle to an asynchronously dispatched task";
   let description = [{
-    Represents a Mojo-native async task dispatched via `create_task`.
-    In emitted Mojo code, this maps to a `(Task, Optional[Error])` pair.
-    Used by `mogg.call.stub.async` (produces) and `mogg.async.join` (consumes).
+    A Mojo task from `create_task`, emitted as a `(Task, Optional[Error])`
+    pair. Produced by `mogg.call.stub.async`, consumed by `mogg.async.join`.
   }];
 }
 
 def MOGG_Error : MOGG_Type<"Error", "error"> {
   let summary = "A type mapping onto a mojo error";
   let description = [{
-    This is the mogg representation of the runtime Mojo type `Error`.
-    This type is used by throwing functions to return errors.
-    Mojo kernels might throw errors that must be propagated to the graph runtime.
+    The Mojo `Error` type, returned by throwing kernels so errors propagate to
+    the graph runtime.
   }];
 }
 
 def MOGG_Async : MOGG_Type<"Async", "async"> {
   let summary = "An asynchronous wrapper around a value type";
   let description = [{
-    This type wraps an arbitrary MLIR type to model an asynchronously computed
-    value. Inside a `mogg.generic.compiled.region`, the body block arguments are
-    `!mogg.async<T>` rather than `T` to reflect that they are not values but
-    handles/pointers that must be unpacked before use. `mogg.async.unpack`
-    projects an `!mogg.async<T>` to a `T`, and `mogg.async.pack` injects a `T`
-    into an `!mogg.async<T>`.
+    Models an asynchronously computed value. `mogg.generic.compiled.region`
+    body arguments are `!mogg.async<T>` because they are handles that must be
+    unpacked (`mogg.async.unpack`) before use; `mogg.async.pack` is the
+    inverse.
 
     Examples:
     ```mlir
@@ -119,18 +102,14 @@ def MOGG_Async : MOGG_Type<"Async", "async"> {
   let assemblyFormat = "`<` $elementType `>`";
 
   let builders = [
-    // Builds an `!mogg.async<T>` without an explicit context, reusing the
-    // context of the wrapped element type.
     TypeBuilderWithInferredContext<(ins "Type":$elementType), [{
       return $_get(elementType.getContext(), elementType);
     }]>,
   ];
 }
 
-// A `!mogg.async<T>` whose wrapped element type `T` is one of `allowedTypes`.
-// Built on `MOGG_Async` via `ConfinedType` so the generated C++ accessor is a
-// `TypedValue<MOGG::AsyncType>` (the base type's `cppType` is preserved); the
-// `MOGG_Async` predicate already guarantees the value is an async type.
+// A `!mogg.async<T>` with `T` in `allowedTypes`. `ConfinedType` keeps the
+// accessor typed as `TypedValue<MOGG::AsyncType>`.
 class MOGG_AsyncOf<list<Type> allowedTypes> : ConfinedType<MOGG_Async,
   [Or<!foreach(allowedType, allowedTypes,
         SubstLeaves<"$_self",
@@ -165,19 +144,15 @@ def MOGG_ScalarOfAnyRank : ConfinedType<
 //===----------------------------------------------------------------------===//
 // Advanced-fusion codegen types
 //
-// The types below back the new MAP -> MOGG -> MGP lowering path. Everything
-// ABOVE remains the legacy type set, to be removed now that advanced fusion is
-// the only path, so these are appended here for a clean
-// eventual cut. They are opaque handles by design: the op that creates a value
-// carries its shape / dtype / mutability / io-kind, not the type.
+// Opaque handles for the MAP -> MOGG -> MGP path: the creating op carries
+// shape, dtype, and io-kind, not the type.
 //===----------------------------------------------------------------------===//
 
 def MOGG_Pointer : MOGG_Type<"Pointer", "pointer"> {
   let summary = "An opaque pointer to a tensor's backing data.";
   let description = [{
-    Codegen-dialect handle for a raw data pointer. Kernels in the new lowering
-    path take pointers (plus dimensions) rather than rich tensor objects; the
-    tensor is reconstructed inside the body via `mogg.tensor.create`.
+    Kernels take pointers plus dimensions rather than tensor objects; the body
+    reconstructs the tensor with `mogg.tensor.create`.
   }];
 }
 
@@ -185,15 +160,10 @@ def MOGG_Tensor : MOGG_Type<"Tensor", "tensor",
   [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
   let summary = "An opaque codegen tensor handle.";
   let description = [{
-    A tensor value in the codegen dialect. Shape, element type and io-kind are
-    carried by the op that creates it (`mogg.tensor.create` /
-    `mogg.tensor.create.epilogue`), not by this type. Mutability is the one
-    property reflected in the type itself: an immutable operand is `!mogg.tensor`
-    and a mutable one is `!mogg.buffer`, so `getKernelOperandKind()` can tell
-    `Tensor` from `Buffer` (which operand inference reads as immutable vs mutable)
-    -- a value's type alone has no defining op to consult. Implements
-    `MOKernelOperandTypeInterface` (as `Tensor`); the rank/host validation of a
-    scalar match is skipped for this opaque handle (already validated upstream).
+    Shape, element type and io-kind live on the creating op. Mutability is in
+    the type (`!mogg.tensor` vs `!mogg.buffer`) so `getKernelOperandKind()` can
+    tell `Tensor` from `Buffer` without a defining op. Scalar-match rank/host
+    validation is skipped (already validated upstream).
   }];
 }
 
@@ -201,28 +171,22 @@ def MOGG_Buffer : MOGG_Type<"Buffer", "buffer",
   [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
   let summary = "An opaque codegen mutable tensor (buffer) handle.";
   let description = [{
-    The mutable counterpart of `!mogg.tensor`, the codegen-dialect handle for a
-    `!mo.buffer` kernel operand (e.g. a collective's signal buffers). Same opaque
-    representation as `!mogg.tensor` -- shape/element-type/io-kind live on the
-    creating `mogg.tensor.create`, whose verifier ties this type to `mut = true`
-    -- but it implements `MOKernelOperandTypeInterface` as `Buffer`, so operand
-    inference matches it to a kernel's `MutableInput`/variadic-mutable argument
-    without inspecting the creating op.
+    The mutable counterpart of `!mogg.tensor`, for a `!mo.buffer` kernel
+    operand (e.g. a collective's signal buffers). Requires `mut = true` on the
+    creating op. Reports as `Buffer`, so operand inference matches it to a
+    `MutableInput` argument without inspecting the creating op.
   }];
 }
 
-// A codegen tensor handle of either mutability: `!mogg.tensor` (immutable) or
-// `!mogg.buffer` (mutable). Use wherever a kernel-operand tensor flows and a
-// `!mo.buffer` operand may reach it (e.g. a collective's signal buffers).
+// Use wherever a `!mo.buffer` kernel operand may flow.
 def MOGG_TensorLike : AnyTypeOf<[MOGG_Tensor, MOGG_Buffer]>;
 
 def MOGG_Dim : MOGG_Type<"Dim", "dim"> {
   let summary = "An opaque runtime dimension value.";
   let description = [{
-    A single runtime dimension in the codegen dialect. Optionally carries the
-    source dynamic-dimension parameter (a `#kgen.param.decl.ref`), printed bare
-    as `!mogg.dim<batch>`. `MOGGToMGP` drops the name — a symbolic dimension
-    would prevent kernel deduplication, so dims become SSA value handles there.
+    Optionally carries the source dynamic-dimension parameter, printed as
+    `!mogg.dim<batch>`. `MOGGToMGP` drops it, since a symbolic dimension would
+    prevent kernel deduplication.
   }];
   let parameters = (ins OptionalParameter<"::M::KGEN::ParamDeclRefAttr">:$name);
   let assemblyFormat = "(`<` custom<DimName>($name)^ `>`)?";
@@ -232,18 +196,16 @@ def MOGG_Scalar : MOGG_Type<"Scalar", "scalar",
   [DeclareTypeInterfaceMethods<MO_KernelOperandTypeInterface>]> {
   let summary = "An opaque codegen scalar handle.";
   let description = [{
-    A scalar kernel operand in the codegen dialect, produced by
-    `mogg.scalar.create` from a `!mogg.tensor` (the new-path counterpart of
-    `mogg.as_scalar`). Element type is carried by the creating op, not the type.
+    Produced by `mogg.scalar.create` from a `!mogg.tensor`. The creating op
+    carries the element type.
   }];
 }
 
 def MOGG_Tuple : MOGG_Type<"Tuple", "tuple"> {
   let summary = "An opaque codegen tuple handle (a packed variadic).";
   let description = [{
-    A packed run of variadic tensor operands, produced by `mogg.tuple.create`
-    (the new-path counterpart of `mogg.as_tuple`). The packed elements are the
-    operands of the creating op.
+    Variadic tensor operands packed by `mogg.tuple.create`, whose operands are
+    the elements.
   }];
 }
 

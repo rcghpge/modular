@@ -27,10 +27,8 @@ void MGPDialect::initialize() {
   registerOperations();
   addInterface<MGPTensorBufferDialectInterface>();
 
-  // The PrepareDevicePrimitivesPass rewrites device-generic ops to
-  // include the device label in their name. We don't want to have
-  // to register those since it's just for the convenience of the GraphRT
-  // primitive dispatch mechanism.
+  // PrepareDevicePrimitivesPass appends the device label to device-generic op
+  // names for GraphRT primitive dispatch; those ops are not registered.
   allowUnknownOperations();
 }
 

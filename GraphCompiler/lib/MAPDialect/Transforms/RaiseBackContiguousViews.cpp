@@ -4,11 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Raises unfused slice/reshape `map.iter.foreach` view kernels back to
-// MO/MOGG ops the pre-advanced-fusion pipeline already lowers without a
-// copy. Mirrors the raise-back step of the legacy `mogg-fuse-views` pass
-// (`GraphCompiler/lib/MOGGDialect/Transforms/FuseViews.cpp`), scoped the same
-// way: slice and reshape only.
+// Raises unfused slice/reshape `map.iter.foreach` view kernels back to MO/MOGG
+// ops that lower without a copy.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +30,6 @@ namespace M::MAP {
 
 namespace {
 
-// Defined below; matches a contiguous slice and returns its sliced dim.
 std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice);
 
 // Returns the index-transform chain of `op`'s body if that body is a pure view:
@@ -42,15 +38,9 @@ std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice);
 //   [t_1, ..., t_n, load, store]
 // where `t_1` consumes the loop index, each `t_{i+1}` consumes `t_i`'s result
 // (single-use), and `load` reads `t_n`'s result from input-0's block arg. The
-// returned ops are in body order (`t_1` first, feeding the load last). Empty if
-// the body is anything else -- e.g. a real elementwise/compute kernel, or a
-// view with a broadcast/transpose the raise-back does not handle.
-//
-// This generalizes the legacy one-transform match: `MOToMAP` lowers each view
-// standalone, but `ViewFuser` fuses adjacent views (slice into reshape, ...)
-// into one kernel with several chained transforms. Matching the whole chain
-// lets us still raise it, where the old exact-3-op match would give up and
-// leave the fused view to materialize.
+// returned ops are in body order. Empty if the body is anything else, e.g. a
+// compute kernel or a broadcast/transpose view. A chain arises when `ViewFuser`
+// fuses adjacent views into one kernel.
 SmallVector<Operation *> matchViewChain(IterForeachOp op) {
   SmallVector<Operation *> empty;
   if (op.getNumResults() != 1)
@@ -70,8 +60,7 @@ SmallVector<Operation *> matchViewChain(IterForeachOp op) {
   if (!load || !store || it != ops.end())
     return empty;
 
-  // Linear chain from the loop index (the store's index) through each transform
-  // to the load. Each transform takes its index as operand 0.
+  // Each transform takes its index as operand 0.
   Value cursor = store.getIndex();
   for (Operation *t : transforms) {
     if (t->getOperand(0) != cursor || !t->getResult(0).hasOneUse())
@@ -80,7 +69,6 @@ SmallVector<Operation *> matchViewChain(IterForeachOp op) {
   }
   if (load.getIndex() != cursor)
     return empty;
-  // The load must read input 0's block arg (`getArgument(i)` backs input i).
   if (load.getTensor() != body.getArgument(0))
     return empty;
 
@@ -92,9 +80,8 @@ SmallVector<Operation *> matchViewChain(IterForeachOp op) {
   return transforms;
 }
 
-// Mirrors the legacy raise-back's own heuristic for identifying "the" sliced
-// dimension: the first input dim of size != 1. Returns the input rank if
-// every input dim has size 1 (no such dimension).
+// The sliced dimension is the first input dim of size != 1, or the input rank
+// if there is none.
 int64_t findSliceDim(ArrayRef<int64_t> inDims) {
   for (auto [i, dim] : llvm::enumerate(inDims))
     if (dim != 1)
@@ -104,9 +91,8 @@ int64_t findSliceDim(ArrayRef<int64_t> inDims) {
 
 // Returns the sliced dimension `k` if `slice` is a contiguous slice: every
 // dimension but `k` keeps its input's full extent, and `k`'s start/stop/step
-// are all statically known with step 1. Requires every input/output dim to
-// be statically known too -- a slice with any symbolic dim always takes the
-// general (already zero-copy) MAPToMOGG path instead of raising back.
+// are static with step 1. A slice with any symbolic dim takes the general
+// (already zero-copy) MAPToMOGG path instead.
 std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice) {
   MAP::SliceSpecAttr spec = slice.getSpec();
   SmallVector<int64_t> inDims = spec.getSignature().getIn().getIntDims();
@@ -131,12 +117,8 @@ std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice) {
   return k;
 }
 
-// Raises a view kernel whose body is a chain of contiguous slice/reshape index
-// transforms (as `matchViewChain` recognizes) back to a sequence of standalone
-// zero-copy ops the pre-advanced-fusion pipeline lowers without a copy: each
-// contiguous slice becomes `mogg.slice` (-> `mgp.tensor.slice`) and each
-// reshape becomes `mo.static.reshape` (a non-copying primitive). Returns
-// whether `op` was raised, tallying each raised op into the pass statistics.
+// Raises a `matchViewChain` kernel to standalone zero-copy ops: each slice
+// becomes `mogg.slice` and each reshape `mo.static.reshape`.
 //
 // The body threads the loop index (output space) through the transforms into
 // the input load, so the transforms run output->input; the data ops are their
@@ -153,9 +135,7 @@ bool raiseViewChain(IterForeachOp op, unsigned &numSlicesRaised,
   unsigned slicesHere = 0, reshapesHere = 0;
   for (Operation *t : llvm::reverse(chain)) {
     auto curType = cast<MO::TensorType>(cur.getType());
-    // Last data op (first body transform) yields the kernel's exact result
-    // type; intermediates clone the running type with the transform's out
-    // shape.
+    // The last data op (first body transform) yields the kernel's result type.
     bool isLast = (t == chain.front());
     if (auto reshape = dyn_cast<ReshapeIndexOp>(t)) {
       Type outType = isLast ? op.getResultTypes()[0]
@@ -202,9 +182,8 @@ struct RaiseBackContiguousViewsPass
 
   void runOnOperation() override {
     MO::GraphOp graphOp = getOperation();
-    // Walk rather than iterate the body's direct ops: a map.iter.foreach
-    // view kernel can sit inside control flow (e.g. mo.parallel), and
-    // iterating only the graph's own top-level ops would miss those.
+    // Walk, since a view kernel can sit inside control flow (e.g.
+    // mo.parallel).
     unsigned slices = 0, reshapes = 0;
     SmallVector<IterForeachOp> foreachOps;
     graphOp.walk([&](IterForeachOp op) { foreachOps.push_back(op); });

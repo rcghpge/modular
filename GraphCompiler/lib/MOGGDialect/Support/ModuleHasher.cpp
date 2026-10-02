@@ -20,11 +20,8 @@ namespace {
 
 constexpr StringLiteral kSemanticHashName = "semantic_hash";
 
-/// The analysis for each node is a small state machine computing the
-/// different parts of the state. This is for convenience as parts of the
-/// state depend on each other and the structure needs to fit into the
-/// SCCGraph structure, which iteratively applies an analysis update function to
-/// each node in an SCC.
+/// Per-node state machine: parts of the state depend on each other, and
+/// SCCGraph iteratively applies an update function to each node in an SCC.
 enum class State {
   SetGenerator,
   SetInputs,
@@ -52,10 +49,8 @@ struct Node
     *hasher << std::forward<T>(value);
   }
 
-  /// Hasher for the current node.
-  /// Stored in a separate allocation as the hasher state is quite large
-  /// (~800 bytes) and we only need them active while computing the hash for the
-  /// current SCC.
+  /// Separately allocated: the hasher state is large (~800 bytes) and only
+  /// needed while hashing the current SCC.
   std::unique_ptr<raw_xxhash128_stream> hasher;
 
   /// Need to save the function name as we have to temporarily mutate it in
@@ -88,17 +83,10 @@ struct Graph : public KGEN::SCCGraph<Graph, Node> {
 };
 
 void Graph::build(ModuleOp module, const SymbolTable &symtab) {
-  // This is a custom build method for the graph type. The callgraph normally
-  // built by KGEN::SCCGraph uses call operations as the edges in the graph.
-  //
-  // Before Elaboration, KGEN IR can refer to functions through
-  // FlatSymbolRefAttrs that appear in arbitrary attributes and types. We need
-  // to account for those references when computing the module hash, so this
-  // code overrides the CallGraphBase::build method in the parent class to get
-  // the desired callgraph structure.
-  //
-  // The end result of this algorithm is a callgraph that is a superset of the
-  // callgraph normally built by CallGraphBase::build.
+  // Overrides CallGraphBase::build, whose edges are call ops: before
+  // elaboration, KGEN IR can refer to functions through FlatSymbolRefAttrs in
+  // arbitrary attributes and types, so every such reference is an edge. The
+  // result is a superset of CallGraphBase::build's graph.
 
   // Create a callgraph node for each GeneratorOpInterface in the module.
   // This logic is the same as in the parent class' build method.
@@ -107,11 +95,7 @@ void Graph::build(ModuleOp module, const SymbolTable &symtab) {
 
   // Populate the callers and callees lists for each node in the graph.
   for (auto &[caller, callerNode] : nodes) {
-    // Rather than creating edges for each GeneratorOpInterface, we scan each
-    // Operation for any FlatSymbolRefAttr that points to a GeneratorOpInterface
-    // and create edges for those attributes.
     caller.walk([&](Operation *op) {
-      // Walker to collect all FlatSymbolRefAttrs and add an edge to the graph.
       mlir::AttrTypeWalker walker;
       walker.addWalk([&](FlatSymbolRefAttr symbol) {
         auto callee =
@@ -125,14 +109,11 @@ void Graph::build(ModuleOp module, const SymbolTable &symtab) {
         calleeNode->callers.push_back(&callerNode);
       });
 
-      // Walk operation attributes.
       walker.walk(op->getAttrDictionary());
 
-      // Walk operation result types.
       for (auto type : op->getResultTypes())
         walker.walk(type);
 
-      // Walk types of block arguments.
       for (Region &region : op->getRegions()) {
         for (Block &block : region) {
           for (BlockArgument &arg : block.getArguments()) {
@@ -154,13 +135,8 @@ bool Graph::setGeneratorHash(Node *node) {
   auto ctx = node->func.getContext();
   Builder builder(ctx);
 
-  // Subtlety, the nodes in the current SCC cannot be handled by erasing their
-  // name. Erasing the names works for the inputs to the SCC because we
-  // incorporate each _callsite_ when computing the inputs hash (see
-  // setInputsHash).
-  //
-  // Instead, map all reference to functions in the current SCC to a unique
-  // number.
+  // Erasing names works for SCC inputs only because setInputsHash incorporates
+  // each callsite; map references to SCC members to unique numbers instead.
   llvm::SmallDenseMap<SymbolRefAttr, SymbolRefAttr> attrMap;
   for (auto [index, sccNode] : llvm::enumerate(node->scc->nodes)) {
     auto name = FlatSymbolRefAttr::get(sccNode->functionName);
@@ -316,22 +292,17 @@ M::MOGG::applySemanticNaming(ModuleOp module,
   if (symbolsToRename.empty())
     return renaming;
 
-  // At this stage of Mojo compilation, generator ops do not yet have their
-  // 'final' linkage names set onto their symbol names; they're resolved during
-  // elaboration. Thus we cannot simply look up the symbols we're interested in
-  // the symbol table. We have to build up a few data structures to get us from
-  // linkage name to generator. Technically we shouldn't be able to rely on
-  // "literal" linakge names (they may contain parameter expressions in theory)
-  // so this is a bit of a hack, assuming the symbols we're interested in are
-  // simple literals.
+  // Linkage names are only set onto symbol names during elaboration, so the
+  // symbol table can't find generators by linkage name yet. This assumes the
+  // linkage names we need are literals (in theory they may be parameter
+  // expressions).
 
   // Build a map from linkageName -> GeneratorOp so we can look up generators
   // by their public name even when the sym_name is mangled.
   llvm::DenseMap<StringAttr, KGEN::GeneratorOp> linkageNameToGen;
   for (auto gen : module.getOps<KGEN::GeneratorOp>()) {
     if (auto ln = gen.getLinkageNameAttr()) {
-      // We're only interested in looking up literal linkage names. Our symbols
-      // will not refer to parametric ones, so skip them.
+      // Our symbols never use parametric linkage names.
       if (auto str = dyn_cast<StringAttr>(ln.getName())) {
         // Convert back from a !kgen.string-typed StringAttr to an untyped one,
         // so that symbol equality works.
@@ -372,9 +343,8 @@ M::MOGG::applySemanticNaming(ModuleOp module,
 
     StringAttr oldSymName = generator.getSymNameAttr();
 
-    // If the operation is already in the module, then it is semantically
-    // equivalent to another operation. We can delete it and replace it with its
-    // equivalent when updating all symbol uses
+    // Semantically equivalent to a visited generator: delete it and remap its
+    // uses.
     if (auto remapped = visited.lookup_or(hash, nullptr)) {
       symRenaming[oldSymName] = remapped.getSymNameAttr();
       renaming[symbol] = remapped;

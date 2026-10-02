@@ -38,7 +38,6 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
                            : M::DeviceRefAttr::get(ctx, targetDevice.getValue(),
                                                    targetDeviceId.getValue());
 
-    // Apply the special pattern to fuse allReduceOps at the beginning.
     llvm::SmallVector<MO::AllReduceSumOp> allReduceOps;
     getOperation()->walk([&](MO::AllReduceSumOp allReduceSumOp) {
       allReduceOps.push_back(allReduceSumOp);
@@ -47,15 +46,13 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
       MO::applyFuseAllReduceAddRMSNormQuantFP8(allReduceOp, targetDeviceRef);
 
     // Parallel-region analog: fuse `mo.parallel { mo.bundled.allreduce.sum }`
-    // followed by per-device add + rms_norm + quantize_fp8 chains outside the
-    // parallel into a single `mo.parallel { fused }` op in one step.
+    // and the per-device add + rms_norm + quantize_fp8 chains after it.
     llvm::SmallVector<MO::BundledAllReduceSumOp> bundledAllReduceOps;
     getOperation()->walk([&](MO::BundledAllReduceSumOp op) {
       bundledAllReduceOps.push_back(op);
     });
     for (auto bundledAllReduceOp : bundledAllReduceOps) {
-      // Earlier rewrites in this same loop may have erased the parent
-      // parallel of this op; skip stale entries.
+      // An earlier rewrite may have erased this op's parent parallel.
       if (!bundledAllReduceOp.getOperation()->getBlock())
         continue;
       MO::applyFuseParallelBundledAllReduceAddRMSNormQuantFP8(
@@ -64,8 +61,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
 
     MO::GraphOp graphOp = getOperation();
 
-    // Phase 1: Convert slices into splits so that the RoPE pattern can match
-    // split ops created from adjacent slice pairs.
+    // RoPE fusion matches splits built from adjacent slice pairs.
     {
       RewritePatternSet sliceToSplitPatterns{ctx};
       sliceToSplitPatterns.add<SliceToSplitPattern</*AllowDynamicStop=*/true>>(
@@ -75,7 +71,6 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
         return signalPassFailure();
     }
 
-    // Phase 2: Main fusion patterns including the new RoPE fusion.
     MO::PackParamCache cache;
     MO::MHAOptions mhaOpts{
         enableMHAPattern.getValue(),
@@ -90,7 +85,7 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
     if (failed(applyPatternsGreedily(graphOp, std::move(patterns))))
       return signalPassFailure();
 
-    // Phase 3: Lower any splits that survived fusion back to slices.
+    // Lower splits that survived fusion back to slices.
     {
       MO::DeviceInfoMapping deviceInfoMapping(
           graphOp->getParentOfType<mlir::ModuleOp>());
@@ -98,10 +93,8 @@ struct PatternFusionPass : public impl::PatternFusionBase<PatternFusionPass> {
       splitToSlicePatterns.add<SplitToSlicePattern<>>(ctx);
       MO::populateFusionMatmulAddPatterns(deviceInfoMapping,
                                           splitToSlicePatterns);
-      // MegaFFNNvfp4Pattern produces mo.composite.mega_ffn_nvfp4, whose kernel
-      // is MAX-only and SM100-only. The pattern arch-gates itself via
-      // deviceInfoMapping; it is additionally behind a pass option so OSS
-      // builds (where the fused kernel is unregistered) can disable it.
+      // The mega_ffn_nvfp4 kernel is MAX-only, so OSS builds (where it is
+      // unregistered) disable this; the pattern arch-gates SM100 itself.
       if (enableMegaFFNPattern.getValue())
         MO::populateFusionMegaFFNPatterns(deviceInfoMapping,
                                           splitToSlicePatterns);

@@ -42,10 +42,8 @@ StringLiteral stringifyEnum(InputGenerationKind kind);
 std::optional<InputGenerationKind> symbolizeInputGenerationKind(StringRef s);
 
 enum class TensorGeneratorFlag : int {
-  kCycle = 1 << 0,    // generate infinite number of Tensors from generator by
-                      // looping over file repeatedly
-  kTruncate = 1 << 1, // if input file size not a multiple of tensor
-                      // size, discard the remainder
+  kCycle = 1 << 0,    // loop over the file indefinitely
+  kTruncate = 1 << 1, // discard a trailing partial tensor
 };
 
 inline TensorGeneratorFlag operator|(TensorGeneratorFlag a,

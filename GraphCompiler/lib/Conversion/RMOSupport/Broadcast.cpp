@@ -72,8 +72,7 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
   return broadcastTo(builder, loc, reshapedValue, to);
 }
 
-/// Function that ensures tensor types before and after broadcast are
-/// comparable, by ensuring the `TensorType` is statically shaped.
+/// Makes tensor types before and after broadcast comparable.
 [[maybe_unused]] static TensorType unifyShapeType(TensorType type) {
   if (!type.hasRank())
     return type;
@@ -88,14 +87,12 @@ TensorValue reshapeAndBroadcastTo(OpBuilder &builder, Location loc,
 static std::pair<TensorValue, TensorValue>
 broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
                         ShapeAttr bcastCommonShape) {
-  // Get the shapes of the inputs at runtime
   TensorType xType = x.getType();
   assert(xType.hasRank());
 
   TensorType yType = y.getType();
   assert(yType.hasRank());
 
-  // Assert that devices are the same if both are assigned.
   DeviceRefAttr deviceRef = xType.getDeviceRef();
   if (!deviceRef)
     deviceRef = yType.getDeviceRef();
@@ -151,8 +148,6 @@ broadcastToDynamicShape(OpBuilder &builder, TensorValue x, TensorValue y,
       TensorType::get({(int64_t)xyCommonShape.getRank()}, intType, deviceRef);
   auto shape = TensorType::get({(int64_t)bcastCommonShape.getRank()}, intType,
                                deviceRef);
-
-  // Get the shapes of the inputs at runtime
 
   auto xShape = RMO::MOShapeOfOp::create(
       builder, x.getLoc(),

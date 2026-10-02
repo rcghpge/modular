@@ -74,12 +74,10 @@ def MO_KernelOperandTypeInterface : TypeInterface<"MOKernelOperandTypeInterface"
   let cppNamespace = "::M::MO";
   let description = [{
     Classifies a type as a kernel-operand category (tensor / buffer / scalar /
-    opaque) for operand inference, so inference queries the type instead of
-    hard-coding `isa<MO::...>`. MOGG codegen handles implement this too, which is
-    what lets inference run on the advanced-fusion path. Rank / on-host
-    validation of a scalar match is left to `MOShapedTypeInterface` /
-    `MOHasDeviceTypeInterface`; a type that carries neither (an opaque handle) is
-    trusted (already validated upstream).
+    opaque) for operand inference. MOGG codegen handles implement it too, so
+    inference runs on the advanced-fusion path. Scalar rank / on-host checks
+    use `MOShapedTypeInterface` / `MOHasDeviceTypeInterface`; a type with
+    neither (an opaque handle) is trusted.
   }];
   let methods = [
     InterfaceMethod<

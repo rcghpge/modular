@@ -94,13 +94,8 @@ static bool allOperandsOfThisTypeHaveOneUse(Operation::operand_range operands) {
   });
 }
 
-// Given the input and output tensor types of a reshape operation try to
-// determine whether the reshape corresponds to a squeeze
-// (cases where the input and output dims match exactly other than
-// one extra dim in the input that has value 1)
-//
-// Will return an optional wrapping the axis of the squeeze in such cases and a
-// std::nullopt otherwise
+// Returns the squeeze axis if the reshape from `inputType` to `outputType`
+// only drops one size-1 dim, std::nullopt otherwise.
 //
 // e.g.
 // inputType = tensor<[D1, 2, 1, D3]>
@@ -116,7 +111,6 @@ static std::optional<int64_t> findSqueezeAxis(MO::TensorType inputType,
   auto inputDims = inputType.getDims();
   auto outputDims = outputType.getDims();
 
-  // check that we have static rank first
   if (inputDims.size() != outputDims.size() + 1)
     return std::nullopt;
 
@@ -155,7 +149,6 @@ static bool isStaticSplit(SplitOp op) {
   if (!inputType.hasRank())
     return false;
 
-  // `axis` is a compile-time `index` attribute.
   int64_t axis = normalizeAxis(op.getAxisAttr().getInt(), inputType.getRank());
   if (!isStaticDimAttr(inputType.getDim(axis)))
     return false;
@@ -174,12 +167,8 @@ static bool allResultsAreUniquelyUsedBy(Operation *op) {
   });
 }
 
-/// Maps a split/slice-like axis through a static reshape.
-///
-/// Returns the new axis in the reshaped space if the mapping is valid,
-/// or std::nullopt if the axis cannot be mapped.
-///
-/// The mapping is valid when:
+/// Maps a split/slice-like axis through a static reshape, or returns
+/// std::nullopt. The mapping is valid when:
 /// - After skipping trailing 1-dimensions, a non-1, non-dynamic dim is found.
 /// - That dimension is not mixed with left-neighbor dimensions in the reshape.
 static std::optional<int64_t> mapAxisThroughStaticReshape(
@@ -264,7 +253,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
           loc, "preceding static bcast has dynamic input rank");
     }
 
-    // We check that the broadcast increases rank. This is the exit condition.
+    // A rank-increasing broadcast is the exit condition.
     int64_t rankDiff =
         (int64_t)reshapeInputTy.getRank() - (int64_t)bcastInputTy.getRank();
     if (rankDiff <= 0) {
@@ -277,10 +266,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
           loc, "matched ops have inconsistent devices");
     }
 
-    // The pattern is now matched. We start by flattening the input of the
-    // broadcast, i.e. we roughly implement this:
-    // flattened = bcastInput.flatten()
-    // NOTE: FS/fs stands for flat size.
+    // flattened = bcastInput.flatten(); FS is the flat size.
     GraphOp graphOp = argNonzeroOp->getParentOfType<GraphOp>();
     KGEN::ParamDeclAttr fsDecl = graphOp.getNewDimParam("FS");
     ArrayRef<TypedAttr> reshapeInputDims = reshapeInputTy.getDims();
@@ -294,10 +280,8 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     auto flattened =
         rewriter.create<Static::ReshapeOp>(loc, flattenedTy, bcastInput);
 
-    // We now find the nonzero elements in the flattened (unbroadcasted) input.
-    // We roughly implement the following:
-    // argNonzero_res = np.expand_dims(np.argNonzero(flattened)[0], axis=1)
-    // Note we refer to the number of unique elements as W.
+    // argNonzero_res = np.expand_dims(np.argNonzero(flattened)[0], axis=1),
+    // with W the number of unique elements.
     KGEN::ParamDeclAttr wDecl = graphOp.getNewDimParam("W");
     auto wRef = KGEN::ParamDeclRefAttr::get(wDecl);
     IntegerType si64Ty = rewriter.getIntegerType(64, /*isSigned=*/true);
@@ -307,27 +291,21 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     auto newArgNonzeroOp = rewriter.create<ArgNonzeroOp>(
         loc, argNonzeroTy, flattened, ParamDeclArrayAttr::get(wDecl));
 
-    // Next we create the first auxiliary value, roughly the following range:
-    // range = np.arange(0, FS*BS, FS)
-    // First, we need a constant zero for the start index.
+    // range = np.arange(0, FS*BS, FS), with BS the batch size.
     auto start = rewriter.createHostConstant(loc, (int64_t)0);
 
-    // Second, we calculate the batch size symbolically (BS/bs).
     ArrayRef<TypedAttr> batchDims = reshapeInputDims.take_front(rankDiff);
     auto bsAttr = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, batchDims);
 
-    // We can now calculate the range limit (FS*BS) symbolically.
     SmallVector<TypedAttr> limFactors{bsAttr, fsAttr};
     auto limAttr =
         KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, limFactors);
     auto lim = rewriter.create<MOSH::ParamToValueOp>(loc, limAttr);
     auto limT = rewriter.create<IndexToTensorOp>(loc, start.getType(), lim);
 
-    // Finally, we use the flat size as the step size.
     auto step = rewriter.create<MOSH::ParamToValueOp>(loc, fsAttr);
     auto stepT = rewriter.create<IndexToTensorOp>(loc, start.getType(), step);
 
-    // We can now construct the range.
     KGEN::ParamDeclAttr bsDecl = graphOp.getNewDimParam("BS");
     rewriter.create<KGEN::ParamDeclareOp>(loc, bsDecl, bsAttr);
     auto bsRef = KGEN::ParamDeclRefAttr::get(bsDecl);
@@ -335,7 +313,6 @@ struct CommuteBroadcastWithFlatennedArgNonzero
         TensorType::get(SmallVector<TypedAttr>{bsRef}, si64Ty, deviceRef);
     auto range = rewriter.create<RangeOp>(loc, rangeTy, start, limT, stepT);
 
-    // We add a trailing 1-dimension to the range, roughly:
     // rangeExpanded = np.expand_dims(range, axis=1)
     auto expandedTy =
         TensorType::get(SmallVector<TypedAttr>{bsRef, rewriter.getDimAttr(1)},
@@ -343,14 +320,8 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     auto rangeExpanded =
         rewriter.create<Static::ReshapeOp>(loc, expandedTy, range);
 
-    // We will now add the expanded range to the transpose of the new argNonzero
-    // op's output, more or less like this: commonShape =
-    // np.broadcast_shapes(argNonzero_res.T.shape, aux2.shape) indexes =
-    // np.broadcast_to(argNonzero_res.T, commonShape)
-    //            + np.broadcast_to(aux2, commonShape)
-    // Notice that the common shape is always [BS, W].
-
-    // We start with transposing the result of argNonzero.
+    // indexes = np.broadcast_to(argNonzero_res.T, [BS, W])
+    //         + np.broadcast_to(rangeExpanded, [BS, W])
     auto perm = rewriter.createHostConstant(loc, SmallVector<int64_t>{1, 0});
     auto transposeTy = TensorType::get(
         SmallVector<TypedAttr>{argNonzeroDims[1], argNonzeroDims[0]}, si64Ty,
@@ -358,8 +329,6 @@ struct CommuteBroadcastWithFlatennedArgNonzero
     auto wTranspose =
         rewriter.create<TransposeOp>(loc, transposeTy, newArgNonzeroOp, perm);
 
-    // Then we add the broadcasted transposed indexed and the broadcasted
-    // expanded range.
     auto bcastResTy =
         TensorType::get(SmallVector<TypedAttr>{bsRef, wRef}, si64Ty, deviceRef);
     auto indexes = rewriter.create<AddOp>(
@@ -367,8 +336,7 @@ struct CommuteBroadcastWithFlatennedArgNonzero
         rewriter.create<Static::BroadcastToOp>(loc, bcastResTy, wTranspose),
         rewriter.create<Static::BroadcastToOp>(loc, bcastResTy, rangeExpanded));
 
-    // Make sure we don't drop parameter declarations from the original
-    // argNonzero.
+    // Don't drop the original argNonzero's parameter declaration.
     ArrayRef<ParamDeclAttr> oldDecls = argNonzeroOp.getOutputParamDecls();
     ASSERT_STREAM(oldDecls.size() == 1,
                   << "mo.argNonzero declares more than one new param");
@@ -378,17 +346,13 @@ struct CommuteBroadcastWithFlatennedArgNonzero
         KGEN::POC::MulNoWrap, SmallVector<TypedAttr>{bsAttr, wRef});
     rewriter.create<KGEN::ParamDeclareOp>(loc, oldDecls[0], numResAttr);
 
-    // Replace the original argNonzero op, with the new result.
     rewriter.replaceOpWithNewOp<Static::ReshapeOp>(
         argNonzeroOp, argNonzeroOp.getType(), indexes);
     return success();
   }
 };
 
-/// A pattern that detects broadcast ops preceded by a transpose, and rewrites
-/// them by moving the transpose after the broadcast.
-///
-/// Example:
+/// Moves a transpose after the unary op that consumes it.
 ///
 ///  input     perm       input
 ///    \        /           |
@@ -416,8 +380,7 @@ struct SinkTransposeThroughUnaryOpPattern
     if (!perm)
       return rewriter.notifyMatchFailure(op, "null permutation value");
 
-    // If transpose op has multiple uses, we don't sink the transposes because
-    // we'll have to recompute the original transpose op for other users.
+    // Sinking a multi-use transpose would recompute it for the other users.
     Value transpose = opaqueTransposeOp->getResult(0);
     if (!transpose.hasOneUse())
       return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
@@ -447,9 +410,8 @@ struct SinkTransposeThroughUnaryOpPattern
   }
 };
 
-/// A pattern that detects binary ops preceded by a transpose on each input, and
-/// rewrites them by replacing the old transposes with a new transpose after the
-/// binary op.
+/// Replaces matching transposes on both binary op inputs with one transpose
+/// after the binary op.
 ///
 /// Example:
 ///
@@ -489,9 +451,7 @@ struct SinkTransposeThroughBinaryOpPattern
     if (!input1 || !input2 || !perm1 || !perm2)
       return rewriter.notifyMatchFailure(op, "null input or permutation value");
 
-    // If any transpose op has multiple uses, we don't sink the transposes
-    // because we'll end up doing extra computation overall since we must keep
-    // the original transposes for other users.
+    // Sinking a multi-use transpose would keep the original for other users.
     if (!op.getLhsInput().hasOneUse())
       return rewriter.notifyMatchFailure(op, "lhs transpose has multiple uses");
 
@@ -529,10 +489,7 @@ struct SinkTransposeThroughBinaryOpPattern
   }
 };
 
-/// A pattern that detects broadcast ops preceded by a transpose, and rewrites
-/// them by moving the transpose after the broadcast.
-///
-/// Example:
+/// Moves a transpose after the broadcast that consumes it.
 ///
 ///  input     perm       input
 ///    \        /           |
@@ -547,8 +504,7 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
   SinkTransposeThroughStaticBroadcastToOpPattern(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 2) {}
 
-  // Return a permutation of `attrs` such that, if it gets permuted via `perm`,
-  // it'll become `attrs` again.
+  // Inverse of `permute(attrs, perm)`.
   static SmallVector<TypedAttr> unpermute(ArrayRef<TypedAttr> attrs,
                                           ArrayRef<int64_t> perm) {
     // e.g., if perm == [2, 0, 1], inversePerm == [1, 2  0]
@@ -571,8 +527,7 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
     if (!input || !perm)
       return rewriter.notifyMatchFailure(op, "null input or permutation value");
 
-    // If transpose op has multiple uses, we don't sink the transposes because
-    // it we'll have to recompute the original transpose op for other users.
+    // Sinking a multi-use transpose would recompute it for the other users.
     auto transposeOp = cast<TransposeOp>(opaqueTransposeOp);
     if (!transposeOp->hasOneUse())
       return rewriter.notifyMatchFailure(op, "transpose op has multiple uses");
@@ -594,8 +549,7 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
     }
 
     SmallVector<int64_t> permVec = maybePermVec.value();
-    // Broadcast is rank-increasing, so we must pad the permutation vector to
-    // account for the added dimensions. For instance, if we have
+    // Pad the permutation for the dims a rank-increasing broadcast adds, e.g.
     //   input shape      = [1, 3, 2]
     //   permutation      = [0, 2, 1]
     //   transposed shape = [1, 2, 3]
@@ -640,8 +594,8 @@ struct SinkTransposeThroughStaticBroadcastToOpPattern
   }
 };
 
-/// This pattern will swim a concat operation through a ReshapeOpType (usually a
-/// static reshape or a rebind op).
+/// Swims a concat through a ReshapeOpType (usually a static reshape or a
+/// rebind op).
 /// CONDITIONS:
 /// - Concat axis is statically known.
 /// - Concat dimension is statically known.
@@ -717,17 +671,13 @@ struct SwimConcatThroughReshapeLikeOpsPattern
                                              concatInputType.getRank());
 
     uint64_t mappedConcatAxis = concatAxis;
-    // Will stop at the first non-1 dimension, dynamic dimension included. This
-    // is because 1s are ignored by the analysis and they serve no real purpose
-    // in the reshape.
+    // Skip to the first non-1 dim (dynamic included); the analysis ignores 1s.
     while (mappedConcatAxis < concatInputType.getRank() &&
            concatInputType.getIntDim(mappedConcatAxis) == 1) {
       ++mappedConcatAxis;
     }
 
-    // If there is no non-1 dimension and or if that dimension is dynamic, then
-    // the reshape is unsupported. This is because there is no way to concat it
-    // with the new dimensions.
+    // A missing or dynamic non-1 dim can't be concatenated in the new shape.
     const bool couldNotFindAnotherAxis =
         mappedConcatAxis == concatInputType.getRank();
     if (couldNotFindAnotherAxis ||
@@ -737,14 +687,9 @@ struct SwimConcatThroughReshapeLikeOpsPattern
           "Trailing ones or trailing dynamic dimensions are unsupported");
     }
 
-    // If the dimension was expanded and it was not mixed with other dimensions
-    // or if it was contracted but the mixing was done with dimensions that are
-    // on the right, then it can proceed. This assumes a row major memory
-    // layout.
-    // What mixing means is that two dimensions from the original shape
-    // contributed to the same dimension in the reshaped shape. This prevents a
-    // concat unless the concat axis is the leftmost of the mixed dimensions (in
-    // row major).
+    // Mixing means several original dims contribute to one reshaped dim.
+    // Assuming row-major layout, a concat is only valid if the concat axis is
+    // the leftmost of the mixed dims.
     const bool couldMix =
         staticReshapeDimensionsMappingAnalysis
             .backwardMapping()[staticReshapeDimensionsMappingAnalysis
@@ -792,11 +737,8 @@ struct SwimConcatThroughReshapeLikeOpsPattern
   }
 };
 
-/// A pattern that detects binary operator where one operand is a reshape
-/// and the other a broadcast. We attempt to move the binary operator to
-/// occur before the reshape for better fusion opportunities.
-///
-/// Example:
+/// Moves a binary op whose operands are a reshape and a broadcast before the
+/// reshape, for better fusion opportunities.
 ///
 /// ┌─────┐         ┌────────┐               ┌─────┐  ┌────────┐
 /// │input│         │elemwise│               │input│  │elemwise│
@@ -814,13 +756,9 @@ struct SwimConcatThroughReshapeLikeOpsPattern
 ///         │output│                             ┌──┴───┐
 ///         └──────┘                             │output│
 ///                                              └──────┘
-/// Note reshape can potentially do nasty things so this optimization cannot
-/// always be done.
-///
-/// We only do this optimization if out of the values `elemwise`, `input`, and
-/// `reshape` we can prove `elemwise` has the least rank `r`. Then we can look
-/// at the last `r` dims of `broadcast`, `input`, and `reshape` and see if the
-/// dimensions are the same.
+/// Only valid if `elemwise` has the least rank `r` among `elemwise`, `input`
+/// and `reshape`, and the last `r` dims of `broadcast`, `input` and `reshape`
+/// match.
 template <typename ReshapeOpType>
 struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
@@ -831,8 +769,6 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
   LogicalResult
   deviceAwareMatchAndRewrite(ElementWiseBinary op,
                              DeviceAwareRewriter &rewriter) const override {
-
-    // Match pattern and get results.
     TensorValue inputTensor, elemwiseTensor;
     auto reshapeP = m_Op<ReshapeOpType>(rewriter.pushOp(), m_Any(&inputTensor));
     auto broadcastP =
@@ -842,10 +778,9 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     auto elemwiseOpP2 =
         m_Op<ElementWiseBinary>(rewriter.pushOp(), broadcastP, reshapeP);
 
-    // whether the reshaped argument was the LHS or RHS
     bool reshapedWasLeftOriginally;
     TensorValue reshapedTensor, broadcastTensor;
-    if (elemwiseOpP1.match(op)) { // handle different orderings for binary op
+    if (elemwiseOpP1.match(op)) {
       reshapedTensor = op.getLhsInput();
       broadcastTensor = op.getRhsInput();
       reshapedWasLeftOriginally = true;
@@ -906,11 +841,8 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
           op, "matched ops have inconsistent devices");
     }
 
-    // TODO (#36567):
-    // This following early exit is a bit of a hack used to
-    // avoid an infinite loop that can occur sometimes occur between
-    // this pattern and the SwimViewOpThroughBinaryOpWithConstantSubtree
-    // patterns. This happens on CPU only (check PAQ-988).
+    // TODO (#36567): Hack to avoid an infinite loop with the
+    // SwimViewOpThroughBinaryOpWithConstantSubtree patterns on CPU (PAQ-988).
     if (isOnHost(op) && op.getResult().hasOneUse()) {
       auto user = op.getResult().getUses().begin().getUser();
       if (auto userReshapeOp = dyn_cast<ReshapeOpType>(user)) {
@@ -920,11 +852,8 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
       }
     }
 
-    // Now we are sure moving the broadcast up will not change results.
-    // Intuition:
-    //  - we know slices across the trailing dimension will have the same
-    //     corresponding elemwise operands.
-    //  - we know the trailing dimensions before and after reshape are the same
+    // Moving the broadcast up preserves results: slices across the trailing
+    // dims share elemwise operands, and the reshape keeps the trailing dims.
     DType broadcastDType = elemwiseTensor.getType().getDtype();
     TensorValue newBroadcast = rewriter.create<Static::BroadcastToOp>(
         op->getLoc(), inputTensor.getType().cloneWith(broadcastDType),
@@ -1056,10 +985,9 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
     if (!inputTy.hasRank() || !reshapedTy.hasRank())
       return rewriter.notifyMatchFailure(op, "Shape must be ranked");
 
-    // `axis` is a compile-time `index` attribute.
     int64_t axisVal = op.getAxisAttr().getInt();
 
-    // Only support sinking when the final axis is used for now.
+    // Only support sinking when the final axis is used.
     if (axisVal != clampAxis(-1, (int64_t)reshapedTy.getRank()))
       return rewriter.notifyMatchFailure(op, "Can't sink non-last axis");
 
@@ -1080,8 +1008,7 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
     newOp.getInputMutable().set(inputTensor);
     newOp.getResult().setType(inputTensor.getType().cloneWith(outputDType));
 
-    // Ensure the softmax axis still points to the last axis. `axis` is a
-    // compile-time `index` attribute.
+    // Ensure the softmax axis still points to the last axis.
     newOp.setAxisAttr(
         mlir::Builder(newOp.getContext())
             .getIndexAttr(clampAxis(-1, (int64_t)inputTy.getRank())));
@@ -1164,14 +1091,8 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
   }
 };
 
-/// A pattern that detects reshapes that correspond to a squeeze operation on
-/// just a single axis followed by a transpose and re-orders the reshape after
-/// the transpose:
-///
-/// (See findSqueezeAxis documentation on how exactly these reshapes are
-/// identified)
-///
-/// Example:
+/// Moves a single-axis squeeze-like reshape (see findSqueezeAxis) after the
+/// transpose that consumes it.
 ///
 ///   input : tensor<[D1, 1, D2]>
 ///   reshaped : tensor<[D1, D2]>
@@ -1189,8 +1110,7 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
 ///   transposed = transpose(input)
 ///   reshaped = reshape(transposed)
 ///
-/// See https://github.com/modularml/modular/issues/27800 for the motivating
-/// context
+/// Motivated by https://github.com/modularml/modular/issues/27800.
 struct SinkSqueezeLikeReshapeThroughTranspose
     : public DeviceAwareRewritePattern<OpRewritePattern, TransposeOp> {
 
@@ -1261,12 +1181,9 @@ struct SinkSqueezeLikeReshapeThroughTranspose
   }
 };
 
-// If the previous operation was a reshape which simply padded rank
-// it is possible to just broadcast directly. This can be done if the
-// padded 1-dims were done of the LHS of the shape (as this is how)
-// broadcasting is defined to pad dimensions.
+// A reshape that only pads leading 1-dims before a broadcast is redundant,
+// since broadcasting pads dims on the left.
 //
-// Example:
 // %input: !mo.tensor<[A, B, C], f32>
 // %reshape = mo.static.reshape(%input): !mo.tensor<[A, B, C], f32>
 //    -> !mo.tensor<[1, 1, A, B, C], f32>
@@ -1305,8 +1222,7 @@ struct RemoveExtraneousPaddingReshapeWithBroadcast
       return rewriter.notifyMatchFailure(
           reshapeOp, "Reshape is not padding dims, output rank <= input rank.");
 
-    // Check all dimensions are the same same for the reshape except for the
-    // padded ones.
+    // All dims except the padded ones must match.
     for (int64_t dimOutput = 0; dimOutput < outputRank; ++dimOutput) {
       // If negative, means not part of original dimensions
       int64_t dimInput = dimOutput - outputRank + inputRank;
@@ -1336,8 +1252,6 @@ struct RemoveExtraneousPaddingReshapeWithBroadcast
 /// A pattern that detects binary operator where one operand is the result
 /// of either a transpose or static reshape and the other is ultimately
 /// the result of operations on solely constant values.
-///
-/// Example:
 ///
 /// ┌─────┐         ┌────────┐               ┌─────┐  ┌────────┐
 /// │input│         │constant│               │input│  │constant│
@@ -1384,12 +1298,9 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
           op, "Only applies to binop outputs with one use");
     }
 
-    // TODO (#36567):
-    // This following early exit is a bit of a hack used to
-    // avoid an infinite loop that can occur between the interaction
-    // of SwimReshapeThroughBinaryOpWithConstantSubtree,
-    // BroadcastReshapePattern, and ElementwiseBinaryVectorPattern. This happens
-    // on CPU only (check PAQ-988).
+    // TODO (#36567): Hack to avoid an infinite loop between
+    // SwimReshapeThroughBinaryOpWithConstantSubtree, BroadcastReshapePattern
+    // and ElementwiseBinaryVectorPattern on CPU (PAQ-988).
     if (isOnHost(op) && result.getType().hasRank() &&
         result.getType().getRank() == 1) {
       return rewriter.notifyMatchFailure(
@@ -1453,11 +1364,9 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
 
     ViewOp viewOp = dyn_cast<ViewOp>(maybeViewOp);
 
-    // TODO (#36567):
-    // This following early exit is a bit of a hack used to
-    // avoid an infinite loop that can occur between the interaction
-    // of SwimReshapeThroughBinaryOpWithConstantSubtree,
-    // BroadcastReshapePattern, and ElementwiseBinaryVectorPattern
+    // TODO (#36567): Hack to avoid an infinite loop between
+    // SwimReshapeThroughBinaryOpWithConstantSubtree, BroadcastReshapePattern
+    // and ElementwiseBinaryVectorPattern.
     if (ViewOp consumerOp =
             dyn_cast<ViewOp>(result.getUses().begin()->getOwner())) {
 
@@ -1499,11 +1408,8 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
     return mlir::success();
   }
 
-  /// The pattern works by moving the given ViewOp from the non-constant subtree
-  /// to the top of the binary op and the top of the constant subtree
-  ///
-  /// The following two functions are responsible for creating these appropriate
-  /// (modified) view ops at these locations
+  /// Create the view ops that replace `viewOp`: one on top of the constant
+  /// subtree and one on top of the binary op.
   virtual ErrorOr<ViewOp>
   materializeConstantSubtreeViewOp(DeviceAwareRewriter &rewriter,
                                    ElementWiseBinary binOp, ViewOp viewOp,
@@ -1522,10 +1428,7 @@ private:
 };
 
 /// Swims transposes through binary operators when the other operand is
-/// derived from constants
-///
-/// See SwimViewOpThroughBinaryOpWithConstantSubtree documentation for further
-/// details
+/// derived from constants. See SwimViewOpThroughBinaryOpWithConstantSubtree.
 struct SwimTransposeThroughBinaryOpWithConstantSubtree
     : public SwimViewOpThroughBinaryOpWithConstantSubtree<TransposeOp> {
   SwimTransposeThroughBinaryOpWithConstantSubtree(MLIRContext *ctx)
@@ -1542,8 +1445,7 @@ struct SwimTransposeThroughBinaryOpWithConstantSubtree
       return {"Transpose permutation tensor was not a constant input"};
     }
 
-    // Find the inverse permutation of the target transpose to fit on top of
-    // the constant subtree
+    // The constant subtree gets the inverse permutation.
     const auto &permVec = maybePermVec.value();
     SmallVector<int64_t> invertedPerm(permVec.size());
     for (auto [idx, val] : llvm::enumerate(permVec)) {
@@ -1571,10 +1473,7 @@ struct SwimTransposeThroughBinaryOpWithConstantSubtree
 };
 
 /// Swims static reshapes through binary operators when the other operand is
-/// derived from constants
-///
-/// See SwimViewOpThroughBinaryOpWithConstantSubtree documentation for further
-/// details
+/// derived from constants. See SwimViewOpThroughBinaryOpWithConstantSubtree.
 struct SwimReshapeThroughBinaryOpWithConstantSubtree
     : public SwimViewOpThroughBinaryOpWithConstantSubtree<Static::ReshapeOp> {
   SwimReshapeThroughBinaryOpWithConstantSubtree(MLIRContext *ctx)
@@ -1598,8 +1497,7 @@ struct SwimReshapeThroughBinaryOpWithConstantSubtree
   }
 };
 
-/// A pattern that will move a split/ operation after identical elementwise
-/// operations if certain conditions are met
+/// Moves a split after identical elementwise operations.
 /// CONDITIONS:
 /// - Split on the last axis.
 /// - Last axis of the split is statically known.
@@ -1764,9 +1662,7 @@ struct SinkSplitThroughElementwisePattern
     auto elementwiseType =
         llvm::cast<TensorType>(firstOwner->getResultTypes().front())
             .cloneWithNewDim(splitAxis, lastDimSize);
-    // Carry over the original elementwise op's attributes; rebuilding from just
-    // the operands and result type would otherwise drop required inherent
-    // attributes and leave the new op malformed.
+    // Carry over attributes; otherwise required inherent attributes are lost.
     OperationState elementwiseOpState(loc, firstOwner->getName(),
                                       elementwiseOperands, elementwiseType,
                                       firstOwner->getAttrs());
@@ -1796,8 +1692,8 @@ struct SinkSplitThroughElementwisePattern
   }
 };
 
-/// This pattern will sink a split operation through a ReshapeOpType (usually a
-/// static reshape or a rebind op).
+/// Sinks a split through a ReshapeOpType (usually a static reshape or a
+/// rebind op).
 /// CONDITIONS:
 /// - Split axis is statically known.
 /// - Split dimension is statically known.
@@ -1899,8 +1795,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
     SmallVector<Value> newSplitOpOperands = op.getOperands();
     newSplitOpOperands[0] = newReshape;
     newSplitOpOperands[1] = rewriter.createHostConstant(loc, newSplitSizes);
-    // `axis` is a compile-time `index` attribute, so update it in the attribute
-    // dictionary rather than as an operand.
+    // `axis` is an attribute, not an operand.
     SmallVector<NamedAttribute> newSplitAttrs(op->getAttrs());
     auto newSplit = rewriter.create<SplitOp>(
         loc, newSplitTypes, newSplitOpOperands[0], newSplitOpOperands[1],
@@ -1921,7 +1816,7 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
   }
 };
 
-/// This pattern swims a reshape through a slice operation.
+/// Swims a reshape through a slice operation.
 ///
 /// CONDITIONS:
 /// - Slice result is used exactly once by a ReshapeOpType.
@@ -1959,9 +1854,8 @@ struct SinkSplitThroughStaticReshapeLikeOpsPattern
 ///        ▼                               ▼
 ///
 /// CASE 2 — Expansion case (the sliced axis expands into multiple axes after
-/// reshape, contraction factor > 1). Here axis 0 of [12, 4] expands into
-/// [N, 2] after reshape (contraction factor = 2), so start/stop are divided
-/// by 2 and the reshaped input uses the full input size / factor:
+/// reshape, contraction factor > 1). Axis 0 of [12, 4] expands into [N, 2]
+/// (factor = 2), so start/stop are divided by 2:
 ///
 ///   Input [12, 4]                    Input [12, 4]
 ///       │                                │
@@ -1986,7 +1880,6 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
   LogicalResult
   deviceAwareMatchAndRewrite(SliceOp op,
                              DeviceAwareRewriter &rewriter) const override {
-    // The slice result must be uniquely used by a single ReshapeOpType.
     auto result = op.getResult();
     auto users = result.getUsers();
     if (llvm::range_size(users) != 1 || !isa<ReshapeOpType>(*users.begin())) {
@@ -2009,8 +1902,6 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
     if (!inputType.hasRank() || !sliceType.hasRank() || !reshapeType.hasRank())
       return rewriter.notifyMatchFailure(op, "Types must be ranked");
 
-    // Find the single dimension being sliced (the one where input and output
-    // differ).
     int64_t sliceAxis = -1;
     int64_t differentDimensions = 0;
     for (int64_t i = 0; i < static_cast<int64_t>(inputType.getRank()); ++i) {
@@ -2025,18 +1916,15 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
           op, "Slice must operate on exactly one dimension");
     }
 
-    // Both sizes at sliceAxis must be statically known.
     if (!isStaticDimAttr(inputType.getDim(sliceAxis)) ||
         !isStaticDimAttr(sliceType.getDim(sliceAxis))) {
       return rewriter.notifyMatchFailure(
           op, "Slice dimension must be statically known");
     }
 
-    // Bail out if the slice reduces the axis to a unit dimension. The reshape
-    // analysis below skips 1-dims, which means an axis-of-size-1 in sliceType
-    // gets remapped to a different (non-1) axis, but the rebuild logic still
-    // uses the original sliceAxis to compute the new reshape size. That
-    // produces a malformed reshape whose numel does not match the input.
+    // The reshape analysis skips 1-dims, so a size-1 slice axis would remap to
+    // another axis while the rebuild still uses sliceAxis, producing a reshape
+    // whose numel does not match the input.
     if (sliceType.getIntDim(sliceAxis) == 1) {
       return rewriter.notifyMatchFailure(
           op, "Slice that reduces an axis to size 1 is not supported");
@@ -2057,8 +1945,6 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
           op, "stop must be constant unless the slice axis has unit step");
     }
 
-    // Compute the reshape analysis from sliceType (before reshape) to
-    // reshapeType (after reshape).
     const StaticReshapeDimensionsMappingAnalysis
         staticReshapeDimensionsMappingAnalysis(sliceType.getDims(),
                                                reshapeType.getDims());
@@ -2073,10 +1959,8 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
     }
     int64_t newSliceAxis = *newSliceAxisOpt;
 
-    // Reject the contraction case: when multiple source dims collapse into the
-    // target axis (e.g. [K, M] → [K*M]), the new reshape type cannot be
-    // reconstructed by only updating newSliceAxis — the other contracted dims
-    // must also be accounted for, which this pattern does not do.
+    // Reject contraction (e.g. [K, M] → [K*M]): rebuilding the reshape type
+    // would need the other contracted dims, not just newSliceAxis.
     // TODO: Improve this for the contraction case.
     if (staticReshapeDimensionsMappingAnalysis.backwardMapping()[newSliceAxis]
             .size() > 1) {
@@ -2084,9 +1968,8 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
           op, "Slice axis participates in a dimension contraction");
     }
 
-    // Compute the contraction factor: the product of the inner (right-side)
-    // dims that the slice axis expands into after the reshape. For a 1-to-1
-    // mapping this is 1.
+    // Contraction factor: product of the inner dims the slice axis expands
+    // into (1 for a 1-to-1 mapping).
     uint64_t mappedSliceAxis = sliceAxis;
     while (mappedSliceAxis < sliceType.getRank() &&
            sliceType.getIntDim(mappedSliceAxis) == 1) {
@@ -2098,9 +1981,7 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
     for (size_t i = 1; i < expandedDims.size(); ++i)
       contractionFactor *= reshapeType.getIntDim(expandedDims[i]);
 
-    // For the expansion case (contractionFactor > 1), additional alignment
-    // constraints must hold so that the slice boundaries fall on whole rows of
-    // the inner dimensions.
+    // Slice boundaries must fall on whole rows of the inner dims.
     if (contractionFactor > 1) {
       if ((*stepValues)[sliceAxis] != 1) {
         return rewriter.notifyMatchFailure(op,
@@ -2125,8 +2006,6 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
     Location loc = op->getLoc();
     rewriter.setInsertionPoint(op);
 
-    // Build the new reshape type: same as reshapeType but with [newSliceAxis]
-    // scaled up by the ratio inputSize / contractionFactor.
     SmallVector<TypedAttr> newReshapeShape(reshapeType.getDims());
     newReshapeShape[newSliceAxis] =
         rewriter.getDimAttr(inputType.getIntDim(sliceAxis) / contractionFactor);
@@ -2135,19 +2014,13 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
         rewriter.create<ReshapeOpType>(loc, newReshapeType, op.getInput())
             .getResult();
 
-    // Build new start/stop/step tensors in the reshaped space. In the
-    // expansion case start and stop are divided by the contraction factor so
-    // they address the outer expanded dimension; step remains 1 (enforced
-    // above). In the 1-to-1 case (contractionFactor == 1) the values are
-    // unchanged.
+    // Dividing by the contraction factor addresses the outer expanded dim.
     int64_t newRank = reshapeType.getRank();
     SmallVector<int64_t> newStart(newRank, 0);
     SmallVector<int64_t> newStop(newRank, std::numeric_limits<int64_t>::max());
     SmallVector<int64_t> newStep(newRank, 1);
     newStart[newSliceAxis] = (*startValues)[sliceAxis] / contractionFactor;
     newStop[newSliceAxis] = stopAtAxis / contractionFactor;
-    // Preserve the original step for the 1-to-1 case; the expansion case
-    // already enforces step == 1.
     newStep[newSliceAxis] = (*stepValues)[sliceAxis];
 
     Value newStartVal = rewriter.createHostConstant(loc, newStart);
@@ -2165,11 +2038,9 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
   }
 };
 
-/// Attempts to sink broadcasts through reduction style operators
+/// Attempts to sink broadcasts through reduction style operators.
 ///
-/// E.g.
-///
-///   Input                     Input      Axis
+///   Input                    Input      Axis
 ///     │                         │         │
 ///     ▼                         │         │
 /// ┌─────────┐                   ▼         ▼
@@ -2184,13 +2055,8 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
 ///           ▼                        │
 ///                                    ▼
 ///
-/// This general transformation can only be applied as long as the axis of
-/// reduction is done on a dimension which is not modified in the broadcast.
-///
-/// Why is this possible? One easy way to get an intuition is seeing broadcast
-/// as a "view"/"reindexing" operation of an original buffer.
-///
-/// For example if:
+/// This holds when the reduction axis is not modified by the broadcast, since
+/// broadcast is a "view"/"reindexing" of the original buffer. For example if:
 ///    %T1 : !mo.tensor<[A, B, C, 1], f32>
 ///    %T2 : mo.static.broadcast_to(%A):
 ///         !mo.tensor<[A, B, C, 1], f32> -> !mo.tensor<[P1, A, B, C, P2], f32>
@@ -2205,10 +2071,8 @@ struct SwimStaticReshapeLikeOpsThroughSliceOp
 /// Which is a reduction across dimension 'A' in the original tensor, with
 /// a broadcast with the same initial output shape!
 ///
-/// When the axis of reduction is modified by the broadcast, it means the
-/// reduction is applied on an axis with identical values, and the whole
-/// Reduction op can be replaced by a simpler op (before applying a
-/// BroadcastTo):
+/// When the broadcast modifies the reduction axis, the values along it are
+/// identical and the reduction becomes a simpler op before the BroadcastTo:
 /// - For reduce.add (reduce.mul), the input must be multiplied (use pow) by the
 /// size of the axis.
 /// - For min / max / mean, the input isn't modified (identity).
@@ -2234,7 +2098,6 @@ struct SinkBroadcastsThroughReduction
       return rewriter.notifyMatchFailure(
           loc, "BCast to be statically ranked to work.");
 
-    // `axis` is a compile-time `index` attribute and is always known.
     int64_t reductionAxis = op.getAxisAttr().getInt();
 
     // respect negative axis rules
@@ -2245,14 +2108,9 @@ struct SinkBroadcastsThroughReduction
 
     reductionAxis = normalizeAxis(reductionAxis, input.getType().getRank());
 
-    // Here we want to map the axes we are reducing on in the broadcasted tensor
-    // to on the non-broadcasted input.
-    //
-    // E.g. if we broadcasted [A, B, 1] --> [1, D, A, B, 1]
-    //
-    // And we are reducing along the dim with 'A', then we just need to count
-    // the number of additional broadcasted dimensions before the given axis.
-    // In this case it is 2, since we added axis `1` and `D`.
+    // Map the reduction axis onto the non-broadcasted input by counting the
+    // broadcast-added dims before it. E.g. for [A, B, 1] --> [1, D, A, B, 1]
+    // reducing along 'A', that count is 2 (`1` and `D`).
     auto bcastShapeAttr = bcastOp.getType().getShape();
     ErrorOr<SmallVector<int64_t>> maybeBcastedAxis =
         ShapeAttr::getBroadcastedAxes(bcastOp.getInput().getType().getShape(),
@@ -2264,8 +2122,6 @@ struct SinkBroadcastsThroughReduction
     size_t numBeforeAxis = 0;
     for (int64_t bcastedDimIndex : bcastedAxis) {
       if (bcastedDimIndex == reductionAxis) {
-        // When we reduce along the broadcasted axis the reduction op can be
-        // simplified.
         auto maybeNewInput =
             TypeSwitch<Operation *, FailureOr<TensorValue>>(op)
                 .Case<ReduceMinOp, ReduceMaxOp, MeanOp>([&](auto op) {
@@ -2329,12 +2185,11 @@ struct SinkBroadcastsThroughReduction
       ++numBeforeAxis;
     }
 
-    // Now we know we are reducing along a non-broadcasted axis, we can elide
-    // the broadcast for later.
+    // Reducing along a non-broadcasted axis: reduce first, broadcast after.
     int64_t newAxis = reductionAxis - numBeforeAxis;
     auto clonedReduction = cast<MO::Reduction>(*rewriter.clone(*op));
     clonedReduction.getInputMutable().assign(bcastOpInput);
-    // `axis` is a compile-time `index` attribute, not an operand.
+    // `axis` is an attribute, not an operand.
     clonedReduction->setAttr("axis", rewriter.getIndexAttr(newAxis));
 
     TensorType newTy = bcastOpInput.getType()
@@ -2362,8 +2217,6 @@ struct SinkBroadcastsThroughElemwise
                              DeviceAwareRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    // We first ensure the elementwise op has only broadcast inputs, and collect
-    // the input shapes of the broadcasts.
     SmallVector<TypedAttr> shapeParams;
     for (Value arg : op->getOperands()) {
       auto bcastOp = arg.getDefiningOp<Static::BroadcastToOp>();
@@ -2372,12 +2225,9 @@ struct SinkBroadcastsThroughElemwise
       shapeParams.emplace_back(bcastOp.getInput().getType().getShape());
     }
 
-    // We calculate the smallest common shapes of the broadcast inputs.
     TypedAttr commonBcastShape =
         ShapeAttr::getCommonBroadcastShape(shapeParams);
 
-    // Here we cannot prove a better shape, so just use the existing shape
-    // annotation which we assume works well.
     if (!commonBcastShape)
       return rewriter.notifyMatchFailure(
           loc, "No common shape can be proven for broadcasts.");
@@ -2392,12 +2242,10 @@ struct SinkBroadcastsThroughElemwise
       return rewriter.notifyMatchFailure(
           loc, "Already at the mode reduced broadcast form.");
 
-    // Clone the elemwise operator
     TensorValue resVal = cast<TensorValue>(op->getResult(0));
     Operation *clonedOp = rewriter.clone(*op);
     TensorValue clonedResVal = cast<TensorValue>(clonedOp->getResult(0));
 
-    // Set the operands to inputs broadcast to the common shape
     rewriter.setInsertionPoint(clonedOp);
     for (size_t i = 0; i < op->getNumOperands(); ++i) {
       auto oldBcastOp =
@@ -2405,7 +2253,6 @@ struct SinkBroadcastsThroughElemwise
       TensorType targetType =
           oldBcastOp.getType().cloneWith(commonBcastShapeAttr);
 
-      // Only insert broadcast and replace operand if it changes shapes
       if (oldBcastOp.getType() != targetType) {
         TensorValue newOperand = rewriter.create<Static::BroadcastToOp>(
             oldBcastOp->getLoc(), targetType, oldBcastOp.getInput());
@@ -2451,7 +2298,6 @@ struct SinkBroadcastsThroughLinalgBandPartOp
     MO::TensorType inputTy = inputVal.getType();
     SmallVector<TypedAttr> newBcastResDims;
     if (bcastInputTy.getRank() > 2) {
-      // If broadcasting in the batch dimensions, we check their equality.
       ArrayRef<TypedAttr> inBatchDims = bcastInputTy.getDims().drop_back(2);
       ArrayRef<TypedAttr> outBatchDims = inputTy.getDims().drop_back(2);
       if (inBatchDims.equals(outBatchDims))
@@ -2459,17 +2305,14 @@ struct SinkBroadcastsThroughLinalgBandPartOp
             loc, "preceding broadcast with batch dims canonical");
       newBcastResDims.append(inBatchDims.begin(), inBatchDims.end());
     } else {
-      // We are broadcasting from something less than rank-2, so it's enough to
-      // ensure that we are broadcasting to rank-2.
+      // From below rank 2, it's enough to broadcast to rank 2.
       if (inputTy.getRank() == 2)
         return rewriter.notifyMatchFailure(
             loc, "preceding broadcast without batch dims canonical");
     }
 
-    // We will inject a new broadcast before the band part op that does not
-    // broadcast in the batch dimensions. If there is no broadcasting in the
-    // trailing two dimensions (e.g. because they are static and equal) the
-    // broadcast canonicalizer will erase the op.
+    // The new broadcast skips the batch dims; if it doesn't broadcast the
+    // trailing two dims either, the broadcast canonicalizer erases it.
     ArrayRef<TypedAttr> matDims = inputTy.getDims().take_back(2);
     newBcastResDims.append(matDims.begin(), matDims.end());
 
@@ -2479,14 +2322,12 @@ struct SinkBroadcastsThroughLinalgBandPartOp
     auto newBcastOp = rewriter.create<MO::Static::BroadcastToOp>(
         loc, newBcastResTy, bcastInput);
 
-    // We replace the bandpart op using a new input and result type.
     SmallVector<Value> newOperands(op.getOperands());
     newOperands[0] = newBcastOp;
     auto newBandPartOp = rewriter.create<MO::LinAlg::BandPartOp>(
         loc, newBcastResTy, newOperands, op.getProperties(),
         llvm::to_vector(op.getOperation()->getDiscardableAttrs()));
 
-    // Note that the original result type is used.
     rewriter.replaceOpWithNewOp<MO::Static::BroadcastToOp>(op, resTy,
                                                            newBandPartOp);
     return success();

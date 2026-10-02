@@ -19,9 +19,7 @@ using namespace M::MAP;
 
 namespace {
 
-// Thin canonicalization wrappers over `dedupeKernelInputs` (see MAPOps.h):
-// fusion can leave a kernel binding the same value several times in `inputs`,
-// and the `$inputs` list becomes the lowered kernel's parameter list.
+// Canonicalization wrappers over `dedupeKernelInputs`.
 struct DedupeIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -40,12 +38,8 @@ struct DedupeIterForeachInputs : OpRewritePattern<IterForeachOp> {
   }
 };
 
-// Mirrors `DedupeIterOpaqueInputs`, one level further in: a capturing
-// closure reaches its body through its own capture operand + shadowing
-// block argument. Generic over the interface (one pattern, not one per
-// closure type) since all three expose the same primitives. Also what
-// `LoopInvariantViewMotion` relies on: it calls `addCapture` freely,
-// expecting this to fold away any duplicate it creates.
+// `DedupeIterOpaqueInputs` for a capturing closure's captures.
+// `LoopInvariantViewMotion` relies on it to fold duplicates from `addCapture`.
 struct DedupeCapturingClosureCaptures
     : OpInterfaceRewritePattern<CapturingFusionClosure> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
@@ -73,11 +67,8 @@ struct DedupeCapturingClosureCaptures
   }
 };
 
-// Drops captures whose shadowed block arg has no use. Unlike
-// `map.iter.opaque`'s own inputs below, a capture carries no graph-level
-// scheduling edge of its own (that lives on the opaque's inputs), so
-// dropping one outright is always safe -- what lets `LoopInvariantViewMotion`
-// shed a capture a hoisted load no longer reads.
+// Drops captures whose shadowed block arg has no use. Unlike an opaque's
+// inputs, a capture carries no scheduling edge, so this is always safe.
 struct DropDeadCapturingClosureCaptures
     : OpInterfaceRewritePattern<CapturingFusionClosure> {
   using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
@@ -101,12 +92,11 @@ struct DropDeadCapturingClosureCaptures
 };
 
 // The largest constant worth rematerializing inside a kernel body rather than
-// passing at runtime. Kept in step with `MOGG::FuseConstants`, which applies
-// the same budget to the pre-advanced-fusion lane.
+// passing at runtime.
 constexpr int64_t kMaxConstantSize = 2048;
 
-// Returns the `mo.constant` producing `val` when its value can be
-// rematerialized inside a kernel body, else null.
+// The `mo.constant` producing `val` if it can be rematerialized in a kernel
+// body, else null.
 M::MO::ConstantOp getFusableConstant(Value val) {
   // A rebind only reinterprets the type.
   if (auto rebind = val.getDefiningOp<M::MO::RebindOp>())
@@ -127,16 +117,9 @@ M::MO::ConstantOp getFusableConstant(Value val) {
   return cst;
 }
 
-// Rematerializes small constant inputs inside the body and drops them from
-// `inputs`, which is what the lowered kernel's parameter list is built from.
-// `map.iter.opaque` is isolated from above, so the clone has to live in the
-// body; from there plain SSA dominance carries it to the loop body and to any
-// prologue/epilogue capture.
-//
-// `DropDeadIterOpaqueInputs` would collect the operand on its own, and the
-// original `mo.constant` is `Pure`, so the driver DCEs it once its last use
-// goes. Clones left behind by folding the same constant into several input
-// slots are uniqued by the folder, since `mo.constant` is `ConstantLike`.
+// Rematerializes small constant inputs inside the (isolated) body and drops
+// them from `inputs`, the lowered kernel's parameter list. Duplicate clones are
+// uniqued by the folder since `mo.constant` is `ConstantLike`.
 struct FuseConstantIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -153,9 +136,8 @@ struct FuseConstantIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
       M::MO::ConstantOp cst = getFusableConstant(input);
       if (!cst)
         continue;
-      // A `map.iter.opaque` body holds only MAP ops, so the value is carried
-      // by a `map.constant` rather than a clone of the `mo.constant`, typed
-      // against the input since a looked-through rebind retypes it.
+      // The body holds only MAP ops. Typed against the input, since a
+      // looked-through rebind retypes it.
       Value inBody = ConstantOp::create(rewriter, cst.getLoc(), input.getType(),
                                         cst.getValueAttr());
       rewriter.replaceAllUsesWith(op.getInputBlockArgs()[idx], inBody);
@@ -164,7 +146,6 @@ struct FuseConstantIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
     if (folded.empty())
       return failure();
 
-    // Erasing shifts the indices after it, so unwind back to front.
     rewriter.modifyOpInPlace(op, [&] {
       for (unsigned idx : llvm::reverse(folded))
         op.eraseInputsAt(idx);
@@ -196,28 +177,20 @@ struct DropDeadIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
   }
 };
 
-// Walks `tensor` out of MAP entirely, to the MO-level value the kernel
-// ultimately reads: out of every capturing closure it is a capture-shadowing
-// block argument of, past the hoisted stride views that only re-address
-// someone else's storage, and finally out of the enclosing
-// `map.iter.opaque`'s own inputs -- which is the boundary, since those
-// operands are plain graph values. Returns null as soon as the chain leaves
-// that shape: an output block argument, a value computed inside the kernel,
-// an unrecognized producer.
+// Walks `tensor` out to the MO-level value the kernel reads: through closure
+// captures, stride views, and the enclosing `map.iter.opaque`'s inputs. Null
+// for an output block argument or a value computed inside the kernel.
 static Value resolveMOSource(Value tensor) {
   while (true) {
     if (auto arg = dyn_cast<BlockArgument>(tensor)) {
       Operation *parent = arg.getOwner()->getParentOp();
       if (auto closure = dyn_cast_or_null<CapturingFusionClosure>(parent)) {
-        // Null for a leading callback parameter, which shadows nothing
-        // outside the closure.
         tensor = closure.getCaptureFor(arg);
         if (!tensor)
           return nullptr;
         continue;
       }
       if (auto opaque = dyn_cast_or_null<IterOpaqueOp>(parent)) {
-        // Null for an output block arg, which shadows no operand.
         tensor = opaque.getInputFor(arg);
         if (!tensor)
           return nullptr;
@@ -234,9 +207,8 @@ static Value resolveMOSource(Value tensor) {
   }
 }
 
-// Reads the single element of `elems` as a scalar attribute of `elemType`.
-// Float and integer are the only kinds with a scalar attribute to build (and a
-// Mojo literal to emit), same as the legacy pass's own extraction.
+// Reads the single element of `elems` as a float or integer scalar attribute,
+// the only kinds with a Mojo literal to emit.
 static TypedAttr getSingleElementAttr(mlir::ElementsAttr elems, M::DType dtype,
                                       Type elemType) {
   if (isa<mlir::FloatType>(elemType)) {
@@ -254,15 +226,9 @@ static TypedAttr getSingleElementAttr(mlir::ElementsAttr elems, M::DType dtype,
   return nullptr;
 }
 
-// The constant elements `source` holds, or null if it holds none.
-//
-// Two spellings reach here. On host, `FuseConstantIterOpaqueInputs` has
-// usually already folded the constant into the body as a `map.constant`; on a
-// device it refuses to (GEX-3839), so the constant is still arriving as a
-// kernel operand and `source` is the `mo.constant` behind it. `m_Constant`
-// covers both without naming either -- both ops are `ConstantLike` and fold to
-// their own `ElementsAttr` -- and only fails for the shapes that need the
-// walk below.
+// The constant elements `source` holds, or null. `m_Constant` covers both a
+// host `map.constant` folded by `FuseConstantIterOpaqueInputs` and a device
+// `mo.constant` operand it refused (GEX-3839).
 static mlir::ElementsAttr getConstantElements(Value source) {
   mlir::ElementsAttr elems;
   if (matchPattern(source, m_Constant(&elems)))
@@ -272,11 +238,9 @@ static mlir::ElementsAttr getConstantElements(Value source) {
   if (!srcTensor)
     return nullptr;
 
-  // A host constant moved onto the device (`ops.constant(...).to(device)`)
-  // reaches the kernel through an `mo.transfer`, which the identity chain
-  // `tryGetConstantOpsOfRank` walks does not see through. Transfers preserve
-  // value, dtype and rank, and inlining a literal replaces a read rather than
-  // creating anything device-resident, so placement is irrelevant here.
+  // A host constant moved to the device (`ops.constant(...).to(device)`)
+  // arrives through `mo.transfer`, which `tryGetConstantOpsOfRank` does not see
+  // through. Placement is irrelevant when inlining a literal.
   size_t rank = srcTensor.getType().getRank();
   while (auto transfer = srcTensor.getDefiningOp<M::MO::TransferOp>())
     srcTensor = cast<M::MO::TensorValue>(transfer.getInput());
@@ -290,20 +254,12 @@ static mlir::ElementsAttr getConstantElements(Value source) {
   return constants.front().getValueAttr();
 }
 
-// Replaces a load of a one-element compile-time constant with that constant's
-// single element, inlined as a literal -- the MAP-lane equivalent of
-// `MOGG::InlineBroadcastConstantScalars`. Strictly more general than that
-// pass: keying off the source having exactly one element, rather than off an
-// actual broadcast view, covers every spelling of "reads the same element
-// every iteration" (`map.index.broadcast` on the index, a stride view on the
-// tensor, or no view at all), because a one-element tensor yields the same
-// element at every index and the load's own index therefore cannot matter.
+// Replaces a load of a one-element compile-time constant with its element as
+// a literal. A one-element source makes the index irrelevant, whatever view
+// sits on the index or tensor.
 //
-// Rooted on the load rather than on `map.iter.opaque`'s inputs so it never
-// mutates across the isolated-from-above boundary: it only READS the outer
-// operand to identify the constant. The now-unused capture and kernel input
-// are shed by `DropDeadCapturingClosureCaptures` / `DropDeadIterOpaqueInputs`,
-// and the dead view and `mo.constant` by ordinary DCE.
+// Rooted on the load so it never mutates across the isolated-from-above
+// boundary; the dead capture and input are shed by the `DropDead*` patterns.
 struct InlineConstantScalarLoad : OpRewritePattern<LoadOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -316,8 +272,7 @@ struct InlineConstantScalarLoad : OpRewritePattern<LoadOp> {
     if (!srcTy)
       return failure();
 
-    // One element is what makes the index irrelevant. It also excludes
-    // dynamically-shaped sources, whose `getNumElements()` is nullopt.
+    // Also excludes dynamic shapes, whose `getNumElements()` is nullopt.
     if (srcTy.getNumElements() != 1)
       return failure();
 
@@ -348,12 +303,9 @@ StoreOp M::MAP::getUniqueStore(Block &body) {
   return store;
 }
 
-// Fusion can leave a MAP kernel binding the same value several times in
-// `inputs` (once per fused producer). The `$inputs` list becomes the lowered
-// kernel's parameter list, so keep it minimal: rewire every duplicate's
-// shadowed block arg onto the first occurrence and erase it. Uniquing also
-// makes the redundant loads and computations in the body identical, so CSE can
-// collapse them -- and re-exposes a shared producer as single-use so it fuses.
+// Fusion can bind the same value several times in `inputs`, which becomes the
+// lowered kernel's parameter list. Uniquing also lets CSE collapse redundant
+// loads and re-exposes a shared producer as single-use.
 bool M::MAP::dedupeKernelInputs(Operation *kernel, RewriterBase &rewriter) {
   auto dedupe = [&](auto op,
                     llvm::function_ref<BlockArgument(unsigned)> inputArg) {
@@ -376,7 +328,6 @@ bool M::MAP::dedupeKernelInputs(Operation *kernel, RewriterBase &rewriter) {
   };
 
   if (auto foreachOp = dyn_cast<IterForeachOp>(kernel)) {
-    // A foreach body's leading arguments are its inputs.
     Block &body = foreachOp.getBody().front();
     return dedupe(foreachOp,
                   [&](unsigned idx) { return body.getArgument(idx); });

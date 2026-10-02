@@ -28,11 +28,8 @@ namespace M::MAP {
 #define GEN_PASS_DEF_FUSEMUTABLELOADS
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
-// Both kernel ops load fusion applies to -- `map.iter.foreach` and
-// `map.iter.opaque` -- carry a chain, an `$inputs` list shadowed as body block
-// arguments, and a `fusionInfo` attribute, but each behind its own accessors.
-// These bridge the two so the fusion logic below is written once against
-// `Operation *`.
+// Bridges the `map.iter.foreach` / `map.iter.opaque` accessors so the fusion
+// logic is written once against `Operation *`.
 
 bool isFusibleKernel(Operation *op) {
   return isa_and_present<MAP::IterForeachOp, MAP::IterOpaqueOp>(op);
@@ -88,11 +85,8 @@ bool kernelHasWriteEffect(Operation *kernelOp) {
   return false;
 }
 
-/// Determines if there's a valid kernel op to perform load fusion with, and
-/// returns it (null if there is none).
-///
-/// The main condition is that the kernel must be the sole consumer of the
-/// tensor output of the load op.
+/// The kernel to fuse `loadOp` into, or null. The kernel must be the sole
+/// consumer of the load's tensor.
 Operation *maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
 
   auto tensor = loadOp.getOutTensor();
@@ -117,13 +111,9 @@ Operation *maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   if (!isFusibleKernel(kernelOp))
     return nullptr;
 
-  // Fusing makes the kernel read the buffer as it iterates, in place of the
-  // snapshot the load took beforehand. That only preserves the load's semantics
-  // if the kernel visits each element at most once and writes only the element
-  // it is reading -- which is exactly what map.iter.foreach is, by
-  // construction. An in-place map.iter.opaque wraps a hand-written kernel free
-  // to write any element while reading any other, so it has to keep reading the
-  // snapshot.
+  // Reading the buffer in place of the load's snapshot is only sound if the
+  // kernel writes only the element it reads, as map.iter.foreach does. An
+  // in-place map.iter.opaque may write any element.
   if (isa<MAP::IterOpaqueOp>(kernelOp) &&
       llvm::is_contained(kernelOp->getOperands(), loadOp.getInBuffer())) {
     LLVM_DEBUG(loadOp.emitRemark()
@@ -145,8 +135,6 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
   auto &tensorUse = *loadOp.getOutTensor().getUses().begin();
   auto argIdx = tensorUse.getOperandNumber();
 
-  // Build the new operand list: the fused tensor input is replaced in place
-  // by the load's buffer at the same index.
   SmallVector<Value> newInputs(kernelOp.getInputs());
   newInputs[argIdx] = loadOp.getInBuffer();
 
@@ -170,19 +158,12 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
   // Inherent, so `setDiscardableAttrs` below does not carry it.
   newKernelOp.setIsAsync(kernelOp.getIsAsync());
 
-  // Merge source locations so the fused kernel keeps both ops' provenance.
   newKernelOp->setLoc(mlir::FusedLoc::get(
       kernelOp->getContext(), {loadOp->getLoc(), kernelOp->getLoc()}));
-
-  // Copy over any discardable attributes from the original kernel
   newKernelOp->setDiscardableAttrs(kernelOp->getDiscardableAttrDictionary());
 
-  // A map.iter.foreach body is just a block whose arguments mirror the op's own
-  // operand/result types, so there is nothing to clone it by structure. Build
-  // that block explicitly (with the buffer type substituted at argIdx), then
-  // splice the old kernel's body into it via cloneRegionBefore +
-  // inlineBlockBefore (the same idiom ElementwiseFuser::fuse() uses), remapping
-  // the old tensor block-arg onto the new buffer-typed one.
+  // Build the new block with the buffer type at argIdx, then splice the old
+  // body in.
   Block &oldBody = kernelOp.getBody().front();
   Block *newBody = &newKernelOp.getBody().emplaceBlock();
   for (auto [i, arg] : llvm::enumerate(oldBody.getArguments())) {
@@ -215,23 +196,10 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
   return newKernelOp;
 }
 
-// Replaces `loadOutChain` with `loadInChain` in all chain.create ops on the
-// path from a mutable.load op to a kernel op.
-// Attempts to "detach" the load's outgoing chain from the kernel's incoming
-// chain by rewriting an exclusive path of `mo.chain.create` operations so they
-// consume the load's *input* chain instead.
-// Abandons the rewrite if the path contains anything other than single-use
-// chain.create ops.
+// When the kernel depends on the load's out-chain, fusing would create a cycle.
+// If the path is an exclusive run of single-use `mo.chain.create`s, rewrite
+// them to consume the load's in-chain instead; otherwise give up.
 //
-// Enables fusion when the kernel depends on the load's out-chain through an
-// exclusive path of single-use chain.create operations.
-//
-// Problem: Direct fusion would create a cycle (kernel depends on load's
-//          out-chain, but load would be fused into kernel).
-// Solution: Rewrite chain.creates on the path to consume load's in-chain
-//           instead, "detaching" the load's out-chain from the dependency.
-//
-// Example:
 // BEFORE (fusion blocked):
 //   %t, %outCh = mo.mutable.load(buf, %inCh)
 //   %merged = mo.chain.create(%other, %outCh)  // kernel depends on %outCh
@@ -247,12 +215,9 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
 static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
                                      Value kernelInChain) {
   if (kernelInChain == loadOutChain) {
-    // Direct dependency: nothing to rewrite safely here.
     return false;
   }
 
-  // Collect every chain.create that sits on the unique path from the load's
-  // out-chain to the kernel's in-chain.
   SmallVector<MO::ChainCreateOp> toRewrite;
   llvm::SmallPtrSet<Operation *, 16> onPath;
 
@@ -280,42 +245,33 @@ static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
 
       if (std::optional<bool> pathStatus = analyzeChainValue(operand)) {
         if (!*pathStatus) {
-          // Bail since dependency exists but is not exclusive.
           return false;
         }
-        // If we're here, pathStatus is true (on path and exclusive).
         subtreeReachesLoad = true;
       }
     }
 
     if (!subtreeReachesLoad) {
-      // This subtree is not on the load -> kernel path.
       return std::nullopt;
     }
 
-    // Check exclusivity for chain.creates that are on the path.
+    // Another user would observe the rewiring.
     if (!chainCreate.getResult().hasOneUse()) {
-      // Bail since another user would observe rewiring the chain.
       return false;
     }
 
-    // Rewrite this chain.create since it reaches the load op and is exclusive.
     if (onPath.insert(chainCreate.getOperation()).second)
       toRewrite.push_back(chainCreate);
 
     return true;
   };
 
-  // Abort if any branch does not satisfy the exclusivity requirements.
   if (analyzeChainValue(kernelInChain) != true)
     return false;
 
-  // Rewrite each chain.create that was verified to be on the exclusive path to
-  // use the load's input chain instead of its output chain.
   for (MO::ChainCreateOp chainCreate : toRewrite)
     chainCreate->replaceUsesOfWith(loadOutChain, loadInChain);
 
-  // Sanity-check that the rewrite fully severed the dependency.
   ASSERT_STREAM(!dataflowGraphDependsOn(kernelInChain, loadOutChain),
                 "Expected exclusive chain path from mutable.load to kernel op "
                 "to be severed.");
@@ -323,19 +279,15 @@ static bool detachExclusiveChainPath(Value loadOutChain, Value loadInChain,
   return true;
 }
 
-// An opaque kernel reads a fusible input through a `map.iter.prologue` that
-// captures the corresponding body block argument. The capture's own inner block
-// argument mirrors the captured type, so it has to follow the block argument's
-// tensor -> buffer retype; the `map.load` it feeds already reads either. Inputs
-// the kernel is not fused into instead reach `map.call.opaque` directly, whose
-// operands are untyped and need no retype.
+// A prologue capture's block argument mirrors the captured type, so it follows
+// the tensor -> buffer retype.
 void retypeFusedPrologueCaptures(Value bufferArg) {
   for (OpOperand &use : bufferArg.getUses()) {
     auto prologueOp = dyn_cast<MAP::IterPrologueOp>(use.getOwner());
     if (!prologueOp)
       continue;
 
-    // Prologue body block args are [index, captures...].
+    // Block args are [index, captures...].
     prologueOp.getBody()
         .getArgument(use.getOperandNumber() + 1)
         .setType(bufferArg.getType());
@@ -387,35 +339,22 @@ void fuseLoadBuffer(PatternRewriter &rewriter, MO::MutableLoadOp loadOp,
         ValueRange{getKernelInputChain(kernelOp), loadOp.getInChain()});
     setKernelChain(kernelOp, newChain);
   } else {
-    // Simply rewrite the loads input chain when the kernel has the loads output
-    // chain as input.
     setKernelChain(kernelOp, loadOp.getInChain());
   }
 
   setKernelFusionInfo(kernelOp,
                       MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
                           kernelOp->getContext(), {loadOp, kernelOp}));
-  // Merge source locations so the fused kernel keeps both ops' provenance.
   kernelOp->setLoc(mlir::FusedLoc::get(kernelOp->getContext(),
                                        {loadOp->getLoc(), kernelOp->getLoc()}));
 
   loadOp.erase();
 }
 
-// Fuses `loadOp` into a read-only opaque `kernelOp` that has no chain yet,
-// giving the kernel a chain in/out pair in the same step (GEX-3962). This is
-// the `map.iter.opaque` analogue of the `IterForeachOp` overload above and of
-// the legacy MOGG `FuseMutableLoads::fuseLoadBufferAndChains`: an opaque
-// kernel with no chain to sequence the load against was previously skipped,
-// leaving the `mo.mutable.load` behind as a full-buffer copy. A gather that
-// indexes a whole KV leaf then materialized the entire leaf per read.
-//
-// An opaque kernel's chain is pure sequencing plumbing: it has no body block
-// argument and never reaches the wrapped `map.call.opaque` (see
-// `MAP_IterOpaqueOp`), so only the op's operands/results and the fused input's
-// tensor -> buffer block-arg retype change. `map.iter.opaque` has no in-place
-// way to grow its results, so this replaces the op and moves its body over
-// (mirroring `AllocateAccumulatingBuffers::addScratchResult`).
+// Fuses `loadOp` into a read-only opaque `kernelOp` with no chain, giving it a
+// chain in/out pair (GEX-3962). Otherwise the load stays a full-buffer copy,
+// e.g. a gather indexing a KV leaf materializes the whole leaf per read.
+// `map.iter.opaque` cannot grow results in place, so the op is replaced.
 IterOpaqueOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
                                      MO::MutableLoadOp loadOp,
                                      IterOpaqueOp kernelOp) {
@@ -425,9 +364,6 @@ IterOpaqueOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
   OpOperand &tensorUse = *loadOp.getOutTensor().getUses().begin();
   auto argIdx = tensorUse.getOperandNumber();
 
-  // The buffer replaces the fused tensor operand in place; the load's in-chain
-  // sequences the new kernel, and a trailing chain result takes over the load's
-  // out-chain.
   SmallVector<Value> newInputs(kernelOp.getInputs());
   newInputs[argIdx] = loadOp.getInBuffer();
 
@@ -445,24 +381,18 @@ IterOpaqueOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
   // Inherent, so `setDiscardableAttrs` below does not carry it.
   newKernelOp.setIsAsync(kernelOp.getIsAsync());
 
-  // Merge source locations so the fused kernel keeps both ops' provenance.
   newKernelOp->setLoc(
       mlir::FusedLoc::get(ctx, {loadOp->getLoc(), kernelOp->getLoc()}));
   newKernelOp->setDiscardableAttrs(kernelOp->getDiscardableAttrDictionary());
 
-  // Move the body over, then retype the fused input's shadow block argument
-  // tensor -> buffer. The chain has no block argument, so the arguments still
-  // map one-to-one onto the (unchanged) inputs then outputs.
+  // The chain has no block argument, so only the fused input is retyped.
   newKernelOp.getBody().takeBody(kernelOp.getBody());
   BlockArgument fusedArg = newKernelOp.getBody().front().getArgument(argIdx);
   fusedArg.setType(loadOp.getInBuffer().getType());
   retypeFusedPrologueCaptures(fusedArg);
 
-  // The load's out-chain (downstream ordering) becomes the kernel's out-chain,
-  // so any op that waited on the load now waits on the fused kernel.
   loadOp.getOutChain().replaceAllUsesWith(newKernelOp.getOutputChain());
 
-  // The non-chain results map one-to-one; the appended chain has no old result.
   for (auto &&[oldRes, newRes] :
        llvm::zip(kernelOp->getResults(), newKernelOp->getResults()))
     oldRes.replaceAllUsesWith(newRes);
@@ -497,10 +427,8 @@ struct ParallelizeLoadsWithMultipleUsers
           "parallelization pattern.");
     }
 
-    // Splitting the load lets each consumer fuse the buffer and read it
-    // directly, so a consumer that writes that same buffer would race the reads
-    // the other consumers now do inline. Keep the single shared load in that
-    // case, which also keeps the buffer out of every consumer.
+    // After splitting, a consumer that writes the buffer would race the other
+    // consumers' fused reads.
     for (OpOperand &use : tensor.getUses()) {
       Operation *consumer = use.getOwner();
       if (!kernelHasWriteEffect(consumer))
@@ -516,7 +444,6 @@ struct ParallelizeLoadsWithMultipleUsers
 
     auto *loadBlock = loadOp->getBlock();
 
-    // Check if any uses are in a different block - if so, early exit
     for (OpOperand &use : tensor.getUses()) {
       if (use.getOwner()->getBlock() != loadBlock) {
         // TODO(GEX-1203): Add support for cross-block load parallelization
@@ -566,7 +493,6 @@ struct ParallelizeLoadsWithMultipleUsers
 
 bool kernelAlreadyHasDirectBufferInput(Operation *kernelOp,
                                        MO::MutableLoadOp loadOp) {
-  // Check if kernel is sole consumer of load's chain output
   if (!loadOp.getOutChain().hasOneUse())
     return false;
 
@@ -574,7 +500,6 @@ bool kernelAlreadyHasDirectBufferInput(Operation *kernelOp,
   if (user != kernelOp)
     return false;
 
-  // Get the operand index of the tensor output in the kernel
   OpOperand *tensorOperand = nullptr;
   for (OpOperand &opOperand : kernelOp->getOpOperands()) {
     if (opOperand.get() == loadOp.getOutTensor()) {
@@ -586,8 +511,6 @@ bool kernelAlreadyHasDirectBufferInput(Operation *kernelOp,
   if (!tensorOperand)
     return false;
 
-  // Check if the kernel also has a direct input of the buffer at the
-  // appropriate position
   unsigned tensorIdx = tensorOperand->getOperandNumber();
   for (unsigned i = 0; i < kernelOp->getNumOperands(); ++i) {
     if (kernelOp->getOperand(i) == loadOp.getInBuffer() && i != tensorIdx)
@@ -635,28 +558,16 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
         fuseLoadBuffer(rewriter, loadOp, kernelOp,
                        /*kernelHasLoadsOutputChain=*/true);
       } else if (!kernelHasInOutChains(kernelOp)) {
-        // Transform logic is a bit more involved if load fusion hasn't already
-        // happened as we need to have the kernel both produce and consume a
-        // chain now.
+        // The kernel must now both consume and produce a chain.
         //
-        // TODO(GEX-1031): Break the transforms this operation does into two
-        // steps
-        // -- rewriting the kernel body to accept and produce a chain and then
-        // performing the re-write from mo.tensor -> mo.buffer for the
-        // appropriate operand index.
+        // TODO(GEX-1031): Split into adding the chain, then the
+        // mo.tensor -> mo.buffer rewrite.
         if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
           fuseLoadBufferAndChains(rewriter, loadOp, foreachOp);
         else
-          // A chainless opaque kernel (e.g. a gather indexing a whole buffer)
-          // gets a chain in/out pair as it fuses, rather than leaving the load
-          // behind as a full-buffer copy.
           fuseLoadBufferAndChains(rewriter, loadOp,
                                   cast<MAP::IterOpaqueOp>(kernelOp));
       } else {
-        // Transform is much simpler in the case that load fusion has already
-        // occurred as we just need to re-write the kernel body to use a buffer
-        // type (and possibly turn off input fusion for the buffer we're fusing
-        // in).
         fuseLoadBuffer(rewriter, loadOp, kernelOp,
                        /*kernelHasLoadsOutputChain=*/false);
       }

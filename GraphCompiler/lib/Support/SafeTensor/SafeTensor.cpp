@@ -15,8 +15,7 @@ static constexpr size_t kHeaderMaxSize = 100'000'000;
 
 #define DEBUG_TYPE "safetensor"
 
-// f8e4m3 follows HF's `safetensor` implementation,
-// this maps f8e4m3 to f8e4m3fn intentionally.
+// f8e4m3 maps to f8e4m3fn intentionally, matching HF's `safetensor`.
 #define TYPE_MAPPING(X)                                                        \
   X(kBool, BOOL)                                                               \
   X(ui8, U8)                                                                   \
@@ -79,7 +78,6 @@ static ErrorOr<std::string> fromDType(DType dtype) {
 
 ErrorOr<SafeTensor::TensorInfo>
 SafeTensor::TensorInfo::get(const llvm::json::Object &tensorInfo) {
-  // Get the dtype.
   auto dtypeData = tensorInfo.find("dtype");
   if (dtypeData == tensorInfo.end())
     return Error("dtype is not present in the tensor info");
@@ -87,7 +85,6 @@ SafeTensor::TensorInfo::get(const llvm::json::Object &tensorInfo) {
   if (dtype.isError())
     return dtype.takeError();
 
-  // Get the shape.
   auto shapeData = tensorInfo.find("shape");
   if (shapeData == tensorInfo.end())
     return Error("shape is not present in the tensor info");
@@ -103,7 +100,6 @@ SafeTensor::TensorInfo::get(const llvm::json::Object &tensorInfo) {
     shape.push_back(*shapeValueAsInteger);
   }
 
-  // Get the offsets.
   auto dataOffsets = tensorInfo.find("data_offsets");
   if (dataOffsets == tensorInfo.end())
     return Error("data_offsets is not present in the tensor info");
@@ -139,53 +135,40 @@ llvm::json::Value SafeTensor::TensorInfo::toJSON() const {
 // SafeTensor
 //===----------------------------------------------------------------------===//
 
-/// Load and parse a SafeTensor file from the given data.
 ErrorOr<SafeTensor> SafeTensor::get(M::Driver::DeviceContextRef device,
                                     M::Driver::DeviceBufferRef parentBuffer) {
-  // Get the buffer size.
   size_t bufferSize = parentBuffer->byteSize();
 
-  // Check if the buffer size is smaller than the header binary size (8
-  // bytes).
   if (bufferSize < kHeaderBinarySize)
     return Error("file is too small to be a safetensor");
 
-  // Read the header length from the beginning of the buffer (little-endian,
-  // unaligned).
+  // Little-endian, unaligned.
   uint64_t headerLength =
       llvm::support::endian::read<uint64_t, llvm::support::unaligned>(
           parentBuffer->ptr(), llvm::endianness::little);
 
   LLVM_DEBUG(llvm::outs() << "headerLength = " << headerLength << "\n");
 
-  // Check if the header length exceeds the maximum allowed header size.
   if (headerLength > kHeaderMaxSize)
     return Error("header length is greater than the max header size");
 
-  // Check if the header length plus the header binary size exceeds the total
-  // buffer size.
   if (headerLength + kHeaderBinarySize > bufferSize)
     return Error("header length is greater than the file size");
 
-  // Extract the JSON string from the buffer, starting after the header binary
-  // size, with the length of headerLength.
   StringRef jsonString(reinterpret_cast<const char *>(parentBuffer->ptr()) +
                            kHeaderBinarySize,
                        headerLength);
 
-  // If the buffer does not start with `{` then it's not a valid json.
   if (!jsonString.starts_with("{"))
     return Error("the header is not a valid json object");
 
   LLVM_DEBUG(llvm::outs() << "headerLength = " << headerLength << "\n");
   LLVM_DEBUG(llvm::outs() << "jsonString = " << jsonString << "\n");
 
-  // Parse the JSON string into a JSON value.
   llvm::Expected<llvm::json::Value> jsonValue = llvm::json::parse(jsonString);
   if (!jsonValue)
     return Error("failed to deserialize safetensor");
 
-  // Get the JSON value as a JSON object.
   auto *jsonValueAsObject = jsonValue->getAsObject();
   if (!jsonValueAsObject)
     return Error("failed to convert JSON value to object");
@@ -193,7 +176,6 @@ ErrorOr<SafeTensor> SafeTensor::get(M::Driver::DeviceContextRef device,
   llvm::json::Object metadata;
   llvm::DenseMap<std::string, TensorInfo> tensorInfo;
   for (const auto &[key, value] : *jsonValueAsObject) {
-    // If the key is "__metadata__", store the value as metadata.
     if (key == "__metadata__") {
       if (!metadata.empty())
         return Error("duplicate metadata while deserializing safetensor");
@@ -202,8 +184,6 @@ ErrorOr<SafeTensor> SafeTensor::get(M::Driver::DeviceContextRef device,
       continue;
     }
 
-    // Otherwise, treat it as tensor info and try to emplace it into
-    // tensorInfo map. Check for duplicate tensor names.
     auto tensorInfoOr = TensorInfo::get(*value.getAsObject());
     if (tensorInfoOr.isError())
       return tensorInfoOr.takeError();
@@ -216,12 +196,10 @@ ErrorOr<SafeTensor> SafeTensor::get(M::Driver::DeviceContextRef device,
                     std::move(metadata), std::move(tensorInfo));
 }
 
-/// Load and parse a SafeTensor file from the given path.
 ErrorOr<SafeTensor> SafeTensor::get(const std::filesystem::path &path,
                                     M::Driver::DeviceContextRef device) {
-  // TODO: On the CPU path, can read just once.
-  // On the GPU path, read the file twice: first for the metadata (tensor
-  // names, etc) and second to send the data to the GPU.
+  // TODO: Read once on the CPU path. The GPU path reads twice: metadata, then
+  // the data sent to the GPU.
 
   auto result = device->memmapFile(path);
   if (result)
@@ -240,7 +218,6 @@ SafeTensor::getTensorInfo(StringRef name) const {
   return it->second;
 }
 
-/// Gets a tensor from given info.
 M::Driver::DeviceBufferRef
 SafeTensor::getTensorMemory(const TensorInfo &info) const {
   auto subBuffer = parentBuffer->createSubBuffer(
@@ -283,7 +260,7 @@ SafeTensorBundle::getTensorMemory(StringRef name) const {
 
   const SafeTensor &file = files[it->second];
 
-  // Minor todo: see if we can avoid this .str()
+  // TODO: Avoid this .str().
   auto it2 = file.getTensorInfo().find(name.str());
 
   assert(it2 != file.getTensorInfo().end());

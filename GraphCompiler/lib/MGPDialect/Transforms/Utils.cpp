@@ -40,8 +40,8 @@ void M::MGP::accumFreeValues(mlir::SetVector<Value> &freeValues, Block *block,
 }
 
 #ifdef MODULAR_DEBUG
-/// Finds a cycle starting at op. Recursive, so should only be used as
-/// a diagnostic where we are about to hard fail anyway.
+/// Finds a cycle starting at op. Recursive, so only for diagnostics before a
+/// hard failure.
 static bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
   if (llvm::is_contained(stack, op)) {
     llvm::dbgs() << "cycle is:\n";
@@ -64,13 +64,11 @@ static bool findCycle(SmallVectorImpl<Operation *> &stack, Operation *op) {
 }
 #endif
 
-/// Return true if currOp needs to be visited. Will assert fail if a cycle
-/// is detected.
+/// Returns true if currOp needs to be visited. Asserts on a cycle.
 static bool shouldStartVisiting(DenseSet<Operation *> &visited,
                                 Operation *currOp, Block *block) {
   if (currOp->getBlock() != block) {
-    // We've already accounted for outer values when visiting the block
-    // containing currOp.
+    // Outer values were accounted for when visiting their own block.
     return false;
   }
 
@@ -103,7 +101,7 @@ namespace {
 struct Frame {
   Operation *frameOp;
   size_t nextOperandIndex;
-  SmallVector<Value, 4> extraValues; // For free values of control flow ops
+  SmallVector<Value, 4> extraValues; // Free values of control flow ops.
   size_t nextExtraValueIndex;
 
   /// Returns the next operand of frameOp to visit, or null if done.
@@ -128,17 +126,14 @@ static void startVisiting(DenseSet<Operation *> &visited,
   if (!shouldStartVisiting(visited, currOp, block))
     return;
 
-  // Start with first operand (if any).
   stack.emplace_back(currOp, 0);
 
-  // For control flow operations, also collect free values from nested
-  // regions so they are treated as dependencies in the dataflow order.
+  // Free values of nested regions are dependencies too.
   if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(currOp)) {
     mlir::SetVector<Value> freeValues;
     for (Region &region : cfOp->getRegions())
       accumFreeValues(freeValues, &region.front(), &region.front());
 
-    // Add free values from this block as extra dependencies
     Frame &frame = stack.back();
     for (Value freeValue : freeValues) {
       if (freeValue.getParentBlock() == block)
@@ -153,9 +148,9 @@ static void finishVisiting(DenseSet<Operation *> &visited, Operation *currOp) {
   ASSERT_STREAM(inserted, "operation already finished");
 }
 
-/// Non-recursively visit inputs of op in dfs order, accumulating post-order
-/// visits into dataflowOrder. In debug builds will detect and report cycles.
-/// In release builds will ignore back-arcs in cycles.
+/// Iteratively visits inputs of op in DFS order, appending post-order visits
+/// to dataflowOrder. Debug builds report cycles; release builds ignore
+/// back-arcs.
 static void visitInDataflowOrder(Operation *op,
                                  SmallVectorImpl<Operation *> &dataflowOrder,
                                  DenseSet<Operation *> &visited) {
@@ -168,7 +163,6 @@ static void visitInDataflowOrder(Operation *op,
     Frame &frame = stack.back();
     Value nextOperand = frame.next();
     if (!nextOperand) {
-      // We've visited all the operands and free values of frame.frameOp.
       finishVisiting(visited, frame.frameOp);
       dataflowOrder.push_back(frame.frameOp);
       stack.pop_back();
@@ -180,7 +174,7 @@ static void visitInDataflowOrder(Operation *op,
 
 SmallVector<Operation *> M::MGP::getDataflowOrder(Block *block) {
   SmallVector<Operation *> dataflowOrder;
-  // Map op to false if starting to visit, true if completed.
+  // Ops whose visit has completed.
   DenseSet<Operation *> visited;
   for (Operation &op : block->getOperations())
     visitInDataflowOrder(&op, dataflowOrder, visited);
@@ -240,10 +234,7 @@ SmallVector<Value> M::MGP::allLoopResults(Operation *op) {
 }
 
 SmallVector<Value> M::MGP::getIndicatingResults(Operation *op) {
-  // Note there's no special case for control flow ops here: we'll consider
-  // the control flow op itself to be finished when any of its results
-  // are ready.
-
+  // A control flow op is finished when any of its results is ready.
   if (!isa<MEF::ChainIndicatesFinishedInterface>(op))
     // All results are indicating.
     return op->getResults();
@@ -283,9 +274,8 @@ bool M::MGP::isGatingOperand(const OpOperand *opOperand) {
     // All operands are gating for strict ops.
     return true;
 
-  // Nothing gates a non-strict op.
-  // Generally, all such ops require custom handling in any analysis trying to
-  // track the implied control-flow dependencies between ops.
+  // Nothing gates a non-strict op; analyses tracking implied control-flow
+  // dependencies must handle these specially.
   return false;
 }
 
@@ -328,9 +318,7 @@ void M::MGP::moveAllBefore(Operation *origTargetOp, Operation *origAnchorOp) {
   }
 }
 
-/// If chain is defined by a grt.chain.create operation then accumulate
-/// all of its operands into primitiveChains. Otherwise adds chain directly
-/// to primitiveChains.
+/// Adds chain to primitiveChains, looking through grt.chain.create ops.
 void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
                                        Value chain) {
   if (auto chainCreateOp =
@@ -342,8 +330,7 @@ void M::MGP::accumulatePrimitiveChains(ValueSetVector &primitiveChains,
   }
 }
 
-/// As for waitForChains, but reuse existingUniqueChainCreateOp instead of
-/// creating a new op if it is non-null.
+/// As waitForChains, but reuses existingUniqueChainCreateOp if non-null.
 static Value waitForChainsReusing(
     OpBuilder &builder, mlir::Location loc, TypedValue<ContextType> context,
     MGPBufferBuilder *optBufferBuilder,
@@ -355,7 +342,6 @@ static Value waitForChainsReusing(
     return chains.front();
 
   if (existingUniqueChainCreateOp) {
-    // Just update the operands to the existing merge op.
     existingUniqueChainCreateOp.setInputChains(chains);
     return dyn_cast<GRT::GRTChainCreateOpInterface>(
                existingUniqueChainCreateOp.getOperation())
@@ -392,14 +378,13 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
           ->getContextForOp(op);
 
   for (OpOperand *inChainOpOperand : existingInChainOpOperands) {
-    // An existing gating input chain.
     Value inChain = inChainOpOperand->get();
 
     // The builder for inChain, or null if it's a !mef.chain.
     MGPBufferBuilder *optChainBufferBuilder = nullptr;
 
-    // Though the SimplifyChainsPass and CSE can clean things up, a few
-    // simple syntactic tests can avoid unnecessary changes.
+    // Cheap syntactic checks avoid changes SimplifyChainsPass and CSE would
+    // otherwise undo.
     ValueSetVector existingPrimitiveChains;
     accumulatePrimitiveChains(existingPrimitiveChains, inChain);
     ValueSetVector newPrimitiveChains;
@@ -419,18 +404,13 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
       return success();
     }
 
-    // No luck -- we'll need to explicitly merge the existing and new chains.
-    // This may result in duplicate merges for the same set of primitive
-    // chains, and merges over redundant changes. The SimplifyChainsPass and
-    // CSE will clean these up.
-    // NOTE: Can't use llvm::set_union here since SetVector::insert returns
-    // a bool rather than (itr, bool) pair.
+    // Merge explicitly; SimplifyChainsPass and CSE clean up duplicate or
+    // redundant merges. llvm::set_union does not work: SetVector::insert
+    // returns a bool, not an (itr, bool) pair.
     for (Value newChain : newPrimitiveChains)
       existingPrimitiveChains.insert(newChain);
 
-    // Is inChain the only use of the chain.create operation?
-    // If so we can modify that operation directly instead of creating a
-    // new operation.
+    // A chain.create used only here can be modified in place.
     GRT::GRTGatedOnChainOpInterface existingUniqueChainCreateOp = nullptr;
     if (inChain.hasOneUse()) {
       if (auto chainCreateOp =
@@ -438,9 +418,6 @@ M::MGP::alsoWaitForChains(OpBuilder &builder,
         existingUniqueChainCreateOp = chainCreateOp;
     }
 
-    // Create or reuse a chain.create op to combine the existing and new
-    // chains. If we need to insert a new chain.create op then we'll use
-    // the one appropriate for inChain.
     Value newInChain = waitForChainsReusing(
         builder, op->getLoc(), context, optChainBufferBuilder,
         existingUniqueChainCreateOp, existingPrimitiveChains.takeVector());
@@ -466,24 +443,20 @@ InitState::InitState(ModelOp model)
   builder.setInsertionPoint(&init->back());
 }
 
-/// 'Allocates' a slot in the context.
 size_t InitState::allocSlot() {
   size_t slot = contextCreateOp.getNumSlots();
   contextCreateOp.setNumSlots(slot + 1);
   return slot;
 }
 
-/// Returns the current final 'init' chain result.
 TypedValue<MEF::ChainType> InitState::getFinalChain() {
   return cast<TypedValue<MEF::ChainType>>(init->back().getOperand(0));
 }
 
-/// Update the final 'init' chain result.
 void InitState::updateFinalChain(Value newChain) {
   init->back().setOperand(0, newChain);
 }
 
-/// Returns the 'init' block's context.
 TypedValue<ContextType> InitState::getContext() {
   return contextCreateOp.getResult();
 }
@@ -498,19 +471,16 @@ ExecuteState::ExecuteState(MLIRContext *context, ModelOp model)
   assert(isa<ContextType>(execute->getArgument(1).getType()));
 }
 
-/// Returns 'root' chain, ie the first argument to the 'execute' block.
-/// If any non-root chain is ready then the root chain is guaranteed to be
-/// ready, and can thus be ignored.
+/// The 'execute' block's first argument. It is ready whenever any other chain
+/// is, so it can be ignored.
 TypedValue<MEF::ChainType> ExecuteState::getRootChain() const {
   return cast<TypedValue<MEF::ChainType>>(execute->getArgument(0));
 }
 
-/// Returns MGP context argument to the 'execute' block.
 TypedValue<ContextType> ExecuteState::getContext() const {
   return cast<TypedValue<ContextType>>(execute->getArgument(1));
 }
 
-/// Returns the additional arguments to 'execute' block
 iterator_range<mlir::BlockArgument *> ExecuteState::getExtraArgs() {
   return model.getExecuteInputs();
 }

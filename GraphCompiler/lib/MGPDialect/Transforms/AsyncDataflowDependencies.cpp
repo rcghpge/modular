@@ -20,8 +20,8 @@ using namespace std::placeholders;
 
 #define DEBUG_TYPE "mgp-dataflow"
 
-/// Look for the special interfaces on op and call the helper with
-/// arguments.
+/// Calls the helper for each operand/result pair the op's alias or
+/// lifetime-extension interface relates.
 static bool considerMaybeSameAs(Operation *op, size_t operandIndex,
                                 size_t resultIndex) {
   if (auto extends = dyn_cast<GRT::GRTExtendsLifetimeInterface>(op))
@@ -106,15 +106,11 @@ AsyncDataflowDependencies::strictUpwardsImpliesReadySet(Value lhs) const {
 }
 
 void AsyncDataflowDependencies::simplify(ValueSet &values) const {
-  // No need to wait for values which are always ready.
-  // values.reset(getAlwaysReady());
+  // No need to wait for always-ready values, or for values implied ready by
+  // another value in the set.
   values.intersectWithComplement(getAlwaysReady());
 
-  // For every value...
   for (auto value : valueAnalysis.index->values(values)) {
-    // No need to also wait for values which are known to be ready if the
-    // current value is ready.
-    // values.reset(strictUpwardsImpliesReadySet(value));
     values.intersectWithComplement(strictUpwardsImpliesReadySet(value));
   }
 }
@@ -203,9 +199,8 @@ void AsyncDataflowDependencies::setupSameAs() {
 //      ..., %lhs, ... = op (..., %rhs, ...)
 //    where op has the GRTMayAliasInterface or GRTExtendsLifetimeInterface,
 //    then maybeSameAs(%lhs, %rhs) if the interface method returns true for
-//    those operands and result indexes. Note that maybeSameAs does not
-//    distinguish aliasing from lifetime extension, so the two interfaces are
-//    currently equivalent.
+//    those operands and result indexes. maybeSameAs does not distinguish
+//    aliasing from lifetime extension.
 //  - The control flow rules.
 void AsyncDataflowDependencies::flowMaybeSameAs(Operation *op,
                                                 ValueDomainMap &domainMap) {
@@ -215,13 +210,8 @@ void AsyncDataflowDependencies::flowMaybeSameAs(Operation *op,
         std::bind(&AsyncDataflowDependencies::flowMaybeSameAs, this, _1, _2));
   } else if (isa<GRT::GRTExtendsLifetimeInterface>(op) ||
              isa<GRT::GRTMayAliasInterface>(op)) {
-    // If an op declares that its results may alias its arguments, simply
-    // expand the maybeSameAs relation to include that.
-    //
-    // If an op declares that its arguments may be lifetime extended to
-    // account for its results, treat that as if they were possibly aliased.
-    // We thus approximate this by just treating all the results and arguments
-    // to have the same worst-case lifetime.
+    // Lifetime extension is approximated as possible aliasing, giving the
+    // related results and arguments the same worst-case lifetime.
     for (size_t resultIndex = 0, numResults = op->getNumResults();
          resultIndex < numResults; ++resultIndex) {
       ValueSet set = domainMap.bottom;
@@ -376,11 +366,8 @@ void AsyncDataflowDependencies::setupImpliesReady() {
   //  - the relation is allowed to hold 'vacuously' if %y was never created,
   //    thus can be true.
   //
-  // We take the second interpretation so that impliesReady can give us
-  // more entries in the runsEarlier relation, which in turn gives us more
-  // entries in the exclusive relation.
-  //
-  // Thus, we turn on the handleDisjointBranches option for this dataflow.
+  // We take the second (handleDisjointBranches) since it yields more
+  // runsEarlier entries, and in turn more exclusive entries.
   ValueDomainMap domainMap(
       impliesReadyRelation, ValueAnalysis::kLubIsIntersection,
       valueAnalysis.index->emptySet(), valueAnalysis.index->fullSet(),
@@ -452,7 +439,6 @@ void AsyncDataflowDependencies::setupStructurallyDisjoint() {
     addCrossProduct(structurallyAtMostOneRelation, opsPerBranch);
   });
 
-  /// The structurallyCannotOverlapRelation
   structurallyCannotOverlapRelation = operationAnalysis.emptyRelation();
   valueAnalysis.index->model->walk([&](GRT::GRTControlFlowInterface cfOp) {
     if (cfOp->getNumRegions() <= 1)
@@ -517,13 +503,9 @@ void AsyncDataflowDependencies::setupRunsLater() {
 //===----------------------------------------------------------------------===//
 // 'exclusiveSet'
 //
-// The following implements the 'exclusiveSet' relation. We define it directly
-// using the maybeSameAsRelation (tracking possibly aliasing), the
-// impliesReadyRelation (tracking causal ordering of values), and the
-// runsEarlierRelation (tracking causal ordering of ops, but derived from the
-// impliesReadyRelation for convenience).
-//
-// In essence the algorithm is:
+// Defined from maybeSameAsRelation (possible aliasing), impliesReadyRelation
+// (causal ordering of values), and runsEarlierRelation (causal ordering of
+// ops, derived from impliesReady):
 //
 //   1. Given "%x = op ..."
 //   2. Find all the ops "... = op %y" which must already be finished when op
@@ -535,27 +517,18 @@ void AsyncDataflowDependencies::setupRunsLater() {
 // Note the use of two closures: 'upwards' for the earlier ops, and 'downwards'
 // for the ready values.
 //
-// Though the three relations already account for kLoop control flow ops,
-// there's a little bit of extra structural fiddling we can do to improve
-// the completeness of 'exclusiveSet' for SSA values inside loops. In
-// particular, when considering aliasing in step 3 we can exploit two facts:
+// For SSA values inside kLoop ops, step 3 can additionally exploit two facts:
 //   1. The SSA value bound by an op may be considered a 'fresh' instance,
 //      distinct from previous values bound in earlier loop iterations.
 //   2. Any in-flight loop has not yet allowed its loop results to escape
 //      into the rest of the graph.
 //
-// In other words, though our notion of 'program point' is for the most part
-// just 'ready AsyncValue' for the core relations, when it comes to step 3
-// we also want a notion of 'program point' representing the overall execution
-// graph state, since only that lets us distinguish 'previous' from 'next'
-// loop iterations.
+// So step 3 needs a 'program point' for the whole execution graph state, not
+// just 'ready AsyncValue', to tell 'previous' from 'next' iterations.
 //
-// TODO(#15840): Another approach would be to define 'exclusiveSet' by another
-// dataflow analysis, which is how liveness is traditionally done (though
-// for the much simpler situation of program point == operation). I think that
-// would still need something like getFullyConsumedWhenOpBegins, but perhaps
-// using the three primitive relations without closure under loops. I'm leaving
-// this for another day.
+// TODO(#15840): Alternatively define 'exclusiveSet' as its own dataflow
+// analysis, as liveness traditionally is; it would likely still need
+// something like getFullyConsumedWhenOpBegins.
 //
 //===----------------------------------------------------------------------===//
 
@@ -575,15 +548,13 @@ AsyncDataflowDependencies::getEffectiveOwner(const OpOperand *opOperand) const {
 
   if (isa<MEF::OutputOp>(op)) {
     if (auto modelOp = dyn_cast<ModelOp>(op->getParentOp())) {
-      // Return the model op itself to represent the caller of the 'init' or
-      // 'execute' entry points.
+      // The model op stands for the caller of the entry point.
       return modelOp;
     }
 
     if (auto cfOp = dyn_cast<GRT::GRTControlFlowInterface>(op->getParentOp())) {
       if (cfOp.getFlavor() == GRT::kLoopLike) {
-        // Return the loop op itself to represent future iterations of the
-        // loop.
+        // The loop op stands for future iterations.
         return cfOp;
       }
     }
@@ -593,7 +564,6 @@ AsyncDataflowDependencies::getEffectiveOwner(const OpOperand *opOperand) const {
     return nullptr;
   }
 
-  // Normal case.
   return op;
 }
 
@@ -607,8 +577,7 @@ bool AsyncDataflowDependencies::allUsesAreByOperationsInSet(
         continue;
       }
       if (!isGatingOperand(&opOperand)) {
-        // We don't know when the op will be done with the operand so must
-        // consider the use still alive.
+        // Unknown when the op is done with the operand, so the use is live.
         LLVM_DEBUG({
           valueAnalysis.index->printV(llvm::dbgs(), value);
           llvm::dbgs() << " not consumed since non-gating arg to ";
@@ -618,8 +587,7 @@ bool AsyncDataflowDependencies::allUsesAreByOperationsInSet(
         return false;
       }
       if (!operationAnalysis.index->setContains(ops, owningOp)) {
-        // The operand has a relevant use by an op outside the set, so
-        // must consider the use still alive.
+        // A relevant use outside the set keeps the operand live.
         LLVM_DEBUG({
           valueAnalysis.index->printV(llvm::dbgs(), value);
           llvm::dbgs() << " not consumed since used by unfinished op ";
@@ -635,12 +603,10 @@ bool AsyncDataflowDependencies::allUsesAreByOperationsInSet(
 
 AsyncDataflowDependencies::ValueEquivalence
 AsyncDataflowDependencies::getEquivalenceAtOp(Operation *op) const {
-  // Collect results of op which are known to be 'fresh', ie cannot alias
-  // with any op operand.
+  // 'Fresh' results cannot alias any operand.
   ValueSet freshResultValues = valueAnalysis.index->emptySet();
   if ((isa<GRT::GRTExtendsLifetimeInterface>(op) ||
        isa<GRT::GRTMayAliasInterface>(op))) {
-    // Only results not subject to aliasing etc are 'fresh'.
     for (size_t resultIndex = 0, numResults = op->getNumResults();
          resultIndex < numResults; ++resultIndex) {
       if (!considerMaybeSameAsForAnyOperand(op, resultIndex))
@@ -648,18 +614,15 @@ AsyncDataflowDependencies::getEquivalenceAtOp(Operation *op) const {
                                       op->getResult(resultIndex));
     }
   } else {
-    // All results are 'fresh'.
     for (Value result : op->getResults()) {
       valueAnalysis.index->addToSet(freshResultValues, result);
     }
   }
 
-  // Collect all arguments to blocks which may be in a loop.
   ValueSet loopArgs = valueAnalysis.index->emptySet();
   for (Value arg : allLoopBoundArgs(op))
     valueAnalysis.index->addToSet(loopArgs, arg);
 
-  // Collect all results of loop control flow ops containing op.
   ValueSet loopResults = valueAnalysis.index->emptySet();
   for (Value res : allLoopResults(op))
     valueAnalysis.index->addToSet(loopResults, res);
@@ -679,14 +642,10 @@ AsyncDataflowDependencies::getEquivalenceAtOp(Operation *op) const {
     llvm::dbgs() << "\n";
   });
 
-  // Take the symmetric/transitive/reflexive closure of the maybeSameAs
-  // relation. However:
-  //  - entries (%lhs, ...) can be ignored if %lhs is a loop result, since
-  //    the loop is still in flight so alias cannot yet have 'escaped' via
-  //    the loop result.
-  //  - entries (%lhs, %rhs) can be ignored if %lhs is a loop arg and %rhs
-  //    is a fresh result value, since we know %rhs will not be the same
-  //    as the previous version from %lhs.
+  // Close maybeSameAs, ignoring entries (%lhs, ...) where %lhs is a loop
+  // result (the in-flight loop has not let the alias escape), and (%lhs, %rhs)
+  // where %lhs is a loop arg and %rhs a fresh result (not the previous
+  // iteration's value).
   ValueEquivalence equivalence = valueAnalysis.index->identityEquivalence();
   for (const auto &[lhs, set] : maybeSameAsRelation) {
     if (valueAnalysis.index->setContains(loopResults, lhs))
@@ -710,7 +669,6 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
     llvm::dbgs() << ")\n";
   });
 
-  // Which ops have definitely finished?
   OperationSet earlierOps =
       operationAnalysis.getEntries(runsEarlierRelation, op);
 
@@ -721,8 +679,6 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
     llvm::dbgs() << "\n";
   });
 
-  // Collect the candidate SSA values by looking at all the operands of
-  // operations in earlierOps.
   ValueSet candidates = valueAnalysis.index->emptySet();
   for (Operation *earlierOp : operationAnalysis.index->values(earlierOps)) {
     for (Value value : earlierOp->getOperands())
@@ -736,16 +692,10 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
     llvm::dbgs() << "\n";
   });
 
-  // Though we know the candidate SSA values appear to have been consumed, it
-  // is actually the underlying AsyncValues we must show to have no more
-  // references. For that we must expand each candidate into its equivalence
-  // class w.r.t. the maybeSameAs relation.
-  //
-  // However, if op is within a kLoop sub-block it is sound to consider
-  // everything before this op to be from a 'previous' iteration of the loop,
-  // and everything after to be for the 'next' iteration. This means the
-  // equivalence can ignore some entries in the maybeSameAs relation which are
-  // due to tying the loop knot.
+  // It is the underlying AsyncValues that must have no more references, so
+  // expand each candidate to its maybeSameAs class. Inside a kLoop sub-block,
+  // what precedes op is a 'previous' iteration and what follows the 'next',
+  // so entries from tying the loop knot can be ignored.
   std::unique_ptr<ValueEquivalence> equivalenceAtOp;
   const ValueEquivalence *equivalence;
   if (isAtMostOnce(op)) {
@@ -760,10 +710,8 @@ AsyncDataflowDependencies::getFullyConsumedWhenOpBegins(Operation *op) const {
     valueAnalysis.printEquivalence(llvm::dbgs(), "equivalence", *equivalence);
   });
 
-  // Now, only if ALL the equivalent SSA values have been consumed can we
-  // consider all the equivalent SSA values dead. Note we must do this as a
-  // unit -- it is not sound to just expand candidates by the above equivalence
-  // and filter each one.
+  // A class is dead only if ALL its values are consumed; expanding and
+  // filtering candidates one at a time is unsound.
   ValueSet result = valueAnalysis.index->emptySet();
   for (auto candidate : candidates) {
     ValueSet maybeSameValues = valueAnalysis.index->emptySet();
@@ -808,13 +756,11 @@ void AsyncDataflowDependencies::setupExclusive() {
     }
 
     if (op->getNumResults() == 0) {
-      // Don't waste time calculating the consumedSet if there's no results
-      // by which to index it.
+      // No results to index the consumedSet by.
       continue;
     }
 
-    // Collect the values which have been created and fully consumed (or were
-    // never created in the first place) when op BEGINS execution.
+    // Values fully consumed (or never created) when op BEGINS.
     ValueSet consumedSet = getFullyConsumedWhenOpBegins(op);
 
     for (Value consumedValue : valueAnalysis.index->values(consumedSet)) {
@@ -852,22 +798,16 @@ void AsyncDataflowDependencies::setupExclusive() {
     }
   }
 
-  // Since the above works only backwards from values bound by ops, we need to
-  // account for the reverse, so just close the relation under symmetry.
+  // The above only works backwards from values bound by ops; close under
+  // symmetry.
   valueAnalysis.unionInPlace(exclusiveRelation,
                              valueAnalysis.inverse(exclusiveRelation));
 
-  // Finally, try to exploit that distinct arms of branches may never
-  // both be executed, thus their results can never simultaneously be alive,
-  // irrespective of dataflow.
+  // Results of distinct branch arms are never simultaneously alive. This needs
+  // structurallyAtMostOneRelation, not structurallyCannotOverlapRelation: ops
+  // that never overlap but run repeatedly can have overlapping results.
   //
-  // Note we must use structurallyAtMostOneRelation here, and not
-  // structurallyCannotOverlapRelation. Though two ops may never be able
-  // to execute simultaneously, if they could be executed repeatedly then
-  // their results could have overlapping lifetimes.
-  //
-  // Note also that, unlike the above per-op processing loop, it is unsound to
-  // use downwardsImpliesReadySet here. Ie given:
+  // Unlike the per-op loop above, downwardsImpliesReadySet is unsound here:
   //   %x = lhsOp ...
   //   %y = rhsOp ...
   //   (lhsOp, rhsOp) in structurallyAtMostOneRelation

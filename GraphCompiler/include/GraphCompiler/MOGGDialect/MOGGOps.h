@@ -62,8 +62,7 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
     return false;
   };
 
-  // A walker allows us to crawl the parameters used within expression
-  // attributes.
+  // Crawls parameters nested in expression attributes.
   mlir::AttrTypeWalker walker;
   walker.addWalk([&](KGEN::ParamDeclRefAttr param) {
     if (auto [_, inserted] = seenParams.insert(param); !inserted)
@@ -76,12 +75,9 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
     return WalkResult::advance();
   });
 
-  // Track all unique parameters from a given tensor that we haven't seen
-  // already.
   auto addParamsFromTensor = [&](Type t) {
     MOSH::ShapeAttr shape;
 
-    // The type can either be a shape or a tensor.
     MO::TensorType asTensor = MO::dynCastFromTensorLike(t);
     if (asTensor)
       shape = asTensor.getShape();
@@ -91,7 +87,6 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
     walker.walk(shape);
   };
 
-  // Get all parameters used by an operation.
   auto addParamsFromOp = [&](Operation *op) {
     for (Type t : op->getOperandTypes())
       addParamsFromTensor(t);
@@ -111,12 +106,10 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
     }
   };
 
-  // Start with the inputs / outputs on the kernel. Generally this would be all
-  // parameters.
   addParamsFromOp(kernel);
 
-  // However rarely we could create a kernel which internally uses a parameter
-  // which isn't known from the inputs. I.E
+  // Rarely, a kernel uses a parameter internally that is on neither its inputs
+  // nor outputs, e.g. `J` here:
 
   // clang-format off
   // %0 = broadcast(%input) : tensor<[N]> -> tensor<N, J>
@@ -124,10 +117,6 @@ SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {
   // %3 = broadcast(%1) : tensor<[N, B, K]> -> tensor<N, B, K, M>
   // clang-format on
 
-  // We would see `N` on the input and `B` / `K` / `M` on the outputs but the
-  // intermediate `J` is not on either.
-
-  // To capture the above legal composition we walk the kernel ops as well.
   kernel.walk(addParamsFromOp);
 
   return usedParameters;

@@ -112,7 +112,6 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
     return failure(hadFailure);
   };
 
-  // Run it.
   std::unique_ptr<llvm::MemoryBuffer> aliasedBuffer =
       llvm::MemoryBuffer::getMemBuffer(fileBuffer->getMemBufferRef(),
                                        /*RequiresNullTerminator=*/
@@ -123,9 +122,7 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
 }
 
 int main(int argc, char **argv) {
-  // Register all our command line options. Avoid calling InitLLVM as we don't
-  // want to register its signal handler. The Init::Init code will register
-  // our signal handler.
+  // Skip InitLLVM's signal handler; Init::Init registers ours.
   GenericDriverOptions options;
   GenericDriverCLOptions parser(argc, argv, options, /*skipInitLLVM=*/true);
   llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
@@ -138,16 +135,13 @@ int main(int argc, char **argv) {
 
   std::vector<InputInfo> inputsInfo{};
 
-  // Handle stdin specially by default-constructing an `InputInfo` so we can
-  // still process the commands later on.
+  // stdin gets a default-constructed `InputInfo`.
   auto fromStdin = options.inputFilename == "-";
   if (fromStdin) {
     inputsInfo.emplace_back();
   }
 
   if (options.commandTakesInput() || !fromStdin) {
-    // Input filenames are comma-separated (e.g. file1,file2).  In the future,
-    // we may change the CL option to be a list<string> instead.
     auto inputAdaptorRange = llvm::split(options.inputFilename, ",");
     if (std::distance(inputAdaptorRange.begin(), inputAdaptorRange.end()) > 1 &&
         options.command != DriverCommand::execute) {
@@ -167,9 +161,7 @@ int main(int argc, char **argv) {
             " (error code: " + Twine(errorCode.message()) + ")");
       }
 
-      // The input file is not a directory, so we open and sniff the format.
-      // In case the input file is MEF, it has to be aligned to the maximum
-      // attribute alignment.
+      // Aligned to the maximum attribute alignment in case it's MEF.
       std::unique_ptr<llvm::MemoryBuffer> inputFile =
           options.openInputFileOrExit(inputFilename, maxAttributeAlignment());
       info.file = Buffer::take(std::move(inputFile));
@@ -180,11 +172,9 @@ int main(int argc, char **argv) {
     }
   }
 
-  // We'll just use the final scenario's return code as the executable's
-  // return code.
+  // The final scenario's return code wins.
   int rc = EXIT_SUCCESS;
 
-  // Create a context used by this command (compile/execute/benchmark) run.
   Init::Options contextOptions;
   contextOptions.withCPUDeviceOptions(options);
   auto contextOr =
@@ -192,10 +182,8 @@ int main(int argc, char **argv) {
   if (contextOr.isError())
     return options.reportError(contextOr.getError());
 
-  // If the driver command is just `-get-version` then print the version and
-  // exit right away. No need to do anything else.
   if (options.command == DriverCommand::getVersion) {
-    // llvm::formatv does not support octal, so do it the hard way.
+    // llvm::formatv does not support octal.
     char profilingLevelStr[16];
     snprintf(profilingLevelStr, sizeof(profilingLevelStr), "%#o",
              MODULAR_ASYNCRT_MAX_PROFILING_LEVEL);
@@ -204,39 +192,32 @@ int main(int argc, char **argv) {
     return EXIT_SUCCESS;
   }
 
-  // Setup the framework context.
   MOFContext frameworkCtx(contextOr->copy(), argc, argv);
 
-  // We might want to get the framework's help string.
   if (options.command == DriverCommand::frameworkHelp) {
     if (auto err = frameworkCtx.setOptions({"-h"}))
       return options.reportError(err.getError());
     return EXIT_SUCCESS;
   }
 
-  // We'll accumulate command line arguments for the framework as we go below,
   SmallVector<std::string> dylibOptions;
 
-  // Hand over any explicitly designated unparsed options.
   dylibOptions.append(options.forceUnparsed.begin(),
                       options.forceUnparsed.end());
   dylibOptions.append(options.unparsed.begin(), options.unparsed.end());
 
-  // Hand over save-temps and temps-dir options to framework.
   if (options.saveTemps) {
     dylibOptions.push_back("--save-temps");
     dylibOptions.push_back("--temps-dir=" + options.tempsDir);
   }
 
-  // Tell the framework about our options.
   if (auto err = frameworkCtx.setOptions(dylibOptions))
     return options.reportError(err.getError());
   frameworkCtx.setDriverOptions(options);
 
   for (auto &inputInfo : inputsInfo) {
 
-    // Start processing the input in stages.  The inspect command is first,
-    // because it works on any input without transformation.
+    // Inspect works on any input without transformation.
     if (options.command == DriverCommand::inspect) {
       std::unique_ptr<llvm::ToolOutputFile> outputFile =
           options.getOutputFile(options.commandHasBinaryOutput());
@@ -250,12 +231,9 @@ int main(int argc, char **argv) {
       return EXIT_SUCCESS;
     }
 
-    // If we're stopping at compilation, emit the binary file directly to the
-    // output.
     if (options.command == DriverCommand::compile) {
       auto outputFile = options.getOutputFile(options.commandHasBinaryOutput());
 
-      // If the file is already a binary, just emit it directly.
       if (inputInfo.format == FileFormat::kMEFFile) {
         outputFile->os().write(inputInfo.file->getBufferStart(),
                                inputInfo.file->getBufferSize());
@@ -263,7 +241,6 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
       }
 
-      // Otherwise, compile it.
       auto bufferOr =
           frameworkCtx.compileToBinary(inputInfo.file.copy(), inputInfo.format);
       if (bufferOr.isError())
@@ -277,8 +254,6 @@ int main(int argc, char **argv) {
 
     M::BufferRef buffer;
 
-    // If we are not inspecting, we must need a compiled format.  If this is
-    // already done then we're golden, otherwise compile now.
     if (inputInfo.format != FileFormat::kMEFFile) {
       auto bufferOr =
           frameworkCtx.compileToBinary(inputInfo.file.copy(), inputInfo.format);
@@ -288,8 +263,6 @@ int main(int argc, char **argv) {
       inputInfo.file = bufferOr.takeValue();
     }
 
-    // Otherwise we must be getting op-level information about the model or
-    // executing the model.
     if (!(options.command == DriverCommand::printMetadata ||
           options.command == DriverCommand::printConstantMetadata ||
           options.command == DriverCommand::execute)) {
@@ -303,8 +276,6 @@ int main(int argc, char **argv) {
     if (modelsOr.isError())
       return options.reportError(modelsOr.getError());
 
-    // Hand off the MEFFileHandle and the file buffer to the framework to
-    // actually run the thing with all the various diagnostics.
     rc = runBinaryFile(contextOr->copy(), frameworkCtx, inputInfo.file.copy(),
                        *modelsOr);
   }

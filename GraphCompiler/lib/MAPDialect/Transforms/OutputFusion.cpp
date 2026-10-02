@@ -67,8 +67,7 @@ struct OutputFusionEdge {
   ReshapeIndexOp reshape;
 };
 
-// Every `map.iter.opaque` wraps each result in exactly one `map.iter.epilogue`
-// callback. Finds the one for `resultIdx`, or null (e.g. a chain result).
+// The `map.iter.epilogue` for `resultIdx`, or null (e.g. a chain result).
 IterEpilogueOp getEpilogueForResult(IterOpaqueOp op, unsigned resultIdx) {
   Value outArg = op.getOutputBlockArgs()[resultIdx];
   for (auto epilogueOp : op.getBody().front().getOps<IterEpilogueOp>())
@@ -121,8 +120,7 @@ LoadOp firstLoadOf(BlockArgument fusionArg) {
   return nullptr;
 }
 
-// Finds the first output-fusible edge on `dst` that `config` accepts, or
-// nullopt. Read-only.
+// The first output-fusible edge on `dst` that `config` accepts. Read-only.
 std::optional<OutputFusionEdge>
 findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
   for (unsigned resultIdx = 0; resultIdx < dst.getNumNonChainResults();
@@ -143,21 +141,17 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
     if (llvm::count(src.getInputs(), res) != 1)
       continue;
 
-    // A chain-returning consumer is `mo.mutable.store`: its body has no output
-    // block argument and the buffer INPUT is the store target (see
-    // `lowerMutableStoreToForeach`). It fuses the way MOGG's `FuseEpilogues`
-    // does, pointing the epilogue's store at that buffer instead of at `dst`'s
-    // own output.
+    // A chain-returning consumer is `mo.mutable.store`: its buffer INPUT is the
+    // store target (see `lowerMutableStoreToForeach`), so the epilogue's store
+    // is pointed at that buffer instead of `dst`'s own output.
     if (isa<MO::ChainType>(src.getResult(0).getType())) {
-      // Legacy's guard: a fused kernel must not write a buffer it also reads.
+      // A fused kernel must not write a buffer it also reads.
       if (llvm::any_of(src->getOperands(), [&](Value srcOperand) {
             return isa<MO::BufferType>(srcOperand.getType()) &&
                    llvm::is_contained(dst->getOperands(), srcOperand);
           }))
         continue;
-      // `dst` holds no chain, so a consumed one has nowhere to be threaded and
-      // its ordering would be lost. Only the store's own write survives the
-      // fusion, so fuse only when that is all anyone wanted.
+      // `dst` holds no chain, so a used output chain would lose its ordering.
       // TODO(GEX-3964): give `dst` a chain in/out the way
       // `FuseMutableLoads::fuseLoadBufferAndChains` does, and fuse either way.
       if (!src.getResult(0).use_empty())
@@ -168,9 +162,8 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
     BlockArgument fusionArg = fusedInputArg(src, res);
     BlockArgument loopIdx = srcBody.getArguments().back();
 
-    // Correctness: the only index transform allowed in the path to the fused
-    // load is a single reshape (relocated onto the store, whose row-major
-    // offset it preserves). Anything else can't be inverted onto a store.
+    // Only a single reshape can be inverted onto the store (it preserves the
+    // row-major offset).
     ReshapeIndexOp reshape = nullptr;
     if (!readsAtLoopIndex(fusionArg, loopIdx)) {
       reshape = reshapeOnFusedInput(srcBody, fusionArg);
@@ -192,11 +185,9 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
   return std::nullopt;
 }
 
-// Splices `src`'s per-element compute into `epilogueOp`, the callback that runs
-// on every element `dst` produces before storing it. The store lands at the
-// epilogue's own store index for an untransformed read, or the reshape (in/out
-// swapped -- the store direction is the inverse of the load) relocated onto
-// that index for a reshape read.
+// Splices `src`'s per-element compute into `epilogueOp`. For a reshape read,
+// the reshape is relocated onto the store index with in/out swapped, since the
+// store direction is the inverse of the load.
 void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   IterOpaqueOp dst = edge.dst;
   IterEpilogueOp epilogueOp = edge.epilogueOp;
@@ -207,8 +198,7 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   Block &srcBody = src.getBody().front();
   Block &epilogueBody = epilogueOp.getBody().front();
 
-  // What the epilogue currently stores -- already reflecting anything fused in
-  // earlier (e.g. a store index a prior reshape fusion made transformed).
+  // May already reflect earlier fusions (e.g. a reshaped store index).
   auto epilogueStore = getUniqueStore(epilogueBody);
   Value val = epilogueStore.getValue();
   Value storeIdx = epilogueStore.getIndex();
@@ -230,10 +220,8 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   unsigned fusionArgIdx = fusionArgIt - src.getInputs().begin();
   BlockArgument fusionArg = srcBody.getArgument(fusionArgIdx);
 
-  // The fused operand's block arg is a tensor; `val` is already the scalar
-  // `dst` produced for this element. Redirect every load of it to `val` (they
-  // yield `val`'s type by construction) and drop the loads; the reshape, if
-  // any, is then dead.
+  // `val` is the scalar `dst` produced for this element; it replaces every
+  // load of the fused operand.
   for (Operation *user : llvm::to_vector(fusionArg.getUsers())) {
     auto load = cast<LoadOp>(user);
     load.getResult().replaceAllUsesWith(val);
@@ -256,16 +244,12 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
     srcBody.getArgument(i).replaceAllUsesWith(capArg);
   }
 
-  // Keep `src`'s final value; its store-target arg dies with the body. Rewire
-  // the loop index -- the body's last argument either way: [inputs, output,
-  // index] for a pointwise consumer, [inputs, index] for a `mo.mutable.store`
-  // one -- to the store index so every remaining load reads there too.
+  // The loop index is the body's last argument for both pointwise and
+  // `mo.mutable.store` consumers; rewire it to the store index.
   auto srcStore = getUniqueStore(srcBody);
   Value finalVal = srcStore.getValue();
-  // A `mo.mutable.store` consumer writes through a buffer INPUT, which the loop
-  // above already threaded in as an epilogue capture; the trailing store is
-  // rebuilt on that rather than on `dst`'s own output, which nothing reads once
-  // the consumer is gone.
+  // A `mo.mutable.store` consumer's buffer input is already an epilogue
+  // capture; the store is rebuilt on it.
   Value storeTargetBuffer;
   if (isa<MO::ChainType>(src.getResult(0).getType()))
     storeTargetBuffer = srcStore.getTensor();
@@ -274,11 +258,8 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   srcBody.eraseArguments(0, srcBody.getNumArguments());
 
   // Retype the store-target path when the consumer changes the result's type.
-  // The epilogue's own RESULT follows only for an untransformed read (unchanged
-  // shape, tracks a dtype change); for a reshape read it keeps the producer's
-  // shape (the kernel binds it, and an epilogue-opt-in kernel like matmul must
-  // keep seeing its own shape) -- the store reaches the reshaped destination
-  // via the reshaped index.
+  // For a reshape read the epilogue's RESULT keeps the producer's shape, which
+  // the kernel (e.g. matmul) binds; the reshaped index reaches the destination.
   if (storeTargetBuffer) {
     cap = storeTargetBuffer;
     dst.setHasWriteEffect(true);
@@ -298,8 +279,7 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   rewriter.setInsertionPointToEnd(&epilogueBody);
   StoreOp::create(rewriter, storeLoc, cap, storeTransform, finalVal);
 
-  // A `mo.mutable.store` consumer yields only a chain, which eligibility
-  // required to be unused, and whose type `dst` has no result to match anyway.
+  // A `mo.mutable.store` consumer yields only an unused chain.
   if (!storeTargetBuffer)
     src->replaceAllUsesWith(ValueRange{dstResult});
 }
@@ -315,9 +295,8 @@ unsigned fuseOutput(MO::GraphOp graphOp, const OutputFusionConfig &config) {
   graphOp.getBody().walk(
       [&](IterOpaqueOp op) { blocks.insert(op->getBlock()); });
 
-  // Output fusion folds a consumer into its producer's epilogue, so producers
-  // are processed before consumers (topological order). Fusion only erases the
-  // consumer (skipped via `erased`) and mutates the producer in place.
+  // Producers before consumers. Fusion erases only the consumer and mutates
+  // the producer in place.
   MO::ParametricTopologyAnalysis topo(graphOp);
   DenseSet<Operation *> erased;
   unsigned numFused = 0;

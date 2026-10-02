@@ -27,17 +27,13 @@ namespace {
 struct RaiseBackIndexConstant
     : public MGP::impl::RaiseBackIndexConstantBase<RaiseBackIndexConstant> {
   using RaiseBackIndexConstantBase::RaiseBackIndexConstantBase;
-  /// Stubs that have only one caller were not deduplicated. Therefore, all the
-  /// index.constant that were turned into mgp.buffer.constant +
-  /// mgp.buffer.to_index should be raised back into index.constant to reduce
-  /// the quantity of text that is emitted. Note that it is not required to
-  /// update the constant resource attributes because they will just no longer
-  /// be used.
+  /// Single-caller stubs were not deduplicated, so their lowered
+  /// index.constants are raised back to reduce emitted text. The now-unused
+  /// constant resources are left in place.
   void runOnOperation() override {
     auto moduleOp = getOperation();
-    // Build a map of callee -> callers. Not using SymbolTable because it is
-    // very slow to call it on a ModuleOp. Instead, we iterate through the model
-    // ops in order to skip the thousands of KernelStubOp.
+    // Callee -> callers, built from the model ops rather than a SymbolTable
+    // to skip the thousands of KernelStubOps.
     llvm::DenseMap<StringAttr, SmallVector<MOGG::ExecuteCompiledOp>> symbolUses;
     for (auto &&modelOp : moduleOp.getOps<MGP::ModelOp>()) {
       modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
@@ -57,10 +53,7 @@ struct RaiseBackIndexConstant
           if (it == symbolUses.end())
             return;
 
-          // If there isn't exactly one caller, ignore because we don't want to
-          // inline a constant that could possibly be different for different
-          // callers (would have to look into their constant resources which is
-          // not worth it).
+          // With several callers the constant may differ per caller.
           if (it->second.size() != 1)
             return;
 
@@ -77,9 +70,7 @@ struct RaiseBackIndexConstant
             uint64_t slotIndex =
                 resourceConstantOp.getResourceSlot().getZExtValue();
             auto resource = dyn_cast<AlignedBytesAttr>(resourceArr[slotIndex]);
-            // The assumption is that index.constant was lowered to
-            // AlignedBytesAttr. If that changes, this part of the code has to
-            // change to.
+            // Assumes index.constant was lowered to an AlignedBytesAttr.
             if (!resource)
               return;
 

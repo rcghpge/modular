@@ -64,7 +64,7 @@ class SimplifyChainsPass
 
     llvm::SmallDenseSet<Value> visited;
 
-    // Depth-first walk through grt.chain.create ops.
+    // Look through grt.chain.create ops.
     while (!stack.empty()) {
       Value top = stack.front();
       stack.pop();
@@ -72,7 +72,6 @@ class SimplifyChainsPass
       if (!visited.insert(top).second)
         continue;
 
-      // Walk through chain create ops.
       if (auto chain = top.getDefiningOp<GRT::ChainCreateOp>()) {
         for (auto input : chain.getInputChains())
           stack.push(input);
@@ -91,24 +90,12 @@ class SimplifyChainsPass
   ///
   /// %X = grt.chain.create(%0, %1, %2)
   ///
-  /// The algorithm works by walking through the transitive inputs of
-  /// the produces of %0, %1, and %2 looking for the values %0, %1, and %2.
-  /// The query this search is answering is:
-  ///
-  /// * is %0 reachable from %1,
-  /// * is %1 reachable from %2,
-  /// * ...
-  ///
-  /// i.e. is any input to the `grt.chain.create` reachable from any other
-  /// operands. Those that are reachable are deleted.
+  /// this walks the transitive gating inputs of the producers of %0, %1, and %2
+  /// and deletes any of %0, %1, %2 reachable from another.
   SmallVector<Value, 16>
   eliminateImpliedByOperands(GRT::ChainCreateOp chainCreate) {
-    // Maintain an association between the values we are interested in and
-    // a bool indicating whether they were found while walking the implied-by
-    // relation.
+    // Needles still in the set at the end were not found.
     llvm::SmallSetVector<Value, 16> needles;
-
-    // Initialize all values we're searching for to false.
     for (auto arg : chainCreate.getInputChains()) {
       for (auto needle : accumulatePrimitiveChains(arg))
         needles.insert(needle);
@@ -118,23 +105,15 @@ class SimplifyChainsPass
     llvm::SetVector<Value> currentGeneration;
     llvm::SetVector<Value> newGeneration;
 
-    // Seed the search with the immediate implied-by set of needles.
     for (auto needle : needles)
       currentGeneration.insert_range(getGatingOperands(needle.getDefiningOp()));
 
-    // Iteratively walk the implied by relation, looking for any of the needles.
     while (!currentGeneration.empty()) {
-      // Mark the current generation as visited
       visited.insert_range(currentGeneration);
-
-      // See if any value in the current generation is one of the needles we're
-      // searching for. If a needle is found, delete it from the needle set.
       needles.remove_if([&](Value v) { return currentGeneration.contains(v); });
 
       newGeneration.clear();
 
-      // Determine the next generation by following the implied-by relation one
-      // step.
       for (auto val : currentGeneration) {
         for (auto next : getGatingOperands(val.getDefiningOp())) {
           if (!visited.contains(next))

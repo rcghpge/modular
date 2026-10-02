@@ -83,8 +83,7 @@ public:
   MojoBuilderScopeGuard() = delete;
   MojoBuilderScopeGuard(const MojoBuilderScopeGuard &other) = delete;
   ~MojoBuilderScopeGuard() {
-    // Mojo requires non-empty function bodies. Emit 'pass' if nothing was
-    // written.
+    // Mojo requires non-empty function bodies.
     if (emitter->str().size() == posBeforeBody)
       emitter->pass();
     emitter->decreaseIndentation();
@@ -183,9 +182,8 @@ void MojoBuilder::def(const MojoValue &name, ArrayRef<NamedMojoDef> parameters,
   statement("def ", name,
             funcDefBase(parameters, arguments, returnType, effects, body));
 
-  // This is necessary to increase indentation and the value cache. The reason
-  // we defer them is because we create the guard early to ensure that argument
-  // names use new counters.
+  // Deferred because the guard is created early so argument names use the new
+  // counters.
   guard.doDeferredActions();
   funcBody(body);
 }
@@ -462,10 +460,8 @@ void MojoBuilder::structDeclImpl(
     pushCache();
 
   for (const auto &[fieldName, fieldType] : fields) {
-    // A struct field that exposes AnyOrigin in its type is rejected by the
-    // Mojo parser unless it opts into the legacy behavior. Generated structs
-    // capture tensor pointers as Pointer[..., MutAnyOrigin], so emit the
-    // opt-in decorator for any field whose type erases an origin.
+    // The Mojo parser rejects a struct field whose type exposes AnyOrigin
+    // (e.g. Pointer[..., MutAnyOrigin]) unless it opts in with this decorator.
     if (llvm::StringRef(fieldType.text).contains("AnyOrigin"))
       statement("@__allow_legacy_any_origin_fields");
     statement("var ", fieldName, ": ", fieldType);

@@ -20,8 +20,6 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
     `map.iter.prologue`, and `map.iter.epilogue`. Each is a single-block,
     isolated-from-above region reaching every outer value through a
     `$captures` operand, shadowed as the block's trailing arguments.
-    `LoopInvariantViewMotion` and `ViewFuser` both dispatch on this
-    interface generically instead of on each concrete closure type.
   }];
 
   let cppNamespace = "::M::MAP";
@@ -48,12 +46,8 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
     >,
     InterfaceMethod<
       "Returns the outer-scope value `arg` shadows, or null when `arg` is not "
-      "one of this closure's capture block args -- a leading callback "
-      "parameter (the index, or an epilogue's stored value) shadows nothing "
-      "outside the closure, and neither does an argument of some other op. "
-      "The inverse of getCaptureBlockArgs(), matched by identity rather than "
-      "by recomputing where the captures start, so a caller walking outward "
-      "from a block argument never restates that offset.",
+      "one of this closure's capture block args (e.g. the index, or an "
+      "epilogue's stored value). The inverse of getCaptureBlockArgs().",
       "::mlir::Value", "getCaptureFor", (ins "::mlir::BlockArgument":$arg),
       [{
         // Reached through the interface, not `$_op`: a default body is emitted
@@ -71,11 +65,9 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
     >,
     InterfaceMethod<
       "Appends `capture` to the capture operands WITHOUT adding a shadowing "
-      "block argument. Segment-aware, so it stays correct for a closure whose "
-      "operands are split into segments (e.g. the epilogue's trailing "
-      "`$intermediateTensor`). Use when the block argument is added separately -- "
-      "e.g. a fuser adding it to a pre-clone body block; `addCapture` is the "
-      "usual entry point that also adds the block argument.",
+      "block argument, segment-aware (e.g. the epilogue's trailing "
+      "`$intermediateTensor`). Use when the block argument is added "
+      "separately; `addCapture` adds both.",
       "void", "appendCaptureOperand", (ins "::mlir::Value":$capture),
       [{
         $_op.getCapturesMutable().append(capture);
@@ -83,8 +75,8 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
     >,
     InterfaceMethod<
       "Appends `capture` as a new capture and returns its new shadowing "
-      "block argument. May create a duplicate of an existing capture -- "
-      "callers don't dedup; the shared capturing-closure canonicalizer does.",
+      "block argument. Does not dedup; the capturing-closure canonicalizer "
+      "does.",
       "::mlir::BlockArgument", "addCapture", (ins "::mlir::Value":$capture),
       [{
         ::mlir::BlockArgument arg = $_op.getBody().front().addArgument(
@@ -111,11 +103,9 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
 
 def MAP_IndexTransformOpInterface : OpInterface<"IndexTransformOpInterface"> {
   let description = [{
-    Common interface for ops that project a structured loop's own
-    (untransformed) index into a different index addressing a view of one of
-    the loop's inputs (today: `map.index.slice`; future view kinds -- e.g.
-    broadcast, transpose -- would implement it too), generic over which
-    concrete transform kind is involved.
+    Common interface for ops that project a structured loop's own index into
+    an index addressing a view of one of the loop's inputs (today:
+    `map.index.slice`).
   }];
   let cppNamespace = "::M::MAP";
 
@@ -125,18 +115,13 @@ def MAP_IndexTransformOpInterface : OpInterface<"IndexTransformOpInterface"> {
       "::mlir::Value", "getIndex", (ins)
     >,
     InterfaceMethod<
-      "Materializes this transform's hoisted strided-view form: a standalone "
-      "tensor value, of this transform's own output shape, that a load can "
-      "address directly with the loop's own untransformed index instead of "
-      "re-running the transform every iteration. `tensor` is the value this "
-      "transform reads from -- either the original load target, or an outer "
-      "hop's own hoisted view when chained. This op still lives inside the "
-      "isolated closure being hoisted out of, so any of its OWN operands "
-      "beyond `tensor` (e.g. a slice's starts/stops/steps) may themselves be "
-      "capture-shadowing block arguments that don't dominate the hoisted "
-      "op's insertion point outside the closure -- look every such operand "
-      "up in `outerValues` (mapping each capture block argument to the "
-      "outer-scope value it shadows) before using it.",
+      "Materializes this transform's hoisted strided view: a tensor of this "
+      "transform's output shape that a load addresses with the loop's own "
+      "untransformed index. `tensor` is the original load target or, when "
+      "chained, an outer hop's hoisted view. This op still lives inside the "
+      "closure, so its other operands (e.g. a slice's starts/stops/steps) may "
+      "be capture block arguments; map each through `outerValues` before "
+      "use.",
       "::mlir::Value", "createStridedView",
       (ins "::mlir::OpBuilder &":$builder, "::mlir::Value":$tensor,
            "const ::mlir::IRMapping &":$outerValues)
@@ -150,9 +135,7 @@ def MAP_StrideViewOpInterface : OpInterface<"StrideViewOpInterface"> {
     `map.index.broadcast.stride`, `map.index.reshape.stride`,
     `map.index.transpose.stride` -- the form
     `IndexTransformOpInterface::createStridedView` materializes. Each produces
-    a tensor of its view's OUTPUT shape over storage it does not own, so a
-    consumer that wants the tensor being re-addressed rather than the view
-    itself walks through it here instead of listing the concrete view kinds.
+    a tensor of its view's OUTPUT shape over storage it does not own.
   }];
   let cppNamespace = "::M::MAP";
 

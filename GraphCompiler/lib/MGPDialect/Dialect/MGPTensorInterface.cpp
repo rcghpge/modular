@@ -70,7 +70,6 @@ DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
     ModelOp modelOp, BufferBuilderContext &builderContext) {
   DeviceRefAttr hostDevice = DeviceRefAttr::getDefault(modelOp->getContext());
 
-  // Recover the 'host' buffer builder.
   auto hostBufferBuilder = std::make_unique<MGPBufferBuilder>(hostDevice);
   MGPBufferBuilder *hostBufferBuilderPtr = hostBufferBuilder.get();
   hostBufferBuilder->recoverFromModel(modelOp, hostBufferBuilderPtr);
@@ -78,14 +77,12 @@ DeviceRefAttr MGPTensorBufferDialectInterface::addBuilders(
   builderContext.registerBufferBuilder(hostDevice,
                                        std::move(hostBufferBuilder));
 
-  // Add the buffer builders for other supported devices.
   SmallVector<DeviceRefAttr> otherDevices;
   for (auto device : modelOp.getDevices()) {
     if (device != hostDevice)
       otherDevices.push_back(dyn_cast<DeviceRefAttr>(device));
   }
 
-  // Recover all the other buffer builders.
   for (auto device : otherDevices) {
     auto bufferBuilder = std::make_unique<MGPBufferBuilder>(device);
     bufferBuilder->recoverFromModel(modelOp, hostBufferBuilderPtr);

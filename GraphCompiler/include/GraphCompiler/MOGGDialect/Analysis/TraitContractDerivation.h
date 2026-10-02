@@ -4,12 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// On-demand derivation of tensor-arg trait contracts from kernel declarations
-// (GEX-4071).
-//
-// The trait contract of a kernel I/O tensor is a function of the declaration
-// (`mogg.kernel.decl` / `mogg.shape_func.decl`), which is the source of truth
-// for what a given operand position's contract is.
+// Derives tensor-arg trait contracts on demand from the kernel declaration
+// (`mogg.kernel.decl` / `mogg.shape_func.decl`), the source of truth for each
+// operand position's contract (GEX-4071).
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,18 +19,17 @@
 
 namespace M::MOGG {
 
-/// The trait contract declared for one `execute` call operand: the input
-/// (`isOutput == false`) or DPS-output operand at `operandIdx`. Returns
-/// `std::nullopt` for a legacy or non-tensor argument, and for an out-of-range
-/// index (exotic legacy variadic packing can legitimately shorten the operand
-/// list; a trait-bound declaration never hits this).
+/// The trait contract declared for the input or DPS-output `execute` operand at
+/// `operandIdx`. Returns `std::nullopt` for a legacy or non-tensor argument,
+/// and for an out-of-range index (legacy variadic packing can shorten the
+/// operand list; a trait-bound declaration never hits this).
 std::optional<TensorArgContract>
 declaredExecuteOperandContract(const KernelDeclFunctionAdaptor &executeFn,
                                unsigned operandIdx, bool isOutput);
 
-/// The trait contract declared for one `mogg.call.shape` operand. Shape
-/// functions carry role-less (`TensorArgRole::none`) contracts for their
-/// trait-bound tensor arguments; legacy arguments yield `std::nullopt`.
+/// The trait contract declared for one `mogg.call.shape` operand. Trait-bound
+/// tensor arguments get role-less (`TensorArgRole::none`) contracts; legacy
+/// arguments yield `std::nullopt`.
 std::optional<TensorArgContract>
 declaredShapeOperandContract(const KernelDeclFunctionAdaptor &shapeFn,
                              unsigned operandIdx);

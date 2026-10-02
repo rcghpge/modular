@@ -49,16 +49,13 @@ LayoutAttr LayoutAttr::getChecked(function_ref<InFlightDiagnostic()> emitError,
 }
 
 Attribute LayoutAttr::parse(AsmParser &p, Type t) {
-  // parse '<'
   if (p.parseLess())
     return {};
 
-  // parse the layout format string
   StringRef layoutFormat;
   if (failed(p.parseKeyword(&layoutFormat)))
     return {};
 
-  // parse '>'
   if (p.parseGreater())
     return {};
 

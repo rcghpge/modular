@@ -18,8 +18,7 @@ include "mlir/IR/OpBase.td"
 
 def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
   let description = [{
-    Interface that all MO ops should implement, mainly providing typed accessors
-    to inputs, outputs, and their shapes.
+    Implemented by all MO ops; provides typed input/output accessors.
   }];
   let cppNamespace = "::M::MO";
 
@@ -38,11 +37,9 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
 
 def MO_ConditionallyInPlaceInterface : OpInterface<"MOConditionallyInPlaceInterface"> {
   let description = [{
-    Interface that ops that can conditionally represent an in-place computation
-    (e.g. a custom op that directly operates on a mo.buffer value or a
-     mogg.kernel after it has been load and store fused).
-
-    Should be used in conjunction with MOMutableOpInterface.
+    Ops that may represent an in-place computation (e.g. a custom op on an
+    mo.buffer, or a load/store-fused mogg.kernel). Use with
+    MOMutableOpInterface.
   }];
 
   let methods = [
@@ -55,11 +52,9 @@ def MO_ConditionallyInPlaceInterface : OpInterface<"MOConditionallyInPlaceInterf
 
 def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", []> {
   let description = [{
-    Interface that all mutable ops under rmo/mo implement and any ops that
-    could represent in-place compute should implement as well.
-
-    In the case where an op can be conditionally in-place (e.g. mo.custom) it
-    should also implement the MOConditionallyInPlaceInterface as well.
+    Implemented by all mutable rmo/mo ops and any op that may compute in
+    place. Conditionally in-place ops (e.g. mo.custom) also implement
+    MOConditionallyInPlaceInterface.
   }];
   let cppNamespace = "::M::MO";
 
@@ -109,26 +104,19 @@ def MO_MutableOpInterface : OpInterface<"MOMutableOpInterface", []> {
 
 def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
   let description = [{
-    Interface for ops with an optional `#M.device_ref` attribute describing the
-    intended execution device. The reference must resolve to an `#M.device_spec`
-    in the op's containing `mo.graph` 'device_specs' attribute.
+    Ops with an optional `#M.device_ref` execution device, which must resolve
+    to an `#M.device_spec` in the enclosing `mo.graph`'s 'device_specs'.
   }];
   let cppNamespace = "::M::MO";
 
   let methods = [
     InterfaceMethod<
-      [{
-        Returns an array of `#M.device_ref` corresponding to the
-        devices on which this operation executes.
-      }],
+      "Returns the devices this operation executes on.",
       "llvm::SmallVector<DeviceRefAttr>", "getExecutionDevices", (ins)
     >,
 
     InterfaceMethod<
-      [{
-        Returns a `#M.device_ref` to the device where this operation executes.
-        Assumes that this is not a multi-device operation.
-      }],
+      "Returns the single device this operation executes on.",
       "DeviceRefAttr", "getExecutionDevice", (ins), "",
       [{
         auto devices = $_op.getExecutionDevices();
@@ -139,8 +127,6 @@ def MO_HasDeviceInterface : OpInterface<"MOHasDeviceInterface"> {
   ];
 }
 
-/// MO interfaces should inherit from this to ensure they are in the right
-/// namespace and have the right dependencies.
 class MO_TensorOpInterfaceBase<string name, list<Interface> baseInterfaces = []>
     : OpInterface<name, baseInterfaces> {
   let cppNamespace = "::M::MO";
@@ -149,7 +135,7 @@ class MO_TensorOpInterfaceBase<string name, list<Interface> baseInterfaces = []>
 
 def MO_ControlOpInterface : OpInterface<"MOControlOpInterface"> {
   let description = [{
-    Interface marking ops that are control flow
+    Marks control-flow ops.
   }];
   let cppNamespace = "::M::MO";
 }
@@ -157,8 +143,7 @@ def MO_ControlOpInterface : OpInterface<"MOControlOpInterface"> {
 def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
   [MemoryEffectsOpInterface, ParamOpInterface]> {
   let description = [{
-    Interface to be implemented by ops that declare shape or dimension
-    parameters.
+    Ops that declare shape or dimension parameters.
   }];
 
   let methods = [
@@ -213,10 +198,8 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
 
 def MO_Staticization : OpInterface<"Staticization"> {
   let description = [{
-    Interface that models op which, if given staticized versions of its inputs,
-    might be able to get staticized as well, where "being staticized" means
-    having the op's output value represented as a parameter expression, i.e.,
-    one of:
+    Ops whose output may be expressible as a parameter expression given
+    staticized inputs, i.e. one of:
     - `IntegerAttr` for a integer or boolean constant, e.g., `42`.
     - `BoolAttr` for a boolean constant, e.g., `true`.
     - `KGEN::ParamDeclRefAttr` for a parameter reference, e.g., `D0`.
@@ -225,11 +208,8 @@ def MO_Staticization : OpInterface<"Staticization"> {
   let cppNamespace = "::M::MO";
 
   let methods = [
-    InterfaceMethod<"Try to staticize this op given staticized input values. "
-    "The return value is either an error (for fatal error to be reported), "
-    "a null `TypedAttr` (when staticization cannot happen due to input being "
-    "too dynamic), or the result of staticization. The `ParamExprBuilder` is "
-    " used to build new expression or assertions.",
+    InterfaceMethod<"Try to staticize this op given staticized inputs. Returns "
+    "an error (fatal), a null `TypedAttr` (inputs too dynamic), or the result.",
       "ErrorOr<TypedAttr>", "tryStaticize",
       (ins "ArrayRef<TypedAttr>":$inputs,
            "ParamExprBuilder&":$b),
@@ -239,25 +219,22 @@ def MO_Staticization : OpInterface<"Staticization"> {
 
 def MO_ShapeMaterialization : MO_TensorOpInterfaceBase<"ShapeMaterialization", [MO_ParamDeclaration]> {
   let description = [{
-    Interface that models ops which
-    1. declare parameters whose values depend on the op's input shape or data.
-    2. might know how to define the declared parameters in terms of new ops
-       (a best effort process that depends on the op type and its inputs).
+    Ops that declare parameters depending on their input shape or data, and
+    may (best effort) define them in terms of new ops.
   }];
   let cppNamespace = "::M::MO";
 
   let methods = [
     InterfaceMethod<
-    "Return indices of the inputs whose actual data (not shape) are needed for "
-    "computing the output parameters. TODO(GEX-4093): derivable from a "
+    "Return indices of inputs whose data (not shape) the output parameters "
+    "need. TODO(GEX-4093): derivable from a "
     "trait-bound shape function's written bounds once this op migrates.",
     "SmallVector<int32_t>", "getDataDependentInputIndices",
       (ins), [{}]>,
 
     InterfaceMethod<
-    "Try returning a list of ops (ordered by use-def chains) that will define "
-    "the shape parameters declared by this op, assuming `inputAttrs` are the "
-    "symbolic values of the op's individual input shape or data.",
+    "Try returning ops (in use-def order) defining this op's declared shape "
+    "parameters, given symbolic input shapes or data `inputAttrs`.",
     "ShapeMaterializeResult", "materializeShapeDefs",
       (ins "ArrayRef<TypedAttr>":$inputAttrs),
     [{}]>,
@@ -266,13 +243,9 @@ def MO_ShapeMaterialization : MO_TensorOpInterfaceBase<"ShapeMaterialization", [
 
 def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
   let description = [{
-    Interface for modeling operations that implement matmul-like behavior,
-    including vanilla matmul and batchmatmul.
-
-    Dynamically ranked/shaped inputs and results are permitted, but if the shape
-    is known, the last 2 dimensions of each input are assumed to be the matrix
-    dimension. This interface refers to the left and right matrices as A and B,
-    respectively.
+    Matmul-like ops (matmul, batchmatmul). Dynamic shapes are allowed; when
+    known, the last 2 dimensions of each input are the matrix dimensions. The
+    left and right matrices are A and B.
   }];
 
   let methods = [
@@ -292,7 +265,7 @@ def MO_MatmulLike : MO_TensorOpInterfaceBase<"MatmulLike"> {
 
 def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
   let description = [{
-    Interface for modeling operations that have sliding window semantics.
+    Ops with sliding window semantics.
   }];
 
   let methods = [
@@ -305,7 +278,6 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
   ];
 
   let extraClassDeclaration = [{
-    /// Helper for verifying window op shape/rank invariants.
     LogicalResult verifyWindowParamShape(
       TensorValue $windowParam, StringRef name);
     LogicalResult verifyWindowParamSizes(ArrayRef<TensorValue> values);
@@ -316,7 +288,7 @@ def MO_SlidingWindow : MO_TensorOpInterfaceBase<"SlidingWindow"> {
 
 def MO_ElementWiseUnary : MO_TensorOpInterfaceBase<"ElementWiseUnary"> {
   let description = [{
-    Interface for modeling unary element-wise operations.
+    Unary element-wise ops.
   }];
 
   let methods = [
@@ -334,7 +306,7 @@ def MO_ElementWiseUnary : MO_TensorOpInterfaceBase<"ElementWiseUnary"> {
 
 def MO_ElementWiseBinary : MO_TensorOpInterfaceBase<"ElementWiseBinary"> {
   let description = [{
-    Interface for modeling binary element-wise operations.
+    Binary element-wise ops.
   }];
 
   let methods = [
@@ -359,7 +331,7 @@ def MO_ElementWiseBinary : MO_TensorOpInterfaceBase<"ElementWiseBinary"> {
 def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
     [MO_ParamDeclaration]> {
   let description = [{
-    Interface for modeling reduction operations.
+    Reduction ops.
   }];
 
   let methods = [
@@ -379,8 +351,7 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
 def MO_ScatterLike : MO_TensorOpInterfaceBase<"ScatterLike",
     [MO_ParamDeclaration,]> {
   let description = [{
-    Interface for modeling Scatter-like operations (i.e., regular Scatter
-    and Scatter with reductions).
+    Scatter and scatter-with-reduction ops.
   }];
 
   let methods = [
@@ -410,8 +381,7 @@ def MO_ScatterLike : MO_TensorOpInterfaceBase<"ScatterLike",
 def MO_ScatterNdLike : MO_TensorOpInterfaceBase<"ScatterNdLike",
     [MO_ParamDeclaration]> {
   let description = [{
-    Interface for modeling ScatterND-like operations (i.e., regular ScatterND
-    and ScatterND with reductions).
+    ScatterND and ScatterND-with-reduction ops.
   }];
 
   let methods = [
@@ -436,7 +406,7 @@ def MO_ScatterNdLike : MO_TensorOpInterfaceBase<"ScatterNdLike",
 
 def MO_PadLike : MO_TensorOpInterfaceBase<"PadLike", [MO_ParamDeclaration]> {
   let description = [{
-    Interface for modeling pad operations.
+    Pad ops.
   }];
 
   let methods = [
@@ -455,8 +425,6 @@ def MO_PadLike : MO_TensorOpInterfaceBase<"PadLike", [MO_ParamDeclaration]> {
 // Traits
 //===----------------------------------------------------------------------===//
 
-/// MO traits should inherit from this to ensure they are in the right namespace
-/// and have the right dependencies.
 class MO_OpTrait<string name, list<Trait> traits = [],
     code extraOpDeclaration = [{}],
     code extraOpDefinition = [{}]>
@@ -471,34 +439,23 @@ def MO_HostOnly : MO_OpTrait<"MOHostOnly">;
 // Marks an op that executes on the host using tensors from any device.
 def MO_ExecutesOnHost : MO_OpTrait<"MOExecutesOnHost">;
 
-// Marks an op as a "composite" op: a dedicated MO op representing a fused
-// subgraph emitted for a pattern-matching fusion. Composite ops live in the
-// `mo.composite.*` namespace (see MOCompositeOps.td) and exist so fusions can
-// produce a typed, named op instead of an `mo.custom`.
+// Marks a `mo.composite.*` fused-subgraph op (see MOCompositeOps.td).
 def MO_CompositeOpTrait : MO_OpTrait<"MOComposite">;
 
-// Helper to get the operand numbers for the given operand names.
 class getOperandNumbers<list<string> operandNames> {
   string ret = !interleave(!foreach(name, operandNames,
     "get" # snakeCaseToCamelCase<name>.ret
     # "Mutable().getOperandNumber()"), ", ");
 }
 
-// Marks an op that executes on a single device.
-// - Operands listed in hostOperandNames are expected to be on the host.
-// - Operands listed in deviceOperandNames are expected to be on the device.
-// - All results are expected to be on the device.
-// - The execution device of this op is inferred from the first device operand
-//   in the list.
-//
-// If deviceOperandNames is empty, the verifier will instead expect all
-// operands not mentioned in hostOperandNames to be on the device. In this case
-// the execution device is inferred from the first result.
+// Marks an op that executes on a single device. hostOperandNames are on the
+// host; deviceOperandNames and all results are on the device, which is
+// inferred from the first device operand. If deviceOperandNames is empty, all
+// non-host operands must be on the device, inferred from the first result.
 class MO_SingleDeviceWithHostOperands<list<string> hostOperandNames = [],
                                       list<string> deviceOperandNames = []>
   : MO_OpTrait<"MOSingleDeviceWithHostOperands">
 {
-  // Make operand names from ODS available as operand indices in C++
   let extraConcreteClassDeclaration = [{
     llvm::SmallVector<size_t> getHostOperandIndices() {
       return {}] # getOperandNumbers<hostOperandNames>.ret # [{};
@@ -509,14 +466,12 @@ class MO_SingleDeviceWithHostOperands<list<string> hostOperandNames = [],
   }];
 }
 
-// Marks an op that executes on a single device, with all operands and results
-// also on the same device.
-// This trait assumes that the op's first result tensor is on the target device.
+// Single device with all operands and results on it, inferred from the first
+// result.
 def MO_SingleDevice : MO_SingleDeviceWithHostOperands<>;
 
-// Marks an op that executes on multiple devices.
-// The deviceSourceName parameter names the ODS operand or result whose per-value
-// device refs determine the execution devices (e.g. "inputs" or "outputs").
+// Marks a multi-device op whose execution devices come from the ODS operand
+// or result named deviceSourceName.
 class MO_MultiDeviceFrom<string deviceSourceName>
   : MO_OpTrait<"MOMultiDevice">
 {
@@ -527,23 +482,16 @@ class MO_MultiDeviceFrom<string deviceSourceName>
   }];
 }
 
-// Default: infer execution devices from the variadic inputs.
 def MO_MultiDevice : MO_MultiDeviceFrom<"inputs">;
 
-// Marks an op that stores a deviceRef attribute to indicate where it will
-// execute, in contrast to the other device traits which do not require a
-// deviceRef attribute on the op.
+// Marks an op whose execution device is its deviceRef attribute.
 def MO_ExplicitDevice : MO_OpTrait<"MOExplicitDevice">;
 
-// Marks an op that executes on a single device, with inputs allowed to be on
-// peer devices sharing the same device label (but potentially different device
-// IDs).  Operands listed in hostOperandNames must be on the host instead;
-// they are exempt from the peer-device label check.  The execution device is
-// inferred from the first result.
+// Single device (inferred from the first result) whose inputs may be on peer
+// devices with the same label. hostOperandNames must be on the host instead.
 class MO_SingleDeviceWithPeerInputs<list<string> hostOperandNames = []>
   : MO_OpTrait<"MOSingleDeviceWithPeerInputs">
 {
-  // Make operand names from ODS available as operand indices in C++.
   let extraConcreteClassDeclaration = [{
     llvm::SmallVector<size_t> getHostOperandIndices() {
       return {}] # getOperandNumbers<hostOperandNames>.ret # [{};
@@ -551,23 +499,16 @@ class MO_SingleDeviceWithPeerInputs<list<string> hostOperandNames = []>
   }];
 }
 
-// Note: we could add a MO_ExplicitDevices trait if we ever add a multi-device
-// op where we can't just infer the devices from the operands and results.
-
 def MO_SameOperandsAndResultType : TraitList<[
   SameOperandsAndResultType,
   MO_ParamDeclaration
 ]>;
 
-/// Verify invariants we expect about operations working with !mo.buffer.
-/// All MO and RMO (really RMO analogue) ops inherit from this trait.
-///
-/// It enforces that operations consuming buffers correctly consume and produce
+/// On every MO and RMO op: ops consuming !mo.buffer must consume and produce
 /// !mo.chain values.
 def MO_BufferOpConformance : MO_OpTrait<"MOBufferOpConformance">;
 
-/// Logically similar to the builtin SameOperandsAndResultShape, but uses
-/// MOSH::ShapeAttr which is used to store the MO::Tensor shape.
+/// SameOperandsAndResultShape over the MOSH::ShapeAttr of MO::Tensor.
 def MO_SameOperandsAndResultShapeAttr :
     MO_OpTrait<"MOSameOperandsAndResultShapeAttr">;
 
@@ -575,45 +516,34 @@ def MO_SameOperandsAndResultShape: TraitList<[
   MO_SameOperandsAndResultShapeAttr
 ]>;
 
-/// All traits that reduction ops should have.
 def MO_ReductionTraits: TraitList<[
   MO_Reduction,
   MO_ShapeMaterialization,
   MO_OpTrait<"ReductionShapeMaterialization">,
 ]>;
 
-/// All traits that ScatterND-like ops should have.
 def MO_ScatterLikeTraits: TraitList<[
   MO_ScatterLike,
   MO_ShapeMaterialization,
   MO_OpTrait<"ScatterLikeShapeMaterialization">,
 ]>;
 
-/// All traits that ScatterND-like ops should have.
 def MO_ScatterNdLikeTraits: TraitList<[
   MO_ScatterNdLike,
   MO_OpTrait<"ScatterNdLikeShapeMaterialization">,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
 ]>;
 
-/// Logically similar to the builtin SameOperandsAndResultElementType, but this
-/// allows us to use our own logic of how the element types are accessed from
-/// the op's operands and results. In the builtin implementation, element types
-/// are only support for mlir::ShapedType. Moreover, if `MO::TensorType` needs
-/// to support element type parameters in the future, this trait would be able
-/// to support them.
+/// Like the builtin SameOperandsAndResultElementType, which only supports
+/// mlir::ShapedType, but with MO's own element type access.
 def MO_SameOperandsAndResultElementType :
     MO_OpTrait<"MOSameOperandsAndResultElementType">;
 
 def MO_SameOperandsElementType :
     MO_OpTrait<"MOSameOperandsElementType">;
 
-/// Checks the results of an op have the same dtype as the first operand.
-/// This is useful for shape-like operators like reshape, squeeze, etc.
-/// which typically take in an input tensor, some additional operands
-/// describing how to change the input shape, and produce a newly shaped
-/// output tensor. The dtype of the original tensor should not change in
-/// the transformation.
+/// Results have the first operand's dtype, for shape ops like reshape and
+/// squeeze whose other operands only describe the new shape.
 def MO_SameFirstOperandAndResultsElementType :
     MO_OpTrait<"MOSameFirstOperandAndResultsElementType">;
 
@@ -624,7 +554,7 @@ def MO_PadLikeTraits: TraitList<[
 
 def MO_ConstantLike : MO_TensorOpInterfaceBase<"ConstantLike"> {
   let description = [{
-    Interface for modeling constant operations.
+    Constant ops.
   }];
 
   let methods = [
@@ -638,27 +568,20 @@ def MO_ConstantLike : MO_TensorOpInterfaceBase<"ConstantLike"> {
 
 def MO_PreservedDuringKernelLowering : OpInterface<"PreservedDuringKernelLowering"> {
   let description = [{
-    Represents a MO operation that must have must lowered using a kernel
-    implementation.
+    An MO op that must be lowered to a kernel implementation.
   }];
   let cppNamespace = "::M::MO";
 }
 
-// Marks a per-launch entry point for a bundled collective inside an
-// `mo.parallel` region (e.g. `mo.bundled.expand`, `mo.bundled.allreduce.sum`).
-// The body of the parallel region runs on a representative single-device
-// value; bundled collective ops use signal buffers from the parallel's
-// `buffers(...)` clause to coordinate across launches.
-//
-// `ParallelOp::verify` allows ops carrying this interface unconditionally.
-// Use the `MO_BundledCollective` trait list below to apply both the marker
-// interface and the structural `ParentOneOf<["ParallelOp"]>` constraint in
-// one shot.
+// Bundled collectives (e.g. `mo.bundled.expand`, `mo.bundled.allreduce.sum`)
+// coordinate across launches with signal buffers from the parallel's
+// `buffers(...)` clause. `ParallelOp::verify` allows them unconditionally.
+// Apply via `MO_BundledCollective`, which also adds the parent constraint.
 def MO_BundledCollectiveInterface
     : OpInterface<"MOBundledCollectiveInterface"> {
   let description = [{
-    Marks an op that is a per-launch entry point for a bundled collective and
-    is only valid inside an `mo.parallel` body.
+    Marks a per-launch bundled-collective entry point, valid only inside an
+    `mo.parallel` body.
   }];
   let cppNamespace = "::M::MO";
 }
@@ -677,15 +600,14 @@ def MO_ViewLike : OpInterface<"ViewLike"> {
 
 def MO_ElementWiseLike : OpInterface<"ElementWiseLike"> {
   let description = [{
-    Represents an generic element-wise op.
+    Represents a generic element-wise op.
   }];
   let cppNamespace = "::M::MO";
 }
 
 def MO_SameVariadicOperandSizeInterface : OpInterface<"SameVariadicOperandSizeInterface"> {
   let description = [{
-    Interface that represent MO Ops that take multiple variadics, all with the same size.
-    Wrapper around the builtin `SameVariadicOperandSize` that can't be checked in C++.
+    Exposes the builtin `SameVariadicOperandSize` trait, which C++ can't check.
   }];
   let cppNamespace = "::M::MO";
 }
@@ -697,8 +619,7 @@ def MO_SameVariadicOperandSize: TraitList<[
 
 def MO_SameVariadicResultSizeInterface : OpInterface<"SameVariadicResultSizeInterface"> {
   let description = [{
-    Interface that represent MO Ops that have multiple variadic results, all with the same size.
-    Wrapper around the builtin `SameVariadicResultSize` that can't be checked in C++.
+    Exposes the builtin `SameVariadicResultSize` trait, which C++ can't check.
   }];
   let cppNamespace = "::M::MO";
 }

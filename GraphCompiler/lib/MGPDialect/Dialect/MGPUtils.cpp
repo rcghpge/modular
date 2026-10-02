@@ -55,16 +55,13 @@ Value MGP::indexToDimension(OpBuilder &builder, Location loc, Value index) {
 
 TypedValue<MGP::ContextType> MGP::getContextForBlock(Block *block) {
   while (true) {
-    // First look for a block argument.
     for (Value arg : block->getArguments()) {
       if (isa<MGP::ContextType>(arg.getType()))
         return cast<TypedValue<MGP::ContextType>>(arg);
     }
-    // Next look for a mgp.context.create op.
     for (auto createOp : block->getOps<MGP::ContextCreateOp>()) {
       return createOp.getResult();
     }
-    // Next, try one level up.
     ASSERT_STREAM(!isa<ModelOp>(block->getParentOp()),
                   << "unable to locate an !mgp.context");
     block = block->getParentOp()->getBlock();
@@ -74,17 +71,14 @@ TypedValue<MGP::ContextType> MGP::getContextForBlock(Block *block) {
 
 TypedValue<MEF::ChainType> MGP::getRootChainForBlock(Block *block) {
   while (true) {
-    // First look for a block argument.
     for (Value arg : block->getArguments()) {
       if (isa<MEF::ChainType>(arg.getType()))
         return cast<TypedValue<MEF::ChainType>>(arg);
     }
-    // Next look for a nullary grt.chain.create op.
     for (auto createOp : block->getOps<GRT::ChainCreateOp>()) {
       if (createOp->getNumOperands() == 0)
         return createOp.getResult();
     }
-    // Next, try one level up.
     ASSERT_STREAM(!isa<ModelOp>(block->getParentOp()),
                   << "unable to locate a !mef.chain");
     block = block->getParentOp()->getBlock();
@@ -108,12 +102,10 @@ InOutSignatureAttr::InOutSemantics
 MGP::getInOutSemantics(OpOperand &opOperand) {
   Operation *op = opOperand.getOwner();
 
-  // Ops with ODS definitions (the majority) convey in/out semantics via the
-  // interface.
   if (auto inOutSemanticsOp = dyn_cast<MGPInOutSemanticsOpInterface>(op))
     return inOutSemanticsOp.getInOutSemantics(opOperand.getOperandNumber());
 
-  // All other ops may supply an #M.InOutSignature directly.
+  // Ops without the interface may carry an #M.InOutSignature attribute.
   if (auto inOutAttr =
           op->getAttrOfType<InOutSignatureAttr>(kInOutSigAttribute)) {
     ASSERT_STREAM(inOutAttr.size() == op->getNumOperands(),
@@ -121,7 +113,6 @@ MGP::getInOutSemantics(OpOperand &opOperand) {
     return inOutAttr[opOperand.getOperandNumber()];
   }
 
-  // Assume 'in' only.
   return InOutSignatureAttr::kIn;
 }
 

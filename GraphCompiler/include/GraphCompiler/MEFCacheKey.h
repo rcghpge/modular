@@ -25,10 +25,8 @@ namespace MO {
 struct GCPipelineOptions;
 }
 
-/// Incremental hasher for MEF cache keys. Holds a precomputed hash state
-/// for session-level hash dependencies.
-///
-/// The MEF cache key depends on
+/// Incremental hasher for MEF cache keys, holding precomputed session-level
+/// hash state. The key depends on
 /// - The GC pass pipeline, version, and options
 /// - KGEN compilation context (Mojo compile-time defines)
 /// - User-provided kernel library files

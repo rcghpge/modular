@@ -60,13 +60,12 @@ public:
   }
 
 private:
-  // Use this for cleaner error handling and then pass result to parse()
+  // Cleaner error handling; parse() wraps it.
   ErrorOrSuccess parseImpl(llvm::cl::Option &options, StringRef argName,
                            StringRef argValue, InputDataSpec &result);
 };
 
-/// Contains the core CLI options for *-executor, so that other executables
-/// can use these without duplicating them.
+/// Core *-executor options, shared with other executables.
 class ExecutorDriverOptions : public AsyncRT::CPUDeviceOptions,
                               public CommonOptions {
 
@@ -76,17 +75,11 @@ public:
     kExit,
   };
 
-  //   using CommonCLOptions::CommonCLOptions;
-
-  /// This specifies the number of times we should execute the model in a warmup
-  /// phase. Warmup is only honored if the "num-runs" option is greater than 1
-  /// (i.e. we are in a benchmarking phase).
+  /// Warmup runs; only honored when "num-runs" is greater than 1.
   unsigned numWarmup{0};
 
-  /// This specifies the number of times we should execute the model.
   unsigned numRuns{1};
 
-  /// This tells the execution driver how to initialize model inputs.
   InputGenerationKind inputGenKind{InputGenerationKind::kZeros};
 
   SmallVector<TensorSpec> inputSpecs{};
@@ -97,25 +90,22 @@ public:
 
   size_t minimumCpuAlignment{64};
 
-  /// This tells the execution driver how to print output tensors;
   ResultOutputStyle resultOutputStyle{ResultOutputStyle::kCompact};
 
   unsigned printPrecision{6};
 
   std::string binaryOutputDir{""};
 
-  /// If set, save the execution time of every non-warmup run to given file.
+  /// If set, save every non-warmup run's execution time to this file.
   std::string saveTimings{""};
 
-  /// Behavior when an executed function returns an error.
   OnFailure onFailure{OnFailure::kExit};
 
   /// Returns whether an executor should stop when a model returns an error.
   bool stopOnFirstError() const { return onFailure == OnFailure::kExit; }
 };
 
-/// Contains the core CLI options for *-executor, so that other executables
-/// can use these without duplicating them.
+/// Core *-executor CLI options, shared with other executables.
 class ExecutorDriverCLOptions : public AsyncRT::RuntimeCLOptions,
                                 public CommonCLOptions {
 public:
@@ -129,9 +119,7 @@ public:
 private:
   llvm::cl::OptionCategory ExecutorDriverOptionsCategory{
       "Executor driver command line options"};
-  /// This specifies the number of times we should execute the model in a warmup
-  /// phase. Warmup is only honored if the "num-runs" option is greater than 1
-  /// (i.e. we are in a benchmarking phase).
+  /// Only honored when "num-runs" is greater than 1.
   M::cl::MOpt<unsigned, true> numWarmup{
       "num-warmup",
       cl::desc("Execute inference model N times in warmup mode (default 0). "
@@ -139,13 +127,11 @@ private:
       llvm::cl::location(options.numWarmup),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
-  /// This specifies the number of times we should execute the model.
   M::cl::MOpt<unsigned, true> numRuns{
       "num-runs", cl::desc("Execute inference model N times (default 1)."),
       llvm::cl::location(options.numRuns),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
-  /// This tells the execution driver how to initialize model inputs.
   M::cl::MOpt<InputGenerationKind, true> inputGenKind{
       "model-inputs", cl::desc("Specify input tensor generation:"),
       cl::values(
@@ -219,7 +205,6 @@ private:
       llvm::cl::location(options.minimumCpuAlignment),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
-  /// This tells the execution driver how to print output tensors;
   M::cl::MOpt<ResultOutputStyle, true> resultOutputStyle{
       "result-output-style", cl::desc("Specify how to display outputs"),
       cl::values(
@@ -253,7 +238,6 @@ private:
       llvm::cl::location(options.binaryOutputDir),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
-  /// If set, save the execution time of every non-warmup run to given file.
   M::cl::MOpt<std::string, true> saveTimings{
       "save-timings",
       cl::desc("Optional filename to capture the execution latency (in "
@@ -262,9 +246,7 @@ private:
       llvm::cl::location(options.saveTimings),
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 
-  /// Set the behavior of executors if one of the functions they should run
-  /// returns with an error. E.g. Set to `continue` for diagnostic
-  /// verification.
+  /// E.g. `continue` for diagnostic verification.
   M::cl::MOpt<ExecutorDriverOptions::OnFailure, true> onFailure{
       "on-failure",
       llvm::cl::desc("Behavior in case an executed function returns with an "
@@ -278,9 +260,7 @@ private:
       llvm::cl::cat(ExecutorDriverOptionsCategory)};
 };
 
-/// This command enum specifies what action we're supposed to take, which is
-/// directly correlated with a level of abstraction.  Later stages do more
-/// processing depending on the format of the input provided to the tool.
+/// The driver action; later commands do more processing of the input.
 enum class DriverCommand {
   inspect,       // Print information about the input without processing it.
   printMetadata, // Print model information after conversion to MEF in YAML
@@ -294,9 +274,7 @@ enum class DriverCommand {
   frameworkHelp, // Print the framework's help string.
 };
 
-/// This class provides the basic driver command options. It essentially
-/// exposes the `DriverCommand` enum with some additional options.
-
+/// Exposes the `DriverCommand` enum with some additional options.
 class DriverCommandOptions {
 
 public:
@@ -339,11 +317,7 @@ public:
       llvm::cl::location(options.command)};
 };
 
-/// This class provides essentially all the command-line options available to
-/// the driver. It amalgamates the commands from DriverCommandOptions and
-/// ExecutorDriverCLOptions, and provides input format and output file
-/// specification. It also provides utility methods for opening an
-/// output/intermediate file with a given filename.
+/// Driver options: input format plus ExecutorDriverOptions.
 class DriverOptions : public DriverInputFormatOptions,
                       public ExecutorDriverOptions {
 public:
@@ -373,11 +347,7 @@ public:
       llvm::cl::location(options.enableMEFMetadata)};
 };
 
-/// This class provides additional command line options for the
-/// tfl-graph-verifier, namely the tolerances (rtol and atol) which are used
-/// to determine whether there is an accuracy discrepancy between the TFLP and
-/// FlatBuffer outputs.
-
+/// tfl-graph-verifier tolerances for comparing TFLP and FlatBuffer outputs.
 class VerifyGraphDriverOptions : public ExecutorDriverOptions {
 
 public:

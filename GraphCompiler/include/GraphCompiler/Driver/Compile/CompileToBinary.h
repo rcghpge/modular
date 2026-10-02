@@ -31,16 +31,15 @@ struct CompileToBinaryCtx {
 
     std::optional<TimeTraceProfiler> &profilerOr = cpuDevice->getProfiler();
     if (profilerOr) {
-      // Cache the previous profiling type mask to restore it upon destruction.
+      // Restored on destruction.
       prevRuntimeProfilingTypeMask = profilerOr->runtimeProfilingTypeMask();
-      // Disable `kCompiler` profiling events, which bloat the trace to several
-      // GB during graph compilation.
+      // `kCompiler` events bloat the trace to several GB during compilation.
       profilerOr->setRuntimeProfilingTypeMask(Trace::disableMaskType(
           prevRuntimeProfilingTypeMask, Trace::kCompiler));
     }
   }
 
-  /// Here the default reverse-order-of-declaration destruction is important.
+  /// Relies on reverse-declaration-order member destruction.
   ~CompileToBinaryCtx() {
     std::optional<TimeTraceProfiler> &profilerOr = cpuDevice->getProfiler();
     if (profilerOr)
@@ -53,8 +52,7 @@ struct CompileToBinaryCtx {
   mlir::MLIRContext mlirCtx;
   mlir::OwningOpRef<mlir::ModuleOp> module;
 
-  // Install a source manager diagnostic handler to properly display MLIR
-  // diagnostics that can originate from downstream compilation errors.
+  // Displays MLIR diagnostics from downstream compilation errors.
   llvm::SourceMgr sourceMgr;
   mlir::SourceMgrDiagnosticHandler diagHandler;
 };

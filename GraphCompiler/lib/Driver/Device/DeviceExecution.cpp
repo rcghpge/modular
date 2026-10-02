@@ -25,11 +25,9 @@ ErrorOr<DeviceBufferRef> M::GraphCompiler::Driver::allocateDeviceBuffer(
     return bufOrErr.takeError();
   DeviceBufferRef buf = bufOrErr.takeValue();
 
-  // Debug allocation poisoning: fills newly allocated memory with default
-  // patterns to help detect use of uninitialized memory. Host and device
-  // fills use the same per-type pattern (see DebugAllocPoison.h) so the Mojo
-  // stdlib uninit-read check has a single value to look for.
-  // Enable via: MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison
+  // MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison. Host and device share
+  // the per-type pattern (see DebugAllocPoison.h) so the Mojo stdlib
+  // uninit-read check has one value to look for.
   if (device->isDebugAllocatorEnabled("uninitialized-poison")) {
     M::GraphCompiler::Driver::AllocationPoisonDecision decision =
         M::GraphCompiler::Driver::decidePoison(spec, hostAlloc);
@@ -41,9 +39,8 @@ ErrorOr<DeviceBufferRef> M::GraphCompiler::Driver::allocateDeviceBuffer(
                    *buf, fill->bits, fill->patternBytes))
         return err.takeError();
     }
-    // Every device allocation synchronizes, filled or not, so that
-    // `sync-only` reproduces exactly the synchronization of the modes that
-    // fill.
+    // Synchronize even unfilled allocations so `sync-only` matches the
+    // filling modes' synchronization.
     if (!hostAlloc) {
       if (M::ErrorOrSuccess err = device->synchronize())
         return err.takeError();
@@ -64,16 +61,12 @@ ErrorOr<DeviceBufferRef>
 M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(
     M::ContextRef context, DeviceContextRef device, Tensor tensor) {
 
-  // Take ownership of underlying tensor storage.
   TensorBufferRef bufferRef = tensor.releaseBufferRef();
   AnyAsyncValueRef storageRef = bufferRef.getMemStorageHandle();
 
-  // We can have situations where the graph is attempting to return a value that
-  // will not outlive it. In these cases, we need to explicitly copy this value
-  // to a device buffer.
+  // The graph may return a value that won't outlive it; copy it.
   if (!storageRef) {
-    // If we hit a situation where we're returning a null storage ref on a GPU,
-    // we should just error out, since this situation should be impossible.
+    // Should be impossible on a GPU.
     if (device->device().api() != M::Driver::Device::cpuAPI)
       return Error("Execution returned a null result on a GPU.");
 
@@ -93,20 +86,16 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(
 
   auto destructor = [context = std::move(context),
                      storageRef = storageRef.copy()]() mutable {
-    // When the last reference goes out of scope, the data will be deallocated.
     storageRef.reset();
 
-    // When graph deallocates CPU memory it is done through AsyncRT Runtime. So
-    // we need to keep cpuDevice alive until the usage of output is complete.
-    // During `mojo run` this happens automatically since `mojo` maintains
-    // context. However for `mojo build` we need to make sure of that.
-    // TODO: Ideally this should be done by graph and not driver.
+    // The graph frees CPU memory through the AsyncRT Runtime, so cpuDevice must
+    // outlive the output (automatic under `mojo run`, not `mojo build`).
+    // TODO: The graph, not the driver, should own this.
     context.reset();
   };
 
   void *outputData = bufferRef.getBuffer();
 
-  // Create a device buffer from the pointer.
   DeviceBufferRef buffer = device->createBufferOwning(
       outputData, tensor.getSpec().getSizeInBytes(), /*owning=*/true);
   buffer->setDestructorFn(std::move(destructor));
@@ -115,10 +104,8 @@ M::GraphCompiler::Driver::constructDeviceMemoryFromTensor(
 
 AnyAsyncValueRef M::GraphCompiler::Driver::prepareInput(
     CPUDevice &cpuDevice, DeviceBufferRef inputBuffer, TensorSpec inputSpec) {
-  // Convert inputs from the device buffer we received to AsyncValue of tensor
-  // as expected by graph. Wrapping the refcounted buffer itself as the
-  // storage handle (rather than a manually-`delete`d wrapper) means it stays
-  // alive for exactly as long as this AsyncValueRef needs it.
+  // Using the refcounted buffer as the storage handle keeps it alive exactly
+  // as long as the AsyncValueRef needs it.
   void *ptr = inputBuffer->ptr();
   size_t byteCount = inputBuffer->byteSize();
   AnyAsyncValueRef storageRef = AnyAsyncValueRef::createReady<DeviceBufferRef>(

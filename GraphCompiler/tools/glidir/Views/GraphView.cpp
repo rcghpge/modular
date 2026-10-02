@@ -38,7 +38,6 @@ void GraphView::buildGraph(ArrayRef<Operation *> ops) {
     std::string s;
     llvm::raw_string_ostream os(s);
     op->print(os, pf);
-    // Trim leading whitespace from printed form.
     size_t start = s.find_first_not_of(" \t");
     if (start != std::string::npos)
       s = s.substr(start);
@@ -49,7 +48,6 @@ void GraphView::buildGraph(ArrayRef<Operation *> ops) {
     nodes.push_back(std::move(n));
   }
 
-  // Use-def edges between bookmarked ops.
   for (auto &&[dstIdx, op] : llvm::enumerate(ops)) {
     for (Value operand : op->getOperands()) {
       if (Operation *defOp = operand.getDefiningOp()) {
@@ -92,7 +90,6 @@ void GraphView::computeLayout() {
     n.w = std::min(std::max({nameW, textW, 120.0f}), kMaxNodeW);
     n.h = 2 * (lh + kPadY) + kPadY * 3;
 
-    // Truncate text to fit inside the node.
     float maxTextW = n.w - kPadX * 2 - ellipsisW;
     const char *begin = n.text.c_str();
     const char *end = begin + n.text.size();
@@ -214,7 +211,6 @@ void GraphView::drawContent(const DrawContext &ctx, Operation *hoveredOp,
                             const Edge *hoveredEdge) const {
   float drawFs = ctx.lh * ctx.zoom;
 
-  // ---- edges ----
   constexpr ImU32 kEdgeCol = IM_COL32(120, 150, 200, 180);
   constexpr ImU32 kEdgeHovCol = IM_COL32(255, 200, 80, 255);
   constexpr float kEW = 1.5f, kEWHov = 2.5f;
@@ -241,12 +237,10 @@ void GraphView::drawContent(const DrawContext &ctx, Operation *hoveredOp,
                               {p3.x + a, p3.y - a * 1.6f}, col);
   }
 
-  // ---- nodes ----
   for (const auto &n : nodes) {
     ImVec2 p0 = ctx.w(n.x, n.y);
     ImVec2 p1 = ctx.w(n.x + n.w, n.y + n.h);
 
-    // Cull nodes that are entirely outside the canvas.
     if (p1.x < ctx.origin.x || p0.x > ctx.canvasEnd.x || p1.y < ctx.origin.y ||
         p0.y > ctx.canvasEnd.y)
       continue;
@@ -318,7 +312,7 @@ GraphView::DrawContext GraphView::buildExportContext(ImDrawList *dl, int &outW,
 
 void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
                        Operation *selectedOp) {
-  // Tab bar: one colored tab per non-empty bookmark group.
+  // One colored tab per non-empty bookmark group.
   if (ImGui::BeginTabBar("##groups")) {
     for (int i = 0; i < (int)groups.size(); ++i) {
       if (groups[i].empty())
@@ -335,13 +329,11 @@ void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
     ImGui::EndTabBar();
   }
 
-  // Use the ops from the active group, falling back to empty if it is empty.
   ArrayRef<Operation *> bookmarkedOps =
       (activeGroupIndex >= 0 && activeGroupIndex < (int)groups.size())
           ? ArrayRef<Operation *>(groups[activeGroupIndex])
           : ArrayRef<Operation *>{};
 
-  // Rebuild graph only when the active group's bookmark set changes.
   DenseSet<Operation *> newSet(bookmarkedOps.begin(), bookmarkedOps.end());
   if (newSet != lastBookmarkSet)
     buildGraph(bookmarkedOps);
@@ -355,8 +347,7 @@ void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
   lastCanvasOrigin = origin;
   lastCanvasEnd = canvasEnd;
 
-  // InvisibleButton must precede PushClipRect so ImGui registers it as an
-  // item and IsItemHovered/IsItemActive work correctly for the canvas area.
+  // Before PushClipRect, so IsItemHovered/IsItemActive work for the canvas.
   ImGui::InvisibleButton("##canvas", avail,
                          ImGuiButtonFlags_MouseButtonLeft |
                              ImGuiButtonFlags_MouseButtonRight);
@@ -366,7 +357,6 @@ void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
   dl->PushClipRect(origin, canvasEnd, true);
   dl->AddRectFilled(origin, canvasEnd, IM_COL32(22, 25, 32, 255));
 
-  // Pan / zoom interaction.
   if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
     ImVec2 delta = ImGui::GetIO().MouseDelta;
     pan.x += delta.x;
@@ -393,13 +383,11 @@ void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
   lastFont = ImGui::GetFont();
   computeLayout();
 
-  // World → screen transform (used for hit-testing only; drawing uses
-  // DrawContext).
+  // For hit-testing only; drawing uses DrawContext.
   auto toScreen = [&](float wx, float wy) -> ImVec2 {
     return {origin.x + pan.x + wx * zoom, origin.y + pan.y + wy * zoom};
   };
 
-  // Hit-test edges: find which edge (if any) the mouse is hovering over.
   ImVec2 mp = ImGui::GetMousePos();
   Edge *hoveredEdge = nullptr;
   if (hov) {
@@ -430,8 +418,7 @@ void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
     }
   }
 
-  // Hit-test nodes: find which node the mouse is hovering over.
-  // Done before drawing so off-screen nodes still register hover.
+  // Before drawing so off-screen nodes still register hover.
   Operation *hoveredOp = nullptr;
   if (hov) {
     for (auto &n : nodes) {
@@ -442,17 +429,14 @@ void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
     }
   }
 
-  // Draw edges and nodes via the shared drawContent helper.
   DrawContext ctx{dl, origin, canvasEnd, pan.x, pan.y, zoom, lh, lastFont};
   drawContent(ctx, hoveredOp, selectedOp, hoveredEdge);
 
   dl->PopClipRect();
 
-  // Show edge value tooltip.
   if (hoveredEdge)
     ImGui::SetTooltip("%s", hoveredEdge->valueText.c_str());
 
-  // Navigate text viewer on hover change or click.
   bool clicked = hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
   if (hoveredOp && callbacks.navigateToOp) {
     if (hoveredOp != lastHoveredOp || clicked)
@@ -460,9 +444,6 @@ void GraphView::render(ArrayRef<SmallVector<Operation *>> groups,
   }
   lastHoveredOp = hoveredOp;
 
-  // Suppress the navigation hint when a save is in flight so it never appears
-  // as a stray element in the exported image (even though the export itself
-  // uses an offscreen buffer and wouldn't capture it anyway).
   if (!pendingSave) {
     ImVec2 hint = {origin.x + 8, canvasEnd.y - ImGui::GetTextLineHeight() - 6};
     dl->AddText(hint, IM_COL32(110, 110, 110, 200),

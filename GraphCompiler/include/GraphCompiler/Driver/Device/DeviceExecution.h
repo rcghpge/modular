@@ -15,31 +15,23 @@
 
 namespace M::GraphCompiler::Driver {
 
-/// Allocates a fresh device buffer for `spec` directly against `device`,
-/// applying the debug allocation poisoning requested by
-/// `MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison`. Replaces
-/// `Device::createDeviceMemory(spec, hostAlloc)`.
+/// Allocates a device buffer for `spec` against `device`, applying
+/// `MODULAR_DEBUG_DEVICE_ALLOCATOR=uninitialized-poison` poisoning.
 MODULAR_VISIBILITY_EXPORT
 ErrorOr<M::Driver::DeviceBufferRef>
 allocateDeviceBuffer(const M::Driver::DeviceContextRef &device,
                      const TensorSpec &spec, bool hostAlloc = false);
 
-/// Wraps `byteSize` bytes at `ptr` in a buffer that does not own the memory:
-/// ownership stays with the caller, who must keep it alive for at least as
-/// long as the returned buffer. `~DeviceBuffer` returns immediately for a
-/// non-owning buffer, so nothing is freed.
-///
-/// Prefer this over `createBufferOwning(ptr, n, /*owning=*/true)` paired with
-/// a no-op `setDestructorFn`: that reaches the same "do not free" outcome by a
-/// later branch of the destructor, while reading as the opposite of what it
-/// means.
+/// Wraps `byteSize` bytes at `ptr` in a non-owning buffer; the caller must keep
+/// the memory alive as long as the buffer. Prefer this over
+/// `createBufferOwning(..., /*owning=*/true)` with a no-op `setDestructorFn`,
+/// which reads as the opposite of what it means.
 MODULAR_VISIBILITY_EXPORT M::Driver::DeviceBufferRef
 borrowBuffer(const M::Driver::DeviceContextRef &device, void *ptr,
              size_t byteSize);
 
-// Construct a device buffer to hold the provided tensor, allocated directly
-// against `device` (an MLRT device context) rather than through the
-// GenericML `Device`/`DeviceMemory` wrapper.
+// Construct a device buffer holding `tensor`, allocated against the MLRT
+// `device` context.
 MODULAR_VISIBILITY_EXPORT
 ErrorOr<M::Driver::DeviceBufferRef>
 constructDeviceMemoryFromTensor(M::ContextRef context,

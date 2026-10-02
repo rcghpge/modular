@@ -50,9 +50,8 @@ LogicalResult declVerifyShapeFunctionHasNoDPSOutputs(
   return success();
 }
 
-// Return `s` with its first ASCII letter uppercased. Used so error messages
-// that start with a role label like "execute" or "build_graph" begin with a
-// capital, while mid-sentence uses keep the original lowercase.
+// Return `s` with its first ASCII letter uppercased, for error messages that
+// start with a role label like "execute".
 static std::string capitalize(llvm::StringRef s) {
   if (s.empty())
     return "";
@@ -178,8 +177,7 @@ declVerifyExecuteMatchesBuildGraph(KernelDeclOp decl,
 }
 
 /// A build_graph method records nodes against a DeviceGraphBuilder, so the
-/// signature must explicitly accept one. There is no meaningful default for
-/// this argument.
+/// signature must explicitly accept one.
 LogicalResult declVerifyBuildGraphHasBuilder(KernelDeclOp decl,
                                              const KernelDeclAdaptor &adaptor) {
   if (!adaptor.buildGraphFunction.has_value())
@@ -320,13 +318,9 @@ LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
         return failure();
       }
       // Tensors must be passed by const reference (`read`/`read_mem`):
-      // their mutability is encoded in the type itself via IOSpec, not in
-      // the calling convention. Reject `mut`, `var`, owned, and `ref`.
-      // Trait-bound tensor arguments now also classify as `isTensorType()`,
-      // but their borrow rule is owned by the trait lane's
-      // `declVerifyTensorArgsAreBorrowed` (which emits a trait-specific
-      // diagnostic); skip them here so the legacy message stays scoped to the
-      // legacy `ManagedTensorSlice`/`IOSpec` struct lane.
+      // their mutability is in the IOSpec type, not the calling convention.
+      // Trait-bound tensors are left to `declVerifyTensorArgsAreBorrowed` and
+      // its trait-specific diagnostic.
       if (arg.isTensorType() &&
           !getTensorArgTraitType(
               sig.getArgument(arg.sourceDescriptor->position)) &&
@@ -350,11 +344,9 @@ LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
   return success();
 }
 
-// Trait-bound tensor arguments (the trait lane) carry their role and
-// mutability in the distilled contract, not in the calling convention, so they
-// must use the borrowed (`read`/`read_mem`) convention -- mirroring the legacy
-// tensor rule in `declVerifyOpaqueArgumentsArePassedByReference`, which gates
-// on the legacy `isTensorType()` predicate that trait args do not satisfy.
+// Trait-bound tensor arguments carry their role and mutability in the distilled
+// contract, not the calling convention, so they must be borrowed
+// (`read`/`read_mem`).
 LogicalResult declVerifyTensorArgsAreBorrowed(
     KernelDeclOp decl, KernelDeclAdaptor &adaptor,
     std::optional<KernelDeclFunctionAdaptor> shapeFunction) {
@@ -389,14 +381,10 @@ LogicalResult declVerifyTensorArgsAreBorrowed(
   return success();
 }
 
-// Per-function-kind policy for trait-bound tensor arguments on the
-// KernelDeclOp-hosted entry points. Today only `execute` accepts them; the
-// others reject them. As each kind grows its own contract this is where the
-// rules live -- e.g. build_graph will forbid `TileTensorable`, and
-// update_input_view will require a `ViewUpdatable`. (Shape functions and
-// primitives are separate decl ops and are checked at import, as is universal
-// well-formedness. This is the kind-specific layer for execute /
-// update_input_view / build_graph / elementwise.)
+// Per-function-kind policy for trait-bound tensor arguments: only `execute`
+// accepts them. Kind-specific rules go here (e.g. build_graph forbidding
+// `TileTensorable`); shape functions, primitives and universal well-formedness
+// are checked at import.
 LogicalResult declVerifyTraitArgFunctionKinds(KernelDeclOp decl,
                                               KernelDeclAdaptor &adaptor) {
   auto rejectTraitArgs = [&decl](std::optional<KernelDeclFunctionAdaptor> &func,
@@ -627,12 +615,9 @@ getSemanticResult(const KernelDeclFunctionAdaptor &fn) {
 /// declarations. For each group, decls[0] is the reference (ImportPackages
 /// inserts built-ins first, so it is the built-in when one exists).
 ///
-/// Declarations that share a name but differ in device scope are grouped
-/// apart on purpose: they are per-device alternatives that
-/// `MojoRegistry::getResolvedKernel` selects among by the op's device, so
-/// they are never candidates for the same lookup and need not agree in kind
-/// or signature (e.g. an accelerator may serve an op with an `execute`
-/// kernel where the generic built-in is elementwise).
+/// Decls differing in device scope are grouped apart: `getResolvedKernel`
+/// picks among them by device, so they need not agree (e.g. an accelerator
+/// `execute` kernel for an elementwise built-in).
 ///
 /// Per registration, checks in order:
 ///   1. Kernel type must match (execute / elementwise / view).

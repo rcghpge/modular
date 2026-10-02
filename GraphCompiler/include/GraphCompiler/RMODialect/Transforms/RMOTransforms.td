@@ -16,13 +16,9 @@ include "mlir/Pass/PassBase.td"
 def LegalizeRMOOps : Pass<"mo-legalize-rmo-operators", "GraphOp"> {
   let summary = "Legalize RMO operators to mo operators.";
   let description = [{
-    There are broadly two categories of RMO operators. The first are those
-    analogous to an existing MO operator. These are lowered by properly
-    rebinding each input and result to the types determined in the `MOAnalogue`
-    interface. These operators have a lowering automatically generated as long
-    as the `MOAnalogue` operator is implemented.
-
-    The next are RMO operators which lower to other RMO operators.
+    `MOAnalogue` ops lower automatically to their MO op by rebinding each
+    operand and result to the types from `inferMOTypes`. Other RMO ops lower to
+    compositions of RMO ops.
   }];
 
   let dependentDialects = [

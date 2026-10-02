@@ -29,29 +29,24 @@ class Pass;
 
 namespace M::MO {
 
-/// Generate the code for declaring the passes.
 #define GEN_PASS_DECL
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
-/// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h.inc"
 
-/// Creates the NanCheckPass. `stride > 1` samples one of every N float
-/// kernel outputs; `stride == 1` checks every float kernel output (the
-/// original pre-GEX-3703 behaviour, prohibitively slow on large models).
-/// The default of 20 matches the `max-debug.nan-check-stride` knob.
+/// Creates the NanCheckPass, which checks one of every `stride` float kernel
+/// outputs (`stride == 1` checks all, prohibitively slow on large models).
+/// The default matches the `max-debug.nan-check-stride` knob.
 std::unique_ptr<Pass> createNanCheckPass(uint64_t stride = 20);
 
-/// Creates the DumpStagePass, which writes the current IR as a stage dump named
-/// `<baseName>.<suffix>.mlir` from inside the pipeline. `baseName` is shared
-/// across the stages of one pipeline run: the first dump fills it from the
-/// non-subgraph GraphOp names while those ops still exist, and later dumps
-/// reuse it since lowering to MGP removes the GraphOps the stem derives from.
+/// Creates the DumpStagePass, which writes the IR to
+/// `<baseName>.<suffix>.mlir`. `baseName` is shared across one pipeline run:
+/// the first dump derives it from the non-subgraph GraphOp names, which
+/// lowering to MGP later removes.
 std::unique_ptr<Pass>
 createDumpStagePass(std::string suffix, std::shared_ptr<std::string> baseName);
 
 } // namespace M::MO
-//
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_H

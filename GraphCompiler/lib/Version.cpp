@@ -19,10 +19,8 @@
 #include "xxhash.h"
 
 std::string M::MO::getGraphCompilerVersionString() {
-  // TODO(GEX-1565): The binary ID for graph compiler library is not sufficient
-  // to solely determine whether a cache invalidation is needed. Updates on
-  // shared libraries, e.g., MOGGLoader, might result in a different compiled
-  // MEF file too, include the binary ID for relevant shared libraries too.
+  // TODO(GEX-1565): Also include binary IDs of other shared libraries (e.g.
+  // MOGGLoader) whose updates can change the compiled MEF.
   return M::getModularVersionString() + M::getBinaryID() + "-" +
          M::MGPRT::getMGPRTBinaryID() + "-" +
          M::Driver::getMojoBindingsBinaryID() + "-" +
@@ -32,13 +30,6 @@ std::string M::MO::getGraphCompilerVersionString() {
 }
 
 std::string M::MO::getMOGGCompilerVersionString() {
-  // Compute version hash once using static initialization. This combines:
-  // - Modular framework version
-  // - Binary ID for current build
-  // - MOGG embeddings ID
-  // - KGEN compiler runtime ID
-  // - Build type
-  // Uses lambda initialization to ensure thread-safe single computation
   static std::string version = []() {
     std::string versionString = M::getModularVersionString() +
                                 M::getBinaryID() + "-" +

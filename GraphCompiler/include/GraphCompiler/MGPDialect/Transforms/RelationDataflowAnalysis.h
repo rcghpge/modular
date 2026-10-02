@@ -26,12 +26,10 @@ namespace M::MGP {
 // RelationDataflowAnalysisBase
 //===----------------------------------------------------------------------===//
 
-/// Base class to supply relation domain operations shared by both the forwards
-/// and backwards dataflow analyses. Captures the index representing the
-/// bijection from Vs to indexes needed by the set (bitvector) and equivalence
-/// (over size_t) representations. Supplies DomainMap to represent the
-/// relation under construction. The same 'Analysis' instance can be used
-/// across multiple DomainMaps.
+/// Relation domain operations shared by the forwards and backwards dataflow
+/// analyses, over the V <-> index bijection used by the set (bitvector) and
+/// equivalence representations. DomainMap holds the relation under
+/// construction; one instance can serve many DomainMaps.
 template <typename V>
 class RelationDataflowAnalysisBase {
 #define DEBUG_TYPE "mgp-dataflow"
@@ -46,22 +44,18 @@ public:
   ///
   /// Can also encode a predicate P over Vs, represented as:
   ///   P(v) iff v |-> set and distinguished in set.
-  /// This way we only need to implement one concrete dataflow domain for all
-  /// the analyses we need, and we can make all the transfer functions
-  /// similarly concrete on that domain.
+  /// so one concrete domain and set of transfer functions serves every
+  /// analysis.
   using Relation = DenseMap<V, Set>;
 
-  /// Orientation for the set domain.
+  /// Orientation for the set domain. When solving for a predicate, 'all
+  /// elems' may be just the distinguished value.
   enum SetOrientation {
-    // Use when soundness requires over-approximation.
-    //   lub = union, glb = intersection, bottom = {}, top = all elems
-    // It is possible for top to contain just the distinguished value when
-    // trying to solve for a predicate instead of a relation.
+    // Over-approximation: lub = union, glb = intersection, bottom = {},
+    // top = all elems.
     kLubIsUnion,
-    // Use when soundness requires under-approximation.
-    //   lub = intersection, glb = union, bottom = all elems, top = {}
-    // It is possible for bottom to contain just the distinguished value when
-    // trying to solve for a predicate instead of a relation.
+    // Under-approximation: lub = intersection, glb = union,
+    // bottom = all elems, top = {}.
     kLubIsIntersection
   };
 
@@ -349,9 +343,8 @@ public:
     itr->second |= set;
   }
 
-  /// Updates equivalence such that if (x, y) is in relation then x and y are
-  /// considered equivalent. In other words, makes the equivalence represent
-  /// relation closed under reflexivity, symmetry, and transitivity.
+  /// Adds relation, closed under reflexivity, symmetry, and transitivity, to
+  /// equivalence.
   void addRelationToEquivalence(Equivalence &equivalence,
                                 const Relation &relation) const {
     for (const auto &[lhs, set] : relation) {
@@ -362,17 +355,14 @@ public:
 
   /// Returns inverse of relation.
   [[nodiscard]] Relation inverse(const Relation &relation) const {
-    // Convert the input to a flat table for processing. This improves
-    // locality enough that it is worth the extra processing.
+    // A flat table improves locality enough to pay for the conversion.
     SmallVector<const Set *> inputTable(index->size(), nullptr);
     for (const auto &[lhs, set] : relation)
       inputTable[index->getIndex(lhs)] = &set;
 
     auto n = index->size();
 
-    // Similar to the input, the result is accumulated into a flat table for
-    // processing and then is converted back to the hash-table based
-    // representation at the end.
+    // The result is also accumulated flat, then converted back.
     SmallVector<Set> resultTable(index->size(), index->emptySet());
     for (const auto &[lhsIndex, set] : llvm::enumerate(inputTable)) {
       if (set == nullptr)
@@ -383,7 +373,6 @@ public:
           resultTable[i].set(lhsIndex);
     }
 
-    // Convert the result table back to the hash-table representation
     Relation result;
     for (auto &[lhs, _] : relation)
       result[lhs] = std::move(resultTable[index->getIndex(lhs)]);
@@ -471,13 +460,12 @@ public:
       : RelationDataflowAnalysisBase<Value>(index) {}
 
   /// Grows domainMap for one iteration of the body sub-block of cfOp, which
-  /// must have one sub-block. Sets changed to true if domainMap was changed.
+  /// must have one sub-block.
   void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
   /// Grows domainMap for executing the condition THEN body sub-block of cfOp,
-  /// which must have two sub-blocks. Sets changed to true if domainMap was
-  /// changed.
+  /// which must have two sub-blocks.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
                            DomainMap &domainMap, const FlowOp &flowOp);
 
@@ -486,12 +474,10 @@ public:
   std::pair<Set, Set> splitByScope(const Set &set, Block *block);
 
   /// Grows domainMap for the sub-blocks of branch control flow op.
-  /// Sets changed to true if domainMap was changed.
   void flowBranch(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                   const FlowOp &flowOp);
 
-  /// Grows domainMap using the control flow closure rules. Sets changed to
-  /// true if domainMap was changed.
+  /// Grows domainMap using the control flow closure rules.
   void flowControlFlow(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                        const FlowOp &flowOp);
 
@@ -522,13 +508,12 @@ public:
   Set operandCombination(const DomainMap &domainMap, Value value) const;
 
   /// Grows domainMap for one iteration of the body sub-block of cfOp, which
-  /// must have one sub-block. Sets changed to true if domainMap was changed.
+  /// must have one sub-block.
   void flowSimpleLoop(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                       const FlowOp &flowOp);
 
-  /// Grows domainMap for executing the condition ThEN body sub-block of cfOp,
-  /// which must have two sub-blocks. Sets changed to true if domainMap was
-  /// changed.
+  /// Grows domainMap for executing the condition THEN body sub-block of cfOp,
+  /// which must have two sub-blocks.
   void flowConditionedLoop(GRT::GRTControlFlowInterface cfOp,
                            DomainMap &domainMap, const FlowOp &flowOp);
 
@@ -537,12 +522,10 @@ public:
   std::pair<Set, Set> splitByScope(const Set &set, Block *block);
 
   /// Grows domainMap for the sub-blocks of branch control flow op.
-  /// Sets changed to true if domainMap was changed.
   void flowBranch(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                   const FlowOp &flowOp);
 
-  /// Grows domainMap using the control flow closure rules. Sets changed to
-  /// true if domainMap was changed.
+  /// Grows domainMap using the control flow closure rules.
   void flowControlFlow(GRT::GRTControlFlowInterface cfOp, DomainMap &domainMap,
                        const FlowOp &flowOp);
 

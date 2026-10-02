@@ -22,11 +22,8 @@ namespace M {
 // ModelSpec
 //===----------------------------------------------------------------------===//
 
-/// This class is a framework-independent abstraction for a single ML model's
-/// information. It is intended to contain the name, input and output tensor
-/// specs, and the input and output layer names.
-///
-/// Keep in sync with the description in Models/docs/README.md.
+/// Framework-independent description of a model: name, I/O tensor specs, and
+/// I/O layer names. Keep in sync with Models/docs/README.md.
 class ModelSpec {
 public:
   /// Per-tensor specification
@@ -34,19 +31,14 @@ public:
     std::string name;
     M::QuantTensorSpec spec;
 
-    /// Data-source indicating how this tensor should be initialized.
-    /// This can take any of the following forms:
-    ///
-    ///   - keyword: zeros|ones|negones|random
-    ///   - filename: absolute path or relative to manifest location
-    ///
+    /// How to initialize this tensor: a keyword (zeros|ones|negones|random) or
+    /// a filename (absolute or relative to the manifest).
     std::optional<std::string> data;
 
     std::optional<std::string> size;
     std::optional<std::string> sha1sum;
 
-    /// TODO: This is a temporary flag that is used as we bring up mo shape
-    /// inference.
+    /// TODO: Temporary, for the mo shape inference bring-up.
     std::optional<bool> legacyShapeInference;
 
     ModelIOSpec() = default;
@@ -58,24 +50,16 @@ public:
           size(std::move(size)), sha1sum(std::move(sha1sum)) {}
   };
 
-  /// Maps input or output names as they appear in the model spec (the
-  /// 'preferred' names) to the corresponding names as they appear in the
-  /// underlying model format (the 'native' names). Names not in this map are
-  /// assumed to match.
-  ///
-  /// Unfortunately there are trivial differences in names between 'equivalent'
-  /// models in different formats (eg tensorflow vs ONNX runtime).
-  ///
-  /// Only significant for formats which use named inputs or outputs.
+  /// Maps model-spec ('preferred') I/O names to the model format's ('native')
+  /// names, since equivalent models differ trivially across formats (e.g.
+  /// tensorflow vs ONNX runtime). Unmapped names match. Only significant for
+  /// formats with named inputs or outputs.
   struct NameSubstitutions {
     llvm::StringMap<std::string> preferredToNativeMap;
 
-    /// Returns the 'native' preferredName corresponding to the given
-    /// 'preferred' model preferredName.
-    ///
-    /// CAUTION: The given preferredName must be from the model spec. The
-    /// result's lifetime is then that of the containing model spec, and its
-    /// data() will be null-terminated and thus directly usable as a C string.
+    /// Returns the 'native' name for `preferredName`, which must come from the
+    /// model spec; the result then lives as long as the spec and is
+    /// null-terminated.
     StringRef getPreferredName(StringRef preferredName) const;
   };
 
@@ -89,8 +73,7 @@ public:
     SmallVector<std::string, 1> dependencies;
     NameSubstitutions inputSubstitutions;
     NameSubstitutions outputSubstitutions;
-    /// TODO: This is a temporary flag that is used as we bring up mo shape
-    /// inference.
+    /// TODO: Temporary, for the mo shape inference bring-up.
     std::optional<bool> legacyShapeInference;
   };
 

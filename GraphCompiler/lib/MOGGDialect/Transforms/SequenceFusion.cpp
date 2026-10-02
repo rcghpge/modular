@@ -51,8 +51,7 @@ splitIfTooLarge(ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {
   return fusionSets;
 }
 
-// This function will sequence fuse a set of MOGG::GenericCompiledRegionOp. It
-// expects the input vector to be topologically sorted.
+// Sequence fuses a topologically sorted set of MOGG::GenericCompiledRegionOp.
 template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
     ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {

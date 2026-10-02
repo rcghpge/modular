@@ -21,11 +21,9 @@ using namespace M;
 
 namespace {
 
-/// Contains the core CLI options for *-executor, so that other executables
-/// can use these without duplicating them.
+/// CLI options for safetensor.
 class SafeTensorCLOptions : public CommonCLOptions {
 public:
-  /// Contains the core CLI options for safetensor.
   class Options : public CommonOptions {};
 
   Options &options;

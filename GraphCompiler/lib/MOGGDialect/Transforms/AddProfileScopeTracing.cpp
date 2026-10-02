@@ -65,9 +65,8 @@ struct AddProfileScopeTracing
 
     SmallVector<ProfileScopeLayerSet> layerSets;
     for (Operation *op : traceable) {
-      // Ops that will never be individually traced, such as host-side
-      // bookkeeping like buffer lookups or tensor-view construction must never
-      // define or break a run boundary.
+      // Ops never individually traced (host-side bookkeeping such as buffer
+      // lookups or tensor-view construction) never define or break a run.
       auto opIt = mlir::Block::iterator(op);
       if (!opDoesSignificantWork(op)) {
         if (!layerSets.empty())
@@ -88,17 +87,14 @@ struct AddProfileScopeTracing
       layerSets.emplace_back(opIt, opIt, std::move(layers));
     }
 
-    // If the whole body is unlabeled, optionally emit one fallback range over
-    // the entire stub body. Default is off.
+    // Optional fallback range over a fully unlabeled body; off by default.
     if (layerSets.empty() && traceUnlabelled)
       layerSets.emplace_back(mlir::Block::iterator(traceable.front()),
                              mlir::Block::iterator(traceable.back()));
 
-    // Also bracket each ancestor scope level a leaf run's layer belongs to,
-    // appended before the leaf runs so a shared start/end anchor between an
-    // ancestor range and its first/last child orders correctly (ancestor
-    // starts first, ends last) purely from insertion order below -- see
-    // addAncestorProfileScopeRuns.
+    // Ancestor scope ranges go before the leaf runs so that, at a shared
+    // start/end anchor, insertion order alone makes the ancestor start first
+    // and end last. See addAncestorProfileScopeRuns.
     size_t maxLayerLen = 0;
     for (const ProfileScopeLayerSet &layerSet : layerSets)
       if (layerSet.layers.size() == 1)
@@ -131,8 +127,8 @@ struct AddProfileScopeTracing
     }
   }
 
-  /// Collects every distinct profile scope color in range. Used to decide
-  /// which color (if any) the range spanning these ops should claim.
+  /// Collects every distinct profile scope color in range, to pick the color
+  /// (if any) the range spanning these ops claims.
   static llvm::SmallVector<std::string>
   collectRunColors(llvm::iterator_range<mlir::Block::iterator> range) {
     llvm::SetVector<std::string> colors;
@@ -144,9 +140,8 @@ struct AddProfileScopeTracing
     return colors.takeVector();
   }
 
-  /// Heuristic to separate ops that should be part of a traced range from those
-  /// should not, like host-side bookkeeping such as buffer lookups,
-  /// tensor-view construction, shape math, etc.
+  /// Heuristic excluding host-side bookkeeping (buffer lookups, tensor-view
+  /// construction, shape math) from traced ranges.
   static bool opDoesSignificantWork(Operation *op) {
     return isa<StubCallOpInterface, M::MGP::MGPHasDeviceOpInterface>(op);
   }
@@ -205,9 +200,7 @@ struct AddProfileScopeTracing
   void runOnOperation() override {
     auto kernelOp = getOperation();
 
-    // Only MGP-ABI kernel stubs get in-region range bracketing. MOGG-ABI
-    // stubs are handled by other emission paths and are skipped here, matching
-    // the ABI gating `mogg-add-try-except-blocks` applies to its own work.
+    // MOGG-ABI stubs are handled by other emission paths.
     if (kernelOp.getAbi() != MOGG::ABIKind::MGP)
       return;
 

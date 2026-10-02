@@ -159,7 +159,7 @@ bool ShapeAttr::isDimType(Type type) {
     return simdType.getResolvedSize() == 1 &&
            simdType.getResolvedDType()
                .value_or(KGEN::KGENDType::invalid)
-               .isIntLike(); // it seems that we do allow bool/index.
+               .isIntLike(); // Also admits bool/index.
 
   return false;
 }
@@ -169,7 +169,6 @@ std::optional<int64_t> ShapeAttr::getStaticDim(Attribute attr) {
   if (!simdAttr || !isDim(simdAttr))
     return {};
 
-  // must be a scalar SIMD if reach this point.
   return simdAttr.getValues().front().getIntVal().getExtValue();
 }
 
@@ -222,7 +221,6 @@ bool ShapeAttr::isConstant() const {
 LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ArrayRef<TypedAttr> values, ShapeType type) {
   for (auto [idx, value] : llvm::enumerate(values)) {
-    // Must be a scalar SIMD with int-like dtype.
     if (!ShapeAttr::isDimType(value.getType())) {
       return emitError() << "expected all list elements to have "
                             "scalar<integer> type "
@@ -233,14 +231,12 @@ LogicalResult ShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   auto elementTypes =
       llvm::map_range(values, [](TypedAttr value) { return value.getType(); });
 
-  // Ensure all elements of the ShapeAttr have the same type.
   if (!llvm::all_equal(elementTypes))
     return emitError() << "expected all elements to have the same type";
 
   return success();
 }
 
-/// Convert a symbolic dimension attribute to an integer value.
 static int64_t symbolicDimToInt(TypedAttr dim) {
   std::optional<int64_t> v = ShapeAttr::getStaticDim(dim);
   return v.has_value() ? *v : mlir::ShapedType::kDynamic;
@@ -261,11 +257,10 @@ TypedAttr ShapeAttr::getSymbolicNumElements() const {
 }
 
 ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
-  // This largely should follow the semantics described here:
-  // https://numpy.org/doc/stable/user/basics.broadcasting.html
+  // Follows https://numpy.org/doc/stable/user/basics.broadcasting.html
   // TODO (#7331): Merge with Support/ML/BroadcastShape.
 
-  if (xSh == ySh) // Short circuit.
+  if (xSh == ySh)
     return ySh;
 
   auto intDim1 = getDim(xSh.getContext(), 1ll);
@@ -315,7 +310,6 @@ ErrorOr<ShapeAttr> ShapeAttr::broadcastShapes(ShapeAttr xSh, ShapeAttr ySh) {
 }
 
 TypedAttr ShapeAttr::getCommonBroadcastShape(ArrayRef<TypedAttr> shapeParams) {
-  // We collect all the statically ranked shapes first.
   SmallVector<ShapeAttr> staticRankShapes;
   for (TypedAttr p : shapeParams) {
     if (auto shape = llvm::dyn_cast<ShapeAttr>(p)) {
@@ -337,9 +331,7 @@ TypedAttr ShapeAttr::getCommonBroadcastShape(ArrayRef<TypedAttr> shapeParams) {
   if (staticRankShapes.size() != shapeParams.size())
     return {};
 
-  // At this point, we are dealing with all static ranks. We will go through all
-  // the shapes and successively reduce the common shape. If the rank of the
-  // common dimension drops below the maximum of the ranks, we terminate early.
+  // All ranks are static: reduce pairwise into the common shape.
   ShapeAttr commonShape = staticRankShapes.pop_back_val();
   while (!staticRankShapes.empty()) {
     ShapeAttr nextShape = staticRankShapes.pop_back_val();
@@ -364,8 +356,7 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
          "rank from "
       << beforeDims.size() << " to " << bcastedDims.size());
 
-  // we will initially add in reverse sorted order since it's easier
-  // as bcasting rules follow from the innermost dimensions
+  // Built in reverse since broadcasting aligns innermost dimensions.
   SmallVector<int64_t> answer;
   for (size_t iter = 0; iter < beforeDims.size(); ++iter) {
     int beforeI = beforeDims.size() - iter - 1;
@@ -374,13 +365,8 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
     const TypedAttr &beforeDim = beforeDims[beforeI];
     const TypedAttr &bcastedDim = bcastedDims[bcastedI];
 
-    // We cannot necessarily prove things are broadcast in all scenarios.
-    // For example A --> B. A and B are runtime parameters so in some cases
-    // the axis will be a result of broadcasting and other times they will be
-    // not.
-    //
-    // Therefore, we can only return a correct answer if the only differing
-    // dimensions are integral dimensions going from 1 --> not 1.
+    // A runtime dim A --> B may or may not be a broadcast, so only static
+    // 1 --> not-1 is provably a broadcast axis.
     std::optional<int64_t> beforeDimInt = ShapeAttr::getStaticDim(beforeDim);
     std::optional<int64_t> bcastedDimInt = ShapeAttr::getStaticDim(bcastedDim);
     if (beforeDimInt && bcastedDimInt && *beforeDimInt == 1 &&
@@ -391,10 +377,9 @@ ShapeAttr::getBroadcastedAxes(ShapeAttr beforeShape, ShapeAttr bcastedShape) {
     }
   }
 
-  // add all the newly introduced dims too
+  // Newly introduced leading dims, also in reverse.
   size_t extraDims = bcastedDims.size() - beforeDims.size();
   for (size_t iter = 0; iter < extraDims; ++iter) {
-    // remember to return in reverse order
     answer.push_back(extraDims - 1 - iter);
   }
 

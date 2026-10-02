@@ -71,8 +71,7 @@ public:
   PythonFrame frame;
 };
 
-/// Location objects represent source locations information in MLIR.
-/// LocationAttr acts as the anchor for all Location based attributes.
+/// A Python frame attached to ops through an OpaqueLoc.
 class PythonFrameAttr
     : public mlir::Attribute::AttrBase<PythonFrameAttr, mlir::Attribute,
                                        PythonFrameAttrStorage> {
@@ -109,11 +108,10 @@ public:
   char *stack_trace() { return getImpl()->stack_trace(); }
 };
 
-/// Walks root and its descendants, replacing every OpaqueLoc that wraps a
-/// PythonFrameAttr with a serializable FusedLoc carrying the stack-trace
-/// string. Locations without a PythonFrameAttr collapse to their fallback.
-/// OpaqueLoc does not serialize to text or bytecode, so this is what makes
-/// Python source provenance survive printing. Mutates locations in place.
+/// Replaces, in place, every OpaqueLoc under root that wraps a PythonFrameAttr
+/// with a FusedLoc carrying the stack trace; other OpaqueLocs collapse to their
+/// fallback. OpaqueLoc does not serialize, so this keeps Python provenance
+/// through printing.
 void materializePythonFrameLocations(mlir::Operation *root);
 
 } // namespace M::RMO

@@ -15,7 +15,6 @@ include "GraphCompiler/MOSHDialect/MOSHDialect.td"
 include "Mojo/KGENDialect/KGENTypeInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 
-// Base class for types in this dialect.
 class MOSH_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<MOSHDialect, name, traits> {
   let mnemonic = typeMnemonic;

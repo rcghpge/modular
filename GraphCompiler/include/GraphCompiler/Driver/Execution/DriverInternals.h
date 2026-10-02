@@ -34,13 +34,8 @@ createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
                       const QuantTensorSpec &modelSpec,
                       size_t minimumCpuAlignment, CPUDevice &cpuDevice);
 
-/// Initialize raw pointers for each model input with the correct data fill.
-/// Uses inputGenKind unless a per-tensor input source is specified in
-/// inputDataSpecs. The input source can be one of:
-/// 1. per-tensor InputGenerationKind
-/// 2. per-tensor data from a file (stubbed out but not implemented yet)
-/// The tensors can be accessed by calling getNextInput().
-/// Returns ownership of tensor generators (containing tensors) to the caller.
+/// Creates an owning tensor generator per model input, using inputGenKind
+/// unless inputDataSpecs gives a per-tensor InputGenerationKind or file.
 ErrorOr<SmallVector<ITensorGeneratorPtr, 3>>
 createTensorGenerators(InputGenerationKind inputGenKind,
                        ArrayRef<QuantTensorSpec> inputShapeSpecs,

@@ -27,10 +27,8 @@ decodeQuantizedSignature(MEFFunctionType signature,
                          SmallVectorImpl<QuantTensorSpec> &inputSpecs,
                          SmallVectorImpl<QuantTensorSpec> &outputSpecs);
 
-/// Decodes argument and result names from `MEFListAttr`s in an
-/// `MEFDictionaryAttr`.
-/// For example, decodes {argument_names = ["a", "b"], result_names = ["c"]}
-/// into `inputNames` and `outputNames`, respectively.
+/// Decodes e.g. {argument_names = ["a", "b"], result_names = ["c"]} into
+/// `inputNames` and `outputNames`.
 ErrorOrSuccess decodeTensorNames(MEFDictionaryAttr attrDictionary,
                                  SmallVectorImpl<StringRef> &inputNames,
                                  SmallVectorImpl<StringRef> &outputNames);

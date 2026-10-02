@@ -30,8 +30,6 @@ struct SymbolicOptimizationPass
     : public MO::impl::SymbolicOptimizationBase<SymbolicOptimizationPass> {
   using SymbolicOptimizationBase::SymbolicOptimizationBase;
 
-  // Runs all default patterns plus the ones provided in the template
-  // parameters.
   template <typename... PatternTypes>
   LogicalResult applyCorePatternsPlusExtraPatterns() {
     MLIRContext *context = &getContext();
@@ -49,8 +47,7 @@ struct SymbolicOptimizationPass
     TransposeOp::getCanonicalizationPatterns(patterns, context);
     Static::BroadcastToOp::getCanonicalizationPatterns(patterns, context);
 
-    // TODO(GEX-540): This is done to avoid potential subtle high-iteration
-    // count loops in the pattern.
+    // TODO(GEX-540): Top-down traversal avoids high-iteration pattern loops.
     mlir::GreedyRewriteConfig config;
     config.setUseTopDownTraversal(true);
     return applyPatternsGreedily(getOperation(), std::move(patterns), config);
@@ -61,8 +58,7 @@ struct SymbolicOptimizationPass
     RewritePatternSet patterns(context);
     populateForwardCanonicalizationPatterns(patterns);
 
-    // TODO(GEX-540): This is done to avoid potential subtle high-iteration
-    // count loops in the pattern.
+    // TODO(GEX-540): Top-down traversal avoids high-iteration pattern loops.
     mlir::GreedyRewriteConfig config;
     config.setUseTopDownTraversal(true);
     return applyPatternsGreedily(getOperation(), std::move(patterns), config);
@@ -73,22 +69,18 @@ struct SymbolicOptimizationPass
     RewritePatternSet patterns(context);
     populateBackwardCanonicalizationPatterns(patterns);
 
-    // TODO(GEX-540): This is done to avoid potential subtle high-iteration
-    // count loops in the pattern.
+    // TODO(GEX-540): Top-down traversal avoids high-iteration pattern loops.
     mlir::GreedyRewriteConfig config;
     config.setUseTopDownTraversal(true);
     return applyPatternsGreedily(getOperation(), std::move(patterns), config);
   }
 
   LogicalResult applyCorePatterns() {
-    // First run all the optimizations with slices turned into split when
-    // possible.
+    // Split patterns must run before splits are lowered back to slices, or
+    // they would never match.
     if (applyCorePatternsPlusExtraPatterns<SliceToSplitPattern<>>().failed())
       return failure();
 
-    // Once all split operation patterns have run, convert them to slice and run
-    // all of the other patterns too. Without it, split patterns would never
-    // apply because they would be turned into slices too early.
     return applyCorePatternsPlusExtraPatterns<SplitToSlicePattern<true>>();
   }
 

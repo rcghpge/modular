@@ -35,7 +35,6 @@ include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-// Base class for ops in this dialect.
 class MGP_Op<string mnemonic, list<Trait> traits = []> :
   Op<MGPDialect, mnemonic, traits>;
 
@@ -52,10 +51,9 @@ def MGP_ResourceConstantOp : MGP_Op<"resource.constant", [
 
   let summary = "Retrieves a pointer to the corresponding constant resources";
   let description = [{
-    Retrieves a pointer to the corresponding constant resources attached to the
-    parent `mogg.kernel.stub` operation. This makes compilation faster because
-    the value of the constant can be different but identical kernels will still
-    merge if the index is the same.
+    Retrieves a pointer to the constant resources attached to the parent
+    `mogg.kernel.stub`. Kernels differing only in constant values still merge
+    when the index matches, which speeds up compilation.
   }];
 
   let assemblyFormat = [{
@@ -107,12 +105,10 @@ def BufferConstantOp : MGP_Op<"buffer.constant", [
   let extraClassDefinition = [{
     bool BufferConstantOp::isTrivial() { return true; }
 
-    // Lift the value
     SmallVector<Attribute> BufferConstantOp::getLiftableAttributes() {
       return {getValueAttr()};
     }
 
-    // Ignore the alignment.
     SmallVector<Attribute> BufferConstantOp::getIgnorableAttributes() {
       return {getRawAlignAttr()};
     }
@@ -158,8 +154,6 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
   let summary = "Creates an `!mgp.tensor` from an `!mgp.tensor_spec` and "
                 "`!mgp.buffer`.";
   let description = [{
-    Creates an `!mgp.tensor` from an `!mgp.buffer` and a `!mgp.tensor_spec`.
-
     If this op holds the only reference to the buffer then it is moved into
     the tensor. Otherwise a deep copy of the buffer is taken.
 
@@ -206,8 +200,6 @@ def TensorExtractBufferOp : MGP_Op<"tensor.extract.buffer", [
 ]> {
   let summary = "Extracts the `!mgp.buffer` from an `!mgp.tensor`.";
   let description = [{
-    Returns the `!mgp.buffer` component of tensor.
-
     If this op holds the only reference to the tensor then the buffer will be
     moved out of the tensor. Otherwise a deep copy of the buffer is returned.
 
@@ -280,9 +272,8 @@ def TensorSliceOp : MGP_Op<"tensor.slice", [
     k, the stride in elements, and the start offset are all computed at runtime
     inside the Mojo primitive from the input shape and the start buffer.
 
-    The input tensor may reside on any device. The start tensor must always
-    be on the host (cpu) device since it is a metadata buffer, not a data
-    buffer; the slice is zero-copy and no device data is read from start.
+    The input tensor may reside on any device. The start tensor must be on the
+    host (cpu) since it is metadata; no device data is read from it.
 
     The device context must be on the same device as the input; backends whose
     runtime only accepts registered pointers register the slice through it.
@@ -334,9 +325,8 @@ def TensorSpecCreateOp : MGP_Op<"tensor_spec.create", [
   let description = [{
     Creates a CPU tensor spec of statically known rank with dimensions taken
     from either runtime operands or statically known attributes. The element
-    type must be known statically. Operands must be given for each unknown
-    dimension in order. It is valid for all dimensions to be known statically,
-    in which case no operands are required.
+    type must be known statically. One operand is given per unknown dimension,
+    in order (none if all dimensions are static).
 
     Tensor specs are represented as M::TensorSpecs in the Modular runtime.
 
@@ -437,12 +427,11 @@ def ExecuteGenericOp : MGP_Op<"generic.execute"> {
   let summary = "Executes a function loaded into the CPU Runtime";
   let description = [{
     Executes a function already loaded into the compiled kernel context at the
-    given slot/module index within the `!mgp.context`. This will execute the function using
-    the generic API. The primitive will pass in raw async values for the func
-    to unpack internally.
+    given slot/module index within the `!mgp.context`, using the generic API:
+    the primitive passes raw async values for the function to unpack.
 
-    This execution will always return an output chain, in addition to the results
-    of the kernel.  The chain can be used for error handling or side-effect dependencies.
+    Always returns an output chain in addition to the kernel results, for error
+    handling or side-effect dependencies.
   }];
 
   let arguments = (ins
@@ -469,12 +458,9 @@ def GuardOp : MGP_Op<"guard", [
   let summary = "SSA-value guard operation";
 
   let description = [{
-    This operation consumes a chain and a variadic list of values and forwards
-    the non-chain inputs through.
-
-    This can be used with !mef.chain returning ops in order to establish
-    execution dependencies between the chain producing op and any downstream
-    operations.
+    Consumes a chain and a variadic list of values and forwards the non-chain
+    inputs, establishing execution dependencies between the chain-producing op
+    and downstream operations.
 
     Example:
 
@@ -512,9 +498,8 @@ def ExtendLifetimeOp : MGP_Op<"extend.lifetime", [
   let summary = "SSA-value guard operation";
 
   let description = [{
-    This operation consumes a chain and a variadic list of values. Returns a
-    chain when all inputs are ready. This extends the lifetime of the input
-    values to match the lifetime of the input chain.
+    Returns a chain that is ready when all inputs are, extending the lifetime
+    of the input values to match the lifetime of the input chain.
   }];
 
   let arguments = (ins
@@ -551,8 +536,7 @@ def ModelOp : MGP_Op<"model", [
     Represents an executable model with 'init' and 'execute' entry points.
   }];
   let description = [{
-    This op creates an executable model from single-block regions
-    representing its 'init' and 'execute' entry points.
+    The 'init' and 'execute' entry points are single-block regions.
 
     The 'init' entry point has the implicit signature:
       (!mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, ...) ->
@@ -565,21 +549,18 @@ def ModelOp : MGP_Op<"model", [
       (!mef.chain, res1, ..., resm)
     where:
       (in1, ..., inn) -> (res1, ..., resm)
-    is given as the op's explicit signature. And dev0, ..., devn are the
-    devices passed to init, while weights_registry is the weights registry
-    passed to init.
+    is the op's explicit signature, and weights_registry and dev0, ..., devn
+    are those passed to init.
 
     The Modular runtime implicitly calls 'init' when the model executable is
     first loaded, and re-uses the resulting context value for each subsequent
     call to 'execute'.
 
-    This op is represented by a subclass of M::Model in the Modular runtime.
-    The actual class is determined from the `frameworkName` attribute, which
-    tools can inspect to determine which API to establish to mediate
-    between framework-specific values and representations used by the model.
+    This op is represented by a subclass of M::Model in the Modular runtime,
+    chosen by the `frameworkName` attribute, which tools inspect to decide
+    which API mediates between framework-specific values and the model's.
 
-    Additional attributes may be supplied. Currently the following attribute
-    names have special meaning:
+    Additional attributes may be supplied; these names have special meaning:
      - argument_names
      - result_names
 
@@ -599,13 +580,8 @@ def ModelOp : MGP_Op<"model", [
     ```
   }];
 
-  // CAUTION: There are three constraints on these attribute names and their
-  // order:
-  //  - 'sym_name' must match the standard symbol name attribute name (as given
-  //    by mlir::SymbolTable::getSymbolAttrName()). Note however that we could
-  //    probably choose a more consistent name and implement
-  //    DerivedAttributeOpInterface to recover name if we really wanted
-  //    that.
+  // CAUTION: Constraints on these attribute names and their order:
+  //  - 'sym_name' must match mlir::SymbolTable::getSymbolAttrName().
   //  - The extra attributes must appear last since optional.
   let arguments = (ins
     M_DeviceRefArrayAttr:$devices,
@@ -624,8 +600,7 @@ def ModelOp : MGP_Op<"model", [
     Block *getInitBlock() { return &getInit().front(); }
     Block *getExecuteBlock() { return &getExecute().front(); }
 
-    /// Get the execute block. This function is required to use with
-    /// our internal callgraph utilities.
+    /// Required by the internal callgraph utilities.
     Region &getBodyRegion() { return getExecute(); }
 
     MutableArrayRef<BlockArgument> getInitDevices() {
@@ -669,11 +644,9 @@ def ModelOp : MGP_Op<"model", [
   }];
 
   let builders = [
-    /// Creates a model with empty 'init' and 'execute' bodies and
-    /// with `inputTypes` and `outputTypes` for the op's explicit signature.
-    /// `inputArgLocs` specifies the location information for the
-    /// explicit arguments to the 'execute' entry point, and thus should
-    /// have the same length as `inputTypes`.
+    /// Creates a model with empty 'init' and 'execute' bodies and explicit
+    /// signature `inputTypes` -> `outputTypes`. `inputArgLocs` gives the
+    /// locations of the explicit 'execute' arguments, one per input type.
     OpBuilder<(ins
       "StringAttr":$sym_name,
       "StringRef":$frameworkName,
@@ -897,10 +870,7 @@ def DebugPrintOp : MGP_Op<"debug.print", [
 ]> {
   let summary = "Prints a debug string. For debugging and testing only.";
   let description = [{
-    Prints a debug string. If a label attribute is supplied
-    the string is printed with that label.
-
-    For debugging and testing only.
+    If a label attribute is supplied the string is printed with that label.
 
     Note this op accepts and returns `!mef.chain`s since printing is managed
     by the host.
@@ -935,10 +905,8 @@ def DebugPrintIntOp : MGP_Op<"debug.print.int", [
 ]> {
   let summary = "Prints a runtime integer value. For debugging and testing only.";
   let description = [{
-    Prints a runtime index (integer) value. If a label attribute is supplied
-    the value is printed with that label.
-
-    For debugging and testing only.
+    Prints a runtime index value. If a label attribute is supplied the value
+    is printed with that label.
 
     Example:
     ```mlir
@@ -972,10 +940,9 @@ def MGP_CallOp : MGP_Op<"call", [
 ]> {
   let summary = "Call a subgraph.";
   let description = [{
-    Placeholder for the execute block of another graph,
-    which will be replaced by individual mef.callables and
-    grt.invoke ops by `ConvertSubgraphsToCallablesPass`.
-    The graph is referenced via symbol name of the target !mgp.model.
+    Placeholder for the execute block of the !mgp.model named by `callee`,
+    replaced by mef.callables and grt.invoke ops by
+    `ConvertSubgraphsToCallablesPass`.
 
     Operands and results must match the signature of the target model's execute block.
 
@@ -1054,9 +1021,8 @@ def MGP_CallOp : MGP_Op<"call", [
 def StringCreateOp : MGP_Op<"string.create", [Pure]> {
   let summary = "Creates a Mojo String from a string attribute.";
   let description = [{
-    Creates a Mojo String from a compile-time string attribute.
-    The returned value is an opaque pointer to a Mojo `String`,
-    created from a Mojo `Pointer[String]`.
+    Returns an opaque pointer to a Mojo `String`, created from a Mojo
+    `Pointer[String]`.
 
     Example:
     ```mlir
@@ -1078,9 +1044,8 @@ def StringCreateOp : MGP_Op<"string.create", [Pure]> {
 def StringConcatOp : MGP_Op<"string.concat", [Pure]> {
   let summary = "Concatenates two Mojo Strings.";
   let description = [{
-    Concatenates two Mojo Strings and returns a new Mojo String containing
-    the result. Both inputs must be opaque pointers to Mojo `String` values
-    (as created by `mgp.string.create`).
+    Returns a new Mojo String. Both inputs must be opaque pointers to Mojo
+    `String` values (as created by `mgp.string.create`).
 
     Example:
     ```mlir
@@ -1100,22 +1065,17 @@ def StringConcatOp : MGP_Op<"string.concat", [Pure]> {
 
 //===----------------------------------------------------------------------===//
 //
-// Device-generic operations in the MGP dialect. Most of these ops accept
-// (at least one) #M.device_ref attribute indicating the specific type and
-// 'virtual' device id the ops should apply to. Some ops must also reference
-// the 'host' device in addition to some 'other' device. These ops implement
-// the `MGP_HasDeviceOpInterface`.
+// Device-generic operations in the MGP dialect. Most accept (at least one)
+// #M.device_ref attribute giving the device type and 'virtual' id. Ops that
+// also reference the 'host' device implement `MGP_HasDeviceOpInterface`.
 //
-// Note that the `DevicePrimitivesPass` rewrites all ops implementing
-// `MGP_HasDeviceOpInterface` such that:
-//  - the op is renamed to include its device's label name as a suffix.
-//  - all #M.device_ref attributes are replaced by just the device's id.
-// In this way we have the convenience of first-class device attributes on
-// ops for use during lowering and MGP-level transformations, but have the
-// efficiency of direct dispatch to per-device label primitives without the
-// overhead of dealing with device labels at runtime.
+// `DevicePrimitivesPass` renames ops implementing `MGP_HasDeviceOpInterface`
+// with their device's label as a suffix and replaces #M.device_ref attributes
+// with the device id. This keeps first-class device attributes for lowering
+// and MGP-level transformations while dispatching directly to per-device
+// primitives without handling labels at runtime.
 //
-// Note that chains in MGP are plain `!mef.chain` values.
+// Chains in MGP are plain `!mef.chain` values.
 //
 //===----------------------------------------------------------------------===//
 
@@ -1133,7 +1093,7 @@ def MGP_OptDeviceRefAttr :
 
 def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
   let summary = "Shim to tag the start of a device context profiling run";
-  let description = [{This is temporary op. to enable onnx profiling - Should use max-driver for this in future}];
+  let description = [{Temporary op for onnx profiling; should use max-driver instead.}];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
@@ -1156,8 +1116,8 @@ def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
 }
 
 def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
-  let summary = "Shim to tag the start of a device context profiling run";
-  let description = [{This is temporary op. to enable onnx profiling - Should use max-driver for this in future}];
+  let summary = "Shim to tag the end of a device context profiling run";
+  let description = [{Temporary op for onnx profiling; should use max-driver instead.}];
 
   // CAUTION: The attribute arguments must be in alphabetical order by their
   // names.
@@ -1190,17 +1150,14 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load", [
   let summary = "Loads functions and constants for device from compiled module.";
   let description = [{
     Loads functions and constants from a compiled module encoded into a byte
-    array (or, for unit testing only, a multi-line string). The module is
-    assigned the next available module index (starting at 0) for the device,
-    and each function and constant is assigned the next available function or
-    constant index within that module (starting at 0). The functions and
-    constants will be associated with the runtime established in the given
-    `!mgp.context` slot. A functions may be referenced by
-    (module index, function index) in `mgp.generic.execute`, and constant
-    by (module index, constant index) in `mgp.buffer.constant.load`.
+    array (or, for unit testing only, a multi-line string), associated with the
+    runtime in the given `!mgp.context` slot. The module gets the device's next
+    module index, and each function and constant the next index within it (all
+    starting at 0). Functions are referenced by (module index, function index)
+    in `mgp.generic.execute`, constants by (module index, constant index) in
+    `mgp.buffer.constant.load`.
 
-    There is no universal representation for device modules in the host C++
-    runtime, each device type may use its own representation.
+    Each device type may use its own module representation in the host runtime.
 
     Note that this operation accepts and returns `!mef.chain`s since it is
     part of device setup on the host.
@@ -1256,11 +1213,9 @@ def ModuleLoadOp : MGP_DeviceOp<"module.load", [
 def ModuleLoadPlaceholderOp : MGP_Op<"module.load.placeholder"> {
   let summary = "Placeholder for the module load";
   let description = [{
-    A placeholder op to provide the chain for the module ops / runtimes.
-    This op is added just before lowering kernel ABI to provide a chain
-    to link the compiled execute to the module load op in init.
-
-    When we create the load module op we can remove it.
+    Provides a chain linking the compiled execute to the module load op in
+    init. Added just before lowering the kernel ABI, and removed once the load
+    module op is created.
   }];
   let results = (outs ChainType:$outChain);
 }
@@ -1279,16 +1234,12 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
 ]> {
   let summary = "Initializes a buffer from an external constant.";
   let description = [{
-    Returns an `!mgp.buffer` on the given device that is initialized at
-    runtime.
-    The buffer is backed by a pointer retrieved by its name from a weights
-    registry, which is simply a mapping from names to pointers.
-    The name is provided as an SSA value of type `!mgp.opaque<"mojo_string">`,
-    typically created by `mgp.string.create` (and optionally `mgp.string.concat`
-    for prefixed names).
-    At runtime, the retrieved pointer must respect the alignment set on the op.
-    Furthermore, like mgp.buffer.constant, the lifetime of the returned buffer
-    is untracked and assumed to outlive graph execution.
+    Returns an `!mgp.buffer` on the given device, backed at runtime by the
+    pointer a weights registry (a map from names to pointers) holds for `name`.
+    The name is an `!mgp.opaque<"mojo_string">`, typically from
+    `mgp.string.create` (and optionally `mgp.string.concat` for prefixes).
+    The pointer must respect the op's alignment. Like mgp.buffer.constant, the
+    buffer's lifetime is untracked and assumed to outlive graph execution.
 
     Example:
     ```mlir
@@ -1339,7 +1290,6 @@ def BufferConstantExternalOp : MGP_DeviceOp<"buffer.constant.external", [
       return {getASizeAttr(), getBAlignAttr()};
     }
 
-    // Ignore the devices.
     SmallVector<Attribute> BufferConstantExternalOp::getIgnorableAttributes() {
       return {getCDeviceAttr(), getDHasAliasAttr()};
     }
@@ -1364,8 +1314,6 @@ def BufferAllocOp : MGP_DeviceOp<"buffer.alloc", [
   let summary = "Allocates a buffer with dynamically provided byte size on "
                 "given device.";
   let description = [{
-    One of a family of 6 buffer allocation primitives.
-
     Allocates (possibly asynchronously) an uninitialized buffer from a device's
     default memory pool with given byte size, and optional statically known
     alignment. The allocation uses the device-appropriate runtime established
@@ -1462,11 +1410,8 @@ def BufferCacheOp : MGP_Op<"buffer.cache"> {
 def BufferFreeOp : MGP_Op<"buffer.free"> {
   let summary = "No-op used to indicate when a buffer is freed.";
   let description = [{
-    Indicate when a buffer may be freed.
-
-    This operation does nothing and has no primitive backing it. It only exists
-    to make buffer lifetimes explicit. Buffers are refcounted in the runtime and
-    freed when necessary.
+    Has no primitive backing it; it only makes buffer lifetimes explicit, since
+    the runtime refcounts buffers.
 
     Example:
     ```mlir
@@ -1710,11 +1655,9 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
   let summary = "Concatenates a sequence of input buffers into an output "
                 "buffer.";
   let description = [{
-    Concatenates a sequence of input buffers into an output buffer. If only a
-    single operand is given then mimics an ordinary buffer copy. The the output
-    buffer and all input buffers have statically known sizes then they are
-    checked for consistency at compile time. A runtime error will be returned
-    if the actual runtime sizes of input and output buffers are not consistent.
+    With a single input this is a buffer copy. Statically known sizes are
+    checked for consistency at compile time; inconsistent runtime sizes return
+    a runtime error.
 
     Example:
     ```mlir
@@ -1805,12 +1748,8 @@ def BufferSliceOp : MGP_Op<"buffer.slice", [
   let summary = "Borrows a slice of parent buffer on device with dynamically "
                 "known offset and size.";
   let description = [{
-    Returns a borrowed buffer whose underlying storage points into a section of
-    the input buffer. The offset and size of the section is given by
-    the offset and size arguments.
-
-    Note that no copying is done, and the result buffer merely borrows from
-    the (offset into) the input buffer.
+    Returns a buffer borrowing the `size`-byte section of the input buffer at
+    `offset`. No data is copied.
 
     The device context must be on the same device as the input buffer; backends
     whose runtime only accepts registered pointers register the slice through it.
@@ -1943,8 +1882,6 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
 ]> {
   let summary = "Returns contents of a 1-byte buffer as an i1.";
   let description = [{
-    Returns contents of a one byte buffer as an i1.
-
     Example:
     ```mlir
     %0 = mgp.to_bool %ch0, %ctx[5], %buf : !mgp.buffer<<"gpu", 3>>
@@ -1970,8 +1907,7 @@ def BufferToBoolOp : MGP_DeviceOp<"buffer.to_bool", [
 //===----------------------------------------------------------------------===//
 
 def BufferSetWithIndexOp : MGP_DeviceOp<"buffer.set_with_index", [
-  // TODO: #37615
-  /* DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>, */
+  // TODO(#37615): Declare MGP_LiftableChainCreateOpInterface.
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
 ]> {
@@ -2022,13 +1958,10 @@ def DebugTensorPrintOp : MGP_Op<"debug.tensor.print", [
   let summary = "Prints a debug representation of an tensor. For debugging "
                 "and testing only.";
   let description = [{
-    Prints a debug representation of an tensor, given as a pair of an
-    `!mgp.buffer` and a `!mgp.tensor_spec`. If a label attribute is supplied
-    the tensor contents are printed with that labelm and tensor contents. Otherwise
-    just the tensor metadata is printed. Printing the tensor contents may requires
-    an explicit device-to-host copy. Only CPU buffers can be printed with contents.
-
-    For debugging and testing only.
+    The tensor is given as an `!mgp.buffer` and `!mgp.tensor_spec`. If a label
+    is supplied the contents are printed with that label, otherwise just the
+    metadata. Only CPU buffers can be printed with contents; others may need an
+    explicit device-to-host copy.
 
     Note this op accepts and returns `!mef.chain`s since printing is managed
     by the host.
@@ -2167,20 +2100,18 @@ def MGP_DeviceContextSelectStreamOp : MGP_Op<"device_context.select_stream", [
     driver context, and device memory pool; only the current-stream selector
     differs.
 
-    This is the value-level handle used to bind a stream-tagged subgraph call to
-    a side stream without threading per-stream device contexts through the model
-    as extra block arguments: the base device context is already an implicit
-    argument of every model, so the view is derived locally at the call site.
-    Because the view keeps the full stream set, nested selections compose.
+    It binds a stream-tagged subgraph call to a side stream without threading
+    per-stream device contexts through the model: the base device context is
+    already an implicit model argument, so the view is derived at the call
+    site. Nested selections compose since the view keeps the full stream set.
 
     Backends without a multi-stream model return a view equivalent to the input
     context, so all work runs on its single stream.
 
-    This op is executed directly by the MGP runtime (a runtime primitive
-    registered in `registerMGPPrimitives`, like `mgp.runtime.create`), not
-    lowered into a compiled kernel region: it implements no `EmitsMojoInterface`,
-    so `mgp-lower-primitives` leaves it intact and the executor dispatches it by
-    name to its C++ primitive, which produces the view `DeviceContextRef`.
+    It is executed directly by the MGP runtime (a primitive registered in
+    `registerMGPPrimitives`, like `mgp.runtime.create`): it implements no
+    `EmitsMojoInterface`, so `mgp-lower-primitives` leaves it intact and the
+    executor dispatches it by name to its C++ primitive.
   }];
 
   let arguments = (ins

@@ -75,21 +75,18 @@ bool isOne(Value val) {
   return false;
 }
 
-/// If `op`'s axis is constant and input rank is known, modify `op`'s `axis` to
-/// be the canonical version, i.e., it's guaranteed to be in [0, rank).
+/// If input rank is known, rewrites `op`'s `axis` into [0, rank).
 /// NOTE this should be used as the first canonicalization, so other logic in
 /// canonicalization will be able to utilize it.
 LogicalResult
 canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
                                          PatternRewriter &rewriter) {
-  // `operandIndex` is retained for API compatibility; `axis` is now an
-  // attribute, not an operand.
+  // `operandIndex` is unused: `axis` is an attribute, not an operand.
   (void)operandIndex;
   TensorType inputTy = op.getInput().getType();
   if (!inputTy.hasRank())
     return failure();
 
-  // `axis` is a compile-time `index` attribute and is always known.
   int64_t axis = op.getAxisAttr().getInt();
   if (axis >= 0)
     return failure();
@@ -102,7 +99,6 @@ canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
 
 template <typename SliceTy, typename AdaptorTy>
 OpFoldResult foldSliceHelper(SliceTy slice, AdaptorTy adaptor) {
-  // We must be able to see the steps are all `1` as a condition of folding.
   auto steps = dyn_cast_if_present<IntArrayElementsAttr>(adaptor.getStep());
   if (!steps)
     return {};
@@ -110,16 +106,11 @@ OpFoldResult foldSliceHelper(SliceTy slice, AdaptorTy adaptor) {
   TypedValue<TensorType> input = slice.getInput();
   TensorType inputTy = input.getType();
 
-  // If the input and the output are the same and neither have ? in them then
-  // we can maybe fold.
   if (slice.getResult().getType() != inputTy)
     return {};
 
-  // If all of the steps are `1` then this is an identity. We need to check
-  // this as you could produce the same shape by walking backwards through the
-  // slice i.e -1. So we must check they are 1 which means the only way to
-  // produce the same shape as input is through start of 0 and end of -1. I.E
-  // an identity.
+  // A step of -1 can also preserve the shape, so same shape is only an
+  // identity when every step is 1.
   auto stepsData = tryGetConstantBlob<int64_t>(
       cast<ElementsAttr>(steps), slice.getStep().getType().getDtype());
   if (!stepsData.has_value())
@@ -132,7 +123,6 @@ OpFoldResult foldSliceHelper(SliceTy slice, AdaptorTy adaptor) {
   return input;
 }
 
-/// Helper to fold reshape ops.
 ArrayElementsAttr foldReshape(ArrayRef<int64_t> outIntDims,
                               ArrayElementsAttr inputArr) {
   if (llvm::is_contained(outIntDims, -1))
@@ -154,17 +144,14 @@ void replaceOpWithRegion(PatternRewriter &rewriter, Operation *op,
   rewriter.eraseOp(terminator);
 }
 
-/// Find the closes IsolatedFromAbove parent region for moving an operation to.
-/// This logic is taken from `mlir/Transforms/Utils/FoldUtils.cpp`, which drives
-/// the hoisting of ConstantLike values as high in the region tree as possible.
+/// Find the closest IsolatedFromAbove parent region for moving an operation to.
+/// Taken from `mlir/Transforms/Utils/FoldUtils.cpp`.
 Region *getInsertionRegion(Block *insertionBlock) {
   while (Region *region = insertionBlock->getParent()) {
-    // Insert in this region if the parent is a top-level operation.
     auto *parentOp = region->getParentOp();
     if (parentOp->hasTrait<OpTrait::IsIsolatedFromAbove>() ||
         !parentOp->getBlock())
       return region;
-    // Traverse up the parent looking for an insertion region.
     insertionBlock = parentOp->getBlock();
   }
   llvm_unreachable("expected valid insertion region");
@@ -181,8 +168,6 @@ LogicalResult materializeShapeInference(RebindOp op,
   if (paramDecls.size() == 1) {
     KGEN::ParamDeclAttr newDecl = paramDecls.front();
     if (isa<ShapeType>(newDecl.getType())) {
-      // If there is a single declaration in rebind that is a shape parameter,
-      // we materialize into a kgen.param.declare.
       KGEN::ParamDeclareOp::create(rewriter, loc, newDecl, inputShapeAttr);
       rewriter.modifyOpInPlace(op, [&] { op.setOutputParamDecls({}); });
       return success();
@@ -267,7 +252,6 @@ namespace M::MO {
 //===----------------------------------------------------------------------===//
 LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
                                    SmallVectorImpl<OpFoldResult> &results) {
-  // If the all-reduce has 1 input, return the input (identity op).
   if (getInputs().size() == 1 && getOutputs().size() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
@@ -283,8 +267,6 @@ LogicalResult AllReduceSumOp::fold(FoldAdaptor adaptor,
 LogicalResult
 BundledAllReduceSumOp::fold(FoldAdaptor adaptor,
                             SmallVectorImpl<OpFoldResult> &results) {
-  // If the bundled all-reduce has 1 input (and 1 signal buffer), it is an
-  // identity op.
   if (getInputs().size() == 1 && getSignalBuffers().size() == 1 &&
       getInputs()[0].getType() == getOutput().getType()) {
     results.push_back(getInputs()[0]);
@@ -299,8 +281,7 @@ BundledAllReduceSumOp::fold(FoldAdaptor adaptor,
 //===----------------------------------------------------------------------===//
 LogicalResult BundledExpandOp::fold(FoldAdaptor adaptor,
                                     SmallVectorImpl<OpFoldResult> &results) {
-  // In a single-launch parent parallel op, the expand has a single result
-  // whose type matches the input.  Fold to the input.
+  // In a single-launch parent parallel op, the expand is an identity.
   if (getNumResults() == 1 && getResult(0).getType() == getInput().getType()) {
     results.push_back(getInput());
     return success();
@@ -313,7 +294,6 @@ LogicalResult BundledExpandOp::fold(FoldAdaptor adaptor,
 //===----------------------------------------------------------------------===//
 LogicalResult ReduceScatterSumOp::fold(FoldAdaptor adaptor,
                                        SmallVectorImpl<OpFoldResult> &results) {
-  // If the reduce-scatter has 1 input, return the input (identity op).
   if (getInputs().size() == 1 && getOutputs().size() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
@@ -328,7 +308,6 @@ LogicalResult ReduceScatterSumOp::fold(FoldAdaptor adaptor,
 //===----------------------------------------------------------------------===//
 LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
                                 SmallVectorImpl<OpFoldResult> &results) {
-  // If the all-gather has 1 input, return the input (identity op).
   // The verifier ensures that with 1 input, there is exactly 1 output.
   if (getInputs().size() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
@@ -345,7 +324,6 @@ LogicalResult AllGatherOp::fold(FoldAdaptor adaptor,
 LogicalResult
 DistributedScatterOp::fold(FoldAdaptor adaptor,
                            SmallVectorImpl<OpFoldResult> &results) {
-  // Single device scatter: return the input as-is.
   if (getInputs().size() == 1 && getOutputs().size() == 1 &&
       getInputs()[0].getType() == getOutputs()[0].getType()) {
     results.push_back(getInputs()[0]);
@@ -361,7 +339,6 @@ DistributedScatterOp::fold(FoldAdaptor adaptor,
 LogicalResult
 DistributedBroadcastOp::fold(FoldAdaptor adaptor,
                              SmallVectorImpl<OpFoldResult> &results) {
-  // Single device broadcast: return the input as-is.
   if (getOutputs().size() == 1 &&
       getInput().getType() == getOutputs()[0].getType()) {
     results.push_back(getInput());
@@ -375,9 +352,8 @@ DistributedBroadcastOp::fold(FoldAdaptor adaptor,
 // AssertOp
 //===----------------------------------------------------------------------===//
 OpFoldResult AssertOp::fold(FoldAdaptor adaptor) {
-  // If the condition is true, we return a chain attribute, otherwise we leave
-  // the op as is and a pass can either check for failing asserts or it becomes
-  // a guaranteed runtime failure.
+  // A false condition is left in place: a pass can report it, or it becomes a
+  // guaranteed runtime failure.
   TypedAttr condAttr = dyn_cast_if_present<TypedAttr>(adaptor.getCond());
   if (!condAttr)
     return {};
@@ -406,7 +382,6 @@ LogicalResult ArgMinOp::canonicalize(ArgMinOp op, PatternRewriter &rewriter) {
 // CastOp
 //===----------------------------------------------------------------------===//
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
-  // Cast to the same type is just identity.
   TensorType resTy = getResult().getType();
   TensorType inTy = getInput().getType();
   if (inTy == resTy)
@@ -429,8 +404,6 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
           intElemsAttr.getValues(), [&](const llvm::APInt &dim) {
             if (inTy.getDtype().isSInt())
               return APInt(64, dim.getSExtValue(), /*isSigned=*/true);
-
-            // Else is unsigned integer.
             return APInt(64, dim.getZExtValue(), /*isSigned=*/false);
           });
 
@@ -448,8 +421,6 @@ LogicalResult BroadcastToOp::canonicalize(BroadcastToOp op,
                                           PatternRewriter &rewriter) {
   TensorValue inputVal = op.getInput();
 
-  // If we have a known input and an known output with no parameter decls then
-  // we can convert this to static.
   if (op.getOutputParamDecls().empty()) {
     rewriter.replaceOpWithNewOp<Static::BroadcastToOp>(op, op.getType(),
                                                        inputVal);
@@ -469,7 +440,6 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
   if (getNumOperands() == 1 && isa<ChainType>(getOperand(0).getType()))
     return getOperand(0);
 
-  // Try to de-duplicate repeated values to the chain create.
   llvm::SmallSetVector<Value, 4> keptValues;
 
   for (Value val : getInputs()) {
@@ -481,22 +451,17 @@ OpFoldResult ChainCreateOp::fold(FoldAdaptor adaptor) {
     keptValues.insert(val);
   }
 
-  // In this case all the inputs were from 'constant' chains, that is:
-  // mosh.param.to_value: !mo.chain = <#mo.chain>
-  //
-  // replace the output of this op with one of these
+  // All inputs were constant chains:
+  //   mosh.param.to_value: !mo.chain = <#mo.chain>
   if (keptValues.empty())
     return getInputs().front();
 
-  // In this case none of the inputs were constant chains so leave the op
-  // unperturbed.
   if (keptValues.size() == getInputs().size())
     return nullptr;
 
   getOperation()->setOperands(keptValues.getArrayRef());
 
-  // De-duplication may have simplified the chain to have just a single operand,
-  // check again if its a chain and if so forward it.
+  // De-duplication may have left a single chain operand.
   if (getNumOperands() == 1 && isa<ChainType>(getOperand(0).getType()))
     return getOperand(0);
 
@@ -509,7 +474,6 @@ struct FlattenChainCreate final : public OpRewritePattern<ChainCreateOp> {
 
   LogicalResult matchAndRewrite(ChainCreateOp op,
                                 PatternRewriter &rewriter) const override {
-    // Quick bail out if nothing to be done.
     if (llvm::none_of(op.getOperands(), [](Value val) {
           return val.getDefiningOp<ChainCreateOp>();
         }))
@@ -571,7 +535,7 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
       break;
     }
 
-    // Check if we have a match, all operands must have the same defining op.
+    // All operands must have the same defining op.
     if (!split) {
       split = definingOp;
     } else if (split != definingOp) {
@@ -579,7 +543,7 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
       break;
     }
 
-    // Split must have same axis (`axis` is a compile-time `index` attribute).
+    // Split must have same axis.
     int64_t splitAxis = definingOp.getAxisAttr().getInt();
     if (outType.hasRank())
       splitAxis = normalizeAxis(splitAxis, outType.getRank());
@@ -597,14 +561,11 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
     ++operandIndex;
   }
 
-  // If we are a concat followed by split we can fold and use the split input
-  // directly.
   if (split && split.getInput().getType() == outType &&
       split.getNumResults() == getInputs().size())
     return split.getInput();
 
-  // Enforce rank 1 so we don't need to check axis or deal with complex
-  // stride stuff.
+  // Rank 1 only, so axis and strides don't matter.
   if (!outType.hasRank() || outType.getRank() != 1 || !outType.hasStaticShape())
     return {};
 
@@ -612,7 +573,6 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
 
   DType outDtype = outType.getDtype();
   for (Attribute attr : adaptor.getInputs()) {
-    // Enforce that it only runs on ints.
     auto asIntAttr = dyn_cast_if_present<IntArrayElementsAttr>(attr);
     if (!asIntAttr)
       return {};
@@ -622,8 +582,6 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
     if (!maybeValue)
       return {};
 
-    // Append the values to the output tensor. We can do this since it is
-    // rank 1.
     for (size_t idx = 0, e = maybeValue->size(); idx < e; ++idx)
       concatTensor.push_back(APInt(64, (*maybeValue)[idx], true));
   }
@@ -669,9 +627,8 @@ OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) { return getValueAttr(); }
 //===----------------------------------------------------------------------===//
 LogicalResult ConstantExternalOp::canonicalize(ConstantExternalOp op,
                                                PatternRewriter &rewriter) {
-  // Special case the hoisting of mo.constant.external operations, since they
-  // cannot be ConstantLike and hoisted by default in the
-  // GreedyPatternRewriteDriver.
+  // mo.constant.external cannot be ConstantLike, so the
+  // GreedyPatternRewriteDriver won't hoist it for us.
   Region *insertRegion = getInsertionRegion(op->getBlock());
   Block *insertBlock = &insertRegion->front();
   if (insertBlock == op->getBlock())
@@ -720,7 +677,6 @@ LogicalResult ConvTransposeOp::canonicalize(ConvTransposeOp op,
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-// Helper function for empty array creation
 static ArrayElementsAttr getEmptyArray(Type elementType) {
   return ArrayElementsAttr::get({}, RankedTensorType::get({0}, elementType));
 }
@@ -738,7 +694,6 @@ OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
     return getEmptyArray(inputElems.getElementType());
 
   if (idxElems && idxElems.empty())
-    // DType of empty array must match
     return getEmptyArray(getResult().getType().getElementType());
 
   if (!inputElems || !idxElems)
@@ -750,7 +705,6 @@ OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
   if (!resTy.hasRank() || !inTy.hasRank())
     return {};
 
-  // We only perform this on rank 1 gathers.
   if (resTy.getRank() != inTy.getRank() || inTy.getRank() != 1 ||
       !resTy.hasStaticShape() || !inTy.hasStaticShape())
     return {};
@@ -758,9 +712,7 @@ OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
   DType dataTy = getInput().getType().getDtype();
   DType indicesTy = getIndices().getType().getDtype();
 
-  // If the input/indices/axis is known this is something we can fold.
-  // We have to enforce that they are only ints for now.
-  // We only run on rank 1 so we know the only possible value for axis is 1.
+  // Ints only for now. Rank 1 means the axis is implied.
   auto dataAttr = dyn_cast<IntArrayElementsAttr>(inputElems);
   auto iAttr = dyn_cast<IntArrayElementsAttr>(idxElems);
   if (!dataAttr || !iAttr)
@@ -797,10 +749,7 @@ OpFoldResult GatherOp::fold(FoldAdaptor adaptor) {
 
 namespace {
 
-/// Canonicalization pattern that removes duplicate operands from guard
-/// operations.
-///
-/// For example, transforms:
+/// Removes duplicate guard operands:
 ///   %r0, %r1, %r2, %r3 = mo.guard[%ch](%a, %b, %a, %b)
 /// Into:
 ///   %f0, %f1 = mo.guard[%ch](%a, %b)
@@ -812,16 +761,12 @@ struct DedupeGuardOperands : public OpRewritePattern<GuardOp> {
     llvm::MapVector<Value, size_t> uniqueOperands;
     for (auto [index, operand] : llvm::enumerate(guard.getInputs()))
       uniqueOperands.try_emplace(operand, index);
-    // If all operands are already unique, nothing to do.
     if (uniqueOperands.size() == guard.getInputs().size())
       return rewriter.notifyMatchFailure(guard, "no duplicated operands");
-    // Create a new guard with only the unique operands.
     auto chain = guard.getChain();
     auto newOperands = llvm::to_vector(llvm::make_first_range(uniqueOperands));
     auto newGuard =
         GuardOp::create(rewriter, guard.getLoc(), chain, newOperands);
-    // Map each original result to the corresponding result from the new guard.
-    // For duplicate operands, multiple results will map to the same new result.
     SmallVector<Value> newResults;
     newResults.reserve(guard.getNumResults());
     for (Value operand : guard.getInputs()) {
@@ -887,9 +832,8 @@ struct ConstantFoldIf : public OpRewritePattern<IfOp> {
 
     replaceOpWithRegion(rewriter, op, region);
 
-    // Create alias declarations for output params: M = <A>, N = <B>.
-    // This allows code outside the IfOp that references M, N to resolve
-    // to the inlined parameters A, B.
+    // Alias output params to the inlined yield params (M = <A>, N = <B>) so
+    // uses of M, N outside the IfOp still resolve.
     for (auto [outputParam, yieldParam] :
          llvm::zip_equal(outputParams, yieldParams)) {
       KGEN::ParamDeclareOp::create(rewriter, loc, outputParam, yieldParam);
@@ -905,9 +849,7 @@ struct RemoveUnusedResults : public OpRewritePattern<IfOp> {
   static void transferBody(Block *source, Block *dest,
                            ArrayRef<OpResult> usedResults,
                            PatternRewriter &rewriter) {
-    // Move all operations to the destination block.
     rewriter.mergeBlocks(source, dest);
-    // Replace the yield op by one that returns only the used values.
     auto yieldOp = cast<YieldOp>(dest->getTerminator());
 
     auto usedOperands = llvm::map_to_vector(usedResults, [&](OpResult res) {
@@ -933,12 +875,10 @@ struct RemoveUnusedResults : public OpRewritePattern<IfOp> {
     rewriter.createBlock(&newOp.getThenRegion());
     rewriter.createBlock(&newOp.getElseRegion());
 
-    // Move the bodies and replace the terminators (note there is a then and
-    // an else region since the operation returns results).
+    // An IfOp with results always has both a then and an else region.
     transferBody(op.getBody(0), newOp.getBody(0), usedResults, rewriter);
     transferBody(op.getBody(1), newOp.getBody(1), usedResults, rewriter);
 
-    // Replace the operation by the new one.
     SmallVector<Value> repResults(op.getNumResults());
     for (const auto &en : llvm::enumerate(usedResults))
       repResults[en.value().getResultNumber()] = newOp.getResult(en.index());
@@ -965,8 +905,7 @@ struct ConditionPropagation : public OpRewritePattern<IfOp> {
                                 PatternRewriter &rewriter) const override {
     bool changed = false;
 
-    // These variables serve to prevent creating duplicate constants
-    // and hold constant true or false values.
+    // Created lazily, at most once each.
     Value constantTrue = nullptr;
     Value constantFalse = nullptr;
 
@@ -1101,9 +1040,7 @@ LogicalResult MulOp::canonicalize(MulOp op, PatternRewriter &rewriter) {
 // MutableLoadOp
 //===----------------------------------------------------------------------===//
 
-// In instances of two sequential loads on the same buffer this will
-// canonicalize the two loads to just one. This replaces the uses of the current
-// load op's chain and tensor with the upstream load op's chain and tensor.
+// Collapses two sequential loads of the same buffer into the upstream one.
 LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
                                           mlir::PatternRewriter &rewriter) {
   auto inChain = loadOp.getInChain();
@@ -1121,7 +1058,6 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
         "Upstream mo.mutable.load op does not operate on same buffer.");
   }
 
-  // Only collapse loads if they're in the same block
   if (upstreamLoadOp->getBlock() != loadOp->getBlock()) {
     return rewriter.notifyMatchFailure(
         loadOp.getLoc(),
@@ -1133,7 +1069,7 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
   rewriter.replaceAllUsesWith(loadOp.getOutTensor(),
                               upstreamLoadOp.getOutTensor());
 
-  // DCE in the canonicalization pass will take care of deleting loadOp
+  // Canonicalization DCE erases loadOp.
   return success();
 }
 
@@ -1141,13 +1077,9 @@ LogicalResult MutableLoadOp::canonicalize(MutableLoadOp loadOp,
 // TensorBundleOp
 //===----------------------------------------------------------------------===//
 
-/// Fold `bundle(unbundle(%X)#0, unbundle(%X)#1, ..., unbundle(%X)#N-1)` back to
-/// `%X` when the inputs are the full set of results of a single unbundle op, in
-/// order, and the resulting bundle type matches the unbundle's input type.
-///
-/// This closes the symmetric direction of the existing `unbundle(bundle(...))`
-/// fold and lets downstream passes see SSA equality when a bundle value is
-/// transiently unbundled and re-bundled.
+/// Fold `bundle(unbundle(%X)#0, ..., unbundle(%X)#N-1)` back to `%X`, the
+/// inverse of the `unbundle(bundle(...))` fold, so downstream passes see SSA
+/// equality across a transient unbundle/re-bundle.
 OpFoldResult TensorBundleOp::fold(FoldAdaptor adaptor) {
   auto inputs = getInputs();
   if (inputs.empty())
@@ -1160,8 +1092,7 @@ OpFoldResult TensorBundleOp::fold(FoldAdaptor adaptor) {
   if (!unbundleOp)
     return {};
 
-  // All inputs must be results of the same unbundle, in order 0..N-1, and the
-  // unbundle must have exactly N results (no extra elements dropped).
+  // Inputs must be all N results of one unbundle, in order.
   if (unbundleOp.getNumResults() != inputs.size())
     return {};
   for (auto [i, input] : llvm::enumerate(inputs)) {
@@ -1171,8 +1102,7 @@ OpFoldResult TensorBundleOp::fold(FoldAdaptor adaptor) {
       return {};
   }
 
-  // Type match is guaranteed by construction when the above holds, but double
-  // check to be defensive against unbundle/bundle type mismatches.
+  // Implied by the above; checked defensively.
   if (unbundleOp.getInput().getType() != getResult().getType())
     return {};
 
@@ -1197,10 +1127,7 @@ LogicalResult TensorUnbundleOp::fold(FoldAdaptor adaptor,
 //===----------------------------------------------------------------------===//
 LogicalResult ParallelOp::fold(FoldAdaptor adaptor,
                                SmallVectorImpl<OpFoldResult> &results) {
-  // Identity fold is sound when each per-launch body would be a no-op.
-  // For parallels with buffers/chain, the buffer and chain operands must
-  // not be referenced inside the body region; otherwise erasing the
-  // parallel would drop work that depends on them.
+  // Erasing the parallel would drop body work that uses the buffers or chain.
   Operation *thisOp = getOperation();
   auto hasUserInBody = [thisOp](Value v) {
     for (Operation *user : v.getUsers()) {
@@ -1221,8 +1148,7 @@ LogicalResult ParallelOp::fold(FoldAdaptor adaptor,
 
   Block &body = getBodyRegion().front();
 
-  // If the body only contains the yield terminator and every yield operand
-  // is the corresponding block argument, the parallel op is a no-op.
+  // No-op iff the body is only a yield forwarding its block arguments.
   if (!body.without_terminator().empty())
     return failure();
 
@@ -1275,7 +1201,7 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
     return foldedAttr;
 
   Location loc = getLoc();
-  OpBuilder builder(*this); // insert before this op
+  OpBuilder builder(*this);
   auto resTy = outTy.cloneWith({numResElements}, outTy.getElementType());
   auto constantOp =
       ConstantOp::create(builder, loc, resTy, cast<ElementsAttr>(foldedAttr));
@@ -1293,12 +1219,10 @@ OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
   if (!inputTy.hasRank())
     return {};
 
-  // `axis` is a compile-time `index` attribute and is always known.
   int64_t axis = getAxisAttr().getInt();
   int64_t rank = inputTy.getRank();
   axis = (axis + rank) % rank;
 
-  // If we are reducing along a dimension of 1
   if (inputTy.getIntDim(axis) == 1 &&
       getInput().getType() == getResult().getType())
     return getInput();
@@ -1340,13 +1264,11 @@ LogicalResult ReduceMulOp::canonicalize(ReduceMulOp op,
 LogicalResult RebindOp::canonicalize(RebindOp op,
                                      PatternRewriter &origRewriter) {
   DeviceAwareRewriter rewriter(op, origRewriter);
-  // We fold if the result and operand types are the same.
   if (op.getInput().getType() == op.getType()) {
     assert(op.getOutputParamDecls().empty());
     rewriter.replaceOp(op, op.getInput());
     return success();
   }
-  // We materialize the parameter declarations explicitly.
   LogicalResult paramsResolved = materializeShapeInference(op, origRewriter);
   // Likely already processed, or doesn't help shape inference.
   if (op.getInput().getDefiningOp<RebindOp>())
@@ -1365,7 +1287,6 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   if (!inputArr || !shapeArr || !outputShapeAttr)
     return {};
 
-  // Compute number of elements specified by target shape
   int64_t shapeNumElems = 1;
   for (llvm::APInt dim : shapeArr.getValues()) {
     if (dim == -1)
@@ -1373,7 +1294,6 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     shapeNumElems *= dim.getSExtValue();
   }
 
-  // Compute number of elements specified by output type
   int64_t outputNumElems = 1;
   SmallVector<int64_t> outIntDims = outputShapeAttr.getIntDims();
   for (int64_t intDim : outIntDims) {
@@ -1382,7 +1302,6 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     outputNumElems *= intDim;
   }
 
-  // Reshape is valid if number of elements match.
   if (shapeNumElems == outputNumElems)
     return foldReshape(outIntDims, inputArr);
 
@@ -1466,8 +1385,6 @@ LogicalResult Shape::FromTensorOp::canonicalize(Shape::FromTensorOp op,
 
   return failure();
 }
-
-//===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
 // Shape::ToTensorOp
@@ -1564,7 +1481,6 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   // TODO(#10811): support other types and do this using a MOJO kernel?
   // TODO refactor parts of this with other folders
 
-  // If the x and y are the same it's an identity op regardless of condition.
   if (getX() == getY())
     return getX();
 
@@ -1576,9 +1492,7 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
 
   DType condDType = getCond().getType().getDtype();
 
-  // If either or both inputs are unknown we can still fold symbolically. If
-  // the condition is known to be all of one value then we can just return X if
-  // the cond is true or Y if the cond is false.
+  // With x or y unknown, a uniform condition still selects one of them.
   if (!xAttr || !yAttr) {
     auto maybeCond =
         tryGetConstantBlob<int64_t>(cast<ElementsAttr>(condAttr), condDType);
@@ -1588,8 +1502,6 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
     ArrayRef<int64_t> condArr = *maybeCond;
 
     int64_t value = condArr[0];
-
-    // Check the values are all the same otherwise exit.
     for (size_t idx = 1, e = condAttr.size(); idx < e; ++idx) {
       if (value != condArr[idx])
         return {};
@@ -1627,7 +1539,6 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 LogicalResult SplitOp::fold(FoldAdaptor adaptor,
                             SmallVectorImpl<OpFoldResult> &results) {
-  // If the split is splitting into one tensor then it is identity.
   if (getNumResults() == 1 && getInput().getType() == getResult(0).getType()) {
     results.push_back(getInput());
     return success();
@@ -1669,7 +1580,7 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
   if (!changedIndices)
     return failure();
 
-  // Construct new op with same dtypes for indices
+  // Keep the original indices dtype.
   TensorValue newIndices = ConstantOp::create(rewriter, op->getLoc(), indices,
                                               inputShapeType.getDeviceRef());
   newIndices = CastOp::create(rewriter, op->getLoc(), newIndices,
@@ -1698,7 +1609,6 @@ OpFoldResult Static::ReshapeOp::fold(FoldAdaptor adaptor) {
 
 LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
                                               PatternRewriter &rewriter) {
-  // We fold consecutive static reshapes into a single reshape.
   if (auto precedingOp = op.getInput().getDefiningOp<Static::ReshapeOp>()) {
     rewriter.modifyOpInPlace(op,
                              [&] { op.setOperand(precedingOp.getInput()); });
@@ -1711,7 +1621,7 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
   if (!resTy.hasRank() || !inputTy.hasRank())
     return failure();
 
-  // If we are preceded by ranked -> ranked rebind, we fold that into this op.
+  // Fold a preceding ranked -> ranked rebind into this op.
   if (auto rebindOp = inputVal.getDefiningOp<RebindOp>()) {
     TensorValue rebIn = rebindOp.getInput();
     TensorType rebInTy = rebIn.getType();
@@ -1724,7 +1634,7 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
   size_t inputRank = inputTy.getRank();
   size_t resRank = resTy.getRank();
   if (inputRank == 0 && resRank == 1) {
-    // We can fold static reshapes from scalars to singletons.
+    // Scalar -> singleton.
     if (TypedAttr param = getParamAttrThrough<IndexToTensorOp>(inputVal)) {
       auto shape = ShapeAttr::get(SmallVector<TypedAttr>{param},
                                   rewriter.getType<ShapeType>());
@@ -1735,7 +1645,7 @@ LogicalResult Static::ReshapeOp::canonicalize(Static::ReshapeOp op,
     }
   }
   if (inputRank == 1 && resRank == 0) {
-    // We can fold static reshapes from singletons to scalars.
+    // Singleton -> scalar.
     if (TypedAttr param = getParamAttrThrough<Shape::ToTensorOp>(inputVal)) {
       if (auto shape = dyn_cast<ShapeAttr>(param);
           shape && shape.getRank() == 1) {
@@ -1802,8 +1712,7 @@ LogicalResult Static::BroadcastToOp::canonicalize(Static::BroadcastToOp op,
       (inputNumElems && *inputNumElems == 0))
     return failure();
 
-  // If a broadcast does not change the number of elements, it is equivalent to
-  // a reshape. This is something we can check symbolically.
+  // Same (symbolic) element count means it is a reshape.
   if (resTy.getSymbolicNumElements() == inputTy.getSymbolicNumElements()) {
     rewriter.replaceOpWithNewOp<Static::ReshapeOp>(op, resTy, inputVal);
     return success();
@@ -1820,15 +1729,12 @@ LogicalResult TileOp::canonicalize(TileOp op, PatternRewriter &rewriter) {
   if (!inputTy.hasRank())
     return failure();
 
-  // Extract constant repeats.
   auto maybeRepeatsVec = tryGetConstantIntVector(op.getRepeats());
   if (!maybeRepeatsVec.has_value())
     return failure();
   ArrayRef<int64_t> repeatsVec(maybeRepeatsVec.value());
 
-  // Check if the tile operation can be replaced with a broadcast. Each repeats
-  // value leaves the input dimension unchanged or the input dimension must be
-  // a broadcast.
+  // A tile is a broadcast if every repeated dimension has size 1.
   for (auto [inDim, repeats] : llvm::zip(inputTy.getIntDims(), repeatsVec)) {
     if (repeats < 1 || (repeats > 1 && inDim != 1))
       return failure();
@@ -1860,14 +1766,12 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
         prevOpInput.getType().getDeviceRef()) {
       rewriter.replaceOp(op, ValueRange{prevOpInput, prevOp.getInChain()});
       if (prevOp->use_empty()) {
-        // Erase the now unused previous transfer as well.
         rewriter.eraseOp(prevOp);
       }
       return success();
     }
   }
 
-  // If the source and destination device are the same, we can elide.
   if (op.getAlwaysElideSameDeviceCopy() &&
       input.getType() == output.getType()) {
     // Replace uses of `op`'s outChain with its inChain to preserve ordering.
@@ -1876,9 +1780,8 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
   }
 
   DeviceRefAttr inputDevice = input.getType().getDeviceRef();
-  // If the transfer feeds directly into a cast to a larger bit type then we
-  // should rotate the cast to cast first on the CPU then transfer the smaller
-  // size.
+  // Rotate a narrowing cast after a host transfer to run on the host first, so
+  // fewer bytes are transferred.
   if (output.hasOneUse() && inputDevice == getHostDevice(op)) {
     Operation *user = *output.getUsers().begin();
 
@@ -1889,11 +1792,9 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
       Type dstTy = castOut.getType().getElementType();
 
       if (srcTy.isF32() && dstTy.isBF16()) {
-        // Switch the cast to run on the cpu and convert the transfer input.
         cast->setOperand(0, input);
         castOut.setType(castOut.getType().cloneWith(inputDevice));
 
-        // Make the transfer take the cast as input.
         op->setOperand(0, castOut);
         output.setType(
             output.getType().cloneWith(castOut.getType().getDtype()));
@@ -1913,18 +1814,15 @@ LogicalResult TransferOp::canonicalize(TransferOp op,
 //===----------------------------------------------------------------------===//
 LogicalResult TransposeOp::canonicalize(TransposeOp op,
                                         PatternRewriter &rewriter) {
-  // Nothing we can do if op is dynamically ranked.
   if (!op.getType().hasRank())
     return failure();
   size_t opRank = op.getType().getRank();
 
-  // Extract constant permutation.
   auto maybePermVec = tryGetConstantIntVector(op.getPerm());
   if (!maybePermVec.has_value())
     return failure();
   ArrayRef<int64_t> permVec(maybePermVec.value());
 
-  // Fold away identity permutation, e.g., [0, 1, 2] for 3D transpose.
   auto identityPerm = llvm::iota_range<int64_t>(0, opRank, /*Inclusive=*/false);
   if (llvm::equal(permVec, identityPerm)) {
     rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput(),
@@ -1932,10 +1830,9 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
     return success();
   }
 
-  // Fold transpose of a broadcast constant (single stored element).
-  // The constant fold pass cannot execute kernels on broadcast constants
-  // because the backing buffer is smaller than the tensor shape implies.
-  // Since all elements are identical, transposing just changes the shape.
+  // Fold transpose of a broadcast constant (single stored element). The
+  // constant fold pass cannot run kernels on these: the backing buffer is
+  // smaller than the shape implies.
   if (auto constantOp = op.getInput().getDefiningOp<ConstantOp>()) {
     if (auto arrayAttr =
             dyn_cast<ArrayElementsAttr>(constantOp.getValueAttr())) {
@@ -1949,7 +1846,6 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
   // NOTE The following (transposes merging or transpose-->reshape) assumes
   // the verifier checks against invalid permutations.
 
-  // Merge consecutive transposes by merging their constant permutations
   if (auto inputTransposeOp = op.getInput().getDefiningOp<TransposeOp>()) {
     auto maybeInputPermVec =
         tryGetConstantIntVector(inputTransposeOp.getPerm());
@@ -1957,8 +1853,6 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
       return failure();
     ArrayRef<int64_t> inputPermVec(maybeInputPermVec.value());
 
-    // Compute the merged permutation, and replace the consecutive transpose
-    // with a new transpose with the merged permutation.
     SmallVector<int64_t> mergedPerm = permute(inputPermVec, permVec);
     auto mergedPermVal =
         ConstantOp::create(rewriter, op.getLoc(), mergedPerm,
@@ -1974,7 +1868,6 @@ LogicalResult TransposeOp::canonicalize(TransposeOp op,
   // - [8, 1, 1, 5, 1, 1, 50, 1]
   // - [1, 1, 1, 8, 5, 50, 1, 1]
   // - [8, 5, 50, 1, 1, 1, 1, 1]
-  // replacing with equivalent reshapes are all allowed
   int64_t indexLastNonOneDim = -1; // should always be increasing
   MOSH::ShapeAttr inputShape = op.getInput().getType().getShape();
   bool meetsReshapeRewriteCriteria = inputShape != nullptr;
@@ -2009,8 +1902,7 @@ namespace {
 struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
   using OpRewritePattern<WhileOp>::OpRewritePattern;
 
-  // Compute a mapping of duplicated operands back to their first occurrence
-  // in the operand sequence.
+  // Maps each duplicated operand index to its first occurrence.
   static llvm::DenseMap<unsigned, unsigned> duplicateMap(ValueRange inputs) {
     llvm::DenseMap<Value, unsigned> firstIndex;
     llvm::DenseMap<unsigned, unsigned> result;
@@ -2022,23 +1914,19 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
     return result;
   }
 
-  // Two values in the same block are duplicated if
-  // 1. Their backing values are identical,
-  // 2. They refer to block arguments that are known to be duplicates
+  // Two values in the same block are duplicated if they are identical or are
+  // block arguments for the known duplicate operand indices.
   static bool isDuplicate(Block *block, ValueRange values, unsigned index,
                           unsigned firstOccurrence) {
     auto x = values[index];
     auto y = values[firstOccurrence];
 
-    // Same values count as duplicates
     if (x == y)
       return true;
 
     auto blockArgX = dyn_cast<BlockArgument>(x);
     auto blockArgY = dyn_cast<BlockArgument>(y);
 
-    // Block arguments that correspond to duplicate input operands also
-    // count as duplicates.
     return blockArgX && blockArgY && blockArgX.getParentBlock() == block &&
            blockArgY.getParentBlock() == block &&
            blockArgX.getArgNumber() == index &&
@@ -2058,9 +1946,8 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
     ValueRange condOpArgs = condOp.getArgs();
     ValueRange yieldOpArgs = yieldOp.getOperands();
 
-    // The duplication map acts as a seed for checking duplicates in the body
-    // and condition regions. Every duplicate operand must alias in an identical
-    // way on the region terminators.
+    // Duplicate operands are candidates; each must also be duplicated on both
+    // region terminators.
     auto duplicatedWhileOperands = duplicateMap(op.getOperands());
     if (duplicatedWhileOperands.empty())
       return rewriter.notifyMatchFailure(op, "no operands to remove");
@@ -2069,8 +1956,6 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
     llvm::SmallVector<Value> resultsToKeep;
     llvm::BitVector toErase(op.getNumOperands());
 
-    // Check if each duplication candidate from the operands is also a
-    // duplicate within the predicate and body regions of the while op.
     for (unsigned index : llvm::seq(op.getNumOperands())) {
       auto it = duplicatedWhileOperands.find(index);
       if (it == duplicatedWhileOperands.end()) {
@@ -2080,7 +1965,6 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
       }
 
       unsigned firstOccurrence = it->second;
-      // First check if cond op has duplicate candidates
       if (!isDuplicate(op.getCondBlock(), condOpArgs, index, firstOccurrence) ||
           !isDuplicate(op.getBodyBlock(), yieldOpArgs, index,
                        firstOccurrence)) {
@@ -2089,8 +1973,6 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
         continue;
       }
 
-      // Found some duplicated operands/results, remap them to refer to the
-      // first occurrence of that value.
       toErase.set(index);
       rewriter.replaceAllUsesWith(condBlockArgs[index],
                                   condBlockArgs[firstOccurrence]);
@@ -2104,8 +1986,7 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
       return rewriter.notifyMatchFailure(op,
                                          "no duplicate loop carried values");
 
-    // Construct the new arguments for the mo.while.condition and mo.yield
-    // terminators (ops do not have nice functions to erase arguments).
+    // The terminators have no API to erase arguments, so rebuild them.
     SmallVector<Value> newCondArgs;
     SmallVector<Value> newYieldArgs;
 
@@ -2116,11 +1997,9 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
       }
     }
 
-    // Erase the duplicated block arguments
     op.getCondBlock()->eraseArguments(toErase);
     op.getBodyBlock()->eraseArguments(toErase);
 
-    // Erase the duplicated terminator arguments
     condOp.getArgsMutable().assign(newCondArgs);
     yieldOp.getOperandsMutable().assign(newYieldArgs);
 
@@ -2144,17 +2023,13 @@ struct RemoveDuplicateLoopCarriedValues : public OpRewritePattern<WhileOp> {
 struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
   using OpRewritePattern<WhileOp>::OpRewritePattern;
 
-  /// Can the given value to the terminator op be simplified if it appears as
-  /// the index'th operand to the terminator.
+  /// Whether `val`, as the index'th terminator operand, is the init value or a
+  /// trivial forward of the index'th block argument.
   static bool canSimplifyValue(Value val, Value initVal, Block *block,
                                unsigned index) {
-    // If the operand correspond to the initial value at the given index,
-    // then the value can be simplified.
     if (val == initVal)
       return true;
 
-    // Check if the given value is a trivial forwarding of the index'th block
-    // argument from the parent block.
     auto blockArg = dyn_cast<BlockArgument>(val);
     if (blockArg && blockArg.getParentBlock() == block &&
         index == blockArg.getArgNumber())
@@ -2172,14 +2047,11 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
     YieldOp yieldOp = op.getBodyTerminator();
     ValueRange yieldOpArgs = yieldOp.getOperands();
 
-    // Perform a simplification check before proceeding to avoid allocating
-    // all the extra dstat structures which may be unused.
+    // Check first to avoid allocating the data structures below.
     bool canSimplify = false;
     for (const auto [index, initVal, yieldOpArg, condOpArg] :
          llvm::enumerate(op.getOperands(), yieldOpArgs, condOpArgs)) {
 
-      // We can simplify the index'th loop carried value if both the YieldOp's
-      // and WhileConditionOp's index'th value can be simplified.
       canSimplify |=
           canSimplifyValue(yieldOpArg, initVal, yieldOp->getBlock(), index) &&
           canSimplifyValue(condOpArg, initVal, condOp->getBlock(), index);
@@ -2200,8 +2072,6 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
           canSimplifyValue(yieldOpArg, initVal, yieldOp->getBlock(), index) &&
           canSimplifyValue(condOpArg, initVal, condOp->getBlock(), index);
 
-      // If the index'th loop carried value can be simplified, record the
-      // mapping to the corresponding initVal.
       if (simplifyArg) {
         blockInitValMap[index] = initVal;
         continue;
@@ -2214,13 +2084,13 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
       newBodyBlockArgLocs.emplace_back(bodyBlockArgs[index].getLoc());
     }
 
-    { // Update body YieldOp
+    {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(yieldOp);
       rewriter.replaceOpWithNewOp<YieldOp>(yieldOp, newYieldOpArgs);
     }
 
-    { // Update cond WhileConditionOp
+    {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(condOp);
       rewriter.replaceOpWithNewOp<WhileConditionOp>(
@@ -2245,14 +2115,9 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
     SmallVector<Value> newBodyBlockArgs(condBlock.getNumArguments());
     SmallVector<Value> newResults(condBlock.getNumArguments());
 
-    // For each i-th before block argument we find it's replacement value as :-
-    //   1. If i-th before block argument is a loop invariant, we fetch it's
-    //      initial value from `beforeBlockInitValMap` by querying for key `i`.
-    //   2. Else we fetch j-th new before block argument as the replacement
-    //      value of i-th before block argument.
+    // A loop-invariant i-th argument is replaced by its init value; the rest
+    // map in order to the j-th new block argument.
     for (unsigned i = 0, j = 0, n = condBlock.getNumArguments(); i < n; ++i) {
-      // If the index 'i' argument was a loop invariant we fetch it's initial
-      // value from `beforeBlockInitValMap`.
       if (blockInitValMap[i] != nullptr) {
         newCondBlockArgs[i] = blockInitValMap[i];
         newBodyBlockArgs[i] = blockInitValMap[i];
@@ -2265,11 +2130,9 @@ struct RemoveLoopInvariantCarriedValues : public OpRewritePattern<WhileOp> {
       }
     }
 
-    // Inline new blocks with updated block arguments
     rewriter.mergeBlocks(&condBlock, &newCondBlock, newCondBlockArgs);
     rewriter.mergeBlocks(&bodyBlock, &newBodyBlock, newBodyBlockArgs);
 
-    // Replace old op with the new results
     rewriter.replaceOp(op, newResults);
     return success();
   }
@@ -2315,7 +2178,7 @@ LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
   }
   if (!changedIndices)
     return failure();
-  // Construct new op with same dtypes for indices
+  // Keep the original indices dtype.
   TensorValue newIndices = ConstantOp::create(rewriter, op->getLoc(), indices,
                                               inputShapeType.getDeviceRef());
   newIndices = CastOp::create(rewriter, op->getLoc(), newIndices,
@@ -2328,21 +2191,18 @@ LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
 namespace M::MO {
 
 namespace {
-/// A scatter-like operation with an empty indices tensor is a no-op.
+/// A pad-like operation with all-zero paddings is a no-op.
 struct FoldNoOpPadLikeOp : public OpInterfaceRewritePattern<PadLike> {
   using OpInterfaceRewritePattern<PadLike>::OpInterfaceRewritePattern;
 
   LogicalResult matchAndRewrite(PadLike op,
                                 PatternRewriter &rewriter) const override {
-    // Try to extract constant paddings
     auto maybePaddings = tryGetConstantIntVector(op.getPaddings());
     if (!maybePaddings.has_value())
       return failure();
     ArrayRef<int64_t> paddings = maybePaddings.value();
-    // If paddings are all 0s, the pad operation is identity. We replace it with
-    // a rebind from the input because the output shape of `mo.pad` might not
-    // always equal to the input shape, e.g., it could be fully dynamic from the
-    // frontends, e.g.,
+    // Rebind rather than forward: the output shape may be less refined than
+    // the input, e.g. fully dynamic from the frontends:
     //     mo.pad(input, zeros, val) : ... -> tensor<[?, ?, ?], f32>
     if (llvm::all_of(paddings, [](int64_t n) { return n == 0; })) {
       rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), op.getInput(),
@@ -2374,8 +2234,7 @@ struct FoldNoOpScatterLikeOp : public OpInterfaceRewritePattern<ScatterLike> {
   }
 };
 
-// `mo.scatter` carries its axis as a compile-time attribute and so is not part
-// of the `ScatterLike` interface; fold its no-op form (empty indices) directly.
+// `mo.scatter` carries its axis as an attribute, so it is not `ScatterLike`.
 struct FoldNoOpScatterOp : public OpRewritePattern<ScatterOp> {
   using OpRewritePattern<ScatterOp>::OpRewritePattern;
 

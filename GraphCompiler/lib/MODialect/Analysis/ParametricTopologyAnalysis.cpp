@@ -15,11 +15,9 @@
 namespace M::MO {
 
 ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
-  // If from is in another block, then all parents of to must also be users of
-  // from, up to the last parent that is in the same block as from. When
-  // doFirstLevel is set, we will create the dependency between from and to
-  // (parametric dependencies are never present in SSA graphs so we need to do
-  // it unconditionally).
+  // If from is in another block, every parent of to up to from's block also
+  // uses from. doAtLeastOnce forces the from -> to edge, since parametric
+  // dependencies never appear in the SSA graph.
   const auto applyDependencyToParentOps = [&](Operation *from, Operation *to,
                                               bool doAtLeastOnce) {
     // Parameters don't obey region dominance like SSA values. An operation can
@@ -30,9 +28,7 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
 
     const auto applyDependency = [&]() {
       doAtLeastOnce = true;
-      // provider -> user
       metadata[from].parametricUsers.insert(to);
-      // user <- provider
       metadata[to].parametricProviders.insert(from);
       to = to->getParentOp();
     };
@@ -40,9 +36,7 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
     while (to && from->getBlock() != to->getBlock())
       applyDependency();
 
-    // If from and to where not in the same block originally, then do the last
-    // op. Otherwise, don't do anything (we would end up duplicating the SSA
-    // graph in the metadata).
+    // Skip the same-block edge otherwise; it would duplicate the SSA graph.
     if (to && doAtLeastOnce)
       applyDependency();
   };
@@ -52,8 +46,8 @@ ParametricTopologyAnalysis::ParametricTopologyAnalysis(mlir::Operation *root) {
     KGEN::ParameterUseDefGraph useDefGraph(region);
     useDefGraph.calculate(paramCache);
 
-    // For every nested use def graph (this is because an op that implements
-    // DeclInterface will not appear in the root useDefGraph).
+    // DeclInterface ops don't appear in the root useDefGraph, so walk nested
+    // graphs too.
     llvm::SmallVector<KGEN::ParameterUseDefGraph *> workList = {&useDefGraph};
     while (!workList.empty()) {
       auto &nextUseDefGraph = *workList.pop_back_val();
@@ -101,19 +95,16 @@ ParametricTopologyAnalysis::providers(mlir::Operation *op) const {
   return ret;
 }
 
-/// WARNING: Blatantly copied from
+/// Copied from
 /// https://mlir.llvm.org/doxygen/TopologicalSortUtils_8cpp_source.html#l00107
-/// This extends it by using the additional dependencies coming from the
-/// parametric world.
+/// and extended with parametric dependencies.
 
 /// Return `true` if the given operation is ready to be scheduled.
 bool inline ParametricTopologyAnalysis::isOpReady(
     Operation *op, DenseSet<Operation *> &unscheduledOps) {
-  // An operation is ready to be scheduled if all its operands are ready. An
-  // operation is ready if:
+  // A provider is ready if neither it nor any ancestor below `op` is
+  // unscheduled.
   const auto isReady = [&](Operation *parent) {
-    // it is not defined by an unscheduled op (and also not nested within an
-    // unscheduled op).
     do {
       // Stop traversal when op under examination is reached.
       if (parent == op)
@@ -121,12 +112,10 @@ bool inline ParametricTopologyAnalysis::isOpReady(
       if (unscheduledOps.contains(parent))
         return false;
     } while ((parent = parent->getParentOp()));
-    // No unscheduled op found.
     return true;
   };
 
-  // An operation is recursively ready to be scheduled of it and its nested
-  // operations are ready.
+  // Ready only if it and all its nested ops are ready.
   WalkResult readyToSchedule = op->walk([&](Operation *nestedOp) {
     bool allOf = true;
     forEachProvider(nestedOp, [&](auto provider) {
@@ -144,10 +133,8 @@ bool inline ParametricTopologyAnalysis::isOpReady(
 
 void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
     mlir::MutableArrayRef<mlir::Operation *> ops) {
-  // The set of operations that have not yet been scheduled.
   DenseSet<Operation *> unscheduledOps;
 
-  // Mark all operations as unscheduled.
   for (Operation *op : ops)
     unscheduledOps.insert(op);
 
@@ -156,14 +143,11 @@ void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
   while (!unscheduledOps.empty()) {
     [[maybe_unused]] bool scheduledAtLeastOnce = false;
 
-    // Loop over the ops that are not sorted yet, try to find the ones "ready",
-    // i.e. the ones for which there aren't any operand produced by an op in the
-    // set, and "schedule" it (swap it with the op at `nextScheduledOp`).
+    // Schedule each ready op by swapping it to `nextScheduledOp`.
     for (unsigned i = nextScheduledOp; i < ops.size(); ++i) {
       if (!isOpReady(ops[i], unscheduledOps))
         continue;
 
-      // Schedule the operation by moving it to the start.
       unscheduledOps.erase(ops[i]);
       std::swap(ops[i], ops[nextScheduledOp]);
       scheduledAtLeastOnce = true;
@@ -180,17 +164,14 @@ void ParametricTopologyAnalysis::computeTopologicalSorting(
   computeTopologicalSortingImpl(ops);
 }
 
-// NOTE this isn't refactored with the other impl because the differences are
-// trivial to lift out, and a refactor might end up becoming over-abstraction.
+// Not shared with the impl above: a common helper would over-abstract.
 void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
     mlir::Block *block) {
   if (block->empty())
     return;
 
-  // The set of operations that have not yet been scheduled.
   DenseSet<Operation *> unscheduledOps;
 
-  // Mark all operations as unscheduled.
   for (Operation &op : *block)
     unscheduledOps.insert(&op);
 
@@ -200,9 +181,7 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
   while (!unscheduledOps.empty()) {
     [[maybe_unused]] bool scheduledAtLeastOnce = false;
 
-    // Loop over the ops that are not sorted yet, try to find the ones "ready",
-    // i.e. the ones for which there aren't any operand produced by an op in the
-    // set, and "schedule" it (swap it with the op at `nextScheduledOp`).
+    // Schedule each ready op by moving it before `nextScheduledOp`.
     for (Operation &op :
          llvm::make_early_inc_range(llvm::make_range(nextScheduledOp, end))) {
       if (!isOpReady(&op, unscheduledOps))
@@ -214,12 +193,10 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
       if (&op == &*nextScheduledOp)
         ++nextScheduledOp;
 
-      // NOTE these ops are _required_ to be at the end of their parent block,
-      // so we must not reorder them.
+      // Terminators must stay at the end of their block.
       if (op.hasTrait<OpTrait::IsTerminator>())
         continue;
 
-      // Schedule the operation by moving it to the start.
       op.moveBefore(block, nextScheduledOp);
     }
 
@@ -232,8 +209,7 @@ void ParametricTopologyAnalysis::topologicallySortAllOpsWithin(Region *region) {
   auto regionKindInterface =
       dyn_cast<mlir::RegionKindInterface>(region->getParentOp());
 
-  // If we are unable to prove the region is graph region, don't sort since
-  // original ordering may matter.
+  // Only graph regions can be reordered safely.
   if (!regionKindInterface)
     return;
 
@@ -249,10 +225,7 @@ void ParametricTopologyAnalysis::topologicallySortAllOpsWithin(Region *region) {
   }
 }
 
-// Return vector of op and any users, users of users, and so forth.
-//
-// It is assumed all operations are rooted on `op` and it is guaranteed we
-// will return the subgraph in a topological order.
+// Returns op and its transitive users, in topological order.
 SmallVector<Operation *> getRootedComponents(Operation *op) {
   SmallVector<Operation *> fringe;
   fringe.push_back(op);

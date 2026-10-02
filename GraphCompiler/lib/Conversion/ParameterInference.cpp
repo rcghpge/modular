@@ -66,11 +66,8 @@ DictionaryAttr inferParameters(Operation *op, OpBuilder &builder) {
     Attribute value = attr.getValue();
     if (isa<M::DeviceRefAttr, KGEN::ParamDeclArrayAttr>(value))
       continue;
-    // An all-integer `ArrayAttr` (e.g. a fused slice's `static_starts` /
-    // `static_steps`) is not a `TypedAttr`, but is a valid comptime `IntTuple`
-    // kernel parameter. The legacy MO->MOGG scrape (`forwardParameters`)
-    // forwards it, so mirror that here -- otherwise it is dropped and the
-    // kernel's own param inference fails with "Failed to infer parameter".
+    // An all-integer `ArrayAttr` (e.g. a fused slice's `static_starts`) is not
+    // a `TypedAttr`, but is a valid comptime `IntTuple` kernel parameter.
     if (auto arrayAttr = dyn_cast<ArrayAttr>(value)) {
       if (llvm::all_of(arrayAttr,
                        [](Attribute a) { return isa<IntegerAttr>(a); }))
@@ -99,7 +96,6 @@ void appendStaticOperandParameters(Operation *op, OpBuilder &builder,
     } else if (auto maybeIntScalar = tryGetConstantInt(asTensor)) {
       values.push_back(*maybeIntScalar);
     } else {
-      // Not constant.
       MO::TensorType t = asTensor.getType();
       if (t.hasStaticShape()) {
         int64_t numElems = *t.getNumElements();
@@ -109,7 +105,6 @@ void appendStaticOperandParameters(Operation *op, OpBuilder &builder,
       }
     }
 
-    // Build an ArrayAttr for the Mojo path.
     params.push_back(NamedAttribute(builder.getStringAttr(paramName),
                                     builder.getI64ArrayAttr(values)));
   };
@@ -135,16 +130,10 @@ void appendStaticOperandParameters(Operation *op, OpBuilder &builder,
 
 namespace M::MOGG {
 
-/// Infer kernel parameters from opaque type parameters.
-///
-/// For emit-mojo path, we need to resolve kernel parameters (P0, P1, etc.)
-/// from the opaque type parameters (S0, S1, etc.) on operands and results.
-/// The kernel function has annotations that map these:
+/// Resolves kernel parameters (P0, P1, ...) from the opaque type parameters
+/// (S0, S1, ...) on operands and results, via the kernel's annotations:
 ///   mogg.value_params: [{S0 = #kgen.param.decl.ref<P0>, ...}, ...]
 ///   mogg.value_result_params: [{S0 = #kgen.param.decl.ref<P0>, ...}]
-///
-/// This function matches the opaque type's concrete values to the kernel's
-/// parameter declarations.
 void inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
                            Operation *moOp,
                            const KernelDeclFunctionAdaptor &function,
@@ -152,10 +141,8 @@ void inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
   auto inputParamsAttr = function.attr.getArgParams();
   auto resultParamsAttr = function.attr.getResultParams();
 
-  // Build a set of explicitly declared parameter names.
-  // Parameters with a backtick in their name are internal/inferred parameters
-  // (e.g., "S1`2x1" from a placeholder "_" in the signature). We only want
-  // the explicitly declared parameters (e.g., "P0" from "[P0: Int]").
+  // Explicitly declared parameters only (e.g. "P0" from "[P0: Int]"); a
+  // backtick marks an inferred one (e.g. "S1`2x1" from a "_" placeholder).
   llvm::DenseSet<StringRef> declaredParams;
   if (inputParams) {
     for (auto paramAttr : inputParams) {
@@ -167,7 +154,6 @@ void inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
     }
   }
 
-  // Helper to match parameters from an opaque type against kernel annotations.
   auto inferFromOpaque = [&](DictionaryAttr kernelParamDict,
                              MO::OpaqueType opaqueType) {
     if (!kernelParamDict || !opaqueType)
@@ -178,21 +164,15 @@ void inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
       return;
 
     for (NamedAttribute kernelParam : kernelParamDict) {
-      // Check if this is a parameter declaration reference (e.g.,
-      // #kgen.param.decl.ref<P0>)
       auto declRef = dyn_cast<KGEN::ParamDeclRefAttr>(kernelParam.getValue());
       if (!declRef)
         continue;
 
-      // Only include parameters that are explicitly declared in the kernel's
-      // parameter list. This filters out inferred/anonymous parameters like
-      // "_" which have internal mangled names (contain backticks).
       StringRef paramName = declRef.getName();
       if (!declaredParams.contains(paramName))
         continue;
 
-      // Look up the corresponding value in the opaque type's parameters.
-      // The key is the same (e.g., "S0" matches "S0" in the opaque type).
+      // Same key as in the opaque type (e.g. "S0").
       auto opaqueValue = opaqueParams.getNamed(kernelParam.getName());
       if (!opaqueValue)
         continue;
@@ -201,23 +181,18 @@ void inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
       if (!typedValue)
         continue;
 
-      // Add the resolved parameter: kernel param name (P0) -> concrete value.
-      // declRef.getName() returns a StringAttr which is the parameter name.
       forwardedParameters.push_back(
           NamedAttribute(declRef.getName(), typedValue));
     }
   };
 
-  // Infer parameters from operands.
-  // Note: The kernel function's argument list has DPS outputs first, then
-  // inputs. But the MO operation's operands only include the inputs, not
-  // the DPS outputs. So we need to offset by the number of DPS outputs.
+  // Kernel arguments list DPS outputs first, then inputs; MO operands are
+  // only the inputs.
   if (inputParamsAttr) {
     unsigned numDpsOutputs =
         static_cast<unsigned>(function.outputArguments.size());
 
     for (auto [idx, operand] : llvm::enumerate(moOp->getOperands())) {
-      // The kernel argument index is offset by the number of DPS outputs.
       unsigned kernelArgIdx = idx + numDpsOutputs;
       if (kernelArgIdx >= inputParamsAttr.size())
         break;
@@ -232,7 +207,6 @@ void inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
     }
   }
 
-  // Infer parameters from results.
   if (!resultParamsAttr)
     return;
 
@@ -249,11 +223,10 @@ void inferOpaqueParameters(SmallVectorImpl<NamedAttribute> &forwardedParameters,
   }
 }
 
-/// Remove parameters from inferByInputs that appear in the function's result
-/// type but not in the actual input argument types.
+/// Removes parameters from inferByInputs that appear in the function's result
+/// type but not in its input argument types.
 static void removeResultOnlyParams(KGEN::LIT::FnTypeGeneratorType sig,
                                    llvm::DenseSet<StringRef> &inferByInputs) {
-  // Collect params from result type.
   SmallVector<KGEN::ParamDeclRefAttr> resultParamRefs;
   bool hasConstExpr = false;
   size_t requiredSignatureDepth = 0;
@@ -264,7 +237,7 @@ static void removeResultOnlyParams(KGEN::LIT::FnTypeGeneratorType sig,
   for (auto paramRef : resultParamRefs)
     resultParams.insert(paramRef.getName().getValue());
 
-  // Collect params from actual input arguments (excluding byref result slot).
+  // Excludes the byref result slot.
   ArrayRef<Type> argTypes = sig.getArguments();
   if (sig.hasMemoryOnlyResult())
     argTypes = argTypes.drop_back();
@@ -280,7 +253,6 @@ static void removeResultOnlyParams(KGEN::LIT::FnTypeGeneratorType sig,
       inputParams.insert(paramRef.getName().getValue());
   }
 
-  // Remove any parameters that are only in the result type, not in inputs.
   SmallVector<StringRef> toRemove;
   for (StringRef paramName : inferByInputs) {
     if (resultParams.contains(paramName) && !inputParams.contains(paramName))
@@ -290,8 +262,7 @@ static void removeResultOnlyParams(KGEN::LIT::FnTypeGeneratorType sig,
     inferByInputs.erase(paramName);
 }
 
-/// Core parameter-inference logic shared by all inferKernelParameters
-/// overloads.
+/// Shared by all inferKernelParameters overloads.
 static ErrorOr<InferredParameters>
 inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
                 ArrayRef<mlir::Attribute> structLevelParams,
@@ -300,20 +271,12 @@ inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
                 KGEN::LIT::FnTypeGeneratorType sig,
                 std::function<ErrorOr<MojoValue>(StringRef)> &inferCallback) {
 
-  // Collect the set of params inferable from inputs by walking the function's
-  // argument types directly. A param is inferable when an argument type
-  // references it -- either as a named `ParamDeclRefAttr` or as a depth-0
-  // `ParamIndexRefAttr` (the form elaborated bytecode uses for bound
-  // parameter values).
-  //
-  // For IndexRefs, `*(0, K)` indexes into the generator's *full* parameter
-  // list, which Mojo lays out as `structLevelParams + fnLevelParams` (struct
-  // params first). `fnLevelParams` alone (from
-  // `KernelFunctionAttr::params` / `FnOp::getInputParams()`) is just the
-  // fn-level subset, so we build a merged lookup table to recover the right
-  // name. A wrong lookup would silently misreport e.g. "freq_dtype" as
-  // inferable when the kernel really references "dtype" -- breaking parameter
-  // inference for kernels with both struct-level and fn-level params.
+  // A param is inferable from inputs when an argument type references it, as
+  // a `ParamDeclRefAttr` or a depth-0 `ParamIndexRefAttr` (elaborated
+  // bytecode's form). An IndexRef `*(0, K)` indexes the generator's full
+  // parameter list, laid out as `structLevelParams + fnLevelParams`, so look
+  // it up in the merged list; `fnLevelParams` alone would name the wrong
+  // param.
   llvm::SmallVector<mlir::Attribute> mergedParams;
   mergedParams.reserve(structLevelParams.size() + fnLevelParams.size());
   mergedParams.append(structLevelParams.begin(), structLevelParams.end());
@@ -334,8 +297,6 @@ inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
       return;
     }
     if (auto indexRef = dyn_cast<KGEN::ParamIndexRefAttr>(attr)) {
-      // Depth-0 references the fn's enclosing generator scope, which is the
-      // merged `structLevelParams + fnLevelParams` list.
       if (indexRef.getDepth() == 0 &&
           indexRef.getIndex() < mergedParams.size()) {
         auto pd = cast<KGEN::ParamDeclAttr>(mergedParams[indexRef.getIndex()]);
@@ -355,7 +316,6 @@ inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
   for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i)
     walkType(sig.getArgument(i));
 
-  // Remove result-only parameters from the inferByInputs set.
   removeResultOnlyParams(sig, inferByInputs);
 
   auto isIOSpecType = [](Type ty) {
@@ -401,10 +361,8 @@ inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
   return ret;
 }
 
-// Build a {param-name -> UnitAttr} dictionary listing fn-level params with
-// a declared default value. Sourced from the function's `PogListAttr`
-// metadata; needed by `inferParameters` to know which missing inferences
-// are tolerable.
+// {param-name -> UnitAttr} for fn-level params with a declared default, from
+// the function's `PogListAttr`; such params may fail to infer.
 static mlir::DictionaryAttr
 computeDefaultParamsDict(KernelDeclFunctionAdaptor *fnAdaptor) {
   if (!fnAdaptor || !fnAdaptor->attr.getParams() ||
@@ -450,12 +408,9 @@ ErrorOr<InferredParameters> inferKernelParameters(
   ASSERT_STREAM(fnAdaptor,
                 "Function label '" << funcLabel << "' not found in adaptor");
 
-  // Pull fn-level params from the function adaptor itself. Each variant
-  // (execute / elementwise / shape / update_view) keeps its own param list
-  // because their signatures can differ (e.g. elementwise typically omits
-  // `target`/`_trace_name`). For an elementwise label that falls back to the
-  // synthesised-from-elementwise path, the adaptor's `params` already reflects
-  // the elementwise variant.
+  // Each variant (execute / elementwise / shape / update_view) has its own
+  // param list, since signatures differ (e.g. elementwise omits
+  // `target`/`_trace_name`).
   ArrayRef<mlir::Attribute> fnParams;
   if (fnAdaptor->attr.getParams())
     fnParams = fnAdaptor->attr.getParams().getValue();
@@ -464,8 +419,7 @@ ErrorOr<InferredParameters> inferKernelParameters(
   if (adaptor.structParams)
     structParams = adaptor.structParams.getValue();
 
-  // Default-params dict is computed from the *execute* fn for parity with
-  // the WIP behavior; defaults are declared on the execute signature.
+  // Defaults are declared on the execute signature.
   mlir::DictionaryAttr defaultParams = computeDefaultParamsDict(
       adaptor.executeFunction ? &*adaptor.executeFunction : nullptr);
   return inferParameters(fnParams, structParams, fnAdaptor->attr.getArgParams(),
@@ -476,9 +430,6 @@ ErrorOr<InferredParameters> inferKernelParameters(
 ErrorOr<InferredParameters> inferKernelParameters(
     PrimitiveDeclOp primDecl,
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
-  // Primitives have no struct-level params. arg-param mappings let
-  // inferParameters tolerate failures for parameters that are inferable from
-  // input argument types at the Mojo call site.
   MOGG::KernelFunctionAttr fn = primDecl.getFunction();
   return inferParameters(fn.getParams().getValue(),
                          /*structLevelParams=*/{}, fn.getArgParams(),
@@ -489,7 +440,6 @@ ErrorOr<InferredParameters> inferKernelParameters(
 ErrorOr<InferredParameters> inferKernelParameters(
     ShapeFunctionDeclOp shapeDecl,
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback) {
-  // Standalone shape functions have no struct-level params.
   MOGG::KernelFunctionAttr fn = shapeDecl.getFunction();
   return inferParameters(fn.getParams().getValue(),
                          /*structLevelParams=*/{}, fn.getArgParams(),

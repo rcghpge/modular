@@ -18,68 +18,45 @@
 namespace M::MOGG {
 
 /// Indexes `mogg.kernel.decl`, `mogg.primitive.decl`, and
-/// `mogg.shape_func.decl` ops in a module for fast lookup by registration
-/// name or sym_name.
-///
-/// This is a plain helper, not an MLIR analysis: construct one at the entry
-/// of a pass that needs lookups, and let it go out of scope at the end. The
-/// index is built eagerly; subsequent lookups are O(1).
+/// `mogg.shape_func.decl` ops by registration name and sym_name. Not an MLIR
+/// analysis: build one per pass that needs lookups.
 class MojoRegistry {
 public:
   explicit MojoRegistry(mlir::ModuleOp module);
 
-  /// Returns all `mogg.kernel.decl` ops whose `registration` matches `name`.
-  /// Multiple structs may share the same registration. Returns an empty range
-  /// if none is found. The returned view aliases storage owned by the
-  /// registry; it stays valid for the registry's lifetime.
+  /// Returns all `mogg.kernel.decl` ops registered under `name` (possibly
+  /// several, possibly none). The view is valid for the registry's lifetime.
   llvm::ArrayRef<KernelDeclOp> lookupKernel(llvm::StringRef name) const;
 
-  /// Returns true if at least one `mogg.kernel.decl` op is registered under
-  /// `name`.
   bool containsKernel(llvm::StringRef name) const;
 
-  /// Returns the `mogg.kernel.decl` op whose `sym_name` matches `symName`.
-  /// Asserts that it exists; use the `OrNull` variant when absence is a
-  /// condition the caller handles.
+  /// Asserts that the op exists.
   KernelDeclOp lookupKernelBySymName(llvm::StringRef symName) const;
 
-  /// Returns the `mogg.kernel.decl` op whose `sym_name` matches `symName`,
-  /// or a null op if none exists.
   KernelDeclOp lookupKernelBySymNameOrNull(llvm::StringRef symName) const;
 
-  /// Returns the `mogg.primitive.decl` op whose `registration` matches
-  /// `name`. Asserts that the primitive exists; use `containsPrimitive` for
-  /// an existence check.
+  /// Asserts that the primitive exists.
   PrimitiveDeclOp lookupPrimitive(llvm::StringRef name) const;
 
   PrimitiveDeclOp lookupPrimitiveBySymName(llvm::StringRef symName) const;
 
-  /// Returns true if a `mogg.primitive.decl` op exists for `name`.
   bool containsPrimitive(llvm::StringRef name) const;
 
-  /// Returns the `mogg.shape_func.decl` op whose `registration` matches
-  /// `name`, or a null op if none exists.
+  /// Returns a null op if none exists.
   ShapeFunctionDeclOp lookupShapeFunction(llvm::StringRef name) const;
 
-  /// Returns the `mogg.shape_func.decl` op whose `sym_name` matches
-  /// `symName`. Asserts that it exists; use the `OrNull` variant when absence
-  /// is a condition the caller handles.
+  /// Asserts that the op exists.
   ShapeFunctionDeclOp
   lookupShapeFunctionBySymName(llvm::StringRef symName) const;
 
-  /// Returns the `mogg.shape_func.decl` op whose `sym_name` matches
-  /// `symName`, or a null op if none exists.
   ShapeFunctionDeclOp
   lookupShapeFunctionBySymNameOrNull(llvm::StringRef symName) const;
 
-  /// Returns true if a `mogg.shape_func.decl` op exists for `name`.
   bool containsShapeFunction(llvm::StringRef name) const;
 
-  /// Resolves the best-matching kernel for `name` and `device`. Among
-  /// candidates whose non-empty device-info fields all match the runtime
-  /// device, picks the most specific one (most non-empty fields).
-  /// User-defined beats built-in at equal specificity. Returns an error if no
-  /// registered candidate matches the runtime device.
+  /// Among candidates whose non-empty device-info fields all match `device`,
+  /// picks the one with the most non-empty fields; user-defined beats
+  /// built-in on a tie. Errors if none matches.
   ErrorOr<KernelDeclOp> getResolvedKernel(llvm::StringRef name,
                                           DeviceRefAttr device) const;
 
@@ -96,47 +73,31 @@ private:
   llvm::StringMap<ShapeFunctionDeclOp> shapeFuncBySymName;
 };
 
-/// Clone every `mogg.kernel.decl` and `mogg.primitive.decl` op from `src`
-/// into `dst`. Used when a fresh sub-module needs the same kernel registry as
-/// an existing module (e.g. constant-folding sub-modules) without re-running
-/// `--mogg-import-packages` from scratch — the decl ops are fully resolved
-/// and safe to copy.
-///
-/// Existing decls in `dst` are left untouched. Callers that need
-/// deduplication should run `--mogg-import-packages` with `--append=true` on
-/// `dst` afterward, or just avoid double-population.
+/// Clones every `mogg.kernel.decl` and `mogg.primitive.decl` op from `src`
+/// into `dst` (e.g. for constant-folding sub-modules), avoiding a rerun of
+/// `--mogg-import-packages`. Does not deduplicate against decls already in
+/// `dst`.
 void copyKernelDecls(mlir::ModuleOp src, mlir::ModuleOp dst);
 
-/// Verify that an MO operation matches the signature of its registered Mojo
-/// kernel. Reuses an already-built `MojoRegistry`. Prefer this overload from
-/// long-running consumers (Python `Analysis`) so the registry doesn't have
-/// to be rebuilt on every call.
+/// Verifies that an MO operation matches its registered Mojo kernel's
+/// signature. Prefer this overload from long-running consumers (Python
+/// `Analysis`) to avoid rebuilding the registry per call.
 ErrorOrSuccess verifyCustomOp(const MojoRegistry &registry,
                               mlir::Operation *op);
 
-/// Convenience overload that builds a fresh `MojoRegistry` over
-/// `kernelDecls` and delegates. `kernelDecls` is the module that holds the
-/// `mogg.kernel.decl` / `mogg.primitive.decl` ops (typically populated by
-/// `--mogg-import-packages` or by `copyKernelDecls`). Backs the public C
-/// API `MAXG_verifyCustomOp`.
+/// Builds a `MojoRegistry` over `kernelDecls`, the module holding the decl
+/// ops. Backs the public C API `MAXG_verifyCustomOp`.
 ErrorOrSuccess verifyCustomOp(mlir::ModuleOp kernelDecls, mlir::Operation *op);
 
-/// Resolve the filesystem paths of the built-in Mojo kernel packages
-/// (`kernels` and `primitives`), the packages whose declarations
-/// `--mogg-import-packages` loads. Returns an error if the runtime mojo path
-/// resolver can't find them. For the full package set that participates in
-/// the MEF cache key, see `getKernelPackagePathsForCacheKey`.
+/// Resolves the paths of the built-in packages (`kernels`, `primitives`) that
+/// `--mogg-import-packages` loads. See also `getKernelPackagePathsForCacheKey`.
 ErrorOr<llvm::SmallVector<std::string>>
 getBuiltInKernelPackagePaths(mlir::MLIRContext *ctx);
 
-/// Resolve the filesystem paths of every Mojo binary package that can affect
-/// compiled kernels: the built-in packages (`kernels` and `primitives`) plus
-/// all binary packages reachable on the module import path. The built-in
-/// packages mostly re-export symbols whose implementations live in the
-/// import-path packages (`linalg`, `nn`, ...), so a kernel-source change can
-/// alter compiled kernels without changing the built-in packages' bytes; the
-/// MEF cache key must therefore cover the import-path packages too. Returns
-/// an error only if the built-in packages can't be resolved.
+/// Resolves the built-in packages plus every binary package on the import
+/// path. The built-ins mostly re-export symbols implemented in import-path
+/// packages (`linalg`, `nn`, ...), so the MEF cache key must cover those too.
+/// Errors only if the built-in packages can't be resolved.
 ErrorOr<llvm::SmallVector<std::string>>
 getKernelPackagePathsForCacheKey(mlir::MLIRContext *ctx);
 

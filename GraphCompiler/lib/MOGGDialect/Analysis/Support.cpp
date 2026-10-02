@@ -50,7 +50,6 @@ MojoOperationInfo getMojoOperationInfo(Operation *op) {
     return {opName, MOGG::kMoggExecuteFunctionLabel};
   }
 
-  // Shape invocations call the shape functions
   if (auto shapeInvoke = dyn_cast<MO::InvokeShapeFuncOp>(op))
     return {shapeInvoke.getShapeFuncName(), MOGG::kMoggShapeFunctionLabel};
 

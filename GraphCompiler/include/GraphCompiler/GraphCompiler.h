@@ -26,9 +26,8 @@ struct GCPipelineOptions;
 LogicalResult runGcPipeline(ModuleOp module,
                             const GCPipelineOptions &gcPipelineOptions);
 
-/// Convert a module at the MGP level to a buffer in MEF format.
-/// Note, that this will destroy the dense resources in the MGP constants
-/// in the module op, so it is a destructive conversion.
+/// Convert a module at the MGP level to a buffer in MEF format. Destructive:
+/// frees the dense resources of the module's MGP constants.
 ErrorOr<BufferRef> convertMGPToMEF(ModuleOp module, bool enableMEFMetadata);
 
 constexpr StringLiteral BugReportMessage =

@@ -18,8 +18,8 @@ namespace M::MO {
 /// Creates a constant folding pass, which registers foreign buffer interfaces
 /// in a namespace prefixed by `compiledFrameworkLabel`.
 ///
-/// Only `cacheDir` and `kernelLibraryPaths` affect correctness of the
-/// constant-fold sub-compilation; all other options are intentionally excluded.
+/// Only `cacheDir` and `kernelLibraryPaths` affect the correctness of the
+/// constant-fold sub-compilation, so no other options are passed.
 std::unique_ptr<mlir::Pass>
 createConstantFoldPass(std::string_view compiledFrameworkLabel,
                        std::optional<std::string> cacheDir,

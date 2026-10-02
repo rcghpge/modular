@@ -22,11 +22,9 @@ class Pass;
 
 namespace M::RMO {
 
-/// Generate the code for declaring the passes.
 #define GEN_PASS_DECL
 #include "GraphCompiler/RMODialect/Transforms/RMOTransforms.h.inc"
 
-/// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "GraphCompiler/RMODialect/Transforms/RMOTransforms.h.inc"
 

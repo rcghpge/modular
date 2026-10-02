@@ -33,7 +33,6 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
                              }),
                 << "Expected all operations to be "
                 << MOGG::GenericCompiledRegionOp::getOperationName());
-  // Iterate through all the ops to fuse and gather all operand and results.
   llvm::SetVector<Value> allResults;
   llvm::SetVector<Value> allOperands;
   for (Operation *op : toFuse) {
@@ -47,8 +46,7 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
   llvm::SetVector<Value> fusedRegionOperands = allOperands;
   fusedRegionOperands.set_subtract(allResults);
 
-  // Iterate through all the results and identify values that need to be return
-  // values after fusion.
+  // Identify results that must stay outputs after fusion.
   llvm::SetVector<Value> resultsThatShouldBeReplaced;
   SmallVector<Type> fusedRegionOutputTypes;
   DenseSet<Operation *> compiledRegionOpsToFuseTogetherAsSet(toFuse.begin(),
@@ -148,7 +146,6 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
 
-  // Create a mapping from outside SSA value to internal SSA value for inputs.
   // Body block arguments are `!mogg.async<T>` wrappers around the operand
   // types.
   DenseMap<Value, Value> outsideValueToInternalValue;

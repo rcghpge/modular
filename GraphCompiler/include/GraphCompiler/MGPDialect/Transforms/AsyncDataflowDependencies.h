@@ -32,23 +32,17 @@ namespace M::MGP {
 ///     when their 'gating' input AsyncValues are ready, and FINISH execution
 ///     when their 'indicating' result AsyncValues are ready. (See Utils.h for
 ///     the definition of 'gating' and 'indicating'.) The causal ordering of
-///     ops depends on dataflow between these arguments and results. We try
-///     very hard to avoid having to talk about the point at which an op RETURNS
-///     (thus binding its result values) which may be before it FINISHES. As a
-///     result, we don't need to distinguish between ops which emplace and
-///     return their result AsyncValues immediately vs those which launch an
-///     asynchronous sub-task.
-///  3. Control flow ops will only 'splice in' one of their sub-blocks at a
-///     time. For a kBranch this is obviously because only one of the branches
-///     is taken. For a kLoop this is because all results of the loop sub-block
-///     must be ready for another loop sub-block begins execution. Thus it is
-///     possible for some ops to never be executed, and it is possible that
-///     two ops can never overlap in execution irrespective of any dataflow
-///     between them (if any).
-///  4. Looping control flow ops may obviously cause some ops to be executed
-///     more than once, and the results from an earlier loop iteration may find
-///     their way into the next iteration. However, thanks to 3 we never have
-///     two instances of the same call being executed concurrently.
+///     ops depends on dataflow between these arguments and results. We avoid
+///     reasoning about when an op RETURNS (binding its results), which may be
+///     before it FINISHES, so ops that emplace results immediately and ops that
+///     launch an asynchronous sub-task are treated alike.
+///  3. Control flow ops only 'splice in' one sub-block at a time: a kBranch
+///     takes one branch, and a kLoop waits for all results of a loop sub-block
+///     before the next begins. So some ops may never execute, and two ops may
+///     never overlap irrespective of dataflow between them.
+///  4. Looping control flow ops may execute some ops more than once, and
+///     results from one iteration may flow into the next. Thanks to 3, two
+///     instances of the same call never execute concurrently.
 ///
 /// We assume the model is 'overhang free': if all the results of the model
 /// and any sub-block are ready then no ops can still be executing. Thus any
@@ -230,29 +224,25 @@ public:
 private:
   using ValueDomainMap = ValueAnalysis::DomainMap;
 
-  /// Grows domainMap to capture the sameAs relation for operation. Sets
-  /// changed to true if domainMap was changed.
+  /// Grows domainMap to capture the sameAs relation for operation.
   void flowSameAs(Operation *op, ValueDomainMap &domainMap);
 
   /// Sets the sameAsRelation for the root 'init' and 'execute' blocks.
   void setupSameAs();
 
-  /// Grows domainMap to capture the maybeSameAs relation for operation. Sets
-  ///  changed to true if domainMap was changed.
+  /// Grows domainMap to capture the maybeSameAs relation for operation.
   void flowMaybeSameAs(Operation *op, ValueDomainMap &domainMap);
 
   /// Sets the maybeSameAsRelation for the root 'init' and 'execute' blocks.
   void setupMaybeSameAs();
 
-  /// Grows domainMap to capture the always-ready predicate into domainMap for
-  /// operation. Sets changed to true if domainMap was changed.
+  /// Grows domainMap to capture the always-ready predicate for operation.
   void flowAlwaysReady(Operation *op, ValueDomainMap &domainMap);
 
   /// Sets the alwaysReadyRelation for the root 'init' and 'execute' blocks.
   void setupAlwaysReady();
 
-  /// Grows domainMap to capture the impliesReady relation for operation. Sets
-  /// changed to true if domainMap was changed.
+  /// Grows domainMap to capture the impliesReady relation for operation.
   void flowImpliesReady(Operation *op, ValueDomainMap &domainMap);
 
   /// Sets the impliesReadyRelation and its inverse for the root 'init' and
@@ -278,38 +268,25 @@ private:
   /// Sets the runsLaterRelation and its inverse for all operations in model.
   void setupRunsLater();
 
-  /// Returns null if opOperand should be considered just a 'plumbing' use
-  /// for the purposes of finding all possible users of an SSA value. Generally
-  /// inputs to control flow ops and inner mef.output operands are just
-  /// 'plumbing' since we have accounted for these during the maybeSameAs and
-  /// other relation construction.
-  ///
-  /// The two exceptions are:
-  ///  - if opOperand is a top-level mef.output, we return the overall model
-  ///    to represent a possible future use of the opOperand by the caller
-  ///    of the model's 'init' or 'execute' entry points.
-  ///  - if opOperand is for a mef.output inside a loop sub-block, we return
-  ///    the loop op itself to represent a possible future use of the opOperand
-  ///    by a future loop iteration.
-  ///
-  /// Otherwise, return the opOperand's owning operation.
+  /// Returns the op that effectively uses opOperand when finding all users of
+  /// an SSA value, or null for a 'plumbing' use (control flow inputs and inner
+  /// mef.output operands, already accounted for by maybeSameAs etc.). Returns:
+  ///  - the model, for a top-level mef.output (a future use by the caller of
+  ///    'init' or 'execute').
+  ///  - the loop op, for a mef.output in a loop sub-block (a use by the next
+  ///    iteration).
+  ///  - otherwise, the owning operation.
   Operation *getEffectiveOwner(const OpOperand *opOperand) const;
 
-  /// Returns the equivalence such that if (%lhs, %rhs) are equivalent then
-  /// %lhs and %rhs could point to the same AsyncValue. It it weren't for
-  /// loops this would just be the global maybeSameAs equivalence defined above.
+  /// Returns the equivalence of values that could point to the same AsyncValue
+  /// at op. Without loops this is just maybeSameAs. Under enclosing loops it
+  /// is smaller, because:
+  ///  - enclosing loop results are not bound yet, so no aliases escape via
+  ///    them.
+  ///  - op's result may be 'fresh', not an alias of its previous iteration's.
   ///
-  /// However, if op could be executed more than once due to enclosing loops
-  /// then we want to account for two facts which make the equivalence smaller:
-  ///  - The results of all enclosing loop control flow ops have not been bound
-  ///    yet, so no aliases can escape via them.
-  ///  - The result of op may be 'fresh', in which case it does not need to be
-  ///    considered an alias of the previous value returned by the same op in
-  ///    a previous loop iteration.
-  ///
-  /// With the above smaller equivalence the getFullyConsumedWhenOpBegins
-  /// method will find more consumed values, and the 'exclusiveSet' will
-  /// be more complete.
+  /// The smaller equivalence lets getFullyConsumedWhenOpBegins find more
+  /// consumed values and makes 'exclusiveSet' more complete.
   ValueEquivalence getEquivalenceAtOp(Operation *op) const;
 
   /// Returns true if every use of value in values (if any) is by an operation
@@ -361,18 +338,14 @@ private:
 
   /// (lhsOp, rhsOp) is in structurallyAtMostOneRelation if at most one
   /// can be executed for the lifetime of the entire graph (including both
-  /// 'init' and 'execute' blocks). For ops within kBranch sub-blocks which
-  /// are not within kLoops this account for the obvious rule that at most
-  /// arm of the branch is ever 'spliced in' during execution.
+  /// 'init' and 'execute' blocks). For kBranch sub-blocks outside kLoops,
+  /// at most one arm is ever 'spliced in'.
   OperationRelation structurallyAtMostOneRelation;
 
   /// (lhsOp, rhsOp) is in structurallyCannotOverlapRelation if their execution
   /// can never overlap because they are in distinct sub-blocks of a control
-  /// flow op. For ops within kBronch sub-blocks this accounts for the obvious
-  /// rule that only one arm of the branch is 'spliced in' at a time. For ops
-  /// within kLoop sub-blocks this accounts for the runtime waiting for
-  /// all outputs of each loop sub-block to be ready before 'splicing in'
-  /// the next loop sub-block.
+  /// flow op: only one kBranch arm is 'spliced in' at a time, and the runtime
+  /// waits for all outputs of a kLoop sub-block before splicing in the next.
   OperationRelation structurallyCannotOverlapRelation;
 
   /// (lhsOp, rhsOp) is in runsLaterRelation only if rhsOp can BEGIN execution

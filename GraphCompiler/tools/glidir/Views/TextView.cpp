@@ -17,10 +17,9 @@ using namespace mlir;
 namespace M {
 namespace GlidIR {
 
-static constexpr auto kIconTrash = "\xf0\x9f\x97\x91"; // 🗑 U+1F5D1
+static constexpr auto kIconTrash = "\xf0\x9f\x97\x91"; // U+1F5D1
 
-// Truncate any line wider than kMaxLineWidth characters. Line count is
-// preserved so the op<->line mapping stays valid.
+// Longer lines are truncated, preserving the line count for the op mapping.
 static constexpr size_t kMaxLineWidth = 1024;
 static constexpr llvm::StringLiteral kTruncationSuffix = " ... [truncated]";
 
@@ -55,10 +54,8 @@ void TextView::init(ModuleOp root, ModuleOp dumpRoot,
   textViewer.SetText(truncateLongLines(dumpText));
   textAsLines = textViewer.GetTextLines();
 
-  // The dump was printed without loc attributes, so each op's getLoc() after
-  // re-parsing is the FileLineColLoc of its position in the dump text. Walk
-  // both modules in parallel (same structure, same traversal order) to map
-  // original ops to their dump-file line numbers.
+  // Reparsed ops' locations point into the dump text; walk both modules in
+  // parallel to map original ops to dump lines.
   SmallVector<Operation *> origOps, dumpOps;
   root->walk([&](Operation *op) { origOps.push_back(op); });
   dumpRoot->walk([&](Operation *op) { dumpOps.push_back(op); });
@@ -95,7 +92,6 @@ bool TextView::hasAnyBookmarks() const {
 }
 
 llvm::SmallVector<int> TextView::sortedBookmarksForGroup(int idx) const {
-  // std::set is already sorted, so just copy.
   return SmallVector<int>(coloredBookmarks[idx].begin(),
                           coloredBookmarks[idx].end());
 }
@@ -135,8 +131,7 @@ void TextView::scrollToOp(Operation *op) {
 }
 
 void TextView::renderTextFilter() {
-  // EnterReturnsTrue returns true only on Enter; re-focus next frame so the
-  // cursor stays and repeated Enter presses keep working.
+  // Re-focus after Enter so repeated presses keep working.
   static char buffer[512] = {0};
   static char prevBuffer[512] = {0};
   static bool refocus = false;
@@ -155,7 +150,6 @@ void TextView::renderTextFilter() {
   ImGui::SameLine();
   HelpMarker("Search using a regex");
 
-  // Color dot selectors: clicking changes the active bookmark group.
   for (int i = 0; i < kNumBookmarkColors; ++i) {
     ImGui::SameLine(0, i == 0 ? 8 : 2);
     ImGui::PushID(2000 + i);
@@ -177,8 +171,6 @@ void TextView::renderTextFilter() {
     ImGui::PopID();
   }
 
-  // If the filter changed from the previous frame, reset the matches and find
-  // the new ones.
   if (filterChanged) {
     currentMatchedIndex.reset();
     matchedLines.clear();
@@ -189,29 +181,23 @@ void TextView::renderTextFilter() {
     }
   }
 
-  // If nothing was matched, just exit.
   if (matchedLines.empty())
     return;
 
-  // Otherwise, display buttons to advance through the matched lines.
   ImGui::SameLine();
-  bool prev = ImGui::SmallButton("\xe2\xac\x85##ir"); // ⬅
+  bool prev = ImGui::SmallButton("\xe2\xac\x85##ir"); // U+2B05
   ImGui::SameLine();
-  bool next = ImGui::SmallButton("\xe2\x9e\xa1##ir") || enterPressed; // ➡
+  bool next = ImGui::SmallButton("\xe2\x9e\xa1##ir") || enterPressed; // U+27A1
   bool somethingWasClicked = prev || next;
 
-  // If no button was clicked and there is currently no match, just show the
-  // number of matched lines and exit.
   ImGui::SameLine();
   if (!somethingWasClicked && !currentMatchedIndex.has_value()) {
     ImGui::Text("-/%lu", matchedLines.size());
     return;
   }
 
-  // Navigate to next/previous match. If a current match exists, step from it
-  // directly (independent of the text viewer cursor, which can shift when
-  // clicking buttons). On first use, find the nearest match relative to the
-  // current cursor.
+  // Step from the current match, not the cursor (clicking can move it); on
+  // first use, start from the match nearest the cursor.
   if (somethingWasClicked) {
     if (currentMatchedIndex.has_value()) {
       int idx = *currentMatchedIndex;
@@ -240,10 +226,8 @@ void TextView::renderTextFilter() {
     }
   }
 
-  // Display which matched line we are focusing at this time.
   ImGui::Text("%d/%lu", *currentMatchedIndex + 1, matchedLines.size());
 
-  // Highlight the matched line on navigation.
   if (somethingWasClicked) {
     highlightLine(matchedLines[*currentMatchedIndex]);
     if (treeCallbacks.highlightOp)
@@ -253,16 +237,12 @@ void TextView::renderTextFilter() {
 }
 
 void TextView::processTextViewerCursorEvents() {
-  // If the cursor changed positions since the last frame, identify all
-  // operations, regions and blocks that should be expanded in the tree
-  // view.
   if (textViewer.IsCursorPositionChanged()) {
     if (treeCallbacks.highlightOp)
       treeCallbacks.highlightOp(
           lineNumberToOp[textViewer.GetCursorPosition().mLine]);
   }
 
-  // If there was a double click, toggle the bookmark in the active color group.
   if (textViewer.DoubleClick()) {
     int cursorLine = textViewer.GetCursorPosition().mLine;
     if (lineNumberToOp[cursorLine]) {

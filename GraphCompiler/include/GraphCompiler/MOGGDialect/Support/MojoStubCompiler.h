@@ -16,31 +16,26 @@
 
 namespace M::MOGG {
 
-/// Create a DenseResourceElementsAttr from a buffer. The name is used as part
-/// of the attribute name.
+/// `name` becomes part of the attribute name.
 DenseResourceElementsAttr createArchiveAttr(MLIRContext *ctx, BufferRef buffer,
                                             StringRef name);
 
-/// Get the resolved target info: the current host by default, or the
-/// `set_virtual_cpu_target` override (bare arch or descriptor) when set.
+/// Returns the host target info, or the `set_virtual_cpu_target` override
+/// when set.
 ///
-/// When `acceleratorArchOverride`/`acceleratorTripleOverride` describe a GPU
-/// target (per the triple), the accelerator arch is taken from them instead of
-/// probing the host GPU. This enables cross-compilation for a target GPU (e.g.
-/// `sm_100a` / `nvptx64-nvidia-cuda`) on a machine that lacks that GPU, or has
-/// no GPU at all. A non-GPU override falls back to host detection. The host CPU
-/// triple/CPU/features are unaffected.
+/// A GPU accelerator override (per the triple) replaces host GPU probing, so a
+/// target GPU (e.g. `sm_100a` / `nvptx64-nvidia-cuda`) can be compiled for on a
+/// machine without it. A non-GPU override falls back to host detection.
 ///
-/// `forHostExecution` ignores the virtual-CPU override: a sub-compilation
-/// whose artifact executes in the compiling process (constant folding) must
-/// compile for the machine that runs it, not for the export target.
+/// `forHostExecution` ignores the virtual-CPU override: an artifact that runs
+/// in the compiling process (constant folding) must target this machine.
 ErrorOr<TargetInfoAttr> getTargetInfo(MLIRContext *ctx,
                                       StringRef acceleratorArchOverride = "",
                                       StringRef acceleratorTripleOverride = "",
                                       bool forHostExecution = false);
 
-/// A resolved (de-sugared, validated) virtual-CPU-target request, letting a
-/// host-warmed cache target a different CPU or even architecture.
+/// A resolved, validated virtual-CPU-target request, letting a host-warmed
+/// cache target a different CPU or architecture.
 struct VirtualCpuTargetSpec {
   /// Empty => use the host triple.
   std::string triple;
@@ -48,16 +43,14 @@ struct VirtualCpuTargetSpec {
   std::string cpu;
   /// Verbatim feature delta; only meaningful when `hasExplicitFeatures`.
   std::string features;
-  /// True: use `features` verbatim. False: derive name-only from `cpu` (no host
-  /// CPUID leak); this is the legacy bare-arch behavior.
+  /// False: derive features from the `cpu` name only, without host CPUID.
   bool hasExplicitFeatures = false;
 };
 
-/// Parse a `set_virtual_cpu_target` knob into a resolved spec. Accepts either a
-/// bare arch name (legacy: host triple kept, features name-only) or a
+/// Accepts a bare arch name (host triple kept, features name-only) or a
 /// descriptor "triple=<t>;cpu=<c>;features=<f>" (any order; `cpu` required).
 /// `hostTriple` de-sugars "generic" and defaults a missing descriptor triple.
-/// Rejects "native". Precondition: `knob` is non-empty (empty = host).
+/// Rejects "native". Precondition: `knob` is non-empty.
 ErrorOr<VirtualCpuTargetSpec> parseVirtualCpuTarget(StringRef knob,
                                                     StringRef hostTriple);
 

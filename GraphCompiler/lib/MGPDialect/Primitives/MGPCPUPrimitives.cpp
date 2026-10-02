@@ -61,7 +61,6 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
         "mgp.module.load.cpu does not support constants");
   }
 
-  // Create a kernels context.
   if (fModuleIndex.get() >= kernelExecutionState.modules.size())
     kernelExecutionState.modules.resize(fModuleIndex.get() + 1);
   kernelExecutionState.modules[fModuleIndex.get()] =
@@ -73,7 +72,6 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
   CompiledKernelsContext &module =
       *kernelExecutionState.modules[fModuleIndex.get()];
 
-  // Decode the image.
   ArrayRef<uint8_t> image;
   if (bImage.decode(&image).isError()) {
     return std::move(outChain).setToError(
@@ -84,9 +82,7 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
         "mgp.module.load.cpu requires a non-empty image to load");
   }
 
-  // Split the combined function symbols into a list of individual kernel names.
-  // Remember that M.multiline strings are explicitly null-terminated when
-  // encoded into MEF.
+  // M.multiline strings are explicitly null-terminated when encoded into MEF.
   SmallVector<StringRef> functionSymbols;
   StringRef combined = *cFunctionSymbols;
   size_t start = 0;
@@ -108,7 +104,6 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
         "expecting at least one function symbol to load");
   }
 
-  // Load the binary.
   ErrorOrSuccess errOr = module.load(image, functionSymbols);
   if (errOr)
     return std::move(outChain).setToError(errOr.takeError());
@@ -120,9 +115,8 @@ mgp_module_load_cpu(Chain inChain, StateContext &theContext,
 // mgp.buffer.constant.external.cpu
 //===----------------------------------------------------------------------===//
 
-// Note: This primitive is temporarily implemented in C++ to enable subgraph
-// inlining after JitCompileKernels. GEX-2312 tracks the future work regarding
-// this primitive.
+// Implemented in C++ to enable subgraph inlining after JitCompileKernels.
+// TODO(GEX-2312): Revisit.
 static void mgp_buffer_constant_external_cpu(
     Chain inChain, AsyncValueRef<MojoValue> weights,
     AsyncValueRef<MojoValue> name, Result<TensorBufferRef> outBuffer,
@@ -135,7 +129,6 @@ static void mgp_buffer_constant_external_cpu(
         "align must be a positive integer value");
   }
 
-  // Look up the weight by name in the registry using the C API directly
   void *data;
   static constexpr int kResultSuccess = 0;
 
@@ -152,7 +145,6 @@ static void mgp_buffer_constant_external_cpu(
 
   const std::byte *weightPtr = llvm::bit_cast<const std::byte *>(data);
 
-  // Validate alignment
   if ((reinterpret_cast<uintptr_t>(weightPtr) % bAlign.get()) != 0) {
     return std::move(outBuffer).setToError(
         Twine("invalid alignment for address ") +
@@ -160,8 +152,7 @@ static void mgp_buffer_constant_external_cpu(
         Twine(bAlign.get()));
   }
 
-  // Create a TensorBufferRef from the weight data
-  // Note: The weights registry owns the data, so we create a non-tracked buffer
+  // The weights registry owns the data.
   std::move(outBuffer).emplace(TensorBufferRef::createWithNonTrackedMemory(
       const_cast<void *>(reinterpret_cast<const void *>(weightPtr)),
       aSize.get(),
@@ -176,12 +167,10 @@ static void mgp_string_create(Result<MojoValue> outString,
                               MEFAttr<StringRef> value) {
   StringRef strValue = value.get();
 
-  // Create a Mojo String via the C API
   void *mojoStringPtr =
       create_mojo_string(const_cast<char *>(strValue.data()),
                          static_cast<ssize_t>(strValue.size()));
 
-  // Create MojoValue that owns the Mojo Pointer[String]
   std::move(outString).emplace(MojoValue::createOwningRef(
       mojoStringPtr,
       reinterpret_cast<MojoValue::DestructorFn>(destroy_mojo_string)));
@@ -194,10 +183,8 @@ static void mgp_string_create(Result<MojoValue> outString,
 static void mgp_string_concat(AsyncValueRef<MojoValue> prefix,
                               AsyncValueRef<MojoValue> end,
                               Result<MojoValue> outString) {
-  // Concatenate the two Mojo Strings via the C API
   void *mojoStringPtr = concat_mojo_strings(prefix->getData(), end->getData());
 
-  // Create MojoValue that owns the new Mojo Pointer[String]
   std::move(outString).emplace(MojoValue::createOwningRef(
       mojoStringPtr,
       reinterpret_cast<MojoValue::DestructorFn>(destroy_mojo_string)));

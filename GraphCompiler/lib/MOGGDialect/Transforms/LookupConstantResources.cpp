@@ -58,11 +58,8 @@ struct LookupConstantResources
     if (wasInterrupted)
       return;
 
-    // Reset the constant resource attribute because it is no longer needed.
-    // Note that we need to maintain an array of the right size because this is
-    // what KernelStubOp::emitMojo uses to map the resource array elements to
-    // MojoValue (it only cares about the number of resources, not what they are
-    // so a UnitAttr is fine here).
+    // KernelStubOp::emitMojo reads only the resource count, so keep an array
+    // of the right size with placeholder entries.
     SmallVector<Attribute> dummyResources(constantResources.size(),
                                           UnitAttr::get(ctx));
     kernelStubOp.setConstantResourcesAttr(

@@ -64,8 +64,7 @@ SourceView::SourceView(ModuleOp root) {
 
 void SourceView::initViewer(const TextViewer::Palette &palette) {
   TextViewer::Palette p = palette;
-  // Flatten all syntax-token colors to the default foreground so no C/C++
-  // highlighting bleeds onto Mojo (or any other) source.
+  // Flatten token colors so C/C++ highlighting doesn't bleed onto Mojo source.
   ImU32 fg = p[(int)TextViewer::PaletteIndex::Default];
   for (int i = (int)TextViewer::PaletteIndex::Keyword;
        i < (int)TextViewer::PaletteIndex::Background; ++i)
@@ -106,9 +105,9 @@ void SourceView::renderSourceFilter() {
     return;
 
   ImGui::SameLine();
-  bool prev = ImGui::SmallButton("\xe2\xac\x85##src"); // ⬅
+  bool prev = ImGui::SmallButton("\xe2\xac\x85##src"); // U+2B05
   ImGui::SameLine();
-  bool next = ImGui::SmallButton("\xe2\x9e\xa1##src") || enterPressed; // ➡
+  bool next = ImGui::SmallButton("\xe2\x9e\xa1##src") || enterPressed; // U+27A1
   bool somethingWasClicked = prev || next;
 
   ImGui::SameLine();
@@ -160,9 +159,8 @@ void SourceView::render(
   bool opChanged = highlightedOp != prevHighlightedOp;
   prevHighlightedOp = highlightedOp;
 
-  // Resolve the source line range for the highlighted op. For fused locs,
-  // all FileLineColLoc leaves in the current file contribute to the range,
-  // mirroring how the reverse mapping (source → IR) spans minLine..maxLine.
+  // All of a fused loc's leaves in this file contribute, mirroring the
+  // source -> IR mapping.
   int highlightedMinLine = -1, highlightedMaxLine = -1;
   if (highlightedOp) {
     SmallVector<FileLineColLoc> locs;
@@ -192,7 +190,7 @@ void SourceView::render(
     }
   }
 
-  // File selector: basename in the button, full path in tooltip.
+  // Basename in the button, full path in the tooltip.
   const std::string &fullPath = files[currentFileIndex].path;
   std::string basename = fullPath;
   if (auto pos = fullPath.rfind('/'); pos != std::string::npos)
@@ -216,7 +214,6 @@ void SourceView::render(
 
   const auto &file = files[currentFileIndex];
 
-  // Load the file into the viewer when the selected file changes.
   if (!loadedFileIndex.has_value() || currentFileIndex != *loadedFileIndex) {
     textViewer.SetText(file.content.empty() ? std::string("(file not found)")
                                             : file.content);
@@ -230,9 +227,8 @@ void SourceView::render(
 
   renderSourceFilter();
 
-  // IR → Source: set cursor and selection before Render() so the flag reset
-  // inside Render() covers these programmatic changes, preventing a spurious
-  // Source→IR callback on the same frame.
+  // IR -> Source: before Render(), whose flag reset then suppresses a
+  // spurious Source -> IR callback this frame.
   if (opChanged && highlightedMinLine >= 0) {
     textViewer.SetCursorPosition({highlightedMinLine, 0});
     textViewer.SetSelection({highlightedMinLine, 0},
@@ -246,7 +242,7 @@ void SourceView::render(
 
   textViewer.Render("SourceText");
 
-  // Source → IR: user moved the cursor after Render() processed input.
+  // Source -> IR.
   if (textViewer.IsCursorPositionChanged()) {
     int line = textViewer.GetCursorPosition().mLine;
     auto opIt = file.lineToOp.find(line);

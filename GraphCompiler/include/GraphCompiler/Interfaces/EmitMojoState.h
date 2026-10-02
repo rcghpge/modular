@@ -19,21 +19,18 @@
 #include "Support/AssertStream.h"
 
 namespace M::MOGG {
-// Forward declarations to avoid circular includes:
-// MOGGOps.h -> EmitsMojoInterface.h -> EmitMojoState.h ->
-// {KernelDeclAdaptor,MOGGOps}.h -> MOGGOps.h
+// Forward-declared to break MOGGOps.h -> EmitsMojoInterface.h ->
+// EmitMojoState.h -> {KernelDeclAdaptor,MOGGOps}.h -> MOGGOps.h.
 class MojoRegistry;
 struct KernelDeclFunctionAdaptor;
 struct KernelDeclAdaptor;
 class PrimitiveDeclOp;
 class ShapeFunctionDeclOp;
 
-/// The decomposed `ManagedTensorSlice` components of a fused load/store
-/// receiver: a bare pointer, its runtime shape/strides, and its comptime
-/// `StaticTensorSpec`. These are all trivial/comptime (device-passable), so a
-/// fusion lane -- the foreach closure or the prologue/epilogue functor --
-/// captures them instead of a `ManagedTensorSlice`, and `TensorLoadOp` /
-/// `TensorStoreOp::emitMojo` reassemble the load/store through
+/// A fused load/store receiver's `ManagedTensorSlice` decomposed into a bare
+/// pointer, runtime shape/strides, and comptime `StaticTensorSpec`, all
+/// device-passable, so fusion lanes capture these instead of the slice and
+/// `TensorLoadOp`/`TensorStoreOp::emitMojo` go through
 /// `simd_{load_from,store_into}_tensor_pointer`.
 struct FusedTensorArg {
   MojoValue ptr;
@@ -42,8 +39,7 @@ struct FusedTensorArg {
   MojoValue spec;
 };
 
-/// This struct holds all the necessary state to lower a MOGG operation into
-/// Mojo text.
+/// State for lowering MOGG operations to Mojo text.
 struct EmitMojoState {
   EmitMojoState(MojoRegistry &registry, bool enableOpTraceComments = false,
                 bool enableComputeLambdas = false,
@@ -52,86 +48,58 @@ struct EmitMojoState {
         enableOpTraceComments(enableOpTraceComments),
         enableDebugDumpFusedTensorSpecs(enableDebugDumpFusedTensorSpecs) {}
 
-  /// The Mojo builder used to generate the text.
   MojoBuilder builder;
-  /// Separate builder for module-scope struct definitions (fusion structs).
-  /// Struct definitions are discovered mid-function during body emission
-  /// (e.g. from BindLambdaOp), so they cannot be written to the main builder
-  /// which is mid-function at that point. The output is concatenated after the
-  /// main builder's output; Mojo allows file-scope declarations in any order.
+  /// Module-scope struct definitions (fusion structs), which are discovered
+  /// mid-function (e.g. from BindLambdaOp). Appended after the main output;
+  /// Mojo allows file-scope declarations in any order.
   MojoBuilder structDefsBuilder;
 
-  /// True once the trait-lane dense tensor-argument helper definitions
-  /// (`_MoggTensorIO` + `_MoggDenseTensorArg`) have been emitted into
-  /// `structDefsBuilder`. `TensorArgInitOp::emitMojo` emits them inline on
-  /// first use and references them thereafter, so they live only inside the
-  /// emitted Mojo module (no committed library type yet). Guards against
-  /// re-emitting the definitions for every trait tensor argument.
+  /// One-per-module guard for `_MoggTensorIO` + `_MoggDenseTensorArg`, which
+  /// `TensorArgInitOp::emitMojo` emits on first use (no library type yet).
   bool emittedDenseTensorArgDefs = false;
-  /// True once the host-only shape-function tensor-argument struct has
-  /// been emitted into `structDefsBuilder`. This struct is
-  /// `_MoggShapeTensorArg`. A shape function always executes on the host.
-  /// For this reason, the struct needs none of `_MoggDenseTensorArg`'s
-  /// device-passable machinery. The struct backs every no-role (shape-fn)
-  /// trait tensor argument, at any written bound (`Tensor`, `DenseTensor`,
-  /// or `TileTensorable`).
+  /// One-per-module guard for `_MoggShapeTensorArg`, which backs every
+  /// shape-function trait tensor argument. Shape functions run on the host,
+  /// so it needs none of `_MoggDenseTensorArg`'s device-passable machinery.
   bool emittedShapeTensorArgDefs = false;
   /// One-per-module guard for `_MoggTensorBufferCapture` (region→stub
   /// boundary).
   bool emittedTensorBufferCaptureDefs = false;
-  /// Same one-per-module guard for the trait-lane FUSED input-load definitions
-  /// (`kInputLoadFusionDefs`: the `InputLoadFusion` trait +
-  /// `_MoggInputLoadFusionTensor` wrapper), emitted by
-  /// `emitInputLoadFusionFunctor` when a bind feeds a trait kernel's fused-load
-  /// operand (Phase 5).
+  /// One-per-module guard for `kInputLoadFusionDefs`, emitted by
+  /// `emitInputLoadFusionFunctor`.
   bool emittedInputLoadFusionArgDefs = false;
-  /// Same one-per-module guard for the trait-lane FUSED output-store
-  /// definitions
-  /// (`kOutputStoreFusionDefs`: the `OutputStoreFusion` trait +
-  /// `_MoggOutputStoreFusionTensor` wrapper), emitted by
-  /// `emitOutputStoreFusionFunctor` (Phase 5).
+  /// One-per-module guard for `kOutputStoreFusionDefs`.
   bool emittedOutputStoreFusionArgDefs = false;
-  /// Same one-per-module guard for the trait-lane FUSED output-transform
-  /// (compute-output) definitions (`kTransformFusionDefs`: the
-  /// `TransformFusion` trait + dual-nature `_MoggTransformFusionTensor`
-  /// wrapper), emitted by `emitTransformFusionFunctor` (Phase 5).
+  /// One-per-module guard for `kTransformFusionDefs`, emitted by
+  /// `emitTransformFusionFunctor`.
   bool emittedTransformFusionArgDefs = false;
-  /// One-per-module import of the trait marker traits: `Tensor`,
-  /// `DenseTensor`, `TileTensorable`. Shape-function stubs use these as
-  /// parameter bounds.
+  /// One-per-module import of the `Tensor`, `DenseTensor`, `TileTensorable`
+  /// marker traits, used as shape-function stub parameter bounds.
   bool emittedTraitMarkerImports = false;
-  /// The actual return values of the `mogg.generic.compiled.region`. This is
-  /// used by ops that feed into `mogg.output` (ex: AsyncReadyOp or AsyncPack*).
+  /// The `mogg.generic.compiled.region` return values, set by ops feeding
+  /// `mogg.output` (e.g. AsyncReadyOp or AsyncPack*).
   SmallVector<MojoValue> mojoReturnValues;
-  /// Kernels that dense resources will get these in the void** input after
-  /// inputs and outputs.
+  /// Dense resources, passed in the void** input after inputs and outputs.
   SmallVector<std::tuple<MojoValue, MojoValue>> mojoConstantResources;
 
   MojoRegistry &registry;
 
-  /// In some cases values must be kept alive using `_ = someVar` at the end of
-  /// the function. This is because mojo Compiler isn't smart enough in some
-  /// cases to detect the right lifetime. This is mostly around lambdas, and
-  /// should be fixed by the new closures work.
+  /// Values kept alive with `_ = someVar` at function end, where the Mojo
+  /// compiler misjudges lifetimes (mostly lambdas, until the new closures).
   SmallVector<MojoValue> keepAliveValues;
 
-  /// Tracks the emitted Mojo variable names for each TaskHandle value.
-  /// Populated by CallStubAsyncOp::emitMojo, consumed by AsyncJoinOp::emitMojo.
+  /// Emitted Mojo names per TaskHandle, from CallStubAsyncOp to AsyncJoinOp.
   struct TaskHandleInfo {
     MojoValue task;  // The Task variable from create_task()
     MojoValue error; // The Optional[Error] variable
   };
   llvm::DenseMap<Value, TaskHandleInfo> taskHandleInfos;
 
-  /// Keep track of the mojo arguments / parameters for the current function
-  /// being lowered.
+  /// Mojo arguments / parameters of the function being lowered.
   FunctionBody currentFunctionBody;
 
-  /// RAII guard that saves `currentFunctionBody`, swaps in `newBody` for its
-  /// lifetime, and restores the saved value on destruction -- mirrors
-  /// `mlir::OpBuilder::InsertionGuard`. Construct it inside a nested
-  /// `MojoBuilder::def` body callback (e.g. a fusion functor's `__call__`) so
-  /// its lifetime naturally spans exactly that nested scope.
+  /// Like `mlir::OpBuilder::InsertionGuard`, for `currentFunctionBody`.
+  /// Construct inside a nested `MojoBuilder::def` callback (e.g. a fusion
+  /// functor's `__call__`) to span exactly that scope.
   class FunctionBodyGuard {
   public:
     FunctionBodyGuard(EmitMojoState &state, FunctionBody newBody)
@@ -150,9 +118,9 @@ struct EmitMojoState {
     FunctionBody savedFunctionBody;
   };
 
-  /// Context for an op recursively lowered inside a fused-tensor load/store
-  /// callback, kept separate from `FunctionBody` since most `FunctionBodyGuard`
-  /// callers have no tensor/width/alignment concept to populate.
+  /// Context for an op lowered inside a fused-tensor load/store callback;
+  /// separate from `FunctionBody`, whose other users have no
+  /// tensor/width/alignment.
   struct MojoLambdaInfos {
     MojoBuilder *lambdaBuilder = nullptr;
     MojoValue widthParameter;
@@ -160,8 +128,7 @@ struct EmitMojoState {
   };
   MojoLambdaInfos currentLambdaInfo;
 
-  /// RAII guard for `currentLambdaInfo`, mirroring `FunctionBodyGuard` but
-  /// kept separate since unrelated `FunctionBodyGuard` callers never need it.
+  /// `FunctionBodyGuard` for `currentLambdaInfo`.
   class LambdaInfosGuard {
   public:
     LambdaInfosGuard(EmitMojoState &state, MojoLambdaInfos newInfo)
@@ -182,9 +149,8 @@ struct EmitMojoState {
   /// If true, generate compute lambdas when possible.
   bool enableComputeLambdas;
 
-  /// The top-level module being lowered. Used to resolve the per-device
-  /// `mo.device_info_mapping` (e.g. the `tile_based_fusion` tile-codegen
-  /// attribute).
+  /// Used to resolve the per-device `mo.device_info_mapping` (e.g.
+  /// `tile_based_fusion`).
   mlir::ModuleOp moduleOp;
 
   /// Name of the entry point of the current kernel
@@ -193,19 +159,13 @@ struct EmitMojoState {
   /// Maps a BindLambdaOp output value to how it was lowered (a fusion struct).
   mlir::DenseMap<Value, EmittedLambdaLowering> lambdaLowerings;
 
-  /// Record a fusion struct lowering for a BindLambdaOp output value.
   void setFusionStructLoweringFor(Value val, MojoValue instance,
                                   StringLiteral bindMethod, MojoValue typeName);
 
-  /// Emit the shared output-store fusion trait + wrapper definitions
-  /// (`kOutputStoreFusionDefs`: `OutputStoreFusion` +
-  /// `_MoggOutputStoreFusionTensor`) into `structDefsBuilder` exactly once per
-  /// module, guarded by `emittedOutputStoreFusionArgDefs`. The store-fusion
-  /// emitters share this entry point.
+  /// Emit `kOutputStoreFusionDefs` into `structDefsBuilder` once per module.
   void emitOutputStoreFusionDefsOnce();
 
 private:
-  /// A mapping between mlir::Value to MojoValue (text).
   mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
 
   /// Per-tensor static byte alignment for fused load/store receivers (see
@@ -216,23 +176,19 @@ private:
   /// receiver (see `setFusedTensorArgFor`).
   mlir::DenseMap<Value, FusedTensorArg> fusedTensorArgs;
 
-  /// Enables the emission of additional comments detailing IR ops that are
-  /// currently being processed
+  /// Emit comments naming the IR op being processed.
   bool enableOpTraceComments;
 
-  /// Enable the emission of print statements inside the fused lambda to debug
-  /// the fused tensor specs.
+  /// Print the fused tensor specs inside fused lambdas.
   bool enableDebugDumpFusedTensorSpecs;
 
 public:
   bool isDebugDumpFusedTensorSpecsEnabled() const {
     return enableDebugDumpFusedTensorSpecs;
   }
-  // Helper to create a kernel wrapper function with a given body
   using KernelBodyBuilder =
       llvm::function_ref<void(const MOGG::FunctionBody &)>;
 
-  /// Get the Mojovalue mapped to `val`.
   const MojoValue &getMojoValueFor(Value val) const {
     auto it = mlirValueToMojoValue.find(val);
     ASSERT_STREAM(it != mlirValueToMojoValue.end(),
@@ -240,24 +196,19 @@ public:
     return it->second;
   }
 
-  /// Set the mapping from `val` to `mojoVal`.
   void setMojoValueFor(Value val, MojoValue mojoVal) {
     [[maybe_unused]] auto inserted =
         mlirValueToMojoValue.insert(std::make_pair(val, mojoVal)).second;
     ASSERT_STREAM(inserted, << "value already bound to a MojoValue");
   }
 
-  /// Record the source's own static byte alignment for a fused load/store
-  /// receiver, keyed by the load/store's tensor operand. Both fusion lanes --
-  /// the foreach closure and the prologue/epilogue functor -- rebuild their
-  /// receiver as a bare-pointer `TileTensor` that carries no static alignment,
-  /// so the exact `ManagedTensorSlice` alignment is threaded here and passed to
-  /// the stride-aware primitive by `TensorLoadOp`/`TensorStoreOp::emitMojo`.
+  /// Record a fused load/store receiver's static byte alignment, keyed by its
+  /// tensor operand. Fusion lanes rebuild the receiver as a bare-pointer
+  /// `TileTensor` without static alignment, so it's threaded through here.
   void setTensorArgAlignmentFor(Value val, MojoValue alignment) {
     tensorArgAlignments[val] = std::move(alignment);
   }
 
-  /// Get the static alignment recorded for a fused load/store receiver.
   const MojoValue &getTensorArgAlignmentFor(Value val) const {
     auto it = tensorArgAlignments.find(val);
     ASSERT_STREAM(it != tensorArgAlignments.end(),
@@ -265,17 +216,12 @@ public:
     return it->second;
   }
 
-  /// Record the decomposed `ManagedTensorSlice` components (ptr, shape,
-  /// strides, static spec) for a fused load/store receiver, keyed by the
-  /// load/store's tensor operand. Both fusion lanes populate this so
-  /// `TensorLoadOp` / `TensorStoreOp::emitMojo` can emit
-  /// `simd_{load_from,store_into}` calls without materializing a `TileTensor`.
+  /// Record a fused load/store receiver's `FusedTensorArg`, keyed by its tensor
+  /// operand.
   void setFusedTensorArgFor(Value val, FusedTensorArg arg) {
     fusedTensorArgs[val] = std::move(arg);
   }
 
-  /// Get the decomposed MTS components recorded for a fused load/store
-  /// receiver.
   const FusedTensorArg &getFusedTensorArgFor(Value val) const {
     auto it = fusedTensorArgs.find(val);
     ASSERT_STREAM(it != fusedTensorArgs.end(),
@@ -283,25 +229,20 @@ public:
     return it->second;
   }
 
-  /// Mark a value as being kept alive.
-  /// Will generate `_ = value` at the end of the function.
+  /// Generates `_ = value` at the end of the function.
   void markAsKeepAlive(MojoValue value) { keepAliveValues.push_back(value); }
 
-  /// Generate all keep alive statements for the previous calls to
-  /// `markAsKeepAlive`.
   void genAllKeepAliveStatements() {
     for (const MojoValue &val : keepAliveValues)
       builder.keepAlive(val);
     keepAliveValues.clear();
   }
 
-  /// Try to lower `op` to Mojo using the EmitMojoInterface.
-  /// Returns an error if lowering failed.
+  /// Lower `op` to Mojo using the EmitMojoInterface.
   LogicalResult lowerOpToMojo(Operation *op);
 
-  /// Convert an mlir::Type to a MojoValue representing the type in Mojo text.
-  /// For parameterized opaque types, this returns LegacyOpaquePointer.
-  /// Use mlirOpaqueTypeToMojoType for the full parameterized type string.
+  /// Convert an mlir::Type to Mojo text. Parameterized opaque types become
+  /// LegacyOpaquePointer; see mlirOpaqueTypeToMojoType.
   static MojoValue mlirTypeToMojoType(Type mlirType) {
     if (isa<MGP::DeviceBufferType>(mlirType)) {
       // Every `!mgp.buffer` value lowers to the storage-carrying composite;
@@ -309,9 +250,8 @@ public:
       return kStructOwnedByteBuffer;
     } else if (auto deviceTensorType =
                    dyn_cast<MGP::DeviceTensorType>(mlirType)) {
-      // `!mgp.tensor` values are usually inferred from the producing call and
-      // never spelled; this branch covers the rare type-annotation sites.
-      // Scalars are stored as a rank-1 buffer view, matching `unpack_tensor`.
+      // Rare: `!mgp.tensor` types are usually inferred, not spelled. Scalars
+      // are rank-1, matching `unpack_tensor`.
       MGP::TensorSpecType tensorSpec = deviceTensorType.getTensorSpec();
       auto bufferRank =
           int64_t(tensorSpec.getRank() == 0 ? 1 : tensorSpec.getRank());
@@ -354,10 +294,8 @@ public:
     } else if (isa<IndexType>(mlirType)) {
       return kStructInt;
     } else if (auto scalarTy = dyn_cast<MO::ScalarType>(mlirType)) {
-      // Fusion struct fields can capture non-tensor operands from the fused
-      // op body (e.g. integer/bool constants from ConstantScalarOp).  The
-      // SIMDType branch below only covers KGEN-level types; this handles
-      // MO-dialect scalars that appear before lowering.
+      // MO-dialect scalars captured by fusion struct fields (e.g. constants
+      // from ConstantScalarOp); the SIMDType branch only covers KGEN types.
       DType dtype = scalarTy.getDtype();
       if (dtype.isBool())
         return kStructBool;
@@ -366,9 +304,7 @@ public:
              "extend this to handle float/other dtypes if needed");
       return kStructInt;
     } else if (auto simdType = dyn_cast<KGEN::SIMDType>(mlirType)) {
-      /// FIXME(GEX-2867)
-      // The only reason we would be manipulating SIMD types in the IR is for
-      // doing shape calculations which all operate on index/Int.
+      // FIXME(GEX-2867): SIMD types only appear for shape math on index/Int.
       if (simdType.getResolvedDType()->isBool())
         return kStructBool;
       return kStructInt;
@@ -376,7 +312,6 @@ public:
       MOGG::MojoValue rankParam = MOGG::MojoValue(shapeResultType.getRank());
       return MOGG::MojoValue(MOGG::kStructIndexList)[rankParam];
     } else if (isa<MGP::OpaqueType, MO::OpaqueType>(mlirType)) {
-      // Opaque types are represented as OpaquePointer in Mojo
       return kComptimeOpaquePointer;
     } else {
       ASSERT_STREAM(false, << "Unsupported mlir type " << mlirType);
@@ -384,16 +319,12 @@ public:
     }
   }
 
-  /// Convert an MO::OpaqueType to its fully qualified Mojo type name.
-  /// Returns just the qualified name without parameters.
-  /// Example: !mo.opaque<"root::SIMDPair", ...> becomes "root.SIMDPair"
-  /// Use getOpaqueTypeParameters() to get the parameters as MojoValues,
-  /// then apply them using MojoValue::operator[].
+  /// Convert an MO::OpaqueType to its qualified Mojo name without parameters,
+  /// e.g. !mo.opaque<"root::SIMDPair", ...> to "root.SIMDPair". Apply
+  /// getOpaqueTypeParameters() with MojoValue::operator[].
   static MojoValue mlirOpaqueTypeToMojoType(MO::OpaqueType opaqueType);
 
-  /// Extract parameters from an MO::OpaqueType as MojoValues.
-  /// Returns empty vector if no parameters.
-  /// Example: !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> returns [4, 8]
+  /// E.g. !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> returns [4, 8].
   static SmallVector<MojoValue>
   getOpaqueTypeParameters(MO::OpaqueType opaqueType);
 
@@ -431,11 +362,9 @@ public:
         .str();
   }
 
-  /// Given an array of dimensions, represent it as an IndexList Mojo value.
-  /// Dynamic dimensions (kDynamic) are mapped to -1.
+  /// Dims as an IndexList Mojo value, with kDynamic as -1.
   static MojoValue getAsIndexListMojoValue(ArrayRef<int64_t> dims) {
     SmallVector<MojoValue> dimsAsMojoValues;
-    // Map kDynamic to -1, keep others as-is.
     for (auto dim : dims) {
       if (dim == mlir::ShapedType::kDynamic)
         dimsAsMojoValues.push_back(-1);
@@ -449,11 +378,9 @@ public:
     return MojoValue(kStructIndexList)[rank]({}, dimsAsMojoValues);
   }
 
-  /// Given an array of dimensions, represent it as an IntTuple Mojo value.
-  /// Dynamic dimensions (kDynamic) are mapped to -1 (UNKNOWN_VALUE).
+  /// Dims as an IntTuple Mojo value, with kDynamic as -1 (UNKNOWN_VALUE).
   static MojoValue getAsIntTupleMojoValue(ArrayRef<int64_t> dims) {
     SmallVector<MojoValue> dimsAsMojoValues;
-    // Map kDynamic to -1 (UNKNOWN_VALUE), keep others as-is.
     for (auto dim : dims) {
       if (dim == mlir::ShapedType::kDynamic)
         dimsAsMojoValues.push_back(-1);
@@ -466,8 +393,8 @@ public:
     return MojoValue(kStructIntTuple)({}, dimsAsMojoValues);
   }
 
-  /// Given a tensor type, represent its static layout as a TileLayout Mojo
-  /// value using `_IndexListToTileLayout`.
+  /// A tensor type's static layout as a TileLayout, via
+  /// `_IndexListToTileLayout`.
   static MojoValue
   getStaticTileLayoutFromIndexListsMojoValue(MO::TensorType type) {
     MojoValue shapeIL = getAsIndexListMojoValue(type.getIntDims());
@@ -484,37 +411,31 @@ public:
   MojoValue getShapeAsCoordMojoValue(MOSH::ShapeAttr shapeAttr,
                                      ValueRange dynamicDims = {});
 
-  /// Helper to simply forward a list of mlir::Value into their MojoValue mapped
-  /// equivalents.
   SmallVector<MojoValue> getMojoValuesFor(ValueRange operands) {
     return llvm::map_to_vector(
         operands, [&](Value operand) { return getMojoValueFor(operand); });
   }
 
-  /// Split a fully-resolved function name (e.g. "max.kernels.AddOp.execute")
-  /// into its struct prefix ("max.kernels.AddOp") and function suffix
-  /// ("execute"), stripping any leading "__init__." prefix from the struct
-  /// name.
+  /// Split e.g. "max.kernels.AddOp.execute" into ("max.kernels.AddOp",
+  /// "execute"), stripping a leading "__init__." from the struct name.
   static std::pair<MojoValue, MojoValue>
   splitFunctionName(llvm::StringRef fullyResolvedName) {
     std::string fullName = fullyResolvedName.str();
     size_t lastDot = fullName.rfind('.');
     std::string structName = fullName.substr(0, lastDot);
     std::string fnName = fullName.substr(lastDot + 1);
-    // Strip leading "__init__." package prefix from the struct name.
     constexpr llvm::StringLiteral kInitPrefix = "__init__.";
     if (llvm::StringRef(structName).starts_with(kInitPrefix))
       structName.erase(0, kInitPrefix.size());
     return {MojoValue(std::move(structName)), MojoValue(std::move(fnName))};
   }
 
-  // Returns the corresponding SIMD type given its dtpype and its width
   static MojoValue getSIMDType(DType dtype, MojoValue width) {
     return MojoValue(kStructSIMD)[{mlirDTypeToMojoType(dtype), width}];
   }
 
-  /// Looks at the named result-parameter mappings of a function adaptor.
-  /// Returns the corresponding parameter name if found.
+  /// Looks up a parameter name in a function adaptor's result-parameter
+  /// mappings.
   static std::optional<StringRef>
   getResultParamNameFor(const KernelDeclFunctionAdaptor &fnAdaptor,
                         StringRef paramName);

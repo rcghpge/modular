@@ -33,25 +33,17 @@ class SimplifyDeviceGraphDependenciesPass
           SimplifyDeviceGraphDependenciesPass> {
   using Base::Base;
 
-  /// Returns the dependency edges of the dependencies op producing `node`, or
-  /// an empty range when `node` is not such a result (a block argument or a
-  /// foreign producer contributes no reachable edges).
+  /// Returns the edges of the dependencies op producing `node`, else empty.
   static ValueRange getEdges(Value node) {
     if (auto producer = node.getDefiningOp<DeviceGraphDependenciesOp>())
       return producer.getDependencies();
     return ValueRange{};
   }
 
-  /// Eliminate dependency edges of `dependenciesOp` implied transitively by
-  /// its other edges. An op's node result gates on the op's own edges (they
-  /// gate the first node the body records and the body's nodes are chained
-  /// from there, and an empty body degenerates to an empty node still carrying
-  /// them), so an edge reachable from another edge through the dependency
-  /// relation is redundant.
-  ///
-  /// Works like SimplifyChainsPass::eliminateImpliedByOperands: seed a
-  /// breadth-first walk with each edge's own dependency set, then delete any
-  /// starting edge rediscovered during the walk.
+  /// Eliminates edges of `dependenciesOp` implied transitively by its other
+  /// edges. A node gates on all of its op's edges (even for an empty body), so
+  /// an edge reachable from another is redundant. Works like
+  /// SimplifyChainsPass::eliminateImpliedByOperands.
   static SmallVector<Value>
   eliminateImpliedDependencies(DeviceGraphDependenciesOp dependenciesOp) {
     llvm::SmallSetVector<Value, 16> needles;
@@ -93,8 +85,7 @@ class SimplifyDeviceGraphDependenciesPass
 
     modelOp.walk<mlir::WalkOrder::PreOrder>([&](DeviceGraphDependenciesOp op) {
       dependenciesOps.push_back(op);
-      // Dependencies operations do not nest, so we can avoid walking into the
-      // body.
+      // Dependencies ops do not nest.
       return WalkResult::skip();
     });
 

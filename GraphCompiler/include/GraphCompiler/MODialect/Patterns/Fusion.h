@@ -13,10 +13,9 @@ namespace M::MO {
 
 class DeviceInfoMapping;
 
-/// Cache keyed on `(inputType, kgenParams)` that maps to the packed-weight
-/// output `TensorType` produced by a matmul packing shape function. Shared
-/// across `MatmulConstBPattern` instances within a single pass run so the
-/// shape function is lowered at most once per unique cache key.
+/// Maps `(inputType, kgenParams)` to the packed-weight `TensorType` from a
+/// matmul packing shape function, so each `MatmulConstBPattern` in a pass run
+/// lowers it at most once per key.
 class PackParamCache {
 public:
   void put(MO::TensorType inputTy, mlir::DictionaryAttr kgenParams,
@@ -39,9 +38,8 @@ struct MHAOptions {
   bool debug = false;
 };
 
-/// Imperatively fuses an `mo.allreduce.sum` chain followed by add +
-/// rms_norm + an optional quantize_fp8 into a single op. Walks downward from
-/// the seed op; no-op if the chain does not match.
+/// Fuses `mo.allreduce.sum` + add + rms_norm + optional quantize_fp8 into a
+/// single op; no-op if the chain does not match.
 void applyFuseAllReduceAddRMSNormQuantFP8(MO::AllReduceSumOp allReduceOp,
                                           M::DeviceRefAttr targetDeviceRef);
 
@@ -58,15 +56,14 @@ void populateFusionPatterns(mlir::RewritePatternSet &patterns,
                             M::DeviceRefAttr targetDeviceRef,
                             const MHAOptions &mhaOpts);
 
-/// Adds `MatmulAddPattern`. Gated separately because it is only enabled on
-/// SM100-class GPUs by the driver pass.
+/// Adds `MatmulAddPattern`, which the driver pass enables only on SM100-class
+/// GPUs.
 void populateFusionMatmulAddPatterns(const DeviceInfoMapping &deviceInfoMapping,
                                      mlir::RewritePatternSet &patterns);
 
 /// Adds `MegaFFNNvfp4Pattern`, which fuses the two-op NVFP4 MoE FFN composite
-/// chain into a single `mo.composite.mega_ffn_nvfp4`. The pattern arch-gates
-/// itself to SM100-class GPUs via `deviceInfoMapping`; the driver pass
-/// additionally guards it behind the `mega-ffn-enable` pass option.
+/// chain into `mo.composite.mega_ffn_nvfp4`. It gates itself to SM100-class
+/// GPUs; the driver pass also requires the `mega-ffn-enable` option.
 void populateFusionMegaFFNPatterns(const DeviceInfoMapping &deviceInfoMapping,
                                    mlir::RewritePatternSet &patterns);
 

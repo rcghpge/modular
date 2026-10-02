@@ -27,7 +27,6 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
   if (auto hasDeviceOp = dyn_cast<MOHasDeviceInterface>(op))
     return getDeviceOrDefault(hasDeviceOp);
 
-  // Fallback to the 'host' device.
   return getHostDevice(op->getContext());
 }
 
@@ -39,7 +38,6 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Type type) {
   if (auto hasDeviceType = dyn_cast<MOHasDeviceTypeInterface>(type))
     return getDeviceOrDefault(hasDeviceType);
 
-  // Fallback to the 'host' device.
   return getHostDevice(type.getContext());
 }
 
@@ -47,19 +45,16 @@ SmallVector<DeviceRefAttr> MO::getUniqueDevicesFromKernel(Operation *op) {
   SmallVector<DeviceRefAttr> devices;
   llvm::DenseSet<DeviceRefAttr> seenDevices;
 
-  // Helper to add device if not seen before
   auto addDeviceIfNew = [&](TensorType tensorType) {
     if (auto deviceRef = tensorType.getDeviceRef())
       if (seenDevices.insert(deviceRef).second)
         devices.push_back(deviceRef);
   };
 
-  // Check operands
   for (Value operand : op->getOperands())
     if (auto tensorType = dyn_cast<TensorType>(operand.getType()))
       addDeviceIfNew(tensorType);
 
-  // Check results
   for (Value result : op->getResults())
     if (auto tensorType = dyn_cast<TensorType>(result.getType()))
       addDeviceIfNew(tensorType);
@@ -118,9 +113,8 @@ Operation *DeviceAnnots::stampAny(Operation *op) const {
       hasDevice.getOperation()->setAttr(MO::kOperationDeviceRefAttrName,
                                         device);
   }
-  // If the op does not support device annotations then we'll just ignore
-  // the annotation and trust the AssignDevicesPass will check everything is
-  // consistent.
+  // Ops without device support drop the annotation; AssignDevicesPass checks
+  // consistency.
   return op;
 }
 

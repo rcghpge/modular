@@ -22,10 +22,8 @@ class FixupOverhangsPass
   using FixupOverhangsPassBase::FixupOverhangsPassBase;
 
   void runOnOperation() override {
-    // Identify hanging chains in each block (i.e., chains with no uses) and
-    // insert dependencies on the block terminator to ensure all chains are
+    // Make each block's terminator depend on its unused chains so they are
     // awaited.
-
     ModelOp modelOp = getOperation();
     BufferBuilderContext builderCtx =
         TensorBufferDialectInterface::getAllBufferBuilders(modelOp);
@@ -37,9 +35,8 @@ class FixupOverhangsPass
 
       for (Operation &op : block->getOperations()) {
         for (auto result : op.getResults()) {
-          // All async ref results will be set to error upon failure, thus one
-          // async value per operation is sufficient to propagate error
-          // correctly.
+          // A failing op sets all its results to error, so one per op
+          // suffices.
           if (result.use_empty()) {
             hangingChains.push_back(result);
             break;

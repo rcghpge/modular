@@ -19,10 +19,7 @@ using namespace MGP;
 DependencyTree::DependencyTree() = default;
 
 DependencyTree::DependencyTree(const DependencyTree &other) {
-  // First create the root and all nodes
   root = cloneNode(other.root, nullptr);
-
-  // Copy the remaining members
   runsAfter = other.runsAfter;
   runsAfterCounts = other.runsAfterCounts;
   operationToIndex = other.operationToIndex;
@@ -92,7 +89,6 @@ static void buildRunsAfter(
     llvm::DenseMap<Operation *, unsigned> &opIndex,
     llvm::SmallVectorImpl<Operation *> &indexToOp) {
 
-  // Collect all operations in block order first
   llvm::SmallVector<Operation *> blockOrderOps;
   for (Operation &op : block->getOperations()) {
     blockOrderOps.push_back(&op);
@@ -112,7 +108,6 @@ static void buildRunsAfter(
     }
     tempMark.insert(op);
 
-    // Visit operand defs first
     for (Value operand : op->getOperands()) {
       if (Operation *defOp = operand.getDefiningOp()) {
         if (defOp->getBlock() == block)
@@ -125,21 +120,18 @@ static void buildRunsAfter(
     topoOrder.push_back(op);
   };
 
-  // Visit operations in reverse order since it's likely that
-  // operations that run later are already toward the end of the block
+  // Reverse order: ops that run later tend to sit toward the end of the block.
   for (Operation *op : llvm::reverse(blockOrderOps)) {
     if (!visited.count(op))
       visit(op);
   }
 
-  // Populate the index maps
   indexToOp.resize(numOps);
   for (unsigned i = 0; i < numOps; ++i) {
     opIndex[topoOrder[i]] = i;
     indexToOp[i] = topoOrder[i];
   }
 
-  // 2) Pre‑compute in‑block users for each op.
   llvm::DenseMap<Operation *, llvm::SmallVector<Operation *, 4>> users;
   users.reserve(numOps);
   for (auto *def : topoOrder) {
@@ -152,7 +144,7 @@ static void buildRunsAfter(
     }
   }
 
-  // 3) Initialise each runsAfter bit‑vector with {self, terminator}.
+  // Every op's runsAfter set starts as {self, terminator}.
   Operation *terminator = block->getTerminator();
   const unsigned termIdx = opIndex[terminator];
   for (auto *op : topoOrder) {
@@ -161,12 +153,12 @@ static void buildRunsAfter(
     bv.set(termIdx);
   }
 
-  // 4) Single reverse sweep – topo guarantees users are later in the list.
+  // One reverse sweep suffices: topo order puts users later in the list.
   for (int i = static_cast<int>(numOps) - 1; i >= 0; --i) {
     Operation *def = topoOrder[i];
     auto &defSet = runsAfter[def];
     for (Operation *user : users[def])
-      defSet |= runsAfter[user]; // SparseBitVector union (cheap)
+      defSet |= runsAfter[user];
   }
 }
 } // namespace
@@ -174,7 +166,6 @@ static void buildRunsAfter(
 DependencyTree DependencyTree::getDependencyTree(Block *block) {
   DependencyTree tree;
 
-  // Build runsAfter sets
   llvm::DenseMap<Operation *, llvm::SparseBitVector<64>> runsAfterSparse;
   llvm::DenseMap<Operation *, unsigned> opToIdx;
   llvm::SmallVector<Operation *> idxToOp;
@@ -190,7 +181,7 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
     tree.runsAfterCounts[index] = tree.runsAfter[index].count();
   }
 
-  // Immediate runsAfter (closest successor in the set with largest size)
+  // The immediate successor is the one with the largest runsAfter set.
   llvm::DenseMap<Operation *, Operation *> immediate;
   Operation *terminator = block->getTerminator();
   for (auto *op : idxToOp) {
@@ -200,7 +191,6 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
     Operation *closest = nullptr;
     uint32_t maxSz = 0;
 
-    // Iterate over all bits in the SparseBitVector
     for (unsigned i : mySet) {
       Operation *cand = idxToOp[i];
       if (cand == op)
@@ -217,7 +207,6 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
     immediate[op] = closest;
   }
 
-  // Build tree structure.
   tree.root = tree.getOrCreate(terminator);
   for (auto *op : idxToOp) {
     if (op == terminator)
@@ -240,23 +229,18 @@ DependencyTree DependencyTree::getDependencyTree(Block *block) {
       continue;
 
     if (isFirstVisit) {
-      // preorder
       node->depth = depth;
       node->preIndex = index++;
-
-      // Schedule to visit again for post-order
       stack.push_back({node, false, depth});
 
       for (auto child : llvm::reverse(node->children)) {
         stack.push_back({child, true, depth + 1});
       }
     } else {
-      // postorder
       node->postIndex = index++;
     }
   }
 
-  // Persist mapping for external queries.
   tree.operationToIndex.swap(opToIdx);
   tree.indexToOperation.swap(idxToOp);
 
@@ -280,7 +264,6 @@ void DependencyTree::dumpToDot(llvm::raw_ostream &os) const {
     return str;
   };
 
-  // Draw main dominator tree
   std::function<void(DependencyTreeNode *)> dumpNode =
       [&](DependencyTreeNode *node) {
         if (!node)
@@ -296,7 +279,6 @@ void DependencyTree::dumpToDot(llvm::raw_ostream &os) const {
 
   dumpNode(root);
 
-  // Draw alloc use edges
   for (auto &op : root->op->getBlock()->getOperations()) {
     auto alloc = dyn_cast<MGP::BufferAllocOp>(op);
     if (!alloc)
@@ -357,11 +339,8 @@ bool DependencyTree::executesAfter(ArrayRef<Operation *> a,
       auto itB = operationToIndex.find(bOp);
       if (itB == operationToIndex.end())
         return false;
-      // An operation cannot run strictly after itself. Without this check,
-      // the self-bit set during runsAfter construction (so that
-      // runsAfterCounts includes the op itself) would cause this function to
-      // return true when aOp == bOp, incorrectly marking two allocations that
-      // share a common use as non-overlapping.
+      // runsAfter includes the op's own bit, but an op does not run strictly
+      // after itself; otherwise two allocs sharing a use look non-overlapping.
       if (itB->second == indexA)
         return false;
       return runsAfter[itB->second].test(indexA);
@@ -372,20 +351,16 @@ bool DependencyTree::executesAfter(ArrayRef<Operation *> a,
 bool DependencyTree::executesAfter(Operation *a, Operation *b) const {
   assert(a && b && "Invalid operations provided");
 
-  // Use operationToIndex directly for faster lookup
   auto itA = operationToIndex.find(a);
   auto itB = operationToIndex.find(b);
 
   if (itA == operationToIndex.end() || itB == operationToIndex.end()) {
-    // If either operation is not in the map, we can't determine execution order
     return false;
   }
 
   unsigned int indexA = itA->second;
   unsigned int indexB = itB->second;
 
-  // The 'runsAfter' set for an operation (node 'b') contains all operations
-  // that execute after it.
   return runsAfter[indexB].test(indexA);
 }
 
@@ -397,7 +372,6 @@ DependencyTreeNode *DependencyTree::findLCA(DependencyTreeNode *a,
   int depthA = a->depth;
   int depthB = b->depth;
 
-  // Bring both nodes to the same depth
   while (depthA > depthB) {
     a = a->parent;
     --depthA;
@@ -407,7 +381,6 @@ DependencyTreeNode *DependencyTree::findLCA(DependencyTreeNode *a,
     --depthB;
   }
 
-  // Traverse up until we find the common ancestor
   while (a != b) {
     a = a->parent;
     b = b->parent;
@@ -443,9 +416,7 @@ DependencyTreeNode *DependencyTree::findLCA(ArrayRef<Operation *> nodes) const {
 
 ErrorOr<SmallVector<Operation *>>
 M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
-  // Determine the uses of the allocated buffer by searching through all direct
-  // uses as well as those of possible aliases
-
+  // Collects direct uses and the uses of any aliases.
   SmallVector<Operation *> uses;
   SmallVector<Operation *> stack;
 
@@ -463,12 +434,6 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
       if (isa<GRT::GRTControlFlowInterface>(*owner))
         return Error("control flow op may alias");
 
-      // // A slot-published buffer is read by other devices' regions of the
-      // // partitioned device graph, none of which appear as uses here.
-      // if (isa<MGP::DeviceGraphStableCreateOp>(*use.getOwner()))
-      //   return Error("stable address slot extends the buffer's lifetime to "
-      //                "the device graph");
-
       if (isa<MGP::CallOp>(owner))
         return Error("call op may alias");
 
@@ -476,11 +441,10 @@ M::MGP::getAllocUses(MGP::BufferAllocOp allocOp) {
           owner->getParentOfType<MGP::ModelOp>().getIsSubgraph())
         return Error("terminator op of subgraph may alias");
 
-      // Follow the chain into `owner`'s results whenever this operand aliases
-      // or extends the lifetime of one. Querying the interface (not the operand
-      // type) lets the walk cross tensor-typed hops such as tensor.create ->
-      // tensor.slice, so a buffer viewed by a zero-copy slice stays live until
-      // the slice's users rather than looking dead after the view op.
+      // Follow into `owner`'s results when this operand aliases or extends the
+      // lifetime of one. Querying the interface (not the operand type) crosses
+      // tensor-typed hops like tensor.create -> tensor.slice, so a zero-copy
+      // view keeps the buffer live until the view's users.
       unsigned operandNumber = use.getOperandNumber();
       bool aliasesResult = false;
       if (auto mayAlias = dyn_cast<GRT::GRTMayAliasInterface>(owner)) {

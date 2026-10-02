@@ -26,18 +26,13 @@ struct RewriteOpaqueTypesPass
 
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
-    // Read the simple → fully-qualified mapping persisted by
-    // `mogg-import-packages`. Absence is a valid no-op: any consumer is
-    // free to run this pass on a module that has no opaque-type references.
+    // Simple -> fully-qualified mapping persisted by `mogg-import-packages`.
+    // Absence is a valid no-op.
     auto mappingAttr =
         module->getAttrOfType<mlir::DictionaryAttr>(kOpaqueTypeMappingAttrName);
     // Safety net for the kernel-struct exclusion in `buildOpaqueTypeMapping`:
-    // collect the leaf name of every kernel/primitive decl in the module so an
-    // `!mo.opaque<"Foo">` that names an (excluded) registered kernel struct
-    // fails loudly here instead of silently passing through unqualified and
-    // surfacing as a confusing far-from-the-cause failure during later
-    // lowering. The decls are already materialized in the module at this
-    // stage, so this needs no package rescan and no extra attribute.
+    // an `!mo.opaque<"Foo">` naming a registered kernel struct fails here
+    // instead of far from the cause during later lowering.
     llvm::StringSet<> kernelLeafNames;
     auto leafOf = [](llvm::StringRef name) -> llvm::StringRef {
       return name.rsplit('.').second.empty() ? name : name.rsplit('.').second;
@@ -55,12 +50,9 @@ struct RewriteOpaqueTypesPass
             llvm::StringRef symbol = opaqueTy.getSymbol().getValue();
             auto qualified = mappingAttr.getNamed(symbol);
             if (!qualified) {
-              // An unqualified opaque type that names a registered kernel
-              // struct is a misuse: kernel structs are implementations
-              // resolved by registration, not opaque data types. Already-
-              // qualified or genuinely-external opaque types carry dotted
-              // names whose leaves never collide here, so this fires only on
-              // the precise misuse.
+              // Kernel structs are resolved by registration, not opaque data
+              // types. Qualified or external opaque types have dotted names,
+              // so this fires only on that misuse.
               if (kernelLeafNames.contains(symbol)) {
                 module.emitError()
                     << "opaque type '" << symbol
@@ -84,9 +76,7 @@ struct RewriteOpaqueTypesPass
         return signalPassFailure();
     }
 
-    // The mapping has been applied (or there was nothing to apply);
-    // downstream passes operate on fully-qualified names and don't need
-    // it. Drop the attribute to keep the module clean.
+    // Downstream passes use fully-qualified names only.
     module->removeAttr(kOpaqueTypeMappingAttrName);
   }
 };

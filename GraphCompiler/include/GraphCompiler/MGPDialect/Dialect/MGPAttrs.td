@@ -15,7 +15,6 @@ include "GraphCompiler/MGPDialect/Dialect/MGPDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 
-// Base class for attributes in this dialect.
 class MGP_Attr<string attrName, string attrMnemonic, list<Trait> traits = []>
     : AttrDef<MGPDialect, attrName, traits> {
   let mnemonic = attrMnemonic;

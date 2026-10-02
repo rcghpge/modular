@@ -12,23 +12,14 @@
 
 namespace M::GML {
 
-/// Base class for all container classes (`Dict`, `List`, `Tuple`). We implement
-/// a range of container and composed types to support gluing the C and Python
-/// APIs to the runtime types used inside a model. Models that interact with
-/// non-tensor inputs and outputs require a different set of runtime types.
-/// This is required because, depending on the compiled model's internal values,
-/// they can't be used outside of the execution. On the other hand,
-/// `nanobind::dict` and friends cannot be passed deeper into our stack (beyond
-/// the Python bindings) due to requiring RTTI. The classes here are a
-/// lightweight implementation of similar classes wrapped by Python's `Dict`,
-/// `List`, `Tuple` and `None` types. The implementation does not depend on
-/// MLIR, Python, Pybind or framework-specific implementations (all of which can
-/// lead to symbol or RTTI conflicts). The implementation does not require
-/// support for dynamic casts.
+/// Base class for `Dict`, `List`, `Tuple`: lightweight stand-ins for the Python
+/// types that glue the C and Python APIs to non-tensor model values. Model
+/// internals can't escape execution, and `nanobind::dict` and friends need RTTI
+/// so can't go below the bindings. These avoid MLIR, Python, and framework
+/// dependencies (symbol/RTTI conflicts) and need no dynamic casts.
 class Container {};
 
-/// Class representing the pythonic `None` value. Used to tunnel `None` between
-/// the C/Python API and `None` values in the compiled models.
+/// Pythonic `None`, tunneled between the C/Python API and compiled models.
 class None {
 public:
   None() = default;
@@ -61,9 +52,8 @@ enum class DenseMapInfoKey {
 raw_ostream &operator<<(raw_ostream &os, const DenseMapInfoKey &info);
 std::ostream &operator<<(std::ostream &os, const DenseMapInfoKey &info);
 
-/// Wrapper around `AnyAsyncValueRef` providing methods required for using
-/// `AnyAsyncValueRef` as a map key (`hash`, `to_string`, `==`) as well as
-/// Simplifying string and YAML representations.
+/// Wraps `AnyAsyncValueRef` for use as a map key (`hash`, `to_string`, `==`)
+/// and for string and YAML representations.
 class Variant {
 public:
   Variant();
@@ -80,8 +70,7 @@ public:
   /// Returns a reference to the wrapped `AnyAsyncValueRef`.
   const AsyncRT::AnyAsyncValueRef &getValue() const;
 
-  /// Copy assignment operator required for assignment to `Variant`. Note
-  /// that the implementation copies the value ref and increments the ref count.
+  /// Copies the value ref, incrementing the ref count.
   Variant &operator=(const Variant &other);
   Variant &operator=(Variant &&other);
 
@@ -106,42 +95,31 @@ bool operator<(const Variant &lhs, const Variant &rhs);
 raw_ostream &operator<<(raw_ostream &os, const Variant &variant);
 std::ostream &operator<<(std::ostream &os, const Variant &variant);
 
-/// This prints the (nested) values to the provided ostream. Leaf node tensors
-/// are printed with `Kernels::printTensor`.
+/// Prints (nested) values; leaf tensors use `Kernels::printTensor`.
 ErrorOrSuccess printGenericValue(raw_ostream &os,
                                  const AsyncRT::AnyAsyncValueRef &value,
                                  ResultOutputStyle style, unsigned precision);
 
-/// Returns a string representation of an `AnyAsyncValueRef` referencing
-/// a supported composed type or tensor. Note: The function is deliberately
-/// not called `to_string` due to not being generic.
+/// Stringifies a supported composed type or tensor. Not `to_string` because
+/// it isn't generic.
 std::string valueToString(const AsyncRT::AnyAsyncValueRef &value);
 
-/// Returns true if two `AnyAsyncValueRef`s are equal. Equality is defined
-/// similarly to PyTorch/Python. Container types are uniquely identified by
-/// their content, tensors by their underlying buffer pointer. Note: The
-/// function is deliberately not overriding the `==` operator due to not being
-/// generic.
+/// PyTorch/Python-like equality: containers by content, tensors by buffer
+/// pointer. Not `operator==` because it isn't generic.
 bool valueEqual(const AsyncRT::AnyAsyncValueRef &lhs,
                 const AsyncRT::AnyAsyncValueRef &rhs);
 
-/// Returns true if one `AnyAsyncValueRef` is less than the other. Less-than is
-/// defined similarly to PyTorch/Python. Container types are compared
-/// by their content, tensors by their underlying buffer pointer. Note: The
-/// function is deliberately not overriding the `<` operator due to not being
-/// generic.
+/// PyTorch/Python-like less-than: containers by content, tensors by buffer
+/// pointer. Not `operator<` because it isn't generic.
 bool valueLessThan(const AsyncRT::AnyAsyncValueRef &lhs,
                    const AsyncRT::AnyAsyncValueRef &rhs);
 
-/// Returns a hash for  `AnyAsyncValueRef`s. The hash is computed based on
-/// container type contents, and for tensors, the underlying buffer pointer is
-/// used. Note: The function is deliberately not overriding the hash-struct
-/// due to not being generic. Unsupported wrapped types are mapped to
-/// `std::numeric_limits<size_t>::max()` as hash.
+/// Hashes containers by content and tensors by buffer pointer; unsupported
+/// types hash to `std::numeric_limits<size_t>::max()`. Not a hash-struct
+/// specialization because it isn't generic.
 size_t valueHash(const AsyncRT::AnyAsyncValueRef &value);
 
-/// Combines an existing hash with a new hash using an algorithm based on the
-/// golden ratio.
+/// Golden-ratio hash combine.
 size_t hashCombine(size_t seed, size_t value);
 
 } // namespace M::GML
@@ -165,8 +143,7 @@ struct hash<M::GML::Variant> {
   size_t operator()(const M::GML::Variant &value) const;
 };
 
-/// Returns the string representation of `Variant`. Delegates to the
-/// individual key types.
+/// Delegates to the individual key types.
 std::string to_string(const M::GML::Variant &variant);
 
 } // namespace std

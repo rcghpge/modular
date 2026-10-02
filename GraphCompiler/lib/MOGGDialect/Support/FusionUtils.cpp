@@ -22,7 +22,6 @@
 
 namespace M::MOGG {
 
-// FusionInfo helper
 FusionLeafAttr createFusionLeaf(Operation *op) {
   std::string name;
   if (auto shapeFuncOp = dyn_cast<MO::InvokeShapeFuncOp>(op)) {
@@ -50,12 +49,9 @@ FusionLeafAttr createFusionLeaf(Operation *op) {
     name = op->getName().getIdentifier().getValue();
   }
 
-  // Store the op's location directly so the fusion tree carries full
-  // provenance info.
   auto ctx = op->getContext();
   LocationAttr loc = op->getLoc();
 
-  // Store the op's full function type signature.
   TypeAttr signature;
   auto funcType =
       FunctionType::get(ctx, op->getOperandTypes(), op->getResultTypes());
@@ -67,10 +63,8 @@ FusionLeafAttr createFusionLeaf(Operation *op) {
 bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
   if (!operation)
     return false;
-  // The property is checked only at operand-less source ops; an op reached with
-  // a block-arg operand fails the walk (it depends on a runtime value). The
-  // functor inspects each op's own operands, so a mixed op (a constant and a
-  // block arg) is caught here rather than needing a separate leaf notion.
+  // An op with a block-arg operand fails the walk: it depends on a runtime
+  // value, including a mixed op that also takes a constant.
   return !walkDataflowGraph<WalkDirection::Producers>(
               operation,
               [](mlir::Operation *op) -> mlir::WalkResult {

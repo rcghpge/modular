@@ -36,8 +36,7 @@ bool consumerReadsThroughReshape(LoadOp load);
 
 /// Whether `load`'s consumer is a pure reshape: it stores exactly the value it
 /// loaded through the reshape, with no per-element compute in between. Fusing
-/// it is valid but only relabels the store index, so a wrapper may decline it
-/// to leave the bare relabel as its own kernel (legacy behavior).
+/// it is valid but only relabels the store index, so a wrapper may decline it.
 bool consumerIsPureReshape(LoadOp load);
 
 /// The policy a wrapper supplies to narrow generic output fusion.

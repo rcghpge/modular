@@ -11,17 +11,14 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "llvm/Support/LogicalResult.h"
 
-// `MOGGTypes.h` (for `!mogg.buffer`/`!mogg.tensor`) and `Builders.h` (for
-// `OpBuilder::clone`) are needed by the `cloneWithMut` default implementation,
-// which is emitted inline into the generated interface header below. Neither
-// pulls in `MOGGInterfaces.h`, so there is no include cycle.
+// Needed by the inline `cloneWithMut` default implementation in the generated
+// header. Neither includes `MOGGInterfaces.h`, so there is no cycle.
 #include "GraphCompiler/MOGGDialect/MOGGTypes.h"
 #include "mlir/IR/Builders.h"
 
 namespace M::MOGG {
-// Shared verifier for `MOGG_TensorCreateInterface`, defined in MOGGOps.cpp
-// where the MOGG types are in scope: enforces `!mogg.buffer => mut`. Called
-// from the interface's generated `verifyTrait`, which cannot name the type.
+// Enforces `!mogg.buffer => mut` for `MOGG_TensorCreateInterface`. Defined in
+// MOGGOps.cpp because the generated `verifyTrait` cannot name the MOGG types.
 ::llvm::LogicalResult
 verifyTensorCreateInterfaceMutability(::mlir::Operation *op);
 } // namespace M::MOGG

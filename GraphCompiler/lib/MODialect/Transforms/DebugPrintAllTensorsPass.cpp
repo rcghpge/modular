@@ -30,7 +30,6 @@ struct DebugPrintAllTensorsPass
     : public impl::DebugPrintAllTensorsPassBase<DebugPrintAllTensorsPass> {
   using DebugPrintAllTensorsPassBase::DebugPrintAllTensorsPassBase;
 
-  /// Returns a human readable label corresponding to value.
   std::string valueToLabel(Value value) {
     std::string str;
     llvm::raw_string_ostream os(str);

@@ -47,16 +47,13 @@ class OutlineModelsToCallablesPass
 
   struct GraphContext;
 
-  /// Corresponds 1:1 with `MGP::ModelOp`s in the source IR.
-  /// This structure lives longer than the original `MGP::ModelOps`,
-  /// though, and is used to pass context to the "parent" graph
-  /// of a subgraph during `rewriteAndSeal()`.
+  /// Corresponds 1:1 with `MGP::ModelOp`s, but outlives them to pass context
+  /// to a subgraph's parent during `rewriteAndSeal()`.
   struct GraphContext {
     struct SealedGraphContext {
       MEF::CallableOp initCallable;
       MEF::CallableOp execCallable;
 
-      // pass arg structure for matching up implicit arg passing
       SealedGraphContext(MEF::CallableOp init, MEF::CallableOp exec)
           : initCallable(init), execCallable(exec) {}
     };
@@ -78,19 +75,15 @@ class OutlineModelsToCallablesPass
         : sealedContext(), unsealedContext(model), hasSubgraphs(false),
           sealed(false) {}
 
-    /// GraphContext is definitionally inter-referential,
-    /// so copying is poorly defined
+    /// GraphContexts reference each other, so copying is ill-defined.
     GraphContext(const GraphContext &) = delete;
     GraphContext &operator=(const GraphContext &) = delete;
 
-    /// But keep the ability to move at initial creation to properly
-    /// construct unique ptrs
+    /// Movable so it can be placed into a unique_ptr at creation.
     GraphContext(GraphContext &&) = default;
 
-    /// Marks this GraphContext as having been visited and rewritten,
-    /// such that the original `MGP::ModelOp` no longer exists.
-    /// All information that is needed after this point must be
-    /// accessed through `sealedContext` or the other fields on `this`.
+    /// Marks this context rewritten; the original `MGP::ModelOp` is gone, so
+    /// later reads go through `sealedContext` and the other fields.
     void seal() {
       ASSERT_STREAM(this->sealedContext.has_value(),
                     "can't seal a context without initializing sealedContext");
@@ -107,19 +100,13 @@ class OutlineModelsToCallablesPass
     bool sealed;
   };
 
-  /// This is used to wrap the state to pass around for a single invocation of
-  /// this pass, and builds and holds the entire interconnected call
-  /// graph of `GraphContext`s within the current module.
-  ///
-  /// See `GraphContext` for most of the semantics of `ModuleContext`s contents
+  /// Per-invocation state: the module's call graph of `GraphContext`s.
   struct ModuleContext {
     ModuleOp moduleOp;
 
     llvm::DenseMap<StringAttr, std::unique_ptr<GraphContext>> models;
 
-    /// The non-subgraph models in this module
-    /// Every currently-GraphRT-executable module will have at most
-    /// one of these.
+    /// Non-subgraph models; a GraphRT-executable module has at most one.
     llvm::SmallVector<GraphContext *, 1> entryGraphs;
 
     GraphContext *intern(GraphContext gc) {
@@ -152,11 +139,9 @@ class OutlineModelsToCallablesPass
     }
 
     ModuleContext(ModuleOp moduleOp) : moduleOp(moduleOp), models() {
-      // First, register all ModelOps so we can ref them
       for (auto model : moduleOp.getOps<MGP::ModelOp>())
         this->intern(GraphContext(model));
 
-      // Then, link up references now that both sides must exist
       for (auto &[name, gc] : this->models) {
         gc->unsealedContext.value().getExecute().walk([&](MGP::CallOp call) {
           auto &callee = *this->models.at(call.getCalleeAttr().getAttr());
@@ -167,12 +152,9 @@ class OutlineModelsToCallablesPass
     }
   };
 
-  /// NOTE: operates pre-sealing _only_
-  /// Takes the model graph and adds an arg to each of init and exec
-  /// that will receive a stacked prefix during the rewriteAndSeal
-  /// stage of this pass. Then, prefixes that arg to the placeholder
-  /// weight name at runtime using a string concat op for any
-  /// BufferConstantExternalOps that are marked as placeholders.
+  /// Pre-sealing only. Adds a prefix arg to each subgraph's init and exec,
+  /// filled in by rewriteAndSeal, and concatenates it onto placeholder
+  /// BufferConstantExternalOp weight names at runtime.
   void localPropagatePrefixes(ModuleContext &context,
                               std::optional<mlir::Value> prefix) {
     for (auto &[name, modelPtr] : context.models) {
@@ -186,27 +168,23 @@ class OutlineModelsToCallablesPass
         auto mojoStringType = MGP::OpaqueType::get(
             builder.getContext(), builder.getStringAttr("mojo_string"), {});
 
-        // for exec, put it after implicit args/before explicit arguments
+        // Exec: between the implicit and explicit args. Init: at the end.
         Value execPrefix = execBlock->insertArgument(
             implicitArgsCount, mojoStringType, model->getLoc());
 
         modelPtr.get()->execPrefixValue = execPrefix;
 
-        // for init, put it on the end
         Value initPrefix =
             initBlock->addArgument(mojoStringType, model->getLoc());
 
-        // fixup any ops (currently only buffer.constant.external)
-        // that depend on prefix, but _not_ mgp.call as that
-        // specifically is fixed up later during conversion
+        // mgp.call is fixed up later, during conversion.
         llvm::SmallVector<std::pair<Block *, mlir::Value>> blocks(
             {{initBlock, initPrefix}, {execBlock, execPrefix}});
 
         for (auto [block, prefix] : blocks) {
           block->walk([&](MGP::BufferConstantExternalOp op) {
             if (!op.getEIsPlaceholder()) {
-              // Anything that isn't marked as IsPlaceholder
-              // has its final name already, and shouldn't get a prefix
+              // Non-placeholders already have their final name.
               return mlir::WalkResult::skip();
             }
 
@@ -225,8 +203,7 @@ class OutlineModelsToCallablesPass
 
         modelPtr.get()->initPrefixValue = initPrefix;
 
-        // init should return the prefix so it will
-        // pass into exec without needing to re-munge strings
+        // Init returns the prefix so exec need not rebuild it.
         llvm::cast<MEF::OutputOp>(initBlock->getTerminator())
             .getOperandsMutable()
             .append(initPrefix);
@@ -234,42 +211,21 @@ class OutlineModelsToCallablesPass
     }
   }
 
-  /// Performs a post-order traversal of the model call graph,
-  /// asserting that there are no recursive model dependencies.
-  ///
-  /// For any `GraphContext` that is not yet visited, consumes the
-  /// `MGP::ModelOp` that `GraphContext` represents.
-  ///
-  /// That model is then pulled apart into two `MEF::CallableOp`s,
-  /// one for init and one for exec. Then, for every `MGP::CallOp`,
-  /// the target `GraphContext`'s forwarded values are plumbed from
-  /// one `GRT::Invoke` in self's init to one in self's exec, such
-  /// that the callee's exec receives the output of the callee's init
-  /// plus any explicit args and prefix. All of these values,
-  /// plus any values that otherwise need to be passed from self's
-  /// init to self's exec become self's forwarded bundle for anything
-  /// that calls self.
-  ///
-  /// If the current model is _not_ marked as a subgraph, then it
-  /// is considered a possible entry point to the graph, and a
-  /// `MEF::ModelOp` is created to wrap self's init and exec in
-  /// a form that GraphRT can directly execute.
-  ///
-  /// The original GraphContext is then "sealed", with the
-  /// original `MGP::ModelOp` being erased.
+  /// Post-order over the model call graph, rejecting cycles. Each unvisited
+  /// model is split into init and exec `MEF::CallableOp`s. Each `MGP::CallOp`
+  /// becomes a `GRT::Invoke` in init and in exec, with the callee's init
+  /// outputs (plus explicit args and prefix) forwarded to its exec; these
+  /// become this graph's own forwarded bundle. A non-subgraph model is also
+  /// wrapped in a `MEF::ModelOp` GraphRT can execute. The original
+  /// `MGP::ModelOp` is then erased and the context sealed.
   FailureOr<GraphContext *>
   rewriteAndSeal(ModuleContext &context, GraphContext &graph,
                  llvm::SmallVector<ModelOp> ancestors) {
 
-    // If already visited this graph, we've resolved everything needed
-    // and have emitted callables already. Can safely return the already-sealed
-    // value.
     if (graph.isSealed())
       return &graph;
 
-    // first, check if there's a cycle in arriving at this op
-    // this should be cheap compared to the rest of what's going on
-    // on account of subgraph call depth rarely (if ever) exceeding 2
+    // Cheap: subgraph call depth rarely exceeds 2.
     for (ModelOp ancestor : ancestors) {
       if (ancestor.getNameAttr() ==
           graph.unsealedContext.value().getNameAttr()) {
@@ -294,27 +250,21 @@ class OutlineModelsToCallablesPass
 
     ancestors.push_back(graph.unsealedContext.value());
 
-    // extract info from MGP::ModelOp before denormalizing it
     ModelOp model = graph.unsealedContext.value();
     Location modelLoc = model->getLoc();
     StringRef modelName = model.getName().getValue();
     bool isSubgraph = model.getIsSubgraph();
 
-    // at the very least, forward the full set of parameters of _this_ graph
-    // from init to execute, and from each iter of execute to the next
     auto initOutput =
         llvm::cast<MEF::OutputOp>(model.getInitBlock()->getTerminator());
 
-    // Collect this now so iteration is cheap, since
-    // need to do multiple passes over it to apply fixups
+    // Collected up front since fixups take several passes.
     struct CallContext {
       MGP::CallOp call;
       StringAttr prefixAttr;
       GraphContext *toGraph;
 
-      // within the scope of the containing graph,
-      // these are the results of the call to the `init` callable
-      // that should be forwarded as a bundle
+      // Results of the callee's `init` invoke, forwarded as a bundle.
       llvm::SmallVector<mlir::Value> initResults;
       llvm::SmallVector<Type> initResultTypes;
 
@@ -323,7 +273,6 @@ class OutlineModelsToCallablesPass
 
     llvm::SmallVector<CallContext> calls;
 
-    // CallOps only happen in the Execute region
     WalkResult result = model.getExecute().walk([&](MGP::CallOp call) {
       GraphContext *maybeCallee =
           context.getModel(call.getCalleeAttr().getAttr());
@@ -344,17 +293,10 @@ class OutlineModelsToCallablesPass
     if (result.wasInterrupted())
       return failure();
 
-    // translate MGP::CallOp to InvokeOps in init and exec,
-    // thread arg bundles through init output -> exec input
+    // Child init outputs are stacked onto this init's outputs and threaded
+    // into this exec's inputs:
     {
       OpBuilder initBuilder(model.getInitBlock()->getTerminator());
-      // if I have any child calls, I take each of their
-      // init's outputs and stack them onto my init's outputs,
-      // put them into my exec's inputs, and expect them to be forwarded
-      //
-      // I will also take every call I make and pass their stacked forwarded
-      // args
-      //
       // Init is going to receive:
       //  (...<existing ModelOp init operands>, <prefix>)
       // Init is going to output:
@@ -370,16 +312,13 @@ class OutlineModelsToCallablesPass
       // Exec is going to output:
       //  (<ModelOp exec results>)
 
-      // Keep around
       SmallVector<Value> initChains;
 
       for (auto &[call, prefix, ctx, initResults, initResultTypes,
                   execArgsBundle] : calls) {
         GraphContext::SealedGraphContext target = ctx->sealedContext.value();
 
-        // Create prefix here to pass down in.
-        // This will also propagate through the bundle to exec,
-        // and should be pulled out there
+        // The prefix also travels through the bundle to exec.
         auto mojoStringType =
             MGP::OpaqueType::get(initBuilder.getContext(),
                                  initBuilder.getStringAttr("mojo_string"), {});
@@ -395,11 +334,9 @@ class OutlineModelsToCallablesPass
                   .getResult();
         }
 
-        // now, build up expected init operands for the call
         auto initArgs =
             llvm::SmallVector<Value>(model.getInitBlock()->getArguments());
 
-        // replace parent prefix with inner prefix
         initArgs.push_back(prefixValue);
 
         auto initInvokeOp = GRT::InvokeOp::create(
@@ -416,16 +353,11 @@ class OutlineModelsToCallablesPass
         initChains.push_back(initArgs.front());
       }
 
-      // now, we have the stacked results of calling all child inits,
-      // so push them onto our `output`, and make sure the inputs to execute
-      // match
       auto initOutputOperands = initOutput.getOperandsMutable();
 
-      // this starts out containing the "original" results
       for (auto &callContext : calls) {
         size_t insertionIndex = initOutputOperands.size();
-        initOutputOperands.append(
-            callContext.initResults); // push all of the bundles
+        initOutputOperands.append(callContext.initResults);
 
         for (size_t i = 0; i < callContext.initResultTypes.size(); i++) {
           auto execArg = model.getExecuteBlock()->insertArgument(
@@ -437,10 +369,8 @@ class OutlineModelsToCallablesPass
       }
 
       for (auto &callContext : calls) {
-        // insert any forwarded bundles between the implicit args (including
-        // prefix) and the explicit args
-
-        // -1 to avoid dropping the prefix
+        // Forwarded bundles go between the implicit args (incl. prefix) and
+        // the explicit args; -1 keeps the prefix.
         auto numOperands = callContext.call.getOperands().size();
         auto dropCount = callContext.initResults.size() - 1;
         ASSERT_STREAM(numOperands >= dropCount,
@@ -466,10 +396,8 @@ class OutlineModelsToCallablesPass
         callContext.call->erase();
       }
 
-      // As a fixup, ensure the outer init's chain also waits for the
-      // inner init's chain. This _seems_ like it shouldn't be necessary,
-      // but some situations seem to implicitly expect
-      // subgraph inits to be done if their parent init is done.
+      // The parent init also waits on child inits; some callers implicitly
+      // expect that.
       Value parentChain = initOutput.getOperand(0);
       initChains.push_back(parentChain);
       auto newInitChain = GRT::ChainCreateOp::create(
@@ -479,9 +407,6 @@ class OutlineModelsToCallablesPass
 
     mlir::OpBuilder builder(context.moduleOp);
 
-    // init is "easy", it just takes the same inputs as it always did and
-    // passes it to every callee. It then outputs what it originally output
-    // plus what each callee outputs.
     auto initFunctionType = mlir::FunctionType::get(
         context.moduleOp.getContext(), model.getInitBlock()->getArgumentTypes(),
         initOutput->getOperandTypes());
@@ -490,8 +415,6 @@ class OutlineModelsToCallablesPass
         context.moduleOp.getContext(),
         model.getExecuteBlock()->getArgumentTypes(),
         model.getExecuteBlock()->getTerminator()->getOperandTypes());
-
-    // all subgraphs need to get turned into MEF::Callables
 
     builder.setInsertionPoint(context.moduleOp);
     auto parent = ancestors.back();
@@ -512,23 +435,20 @@ class OutlineModelsToCallablesPass
     initCallable.getCallableRegion()->takeBody(model.getInit());
     execCallable.getCallableRegion()->takeBody(model.getExecute());
 
-    // take implicit passed context and forward it
     graph.sealedContext =
         GraphContext::SealedGraphContext(initCallable, execCallable);
 
     if (!isSubgraph) {
-      // need to fix up a wrapper model so the runtime still has
-      // the expected entry point
+      // The runtime needs a wrapper model as its entry point.
       auto loc = model->getLoc();
 
       mlir::FunctionType initFnType = initCallable.getFunctionType();
       mlir::FunctionType execFnType = execCallable.getFunctionType();
 
-      // Extract devices and frameworkName from the original model
       auto devices = model.getDevices();
       auto frameworkName = model.getFrameworkName();
 
-      // Extract these BEFORE erasing the model to avoid use-after-free
+      // Read before erasing the model.
       auto initialModelFnType = model.getInputOutputTypes();
       auto extraAttrs = model.getTheExtraAttrsAttr();
 
@@ -603,13 +523,9 @@ class OutlineModelsToCallablesPass
 
     ModuleContext context(moduleOp);
 
-    // First, propagate prefixes so the main rewrite traversal
-    // doesn't have to spend so much effort juggling operands.
+    // Propagating prefixes first saves operand juggling in the rewrite.
     localPropagatePrefixes(context, {});
 
-    // Now, go through and rewrite every model into callables
-    // with forwarded init context. This will also turn
-    // non-subgraph `mgp.model`s into `mef.model`s.
     for (GraphContext *entryGraph : context.entryGraphs) {
       ASSERT_STREAM(!entryGraph->unsealedContext.value().getIsSubgraph(),
                     "no entry graph should be a subgraph");

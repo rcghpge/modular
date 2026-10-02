@@ -42,7 +42,6 @@ namespace M::MOGG {
 
 namespace {
 
-// Convert all possible operations directly to the available operation.
 struct JitCompileKernels
     : public impl::JitCompileKernelsBase<JitCompileKernels> {
   using Base::Base;
@@ -177,11 +176,10 @@ struct JitCompileKernels
     auto envAttr = KGEN::getModuleEnvAttr(kgenModuleOp);
     envAttr.printStripped(*keyBufRef);
 
-    // Resolve the key's target the same way codegen does (honoring an explicit
-    // accelerator override, and ignoring the virtual-CPU override for a
-    // compile-for-host-execution pass); otherwise a host-warmed artifact would
-    // falsely hit for a cross-compiled target -- or a host-compiled fold
-    // kernel would be cached under the cross target's key and poison it.
+    // Resolve the target as codegen does (honoring an accelerator override,
+    // ignoring the virtual-CPU override for host execution); otherwise a
+    // cross-compiled target could hit a host-warmed artifact, or a
+    // host-compiled fold kernel could poison the cross target's key.
     auto hostTargetOr = MOGG::getHostTargetInfoAttr(
         ctx, defaultDeviceTargetArch, defaultDeviceTargetTriple,
         compileForHostExecution);
@@ -226,9 +224,8 @@ struct JitCompileKernels
     auto moggCache = RCRef<Cache::BlobCache<SemanticHashKey>>::create(
         moggCacheBackendOr.takeValue());
 
-    // This is a list of ops that had a cache hit and the contents of the cache
-    // blob, which is a key into the mojo cache. if we don't find this value in
-    // the mojo cache, this op needs to be considered a cache miss
+    // MOGG-cache hits, keyed by their blob (a mojo-cache key). A mojo-cache
+    // miss demotes the op to a miss.
     llvm::StringMap<std::pair<llvm::SmallVector<mlir::StringAttr>, BufferRef>>
         mojoCacheHits;
 
@@ -257,15 +254,12 @@ struct JitCompileKernels
 
       if (moggCacheResult->has_value()) {
         ++moggHitCount;
-        // we have a potential cache hit!
         BufferRef buffer = moggCacheResult->value();
         llvm::StringRef mojoCacheHashKey = buffer->getBuffer();
 
-        // now we need to find the value in the mojo cache
         ErrorOr<std::optional<BufferRef>> mojoCacheResultOr =
             state.mojoCache->findKeyedSync(mojoCacheHashKey);
         if (mojoCacheResultOr.isError() || !mojoCacheResultOr->has_value()) {
-          // this is a cache miss!
           ++mojoMissCount;
           MODULAR_CACHE_LOG("mogg") << "checkCache: MOGG hit but Mojo miss for "
                                     << newName.getValue() << "\n";
@@ -288,10 +282,8 @@ struct JitCompileKernels
         std::optional<BufferRef> maybeMojoCachedItemBuffer =
             mojoCacheResultOr.takeValue();
 
-        // we have a real cache hit!
         BufferRef mojoCachedItemBuffer = maybeMojoCachedItemBuffer.value();
 
-        // Collect the operation to erase later, after we're done iterating
         opsToErase.insert(genOp);
         auto [it, inserted] = mojoCacheHits.insert(
             {mojoCacheHashKey,
@@ -330,50 +322,12 @@ struct JitCompileKernels
   CompileDiagnosticOr<KGENCachingResult>
   erasePreviouslyCompiledKernels(const CompilationState &state) {
     auto regionSymbols = collectRegionSymbols(state.mgpModule);
-    // Stub semantic naming is intentionally disabled for now.
-    //
-    // Historical behavior:
-    // - `applySemanticNaming()` used to see both top-level `region_X` entry
-    //   points and GC-generated `<input>::stub_N` helpers.
-    // - That gave us some extra KGEN-level dedup for identical stub bodies.
-    //
-    // Why it is disabled today:
-    // - The temporary trait-based fusion lowering emits module-scope
-    //   `FusionStruct_*` declarations and methods instead of the older inline
-    //   closure bodies.
-    // - `ModuleHasher::setGeneratorHash()` intentionally normalizes
-    //   `FlatSymbolRefAttr` inside attributes and types so generator names do
-    //   not perturb semantic hashes.
-    // - For fusion stubs, the only distinction between two otherwise-identical
-    //   stub bodies may be the nominal `FusionStruct_*` type they bind.
-    // - After normalization, those nominal references disappear from the
-    //   stub bytecode. The two stubs can then hash identically and be merged.
-    // - Once those stubs are merged, their callers can also collapse through
-    //   `setInputsHash()`, which turns this from a missed optimization into
-    //   wrong code.
-    //
-    // Why the blunt exclusion is acceptable:
-    // - `region_X` generators are the cacheable entry points; stubs do not
-    //   participate directly in cache lookup.
-    // - Whole-stub dedup still happens earlier at the MOGG level in
-    //   `MergeIdenticalKernelStubs`, where the original BindLambda regions are
-    //   still available structurally.
-    // - This keeps the workaround local and easy to remove once the fusion
-    //   lowering stops depending on nominal struct identity.
-    //
-    // How to bring stub renaming/dedup back:
-    // - When fusion moves off these temporary structs and onto unified closures
-    //   again, the distinguishing fusion semantics should be represented in the
-    //   generator body or in stable generator-to-generator edges rather than in
-    //   nominal `FusionStruct_*` symbols.
-    // - At that point, uncomment the `collectStubSymbols()` line above, insert
-    //   those symbols into `symbolsToRename` below, and delete this comment
-    //   block.
-    // - If unified closures still leave semantically-important identity only in
-    //   non-generator symbol references, we should fix that representation
-    //   first instead of re-enabling stub semantic naming.
-    // OLD LINE:
-    // auto stubSymbols = collectStubSymbols(*state.kgenModule);
+    // Stub symbols are excluded from semantic renaming: `ModuleHasher`
+    // normalizes `FlatSymbolRefAttr`s, so stubs differing only in their
+    // `FusionStruct_*` type would merge and `setInputsHash()` would collapse
+    // their callers into wrong code. Stub dedup happens in
+    // `MergeIdenticalKernelStubs`. Stub renaming can return once fusion stops
+    // encoding identity in nominal struct symbols.
 
     llvm::SetVector<StringAttr> symbolsToRename(regionSymbols.begin(),
                                                 regionSymbols.end());
@@ -406,7 +360,6 @@ struct JitCompileKernels
     llvm::SourceMgr src;
     src.AddNewSourceBuffer(std::move(mojoTextBuffer), llvm::SMLoc());
 
-    // Mojo parsing
     KGEN::LIT::ParserConfig config(ctx, opts);
     mlir::TimingScope ts;
     auto parsedMojoModule =
@@ -424,10 +377,8 @@ struct JitCompileKernels
     KGEN::CompilationOptions opts;
     // opts (not the module target-info stamp) drives the ObjectCompiler, so the
     // virtual-CPU override must reach it too or the cache key and codegen
-    // desync. Gated: propagating the host target unconditionally would churn
-    // every JIT cache key (resolved features != raw host CPUID delta). A
-    // compile-for-host-execution pass ignores the override entirely, keeping
-    // its keys in the same legacy host form.
+    // desync. Gated, since propagating the host target unconditionally would
+    // churn every JIT cache key; host-execution passes ignore the override.
     if (!compileForHostExecution && !M::Driver::getVirtualCpuTarget().empty()) {
       opts.targetTriple = targetInfo.getTripleStr();
       opts.targetCpu = targetInfo.getArch();

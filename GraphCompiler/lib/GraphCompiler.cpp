@@ -39,7 +39,6 @@
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
-// All the KGEN dependent passes
 #include "Mojo/ToolCommon/InitAllDialects.h"
 #include "Support/Compiler/PassTimingUtils.h"
 
@@ -210,21 +209,14 @@ LogicalResult MO::runGcPipeline(ModuleOp module,
   return pm.run(module);
 }
 
-// ---------------------------------------------------------------------------
-// mo-pipeline
-// ---------------------------------------------------------------------------
-
 void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
                             const MoPipelineOptions &opts) {
   auto kernelLibraryPaths =
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
-  // --- import-packages (first pass: populate mogg.kernel.decl ops) ---
-  // Skipped when `kernelDeclsPrePopulated` is set: the caller (Python compile
-  // path, constant folding) has already seeded the module with decl ops and
-  // the `mogg.opaque_type_mapping` attribute via `MOGG::copyKernelDecls`.
-  // `mogg-rewrite-opaque-types` immediately below still runs, so user
-  // `!mo.opaque<"simple">` references on freshly-cloned ops get rewritten.
+  // Skipped when the caller already seeded decls and
+  // `mogg.opaque_type_mapping` via `MOGG::copyKernelDecls`. RewriteOpaqueTypes
+  // still runs so freshly-cloned `!mo.opaque<"simple">` uses get rewritten.
   if (!opts.kernelDeclsPrePopulated) {
     pm.addPass(MOGG::createImportPackages(
         {.mojoPkgPaths = kernelLibraryPaths, .litMlirPaths = {}}));
@@ -237,10 +229,8 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   if (opts.debugPrintAllTensors)
     pm.addPass(MO::createDebugPrintAllTensorsPass());
 
-  // RMO pipeline:
   pm.addPass(RMO::createLegalizeRMOOps());
 
-  // MO pipeline:
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addPass(MO::createCanonicalizeChainSequences());
@@ -248,7 +238,6 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
-  // Label for constant fold.
   std::string_view compiledFrameworkLabel;
   if (opts.compiledFrameworkLabel.hasValue())
     compiledFrameworkLabel = opts.compiledFrameworkLabel;
@@ -257,12 +246,11 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   if (opts.cacheDir.hasValue())
     cacheDir = opts.cacheDir;
 
-  // Run shape inference and constant fold.
   if (opts.useShapeInference)
     buildShapeInferencePipeline(pm);
 
-  // TODO(GEX-886): Remove dependency of constant folding for symbolic
-  // optimization
+  // TODO(GEX-886): Remove symbolic optimization's dependency on constant
+  // folding.
   if (opts.constantFold)
     pm.addPass(MO::createConstantFoldPass(compiledFrameworkLabel, cacheDir,
                                           kernelLibraryPaths));
@@ -270,13 +258,11 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   pm.addPass(MO::createHoistConstantSubgraphsIntoParent());
   pm.addNestedPass<MO::GraphOp>(mlir::createCSEPass());
 
-  // Run symbolic operator set domain-specific optimizations
   SymbolicOptimizationOptions symbolicOptimizationOpts;
   symbolicOptimizationOpts.symbolicFfastMath = opts.symbolicFfastMath;
   symbolicOptimizationOpts.symbolicNoUndefinedMath =
       opts.symbolicNoUndefinedMath;
 
-  // Add fallback shape functions for any remaining unhandled ops.
   pm.addPass(MO::createSymbolicOptimization(symbolicOptimizationOpts));
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
@@ -321,12 +307,9 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
-  // Wrap per-device consumers of an mo.tensor.unbundle in a fresh
-  // mo.parallel, then canonicalize (so bundle(unbundle(X)...) collapses
-  // to X), then merge the resulting adjacent mo.parallels into their
-  // upstream producers where SSA equality holds.  Together this absorbs
-  // per-device consumer chains back into the producing parallel so that
-  // MOGG's epilogue fusion sees them as a single kernel body.
+  // Absorb per-device consumers of an mo.tensor.unbundle back into the
+  // producing mo.parallel (canonicalize collapses bundle(unbundle(X)) to X) so
+  // epilogue fusion sees a single kernel body.
   pm.addPass(MO::createCreateParallelFromUnbundle());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addPass(MO::createMergeAdjacentParallels());
@@ -336,8 +319,7 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
                                           kernelLibraryPaths));
 
   if (opts.fuseJitKernels) {
-    // Only run this when kernel fusion is enabled as otherwise we might
-    // pessimize model execution by introducing extraneous copies.
+    // Without fusion this can add extraneous copies.
     pm.addPass(MO::createElideRedundantMutableOps());
   }
 
@@ -345,10 +327,6 @@ void M::MO::buildMoPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addPass(MO::createRemoveUnusedOps());
 }
-
-// ---------------------------------------------------------------------------
-// map-pipeline
-// ---------------------------------------------------------------------------
 
 void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
                              const MapPipelineOptions &opts) {
@@ -361,54 +339,36 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 
-  // Fusion has settled: give every fused-output epilogue a real store pointer
-  // (and, for a mixed-precision accumulating kernel, a pre-cast accumulation
-  // buffer) so MAPToMOGG never hands the epilogue a dangling pointer.
+  // After fusion settles, give every fused-output epilogue a real store pointer
+  // (plus a pre-cast accumulation buffer for mixed-precision accumulation).
   pm.addNestedPass<GraphOp>(MAP::createAllocateAccumulatingBuffers());
 
-  // An unfused reshape has no MAPToMOGG lowering past this point (its
-  // hoisted stride op isn't LowerableToMOGGInterface yet); an unfused
-  // contiguous slice can still take the zero-copy path the
-  // pre-advanced-fusion pipeline already has. Raise both back before
-  // OutlineStructuredKernelBodies commits to the MAP pipeline for good.
+  // An unfused reshape has no MAPToMOGG lowering (its hoisted stride op isn't
+  // LowerableToMOGGInterface yet), and an unfused contiguous slice can take the
+  // zero-copy path. Raise both back before outlining commits to MAP.
   pm.addNestedPass<GraphOp>(MAP::createRaiseBackContiguousViews());
 
   pm.addPass(MAP::createOutlineStructuredKernelBodies());
-  // Fires the MAP canonicalizations that unique `map.iter.opaque` inputs and
-  // prologue/epilogue captures, so the lowered kernel's parameter list (built
-  // from `inputs`) is minimal by the time MAPToMOGG runs.
+  // Uniques `map.iter.opaque` inputs and captures so the lowered kernel's
+  // parameter list is minimal.
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(MAP::createLoopInvariantViewMotion());
-  // cse before canonicalize here, reversed from this function's usual order:
-  // two loads hoisting the same view create two structurally-identical
-  // stride ops with two distinct captures of them; cse must unify the ops
-  // into one SSA value first, so the resulting duplicate-valued captures
-  // are actually foldable when DedupeCapturingClosureCaptures then runs.
+  // CSE before canonicalize: two loads hoisting the same view create identical
+  // stride ops; CSE must unify them so DedupeCapturingClosureCaptures can fold
+  // the duplicate captures.
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
 }
 
-// ---------------------------------------------------------------------------
-// mogg-pipeline
-// ---------------------------------------------------------------------------
-
 void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
                               const MoggPipelineOptions &) {
-  // Finalize the advanced-fusion MOGG codegen form: conform each call's
-  // operands to its callee signature (scalars, variadic tuples, trait args),
-  // then outline each mogg.kernel into a mogg.kernel.stub.
   pm.addPass(MOGG::createConformCallOperands());
   pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
   pm.addPass(MOGG::createWrapKernelsWithTraceOp());
 
-  // Add cleanup passes to catch e.g used/duplicated constants.
   pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<GraphOp>(mlir::createCSEPass());
 }
-
-// ---------------------------------------------------------------------------
-// mgp-pipeline
-// ---------------------------------------------------------------------------
 
 void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
                              const MgpPipelineOptions &opts) {
@@ -421,8 +381,7 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MGP::createConcatInPlacePass());
   pm.addPass(MGP::createExecInvariantCodeMotionPass());
 
-  // Run simple buffer reuse pass after moving code to `init()`
-  // As buffer reuse can prevent hoisting of some code up.
+  // After ExecInvariantCodeMotion: buffer reuse can block hoisting.
   pm.addPass(MGP::createSimpleBufferReusePass());
 
   pm.addPass(MGP::createDynamicMemoryPlanningPass());
@@ -433,7 +392,7 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
 
-  // Before any sort of fusion, attach Python stack traces to ops and asserts.
+  // Before any fusion.
   pm.addPass(MGP::createAttachPythonStackTraces());
 
   pm.addPass(MGP::createGlobalizeSlotIndicesPass());
@@ -445,7 +404,7 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   lowerPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   pm.addPass(MGP::createLowerPrimitives(lowerPrimOpts));
 
-  { // Device-graph synthesis path
+  {
     pm.addPass(MGP::createStageDeviceGraphsPass());
     pm.addPass(MGP::createPartitionDeviceGraphCollectivePass());
     pm.addPass(MGP::createComputeDeviceGraphDependenciesPass());
@@ -454,8 +413,8 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
     pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
     pm.addNestedPass<MGP::ModelOp>(mlir::createCSEPass());
     pm.addPass(MGP::createGenerateBuildGraphStubsPass());
-    // Finalization audits the builder bridge's live users; drop the launch
-    // context chain the stub rewrite left dead first.
+    // Drop the dead launch context chain before finalization audits the
+    // builder bridge's live users.
     pm.addNestedPass<MGP::ModelOp>(mlir::createCanonicalizerPass());
     pm.addPass(MGP::createFinalizeDeviceGraphsPass());
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
@@ -472,40 +431,27 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createOutlineKernels());
   pm.addPass(MOGG::createLookupConstantResources());
 
-  // Kernel-stub dedup and try/except preparation. These run just before
-  // `EmitMojo`, which now only emits Mojo text.
-
-  // Lift inline `index.constant` ops feeding `mgp.buffer.get_cached`'s slot
-  // operand out of kernel bodies and into kernel-stub function arguments, so
-  // that kernels that previously differed only in those constant slot indices
-  // become structurally identical and `MergeIdenticalKernelStubs` (below) can
-  // collapse them. See `liftBufferCacheSlots` for the full rationale.
+  // Lifting slot-index constants into stub arguments lets kernels differing
+  // only in those indices merge below.
   pm.addPass(MOGG::createLiftBufferCacheSlots());
 
-  // Erase device ids inside kernel stubs (they only differ by which physical
-  // device the kernel runs on -- e.g. across EP shards -- and the emitted Mojo
-  // reads the device label, not the id) so that otherwise-identical per-device
-  // copies hash equal and the merge below can collapse them.
+  // The emitted Mojo reads the device label, not the id, so erasing ids lets
+  // per-device copies (e.g. across EP shards) merge below.
   pm.addPass(MOGG::createCanonicalizeKernelStubDeviceIds());
 
-  // Merge identical kernel stubs using their hashes.
   pm.addPass(MOGG::createMergeIdenticalKernelStubs());
 
-  // Any remaining kernel that has the lowering ops of an index.constant op will
-  // have that code replaced back with the index.constant because it's fewer
-  // lines of Mojo.
+  // index.constant emits fewer lines of Mojo than its lowered form.
   pm.addPass(MGP::createRaiseBackIndexConstant());
 
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addNestedPass<MOGG::KernelStubOp>(mlir::createCanonicalizerPass());
 
-  // Eliminate all stubs that have no callers (because of
-  // MergeIdenticalKernelStubs).
+  // Drop stubs orphaned by MergeIdenticalKernelStubs.
   pm.addPass(mlir::createSymbolDCEPass());
 
-  // Profile-scope range bracketing runs just before try/except wrapping: the
-  // begin/end Trace calls are raising, so they need that wrapping to keep the
-  // MGP-ABI entry point non-raising.
+  // Before try/except wrapping: the begin/end Trace calls raise, and the
+  // MGP-ABI entry point must not.
   if (opts.enableProfileScopeTracing) {
     MOGG::AddProfileScopeTracingOptions profileScopeOptions;
     profileScopeOptions.profileScopeTracingTraceUnlabelled =
@@ -513,9 +459,8 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
     pm.addPass(MOGG::createAddProfileScopeTracing(profileScopeOptions));
   }
 
-  // RaiseBackIndexConstant can make a kernel non-raising again, which would
-  // leave a try/except around non-raising code and warn in the Mojo compiler;
-  // wrapping runs last so it sees the final raising set.
+  // Last, so it sees the final raising set; try/except around non-raising
+  // code warns in the Mojo compiler.
   pm.addPass(MOGG::createAddTryExceptBlocks());
 
   MOGG::EmitMojoOptions emitMojoOptions;
@@ -532,12 +477,8 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
 
 namespace {
 
-/// Unified gc-pipeline implementation.
-///
-/// Builds all stage option structs from `opts` once, then appends every stage's
-/// passes to `pm`. When `dumpIntermediates` is set, a DumpStagePass is
-/// interleaved before the first stage and after each one, so running `pm`
-/// writes the per-stage IR. `pm` is only populated here; the caller runs it.
+/// Appends every gc-pipeline stage to `pm`. With `dumpIntermediates`, a
+/// DumpStagePass runs before the first stage and after each one.
 static void gcPipelineImpl(mlir::OpPassManager &pm,
                            const GCPipelineOptions &opts, bool skipJit,
                            bool dumpIntermediates) {
@@ -545,16 +486,13 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   auto kernelLibraryPaths =
       llvm::to_vector_of<std::string>(opts.kernelLibraryPaths);
 
-  // Shared stem for intermediate dumps. The first DumpStagePass (the "mo" front
-  // dump below) fills it from the user-visible (non-subgraph) model names while
-  // the GraphOps still exist; later stage dumps reuse it.
+  // Filled by the first ("mo") dump from the non-subgraph model names while
+  // the GraphOps still exist; later dumps reuse it.
   auto dumpBaseName = std::make_shared<std::string>();
 
-  // Dump the MO input before any pipeline stages run.
   if (dumpIntermediates)
     pm.addPass(MO::createDumpStagePass("mo", dumpBaseName));
 
-  // --- mo-pipeline options ---
   MoPipelineOptions moOpts;
   moOpts.debugPrintAllTensors = opts.debugPrintAllTensors;
   moOpts.useShapeInference = opts.useShapeInference;
@@ -580,20 +518,16 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   moOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
   moOpts.fuseJitKernels = opts.fuseJitKernels;
 
-  // --- map-pipeline options ---
   MapPipelineOptions mapOpts;
   mapOpts.fuseMutableLoadStore = opts.fuseMutableLoadStore;
 
-  // --- mogg-pipeline options ---
   MoggPipelineOptions moggOpts;
 
-  // --- mogg-to-mgp options ---
   MGP::MOGGToMGPOptions moToPrimOpts;
   moToPrimOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
   if (opts.compiledFrameworkLabel.hasValue())
     moToPrimOpts.compiledFrameworkLabel = opts.compiledFrameworkLabel;
 
-  // --- mgp-pipeline options ---
   MgpPipelineOptions mgpOpts;
   mgpOpts.kernelLibraryPaths = kernelLibraryPaths;
   mgpOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
@@ -605,7 +539,6 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
   mgpOpts.profileScopeTracingTraceUnlabelled =
       opts.profileScopeTracingTraceUnlabelled;
 
-  // --- jit options ---
   MOGG::JitCompileKernelsOptions jitOpts;
   if (!skipJit) {
     jitOpts.minimumCpuAlignment = opts.minimumCpuAlignment;
@@ -614,67 +547,51 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
     jitOpts.kernelLibraryPaths = kernelLibraryPaths;
     jitOpts.timeMOGGCompile = opts.timeMOGGCompile;
     jitOpts.debugKGENStubs = opts.debugKGENStubs;
-    // Carry the explicit accelerator arch/triple through to kernel codegen so
-    // it cross-compiles for the requested GPU instead of probing the host.
-    // These are the same options fed to ValidateDevicesPass above.
+    // Cross-compile for the requested GPU instead of probing the host.
     jitOpts.defaultDeviceTargetArch = opts.defaultDeviceTargetArch;
     jitOpts.defaultDeviceTargetTriple = opts.defaultDeviceTargetTriple;
     jitOpts.compileForHostExecution = opts.compileForHostExecution;
   }
 
-  // Appends one pipeline stage's passes to `pm`, then (when dumping) a
-  // DumpStagePass that writes the stage's IR under `dumpSuffix`.
   auto buildStage = [&](auto &&build, const std::string &dumpSuffix) {
     build(pm);
     if (dumpIntermediates && !dumpSuffix.empty())
       pm.addPass(MO::createDumpStagePass(dumpSuffix, dumpBaseName));
   };
 
-  // --- mo-pipeline ---
   buildStage([&](auto &p) { buildMoPipeline(p, moOpts); }, "mo-pre-mogg");
 
-  // --- mo-to-map ---
   buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "mo-to-map");
 
-  // --- map-pre-mogg: elementwise/prologue/epilogue fusion over MAP kernels,
-  // then MAP-dialect prep before the MAP -> MOGG conversion ---
   buildStage(
       [&](auto &p) {
         buildMapPipeline(p, mapOpts);
-        // Insert NaN/Inf checks at compiled-region boundaries. Runs after all
-        // MAP fusion so a check kernel is never fused into the kernel it
-        // checks, and before map-to-mogg so the injected `mo.custom` checks
-        // (lowered to MAP kernels in the pass) are compiled with the rest.
+        // After MAP fusion so a check never fuses into the kernel it checks;
+        // before map-to-mogg so the injected checks compile with the rest.
         if (opts.nanCheck)
           p.addPass(MO::createNanCheckPass(opts.nanCheckStride));
       },
       "map-pre-mogg");
 
-  // --- map-to-mogg: the MAP -> MOGG conversion ---
   MAP::MAPToMOGGOptions mapToMoggOpts;
   mapToMoggOpts.enableComputeLambdas = opts.enableComputeLambdas;
   buildStage([&](auto &p) { p.addPass(MAP::createMAPToMOGG(mapToMoggOpts)); },
              "map-to-mogg");
 
-  // --- mogg-pipeline ---
   buildStage(
       [&](auto &p) {
         buildMoggPipeline(p, moggOpts);
-        // Python tracebacks live in OpaqueLocs, which cannot be
-        // printed; convert them to FusedLocs so the dump carries the
-        // call sites. Limit to dumpIntermediates because the conversion
-        // strips the OpaqueLocs that the assert handling in
-        // buildMgpPipeline reads.
+        // OpaqueLoc tracebacks can't be printed, so convert them for the
+        // dump. Dump-only: this strips the OpaqueLocs buildMgpPipeline's
+        // assert handling reads.
         if (dumpIntermediates)
           p.addPass(MGP::createAttachPythonStackTraces());
       },
       "mogg-pre-mgp");
 
-  // --- mogg-to-mgp ---
   buildStage([&](auto &p) { p.addPass(MGP::createMOGGToMGP(moToPrimOpts)); },
              "mgp-pre-pipeline");
 
-  // --- mgp-pipeline + jit + jit-pipeline ---
   buildStage(
       [&](auto &p) {
         buildMgpPipeline(p, mgpOpts);
@@ -688,12 +605,6 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
 }
 
 } // namespace
-
-// ---------------------------------------------------------------------------
-// gc-pipeline  (full pipeline: mo-pipeline + mo-to-mogg + mogg-pipeline +
-//               mogg-to-mgp + mgp-pipeline + jit + jit-pipeline)
-// gc-pipeline-pre-jit: same through mgp-pipeline (emit-mojo); no jit
-// ---------------------------------------------------------------------------
 
 void M::MO::buildGCPipeline(mlir::OpPassManager &pm,
                             const GCPipelineOptions &opts) {
@@ -720,24 +631,18 @@ LogicalResult M::MO::runGCPipeline(ModuleOp moduleOp,
     }
   }
 
-  // gcPipelineImpl populates `pm`; when dumping, it interleaves DumpStagePasses
-  // that write each stage's IR as `pm` runs.
   gcPipelineImpl(pm, opts, /*skipJit=*/opts.preJit, dumpIntermediates);
   return pm.run(moduleOp);
 }
 
 void M::MO::buildShapeInferencePipeline(mlir::OpPassManager &pm) {
-  // This canonicalizer pass serves the following purposes:
-  // 1. Convert static reshapes like `[D0] -> [1]` into rebind, otherwise
-  //    staticization must alsp look through those reshapes for shape inputs.
-  // 2. Materialize parameter definition for `mo.rebind` that still declare
-  //    output parameters.
+  // Turns static reshapes like `[D0] -> [1]` into rebinds (so staticization
+  // needn't look through them) and materializes parameter definitions for
+  // `mo.rebind`s that still declare output parameters.
   pm.addNestedPass<MO::GraphOp>(mlir::createCanonicalizerPass());
 
-  // Propagation does 3 things:
-  // 1. Run calculations of certain constant ops in parameter domain
-  // 2. Materializes shape functions using parameter domain values
-  // 3. Simplifies parameter binding using substitution and constraint solving.
+  // Evaluates constant ops and shape functions in the parameter domain, then
+  // simplifies parameter bindings by substitution and constraint solving.
   pm.addNestedPass<MO::GraphOp>(MO::createPropagateShapes());
   pm.addNestedPass<MO::GraphOp>(mlir::createCSEPass());
   pm.addNestedPass<MO::GraphOp>(mlir::createCanonicalizerPass());
@@ -754,7 +659,6 @@ static BlobMap getDenseResources(ModuleOp module) {
         auto elementsAttr = constOp.getValue();
         if (auto resourceAttr =
                 dyn_cast<DenseResourceElementsAttr>(elementsAttr)) {
-          // Map the underlying data to the ASM Blob for later memory management
           mlir::AsmResourceBlob *blob = resourceAttr.getRawHandle().getBlob();
           if (blob->getDeleter())
             result[blob->getDataAs<uint8_t>().data()] = blob;
@@ -769,10 +673,8 @@ static BlobMap getDenseResources(ModuleOp module) {
 ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
                                           bool enableMEFMetadata) {
   OwningOpRef<ModuleOp> moduleToRewrite = module.clone();
-  // Some MGP-level ops may need to be lightly rewritten before encoding
-  // into MEF. For example, the device-generic ops are renamed to capture
-  // their device label so the GraphRT executor can dispatch to a
-  // device-appropriate primitive.
+  // Device-generic ops get renamed with their device label so GraphRT can
+  // dispatch to a device-appropriate primitive.
   BlobMap resources = getDenseResources(*moduleToRewrite);
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(
       module->getContext(), mlir::OpPassManager::Nesting::Implicit);
@@ -781,14 +683,12 @@ ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
   if (failed(pm.run(*moduleToRewrite)))
     return Error(Twine("Failed to prepare MGP model for conversion to MEF. ") +
                  diagnostics.formatMessage());
-  // Translate to MEF.
   ConcatenationTree result =
       translateMLIRToMEF(*moduleToRewrite, enableMEFMetadata);
   if (result.getSize() == 0) {
     return Error(Twine("Failed to convert model to MEF. ") +
                  diagnostics.formatMessage());
   }
-  // Serialize the ConcatenationTree to the result buffer.
   M::WriteableBufferRef outputBuffer = WriteableBuffer::get(
       0, maxAttributeAlignment().value(), result.getSize());
   result.traverse([&](ArrayRef<uint8_t> data) {
@@ -796,8 +696,7 @@ ErrorOr<BufferRef> M::MO::convertMGPToMEF(ModuleOp module,
                         data.size());
     if (resources.count(data.data())) {
       if (auto blob = resources[data.data()]; blob->getDeleter()) {
-        // Take ownership of the blob and immediately delete blobs that own
-        // their data.
+        // Free owned blob data as soon as it's been copied out.
         auto ref = M::GML::BlobLifetimeManager(std::move(blob->getDeleter()),
                                                blob->getData(),
                                                blob->getDataAlignment());

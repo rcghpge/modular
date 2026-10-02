@@ -3,10 +3,6 @@
 // This file is Modular Inc proprietary.
 //
 //===----------------------------------------------------------------------===//
-//
-// This file implements the MGP dialect operations.
-//
-//===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/Interfaces/EmitMojoState.h"
@@ -48,8 +44,7 @@ using namespace MGP;
 //===----------------------------------------------------------------------===//
 
 static llvm::StringRef primitiveMojoName(MOGG::PrimitiveDeclOp decl) {
-  // sym_name is set to the fully-qualified Mojo source name by
-  // ImportPackages, so it doubles as the identifier to emit in Mojo source.
+  // ImportPackages sets sym_name to the fully-qualified Mojo name.
   return decl.getSymNameAttr().strref();
 }
 
@@ -59,14 +54,11 @@ M::MGP::getImpliedAlignment(ElementsAttr value) {
     DenseResourceElementsHandle handle = resourceAttr.getRawHandle();
     mlir::AsmResourceBlob *blob = handle.getBlob();
     if (!blob && !isa<AlignedBytesType>(resourceAttr.getType())) {
-      // Report a user-friendly error in this situation.
       return Error(Twine("dense_resource blob is not available, so require "
                          "type annotation to supply an alignment"));
     }
 
     if (blob) {
-      // Since the blob is available, check its size is consistent with the
-      // attribute size.
       if (static_cast<int64_t>(blob->getData().size()) !=
           value.getNumElements())
         return Error(Twine("the resource size does not match the "
@@ -74,12 +66,11 @@ M::MGP::getImpliedAlignment(ElementsAttr value) {
                            Twine(blob->getData().size()) + " vs " +
                            Twine(value.getNumElements()) + ")"));
     }
-    // DenseResourceElementsAttrs support HasAlignedBytesInterface, so fall
-    // through.
+    // Falls through: DenseResourceElementsAttr implements
+    // HasAlignedBytesInterface.
   }
 
   if (auto hasAlignedBytesAttr = dyn_cast<HasAlignedBytesInterface>(value)) {
-    // The attribute has an alignment or default alignment we can use.
     return hasAlignedBytesAttr.getAlignedBytesType().getAlign();
   }
 
@@ -594,7 +585,6 @@ LogicalResult AssertOp::canonicalize(AssertOp op, PatternRewriter &rewriter) {
   if (op->getParentOfType<MOGG::KernelStubOp>())
     isInKernel = true;
 
-  // remove assert(true)
   BoolAttr condAttr;
   if (mlir::matchPattern(op.getCond(), mlir::m_Constant(&condAttr))) {
     if (condAttr.getValue()) {
@@ -859,10 +849,8 @@ CallOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
   if (!targetModel)
     return emitOpError() << "failed to find symbol " << getCalleeAttr();
 
-  // Verify operand types match the execute block argument types.
   Block *executeBlock = targetModel.getExecuteBlock();
-  // If the index was not yet added, remove the last operand of the execute
-  // block because that's the index.
+  // Until the index is globalized, the execute block's last arg is the index.
   auto expectedArgs =
       executeBlock->getArguments().drop_back(!getIsGlobalizedIndex());
   auto actualArgTypes = getOperandTypes();
@@ -883,7 +871,6 @@ CallOp::verifySymbolUses(mlir::SymbolTableCollection &symbolTable) {
     }
   }
 
-  // Verify result types match the execute block result types.
   auto outputOp = dyn_cast<MEF::OutputOp>(executeBlock->getTerminator());
   if (!outputOp) {
     return emitOpError() << "execute block of " << getCalleeAttr()
@@ -952,10 +939,8 @@ static OpaqueType opaqueType(MLIRContext *ctx, StringRef symbol) {
 static void appendInitExecImplicitArgs(SmallVectorImpl<Type> &args,
                                        MLIRContext *ctx,
                                        ArrayRef<DeviceRef> devices) {
-  // Add the weights registry to the implicit signature.
   args.push_back(opaqueType(ctx, "weights_registry"));
 
-  // Add all the device contexts to the implicit signature.
   for (const DeviceRef &device : devices) {
     args.push_back(DeviceContextType::get(
         ctx, DeviceRefAttr::get(ctx, device.label, device.id)));
@@ -1056,8 +1041,7 @@ static ParseResult parseExecuteRegion(OpAsmParser &p,
       p.parseRegion(executeRegion, args, /*enableNameShadowing=*/true))
     return failure();
 
-  // Check the execute region's actual signature, and save its implicit
-  // signature into inputOutputTypes.
+  // Strip the implicit prefix; the rest becomes inputOutputTypes.
   SmallVector<DeviceRef> devices;
   for (auto attr : deviceAttrs) {
     if (auto deviceAttr = dyn_cast<DeviceRefAttr>(attr))
@@ -1126,7 +1110,6 @@ void ModelOp::build(OpBuilder &builder, OperationState &state, StringAttr name,
   Region *initRegion = state.regions[0].get();
   initRegion->emplaceBlock();
 
-  // Add the implicit weights registry and device context args to init.
   for (auto type : implicitInitSignature(builder, devices).getInputs())
     initRegion->addArgument(type, state.location);
 
@@ -1159,8 +1142,7 @@ LogicalResult ModelOp::verifyRegions() {
   if (auto output = dyn_cast<MEF::OutputOp>(initBlock->getTerminator())) {
     FunctionType implicitInitSig = implicitInitSignature(builder, devices);
 
-    // Check that the number of init block arguments matches the number of
-    // devices + 1 for the weights registry.
+    // One arg per device plus the weights registry.
     size_t numDeviceArgs = initArgTypes.size() - 1;
     if (numDeviceArgs != getDevices().size()) {
       return emitOpError() << "Expected the number of arguments to the 'init' "
@@ -1176,7 +1158,6 @@ LogicalResult ModelOp::verifyRegions() {
       }
     }
 
-    // Verify that there is exactly one ContextCreateOp in the init block.
     int contextCreateOpCount = 0;
     initBlock->walk([&](ContextCreateOp) { contextCreateOpCount++; });
     if (contextCreateOpCount != 1) {
@@ -1230,7 +1211,6 @@ LogicalResult ModelOp::verifyRegions() {
   return success();
 }
 
-/// Verifies the input/output type signature.
 LogicalResult ModelOp::verify() { return success(); }
 
 ContextCreateOp ModelOp::getInitContext() {

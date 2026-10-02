@@ -43,35 +43,25 @@ std::string stringifyMLIRObject(UnnamedType &&obj) {
 
   return strRepr;
 }
-// Class to Log the execution of patterns for debug purposes
-// It strives to be as minimal as possible, keeping track
-// only of nodes that were visited on the way to a failure
-// Future extensions could log the entire graph traversal
-// for cleaner debugging.
+// Debug log of pattern matching; keeps only the nodes visited on the way to a
+// failure.
 class Logger {
 public:
-  // Push an mlir op/value onto the traversal stack
   template <typename T>
   void push(T &&val) {
     stack.push_back(stringifyMLIRObject(val));
   }
-  // Pop back to a fork if a particular fork was
-  // successful, not as interesting to look at
+  // Pop back to a fork once it succeeded; successful forks aren't interesting.
   template <typename T>
   void pop(T &&val) {
     auto string = stringifyMLIRObject(val);
-    // Clear anything that is on the stack
-    // Before this op was found good, i.e.,
-    // one branch of an optional was wrong
+    // Drop what was pushed after this op, e.g. a failed optional branch.
     auto pos = std::find(stack.rbegin(), stack.rend(), string);
     stack.erase(stack.end() - std::distance(stack.rbegin(), pos), stack.end());
   }
-  // Mark a match failure along with the pattern that
-  // was attempting to match
   void markDeadEnd(const std::string &pattern) {
     stack.emplace_back("Hit a Dead End at " + pattern + "! Rewinding Stack.");
   }
-  // Print out the collected events
   void print(llvm::raw_ostream &os) {
     tabs = "";
     for (auto i = stack.rbegin(), e = stack.rend(); i != e; ++i) {
@@ -87,7 +77,6 @@ private:
   std::string tabs = "";
 };
 
-// Utility to print the log
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os, Logger &log) {
   log.print(os);
   return os;
@@ -163,9 +152,8 @@ constexpr void enumerate(std::tuple<Tys...> &tuple, CallbackT &&callback) {
                         std::make_index_sequence<sizeof...(Tys)>{});
 }
 
-/// RecursivePatternMatcher that composes.
-/// Heavily modified from upstream to support logging
-/// Including SIFNAE to get the right names for pattern ops
+/// RecursivePatternMatcher that composes. Modified from upstream to support
+/// logging, with SFINAE to get pattern op names.
 template <typename OpType, typename... OperandMatchers>
 struct RecursivePatternMatcher {
   RecursivePatternMatcher(OperandMatchers... matchers)
@@ -198,7 +186,6 @@ struct RecursivePatternMatcher {
     return res;
   }
 
-  // Template black magic
   template <typename T>
   using has_name_t = decltype(std::declval<T>().getOperationName());
 
@@ -265,8 +252,7 @@ struct Capture {
   bool match(T op, Logger *log = nullptr) {
     if (!matcher.match(op, log))
       return false;
-    // Don't log a successful capture, it was already
-    // logged in the match. May revisit in the future
+    // Already logged by the match.
     bindDest = op;
     return true;
   }
@@ -308,7 +294,6 @@ template <typename U, typename Matcher>
 StringAttrMatcher(U, Matcher) -> StringAttrMatcher<U, Matcher>;
 
 // Find a scalar constant that matches a particular variable.
-// Almost certainly need to do dtype dispatch on this in the future.
 template <typename T>
 struct MOScalarConstantMatcher {
   MOScalarConstantMatcher(T targetValue) : targetValue(targetValue) {}
@@ -346,8 +331,7 @@ private:
 template <typename T>
 MOScalarConstantMatcher(T) -> MOScalarConstantMatcher<T>;
 
-// Find a scalar constant that matches a particular variable.
-// Almost certainly need to do dtype dispatch on this in the future.
+// Find a splat constant that matches a particular variable.
 template <typename T, bool typed>
 struct MOSplatConstantMatcher {
   MOSplatConstantMatcher(T targetValue) : targetValue(targetValue) {}
@@ -483,8 +467,7 @@ private:
   Matcher matcher;
 };
 
-// Return true if either pattern 1 or pottern2
-// match the subgraph
+// Matches if either pattern matches the subgraph.
 template <typename Matcher1, typename Matcher2>
 struct OptionalMatcher {
   OptionalMatcher(Matcher1 matcher1, Matcher2 matcher2)
@@ -504,8 +487,7 @@ private:
   Matcher2 matcher2;
 };
 
-// Check if an op is Constant Like
-// Used for cross-dialect checks
+// Cross-dialect check for ConstantLike ops.
 struct constant_op_matcher {
   bool match(mlir::Operation *op, Logger *log = nullptr) {
     if (log)

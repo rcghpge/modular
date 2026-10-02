@@ -23,9 +23,8 @@ DeviceRefAttr getDeviceOrDefault(MOHasDeviceInterface op);
 /// As above, but for any operation.
 DeviceRefAttr getDeviceOrDefaultAny(Operation *op);
 
-/// Returns the #M.device_ref annotation for type which appears in the
-/// the given MO graphOp. Returns the 'host' device if there is no such
-/// annotation on the type itself.
+/// Returns the #M.device_ref annotation for type, or the 'host' device if
+/// there is none.
 DeviceRefAttr getDeviceOrDefault(MOHasDeviceTypeInterface type);
 
 /// As above, but for any type.
@@ -67,10 +66,10 @@ struct DeviceAnnots {
   /// Stamps these device annotations into operation and returns it.
   Operation *stampAny(Operation *op) const;
 
-  /// Stamps these device annotations into operation and returns it.
+  /// Stamps these device annotations into op, if it takes an explicit device
+  /// annotation, and returns it.
   template <typename Op>
   Op stamp(Op op) const {
-    // Only stamp ops that need an explicit device annotation.
     if (op.template hasTrait<MOExplicitDevice>() || isa<CustomOp>(op))
       stampAny(op);
     return op;
@@ -92,52 +91,38 @@ struct DeviceAnnots {
 /// Wraps a RewriterBase to automatically collect and stamp ops with device
 /// annotations.
 ///
-/// Note that we wrap rather than derive since RewriteBase is extensible.
-/// Thankfully we only need to forward a dozen or so methods to make
-/// DeviceAwareRewriter a usable replacement for the underlying rewriter.
+/// Wraps rather than derives since RewriterBase is extensible; only a dozen or
+/// so methods need forwarding.
 struct DeviceAwareRewriter {
   /// The accumulated device annotations for all the matched ops.
   DeviceAnnots deviceAnnots;
-  /// The underlying rewriter.
   mlir::RewriterBase &rewriter;
-  /// Accumulated operations which may be bound by patterns, in addition
-  /// to the 'anchor' op given to the constructor.
-  ///
-  /// NOTE: central to the use of `pushOp()` is returning a stable memory
-  /// address for a pointer (Operation**). llvm::SmallVector may resize and
-  /// change these addresses as we insert more addresses to track in the Vector.
-  ///
-  /// llvm::PagedVector does not re-allocate memory if we do not do deletion of
-  /// elements so is used to guarantee stable addressing.
+  /// Ops which may be bound by patterns, besides the constructor's anchor op.
+  /// A PagedVector keeps the addresses returned by `pushOp()` stable as it
+  /// grows.
   llvm::PagedVector<Operation *, sizeof(Operation *) * 16> matchedOps;
 
-  /// Constructs device-aware rewriter using rewriter, and adds the initial
-  /// operation to it, on the assumption that op will be replaced by the
-  /// rewriter.
+  /// Captures the annotations of `op`, which the rewriter is assumed to
+  /// replace.
   DeviceAwareRewriter(Operation *op, mlir::RewriterBase &rewriter)
       : deviceAnnots(DeviceAnnots::forOp(op)), rewriter(rewriter) {}
 
   /// Pushes an operation onto matchedOps for later checking by addOps.
   void pushOp(Operation *op) {
-    // Update the size of the paged vector
     matchedOps.resize(matchedOps.size() + 1);
-
-    // Update the newly allowed last element
     matchedOps[matchedOps.size() - 1] = op;
   }
 
-  /// Pushes a null operation onto matchedOps, and returns its address.
-  /// Can be passed to a op-matching pattern to be assigned if the pattern
-  /// matches, then later checked by addOps.
+  /// Pushes a null operation onto matchedOps and returns its address, for an
+  /// op-matching pattern to assign on match.
   Operation **pushOp() {
     matchedOps.resize(matchedOps.size() + 1);
     return &matchedOps[matchedOps.size() - 1];
   }
 
-  /// Captures the device annotations for all additional operations, including
-  /// those captured in matchedOps, and those given in the argument, on the
-  /// assumption they will all be replaced by the rewriter. Returns false if
-  /// any ops have conflicting annotations. Null ops are ignored.
+  /// Captures the device annotations of matchedOps and `ops`, which the
+  /// rewriter is assumed to replace. Returns false on conflicting annotations.
+  /// Null ops are ignored.
   [[nodiscard]] bool
   addOps(const std::initializer_list<Operation *> &ops = {}) {
     return llvm::all_of(
@@ -149,34 +134,26 @@ struct DeviceAwareRewriter {
 
   /// Like OpBuilder::create, but the new op is stamped.
   ///
-  /// TODO: Currently we always stamp every created/replaced op. That's ok
-  /// since all MO ops take and return arguments on the same device as the
-  /// op itself. However, once we relax that things get more subtle, and
-  /// probably the rewriting code needs to distinguish between creating new
-  /// ops which must be stamped vs those (eg a mo.constant for an index
-  /// operand) which can be left unstamped.
+  /// TODO: Every created/replaced op is stamped, which is only correct while
+  /// MO ops take and return values on their own device. Relaxing that needs
+  /// rewrites to tell ops that must be stamped from ones that need not (eg a
+  /// mo.constant for an index operand).
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args &&...args) {
     return deviceAnnots.stamp(
         OpTy::create(rewriter, location, std::forward<Args>(args)...));
   }
 
-  /// Create a constant that is stamped with the host device.
-  ///
-  /// Some ops have operands that are constrained to be on the host device.
-  /// We need to provide a way to create these without stamping them with the
-  /// wrong device.
+  /// Create a constant stamped with the host device, for operands constrained
+  /// to the host.
   template <typename... Args>
   ConstantOp createHostConstant(Location location, Args &&...args) {
     return ConstantOp::create(rewriter, location, std::forward<Args>(args)...,
                               getHostDevice(rewriter.getContext()));
   }
 
-  /// Create a constant that is stamped with the current device.
-  ///
-  /// This leverages the ability of DeviceAwareRewriter to create constants
-  /// for the current device. Both the constant op and the tensor type will be
-  /// stamped with the current device.
+  /// Create a constant whose op and tensor type are stamped with the current
+  /// device.
   template <typename... Args>
   ConstantOp createDeviceConstant(Location location, Args &&...args) {
     return ConstantOp::create(rewriter, location, std::forward<Args>(args)...,
@@ -273,27 +250,9 @@ namespace detail {
 //===----------------------------------------------------------------------===//
 
 /// TODO: clean this up, ask C++ geniuses
-/// A drop in replacement for the likes of `OpRewritePattern`,
-/// `OpInterfaceRewritePattern` and the like. Which automatically uses
-/// `DeviceAwareRewriter`.
-///
-/// For example `RewritePatternT` might be `OpRewritePattern<AddOp>`
-/// and `OpT` would be `AddOp`.
-///
-/// Example of use:
-///
-/// ```
-/// struct MyRewrite : public OpInterfaceRewritePattern<Reduction> {
-///   LogicalResult
-///   matchAndRewrite(Reduction op,
-///                   PatternRewriter &commonRewriter) const override {
-///     ...
-///   }
-/// ...
-/// };
-/// ```
-///
-/// Would become:
+/// A drop-in replacement for `OpRewritePattern`, `OpInterfaceRewritePattern`
+/// and the like that propagates device annotations via `DeviceAwareRewriter`.
+/// For example, `RewritePatternT` = `OpRewritePattern<AddOp>`, `OpT` = `AddOp`.
 ///
 /// ```
 /// struct MyRewrite :
@@ -308,8 +267,6 @@ namespace detail {
 /// ...
 /// };
 /// ```
-///
-/// Which will automatically propagate device information correctly.
 template <typename RewritePatternT, typename OpT>
 struct DeviceAwarePatternShim : public RewritePatternT {
   using RewritePatternT::RewritePatternT;
@@ -326,8 +283,7 @@ struct DeviceAwarePatternShim : public RewritePatternT {
 
 } // namespace detail
 
-/// Forwards template parameters to `RewritePatternBaseT`, done to avoid
-/// uglier syntax.
+/// Forwards template parameters to `RewritePatternBaseT` for nicer syntax.
 template <template <typename> typename RewritePatternBaseT, typename OpT>
 struct DeviceAwareRewritePattern
     : detail::DeviceAwarePatternShim<RewritePatternBaseT<OpT>, OpT> {
@@ -347,8 +303,7 @@ public:
 
   explicit DeviceInfoMapping(mlir::ModuleOp moduleOp);
 
-  /// Returns the DeviceInfoAttr for the given device, or a null attribute if
-  /// the device has no entry in the mapping.
+  /// Returns null if the device has no entry.
   DeviceInfoAttr get(DeviceRefAttr device) const;
 
 private:

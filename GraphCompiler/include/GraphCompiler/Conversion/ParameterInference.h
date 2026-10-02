@@ -30,8 +30,7 @@ mlir::DictionaryAttr inferParameters(mlir::Operation *op,
                                      mlir::OpBuilder &builder);
 
 /// Appends the parameters that ride on `op`'s SSA operands instead of its
-/// attributes, as i64 arrays. Shared with the legacy MO->MOGG lowering so both
-/// paths agree on the names and the encoding.
+/// attributes, as i64 arrays.
 void appendStaticOperandParameters(
     mlir::Operation *op, mlir::OpBuilder &builder,
     llvm::SmallVectorImpl<mlir::NamedAttribute> &params);
@@ -49,7 +48,7 @@ struct InferredParameters {
 /// `!mo.opaque` operand and result types, resolved through the kernel's
 /// `mogg.value_params` / `mogg.value_result_params` annotations. A kernel like
 /// `MakeSimdPair.execute[P0, P1]() -> SIMDPair[P0, P1]` names them nowhere
-/// else. Used by both lowering paths.
+/// else.
 void inferOpaqueParameters(
     llvm::SmallVectorImpl<mlir::NamedAttribute> &forwardedParameters,
     mlir::Operation *moOp, const KernelDeclFunctionAdaptor &function,
@@ -58,8 +57,7 @@ void inferOpaqueParameters(
 /// Fill and return the list of inferred parameters for a struct kernel
 /// function (execute, shape, elementwise, or update_view). Uses the stored
 /// struct-level and fn-level ParamDeclAttrs from the KernelDeclAdaptor.
-/// Non-const because reading the function signature's pog list metadata
-/// is non-const-callable on `FnTypeGeneratorType`.
+/// Non-const because `FnTypeGeneratorType`'s pog list metadata accessor is.
 ErrorOr<InferredParameters> inferKernelParameters(
     KernelDeclAdaptor &adaptor, llvm::StringRef funcLabel,
     std::function<ErrorOr<MojoValue>(StringRef)> &&inferCallback);

@@ -45,12 +45,10 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   Block &body = kernel.getBody().front();
   SmallVector<Type> argTypes(body.getArgumentTypes());
 
-  // A `mogg.buffer.constant` stays behind at the call site: `MOGGToMGP` turns
-  // it into the real `mgp.buffer.constant` in the region it builds there,
-  // because resources reach the runtime through the `void**` of the MGP-ABI
-  // entry point, which this MOGG-ABI stub does not have. Each one becomes a
-  // trailing stub argument here, while the signature is still being built --
-  // growing it afterwards would mean patching every call site too.
+  // A `mogg.buffer.constant` stays at the call site, where `MOGGToMGP` turns it
+  // into `mgp.buffer.constant`: resources reach the runtime through the MGP-ABI
+  // `void**`, which this MOGG-ABI stub lacks. Each becomes a trailing stub
+  // argument now, so call sites never need patching.
   SmallVector<MOGG::BufferConstantOp> constants;
   body.walk([&](MOGG::BufferConstantOp cst) { constants.push_back(cst); });
 
@@ -137,9 +135,8 @@ struct OutlineKernelsIntoFunctionsPass
 
   void runOnOperation() override {
     OpBuilder builder(&getContext());
-    // Register outlined stubs through the module's cached `SymbolTableAnalysis`
-    // so their names stay collision-free and the table stays consistent for
-    // downstream consumers.
+    // Register through the cached `SymbolTableAnalysis` so names stay unique
+    // and the table consistent.
     SymbolTable &symtab =
         getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
     SmallVector<MOGG::KernelOp> kernels;

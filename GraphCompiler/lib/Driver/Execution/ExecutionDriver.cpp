@@ -94,16 +94,12 @@ bool TensorSpecParser::parse(llvm::cl::Option &options, StringRef argName,
   return false;
 }
 
-// Parse --input-data arg.
-// Format of arg is
-// --input-data=tensor_idx::input_source::input_source_attr_list.
-//    - tensor_idx: int representing input tensor index
-//    - input_source: can be either:
-//        - input generation function: one of [zeros|random|ones|negones], which
-//        map to an InputGenerationKind
-//        - filename
-//    - input_source_attr_list (optional): csv list of [Cycle|Truncate]
-//    which map to a TensorGeneratorFlag
+// Parses --input-data=tensor_idx::input_source::input_source_attr_list.
+//    - tensor_idx: input tensor index
+//    - input_source: [zeros|random|ones|negones] (an InputGenerationKind) or a
+//      filename
+//    - input_source_attr_list (optional): csv of [Cycle|Truncate]
+//      (TensorGeneratorFlags)
 ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
                                           StringRef argName, StringRef argValue,
                                           InputDataSpec &result) {
@@ -114,14 +110,12 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
   if (args.size() > 3)
     return Error("--input-data supports max of 3 args separated by `::`.");
 
-  // parse tensor idx field
   auto tensorIdxStr = args[0];
   auto err = tensorIdxStr.getAsInteger(10, result.tensorIdx);
   if (err)
     return Error(Twine("Could not convert tensorIdx (") + tensorIdxStr +
                  ") to integer.");
 
-  // parse input gen field
   auto filenameOrGenKindStr = args[1];
   std::optional<InputGenerationKind> genKind =
       symbolizeInputGenerationKind(filenameOrGenKindStr.str());
@@ -133,7 +127,6 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
                    "generation function.");
     return success();
   }
-  // if string does not match an InputGenerationKind, assume it's a filename
   auto filename = std::filesystem::path(filenameOrGenKindStr.str());
   if (!std::filesystem::exists(filename)) {
     return Error(Twine("--input-data file (") + filename.string() +
@@ -141,7 +134,6 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
   }
   result.inputGen = filename;
 
-  // parse gen flags if they exist
   if (args.size() < 3)
     return success();
   for (const auto genFlagStr : llvm::split(args[2], ",")) {
@@ -155,8 +147,8 @@ ErrorOrSuccess InputDataParser::parseImpl(llvm::cl::Option &options,
   return success();
 }
 
-/// Replace any non output-conform results with their output-conforming
-/// equivalents (such as `Tensor`).
+/// Replace non-output-conforming results with their equivalents (such as
+/// `Tensor`).
 static void
 convertResultsToGenericValues(const ExecutableModel *model,
                               MutableArrayRef<AnyAsyncValueRef> results) {
@@ -168,8 +160,7 @@ convertResultsToGenericValues(const ExecutableModel *model,
   }
 }
 
-/// Wait for results to be ready and return success if none are marked with an
-/// error. Otherwise return first error encountered.
+/// Waits for results and returns the first error, if any.
 static ErrorOrSuccess awaitAndCheck(MutableArrayRef<AnyAsyncValueRef> results) {
   await(results);
   for (const auto &result : results) {
@@ -180,7 +171,6 @@ static ErrorOrSuccess awaitAndCheck(MutableArrayRef<AnyAsyncValueRef> results) {
   return success();
 }
 
-/// Helper that prints diagnostics if an AnyAsyncValueRef is an error.
 static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
   if (auto *diag = res.getDiagnosticIfPresent()) {
     llvm::outs() << "<error: " << diag->getMessage() << '>' << "\n";
@@ -192,7 +182,6 @@ static LogicalResult printDiagIfError(const AnyAsyncValueRef &res) {
   return success();
 }
 
-/// Helper to write YAML with tensor result info.
 static LogicalResult
 writeYamlToFile(const std::filesystem::path &yamlFilePath,
                 SmallVector<std::shared_ptr<ResultInfo>> &tensorResultsInfo) {
@@ -211,18 +200,12 @@ writeYamlToFile(const std::filesystem::path &yamlFilePath,
   return success();
 }
 
-/// This method can be used to print the results of a model in the standard
-/// format for an executor tool. It handles converting framework specific tensor
-/// types into something we can print if needed, and handles printing/reporting
-/// of errors in a way that works with diagnostic verification. It expects the
-/// first argument to be a chain, which is never printed (but it's handled if
-/// it's an error).
+/// Prints model results in the executor tool's standard format, reporting
+/// errors compatibly with diagnostic verification. The leading chain result is
+/// never printed, but its error is reported.
 ///
-/// outputDir is only used if --result-output-style=binary, in which case this
-/// function will instead create a directory and write one binary file for each
-/// tensor result along with a YAML file containing the name and shape of each
-/// tensor result. The output directory containing these files must be specified
-/// with --binary-output-dir=<output_dir>."
+/// With --result-output-style=binary, instead writes one binary file per tensor
+/// result plus a YAML of names and shapes to --binary-output-dir.
 static LogicalResult outputResults(const ExecutableModel *model,
                                    MutableArrayRef<AnyAsyncValueRef> results,
                                    ResultOutputStyle outputStyle,
@@ -231,7 +214,6 @@ static LogicalResult outputResults(const ExecutableModel *model,
   StringRef name = model->getModel()->getName();
   os << "'" << name << "' returned ";
 
-  // We expect the first result to be a chain.
   ASSERT_STREAM(!results.empty(), << "must have at least one result");
   const AnyAsyncValueRef &ch = results.front();
   if (failed(printDiagIfError(ch)))
@@ -247,20 +229,15 @@ static LogicalResult outputResults(const ExecutableModel *model,
 
   convertResultsToGenericValues(model, results);
 
-  // Check that all results are ready before accessing them.
   [[maybe_unused]] bool allResultsReady =
       std::all_of(results.begin(), results.end(),
                   [](AnyAsyncValueRef &result) { return result.isReady(); });
   ASSERT_STREAM(allResultsReady, << "model result must be ready");
 
-  // If --result-output-style=binary, write output tensors to files and return.
   if (outputStyle == ResultOutputStyle::kBinary) {
 
     os << "--- Writing Outputs to " << outputDir << "\n";
 
-    // Create the output directory. If the output directory is not there, then
-    // the directory is created along with all of its parents. If the directory
-    // does exist, then the following is a no-op.
     if (auto ec =
             llvm::sys::fs::create_directories(outputDir,
                                               /* ignoreExisting */ true)) {
@@ -269,7 +246,6 @@ static LogicalResult outputResults(const ExecutableModel *model,
       return failure();
     }
 
-    // Get the output names.
     ArrayRef<std::string> outputNames = model->getModel()->getOutputNames();
 
     ProcessedResults processedResults;
@@ -287,7 +263,6 @@ static LogicalResult outputResults(const ExecutableModel *model,
       }
     }
 
-    // Write binary tensor outputs.
     for (auto &[name, tensor] : processedResults.getTensors()) {
       std::ofstream outputFile((std::filesystem::path(outputDir.str()) / name),
                                std::ofstream::binary);
@@ -295,16 +270,13 @@ static LogicalResult outputResults(const ExecutableModel *model,
       outputFile.write((const char *)tensor->getBuffer(),
                        tensor->getSpec().getSizeInBytes());
 
-      // Check if opening the file or writing to it has failed. Checks any
-      // failure state of the `ofstream`.
       if (outputFile.fail()) {
         llvm::errs() << "Failed to write output tensor file.\n";
         return failure();
       }
     }
 
-    // Write result information to yaml.
-    // This can be used by the model tool to map outputs for verification.
+    // The model tool uses this to map outputs for verification.
     if (writeYamlToFile(
             (std::filesystem::path(outputDir.str()) / "output.yaml"),
             processedResults.getResultInfos())
@@ -317,7 +289,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
   bool first = true;
   bool hasError = false;
 
-  // Before printing out the results, sort them by the output name.
+  // Print in output-name order.
   const auto &outputNames = model->getModel()->getOutputNames();
   size_t numResults = outputNames.size();
   std::vector<size_t> sortedIndices(numResults);
@@ -341,8 +313,7 @@ static LogicalResult outputResults(const ExecutableModel *model,
           hasError = true;
         }
       } else {
-        // Not a value that can be printed generically, let the framework
-        // specific model implementation handle it.
+        // Not generically printable; defer to the framework model.
         if (auto err = model->printValue(os, result, outputStyle, precision)) {
           os << "<error: " << err.getError() << '>';
           hasError = true;
@@ -355,18 +326,16 @@ static LogicalResult outputResults(const ExecutableModel *model,
 }
 
 namespace {
-/// The driver Devices backing a model's device-placed inputs and results.
-/// Generators produce every input on the host; an input placed on an
-/// accelerator is then staged onto its device through these handles, and a
-/// result placed on an accelerator is copied back to the host before it is
-/// printed. `deviceMap` is passed to `Model::setup` so the model executes on
-/// the same device contexts the staged buffers live on.
+/// Driver devices for a model's accelerator-placed inputs and results. Inputs
+/// are generated on the host and staged onto their device; results are copied
+/// back before printing. `deviceMap` goes to `Model::setup` so the model runs
+/// on the same contexts as the staged buffers.
 struct ModelDeviceState {
   GraphCompiler::Driver::DeviceMap deviceMap;
   /// Parallel to the model's inputs; null for host-placed inputs.
   SmallVector<M::Driver::DeviceContextRef> inputDevices;
-  /// Parallel to the model's *placement-carrying* results (its tensors and
-  /// buffers; chains carry no placement); null for host-placed results.
+  /// Parallel to the model's tensor and buffer results; null for host-placed
+  /// results.
   SmallVector<M::Driver::DeviceContextRef> outputDevices;
   /// Host endpoint of the staging copies; null when every placement is host.
   M::Driver::DeviceContextRef hostDevice;
@@ -374,8 +343,7 @@ struct ModelDeviceState {
 } // namespace
 
 /// Creates a device context for every accelerator the model places an input or
-/// result on. Returns a state with an empty device map when every placement
-/// is the host.
+/// result on.
 static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
   ModelDeviceState state;
   auto isHost = [](const DeviceRef &ref) { return ref.label == kCPULabel; };
@@ -383,8 +351,7 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
       llvm::all_of(model->getOutputDevices(), isHost))
     return state;
 
-  // `state.deviceMap` doubles as the memo for this loop, so an input and a
-  // result placed on the same accelerator resolve it once.
+  // `state.deviceMap` doubles as the memo for this loop.
   auto materialize = [&](ArrayRef<DeviceRef> placements,
                          SmallVector<M::Driver::DeviceContextRef> &devices,
                          StringRef kind) -> ErrorOrSuccess {
@@ -397,9 +364,8 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
         devices.push_back(it->second);
         continue;
       }
-      // NPUs are reached through the same gpuAPI as GPUs; only the placement
-      // label distinguishes them. `getOrCreate` runs isCompatible() itself
-      // before handing back a context, so there is no gate to repeat here.
+      // NPUs share gpuAPI with GPUs; only the label differs. `getOrCreate`
+      // already checks isCompatible().
       ErrorOr<M::Driver::DeviceContextRef> ctxOr =
           M::Driver::DeviceContext::getOrCreate(M::Driver::Device::gpuAPI,
                                                 ref.id);
@@ -413,10 +379,9 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
     return success();
   };
 
-  // Inputs pair positionally with the generated tensors, so a device-placed
-  // input can only be staged when the placements cover every input. (The
-  // placement array skips non-tensor entries, which entry inputs in practice
-  // never contain.)
+  // Inputs pair positionally with the generated tensors, so staging needs a
+  // placement for every input. (Placements skip non-tensor entries, which
+  // entry inputs never contain in practice.)
   ArrayRef<DeviceRef> inputPlacements = model->getInputDevices();
   if (!llvm::all_of(inputPlacements, isHost)) {
     if (inputPlacements.size() != model->getInputSpecs().size())
@@ -428,8 +393,6 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
       return err.takeError();
   }
 
-  // Result placements cover only the placement-carrying results, in order;
-  // `stageResultsToHost` pairs them with the data-carrying result values.
   if (auto err =
           materialize(model->getOutputDevices(), state.outputDevices, "result"))
     return err.takeError();
@@ -444,12 +407,10 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
   return state;
 }
 
-// Returns a ready AsyncValueRef<Tensor> for every given
-// generator, ready to be passed to the model's execute function. A
-// host-placed input borrows, at 'execute' scope, the underlying generator's
-// 'next' tensor. A device-placed input is staged onto its device via a fresh
-// allocation and a host-to-device copy; the copy is enqueued on the device
-// context the model executes on, so it is ordered before the model's kernels.
+// Returns a ready AsyncValueRef<Tensor> per generator for `execute`. A host
+// input borrows the generator's next tensor; a device input is copied to a
+// fresh allocation on the model's device context, ordering the copy before the
+// model's kernels.
 static ErrorOr<SmallVector<AnyAsyncValueRef>>
 buildArgs(CPUDevice &cpuDevice, ArrayRef<ITensorGeneratorPtr> generators,
           const ModelDeviceState &deviceState) {
@@ -473,8 +434,7 @@ buildArgs(CPUDevice &cpuDevice, ArrayRef<ITensorGeneratorPtr> generators,
       return bufferOr.takeError();
     M::Driver::DeviceBufferRef buffer = bufferOr.takeValue();
 
-    // Wrap the generator's buffer with a no-op destructor: the generator
-    // keeps the buffer alive past the enqueued copy, and stays the owner.
+    // The generator owns the buffer and outlives the enqueued copy.
     M::Driver::DeviceBufferRef hostView = GraphCompiler::Driver::borrowBuffer(
         deviceState.hostDevice, const_cast<void *>(generated.getBuffer()),
         generated.getSpec().getSizeInBytes());
@@ -491,29 +451,23 @@ static bool isTensorOrBuffer(AnyAsyncValueRef &value) {
   return value.isType<Tensor>() || value.isType<TensorBufferRef>();
 }
 
-/// Replaces every device-placed tensor result with a host copy of its data,
-/// so result printing reads host memory. The device-to-host copy is enqueued
-/// on the device context the model executed on, ordering it after the
-/// model's kernels; the device is then drained before the host read.
+/// Replaces every device-placed tensor result with a host copy for printing.
+/// The copy is enqueued on the model's device context, after its kernels, and
+/// the device is drained before the host read.
 static ErrorOrSuccess
 stageResultsToHost(CPUDevice &cpuDevice, const ModelDeviceState &deviceState,
                    MutableArrayRef<AnyAsyncValueRef> results) {
-  // The first result is the model's chain, which carries no placement;
-  // `outputResults` drops it the same way before pairing results with their
-  // output names.
+  // Skip the leading chain, as `outputResults` does.
   if (!results.empty() && isa<Chain>(results.front()))
     results = results.drop_front();
 
-  // The placement array has one entry per placement-carrying result (tensors
-  // and buffers), so a placement is consumed only when the value is one;
-  // chains and other placement-free values pass through.
+  // Only tensors and buffers consume a placement.
   size_t placementIdx = 0;
   for (AnyAsyncValueRef &result : results) {
     if (placementIdx >= deviceState.outputDevices.size())
       break;
-    // An errored result has no recoverable type, so how the remaining
-    // placements pair up is unknown; leave the rest for the printer's error
-    // reporting.
+    // An errored result's type is unknown, so the remaining pairing is too;
+    // leave the rest to the printer's error reporting.
     if (result.getDiagnosticIfPresent())
       break;
 
@@ -526,14 +480,12 @@ stageResultsToHost(CPUDevice &cpuDevice, const ModelDeviceState &deviceState,
       continue;
 
     const M::MLRT::Tensor *tensor = dyn_cast<Tensor>(std::as_const(result));
-    // A bare buffer result prints as metadata only (pointer, no data read),
-    // so it needs no host copy.
+    // A bare buffer prints as metadata only.
     if (!tensor)
       continue;
 
     TensorSpec spec = tensor->getSpec();
-    // Wrap the device-resident result without taking ownership; the result
-    // value keeps it alive across the copy.
+    // The result value keeps the buffer alive across the copy.
     M::Driver::DeviceBufferRef deviceView = GraphCompiler::Driver::borrowBuffer(
         device, const_cast<void *>(tensor->getBuffer()), spec.getSizeInBytes());
 
@@ -555,9 +507,8 @@ stageResultsToHost(CPUDevice &cpuDevice, const ModelDeviceState &deviceState,
   return success();
 }
 
-/// Call executableModel->execute(args), await the results, and return them.
-/// If checkResults is true, return any error which any result contains.
-/// Otherwise, assume the consumer of the results will check for errors.
+/// Executes and awaits the results. Without checkResults, the consumer must
+/// check them for errors.
 static ErrorOr<SmallVector<AnyAsyncValueRef>> executeModelSynchronously(
     CPUDevice &cpuDevice, ExecutableModel &executableModel,
     MutableArrayRef<AnyAsyncValueRef> args, bool checkResults) {
@@ -567,15 +518,13 @@ static ErrorOr<SmallVector<AnyAsyncValueRef>> executeModelSynchronously(
     auto unitOr = awaitAndCheck(results);
     if (unitOr.isError())
       return unitOr.takeError();
-    // Ignore value.
   } else {
     await(results);
   }
   return results;
 }
 
-/// Repeatedly evaluate the model (numRuns to be exact) and capture and print
-/// the cpuDevice for each evaluation.
+/// Evaluates the model numRuns times, printing each run's results.
 static ErrorOr<std::unique_ptr<ExecutableModel>>
 executeModel(const Model *model, CPUDevice &cpuDevice,
              const ExecutorDriverOptions &options,
@@ -593,14 +542,11 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
 
   TimeTraceScope scope(DriverProfilerEntry::create("executeModel"));
 
-  // Create the devices any device-placed input is staged onto. Their map is
-  // handed to `setup` so the model shares the staging buffers' contexts.
   auto deviceStateOr = createModelDeviceState(model);
   if (deviceStateOr.isError())
     return deviceStateOr.takeError();
   ModelDeviceState deviceState = deviceStateOr.takeValue();
 
-  // Set up once.
   std::unique_ptr<ExecutableModel> executableModel;
   {
     TimeTraceScope scope(DriverProfilerEntry::create("executeModel.setup"));
@@ -614,9 +560,7 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
       return error.takeError();
   }
 
-  // Establish a tensor generator for each model input as per command line
-  // options and shapes. Each tensor generator holds one or more
-  // Tensor's with lifetime matching the generator itself.
+  // Each generator owns its tensors.
   auto inputTensorGeneratorsOr = createTensorGenerators(
       options.inputGenKind, inputSpecs, options.inputData,
       options.minimumCpuAlignment, cpuDevice);
@@ -624,8 +568,6 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
     return inputTensorGeneratorsOr.takeError();
   auto inputTensorGenerators = std::move(*inputTensorGeneratorsOr);
 
-  // Run the model numWarmup times to warmup the execution. This is performed to
-  // remove any added overhead due to initial setup of the model.
   if (numWarmup > 0) {
     llvm::outs() << "--- Warming up '" << model->getName().str() << "' "
                  << numWarmup << " times\n";
@@ -638,13 +580,11 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
       return argsOr.takeError();
     auto args = std::move(*argsOr);
 
-    // Execute the model synchronously. Propagate any error back to caller.
     auto resultsOr =
         executeModelSynchronously(cpuDevice, *executableModel, args,
                                   /*checkResults=*/true);
     if (resultsOr.isError())
       return resultsOr.takeError();
-    // Ignore results value.
   }
 
   if (numRuns > 0) {
@@ -667,14 +607,11 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
     if (i > 0 && i % 100 == 0)
       llvm::outs() << "--- Run " << i << "...\n";
 
-    // Execute the model synchronously.
     std::chrono::high_resolution_clock::time_point startTime, endTime;
     auto entry = DriverProfilerEntry::create("executeModel.run");
 
     startTime = std::chrono::high_resolution_clock::now();
-    // If not printing any results we need to still check they are error free.
-    // Otherwise, we need only wait for the results and errors will be
-    // reported when printing the results below.
+    // When printing, errors are reported by the printer below.
     auto resultsOr = executeModelSynchronously(
         cpuDevice, *executableModel, args,
         /*checkResults=*/options.resultOutputStyle == ResultOutputStyle::kNone);
@@ -686,31 +623,22 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
     std::move(entry).record();
 
     if (options.resultOutputStyle != ResultOutputStyle::kNone) {
-      // Result printing reads host memory, so bring device-placed results
-      // back to the host first.
       if (ErrorOrSuccess err =
               stageResultsToHost(cpuDevice, deviceState, results))
         return err.takeError();
 
-      // Convert and print the result tensors. This is the one place where
-      // AsyncValue errors are printed to stdout and a generic
-      // "repeated model execution failed" is returned to the caller instead
-      // of just propagating the error. This helps unit tests distinguish
-      // expected model error output from transient errors running the tool
-      // itself.
+      // AsyncValue errors are printed here and a generic error returned, so
+      // unit tests can tell expected model errors from tool failures.
       if (failed(outputResults(
               executableModel.get(), results, options.resultOutputStyle,
               options.printPrecision, options.binaryOutputDir)))
         return Error("repeated model execution failed");
     }
 
-    // If requested, print the model execution time in nanoseconds with no
-    // adornment for the convenience of scripts. Note that failed executions
-    // will have no time reported.
+    // Bare nanoseconds, for scripts. Failed executions report no time.
     if (optTimingOs) {
       *optTimingOs << (endTime - startTime).count() << "\n";
-      // Let's just flush on every output so you can interrupt the process
-      // and still have usable data.
+      // Flush so an interrupted run still has usable data.
       optTimingOs->flush();
     }
 
@@ -720,35 +648,29 @@ executeModel(const Model *model, CPUDevice &cpuDevice,
   return executableModel;
 }
 
-/// Given an array of compile-time QuantTensorSpecs and an array of run-time
-/// override shapes, return an updated array of QuantTensorSpecs.
+/// Applies run-time override shapes to compile-time QuantTensorSpecs.
 static ErrorOr<SmallVector<QuantTensorSpec>>
 getResolvedInputShapes(ArrayRef<QuantTensorSpec> compiledShapes,
                        ArrayRef<TensorSpec> userInputShapes) {
   SmallVector<QuantTensorSpec> ret;
   auto numInputTensors = compiledShapes.size();
 
-  // If no user shapes, just copy input to output
   if (userInputShapes.empty()) {
     ret.append(compiledShapes.begin(), compiledShapes.end());
     return ret;
   }
 
-  // Next, check that array sizes match.
   if (userInputShapes.size() != numInputTensors) {
     return Error(Twine("Number of specified input shapes (") +
                  Twine(userInputShapes.size()) + ") doesn't match " +
                  "number of model inputs (" + Twine(numInputTensors) + ")");
   }
 
-  // Iterate through each input tensor
   for (unsigned i = 0; i < numInputTensors; ++i) {
     auto userShape = userInputShapes[i];
     auto compiledShape = compiledShapes[i];
-    // Check the userShape isStatic and agrees with compiledShape.
     if (auto errOr = compiledShape.isRefinedBy(userShape))
       return errOr.takeError();
-    // Build new TensorSpec
     if (compiledShape.getEltType() == DType::invalid)
       compiledShape.setEltType(userShape.getEltType());
     ret.push_back(compiledShape.cloneWithNewShape(userShape));
@@ -757,7 +679,7 @@ getResolvedInputShapes(ArrayRef<QuantTensorSpec> compiledShapes,
   return ret;
 }
 
-/// Pass resolved input shapes to profiler, if its active.
+/// Pass resolved input shapes to profiler, if it's active.
 static void saveInputSpecs(ArrayRef<QuantTensorSpec> specs,
                            std::optional<TimeTraceProfiler> &profiler) {
   if (profiler)
@@ -777,7 +699,6 @@ LogicalResult M::runModel(const Model *model, AsyncRT::CPUDevice &cpuDevice,
          llvm::zip(model->getInputSpecs(), options.inputShapes))
       userInputSpecs.emplace_back(userShape, modelSpec.getEltType());
   }
-  // Get fully resolved input shapes
   auto shapesOrErr =
       getResolvedInputShapes(model->getInputSpecs(), userInputSpecs);
   if (shapesOrErr.isError()) {

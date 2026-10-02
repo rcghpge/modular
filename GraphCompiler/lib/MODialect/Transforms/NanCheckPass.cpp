@@ -33,7 +33,6 @@ namespace {
 struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
   using Base::Base;
 
-  /// Returns a human readable label corresponding to value.
   std::string valueToLabel(Value value) {
     std::string str;
     llvm::raw_string_ostream os(str);
@@ -46,7 +45,6 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
     return str;
   }
 
-  /// Returns true if the value is a floating-point tensor.
   bool isFloatTensor(Value value) {
     auto tensorType = dyn_cast<MO::TensorType>(value.getType());
     if (!tensorType)
@@ -54,11 +52,9 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
     return tensorType.getDtype().isFloat();
   }
 
-  /// Lower an mo.custom check op to its MAP kernel form in-place, through the
-  /// same `mo-to-map` opaque lowering the rest of the graph used. Runs after
-  /// MAP fusion, so the injected kernel is never fused into the kernel it
-  /// checks; the subsequent `map-to-mogg` conversion compiles it. Returns the
-  /// created `map.iter.opaque` op, or nullptr on failure.
+  /// Lowers a check op in place via the `mo-to-map` opaque lowering. Running
+  /// after MAP fusion keeps it from being fused into the kernel it checks.
+  /// Returns the `map.iter.opaque` op, or nullptr on failure.
   Operation *lowerCheckOpToMAP(MO::CustomOp customOp,
                                MOGG::MojoRegistry &registry) {
     FailureOr<Operation *> mapOp = MO::lowerMOOpToMAP(customOp, registry);
@@ -81,11 +77,8 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         ctx, ArrayRef<int64_t>{1}, M::DType::si32, hostDevice, emptyMetadata);
     assert(countTypeHost && "Failed to create count tensor type");
 
-    // Collect all MAP kernel ops (compiled regions). This pass runs after MAP
-    // fusion but before `map-to-mogg`, so the compiled regions are still in MAP
-    // form: `map.iter.foreach` for structured loops and `map.iter.opaque` for
-    // outlined / opaque kernels. Their results are `MO_Tensor`, so the float
-    // check below is unchanged from when this walked the MOGG kernels.
+    // Before `map-to-mogg`, compiled regions are still `map.iter.foreach` /
+    // `map.iter.opaque` ops.
     SmallVector<Operation *> kernelOps;
     graphOp->walk([&kernelOps](Operation *op) {
       if (isa<MAP::IterForeachOp, MAP::IterOpaqueOp>(op))
@@ -98,45 +91,29 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
     MOGG::MojoRegistry registry(
         getOperation()->getParentOfType<mlir::ModuleOp>());
 
-    // We'll create the initial chain lazily inside the loop to avoid
-    // issues with insertion point ordering.
+    // Created lazily so it is inserted after the first checked kernel.
     Value currentChain;
 
-    // Sampling stride (GEX-3703). Direct measurement on B200 showed the
-    // Mojo/KGEN single-threaded compile path can't absorb hundreds of
-    // extra MOGG-kernel call sites within a reasonable time budget, no
-    // matter how the raise side is organised (per-pair, coalesced, or
-    // batched all hung past 30 minutes; the count kernels on their own
-    // — 1040 of them, no transfers, no raise — also hung past 34 min).
-    //
-    // To recover usability we sample: only one in every `stride` floating
-    // -point kernel outputs gets a NaN/Inf check. Diagnostic precision
-    // drops, but compile time becomes proportional to the sampled count
-    // rather than the total kernel count. stride=10 against gemma-4-31b
-    // (~920 float outputs) gives ~92 checks instead of ~920.
-    //
-    // The option stride=1 preserves the original "check every tensor" behavior
-    // for lit tests and small graphs; large models can override via the
-    // pass option or the `max-debug.nan-check-stride` config key.
+    // Sampling stride (GEX-3703): the single-threaded Mojo/KGEN compile can't
+    // absorb hundreds of extra kernel call sites (1040 count kernels alone hung
+    // past 30 min on B200), so only every `stride`-th float output is checked.
+    // stride=1 checks every tensor; large models raise it via the pass option
+    // or the `max-debug.nan-check-stride` config key.
     const uint64_t effectiveStride = stride == 0 ? 1 : stride;
     size_t floatResultIdx = 0;
     size_t totalFloatResults = 0;
     size_t checkedFloatResults = 0;
 
-    // Insert NaN/Inf checks after each compiled region's float outputs.
-    // Architecture:
+    // Per checked output, the original tensor flows unchanged:
     //   1. nan_check_count: read-only reduction → scalar counts (on device)
     //   2. mo.transfer: move counts to host (chain provides ordering)
     //   3. nan_check_raise: read host counts, raise if > 0 (chain for DCE)
-    // The original tensor flows unchanged — no copy, no replaceAllUsesExcept.
     for (auto kernelOp : kernelOps) {
       builder.setInsertionPointAfter(kernelOp);
       for (Value res : kernelOp->getResults()) {
         if (!isFloatTensor(res))
           continue;
 
-        // Based on the stride, skip some kernel outputs to improve compilation
-        // time.
         ++totalFloatResults;
         size_t samplingIndex = floatResultIdx++;
         if (effectiveStride > 1 && (samplingIndex % effectiveStride) != 0)
@@ -146,11 +123,9 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         auto tensorType = cast<MO::TensorType>(res.getType());
         auto device = getDeviceOrDefaultAny(kernelOp);
 
-        // Single-element int32 on the tensor's device for count outputs.
         auto countTypeOnDevice = MO::TensorType::get(
             ctx, ArrayRef<int64_t>{1}, M::DType::si32, device, emptyMetadata);
 
-        // Metadata for the error message (static, known at compile time).
         std::string label = valueToLabel(res);
         std::string typeStr;
         {
@@ -158,7 +133,6 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
           os << tensorType;
         }
 
-        // 1. nan_check_count: input tensor → (nan_count, inf_count) on device
         auto countOp = MO::CustomOp::create(
             builder, kernelOp->getLoc(),
             /*resultTypes=*/TypeRange{countTypeOnDevice, countTypeOnDevice},
@@ -170,7 +144,6 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         Value nanCount = countOp.getResult(0);
         Value infCount = countOp.getResult(1);
 
-        // 2. mo.transfer: move scalar counts to host
         if (!currentChain) {
           currentChain = MO::ChainCreateOp::create(builder, kernelOp->getLoc(),
                                                    chainType, ValueRange{})
@@ -178,8 +151,6 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
           assert(currentChain && "currentChain is null after creation");
         }
 
-        // Transfer counts to host if they're on a different device.
-        // On CPU, counts are already on host — skip the transfer.
         Value nanCountHost = nanCount;
         Value infCountHost = infCount;
         bool needsTransfer = (device != hostDevice);
@@ -199,7 +170,6 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
           currentChain = infTransfer.getOutChain();
         }
 
-        // 3. nan_check_raise: read host counts, raise if > 0
         auto raiseOp = MO::CustomOp::create(
             builder, kernelOp->getLoc(),
             /*resultTypes=*/TypeRange{chainType},
@@ -214,21 +184,17 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
                                 builder.getStringAttr(typeStr))}));
         currentChain = raiseOp.getResult(0);
 
-        // Lower nan_check_count to its MAP kernel.
         if (!lowerCheckOpToMAP(countOp, registry))
           return signalPassFailure();
 
-        // Lower nan_check_raise to its MAP kernel, then mark it as having write
-        // side effects so DCE preserves it even with unused results. The opaque
-        // lowering only carries a write effect for an in-place `mo.custom`, and
-        // the raise takes no buffer, so set it explicitly here.
+        // Mark the raise as writing so DCE keeps it despite its unused chain;
+        // the opaque lowering only sets that for an in-place `mo.custom`.
         auto *raiseKernel = lowerCheckOpToMAP(raiseOp, registry);
         if (!raiseKernel)
           return signalPassFailure();
         cast<MAP::IterOpaqueOp>(raiseKernel).setHasWriteEffect(true);
 
-        // Update currentChain to point to the MAP kernel's chain result (the
-        // raiseOp was erased during lowering, invalidating the old ref).
+        // Lowering erased raiseOp, so continue from the MAP kernel's chain.
         for (auto result : raiseKernel->getResults()) {
           if (isa<MO::ChainType>(result.getType())) {
             currentChain = result;
@@ -237,8 +203,6 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         }
       }
     }
-    // Note: currentChain (the final raise's chain output) is unused, but the
-    // raise kernel survives DCE because we set hasWriteEffect=true above.
 
     llvm::errs() << "[GEX-3703] NanCheckPass: checked " << checkedFloatResults
                  << " of " << totalFloatResults << " float kernel outputs "

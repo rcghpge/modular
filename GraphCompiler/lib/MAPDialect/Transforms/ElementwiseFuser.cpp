@@ -55,20 +55,17 @@ struct FuseElementwisePass
 
   void runOnOperation() override {
     InputFusionConfig config;
-    // Both kernels pure elementwise (no index transform). The consumer being a
-    // foreach falls out of the load having a foreach parent.
+    // Both kernels pure elementwise (no index transform).
     config.shouldFuse = [](StoreOp srcStore, LoadOp dstLoad) {
       auto src = srcStore->getParentOfType<IterForeachOp>();
       auto dst = dstLoad->getParentOfType<IterForeachOp>();
       return src && dst && !isViewForeach(src) && !isViewForeach(dst);
     };
-    // Never duplicate a host kernel (mirrors MOGG).
+    // Never duplicate a host kernel.
     int64_t threshold = largeTensorElementThreshold;
     config.canDuplicate = [threshold](IterForeachOp src) {
       return !MO::isOnHost(src) && isCheapToDuplicate(src, threshold);
     };
-    // Bound duplication so a cheap multi-use producer with fan-out can't grow a
-    // few enormous kernels (mirrors MOGG's kMaximumFusionSetSize).
     config.maxFusionSetSize = maxFusionSetSize;
     numKernelsFused = fuseInput(getOperation(), config);
   }

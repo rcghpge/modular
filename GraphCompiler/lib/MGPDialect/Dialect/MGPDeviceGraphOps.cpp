@@ -4,13 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the device-graph operations in the MGP dialect: the
-// `mgp.device_graph.create`/`mgp.device_graph.execute` surface, its
-// `mgp.device_graph.yield` build-body terminator, and the transient
-// `mgp.device_graph.staging`/`mgp.device_graph.dependencies` scaffolds (with
-// their yield terminators) used during device-graph synthesis. The
-// declarations for these ops live in MGPDeviceGraphOps.td (included by
-// MGPOps.td).
+// Device-graph ops of the MGP dialect, declared in MGPDeviceGraphOps.td.
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,26 +33,19 @@ static DeviceRefAttr graphInputDevice(Value v) {
       .Default(nullptr);
 }
 
-/// Is `v` one of the graph's device-resident inputs, as opposed to a context
-/// operand? Device-graph finalization strips only chains from `inputs`, so
-/// `!mgp.context` and `!mgp.device_context` values ride along in there too.
+/// Is `v` a device-resident graph input rather than a context operand?
+/// (`inputs` also carries `!mgp.context` and `!mgp.device_context` values.)
 ///
-/// This is the single definition of "graph input" for both the stable locations
-/// `emitMojo` requests and the cache key it derives. The runtime counterpart is
-/// `graphInputData` in MGPPrimitives.cpp, which selects the same operands by
-/// their runtime type; the two must agree or inputs pair with the wrong stable
-/// buffers at replay. Mutable inputs preserve that pairing by registering an
-/// in-place marker (a null entry) instead of a stable buffer, so every device
-/// input still occupies exactly one position in `graph->getInputs()`.
+/// Must agree with `graphInputData` in MGPPrimitives.cpp, or inputs pair with
+/// the wrong stable buffers at replay. Mutable inputs register a null in-place
+/// marker so every device input keeps one position in `graph->getInputs()`.
 static bool isDeviceGraphInput(Value v) {
   return graphInputDevice(v) != nullptr;
 }
 
-/// For now, the device graph workflow assumes that host tensor inputs are used
-/// purely to encode launch parameters for device computation. As such their
-/// contents are integrated into the cache key. A large host input will likely
-/// result in a large device graph cache, so warn uses until we have a knob to
-/// control this behavior.
+/// Host tensor inputs are assumed to encode launch parameters, so their
+/// contents join the cache key. Warn on large ones, which bloat the cache,
+/// until there is a knob to control this.
 static constexpr uint64_t kHostInputWarnBytes = 1024;
 
 /// Verifies the residency rules for the graph's tensor/buffer inputs.
@@ -70,10 +57,9 @@ static constexpr uint64_t kHostInputWarnBytes = 1024;
 ///   location populated before recording, and their contents join the cache
 ///   key, because recorded ops read host values at enqueue time.
 ///
-/// - Host-placed `mut` tensors are rejected -- in-place writes to
-///   a value-keyed input would invalidate its own cache entry -- as are
-///   host-placed raw buffers, whose lowering to a mut tensor should have
-///   happened earlier.
+/// - Host-placed `mut` tensors are rejected (in-place writes would invalidate
+///   their own cache entry), as are host-placed raw buffers, which should
+///   already be lowered to mut tensors.
 static LogicalResult verifyInputResidency(Operation *op, OperandRange inputs) {
   for (auto [idx, input] : llvm::enumerate(inputs)) {
     DeviceRefAttr device = graphInputDevice(input);
@@ -105,10 +91,9 @@ static LogicalResult verifyInputResidency(Operation *op, OperandRange inputs) {
   return success();
 }
 
-// Emits `var cache_N = Pointer(to=<ctx>.get_device_graph_cache())`. The Mojo
-// method hands back a reference to the cache the state context owns, and
-// `DeviceGraph.create` takes it by pointer; `DeviceGraphCache` is not copyable,
-// so the reference cannot be bound to a `var` directly.
+// Emits `var cache_N = Pointer(to=<ctx>.get_device_graph_cache())`.
+// `DeviceGraphCache` is not copyable, so the returned reference cannot be bound
+// to a `var` directly; `DeviceGraph.create` takes it by pointer.
 LogicalResult DeviceGraphCacheOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -129,10 +114,8 @@ void DeviceGraphYieldOp::build(OpBuilder &, OperationState &) {
   // are populated after insertion.
 }
 
-// Register each yielded value as an output of the device graph. The recording
-// wrote into these buffers/tensors; pack each into a fresh `AsyncValue` (via
-// the composite's `async_pack`) and hand it to the builder's `add_output` so
-// its backing memory outlives the graph that references it.
+// Packs each yielded value into an `AsyncValue` and passes it to `add_output`
+// so its backing memory outlives the graph that references it.
 LogicalResult DeviceGraphYieldOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
 
@@ -156,13 +139,11 @@ LogicalResult DeviceGraphYieldOp::emitMojo(MOGG::EmitMojoState &state) {
 
 LogicalResult DeviceGraphAllocOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
-  // The primitive's `sym_name` (set by ImportPackages) is the Mojo function to
-  // call; look it up by the op name it registered under.
+  // The primitive's `sym_name` (set by ImportPackages) is the Mojo function.
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MojoValue function(primDecl.getSymNameAttr().strref());
 
   DeviceRefAttr hostDevice = M::getHostDevice(getContext());
-  // Pass the host parameter to differentiate device from host allocations.
   MojoValue isHostParam(getOutBuffer().getType().getDevice() == hostDevice);
   MojoValue result = state.builder.var(function(
       /*parameters=*/{isHostParam},
@@ -179,9 +160,8 @@ bool DeviceGraphAllocOp::isThrows() { return true; }
 // DeviceGraphRecordingContextOp
 //===----------------------------------------------------------------------===//
 
-// Emits `var ctx_N = builder.recording_context()`: the recording device-context
-// view of the builder that execute-only kernels dispatch their `execute`
-// against.
+// Emits `var ctx_N = builder.recording_context()`, which execute-only kernels
+// dispatch their `execute` against.
 LogicalResult
 DeviceGraphRecordingContextOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
@@ -198,9 +178,7 @@ bool DeviceGraphRecordingContextOp::isThrows() { return true; }
 // DeviceGraphDeviceContextOp
 //===----------------------------------------------------------------------===//
 
-// Emits `var ctx_N = builder.context()`: the backing device context the builder
-// was created from. `context()` is a non-raising field read, so `isThrows`
-// keeps the interface default of false.
+// Emits `var ctx_N = builder.context()`, a non-raising field read.
 LogicalResult DeviceGraphDeviceContextOp::emitMojo(MOGG::EmitMojoState &state) {
   using namespace MOGG;
   DeviceGraphBuilderRef builder(state.getMojoValueFor(getGraphBuilder()));
@@ -225,9 +203,8 @@ DeviceGraphDependenciesOp::getBuilderBlockArgument() {
 }
 
 LogicalResult DeviceGraphDependenciesOp::verify() {
-  // The body has exactly one block argument: the `!mgp.device_graph.builder`
-  // (arg #0) the unit's device-context uses are re-sourced from. It maps onto
-  // the enclosing staging/create builder.
+  // The sole block argument is the `!mgp.device_graph.builder` that the body's
+  // device-context uses are re-sourced from.
   Block &body = getBody().front();
   if (body.getNumArguments() != 1)
     return emitOpError("body has ")
@@ -239,9 +216,7 @@ LogicalResult DeviceGraphDependenciesOp::verify() {
                        "`!mgp.device_graph.builder`, but is ")
            << body.getArgument(0).getType();
 
-  // SingleBlockImplicitTerminator guarantees a single block terminated by a
-  // DeviceGraphDependenciesYieldOp; the yield's operands carry the former
-  // region's results out, so their types must match this op's `bodyResults`.
+  // The yield's operands must match this op's `bodyResults`.
   DeviceGraphDependenciesYieldOp yieldOp = getYieldOp();
   if (!llvm::equal(yieldOp.getOperands().getTypes(),
                    getBodyResults().getTypes()))
@@ -256,7 +231,6 @@ LogicalResult DeviceGraphDependenciesOp::fold(FoldAdaptor,
   llvm::SmallSetVector<Value, 8> deduped;
   deduped.insert_range(getDependencies());
 
-  // Nothing to do if every dependency edge is already distinct.
   if (deduped.size() == getDependencies().size())
     return failure();
 
@@ -270,19 +244,14 @@ void DeviceGraphDependenciesOp::build(
     llvm::function_ref<void(OpBuilder &, Location, Value)> bodyBuilder) {
   OpBuilder::InsertionGuard guard(builder);
 
-  // Operand order mirrors `arguments`: the builder, then the dependency edges.
   result.addOperands(graphBuilder);
   result.addOperands(dependencies);
 
   // The synthesized node is always the first result.
   result.addTypes(DeviceGraphNodeType::get(builder.getContext()));
 
-  // Create the body with its sole block argument -- the
-  // `!mgp.device_graph.builder` (bound to the `graphBuilder` operand) the
-  // body's device-context uses are re-sourced from -- and let the callback
-  // populate it (it is expected to emit the dependencies.yield carrying the
-  // former region's results). The body otherwise references enclosing SSA
-  // directly. createBlock also positions the insertion point.
+  // The callback populates the body and is expected to emit the
+  // dependencies.yield. The body otherwise references enclosing SSA directly.
   Region *bodyRegion = result.addRegion();
   Block *body = builder.createBlock(bodyRegion);
   Value builderArg = body->addArgument(
@@ -305,20 +274,14 @@ bool DeviceGraphDependenciesOp::producesNewNodes() {
 }
 
 // Emits `var node_N = <builder>.region(work_N, dependencies=[...])`, where
-// `work_N` is a recording closure wrapping the body. The op is not
-// IsolatedFromAbove, so the body captures enclosing values lexically; only the
-// builder block arg maps to the closure parameter. The `dependencies=` keyword
-// argument injects the predecessor node edges as predecessors of the first node
-// the body records (the builder's `_implicit_deps` mechanism); `region` chains
-// the rest after it, so body order is the recording order.
+// `work_N` is a recording closure wrapping the body. The body captures
+// enclosing values lexically; only the builder block arg is a closure
+// parameter. `dependencies=` makes the edges predecessors of the first node the
+// body records (`_implicit_deps`); `region` chains the rest in body order.
 //
-// `DeviceGraphBuilder.region` returns only the body's last node, so a body
-// result produced *inside* the body cannot be returned directly. We surface
-// each such result through a captured outer `Optional[T]` var: declare it
-// (None) before the closure, write it from inside `work` (captured by `mut`),
-// and unwrap it after `region` returns. `Optional` is used because the surfaced
-// type may not be default-constructible (e.g. a non-null buffer pointer), which
-// a `mut` capture requires:
+// `region` returns only the body's last node, so each in-body result is
+// surfaced through a captured outer `Optional[T]` var (the type may not be
+// default-constructible, e.g. a non-null buffer pointer):
 //
 //   var out = Optional[T](None)
 //   def work(mut builder) raises {mut}:
@@ -347,8 +310,6 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
     if (result.use_empty())
       continue;
 
-    // The returned value may not be default constructable, so use
-    // `Optional[T]` for the result variable.
     MojoValue optionalType = MojoValue(
         kStructOptional)[EmitMojoState::mlirTypeToMojoType(result.getType())];
     MojoValue outVar =
@@ -358,16 +319,13 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
     surfaced.emplace_back(result, yielded, outVar);
   }
 
-  // The closure parameter: `mut builder: DeviceGraphBuilder` (origin inferred).
   NamedMojoDef builderParam =
       NamedMojoDef::asVerbatim("builder", MojoValue(kStructDeviceGraphBuilder));
   builderParam.argConvention = "mut";
 
-  // A closure that surfaces in-body results writes its captured `Optional`
-  // var(s), so it must capture by `mut`; otherwise it only reads its captures,
-  // so `read`. (A surfacing closure that also *reads* register-passable
-  // captures would need a finer per-capture convention; that does not arise
-  // for the current single-dispatch bodies.)
+  // Surfacing closures write their `Optional` vars, so capture by `mut`. One
+  // that also reads register-passable captures would need per-capture
+  // conventions; current single-dispatch bodies do not.
   llvm::StringRef workConvention =
       surfaced.empty() ? llvm::StringRef("imm") : llvm::StringRef("mut");
 
@@ -386,8 +344,6 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
             errOccurred = true;
             return;
           }
-        // Write each in-body result into its captured `Optional` var (the
-        // value implicitly wraps into the Optional).
         for (const SurfacedResult &s : surfaced)
           state.builder.assign(s.outVar,
                                state.getMojoValueFor(s.yielded).transfer());
@@ -395,7 +351,6 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
   if (errOccurred)
     return failure();
 
-  // dependencies=[...] from the predecessor node operands.
   SmallVector<MojoValue> depValues = state.getMojoValuesFor(getDependencies());
   MojoValue dependenciesList = state.builder.listLiteral(depValues);
 
@@ -404,7 +359,6 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
       state.builder.var(builder.region(workClosure, dependenciesList));
   state.setMojoValueFor(getNode(), node);
 
-  // Bind the op's body results: unwrap each surfaced `Optional` via `.take()`.
   for (const SurfacedResult &s : surfaced)
     state.setMojoValueFor(s.result, state.builder.var(s.outVar.get("take")(
                                         /*parameters=*/{}, /*operands=*/{})));
@@ -418,20 +372,15 @@ bool DeviceGraphDependenciesOp::isThrows() { return true; }
 
 namespace {
 
-/// Rebuilds an `mgp.device_graph.dependencies` op with a new set of body
-/// results (and matching `dependencies.yield` operands), preserving the
-/// synthesized `node` result and the dependency edges. `newBodyResultTypes`
-/// describes the surviving body results; `newYieldOperands` are the values the
-/// moved yield should carry. `bodyResultReplacement(i)` returns, for each
-/// original body result index `i`, the position of its replacement among the
-/// new body results.
+/// Rebuilds an `mgp.device_graph.dependencies` op with new body results and
+/// yield operands, keeping the `node` result and dependency edges.
+/// `bodyResultReplacement(i)` maps original body result `i` to its position
+/// among the new body results.
 DeviceGraphDependenciesOp
 rebuildWithBodyResults(PatternRewriter &rewriter, DeviceGraphDependenciesOp op,
                        TypeRange newBodyResultTypes,
                        ValueRange newYieldOperands,
                        ArrayRef<unsigned> bodyResultRemap) {
-  // The `node` result is synthesized (not yielded); it stays first, followed by
-  // the surviving body results.
   SmallVector<Type> newResultTypes;
   newResultTypes.push_back(op.getNode().getType());
   llvm::append_range(newResultTypes, newBodyResultTypes);
@@ -445,8 +394,6 @@ rebuildWithBodyResults(PatternRewriter &rewriter, DeviceGraphDependenciesOp op,
     newYield.getOperandsMutable().assign(newYieldOperands);
   });
 
-  // Map results back onto the original positions: the node, then each original
-  // body result onto its surviving counterpart (offset by one for the node).
   SmallVector<Value> replacements(op.getNumResults());
   replacements[0] = newOp.getNode();
   for (auto [idx, result] : llvm::enumerate(op.getBodyResults())) {
@@ -458,17 +405,14 @@ rebuildWithBodyResults(PatternRewriter &rewriter, DeviceGraphDependenciesOp op,
   return newOp;
 }
 
-/// Drops body results of an `mgp.device_graph.dependencies` op that have no
-/// uses, along with the matching operands of the body's `dependencies.yield`.
-/// The synthesized `node` result is always kept (it carries the ordering edge,
-/// not dataflow).
+/// Drops unused body results of an `mgp.device_graph.dependencies` op and the
+/// matching yield operands. The `node` result (the ordering edge) is kept.
 struct RemoveUnusedDependenciesResults
     : public OpRewritePattern<DeviceGraphDependenciesOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(DeviceGraphDependenciesOp op,
                                 PatternRewriter &rewriter) const override {
-    // Collect the indices/types of the body results that are actually used.
     SmallVector<unsigned> usedResultIndices;
     SmallVector<Type> usedResultTypes;
     for (auto [idx, result] : llvm::enumerate(op.getBodyResults())) {
@@ -478,18 +422,15 @@ struct RemoveUnusedDependenciesResults
       }
     }
 
-    // Nothing to do if every body result is used.
     if (usedResultIndices.size() == op.getBodyResults().size())
       return failure();
 
-    // Snapshot the surviving yield operands before moving the body.
     DeviceGraphDependenciesYieldOp oldYield = op.getYieldOp();
     auto newYieldOperands =
         llvm::map_to_vector(usedResultIndices, [&](unsigned idx) -> Value {
           return oldYield.getOperand(idx);
         });
 
-    // Each used body result maps onto its slot in the compacted list.
     SmallVector<unsigned> remap(op.getBodyResults().size());
     for (auto [newIdx, oldIdx] : llvm::enumerate(usedResultIndices))
       remap[oldIdx] = newIdx;
@@ -501,8 +442,7 @@ struct RemoveUnusedDependenciesResults
 };
 
 /// De-duplicates body results of an `mgp.device_graph.dependencies` op whose
-/// `dependencies.yield` carries the same value more than once: the yield keeps
-/// one copy and every duplicate result is rewritten to the surviving one.
+/// yield carries the same value more than once.
 struct DeduplicateDependenciesResults
     : public OpRewritePattern<DeviceGraphDependenciesOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -524,7 +464,6 @@ struct DeduplicateDependenciesResults
       resultRemap[idx] = it->second;
     }
 
-    // Nothing to do if there are no duplicated yield operands.
     if (firstOccurrence.size() == op.getBodyResults().size())
       return failure();
 
@@ -551,14 +490,12 @@ struct ForwardExternalDependenciesResults
     bool changed = false;
     for (auto [result, yielded] :
          llvm::zip(op.getBodyResults(), yieldOp.getOperands())) {
-      // Already-dead results have nothing to forward; skipping them keeps the
-      // pattern idempotent (otherwise it reports a no-op rewrite as `success`
-      // forever and the greedy driver never converges).
+      // Skipping dead results keeps the pattern idempotent; otherwise the
+      // greedy driver never converges.
       if (result.use_empty())
         continue;
 
-      // Keep results whose value originates inside the body (incl. the body's
-      // own block arguments); only forward genuine pass-throughs of outer SSA.
+      // Only forward pass-throughs of outer SSA (block args count as inside).
       if (body.isAncestor(yielded.getParentRegion()))
         continue;
 
@@ -569,14 +506,10 @@ struct ForwardExternalDependenciesResults
   }
 };
 
-/// Hoists body-invariant ops out of an `mgp.device_graph.dependencies` op. Any
-/// non-terminator body op whose operands are all defined *outside* the body
-/// (i.e. it depends on neither the builder block arg nor another in-body value)
-/// is moved in front of the op, so the emitted `region` `work` closure captures
-/// it once instead of recomputing it on every graph build. The lift is
-/// transitive: once an invariant op moves out, an in-body consumer of its
-/// result becomes hoistable on the same sweep. Builder-dependent ops (the
-/// recording dispatch) stay in the body.
+/// Hoists body ops whose operands are all defined outside the body in front of
+/// an `mgp.device_graph.dependencies` op, so the `work` closure captures them
+/// once instead of recomputing them on every graph build. Hoisting is
+/// transitive within one sweep; builder-dependent ops stay in the body.
 struct HoistOperations final
     : public OpRewritePattern<DeviceGraphDependenciesOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -620,10 +553,8 @@ struct MergeChainedDependencies final
 
   LogicalResult matchAndRewrite(DeviceGraphDependenciesOp op,
                                 PatternRewriter &rewriter) const override {
-    // Exactly one edge, so absorbing its producer adds no ordering: the
-    // producer's edges become this op's, and nothing else changes. Absorbing a
-    // body into an op that has other edges would order that body after them
-    // too, collapsing genuine fan-in.
+    // With exactly one edge, absorbing the producer adds no ordering. With
+    // more, the absorbed body would be ordered after the other edges too.
     if (op.getDependencies().size() != 1)
       return failure();
 
@@ -632,26 +563,20 @@ struct MergeChainedDependencies final
     if (!producer)
       return failure();
 
-    // The producer has a single consumer, which must be the input operation.
     if (!producer.getNode().hasOneUse())
       return failure();
 
-    // Dataflow out of the producer complicates the canonicalization. For now,
-    // bail out as this case is uncommon.
+    // Dataflow out of the producer is uncommon; bail.
     if (!producer.getBodyResults().empty())
       return failure();
 
-    // Producer and consumer must share the same builder and parent block.
     if (producer.getGraphBuilder() != op.getGraphBuilder() ||
         producer->getBlock() != op->getBlock())
       return failure();
 
-    // Erase the producer yield operation. The merged block will be terminated
-    // by the terminator from the consumer operation.
+    // The merged block keeps the consumer's terminator.
     rewriter.eraseOp(producer.getYieldOp());
 
-    // Inline the producer's body block before the consumer, remapping the
-    // builder argument.
     rewriter.inlineBlockBefore(&producer.getBodyBlock(), &op.getBodyBlock(),
                                op.getBodyBlock().begin(),
                                {op.getBuilderBlockArgument()});
@@ -665,19 +590,14 @@ struct MergeChainedDependencies final
   }
 };
 
-/// Bypasses empty (node-less) `mgp.device_graph.dependencies` producers: a
-/// dependency edge pointing at a producer that records no nodes is replaced by
-/// that producer's own dependency edges, preserving the transitive ordering the
-/// empty op stood in for. Applied to a fixpoint this splices past chains of
-/// empty producers; the bypassed ops are left for DCE once their `node` result
-/// is unused, and any duplicate edges introduced are folded away by the op's
-/// edge-dedup folder.
+/// Replaces a dependency edge on an empty (node-less) producer with that
+/// producer's own edges, preserving transitive ordering. Bypassed ops are left
+/// for DCE; duplicate edges are folded by the edge-dedup folder.
 struct BypassEmptyDependencies final
     : public OpRewritePattern<DeviceGraphDependenciesOp> {
   using Base::Base;
 
-  /// Get the forwarded transitive dependencies for a dependency node which
-  /// corresponds to an empty region.
+  /// Returns the transitive dependencies of a node for an empty region.
   static std::optional<ValueRange> getTransitiveDependencies(Value dependency) {
     if (auto producer = dependency.getDefiningOp<DeviceGraphDependenciesOp>())
       if (!producer.producesNewNodes())
@@ -737,8 +657,7 @@ void DeviceGraphDependenciesYieldOp::build(OpBuilder &, OperationState &) {
   // are populated after insertion.
 }
 
-// The body results are surfaced by the parent op's `emitMojo` (region join node
-// plus external pass-throughs), so the yield itself emits nothing.
+// The parent op's `emitMojo` surfaces the body results.
 LogicalResult DeviceGraphDependenciesYieldOp::emitMojo(MOGG::EmitMojoState &) {
   return success();
 }
@@ -754,9 +673,8 @@ DeviceGraphStagingYieldOp DeviceGraphStagingOp::getYieldOp() {
 LogicalResult DeviceGraphStagingOp::verify() {
   Block &body = getBody().front();
 
-  // Block args are [builder, input_0, ..., input_n-1]: the builder has no
-  // operand; the rest carry the `inputs` operand types verbatim (bare `T`, no
-  // `!mogg.async` wrapping at the staging boundary).
+  // Block args are [builder, input_0, ..., input_n-1]; inputs carry the
+  // `inputs` operand types verbatim (bare `T`, no `!mogg.async`).
   if (body.getNumArguments() != 1 + getInputs().size())
     return emitOpError("staging body has ")
            << body.getNumArguments() << " block argument(s), expected "
@@ -775,8 +693,6 @@ LogicalResult DeviceGraphStagingOp::verify() {
              << inputType;
   }
 
-  // The yield carries the staged results out as bare `T`, matching the op's
-  // results exactly.
   DeviceGraphStagingYieldOp yieldOp = getYieldOp();
   if (yieldOp.getNumOperands() != getNumResults())
     return emitOpError("`mgp.device_graph.staging.yield` has ")
@@ -801,10 +717,7 @@ void DeviceGraphStagingOp::build(
 
   result.addOperands(inputs);
 
-  // Create the body with the device-graph-builder block argument followed by
-  // one bare-`T` argument per input, and let the callback populate it (it is
-  // expected to emit the staging.yield carrying the staged values).
-  // createBlock also positions the insertion point.
+  // The callback populates the body and is expected to emit the staging.yield.
   Region *bodyRegion = result.addRegion();
   Block *body = builder.createBlock(bodyRegion);
   Value graphBuilder = body->addArgument(
@@ -821,22 +734,20 @@ void DeviceGraphStagingOp::build(
   if (!body->mightHaveTerminator())
     ensureTerminator(*bodyRegion, builder, result.location);
 
-  // The op's results are exactly the staging.yield operand types (bare `T`).
   auto yieldOp = cast<DeviceGraphStagingYieldOp>(body->getTerminator());
   result.addTypes(yieldOp.getOperandTypes());
 }
 
 namespace {
 
-/// Drops results of an `mgp.device_graph.staging` op that have no uses, along
-/// with the matching operands of the body's `staging.yield`.
+/// Drops unused results of an `mgp.device_graph.staging` op and the matching
+/// yield operands.
 struct RemoveUnusedStagingResults
     : public OpRewritePattern<DeviceGraphStagingOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(DeviceGraphStagingOp op,
                                 PatternRewriter &rewriter) const override {
-    // Collect the indices/types of the results that are actually used.
     SmallVector<unsigned> usedResultIndices;
     SmallVector<Type> usedResultTypes;
     for (auto [idx, result] : llvm::enumerate(op.getResults())) {
@@ -846,20 +757,15 @@ struct RemoveUnusedStagingResults
       }
     }
 
-    // Nothing to do if every result is used.
     if (usedResultIndices.size() == op.getNumResults())
       return failure();
 
-    // Snapshot the surviving yield operands before moving the body.
     DeviceGraphStagingYieldOp oldYield = op.getYieldOp();
     auto newYieldOperands =
         llvm::map_to_vector(usedResultIndices, [&](unsigned idx) -> Value {
           return oldYield.getOperand(idx);
         });
 
-    // Build the slimmer op (keeping the inputs, hence the body block args) and
-    // move the body into it, then update the moved yield to carry only the used
-    // values.
     auto newOp = DeviceGraphStagingOp::create(
         rewriter, op.getLoc(), TypeRange(usedResultTypes), op.getInputs(),
         op.getConstantResources());
@@ -870,7 +776,6 @@ struct RemoveUnusedStagingResults
       newYield.getOperandsMutable().assign(newYieldOperands);
     });
 
-    // Map the surviving results back onto the original result positions.
     SmallVector<Value> replacements(op.getNumResults());
     for (auto [newIdx, oldIdx] : llvm::enumerate(usedResultIndices))
       replacements[oldIdx] = newOp.getResult(newIdx);
@@ -879,9 +784,8 @@ struct RemoveUnusedStagingResults
   }
 };
 
-/// De-duplicates results of an `mgp.device_graph.staging` op whose body
-/// `staging.yield` carries the same value more than once: the yield keeps one
-/// copy and every duplicate result is rewritten to the surviving one.
+/// De-duplicates results of an `mgp.device_graph.staging` op whose yield
+/// carries the same value more than once.
 struct DeduplicateStagingResults
     : public OpRewritePattern<DeviceGraphStagingOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -890,8 +794,6 @@ struct DeduplicateStagingResults
                                 PatternRewriter &rewriter) const override {
     DeviceGraphStagingYieldOp oldYield = op.getYieldOp();
 
-    // Map each distinct yielded value to the index it will occupy in the
-    // de-duplicated result list, and record where each old result lands.
     llvm::SmallDenseMap<Value, unsigned> firstOccurrence;
     SmallVector<Value> dedupedOperands;
     SmallVector<Type> dedupedTypes;
@@ -906,13 +808,9 @@ struct DeduplicateStagingResults
       resultRemap[idx] = it->second;
     }
 
-    // Nothing to do if there are no duplicated yield operands.
     if (dedupedOperands.size() == op.getNumResults())
       return failure();
 
-    // Build the de-duplicated op (keeping the inputs, hence the body block
-    // args) and move the body into it, then update the moved yield to carry
-    // only the surviving values.
     auto newOp = DeviceGraphStagingOp::create(
         rewriter, op.getLoc(), TypeRange(dedupedTypes), op.getInputs(),
         op.getConstantResources());
@@ -923,8 +821,6 @@ struct DeduplicateStagingResults
       newYield.getOperandsMutable().assign(dedupedOperands);
     });
 
-    // Point each original result (including the duplicates) at its surviving
-    // de-duplicated result.
     SmallVector<Value> replacements =
         llvm::map_to_vector(resultRemap, [&](unsigned newIdx) -> Value {
           return newOp.getResult(newIdx);
@@ -1033,7 +929,7 @@ LogicalResult DeviceGraphStablePlaceOp::emitMojo(MOGG::EmitMojoState &) {
 // DeviceGraphCollectiveOp
 //===----------------------------------------------------------------------===//
 
-// Verifies the structural invariants implied by the design:
+// Verifies:
 //   1. `$devices.size() == #regions`.
 //   2. Every region has the same block-arg count (the per-device collective
 //      bodies see the same shape of the stable-address map).
@@ -1124,9 +1020,8 @@ LogicalResult DeviceGraphCollectiveOp::verify() {
 
 ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
                                            OperationState &result) {
-  // Parse the shared `!mgp.device_graph.builder` block argument. The same
-  // prototype is threaded into every per-device region. The printed form
-  // omits the builder type, so when it is missing we infer it.
+  // The shared builder and stable-address block arguments are threaded into
+  // every per-device region.
   if (parser.parseKeyword("builder"))
     return failure();
 
@@ -1137,8 +1032,7 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
   if (parser.parseArgument(builderArg, /*allowType=*/false))
     return failure();
 
-  // The builder type is optional in the printed form and defaults to
-  // `!mgp.device_graph.builder`.
+  // The builder type is optional and defaults to `!mgp.device_graph.builder`.
   if (succeeded(parser.parseOptionalColon())) {
     if (parser.parseType(builderArg.type))
       return failure();
@@ -1149,8 +1043,6 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
   if (parser.parseRParen())
     return failure();
 
-  // Parse the shared stable-address block arguments. The same prototype is
-  // threaded into every per-device region.
   if (parser.parseKeyword("stable"))
     return failure();
 
@@ -1159,13 +1051,12 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
                                /*allowType=*/true))
     return failure();
 
-  // The first region's entry block takes the builder, then the stable slots.
   SmallVector<OpAsmParser::Argument> regionArgs;
   regionArgs.push_back(builderArg);
   llvm::append_range(regionArgs, stableArgs);
 
-  // Parse each device region: a `DeviceRefAttr` label followed by the region
-  // body.  The label order defines the `$devices` attribute.
+  // Each region is a `DeviceRefAttr` label then its body; label order defines
+  // `$devices`.
   SmallVector<DeviceRefAttr> deviceRefs;
 
   auto parseDeviceRegionPair = [&]() -> ParseResult {
@@ -1186,9 +1077,7 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
                                      parseDeviceRegionPair))
     return failure();
 
-  // Parse the optional attribute dictionary (e.g. constant_resources).
-  // `devices` is represented by the per-region labels, so drop it if the
-  // textual attr-dict happens to contain it.
+  // `devices` comes from the region labels, so drop it from the attr-dict.
   if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
   result.attributes.erase(getDevicesAttrName(result.name));
@@ -1196,7 +1085,6 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
   auto devices = DeviceRefsAttr::get(parser.getContext(), deviceRefs);
   result.addAttribute(getDevicesAttrName(result.name), devices);
 
-  // Parse optional trailing result types.
   SmallVector<Type> resultTypes;
   if (parser.parseOptionalColonTypeList(resultTypes))
     return failure();
@@ -1206,16 +1094,10 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
 }
 
 void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
-  // Print the shared entry-block arguments once, using the first region as the
-  // canonical prototype. The first argument is the `!mgp.device_graph.builder`
-  // printed in a `builder(...)` clause; the rest are stable-address slots
-  // printed in a `stable(...)` clause. The printer assigns unique names and
-  // reuses them when the region bodies are printed without their entry-block
-  // arguments.
+  // Print the shared entry-block arguments once, from the first region; the
+  // region bodies are then printed without them.
   p << " builder(";
   if (!getGraphs().empty()) {
-    // The builder block argument is always a `!mgp.device_graph.builder`,
-    // so the type is omitted from the printed form.
     p.printRegionArgument(getRegionBlock(0).getArgument(0),
                           /*argAttrs=*/{}, /*omitType=*/true);
   }
@@ -1240,15 +1122,13 @@ void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
     p.printRegion(getGraphs()[idx], /*printEntryBlockArgs=*/false);
   });
 
-  // The `devices` attribute is represented by the per-region labels above. An
-  // empty `constantResources` is omitted to keep the printed form compact and
-  // consistent with `mgp.device_graph.staging`.
+  // `devices` is printed as the region labels; an empty `constantResources`
+  // is omitted, as in `mgp.device_graph.staging`.
   SmallVector<StringRef> elide = {getDevicesAttrName()};
   if (getConstantResources().empty())
     elide.push_back(getConstantResourcesAttrName());
   p.printOptionalAttrDict(getOperation()->getAttrs(), elide);
 
-  // Print trailing result types when present.
   if (!getOutputs().empty()) {
     p << " : ";
     llvm::interleaveComma(getOutputs(), p,
@@ -1258,8 +1138,7 @@ void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
 
 void DeviceGraphCollectiveOp::getAsmBlockArgumentNames(
     Region &region, llvm::function_ref<void(Value, StringRef)> setNameFn) {
-  // Set argument names for the entry block arguments: the builder is `b`, and
-  // the stable-address slots are `s0`, `s1`, ...
+  // The builder is `b`; stable-address slots are `s0`, `s1`, ...
   for (auto [idx, arg] : llvm::enumerate(region.getArguments())) {
     if (idx == 0)
       setNameFn(arg, "b");
@@ -1281,8 +1160,7 @@ void DeviceGraphCollectiveOp::build(
   SmallVector<Location> argLocs(stableTypes.size(), state.location);
   auto argTypes = llvm::to_vector_of<Type>(stableTypes);
 
-  // Build one region per device.  Each region gets the shared builder block
-  // argument followed by one block argument per stable address slot.
+  // Each per-device region takes the builder, then one arg per stable slot.
   SmallVector<Type> resultTypes;
   for (auto dev : devices) {
     Region *region = state.addRegion();
@@ -1298,13 +1176,10 @@ void DeviceGraphCollectiveOp::build(
     bodyBuilder(builder, dev, builderArg, stableArgs);
     ensureTerminator(*region, builder, state.location);
 
-    // Infer output types from the terminator the callback produced.
     llvm::append_range(resultTypes, block->getTerminator()->getOperandTypes());
   }
 
-  // Call into the tablegen builder with `graphsCount=0`. We've already added
-  // the child regions to `state`, so we do not want to add any additional
-  // regions as the region count will not match the number of devices.
+  // `graphsCount=0`: the regions were already added to `state`.
   DeviceGraphCollectiveOp::build(builder, state, resultTypes, devices,
                                  /*constantResources=*/ArrayAttr(),
                                  /*graphsCount=*/0);
@@ -1328,13 +1203,12 @@ ParseResult DeviceGraphCollectiveCreateOp::parse(OpAsmParser &parser,
   MLIRContext *ctx = parser.getContext();
   Type contextType = MGP::ContextType::get(ctx);
 
-  // The shared `!mgp.context` operand.  It is also threaded into each region as
-  // the second block argument.
+  // The shared `!mgp.context` is also each region's second block argument.
   OpAsmParser::UnresolvedOperand theContext;
   if (parser.parseOperand(theContext))
     return failure();
 
-  // Optional cache(%cache : !mgp.device_graph.cache).
+  // cache(%cache : !mgp.device_graph.cache)?
   bool hasCache = false;
   OpAsmParser::UnresolvedOperand cacheVal;
   Type cacheType;
@@ -1351,9 +1225,7 @@ ParseResult DeviceGraphCollectiveCreateOp::parse(OpAsmParser &parser,
   SmallVector<OpAsmParser::UnresolvedOperand> inputVals;
   SmallVector<Type> inputTypes;
 
-  // Each per-device graph is introduced by its device context, builder block
-  // arg, and input block args.  The body itself is printed without its
-  // entry-block arguments because they are declared in the prefix clauses.
+  // The body omits its entry-block arguments; the prefix clauses declare them.
   auto parseGraph = [&]() -> ParseResult {
     // graph(<deviceContext> : <type>)
     if (parser.parseKeyword("graph") || parser.parseLParen())
@@ -1402,8 +1274,7 @@ ParseResult DeviceGraphCollectiveCreateOp::parse(OpAsmParser &parser,
         return failure();
     }
 
-    // The shared context becomes the second block argument; use the same name
-    // as the op-level context operand so the body can refer to it naturally.
+    // Reuse the op-level context operand's name for the block argument.
     OpAsmParser::Argument contextArg;
     contextArg.ssaName = theContext;
     contextArg.type = contextType;
@@ -1424,7 +1295,6 @@ ParseResult DeviceGraphCollectiveCreateOp::parse(OpAsmParser &parser,
   if (parser.parseCommaSeparatedList(parseGraph))
     return failure();
 
-  // Resolve operands in the order expected by the ODS-generated accessors.
   if (parser.resolveOperand(theContext, contextType, result.operands) ||
       parser.resolveOperands(deviceContextVals, deviceContextTypes, {},
                              result.operands) ||
@@ -1433,8 +1303,6 @@ ParseResult DeviceGraphCollectiveCreateOp::parse(OpAsmParser &parser,
       parser.resolveOperands(inputVals, inputTypes, {}, result.operands))
     return failure();
 
-  // The `operandSegmentSizes` attribute is required by
-  // `AttrSizedOperandSegments`.
   result.addAttribute(
       getOperandSegmentSizesAttrName(result.name),
       parser.getBuilder().getDenseI32ArrayAttr(
@@ -1652,10 +1520,8 @@ void DeviceGraphCollectiveCreateOp::build(
         /*graphsCount=*/0);
 }
 
-/// Emit the shared indexed build closure used by both the cached and uncached
-/// paths of `mgp.device_graph.collective.create`. The closure receives a
-/// device index `n` and a `DeviceGraphBuilder`, then dispatches to the body for
-/// region `n`.
+/// Emits the build closure, shared by the cached and uncached paths, that
+/// dispatches to the body of region `n` for a `DeviceGraphBuilder`.
 static FailureOr<MOGG::MojoValue>
 emitCollectiveBuildForClosure(MOGG::EmitMojoState &state,
                               DeviceGraphCollectiveCreateOp op) {
@@ -1678,7 +1544,6 @@ emitCollectiveBuildForClosure(MOGG::EmitMojoState &state,
         MojoValue n = buildBody.parameters.front();
         MojoValue builderArgMojo = buildBody.arguments.front();
 
-        // The shared context and builder are the same for every region.
         for (Region &region : op.getGraphs()) {
           state.setMojoValueFor(region.front().getArgument(1), sharedContext);
           state.setMojoValueFor(region.front().getArgument(0), builderArgMojo);
@@ -1736,10 +1601,8 @@ emitCollectiveBuildForClosure(MOGG::EmitMojoState &state,
   return buildFor;
 }
 
-/// Emit the per-device cache-key closure for the cached variant of
-/// `mgp.device_graph.collective.create`. Each device produces a key from only
-/// the device-graph inputs for that region; `DeviceGraph.create_collective`
-/// adds the closure identity separately.
+/// Emits the per-device cache-key closure from that region's inputs only;
+/// `DeviceGraph.create_collective` adds the closure identity separately.
 static MOGG::MojoValue
 emitCollectiveKeyForClosure(MOGG::EmitMojoState &state,
                             DeviceGraphCollectiveCreateOp op) {
@@ -1823,8 +1686,7 @@ DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &state) {
     graphsArray =
         state.builder.var(DeviceGraphRef::createCollective(collectiveArgs));
   } else {
-    // Uncached path: build each graph individually so the op does not require
-    // a shared cache.
+    // Uncached: build each graph individually, without a shared cache.
     NamedMojoDef builderParam = NamedMojoDef::asVerbatim(
         "builder", MojoValue(kStructDeviceGraphBuilder));
     builderParam.argConvention = "mut";
@@ -1847,9 +1709,8 @@ DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &state) {
     }
   }
 
-  // Copy each per-device graph out of the collective result array into its own
-  // named variable. This keeps the variables origin-trackable so consumers can
-  // transfer them with `^`.
+  // Named per-device variables keep an origin so consumers can transfer them
+  // with `^`.
   for (unsigned i = 0; i < numGraphs; ++i) {
     MojoValue graphVar = state.builder.var(graphsArray[MojoValue(i)]);
     state.setMojoValueFor(getOutGraphs()[i], graphVar);

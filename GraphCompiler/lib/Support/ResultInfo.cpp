@@ -54,8 +54,6 @@ void ProcessedResults::insertResultInfo(std::shared_ptr<ResultInfo> info) {
 }
 
 std::string ProcessedResults::insertTensor(Tensor *tensor) {
-  // If this tensor exists in the results already, instead of inserting it
-  // again, return the existing name.
   if (containsTensor(tensor))
     return getTensorName(tensor);
   std::string name = "__tensor_" + std::to_string(counter) + "__";

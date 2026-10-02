@@ -14,28 +14,18 @@
 
 namespace M::MO {
 
-/// Static reshape analysis that will return the mapping between input and
-/// output shapes across a reshape operation. Dynamic dimensions are ignored.
-/// This will fail whenever the dynamic dimensions are mixed with static
-/// dimensions.
+/// Maps input to output dimensions across a reshape. Dynamic dimensions are
+/// ignored; fails when dynamic dimensions mix with static ones.
 /// EXAMPLE:
 /// Works: D0, 4, 6, 1 -> D0, 2, 3, 2, 1, 2
 ///   Forward: [[], [1, 2], [2, 3, 5]]
 ///   Backward: [[], [1], [1, 2], [2], [2]]
 /// Does not work: D0, 4, 6, 1 -> 4, D0, 6, 1
 ///
-/// 1s are ignored because the mapping is not well defined (could be
-/// mapped to any neighbor dimension). This means that their mapping will be
-/// empty.
+/// 1s map to nothing, since they could map to any neighbor.
 ///
-/// USECASE:
-/// This analysis groups dimensions of a reshape by mapping dimensions that are
-/// now "mixed" with one another. If a dimension in `before` maps to another in
-/// `after`, it means that in the `after` shape, the mapped dimension originated
-/// from the dimension in `before` (and vice versa, `before` contributed to
-/// `after`). This helps us do things like change the split axis of a `mo.split`
-/// across a `mo.reshape` and guarantee correctness because we know where to cut
-/// and not impact other dimensions.
+/// A `before` dim maps to the `after` dims it contributes to, which lets e.g.
+/// a `mo.split` axis move across a `mo.reshape` without touching other dims.
 class StaticReshapeDimensionsMappingAnalysis {
 public:
   // Before := shape before the reshape
@@ -44,7 +34,6 @@ public:
                                          llvm::ArrayRef<mlir::TypedAttr> after);
   ~StaticReshapeDimensionsMappingAnalysis() = default;
 
-  // If the reshape is supported.
   inline operator bool() const { return isSupported; }
 
   using DimensionsMapping = llvm::SmallVector<llvm::SmallVector<int64_t>>;

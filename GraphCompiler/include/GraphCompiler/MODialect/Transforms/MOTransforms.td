@@ -13,9 +13,8 @@ def AddFallbackShapeFunctions :
     Pass<"mo-add-fallback-shape-funcs", "GraphOp"> {
   let summary = "Adds fallback shape functions to unmaterialized mo ops";
   let description = [{
-    This ensures all MO operations will have parameterized outputs by checking
-    if they have already been parameterized and if not materializing a fallback
-    shape function which will give them those parameters.
+    Gives every MO op parameterized outputs, materializing a fallback shape
+    function for ops that lack them.
   }];
 
   let dependentDialects = [
@@ -37,22 +36,18 @@ def InvokeShapePackingFunctions : Pass<"mo-invoke-shape-packing-funcs", "GraphOp
   let summary = "Process fallback shape functions for packing operations";
 
   let description = [{
-    Attempts to process the fallback shape functions for packing operations.
-    Internally, this will call into a C++ re-implementation of the shape
-    calculations.
+    Uses a C++ re-implementation of the shape calculations.
   }];
 
   let options = [
     Option<"useHostSystem", "use-host-system", "bool",
       /*default=*/"true",
-      "Force the transform to use target information for the host system, "
-      "otherwise the GraphOp is inspected for a M.device attribute. "
-      "Disable this for FileCheck tests where you need deterministic output.">,
+      "Use host target info instead of the GraphOp's M.device attribute. "
+      "Disable for deterministic FileCheck output.">,
 
     Option<"sanityCheckShapeFuncs", "sanity-check-shape-funcs", "bool",
       /*default=*/"false",
-      "Emit sanity checks into the IR asserting that the computed shapes "
-      "from the C++ implementations match those from the Mojo implementation.">,
+      "Emit IR asserts that the C++ shapes match the Mojo implementation's.">,
   ];
 
   let dependentDialects = [
@@ -63,10 +58,8 @@ def InvokeShapePackingFunctions : Pass<"mo-invoke-shape-packing-funcs", "GraphOp
 def MergeDuplicateShapeMaterializations : Pass<"mo-merge-duplicate-shape-materializations", "GraphOp"> {
   let summary = "Merges duplicate shape materialization operations";
   let description = [{
-    This pass goes through ops that implement the Staticization interface and
-    ensures that only a single op of its type is operating on the same
-    operands, thus ensuring that multiple shape parameters are not being
-    constructed for the same value.
+    Dedupes Staticization ops of the same type on the same operands, so one
+    value doesn't get multiple shape parameters.
     Example:
     ```
     mo.graph @example<N1 -> O1>(%arg0: !mo.tensor<[], bf16>, %arg1: !mo.tensor<[N1], bool>) -> !mo.tensor<[O1], bf16> {
@@ -90,48 +83,39 @@ def MergeDuplicateShapeMaterializations : Pass<"mo-merge-duplicate-shape-materia
       mo.output<N1> %4 : !mo.tensor<[N1], bf16>
     }
     ```
-    Canonicalization and CSE can take this one step further and eliminate a number of additional operations.
+    Canonicalization and CSE then clean up further.
   }];
 }
 
 def PropagateShapes : Pass<"mo-propagate-shapes", "GraphOp"> {
   let summary = "Propagates shape parameters through the graph.";
   let description = [{
-    This pass evaluates shape parameter logic in the graph, simplifying and
-    reducing shape logic as much as it can.
+    Evaluates and simplifies shape parameter logic in the graph.
   }];
 }
 
 def SymbolicOptimization : Pass<"mo-symbolic-optimize", "GraphOp"> {
   let summary = "Optimize the graph using symbolic reasoning.";
   let description = [{
-    This pass leverages symbolic information present in the graph (usually as a
-    result of shape inference) to optimize computations. It includes
-    transformations such as:
-    - moving certain operations within the graph
-    - rewriting a series of operations into more efficient ones
-    - canonicalizing certain operations into simpler form to enable
-      downstream optimizations
+    Uses symbolic information (usually from shape inference) to move ops,
+    rewrite op sequences into cheaper ones, and canonicalize ops for
+    downstream optimizations.
   }];
 
   let options = [
     Option<"symbolicFfastMath", "symbolic-ffast-math", "bool", "true",
-      "If the symbolic optimizer is allowed to (1) operate under the finite"
-      "math assumption, (2) re-order floating point operations (3) and apply"
+      "Allow assuming finite math, re-ordering floating point ops, and "
       "reciprocal optimizations">,
       Option<"symbolicNoUndefinedMath", "symbolic-no-undefined-math", "bool", "true",
-      "If the symbolic optimizer is allowed to assume that there will be no"
-      "undefined math operations such as divisions by 0">
+      "Allow assuming no undefined math such as division by 0">
   ];
 }
 
 def InferLayouts : Pass<"mo-infer-layouts", "GraphOp"> {
   let summary = "Infer layouts of tensor values";
   let description = [{
-    This pass tries to infer the layout of tensor values in a `mo.graph`, based
-    on constraints of relevant MO ops, e.g., before layout transformations,
-    `mo.conv` assumes input has `NHWC` layout. At the end of the inference, the
-    pass will annotate the tensor types with inferred layout attributes.
+    Infers tensor layouts from op constraints (e.g. `mo.conv` assumes `NHWC`
+    input before layout transformations) and annotates the tensor types.
   }];
 }
 
@@ -149,17 +133,16 @@ def HoistParameterExpressions : Pass<"mo-hoist-param-exprs", "GraphOp"> {
     %tmp = mo.op(%arg_rebound: !mo.tensor<[param_expr], f32>) : !mo.tensor<[param_expr], f32>
     %1 = %mo.rebind(tmp: !mo.tensor<(N,M), f32>): !mo.tensor<[add(N,M)], f32>
     ```
-    `rebind`s are inserted around the block to ensure that the input and outputs of the block remain the same type.
-
-    This pass is necessary for MOGG to jit kernels with parameter expressions in their arguments.
+    The `rebind`s keep the block's input and output types unchanged. MOGG
+    needs this to jit kernels with parameter expressions in their arguments.
   }];
 }
 
 def ConstantFold : Pass<"mo-constant-fold", "ModuleOp"> {
   let summary = "Partially evaluate constant subgraphs";
   let description = [{
-    This pass identifies constant subgraphs and executes them at compile time
-    using existing kernel infrastructure. Does not explicitly handle control flow.
+    Executes constant subgraphs at compile time with the kernel
+    infrastructure. Does not explicitly handle control flow.
 
     Example:
     ```
@@ -179,14 +162,12 @@ def ConstantFold : Pass<"mo-constant-fold", "ModuleOp"> {
     }
     ```
 
-    This pass may be non-determininstic in ordering of output nodes.
+    Output node order may be non-deterministic.
 
-    This pass run on ModuleOps instead of GraphOps because it 1. needs to call
-    runPipeline(MOToMOGG) which cannot be nested in a GraphOp, and 2. it needs
-    to avoid overhead of doing lowering and model setup multiple times.
+    Runs on ModuleOps because runPipeline(MOToMOGG) cannot nest in a GraphOp,
+    and to avoid repeating lowering and model setup.
   }];
-  // All these dialects are required to run MOToMOGG from within this pass.
-  // MAP is reached through the same nested pipeline under advanced fusion.
+  // Required by the nested MOToMOGG pipeline (MAP under advanced fusion).
   let dependentDialects = [
     "M::MDialect",
     "M::MAP::MAPDialect",
@@ -212,9 +193,8 @@ def ConstantFold : Pass<"mo-constant-fold", "ModuleOp"> {
 def ConstantFoldSubgraphTest : Pass<"mo-constant-fold-subgraph-test", "ModuleOp"> {
   let summary = "Test constant subgraph detection";
   let description = [{
-    This is a testing only pass. It prints out the constant subgraphs found
-    within a graph so that they can be checked by filecheck. Printed output
-    looks like this:
+    Test-only: prints the graph, then one `subgraph` line per constant
+    subgraph found:
     ```
     mo.graph @const_program() -> !mo.tensor<[2], si32> {
       %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 1> : tensor<2xsi32>} : !mo.tensor<[2], si32>
@@ -225,22 +205,18 @@ def ConstantFoldSubgraphTest : Pass<"mo-constant-fold-subgraph-test", "ModuleOp"
     }
     subgraph %0 %1 %2 %3
     ```
-    which is the full graph followed by zero or more occurrences of word
-    'subgraph' with the values that compose a constant subgraph.
   }];
 }
 
 def SupportConversionsTest : Pass<"mo-support-conversions-test", "ModuleOp"> {
   let summary = "Testing only pass for testing MO Conversion support library.";
   let description = [{
-    This is a testing only pass. It looks for hard-coded, unregistered ops and
-    expands them using helper libraries located in
+    Test-only: expands hard-coded unregistered ops with the helpers in
     GraphCompiler/Conversion/MO/Support/*.
     ```
     mo.graph @const_program() -> (!mo.tensor<[2], f32>) {
       ...
-      // Pattern rewrite looks for "prelu" and expands op with decomposed
-      // operators in MO to execute a "prelu" operation:
+      // Expanded into decomposed MO ops:
       %2 = "prelu"(%0, %1) : (!mo.tensor<[2], f32>, !mo.tensor<[1], f32>) -> !mo.tensor<[2], f32>
       mo.output %2 : !mo.tensor<[5], f32>
     }
@@ -257,18 +233,14 @@ def ValidateDevicesPass : Pass<"mo-validate-devices", "GraphOp"> {
   let summary = "Validates that each data type used in tensors in the graph "
                 "can be implemented on the target device.";
   let description = [{
-    This pass checks the inputs and outputs of the graph, verifying that the
-    data type for each tensor can be implemented on the target device.
+    Checks the graph's inputs and outputs.
   }];
 
   let options = [
     Option<"defaultDeviceTargetTriple", "default-device-target-triple", "std::string", "\"\"",
-      "llvm::Triple representing the compilation target for the "
-                     "defaultDevice.">,
+      "llvm::Triple of the defaultDevice's compilation target.">,
     Option<"defaultDeviceTargetArch", "default-device-target-arch", "std::string", "\"\"",
-      "String representing the architecture of the "
-                     "defaultDevice. For example, for NVIDIA GPUs this is the "
-                     "compute capability (i.e. sm_X)">,
+      "Architecture of the defaultDevice (e.g. sm_X on NVIDIA GPUs).">,
   ];
 }
 
@@ -276,57 +248,39 @@ def VerifyDeviceGraphPass : Pass<"mo-verify-device-graph", "GraphOp"> {
   let summary = "Verify that a device-graphable mo.graph has kernel "
                 "registrations that expose a build_graph entry point.";
   let description = [{
-    When a `mo.graph` carries the `isDeviceGraph` attribute, every
-    kernel-backed op in its body must correspond to a `mogg.kernel.decl`
-    whose `build_graph` field is populated. This pass walks the graph body,
-    looks up each op in the module's `MojoRegistry`, and emits an error for
-    any op whose resolved kernel registration lacks a `build_graph` entry
-    point.
-
-    Ops with no registration in the registry (for example dialect-intrinsic
-    ops such as `mo.constant` or `mo.output`) are skipped. Graphs without
-    the `isDeviceGraph` attribute are no-ops.
+    In a `mo.graph` with `isDeviceGraph`, errors on any op whose
+    `MojoRegistry` kernel registration lacks `build_graph`. Unregistered ops
+    (e.g. `mo.constant`, `mo.output`) are skipped.
   }];
 }
 
 def DebugPrintAllTensorsPass : Pass<"mo-debug-print-all-tensors", "GraphOp"> {
   let summary = "Print all intermediate tensors as they are produced.";
   let description = [{
-    This pass emits a mo.debug.tensor.print for every mo.tensor typed value
-    in the graph, including the inputs. The graph is topologically sorted to
-    ensure the model won't end up with a cycle due to the chains which must
-    serialize the underlying prints. For debugging only.
+    Emits mo.debug.tensor.print for every mo.tensor value, inputs included.
+    The graph is topologically sorted first so the chains serializing the
+    prints can't form a cycle. For debugging only.
   }];
 }
 
 def NanCheckPass : Pass<"mo-nan-check-pass", "GraphOp"> {
   let summary = "Insert NaN/Inf checks after each compiled region's floating-point outputs.";
   let description = [{
-    This pass inserts nan_check ops after each floating-point tensor output
-    in the graph and lowers them to MOGG kernels in-place. Each nan_check
-    returns a pass-through copy of its input tensor; downstream uses are
-    rewired to the nan_check output to prevent DCE.
-    For debugging only — activated via the `max-debug.nan-check` config
-    key (for example, `InferenceSession.debug.nan_check = True` or
-    `MODULAR_DEBUG=nan-check`) or the `--nan-check` compiler flag.
+    Inserts nan_check ops (lowered to MOGG kernels in place) after
+    floating-point tensor outputs. Each returns a pass-through copy that
+    downstream uses are rewired to, preventing DCE. For debugging only,
+    enabled via the `max-debug.nan-check` config key or `--nan-check`.
 
-    The `stride` option samples one of every N floating-point kernel
-    outputs rather than checking all of them. Models with many compiled
-    regions (e.g. gemma-4-31b-it produces ~920 float kernel results) make
-    checking every tensor prohibitively expensive — the single-threaded
-    Mojo/KGEN compile path can't absorb hundreds of extra MOGG kernel
-    call sites in a usable amount of time (GEX-3703). The default of 20
-    keeps NaN/Inf checking usable on large models; set stride=1 to
-    restore the original "check every tensor" behaviour (only practical
-    on small graphs, e.g. lit tests).
+    `stride` checks one of every N float kernel outputs: checking all of them
+    on large models (e.g. ~920 in gemma-4-31b-it) overwhelms the
+    single-threaded Mojo/KGEN compile path (GEX-3703). Use stride=1 on small
+    graphs such as lit tests.
   }];
   let options = [
     ListOption<"kernelLibraryPaths", "kernel-library-paths", "std::string",
       "Paths to mojo packages containing mojo kernel definitions.">,
     Option<"stride", "stride", "uint64_t", /*default=*/"20",
-      "Check one of every N float kernel outputs (1 = check all). "
-      "Default 20 keeps NaN/Inf checking usable on large models; lit "
-      "tests and callers that want full coverage should set stride=1.">
+      "Check one of every N float kernel outputs (1 = check all).">
   ];
 }
 
@@ -334,14 +288,11 @@ def SplatLargeConstants :
     Pass<"mo-splat-large-constants", "GraphOp"> {
   let summary = "Will splat a large constant for development purposes";
   let description = [{
-    This pass will replace a large constant with a splatted version by
-    broadcasting a single scalar value. This pass does not preserve correctness
-    so it should be used for development purposes only (especially for large
-    models).
+    Replaces large constants with a broadcast scalar. Does not preserve
+    correctness; for development only.
   }];
 
   let options = [
-    // Default is 100M elements.
     Option<"numElements", "num-elements", "int", "100000000",
       "Threshold number of elements in the constant's dense array">,
   ];
@@ -351,9 +302,7 @@ def TopologicalSort :
     Pass<"mo-topological-sort", "ModuleOp"> {
   let summary = "Topologically sort ops in a graph based on SSA and parameter dependencies.";
   let description = [{
-    This pass topologically sort ops within a `mo.graph` based on both SSA and
-    parameter dependencies. It also handles nested regions properly (e.g.,
-    `mo.if`).
+    Handles nested regions (e.g. `mo.if`).
   }];
 }
 
@@ -361,12 +310,10 @@ def ElideRedundantMutableOps :
     Pass<"mo-elide-redundant-mutable-ops", "GraphOp"> {
   let summary = "Eliminates redundant mo.mutable.store and mo.mutable.load ops.";
   let description = [{
-    This pass contains patterns meant to eliminate mo.mutable.store and
-    mo.mutable.load ops under appropriate conditions.
+    Lets the MOGG fusion passes work with in-place operations.
 
-    For mo.mutable.load ops:
-      Erase the load when it is preceded by a store operating on the same
-      buffer and consumes the store's output chain.
+    A load is erased when it consumes the output chain of a store to the
+    same buffer:
 
       e.g.
 
@@ -387,11 +334,8 @@ def ElideRedundantMutableOps :
       %ch3 = mo.mutable.store(%ch1, %buffer, %res)
       ```
 
-    For mo.mutable.store ops:
-      Erase a store when it is followed by another store operating on the same
-      buffer and the first store's output chain
-
-      e.g.
+    A store is erased when a later store to the same buffer consumes its
+    output chain:
 
       ```
       %ch1 = mo.mutable.store(%ch0, %buffer, %tensor)
@@ -403,26 +347,20 @@ def ElideRedundantMutableOps :
       %res = mo.op(%tensor, ...)
       %ch3 = mo.mutable.store(%ch0, %buffer, %res)
       ```
-
-    This enables the fusion passes in MOGG to work with in-place operations.
   }];
 }
 
 def FlattenElementwise : Pass<"mo-flatten-elementwise", "ModuleOp"> {
   let summary = "Flattens elementwise ops";
   let description = [{
-    This pass will flatten the tensor shapes for certain elementwise ops if it
-    unblocks elementwise fusion opportunities.
+    Flattens elementwise op shapes when that unblocks elementwise fusion.
   }];
 }
 
 def CanonicalizeChainSequences : Pass<"mo-canonicalize-chain-sequences", "GraphOp"> {
   let summary = "Optimize linear chains of side-effecting operations.";
   let description = [{
-    Will optimize a linear chain of side-effecting operations.
-
-    Consider a case where we have two separate mo.buffers and the following
-    sequence of operations:
+    Given two separate mo.buffers:
 
     ```mlir
     %ch1, %vbuf = mo.mutable.load(%ch0, %buf0)
@@ -434,13 +372,8 @@ def CanonicalizeChainSequences : Pass<"mo-canonicalize-chain-sequences", "GraphO
     %ch4 = mo.mutable.store(%ch3, %buf1, %res2)
     ```
 
-    Even though `%buf0` and `%buf1` are entirely different mo.buffer values the
-    fact that operations on them are ordered by the same sequence of chains
-    means the side-effecting operations on `%buf1` must unnecessarily wait for
-    the operations on `%buf1` to complete.
-
-    This pass will try to take such sequences of chains and perform a series of
-    local transforms that will ultimately end with something like:
+    the shared chain makes the ops on `%buf1` needlessly wait for those on
+    `%buf0`. Local transforms rewrite this to:
 
     ```mlir
     %ch1, %vbuf = mo.mutable.load(%ch0, %buf0)
@@ -457,20 +390,16 @@ def CanonicalizeChainSequences : Pass<"mo-canonicalize-chain-sequences", "GraphO
 def HoistConstantSubgraphsIntoParent : Pass<"mo-hoist-constant-subgraphs-into-parent", "ModuleOp"> {
   let summary = "Hoist constant and constant-derived subgraphs to the parent graph.";
   let description = [{
-    This pass hoists constant and constant-derived ops within subgraphs to the
-    parent graph.
-    Our implementation of ExecInvariantCodeMotion doesn't support subgraphs, so
-    this pass is necessary to ensure that constant operations are either
-    correctly constant-folded or hoisted to the init block.
+    ExecInvariantCodeMotion doesn't support subgraphs, so this lets constant
+    ops be constant-folded or hoisted to the init block.
   }];
 }
 
 def RemoveUnusedOps : Pass<"remove-unused-ops", "GraphOp"> {
   let summary = "Remove unused (dead) MO operations from the graph";
   let description = [{
-    Some MO ops have no uses but can't be erased by CSE because of their memory effects.
-    In practice the chains def / use of those ops already encode the dependencies.
-    If the output chain of such an op is unused, that means it can be removed.
+    Erases unused ops that CSE keeps for their memory effects. Chains encode
+    their dependencies, so an op with an unused output chain is dead.
   }];
 }
 
@@ -479,17 +408,13 @@ def CreateParallelFromUnbundle :
   let summary =
       "Wrap per-device consumers of an mo.tensor.unbundle in a fresh mo.parallel.";
   let description = [{
-    For each `mo.tensor.unbundle` whose N results each have exactly one user
-    and whose user set is structurally identical, creates a new
-    `mo.parallel` region downstream of the unbundle containing a single
-    clone of the consumer.  The new parallel's primary input bundle is
-    built from the unbundle's N results; additional consumer operands
-    whose per-launch values vary are bundled into new inputs.
+    For each `mo.tensor.unbundle` whose N results each have one user, all
+    structurally identical, creates an `mo.parallel` holding one clone of the
+    consumer. Its primary input is bundled from the unbundle's results;
+    other per-launch-varying operands become new bundled inputs.
 
-    The transient `bundle(unbundle(X)...)` introduced as the primary input
-    folds back to `X` via canonicalization, leaving the new region
-    adjacent to the producer for `mo-merge-adjacent-parallels` to match by
-    SSA equality.
+    The transient `bundle(unbundle(X)...)` canonicalizes to `X`, leaving the
+    region adjacent to the producer for `mo-merge-adjacent-parallels`.
   }];
 }
 
@@ -498,13 +423,11 @@ def MergeAdjacentParallels :
   let summary =
       "Merge an mo.parallel that consumes another mo.parallel's bundle output.";
   let description = [{
-    Peephole merge pass: when an `mo.parallel` `%B` takes as input one or more
-    bundle results of another `mo.parallel` `%A`, fuses them into a single
-    merged parallel.  Shared inputs are short-circuited via A's yield
-    operands; B's body ops are spliced into A's body; A's yield list is
-    extended with B's yield operands.
+    Peephole: when `mo.parallel` `%B` consumes bundle results of `%A`, B's
+    body is spliced into A's, shared inputs are short-circuited via A's yield
+    operands, and B's yields are appended to A's.
 
-    Strict buffer and chain rules apply:
+    Buffer and chain rules:
 
       * If both A and B have buffers + chain, the buffer operand lists must
         be structurally identical, and B's in-chain must be A's out-chain
@@ -514,7 +437,7 @@ def MergeAdjacentParallels :
         side's buffers and chain.
       * Neither: the merged op is chainless.
 
-    Match candidates that fail any of these are left unmerged.
+    Otherwise the pair is left unmerged.
   }];
 }
 

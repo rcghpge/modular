@@ -18,7 +18,6 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "Support/MDialect/MAttrs.td"
 
-// Base class for types in this dialect.
 class MGP_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<MGPDialect, name, traits> {
   let mnemonic = typeMnemonic;
@@ -41,11 +40,9 @@ def MGP_ContextType : MGP_Type<"Context", "context",
     declare its own state slot structure, and each call to that op in the graph
     (an 'operation') may have its own instance of that structure.
 
-    In general a computational operator, such as 'lib.foo', will be represented
-    by two primitives, such as 'libp.foo.setup' and 'libp.foo'. The former can
-    be invoked by the model's 'init' body to allocate and initialize a state
-    slot. The latter can access that state slot when the operation is executing
-    in the model's 'execute' body.
+    An operator such as 'lib.foo' is generally two primitives: 'libp.foo.setup',
+    invoked in 'init' to allocate and initialize a state slot, and 'libp.foo',
+    which accesses that slot during 'execute'.
 
     Contexts are represented by `M::MGP::Context` in the Modular runtime.
 
@@ -63,9 +60,8 @@ def MGP_ContextType : MGP_Type<"Context", "context",
 def MGP_DTypeType : MGP_Type<"DType", "dtype"> {
   let summary = "Runtime representation of the element type of a CPU tensor.";
   let description = [{
-    This type represents a compact runtime encoding of an element type. It is
-    implemented by M::DType in the Modular runtime, and is only intended to
-    represent common int and float types common across modern CPUs.
+    A compact runtime encoding of an element type, implemented by M::DType.
+    Only intended for int and float types common across modern CPUs.
 
     Examples:
     ```mlir
@@ -122,8 +118,7 @@ def MGP_OpaqueType : MGP_Type<"Opaque", "opaque",
   [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
   let summary = "Opaque MGP type";
   let description = [{
-    This is an opaque type that can represent anything.
-    This is backed by an AnyAsyncValue type.
+    Can represent anything; backed by an AnyAsyncValue.
 
     Example:
     ```mlir
@@ -145,8 +140,8 @@ def MGP_DeviceContextType : MGP_Type<"DeviceContext", "device_context",
   [DeclareTypeInterfaceMethods<MEF_AnyTypeInterface>]> {
   let summary = "MGP representation of the driver DeviceContext";
   let description = [{
-    This is essentially opaque to MGP but it is still useful to represent
-    directly as it is simpler to introspect.
+    Essentially opaque to MGP, but represented directly so it is simpler to
+    introspect.
 
     Examples:
     ```mlir
@@ -170,16 +165,12 @@ def MGP_DeviceGraphType : MGP_Type<"DeviceGraph", "device_graph",
     Represents a constructed device-side graph (e.g. a CUDA graph) that can be
     replayed via `mgp.device_graph.execute`.
 
-    The type carries the graph's signature as a `FunctionType`. Inputs are
-    buffers the caller must copy into the graph's frozen-input addresses at
-    replay time; results are buffers the graph writes through at replay time.
-    Both inputs and results are passed as operands to
-    `mgp.device_graph.execute` -- the distinction at the type level exists so
-    that the synthesis pass and verifiers can reason about read-only vs.
-    written operands without inspecting the build body.
-
-    The device the graph targets is encoded by the device parameter on the
-    individual `!mgp.buffer` types within the signature.
+    The `FunctionType` signature's inputs are buffers the caller copies into
+    the graph's frozen-input addresses at replay; results are buffers the graph
+    writes at replay. Both are operands of `mgp.device_graph.execute`; the
+    type-level split lets the synthesis pass and verifiers tell read-only from
+    written operands without inspecting the build body. The target device is
+    the device of the signature's `!mgp.buffer` types.
 
     Example:
     ```mlir
@@ -303,10 +294,10 @@ def MGP_TensorSpecType : MGP_Type<"TensorSpec", "tensor_spec", [
     referring to our internal representation, and 'shape'/'element type' when
     referring to the ShapedTypeInterface representation.
 
-    Here are all the different representations in flight:
+    Representations in flight:
      - For dimensions:
         - 'optional' form: std::optional<uint64_t>, where nullopt denotes
-          a dynamic dimension. God's own representation.
+          a dynamic dimension.
         - 'signed' form: int64_t, where ShapedType::kDynamicSize denotes
           a dynamic dimension. As used by ShapedTypeInterface.
         - 'raw' form: uint64_t, where ~0 denotes a dynamic dimension. Used
@@ -456,15 +447,12 @@ def MGP_DeviceBufferType : MGP_DeviceType<"DeviceBuffer", "buffer", [
     `uint8_t`. This in turn supports the `ElementsAttrInterface` on buffer
     attributes.
 
-    Note that buffers may respect alignment constraints. However those are
-    specified either when the buffer is created, or are encoded in the
-    attribute backing a constant buffer, and are not captured within the
-    buffer type.
+    Alignment constraints are specified at buffer creation or in the attribute
+    backing a constant buffer, not in the buffer type.
 
-    Since `!mgp.buffers` are generally considered mutable, any op reading from
-    a buffer must also accept a `!mef.chain`, and any op writing to a buffer
-    must also return a `!mef.chain`. In this way the compiler can correctly
-    sequence writes and reads.
+    Since buffers are mutable, any op reading a buffer must accept a
+    `!mef.chain`, and any op writing one must return a `!mef.chain`, so the
+    compiler can sequence writes and reads.
 
     `!mgp.buffer`s are represented by (subclasses of)
     `MLRT::AsyncValueRef<BufferRef>` in the host C++ runtime. Some devices,
@@ -524,14 +512,10 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
     mechanisms such as `!mgp.stable_addr` slots. A tensor may be both `mut` and
     `stable`.
 
-    `!mgp.tensor`s are represented by (subclasses of) `Tensor` in the host-side
-    C++ runtime. The tensor's underlying byte-array buffer may also be passed
-    around as a raw `void*` pointer.
-
-    `!mgp.tensors`s are represented by (subclasses of)
-    `MLRT::AsyncValueRef<Tensor>` in the host C++ runtime. Some devices, such as
-    CUDA, may need to include additional data to control device-side
-    synchronization.
+    `!mgp.tensor`s are represented by (subclasses of)
+    `MLRT::AsyncValueRef<Tensor>` in the host C++ runtime, and the underlying
+    buffer may also be passed as a raw `void*`. Some devices, such as CUDA, may
+    need additional data to control device-side synchronization.
 
     Examples:
     ```mlir
@@ -596,8 +580,8 @@ def MGP_StableAddressType : MGP_Type<"StableAddress", "stable_addr"> {
     tensor view from the contents of the slot; `mgp.device_graph.stable.place`
     publishes a value into it.
 
-    The low-level allocation and pointer-patching mechanism is sketched in
-    `starting-point.md`; this type is the MGP-level handle into that mechanism.
+    This type is the MGP-level handle into the low-level allocation and
+    pointer-patching mechanism.
 
     The `elementType` parameter records the tensor element type held by the
     slot, restricted to `!mgp.tensor` so that `mgp.device_graph.stable.get` can

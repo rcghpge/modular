@@ -21,18 +21,13 @@ namespace {
 /// Rewrite each `mgp.guard` in the model's execute block into a forwarding
 /// `mogg.generic.compiled.region`.
 ///
-/// `mgp.guard` lowers to a runtime primitive, not through the EmitMojo path, so
-/// device-graph staging never turns it into a `mogg.generic.compiled.region`
-/// and leaves it in the execute block. When a guard sits in the middle of the
-/// device-graph computation -- its chain comes from one staged region and its
-/// forwarded result feeds another -- that stranded guard forms a use-def cycle
-/// with the staging op (a staging result feeds the guard, whose result feeds
-/// back in as a staging input). Turning the guard into a compiled region up
-/// front lets it be staged like any other region, breaking the cycle.
+/// `mgp.guard` lowers to a runtime primitive, not via EmitMojo, so staging
+/// would leave it in the execute block. A guard between two staged regions
+/// would then form a use-def cycle with the staging op; as a compiled region it
+/// stages like any other.
 ///
-/// The region forwards its non-chain inputs straight to its results; the
-/// leading chain operand only orders the region (its block arg is intentionally
-/// unused), preserving the guard's "gate these values on this chain" semantics.
+/// The region forwards its non-chain inputs; the leading chain operand only
+/// orders the region, preserving the guard's gating semantics.
 void lowerGuardsToCompiledRegions(MLIRContext *ctx, ModelOp model) {
   auto guards = llvm::to_vector(model.getExecuteBlock()->getOps<GuardOp>());
   for (GuardOp guard : guards) {
@@ -41,8 +36,8 @@ void lowerGuardsToCompiledRegions(MLIRContext *ctx, ModelOp model) {
 
     ValueRange operands = guard->getOperands();
 
-    // The forwarded values carry the device; the leading chain operand does
-    // not. All in-device-graph guards forward at least one device value.
+    // Only the forwarded values carry a device; in-device-graph guards forward
+    // at least one.
     M::DeviceRefAttr device;
     for (Value result : guard.getResults())
       if (auto deviceType =
@@ -69,10 +64,8 @@ void lowerGuardsToCompiledRegions(MLIRContext *ctx, ModelOp model) {
     if (device)
       regionOp.setDeviceRef(device);
 
-    // The body's block args are `!mogg.async<T>` wrappers around the operands.
-    // Unpack then re-pack each forwarded input (the operands after the leading
-    // chain) and yield them; the chain block arg is left unused -- it only
-    // establishes the ordering dependency on the region.
+    // Block args are `!mogg.async<T>`; the forwarded ones are yielded as-is and
+    // the chain arg is unused.
     Block &body = regionOp.getBody().emplaceBlock();
     for (Value operand : operands)
       body.addArgument(AsyncType::get(operand.getType()), loc);
@@ -86,24 +79,19 @@ void lowerGuardsToCompiledRegions(MLIRContext *ctx, ModelOp model) {
 }
 
 void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
-  // Fold interleaved `mgp.guard` ops into compiled regions so they stage with
-  // the rest of the computation (otherwise they strand and form a cycle).
   lowerGuardsToCompiledRegions(ctx, model);
 
   Block *executeBlock = model.getExecuteBlock();
 
-  /// Collect the ops that will move into the staging body: every
-  /// `mogg.generic.compiled.region`, plus any `mgp.device_graph.stable.create`
-  /// whose operand is produced by an op already in the staged set. Walking the
-  /// block in order preserves the original scheduling.
+  /// Staged: every `mogg.generic.compiled.region`, plus each
+  /// `mgp.device_graph.stable.create` of a staged producer's result (left
+  /// outside, it would form a cycle with the staging op). Block order
+  /// preserves scheduling.
   llvm::DenseSet<Operation *> stagedOpSet;
   for (GenericCompiledRegionOp region :
        executeBlock->getOps<GenericCompiledRegionOp>())
     stagedOpSet.insert(region);
 
-  /// Stable-create ops that promote a staged producer result belong inside the
-  /// device-graph staging body; keeping them outside would create a dataflow
-  /// cycle with the staging op.
   for (DeviceGraphStableCreateOp stableCreate :
        executeBlock->getOps<DeviceGraphStableCreateOp>()) {
     Operation *producer = stableCreate.getTensor().getDefiningOp();
@@ -119,9 +107,8 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
   if (stagedOps.empty())
     return;
 
-  /// Free values: operands of staged ops that are defined outside the staged
-  /// set. The staging op is `IsolatedFromAbove`, so these become its `inputs`
-  /// operands and enter the body as bare-`T` block arguments.
+  /// Operands defined outside the staged set become the isolated staging op's
+  /// `inputs`, entering as bare-`T` block arguments.
   llvm::SetVector<Value> freeValues;
   for (Operation *op : stagedOps) {
     for (Value operand : op->getOperands()) {
@@ -133,8 +120,7 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
 
   auto inputs = freeValues.takeVector();
 
-  /// The set of uses of values produced inside our new region op by operations
-  /// that will remain outside the region op.
+  /// Uses outside the staging op of values produced inside it.
   llvm::SetVector<OpOperand *> escapingUses;
   for (Operation *op : stagedOps) {
     for (OpResult result : op->getResults()) {
@@ -152,18 +138,14 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
 
   auto buildGraphStagingBody = [&](OpBuilder &builder, Location loc, Value,
                                    ValueRange inputArgs) {
-    /// Map each free value to the bare-`T` block arg representing it. The async
-    /// pack/unpack mediation a dissolved `mogg.generic.compiled.region` needs
-    /// is injected later, by `mgp-compute-device-graph-dependencies`.
+    /// Async pack/unpack at the seam is added later by
+    /// `mgp-compute-device-graph-dependencies`.
     IRMapping freeMap;
     freeMap.map(inputs, inputArgs);
 
-    /// Move all staged ops into the body (preserving order).
     for (Operation *op : stagedOps)
       op->moveBefore(builder.getBlock(), builder.getBlock()->end());
 
-    /// Rewire each staged op's operand that referenced a free value to the
-    /// corresponding in-body block arg.
     for (Operation *op : stagedOps)
       for (OpOperand &operand : op->getOpOperands())
         if (Value mapped = freeMap.lookupOrNull(operand.get()))
@@ -171,22 +153,15 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
 
     builder.setInsertionPointToEnd(builder.getBlock());
 
-    /// Yield the escaping values directly (bare `T`); one operand per escaping
-    /// use, so repeated uses appear multiple times (cleaned by
-    /// canonicalization).
+    /// One operand per escaping use; canonicalization dedups.
     auto yieldValues = llvm::map_to_vector(
         escapingUses, [](OpOperand *use) { return use->get(); });
 
     DeviceGraphStagingYieldOp::create(builder, newLoc, yieldValues);
   };
 
-  /// Anchor the insertion point on the execute terminator rather than the first
-  /// staged op: the staging-body callback moves every staged op (including the
-  /// first) into the new op's body, so anchoring on an op would leave the
-  /// builder's restored insertion point pointing at a relocated op and the
-  /// staging op would be inserted detached from the execute block. The
-  /// terminator does not move, and is the correct spot anyway (mef.output
-  /// consumes the staging results).
+  /// Anchor on the terminator, not a staged op: the callback moves every
+  /// staged op into the body, which would detach the restored insertion point.
   OpBuilder builder(model.getExecuteBlock()->getTerminator());
 
   auto stagingOp = DeviceGraphStagingOp::create(builder, newLoc, inputs,

@@ -130,11 +130,9 @@ void M::MGP::printVImpl(IndexSet<Operation *> &indexSet, llvm::raw_ostream &os,
     if (isa<MEF::OutputOp>(op))
       os << "out";
     else
-      // Use the op name even though may not be disambiguated by the block
-      // index alone.
+      // Possibly ambiguous within the block.
       os << op->getName();
   } else {
-    // Represent the operation by the pretty printed form of it's first result
     Value result = op->getResult(0);
     result.printAsOperand(os, mlir::OpPrintingFlags().printGenericOpForm());
   }

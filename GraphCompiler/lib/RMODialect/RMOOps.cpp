@@ -59,7 +59,7 @@ M::DeviceRefAttr M::RMO::getDevice(Value v) {
   return getDeviceIfAvailable(v).value();
 }
 
-/// Infer that all types have the same device and return such device
+/// Returns the common device of `tys`, erroring if they differ.
 static ErrorOr<M::DeviceRefAttr> inferDeviceAllSameDevices(TypeRange tys) {
   std::optional<M::DeviceRefAttr> device;
   for (auto ty : tys) {
@@ -79,8 +79,7 @@ static ErrorOr<M::DeviceRefAttr> inferDeviceAllSameDevices(TypeRange tys) {
   return *device;
 }
 
-/// Return the first operand's device and check all remaining operands are on
-/// host.
+/// Returns the first type's device; the rest must be on host.
 static ErrorOr<M::DeviceRefAttr>
 inferDeviceAsFirstOperandRestHost(TypeRange tys) {
   std::optional<M::DeviceRefAttr> device = getDeviceIfAvailable(*tys.begin());
@@ -105,7 +104,6 @@ static LogicalResult runShapePropagation(
     MO::ShapeMaterializeResult &materialization,
     SmallVectorImpl<Type> &inferredReturnTypes, M::DeviceRefAttr outputDevice,
     bool validateAsserts = true) {
-  // Preliminary error checks.
   if (materialization.isError())
     return mlir::emitOptionalError(location, materialization.getError().msg);
 
@@ -115,14 +113,12 @@ static LogicalResult runShapePropagation(
 
   auto &result = materialization.getSuccess();
 
-  // Shape propagation over materialized ops and target shape.
   ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
       MO::propagateShape(result.bindings, result.resultShapes,
                          /*validateAsserts=*/validateAsserts);
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
-  // Create output type.
   ShapeAttr resultShape = resultShapesOr.get().front();
   inferredReturnTypes.push_back(
       TensorType::get(resultShape, promotedDType, outputDevice));
@@ -170,14 +166,12 @@ static TypedAttr getShapeOf(Value value) {
   return cast<MO::TensorValue>(value).getType().getShape();
 }
 
-/// ASSUME `values` are all tensor values, map each input value to the shape
-/// attribute and return the result.
+/// Maps tensor `values` to their shapes.
 static SmallVector<TypedAttr> getShapesOf(ValueRange values) {
   return llvm::map_to_vector(values, getShapeOf);
 }
 
-// Creates an error message for when a tensor contains `?`, but that is not
-// allowed.
+// Error for a tensor shape that contains a disallowed `?`.
 std::string unknownDimError(const StringRef opName, const StringRef tensorName,
                             ShapeAttr tensorShape) {
   std::string errorMsg;
@@ -190,8 +184,7 @@ std::string unknownDimError(const StringRef opName, const StringRef tensorName,
   return errorMsg;
 }
 
-/// DTypeCategory is the broad classes of dtypes used in calculating
-/// promotions.
+/// Broad dtype classes used for promotion.
 enum DTypeCategory {
   kBool,
   kUInt,
@@ -199,7 +192,6 @@ enum DTypeCategory {
   kFloat,
 };
 
-/// Returns the DTypeCategory for a DType.
 static DTypeCategory getDtypeCategory(DType x) {
   if (x.isBool())
     return kBool;
@@ -282,20 +274,8 @@ static DType calcDtype(DTypeCategory category, ssize_t bitWidth,
   llvm_unreachable("Invalid dtype");
 }
 
-/// Given two dtypes, returns the promotion dtype or an error.
-/// The rules are:
-/// 1. Category is an ordered hierarchy: `bool < unsigned int < signed int <
-/// float`
-/// 2. Promotion of values `x` and `y` picks:
-///    (max(category(x), category(y)), max(bitwidth(x), bitwidth(y))
-/// 3. Promotion raises an error if either input dtype might contain a value
-///    unrepresentable by the chosen promotion type.
-/// 4. Promotion raises an error if two dtypes have the same category and
-/// bitwidth
-///    but different representations.
 ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
 
-  // The common case where the two types are the same.
   if (x == y)
     return x;
 
@@ -320,15 +300,13 @@ ErrorOr<DType> RMO::promoteDtype(DType x, DType y) {
                                "conversion is wanted."));
     };
 
-    // Unsigned int to signed int is only safe if the bitwidth increases
-    // such that all values are exactly representable.
+    // Unsigned to signed int is safe only if the bitwidth grows.
     if (dtype.isUInt() && result.isSInt() &&
         dtype.getWidthInBits() == result.getWidthInBits())
       return buildError();
 
-    // Any int to float is only safe if the significand precision can hold the
-    // full integer ignoring the sign bit. This means the conversion is
-    // exactly representable.
+    // Int to float is safe only if the significand holds every value
+    // (ignoring the sign bit).
     if (result.isFloat()) {
       const llvm::fltSemantics *semantics = result.getFloatSemantics();
       if (!semantics)
@@ -381,7 +359,6 @@ static LogicalResult inferReturnTypesBinaryElemwiseImpl(
                                    StringRef{promotedDtype.getError()});
   }
 
-  // Materialize shape function.
   auto graphOp =
       inputX.getParentRegion()->template getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
@@ -403,8 +380,7 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
   auto xShape = xType.getShape();
   auto yShape = yType.getShape();
 
-  // Even though it is not used in the result type, still calculate the the
-  // promotion is valid here.
+  // The result is bool, but the operand dtypes must still be promotable.
   ErrorOr<DType> promotedDtype =
       promoteDtype(xType.getDtype(), yType.getDtype());
   if (promotedDtype.isError()) {
@@ -412,7 +388,6 @@ static LogicalResult inferReturnTypesBinaryComparisonImpl(
                                    StringRef{promotedDtype.getError()});
   }
 
-  // Materialize shape function.
   auto graphOp = inputX.getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
@@ -448,10 +423,8 @@ ConcatOp::inferReturnTypes(MLIRContext *context,
                            SmallVectorImpl<Type> &inferredReturnTypes) {
   auto axisAttr = adaptor.getAxisAttr();
 
-  // Retrieve input shapes
   SmallVector<TypedAttr> inputShapes = getShapesOf(adaptor.getInputs());
 
-  // Materialize shape function.
   auto graphOp = adaptor.getOperands()
                      .front()
                      .getParentRegion()
@@ -460,7 +433,6 @@ ConcatOp::inferReturnTypes(MLIRContext *context,
   MO::ShapeMaterializeResult result =
       MO::materializeConcatShape(graphOp, loc, axisAttr, inputShapes);
 
-  // Preliminary error checks.
   if (result.isError())
     return mlir::emitOptionalError(location, result.getError().msg);
 
@@ -468,18 +440,15 @@ ConcatOp::inferReturnTypes(MLIRContext *context,
   ASSERT_STREAM(!result.isNonMaterializable(),
                 << "concat shape logic must be materializable");
 
-  // Shape propagation over materialized ops and target shape.
   auto &successRes = result.getSuccess();
   ErrorOr<SmallVector<ShapeAttr>> resultShapesOr =
       MO::propagateShape(successRes.bindings, successRes.resultShapes);
   if (resultShapesOr.isError())
     return mlir::emitOptionalError(location, resultShapesOr.getError());
 
-  // Create output type.
   ShapeAttr resultShape = resultShapesOr.get().front();
-  // If the user set the output dimensions, This is an explicit rebind request
-  // from the user. We trust their input here for shape inference. A rebind is
-  // inserted in lowering to handle this shape specification at runtime.
+  // An explicit `out_dim` is a user rebind request: trust it for inference;
+  // lowering inserts a runtime rebind.
   if (auto outDimAttr =
           dyn_cast_if_present<TypedAttr>(adaptor.getOutDimAttr())) {
     size_t rank = resultShape.getRank();
@@ -512,7 +481,6 @@ ConcatOp::inferReturnTypes(MLIRContext *context,
       return mlir::emitOptionalError(location, errorMsg);
     }
   }
-  // Propagate devices by inferring it from operands
   ErrorOr<M::DeviceRefAttr> outputDeviceOr =
       inferDeviceAllSameDevices(adaptor.getInputs());
   if (outputDeviceOr.isError())
@@ -534,11 +502,9 @@ ReshapeOp::inferReturnTypes(MLIRContext *context,
                             SmallVectorImpl<Type> &inferredReturnTypes) {
   auto newShapeAttr = adaptor.getNewShapeAttr();
 
-  // Retrieve input shape
   auto input = cast<TensorValue>(adaptor.getInput());
   auto inputShape = cast<ShapeAttr>(getShapeOf(input));
 
-  // Materialize shape function.
   auto graphOp =
       adaptor.getInput().getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
@@ -564,10 +530,8 @@ LogicalResult BroadcastToOp::inferReturnTypes(
 
   auto input = cast<TensorValue>(adaptor.getInput());
 
-  // Retrieve input shape
   auto inputShape = cast<ShapeAttr>(getShapeOf(input));
 
-  // Materialize shape function.
   auto graphOp =
       adaptor.getInput().getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
@@ -588,7 +552,6 @@ MatmulOp::inferReturnTypes(MLIRContext *context,
                            std::optional<Location> location, Adaptor adaptor,
                            SmallVectorImpl<Type> &inferredReturnTypes) {
 
-  // Retrieve input shape
   auto lhs = cast<TensorValue>(adaptor.getInputX());
   auto rhs = cast<TensorValue>(adaptor.getInputY());
 
@@ -601,7 +564,6 @@ MatmulOp::inferReturnTypes(MLIRContext *context,
     return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
                                    StringRef{promotedDtype.getError()});
   }
-  // Materialize shape function.
   auto graphOp = lhs.getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
@@ -620,7 +582,6 @@ SelectOp::inferReturnTypes(MLIRContext *context,
                            std::optional<Location> location, Adaptor adaptor,
                            SmallVectorImpl<Type> &inferredReturnTypes) {
 
-  // Retrieve input shape
   auto condShape = cast<ShapeAttr>(getShapeOf(adaptor.getCond()));
   auto xShape = cast<ShapeAttr>(getShapeOf(adaptor.getInputX()));
   auto yShape = cast<ShapeAttr>(getShapeOf(adaptor.getInputY()));
@@ -632,7 +593,6 @@ SelectOp::inferReturnTypes(MLIRContext *context,
     return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
                                    StringRef{promotedDtype.getError()});
   }
-  // Materialize shape function.
   auto graphOp =
       adaptor.getCond().getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
@@ -658,7 +618,6 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
   int64_t k = adaptor.getK();
   int64_t axis = adaptor.getAxis();
 
-  // Handle negative axis.
   const int64_t rank = inputShape.getRank();
   axis = axis < 0 ? axis + rank : axis;
   if (axis < 0 || axis >= rank)
@@ -688,7 +647,6 @@ TopKOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
 
   auto resultShape = ShapeAttr::get(outDims, inputShape.getType());
 
-  // Propagate devices by inferring it from operands
   ErrorOr<M::DeviceRefAttr> outputDeviceOr =
       inferDeviceAsFirstOperandRestHost(adaptor.getOperands());
   if (outputDeviceOr.isError())
@@ -710,7 +668,6 @@ LogicalResult
 SliceOp::inferReturnTypes(MLIRContext *context,
                           std::optional<Location> location, Adaptor adaptor,
                           SmallVectorImpl<Type> &inferredReturnTypes) {
-  // Retrieve input and start, stop, step shapes.
   auto inputShape = cast<ShapeAttr>(getShapeOf(adaptor.getInput()));
 
   auto starts = adaptor.getStarts();
@@ -726,7 +683,6 @@ SliceOp::inferReturnTypes(MLIRContext *context,
                       stepsAttr));
   const SmallVector<int64_t> &steps = *maybeSteps;
 
-  // Check that the input rank matches the provided starts/stop/steps sizes.
   if (starts.getSize() != inputShape.getRank() ||
       !llvm::all_equal({starts.getSize(), stops.getSize(), steps.size()})) {
     return mlir::emitOptionalError(
@@ -735,7 +691,6 @@ SliceOp::inferReturnTypes(MLIRContext *context,
         "bounds");
   }
 
-  // Materialize shape function.
   auto input = cast<MO::TensorValue>(adaptor.getInput());
   auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
@@ -770,7 +725,6 @@ ConvOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
 
   Location loc = location.value_or(input.getLoc());
 
-  // Materialize shape function.
   auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
   MO::ShapeMaterializeResult result = MO::materializeConvShape(
       graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
@@ -805,7 +759,6 @@ LogicalResult ConvTransposeOp::inferReturnTypes(
 
   Location loc = location.value_or(input.getLoc());
 
-  // Materialize shape function.
   auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
   MO::ShapeMaterializeResult result = MO::materializeConvTransposeShape(
       graphOp, loc, inputShape, filterShape, adaptor.getStrides(),
@@ -832,7 +785,6 @@ MaxPoolOp::inferReturnTypes(MLIRContext *context,
 
   Location loc = location.value_or(input.getLoc());
 
-  // Materialize shape function.
   auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
   MO::ShapeMaterializeResult result = MO::materializePoolShape(
       graphOp, loc, inputShape, adaptor.getFilterShape(), adaptor.getStrides(),
@@ -854,7 +806,6 @@ AvgPoolOp::inferReturnTypes(MLIRContext *context,
 
   Location loc = location.value_or(input.getLoc());
 
-  // Materialize shape function.
   auto graphOp = input.getParentRegion()->getParentOfType<MO::GraphOp>();
   MO::ShapeMaterializeResult result = MO::materializePoolShape(
       graphOp, loc, inputShape, adaptor.getFilterShape(), adaptor.getStrides(),
@@ -877,7 +828,6 @@ LogicalResult ShapeToTensorOp::inferReturnTypes(
 
   M::DeviceRefAttr host = M::DeviceRefAttr::getDefault(context);
 
-  // The output is simply an i64 tensor with rank 1.
   inferredReturnTypes.push_back(TensorType::get(
       ShapeAttr::get({ShapeAttr::getDim(context, shapeAttr.getRank())},
                      shapeAttr.getType()),
@@ -893,7 +843,7 @@ bool ShapeToTensorOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
     auto aAsTensor = dyn_cast<MO::TensorType>(a);
     auto bAsTensor = dyn_cast<MO::TensorType>(b);
 
-    // Device may be provided directly by original creator -- no way to infer
+    // The creator may set the device directly; it cannot be inferred.
     if (aAsTensor && bAsTensor &&
         aAsTensor.cloneWith(DeviceRefAttr{}) ==
             bAsTensor.cloneWith(DeviceRefAttr{}))

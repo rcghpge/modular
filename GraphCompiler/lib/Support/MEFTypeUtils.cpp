@@ -28,9 +28,8 @@ M::decodeQuantizedSignature(MEFFunctionType signature,
                          auto &argSpecs) -> ErrorOrSuccess {
     for (auto type : argTypes) {
       auto specOr = QuantTensorSpec::get(type);
-      // Workaround for handling non-tensor values, create an empty
+      // TODO(#25260): Generalize; non-tensor values get an empty
       // QuantTensorSpec.
-      // TODO(#25260): This should be generalized.
       if (specOr.isError())
         argSpecs.push_back(QuantTensorSpec());
       else

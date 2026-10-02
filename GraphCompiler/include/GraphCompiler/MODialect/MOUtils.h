@@ -4,10 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file declares utility functions that don't depend on MO directly, but
-// users of MO (including the dialect itself) may find useful. It is expected
-// that some of these utilities may move to more accessible places (e.g.
-// `Support`) over time.
+// Utilities that don't depend on MO directly but are useful to MO and its
+// users. Some may move to `Support` over time.
 //
 //===----------------------------------------------------------------------===//
 
@@ -52,21 +50,12 @@ denseResourceAttrToVecDirect(DenseResourceElementsAttr attr) {
   return std::nullopt;
 }
 
-/**
- * @brief Reinterpret the bits of attr as the given float semantic.
- *
- * @param [in] uintStorageType Storage type whose bits will be reinterpretted.
- * @param [in] attr The attribute to process.
- * @param [in] semantic The APFloat specification to interpret the bits as.
- * @param [out] outputType The output type to give the final output.
- *
- * @return The return value of the method.
- */
+/// Reinterpret the `uintStorageType` bits of attr as `semantic`, for FP types
+/// with no builtin C++ type.
 template <typename uintStorageType, typename outputType>
 static SmallVector<outputType>
 denseResourceAttrToVecSpecialFloat(DenseResourceElementsAttr attr,
                                    const llvm::fltSemantics &semantic) {
-  // For FP types with no builtin C/C++ type use APFloat semantic
   constexpr int numBitsIn = sizeof(uintStorageType) * CHAR_BIT;
   static_assert(std::is_integral_v<uintStorageType>,
                 "Please use uintXX_t to handle special floats.");
@@ -78,8 +67,7 @@ denseResourceAttrToVecSpecialFloat(DenseResourceElementsAttr attr,
       attr.getRawHandle().getBlob()->getDataAs<uintStorageType>();
   SmallVector<outputType> out =
       llvm::map_to_vector(data, [&](const uintStorageType &elem) {
-        // Note this will fail an assert if the semantic float cannot always
-        // convert to a double losslessly
+        // Asserts if `semantic` doesn't always convert to double losslessly.
         double result =
             APFloat(semantic, APInt(numBitsIn, elem)).convertToDouble();
         return static_cast<outputType>(result);
@@ -146,11 +134,9 @@ tryGetConstantBlob<APInt>(mlir::ElementsAttr attr, DType dType);
 
 bool isMutableOperand(Value val);
 
-/// Verifies that `inShape`/`outShape` are compatible for a reshape: the same
-/// total element count, when both are statically known -- a reshape with any
-/// symbolic dim on either side can't be fully checked here, so is assumed
-/// valid. Shared between MO::Static::ReshapeOp's own verifier and
-/// MAP::ReshapeSpecAttr's.
+/// Verifies that `inShape`/`outShape` have the same element count when both
+/// are static; shapes with a symbolic dim are assumed valid. Shared by the
+/// MO::Static::ReshapeOp and MAP::ReshapeSpecAttr verifiers.
 LogicalResult checkReshapeShapesCompatible(
     MOSH::ShapeAttr inShape, MOSH::ShapeAttr outShape,
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError);

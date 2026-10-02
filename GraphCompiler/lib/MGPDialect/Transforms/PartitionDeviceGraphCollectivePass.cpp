@@ -25,11 +25,10 @@ using namespace mlir;
 
 namespace {
 
-/// Association of each stable create operation with its relevant info.
+/// Each stable create op's slot index.
 using StableInfos = llvm::MapVector<DeviceGraphStableCreateOp, unsigned>;
 
-/// Association of stable create operations to the stable addresses assigned
-/// to those operations.
+/// Stable create ops and their assigned stable addresses.
 struct StableAddrState {
   StableAddrState(const StableInfos &infos,
                   ArrayRef<BlockArgument> stableAddrs) {
@@ -37,11 +36,10 @@ struct StableAddrState {
       assignment[op] = stableAddrs[index];
   }
 
-  /// Get the backing stable address.
   Value addr(DeviceGraphStableCreateOp create) { return assignment.at(create); }
 
-  /// Find the associated DeviceGraphStableGetOp result for an operand, if that
-  /// operand was a stable value produced by DeviceGraphStableCreateOp.
+  /// Returns the stable get/place result for `operand` if it is a stable
+  /// value.
   Value get(OpBuilder &builder, Location loc, Value builderArg, Value operand) {
     auto stable = operand.getDefiningOp<DeviceGraphStableCreateOp>();
     if (!stable)
@@ -61,19 +59,13 @@ struct StableAddrState {
     Value placed = DeviceGraphStablePlaceOp::create(builder, loc, address,
                                                     source, builderArg);
 
-    // On the source device the stable value is already published by
-    // the place; reuse that view instead of emitting a redundant
-    // stable.get.
+    // On the source device, reuse the place's view instead of a stable.get.
     stableToGet[stable] = placed;
   }
 
 private:
-  /// Association of each DeviceGraphStableCreateOp to the stable address
-  /// within the body region.
   llvm::SmallDenseMap<DeviceGraphStableCreateOp, Value> assignment;
 
-  /// Mapping from a stable create op to the get/place operation producing
-  /// its result.
   llvm::SmallDenseMap<DeviceGraphStableCreateOp, Value> stableToGet;
 };
 
@@ -81,8 +73,8 @@ M::DeviceRefAttr getDevice(GenericCompiledRegionOp op) {
   return cast<MOHasDeviceInterface>(op.getOperation()).getExecutionDevice();
 }
 
-/// Collect all the compiled regions and stable addresses, assigning each stable
-/// slot a unique index.
+/// Collects the compiled regions and stable creates, giving each stable slot a
+/// unique index.
 LogicalResult
 collectOperations(DeviceGraphStagingOp staging, StableInfos &stables,
                   SmallVectorImpl<GenericCompiledRegionOp> &compiledRegions) {
@@ -108,9 +100,8 @@ collectDevices(ArrayRef<GenericCompiledRegionOp> compiledRegions) {
   llvm::SmallSetVector<M::DeviceRefAttr, 8> deviceOrder;
 
   for (auto region : compiledRegions) {
-    // CPU compiled regions are host-side bookkeeping (e.g. wrapping pointers
-    // into !mgp.tensor values), not device-graph work. They are duplicated
-    // into each accelerator region instead of getting their own region.
+    // CPU regions are host-side bookkeeping (e.g. wrapping pointers into
+    // !mgp.tensor values), duplicated into each accelerator region.
     if (M::MO::isOnHost(region))
       continue;
 
@@ -126,50 +117,42 @@ collectDevices(ArrayRef<GenericCompiledRegionOp> compiledRegions) {
   return devices;
 }
 
-/// Partition the single `mgp.device_graph.staging` op inside `model`'s execute
-/// block into a `mgp.device_graph.collective` op with one region per device.
+/// Partitions `mgp.device_graph.staging` into a `mgp.device_graph.collective`
+/// with one region per device.
 LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
                                  IRRewriter &rewriter) {
   Location loc = stagingOp.getLoc();
 
-  // Transitioning to a non-graph region. Toposort the body block before
-  // processing.
+  // The collective is not a graph region, so toposort first.
   mlir::sortTopologically(&stagingOp.getBodyBlock());
 
-  // Map staging body input block args back to the outer operands.  The body is
-  // isolated, so every read of an enclosing value goes through these arguments.
+  // The body is isolated, so enclosing values are read through its block args.
   IRMapping baseMapper;
   baseMapper.map(stagingOp.getBodyInputs(), stagingOp.getInputs());
 
-  // Walk the staging body and collect the work we need to partition.
   StableInfos stableIndices;
   SmallVector<GenericCompiledRegionOp> compiledRegions;
 
   if (failed(collectOperations(stagingOp, stableIndices, compiledRegions)))
     return failure();
 
-  // Determine the ordered set of participating devices from the compiled
-  // regions.  Sorting gives a stable region order.
   SmallVector<M::DeviceRefAttr> deviceOrder = collectDevices(compiledRegions);
   if (deviceOrder.empty())
     return stagingOp.emitOpError(
         "staging body has no compiled regions; nothing to partition");
 
-  // Extract the slot types for the stable slot allocations.
   SmallVector<StableAddressType> stableSlotTypes = llvm::map_to_vector(
       stableIndices.keys(),
       [&](DeviceGraphStableCreateOp stable) { return stable.getStableType(); });
 
-  // Mapping of the staging operation's yield operands to their result index in
-  // the new DeviceGraphCollectiveOp.
+  // Staging yield operand -> result index in the collective.
   llvm::SmallDenseMap<Value, unsigned> resultMapping;
   unsigned resultCounter = 0;
 
   LogicalResult bodyStatus = success();
 
-  // Build the collective with a per-device body callback.  The callback replays
-  // the staged ops for its device, emits stable.get / stable.place as needed,
-  // and produces the region terminator.
+  // Each per-device callback replays that device's staged ops, adding
+  // stable.get / stable.place as needed.
   rewriter.setInsertionPoint(stagingOp);
   auto collective = DeviceGraphCollectiveOp::create(
       rewriter, loc, deviceOrder, stableSlotTypes,
@@ -182,8 +165,6 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
 
         StableAddrState stableState(stableIndices, stableAddrs);
 
-        // Resolve a stable operand back to the stable get/place operation
-        // that produced it.
         auto resolveOperand = [&](Value operand) -> Value {
           return stableState.get(builder, loc, builderArg, operand);
         };
@@ -219,8 +200,6 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
           if (opDev != device && !isHostOp)
             continue;
 
-          // Materialize stable.gets for any stable values consumed by this
-          // compiled region on this device.
           for (Value operand : compiledRegion.getOperands()) {
             if (auto resolved = resolveOperand(operand))
               mapper.map(operand, resolved);
@@ -231,10 +210,8 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
           mapper.map(compiledRegion.getResults(), cloned.getResults());
         }
 
-        // Determine this region's terminator operands from the original
-        // staging yield. CPU work is cloned into every accelerator region, so
-        // its yields are available everywhere; device work is only yielded from
-        // its own region.
+        // CPU work is in every region, so its yields are available everywhere;
+        // device work yields only from its own region.
         SmallVector<Value> regionYields;
         for (Value origYield : stagingOp.getYieldOp().getOperands()) {
           auto producer = origYield.getDefiningOp<GenericCompiledRegionOp>();

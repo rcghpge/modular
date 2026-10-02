@@ -37,8 +37,7 @@ LogicalResult Impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
   SmallVector<size_t> staticRanks;
   for (auto v : values) {
     TensorType t = v.getType();
-    // NOTE we relax the static shape verifier if layout annotation has been
-    // added to any of the tensor types.
+    // Layout annotations may change ranks.
     if (t.getLayoutAttr())
       return success();
     staticRanks.emplace_back(t.getRank());
@@ -49,8 +48,7 @@ LogicalResult Impl::verifyMatchingRanks(ArrayRef<TensorValue> values) {
 
 LogicalResult Impl::checkMatmulCompatibility(Operation *op, TensorValue A,
                                              TensorValue B, TensorValue C) {
-  // We check that statically known ranks match each other (implicit
-  // broadcasting is not supported).
+  // Implicit broadcasting is not supported.
   SmallVector<TensorValue> tensors{A, B, C};
 
   TensorType aType = A.getType();
@@ -62,23 +60,15 @@ LogicalResult Impl::checkMatmulCompatibility(Operation *op, TensorValue A,
            << aType.getRank();
   }
 
-  // If either inputs are dynamically shaped, we don't try to verify.
   if (!aType.hasStaticShape() || !bType.hasStaticShape())
     return success();
 
-  // The op created from the framework should have no attributes and we should
-  // verify those. However we can attach extra attributes to it in the lowering.
-  // They will change some of the shapes (i.e allowing values to be transposed
-  // implicitly).
+  // Lowering may add attributes that implicitly transpose operands.
   if (auto bmm = dyn_cast<BatchMatmulOp>(op))
     if (bmm.getTransposeB())
       return success();
 
-  // The op created from the framework should have no layout attributes and we
-  // should verify those. However we can add layouts annotations in the
-  // lowering. They will change some of the shapes (i.e allowing values to be
-  // transposed implicitly). For now we disable shape verifications in those
-  // cases.
+  // Likewise for layout annotations added during lowering.
   if (aType.getLayoutAttr() || bType.getLayoutAttr())
     return success();
 
@@ -94,7 +84,7 @@ LogicalResult Impl::checkMatmulCompatibility(Operation *op, TensorValue A,
 
   TensorType resType = C.getType();
 
-  // If the result is dynamically ranked/shaped, we defer to shape inference.
+  // Dynamic results are left to shape inference.
   if (!resType.hasStaticShape())
     return success();
 
@@ -128,7 +118,7 @@ LogicalResult Impl::verifyReduction(Reduction op) {
   if (!inputTy.hasRank())
     return success();
 
-  // `axis` is a compile-time `index` attribute and is always known.
+  // `axis` is a compile-time attribute, so always known.
   int64_t axis = op.getAxisAttr().getInt();
   int64_t rank = inputTy.getRank();
   if (axis < -rank || axis > rank - 1) {
@@ -154,7 +144,6 @@ Impl::materializeReductionShapeDefs(Reduction op,
 //===----------------------------------------------------------------------===//
 
 LogicalResult Impl::verifyScatterLike(ScatterLike op) {
-  // Basic static shape checks
   TensorType inputTy = op.getInput().getType();
   TensorType resTy = op.getInput().getType();
   if (!inputTy.hasStaticShape() || !resTy.hasStaticShape())
@@ -219,7 +208,6 @@ LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
   TensorType inputTy = op.getInput().getType();
   TensorType resTy = op.getResult().getType();
 
-  // Basic static rank checks
   size_t inputRank = inputTy.getRank();
   size_t resRank = resTy.getRank();
   if (inputRank != resRank) {
@@ -228,7 +216,6 @@ LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
            << "input rank = " << inputRank << ", result rank = " << resRank;
   }
 
-  // Basic static shape checks
   if (!inputTy.hasStaticShape() || !resTy.hasStaticShape())
     return success();
   TypedAttr inputShapeAttr = inputTy.getShape();
@@ -240,7 +227,6 @@ LogicalResult Impl::verifyScatterNdLike(ScatterNdLike op) {
            << ", result shape = " << MOSH::shapeTypedAttrToStr(resShapeAttr);
   }
 
-  // Do non-obvious verification of ranks:
   {
     int64_t dataRank = op.getInput().getType().getRank();
     int64_t indicesRank = op.getIndices().getType().getRank();
@@ -332,7 +318,6 @@ LogicalResult Impl::verifySlidingWindow(SlidingWindow op) {
 // MOSameOperandsAndResultElementType
 //===----------------------------------------------------------------------===//
 
-/// Get the element type of a tensor value.
 static Type getElementType(Value v) {
   return cast<MO::TensorType>(v.getType()).getElementType();
 }
@@ -345,7 +330,6 @@ LogicalResult Impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
 
   auto elementType = getElementType(op->getResult(0));
 
-  // Verify result element type matches first result's element type.
   for (auto result : llvm::drop_begin(op->getResults(), 1)) {
     if (getElementType(result) != elementType) {
       return op->emitOpError(
@@ -353,7 +337,6 @@ LogicalResult Impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
     }
   }
 
-  // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands()) {
     if (getElementType(operand) != elementType) {
       return op->emitOpError(
@@ -368,7 +351,6 @@ LogicalResult Impl::verifyMOSameOperandsAndResultElementType(Operation *op) {
 // MOSameOperandsAndResultElementShapeAttr
 //===----------------------------------------------------------------------===//
 
-/// Get the element type of a tensor value.
 static TypedAttr getShapeAttr(Value v) {
   return cast<MO::TensorType>(v.getType()).getShape();
 }
@@ -380,7 +362,6 @@ LogicalResult Impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
 
   auto shapeAttr = getShapeAttr(op->getResult(0));
 
-  // Verify result element type matches first result's element type.
   for (auto result : llvm::drop_begin(op->getResults(), 1)) {
     if (getShapeAttr(result) != shapeAttr) {
       return op->emitOpError(
@@ -388,7 +369,6 @@ LogicalResult Impl::verifyMOSameOperandsAndResultShapeAttr(Operation *op) {
     }
   }
 
-  // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands()) {
     if (getShapeAttr(operand) != shapeAttr) {
       return op->emitOpError(
@@ -411,7 +391,6 @@ LogicalResult Impl::verifyMOSameOperandsElementType(Operation *op) {
 
   auto elementType = getElementType(op->getOperand(0));
 
-  // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands())
     if (getElementType(operand) != elementType)
       return op->emitOpError("requires the same element type for all operands");
@@ -432,7 +411,6 @@ Impl::verifyMOSameFirstOperandAndResultsElementType(Operation *op) {
 
   auto elementType = getElementType(op->getOperand(0));
 
-  // Verify operand's element type matches first result's element type.
   for (auto result : op->getResults())
     if (getElementType(result) != elementType)
       return op->emitOpError(
@@ -468,26 +446,19 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
   if (numBufferInputs == 0 && numBufferOutputs == 0)
     return success();
 
-  // Non-compute ops are generally ok.
-  // mo.yield is intentionally left off this list as alias analysis for
-  // mo.buffer values is not currently supported.
+  // Non-compute ops. mo.yield is excluded: alias analysis for mo.buffer
+  // values is not supported.
   if (isa<MO::ChainCreateOp, MO::OutputOp>(op))
     return success();
 
-  // These ops already has similar logic in its verifier
+  // These ops check this in their own verifiers.
   // TODO(GEX-1947): Unify their logic there with this trait verifier.
   if (isa<MO::YieldOp, MO::GuardOp>(op))
     return success();
 
-  // This is very deliberately the only op allowed to create a new buffer.
-  //
-  // If you need to create a new buffer with a particular initialization use
-  // mo.buffer.create and pass the result of that to the op providing the
-  // initialization logic.
-  //
-  // If the extra round-trip to memory becomes a problem in the future we can
-  // implement mo.mutable.store as a kernel and have fusion enabled on the input
-  // tensor.
+  // Deliberately the only op that creates a buffer; to initialize one, pass
+  // its result to the initializing op. If the extra memory round-trip matters,
+  // implement mo.mutable.store as a kernel with fusion on its input.
   if (isa<MO::BufferCreateOp>(op))
     return success();
 
@@ -525,14 +496,12 @@ LogicalResult Impl::verifyBufferOpConformance(Operation *op) {
 
 LogicalResult checkDeviceConstraint(Operation *op, const Twine &name, Type type,
                                     DeviceRefAttr constrainedTo) {
-  // Fetch the assigned device for the operand from the type.
   auto deviceType = dyn_cast<MOHasDeviceTypeInterface>(type);
   if (!deviceType)
     return success();
   auto device = deviceType.getDeviceRef();
   if (!device)
     return op->emitError(name) << " is missing a device attribute.";
-  // Check the device constraint.
   if (constrainedTo && device != constrainedTo) {
     return op->emitError(op->getName().getStringRef())
            << ": " << name << " is constrained to be on device "
@@ -564,7 +533,6 @@ LogicalResult checkResultDeviceConstraint(Operation *op, size_t index,
 
 LogicalResult checkExecutionDeviceConstraint(MOHasDeviceInterface op,
                                              DeviceRefAttr constrainedTo) {
-  // Only check the constraint if both the op and the constraint are non-null.
   if (constrainedTo && op.getExecutionDevice() != constrainedTo) {
     return op->emitError(op->getName().getStringRef())
            << ": Op is constrained to be on device " << constrainedTo
@@ -588,7 +556,6 @@ LogicalResult Impl::verifyHostOnly(Operation *op) {
   auto hostDevice = getHostDevice(op);
 
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
-    // Skip verification when no device is assigned.
     if (!hasDevice.getExecutionDevice())
       return success();
     if (failed(checkExecutionDeviceConstraint(hasDevice, hostDevice)))
@@ -609,11 +576,9 @@ LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
   auto hostDevice = getHostDevice(op);
 
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
-    // Skip verification when no device is assigned.
     if (!hasDevice.getExecutionDevice())
       return success();
-    // Control ops are currently assigned to a device even if they don't need
-    // a device context. Ignore these.
+    // Control ops get a device even though they need no device context.
     if (isa<MO::MOControlOpInterface, MO::ChainCreateOp, MO::DebugPrintOp>(op))
       return success();
     if (failed(checkExecutionDeviceConstraint(hasDevice, hostDevice)))
@@ -625,8 +590,7 @@ LogicalResult Impl::verifyExecutesOnHost(Operation *op) {
 LogicalResult Impl::verifySingleDevice(Operation *op,
                                        ArrayRef<size_t> hostOperandIndices,
                                        ArrayRef<size_t> deviceOperandIndices) {
-  // If we are given a list of device operands, use the first one to determine
-  // the device type. Otherwise, use the first result device.
+  // The first device operand decides the device, else the first result.
   DeviceRefAttr singleDevice =
       deviceOperandIndices.empty()
           ? getFirstResultDevice(op)
@@ -634,30 +598,25 @@ LogicalResult Impl::verifySingleDevice(Operation *op,
                 op->getOperand(deviceOperandIndices.front()).getType());
 
   if (auto hasDevice = dyn_cast<MOHasDeviceInterface>(op)) {
-    // Skip verification when no device is assigned.
     if (!hasDevice.getExecutionDevice())
       return success();
-    // Check the execution device constraint.
     if (failed(checkExecutionDeviceConstraint(hasDevice, singleDevice)))
       return failure();
   }
 
-  // Empty device operand list means check all non-scalar operands.
+  // Empty deviceOperandIndices means all non-host operands.
   llvm::SmallVector<size_t> operandIndices;
   for (size_t i = 0; i < op->getNumOperands(); ++i)
     if (!llvm::is_contained(hostOperandIndices, i))
       operandIndices.push_back(i);
   if (deviceOperandIndices.empty())
     deviceOperandIndices = operandIndices;
-  // Ensure all device operands are on the right device.
   for (size_t i : deviceOperandIndices)
     if (failed(checkOperandDeviceConstraint(op, i, singleDevice)))
       return failure();
-  // Ensure all host operands are on the host.
   for (size_t i : hostOperandIndices)
     if (failed(checkOperandDeviceConstraint(op, i, getHostDevice(op))))
       return failure();
-  // Ensure all results are on the right device.
   for (size_t i = 0; i < op->getNumResults(); ++i)
     if (failed(checkResultDeviceConstraint(op, i, singleDevice)))
       return failure();
@@ -678,10 +637,9 @@ Impl::verifyPeerInputDevices(Operation *op,
     if (!deviceType)
       continue;
     DeviceRefAttr operandDevice = deviceType.getDeviceRef();
-    // Operands explicitly named as host-resident must match the host
-    // device's label exactly.  This keeps host-scalar inputs (e.g.
-    // epsilon, weight_offset) compatible with single-device kernels that
-    // otherwise want their device-resident operands on peer GPUs.
+    // Host operands must match the host label exactly, which keeps host
+    // scalars (e.g. epsilon) usable with kernels whose device operands live
+    // on peer GPUs.
     if (llvm::is_contained(hostOperandIndices, i)) {
       if (operandDevice.getLabel() != hostDevice.getLabel())
         return op->emitError("Host operand ")

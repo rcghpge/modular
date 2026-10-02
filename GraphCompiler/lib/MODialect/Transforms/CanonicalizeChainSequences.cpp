@@ -31,19 +31,15 @@ static bool hasSingleChain(MOMutableOpInterface mutOp) {
   return mutOp.getInChains().size() == 1 && mutOp.getOutChains().size() == 1;
 }
 
-/// Collects operands with write effects for a mutable op. If effects cannot be
-/// determined (e.g. the op or a nested op doesn't implement
-/// MemoryEffectOpInterface), conservatively assumes all mutable operands are
-/// written. This ensures chain relaxation is never applied when write effects
-/// are unknown.
+/// Collects operands with write effects for a mutable op. When effects are
+/// unknown, treats all mutable operands as written so chain relaxation is
+/// blocked.
 static llvm::SmallDenseSet<Value>
 collectWriteEffectOperands(MOMutableOpInterface mutOp) {
   std::optional<llvm::SmallVector<mlir::MemoryEffects::EffectInstance>>
       effects = mlir::getEffectsRecursively(mutOp);
 
   if (!effects) {
-    // Cannot determine effects — conservatively treat all mutable operands as
-    // written so that chain relaxation is blocked.
     auto range =
         llvm::make_filter_range(mutOp->getOperands(), isMutableOperand);
     return {range.begin(), range.end()};
@@ -62,21 +58,16 @@ collectWriteEffectOperands(MOMutableOpInterface mutOp) {
   return result;
 }
 
-/// Checks if it's possible to re-write the chain structure linking mutOp1 and
-/// mutOp2 such that no data race is possible. This primarily comes
-/// down to checking that the ops don't share an operand that has a write effect
-/// on it.
+/// Returns true if the chain linking mutOp1 and mutOp2 can be relaxed without a
+/// data race, i.e. neither writes an operand the other uses.
 static bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
                                        MOMutableOpInterface mutOp2) {
-  // A multi-device op is a rendezvous: every rank has to arrive before any of
-  // them completes. Relaxing its chain against unrelated same-device work is
-  // race-free (disjoint buffers) but changes when the collective becomes
-  // resident on that device, which can leave the other ranks spinning. Keep
-  // the sequencing the graph builder established.
+  // A multi-device op is a rendezvous. Relaxing its chain is race-free but
+  // changes when the collective becomes resident on the device, which can
+  // leave the other ranks spinning.
   if (mutOp1->hasTrait<MOMultiDevice>() || mutOp2->hasTrait<MOMultiDevice>())
     return false;
 
-  // Check that the ops don't share an operand they both have a write effect on.
   auto r1 = llvm::make_filter_range(mutOp1->getOperands(), isMutableOperand);
   auto r2 = llvm::make_filter_range(mutOp2->getOperands(), isMutableOperand);
 
@@ -90,10 +81,8 @@ static bool canSafelyReorderMutableOps(MOMutableOpInterface mutOp1,
       llvm::set_intersects(mutableOperands2, writeEffectOperands1))
     return false;
 
-  // It's my understanding that a kernel could potentially return a ref to an
-  // input opaque type back out. In lieu of a more sophisticated alias analysis
-  // (which will eventually be necessary) we simply check that there are no
-  // opaque values that name the same type.
+  // A kernel may return a ref to an input opaque value. Lacking alias
+  // analysis, reject ops whose opaque operands name the same type.
   llvm::SmallDenseSet<StringAttr> symbolSet;
   for (Value v : r1) {
     if (auto opaqueType = dyn_cast<MO::OpaqueType>(v.getType()))
@@ -131,9 +120,8 @@ struct CanonicalizeBufferOpSequences
 
     auto rawParent = inChain->getDefiningOp();
 
-    // Don't rewrite chains that cross region boundaries.  An op inside a
-    // region body (e.g. mo.parallel) may capture a chain from an outer-scope
-    // op; bypassing that chain would break sequencing guarantees.
+    // An op in a region body (e.g. mo.parallel) may capture an outer-scope
+    // chain; bypassing it would break sequencing.
     if (rawParent && rawParent->getParentRegion() != mutOp->getParentRegion())
       return rewriter.notifyMatchFailure(mutOp,
                                          "chain crosses a region boundary");
@@ -220,7 +208,7 @@ struct CanonicalizeChainSequencesPass
     patterns.add<CanonicalizeBufferOpSequences>(ctx);
     ChainCreateOp::getCanonicalizationPatterns(patterns, ctx);
 
-    // Configure the greedy rewrite driver for potentially long chains.
+    // Chains can be long.
     mlir::GreedyRewriteConfig config;
     config.setMaxIterations(750).setUseTopDownTraversal();
 

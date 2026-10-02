@@ -28,13 +28,10 @@ namespace M::MGP {
 template <typename V>
 class IndexSet {
 public:
-  /// The model.
   ModelOp model;
 
-  /// A distinguished V not equal to any V which appears in the model.
-  /// This can be used to encode predicates as relations, where (x, {})
-  /// represents false and (x, {distinguished}) true. We just use null.
-  /// The distinguished V always has value index 0.
+  /// Null V at index 0, distinct from every V in the model. Encodes
+  /// predicates as relations: (x, {}) is false, (x, {distinguished}) true.
   V distinguished = nullptr;
 
   /// Returns the number of Vs in model, plus one for the distinguished
@@ -86,16 +83,12 @@ public:
 
   using Set = llvm::SparseBitVector<>;
 
-  /// Add v to set.
   void addToSet(Set &set, V v) const { set.set(getIndex(v)); }
 
-  /// Remove v from set.
   void removeFromSet(Set &set, V v) const { set.reset(getIndex(v)); }
 
-  /// Return true if v is in set.
   bool setContains(const Set &set, V v) const { return set.test(getIndex(v)); }
 
-  /// Returns empty set.
   Set emptySet() const { return Set(); }
 
   /// Returns the set containing all Vs.
@@ -113,7 +106,7 @@ public:
     return set;
   }
 
-  /// Iterate over the values in the index set.
+  /// Returns the Vs in set, in index order.
   auto values(const Set &set) const {
     SmallVector<V> result;
     for (auto idx : set)
@@ -121,7 +114,6 @@ public:
     return result;
   }
 
-  /// Returns set as vector of Vs. Entries will always be in index order.
   SmallVector<V> setToVector(const Set &set) const { return values(set); }
 
   //===--------------------------------------------------------------------===//
@@ -139,7 +131,6 @@ public:
     return result;
   }
 
-  /// Returns true if lhs and rhs are equivalent.
   bool areEquivalent(const Equivalence &equivalence, V lhs, V rhs) const {
     return equivalence.isEquivalent(getIndex(lhs), getIndex(rhs));
   }
@@ -154,9 +145,8 @@ public:
     return getV(*itr);
   }
 
-  /// Returns the canonical representation for V w.r.t. equivalence for use
-  /// by unit test printing when a stable result is required. This is simply
-  /// the V in the equivalence class for v with the lowest index.
+  /// Returns the lowest-index V in v's equivalence class, for stable unit
+  /// test printing.
   ///
   /// CAUTION: Slow, use getCanonical during analysis.
   V getStableCanonical(const Equivalence &equivalence, V v) const {
@@ -228,7 +218,6 @@ public:
 protected:
   IndexSet(ModelOp model) : model(model) { addV(distinguished); }
 
-  /// Add v to index.
   void addV(V v) {
     size_t index = vIndexMap.size();
     vIndexMap.insert({v, index});
@@ -269,7 +258,6 @@ void visitValues(IndexSet<Value> &indexSet, Block *block);
 ///  %x[3] is %x bound in the block with index 3
 void printVImpl(IndexSet<Value> &indexSet, llvm::raw_ostream &os, Value value);
 
-/// Returns an IndexSet<Value> for model.
 IndexSet<Value> createValueIndexSet(ModelOp model);
 
 /// Visits all the operands in block and adds them to indexSet.
@@ -282,7 +270,6 @@ void visitOperands(IndexSet<const OpOperand *> &indexSet, Block *block);
 void printVImpl(IndexSet<const OpOperand *> &indexSet, llvm::raw_ostream &os,
                 const OpOperand *operand);
 
-/// Returns an IndexSet<const OpOperand*> for model.
 IndexSet<const OpOperand *> createOperandIndexSet(ModelOp model);
 
 /// Visits all the operations in block and adds them to indexSet.
@@ -294,7 +281,6 @@ void visitOperations(IndexSet<Operation *> &indexSet, Block *block);
 void printVImpl(IndexSet<Operation *> &indexSet, llvm::raw_ostream &os,
                 Operation *op);
 
-/// Returns an IndexSet<Operation*> for model.
 IndexSet<Operation *> createOperationIndexSet(ModelOp model);
 
 } // namespace M::MGP

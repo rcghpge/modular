@@ -12,8 +12,7 @@
 
 namespace M::GML {
 
-/// Helper to allow for resource blob ownership to be transferred and freed
-/// earlier by buffers.
+/// Lets buffers take ownership of a resource blob and free it early.
 struct BlobLifetimeManager {
   BlobLifetimeManager(
       llvm::unique_function<void(void *data, size_t size, size_t align)>

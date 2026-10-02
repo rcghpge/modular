@@ -14,16 +14,16 @@ using namespace mlir;
 namespace M {
 namespace GlidIR {
 
-static constexpr auto kIconOp = "\xe2\x9a\x99 ";         // ⚙  U+2699
-static constexpr auto kIconBlock = "\xf0\x9f\x93\x82 ";  // 📂  U+1F4C2
-static constexpr auto kIconRegion = "\xf0\x9f\x93\xa6 "; // 📦  U+1F4E6
+static constexpr auto kIconOp = "\xe2\x9a\x99 ";         // U+2699
+static constexpr auto kIconBlock = "\xf0\x9f\x93\x82 ";  // U+1F4C2
+static constexpr auto kIconRegion = "\xf0\x9f\x93\xa6 "; // U+1F4E6
 static constexpr auto kIconOperands = "\xe2\x86\x92 ";   // →  operands group
 static constexpr auto kIconOperand = "\xe2\x86\xaa ";    // ↪  operand
 static constexpr auto kIconResults = "\xe2\x86\x90 ";    // ←  results group
 static constexpr auto kIconResult = "\xe2\x86\xa9 ";     // ↩  result
 static constexpr auto kIconAttrDict = "\xe2\x89\xa1 ";   // ≡  attr-dict
-static constexpr auto kIconAttr = "\xf0\x9f\xa7\xb6 "; // 🧶  attribute U+1F9F6
-static constexpr auto kIconType = "\xe2\x8a\xa4 ";     // ⊤  type
+static constexpr auto kIconAttr = "\xf0\x9f\xa7\xb6 ";   // U+1F9F6
+static constexpr auto kIconType = "\xe2\x8a\xa4 ";       // ⊤  type
 
 TreeView::TreeView(ModuleOp root, TextViewCallbacks &callbacks)
     : callbacks(callbacks), root(root) {}
@@ -61,8 +61,8 @@ void TreeView::renderDetachedWindows() {
   if (detachedWindows.empty())
     return;
 
-  // Snapshot the count so windows opened during rendering are processed next
-  // frame (avoids use-after-realloc if push_back resizes the vector).
+  // Windows opened while rendering wait for the next frame, avoiding
+  // use-after-realloc.
   const int count = (int)detachedWindows.size();
   int dst = 0;
 
@@ -79,11 +79,11 @@ void TreeView::renderDetachedWindows() {
       opToHighlight = nullptr;
 
       bool rc = false;
-      // Copy renderFn locally so a push_back realloc doesn't invalidate it.
+      // Copied: a push_back realloc would invalidate it.
       auto renderFn = detachedWindows[i].renderFn;
       renderFn(rc);
 
-      // Index-based write-back is safe even after a potential realloc above.
+      // Indexing is realloc-safe.
       detachedWindows[i].expandedState =
           std::move(mlirEntitiesPreviouslyExpanded);
       mlirEntitiesPreviouslyExpanded = std::move(savedExpanded);
@@ -99,7 +99,7 @@ void TreeView::renderDetachedWindows() {
     }
   }
 
-  // Erase closed windows while preserving any new ones appended during render.
+  // Keeps windows appended during render.
   detachedWindows.erase(detachedWindows.begin() + dst,
                         detachedWindows.begin() + count);
 }
@@ -420,15 +420,11 @@ void TreeView::registerEntityAsRendered(void *entity) {
 }
 
 void TreeView::render(Operation &op, uint64_t id, bool recursiveCollapse) {
-  // Given that operations can have the same name, we push an ID to ImGui's
-  // stack to make hashes unique.
+  // Ops can share names; the ID keeps hashes unique.
   ImGui::PushID(id);
 
   applyExpandState(&op);
 
-  // If this ops is the highlighted op, we adjust the Y position if it is
-  // not visible and if we have not already done so and we actually
-  // highlight it.
   bool isOpToHighlight = &op == opToHighlight;
   ImGuiTreeNodeFlags flags = 0;
   if (isOpToHighlight) {
@@ -456,8 +452,6 @@ void TreeView::render(Operation &op, uint64_t id, bool recursiveCollapse) {
                                         flags, &op, std::move(opOpenFn));
     bool nodeHovered = ImGui::IsItemHovered();
 
-    // Register the current node as being rendered such that we know we can
-    // draw a line to it.
     registerEntityAsRendered(&op);
 
     if (isOpToHighlight)
@@ -477,10 +471,8 @@ void TreeView::render(Operation &op, uint64_t id, bool recursiveCollapse) {
     bool &wasExpandedInThePast = mlirEntitiesPreviouslyExpanded[&op];
 
     if (recursiveCollapse) {
-      // This is an optimization: Do not recurse when collapsing recursively
-      // if there are no open children operations. On very large graphs with
-      // deeply nested attributes, this makes the difference between instant
-      // and takes 30 seconds to collapse.
+      // Skip recursion without open children: on huge, deeply nested graphs
+      // this turns a 30 second collapse into an instant one.
       if (wasExpandedInThePast) {
         wasExpandedInThePast = false;
         render(op.getAttrDictionary(), true);

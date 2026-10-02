@@ -52,8 +52,6 @@ struct MappingTraits<M::ModelSpec> {
 /// Provide the QuantTensorSpec mapping trait for YAML conversion.
 LLVM_FWD_YAML_DECLARE_MAPPING_TRAITS(M::QuantTensorSpec)
 
-/// Use LLVM_YAML_IS_SEQUENCE_VECTOR to specify SequenceTraits<> on the
-/// SmallVector<QuantTensorSpec> type.
 LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::QuantTensorSpec)
 
 LLVM_FWD_YAML_IS_SEQUENCE_VECTOR(M::TensorResultInfo)
@@ -78,12 +76,9 @@ struct llvm::yaml::MappingTraits<std::shared_ptr<M::ResultInfo>> {
 namespace M {
 using YamlDictKeyValuePair = std::pair<M::GML::Variant, M::GML::Variant>;
 
-/// Given a composed type model output (`out`), create a copy of the composed
-/// type, replacing `Tensor` leaf nodes with `TensorResultInfo`s
-/// for YAML serialization. The `Tensor`s are collected in
-/// `processedResults` for binary output. Note that the copy is not a deep copy,
-/// and parts of the original output (`out`) can still be referenced in the
-/// output.
+/// Shallow-copies a composed model output `out`, replacing `Tensor` leaves with
+/// `TensorResultInfo`s for YAML and collecting the tensors in
+/// `processedResults` for binary output.
 ErrorOr<AnyAsyncValueRef>
 getResultForBinaryOutput(const M::AnyAsyncValueRef &out,
                          M::ProcessedResults &processedResults);

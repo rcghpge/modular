@@ -39,31 +39,27 @@ using namespace MGP;
 // Utils
 //===----------------------------------------------------------------------===//
 
-/// Assigns to device from attribute with name in attrs. Assigns <"cpu", 0>
-/// if no such attribute.
+/// Defaults an unset device to <"cpu", 0>.
 static void getDeviceAttrOrDefault(MLIRContext *ctx, DeviceRefAttr &device) {
   if (!device)
     device = DeviceRefAttr::getDefault(ctx);
 }
 
-/// Returns the raw alignment for an elements attribute.
 static uint64_t computeRawAlign(ElementsAttr value) {
   ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
+  // The error is reported when the op is verified.
   if (errOrOptAlign.isError())
     return 0;
 
-  // If error we'll report it when the result is validated.
   return optSizeToRawSize(*errOrOptAlign);
 }
 
 static llvm::StringRef primitiveMojoName(MOGG::PrimitiveDeclOp decl) {
-  // sym_name is set to the fully-qualified Mojo source name by
-  // ImportPackages, so it doubles as the identifier to emit in Mojo source.
+  // ImportPackages sets sym_name to the fully-qualified Mojo name.
   return decl.getSymNameAttr().strref();
 }
 
-// Helper to emit a typed comptime Array[Int, N] declaration from
-// attribute values and return the variable name.
+// Emits a typed Array[Int, N] declaration and returns the variable name.
 template <typename T>
 static MOGG::MojoValue inlineArray(MOGG::EmitMojoState &state,
                                    ArrayRef<T> values, bool isComptime = true,
@@ -146,11 +142,7 @@ void BufferConstantOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   return build(odsBuilder, odsState, value, computeRawAlign(value));
 }
 
-/// Verifies the attribute and result types are consistent, and the attribute
-/// is supported.
 LogicalResult BufferConstantOp::verify() {
-  // We can only construct from attributes which are dense arrays (ie rank-1)
-  // of uint8_ts.
   ElementsAttr value = getValue();
   ShapedType shapedType = cast<ShapedType>(value.getType());
   if (value.size() != shapedType.getNumElements())
@@ -162,8 +154,7 @@ LogicalResult BufferConstantOp::verify() {
     return emitOpError("only supports attributes of uint8_t elements")
            << " (have " << elemType << ").";
 
-  // Only BufferAttr and DenseResourceElementsAttr can convey an align
-  // constraint. Check they are valid.
+  // Only BufferAttr and DenseResourceElementsAttr can convey an alignment.
   ErrorOr<std::optional<uint64_t>> errOrOptAlign = getImpliedAlignment(value);
   if (auto *error = errOrOptAlign.getError())
     return emitOpError(error);
@@ -171,7 +162,6 @@ LogicalResult BufferConstantOp::verify() {
   if (!isValidOptAlign(*errOrOptAlign))
     return emitOpError("invalid alignment ") << **errOrOptAlign << ".";
 
-  // The implied alignment must match the actual attribute alignment.
   if (getOptAlign().has_value() != errOrOptAlign->has_value()) {
     return emitOpError("expected alignment operand if and only if value "
                        "operand has alignment.");
@@ -558,15 +548,12 @@ LogicalResult BufferBulkSliceOp::emitMojo(MOGG::EmitMojoState &state) {
   MojoValue baseArg = state.getMojoValueFor(getBaseBuffer());
   MojoValue deviceCtxVar = state.getMojoValueFor(getDeviceContext());
 
-  // Call: mgp_buffer_bulk_slice(base, offsets, sizes, deviceContext)
-  // Returns Array[MutByteBuffer, N]; extract each result by index.
+  // Returns Array[MutByteBuffer, N].
   MojoValue result = state.builder.var(
       function({}, {baseArg, offsetsArray, sizesArray, deviceCtxVar}));
 
-  // Bind each slice to its own var rather than handing out the subscript
-  // expression: a consumer may transfer the value (a device-graph
-  // `mgp.device_graph.dependencies` body surfaces its results with `^`), and
-  // only a named value has an origin to transfer from.
+  // Bind each slice to a named var: consumers may transfer it with `^`, which
+  // needs an origin a subscript expression lacks.
   for (auto &&[i, outBuf] : llvm::enumerate(getOutBuffers()))
     state.setMojoValueFor(outBuf, state.builder.var(result[i]));
 
@@ -662,25 +649,21 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
 
   size_t numRuntimeSizes = getRuntimeSizes().size();
 
-  // Emit compile-time Array parameters.
   MojoValue alignmentsParam = inlineArray(state, getAlignments());
   MojoValue canShareParam = inlineArray(state, getCanShare());
 
-  // Emit compile-time Array for optional staticSizes attribute.
   MojoValue staticSizesParam;
   if (auto staticSizes = getStaticSizes()) {
     staticSizesParam = inlineArray(state, *staticSizes);
   } else {
-    // Empty Array for no static sizes.
     staticSizesParam = inlineArray(state, ArrayRef<int64_t>{});
   }
 
-  // Collect all runtime sizes as MojoValue arguments.
   SmallVector<MojoValue> runtimeSizeArgs;
   for (Value size : getRuntimeSizes())
     runtimeSizeArgs.push_back(state.getMojoValueFor(size));
 
-  // Emit a typed var for the runtime sizes: Array[Int, N] = [v0, v1, ...]
+  // var <name>: Array[Int, N] = [v0, v1, ...]
   MojoValue runtimeSizesArray;
   {
     MojoValue name = state.builder.newVar("var");
@@ -695,15 +678,13 @@ LogicalResult BufferPlanOp::emitMojo(MOGG::EmitMojoState &state) {
     runtimeSizesArray = name;
   }
 
-  // Call the function with compile-time parameters and runtime arguments.
-  // Function signature: [alignments, canShare, staticSizes](runtimeSizes)
+  // [alignments, canShare, staticSizes](runtimeSizes) -> (highWatermark,
+  // offsets: StaticTuple)
   MojoValue result = state.builder.var(function(
       {alignmentsParam, canShareParam, staticSizesParam}, {runtimeSizesArray}));
 
-  // Extract results: result is a tuple (highWatermark, offsets)
   state.setMojoValueFor(getHighWatermark(), result[0]);
 
-  // Extract offsets from result[1] which is a StaticTuple
   for (auto &&[i, offset] : llvm::enumerate(getOffsets()))
     state.setMojoValueFor(offset, result[1][i]);
 
@@ -720,7 +701,6 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
     int64_t numExistingStatic = static_cast<int64_t>(
         op.getStaticSizes().value_or(ArrayRef<int64_t>()).size());
 
-    // Identify which runtime inputs are statically known
     SmallVector<int64_t> staticValues;
 
     llvm::SmallBitVector staticIndices(op.getRuntimeSizes().size());
@@ -728,46 +708,38 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
     for (auto [i, runtimeSize] : llvm::enumerate(op.getRuntimeSizes())) {
       IntegerAttr constantAttr;
       if (matchPattern(runtimeSize, m_Constant(&constantAttr))) {
-        // This runtime operand is actually a constant
         staticIndices.set(i);
         staticValues.push_back(constantAttr.getInt());
       }
     }
 
-    // If we have no new static values, nothing to canonicalize
     if (staticIndices.none())
       return failure();
 
     llvm::SmallBitVector dynamicIndices =
         llvm::SmallBitVector(staticIndices).flip();
 
-    // Build new runtime sizes operands (only the dynamic ones)
     SmallVector<Value> newRuntimeSizes;
     for (size_t idx : dynamicIndices.set_bits())
       newRuntimeSizes.push_back(op.getRuntimeSizes()[idx]);
 
-    // Build permutation map for attributes
-    // New order: [existing static..., newly discovered static..., dynamic...]
-    // Permutation maps new index -> old index in the full allocation array
-    // Existing static allocations stay in their positions
+    // New order: [existing static..., newly static..., dynamic...];
+    // permutation maps new index -> old index.
     SmallVector<int64_t> permutation =
         llvm::to_vector(llvm::seq(numExistingStatic));
 
-    // Newly discovered static allocations (from runtime operands)
     for (int64_t idx : staticIndices.set_bits())
       permutation.push_back(numExistingStatic + idx);
 
-    // Remaining dynamic allocations (from runtime operands)
     for (int64_t idx : dynamicIndices.set_bits())
       permutation.push_back(numExistingStatic + idx);
 
-    // Permute the attributes according to the new order
     auto permuteAttr = [&](ArrayRef<uint64_t> attr) {
       return M::permute(attr, permutation);
     };
 
-    // Permute the NxN canShare matrix: both rows and columns must be reordered.
-    // permutation[newIdx] = oldIdx, so newMat[ni][nj] = oldMat[p[ni]][p[nj]].
+    // canShare is NxN, so permute rows and columns:
+    // newMat[ni][nj] = oldMat[p[ni]][p[nj]].
     size_t n = permutation.size();
     ArrayRef<uint8_t> oldCanShare = op.getCanShare();
     SmallVector<uint8_t> newCanShareVec(n * n);
@@ -776,7 +748,6 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
         newCanShareVec[ni * n + nj] =
             oldCanShare[permutation[ni] * n + permutation[nj]];
 
-    // Build new staticSizes attribute
     SmallVector<int64_t> newStaticSizes =
         llvm::to_vector(op.getStaticSizes().value_or(ArrayRef<int64_t>{}));
 
@@ -785,7 +756,6 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
     auto newStaticSizesAttr = rewriter.getAttr<IntArrayElementsAttr>(
         ArrayRef<int64_t>(newStaticSizes), IntegerType::Signed);
 
-    // Create new operation with permuted attributes
     auto newOp =
         BufferPlanOp::create(rewriter, op.getLoc(),
                              /*runtimeSizes=*/newRuntimeSizes,
@@ -795,12 +765,10 @@ struct StaticizeAllocSizes final : public OpRewritePattern<BufferPlanOp> {
     SmallVector<Value> newOffsets =
         llvm::to_vector(ValueRange(newOp.getOffsets()));
 
-    // Permute the results back to match original order
     SmallVector<Value> newResults;
     newResults.push_back(newOp.getHighWatermark());
     newResults.append(M::permuteReverse(newOffsets, permutation));
 
-    // Create inverse permutation for results
     rewriter.replaceOp(op, newResults);
     return success();
   }
@@ -818,7 +786,6 @@ LogicalResult BufferPlanOp::verify() {
   size_t numRuntimeSizes = getRuntimeSizes().size();
   size_t totalAllocs = numStaticSizes + numRuntimeSizes;
 
-  // The total number of offsets should equal staticSizes + runtimeSizes
   if (getOffsets().size() != totalAllocs) {
     return emitOpError("expected number of offsets (")
            << getOffsets().size() << ") to equal staticSizes size ("
@@ -832,14 +799,12 @@ LogicalResult BufferPlanOp::verify() {
            << totalAllocs << ")";
   }
 
-  // canShare must be an NxN matrix
   if (getCanShare().size() != totalAllocs * totalAllocs) {
     return emitOpError("expected canShare to have size N*N = ")
            << totalAllocs * totalAllocs << " for N=" << totalAllocs
            << " allocations, but got " << getCanShare().size();
   }
 
-  // Validate symmetry and zero diagonal
   ArrayRef<uint8_t> mat = getCanShare();
   for (size_t i : llvm::seq(totalAllocs)) {
     if (mat[i * totalAllocs + i] != 0)
@@ -868,7 +833,7 @@ LogicalResult BufferPlanOp::inferReturnTypes(
   size_t numRuntimeSizes = operands.size();
   size_t totalAllocations = numStaticSizes + numRuntimeSizes;
 
-  // All outputs are index: 1 high watermark + N offsets
+  // 1 high watermark + N offsets.
   inferredReturnTypes.clear();
   inferredReturnTypes.resize(totalAllocations + 1, IndexType::get(context));
 
@@ -974,8 +939,7 @@ LogicalResult DeviceWaitOp::emitMojo(MOGG::EmitMojoState &state) {
   auto primDecl = state.registry.lookupPrimitive(getOperationName());
   MojoValue function(primitiveMojoName(primDecl));
 
-  // Drops the in-chain operand; passes (theContext, waitingDeviceContext,
-  // signalingDeviceContext) to the primitive.
+  // Everything but the in-chain.
   state.builder.call(function, {},
                      state.getMojoValuesFor(getOperands().drop_front()));
 

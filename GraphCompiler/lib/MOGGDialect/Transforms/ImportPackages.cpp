@@ -54,25 +54,17 @@ namespace {
 // `kMoggUpdateViewFuncName`, `kMoggBuildGraphFuncName`).
 
 /// Return the slot names of a well-known stdlib parameterised struct whose
-/// declaration is not present in the loaded kernel package (its decl lives
-/// in a dependency package the fast loader deliberately skips). The returned
-/// list, when non-empty, must have the same length as the corresponding
-/// `LIT::StructType::getParamValues()`; otherwise `computeValueParams` will
-/// assert.
+/// decl lives in a dependency package the fast loader skips. A non-empty list
+/// must match `LIT::StructType::getParamValues()` in length, or
+/// `computeValueParams` asserts.
 ///
-/// Add a new entry here when a kernel `shape`/`elementwise` function starts
-/// using a parameterised stdlib struct as a *result* type that isn't already
-/// covered. Today this is `SIMD` (returned from elementwise functions) and
-/// `IndexList` (returned from shape functions). Result types of `execute`,
-/// `update_view`, and primitives are passed through opaquely and never need
-/// a slot-name lookup, so the slot mapping isn't computed for them.
+/// Extend this when a `shape`/`elementwise` function returns another
+/// parameterised stdlib struct (today `SIMD` and `IndexList`).
 static llvm::ArrayRef<llvm::StringLiteral>
 getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
-  // Mojo stdlib types referenced by kernel signatures whose StructDeclOps are
-  // not present in the loaded kernel package. Slot names and order must match
-  // the corresponding `LIT::StructType::getParamValues()` exactly, including
-  // any inferred (`//`-introduced) and keyword-only (`*`-introduced)
-  // parameters that get hoisted onto the LIT type.
+  // Slot names and order must match `getParamValues()` exactly, including
+  // inferred (`//`) and keyword-only (`*`) parameters hoisted onto the LIT
+  // type.
   static constexpr llvm::StringLiteral kSimdParams[] = {kParameterDType,
                                                         kParameterSize};
   static constexpr llvm::StringLiteral kIndexListParams[] = {
@@ -94,30 +86,19 @@ getStdlibStructParamNames(mlir::SymbolRefAttr symbol) {
 
 /// Build per-type {struct-slot-name -> bound-value} mappings from `types`.
 /// For each parameterised StructType, produces a DictionaryAttr keyed by the
-/// struct's slot names. Two paths are tried in order:
+/// struct's slot names, from either:
 ///
-///   1. StructDeclOp reachable via SymbolTable lookup in `pkg` (the
-///      high-value path for structs whose decls are in the loaded module).
-///   2. The symbol is in `getStdlibStructParamNames`'s table (a curated list
-///      of stdlib structs whose layouts we recognise without loading their
-///      decls).
+///   1. its StructDeclOp, via SymbolTable lookup in `pkg`, or
+///   2. the `getStdlibStructParamNames` table.
 ///
-/// Non-struct types and parameterless structs always get a UnitAttr
-/// placeholder.
+/// Non-struct types and parameterless structs get a UnitAttr placeholder.
 ///
-/// `strict` controls behaviour for parameterised structs that fit neither
-/// path:
-///   - `true`: emit an error at `loc` and return null. Used for result types
-///     of `shape` / `elementwise` functions, where the slot mapping is
-///     consumed unconditionally and the universe of relevant structs is
-///     small (SIMD, IndexList, plus user/kernel-API decls in the loaded
-///     pkg).
-///   - `false`: fall back to a UnitAttr placeholder. Used for argument
-///     types, where the consumer (MO-to-MOGG opaque-parameter inference)
-///     only reads entries that correspond to MO::OpaqueType operands; tensor
-///     and device-context argument types (whose struct decls live in
-///     dependency packages we deliberately do not load) fall through
-///     harmlessly.
+/// `strict` controls parameterised structs that fit neither path:
+///   - `true`: emit an error at `loc` and return null. For `shape` /
+///     `elementwise` result types, whose mapping is always consumed.
+///   - `false`: fall back to a UnitAttr placeholder. For argument types, where
+///     opaque-parameter inference only reads MO::OpaqueType entries, so tensor
+///     and device-context types fall through harmlessly.
 static mlir::ArrayAttr computeValueParams(mlir::MLIRContext *ctx,
                                           mlir::ModuleOp pkg,
                                           mlir::Location loc,
@@ -241,10 +222,8 @@ getDecoratorLambdaArgument(mlir::TypedAttr decorator,
   if (!sym)
     return std::nullopt;
 
-  // The decorator function definition lives in a dependency package and is not
-  // present in the primary body. Match by namespace instead: only accept calls
-  // to functions in the MAX compiler's own namespaces, which users cannot
-  // access.
+  // The decorator's definition lives in an unloaded dependency package, so
+  // match by namespace: only the MAX compiler's own, which users cannot access.
   if (!isMAXCompilerSymbol(sym.getSymbol()))
     return std::nullopt;
 
@@ -394,10 +373,8 @@ static mlir::LogicalResult scanForKernelDecls(
         result = mlir::failure();
         return mlir::WalkResult::interrupt();
       } else if (srcName == kMoggElementwiseFuncName) {
-        // Route to SIMD or TileTensor slot based on return type leaf name.
-        // Unwrap LIT::RefType sugar first, matching the pattern used in
-        // computeValueParams, since parameterised return types may be
-        // wrapped in a reference at the function definition site.
+        // Route to the SIMD or TileTensor slot by return type leaf name,
+        // unwrapping LIT::RefType sugar as computeValueParams does.
         bool isTile = false;
         auto checkLeaf = [&](mlir::Type ty) -> bool {
           if (auto ref = KGEN::sugarDynCast<KGEN::LIT::RefType>(ty))
@@ -529,30 +506,19 @@ static OwningOpRef<ModuleOp> loadPackageModule(MLIRContext *ctx,
   return OwningOpRef<ModuleOp>(theModule);
 }
 
-/// Populate `mapping` with simple_name → qualified-name entries for every
-/// struct declared in `pkg`. The format matches KernelDeclAdaptor's
-/// buildOpaqueSymbol: every segment is joined by '.', producing e.g.
-/// "Pkg.Pkg.Struct" for a struct inside two nested lit.file_module @Pkg ops.
-/// The string is directly usable as a Mojo qualified name (no further
-/// rewriting needed). Duplicate simple names are silently ignored (first
-/// package wins).
+/// Populate `mapping` with simple_name -> qualified-name entries for every
+/// struct declared in `pkg`, '.'-joined as in KernelDeclAdaptor's
+/// buildOpaqueSymbol (e.g. "Pkg.Pkg.Struct" for two nested lit.file_module
+/// @Pkg ops). The first package wins on duplicate simple names.
 static void buildOpaqueTypeMapping(mlir::ModuleOp pkg,
                                    llvm::StringMap<std::string> &mapping) {
-  // Pre-order + skip: struct decls in the loaded packages don't nest other
-  // struct decls (their bodies hold member functions / attributes / etc.),
-  // so we can avoid recursing into each struct's body and walking IR we
-  // don't care about.
+  // Pre-order + skip: struct decls don't nest other struct decls.
   pkg->walk<mlir::WalkOrder::PreOrder>([&](KGEN::LIT::StructDeclOp structOp)
                                            -> mlir::WalkResult {
-    // Skip @extensibility.register kernel structs. They are implementations
-    // resolved by registration string through MojoRegistry and never flow as
-    // !mo.opaque<…> data values, so they don't belong in the opaque-type
-    // resolution table; including them is dead weight and a simple-name
-    // collision hazard against genuine opaque data types. This reuses the
-    // exact predicate scanForKernelDecls uses to decide which structs become
-    // mogg.kernel.decl ops. (scanForKernelDecls runs just before this and
-    // already validated these structs, so the error path is unreachable in
-    // practice; be conservative and exclude on error too.)
+    // Skip @extensibility.register kernel structs: they are resolved by
+    // registration string and never flow as !mo.opaque values, so they would
+    // only risk simple-name collisions. Same predicate as scanForKernelDecls,
+    // which already validated them; exclude on error too.
     ExtensibilityAPIStructInfo info;
     ErrorOr<bool> isKernel = isExtensibilityAPIStruct(structOp, info);
     if (isKernel.isError() || isKernel.takeValue())
@@ -596,10 +562,8 @@ static void buildOpaqueTypeMapping(mlir::ModuleOp pkg,
 }
 
 /// Persist `mapping` on `module` as a `mogg.opaque_type_mapping`
-/// DictionaryAttr (simple → fully-qualified). Merges with any existing
-/// attribute already present (e.g. seeded from a previous import); new
-/// entries override colliding old ones since the most recent ImportPackages
-/// run is authoritative for the packages it just loaded.
+/// DictionaryAttr (simple -> fully-qualified), merged with any existing one.
+/// New entries win: this run is authoritative for the packages it loaded.
 static void persistOpaqueTypeMapping(mlir::ModuleOp module,
                                      llvm::StringMap<std::string> &mapping) {
   mlir::MLIRContext *ctx = module.getContext();
@@ -672,25 +636,14 @@ struct ImportPackagesPass
     auto emptyArray = mlir::ArrayAttr::get(ctx, {});
 
     // Build a MOGG::KernelFunctionAttr for `fn`:
+    // - `arg_params` is always soft: unreachable parameterised structs
+    //   (tensors, device contexts) become UnitAttr placeholders.
+    // - `result_params` is computed only with `computeResultParams`;
+    //   `strictResultParams` errors on an unresolvable parameterised result
+    //   instead of falling back to UnitAttr.
     //
-    // - `arg_params` is always computed in soft mode: parameterised structs
-    //   whose decls aren't reachable (tensors, device-context types) fall
-    //   through to UnitAttr placeholders. Consumers (opaque-parameter
-    //   inference) skip non-opaque entries anyway.
-    // - `result_params` is computed only when `computeResultParams` is set.
-    //   `strictResultParams` controls policy: strict mode errors when a
-    //   parameterised result struct is not resolvable; soft mode falls back
-    //   to UnitAttr. Use strict for `shape`/`elementwise` (results are
-    //   always stdlib `IndexList`/`SIMD`); use soft for `execute` /
-    //   `update_view` where results may be tensor wrappers like
-    //   `ManagedTensorSlice` whose decls live in dependency packages, while
-    //   still supporting user-defined parameterised opaque returns like
-    //   `SIMDPair` via path 1.
-    //
-    // Returns failure if a strict result-mapping cannot be computed (the
-    // helper has already emitted an error). A null `fn` is not an error: it
-    // yields a null attr that the caller stores in the corresponding
-    // optional slot.
+    // Fails only on a strict result-mapping failure (error already emitted).
+    // A null `fn` yields a null attr.
     auto buildFunctionAttr =
         [&](KGEN::LIT::FnOp fn, bool computeResultParams,
             bool strictResultParams, bool distillTraitArgs,
@@ -713,12 +666,9 @@ struct ImportPackagesPass
           return mlir::failure();
       }
 
-      // Trait lane: distill a per-argument contract for any trait-bound tensor
-      // argument. Non-trait args get a UnitAttr placeholder; a function with no
-      // trait args at all keeps an empty array, so ManagedTensorSlice-lane
-      // kernels are unaffected. Skipped (`distillTraitArgs == false`) for
-      // primitives -- built-in op implementations that accept any arguments and
-      // are not subject to the tensor-argument contract.
+      // Distill a contract per trait-bound tensor argument. Other args get a
+      // UnitAttr placeholder; a function with no trait args keeps an empty
+      // array. Skipped for primitives, which accept any arguments.
       llvm::SmallVector<mlir::Attribute> contractAttrs;
       bool anyTraitArg = false;
       bool contractFailed = false;
@@ -786,11 +736,9 @@ struct ImportPackagesPass
         fnLocs.push_back(kernel.buildGraphFn.getLoc());
 
       // execute / update_view / build_graph may return user-defined
-      // parameterised opaque structs (e.g. `SIMDPair[P0, P1]`) whose slot
-      // mappings are needed by `inferOpaqueParameters` -- compute them in
-      // soft mode so that other result types (tensors, none, ...) fall back
-      // to UnitAttr. elementwise returns stdlib `SIMD`; strict mode catches
-      // misuse.
+      // parameterised opaque structs (e.g. `SIMDPair[P0, P1]`) that
+      // `inferOpaqueParameters` needs, so compute soft. elementwise returns
+      // stdlib `SIMD`; strict catches misuse.
       auto executeAttr = buildFunctionAttr(
           kernel.executeFn, /*computeResultParams=*/true,
           /*strictResultParams=*/false, /*distillTraitArgs=*/true);
@@ -854,11 +802,9 @@ struct ImportPackagesPass
         sawFailure = true;
         continue;
       }
-      // Trait-bound shape-function tensor arguments distill in the shape-fn
-      // lane (`isShapeFunc=true`): no io-role, bound by `Tensor`,
-      // `DenseTensor`, or `TileTensorable`. Legacy `InputTensor` shape
-      // functions carry no trait args and are unaffected (their args get
-      // `UnitAttr` placeholders).
+      // Trait-bound shape-function tensor arguments distill with
+      // `isShapeFunc=true`: no io-role, bound by `Tensor`, `DenseTensor`, or
+      // `TileTensorable`.
       auto sfFunctionAttr = buildFunctionAttr(
           sf.func, /*computeResultParams=*/true,
           /*strictResultParams=*/true, /*distillTraitArgs=*/true,
@@ -877,19 +823,13 @@ struct ImportPackagesPass
       if (!seenPrimitives.insert(registration).second)
         continue;
 
-      // sym_name is the fully-qualified Mojo source name so that consumers can
-      // emit the correct identifier without consulting a separate attribute.
-      // (This mirrors KernelDeclOp's convention.) Each primitive's Mojo source
-      // function must therefore have a unique fully-qualified name; the MLIR
-      // symbol table would otherwise reject a duplicate sym_name.
+      // sym_name is the fully-qualified Mojo source name, as for KernelDeclOp,
+      // so each primitive's Mojo function needs a unique one.
       mlir::StringAttr symName = getFullyResolvedMojoName(prim.func);
-      // Primitives are well-known to the graph compiler; consumers identify
-      // them by registration string and never look up a result type's slot
-      // names by name. Skip the slot-name mapping (which would fail for
-      // wrapper tensor structs like ManagedTensorSlice that primitives
-      // commonly return).
-      // Primitives are built-in op implementations and accept any arguments, so
-      // they are exempt from the tensor-argument trait contract entirely.
+      // Primitives are identified by registration string, so skip the
+      // slot-name mapping (it fails for wrapper tensor structs like
+      // ManagedTensorSlice). They accept any arguments, so skip the trait
+      // contract too.
       auto primFunctionAttr = buildFunctionAttr(
           prim.func, /*computeResultParams=*/false,
           /*strictResultParams=*/false, /*distillTraitArgs=*/false);
@@ -913,9 +853,8 @@ struct ImportPackagesPass
     OpBuilder builder(ctx);
     builder.setInsertionPointToEnd(module.getBody());
 
-    // The pass manager's cached SymbolTableAnalysis is never invalidated, so
-    // every decl op emitted below must also be registered in the cached table
-    // or it stays invisible to downstream passes that read it.
+    // The cached SymbolTableAnalysis is never invalidated, so register every
+    // emitted decl in it.
     SymbolTable &symbolTable =
         getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
 
@@ -930,11 +869,9 @@ struct ImportPackagesPass
     // across all packages and applied to !mo.opaque types in the module.
     llvm::StringMap<std::string> opaqueTypeMapping;
 
-    // Append mode: seed the dedup sets from existing decl ops in the module so
-    // re-loading paths whose decls are already present is a no-op. We treat
-    // all pre-existing kernels as `user` for dedup purposes -- the
-    // `is_user_defined` flag on each existing decl already records its actual
-    // origin and `MojoRegistry::getResolvedKernel` selects accordingly.
+    // Append mode: seed the dedup sets from existing decls so re-loading them
+    // is a no-op. All count as `user` here; `is_user_defined` keeps the real
+    // origin for `MojoRegistry::getResolvedKernel`.
     if (append) {
       for (auto decl : module.getOps<KernelDeclOp>()) {
         auto &set = decl.getIsUserDefined() ? seenUserRegistrations

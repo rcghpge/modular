@@ -73,7 +73,6 @@ static ErrorOrSuccess fillWithElements(Tensor &tensor,
     break;
   }
 
-  // Fill the tensor with the 0, 1, -1 value.
   return fillHomogeneous(tensor.getMutableBuffer(),
                          tensor.getShape().getNumElements(), eltType,
                          elementBuffer);
@@ -134,9 +133,8 @@ private:
   Tensor tensor;
 };
 
-// Represents Tensor backed by a file.
-// File is loaded into memory during construction and then calls to
-// getNextTensor() will stride through the memory.
+// Tensors backed by a file loaded into memory on construction;
+// getNextTensor() strides through it.
 class FileTensorGenerator : public ITensorGenerator {
 public:
   static ErrorOr<FileTensorGenerator>
@@ -217,7 +215,7 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
       spec = inputDataSpec;
   }
 
-  // if tensor spec contains a generation function, override the default
+  // A generation function in the tensor spec overrides the default.
   InputGenerationKind *inputGenKindPtr = nullptr;
   if (spec)
     inputGenKindPtr = std::get_if<InputGenerationKind>(&spec->inputGen);
@@ -233,7 +231,6 @@ M::createTensorGenerator(size_t tensorIdx, InputGenerationKind defaultGen,
   }
 
   auto filename = *std::get_if<std::filesystem::path>(&spec->inputGen);
-  // pack vector of flags into single int
   auto fileGeneratorOr = FileTensorGenerator::create(
       filename, modelSpec, cpuDevice, minimumCpuAlignment, spec->genFlags);
   if (fileGeneratorOr.isError())

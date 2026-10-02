@@ -22,47 +22,25 @@ def RMODialect : Dialect {
 
   let summary = "Relaxed Modular Operations dialect.";
   let description = [{
-    RMO (Relaxed Modular Operations dialect) is a dialect representing a graph
-    of Modular Operations (MO nodes) with relaxed constraints on the argument
-    types. This is in contrast to MO dialect, which RMO is eventually lowered
-    to, where types of operands around shape are strictly enforced.
+    RMO (Relaxed Modular Operations) represents a graph of MO operations with
+    relaxed type constraints, and lowers to MO, where operand shapes are
+    strictly enforced.
 
-    MO (Modular Operations dialect) is designed to be a strongly typed dialect
-    where each operation does a single thing. For example, `mo.add` does not
-    have implicit broadcasting, which would violate the principle of doing a
-    single thing. As a purely elementwise operator, the construction of IR
-    requires the user to prove all operands and result types are the same to
-    enforce the principle of being strongly typed.
+    MO is strongly typed and each op does one thing; for example `mo.add` does
+    not broadcast, and its operand and result types must provably match. This
+    makes MO easy to optimize but hard to target: frontends need shape
+    inference to satisfy the verifiers (not always possible with data-dependent
+    shapes), and framework ops like broadcasting `add` or rank-dependent
+    `matmul` lower to chains of strictly verified MO ops.
 
-    These choices enable MO to be easily optimized, however they impose annoying
-    requirements on users which aim to write programs directly in MO. The
-    strongly typed nature of MO means frontend dialects generally need some
-    level of shape inference to be able to type-check the strong verifiers. This
-    is also not always possible in programs with high amounts of data-dependent
-    shape behavior. Furthermore, most dialects will have fairly dynamic
-    operations which dispatch to different code paths based on some aspect of
-    shape or runtime value. For example, `add` in nearly all ML frameworks will
-    broadcast, and `matmul` will correspond to a traditional `matmul` or
-    `batch_matmul` depending on the ranks of the input. To lower these
-    operations in MO requires stringing together multiple MO operators together,
-    each with strict shape-related verifiers. It is altogether not an enjoyable
-    experience.
+    RMO handles MO's strict typing by inserting rebinds and runtime checks. As
+    a non-optimizing layer it can also have more dynamic semantics, such as a
+    broadcasting add.
 
-    RMO deals with strict typing of MO, by inserting rebinds and dynamic runtime
-    checks. Furthermore, as a non-optimizing layer, RMO can have more dynamic
-    semantics. For example, while MO will never have a built-in broadcasting
-    add, RMO will be allowed to have one. Furthermore, while a `mo.add` will
-    require strong types which match, RMO operators will accept nearly any shape
-    the user provides generally.
-
-    A core part of the design is having an RMO operator analogous to every MO
-    operator with the same semantics just with a relaxed verifier around IR.
-    For example we have `mo.add` and `rmo.mo.add`, both of which don't broadcast
-    but `rmo.mo.add` will accept nearly any shape.
-
-    Users can then build operators as compositions of existing RMO operators to
-    support whatever dynamic behavior they need, i.e. construct an rmo.bcast_add
-    out of the RMO operators analogous to MO.
+    Every MO op has an RMO analogue with the same semantics but a relaxed
+    verifier: `rmo.mo.add` does not broadcast, like `mo.add`, but accepts
+    nearly any shape. Dynamic ops such as a broadcasting add are built as
+    compositions of these analogues.
   }];
 
   let cppNamespace = "::M::RMO";
@@ -72,9 +50,7 @@ def RMODialect : Dialect {
 
   let extraClassDeclaration = [{
   private:
-    /// Register all dialect attributes.
     void registerAttributes();
-    /// Register all dialect ops.
     void registerOperations();
   }];
 }

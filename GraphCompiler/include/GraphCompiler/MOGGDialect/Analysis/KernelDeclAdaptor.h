@@ -4,12 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// MOGG kernel signature introspection.
-//
-// `KernelDeclAdaptor` wraps a `mogg.kernel.decl` op and decodes its stored
-// `FnTypeGeneratorType` signatures directly. The `IOSpec` enum and the
-// `is*` predicates / `kParameter*` constants used to drive decoding live
-// alongside it.
+// MOGG kernel signature introspection: `KernelDeclAdaptor` decodes the
+// `FnTypeGeneratorType` signatures stored on a `mogg.kernel.decl`.
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,9 +35,9 @@
 namespace M::MOGG {
 
 enum class IOSpec {
-  InputTensor,        // Input tensor, read-only
-  OutputTensor,       // Output tensor, write-only
-  MutableInputTensor, // Input tensor that can be modified
+  InputTensor,  // Read-only
+  OutputTensor, // Write-only
+  MutableInputTensor,
   FusedInputTensor,
   FusedOutputTensor,
   FusedComputeOutputTensor,
@@ -52,38 +48,25 @@ enum class IOSpec {
 //===----------------------------------------------------------------------===//
 // Tensor-argument trait contract (trait lane)
 //
-// The trait lane classifies a trait-bound tensor argument directly from the
-// *written* trait composition on its `!lit.trait<...>` type, independent of the
-// legacy `IOSpec` / `ManagedTensorSlice` struct-parameter decode. The two lanes
-// coexist; see `distillTensorArgContract`.
+// Classifies a trait-bound tensor argument from the trait composition written
+// on its `!lit.trait<...>` type, independently of the `IOSpec` decode.
 //===----------------------------------------------------------------------===//
 
-/// Role a tensor argument plays in the graph signature. `mut` is not stored;
-/// see `TensorArgContract::isMutable`.
-///
-/// `none` is the no-role flavor: a shape-function tensor argument carries no
-/// io-role at all (it reads only metadata, e.g. `.shape()`, and is always
-/// read-only). It is distinct from `input` -- an `input`-roled arg is an
-/// `execute` read operand, whereas `none` records the structural *absence* of a
-/// role. The distiller (`distillTensorArgContract` in shape-function mode)
-/// requires `none` and rejects every io-role marker; an `execute` argument
-/// conversely requires exactly one of `input`/`output`/`mutableInput`.
+/// Role a tensor argument plays in the graph signature. `none` is required for
+/// shape-function arguments, which read only metadata; an `execute` argument
+/// requires exactly one of the other roles.
 enum class TensorArgRole { input, output, mutableInput, none };
 
-/// Element-access form a tensor argument exposes -- the fusion access kind, or
-/// `none` for a plain dense argument. Used both as a single canonical form
-/// (e.g. for a fused arg, which carries exactly one) and as an index into the
-/// access/capability bitmasks of `TensorArgContract`.
+/// Element-access form a tensor argument exposes (`none` for a plain dense
+/// argument). Also indexes the bitmasks of `TensorArgContract`.
 enum class TensorArgAccess { none, load, store, transform };
 
-/// The deepest tensor-argument trait bound written on a shape-function tensor
-/// argument -- `Tensor` (shape only), `DenseTensor` (adds layout/alignment),
-/// or `TileTensorable` (adds host-side data access via `to_tile_tensor()`).
-/// Recorded only in the shape-fn lane; an execute-lane contract leaves this
-/// `unspecified` (see `distillTensorArgContract`).
+/// The deepest trait bound written on a shape-function tensor argument:
+/// `Tensor` (shape only), `DenseTensor` (adds layout/alignment), or
+/// `TileTensorable` (adds host-side data access). `unspecified` in the execute
+/// lane.
 enum class TensorArgBound : uint8_t { unspecified, tensor, dense, tile };
 
-/// Single-bit mask for one access form (`none` maps to the empty mask 0).
 inline unsigned bit(TensorArgAccess access) {
   switch (access) {
   case TensorArgAccess::none:
@@ -98,50 +81,32 @@ inline unsigned bit(TensorArgAccess access) {
   return 0;
 }
 
-/// The distilled tensor-argument contract for a trait-bound kernel argument.
-///
-/// The access model is a SET of forms, not a single one: a non-fused dense
-/// argument may carry several (e.g. both `load` and `store`, for an in-place
-/// read-modify-write). `accessMask` records which forms are present; the
-/// parallel `capabilityMask` records, per present form, whether the callable
-/// capability leaf (e.g. `Loadable`) is present rather than only the access
-/// marker (e.g. `LoadAccess`). A fused argument is constrained to exactly one
-/// present form (see `distillTensorArgContract`).
+/// The distilled contract for a trait-bound kernel argument. A non-fused dense
+/// argument may carry several access forms (e.g. `load` and `store` for
+/// read-modify-write); a fused argument exactly one.
 struct TensorArgContract {
   TensorArgRole role = TensorArgRole::input;
   bool fused = false;
-  /// Bitmask of present access forms (`bit(load) | bit(store) | ...`).
   unsigned accessMask = 0;
-  /// Bitmask of present capability leaves, a subset of `accessMask`. A bit set
-  /// here means the capability (e.g. `Loadable`) was required, not just the
-  /// marker (e.g. `LoadAccess`). Load-bearing for opaque-device targets, where
-  /// only the marker may be available host-side.
+  /// Subset of `accessMask` whose capability (e.g. `Loadable`) was required,
+  /// not just the marker (e.g. `LoadAccess`). Matters for opaque-device
+  /// targets, where only the marker may be available host-side.
   unsigned capabilityMask = 0;
-  /// The written bound, recorded only in the shape-fn lane (`unspecified` for
-  /// an execute-lane argument). See `TensorArgBound`.
   TensorArgBound bound = TensorArgBound::unspecified;
 
-  /// `mut` is derived, never stored. Only `output` / `mutableInput` are
-  /// mutable; both `input` and the no-role shape-function flavor (`none`) are
-  /// read-only.
   bool isMutable() const {
     return role == TensorArgRole::output || role == TensorArgRole::mutableInput;
   }
 
-  /// Whether the given access form is present in the set.
   bool hasAccess(TensorArgAccess access) const {
     return (accessMask & bit(access)) != 0;
   }
-  /// Whether the given access form's capability leaf is present.
   bool hasCapability(TensorArgAccess access) const {
     return (capabilityMask & bit(access)) != 0;
   }
-  /// Whether any access form is present.
   bool hasAnyAccess() const { return accessMask != 0; }
-  /// Number of present access forms.
   int accessCount() const { return llvm::popcount(accessMask); }
-  /// The sole present access form. Only valid when `accessCount() == 1` (a
-  /// fused arg guarantees this); asserts otherwise.
+  /// Requires `accessCount() == 1`, which a fused arg guarantees.
   TensorArgAccess soleAccess() const {
     assert(accessCount() == 1 && "soleAccess requires exactly one access form");
     for (TensorArgAccess a : {TensorArgAccess::load, TensorArgAccess::store,
@@ -158,28 +123,19 @@ struct TensorArgContract {
   bool operator!=(const TensorArgContract &o) const { return !(*this == o); }
 };
 
-/// Distill the written trait composition of a trait-bound tensor argument (the
-/// `getSymbols()` of its `!lit.trait<...>` type) into a `TensorArgContract`.
+/// Distills the written trait composition of a trait-bound tensor argument
+/// into a `TensorArgContract`.
 ///
-/// `writtenSymbols` are matched against the tensor-argument trait vocabulary
-/// defined in `extensibility.tensor_arg_traits`. Any symbol from another module
-/// (a foreign trait such as `Copyable`/`DevicePassable`), or any unrecognized
-/// leaf, is rejected via `emitError`. The input may be either the written
-/// composition or its ancestor-inclusive canonical form -- both distill
-/// identically, since the parent traits (`Tensor`, the `*Access` markers) are
-/// themselves in the allowlist and carry no role/access meaning. The universal
-/// `AnyType` ancestor (present in every trait's canonical closure) is also
-/// ignored. Returns failure (after invoking `emitError`) on any validation
-/// failure.
+/// `writtenSymbols` must come from `extensibility.tensor_arg_traits`; foreign
+/// traits (e.g. `Copyable`) and unrecognized leaves are rejected via
+/// `emitError`. The written composition and its ancestor-inclusive canonical
+/// form distill identically; `AnyType` is ignored.
 ///
-/// `isShapeFunc` selects the shape-function lane: the argument carries no
-/// io-role (distills to `TensorArgRole::none`) and may bind only the tiers
-/// `Tensor` / `DenseTensor` / `TileTensorable` -- shape functions execute on
-/// the host, so `TileTensorable` data access is safe. The deepest bound
-/// written is recorded in `TensorArgContract::bound`; io-role markers,
-/// `Fused`, and the fusion access traits are hard errors. When `isShapeFunc`
-/// is false (the `execute` lane) exactly one io-role is required, as before,
-/// and `bound` is left `unspecified`.
+/// With `isShapeFunc`, the argument distills to `TensorArgRole::none` and may
+/// bind only `Tensor` / `DenseTensor` / `TileTensorable` (shape functions run
+/// on the host, so data access is safe), recorded in `bound`. io-role markers,
+/// `Fused`, and the fusion access traits are errors. Otherwise exactly one
+/// io-role is required.
 ///
 /// TODO(GEX-4093): derive per-input data-dependence of shape functions from
 /// the written bound (a bare `Tensor` bound cannot read element values, so
@@ -189,48 +145,28 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     llvm::function_ref<void(const llvm::Twine &)> emitError,
     bool isShapeFunc = false);
 
-/// If `argType` is a trait-bound tensor argument -- a `!lit.ref` over a generic
-/// type parameter whose bound is a `!lit.trait<...>` -- return that `TraitType`
-/// (carrying the written trait composition). Otherwise (a `ManagedTensorSlice`
-/// struct, a context type, a scalar, a non-trait-bound param, ...) return null.
+/// Returns the `!lit.trait<...>` bound if `argType` is a `!lit.ref` over a
+/// trait-bound generic type parameter, else null.
 KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType);
 
 llvm::StringRef toString(TensorArgRole role);
 llvm::StringRef toString(TensorArgAccess access);
 llvm::StringRef toString(TensorArgBound bound);
 
-/// Encode a contract as the per-argument `DictionaryAttr`
-/// `{role, fused, access, capabilities}` (plus `bound` when it is not
-/// `unspecified`) baked into `KernelFunctionAttr.tensor_arg_contracts`.
-/// `access` and `capabilities` are the integer bitmasks (sets of access
-/// forms) of the contract. `bound` is omitted entirely for an unspecified
-/// (execute-lane) contract, so every existing execute-lane encoding stays
-/// byte-identical.
+/// Encodes the per-argument dict baked into
+/// `KernelFunctionAttr.tensor_arg_contracts`. `bound` is omitted when
+/// `unspecified`.
 mlir::DictionaryAttr tensorArgContractToDict(mlir::MLIRContext *ctx,
                                              const TensorArgContract &contract);
 
-/// Build the `#mogg.tensor_arg<{role, fused, access, capabilities}>`
-/// attribute (`MOGG::TensorArgContractAttr`) carried by
-/// `mogg.tensor_arg.__init__` from a distilled contract. `access` and
-/// `capabilities` are bit-enum sets. The op-borne attribute is the single
-/// source of truth in the trait lane (D1); this is the bridge from the C++
-/// contract struct to the IR attribute. `bound` prints only when not
-/// `unspecified` (see `MOGG_TensorArgContractAttr`).
+/// Builds the attribute carried by `mogg.tensor_arg.__init__`.
 MOGG::TensorArgContractAttr
 tensorArgContractToAttr(mlir::MLIRContext *ctx,
                         const TensorArgContract &contract);
 
-/// Decode a per-argument entry of `KernelFunctionAttr.tensor_arg_contracts`
-/// back into a `TensorArgContract` -- the inverse of `tensorArgContractToDict`.
-///
-/// The baked array uses a `UnitAttr` placeholder for a non-trait argument; for
-/// that placeholder (or any null/unexpected attr) this returns `std::nullopt`
-/// (the "no contract" sentinel). A `DictionaryAttr` with the expected
-/// `{role, fused, access, capabilities}` keys decodes to the matching
-/// contract; the `role` string mapping mirrors `toString` exactly, and the
-/// `access`/`capabilities` integer bitmasks round-trip directly. `bound`
-/// defaults to `unspecified` when the key is absent (every execute-lane
-/// encoding).
+/// Inverse of `tensorArgContractToDict`. Returns `std::nullopt` for the
+/// `UnitAttr` non-trait placeholder or any unexpected attr. A missing `bound`
+/// decodes as `unspecified`.
 std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr);
 
 //===----------------------------------------------------------------------===//
@@ -269,12 +205,9 @@ struct KernelDeclTensorAdaptor {
   bool mut = false;
   bool fused = false;
   IOSpec ioSpec = {};
-  /// Present only for a trait-lane argument: its distilled contract. The legacy
-  /// `ManagedTensorSlice` lane leaves this empty and is unaffected. Carried so
-  /// downstream lowering can route a trait arg to `mogg.tensor_arg.__init__`
-  /// instead of `mogg.tensor.__init__` (D1/D5); the `ioSpec`/`mut`/`fused`
-  /// fields above mirror the equivalent legacy values so the existing
-  /// predicates behave identically for both lanes.
+  /// Set only for a trait-bound argument, which lowers to
+  /// `mogg.tensor_arg.__init__`. The fields above hold equivalent values so
+  /// the predicates behave the same for both kinds.
   std::optional<TensorArgContract> traitContract;
   KernelDeclTensorAdaptor() = default;
   explicit KernelDeclTensorAdaptor(IOSpec ioSpec)
@@ -378,13 +311,9 @@ struct KernelDeclOperandAdaptor {
   }
 
   bool isFusedTensorType() const {
-    // Trait lane (Phase 5): fusion participation is read straight off the
-    // distilled contract -- the single source of truth -- and never re-encoded
-    // into a legacy fused `IOSpec`. The prologue/epilogue split (input vs
-    // output `BindLambda`) still falls out of operand position in
-    // `lowerToNormalKernel`, and the access form (load/store/transform) is
-    // resolved later at emit; the IR only needs to know *whether* the arg is
-    // fused here.
+    // The contract is the source of truth for trait-bound args. Prologue vs
+    // epilogue follows from operand position, and the access form is resolved
+    // at emit.
     if (std::optional<TensorArgContract> contract = getTraitContract())
       return contract->fused;
     if (const auto *t = std::get_if<KernelDeclTensorAdaptor>(&underlyingType))
@@ -395,9 +324,7 @@ struct KernelDeclOperandAdaptor {
     return false;
   }
 
-  /// The distilled trait contract for a trait-lane tensor argument, or nullopt
-  /// for a legacy `ManagedTensorSlice` argument (or any non-tensor argument).
-  /// Used by lowering to route trait args to `mogg.tensor_arg.__init__`.
+  /// nullopt for a `ManagedTensorSlice` or non-tensor argument.
   std::optional<TensorArgContract> getTraitContract() const {
     if (const auto *t = std::get_if<KernelDeclTensorAdaptor>(&underlyingType))
       return t->traitContract;
@@ -435,11 +362,9 @@ struct KernelDeclOperandAdaptor {
         underlyingType);
   }
 
-  /// Launch arguments are the trailing "where to run" argument of a kernel
-  /// function: a DeviceContext / DeviceContextArray for `execute` / `shape`,
-  /// or a DeviceGraphBuilder for `build_graph`. They share the
-  /// "must-appear-last" placement rule and are skipped together when
-  /// aligning input arguments across function variants.
+  /// The trailing "where to run" argument (a DeviceContext[Array], or a
+  /// DeviceGraphBuilder for `build_graph`). Must appear last and is skipped
+  /// when aligning inputs across function variants.
   bool isLaunchArgument() const { return isContextType() || isBuilderType(); }
 
   bool isUnsupportedType() const {
@@ -450,10 +375,9 @@ struct KernelDeclOperandAdaptor {
     const auto *o = std::get_if<KernelDeclOpaqueAdaptor>(&underlyingType);
     if (!o)
       return false;
-    // Strict equality. The stored typeName is produced by
-    // KernelDeclAdaptor's buildOpaqueSymbol in the dotted-path form
-    // ("root[.intermediate...]::leaf"). Callers must pass a name in the same
-    // format; see e.g. kMojoInternalDpsIndexListTypeQualifiedName.
+    // Strict equality: `name` must use buildOpaqueSymbol's
+    // "root[.intermediate...]::leaf" form (e.g.
+    // kMojoInternalDpsIndexListTypeQualifiedName).
     return o->typeName.strref() == name;
   }
 
@@ -470,32 +394,22 @@ struct KernelDeclOperandAdaptor {
   }
 };
 
-/// Decoded view of one function (execute / shape / elementwise) built
-/// directly from its FnTypeGeneratorType — no FnOp body or annotation
-/// attributes required.
-///
-/// `attr` is the underlying `MOGG_KernelFunctionAttr`. Consumers read
-/// `signature`, fn-level `params`, per-arg `arg_params`, and per-result
-/// `result_params` through `attr.getSignature()`, `attr.getParams()`,
-/// `attr.getArgParams()`, `attr.getResultParams()`. `attr` is null for
-/// synthesized adaptors (see `synthesizeExecuteFromElementwise`); callers
-/// that may consume a synthesized adaptor must null-check.
+/// Decoded view of one function (execute / shape / elementwise), built from
+/// its FnTypeGeneratorType alone. `attr` is null for synthesized adaptors
+/// (see `synthesizeExecuteFromElementwise`), so callers that may see one must
+/// null-check.
 struct KernelDeclFunctionAdaptor {
   KernelFunctionAttr attr;
   llvm::SmallVector<KernelDeclOperandAdaptor> inputArguments;
   llvm::SmallVector<KernelDeclOperandAdaptor> outputArguments;
   std::optional<KernelDeclOperandAdaptor> outputResult;
-  /// Fully-resolved Mojo symbol name for this function
-  /// (e.g. `max.kernels.AddOp.execute`). Null for synthesized adaptors.
+  /// e.g. `max.kernels.AddOp.execute`. Null for synthesized adaptors.
   mlir::StringAttr fullyResolvedName;
 
-  /// Build a function adaptor from a stored LIT signature. `tensorArgContracts`
-  /// is the import-baked `KernelFunctionAttr.tensor_arg_contracts` array (in
-  /// signature-arg order) and is the single source of truth for the trait lane
-  /// (Option A / D1/D7); pass it whenever it is available (the attr-bearing
-  /// ctors do). When omitted/empty -- primitives and synthesized adaptors,
-  /// which carry no trait args -- classification re-distills the written
-  /// composition as a behavior-preserving fallback.
+  /// `tensorArgContracts` is the import-baked
+  /// `KernelFunctionAttr.tensor_arg_contracts`; pass it when available. When
+  /// empty (primitives, synthesized adaptors), the written composition is
+  /// re-distilled.
   explicit KernelDeclFunctionAdaptor(KGEN::LIT::FnTypeGeneratorType sig,
                                      mlir::ArrayAttr tensorArgContracts = {});
 
@@ -527,23 +441,18 @@ private:
   KernelDeclFunctionAdaptor() = default;
 };
 
-/// Top-level adaptor for a mogg.kernel.decl op. Decodes execute, shape,
-/// elementwise, tile_elementwise, update_view, and build_graph signatures
-/// directly from the stored LIT types without relying on MOGG pre-elaboration
-/// annotation attributes.
+/// Decodes every function signature of a mogg.kernel.decl from its stored LIT
+/// types.
 struct KernelDeclAdaptor {
   mlir::StringAttr registeredOpName;
-  /// Fully-resolved Mojo name of the kernel struct
-  /// (e.g. `max.kernels.AddOp`). Built from `KernelDeclOp::getSymName()`.
+  /// e.g. `max.kernels.AddOp`.
   mlir::StringAttr fullyResolvedName;
   std::optional<KernelDeclFunctionAdaptor> executeFunction;
   std::optional<KernelDeclFunctionAdaptor> elementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> tileElementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> updateViewFunction;
   std::optional<KernelDeclFunctionAdaptor> buildGraphFunction;
-  /// Struct-level ParamDeclAttrs shared by all functions of this kernel
-  /// (e.g. `dtype`, `target`). Per-function `ParamDeclAttr`s are accessible
-  /// via each function variant's owning `MOGG_KernelFunctionAttr`.
+  /// Struct-level ParamDeclAttrs shared by all functions (e.g. `dtype`).
   mlir::ArrayAttr structParams;
 
   explicit KernelDeclAdaptor(KernelDeclOp decl);
@@ -552,18 +461,14 @@ struct KernelDeclAdaptor {
   bool isTileElementwise() const { return tileElementwiseFunction.has_value(); }
   bool isViewKernel() const { return updateViewFunction.has_value(); }
 
-  /// Return the function adaptor for a given MOGG function label
-  /// (e.g. `kMoggExecuteFunctionLabel`, `kMoggShapeFunctionLabel`,
-  ///  `kMoggUpdateViewFunctionLabel`, `kMoggElementwiseFunctionLabel`,
-  ///  `kMoggBuildGraphFunctionLabel`).
-  /// Returns nullptr if the label is not recognised or the function is absent.
+  /// `label` is e.g. `kMoggExecuteFunctionLabel`. Returns nullptr if the label
+  /// is unrecognised or the function is absent.
   const KernelDeclFunctionAdaptor *
   getFunctionByLabel(llvm::StringRef label) const;
 };
 
-/// Adaptor for a mogg.primitive.decl op — a standalone (non-struct) primitive
-/// Mojo function decorated with @register_internal (e.g. the `foreach`
-/// driver or the view-materialisation kernel).
+/// Adaptor for a mogg.primitive.decl: a standalone @register_internal Mojo
+/// function (e.g. the `foreach` driver).
 struct KernelFunctionDeclAdaptor {
   mlir::StringAttr registration;
   KernelDeclFunctionAdaptor function;
@@ -575,10 +480,7 @@ struct KernelFunctionDeclAdaptor {
 // Printers
 //===----------------------------------------------------------------------===//
 
-// KernelDeclAdaptor printers.
-
-/// Print a KernelDeclOperandVariant.  Uses if-constexpr to keep ADL confined
-/// to M::MOGG and avoid accidental dispatch into other namespaces.
+/// Uses if-constexpr to keep ADL confined to M::MOGG.
 template <typename StreamType>
 StreamType &operator<<(StreamType &os, const KernelDeclOperandVariant &var) {
   std::visit(

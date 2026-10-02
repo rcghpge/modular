@@ -40,8 +40,7 @@ static std::optional<AttrType> unpack(DictionaryAttr attr, StringRef name) {
   return result;
 }
 
-/// Provide some high-level queries for various target features based on the
-/// given `TargetInfoAttr`.
+/// High-level target feature queries over a `TargetInfoAttr`.
 class TargetQueries {
 public:
   TargetQueries(TargetInfoAttr target) : targetInfo{target} {
@@ -308,8 +307,7 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
   int64_t microKernelWidth = microKernelShape[1];
   int64_t microKernelFSize = microKernelWidth * simdSize;
 
-  // Packed layout is always FRSCf (2D) or FQRSCf (3D), regardless of the
-  // input filter layout. The packed shape positions are:
+  // Packed layout is always FRSCf (2D) or FQRSCf (3D):
   //   [0]          = F_packed = numGroups * ceil(fPerGroup / microKernelFSize)
   //   [1..rank-1]  = spatial dims followed by C (i.e., R,S,C or Q,R,S,C)
   //   [rank]       = f = microKernelFSize
@@ -318,9 +316,7 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
   packedShape[filterRank] = microKernelFSize;
 
   if (isFCRS) {
-    // FCRS [F,C,R,S]: packed positions 1..rank-1 should be R,S,C.
-    // FCQRS [F,C,Q,R,S]: packed positions 1..rank-1 should be Q,R,S,C.
-    // Pattern: skip dim[0] (F), put dim[2..rank-1] first, then dim[1] (C).
+    // FCRS -> R,S,C and FCQRS -> Q,R,S,C: dims 2..rank-1, then dim 1 (C).
     int64_t pos = 1;
     for (int64_t i = 2; i < filterRank; ++i)
       packedShape[pos++] = filterType.getIntDim(i);
@@ -331,7 +327,6 @@ M::MO::materializePackConvFilterShape(InvokeShapeFuncOp invoke,
       packedShape[i + 1] = filterType.getIntDim(i);
   }
 
-  // Unable to infer a static shape.
   if (llvm::any_of(packedShape, [](int64_t x) { return x < 0; }))
     return {};
 
@@ -386,7 +381,6 @@ M::MO::materializePackConvTransposeFilterShape(InvokeShapeFuncOp invoke,
   packedShape[0] = numGroups * ceilDiv(fPerGroup, microKernelFSize);
   packedShape[filterRank] = microKernelFSize;
 
-  // Input channel
   packedShape[filterRank - 1] = filterDims[filterRank - 1];
 
   for (int64_t i : llvm::seq<int64_t>(filterRank - 2))
@@ -510,19 +504,8 @@ static int64_t getPackDataSize(const TargetQueries &target, Type type) {
 
   int64_t sizeOfType = type.getIntOrFloatBitWidth() / CHAR_BIT;
 
-  // TODO: How to implement this case?
-  // @__parameter
-  // if is_debug_build():
-  //     # Only use the large cache size for release build as debug build may
-  //     # contain additional data could cause stack overflow.
-  //     # Restrict it to 4K.
-  //     return 4 * KB // sizeof[type]()
-  //
-  // This is not quite right, as it is whether this source file is compiled
-  // in debug mode, not whether the Mojo code is compiled in debug mode.
-  // #ifndef NDEBUG
-  //   return (4 * KB) / sizeOfType;
-  // #endif
+  // TODO: The Mojo kernel caps this at 4KB in debug builds. Mirroring that
+  // needs the Mojo build mode; NDEBUG reflects this file's build instead.
 
   if (target.osIsMacos())
     return (64 * KB) / sizeOfType;
@@ -592,8 +575,7 @@ M::MO::materializePackMatmulShapeFunc(InvokeShapeFuncOp invoke,
   ArrayRef<int64_t> aShape = attrs.aShape;
   ArrayRef<int64_t> bShape = attrs.bShape;
 
-  // Unable to materialize the packing logic for a dynamic shape, as we cannot
-  // return to the runtime size in the materialize shape calculation.
+  // Shape materialization cannot return a runtime size.
   if (ShapedType::isDynamicShape(bShape))
     return {};
 

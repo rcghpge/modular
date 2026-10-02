@@ -46,22 +46,18 @@ static constexpr llvm::StringLiteral kAccessKey = "access";
 static constexpr llvm::StringLiteral kCapabilitiesKey = "capabilities";
 static constexpr llvm::StringLiteral kBoundKey = "bound";
 
-/// Check whether a symbol has the given root and leaf references, ignoring
-/// any intermediate nested references. This mirrors MOGG::isXType
-/// and is appropriate when the package path depth may vary (e.g.
-/// DeviceContext lives under max::gpu::host but can also be re-exported more
-/// shallowly).
+/// Check whether a symbol has the given root and leaf, ignoring intermediate
+/// refs, for types whose package depth varies (e.g. DeviceContext under
+/// max::gpu::host may be re-exported more shallowly). Mirrors MOGG::isXType.
 static bool symbolMatchesRootAndLeaf(mlir::SymbolRefAttr symbol,
                                      llvm::StringLiteral root,
                                      llvm::StringLiteral leaf) {
   return symbol.getRootReference() == root && symbol.getLeafReference() == leaf;
 }
 
-/// Build a "root.intermediate...leaf" opaque type string from a symbol ref.
-/// Every segment is joined by '.', matching Mojo's own qualified-name syntax
-/// so that consumers (e.g. mlirOpaqueTypeToMojoType) can use the string
-/// directly as a Mojo identifier with no further rewriting. The leaf segment
-/// can be recovered by splitting on the last '.'.
+/// Build a "root.intermediate...leaf" opaque type string from a symbol ref,
+/// '.'-joined like a Mojo qualified name, so consumers (e.g.
+/// mlirOpaqueTypeToMojoType) use it directly.
 static mlir::StringAttr buildOpaqueSymbol(mlir::MLIRContext *ctx,
                                           mlir::SymbolRefAttr sym) {
   std::string result = sym.getRootReference().strref().str();
@@ -130,11 +126,9 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
 
   int64_t input = kIOSpecIOUnknown;
 
-  // Primary path: in the primary module (no dep elaboration), the IO param is
-  // a SugarAttr(MemberAlias) whose member name directly encodes the IO variant.
-  // getCanonicalAttr on a MemberAlias returns the canonical of the expanded
-  // form (a ParamOperatorAttr like IO(3)), not a LITStructAttr, so we must
-  // check the raw attr before canonicalisation.
+  // In the primary module (no dep elaboration) the IO param is a
+  // SugarAttr(MemberAlias) whose member name encodes the IO variant. Check it
+  // before canonicalisation, which yields a ParamOperatorAttr like IO(3).
   if (auto ioSugar = mlir::dyn_cast<KGEN::SugarAttr>(rawInputAttr)) {
     if (ioSugar.getKind() == KGEN::SugarKind::MemberAlias) {
       llvm::StringRef name = ioSugar.getMemberName().strref();
@@ -197,19 +191,13 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
 }
 
 /// If `argType` is a trait-bound tensor argument, re-derive its
-/// `TensorArgContract` from the written trait composition (the same path
-/// `distillTensorArgContract` exercises at import; errors are swallowed here
-/// because import already validated and reported any malformed composition).
-/// Returns nullopt for a non-trait arg or an unresolvable composition.
+/// `TensorArgContract` from the written trait composition, as
+/// `distillTensorArgContract` does at import (errors are swallowed: import
+/// already reported them). Returns nullopt for a non-trait arg or an
+/// unresolvable composition.
 ///
-/// This is the *fallback* contract source, used only for function-like decls
-/// that carry no import-baked `tensor_arg_contracts` array -- primitives
-/// (`distillTraitArgs == false` at import) and synthesized adaptors. For those
-/// there is no baked dict to read, so re-distilling here is the single source
-/// of truth (no drift hazard). When a baked array *is* present (every
-/// `KernelDeclOp` execute / update_view / build_graph function), Option A makes
-/// the baked dict authoritative and this fallback is not taken -- see
-/// `resolveTraitContract`.
+/// Fallback for decls without an import-baked `tensor_arg_contracts` array
+/// (primitives, synthesized adaptors); see `resolveTraitContract`.
 static std::optional<TensorArgContract>
 recoverTraitArgContract(mlir::Type argType) {
   KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
@@ -222,13 +210,11 @@ recoverTraitArgContract(mlir::Type argType) {
   return *contract;
 }
 
-/// Build a `KernelDeclTensorAdaptor` carrying the role/mut implied by a trait
-/// arg's contract, so the downstream predicates
-/// (isTensorType/isMutableTensorType/isDpsOutput) behave the same as for the
-/// equivalent legacy `IOSpec`. The mapping mirrors `getParams` /
-/// `isMutableIOSpec`: `output -> OutputTensor`, `mutable_input ->
-/// MutableInputTensor`, `input -> InputTensor`. Fusion is not modeled in the
-/// adaptor for trait args in this slice (dense-only); `fused` stays false.
+/// Build a `KernelDeclTensorAdaptor` with the role/mut implied by a trait arg's
+/// contract, so isTensorType/isMutableTensorType/isDpsOutput behave as for the
+/// equivalent `IOSpec`: `output -> OutputTensor`, `mutable_input ->
+/// MutableInputTensor`, `input -> InputTensor`. Fusion isn't modeled
+/// (dense-only); `fused` stays false.
 static KernelDeclTensorAdaptor
 traitContractToTensorAdaptor(const TensorArgContract &contract) {
   KernelDeclTensorAdaptor adaptor;
@@ -241,31 +227,22 @@ traitContractToTensorAdaptor(const TensorArgContract &contract) {
     break;
   case TensorArgRole::input:
   case TensorArgRole::none:
-    // The no-role shape-function flavor is a read-only operand, so it maps to
-    // the same `InputTensor` IOSpec as a plain `input` arg for the downstream
-    // mut/DPS predicates. The full contract (carrying `role == none`) is
-    // attached below so lowering can still distinguish it.
+    // The no-role shape-function flavor is read-only, so it maps to
+    // `InputTensor`; the contract attached below keeps `role == none`.
     adaptor = KernelDeclTensorAdaptor{IOSpec::InputTensor};
     break;
   }
-  // Carry the full distilled contract so lowering can route this arg to
-  // `mogg.tensor_arg.__init__` (the trait lane), distinguishing it from a
-  // legacy `ManagedTensorSlice` arg that produced the same `ioSpec`.
+  // Lets lowering route this arg to `mogg.tensor_arg.__init__`, unlike a
+  // `ManagedTensorSlice` arg with the same `ioSpec`.
   adaptor.traitContract = contract;
   return adaptor;
 }
 
-/// Resolve a trait-bound tensor argument's contract (Option A / D1/D7).
-///
-/// The import-baked `KernelFunctionAttr.tensor_arg_contracts` dict is the
-/// single source of truth: when a baked array is available (`hasBakedArray`),
-/// decode the per-arg entry via `dictToTensorArgContract` -- a `UnitAttr`
-/// placeholder (non-trait arg) decodes to nullopt, a dict to its contract. When
-/// no array is baked (primitives / synthesized adaptors, which never carry
-/// trait args in the current scope), fall back to re-distilling the written
-/// composition so behavior is unchanged. This is the only caller that decides
-/// between the baked dict and the re-distill fallback; the two are never mixed
-/// for a single function, so there is no dual-distill drift hazard.
+/// Resolve a trait-bound tensor argument's contract. The import-baked
+/// `KernelFunctionAttr.tensor_arg_contracts` dict is authoritative when present
+/// (`hasBakedArray`): a `UnitAttr` placeholder decodes to nullopt, a dict to
+/// its contract. Without one (primitives / synthesized adaptors), re-distill
+/// the written composition. The two are never mixed for one function.
 static std::optional<TensorArgContract>
 resolveTraitContract(mlir::Type argType, mlir::Attribute bakedEntry,
                      bool hasBakedArray) {
@@ -277,10 +254,8 @@ resolveTraitContract(mlir::Type argType, mlir::Attribute bakedEntry,
 /// Classify a single argument type into a KernelDeclOperandVariant by
 /// introspecting the LIT StructType symbol and parameter values.
 ///
-/// `bakedEntry` is this argument's import-baked `tensor_arg_contracts` entry
-/// (or null), and `hasBakedArray` says whether the owning function carried a
-/// baked array at all; together they drive `resolveTraitContract` for the trait
-/// lane.
+/// `bakedEntry` (this argument's baked entry, or null) and `hasBakedArray`
+/// feed `resolveTraitContract`.
 static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
                                                 mlir::Type argType,
                                                 bool promoteSIMDToFusedTensor,
@@ -288,12 +263,9 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
                                                 bool hasBakedArray) {
   KGEN::LIT::StructType structType = getAsStructType(argType);
   if (!structType) {
-    // Trait lane: a trait-bound tensor argument is non-struct
-    // (getAsStructType null). Classify it as a tensor adaptor carrying the
-    // role/mut from its contract (the import-baked dict, Option A), so it
-    // participates in operand mapping and the DPS-output split like the
-    // equivalent legacy IOSpec arg. Non-trait non-struct args remain
-    // unsupported, exactly as before.
+    // A trait-bound tensor argument is non-struct; classify it as a tensor
+    // adaptor with its contract's role/mut so it joins operand mapping and the
+    // DPS-output split. Other non-struct args are unsupported.
     if (std::optional<TensorArgContract> contract =
             resolveTraitContract(argType, bakedEntry, hasBakedArray))
       return traitContractToTensorAdaptor(*contract);
@@ -324,9 +296,8 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
     return KernelDeclVariadicTensorAdaptor{IOSpec::FusedOutputTensor};
 
   // --- Scalar ---
-  // Use root+leaf matching because SIMD may be re-exported at different depths
-  // (e.g. @std::@builtin::@SIMD vs @std::@SIMD); mirrors the old path's
-  // "std::SIMD" string comparison.
+  // SIMD may be re-exported at different depths (e.g. @std::@builtin::@SIMD vs
+  // @std::@SIMD).
   if (symbolMatchesRootAndLeaf(sym, kPackageStd, kLeafSIMD)) {
     if (promoteSIMDToFusedTensor)
       return KernelDeclTensorAdaptor{IOSpec::FusedInputTensor};
@@ -357,10 +328,9 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
 /// Count the number of leading DPS output arguments (output-IOSpec tensors
 /// that come before any input or non-tensor argument).
 ///
-/// `tensorArgContracts` is the owning function's import-baked
-/// `tensor_arg_contracts` array (in signature-arg order), or null/empty when
-/// the function carried none (primitives / synthesized); it drives the trait
-/// lane's role via `resolveTraitContract`.
+/// `tensorArgContracts` is the function's baked array (signature-arg order),
+/// or null/empty if none; it drives trait args' role via
+/// `resolveTraitContract`.
 static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig,
                               mlir::ArrayAttr tensorArgContracts) {
   bool hasBakedArray = tensorArgContracts && !tensorArgContracts.empty();
@@ -371,11 +341,9 @@ static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig,
     mlir::Type argType = sig.getArgument(i);
     KGEN::LIT::StructType structType = getAsStructType(argType);
     if (!structType) {
-      // Trait lane: a trait-bound tensor argument is non-struct. Recover its
-      // role from the contract (the import-baked dict, Option A); an `output`
-      // role continues the leading-output count, anything else
-      // (input/mutable_input) or a non-trait non-struct arg stops it --
-      // preserving the legacy "break at the first non-output" semantics.
+      // A trait-bound tensor arg is non-struct: an `output` contract role
+      // continues the count; any other role, or a non-trait non-struct arg,
+      // stops it.
       mlir::Attribute bakedEntry =
           (hasBakedArray && i < tensorArgContracts.size())
               ? tensorArgContracts[i]
@@ -399,11 +367,9 @@ static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig,
 // Trait-lane vocabulary classification
 //===----------------------------------------------------------------------===//
 
-// How a vocabulary trait participates in the distilled contract. The
-// distiller's validation logic is written per category, never per trait, so
-// adding a trait to an existing category is a single `kTensorArgVocab` row
-// with no logic changes; only a genuinely new *kind* of trait grows this enum
-// (and with it the distiller's per-category handling).
+// How a vocabulary trait participates in the distilled contract. Validation
+// is per category, never per trait, so adding a trait to an existing category
+// is one `kTensorArgVocab` row; only a new kind of trait grows this enum.
 enum class TraitCategory {
   /// An io-role marker (`Input` / `Output` / `MutableInput`); exactly one is
   /// required. The row's `role` payload names the role it contributes.
@@ -422,8 +388,7 @@ enum class TraitCategory {
   /// An access-form callable capability (`Loadable` / `Storable` /
   /// `Transformable`). The row's `access` payload names the form.
   accessCapability,
-  /// Reserved for the deferred tile-transform fusion traits (Phase 8); always
-  /// rejected until then.
+  /// Reserved for the deferred tile-transform fusion traits; always rejected.
   deferred,
 };
 
@@ -439,12 +404,9 @@ struct VocabEntry {
   TensorArgAccess access = TensorArgAccess::none;
 
 private:
-  // Deliberately not constexpr. `kTensorArgVocab` is constexpr, so its rows
-  // are built in constant evaluation, where reaching a call to a
-  // non-constexpr function is a compile error that names both the function
-  // (the violated invariant) and the offending row. Unreachable at runtime:
-  // only the constructors call these, and every VocabEntry is a
-  // `kTensorArgVocab` row.
+  // Deliberately not constexpr: reaching it while building the constexpr
+  // `kTensorArgVocab` rows is a compile error naming the violated invariant
+  // and the offending row. Unreachable at runtime.
   static void payloadCategoryNeedsAPayload() {
     llvm_unreachable("vocab row invariants are compile-time only");
   }
@@ -480,16 +442,12 @@ public:
   }
 };
 
-// The tensor-argument trait vocabulary defined in
-// `extensibility::tensor_arg_traits`. Keep in sync with tensor_arg_traits.mojo
-// -- except `TileTransformAccess` / `TileTransformable`, reserved ahead of
-// time for the deferred tile-transform fusion traits (Phase 8), which do not
-// exist in the shipped module yet; `classifyVocabTrait` can never match them
-// against a real trait symbol until then, so the `deferred` rejection in the
-// distiller is unreachable in the interim.
-// The shape-fn lane below looks a row up by leaf name (`isPresentLeaf`).
-// These constants name the leaf once. This avoids retyping the string at
-// each call site, where a typo could drift from the row's spelling.
+// The tensor-argument trait vocabulary of `extensibility::tensor_arg_traits`.
+// Keep in sync with tensor_arg_traits.mojo, except `TileTransformAccess` /
+// `TileTransformable`, reserved for the deferred tile-transform fusion traits
+// and not yet in the module (so the `deferred` rejection is unreachable).
+// Leaf constants for the shape-fn lane's `isPresentLeaf` lookups, so call
+// sites can't drift from the row spelling.
 constexpr StringLiteral kDenseTensorLeaf = "DenseTensor";
 constexpr StringLiteral kTileTensorableLeaf = "TileTensorable";
 
@@ -577,12 +535,9 @@ static_assert(accessFormsArePaired(),
               "unpaired access marker/capability row in kTensorArgVocab");
 
 // Classify a trait symbol as a tensor-argument vocabulary trait, returning its
-// vocabulary row, or nullptr if it is foreign (not from
-// `extensibility::tensor_arg_traits`) or its leaf is unrecognized. The module
-// is pinned -- root contains "extensibility" and some qualifier contains
-// "tensor_arg_traits" -- so a same-named trait from another module is
-// rejected. The leaf is matched exactly so that, e.g., `Input` does not
-// spuriously match `MutableInput`.
+// row, or nullptr if it is foreign or unrecognized. The module is pinned (root
+// contains "extensibility", a qualifier "tensor_arg_traits") and the leaf
+// matched exactly, so `Input` never matches `MutableInput`.
 static const VocabEntry *classifyVocabTrait(TraitSymbolAttr traitSymbol) {
   mlir::SymbolRefAttr sym = traitSymbol.getSymbol();
   if (!sym.getRootReference().strref().contains("extensibility"))
@@ -613,12 +568,9 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
   mlir::MLIRContext *ctx = sig.getContext();
   size_t numArgs = sig.getNumArguments();
 
-  // Trait lane (Option A / D1/D7): the import-baked `tensor_arg_contracts`
-  // array (signature-arg order) is the single source of truth. `bakedEntryFor`
-  // returns this arg's per-arg entry (or null); `hasBakedArray` says whether
-  // the function carried a baked array at all. Together they drive
-  // `resolveTraitContract` (via classifyArgType / countDPSOutputs), so the
-  // contract is read off the bake rather than re-distilled here.
+  // The import-baked `tensor_arg_contracts` array (signature-arg order) is
+  // authoritative; `bakedEntryFor` and `hasBakedArray` feed
+  // `resolveTraitContract` via classifyArgType / countDPSOutputs.
   bool hasBakedArray = tensorArgContracts && !tensorArgContracts.empty();
   auto bakedEntryFor = [&](size_t i) -> mlir::Attribute {
     if (hasBakedArray && i < tensorArgContracts.size())
@@ -675,9 +627,8 @@ KernelDeclFunctionAdaptor::KernelDeclFunctionAdaptor(
     mlir::Type resultType = sig.getResultType();
     if (!KGEN::sugarIsa<KGEN::NoneType>(resultType)) {
       KernelDeclOperandAdaptor op;
-      // A value result is not a signature argument, so the baked array (which
-      // spans `fn.getArgumentTypes()` only) does not cover it; classify it
-      // through the re-distill fallback, exactly as before Option A.
+      // A value result isn't a signature argument, so the baked array doesn't
+      // cover it; use the re-distill fallback.
       op.underlyingType =
           classifyArgType(ctx, resultType, /*promoteSIMD=*/false,
                           /*bakedEntry=*/mlir::Attribute(),
@@ -705,10 +656,8 @@ KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
     KGEN::LIT::FnTypeGeneratorType sig) {
   mlir::MLIRContext *ctx = sig.getContext();
   KernelDeclFunctionAdaptor result;
-  // Synthesised adaptor: wrap the synthetic signature in a minimal
-  // KernelFunctionAttr so `attr.getSignature()` works at call sites.
-  // The cached params / arg_params / result_params are intentionally null
-  // (no real fn-level decls or slot mappings to project).
+  // Wrap the synthetic signature so `attr.getSignature()` works; params /
+  // arg_params / result_params stay null.
   result.attr = KernelFunctionAttr::get(ctx, sig, /*params=*/{},
                                         /*arg_params=*/{},
                                         /*result_params=*/{},
@@ -740,10 +689,8 @@ KernelDeclFunctionAdaptor::synthesizeExecuteFromElementwise(
     KernelDeclOperandAdaptor op;
     op.sourceDescriptor = KernelDeclOperandAdaptor::SourceDescriptor{
         sig.getArgName(i), i, /*isByRefResult=*/false};
-    // The synthetic elementwise->execute signature carries no baked
-    // `tensor_arg_contracts` (its args are SIMD-promoted-to-fused tensors and a
-    // synthesized fused output, none trait-bound), so classify through the
-    // re-distill fallback.
+    // The synthetic elementwise->execute signature has no trait-bound args and
+    // no baked contracts; use the re-distill fallback.
     op.underlyingType =
         classifyArgType(ctx, argType, /*promoteSIMDToFusedTensor=*/true,
                         /*bakedEntry=*/mlir::Attribute(),
@@ -770,9 +717,8 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
   registeredOpName = mlir::StringAttr::get(ctx, decl.getRegistration());
   fullyResolvedName = decl.getSymNameAttr();
 
-  // Build a function adaptor from an optional `MOGG_KernelFunctionAttr`.
-  // The adaptor stores the attr directly; consumers read its cached
-  // fn-level params and slot-name mappings through `f.attr.*`.
+  // Consumers read cached fn-level params and slot-name mappings through
+  // `f.attr.*`.
   auto buildFn =
       [&](std::optional<KernelFunctionAttr> fnAttr,
           StringRef methodName) -> std::optional<KernelDeclFunctionAdaptor> {
@@ -939,15 +885,11 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
       present[entry - kTensorArgVocab] = true;
       continue;
     }
-    // Not a vocabulary trait. Trait-type canonicalization folds a composition
-    // into the ancestor closure of the traits it composes, so `writtenSymbols`
-    // carries the declared traits plus their ancestors. The only non-vocabulary
-    // ancestor a valid composition can surface is the universal `AnyType` root
-    // (every trait conforms to it) -- every other ancestor of a vocabulary
-    // trait is itself a vocabulary trait (`DenseTensor: Tensor`,
-    // `Loadable: LoadAccess`, ...). So accept `AnyType` and reject anything
-    // else as a genuinely foreign trait (which the author had to write
-    // explicitly; it is not implied by the vocabulary).
+    // Not a vocabulary trait. Canonicalization folds a composition into its
+    // ancestor closure, and the only non-vocabulary ancestor of a vocabulary
+    // trait is the universal `AnyType` root (`DenseTensor: Tensor`,
+    // `Loadable: LoadAccess`, ...). Accept `AnyType`; anything else is a
+    // foreign trait the author wrote explicitly.
     mlir::SymbolRefAttr sym = traitSymbol.getSymbol();
     if (sym.getLeafReference() == "AnyType")
       continue;
@@ -1038,19 +980,17 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
 
   contract.fused = anyPresent(TraitCategory::fused);
 
-  // Tile-transform fusion is deferred (Phase 8).
+  // Tile-transform fusion is deferred.
   if (anyPresent(TraitCategory::deferred)) {
     emitError("tile-transform fusion is not supported yet");
     return mlir::failure();
   }
 
-  // Access forms: a SET, keyed off either the marker or the capability leaf.
-  // The written composition may carry only the capability (e.g. `Loadable`
-  // without `LoadAccess`), or only the marker (opaque-device host descriptor);
-  // both record the form, and the capability bit additionally tracks whether
-  // the callable leaf was present. Multiple forms may be present at once on a
-  // non-fused argument (e.g. `Loadable & Storable` for in-place read-modify-
-  // write).
+  // Access forms are a set, keyed by marker or capability leaf: a composition
+  // may carry only the capability (e.g. `Loadable`) or only the marker
+  // (opaque-device host descriptor); the capability bit tracks the callable
+  // leaf. A non-fused arg may carry several (e.g. `Loadable & Storable` for
+  // in-place read-modify-write).
   forEachPresent(TraitCategory::accessMarker, [&](const VocabEntry &entry) {
     contract.accessMask |= bit(entry.access);
   });
@@ -1108,10 +1048,8 @@ KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType) {
       KGEN::getCanonicalType(paramType.getMetaType()));
   if (!traitType)
     return {};
-  // Only a *tensor-argument* bound, not just any trait-bound generic parameter:
-  // a generic arg bound purely by stdlib/other traits (e.g. a primitive's
-  // `[T: ImplicitlyCopyable]`) is not a tensor arg. Require at least one
-  // tensor-argument vocabulary trait before distilling.
+  // A generic arg bound only by other traits (e.g. a primitive's
+  // `[T: ImplicitlyCopyable]`) is not a tensor arg.
   for (TraitSymbolAttr sym : traitType.getSymbols())
     if (classifyVocabTrait(sym))
       return traitType;
@@ -1174,8 +1112,7 @@ tensorArgContractToDict(mlir::MLIRContext *ctx,
                                      contract.accessMask))),
       b.getNamedAttr(kCapabilitiesKey, b.getI32IntegerAttr(static_cast<int32_t>(
                                            contract.capabilityMask)))};
-  // `bound` is omitted entirely when unspecified, so every existing
-  // execute-lane encoding (and its lit expectations) stays byte-identical.
+  // Omitted when unspecified, keeping execute-lane encodings byte-identical.
   if (contract.bound != TensorArgBound::unspecified)
     entries.push_back(
         b.getNamedAttr(kBoundKey, b.getStringAttr(toString(contract.bound))));
@@ -1210,8 +1147,7 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
   auto irCapabilities =
       static_cast<MOGG::TensorArgAccessKind>(contract.capabilityMask);
 
-  // Same lockstep mapping as `irRole` above. No other caller uses this
-  // switch.
+  // Same lockstep mapping as `irRole` above.
   MOGG::TensorArgBoundKind irBound;
   switch (contract.bound) {
   case TensorArgBound::unspecified:

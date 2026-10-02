@@ -21,46 +21,34 @@ namespace M::GML {
 // Data structures supporting the MOGG/MGP ABI
 namespace CompiledKernelABI {
 
-// ABI version of GML::List.
-// NOTE the layout must match the mojo `ABI_List`
+// ABI version of GML::List. Layout must match the Mojo `ABI_List`.
 struct ABIList {
   size_t numElems;
   void *elements; // Currently always points to ABITensors
 
-  /// Constructor
   ABIList(size_t numElems, void *elements)
       : numElems(numElems), elements(elements) {}
 };
 
-// ABI version of Tensor.
-// NOTE the layout must match the mojo `ABI_Tensor`
+// ABI version of Tensor. Layout must match the Mojo `ABI_Tensor`.
 struct ABITensor {
   ssize_t *dims; // Shape, with implied rank
   void *dataPtr; // The underlying buffer
 
-  /// Constructor
   ABITensor(ssize_t *dims, void *dataPtr) : dims(dims), dataPtr(dataPtr) {}
 };
 
-/// Holds marshalled data for the duration of an ABI call. This instance lives
-/// only until the ABI call returns, and it is the responsibility of the called
-/// kernel to unmarshal this data before returning, even if the kernel is
-/// asynchronous.
+/// Holds marshalled data until the ABI call returns; the called kernel must
+/// unmarshal it before returning, even if asynchronous.
 ///
-/// TODO: Remove this once we have a unified representation of values across
-///       the ABI.
+/// TODO: Remove once values have a unified representation across the ABI.
 struct CompiledKernelCall {
   /// The accumulated pointer arguments.
   SmallVector<void *, 8> inputPointers;
 
-  // NOTE The follow memory vectors contain object that are either
-  // 1. Referenced via `.get()` by `inputPointers`.
-  // 2. Referenced via `.data()` by objects in other memory vector.
-  //
-  // Both requires the pointer reference to remain the same after the memory
-  // vector expansion; this requires the underlying memory to be allocated on
-  // the heap, and moved during vector expansion. Thus we use `std::vector<T>`
-  // and `std::unique_ptr<T>` instead of `SmallVector<T>` and `T`.
+  // `inputPointers` and the other memory vectors point into these, so the
+  // pointees must stay put when a vector grows: hence `std::vector<T>` and
+  // `std::unique_ptr<T>` rather than `SmallVector<T>` and `T`.
 
   /// ABI Shapes, in the form of arrays of ssize_ts.
   SmallVector<std::vector<ssize_t>> dimsMemory;
@@ -71,17 +59,14 @@ struct CompiledKernelCall {
 
   CompiledKernelCall(size_t numPointers) { inputPointers.reserve(numPointers); }
 
-  /// Pushes the marshalled form of the given AnyAsyncValueRef onto the
-  /// given pointers vector, possibly pushing additional intermediate
-  /// datastructures onto the above fields. Returns error if input is
-  /// not supported.
+  /// Pushes the marshalled form of `input` onto the pointers vector, adding
+  /// intermediate data to the fields above. Errors on unsupported input.
   ErrorOrSuccess pushObject(AnyAsyncValueRef input, char inOutType,
                             StringRef summary, const EncodedLocation &loc);
 };
 
 } // namespace CompiledKernelABI
 
-//
 // This is the ABI for calling a compiled kernel:
 //   I = number of 'in' arguments
 //   O = number of 'out' tensor buffers
@@ -89,44 +74,29 @@ struct CompiledKernelCall {
 //   M = number of 'out' dimension values (for compiled shape functions only)
 //   void* args[I + O], ssize_t dims[N + M], Runtime*
 //
-// Both args and dims take 'in' args (ie read only) followed by 'out' args
-// (ie write only). Arguments representing tensors are passed as their
-// underlying buffers (in args), combined with their dynamic dimensions (in
-// dims). Statically known dimensions are not passed since they have already
-// been accounted for in the compilation of the kernel. That is, rather than
-// passing `Tensor`s as `CompiledKernelABI::Tensor` with a runtime
-// representation of the entire shape, we instead passed
-// `TensorBufferRefs` as their underlying buffer pointers, and a
-// dimension for each dynamic dimension parameter from the original `!mo.tensor`
-// type.
+// Both args and dims take read-only 'in' args followed by write-only 'out'
+// args. A tensor is passed as its buffer (in args) plus one entry per dynamic
+// dimension (in dims); static dims are baked into the kernel. Only static
+// ranks are supported, so no ranks are passed.
 //
-// We currently only support static ranks in compiled kernels, so no ranks
-// are passed at runtime, and no dynamic rank parameters are supported.
-//
-// Each void* arg can be:
-//  - The underlying buffer of a TensorBufferRef (for
-//  `!mgp.buffer`s).
-//    The lifetime is managed by the C++ runtime, possibly by moving
-//    references into a sub-task closure.
-//  - A `CompiledKernelABI::ABIList*` (for `!mgp.list`s). The lifetime is
-//    managed by the `CompiledKernelCall`, and the called kernel shim is
-//    responsible for unmarshalling before returning.
-//
+// Each void* arg is either:
+//  - A TensorBufferRef's buffer (for `!mgp.buffer`s), kept alive by the C++
+//    runtime, possibly by moving references into a sub-task closure.
+//  - A `CompiledKernelABI::ABIList*` (for `!mgp.list`s), owned by the
+//    `CompiledKernelCall`; the kernel shim must unmarshal it before returning.
 //
 // If the called kernel is asynchronous then the C++ runtime will keep all
 // operands alive until the kernel's coroutine completes.
 using CompiledKernelFn = void(void **, ssize_t *);
 
-// A function pointer representing an alternate ABI which takes in a list of
-// async value pointers as the first value. The async values will be unpacked
-// and manipulated directly within the kernel.
+// Alternate ABI taking a list of async value pointers that the kernel unpacks
+// itself.
 using CompiledKernelAsyncABIFn = void(void **);
 //===----------------------------------------------------------------------===//
 // CompiledKernelsContext
 //===----------------------------------------------------------------------===//
 
-// Holds all the loaded compiled kernels. Will be held within a state slot
-// of the mgp.context.
+// Holds all loaded compiled kernels, in a state slot of the mgp.context.
 class CompiledKernelsContext : public ReferenceCounted<CompiledKernelsContext> {
 public:
   CompiledKernelsContext(KGEN::ExecutionEngine *engine, bool loadDebuginfo)
@@ -134,9 +104,7 @@ public:
 
   ~CompiledKernelsContext() = default;
 
-  /// Load the given binary which supplies the given kernel names into the
-  /// context. The kernels can be retrieved by index of their kernel name
-  /// within kernelNames.
+  /// Loads `binary`'s kernels, retrievable by their index in `kernelNames`.
   ErrorOrSuccess load(ArrayRef<uint8_t> binary, ArrayRef<StringRef> kernelNames,
                       size_t kernelIndex = 0);
 
@@ -163,21 +131,16 @@ public:
 private:
   void addKernel(StringRef name, size_t index, void *kernel);
 
-  /// The execution engine, retrieved from the runtime and held here as a
-  /// mutable borrow for convenience.
-  ///
-  /// Note that the execution engine must outlive the MGP Context holding
-  /// this object since AsyncRT tasks involving loaded code can't be guaranteed
-  /// to have completed until the Runtime's WorkQueue has been shutdown.
+  /// Borrowed from the runtime. Must outlive the MGP Context holding this
+  /// object: AsyncRT tasks running loaded code may not finish until the
+  /// Runtime's WorkQueue shuts down.
   KGEN::ExecutionEngine *engine = nullptr;
 
-  /// Should compiled kernels be loaded with debug info
   bool loadDebuginfo;
 
-  /// The loaded kernels.
   SmallVector<void *, 16> kernels;
 
-  // Kernel name for each loaded kernel. For debugging and profiling only.
+  // For debugging and profiling only.
   SmallVector<StringRef, 16> symbolTable;
 };
 

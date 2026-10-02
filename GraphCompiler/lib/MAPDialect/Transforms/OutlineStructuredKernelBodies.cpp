@@ -25,24 +25,17 @@ namespace M::MAP {
 namespace {
 
 // Wraps `foreachOp` in a `map.iter.opaque`, moving its shape and body into a
-// nested `map.iter.foreach.body`. `map.iter.opaque` is isolated from above, so
-// its own inputs are shadowed as body block arguments; the nested body is
-// *also* isolated from above (see `CapturingFusionClosure`), so those same
-// opaque block args are threaded into it as `$captures`, one level further in.
+// nested `map.iter.foreach.body`. Both are isolated from above, so the opaque's
+// block args are threaded into the nested body as `$captures`.
 void outlineForeach(IterForeachOp foreachOp) {
   Location loc = foreachOp.getLoc();
   OpBuilder builder(foreachOp);
 
-  // Both ops keep their chain in a dedicated operand, separate from `$inputs`
-  // -- `map.iter.opaque`'s own body still shadows it (unlike
-  // `map.iter.foreach`'s, which never touches it), so the foreach's input
-  // chain (if any) is threaded straight into the new op's own `$inputChain`.
   auto opaque = IterOpaqueOp::create(
       builder, loc, foreachOp.getResultTypes(), foreachOp.getInputs(),
       foreachOp.getInputChain(), /*fusionInfo=*/Attribute());
-  // `map.iter.opaque` states its device outright, so settle the foreach's
-  // type-inferred one here. A foreach whose tensors carry no annotation runs
-  // on the host, which is the fallback `getDeviceOrDefault` supplies.
+  // `map.iter.opaque` states its device explicitly; an unannotated foreach
+  // runs on the host, the `getDeviceOrDefault` fallback.
   opaque.setDeviceRef(MO::getDeviceOrDefault(foreachOp));
   if (Attribute fusionInfo = foreachOp.getFusionInfoAttr())
     opaque.setFusionInfoAttr(fusionInfo);
@@ -50,12 +43,8 @@ void outlineForeach(IterForeachOp foreachOp) {
   opaque.setHasWriteEffect(foreachOp.getHasWriteEffect());
   opaque.setIsAsync(foreachOp.getIsAsync());
 
-  // `map.iter.opaque` shadows only its non-chain inputs and outputs as body
-  // block args; the chain rides the dedicated `$inputChain` operand and the
-  // trailing chain result, never getting a block arg. Those shadowed args are
-  // exactly `map.iter.foreach.body`'s captures -- the narrower
-  // `CapturingFusionClosure` concept a chain is never part of, being a
-  // sequencing token rather than a per-element value the body reads or writes.
+  // Chains get no block arg; the non-chain inputs and outputs are exactly the
+  // `map.iter.foreach.body`'s captures.
   Block *opaqueBody = builder.createBlock(&opaque.getBody());
   SmallVector<Value> bodyCaptures;
   for (Value input : foreachOp.getInputs())
@@ -68,19 +57,11 @@ void outlineForeach(IterForeachOp foreachOp) {
   auto body = IterForeachBodyOp::create(builder, loc, foreachOp.getShape(),
                                         bodyCaptures);
 
-  // Move the foreach's body block wholesale into the new op's region -- no
-  // cloning. The flat foreach's own block-arg order is [inputs..., outputs...,
-  // index]; `map.iter.foreach.body` wants [index, captures...] (index leads,
-  // per `CapturingFusionClosure`), so only the index needs to move -- the
-  // input/output args themselves are untouched (same BlockArguments, so every
-  // existing use inside the body stays valid) and simply become the block
-  // args shadowing `captures` above, one position later.
-  //
-  // The index is always the body's last argument -- computing its position
-  // from foreachOp.getInputs().size() + foreachOp.getResults().size() is
-  // wrong whenever one of those results is a chain: a chain is a sequencing
-  // token on the op itself, with no corresponding body block argument, so it
-  // doesn't contribute to the body's actual argument count.
+  // Move the body without cloning. The foreach's block args are [inputs...,
+  // outputs..., index] and `map.iter.foreach.body` wants [index, captures...],
+  // so only the index moves. The index is the last argument; deriving its
+  // position from the result count is wrong when a result is a chain, which
+  // has no block arg.
   body.getBody().takeBody(foreachOp.getBody());
   Block &movedBody = body.getBody().front();
   unsigned oldIndexPos = movedBody.getNumArguments() - 1;

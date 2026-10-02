@@ -106,14 +106,10 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
 ]> {
   let summary = "Device transfer operation";
   let description = [{
-    This op represents a possible copy or aliasing operation to make the
-    contents of the operand tensor available on the (virtual) device of the
-    result tensor.
-
-    It is valid for the source and destination devices to be identical. If the
-    `alwaysElideSameDeviceCopy` flag is not set, it is implementation defined as
-    to whether the result tensor is a copy or alias of the operand tensor; if
-    this flag is true, transfers to the same device never result in a copy.
+    Copies or aliases the operand so it is available on the result's (virtual)
+    device. Source and destination may be the same device: with
+    `alwaysElideSameDeviceCopy` set this never copies, otherwise copy vs. alias
+    is implementation defined.
 
     Example:
 
@@ -168,11 +164,8 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
 ]> {
   let summary = "Computation graph operation";
   let description = [{
-    This op represents a computation graph that consists of:
-    - input data and their types
-    - output types
-    - other ops representing computations on input and intermediate data
-    - a terminating output op that returns the outputs
+    A computation graph: typed inputs and outputs, a body of ops, and a
+    terminating `mo.output`.
 
     Example:
 
@@ -207,53 +200,31 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
     Block *getBodyBlock() { return &getBody().front(); }
     OutputOp getOutputOp();
 
-    /// Returns the argument types of this function.
     ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
-
-    /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
-
-    /// Returns the callable region of this function.
     Region *getCallableRegion() { return &getBodyRegion(); }
 
-    /// Return a new dimension parameter of `IndexType`, with a name that starts
-    /// with `prefix` and differs from existing parameter names inside this
-    /// graph op.
+    /// Returns a new `IndexType` parameter named `prefix...`, unique among
+    /// this graph's parameters.
     KGEN::ParamDeclAttr getNewDimParam(const Twine &prefix);
 
-    /// Return a new dimension parameter of given type, with a name that starts
-    /// with `prefix` and differs from existing parameter names inside this
-    /// graph op.
+    /// Like `getNewDimParam`, but of the given type.
     KGEN::ParamDeclAttr getNewParamOfType(const Twine &prefix, Type type);
 
-    /// Return a new name that's unique from existing parameters inside this
-    /// graph op.
     std::string getNewParamName(const Twine &prefix);
 
-    /// Returns the #M.device_spec_collection annotation for this graph op, or
-    /// null if no such annotation.
+    /// Returns the #M.device_spec_collection annotation, or null.
     DeviceSpecCollectionAttr getDeviceSpecs();
-
-    /// Sets the #M.device_spec_collection annotation for this graph op,
-    /// overwriting any existing annotation.
     void setDeviceSpecs(DeviceSpecCollectionAttr deviceSpecs);
-
-    /// Sets the #M.device_spec_collection annotation for this graph op,
-    /// overwriting any existing annotation.
     void setDeviceTargetInfo(TargetInfoAttr targetInfo);
-
-    /// Sets the #M.device_spec_collection annotation for this graph op,
-    /// overwriting any existing annotation.
     TargetInfoAttr getDeviceTargetInfo();
 
-    /// Implement the DeclInterface methods with our own parameter
-    /// implementation in MO.
+    /// DeclInterface methods, backed by MO's own parameter implementation.
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
   }];
 
   let builders = [
-    /// Create a new mo.graph with an empty body.
     OpBuilder<(ins
       "StringRef":$name,
       "TypeRange":$inputTypes,
@@ -284,8 +255,6 @@ def MO_CallOp : MO_ControlOp<"call", [
 ]> {
   let summary = "Call a computation graph";
   let description = [{
-    This op calls a computation graph.
-
     Example:
 
     ```mlir
@@ -311,7 +280,6 @@ def MO_CallOp : MO_ControlOp<"call", [
   }];
 
   let extraClassDeclaration = [{
-      /// Get the argument operands to the called function.
     operand_range getArgOperands() {
       return {arg_operand_begin(), arg_operand_end()};
     }
@@ -323,12 +291,10 @@ def MO_CallOp : MO_ControlOp<"call", [
     operand_iterator arg_operand_begin() { return operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
 
-    /// Return the callee of this operation.
     CallInterfaceCallable getCallableForCallee() {
       return getCalleeAttr();
     }
 
-    /// Set the callee for this operation.
     void setCalleeFromCallable(CallInterfaceCallable callee) {
       this->setCalleeAttr(cast<FlatSymbolRefAttr>(cast<SymbolRefAttr>(callee)));
     }
@@ -350,10 +316,9 @@ def MO_OutputOp : MO_ControlOp<"output", [
 ]>, NoParamDecls {
   let summary = "Graph output operation";
   let description = [{
-    This op specifies the output parameters and values for a `mo.graph`. The
-    op takes variable number of operands and produces no results. The operand
-    number and types must match the signature of the `mo.graph` that contains
-    the op (after substituting the bindings to signature output type).
+    Terminates a `mo.graph` with its output parameters and values. Operands
+    must match the enclosing graph's signature after substituting the output
+    parameter bindings.
 
     Examples:
 
@@ -368,9 +333,8 @@ def MO_OutputOp : MO_ControlOp<"output", [
       }
     ```
 
-    Note that in the parameterized example, the output operands type annotation
-    and the graph's output type don't necessarily need to match textually, but
-    the compiler will eventually verify that they do.
+    Operand types and the graph's output types need not match textually; the
+    compiler verifies they match after substitution.
   }];
 
   let arguments = (ins
@@ -406,14 +370,9 @@ def IfOp : MO_ControlOp<"if", [
 ]> {
   let summary = "`if` control flow operation";
   let description = [{
-    The `mo.if` op takes an `i1` condition, a 'then' block and an 'else'
-    block. If the condition is true, the 'then' block is run and the op
-    returns the results of that block, otherwise the "else" block is
-    run and its values are returned.
-
-    The blocks have access to all outer values. The blocks must return
-    values using the `mo.yield' op, and the returned values must match the
-    types given in the `mo.if` result signature.
+    Runs the 'then' block if the `i1` condition is true, else the 'else'
+    block, and returns that block's `mo.yield` values, which must match the
+    result types. Blocks may use outer values.
 
     Example:
 
@@ -434,9 +393,8 @@ def IfOp : MO_ControlOp<"if", [
     AnyTypeOf<[MO_CondLike, MO_BoolScalar]>:$cond,
     MO_ParamDecls:$outputParamDecls
   );
-  // Results are forwarded 1:1 from each region's `mo.yield`, which already
-  // excludes `!mo.buffer` (no alias analysis for forwarded buffers; see
-  // `MO_AnyNonBufferType`), so the results cannot be buffers either.
+  // Forwarded 1:1 from `mo.yield`, which excludes `!mo.buffer` (no alias
+  // analysis for forwarded buffers).
   let results = (outs Variadic<MO_AnyNonBufferType>:$results);
   let regions = (region
     SizedRegion<1>:$thenRegion,
@@ -447,8 +405,7 @@ def IfOp : MO_ControlOp<"if", [
     Block *getThenBlock();
     Block *getElseBlock();
 
-    /// Implement the DeclInterface methods with our own parameter
-    /// implementation in MO.
+    /// DeclInterface methods, backed by MO's own parameter implementation.
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
   }];
@@ -489,21 +446,16 @@ def WhileOp : MO_ControlOp<"while", [
 ]> {
   let summary = "`while` control flow operation";
   let description = [{
-    The `mo.while` operation takes "cond" and "body" blocks. While the "cond"
-    block evaluates to the true condition, the "body" block is executed.
+    Runs the "body" block while the "cond" block's condition is true. Both
+    blocks may use the signature values and outer values.
 
-    The "cond" and "body" blocks have access to both the values listed in the
-    `mo.while` signature and any other outer values.
+    - "cond" terminates with `mo.while.condition`: a `!mo.tensor<[], bool>`
+      followed by values matching the signature.
+    - "body" yields values matching the signature. Every input needs an "as"
+      clause renaming it to a fresh symbol.
 
-    - The "cond" block must return a `!mo.tensor<[], bool>` result
-    followed by values whose types match the inputs of the `mo.while` signature.
-
-    - The "body" block must return results with the same types as the `mo.while`
-    signature, again using a `mo.yield`. The signature must include an "as"
-    clause for every input so as to rename it to a fresh symbol.
-
-    The results of the `mo.while` op are the operands of the
-    `mo.while.condition` op when the condition operand evaluates to false.
+    The results are the `mo.while.condition` operands when the condition is
+    false.
 
     Example:
 
@@ -525,10 +477,8 @@ def WhileOp : MO_ControlOp<"while", [
     ```
   }];
 
-  // Inputs, results, the body's `mo.yield`, and the `mo.while.condition`'s
-  // forwarded args all share one signature; the latter two already exclude
-  // `!mo.buffer` (see `MO_AnyNonBufferType`), so the loop-carried inputs and
-  // results cannot be buffers either.
+  // Shares one signature with `mo.yield` and `mo.while.condition`, which
+  // exclude `!mo.buffer`.
   let arguments = (ins Variadic<MO_AnyNonBufferType>:$inputs);
   let results = (outs Variadic<MO_AnyNonBufferType>:$results);
   let regions = (region
@@ -546,16 +496,12 @@ def WhileOp : MO_ControlOp<"while", [
     Block::BlockArgListType getCondArguments();
     Block::BlockArgListType getBodyArguments();
 
-    /// Implement the DeclInterface methods with our own parameter
-    /// implementation in MO.
+    /// DeclInterface methods, backed by MO's own parameter implementation.
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
   }];
 
-  // The assemblyFormat is almost:
-  //   custom<ParenOperandList>($inputs) attr-dict $condRegion `do` $bodyRegion
-  // However since inputs are used as both referential and binding occurrences
-  // we must instead use a custom parser.
+  // Custom because inputs are both referential and binding occurrences.
   let hasCustomAssemblyFormat = 1;
 
   let hasVerifier = 1;
@@ -576,8 +522,7 @@ def MO_YieldOp : MO_ControlOp<"yield", [
   let hasVerifier = 1;
   let summary = "`yield` operation";
   let description = [{
-    This op specifies the output values for control flow blocks. The op
-    takes variable number of operands and produces no results.
+    Returns values from a control flow block.
 
     Example:
 
@@ -619,11 +564,8 @@ def MO_WhileConditionOp : MO_ControlOp<"while.condition", [
 ]> {
   let summary = "loop continuation condition";
   let description = [{
-    This op takes the continuation condition of the parent `mo.while`. The op
-    takes variable number of operands which must match the operands of the
-    parent `mo.while`.
-
-    See the mo.while operation for an example.
+    Terminates the `mo.while` cond block with the continuation condition and
+    values matching the parent's operands. See `mo.while` for an example.
   }];
 
   let arguments = (ins
@@ -701,40 +643,27 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
 ]> {
   let summary = "`parallel` region operation";
   let description = [{
-    The `mo.parallel` operation takes a single "body" block, which is executed
-    in parallel for each set of inputs.  Each input is an `!mo.bundle` whose
-    elements are the per-device values for one input group.  All bundles must
-    have the same number of elements (= number of launches).  The body block
-    receives one block argument per bundle input, typed as a representative
-    single-device value (the first element's type).
+    Runs the body once per launch. Each input is an `!mo.bundle` of per-device
+    values; all bundles have one element per launch. The body gets one block
+    argument per bundle, typed as the bundle's first element. Each yield
+    operand becomes one `!mo.bundle` result with per-launch devices from
+    `launchDevices`.
 
-    The yield may return one or more values.  Each yield operand produces one
-    `!mo.bundle` result whose elements are derived from the yield type with
-    per-launch devices taken from the `launchDevices` attribute.
+    `launchDevices` is the source of truth for per-launch devices, printed as
+    `devices(...)`. The clause may be elided when it matches `inputs[0]`, and
+    is required when there are no inputs. Every input and result bundle must
+    agree with it element-by-element.
 
-    The `launchDevices` attribute is the source of truth for the per-launch
-    device list.  In the printed form it appears as a `devices(...)` clause.
-    When the list matches the elements of `inputs[0]` the clause may be
-    omitted, and the parser/printer recover it from the bundle.  When
-    `inputs` is empty the clause is required because there is nothing to
-    derive from.  The verifier requires every input and result bundle to
-    agree with `launchDevices` element-by-element.
+    The optional `buffers(...)` clause holds one signal buffer per launch for
+    collectives (e.g. allreduce). Buffers are operands for memory-effect
+    tracking only; the body captures them from the enclosing scope rather
+    than as block arguments.
 
-    An optional `buffers(...)` clause declares per-launch signal buffers for
-    collective operations (e.g. allreduce).  The number of buffers must equal
-    the number of launches.  Buffers are operands of the parallel op for
-    chain guarding (memory effect tracking) but do NOT produce block
-    arguments.  Ops inside the body capture buffer values directly from the
-    enclosing scope.
-
-    `buffers(...)` and `chain(...)` must be both present or both absent.  When
-    present, the chain is threaded *explicitly through the body* rather than
-    captured: the body block gains a trailing `!mo.chain` block argument that
-    carries the in-chain, the body's side-effecting (buffer-argument) ops
-    consume and thread that chain, and `mo.yield` produces the resulting
-    chain as its last operand.  That yielded chain becomes the op's trailing
-    `!mo.chain` result (completion of all launches). A chainless parallel has
-    neither the chain block argument nor a yielded chain.
+    `buffers(...)` and `chain(...)` are both present or both absent. When
+    present, the chain is threaded explicitly through the body: a trailing
+    `!mo.chain` block argument carries the in-chain, side-effecting ops thread
+    it, and `mo.yield`'s last operand becomes the op's trailing `!mo.chain`
+    result (completion of all launches).
 
     Example with one bundle input (no buffers, no chain):
     ```mlir
@@ -747,9 +676,7 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     }
     ```
 
-    Example with buffers and chain (bundled allreduce). The in-chain enters
-    through the trailing block arg `%bch`; the collective consumes it and the
-    body yields the resulting out-chain:
+    Example with buffers and chain (bundled allreduce):
     ```mlir
     %dt = mo.tensor.bundle(%a, %b) : (...) -> (...)
     %res, %ch = mo.parallel (%arg, %bch) in (%dt : !mo.bundle<[...]>)
@@ -763,8 +690,7 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
     }
     ```
 
-    Example with no bundle inputs (clause required, body captures a value
-    from the enclosing scope):
+    Example with no bundle inputs (`devices(...)` required):
     ```mlir
     %res = mo.parallel () in () devices(gpu:0-1)
         -> (!mo.bundle<[...]>) {
@@ -784,27 +710,21 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
   let regions = (region SizedRegion<1>:$bodyRegion);
 
   let builders = [
-    /// Build a chainless ParallelOp with an empty body region.  One block
-    /// argument is added per bundle input, typed as the bundle's first
-    /// element type.  `launchDevices` is auto-derived from `inputs.front()`.
+    /// Builds an empty body with one block argument per bundle input.
+    /// `launchDevices` is derived from `inputs.front()`.
     OpBuilder<(ins
       "ValueRange":$inputs,
       "TypeRange":$resultTypes
     )>,
-    /// Build a ParallelOp with an empty body region.  One block argument is
-    /// added per bundle input, typed as the bundle's first element type.
-    /// `buffers` and `inChain` must be both present or both absent.
-    /// `launchDevices` is auto-derived from `inputs.front()`.
+    /// As above; `buffers` and `inChain` are both present or both absent.
     OpBuilder<(ins
       "ValueRange":$inputs,
       "ValueRange":$buffers,
       "Value":$inChain,
       "TypeRange":$resultTypes
     )>,
-    /// Build a ParallelOp with explicit `launchDevices`.  Used by callers
-    /// that know the per-launch device list directly (e.g. transforms that
-    /// construct a parallel from non-bundle sources, or future uses where
-    /// `inputs` may be empty).
+    /// For callers that know the device list directly (e.g. non-bundle
+    /// sources or empty `inputs`).
     OpBuilder<(ins
       "ValueRange":$inputs,
       "ValueRange":$buffers,
@@ -815,30 +735,23 @@ def MO_ParallelOp : MO_TensorOp<"parallel", [
   ];
 
   let extraClassDeclaration = [{
-    /// Implement the DeclInterface methods with our own parameter
-    /// implementation in MO.
+    /// DeclInterface methods, backed by MO's own parameter implementation.
     ArrayRef<ParamDeclAttr> getInputParams();
     SmallVector<ParamDeclAttr> getAllParams();
 
-    /// Returns the per-launch devices as a typed list.  The raw
-    /// `ArrayAttr` is available via the ODS-generated `getLaunchDevices()`.
     SmallVector<DeviceRefAttr> getLaunchDeviceList() {
       return llvm::to_vector(getLaunchDevices().getAsRange<DeviceRefAttr>());
     }
 
-    /// Returns the number of launches.
     size_t getNumLaunches() {
       return getLaunchDevices().size();
     }
 
-    /// Whether this parallel op has per-launch signal buffers.
     bool hasBuffers() { return !getBuffers().empty(); }
 
-    /// Whether this parallel op has explicit chain I/O.
-    /// Chain is present iff buffers are present.
+    /// True iff `hasBuffers()`.
     bool hasChain() { return static_cast<bool>(getInChain()); }
 
-    /// Returns the trailing chain result. Only valid when hasChain().
     ChainValue getOutChain() {
       assert(hasChain() && "no chain on this parallel op");
       return cast<ChainValue>(getResults().back());
@@ -865,17 +778,12 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
 ]> {
   let summary = "`sequence` region bound to a device stream";
   let description = [{
-    The `mo.sequence` operation wraps a region of ops that should be bound to a
-    single device stream selected by `streamId` (0 is the default stream). It
-    exists for two reasons: (1) the region is a fusion boundary -- ops inside it
-    are not fused with ops outside it -- and (2) it marks which ops should be
-    enqueued on the side stream, so the MOGG->MGP lowering can bind the body's
+    Binds a region of ops to the device stream `streamId` (0 is the default).
+    The region is a fusion boundary, and MOGG->MGP lowering binds the body's
     device context to a `mgp.device_context.select_stream` view.
 
-    Operands are a plain variadic list (tensors / chains) mapped 1:1 into the
-    body's block arguments, and `mo.yield` maps 1:1 to the op's results.
-    The body is a graph region (unordered); chains encode any mutable ordering
-    exactly as in the enclosing graph.
+    Operands map 1:1 to block arguments and `mo.yield` maps 1:1 to results.
+    The body is an unordered graph region; chains encode mutable ordering.
 
     Example:
     ```mlir
@@ -887,10 +795,7 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
     ```
   }];
 
-  // Inputs map 1:1 into the body's block arguments and results come from the
-  // body's `mo.yield`, which already excludes `!mo.buffer` (see
-  // `MO_AnyNonBufferType`); mutable ordering is carried by chains, not by
-  // threading buffers through the boundary.
+  // No buffers cross the boundary; chains carry mutable ordering.
   let arguments = (ins
     Variadic<MO_AnyNonBufferType>:$inputs,
     DefaultValuedAttr<UI64Attr, "0">:$streamId
@@ -899,9 +804,8 @@ def MO_SequenceOp : MO_TensorOp<"sequence", [
   let regions = (region SizedRegion<1>:$bodyRegion);
 
   let builders = [
-    /// Build a SequenceOp whose body block has one argument per input (typed
-    /// 1:1 from `inputs`). The body is otherwise empty; callers populate it and
-    /// terminate it with `mo.yield`.
+    /// Builds an empty body with one argument per input; callers add the
+    /// `mo.yield`.
     OpBuilder<(ins
       "ValueRange":$inputs,
       "TypeRange":$resultTypes,
@@ -934,23 +838,14 @@ def MO_RebindOp : MO_ControlOp<"rebind", [
 ]> {
   let summary = "Parameter rebind operation";
   let description = [{
-    This op represents the "rebinding" of a type to another type. This is
-    typically used for rebinding the shape of !mo.tensor types to other
-    !mo.tensor types to get things to type-check due to strict shape-related
-    verifiers.
+    Rebinds a `!mo.tensor` type (typically its shape) to another so strict
+    shape verifiers type-check. Unlike a cast, no data conversion happens; the
+    types are assumed equal at runtime. Where that is not statically provable,
+    runtime assertions must be inserted separately; this op does not add them.
 
-    Rebinding is similar to casting, except no data conversion takes place.
-    It is assumed that the two types ultimately prove to be the same at runtime.
-
-    Therefore, in cases where it is not statically provable, the left and right
-    runtime types are the same, it is expected we will insert runtime assertions
-    of some sort. Note, this operation does not do this, and any assertions
-    must be inserted separately.
-
-    Note, rebinds which use parameters they declare essentially "rename"
-    the associated dimensions which is a useful tool. These types of rebinds
-    are guaranteed to be removed by shape inference unless they are used to
-    name unknown dims (denoted by `?`) from 3P dialects like those in PT.
+    Rebinds that declare parameters "rename" dimensions. Shape inference
+    removes them unless they name unknown (`?`) dims from third-party
+    dialects like PT.
 
     Examples:
     ```mlir
@@ -989,28 +884,20 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
 ]> {
   let summary = "External constant operation";
   let description = [{
-    Represents an undefined reference to an "external" constant.
-    This constant's backing data is undefined at graph compile time, but all
-    other attributes of the tensor are statically known.
-    In a given mo.graph, mo.constant.external ops should be uniquely named.
+    References an external constant whose data is unknown at compile time but
+    whose other tensor attributes are static. Names are unique per `mo.graph`.
 
-    Currently, the `device` attribute on the op determines which device the
-    weights registry pointers reside on.
-    This should be checked at runtime.
-    The device attribute and result type can mismatch only when the `device`
-    attribute is on the host.
-    This is to support mmap'ed weights, a common use case for external
-    constants.
+    `device` is where the weights registry pointers reside. It may differ from
+    the result type's device only when it is the host, to support mmap'ed
+    weights.
 
-    TODO(MSDK-1060): implement the runtime check by storing device alongside
-    runtime pointer in the weights registry.
-    And emit an explicit mo.transfer in the graph API instead of implicitly
-    inserting an HtoD copy in converting mo.constant.external to
+    TODO(MSDK-1060): check the device at runtime by storing it with the
+    registry pointer, and emit an explicit mo.transfer in the graph API
+    instead of an implicit HtoD copy when lowering to
     mgp.buffer.constant.external.
 
-    If the `hasAlias` attribute is set to true, the external constant might be
-    updated through external alias between graph invocation, and it will not
-    be lifted to the init phase.
+    With `hasAlias`, the constant may be updated through an external alias
+    between invocations, so it is not lifted to the init phase.
 
     Example:
 
@@ -1046,7 +933,7 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
 ]> {
   let summary = "Constant operation";
   let description = [{
-    This op allows storing literal values inside the graph.
+    A literal value inside the graph.
 
     Example:
 
@@ -1073,70 +960,58 @@ def MO_ConstantOp : MO_TensorOp<"constant", [
   let skipDefaultBuilders = 1;
 
   let builders = [
-    /// Override the default builder to add the device attribute from the
-    /// result type if provided.
+    /// Takes the device attribute from the result type, if any.
     OpBuilder<(ins "Type":$resultType, "ElementsAttr":$value)>,
 
-    /// Create a new rank-1 tensor mo.constant of int32 value.
+    // Array overloads build rank-1 tensors; scalar overloads build rank-0.
     OpBuilder<(ins
       "ArrayRef<int32_t>":$values,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of int32 value.
     OpBuilder<(ins
       "int32_t":$value,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-1 tensor mo.constant of int64 value.
     OpBuilder<(ins
       "ArrayRef<int64_t>":$values,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of int64 value.
     OpBuilder<(ins
       "int64_t":$value,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-1 tensor mo.constant of any float type.
     OpBuilder<(ins
       "ArrayRef<APFloat>":$values,
       "Type":$elementType,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of given float type.
     OpBuilder<(ins
       "APFloat":$value,
       "Type":$elementType,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-1 tensor mo.constant of any int type.
     OpBuilder<(ins
       "ArrayRef<APInt>":$values,
       "Type":$elementType,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of given int type.
     OpBuilder<(ins
       "APInt":$value,
       "Type":$elementType,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of f32 type.
     OpBuilder<(ins
       "float":$value,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of f64 type.
     OpBuilder<(ins
       "double":$value,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-1 tensor mo.constant of boolean value.
     OpBuilder<(ins
       "ArrayRef<bool>":$values,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
     )>,
-    /// Create a new rank-0 (scalar) tensor mo.constant of boolean value.
     OpBuilder<(ins
       "bool":$value,
       CArg<"DeviceRefAttr", "{}">:$deviceRef
@@ -1365,8 +1240,7 @@ def MO_LogOp : MO_ElementWiseUnaryMonoTypeOp<"log"> {
 def MO_Log1pOp : MO_ElementWiseUnaryMonoTypeOp<"log1p"> {
   let summary = "Natural logarithm of `1 + x` operation ";
   let description = [{
-    Returns `log(1 + x)`, maintaining accuracy for small `x` that could
-    otherwise lead to floating-point roundings of the kind `1 + x = 1`.
+    Returns `log(1 + x)`, accurate for small `x` where `1 + x` rounds to 1.
 
     Example:
 
@@ -1550,13 +1424,9 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
 ]> {
   let summary = "Cumulative summation operation";
   let description = [{
-    Returns the cumulative summation of input tensors along an axis. By default,
-    it copies the first element as is. If the `exclusive` attribute is set to 1,
-    then the first element is excluded. The `reverse` attribute causes the
-    summation to be done in the opposite direction of the axis.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Returns the cumulative sum along `axis` (numpy semantics; -1 is the last
+    axis). `exclusive` = 1 excludes the current element; `reverse` sums in
+    the opposite direction.
 
     Example of outputs:
 
@@ -1601,8 +1471,7 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
 def MO_CeilOp : MO_ElementWiseUnaryFloatMonoTypeOp<"ceil", [Idempotent]> {
   let summary = "Ceiling operation";
   let description = [{
-    Returns the smallest largest integer greater than `x`, where `x` is input
-    tensor.
+    Returns the smallest integer not less than `x`.
 
     Example:
 
@@ -1616,8 +1485,7 @@ def MO_CeilOp : MO_ElementWiseUnaryFloatMonoTypeOp<"ceil", [Idempotent]> {
 def MO_FloorOp : MO_ElementWiseUnaryFloatMonoTypeOp<"floor", [Idempotent]> {
   let summary = "Floor operation";
   let description = [{
-    Returns the elementwise largest integer not greater than `x`, where `x` is
-    input tensor.
+    Returns the largest integer not greater than `x`.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
@@ -1629,8 +1497,7 @@ def MO_FloorOp : MO_ElementWiseUnaryFloatMonoTypeOp<"floor", [Idempotent]> {
 def MO_TruncOp : MO_ElementWiseUnaryFloatMonoTypeOp<"trunc", [Idempotent]> {
   let summary = "Truncation operation";
   let description = [{
-    Returns the elementwise integer from truncating the decimal. Also known
-    as round-toward-zero.
+    Rounds `x` toward zero.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
@@ -1642,8 +1509,7 @@ def MO_TruncOp : MO_ElementWiseUnaryFloatMonoTypeOp<"trunc", [Idempotent]> {
 def MO_RoundOp : MO_ElementWiseUnaryFloatMonoTypeOp<"round", [Idempotent]> {
   let summary = "Rounding operation";
   let description = [{
-    Returns the elementwise nearest integer, with ties going towards the
-    nearest even number.
+    Rounds `x` to the nearest integer, ties to even.
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
@@ -1793,7 +1659,6 @@ def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [
   let hasFolder = 1;
 
   let builders = [
-    /// Cast DType interface
     OpBuilder<(ins "TensorValue":$input, "DType":$dtype)>,
   ];
 }
@@ -1801,8 +1666,7 @@ def MO_CastOp : MO_ElementWiseUnaryOp<"cast", [
 def MO_IsNaNOp : MO_ComparisonUnaryOp<"is_nan"> {
   let summary = "NaN test operation";
   let description = [{
-    Returns true if `x` represents a floating point NaN, where `x` is input
-    tensor.
+    Returns true where `x` is NaN.
 
     Example:
 
@@ -1817,8 +1681,7 @@ def MO_IsNaNOp : MO_ComparisonUnaryOp<"is_nan"> {
 def MO_IsInfOp : MO_ComparisonUnaryOp<"is_inf"> {
   let summary = "Infinity test operation";
   let description = [{
-    Returns true if `x` represents a floating point Inf, where `x` is input
-    tensor.
+    Returns true where `x` is infinite.
 
     Example:
 
@@ -1994,8 +1857,7 @@ def MO_SelectOp : MO_TensorOp<"select", [
 ]> {
   let summary = "Select operation";
   let description = [{
-    Returns `cond ? x : y` (element-wise), where `cond`, `x` and `y` are input
-    tensors.
+    Returns `cond ? x : y` elementwise.
 
     Example:
 
@@ -2022,29 +1884,17 @@ def MO_SliceOp : MO_TensorOp<"slice", [
 ]> {
   let summary = "Slice operation";
   let description = [{
-    Returns a new tensor with a subset of the elements from an N-dimensional
-    `input` tensor. The subset is chosen using the `start`, `stop`, and `step`
-    1D index tensors; each index tensor has N elements, one for each dimension
-    of the `input` tensor.
+    Slices an N-D `input` with numpy semantics: `start`, `stop`, and `step`
+    are 1-D index tensors of N elements, and dimension `i` is indexed by
+    `start[i]:stop[i]:step[i]`.
 
-    The semantics follows the numpy index semantics, such that
-    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the
-       "indexing" along that dimension.
-    2. Negative indices are supported for `start` and `stop`, e.g., -1
-       represents the largest axis.
-    3. Out of bound indices in `start` and `stop` will be clamped to
-       [-dim, dim], where `dim` is the dimension in the corresponding axis.
-    4. `step` must contain nonzero elements. Negative steps are supported.
+    - Negative `start`/`stop` count from the end.
+    - Out-of-bound `start`/`stop` are clamped to [-dim, dim].
+    - `step` is nonzero and may be negative.
 
-    Note: the order in which negative indices are resolved matches that of
-    python for `start:
-
-    1. Normalize negative indices by adding the dimension size.
-    2. Apply clipping logic.
-
-    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
-    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
-    N is the dimension size. Numbers smaller than -N-1 should also work.
+    As in Python, negative indices are normalized (by adding the dimension
+    size) before clamping. So `l[:-1:-1]` is empty; reversing `l` takes
+    `l[:-N-1:-1]` (or anything below -N-1).
 
     Example:
     ```mlir
@@ -2130,8 +1980,7 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []> :
 def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"reduce.logsoftmax"> {
   let summary = "Logarithmic softmax operation";
   let description = [{
-    Returns `log(softmax(x, axis))`, where `x` is input tensor, and `axis` is
-    the axis along which `softmax` is applied.
+    Returns `log(softmax(x, axis))`.
 
     Example:
 
@@ -2146,9 +1995,7 @@ def MO_LogSoftmaxOp : MO_SoftmaxLikeOp<"reduce.logsoftmax"> {
 def MO_SoftmaxOp : MO_SoftmaxLikeOp<"reduce.softmax"> {
   let summary = "Softmax operation";
   let description = [{
-    Returns `exp(input) / sum(exp(input))`, where `x` is input tensor.
-
-    The `sum` reduction is applied along `axis`.
+    Returns `exp(x) / sum(exp(x))`, summing along `axis`.
 
     Example:
 
@@ -2184,7 +2031,7 @@ class MO_ReductionOp<string name, list<Trait> traits = []> :
   let hasCanonicalizeMethod = 1;
 
   let builders = [
-    /// Build reduction op and automatically infer output type if it is not given.
+    /// Infers the output type when `outputTy` is null.
     OpBuilder<(ins
       "TensorValue":$input,
       "int64_t":$axis,
@@ -2200,11 +2047,8 @@ class MO_MonotypeReductionOp<string name, list<Trait> traits = []> :
 def MO_MeanOp : MO_MonotypeReductionOp<"reduce.mean"> {
   let summary = "Mean reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their mean value, changng that
-    axis's dimension to 1.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics) to its mean,
+    keeping that axis as size 1.
 
     Example:
 
@@ -2221,11 +2065,8 @@ def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
 ]> {
   let summary = "Product reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their product, changing that
-    axis's dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics) to its product,
+    keeping that axis as size 1.
 
     Example:
 
@@ -2240,11 +2081,8 @@ def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
 def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add"> {
   let summary = "Sum reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their sum, changing that axis's
-    dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics) to its sum,
+    keeping that axis as size 1.
 
     Example:
 
@@ -2260,11 +2098,8 @@ def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add"> {
 def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min"> {
   let summary = "Minimum reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their minimum, changing that
-    axis's dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics) to its minimum,
+    keeping that axis as size 1.
 
     Example:
 
@@ -2279,11 +2114,8 @@ def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min"> {
 def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
   let summary = "Maximum reduction operation";
   let description = [{
-    Reduces `input` elements across `axis` to their maximum, changing that
-    axis's dimension to 1 in the output shape.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Reduces `input` across `axis` (numpy semantics) to its maximum,
+    keeping that axis as size 1.
 
     Example:
 
@@ -2308,15 +2140,10 @@ def MO_ReduceRMSNormOp : MO_TensorOp<"reduce.rms_norm", [
 ]> {
   let summary = "RMS normalization operation";
   let description = [{
-    Applies Root Mean Square normalization to the input tensor.
+    Computes `input / sqrt(mean(input^2) + epsilon) * weight`.
 
-    output = input / rms(input) * weight
-
-    where rms(x) = sqrt(mean(x^2) + epsilon).
-
-    When `multiply_before_cast` is false (Llama-style), the input is cast to
-    the output dtype before multiplication by the weight. When true
-    (Gemma-style), the multiplication is performed before the cast.
+    `multiply_before_cast` false (Llama-style) casts to the output dtype
+    before multiplying by the weight; true (Gemma-style) multiplies first.
 
     Example:
 
@@ -2352,10 +2179,7 @@ def MO_ReduceGroupNormOp : MO_TensorOp<"reduce.group_norm", [
 ]> {
   let summary = "Group normalization operation";
   let description = [{
-    Applies Group Normalization to the input tensor.
-
-    Divides channels into groups and computes normalization statistics
-    within each group.
+    Normalizes with statistics computed per group of channels.
 
     Example:
 
@@ -2389,12 +2213,8 @@ def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
 ]> {
   let summary = "Combined minimum and maximum reduction operation";
   let description = [{
-    Reduces the input tensor along the given axis, returning a single tensor
-    where the last dimension contains both the minimum and maximum values (in
-    that order).
-
-    For an input of shape [d0, ..., dN] reduced along axis `a`, the output
-    shape is [d0, ..., 2] (the reduced axis is replaced by a dimension of 2).
+    Reduces along `axis` to [min, max]: the reduced axis becomes a dimension
+    of size 2.
 
     Example:
 
@@ -2430,20 +2250,13 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
 
-    The op supports 2D avg pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Supports 2D pooling on 4-D NHWC input.
 
-    All hyperparameters (i.e. `strides`, `dilations`, `padding`) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    `strides`, `dilations`, and `paddings` are rank 1 or unranked. For a
+    static-rank input each has `input_rank - 2` elements, one per spatial
+    dim, except `paddings`, which has `2 * (input_rank - 2)` laid out as
+    (dim1_before, dim1_after, dim2_before, dim2_after, ...) with dim1 = H and
+    dim2 = W. Strides and dilations apply to the filter only.
 
     Example:
 
@@ -2496,20 +2309,13 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   let description = [{
     Computes average pooling with the given filter shape, strides, and dilations.
 
-    The op supports 2d avg pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Supports 2D pooling on 4-D NHWC input.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    `strides`, `dilations`, and `paddings` are rank 1 or unranked. For a
+    static-rank input each has `input_rank - 2` elements, one per spatial
+    dim, except `paddings`, which has `2 * (input_rank - 2)` laid out as
+    (dim1_before, dim1_after, dim2_before, dim2_after, ...) with dim1 = H and
+    dim2 = W. Strides and dilations apply to the filter only.
 
     Example:
 
@@ -2562,20 +2368,13 @@ def MO_MaxPoolOp : MO_TensorOp<"max_pool", [
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
 
-    For now the op only supports 2d max pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Supports 2D pooling on 4-D NHWC input.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    `strides`, `dilations`, and `paddings` are rank 1 or unranked. For a
+    static-rank input each has `input_rank - 2` elements, one per spatial
+    dim, except `paddings`, which has `2 * (input_rank - 2)` laid out as
+    (dim1_before, dim1_after, dim2_before, dim2_after, ...) with dim1 = H and
+    dim2 = W. Strides and dilations apply to the filter only.
 
     Example:
 
@@ -2627,20 +2426,13 @@ def MO_MaxPoolCeilOp : MO_TensorOp<"max_pool_ceil_mode_true", [
   let description = [{
     Computes max pooling with the given filter shape, strides, and dilations.
 
-    The op supports 2d max pooling (so input and filter must be
-    4D), with the following layout assumption:
-    - input has layout NHWC, i.e., (batch_size, height, width, in_channels)
+    Supports 2D pooling on 4-D NHWC input.
 
-    All hyperparameters (i.e. strides, dilations, padding) must be of rank 1, or
-    unranked. If the input has static rank, all hyperparameters with static
-    shape must have sizes of `input_rank - 2`, except padding, which must have size
-    `2 * (input_rank - 2)`. Individual elements in the hyperparameters applies to
-    corresponding dimensions of the input (after ignoring the batch and channel dimensions),
-    with padding representing a before/after pair for each axis. The padding values
-    are expected to take the form (pad_dim1_before, pad_dim1_after, pad_dim2_before,
-    pad_dim2_after...). In 2D Convolution, dim1 here represents H and dim2 represents W.
-
-    This op currently only supports strides and dilations on the filter.
+    `strides`, `dilations`, and `paddings` are rank 1 or unranked. For a
+    static-rank input each has `input_rank - 2` elements, one per spatial
+    dim, except `paddings`, which has `2 * (input_rank - 2)` laid out as
+    (dim1_before, dim1_after, dim2_before, dim2_after, ...) with dim1 = H and
+    dim2 = W. Strides and dilations apply to the filter only.
 
     Example:
 
@@ -2690,33 +2482,20 @@ def MO_ConvOp : MO_TensorOp<"conv", [
 ]> {
   let summary = "Convolution operation";
   let description = [{
-    Computes the convolution product of the input with the given filter,
-    strides, dilations, paddings, and groups.
+    Computes a 1D-3D grouped convolution. Input is channels-last (NHWC for
+    2D); the filter is FCRS, i.e. (out_channels, in_channels / num_groups,
+    height, width).
 
-    The op supports 1D-3D convolution, with the following layout assumptions:
-    - input has channel last layout. For 2D, that's NHWC, i.e.,
-      (batch_size, height, width, in_channels)
-    - filter has layout FCRS, i.e.,
-      (out_channels, in_channels / num_groups, height, width)
+    `filter_layout` is the filter's memory layout; if empty, InferLayouts
+    picks it (FCRS for 2D, FCQRS for 3D). Supported: FCRS, RSCF (legacy), and
+    packed variants like FRSCf.
 
-    The filter_layout attribute specifies the memory layout of the filter
-    tensor. If empty, the layout is inferred by the InferLayouts pass
-    (defaults to FCRS for 2D, FCQRS for 3D). Supported layouts include
-    FCRS, RSCF (legacy), and packed variants like FRSCf.
-
-    `strides`, `dilations`, and `padding` must be of rank 1, or unranked.
-    If the input has static rank, all hyperparameters with static shape must
-    have sizes of `input_rank - 2`, except padding, which must have
-    size `2 * (input_rank - 2)`. Individual elements in the hyperparameters
-    apply to corresponding dimensions of the input (after ignoring the batch
-    and channel dimensions), with padding representing a before/after pair for
-    each axis.
-
-    The padding values are expected to take the form (pad_dim1_before,
-    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
-    0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    Convolution, dim1 here represents H and dim2 represents W. In python like
-    syntax, padding a 2x3 spatial `input` with [0, 1, 2, 1] would yield:
+    `strides`, `dilations`, and `paddings` are rank 1 or unranked. For a
+    static-rank input each has `input_rank - 2` elements, one per spatial
+    dim, except `paddings`, which has `2 * (input_rank - 2)` laid out as
+    (dim1_before, dim1_after, dim2_before, dim2_after, ...) with dim1 = H and
+    dim2 = W. Padding is zeros around the spatial dims of `input`; padding a
+    2x3 `input` with [0, 1, 2, 1] yields:
 
     ```python
     input = [
@@ -2733,12 +2512,9 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     # Shape is 3x6
     ```
 
-    The input, output and filter tensors' ranks must match if statically known.
-
-    `num_groups` must be a ranked scalar. The number of input and output
-    channels must both be divisible by the number of groups `num_groups`.
-
-    This op currently only supports strides and padding on the input.
+    Input, output, and filter ranks must match when static. `num_groups` is a
+    ranked scalar dividing both channel counts. Strides and padding apply to
+    the input only.
 
     Example:
 
@@ -2792,31 +2568,20 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
 ]> {
   let summary = "Transposed convolution operation";
   let description = [{
-    This op effectively computes the gradient of a convolution with
-    respect to its input (as if the original convolution operation had the same
-    filter and hyperparameters as this op). A visualization of the computation
-    can be found in https://d2l.ai/chapter_computer-vision/transposed-conv.html.
+    Computes the gradient of a convolution with the same filter and
+    hyperparameters with respect to its input. See
+    https://d2l.ai/chapter_computer-vision/transposed-conv.html.
 
-    The op supports 1D-3D spatial dimensions, with the following layout
-    assumptions (note the `out_channel` is w.r.t. the original convolution):
-    - input has channel last layout.For 2D, that's NHWC, i.e.,
-      (batch_size, height, width, out_channels)
-    - filter has layout RSFC, i.e., (height, width, out_channels, in_channels)
+    Supports 1D-3D spatial dims. With `out_channels` relative to the original
+    convolution, input is channels-last (NHWC for 2D, channels =
+    out_channels) and the filter is RSFC, i.e. (height, width, out_channels,
+    in_channels).
 
-    All hyperparameters (i.e. strides, dilations, padding, output_paddings) must
-    be of rank 1, or unranked. If the input has static rank, all hyperparameters
-    with static shape must have sizes of `input_rank - 2`, except padding, which
-    must have size `2 * (input_rank - 2)`. Individual elements in the
-    hyperparameters applies to corresponding dimensions of the input (after
-    ignoring the batch and channel dimensions), with padding representing a
-    before/after pair for each axis.
-
-    The padding values are expected to take the form (pad_dim1_before,
-    pad_dim1_after, pad_dim2_before, pad_dim2_after...) and represent padding
-    0's before and after the indicated *spatial* dimensions in `input`. In 2D
-    ConvTranspose, dim1 here represents H_out and dim2 represents W_out. In
-    python like syntax, padding a 2x4 spatial `output` with [0, 1, 2, 1] would
-    yield:
+    `strides`, `dilations`, `paddings`, and `output_paddings` are rank 1 or
+    unranked. For a static-rank input each has `input_rank - 2` elements, one
+    per spatial dim, except `paddings`, which has `2 * (input_rank - 2)` laid
+    out as (dim1_before, dim1_after, dim2_before, dim2_after, ...) with dim1 =
+    H_out and dim2 = W_out. Padding a 2x4 `output` with [0, 1, 2, 1] yields:
 
     ```python
     output = [
@@ -2831,12 +2596,10 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
     # Shape is 1x1
     ```
 
-    The `output_paddings` argument is meant to resolve the ambiguity of multiple
-    potential output shapes when any stride is greater than 1. Basically,
-    we'll add `output_paddings[i]` number of zeros at the end of output's ith
-    axis. We only support output_paddings = 0.
+    `output_paddings[i]` appends zeros to output axis `i`, disambiguating the
+    output shape when a stride exceeds 1. Only 0 is supported.
 
-    The input, output and filter tensors' ranks must match if statically known.
+    Input, output, and filter ranks must match when static.
 
     Example:
 
@@ -2913,9 +2676,7 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
 ]> {
   let summary = "Broadcast operation";
   let description = [{
-    Broadcasts the input tensor to the specified shape.
-
-    The broadcasting follows numpy semantics.
+    Broadcasts the input to the given shape with numpy semantics.
 
     Example:
 
@@ -2931,12 +2692,9 @@ def MO_BroadcastToOp : MO_ShapeModifierOp<"broadcast_to", [
   let hasVerifier = 1;
 
   let builders = [
-    /// Create a ShapeOf + BroadcastToOp with a "BroadcastLike" interface.
-    /// The second argument is not the shape to broadcast to, but a tensor
-    /// whose shape we want to broadcast to.
-    /// The third optional parameter should represent the shape of the
-    /// second arg (e.g. from ShapeOfOp). If not given a ShapeOfOp will be
-    /// inserted. It is provided to avoid Op duplication before CSE.
+    /// Broadcasts to the shape of `broadcastLike`. `shapeOfInput` is that
+    /// shape, if already available; otherwise a ShapeOfOp is inserted.
+    /// Passing it avoids duplicate ops before CSE.
     OpBuilder<(ins
       "TensorValue":$input,
       "TensorValue":$broadcastLike,
@@ -2954,12 +2712,8 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 ]> {
   let summary = "Reshape operation";
   let description = [{
-    Returns a tensor with the same underlying data, but different shape.
-
-    The first argument is the tensor to reshape.  The second tensor is the
-    shape to reshape the first tensor to.  The second tensor may contain a
-    single "-1" element, which signifies that that dimension should be
-    automatically computed.
+    Returns the input's data with a new shape. The shape may contain one -1,
+    whose dimension is inferred.
 
     Example:
 
@@ -2992,19 +2746,10 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
 ]> {
   let summary = "Squeeze-shape operation";
   let description = [{
-    Calculates the shape from squeeze like operators. Given an input shape
-    vector representing a tensor of rank `N`, and a list of indices of length
-    `M`, returns a new shape vector representing a tensor of rank `N - M`. The
-    indices represent the 0-based index of dimensions in the original rank `N`
-    tensor.
-
-    The indicated indices must represent dimensions of size 1. If
-    an index does not point to a dimension to size 1, an error is thrown
-    instead.
-
-    This operator supports negative indexing with python-like semantics.
-    That is all indices must be in [-N, N), if an index is < 0, it is as if
-    we added `N` to it.
+    Computes the shape after a squeeze: removes the `M` indicated dimensions
+    from a rank-`N` shape, giving rank `N - M`. Each index must name a
+    size-1 dimension (otherwise it is an error) and lie in [-N, N), with
+    negative indices counting from the end.
 
     Example:
 
@@ -3039,15 +2784,8 @@ def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
 ]> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
-    Calculates the shape from unsqueeze like operators. Given an input shape
-    vector representing a tensor of rank `N`, and a list of indices of length
-    `M`, returns a new shape vector representing a tensor of rank `N + M`.
-
-    The indices in the given list map to the new vector of length `N + M` where
-    the indicated dimensions are replaced with `1`. The remaining dimension in
-    the original input shape vector are copied over in the non-1 dimensions.
-
-    This operator supports negative indexing.
+    Computes the shape after an unsqueeze: a rank-`N` shape with `M` indices
+    becomes rank `N + M`, with 1 at the (possibly negative) indices.
 
     Example:
 
@@ -3104,7 +2842,6 @@ def MO_ShapeOfOp : MO_TensorOp<"shape_of", [
   }];
 
   let builders = [
-    /// Create a shape-of of op on the given SSA value.
     OpBuilder<(ins "TensorValue":$input)>,
     OpBuilder<(ins "TensorValue":$input, "int64_t":$width)>,
   ];
@@ -3123,10 +2860,8 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
   let description = [{
     Returns the shape that two shapes would broadcast to under the numpy rules:
 
-    1. Make the shapes the same rank by adding 1 to the front
-       of the shorter shape
-    2. Ensure each dimension is equal, either by matching them or promoting a 1
-       to a larger number from the other shape
+    1. Left-pad the shorter shape with 1s to equal rank.
+    2. Each dimension pair must match, or one of them must be 1.
 
     Examples:
 
@@ -3139,7 +2874,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
       !mo.tensor<[4, 2, 1], f32>) -> !mo.tensor<[3], si64>
     %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
-    In this example, `shape1` will compute to [4, 2, 3]
+    `shape1` is [4, 2, 3].
 
     ```mlir
     %arg1: !mo.tensor<[10, 2, 1], f32>
@@ -3150,7 +2885,7 @@ def MO_BroadcastShapeOp : MO_TensorOp<"broadcast_shape", [
       !mo.tensor<[5], f32>) -> !mo.tensor<[1], si64>
     %shape1 = mo.broadcast_shape(%inshape1, %inshape2) : !mo.tensor<[3], si64>
     ```
-    In this example, `shape1` will compute to [10, 2, 5]
+    `shape1` is [10, 2, 5].
   }];
 
   let arguments = (ins
@@ -3201,13 +2936,13 @@ def MOShape_FromTensorOp : MOShape_Op<"from_tensor", [
 ]> {
   let summary = "Casting operation";
   let description = [{
-    Casts the input shape value to a shape-like tensor.
+    Casts the input shape-like tensor to a shape value.
 
     Example:
 
     ```mlir
-      %sh: !mosh.ape
-      %sht = mo.shape.to_tensor(%sh) -> !mo.tensor<[2], si64>
+      %sht: !mo.tensor<[2], si64>
+      %sh = mo.shape.from_tensor(%sht) : (!mo.tensor<[2], si64>) -> !mosh.ape
     ```
   }];
 
@@ -3249,16 +2984,12 @@ def MOStatic_BroadcastToOp : MOStatic_ShapeModifierOp<"broadcast_to", [
 ]> {
   let summary = "Broadcasting operation";
   let description = [{
-    Broadcasts the input tensor to the result tensor. The shape of the input and
-    result tensors must not be unknown or contain unknown dimensions, but can be
-    parametric.
+    Broadcasts the input tensor to the result type with numpy semantics. Input
+    and result shapes must be fully known, but can be parametric.
 
-    This op only has limited compile-time check on the validity of the target
-    shape (we expect the user to add any necessary runtime checks); therefore it
-    is not recommended for frontend conversion code to rely on this op (use
-    `mo.broadcast_to` with a constant shape-like tensor instead).
-
-    The broadcasting follows numpy semantics.
+    Compile-time validation of the target shape is limited and runtime checks
+    are the user's job, so frontends should use `mo.broadcast_to` with a
+    constant shape-like tensor instead.
 
     Example:
 
@@ -3282,15 +3013,12 @@ def MOStatic_ReshapeOp : MOStatic_ShapeModifierOp<"reshape", [
 ]> {
   let summary = "Reshape operation";
   let description = [{
-    Returns a tensor with the same underlying data, but different shape. The
-    shape of the input and result tensors must not be unknown or contain unknown
-    dimensions, but can be parametric. We do not allow inferred dimensions
-    (e.g. -1 in MO_ReshapeOp).
+    Returns a tensor with the same underlying data but a different shape. Input
+    and result shapes must be fully known, but can be parametric; inferred
+    dimensions (-1 in `mo.reshape`) are not allowed.
 
-    The op has no compile-time or runtime checks on the validity of the target
-    shape (we expect the user to add any necessary runtime checks); therefore it
-    is not recommended for frontend conversion code to rely on this op (use
-    `mo.reshape` with a constant shape-like tensor instead).
+    The target shape is not validated at compile time or runtime, so frontends
+    should use `mo.reshape` with a constant shape-like tensor instead.
 
     Example:
 
@@ -3314,21 +3042,9 @@ def MO_ConcatOp : MO_TensorOp<"concat", [
 ]> {
   let summary = "Concatenation operation";
   let description = [{
-    Concatenates the input tensors along a given dimension.
-
-    `mo.concat` concatenates the `inputs` tensors into an output tensor. There
-    must be at least 1 input tensor.
-
-    The following constraints apply to the inputs/outputs:
-
-    - The input tensors and output tensors all has the same shape except along
-      the concatenation dimension `axis`.
-    - The size of the concatenation dimension in output tensor have be the sum
-      of sizes of the concatenation dimension in input tensors.
-    - The element type of the input and output tensors must match.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Concatenates one or more `inputs` along `axis` (numpy semantics, -1 is the
+    last axis). Inputs and output share the element type and all dimensions
+    except `axis`, whose output size is the sum of the input sizes.
 
     Example:
 
@@ -3366,17 +3082,10 @@ def MO_SplitOp : MO_TensorOp<"split", [
 ]> {
   let summary = "Splitting operation";
   let description = [{
-    Splits the input tensor into multiple tensors along a given dimension.
-
-    `mo.split` splits the tensor `input` into multiple output tensors.
-    The number of output tensors is equal to the number of elements in
-    `splitSizes`, which is a rank-1 tensor of integers.
-    Each of the output tensors has the same shape as `input` except along the
-    split dimension `axis`, where the size is given by the corresponding
-    element in `splitSizes`.
-
-    The value of `axis` follows numpy semantics, e.g., -1 represents the last
-    axis.
+    Splits `input` along `axis` (numpy semantics, -1 is the last axis) into one
+    output per element of the rank-1 `splitSizes`. Each output matches `input`
+    except along `axis`, where its size is the corresponding `splitSizes`
+    element.
 
     Example:
 
@@ -3417,10 +3126,8 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 ]> {
   let summary = "Transposition operation";
   let description = [{
-    Returns a new Tensor as the result of permuting the dimensions of the input
-    tensor according to the value of perm.
-
-    Note that `perm` must contain unique values from `[0, input_rank)`.
+    Permutes the dimensions of `input` by `perm`, which must contain unique
+    values from `[0, input_rank)`.
 
     Example:
 
@@ -3460,11 +3167,8 @@ def MO_TileOp : MO_TensorOp<"tile", [
 ]> {
   let summary = "Tiling operation";
   let description = [{
-    Returns a new Tensor as the result of copying the input tensor N_i times
-    on each dimension, where N_i = tiles[i].
-
-    The i-th dimension of output shape will be the ith dimension of input shape
-    multiplied by N_i.
+    Repeats the input `repeats[i]` times along each dimension `i`, so output
+    dimension `i` is `input.dim(i) * repeats[i]`.
 
     Example:
 
@@ -3498,12 +3202,9 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
 ]> {
   let summary = "Constant-mode padding operation";
   let description = [{
-    Pads the `input` tensor with a scalar tensor `constant` according to the
-    `paddings`. Assumes input has rank `N`, the `paddings` tensor should have
-    shape `(2 * N)`, where each consecutive pair of elements has the form
-    `[before, after]`, indicating how many of `constant` to add before and after
-    the contents of `input` in that dimension. The size of each dimension D of
-    the padded output is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
+    Pads `input` with the scalar `constant`. For a rank-`N` input, `paddings`
+    has shape `(2 * N)` holding a `[before, after]` pair per dimension, so
+    output dimension D is `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
 
     Example:
 
@@ -3540,14 +3241,7 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
 ]> {
   let summary = "Reflection-mode padding operation";
   let description = [{
-    Pads the `input` tensor by reflecting it according to the `paddings`.
-    Assumes input has rank `N`, the `paddings` tensor should have shape `(2 *
-    N)`, where each consecutive pair of elements has the form `[before, after]`,
-    indicating how many of `constant` to add before and after the contents of
-    `input` in that dimension. The size of each dimension D of the padded output
-    is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
-
-    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+    Pads `input` by reflection. `paddings` is laid out as in `mo.pad.constant`.
 
     Example:
 
@@ -3581,14 +3275,8 @@ def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
 ]> {
   let summary = "Repeat-mode padding operation";
   let description = [{
-    Pads the `input` tensor by repeating border values according to `paddings`.
-    Assumes input has rank `N`, the `paddings` tensor should have shape `(2 *
-    N)`, where each consecutive pair of elements has the form `[before, after]`,
-    indicating how many of `constant` to add before and after the contents of
-    `input` in that dimension. The size of each dimension D of the padded output
-    is: `paddings[2*D] + input.dim(D) + paddings[2*D+1]`.
-
-    `paddings[D, 0] + input.dim(D) + paddings[D, 1]`.
+    Pads `input` by repeating border values. `paddings` is laid out as in
+    `mo.pad.constant`.
 
     Example:
 
@@ -3626,19 +3314,13 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 ]> {
   let summary = "`gather` operation";
   let description = [{
-    Gathers slices from input's axis according to indices.
-
-    If input and indices are statically ranked, the output rank must be
-    `inputRank - 1 + indicesRank`. In general, the output satisfies the
-    following:
+    Gathers slices from input's axis according to indices. For static ranks,
+    the output rank is `inputRank - 1 + indicesRank`:
     ```
     output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
       input[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
     ```
-    where `indices` appears at given axis of input.
-
-    The values of `axis` and `indices` follows numpy semantics, e.g., -1
-    represents the last axis. `axis` is a compile-time `index` attribute.
+    `axis` and `indices` follow numpy semantics (-1 is the last axis).
 
     Example:
 
@@ -3671,8 +3353,7 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 def MO_GatherSumOp : MO_TensorOp<"gather_sum", [MO_HostOnly]> {
   let summary = "`gather-sum` operation";
   let description = [{
-    A temporary composite op that composes a gather with sum reduction.
-    The gather axis is 0 and reduction axis is 1.
+    Gather on axis 0 followed by a sum reduction on axis 1.
   }];
 
   let arguments = (ins
@@ -3688,13 +3369,9 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 ]> {
   let summary = "Multi-dimensional `gather` operation";
   let description = [{
-    Variant of `mo.gather` that accepts multi-dimensional indices.
-
-    The last dimension stores the index whereas
-    the outer dimensions act like batch dimensions. The size of the last
-    dimension is at most the rank of the input. When the dimension size is less
-    than the rank of the input, slices of the input are gathered, starting from
-    the leftmost dimension.
+    Variant of `mo.gather` with multi-dimensional indices. The last indices
+    dimension holds the index (at most input rank long; shorter gathers
+    leading-dimension slices) and the outer dimensions act as batch dimensions.
 
     ```
     output_shape = (
@@ -3743,20 +3420,10 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [
 ]> {
   let summary = "`scatter` operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar `axis` compile-time `index` attribute. The output is a copy of the
-    input, with certain elements updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is updated to the corresponding entry in `updates`.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Returns a copy of `input` with elements from `updates` written at positions
+    given by `indices`. `input`, `updates`, and `indices` have the same rank;
+    each `indices` entry replaces the `axis` coordinate of its own index. In
+    2D:
     ```
       output[indices[i][j]][j] = updates[i][j] if axis = 0,
       output[i][indices[i][j]] = updates[i][j] if axis = 1,
@@ -3812,21 +3479,8 @@ class MO_ScatterReductionOp<string name, list<Trait> traits = []> :
 def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
   let summary = "`scatter-add` operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the sum of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via addition.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `mo.scatter`, but combines each update with the existing element via
+    addition. In 2D:
     ```
       output[indices[i][j]][j] += updates[i][j] if axis = 0,
       output[i][indices[i][j]] += updates[i][j] if axis = 1,
@@ -3848,21 +3502,8 @@ def MO_ScatterAddOp : MO_ScatterReductionOp<"add"> {
 def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
   let summary = "scatter-max operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the maximum of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via maximum.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `mo.scatter`, but combines each update with the existing element via
+    maximum. In 2D:
     ```
       output[indices[i][j]][j] = max(output[indices[i][j]][j], updates[i][j]) if axis = 0,
       output[i][indices[i][j]] = max(output[i][indices[i][j]], updates[i][j]) if axis = 1,
@@ -3884,21 +3525,8 @@ def MO_ScatterMaxOp : MO_ScatterReductionOp<"max"> {
 def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
   let summary = "`scatter-min` operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the minimum of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via minimum.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `mo.scatter`, but combines each update with the existing element via
+    minimum. In 2D:
     ```
       output[indices[i][j]][j] = min(output[indices[i][j]][j], updates[i][j]) if axis = 0,
       output[i][indices[i][j]] = min(output[i][indices[i][j]], updates[i][j]) if axis = 1,
@@ -3920,21 +3548,8 @@ def MO_ScatterMinOp : MO_ScatterReductionOp<"min"> {
 def MO_ScatterMulOp : MO_ScatterReductionOp<"mul"> {
   let summary = "scatter-mul operation";
   let description = [{
-    Produces an output tensor by scattering elements from updates to input
-    according to indices, and it stores the product of elements with duplicate
-    indices.
-
-    It takes in `input`, `updates` and `indices` tensors of the same rank, and a
-    scalar axis. The output is a copy of the input, with certain elements
-    updated based on `updates` and `indices`.
-
-    For each entry in `indices`, the target index for `input` is obtained by
-    making a copy of the entry's own index, and then updating the `axis`
-    dimension with the value of the `indices` entry. Then the element at this
-    target index is combined with existing element via multiplication.
-
-    For instance, in a 2D tensor case, the update corresponding to the [i][j] entry
-    is performed as below:
+    Like `mo.scatter`, but combines each update with the existing element via
+    multiplication. In 2D:
     ```
       output[indices[i][j]][j] *= updates[i][j] if axis = 0,
       output[i][indices[i][j]] *= updates[i][j] if axis = 1,
@@ -3966,14 +3581,9 @@ def MO_ScatterNdOp : MO_TensorOp<"scatter_nd", [
     Produces an output tensor by scattering slices from updates to input
     according to indices.
 
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    The last dimension of `indices` is an index vector into a copy of `input`;
+    the addressed slice (or scalar, if the vector length equals the input rank)
+    is replaced by the corresponding slice of `updates`.
 
     Example:
 
@@ -4024,14 +3634,7 @@ def MO_ScatterNdAddOp : MO_ScatterNdReductionOp<"add"> {
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the sum of any duplicate indices.
 
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Index layout is as in `mo.scatter_nd`.
 
     Example:
 
@@ -4052,14 +3655,7 @@ def MO_ScatterNdMaxOp : MO_ScatterNdReductionOp<"max"> {
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the maximum of any duplicate indices.
 
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Index layout is as in `mo.scatter_nd`.
 
     Example:
 
@@ -4080,14 +3676,7 @@ def MO_ScatterNdMinOp : MO_ScatterNdReductionOp<"min"> {
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the minimum of any duplicate indices.
 
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Index layout is as in `mo.scatter_nd`.
 
     Example:
 
@@ -4108,14 +3697,7 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
     Produces an output tensor by scattering slices from updates to input
     according to indices, and it stores the product of any duplicate indices.
 
-    Specifically, it treats the last dimension of indices as a vector of
-    integers used to index into a copy of the input, and it replaces that
-    resulting slice (or scalar) with corresponding slice (or scalar) from
-    the updates tensor.
-
-    Note that the `slice` shows up in case where the index vector length is
-    shorter than the rank of input tensor, i.e., the op will slice the leading
-    dimensions.
+    Index layout is as in `mo.scatter_nd`.
 
     Example:
 
@@ -4182,10 +3764,8 @@ def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
 ]> {
   let summary = "Nonzero-value indices operation";
   let description = [{
-    Returns a tensor of coordinates of the nonzero values in the given tensor.
-    The return value is a 2D tensor of shape [nnz x rank_in], where nnz is the
-    number of nonzero elements in the input tensor, and rank_in is the rank of
-    the input tensor. Coordinates are generated in row-major order.
+    Returns the row-major coordinates of the input's nonzero values as a
+    `[nnz, rank_in]` tensor.
 
     Example:
 
@@ -4210,7 +3790,6 @@ def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
 // ArgMaxOp / ArgMinOp
 //===----------------------------------------------------------------------===//
 
-// Base class for ArgMin and ArgMax.
 class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []> :
   MO_ReductionOp<mnemonic, traits> {
   let arguments = (ins
@@ -4230,15 +3809,8 @@ class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []> :
 def MO_ArgMaxOp : MO_ArgMinMaxOp<"reduce.arg_max"> {
   let summary = "Maximum-value indices operation";
   let description = [{
-    This op is equivalent to reduce_max, but returns indices instead of values.
-
-    The axis attribute specifies the reduction axis.
-
-    Like reductions, the output shape is the same as the input shape, except for
-    the reduced axis which is set to 1. Moreover, the value of `axis` follows
-    numpy semantics, e.g., -1 represents the last axis.
-
-    For identical maximum values, the lowest index is returned.
+    Like `reduce_max` over `axis` (numpy semantics; reduced axis kept as size
+    1), but returns indices. Ties return the lowest index.
 
     Example:
 
@@ -4254,15 +3826,8 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"reduce.arg_max"> {
 def MO_ArgMinOp : MO_ArgMinMaxOp<"reduce.arg_min"> {
   let summary = "Minimum-value indices operation";
   let description = [{
-    This op is equivalent to reduce_min, but returns indices instead of values.
-
-    The axis attribute specifies the reduction axis.
-
-    Like reductions, the output shape is the same as the input shape, except for
-    the reduced axis which is set to 1. Moreover, the value of `axis` follows
-    numpy semantics, e.g., -1 represents the last axis.
-
-    For identical minimum values, the lowest index is returned.
+    Like `reduce_min` over `axis` (numpy semantics; reduced axis kept as size
+    1), but returns indices. Ties return the lowest index.
 
     Example:
 
@@ -4287,9 +3852,8 @@ def MO_RandomNormalOp : MO_TensorOp<"random.normal", [
 ]> {
   let summary = "Normal distribution operation";
   let description = [{
-    Returns a tensor with shape `shape` populated with random values from a
-    normal distribution, with the mean of the distribution equal to `mean`
-    and the standard deviation equal to `variance`.
+    Returns a `shape` tensor of normal samples with mean `mean` and standard
+    deviation `variance`.
 
   Example:
     ```mlir
@@ -4334,8 +3898,7 @@ def MO_RandomUniformOp : MO_TensorOp<"random.uniform", [
 ]> {
   let summary = "Uniform distribution operation";
   let description = [{
-    Returns a tensor with shape `shape` populated with random values from a
-    uniform distribution on the half-open interval [lowerBound, upperBound).
+    Returns a `shape` tensor of uniform samples from [lowerBound, upperBound).
 
     Example:
     ```mlir
@@ -4381,13 +3944,9 @@ def MO_RangeOp : MO_TensorOp<"range", [
 ]> {
   let summary = "Range operation";
   let description = [{
-    Creates a sequence of numbers. The sequence goes from `start` with
-    increments of size `step` up to (but not including) `limit`. All arguments
-    are mandatory and must have the same element type.
-
-    Note the following restrictions on input values:
-    1. `step` must be non-zero
-    2. `limit - start` must be zero or have the same sign as `step`
+    Returns `[start, limit)` in increments of `step`. All arguments share an
+    element type. `step` must be non-zero and `limit - start` must be zero or
+    have the sign of `step`.
 
     Example:
 
@@ -4442,12 +4001,8 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear", [
 ]> {
   let summary = "Linear resize operation";
   let description = [{
-    Resizes a tensor to a new shape using the linear algorithm.
-
-    The coordinate transform mode can be half-pixel, align-corners or asymmetric.
-
-    When set to true, the antialias attribute causes an antialiasing filter to be applied
-    when downscaling.
+    Resizes a tensor with linear interpolation. `antialias` applies an
+    antialiasing filter when downscaling.
   }];
   let arguments = (ins
     MO_Tensor:$input,
@@ -4471,17 +4026,8 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest", [
 ]> {
   let summary = "Nearest-neighbor resize operation";
   let description = [{
-    Resizes a tensor to a new shape using the nearest-neighbor algorithm.
-
-    The coordinate transform mode can be half-pixel, align-corners or asymmetric.
-
-    The values for round mode are:
-      - 0: HalfDown
-      - 1: HalfUp
-      - 2: Floor
-      - 3: Ceil
-
-    Round mode is HalfDown (0) by default.
+    Resizes a tensor with nearest-neighbor interpolation. `round_mode` is
+    0 = HalfDown (default), 1 = HalfUp, 2 = Floor, 3 = Ceil.
 
     Example:
     ```mlir
@@ -4517,11 +4063,8 @@ def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic", [
 ]> {
   let summary = "Bicubic resize operation";
   let description = [{
-    Resizes a tensor to a new shape using the bicubic interpolation algorithm.
-
-    Bicubic interpolation uses a 4x4 pixel neighborhood and cubic polynomials
-    to produce smoother results than linear interpolation. This implementation
-    uses Keys' cubic convolution with a = -0.5.
+    Resizes a tensor with bicubic interpolation (Keys' cubic convolution,
+    a = -0.5, over a 4x4 neighborhood).
 
     Example:
     ```mlir
@@ -4557,7 +4100,7 @@ def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
 ]> {
   let summary = "ROI alignment operation";
   let description = [{
-    ROI align consumes an input tensor and regions of interest in which to apply pooling.
+    Pools `input` over each region of interest in `rois`.
 
     Example:
     ```mlir
@@ -4610,8 +4153,7 @@ class MO_DotBase<string name, list<Trait> traits = []> :
     Pure,
   ]> {
   let description = [{
-    Base class for all generic dot products (i.e. tensor contractions with two
-    inputs), for example matmuls.
+    Base class for two-input tensor contractions such as matmul.
   }];
 }
 
@@ -4655,10 +4197,8 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
 ]> {
   let summary = "Batched matrix-matrix multiplication operation";
   let description = [{
-    Performs matrix multiplication on two batches of matrices, represented by
-    two N-dimensional tensors.
-
-    The last two dimensions of each input are the matrix dimensions.
+    Multiplies two batches of matrices; the last two dimensions of each input
+    are the matrix dimensions.
 
     Example:
 
@@ -4713,26 +4253,15 @@ def MO_BandPartOp : MO_LinalgOp<"band_part", [
 ]> {
   let summary = "Matrix band part operation";
   let description = [{
-    Copies a tensor setting everything outside central (diagonal) band of the
-    matrices to zero, where all but the last two axes are effectively batches,
-    and the last two axes define sub matrices.
+    Zeroes everything outside the central band of the matrices formed by the
+    last two axes (leading axes are batches):
 
-    Assumes the input has dimensions [I, J, ..., M, N], then the output tensor
-    has the same shape as the input, and the values values are given by
-
-    out[i, j, ..., m, n] = in_band(m, n) * input[i, j,  ..., m, n].
-
-    With the indicator function
-
+    out[..., m, n] = in_band(m, n) * input[..., m, n]
     in_band(m, n) = ((num_lower < 0 || (m - n) <= num_lower)) &&
                      (num_upper < 0 || (n - m) <= num_upper))
 
-    If `exclude` is set, the selection is reverted: The elements in band are set
-    to zero while the elements outside the band are copied to the output tensor.
-
-    Please explicitly note that with negative values, this kernel returns the
-    entire lower or upper triangle of the matrix, and otherwise returns
-    a diagonal band around the main diagonal of the matrix.
+    A negative bound keeps the whole lower/upper triangle. `exclude` inverts
+    the selection, zeroing the band instead.
 
     Example:
 
@@ -4779,9 +4308,9 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 ]> {
   let summary = "Shape function call operation";
   let description = [{
-    Invokes a shape function with given name and bind its return values to the
-    output parameters. Each argument must be a shape-like or integer scalar
-    tensor. The `kgenParams` will be passed along to the shape function as is.
+    Invokes the named shape function and binds its results to the output
+    parameters. Arguments must be shape-like or integer scalar tensors.
+    `kgenParams` is forwarded to the shape function as is.
 
     Example:
 
@@ -4795,11 +4324,8 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
       : (!mo.tensor<[2], si64>, !mo.tensor<[], si64>)
     ```
 
-    `dataDeptTensors` Is an instruction to the lowering that the inputs at
-    these indices should be treated as data dependent tensors. These tensors
-    include things like dynamic "axis" in reductions or "steps" in slice. Any
-    tensor which needs to have its values read to compute the shape for the op
-    falls into this category.
+    `dataDeptTensors` lists input indices whose values (not just shapes) the
+    shape function reads, such as a dynamic reduction axis or slice steps.
   }];
 
   let arguments = (ins
@@ -4825,12 +4351,9 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [MO_HostOnly]> {
   let summary = "Layout transformation operation";
   let description = [{
-    This op transforms the layout of input tensor to the layout specified in
-    the output type. The `kgenParams` will be passed along as named parameters
-    to the underlying mojo kernel.
-
-    It requires both the input and output tensor types to contain layout
-    annotations.
+    Transforms the input to the layout of the result type. Both types must carry
+    layout annotations. `kgenParams` is forwarded as named parameters to the
+    Mojo kernel.
   }];
 
   let arguments = (ins
@@ -4858,15 +4381,10 @@ def MO_LayerNormOp : MO_TensorOp<"reduce.layer_norm", [
 ]> {
   let summary = "Layer normalization operation";
   let description = [{
-    Layer normalization operation which operates on the last dimension of
-    `input`:
+    Normalizes over the last dimension of `input`; `gamma` and `beta` have
+    shape [channels], the size of that dimension:
 
-      meanInput = mean(input)
-      varInput = var(input)
-      result = (input - meanInput) / sqrt(varInput + epsilon) * gamma + beta.
-
-    We expect gamma and beta to be shape [channels], where channels is the size
-    of the last input dimension.
+      result = (input - mean(input)) / sqrt(var(input) + epsilon) * gamma + beta
   }];
 
   let arguments = (ins
@@ -4894,8 +4412,8 @@ def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
 ]> {
   let summary = "Printing operation";
   let description = [{
-    Prints a debug string. If a label attribute is supplied the string is printed with that label.
-    Otherwise just the string is printed. For debugging and testing only.
+    Prints a debug string, prefixed with `label` if set. For debugging and
+    testing only.
 
     Example:
     ```mlir
@@ -4926,9 +4444,8 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
 ]> {
   let summary = "Printing operation";
   let description = [{
-    Prints a debug representation of argument input. If a label attribute
-    is supplied the tensor contents is printed with that label. Otherwise
-    just the tensor metadata is printed. For debugging and testing only.
+    Prints `input`: its contents with `label` if set, otherwise only its
+    metadata. For debugging and testing only.
 
     Example:
     ```mlir
@@ -4949,7 +4466,6 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   }];
 }
 
-// Class for top-k/bottom-k operators
 class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []> :
   MO_TensorOp<mnemonic, [
     DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
@@ -4978,14 +4494,8 @@ class MO_SelectKLikeOp<string mnemonic, list<Trait> traits = []> :
 def MO_TopKOp : MO_SelectKLikeOp<"top_k"> {
   let summary = "Top-K operation";
   let description = [{
-    Computes the largest values and their corresponding indices in a tensor
-    along a specified axis. Returned values along the axis are always sorted
-    (stable).
-
-    axis: The axis to compute the largest values over.
-      The axis must be in [-rank, rank).
-    k: The number of values to compute.
-    sorted: Whether to return the values and indices sorted or not.
+    Returns the `k` largest values along `axis` (in [-rank, rank)) and their
+    indices. Returned values are always sorted (stable).
 
     Example:
     ```mlir
@@ -5007,9 +4517,8 @@ def MO_TopKOp : MO_SelectKLikeOp<"top_k"> {
 def MO_BottomKOp : MO_SelectKLikeOp<"bottom_k"> {
   let summary = "Bottom-K operation";
   let description = [{
-    Computes the bottom (lowest) values and their corresponding indices in a
-    tensor along a specified axis. Returned values along the axis are always
-    sorted (stable).
+    Returns the `k` smallest values along `axis` and their indices. Returned
+    values are always sorted (stable).
 
     Example:
     ```mlir
@@ -5041,12 +4550,8 @@ def MO_CustomOp : MO_TensorOp<"custom", [
 ]> {
   let summary = "User-defined operation";
   let description = [{
-    The `symbol` attribute specifies which underlying Mojo kernel implements
-    this operation. This kernel must be decorated with the appropriate decorator
-    with the exact same symbol string.
-
-    The `function` attribute specifies which labeled function the operation
-    refers to. Examples: `mogg.shape`.
+    `symbol` names the Mojo kernel implementing the op; the kernel must be
+    registered under exactly that string.
 
     Example:
 
@@ -5063,14 +4568,9 @@ def MO_CustomOp : MO_TensorOp<"custom", [
         pass
     ```
 
-    Also allows the definition of custom kernels that have side-effects on
-    mo.buffer values via the use of chains.
-    (Currently limited to NDBuffer based kernels).
-
-    Nothing needs to change about the kernel definition, but now the custom op
-    must take a `mo.buffer` operand for the value it wants to mutate and
-    produce an output chain as its final result and take an input chain as its
-    final operand.
+    A kernel that mutates a `mo.buffer` (NDBuffer-based kernels only) needs no
+    change; the op takes the buffer operand, an input chain as its final
+    operand, and produces an output chain as its final result.
 
     Example:
 
@@ -5100,13 +4600,8 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   }];
 
   let extraClassDeclaration = [{
-    /// Returns the sole input chain (if present) and std::nullopt otherwise.
     std::optional<ChainValue> maybeGetInChain();
-
-    /// Returns the sole output chain (if present) and std::nullopt otherwise.
     std::optional<ChainValue> maybeGetOutChain();
-
-    /// Collects all operands of type !mo.buffer.
     mlir::SmallVector<Value> getBufferOperands();
   }];
 }
@@ -5115,20 +4610,12 @@ def MO_AssertOp : MO_Op<"assert"> {
   let summary = "Assert that a single boolean value is true.";
 
   let description = [{
-    Asserts that a single boolean value is true.
+    Bare asserts are not used in MO graphs; they are wrapped in a KGEN apply
+    attr and materialized via `kgen.param.declare`. To guard an op:
 
-    Currently bare assert operations are *not* used in MO graphs,
-    rather they are wrapped first in a KGEN MLIR op attr, a KGEN apply
-    attr and finally materialized as an actual operation via the KGENParamDeclare op.
-
-    In order to properly materialize assert logic for a particular op and ensure
-    the execution dependencies are properly tracked you must:
-
-    1. Create each individual assert via calls to AssertOp's emitStaticCall method
-    2. Supply all the asserts (really KGENParamDeclare ops) to the materializeAllAssertLogic
-       function which will handle linking the individual assertions together via !mo.chains
-       and materialize the remaining structures needed to properly track the execution
-       dependencies from the asserts to their compute op.
+    1. Create each assert with `emitStaticCall`.
+    2. Pass the resulting param-declare ops to `materializeAllAssertLogic`,
+       which chains them and guards the op's operands on that chain.
 
     Example:
 
@@ -5173,16 +4660,11 @@ def MO_AssertOp : MO_Op<"assert"> {
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
-    /// Create a static call to apply(mo.assert, cond, message)
+    /// Returns apply(mo.assert, cond, message).
     static TypedAttr emitStaticCall(TypedAttr cond, const Twine &message);
 
-    /// Links a sequence of assertions together with the op they're meant to precede by:
-    ///
-    /// 1: Linking the sequence of asserts together via their chains
-    /// 2: Converting the chains produced by each individual assert into SSA values via mosh.param.to_value
-    /// 3: Tying these chains all together via mo.chain.create
-    /// 4: Creating a guard op consuming the chain from (3) along with all operands of op
-    /// 5: Replacing all operands for op with those produced by the mo.guard op introduced in (4)
+    /// Chains `asserts` together, joins their chains with mo.chain.create, and
+    /// routes all of `op`'s operands through an mo.guard on that chain.
     static void materializeAllAssertLogic(mlir::RewriterBase &rewriter,
                                           Operation *op,
                                           ArrayRef<KGEN::ParamDeclareOp> asserts);
@@ -5197,12 +4679,8 @@ def MO_GuardOp : MO_Op<"guard", [
 ]> {
   let summary = "SSA-value guard operation";
   let description = [{
-    Consumes a mo.chain operation and a variadic number of inputs and is
-    semantically equivalent to a copy of the variadic inputs.
-
-    This can be used in conjunction with the !mo.chain returning ops
-    (currently only mo.assert) in order to set up execution dependencies
-    between the chain producing op and any appropriate downstream operations.
+    Copies `inputs`, ordered after `chain`. Makes downstream ops depend on a
+    chain-producing op such as mo.assert.
 
     Example:
 
@@ -5242,9 +4720,8 @@ def MO_ChainCreateOp : MO_Op<"chain.create", [
 ]> {
   let summary = "Create a new chain conditioned on a variadic number of inputs";
   let description = [{
-    This operation consumes an arbitrary number of values and produces a chain.
-    Can be used for the sequencing for side-effecting ops when they might
-    depend on multiple other ops producing chains.
+    Produces a chain that depends on all `inputs`, for sequencing a
+    side-effecting op after several producers.
 
     ```mlir
 
@@ -5273,9 +4750,7 @@ def MO_BufferTransferOp : MO_DeviceAgnosticMutableOp<"buffer.transfer", [
 ]> {
   let summary = "Transfer data between two buffers";
   let description = [{
-    This operation transfers data from a source buffer to a destination buffer.
-    Both buffers must have the same shape and data type. The operation takes an input
-    chain and produces an output chain to sequence the transfer with other operations.
+    Copies `src` into `dst`, which must have the same shape and dtype.
 
     Example:
     ```mlir
@@ -5296,28 +4771,22 @@ def MO_BufferTransferOp : MO_DeviceAgnosticMutableOp<"buffer.transfer", [
 }
 
 
-// TODO(GEX-1292): Support parameterization interfaces for this op
-// Not currently an issue since parameterization for mo.buffer operands that are
-// graph inputs works and this op will only be used in a pass where the shape
-// attr of the results of this op are derived from an existing mo.buffer value.
+// TODO(GEX-1292): Support parameterization interfaces for this op. Not needed
+// yet: it is only created by a pass that copies its shape from an existing
+// mo.buffer.
 def MO_BufferCreateOp : MO_Op<"buffer.create", [
   MO_PreservedDuringKernelLowering,
   Pure,
 ]> {
   let summary = "Creates a buffer on a specific device, optionally initialized.";
   let description = [{
-    This operation creates a buffer with the specified shape and data type on a given device.
+    Creates a buffer of the result type. By default it is uninitialized and
+    reallocated on every execution.
 
-    By default the buffer is uninitialized and (re)allocated on every execution,
-    for use cases where it will be filled with data later in the computation.
-
-    When the optional `initValue` scalar attribute is set, the buffer instead
-    becomes persistent state: it is allocated once and filled with `initValue`
-    a single time during the model's `init` phase, and the same buffer is reused
-    across every `execute` call. This lets a kernel keep and mutate persistent
-    scratch state that is only initialized once (e.g. a counter buffer that a
-    kernel zeroes at the end of each invocation and expects to find zeroed on the
-    first call). `initValue` must have the same element type as the buffer.
+    With `initValue` (same element type as the buffer), the buffer is
+    persistent: allocated and filled once during the model's `init` phase,
+    then reused across `execute` calls. This gives kernels scratch state that
+    survives calls, such as a counter the kernel re-zeroes after each run.
 
     Example:
     ```mlir
@@ -5327,8 +4796,7 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [
   }];
 
   let arguments = (ins
-    // A single-element elements attribute whose element type matches the
-    // buffer's dtype (see the verifier).
+    // Single-element elements attr of the buffer's dtype (verified).
     OptionalAttr<AnyAttr>:$initValue
   );
   let results = (outs MO_Buffer:$result);
@@ -5336,10 +4804,8 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
   let hasVerifier = 1;
 
-  // A custom builder (with a defaulted `initValue`) is the way to make the
-  // optional attribute omittable from the generated Python binding: the `{}`
-  // default lets callers construct an uninitialized buffer without passing the
-  // attribute (MLIR attribute casters reject `None`).
+  // The `{}` default lets Python bindings omit `initValue`; MLIR attribute
+  // casters reject `None`.
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "Type":$result,
@@ -5350,21 +4816,15 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [
 def MO_MutableLoadOp : MO_MutableOp<"mutable.load", [
   AllDTypesMatch<["inBuffer", "outTensor"]>,
   AllShapeAttrsMatch<["inBuffer", "outTensor"]>,
-  // Note: outTensor is a result, not an operand. The trait will generate
-  // a device constraint for it by default.
+  // outTensor is a result; the trait constrains its device by default.
   MO_PreservedDuringKernelLowering,
   MO_SingleDeviceWithHostOperands</*hostOperands*/[], /*deviceOperands*/["inBuffer"]>,
 ]> {
   let summary = "Take a chain and a buffer semantic tensor and returns a chain and a value semantic tensor.";
   let description = [{
-    Allows modelling of in-place operations in MO in conjunction with mo.mutable.store.
-
-    This is semantically equivalent to a copy from `inBuffer` to `outTensor`
-
-    The output chain of this operation is only allowed to have at most one use.
-
-    If the value semantic output of this operation has more than one use the
-    operation becomes ineligibile for fusion with compute operations.
+    Copies `inBuffer` to `outTensor`; with mo.mutable.store, models in-place
+    ops. The output chain has at most one use. If `outTensor` has more than
+    one use, the op cannot fuse with compute ops.
   }];
 
   let arguments = (ins MO_Buffer:$inBuffer, MO_Chain:$inChain);
@@ -5386,14 +4846,9 @@ def MO_MutableStoreOp : MO_MutableOp<"mutable.store", [
 ]> {
   let summary = "Takes a chain, a buffer semantic tensor, and a value semantic tensor and returns a chain";
   let description = [{
-    Allows modelling of in-place operations in MO in conjunction with mo.mutable.load.
-
-    This is semantically equivalent to a copy from `inTensor` to `inBuffer`
-
-    The output chain of this operation is only allowed to have at most one use.
-
-    If the value semantic tensor input of this operation has more than one use
-    the operation becomes ineligibile for fusion with compute operations.
+    Copies `inTensor` to `inBuffer`; with mo.mutable.load, models in-place
+    ops. The output chain has at most one use. If `inTensor` has more than
+    one use, the op cannot fuse with compute ops.
   }];
 
   let arguments = (ins
@@ -5415,33 +4870,11 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
 ]> {
   let summary = "Stores a tensor to a slice of a buffer semantic tensor.";
   let description = [{
-    Stores the  tensor `slice` to a subset of the elements in `inBuffer`.
-
-    The subset is chosen using the `start`, `stop`, and `step`
-    1D index tensors; each index tensor has N elements, one for each dimension
-    of the `input` tensor.
-
-    The semantics follows the numpy index semantics, such that
-    1. For each dimension `i`, `start[i]:stop[i]:step[i]` represents the
-       "indexing" along that dimension.
-    2. Negative indices are supported for `start` and `stop`, e.g., -1
-       represents the largest axis.
-    3. Out of bound indices in `start` and `stop` will be clamped to
-       [-dim, dim], where `dim` is the dimension in the corresponding axis.
-    4. `step` must contain nonzero elements. Negative steps are supported.
-
-    Note: the order in which negative indices are resolved matches that of
-    python for `start:
-
-    1. Normalize negative indices by adding the dimension size.
-    2. Apply clipping logic.
-
-    This means the equivalent mo.slice for l[:-1:-1] returns an empty result.
-    If we want to reverse the values in `l` we should do l[:-N-1:-1] where
-    N is the dimension size. Numbers smaller than -N-1 should also work.
+    Stores `slice` into the elements of `inBuffer` selected by the per-dimension
+    `start`, `stop`, and `step` vectors, with the same indexing semantics as
+    `mo.slice`.
 
     Example:
-    ```mlir
     ```mlir
       %buffer: !mo.buffer<[20, 20], f32>
       %slice: !mo.tensor<[D0, D1], f32>
@@ -5455,8 +4888,7 @@ def MO_MutableStoreSliceOp : MO_MutableOp<"mutable.store.slice", [
       %ch' = mo.mutable.store.slice(%ch, %buffer, %slice, %start, %stop, %step)
     ```
 
-    Both consumes and produces a chain. The output chain is allowed to have at
-    most one use.
+    The output chain has at most one use.
   }];
   let arguments = (ins
     MO_Buffer:$inBuffer,
@@ -5499,14 +4931,11 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
 ]> {
   let summary = "Allreduce sum across N devices.";
   let description = [{
-    Allreduce takes in inputs each coming from a different device with
-    the same shape as the final output and performs a sum reduction
-    across the devices.
+    Sums same-shaped inputs, one per device, across devices.
 
-    When `group_size` is set to a nonzero value smaller than the number of
-    inputs, contiguous runs of `group_size` devices form independent
-    allreduce groups (e.g. tensor-parallel groups under data parallelism);
-    shapes must then only match within each group.
+    A nonzero `group_size` smaller than the input count splits devices into
+    contiguous independent groups (e.g. TP groups under DP); shapes then only
+    need to match within a group.
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
@@ -5532,14 +4961,10 @@ def MO_BundledExpandOp : Op<MODialect, "bundled.expand", [
 ]> {
   let summary = "Expand a per-device tensor to all launches' tensors.";
   let description = [{
-    Inside an `mo.parallel` body, takes a single-device tensor (typically a
-    block argument) and produces one tensor per launch with the corresponding
-    device placement.  This makes collective N-expansion explicit in the IR
-    rather than implicit during lowering.
-
-    The number of results must equal the parent parallel op's launch count.
-    Result types must have the same shape and dtype as the input but with
-    devices matching each launch (derived from the first input bundle).
+    Inside an `mo.parallel` body, expands a single-device tensor (typically a
+    block argument) into one tensor per launch, making collective N-expansion
+    explicit in the IR. Results match the input's shape and dtype, one per
+    launch, on each launch's device (from the first input bundle).
 
     Example:
     ```mlir
@@ -5571,10 +4996,9 @@ def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
 ]> {
   let summary = "Per-device allreduce sum, for use inside mo.parallel.";
   let description = [{
-    Per-device entry point for allreduce sum, used inside an `mo.parallel`
-    region.  Takes N peer tensor inputs (from `mo.bundled.expand`), N
-    signal buffers (captured from graph scope — the `buffers(...)` clause
-    on the parent parallel op provides chain guarding), and a chain.
+    Per-device allreduce sum inside `mo.parallel`. Takes N peer tensors (from
+    `mo.bundled.expand`), N signal buffers captured from graph scope (chain
+    guarded by the parent's `buffers(...)` clause), and a chain.
 
     Example:
     ```mlir
@@ -5613,9 +5037,8 @@ def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
 ]> {
   let summary = "ReduceScatter sum across N devices.";
   let description = [{
-    ReduceScatter takes in inputs each coming from a different device, and
-    partitions the reduction such that each device receives a disjoint subset
-    of the result.
+    Sums inputs, one per device, and gives each device a disjoint part of the
+    result.
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
@@ -5641,10 +5064,8 @@ def MO_DistributedScatterOp : MO_DistributedOp<"distributed.scatter", [
 ]> {
   let summary = "Scatter different chunks from root GPU to device groups.";
   let description = [{
-    Scatter takes in ngpus input tensors (one per GPU, padded from dp_size
-    distinct chunks) all residing on the root device, and distributes each
-    to the corresponding GPU's output. The root attribute identifies which
-    device holds the source data.
+    Sends each of ngpus inputs on device `root` (padded from dp_size distinct
+    chunks) to the corresponding GPU.
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
@@ -5669,12 +5090,11 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
 ]> {
   let summary = "AllGather across N devices (variadic).";
   let description = [{
-    AllGather takes in inputs each coming from a different device and collects
-    the data into an output tensor along the 0th dimension. The output is
-    replicated across the same devices.
+    Concatenates inputs, one per device, along dimension 0 and replicates the
+    result on every device.
   }];
   let hasVerifier = 1;
-  // Variadic allgather has a folder since it can take 1 input.
+  // Folds the single-input case.
   let hasFolder = 1;
   let arguments = (ins
     Variadic<MO_Tensor>:$inputs,
@@ -5693,10 +5113,8 @@ def MO_EPDispatchOp : MO_DistributedOp<"distributed.ep.dispatch", [
 ]> {
   let summary = "Multi-device Expert Parallelism BF16 dispatch.";
   let description = [{
-    Dispatches input tokens to expert devices across N GPUs using the Expert
-    Parallelism protocol with BF16 output format.
-
-    All variadic operands and results have the same size (one per device).
+    Dispatches tokens to expert devices across N GPUs with BF16 output. Every
+    variadic operand and result has one entry per device.
   }];
   let hasVerifier = 1;
   let arguments = (ins
@@ -5732,10 +5150,7 @@ def MO_EPDispatchFP8Op : MO_DistributedOp<"distributed.ep.dispatch.fp8", [
 ]> {
   let summary = "Multi-device Expert Parallelism FP8 dispatch.";
   let description = [{
-    Dispatches input tokens to expert devices across N GPUs using the Expert
-    Parallelism protocol with blockwise FP8 quantized output format.
-
-    All variadic operands and results have the same size (one per device).
+    Like `mo.distributed.ep.dispatch`, but quantizes output to blockwise FP8.
   }];
   let hasVerifier = 1;
   let arguments = (ins
@@ -5773,16 +5188,12 @@ def MO_EPDispatchBlockScaledNVOp : MO_DistributedOp<"distributed.ep.dispatch.blo
 ]> {
   let summary = "Multi-device Expert Parallelism NVFP4/MXFP4/MXFP8 dispatch.";
   let description = [{
-    Dispatches input tokens to expert devices across N GPUs using the Expert
-    Parallelism protocol with NVIDIA block-scaled quantized output format.
-    Each device routes its tokens based on top-k expert IDs, quantizes them to
-    NVFP4, MXFP4 or MXFP8, and sends them to the appropriate peer via
-    shared-memory or NVSHMEM pointers.
+    Like `mo.distributed.ep.dispatch`, but quantizes tokens to NVFP4, MXFP4,
+    or MXFP8 and sends them via shared-memory or NVSHMEM pointers.
 
-    All variadic operands and results have the same size (one per device).
-    The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer
-    tensors that are typically identical across devices (replicated N times
-    to satisfy the same-variadic-size constraint).
+    `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer tensors,
+    usually identical across devices and replicated N times to satisfy the
+    same-variadic-size constraint.
   }];
   let hasVerifier = 1;
   let arguments = (ins
@@ -5825,17 +5236,11 @@ def MO_EPDispatchBlockScaledNVDynGlobalScalesOp : MO_DistributedOp<
     scales.
   }];
   let description = [{
-    Dispatches input tokens to expert devices across N GPUs like
-    `mo.distributed.ep.dispatch.block.scaled.nv` in NVFP4, but quantizes each
-    token against its own global scale, `2688 / rowmax`, instead of a
+    Like `mo.distributed.ep.dispatch.block.scaled.nv` in NVFP4, but quantizes
+    each token against its own global scale, `2688 / rowmax`, instead of a
     caller-supplied input scale. The scale's BF16 inverse travels with the
-    token, and each receiver stores it in `outputRowwiseScales`, one entry per
-    row of `outputTokens`.
-
-    All variadic operands and results have the same size (one per device).
-    The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer
-    tensors that are typically identical across devices (replicated N times
-    to satisfy the same-variadic-size constraint).
+    token and lands in `outputRowwiseScales`, one entry per row of
+    `outputTokens`.
   }];
   let hasVerifier = 1;
   let arguments = (ins
@@ -5874,16 +5279,8 @@ def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
 ]> {
   let summary = "Multi-device Expert Parallelism MXFP4 dispatch.";
   let description = [{
-    Dispatches input tokens to expert devices across N GPUs using the Expert
-    Parallelism protocol with MXFP4 quantized output format. Each device
-    routes its tokens based on top-k expert IDs, quantizes them to MXFP4,
-    and sends them to the appropriate peer via shared-memory or ROCSHMEM
-    pointers.
-
-    All variadic operands and results have the same size (one per device).
-    The `sendPtrs`, `recvPtrs`, and `recvCountPtrs` are host-side pointer
-    tensors that are typically identical across devices (replicated N times
-    to satisfy the same-variadic-size constraint).
+    Like `mo.distributed.ep.dispatch.block.scaled.nv`, but quantizes to MXFP4
+    and sends via shared-memory or ROCSHMEM pointers.
   }];
   let hasVerifier = 1;
   let arguments = (ins
@@ -5923,12 +5320,9 @@ def MO_EPCombineOp : MO_DistributedOp<"distributed.ep.combine", [
 ]> {
   let summary = "Multi-device Expert Parallelism fused combine.";
   let description = [{
-    Combines expert outputs back to their original devices across N GPUs.
-    Each device sends its expert outputs to the appropriate peers, waits
-    for all transfers, and computes the weighted sum of routed expert
-    outputs. The output supports epilogue fusion.
-
-    All variadic operands and results have the same size (one per device).
+    Returns expert outputs to their source devices across N GPUs and computes
+    the router-weighted sum. The output supports epilogue fusion. Every
+    variadic operand and result has one entry per device.
   }];
   let hasVerifier = 1;
   let arguments = (ins
@@ -5957,10 +5351,8 @@ def MO_EPCombineOp : MO_DistributedOp<"distributed.ep.combine", [
   }];
 }
 
-// Broadcast differs from other MO_DistributedOp subclasses: it has a single
-// input tensor (from root) rather than one input per device, so it uses
-// MO_MultiDeviceFrom<"outputs"> to infer execution devices from the variadic
-// outputs rather than the default inputs.
+// Not an MO_DistributedOp: it has a single root input rather than one per
+// device, so execution devices come from the outputs.
 def MO_DistributedBroadcastOp : MO_Op<"distributed.broadcast", [
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
@@ -5970,9 +5362,8 @@ def MO_DistributedBroadcastOp : MO_Op<"distributed.broadcast", [
 ]> {
   let summary = "Broadcast from root device to all participating devices.";
   let description = [{
-    Broadcast takes a single input tensor from the root device and replicates
-    it to all participating devices. The root device is identified by the
-    `root` attribute (0-indexed position in the signal buffer list).
+    Replicates `input` from the root device to all participating devices.
+    `root` is the root's index in the signal buffer list.
   }];
   let hasVerifier = 1;
   let hasFolder = 1;
@@ -5995,9 +5386,7 @@ def MO_DistributedBroadcastOp : MO_Op<"distributed.broadcast", [
 // "Custom" GPU only ops
 //===----------------------------------------------------------------------===//
 
-// TODO: Make into custom ops. Currently there's no way to mark custom ops as
-// GPU only, because device specificity is tied to individual ops. We will need
-// to support CPU only and GPU only custom ops, but that's not possible at the
-// moment.
+// TODO: Make into custom ops once custom ops can be marked CPU- or GPU-only;
+// device specificity is currently tied to individual ops.
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOOPS_TD

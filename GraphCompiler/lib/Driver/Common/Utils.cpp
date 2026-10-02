@@ -42,8 +42,8 @@ std::string M::getMaxIRDumpDir() {
   if (configOr.isError())
     return {};
 
-  // Prefer the user-facing debug option; fall back to the legacy save-temps
-  // key (which is also where `MODULAR_MAX_TEMPS_DIR` lands).
+  // Fall back to the legacy save-temps key, where `MODULAR_MAX_TEMPS_DIR`
+  // lands.
   StringRef dir = configOr->getValue("max-debug.ir-output-dir");
   if (dir.empty())
     dir = configOr->getValue("max.temps_dir");
@@ -71,22 +71,18 @@ void M::writeIntermediateFileIfRequested(const std::string &identifier,
     mlir::OpPrintingFlags flags;
     if (opt->printTempsLocalScope)
       flags.useLocalScope();
-    // Print each op's source location (the printer omits loc attributes
-    // by default), so dump consumers can trace ops back to the code that
-    // built them.
+    // Print locations so dump consumers can trace ops back to their source.
     flags.enableDebugInfo(true);
     module->print(intermediateFile->os(), flags);
     intermediateFile->keep();
   };
 
-  // If there are CL options use those.
   if (options && options->saveTemps) {
     writeFile(options);
     return;
   }
 
-  // Else fall back to the unified Config-driven directory (which combines
-  // `max-debug.ir-output-dir` and the legacy `max.temps_dir` keys).
+  // Combines `max-debug.ir-output-dir` and the legacy `max.temps_dir` keys.
   std::string tempsDir = getMaxIRDumpDir();
   if (tempsDir.empty())
     return;

@@ -36,12 +36,10 @@ static llvm::StringRef extractStackTrace(mlir::OpaqueLoc opaqueLoc) {
 //
 // For each op in the module that has an OpaqueLoc wrapping a PythonFrameAttr:
 //  - Embeds the Python stack trace into the message of any mgp.assert op.
-//  - Encodes the trace as FusedLoc metadata so it survives downstream
-//    lowering passes can retrieve it via collectSourceNotes. See GEX-2678.
-//  - Strips the OpaqueLoc (replacing it with the fallback location), since
-//    OpaqueLoc does not serialize correctly to bytecode. See GEX-1435.
-//  - If OpaqueLocs are nested inside a FusedLoc, each is individually
-//    replaced with its fallback, preserving the location tree structure.
+//  - Encodes the trace as FusedLoc metadata so downstream lowering can
+//    retrieve it via collectSourceNotes (GEX-2678).
+//  - Replaces each OpaqueLoc, including ones nested in a FusedLoc, with its
+//    fallback; OpaqueLoc does not serialize to bytecode (GEX-1435).
 
 struct AttachPythonStackTraces
     : public impl::AttachPythonStackTracesBase<AttachPythonStackTraces> {
@@ -53,9 +51,8 @@ struct AttachPythonStackTraces
     getOperation()->walk([&ctx](Operation *op) {
       Location loc = op->getLoc();
 
-      // Embed the trace into the assert message for better diagnostics.
-      // Only inspect the op's immediate OpaqueLoc; nested OpaqueLocs inside a
-      // FusedLoc don't apply here.
+      // Only the op's immediate OpaqueLoc applies, not ones nested in a
+      // FusedLoc.
       if (auto assertOp = dyn_cast<AssertOp>(op)) {
         if (auto opaqueLoc = mlir::dyn_cast<mlir::OpaqueLoc>(loc)) {
           llvm::StringRef stackTrace = extractStackTrace(opaqueLoc);
@@ -74,8 +71,6 @@ struct AttachPythonStackTraces
       }
     });
 
-    // Convert OpaqueLocs wrapping PythonFrameAttr into serializable FusedLocs
-    // so the traces survive downstream lowering and bytecode.
     RMO::materializePythonFrameLocations(getOperation());
   }
 };

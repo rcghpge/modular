@@ -29,11 +29,9 @@ namespace {
 // VerifyDeviceGraphPass
 //===----------------------------------------------------------------------===//
 //
-// When a `mo.graph` carries the `isDeviceGraph` attribute, every
-// kernel-backed op in its body must correspond to a `mogg.kernel.decl` whose
-// `build_graph` field is populated. Ops without a kernel registration (such
-// as dialect-intrinsic ops like `mo.constant` or `mo.output`) are skipped.
-// Graphs without the `isDeviceGraph` attribute are no-ops.
+// In an `isDeviceGraph` `mo.graph`, every kernel-backed op must map to a
+// `mogg.kernel.decl` with `build_graph` populated. Ops without a kernel
+// registration (e.g. `mo.constant`) are skipped.
 
 struct VerifyDeviceGraphPass final
     : public impl::VerifyDeviceGraphPassBase<VerifyDeviceGraphPass> {
@@ -56,15 +54,11 @@ struct VerifyDeviceGraphPass final
 
     graphOp.getBodyBlock()->walk(
         [&](mlir::Operation *op) {
-          // Terminators do not require validation.
+          // Terminators are tagged as control ops but need no validation.
           if (op->hasTrait<OpTrait::IsTerminator>())
             return;
 
-          // Control flow is not yet supported by the device-graph pipeline.
-          // Terminators (e.g. `mo.output`, `mo.yield`) are tagged as control
-          // ops but pass through trivially, so skip them. This restriction
-          // will be relaxed once CUDA conditional nodes (or an equivalent)
-          // are wired up.
+          // Unsupported until CUDA conditional nodes (or equivalent) land.
           if (isa<MOControlOpInterface>(op)) {
             op->emitError()
                 << "device-graphable mo.graph cannot contain control-flow op '"
@@ -73,10 +67,6 @@ struct VerifyDeviceGraphPass final
             signalPassFailure();
             return;
           }
-
-          // For `mo.custom`, the kernel registration is named by the
-          // `symbol` attribute; for built-in MO ops, the op name itself is
-          // the registration string.
 
           StringRef registration =
               TypeSwitch<Operation *, StringRef>(op)

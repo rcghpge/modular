@@ -29,7 +29,6 @@ using namespace M;
 #endif
 
 std::optional<std::filesystem::path> M::getMaxCacheDir() {
-  // If config is accessible look if it's set or not. If it's set we are done.
   auto configOr = Config::open();
   if (configOr.isError()) {
     MODULAR_CACHE_LOG("mef") << "getMaxCacheDir: Config::open() failed\n";
@@ -44,7 +43,6 @@ std::optional<std::filesystem::path> M::getMaxCacheDir() {
     return std::filesystem::path(maxCacheDir.str());
   }
 
-  // Try using modular cache directory.
   auto cacheDirOr = config.getModularCacheFolderPath(/*create=*/true);
   if (cacheDirOr.isError()) {
     MODULAR_CACHE_LOG("mef")
@@ -60,7 +58,7 @@ std::optional<std::filesystem::path> M::getMaxCacheDir() {
 bool M::isModelIRCacheEnabled() {
   auto configOr = Config::open();
 
-  // We will ignore the errors and disable caching if config is not accessible.
+  // Disable caching if config is inaccessible.
   if (configOr.isError())
     return false;
 
@@ -88,8 +86,7 @@ std::optional<std::filesystem::path> M::getWeightsCacheDir() {
   if (baseDirOr)
     return *baseDirOr / "weights";
 
-  // For some reason if we can't find the base directory, we will let the client
-  // of API define with it however they want.
+  // Let the API client decide.
   return std::nullopt;
 }
 
@@ -97,7 +94,6 @@ ErrorOr<BufferRef>
 M::cacheMEFTransform(StringRef frameworkName,
                      llvm::function_ref<ErrorOr<BufferRef>()> loweringFunction,
                      WriteableBufferRef key) {
-  // We will ignore the errors and disable caching if config is not accessible.
   if (!isModelIRCacheEnabled()) {
     MODULAR_CACHE_LOG("mef") << "cacheMEFTransform: caching disabled\n";
     return loweringFunction();
@@ -105,8 +101,6 @@ M::cacheMEFTransform(StringRef frameworkName,
 
   auto baseCacheDirOr = M::getMaxCacheDir();
 
-  // If we can't find any suitable location to cache then also we will disable
-  // caching.
   if (!baseCacheDirOr) {
     MODULAR_CACHE_LOG("mef") << "cacheMEFTransform: no cache dir found\n";
     return loweringFunction();
@@ -121,7 +115,6 @@ M::cacheMEFTransform(StringRef frameworkName,
       (baseCacheDir / frameworkName.str() / "mef").string(),
       M::MO::getGraphCompilerVersionString());
 
-  // We couldn't create a cache. Don't cache.
   if (mefBackendOr.isError()) {
     MODULAR_CACHE_LOG("mef") << "cacheMEFTransform: backend creation failed\n";
     return loweringFunction();
@@ -130,7 +123,6 @@ M::cacheMEFTransform(StringRef frameworkName,
   using MEFCache = RCRef<Cache::BlobCache<Cache::TransformCacheKey>>;
   auto mefCache = MEFCache::create(mefBackendOr.takeValue());
 
-  // Check if cache contains compiled model.
   std::string keyHash;
   auto foundOr = mefCache->findSync(std::move(key), &keyHash);
   if (!foundOr.isError() && foundOr->has_value()) {
@@ -142,7 +134,6 @@ M::cacheMEFTransform(StringRef frameworkName,
   MODULAR_CACHE_LOG("mef") << "cacheMEFTransform: cache miss key=" << keyHash
                            << ", compiling...\n";
 
-  // Compile model and insert into cache.
   auto mefOr = loweringFunction();
   if (mefOr.isError()) {
     MODULAR_CACHE_LOG("mef") << "cacheMEFTransform: compilation failed\n";
@@ -153,7 +144,7 @@ M::cacheMEFTransform(StringRef frameworkName,
   MODULAR_CACHE_LOG("mef") << "cacheMEFTransform: compilation success, size="
                            << mefBuffer->getBufferSize() << "\n";
 
-  // Try inserting to cache. If fail to cache, ignore.
+  // Caching failures are ignored.
   auto insertErr =
       mefCache->insertKeyedSync(std::move(keyHash), mefBuffer.copy());
   if (insertErr.isError())

@@ -32,7 +32,7 @@ namespace {
 // Slot offsetting helper functions
 //===----------------------------------------------------------------------===//
 
-/// Offsets the specific slot index attribute of various MGP operations.
+/// Offsets the slot index attributes of MGP ops nested in `op`.
 void offsetRuntimeSlot(Operation *op, uint64_t slotOffset) {
   op->walk([&](Operation *op) {
     if (auto bufferCacheOp = dyn_cast<BufferCacheOp>(op)) {
@@ -69,69 +69,50 @@ struct MGPCallGraphNode
   ContextCreateOp contextCreateOp;
   uint64_t slotsUsed = 0;
 
-  /// Number of times the current node was inlined.
-  /// This is used to determine if the node was an inlining candidate and can
-  /// be deleted from the graph after inlining.
+  /// Nonzero if the node was inlined and may be deleted afterwards.
   uint64_t numTimesInlined = 0;
 };
 
 LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
                                                uint64_t &modelSlotUsage) const {
-  // High-level steps for inlining a subgraph:
-  // 1. Prepend call prefix to unique external tensors (placeholder names)
-  // 2. Record initial slot usage in parent model
-  // 3. Offset slots in subgraph so parent mgp.context machinery is correct
-  // 4. Clone init block operations from subgraph into parent init
-  // 5. Clone execute block operations from subgraph into parent at call site
-  // 6. Map return values and clean up the call operation
-
+  // The subgraph's init ops are cloned into the parent's init and its execute
+  // ops at the call site, with slots offset past the parent's and placeholder
+  // weight names prefixed with the call prefix.
   ModelOp subgraph = edge.node->func;
   ModelOp parentModelOp = this->func;
   CallOp callOp = edge.call;
 
-  // Find the target subgraph model
   if (!subgraph)
     return callOp.emitError()
            << "failed to find symbol " << callOp.getCalleeAttr();
 
-  // Find the parent's context (needed for both slot tracking and mapping)
   ContextCreateOp parentContextCreateOp = parentModelOp.getInitContext();
 
-  // Find the number of slots this specific subgraph requires
   ContextCreateOp subgraphContextCreateOp = subgraph.getInitContext();
 
   uint64_t subgraphSlotsUsed = edge.node->slotsUsed;
 
-  // The offset for this callsite should start after the parent's current
-  // slots
   uint64_t slotOffset = modelSlotUsage;
 
-  // First, inline the init block for this specific callsite
   Block *parentInit = parentModelOp.getInitBlock();
 
-  // Set up builder for init region
-  OpBuilder initBuilder(&parentInit->back()); // Insert before the terminator
-
-  // Create mapping for init args
+  OpBuilder initBuilder(&parentInit->back()); // Before the terminator.
   IRMapping initMap;
 
-  // Map context. Assume there is only one mgp.context.create op per model.
+  // Assumes one mgp.context.create per model.
   if (parentContextCreateOp && subgraphContextCreateOp)
     initMap.map(subgraphContextCreateOp.getResult(),
                 parentContextCreateOp.getResult());
 
-  // Map weights registry
   initMap.map(subgraph.getInitBlock()->getArgument(0),
               parentInit->getArgument(0));
 
-  // Map devices
   for (auto subgraphArg : subgraph.getInitBlock()->getArguments())
     if (isa<DeviceContextType>(subgraphArg.getType()))
       for (auto parentArg : parentInit->getArguments())
         if (subgraphArg.getType() == parentArg.getType())
           initMap.map(subgraphArg, parentArg);
 
-  // Check if any devices were left unmapped and emit an error if so.
   for (auto subgraphArg : subgraph.getInitBlock()->getArguments())
     if (isa<DeviceContextType>(subgraphArg.getType()))
       if (!initMap.contains(subgraphArg))
@@ -139,23 +120,19 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
                << "failed to map device context for argument "
                << subgraphArg.getArgNumber();
 
-  // Create the prefix string op for prepending to weight names
-  // Let DCE strip this out if nothing is marked placeholder
+  // DCE strips this if nothing is a placeholder.
   StringRef prefix = callOp.getPrefix();
   auto mojoStringType = OpaqueType::get(
       initBuilder.getContext(), initBuilder.getStringAttr("mojo_string"), {});
   Value prefixStringValue = StringCreateOp::create(initBuilder, callOp.getLoc(),
                                                    mojoStringType, prefix);
 
-  // Clone operations from subgraph's init block, excluding context.create
-  // and terminator, and apply slot offsetting and prefix handling
   for (Operation *subOp : getDataflowOrder(subgraph.getInitBlock())) {
-    // Skip the context.create op as parent already has one
+    // The parent already has a context.
     if (isa<ContextCreateOp>(subOp))
       continue;
 
-    // Ensure subgraph init output chain is waited upon by the parent's init
-    // terminator, but don't clone the op.
+    // The parent's init terminator waits on the subgraph's init chain.
     if (isa<MEF::OutputOp>(subOp)) {
       Value subgraphOutputChain = initMap.lookup(subOp->getOperand(0));
       assert(subgraphOutputChain &&
@@ -171,19 +148,14 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
       continue;
     }
 
-    // Clone the operation
     Operation *clonedOp = initBuilder.clone(*subOp, initMap);
-
-    // Apply slot offsetting to the cloned operation
     offsetRuntimeSlot(clonedOp, slotOffset);
 
-    // Apply prefix handling for BufferConstantExternalOp placeholders
-    // Concat the parent prefix with any ops that need it
     if (auto bufConstExtOp = dyn_cast<BufferConstantExternalOp>(clonedOp)) {
       if (bufConstExtOp.getEIsPlaceholder()) {
         Value nameValue = bufConstExtOp.getName();
 
-        // make sure def of concat op dominates use in the buffer op
+        // The concat must dominate its use.
         auto priorInsertionPoint = initBuilder.saveInsertionPoint();
         initBuilder.setInsertionPoint(bufConstExtOp);
 
@@ -198,32 +170,19 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
     }
   }
 
-  // Now inline the execute region at the call site
   Block *subgraphExec = subgraph.getExecuteBlock();
-
-  // Create builder for execute region
   OpBuilder execBuilder(callOp);
-
-  // Set up mapping for the arguments
   IRMapping valueMap;
-
-  // Map the call operands to the subgraph execute arguments
   valueMap.map(subgraphExec->getArguments(), callOp.getOperands());
 
-  // Clone operations from the subgraph's execute block, excluding the
-  // terminator, and apply slot offsetting and prefix handling
   for (Operation *subOp : getDataflowOrder(subgraphExec)) {
     if (subOp == subgraphExec->getTerminator())
       continue;
 
-    // Clone the operation with remapped operands
     Operation *clonedOp = execBuilder.clone(*subOp, valueMap);
-
-    // Apply slot offsetting to the cloned operation
     offsetRuntimeSlot(clonedOp, slotOffset);
   }
 
-  // Map the return values of the subgraph to the results of the call
   auto subgraphTerminator = cast<MEF::OutputOp>(subgraphExec->getTerminator());
 
   auto newResults =
@@ -232,10 +191,7 @@ LogicalResult MGPCallGraphNode::inlineSubgraph(MGPCallGraphNode::EdgeT edge,
 
   callOp.replaceAllUsesWith(newResults);
 
-  // Update the parent's slot usage to include this inlined subgraph
   modelSlotUsage += subgraphSlotsUsed;
-
-  // Erase the call operation
   callOp.erase();
   return success();
 }
@@ -255,7 +211,6 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
   if (node->visited)
     return false;
 
-  // Error checking.
   if (node->scc->hasRecursion) {
     auto scc = node->scc;
 
@@ -266,15 +221,12 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
     diag << ". Involved models: ";
     llvm::interleaveComma(scc->nodes, diag, [&](MGPCallGraphNode *node) {
       diag << "@" << node->func.getSymName();
-      // Emit a note attached to the specific ModelOp involved in the cycle.
       node->func->emitError() << "Model involved in the call graph cycle.";
     });
 
     ++numErrors;
   }
 
-  // Capture the context create operation and the number of context slots used
-  // by the model.
   {
     node->contextCreateOp = node->func.getInitContext();
     if (!node->contextCreateOp) {
@@ -290,8 +242,6 @@ bool MGPCallGraph::doAnalysis(MGPCallGraphNode *node) {
 }
 
 void MGPCallGraph::doRewrite(const MGPCallGraphNode *node) {
-  // If we've encountered errors during analysis or rewriting of child nodes,
-  // do not bother processing.
   if (numErrors > 0)
     return;
 
@@ -306,7 +256,6 @@ void MGPCallGraph::doRewrite(const MGPCallGraphNode *node) {
     edge.node->numTimesInlined++;
   }
 
-  // Update the model slots used for the current model.
   ContextCreateOp op = node->contextCreateOp;
   op.setNumSlots(modelSlotsUsage);
 }
@@ -328,7 +277,6 @@ struct InlineMGPCallsPass
 
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
-    // No work to do if there's only one model.
     auto models = moduleOp.getOps<ModelOp>();
     if (models.empty() || llvm::hasSingleElement(models))
       return;
@@ -345,25 +293,17 @@ struct InlineMGPCallsPass
     if (callGraph.numErrors > 0)
       return signalPassFailure();
 
-    // After inlining everything, delete subgraphs that are no longer used.
-    // Iterate using the original list of functions in the module before
-    // erasing.
+    // Erase inlined subgraphs that are no longer used.
     for (auto &[model, node] : callGraph.nodes) {
-      // Only consider erasing models that were targets of inlining.
       if (node.numTimesInlined == 0)
         continue;
 
-      // Check if this subgraph has any remaining uses. If it's marked
-      // isSubgraph and has no uses, erase it.
       if (SymbolTable::symbolKnownUseEmpty(model, moduleOp) &&
           model.getIsSubgraph()) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Erasing inlined model @" << model.getSymName() << "\n");
         model.erase();
       } else {
-        // This might happen if the model is still called from outside the
-        // current set of models being processed or if it's not marked
-        // isSubgraph.
         LLVM_DEBUG(
             llvm::dbgs()
             << "Model @" << model.getSymName()

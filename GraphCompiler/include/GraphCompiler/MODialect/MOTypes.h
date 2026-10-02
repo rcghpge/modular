@@ -30,11 +30,8 @@ namespace M::MO {
 class LayoutAttr;
 class MOHasDeviceTypeInterface;
 
-/// Category of a type when used as a kernel operand, queried by operand
-/// inference through `MOKernelOperandTypeInterface`. `Buffer` is a mutable
-/// tensor. Rank / host validation for a `Scalar` match comes from the separate
-/// `MOShapedTypeInterface` / `MOHasDeviceTypeInterface`, which opaque codegen
-/// handles do not implement.
+/// Kernel-operand category of a type, from `MOKernelOperandTypeInterface`.
+/// `Buffer` is a mutable tensor.
 enum class KernelOperandKind { Tensor, Buffer, Scalar, Opaque };
 } // namespace M::MO
 
@@ -66,36 +63,27 @@ using ChainValue = M::TypedValue<M::MO::ChainType>;
 ErrorOr<DType> fromMLIRType(Type mlirType);
 ErrorOr<Type> toMLIRType(MLIRContext *context, DType dType);
 
-/// Return the dtype of `ty`.
-/// `ty` might be a composite type (eg TensorType).
-/// Returns DType::invalid if no valid dtype is found.
-/// Helper used to extract dtype in tablegen.
+/// Return the dtype of `ty` (possibly a composite type like TensorType), or
+/// DType::invalid. Used to extract dtypes in tablegen.
 DType getDTypeOrInvalid(Type ty);
 
 TypedAttr getShape(Type ty);
 
-/// Helper function for working with mo.buffer types. If given a TensorType will
-/// pass it through and if given a BufferType will create the equivalent
-/// TensorType and return that. If not given one of these two types returns
-/// nullptr.
+/// Return a TensorType as is, or the TensorType equivalent of a BufferType;
+/// nullptr otherwise.
 TensorType dynCastFromTensorLike(Type ty);
 
-/// Helper function for working with mo.buffer types. If given a TensorType will
-/// pass it through and if given a BufferType will create the equivalent
-/// TensorType and return that. Asserts that ty is one of BufferType or
-/// TensorType.
+/// Like `dynCastFromTensorLike`, but asserts `ty` is a TensorType or
+/// BufferType.
 TensorType castFromTensorLike(Type ty);
 
-/// Returns the calculated strides based on the static shape of the tensor.
-/// If `unknown` is true, then the strides for all dimensions will be dynamic,
-/// otherwise the result will have at least the innermost dimension have a
-/// stride of 1.
+/// Returns strides from the tensor's static shape. If `unknown`, all strides
+/// are dynamic; otherwise at least the innermost stride is 1.
 llvm::SmallVector<int64_t> getStridesForTensor(MO::TensorType tensor,
                                                bool unknown);
 
-/// Print a list of device refs using the same compact `label:first[-last]`
-/// syntax as `mo.bundle`'s compact form when the list is homogeneous and
-/// contiguous, otherwise as a comma-separated list of `label:id` pairs.
+/// Print device refs as `mo.bundle`'s compact `label:first[-last]` form when
+/// homogeneous and contiguous, otherwise as comma-separated `label:id`.
 ///
 /// Examples:
 ///   {gpu:0}             -> `gpu:0`
@@ -105,9 +93,7 @@ llvm::SmallVector<int64_t> getStridesForTensor(MO::TensorType tensor,
 void printDeviceList(mlir::AsmPrinter &printer,
                      llvm::ArrayRef<DeviceRefAttr> devices);
 
-/// Parse a list of device refs printed by `printDeviceList`.  Accepts both
-/// the compact `label:first[-last]` form and a comma-separated list of
-/// `label:id` pairs.
+/// Parse a list of device refs printed by `printDeviceList`.
 mlir::ParseResult
 parseDeviceList(mlir::AsmParser &parser,
                 llvm::SmallVectorImpl<DeviceRefAttr> &devices);

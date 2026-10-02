@@ -23,12 +23,10 @@
 
 namespace M {
 
-/// SafeTensor format reader with GPU-aware data loading capabilities.
-/// Provides safe access to tensor data and metadata with error checking.
+/// SafeTensor format reader with GPU-aware data loading.
 struct MODULAR_CXX_EXPORT SafeTensor {
 
-  /// TensorInfo is a helper class that provides a JSON-serializable
-  /// representation of tensor information.
+  /// JSON-serializable tensor information.
   struct TensorInfo {
     TensorInfo(DType dtype, ArrayRef<size_t> shape,
                std::pair<size_t, size_t> offsets)
@@ -56,10 +54,8 @@ struct MODULAR_CXX_EXPORT SafeTensor {
   /// Serialize the SafeTensor to a JSON object.
   llvm::json::Value toJSON() const;
 
-  /// Gets the metadata for the SafeTensor.
   llvm::json::Object getMetadata() const { return metadata; }
 
-  /// Gets the tensor info for the SafeTensor.
   const llvm::DenseMap<std::string, TensorInfo> &getTensorInfo() const {
     return tensorInfo;
   }
@@ -81,7 +77,6 @@ private:
         tensorInfo(std::move(tensorInfo)) {}
 
   uint64_t headerLength;
-  // The device the parent buffer lives on
   M::Driver::DeviceContextRef device;
   // Parent buffer for all subbuffers created.
   M::Driver::DeviceBufferRef parentBuffer;

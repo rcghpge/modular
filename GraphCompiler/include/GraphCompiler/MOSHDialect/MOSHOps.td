@@ -31,8 +31,7 @@ def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [
   let summary = "create an SSA value from a parameter value";
   let description = [{
     The `mo.param.to_value` operation materializes the value of a parameter
-    expression as an SSA value that may be used by other operations.
-    Conceptually, it bridges the parameter value domain to the SSA value domain.
+    expression as an SSA value.
 
     Example:
 
@@ -41,8 +40,7 @@ def MOSH_ParamToValueOp : MOSH_Op<"param.to_value", [
     %shape = mo.param.to_value: !mosh.ape = <[10, D1, 20]>
     ```
 
-    Note that in the assembly format, we allow omitting output type annotation
-    if it's `index`, for historical reasons.
+    The output type annotation may be omitted if it's `index`.
   }];
 
   let arguments = (ins TypedAttrInterface:$value);
@@ -76,11 +74,9 @@ def MOSH_BroadcastOp : MOSH_Op<"broadcast", [
 ]> {
   let summary = "Shape broadcasting operation";
   let description = [{
-    Given two tensor shapes, return the shape that both broadcast to under the
-    numpy rules. The semantics of this op are nearly identical to those of
-    `mo.broadcast_shape` (see the documentation of that op for details), with
-    the only difference that `mosh.broadcast` operates on `!mosh.ape` values
-    instead of shape-like tensors.
+    Returns the shape both inputs broadcast to under numpy rules. Same as
+    `mo.broadcast_shape`, but on `!mosh.ape` values instead of shape-like
+    tensors.
 
     Example:
 
@@ -169,9 +165,8 @@ def MOSH_GetDimOp : MOSH_Op<"get_dim", [Pure]> {
   let description = [{
     Return the size of the specified dimension in the given shape.
 
-    This operation supports dimensions specified by compile time constants only.
-    The dimension can be negative in which case Python-like index semantics are
-    used (e.g. -2 refers to the second to last dimension).
+    The dimension must be a compile-time constant. Negative values index from
+    the end, as in Python (e.g. -2 is the second to last dimension).
 
     Example:
 
@@ -265,9 +260,8 @@ def MOSH_NumElementsOp : MOSH_Op<"num_elements", [Pure]> {
 def MOSH_SliceOp : MOSH_Op<"slice", [Pure]> {
   let summary = "Slice out a new shape from an existing shape.";
   let description = [{
-    The slice supports start and end indices, and they must obey relationships
-    that one would expect from Python-like slices. Note that if `end` is none,
-    we emulate the pythonic `shape[start:]` semantics.
+    `start` and `end` follow Python slice semantics; omitting `end` gives
+    `shape[start:]`.
 
     Example:
 

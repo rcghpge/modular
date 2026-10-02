@@ -69,17 +69,15 @@ bool isCheapToDuplicate(IterForeachOp op) {
 
 namespace {
 
-// TODO(GEX-4184): support multiple stores/outputs. Kernels are single-output
-// today (`findEligibleProducer` guards `getNumResults() == 1`); multi-output
-// only arises via sibling fusion, where this would fuse per-store instead.
+// TODO(GEX-4184): support multiple stores/outputs, which only arise via
+// sibling fusion.
 StoreOp producerStoreOf(IterForeachOp src) {
   return getUniqueStore(src.getBody().front());
 }
 
-// Whether the index `load` reads at runs through a `map.index.reshape`. A
-// reshape changes rank, so `LoopInvariantViewMotion` can't hoist a view fused
-// atop such a load into a stride view: a reshape is the terminal view of the
-// chain it sits on, and nothing may fuse into a load already past one.
+// Whether `load`'s index runs through a `map.index.reshape`. A reshape changes
+// rank, so `LoopInvariantViewMotion` can't hoist a view fused above it; nothing
+// may fuse into such a load.
 bool loadIndexCrossesReshape(LoadOp load) {
   return dataflowGraphContains<WalkDirection::Producers>(
       load.getIndex().getDefiningOp(),
@@ -102,13 +100,9 @@ bool checkMutableKernelFusible(Value srcInChain, Value srcOutChain,
   return true;
 }
 
-// The existing prologue capturing `dst`'s `argIdx`'th input and that capture's
-// own index, or null when the input isn't captured by a prologue, is captured
-// with something else, its capture is read more than once, or its capture feeds
-// anything but a load -- any of which leaves no single, safely-replaceable load
-// site. Input fusion targets prologues only; an epilogue's input capture is
-// reached emergently (a view fuses into the consumer foreach, which then
-// output-fuses into the epilogue).
+// The prologue capturing `dst`'s `argIdx`'th input and the capture's index, or
+// null unless the input's only user is a prologue whose capture's only use is
+// a load. Epilogue captures are reached through output fusion instead.
 struct ClosureCapture {
   CapturingFusionClosure closure = nullptr;
   unsigned captureIdx = 0;
@@ -129,17 +123,13 @@ ClosureCapture findExistingPrologueCapture(IterOpaqueOp dst, unsigned argIdx) {
   BlockArgument capArg = closure.getCaptureBlockArgs()[captureIdx];
   if (!capArg.hasOneUse())
     return {};
-  // The splice replaces a single load of the capture; a capture that instead
-  // feeds an index transform (e.g. dynamic `map.index.slice` bounds) has no
-  // such site, so it is not a fusible prologue.
+  // E.g. dynamic `map.index.slice` bounds have no load site.
   if (!isa<LoadOp>(*capArg.getUsers().begin()))
     return {};
   return {closure, captureIdx};
 }
 
-// A producer may only fuse into a consumer that runs on the same device (a
-// foreach carries its own device; an opaque carries none, so the result's
-// tensor type -- where the consumer reads the value -- stands in).
+// An opaque consumer carries no device, so the result's tensor type stands in.
 bool sameDevice(IterForeachOp src, Operation *dst) {
   auto srcDev = MO::getDeviceOrDefault(src);
   if (auto dstForeach = dyn_cast<IterForeachOp>(dst))
@@ -148,8 +138,7 @@ bool sameDevice(IterForeachOp src, Operation *dst) {
   return tensorTy && MO::getDeviceOrDefault(tensorTy) == srcDev;
 }
 
-// The first load of any consumer block arg fed by `src`'s result, standing in
-// for the fusion site the wrapper's `shouldFuse` inspects. Null if none.
+// The first load of `src`'s result in `dst`, the site `shouldFuse` inspects.
 LoadOp firstConsumerLoad(IterForeachOp dst, IterForeachOp src) {
   Block &body = dst.getBody().front();
   for (auto [i, input] : llvm::enumerate(dst.getInputs())) {
@@ -162,9 +151,8 @@ LoadOp firstConsumerLoad(IterForeachOp dst, IterForeachOp src) {
   return nullptr;
 }
 
-// Splices `src`'s body into `dst` at each of its load site(s), using each
-// load's own (possibly transformed) index -- what lets a view fuse. Stamps View
-// for a view producer, else Elementwise.
+// Splices `src`'s body into `dst` at each load site, at the load's own
+// (possibly transformed) index.
 void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
                        PatternRewriter &rewriter) {
   bool isView = producesThroughView(producerStoreOf(src));
@@ -195,9 +183,7 @@ void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
       storeOp.erase();
       srcClone.eraseArgument(numSrcInputs);
 
-      // Inline right before `load`: its index may be produced by an earlier op
-      // in dst's own body (dst's own transform chain), which only dominates
-      // from this point on.
+      // Before `load`, so dst's own transform chain dominates.
       SmallVector<Value> fusedArgs(newDstArgs.begin(), newDstArgs.end());
       fusedArgs.push_back(loadIndex);
       rewriter.inlineBlockBefore(&srcClone, load, fusedArgs);
@@ -219,12 +205,11 @@ void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
       mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
   dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
   dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
-  // Async if either member is (as RegionFusion combines it on the old path).
   dst.setIsAsync(src.getIsAsync() || dst.getIsAsync());
 }
 
-// Splices `src`'s body into `dst`'s existing prologue at the load site behind
-// the capture(s) `src` feeds. Stamps Prologue.
+// Splices `src`'s body into `dst`'s existing prologue behind the captures
+// `src` feeds.
 void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
                        PatternRewriter &rewriter) {
   SmallVector<unsigned> fusionIndices;
@@ -279,20 +264,13 @@ void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
         mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
   }
 
-  // Async if either member is (as RegionFusion combines it on the old path).
   dst.setIsAsync(src.getIsAsync() || dst.getIsAsync());
 }
 
-// Whether `dstOp` has a site to read `src`'s result through if it were cloned
-// in, AND the wrapper's `shouldFuse` would actually fuse there. The latter is
-// what keeps duplication honest: `hasFusionSite` gates `duplicationAllowed`, so
-// counting a consumer the pass will not fuse into (e.g. a `map.iter.opaque`
-// prologue for the elementwise fuser, whose `shouldFuse` requires a foreach
-// consumer) would clone `src` into the foreach users while that consumer keeps
-// `src` materialized -- pure recomputation. Requiring `shouldFuse` here makes a
-// multi-use producer refuse duplication unless every consumer genuinely absorbs
-// it, matching the legacy elementwise fuser which never duplicates across a
-// materializing (non-eligible) consumer.
+// Whether `dstOp` has a site to read `src`'s result through AND `shouldFuse`
+// accepts it. Without the latter, duplication would clone `src` into some users
+// while another (e.g. an opaque, for the elementwise fuser) keeps it
+// materialized -- pure recomputation.
 bool hasFusionSite(IterForeachOp src, Operation *dstOp,
                    const InputFusionConfig &config) {
   if (src->getBlock() != dstOp->getBlock())
@@ -315,8 +293,6 @@ bool hasFusionSite(IterForeachOp src, Operation *dstOp,
       return false;
     BlockArgument capArg =
         capture.closure.getCaptureBlockArgs()[capture.captureIdx];
-    // The capture may have no users, or a user that isn't a load; either way
-    // there is no load site to fuse through, so don't treat it as one.
     if (capArg.use_empty())
       return false;
     auto load = dyn_cast<LoadOp>(*capArg.getUsers().begin());
@@ -327,11 +303,9 @@ bool hasFusionSite(IterForeachOp src, Operation *dstOp,
   return feedsInput;
 }
 
-// A multi-use producer fuses only if the config allows duplicating it (the
-// splice clones it into each consumer); a single-use producer always fuses.
-// Cloning pays by removing the materialization, so every user needs a site to
-// absorb the clone -- `mo.output`, or an opaque with no prologue on that input,
-// leaves the result written to memory anyway. Legacy refuses the same case.
+// Duplication pays only by removing the materialization, so every user must
+// absorb the clone; `mo.output`, or an opaque with no prologue on that input,
+// keeps it in memory anyway.
 bool duplicationAllowed(IterForeachOp src, const InputFusionConfig &config) {
   if (src.getResult(0).hasOneUse())
     return true;
@@ -341,10 +315,8 @@ bool duplicationAllowed(IterForeachOp src, const InputFusionConfig &config) {
   return config.canDuplicate(src);
 }
 
-// Finds an eligible producer feeding `dstOp` under `config`, or null. A foreach
-// consumer fuses the producer into its body; an opaque consumer into an
-// existing prologue capture. A producer feeding more than one input must clear
-// every one of them (the splice fuses them all).
+// An eligible producer feeding `dstOp`, or null. A producer feeding several
+// inputs must clear all of them, since the splice fuses them all.
 IterForeachOp findEligibleProducer(Operation *dstOp,
                                    const InputFusionConfig &config) {
   if (auto dst = dyn_cast<IterForeachOp>(dstOp)) {
@@ -387,11 +359,8 @@ IterForeachOp findEligibleProducer(Operation *dstOp,
 
   auto dst = cast<IterOpaqueOp>(dstOp);
   DenseSet<Operation *> tried;
-  // Highest operand index first: `spliceIntoClosure` records each fused
-  // producer's operand index and then `eraseInputsAt`s it, which shifts every
-  // lower operand down. Draining high-to-low means an erase never shifts an
-  // operand still to be recorded, so the stamped `operandIndices` stay
-  // faithful.
+  // Highest operand index first, so erasing a fused input never shifts an
+  // index still to be stamped into `operandIndices`.
   for (Value input : llvm::reverse(dst.getInputs())) {
     auto src = input.getDefiningOp<IterForeachOp>();
     if (!src || src.getNumResults() != 1 || !tried.insert(src).second)
@@ -400,8 +369,6 @@ IterForeachOp findEligibleProducer(Operation *dstOp,
       continue;
     if (!sameDevice(src, dst) || !duplicationAllowed(src, config))
       continue;
-    // Every input `src` feeds must resolve to a prologue capture whose load
-    // does not already cross a reshape, and pass the wrapper's narrowing.
     bool ok = true;
     LoadOp firstLoad = nullptr;
     for (auto [i, in] : llvm::enumerate(dst.getInputs())) {
@@ -441,9 +408,7 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
       blocks.insert(op->getBlock());
   });
 
-  // Process consumers bottom-up (reverse topological) so each consumer's
-  // producer chain drains in one visit and each producer is reached only after
-  // the consumers that pull it in.
+  // Consumers bottom-up, so each consumer's producer chain drains in one visit.
   MO::ParametricTopologyAnalysis topo(graphOp);
   DenseSet<Operation *> erased;
   unsigned numFused = 0;
@@ -456,9 +421,6 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
     for (Operation *op : llvm::reverse(ops)) {
       if (erased.contains(op) || !isa<IterForeachOp, IterOpaqueOp>(op))
         continue;
-      // Count kernels spliced into this consumer as we go and stop at the cap,
-      // so duplication across a fan-out chain can't build a few huge kernels
-      // (legacy's kMaximumFusionSetSize).
       uint64_t fusedIntoConsumer = 0;
       while (IterForeachOp src = findEligibleProducer(op, config)) {
         if (fusedIntoConsumer >= config.maxFusionSetSize)

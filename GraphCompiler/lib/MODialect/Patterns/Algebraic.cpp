@@ -71,14 +71,9 @@ replaceOpResultWithBcastOfScalarIf(OpType op, T value,
   return success();
 }
 
-/// A pattern that detects batch matmul with the rhs coming from a broadcast on
-/// the batch axis, and rewrites them into a regular 2D matmul with a reshape
-/// that flattens the batch axis of lhs and another reshape that restores the
-/// batch axis of the final result.
-///
-/// This enables more optimizations on matmul.
-///
-/// Example:
+/// Rewrites a batch matmul whose rhs is broadcast on the batch axis into a 2D
+/// matmul, reshaping lhs to flatten the batch axis and the result to restore
+/// it. This enables more matmul optimizations.
 ///
 /// lhs : tensor<[4, 3, 2]>
 /// rhs : tensor<[2, 3]>
@@ -90,12 +85,8 @@ replaceOpResultWithBcastOfScalarIf(OpType op, T value,
 ///   res_2d   = matmul(flat_lhs, rhs) : ... -> tensor<[12, 3]>
 ///   res      = reshape(res_2d) : ... -> tensor<[4, 3, 3]>
 ///
-/// An optional transpose on a 2-D `rhs` is also supported
-///
-/// Finally if it was detected the `rhs` is a product of a transpose, the
-/// transform will still fire with the transpose still being kept. Note
-/// we expect the transpose to come *after* the static broadcast in this
-/// scenario due to the aggressiveness of transpose sinking in this pass:
+/// A transpose on `rhs` is kept. Aggressive transpose sinking puts it *after*
+/// the static broadcast:
 ///
 ///   bcast = broadcast(rhs) : ... -> tensor<[4, 3, 2]>
 ///   transpose = transpose(rhs) : ... -> tensor<[4, 2, 3]>
@@ -105,7 +96,6 @@ replaceOpResultWithBcastOfScalarIf(OpType op, T value,
 ///   flat_lhs = reshape(lhs) : ... -> tensor<[12, 2]>
 ///   res_2d   = matmul(flat_lhs, transpose) : ... -> tensor<[12, 3]>
 ///   res      = reshape(res_2d) : ... -> tensor<[4, 3, 3]>
-///
 struct ConvertBatchMatmulToMatmulPattern
     : public DeviceAwareRewritePattern<OpRewritePattern, BatchMatmulOp> {
   ConvertBatchMatmulToMatmulPattern(MLIRContext *ctx)
@@ -131,8 +121,7 @@ struct ConvertBatchMatmulToMatmulPattern
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
     TransposeOp transposeOp;
-    // The transpose op is assumed to only be transposing the inner-most 2 dims
-    // affected by the matmul (non-batch dims). Verify this.
+    // The transpose may only permute the inner-most 2 (non-batch) dims.
     if (transposeOpCapture) {
       transposeOp = cast<TransposeOp>(transposeOpCapture);
       std::optional<SmallVector<int64_t>> maybeInts =
@@ -149,7 +138,6 @@ struct ConvertBatchMatmulToMatmulPattern
           return rewriter.notifyMatchFailure(
               transposeOp, "Transpose affects more than matmul dims.");
 
-        // Edge case handling identity permutation
         if (i >= permSize - 2 && transposePerm[i] == i)
           return rewriter.notifyMatchFailure(
               transposeOp, "Transpose is a identity permutation.");
@@ -226,11 +214,8 @@ struct ConvertBatchMatmulToMatmulPattern
   }
 };
 
-/// A pattern that detects batch matmul batch size one and converts the op to
-/// a normal matmul. Note if the broadcast cannot be sunk, it will be converted
-/// to a reshape.
-///
-/// Example:
+/// Converts a batch matmul with batch size one to a matmul. A broadcast that
+/// cannot be sunk becomes a reshape.
 ///
 ///   lhs : tensor<[1, 1, 3, 2]>
 ///   rhs : tensor<[1, 1, 2, 3]>
@@ -293,11 +278,8 @@ struct ConvertBatchMatmulBatchSizeOneToMatmulPattern
   }
 };
 
-/// A pattern that detects `mo.conv` with 1x1 filter, 1s for strides and
-/// dilations, 0s for paddings, and num_groups=1 and rewrites it into a matmul
-/// with some static reshapes.
-///
-/// Example:
+/// Rewrites a `mo.conv` with a 1x1 filter, unit strides and dilations, zero
+/// paddings, and num_groups=1 into a matmul between static reshapes.
 ///
 /// input  : tensor<[N, H, W, Ci]>
 /// filter : tensor<[1, 1, Ci, Co]>
@@ -318,13 +300,11 @@ struct ConvToMatmulPattern
   deviceAwareMatchAndRewrite(ConvOp op,
                              DeviceAwareRewriter &rewriter) const override {
 
-    // Declare some meta variables.
     TensorValue input = op.getInput();
     TensorValue filter = op.getFilter();
     TensorType opTy = op.getType();
     Location loc = op.getLoc();
 
-    // Check rank
     TensorType inputTy = input.getType();
     TensorType filterTy = filter.getType();
     if (!inputTy.hasRank() || inputTy.getRank() != 4)
@@ -335,7 +315,6 @@ struct ConvToMatmulPattern
     bool isFCRS = filterLayout && (filterLayout.getFormat() == "FCRS" ||
                                    filterLayout.getFormat() == "FCQRS");
 
-    // Check filter size — spatial dims must be 1x1.
     ArrayRef<TypedAttr> inputDims = inputTy.getShape().getValues();
     ArrayRef<TypedAttr> filterDims = filterTy.getShape().getValues();
     TypedAttr intOneAttr = rewriter.getDimAttr(1);
@@ -344,8 +323,7 @@ struct ConvToMatmulPattern
         filterDims[spatialStart + 1] != intOneAttr)
       return rewriter.notifyMatchFailure(op, "filter size must be 1x1");
 
-    // Check strides and paddings, note that we don't need to check dilations
-    // because it's irrelevant for 1x1 filter.
+    // Dilations are irrelevant for a 1x1 filter.
     auto areConstant = [](TensorValue val, int64_t check) {
       std::optional<SmallVector<int64_t>> maybeInts =
           tryGetConstantIntVector(val);
@@ -364,10 +342,7 @@ struct ConvToMatmulPattern
     if (!isConstant(op.getNumGroups(), 1))
       return rewriter.notifyMatchFailure(op, "num_groups must be 1");
 
-    // Insert reshapes for conv input and filter.
-    // Both layouts produce a [Ci,Co] = [K,N] weight for standard matmul.
-    // RSCF [1,1,Ci,Co] → reshape [Ci,Co]
-    // FCRS [Co,Ci,1,1] → reshape [Co,Ci] → transpose [Ci,Co]
+    // Both layouts produce a [Ci,Co] = [K,N] weight.
     auto shapeTy = rewriter.getType<MOSH::ShapeType>();
     // TODO provide a better API for symbolic dimension manipulations
     auto matmulDimM = KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap,
@@ -388,10 +363,9 @@ struct ConvToMatmulPattern
     auto matmulWeightTy = filterTy.cloneWith(matmulWeightShape);
     Value matmulWeight;
     if (isFCRS) {
-      // FCRS [Co,Ci,1,1] → reshape [Co,Ci] → transpose to [Ci,Co].
-      // We must use an explicit transpose rather than transpose_b=true,
-      // because MatmulOp::canonicalize derives transpose_b from the weight
-      // layout attribute and would override our setting.
+      // FCRS [Co,Ci,1,1] → reshape [Co,Ci] → transpose to [Ci,Co]. Not
+      // transpose_b=true: MatmulOp::canonicalize rederives it from the weight
+      // layout attribute.
       auto reshapeShape =
           MOSH::ShapeAttr::get({matmulDimN, matmulDimK}, shapeTy);
       auto reshapeTy = filterTy.cloneWith(reshapeShape);
@@ -406,7 +380,6 @@ struct ConvToMatmulPattern
           rewriter.create<MO::Static::ReshapeOp>(loc, matmulWeightTy, filter);
     }
 
-    // Replace convolution with a newly created matmul
     auto matmul =
         rewriter.create<MO::MatmulOp>(loc, matmulTy, matmulInput, matmulWeight);
     rewriter.replaceOpWithNewOp<MO::Static::ReshapeOp>(op, opTy, matmul);
@@ -414,11 +387,7 @@ struct ConvToMatmulPattern
   }
 };
 
-/// A pattern that detects nested `mo.concat` with the same axis, and flatten
-/// them into a single `mo.concat` with all the concatenated input values, if
-/// the nested concat isn't used by anything else.
-///
-/// Example:
+/// Flattens single-use nested `mo.concat`s on the same axis into one.
 ///
 /// t0 : tensor<[1, ...]>
 /// t1 : tensor<[2, ...]>
@@ -439,8 +408,6 @@ struct FlattenNestedConcatPattern
 
     int64_t axis = op.getAxisAttr().getInt();
 
-    // Flatten the single-user nested concats by collecting their inputs, along
-    // with other non-concat inputs.
     bool foundSingleUserNestedConcat = false;
     SmallVector<Value> flattenedInputs;
     for (Value input : op.getInputs()) {
@@ -455,7 +422,6 @@ struct FlattenNestedConcatPattern
       }
     }
 
-    // Nothing to merge if we didn't encounter any single-user nested concat
     if (!foundSingleUserNestedConcat) {
       return rewriter.notifyMatchFailure(
           op, "failed to find single-user nested concat");
@@ -466,9 +432,8 @@ struct FlattenNestedConcatPattern
           op, "matched ops have inconsistent devices");
     }
 
-    // Replace the old concat with a new concat that operate on the flattened
-    // input values. Note that the types are guaranteed to match (shape
-    // inference either verified it statically, or dropped runtime asserts).
+    // Types match: shape inference verified them statically or dropped
+    // runtime asserts.
     rewriter.replaceOpWithNewOp<ConcatOp>(op, op.getType(), op.getAxisAttr(),
                                           flattenedInputs);
     return mlir::success();
@@ -576,7 +541,6 @@ struct BroadcastReshapePattern
 
     TensorType inType = llvm::cast<TensorType>(input.getType());
 
-    // Check if the input is a scalar
     if (!inType.hasRank())
       return rewriter.notifyMatchFailure(op, "failed to match pattern");
 
@@ -601,8 +565,7 @@ struct BroadcastReshapePattern
 };
 
 // clang-format off
-/// A pattern that detects a matmuls that use the same activations and merges
-/// them to increase throughput.
+/// Merges matmuls that share activations to increase throughput.
 /// BEFORE:
 /// matmul(A, B1) -> C1
 /// matmul(A, B2) -> C2
@@ -621,7 +584,6 @@ struct MergeParallelMatmulPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MatmulOpType op,
                              DeviceAwareRewriter &rewriter) const override {
-    // Gather all matmul operations that use the same activations.
     Value activations = op.getInputA();
     SmallVector<MatmulOpType> matmulUsers;
     for (Operation *user : activations.getUsers()) {
@@ -639,14 +601,11 @@ struct MergeParallelMatmulPattern
             return isa<OutputOp>(user);
           });
         })) {
-      // A return op will force the materialization of the split which ends up
-      // slowing down the program.
+      // Outputs would force the split to materialize, which is slower.
       return rewriter.notifyMatchFailure(
           op, "Matmuls are all feeding into output ops");
     }
 
-    // Ensure that all matmuls have the same number of rows and that weights are
-    // constants.
     auto oldMatmulType = cast<TensorType>(op.getType());
     TypedAttr expectedNumberOfRows =
         oldMatmulType.getDim(oldMatmulType.getRank() - 2);
@@ -666,9 +625,9 @@ struct MergeParallelMatmulPattern
                   matmulOp.getInputB().getDefiningOp()))
             return false;
 
-          // TODO(GEX-1978): To temporarily unblock GEX-1968, since it might
-          // forbid `ForceMatmulTransposeBForGPU`, we should instead sink the
-          // transpose after concat to enable both pattern. I.e.,
+          // TODO(GEX-1978): Skipped to unblock GEX-1968, as it can forbid
+          // `ForceMatmulTransposeBForGPU`. Sink the transpose after the concat
+          // instead to enable both patterns:
           //
           // mo.transpose
           // mo.matmul
@@ -679,7 +638,7 @@ struct MergeParallelMatmulPattern
           // mo.transpose
           // mo.matmul
           //
-          // Instead of what we are generating now (as below).
+          // rather than the current:
           //
           // mo.transpose
           // mo.transpose
@@ -700,7 +659,7 @@ struct MergeParallelMatmulPattern
           op, "matched ops have inconsistent devices");
     }
 
-    // The last of matmul Users is the earliest location.
+    // The last user is the earliest in the block.
     auto firstMatmulIndex = matmulUsers.size() - 1;
     Location loc = matmulUsers[firstMatmulIndex]->getLoc();
     rewriter.setInsertionPoint(matmulUsers[firstMatmulIndex]);
@@ -719,7 +678,6 @@ struct MergeParallelMatmulPattern
       totalColumns += columnsInEachMatmul.back();
     }
 
-    // Concatenate the weights.
     auto concatType =
         cast<TensorType>(op.getInputB().getType())
             .cloneWithNewDim(oldMatmulType.getRank() - 1, totalColumns);
@@ -732,7 +690,6 @@ struct MergeParallelMatmulPattern
                               weightsToConcatenate)
             .getResult();
 
-    // Create a single larger matmul.
     auto newMatmulType = oldMatmulType.cloneWithNewDim(
         oldMatmulType.getRank() - 1, totalColumns);
     Value newMatmul = rewriter
@@ -740,7 +697,6 @@ struct MergeParallelMatmulPattern
                                                 concatenatedWeights)
                           .getResult();
 
-    // Split the output. `axis` is a compile-time `index` attribute.
     Value splitSizes = rewriter.createHostConstant(loc, columnsInEachMatmul);
     auto splitOp =
         rewriter.create<SplitOp>(loc, matmulTypes, newMatmul, splitSizes,
@@ -1911,8 +1867,7 @@ struct MathematicalSimplificationDivBySmallTensorToMul
 
 // mul(x, div(1, y)) = div(x, y)
 // where y is not a constant or a broadcasted value.
-// This pattern is kind of the opposite of the previous one except it will not
-// affect constants or broadcasted values.
+// The inverse of the previous pattern, except for constants and broadcasts.
 struct MathematicalSimplificationMulOfDivToDiv
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::MulOp> {
   MathematicalSimplificationMulOfDivToDiv(MLIRContext *ctx)
@@ -1988,7 +1943,7 @@ struct MathematicalSimplificationPowByFloatToPowByInt
       return rewriter.notifyMatchFailure(
           powOp, "the exponent contains a fractional part");
 
-    // Get the bitwidth of the exponent. If it fits in 32 bits then use that.
+    // Prefer 32 bits when the exponent fits.
     int bitWidth =
         std::abs(exponent) < std::numeric_limits<int32_t>::max() ? 32 : 64;
 
@@ -2050,7 +2005,7 @@ struct PadConvPattern
     auto loc = op.getLoc();
     Value newPads = rewriter.createHostConstant(
         loc, SmallVector<int64_t>{constPads.begin() + 2, constPads.end() - 2});
-    // Cast, sometimes this comes in as si32
+    // pads2 is sometimes si32.
     pads2 = rewriter.create<CastOp>(
         loc, cast<TensorType>(pads2.getType()).cloneWith(M::DType::si64),
         pads2);
@@ -2063,10 +2018,7 @@ struct PadConvPattern
   }
 };
 
-/// A pattern that detects a series of gathers that are equivalent to a single
-/// split, and rewrite them with a new split.
-///
-/// Example:
+/// Rewrites gathers that together amount to a split into that split.
 ///
 /// input : tensor<[N, ...]>
 ///
@@ -2093,14 +2045,12 @@ struct GathersToSplitPattern
     if (!inputTy.hasRank())
       return rewriter.notifyMatchFailure(op, "unranked input");
 
-    // Get input's 0-axis dimension
     int64_t inputAxis0Dim = inputTy.getIntDim(0);
     if (inputAxis0Dim <= 0) {
       return rewriter.notifyMatchFailure(
           op, "input axis 0 isn't static and positive");
     }
 
-    // Collect N gather users of input (with axis = 0, indices = [0] or ...)
     SmallDenseMap<size_t, GatherOp> idxToGather;
     MO::GatherOp dominantGatherOp; // one that domindates all other gather ops
     for (Operation *user : input.getUsers()) {
@@ -2108,11 +2058,9 @@ struct GathersToSplitPattern
       if (!userGatherOp)
         continue;
 
-      // Axis must be 0 (`axis` is a compile-time `index` attribute).
       if (userGatherOp.getAxisAttr().getInt() != 0)
         continue;
 
-      // Indices must be a singleton within [0, inputAxis0Dim)
       std::optional<SmallVector<int64_t>> maybeIndices =
           tryGetConstantIntVector(userGatherOp.getIndices());
       if (!maybeIndices.has_value() || maybeIndices.value().size() != 1)
@@ -2122,7 +2070,6 @@ struct GathersToSplitPattern
       if (idx < 0 || idx >= inputAxis0Dim || idxToGather.contains(idx))
         continue;
 
-      // Update dominant gather and make sure all gathers are in the same block
       if (!dominantGatherOp)
         dominantGatherOp = userGatherOp;
 
@@ -2137,7 +2084,7 @@ struct GathersToSplitPattern
       idxToGather.try_emplace(idx, userGatherOp);
     }
 
-    // We must have input gather users that cover the entire 0-axis
+    // The gathers must cover all of axis 0.
     if (idxToGather.size() != inputAxis0Dim) {
       return rewriter.notifyMatchFailure(
           op, "not enough qualified gather users for input");
@@ -2148,22 +2095,19 @@ struct GathersToSplitPattern
           op, "matched ops have inconsistent devices");
     }
 
-    // Construct split
     SmallVector<Type> resultTypes;
     for (int64_t idx = 0; idx < inputAxis0Dim; ++idx)
       resultTypes.push_back(idxToGather[idx].getType());
 
-    // Insert gather and new constants before dominant gather op; the former is
-    // to maintain dominance over input users, the latter is for debuggability.
+    // Insert before the dominant gather: the split must dominate all users, and
+    // the constants stay nearby for debuggability.
     Location loc = dominantGatherOp.getLoc();
     rewriter.setInsertionPoint(dominantGatherOp);
     Value splitSizes = rewriter.createHostConstant(
         loc, SmallVector<int64_t>(inputAxis0Dim, 1));
-    // `axis` is a compile-time `index` attribute.
     auto splitOp = rewriter.create<SplitOp>(loc, resultTypes, input, splitSizes,
                                             llvm::APInt(64, 0));
 
-    // Replace each gather user of input with split result
     for (auto [idx, gatherOp] : idxToGather)
       rewriter.replaceOp(gatherOp, splitOp.getResult(idx));
 
@@ -2171,8 +2115,7 @@ struct GathersToSplitPattern
   }
 };
 
-/// Construct a new TensorType based on `ty` with the shape dimensions
-/// permuted by `perm`.
+/// Returns `ty` with its dimensions permuted by `perm`.
 static TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
   SmallVector<TypedAttr> permutedDims =
       permute(ty.getShape().getValues(), perm);
@@ -2180,15 +2123,9 @@ static TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
   return ty.cloneWith(ShapeAttr::get(permutedDims, shapeTy));
 }
 
-/// A pattern that detects a split with nonzero axis followed by a squeeze
-/// (expressed as reshape) on each result, and rewrites them into a transpose
-/// followed by a axis-0 split and the reshapes.
-///
-/// This is beneficial because
-/// 1. split on axis-0 can be lowered into in-place split.
-/// 2. the transpose kernel is much faster than the split kernel.
-///
-/// Example:
+/// Rewrites a nonzero-axis split whose results are each squeezed (by reshape)
+/// into a transpose, an axis-0 split, and the reshapes. An axis-0 split lowers
+/// in place, and the transpose kernel is much faster than the split kernel.
 ///
 /// input : tensor<[..., N, ...]>
 ///   ress = split(input, /*splitSizes=*/[1, 1, ..., 1], /*axis=*/...)
@@ -2209,8 +2146,8 @@ struct SplitAndSqueezesPattern
   SplitAndSqueezesPattern(MLIRContext *ctx)
       : DeviceAwareRewritePattern(ctx, 2) {}
 
-  // Check whether `op` is a `mo.static.reshape` (or rebind followed by a
-  // reshape) that effectively squeezes the given axis `squeezeAxis`.
+  // Whether `op` is a `mo.static.reshape` (optionally after a rebind) that
+  // squeezes `squeezeAxis`.
   static bool isSqueezingReshape(DeviceAwareRewriter &rewriter, Operation *op,
                                  ArrayRef<TypedAttr> inferredInDims,
                                  size_t squeezeAxis) {
@@ -2262,8 +2199,6 @@ struct SplitAndSqueezesPattern
       return rewriter.notifyMatchFailure(op, "unranked input");
     int64_t inputRank = inputTy.getRank();
 
-    // Normalized split axis, and check it's positive. `axis` is a compile-time
-    // `index` attribute.
     int64_t splitAxis = op.getAxisAttr().getInt();
     splitAxis = (splitAxis < 0) ? inputRank + splitAxis : splitAxis;
     if (splitAxis <= 0) {
@@ -2271,14 +2206,12 @@ struct SplitAndSqueezesPattern
           op, "normalized split axis isn't positive");
     }
 
-    // Input split axis dimension must be static
     int64_t inputSplitAxisDim = inputTy.getIntDim(splitAxis);
     if (mlir::ShapedType::isDynamic(inputSplitAxisDim)) {
       return rewriter.notifyMatchFailure(
           op, "input split axis dimension isn't static");
     }
 
-    // Split sizes must be all ones of length `inputSplitAxisDim`
     TensorValue splitSizes = op.getSplitSizes();
     std::optional<SmallVector<int64_t>> maybeSplitSizes =
         tryGetConstantIntVector(splitSizes);
@@ -2287,13 +2220,11 @@ struct SplitAndSqueezesPattern
           op, "split sizes isn't all ones of inputSplitAxisDim");
     }
 
-    // NOTE this is basically doing shape inference, because we currently don't
-    // have parameterization and shape function for `mo.split`.
+    // Manual shape inference: `mo.split` has no shape function.
     ArrayRef<TypedAttr> inputDims = inputTy.getShape().getValues();
     SmallVector<TypedAttr> inferredResDims(inputDims);
     inferredResDims[splitAxis] = rewriter.getDimAttr(1);
 
-    // Each result must be consumed by a single reshape that squeezes
     for (Value res : op.getResults()) {
       if (!res.hasOneUse())
         return rewriter.notifyMatchFailure(op, "a result has multiple users");
@@ -2310,7 +2241,6 @@ struct SplitAndSqueezesPattern
           op, "matched ops have inconsistent devices");
     }
 
-    // Construct transpose permutation and zero axis value (before split op)
     Location loc = op.getLoc();
     SmallVector<int64_t> permVec(inputRank);
     std::iota(permVec.begin() + 1, permVec.begin() + splitAxis + 1, 0);
@@ -2318,26 +2248,22 @@ struct SplitAndSqueezesPattern
     permVec[0] = splitAxis;
     Value perm = rewriter.createHostConstant(loc, permVec);
 
-    // Construct transpose (before split op)
     TensorType transposedInputTy = permuteDims(inputTy, permVec);
     auto transposeOp =
         rewriter.create<TransposeOp>(loc, transposedInputTy, input, perm);
 
-    // Construct new split op
     SmallVector<Type> newSplitResTypes;
     for (Type oldResTy : op.getResultTypes()) {
       auto oldResTensorTy = cast<TensorType>(oldResTy);
       TensorType newResTy = permuteDims(oldResTensorTy, permVec);
       newSplitResTypes.push_back(newResTy);
     }
-    // `axis` is a compile-time `index` attribute.
     auto newSplitOp = rewriter.replaceOpWithNewOp<SplitOp>(
         op, newSplitResTypes, transposeOp, splitSizes, llvm::APInt(64, 0),
         op.getOutputParamDecls());
 
-    // Rectify rebind consumers because the results dimensions have been
-    // permuted. Note that since all rebind users are squeezing reshapes, they
-    // are compatible with the new result types.
+    // Retype rebinds for the permuted results; their squeezing-reshape users
+    // stay compatible.
     // TODO(#13348) remove once we have shape inference for SplitOp
     for (Value res : newSplitOp.getResults()) {
       ASSERT_STREAM(res.hasOneUse(), << "guards should've enforced this");

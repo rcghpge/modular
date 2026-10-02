@@ -26,8 +26,7 @@ inline int64_t clampAxis(int64_t axis, int64_t rank) {
   return std::max(std::min(normalizedAxis, rank), (int64_t)0);
 }
 
-/// Normalize each dim in `dims` to the positive dim equivalent if it is
-/// negative.
+/// Normalize negative dims in `dims` to their positive equivalent.
 inline void normalizeNegativeDims(llvm::MutableArrayRef<int64_t> dims,
                                   size_t rank) {
   for (auto [i, dim] : llvm::enumerate(dims))

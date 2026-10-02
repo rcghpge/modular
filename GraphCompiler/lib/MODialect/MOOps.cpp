@@ -110,7 +110,7 @@ void printParamDecls(OpAsmPrinter &p, Operation *,
   }
 }
 
-/// Print the result tensor device in MO::TransferOp.
+/// Parse the result tensor device in MO::TransferOp.
 ParseResult parseTransferResult(AsmParser &p, Type inputType,
                                 Type &resultType) {
   DeviceRefAttr deviceRef;
@@ -163,8 +163,7 @@ ParseResult parseSequenceRegion(OpAsmParser &p, Region &region,
 }
 
 /// Print the body region of `mo.sequence`. Block-argument names are printed
-/// without types (they mirror the operands), followed by the optional result
-/// type list and the region body without its entry-block header.
+/// without types (they mirror the operands).
 void printSequenceRegion(OpAsmPrinter &p, Operation *op, Region &region,
                          TypeRange inputTypes, TypeRange resultTypes) {
   Block &body = region.front();
@@ -221,7 +220,6 @@ SmallVector<ConstantOp> M::MO::tryGetConstantOpsOfRank(TensorValue val,
     return constantOps;
   }
 
-  // Handle ConstantOp last.
   auto constantOp = dyn_cast_if_present<ConstantOp>(inputOp);
   if (!constantOp)
     return {};
@@ -286,10 +284,10 @@ M::MO::tryGetConstantBoolVector(TensorValue val) {
   return std::nullopt;
 }
 
-/// Assume `val` is of `MO::TensorType`, try to the value of `MOSH::ShapeType`
-/// that feeds into the creation of `val`.  Otherwise return null.
+/// Returns the `MOSH::ShapeType` value that `val` (an `MO::TensorType`) was
+/// created from, or null.
 static Value tryGetShapeValue(Value val) {
-  // Skip proceeding rebinds (there could be more than one).
+  // Skip any number of rebinds.
   while (auto rebindOp = val.getDefiningOp<RebindOp>())
     val = rebindOp.getInput();
 
@@ -299,9 +297,8 @@ static Value tryGetShapeValue(Value val) {
   return {};
 }
 
-/// Assume `val` is of `MO::TensorType`, try to find the constant integers that
-/// created `val`, and return a `ShapeAttr` whose values are those constant
-/// integers. Otherwise return null.
+/// Returns a `ShapeAttr` of the constant integers that created `val` (an
+/// `MO::TensorType`), or null.
 static ShapeAttr tryGetConstantShapeAttr(Value val) {
   // Skip at most a single intermediate rebind
   if (auto rebindOp = val.getDefiningOp<RebindOp>())
@@ -532,15 +529,14 @@ getParamDeclsFromShapes(TypeRange types) {
 void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
                     TypeRange inputTypes, TypeRange resultTypes,
                     bool isSubgraph) {
-  // Below we basically inline and specialize `buildWithEntryBlock`, which
-  // doesn't work because we use `signature` and not `function_type`.
+  // Specializes `buildWithEntryBlock`, which doesn't work because we use
+  // `signature` and not `function_type`.
   state.addAttribute(getSymNameAttrName(state.name),
                      builder.getStringAttr(name));
   if (isSubgraph) {
     state.addAttribute(getIsSubgraphAttrName(state.name),
                        builder.getUnitAttr());
   }
-  // Add signature attribute
   FunctionType funcType = builder.getFunctionType(inputTypes, resultTypes);
   auto sig = KGEN::FuncTypeGeneratorType::get(/*inputParamTypes=*/{}, funcType);
   state.addAttribute(getSignatureAttrName(state.name), TypeAttr::get(sig));
@@ -556,17 +552,14 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
   state.addAttribute(getInputParametersAttrName(state.name), inputDecls);
   state.addAttribute(getResultParametersAttrName(state.name), resultDecls);
 
-  // Add the function body.
   Region *bodyRegion = state.addRegion();
   Block &body = bodyRegion->emplaceBlock();
   for (Type input : inputTypes)
     body.addArgument(input, state.location);
 }
 
-// GraphOp contains a property called `counter` that is used to generate
-// unique symbolic dimension names. For printing/parsing, we simply place it in
-// the list of misc. attributes attached to the graph and extract/insert it as
-// needed.
+// GraphOp's `counter` property generates unique symbolic dimension names. It
+// round-trips as a trailing extra attribute on the graph.
 static constexpr StringLiteral GRAPH_OP_COUNTER_NAME = "counter";
 static ParseResult
 parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
@@ -594,7 +587,6 @@ parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
       p.parseRegion(body, args, /*enableNameShadowing=*/true))
     return failure();
 
-  // Extract counter
   NamedAttrList extraAttrs;
   if (p.parseOptionalAttrDict(extraAttrs))
     return failure();
@@ -1043,8 +1035,7 @@ void WhileConditionOp::getSuccessorRegions(
     SmallVectorImpl<mlir::RegionSuccessor> &regions) {
   WhileOp whileOp = getParentOp();
 
-  // Condition can either lead to the after region or back to the parent op
-  // depending on whether the condition is true or not.
+  // Branches to the after region if true, back to the parent op otherwise.
   regions.emplace_back(&whileOp.getBodyRegion());
   regions.emplace_back(mlir::RegionSuccessor(whileOp.getOperation()));
 }
@@ -1114,9 +1105,8 @@ void TensorUnbundleOp::build(OpBuilder &builder, OperationState &state,
 
 namespace {
 
-// Helper for `ParallelOp::verify`: examines a single body op and either
-// returns `success()` (op is allowed inside `mo.parallel`) or emits a
-// rejection diagnostic and returns `failure()`. Allowed ops are:
+// Returns success if `op` is allowed inside `mo.parallel`, else emits a
+// diagnostic. Allowed ops are:
 //
 //  - Computational ops that lower to a MOGG kernel via `MOToMOGG` (caught
 //    here by exclusion from the rejection arms below).
@@ -1134,12 +1124,9 @@ LogicalResult verifyParallelBodyOp(Operation &op, ParallelOp parallelOp) {
   if (isa<MO::RebindOp>(&op))
     return success();
 
-  // mo.buffer is not supported in parallel regions.
-  // Exceptions:
-  // - Signal buffers are allowed in bundled collective ops.
-  // - Conditionally-in-place ops (`mo.custom`) are allowed only
-  //   when they're not in-place -- pure-tensor `mo.custom` ops lower
-  //   to kernels just like any other computational op.
+  // mo.buffer is not supported in parallel regions, except signal buffers in
+  // bundled collectives and conditionally-in-place ops (`mo.custom`) that are
+  // not in-place, which lower to kernels like any computational op.
   if (isa<MOMutableOpInterface>(&op)) {
     auto cond = dyn_cast<MOConditionallyInPlaceInterface>(&op);
     if (!cond || cond.isInPlace())
@@ -1148,11 +1135,9 @@ LogicalResult verifyParallelBodyOp(Operation &op, ParallelOp parallelOp) {
                 "multi-device collectives are not supported; see GEX-3704";
   }
 
-  // Catch-all for everything else we reject. `MO_PreservedDuringKernelLowering`
-  // tags ops the kernel-lowering pass intentionally leaves in place
-  // (constants, control flow, transfers, host-only, bundle / unbundle, nested
-  // mo.parallel, ...). None of these are in the parallel-body whitelist; some
-  // will be enabled in follow-ups.
+  // `MO_PreservedDuringKernelLowering` tags ops the kernel-lowering pass leaves
+  // in place (constants, control flow, transfers, host-only, bundle /
+  // unbundle, nested mo.parallel, ...). None are allowed in the body yet.
   if (isa<MO::PreservedDuringKernelLowering>(&op))
     return op.emitOpError()
            << "is not allowed inside mo.parallel: only kernels and bundled "
@@ -1173,10 +1158,8 @@ void ParallelOp::build(OpBuilder &builder, OperationState &state,
         resultTypes);
 }
 
-/// Derive the per-launch device list from a bundle by reading each element
-/// tensor's deviceRef.  Shared by the auto-derive builder, parser, and
-/// printer.  `BundleType::verify` guarantees every element is a TensorType,
-/// so the cast is safe.
+/// Derives the per-launch device list from each bundle element's deviceRef.
+/// `BundleType::verify` guarantees every element is a TensorType.
 static SmallVector<DeviceRefAttr>
 deriveLaunchDevicesFromBundle(BundleType bundle) {
   return llvm::map_to_vector(bundle.getElementTypes(), [](Type t) {
@@ -1215,11 +1198,10 @@ void ParallelOp::build(OpBuilder &builder, OperationState &state,
       ParallelOp::getLaunchDevicesAttrName(state.name),
       builder.getArrayAttr(llvm::map_to_vector(
           launchDevices, [](DeviceRefAttr d) -> Attribute { return d; })));
-  // Block argument types are the first element type of each bundle input,
-  // followed by a trailing !mo.chain block argument when the parallel is
-  // chained. The in-chain enters the body through that block argument (it is
-  // not captured), and the body threads it through its buffer-argument ops and
-  // yields the resulting chain.
+  // Block args are the first element type of each bundle input, plus a
+  // trailing !mo.chain when chained: the in-chain enters the body through it
+  // (not captured), and the body threads it through its buffer ops and yields
+  // the resulting chain.
   Block &block = state.addRegion()->emplaceBlock();
   SmallVector<Type> argTypes;
   for (Value input : inputs)
@@ -1280,7 +1262,6 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
   }
 
-  // Resolve bundle operands.
   for (auto [op, type] : llvm::zip(bundleOps, bundleTypes))
     if (parser.resolveOperand(op, type, result.operands))
       return failure();
@@ -1325,11 +1306,9 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
   }
 
-  // Parse optional `devices(label:firstId[-lastId][, ...])` clause.  When
-  // absent, the device list is derived from `inputs.front()`'s element types
-  // (mirrors the auto-derive behavior of the C++ builders).  When there are
-  // no input bundles, the clause is required because there's nothing to
-  // derive from.
+  // Parse optional `devices(label:firstId[-lastId][, ...])` clause. When
+  // absent, devices are derived from `inputs.front()` like the C++ builders;
+  // with no input bundles, the clause is required.
   SmallVector<DeviceRefAttr> launchDevices;
   if (succeeded(parser.parseOptionalKeyword("devices"))) {
     if (parser.parseLParen() || parseDeviceList(parser, launchDevices) ||
@@ -1366,7 +1345,6 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
            << (hasChain ? " plus a trailing chain arg" : "") << "), got "
            << blockArgs.size();
 
-  // Set block arg types from the first element of each bundle type.
   for (auto [group, bType] : llvm::enumerate(bundleTypes)) {
     auto bundleTy = dyn_cast<BundleType>(bType);
     if (!bundleTy || bundleTy.getNumElements() == 0)
@@ -1377,7 +1355,6 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
   if (hasChain)
     blockArgs.back().type = ChainType::get(parser.getContext());
 
-  // Parse result types.
   SmallVector<Type> resultTypes;
   if (succeeded(parser.parseOptionalArrow())) {
     if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren,
@@ -1438,11 +1415,8 @@ void ParallelOp::print(OpAsmPrinter &p) {
     p << ')';
   }
 
-  // Elide `devices(...)` when the attribute is exactly what the parser
-  // would auto-derive from `inputs.front()`.  This keeps printed IR
-  // uncluttered for the common case where the device list is redundant
-  // with the bundle types.  When `inputs` is empty, the clause must be
-  // printed because there's nothing to derive from on re-parse.
+  // Elide `devices(...)` when it is what the parser would derive from
+  // `inputs.front()`. With no inputs there is nothing to derive from.
   SmallVector<DeviceRefAttr> launchDevices = getLaunchDeviceList();
   bool elide = !inputs.empty() &&
                launchDevices == deriveLaunchDevicesFromBundle(
@@ -1471,7 +1445,7 @@ void ParallelOp::print(OpAsmPrinter &p) {
   p.printRegion(getBodyRegion(), /*printEntryBlockArgs=*/false);
 }
 
-/// Helper to check if device labels match (IDs can differ).
+/// Returns true if device labels match; IDs may differ.
 static bool deviceLabelsMatch(DeviceRefAttr a, DeviceRefAttr b) {
   if (!a && !b)
     return true;
@@ -1480,7 +1454,7 @@ static bool deviceLabelsMatch(DeviceRefAttr a, DeviceRefAttr b) {
   return a.getLabel() == b.getLabel();
 }
 
-/// Helper to check if two types match ignoring device ID.
+/// Returns true if two types match ignoring device ID.
 static bool typesMatchIgnoringDeviceId(Type a, Type b) {
   if (auto tensorA = dyn_cast<TensorType>(a)) {
     auto tensorB = dyn_cast<TensorType>(b);
@@ -1559,10 +1533,9 @@ void ParallelOp::getEffects(
         effects.emplace_back(effect.getEffect(), &getInputsMutable()[argIdx]);
       }
     } else {
-      // The trailing block arg (when chained) is the in-chain, not a memory
-      // resource, so it carries no buffer effect to remap. Buffers are captured
-      // operands (not block args), so their effects are already keyed on the
-      // captured SSA values and pass through via the branch above.
+      // The trailing chain block arg is not a memory resource. Buffers are
+      // captured operands, so their effects are already keyed on the captured
+      // SSA values.
       effects.push_back(effect);
     }
   }
@@ -1599,7 +1572,6 @@ LogicalResult ParallelOp::verify() {
     }
   }
 
-  // Buffers and chain must be both present or both absent.
   if (hasBuffers() != hasChain())
     return emitOpError("buffers and chain must be both present or both absent");
 
@@ -1620,9 +1592,7 @@ LogicalResult ParallelOp::verify() {
 
   // Chain threading contract: a chained parallel takes its in-chain through a
   // trailing !mo.chain block argument and yields the threaded out-chain as the
-  // terminator's last operand. A chainless parallel does neither. This makes
-  // the chain's path through the region explicit in the IR rather than
-  // something the lowering must reconstruct.
+  // terminator's last operand. A chainless parallel does neither.
   auto yield = cast<YieldOp>(body.getTerminator());
   if (hasChain()) {
     if (!isa<ChainType>(body.getArguments().back().getType()))
@@ -1640,9 +1610,8 @@ LogicalResult ParallelOp::verify() {
         return emitOpError("chainless parallel must not yield a chain");
   }
 
-  // Phase 1 (GEX-3701) restricts the body to kernels (or ops that will become
-  // kernels), `mo.bundled.expand`, and a small whitelist of view/chain ops we
-  // lower per-launch. Reject everything else with a category-specific message.
+  // GEX-3701 restricts the body to kernels (or ops that will become kernels),
+  // `mo.bundled.expand`, and a small whitelist of view/chain ops.
   for (Operation &op : body.without_terminator()) {
     if (failed(verifyParallelBodyOp(op, *this)))
       return failure();
@@ -1664,9 +1633,8 @@ LogicalResult ParallelOp::verify() {
 
   auto yieldOp = cast<YieldOp>(body.getTerminator());
   size_t numYields = yieldOp.getNumOperands();
-  // The yielded chain (when chained) is the trailing operand and maps to the
-  // op's trailing chain result, not a bundle result; exclude it from the
-  // bundle-result accounting.
+  // The yielded chain (when chained) maps to the trailing chain result, not a
+  // bundle result.
   size_t numBundleYields = numYields - (hasChain() ? 1 : 0);
   if (numBundleYields < 1)
     return emitOpError("yield must produce at least one bundle result");
@@ -1779,19 +1747,16 @@ LogicalResult BroadcastShapeOp::verify() {
   int64_t inputYRank = inputYIsStatic ? inputYType.getIntDim(0) : 0;
   int64_t resultRank = resultType.getIntDim(0);
 
-  // Check first input
   if (inputXIsStatic && inputXRank > resultRank) {
     return emitError("result rank must be no less than first input rank if "
                      "both are statically ranked");
   }
 
-  // Check second input
   if (inputYIsStatic && inputYRank > resultRank) {
     return emitError("result rank must be no less than second input rank if "
                      "both are statically ranked");
   }
 
-  // Check both inputs together
   if (inputXIsStatic && inputYIsStatic &&
       resultRank != std::max(inputXRank, inputYRank)) {
     return emitError("output rank must be the max between 2 input ranks, if "
@@ -2103,8 +2068,7 @@ LogicalResult BufferCreateOp::verify() {
       castFromTensorLike(getResult().getType()).getElementType();
 
   // The init value is a single-element elements attribute (the form the Python
-  // API emits), or a scalar typed attribute. In either case its element type
-  // must match the buffer's element type.
+  // API emits) or a scalar typed attribute.
   Type valueElementType;
   if (auto elts = dyn_cast<ElementsAttr>(initValue)) {
     if (elts.getNumElements() != 1)
@@ -2201,10 +2165,7 @@ LogicalResult SplitOp::verify() {
   if (inputTy.getDtype() != resultTy.getDtype())
     return emitError("input and output element types must match");
 
-  // If the input has a static shape, verify that the axis is in range.
-  // Then, if the results also have static shapes, verify that the sum of the
-  // output shapes along the split axis matches the input shape, and that the
-  // other dimensions match. `axis` is a compile-time `index` attribute.
+  // `axis` is a compile-time `index` attribute.
   if (inputTy.hasStaticShape()) {
     int64_t axis = getAxisAttr().getInt();
     int64_t inputRank = inputTy.getRank();
@@ -2226,8 +2187,6 @@ LogicalResult SplitOp::verify() {
 //===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
-
-/// Return an empty array with the given element type.
 
 LogicalResult GatherOp::verify() {
   TensorType paramsType = getInput().getType();
@@ -2260,20 +2219,17 @@ LogicalResult GatherOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ScatterOp::verify() {
-  // `axis` is a compile-time `index` attribute; its range against the input
-  // rank is validated during shape materialization. Here we only check the
-  // shared scatter shape/rank invariants.
+  // `axis` is a compile-time `index` attribute; its range is validated during
+  // shape materialization.
   TensorType inputTy = getInput().getType();
   TensorType resTy = getResult().getType();
 
-  // Input and result shapes must match if both static.
   if (inputTy.hasStaticShape() && resTy.hasStaticShape() &&
       inputTy.getShape() != resTy.getShape()) {
     return emitError("input and result shapes must match if both static");
   }
 
-  // Input, updates, indices and result must all share the same rank when
-  // ranked.
+  // Input, updates, indices and result must share a rank when ranked.
   uint64_t expectedRank = 0;
   bool haveExpected = false;
   auto rankMatches = [&](TensorValue tensor) -> bool {
@@ -2436,7 +2392,6 @@ static LogicalResult argVerify(Op *op) {
 template <typename TOp>
 void buildReductionOp(OpBuilder &odsBuilder, OperationState &odsState,
                       TensorValue input, int64_t axis, TensorType outputTy) {
-  // `axis` is a compile-time `index` attribute.
   TOp::build(odsBuilder, odsState, outputTy, input,
              odsBuilder.getIndexAttr(axis));
 }
@@ -2528,9 +2483,8 @@ LogicalResult MaxPoolCeilOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConvOp::verify() {
-  // The sliding window interface already checks that the input and result
-  // have matching ranks, so we can be more specific with the error message
-  // here.
+  // The sliding window interface already checks input/result ranks; this
+  // gives a more specific error.
   if (failed(
           ::Impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
     return emitError("filter, input and output ranks must be all dynamic, or "
@@ -2545,9 +2499,8 @@ LogicalResult ConvOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConvTransposeOp::verify() {
-  // The sliding window interface already checks that the input and result
-  // have matching ranks, so we can be more specific with the error message
-  // here.
+  // The sliding window interface already checks input/result ranks; this
+  // gives a more specific error.
   if (failed(
           ::Impl::verifyMatchingRanks({getInput(), getResult(), getFilter()})))
     return emitError("filter, input and output ranks must be all dynamic, or "
@@ -2581,7 +2534,6 @@ LogicalResult BatchMatmulOp::verify() {
   TensorType cType = getTensorResult().getType();
 
   // Note MO_MatmulLike interface verifies ranks are consistent between ops.
-  // Ensure all ranked tensors are rank >= 3
   auto violatedRankProperty = [&](TensorType ty) -> bool {
     return ty.hasRank() && ty.getRank() < 3;
   };
@@ -2661,7 +2613,7 @@ LogicalResult RebindOp::verify() {
 
 //===----------------------------------------------------------------------===//
 // MeanOp
-// ===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 
 void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
                    TensorValue input, int64_t axis, TensorType outputTy) {
@@ -2799,7 +2751,6 @@ LogicalResult UnsqueezeShapeOp::verify() {
     }
   }
 
-  // Check out number of elements equal to sum of size of input elements
   std::optional<int64_t> inputShapeSize =
       getInputShape().getType().getNumElements();
   std::optional<int64_t> paddingIndicesSize =
@@ -2838,7 +2789,6 @@ LogicalResult SqueezeShapeOp::verify() {
         return emitOpError("Padding indices pad the same dimension twice");
   }
 
-  // Check number of elements equal to difference of input element sizes
   std::optional<int64_t> inputShapeSize =
       getInputShape().getType().getNumElements();
   std::optional<int64_t> paddingIndicesSize =
@@ -3011,8 +2961,8 @@ LogicalResult TransposeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TileOp::verify() {
-  // The permutation has known shape iff the argument and result are
-  // statically ranked.
+  // `repeats` has known shape iff the argument and result are statically
+  // ranked.
   TensorType repeatsTy = getRepeats().getType();
   TensorType inputTy = getInput().getType();
   TensorType resTy = getResult().getType();
@@ -3032,7 +2982,7 @@ LogicalResult TileOp::verify() {
   if (inputTy.getRank() != resTy.getRank())
     return emitError("input and result ranks do not match");
 
-  // ODS constraints ensure that perm has rank = 1.
+  // ODS constraints ensure that repeats has rank = 1.
   if ((int64_t)resTy.getRank() != repeatsTy.getIntDim(0))
     return emitError("input and result ranks do not match repeats size");
   return success();
@@ -3182,7 +3132,7 @@ static void linkAssertPair(mlir::RewriterBase &rewriter,
           .getOperands()
           .drop_front();
 
-  // finally create the new assert that accepts prevAssertOp's output chain
+  // The new assert consumes prevAssertOp's output chain.
   auto newAttr = emitStaticCall(
       KGEN::ParamDeclRefAttr::get(prevAssertDeclareOp.getParamDecl()),
       currentOperands[0], errorMsg);
@@ -3219,8 +3169,7 @@ void AssertOp::materializeAllAssertLogic(
   mlir::RewriterBase::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(op);
 
-  // the following block takes all the KGEN param level chains and adds ops to
-  // make them actual SSA values
+  // Materialize the KGEN param-level chains as SSA values.
   SmallVector<Value> allChains;
   for (auto assert : asserts) {
     auto declRefAttr = KGEN::ParamDeclRefAttr::get(
@@ -3248,7 +3197,6 @@ void AssertOp::materializeAllAssertLogic(
 //===----------------------------------------------------------------------===//
 // CustomOp
 //===----------------------------------------------------------------------===//
-//
 
 /// Checks if an op's operands contains any mutable types: opaque or buffer.
 static bool hasMutableOperand(OperandRange operands) {
@@ -3389,13 +3337,11 @@ LogicalResult MutableStoreSliceOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult AllReduceSumOp::verify() {
-  // Verify we have inputs.
   auto inputs = getInputs();
   if (inputs.empty())
     return emitError("allreduce requires at least one input");
 
-  // Verify group size. Zero (the attribute default) means all devices form
-  // one group, so op construction sites predating the attribute stay valid.
+  // Zero (the attribute default) means all devices form one group.
   int64_t ngpus = inputs.size();
   int64_t groupSize = getGroupSizeAttr().getInt();
   if (groupSize < 0)
@@ -3407,11 +3353,9 @@ LogicalResult AllReduceSumOp::verify() {
         "group_size must evenly divide the number of inputs ({0}), but got {1}",
         ngpus, groupSize));
 
-  // Verify that all inputs within a group have the same shape, and that all
-  // inputs share one element type. Groups may differ in shape (e.g. per-DP-
-  // replica row counts). Inputs intentionally differ in device (one per GPU),
-  // so we can't use AllTypesMatch here. Output-input type matching (including
-  // device) and signal buffer count are handled by TableGen traits.
+  // Groups may differ in shape (e.g. per-DP-replica row counts). Inputs
+  // differ in device (one per GPU), so AllTypesMatch can't be used.
+  // Output-input type matching and signal buffer count are TableGen traits.
   auto firstInputType = getInputTensor(0).getType();
   for (size_t i = 1; i < inputs.size(); ++i) {
     auto inputType = getInputTensor(i).getType();
@@ -3499,10 +3443,8 @@ void Composite::BundledAllReduceAddRMSNormQuantFP8Op::getEffects(
 void Composite::MegaFFNNvfp4Op::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   // The fused kernel writes the persistent `arrival_count` pool-slot buffer in
-  // place (cross-CTA scheduler hand-off). Surfacing the Write keeps the op from
-  // being treated as side-effect-free (it is no longer `Pure`) and lets the
-  // buffer/chain machinery sequence the in-place mutation. Mirrors
-  // `BundledAllReduceAddRMSNormQuantFP8Op::getEffects` above.
+  // place (cross-CTA scheduler hand-off). Surfacing the Write lets the
+  // buffer/chain machinery sequence the in-place mutation.
   effects.emplace_back(mlir::MemoryEffects::Write::get(),
                        &getArrivalCountMutable());
 }
@@ -3523,7 +3465,6 @@ LogicalResult DistributedScatterOp::verify() {
   if (getSignalBuffers().size() != inputs.size())
     return emitError("number of signal buffers must match number of inputs");
 
-  // Verify all inputs have the same element type.
   auto firstInputType = getInputTensor(0).getType();
   for (size_t i = 1; i < inputs.size(); ++i) {
     auto inputType = getInputTensor(i).getType();
@@ -3531,7 +3472,6 @@ LogicalResult DistributedScatterOp::verify() {
       return emitError("all inputs must have the same element type");
   }
 
-  // Verify root is in range.
   int64_t root = getRoot();
   if (root < 0 || root >= static_cast<int64_t>(inputs.size()))
     return emitError("root must be in range [0, ngpus)");
@@ -3552,7 +3492,6 @@ void DistributedScatterOp::getEffects(
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceScatterSumOp::verify() {
-  // Verify we have inputs.
   auto inputs = getInputs();
   if (inputs.empty())
     return emitError("reducescatter requires at least one input");
@@ -3569,16 +3508,13 @@ LogicalResult ReduceScatterSumOp::verify() {
       return emitError("all inputs must have the same rank");
   }
 
-  // Verify output count matches input count.
   auto outputs = getOutputs();
   if (outputs.size() != inputs.size())
     return emitError("number of outputs must match number of inputs");
 
-  // Verify signal buffers match input count.
   if (getSignalBuffers().size() != inputs.size())
     return emitError("number of signal buffers must match number of inputs");
 
-  // Verify group size.
   int64_t ngpus = inputs.size();
   int64_t groupSize = getGroupSizeAttr().getInt();
   if (groupSize < 1)
@@ -3620,7 +3556,6 @@ LogicalResult ReduceScatterSumOp::verify() {
       int64_t inputDim = inputType.getIntDim(i);
       int64_t outputDim = outputType.getIntDim(i);
 
-      // Skip dynamic dimensions
       if (mlir::ShapedType::isDynamic(inputDim) ||
           mlir::ShapedType::isDynamic(outputDim))
         continue;
@@ -3754,7 +3689,6 @@ LogicalResult EPDispatchBlockScaledNVOp::verify() {
 
   size_t numDevices = inputTokens.size();
 
-  // Verify all variadic operand groups have the same size.
   if (getTopkIds().size() != numDevices)
     return emitError("topkIds count must match inputTokens count");
   if (getSendPtrs().size() != numDevices)
@@ -3768,7 +3702,6 @@ LogicalResult EPDispatchBlockScaledNVOp::verify() {
   if (getAtomicCounters().size() != numDevices)
     return emitError("atomicCounters count must match inputTokens count");
 
-  // Verify all variadic result groups have the same size.
   if (getOutputTokens().size() != numDevices)
     return emitError("outputTokens count must match inputTokens count");
   if (getOutputScales().size() != numDevices)
@@ -3805,7 +3738,6 @@ LogicalResult EPDispatchBlockScaledNVDynGlobalScalesOp::verify() {
 
   size_t numDevices = inputTokens.size();
 
-  // Verify all variadic operand groups have the same size.
   if (getTopkIds().size() != numDevices)
     return emitError("topkIds count must match inputTokens count");
   if (getSendPtrs().size() != numDevices)
@@ -3817,7 +3749,6 @@ LogicalResult EPDispatchBlockScaledNVDynGlobalScalesOp::verify() {
   if (getAtomicCounters().size() != numDevices)
     return emitError("atomicCounters count must match inputTokens count");
 
-  // Verify all variadic result groups have the same size.
   if (getOutputTokens().size() != numDevices)
     return emitError("outputTokens count must match inputTokens count");
   if (getOutputScales().size() != numDevices)
@@ -3855,7 +3786,6 @@ LogicalResult EPDispatchMXFP4Op::verify() {
 
   size_t numDevices = inputTokens.size();
 
-  // Verify all variadic operand groups have the same size.
   if (getTopkIds().size() != numDevices)
     return emitError("topkIds count must match inputTokens count");
   if (getSendPtrs().size() != numDevices)
@@ -3867,7 +3797,6 @@ LogicalResult EPDispatchMXFP4Op::verify() {
   if (getAtomicCounters().size() != numDevices)
     return emitError("atomicCounters count must match inputTokens count");
 
-  // Verify all variadic result groups have the same size.
   if (getOutputTokens().size() != numDevices)
     return emitError("outputTokens count must match inputTokens count");
   if (getOutputScales().size() != numDevices)
@@ -3954,7 +3883,6 @@ LogicalResult Composite::DistributedMatmulReduceScatterSumOp::verify() {
         "number of signal buffers ({0}) must match number of inputs ({1})",
         signalBuffers.size(), inputsA.size()));
 
-  // Verify all A inputs have the same shape and element type.
   auto firstAType = cast<TensorType>(inputsA[0].getType());
   if (!firstAType.hasRank() || firstAType.getRank() != 2)
     return emitError("A inputs must be rank-2 tensors");
@@ -3967,7 +3895,6 @@ LogicalResult Composite::DistributedMatmulReduceScatterSumOp::verify() {
       return emitError("all A inputs must have the same element type");
   }
 
-  // Verify all B inputs have the same shape and element type.
   auto firstBType = cast<TensorType>(inputsB[0].getType());
   if (!firstBType.hasRank() || firstBType.getRank() != 2)
     return emitError("B inputs must be rank-2 tensors");
@@ -3988,7 +3915,6 @@ LogicalResult Composite::DistributedMatmulReduceScatterSumOp::verify() {
     return emitError(llvm::formatv(
         "matmul K dimension mismatch: A has K={0}, B has K={1}", aK, bK));
 
-  // When has_residual is set, validate the residual tensor shape.
   if (getHasResidual()) {
     int64_t residualPeer = getResidualPeer();
     if (residualPeer < 0 ||
@@ -4044,12 +3970,10 @@ void Composite::DistributedMatmulReduceScatterSumOp::getEffects(
 //===----------------------------------------------------------------------===//
 
 LogicalResult AllGatherOp::verify() {
-  // Checks input/output counts and that corresponding device types match.
   auto outputs = getOutputs();
   auto inputs = getInputs();
   auto signalBuffers = getSignalBuffers();
 
-  // Check that number of signal buffers matches number of inputs
   if (signalBuffers.size() != inputs.size())
     return emitError(
         llvm::formatv("number of signal buffers should match number of inputs. "
@@ -4093,21 +4017,18 @@ LogicalResult DistributedBroadcastOp::verify() {
   if (signalBuffers.empty())
     return emitError("broadcast requires at least one signal buffer");
 
-  // Number of outputs must match number of signal buffers.
   if (outputs.size() != signalBuffers.size())
     return emitError(
         llvm::formatv("number of outputs must match number of signal buffers. "
                       "Expected {0} outputs but got {1}",
                       signalBuffers.size(), outputs.size()));
 
-  // Root must be in range.
   int64_t root = getRoot();
   int64_t numDevices = signalBuffers.size();
   if (root < 0 || root >= numDevices)
     return emitError(llvm::formatv(
         "root index {0} out of range for {1} devices", root, numDevices));
 
-  // All outputs must have the same shape and element type as the input.
   auto inputType = cast<TensorType>(getInput().getType());
   for (size_t i = 0; i < outputs.size(); ++i) {
     auto outputType = getOutputTensor(i).getType();

@@ -43,11 +43,8 @@ namespace M::MO {
 } // namespace M::MO
 
 namespace {
-/// A map that takes the operation name and its operands as a key. The value is
-/// the primary operation and all of its defined parameters. The key is used to
-/// identify operations that need to be merged with the primary operation, and
-/// the parameters of the erased op are remapped to the parameters of the
-/// primary operation.
+/// Maps (op name, operands) to the primary op and the parameters it defines,
+/// so duplicates' parameters can be remapped onto the primary's.
 using OpCacheTy = std::unordered_map<
     std::pair<llvm::StringRef, ValueRange>,
     std::pair<Operation *, SmallVector<KGEN::ParamDeclRefAttr>>>;
@@ -58,8 +55,6 @@ bool isOpDefiningOpForAllParams(Operation *op,
 
   SmallVector<KGEN::ParamDefinition> definitions;
   for (const auto &reference : references) {
-    // We return failse if we can't find the definition or it doesn't match our
-    // op
     if (auto it = useDefGraph.defs.find(reference.getName());
         it != useDefGraph.defs.end() && it->second.defOp == op)
       definitions.emplace_back(it->second);
@@ -72,13 +67,10 @@ bool isOpDefiningOpForAllParams(Operation *op,
 }
 } // namespace
 
-/// This pass identifies all shape materialization ops in a Graph op that
-/// defines all its parameters. For all such operations, if there are multiple
-/// operations found with the same operation name and operands, it erases all
-/// but the first instance of the operation. It then remaps the parameters in
-/// the erased ops to the primary instance's parameters. This is all to aid CSE,
-/// since CSE can't automatically identify cases of otherwise equivalent
-/// operations when they have different parameter references.
+/// Erases all but the first of each set of shape materialization ops with the
+/// same name and operands that define all their parameters, remapping the
+/// erased ops' parameters to the first's. CSE can't merge these itself because
+/// their parameter references differ.
 struct MergeDuplicateShapeMaterializationsPass
     : public MO::impl::MergeDuplicateShapeMaterializationsBase<
           MergeDuplicateShapeMaterializationsPass> {

@@ -37,22 +37,17 @@ class MojoRegistry;
 
 namespace M::MOGG {
 
-/// How to build kernels. Release is optimized with no debug information,
-/// relwithdebinfo is optimized with debug information, debug is not optimized
-/// with debug information.
 enum class KernelBuildType {
   kRelease,
   kRelWithDebInfo,
   kDebug,
 };
 
-/// Does the kernel build type have debuginfo.
 inline bool hasDebuginfo(KernelBuildType kernelBuildType) {
   return kernelBuildType == KernelBuildType::kRelWithDebInfo ||
          kernelBuildType == KernelBuildType::kDebug;
 }
 
-/// Build type as a string.
 inline std::string buildTypeString(KernelBuildType bt) {
   if (bt == KernelBuildType::kRelease)
     return "release";
@@ -63,22 +58,17 @@ inline std::string buildTypeString(KernelBuildType bt) {
   llvm_unreachable("All cases should be covered");
 }
 
-/// Provide one-time initialization of LLVM in a thread safe manner.
+/// Thread-safe one-time LLVM initialization.
 void initLLVM();
 
-/// Probe the host (target triple, CPU, features, accelerator arch) and build
-/// the `TargetInfoAttr` that feeds the cache key. Callers pass the result
-/// explicitly so key computation performs no hardware probing of its own and
-/// one resolution can be reused across key computations.
+/// Probes the host and builds the `TargetInfoAttr` that feeds the cache key,
+/// so key computation does no hardware probing and one result can be reused.
 ///
-/// When `acceleratorArchOverride`/`acceleratorTripleOverride` describe a GPU
-/// target, the accelerator arch is taken from them instead of probing the host
-/// GPU. The cache key and codegen must resolve the target the same way, so any
-/// caller that overrides the codegen target must pass the identical override
-/// here -- including `forHostExecution`, which makes codegen ignore the
-/// virtual-CPU override (see `MOGG::getTargetInfo`): a host-compiled artifact
-/// cached under the virtual target's key would poison lookups made by
-/// compiles that really target it.
+/// The cache key and codegen must resolve the target the same way, so a
+/// caller that overrides the codegen target must pass the identical overrides
+/// here, including `forHostExecution` (see `MOGG::getTargetInfo`). Otherwise a
+/// host-compiled artifact cached under the virtual target's key poisons
+/// lookups by compiles that really target it.
 ErrorOr<TargetInfoAttr>
 getHostTargetInfoAttr(mlir::MLIRContext *ctx,
                       llvm::StringRef acceleratorArchOverride = "",
@@ -89,12 +79,9 @@ KGEN::CompilationOptions
 createCompilationOptions(TargetInfoAttr target, KernelBuildType kernelBuildType,
                          bool debugKGENStubs, StringRef saveTempsPrefix);
 
-/// Write all compiler configuration information used by the graph compiler to
-/// the ostream to be used as a cache key. `target` is typically the host
-/// (see `getHostTargetInfoAttr`).
-///
-/// This includes information like the host CPU, the target accelerators,
-/// the optimization level, and versioning information for the graph compiler.
+/// Writes the graph compiler configuration (target, optimization level,
+/// versions) as a cache key. `target` is typically from
+/// `getHostTargetInfoAttr`.
 ErrorOrSuccess
 graphCompilerCacheKey(llvm::raw_ostream &keyBuf, TargetInfoAttr target,
                       KernelBuildType buildType = KernelBuildType::kRelease,

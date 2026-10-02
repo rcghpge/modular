@@ -144,8 +144,6 @@ ErrorOrSuccess MOFContext::setOptions(ArrayRef<std::string> opts) {
   if (impl->optionsParsed)
     return success();
 
-  // Parse the options one at a time, so we don't have to combine the list
-  // of strings.
   for (StringRef opt : opts) {
     const char *optChars[] = {impl->clOptions->getProgramName().data(),
                               opt.data()};
@@ -194,8 +192,6 @@ void MOFContext::overrideLoweringOptions(
   if (impl->mofConfig)
     impl->mofConfig->overrideLoweringOptions(gcPipelineOptions);
 
-  // Enable NaN/Inf checking from the max-debug.nan-check config key, and
-  // read the sampling stride from max-debug.nan-check-stride if set.
   if (auto configOr = M::Config::open(); !configOr.isError()) {
     if (configOr->getValueAsBool("max-debug.nan-check", false))
       gcPipelineOptions.nanCheck = true;
@@ -215,10 +211,7 @@ void MOFContext::overrideLoweringOptions(
     if (configOr->getValueAsBool("max-debug.pre-jit", false))
       gcPipelineOptions.preJit = true;
 
-    // The GC pipeline's JSON pass-timing writer was previously reachable only
-    // through mo-opt's command line, which does not run the in-process compile
-    // the Python path takes. Route it through a config key so an in-situ
-    // compile can be timed too.
+    // mo-opt's flag doesn't reach the in-process Python compile path.
     StringRef timingOutDir =
         configOr->getValue("max-debug.mlir-timing-out-dir");
     if (!timingOutDir.empty())
@@ -226,12 +219,8 @@ void MOFContext::overrideLoweringOptions(
   }
 }
 
-/// A diagnostic handler for the graph api.
-/// It uses the graph api python location information to print a python like
-/// stacktrace. It also only prints the first error diagnostic (as that would be
-/// equivalent to the first python exception).
-///
-/// If a python stacktrace does not exist, falls back to the
+/// Prints the first error diagnostic (like the first Python exception) with a
+/// Python stacktrace from the graph api location, else falls back to
 /// FormatScopedDiagnosticHandler.
 class GraphApiDiagnosticHandler : public mlir::ScopedDiagnosticHandler {
 public:
@@ -248,7 +237,6 @@ public:
   }
 
 private:
-  // The full set of diagnostics printed on fallback.
   std::vector<mlir::Diagnostic> diagnostics;
 
   void emitDiagnosticToStream(raw_ostream &os) const {
@@ -263,41 +251,18 @@ private:
     }
 
     for (const Diagnostic &diag : errorDiagnostics) {
-      // Try to get the Python stack trace if available.
-      //
-      // Python Stack Trace Capture Flow:
-      // 1. When a Graph operation is created in Python (see graph.py:_add_op
-      //    method), the _location() method creates source location info:
-      //    - Uses traceback.extract_stack() to get the current Python call
-      //    stack.
-      //    - Trims the _location() and _add_op() frames to get user code.
-      //    - The remaining stack frames show where the user called the graph
-      //    API.
-      //
-      // 2. These stack frames are passed via _graph.frame_loc() to the C++
-      //    binding (defined in SDK/include/SDK/GraphAPI/python/Bindings.h)
-      //    which:
-      //    - Increments the Python frame object reference count (inc_ref()).
-      //    - Calls MAXG_opaqueFrameLocNew with the frame pointer and callbacks.
-      //    - Registers frame_traceback() to format Python stack frames as
-      //      strings.
-      //    - Registers frame_decref() to release the Python reference when
-      //      done.
-      //
-      // 3. When an error occurs, this diagnostic handler retrieves the stack.
+      // Python op creation attaches the user call stack to the location
+      // (graph.py `_location()` -> `_graph.frame_loc()`).
       if (auto attr = RMO::PythonFrameAttr::fromLocation(diag.getLocation())) {
         os << "\nSource Traceback:\n"
-           // attr.stack_trace() calls the frame_traceback() function that
-           // uses Python's traceback.format_list to convert the frames to a
-           // human-readable form.
+           // Formatted via Python's traceback.format_list.
            << attr.stack_trace() << '\n';
       }
       FormatScopedDiagnosticHandler::emitDiagnosticSeverityToStream(os, diag);
 
       for (const Diagnostic &note : diag.getNotes()) {
-        // Skip printing the operation to avoid dumping lots of IR.
-        // Do so by inspecting the first diagnostic argument: typically the
-        // message.
+        // Skip notes that would dump the op's IR, judged by the first
+        // argument (typically the message).
         if (note.getArguments().empty() ||
             note.getArguments().front().getKind() !=
                 mlir::DiagnosticArgument::DiagnosticArgumentKind::String ||
@@ -309,8 +274,6 @@ private:
     }
   }
 
-  // If there is no python stacktrace, fallback to the
-  // FormatScopedDiagnosticHandler.
   void emitFallbackDiagnosticsToStream(raw_ostream &os) const {
     int pid = llvm::sys::Process::getProcessId();
     std::string fileName = "max-full-diagnostics-" + Twine(pid).str();
@@ -325,10 +288,8 @@ private:
       return;
     }
 
-    // Emit minimal output to the console, but capture everything (which might
-    // be a lot!) in a file.
+    // Minimal console output; everything goes to a file.
     diagFile->keep();
-    // Assume we can open the file stream because we created the file.
     std::error_code unused;
     llvm::raw_fd_ostream fullOutputStream(diagFile->getPath().c_str(), unused);
 
@@ -339,7 +300,6 @@ private:
       FormatScopedDiagnosticHandler::emitDiagnosticToStream(
           currentDiagnosticStream, fullOutputStream, diag);
 
-      // We sometimes see duplicate diagnostics, so skip them.
       if (currentDiagnostic == previousDiagnostic)
         continue;
       previousDiagnostic = currentDiagnostic;
@@ -353,13 +313,9 @@ private:
   }
 };
 
-/// Opts every device into tile-based fusion by stamping `tile_based_fusion =
-/// true` onto every entry of the module's `mo.device_info_mapping`. This is the
-/// sink for the `tile_based_fusion` compile option; the graph compiler reads
-/// the per-device flag per-op when deciding whether to emit tile-based kernels.
-/// The flag is applied uniformly, including to CPU: while the CPU alternative
-/// to tile-based fusion is SIMD today, keeping the flag device-general leaves
-/// room for SIMD to become a subset of TileTensor.
+/// Sinks the `tile_based_fusion` compile option into every
+/// `mo.device_info_mapping` entry, CPU included, so SIMD can later become a
+/// subset of TileTensor.
 static void enableTileBasedFusion(ModuleOp moduleOp) {
   MLIRContext *ctx = moduleOp.getContext();
   auto dict =
@@ -393,20 +349,14 @@ static void enableTileBasedFusion(ModuleOp moduleOp) {
 static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
                                          const MO::GCPipelineOptions &options,
                                          bool enableMEFMetadata) {
-  // Gate IR dumping on the unified Config-driven directory: this picks up
-  // `MODULAR_DEBUG=ir-output-dir=...`, `[max-debug] ir-output-dir = ...`,
-  // `InferenceSession.debug.ir_output_dir = ...`, and the legacy
-  // `MODULAR_MAX_TEMPS_DIR` env var alike.  See `getMaxIRDumpDir`.
   bool const dumpStages = !getMaxIRDumpDir().empty();
   GraphApiDiagnosticHandler diagnostics(moduleOp.getContext());
   if (failed(MO::runGCPipeline(moduleOp, options, dumpStages)))
     return Error(Twine("Graph compilation failed:\n") +
                  diagnostics.formatMessage());
 
-  // With the JIT skipped the module holds kernel declarations, not compiled
-  // kernels, so there is nothing to export -- and an error here also keeps a
-  // half-lowered result out of the MEF cache. The Mojo the caller wanted was
-  // written by emit-mojo, into `ir-output-dir`, before this point.
+  // Nothing to export without the JIT; erroring also keeps the half-lowered
+  // result out of the MEF cache. emit-mojo already wrote the Mojo.
   if (options.preJit)
     return Error("compilation stopped after emitting Mojo, as requested by "
                  "pre-jit; the emitted Mojo is in ir-output-dir");
@@ -419,9 +369,7 @@ static ErrorOr<BufferRef> convertMOToMEF(ModuleOp moduleOp,
 
 M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
                                                      FileFormat format) {
-  // Clone the ModuleOp so compilation doesn't have side effects on the input
-  // op. Cloning should be reasonably cheap since all model weights are stored
-  // as dense_resource attributes owned by the MLIRContext.
+  // Cheap: weights are dense_resource attributes owned by the MLIRContext.
   OwningOpRef<ModuleOp> moduleOp =
       ModuleOp::getFromOpaquePointer(source).clone();
 
@@ -431,13 +379,10 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
 
   auto telemetryContext = maxContext->get<GML::MaxEngineTelemetryContext>();
 
-  // Install a source manager diagnostic handler to properly display MLIR
-  // diagnostics that can originate from downstream compilation errors. Do this
-  // *before* the telemetry diagnostic handler.
+  // Must precede the telemetry diagnostic handler.
   llvm::SourceMgr sourceMgr;
   mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, mlirCtx);
 
-  // Emit telemetry upon any lowering error.
   GML::MaxEngineTelemetryScope<GML::MaxEngineErrorCode::GraphLoweringError>
       loweringDiagScope(mlirCtx, telemetryContext);
 
@@ -445,16 +390,12 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
   MO::GCPipelineOptions gcPipelineOptions;
   overrideLoweringOptions(gcPipelineOptions);
 
-  // If the caller (Python `KernelLibrary` via `Analysis::seed_kernel_decls`)
-  // already seeded the model module with kernel decls + the opaque-type
-  // mapping, signal the GC pipeline to skip `mogg-import-packages`. The
-  // attribute serves as the canonical marker: present iff decls are too.
+  // Set iff Python `Analysis::seed_kernel_decls` already seeded kernel decls,
+  // so mogg-import-packages can be skipped.
   if ((*moduleOp)->hasAttr(MOGG::kOpaqueTypeMappingAttrName))
     gcPipelineOptions.kernelDeclsPrePopulated = true;
 
-  // Opt every device into tile-based fusion when the `tile_based_fusion`
-  // compile option was set (via `TileBasedFusionDriverConfig`). Done before the
-  // MEF cache key is computed below so tile / non-tile compiles never collide.
+  // Before the cache key, so tile and non-tile compiles never collide.
   if (impl->mofConfig && impl->mofConfig->tileBasedFusion)
     enableTileBasedFusion(*moduleOp);
 
@@ -462,18 +403,15 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
 
   auto baseCacheDirOr = M::getMaxCacheDir();
 
-  // Disable caching if set or we can't find any suitable location to cache.
   if (!isModelIRCacheEnabled() || !baseCacheDirOr)
     return convertMOToMEF(*moduleOp, gcPipelineOptions, enableMEFMetadata);
 
-  // Create the MEF cache filesystem backend.
   const std::filesystem::path &baseCacheDir = *baseCacheDirOr;
   auto mefBackendOr = Cache::getLocalDefaultBackendChain(
       (baseCacheDir / "mof" / "mef").string(),
       std::string(M::getModularVersionString()));
 
   if (mefBackendOr.isError()) {
-    // We couldn't create a cache, so don't cache.
     return convertMOToMEF(*moduleOp, gcPipelineOptions, enableMEFMetadata);
   }
 
@@ -488,17 +426,13 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     return maybeMefOr.takeError();
   std::optional<BufferRef> maybeMef = maybeMefOr.takeValue();
   if (maybeMef) {
-    // Report telemetry on MEF cache hit.
     auto onHitLambda = Cache::CacheTelemetryContext::getTelemetryOnHitLambda(
         "mof::M_compileToBinaryFromSource");
     onHitLambda(*moduleOp);
 
-    // On cache hit, directly return the MEF buffer.
     return std::move(*maybeMef);
   }
 
-  // Otherwise, on cache miss, lower and export to MEF.
-  // First, write telemetry data indicating a MEF cache miss for this model.
   auto onMissLambda = Cache::CacheTelemetryContext::getTelemetryOnMissLambda(
       "mof::M_compileToBinaryFromSource",
       "mof.compiletobinaryfromsource.cache.miss.time",
@@ -511,7 +445,7 @@ M::ErrorOr<M::BufferRef> MOFContext::compileToBinary(void *source,
     return outBufOr.takeError();
   BufferRef outputBuffer = outBufOr.takeValue();
 
-  // Insert MEF buffer to cache, ignoring failure to insert.
+  // Insertion failure is ignored.
   (void)mefCache->insertKeyedSync(keyHash, outputBuffer.copy());
 
   return outputBuffer;
@@ -530,7 +464,6 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
 
   auto loweringTransform =
       [&, file = file.copy()]() mutable -> ErrorOr<BufferRef> {
-    // Convert the input file to an MLIR module.
     switch (format) {
     case FileFormat::kMODialect:
       [[fallthrough]];
@@ -546,11 +479,9 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
     }
     }
 
-    // Emit telemetry upon any lowering error from here on.
     GML::MaxEngineTelemetryScope<GML::MaxEngineErrorCode::GraphLoweringError>
         loweringDiagScope(&compileCtx.mlirCtx, telemetryContext);
 
-    // We have an MLIR model, try to lower it to a MEF-capable encoding.
     switch (format) {
     case FileFormat::kMODialect: {
       GraphApiDiagnosticHandler diagnostics(&compileCtx.mlirCtx);
@@ -575,8 +506,7 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
                                impl->getEnableMEFMetadata());
   };
 
-  // If kernel paths are not empty then we'd need to inspect them to get the
-  // key, so default to not caching at this time.
+  // Custom kernels would have to be inspected for the key; don't cache.
   if (!gcPipelineOptions.kernelLibraryPaths.empty() ||
       !isModelIRCacheEnabled()) {
     return loweringTransform();
@@ -585,8 +515,7 @@ ErrorOr<M::BufferRef> MOFContext::compileToBinary(M::BufferRef file,
   WriteableBufferRef keyBuffer =
       makeCacheKey(std::move(file), gcPipelineOptions, graphCompilerOptions);
 
-  // Include mojo compilation defines (LOGGING_LEVEL, ASSERT_LEVEL, etc.)
-  // in the cache key so that changing them invalidates the cache.
+  // Mojo defines (LOGGING_LEVEL, ASSERT_LEVEL, etc.) must invalidate the cache.
   if (auto *compCtx = impl->maxContext->get<KGEN::CompilationContext>())
     compCtx->print(*keyBuffer);
 

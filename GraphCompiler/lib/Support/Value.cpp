@@ -292,8 +292,7 @@ size_t M::GML::valueHash(const AsyncRT::AnyAsyncValueRef &value) {
 }
 
 size_t M::GML::hashCombine(size_t seed, size_t value) {
-  // Similar to `boost::hash_combine`, but with 64 bit support.
-  // 2^64 / golden ratio in base 16.
+  // 64-bit `boost::hash_combine`; the constant is 2^64 / golden ratio.
   return seed ^ (value + 0x9e3779b97f4a7c15LLU + (seed << 6) + (seed >> 2));
 }
 

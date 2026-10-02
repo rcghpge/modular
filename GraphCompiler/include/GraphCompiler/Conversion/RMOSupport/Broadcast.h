@@ -73,16 +73,12 @@ reifyImplicitBroadcasting(OpBuilder &builder, Location loc, MO::TensorValue x,
 MO::TensorValue broadcastTo(OpBuilder &builder, Location loc, MO::TensorValue x,
                             MO::TensorValue y);
 
-/// Broadcasts a float `scalar` to `toVal`'s shape.
-/// Does so via a `ConstantOp` with the same float element type as `toVal`.
+/// Broadcasts a float `scalar` to `toVal`'s shape and element type.
 MO::TensorValue broadcastFloatTo(OpBuilder &builder, Location loc,
                                  const APFloat &scalar, MO::TensorValue toVal);
 
 /// Given a vector of tensors, return an analogous vector where each tensor is
-/// broadcast to a common shape.
-///
-/// Note this composition is done via creating proper RMO operations and will
-/// not make any effort of symbolically simplifying shape.
+/// broadcast to a common shape. Does not simplify shapes symbolically.
 SmallVector<MO::TensorValue>
 broadcastToCompatibleShape(SmallVector<MO::TensorValue> &values,
                            OpBuilder &rewriter);

@@ -47,11 +47,9 @@ M::GraphCompiler::Driver::getPoisonPattern(const TensorSpec &spec) {
                          "largest-finite"};
   }
 
-  // Integer types. Every float dtype we support has LLVM APFloat semantics
-  // (see `Support/include/Support/ML/FloatTypes.def`), so a future float type
-  // without semantics is the only way to land here as a float — at which
-  // point this code needs to grow a fill strategy for it rather than
-  // silently fall through to 0xCD.
+  // Integer types. Every supported float dtype has APFloat semantics (see
+  // `Support/include/Support/ML/FloatTypes.def`); a new one without them needs
+  // a fill strategy, not a silent 0xCD.
   assert(!dtype.isFloat() && "float dtype lacks LLVM APFloat semantics");
   return PoisonPattern{0xCD, 1, "byte-fill"};
 }
@@ -63,12 +61,9 @@ void M::GraphCompiler::Driver::fillHostMemory(void *ptr, size_t totalBytes,
     std::memset(dst, static_cast<uint8_t>(pattern.bits), totalBytes);
     return;
   }
-  // Replicate the patternBytes-byte little-endian pattern across the
-  // buffer. We avoid `std::fill_n` through a `uint{16,32,64}_t *` because
-  // the caller's allocation does not guarantee `alignof(T)` for T larger
-  // than a byte, and a misaligned typed store is UB. The `bits` argument to
-  // `memcpy` is taken by address but read as a contiguous byte sequence, so
-  // no alignment requirement applies.
+  // memcpy rather than `std::fill_n` through a `uint{16,32,64}_t *`: the
+  // allocation isn't guaranteed `alignof(T)`, and a misaligned typed store is
+  // UB.
   for (size_t off = 0; off + pattern.patternBytes <= totalBytes;
        off += pattern.patternBytes) {
     std::memcpy(dst + off, &pattern.bits, pattern.patternBytes);
@@ -282,29 +277,24 @@ SelectionState &state() {
 
 /// Re-reads the selection file if it changed, which starts a new epoch.
 ///
-/// The file is stat'd on every allocation rather than on a timer. A timer
-/// would let a request begin under the previous epoch's ordinals, and the
-/// point of resetting per epoch is that a caller can address "the n-th
-/// allocation of this request" -- true only if the reset lands after the
-/// last allocation before the request and before the first one in it. A
-/// stat costs a microsecond against a device allocation that synchronizes.
+/// Stat'd per allocation, not on a timer: a timer could let a request begin
+/// under the previous epoch's ordinals, breaking "the n-th allocation of this
+/// request". A stat is cheap next to a synchronizing device allocation.
 void refreshSelection(SelectionState &st) {
   if (st.path.empty())
     return;
 
-  // Unreadable: keep the last good selection, which is `all` if the file has
-  // never been read. Failing open beats failing clean, which would present as
-  // a run with no uninitialized reads in it.
+  // Unreadable: keep the last good selection (`all` if never read). Failing
+  // clean would look like a run with no uninitialized reads.
   llvm::sys::fs::file_status status;
   if (llvm::sys::fs::status(st.path, status))
     return;
   if (st.version == versionOf(status))
     return;
 
-  // Take the version from the descriptor the contents are read through. A
-  // second lookup by path lets a rename land in between, pairing the new
-  // contents with the old version, and the next allocation would then start
-  // the same selection's epoch over again.
+  // Version from the same descriptor as the read: a second path lookup could
+  // race a rename, pairing new contents with the old version and restarting
+  // the epoch on the next allocation.
   llvm::Expected<llvm::sys::fs::file_t> fd =
       llvm::sys::fs::openNativeFileForRead(st.path);
   if (!fd) {
@@ -322,8 +312,8 @@ void refreshSelection(SelectionState &st) {
     return;
   llvm::StringRef spec = (*buffer)->getBuffer().trim();
 
-  // Recording the version taken before the read, not after, means an in-place
-  // write landing during it shows up as another change on the next allocation.
+  // The pre-read version makes a write during the read show up as another
+  // change on the next allocation.
   st.selection = parseSelection(spec);
   st.version = versionOf(status);
   st.epoch++;
@@ -338,13 +328,11 @@ void refreshSelection(SelectionState &st) {
 AllocationPoisonDecision
 M::GraphCompiler::Driver::decidePoison(const TensorSpec &spec, bool hostAlloc) {
   SelectionState &st = state();
-  // One lock covers the refresh, the ordinal and the log line, so an
-  // allocation can't pair one epoch's selection with the next epoch's
-  // ordinal, and the log lists ordinals in order.
+  // One lock covers refresh, ordinal and log line, so selection and ordinal
+  // share an epoch and the log stays ordered.
   std::lock_guard<std::mutex> lock(st.mutex);
-  // Refresh before consuming an ordinal, not after: a refresh resets the
-  // counter, so taking the ordinal first would hand the epoch's first
-  // allocation the previous epoch's last number.
+  // Refresh first: it resets the counter, so the epoch's first allocation
+  // gets ordinal 0.
   refreshSelection(st);
   AllocationPoisonDecision decision =
       decide(st.selection, spec, st.nextOrdinal++);
