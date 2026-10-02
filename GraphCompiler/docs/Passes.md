@@ -41,8 +41,13 @@ Dialects have extensive documentation. Here's a quick reference:
   Definition:
   `GraphCompiler/include/GraphCompiler/MOSHDialect/MOSHDialect.td`.
   Docs: `GraphCompiler/docs/GraphCompiler.md` (MOSH mention).
-- **MOGG (Modular Operation Generator Graph)** - kernel selection/fusion and
-  codegen-specific IR. Definition:
+- **MAP (Modular Access Primitives)** - fusion-focused IR that expresses
+  executable loop nests/kernels that load, store, and compute over tensors. It
+  is the stage where advanced fusion runs (elementwise chains, view, and
+  prologue/epilogue fusion around structured kernels). Definition:
+  `GraphCompiler/include/GraphCompiler/MAPDialect/Dialect/MAPDialect.td`.
+- **MOGG (Modular Operation Generator Graph)** - kernel selection and
+  codegen-specific IR, produced from MAP after fusion. Definition:
   `GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGDialect.td`.
   Docs: `GraphCompiler/docs/GraphCompiler.md` (MOGG section).
 - **MGP (Modular Glue Primitives)** - runtime glue dialect with buffer
@@ -167,63 +172,253 @@ and LCA queries, and includes alias-aware alloc-use discovery via
 
 ## Lowering passes
 
-### MOToMOGG
+The path from `mo` to `mogg` runs through the MAP dialect, where advanced
+fusion happens: `MOToMAP` lowers each eligible `mo` op to a single `map`
+kernel, the MAP pipeline fuses and prepares those kernels, and `MAPToMOGG`
+crosses into the codegen-focused `mogg` IR. The passes below are listed in
+pipeline order (`buildMapPipeline` and `buildMoggPipeline` in
+`GraphCompiler/lib/GraphCompiler.cpp`). There is no longer an `MOToMOGG`
+conversion; the legacy MOGG fusion passes (which fused by embedding producers
+in a root kernel's output region) have been removed in favor of this flow.
+
+### MOToMAP
 
 #### Description
 
-Converts eligible `mo` ops into `mogg` ops while selecting kernels from the
-registered Mojo libraries. While lowering removes most `mo.rebind` ops with
-known shapes to avoid blocking fusion.
+Lowers known `mo` dialect ops into one `map` kernel each. It is the entry point
+of the advanced-fusion pipeline.
 
 #### Dialects
 
-Consumes and produces `mo` and `mogg`, and depends on runtime/target dialects
-used by kernel selection (`nvvm`, `rocdl`, `index`) and any other device
-dialect, plus a transitive dependency on `lit`.
+Consumes `mo` and produces `map`, reusing the same `mogg.kernel.decl`
+machinery as the rest of kernel selection (`MojoLibraryAnalysis`).
 
 #### Additional notes
 
-The pass consists of two phases. The first one replaces rebind ops with their
-inputs unless they carry important information. This includes unknown shapes,
-present layout attributes (matmul/conv), refined symbolic dims to static ones,
-or the user is not being lowered to `mogg`. The redundant ops come from type
-normalization/canonicalization and `rmo` legalization. The goal of the first
-stage is to get rid of those to unblock fusion.
+Kernel selection works the same way the old `MOToMOGG` lowering did: the op is
+mapped to a registered Mojo kernel name/function label (custom ops use their
+symbol directly), the kernel is resolved through `MojoLibraryAnalysis`, and the
+op is replaced with a `map` kernel. Ops with no compatible kernel are left for
+later lowering with a graceful diagnostic. Control-flow ops and runtime
+plumbing ops (buffer transfers, materialization, views, list ops, and similar)
+are preserved and survive until `MOGGToMGP`.
 
-The second stage pulls up the `MojoLibraryAnalysis` and walks all the
-operations in the module, lowering all the eligible ops. There are two groups
-of `mo` ops that are preserved during the lowering: (1) any control flow ops
-(deriving from `ControlOp`), and (2) a set of ops that are likely not converted
-to a compute kernel. The latter includes `mo.graph` and some other runtime
-plumbing ops like buffer transfers, materialization, external resources
-management, views and list ops (controlled by
-`PreservedDuringKernelLowering`). Those usually have either specialized
-semantics or custom lowerings and survive until `MOGGToMGP` later in the
-pipeline.
-
-For eligible ops, a `MOGGKernelBuilder` controls the kernel selection. The
-selection is performed by a Mojo kernel adaptor and consists of two steps:
-
-1. Map the op to a kernel name + function label under which the kernel is
-   registered in Mojo. Usually, the compiler searches the kernel by the op
-   name with some exceptions when it has to synthesize it (e.g., custom ops use
-   the symbol directly). The op arguments mapping (to kernel arguments) is
-   type- (compatibility) and position-driven.
-2. The target kernel is resolved via `MojoLibraryAnalysis`.
-
-The adaptor becomes the handle that ties the selected kernel to the op in the
-IR, and a `mogg.kernel` is created in the place of the original op. Depending
-on the type of the selected kernel (e.g., view/elementwise/shape/...; the
-interface depends on the type and later stages can use this as metadata to make
-decisions such as fusion), an explicit call to the kernel is inserted into the
-execute region of the `mogg.kernel` container (`mogg.call.execute` for normal
-kernels). Finally, he lowering forwards kernel parameters and forward-declares
-all the referenced library functions.
-
-Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/Conversion/MOToMOGG/MOToMOGG.cpp>
+Source: `GraphCompiler/lib/Conversion/MOToMAP/MOToMAP.cpp`.
 Pass definition:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOToMOGG.td>
+`GraphCompiler/include/GraphCompiler/Conversion/MOToMAP/MOToMAP.td`.
+
+### FuseKernels (advanced fusion)
+
+#### Description
+
+Runs the advanced-fusion patterns over the MAP dialect, reducing the number of
+`map` kernels by inlining producers into consumers.
+
+#### Dialects
+
+Consumes and produces `map` (anchored on `mo.graph`), depends on `mogg`.
+
+#### Performance
+
+Fewer, larger kernels means fewer dispatches and fewer materialized
+intermediates. Fusion eligibility is a function of kernel structure (the Mojo
+types a kernel uses for its inputs/outputs and the fusion interfaces it
+implements), not of op identity.
+
+#### Additional notes
+
+The pass drives the fuser classes in `GraphCompiler/lib/MAPDialect/Transforms`:
+`EpilogueFuser`, `ElementwiseFuser`, `ViewFuser`, and `PrologueFuser` (plus
+`ReshapeEpilogueFuser`). It repeats epilogue, elementwise, view, then prologue
+fusion until a round fuses nothing, since folding one link of a chain can
+expose the next. It reports the number of kernels fused as a pass statistic.
+The per-fuser `map-fuse-*` passes (`map-fuse-epilogue`, `map-fuse-elementwise`,
+`map-fuse-views`, `map-fuse-prologue`, and the generic `map-fuse-input` /
+`map-fuse-output`) exist only to let lit tests exercise one fuser in isolation;
+they are not part of `buildMapPipeline`.
+
+Source: `GraphCompiler/lib/MAPDialect/Transforms/`.
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.
+
+### FuseMutableLoads
+
+#### Description
+
+"Fuses" an `mo.mutable.load` into a `map.iter.foreach` so the loop reads the
+buffer-semantic tensor directly. Enabled by the `fuseMutableLoadStore` option.
+
+#### Dialects
+
+Consumes and produces `map` (on `mo.graph`).
+
+#### Additional notes
+
+Replaces the value-semantic tensor from the load with the buffer-semantic one,
+threads the load's input chain into the `map.iter.foreach`, and adds the load's
+output chain to the loop's outputs.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.
+
+### AllocateAccumulatingBuffers
+
+#### Description
+
+After fusion settles, gives every fused-output epilogue a real store pointer so
+`MAPToMOGG` never hands a lowered epilogue a dangling base pointer.
+
+#### Dialects
+
+Consumes and produces `map`, depends on `mo`.
+
+#### Additional notes
+
+Normally the pointer source is the tensor the epilogue stores into. For a
+mixed-precision accumulating kernel (a matmul/conv/concat whose epilogue changes
+dtype), a fresh accumulation buffer in the pre-cast dtype is allocated as an
+extra kernel output and used as the pointer source, while the store target stays
+the real (post-cast) output. Non-accumulating kernels get no extra buffer.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.
+
+### RaiseBackContiguousViews
+
+#### Description
+
+Raises `map.iter.foreach` view kernels that never got fused back into ops the
+rest of the pipeline can lower without a copy.
+
+#### Dialects
+
+Consumes `map` and produces `mo`/`mogg`.
+
+#### Additional notes
+
+Runs after `FuseKernels` reaches a fixed point and before
+`OutlineStructuredKernelBodies`. A contiguous slice becomes `mogg.slice` (a
+zero-copy buffer slice, later lowered by `MOGGToMGP` to `mgp.tensor.slice`),
+and a reshape becomes `mo.static.reshape` (a non-copying primitive). Only slice
+and reshape are raised back, not broadcast or transpose.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.
+
+### OutlineStructuredKernelBodies
+
+#### Description
+
+Wraps each structured MAP loop in a `map.iter.opaque` region so sequential setup
+can live outside the structured loop body.
+
+#### Dialects
+
+Consumes and produces `map`.
+
+#### Additional notes
+
+The loop's shape and body move into a nested `map.iter.foreach.body`, which
+reaches the wrapper's inputs/outputs by SSA dominance. After outlining, nothing
+inspects the inside of the `map.iter.opaque` again. `LoopInvariantViewMotion`
+(below) then runs over these regions.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.
+
+### LoopInvariantViewMotion
+
+#### Description
+
+Hoists chains of index-transform ops out of a structured loop body into the
+enclosing `map.iter.opaque`, so each transform runs once per kernel invocation
+rather than once per index.
+
+#### Dialects
+
+Consumes and produces `map` (per `mo.graph`).
+
+#### Additional notes
+
+This rewrite is mandatory, not an optimization: an unhoisted index-transform op
+has no `LowerableToMOGGInterface` and would strand `map-to-mogg`. For each
+`map.load`, it walks backward from the index operand through any chain of
+index-transform ops (today `map.index.slice`) and hoists them into "stride" ops
+(today `map.index.slice.stride`) in the enclosing opaque region. The pass
+enforces that no index-transform op survives inside a `map.iter.foreach.body`.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.
+
+### MAPToMOGG
+
+#### Description
+
+Lowers `map` dialect kernels into `mogg` codegen ops: dynamic dims become SSA
+values, contexts are added, and tensors are built from pointers. This is where
+the fusion-focused `map` IR crosses into the code-generation-focused `mogg` IR.
+
+#### Dialects
+
+Consumes `map` and produces `mogg` (depends on `mo` and `mosh`).
+
+#### Additional notes
+
+Each lowered kernel becomes a `mogg.kernel` container whose body calls the
+selected kernel (`mogg.call.opaque` for opaque kernels, `mogg.call.elementwise`
+/ `mogg.call.foreach` for elementwise loops). The `enableComputeLambdas` option
+controls whether an epilogue feeding a `_FusedComputeOutputTensor` argument gets
+a compute lambda or a classic store lambda.
+
+Source: `GraphCompiler/lib/Conversion/MAPToMOGG/MAPToMOGG.cpp`.
+Pass definition:
+`GraphCompiler/include/GraphCompiler/Conversion/MAPToMOGG/MAPToMOGG.td`.
+
+### ConformCallOperands
+
+#### Description
+
+Conforms each `mogg` call op's operands to the callee's signature by inserting
+the operand-conversion ops the callee requires.
+
+#### Dialects
+
+Consumes and produces `mogg`.
+
+#### Additional notes
+
+A scalar argument's tensor is wrapped in `mogg.scalar.create`, a variadic run is
+packed into a `mogg.tuple.create`, and a trait-bound argument (`Tensor` /
+`DenseTensor` / `TileTensorable`) is wrapped in a `mogg.trait.create` so the raw
+`!mogg.tensor` reaches the kernel as the conforming trait argument. This is
+deferred out of `MAPToMOGG` to keep the fusion IR simpler and each emission a
+local, 1:1 lowering.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`.
+
+### OutlineKernelsIntoFunctions
+
+#### Description
+
+Outlines each `mogg.kernel` body into a module-level `mogg.kernel.stub`.
+
+#### Dialects
+
+Consumes and produces `mogg` (and `mo`).
+
+#### Additional notes
+
+Moves each `mogg.kernel` body into a `mogg.kernel.stub` labeled with the MAP ABI
+and replaces the body with a single `mogg.call.stub` forwarding the kernel's
+pointer/dim/context block arguments to the stub. The `mogg.kernel` container is
+kept because it carries the `!mo.tensor` interface that `MOGGToMGP` later
+lowers. The MAP ABI label lets `EmitMojo` branch on the advanced-fusion
+emission path.
+`WrapKernelsWithTraceOp` then wraps each stub body in a per-kernel trace range.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`.
 
 ### MOGGToMGP
 
@@ -245,17 +440,19 @@ to buffer/primitive semantics. Supports module-level orchestraction
 
 #### Additional notes
 
-Runs as a module pass because it invokes MO to MOGG lowering and needs to avoid
-per-graph setup overhead. The pass lowers `mo.graph` into an `mgp.model` with
-`init` and `execute` regions.
+Runs as a module pass because it lowers across all graphs at once and needs to
+avoid per-graph setup overhead. The pass lowers `mo.graph` into an `mgp.model`
+with `init` and `execute` regions.
 
 The pass collects all `mo.graph`s and builds a dependency map from `mo.call`.
 Then lowers graphs in the topologically sorted order while detecting dependency
 cycles. Each graph is lowered to a single `mgp` model, walking its body,
 arguments and patching the control flow with `grt`. The lowering of ops goes
 either through the `LowerableToMGPInterface` or dispatches to a specialized
-handler if an op has one. Note that this includes `mogg.kernel` to
-`mogg.generic.compiled.region` lowering. `mo.call`s are lowered to `mgp.call`s
+handler if an op has one. The advanced-fusion `mogg.kernel` container (produced
+by `MAPToMOGG` / `OutlineKernelsIntoFunctions`) implements
+`LowerableToMGPInterface` directly and is lowered through that path. `mo.call`s
+are lowered to `mgp.call`s
 with implicit operands that include chains, context, weight registry, device
 contexts.
 
@@ -556,6 +753,54 @@ Source:
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
+### LiftBufferCacheSlots
+
+#### Description
+
+Lifts inline `index.constant` ops that feed a `mgp.buffer.get_cached` slot
+operand out of kernel bodies and into kernel-stub function arguments.
+
+#### Dialects
+
+Consumes and produces `mogg` (within kernel stubs).
+
+#### Additional notes
+
+Two kernels that differ only in a cached-buffer slot index get structurally
+identical bodies after this runs, so `MergeIdenticalKernelStubs` can then
+collapse them. Runs in `buildMgpPipeline` before the merge (it was previously
+nested inside `EmitMojo`).
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`.
+
+### MergeIdenticalKernelStubs
+
+#### Description
+
+Merges structurally identical `mogg.kernel.stub` ops using their hashes, so the
+Mojo compiler elaborates each distinct kernel once.
+
+#### Dialects
+
+Consumes and produces `mogg` (`ModuleOp`).
+
+#### Performance
+
+Collapses near-duplicate kernels (for example per-device copies across EP
+shards), cutting kernel count and Mojo compile time.
+
+#### Additional notes
+
+`CanonicalizeKernelStubDeviceIds` (erases device ids inside stubs) and
+`LiftBufferCacheSlots` run first so otherwise-identical stubs hash equal.
+`SymbolDCE` later removes the stubs this pass leaves without callers. These
+passes run in `buildMgpPipeline` just before `EmitMojo`; they were previously
+nested inside it.
+
+Pass definition:
+`GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`.
+
 ### AddStackTracesToAssertsPass
 
 #### Description
@@ -844,11 +1089,15 @@ kernels with deduplication logic to limit compile times.
 
 #### Additional notes
 
-EmitMojo is the last step of the MO to MGP pipeline before JIT compilation. It
-strips device IDs and dynamic shape params for stable hashes, merges identical
-stubs (those are created by the kernel outlining pass), then runs nested cleanup
-(raise-back index constants, fixup overhangs, canonicalize, symbol DCE, add
-try/except). Inserts `mogg.load.compiled.kernel` ops in model init and removes
+EmitMojo is the last step of the MO to MGP pipeline before JIT compilation, and
+it now only emits Mojo text. The stub-preparation work it used to do nested
+inside itself has been hoisted into `buildMgpPipeline` as its own passes that
+run before EmitMojo (see `GraphCompiler/lib/GraphCompiler.cpp`):
+`LiftBufferCacheSlots`, `CanonicalizeKernelStubDeviceIds`,
+`MergeIdenticalKernelStubs`, `RaiseBackIndexConstant`, `FixupOverhangsPass`,
+`SymbolDCE`, `AddProfileScopeTracing`, and `AddTryExceptBlocks`. By the time
+EmitMojo runs, the kernel stubs are already deduplicated and finalized.
+EmitMojo inserts `mogg.load_compiled_kernel` ops in model init and removes
 kernel stubs after emitting the Mojo blob.
 The last step builds a `EmitMojoState` (holds contexts, metadata; responsible
 for symbol resolution via `MojoLibraryAnalysis`, constant resolution, type
@@ -1478,7 +1727,8 @@ or canonical forms.
 
 Consumes and produces `mo` (GraphOp) and some `mogg` ops, and depends on `kgen`,
 `mosh`, and `mogg`. Technically, the pass lives in the `mogg` transforms,
-however it is run before `mo` to `mogg` lowering and on `mo` ops.
+however it runs on `mo` ops in the mo-pipeline, before the advanced-fusion
+lowering (`MOToMAP`).
 
 #### Performance
 
@@ -1553,40 +1803,6 @@ into the MEF as resources attached to the module load path.
 
 Source:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/JitCompileKernels.cpp>
-Pass definition:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
-
-### SimplifyKernelOperands
-
-#### Description
-
-Deduplicates identical operands on `mogg.kernel` and its bound lambdas, updating
-block arguments to share a single operand instance.
-
-#### Dialects
-
-Consumes and produces `mogg` (GraphOp).
-
-#### Performance
-
-Reduces operand/argument counts and shrinks kernel signatures, improving IR
-cleanliness and reducing downstream work.
-
-#### Additional notes
-
-This is a deduplication pass. It eliminates duplicate operands on both
-`mogg.kernel` and each `mogg.bind` (lambda) inside the kernel. Since every
-fusion pass in the pipeline (at `mogg`) can introduce duplicate operands or
-lambda arguments (fusion passes splice operand lists when they inline) it is
-run in between passes in the fusion "subpipeline". So, the idea is to keep
-fusion passes simple at the cost of running simplification multiple times.
-Walks kernel inputs and bind lambda operands in reverse order, replacing uses
-of duplicate block arguments and erasing redundant operands/arguments.
-
-Downstream passes assume operand uniqueness.
-
-Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/SimplifyKernelOperands.cpp>
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MOGGDialect/MOGGPasses.td>
 

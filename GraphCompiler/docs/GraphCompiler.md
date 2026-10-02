@@ -159,13 +159,34 @@ integer ops, and canonicalizes them.
 run (i.e., winograd conv vs im2col vs direct) via a search mechanism
   - This increases specificity of ops to a state that is no longer HLO, ops
     now contain implementation information, and they are lowered to the
-    MOGG dialect.
+    MAP dialect (and from there, after fusion, to MOGG).
+
+## MAP (Modular Access Primitives) Dialect
+
+MAP expresses executable loop nests/kernels that load and store tensors and
+perform computation. It is the stage where advanced fusion runs: after MO is
+lowered to one MAP kernel per op (`MOToMAP`), the MAP pipeline fuses elementwise
+chains, views, and prologue/epilogue computation around structured kernels, then
+lowers the fused kernels into MOGG (`MAPToMOGG`).
+
+Fusion eligibility is a function of kernel structure, not op identity: a kernel
+is fusable when it uses the proper Mojo types for its inputs and outputs and
+implements the relevant fusion interfaces (for example elementwise or
+prologue/epilogue). MAP has two op families: `map.iter.opaque` wraps a
+hand-written Mojo kernel with a fusible store epilogue, while `map.iter.foreach`
+expresses the loop body explicitly as per-index `map.load` / `map.store` /
+`map.call.elementwise` ops.
+
+The dialect is defined in
+[`MAPDialect/Dialect`](../include/GraphCompiler/MAPDialect/Dialect);
+see also the MAP passes in
+[`Passes.md`](Passes.md) and the fusion contract in
+[`ArchitectureSpecification.md`](ArchitectureSpecification.md).
 
 ## MOGG (Modular Operation Generator Graph) Dialect
 
-MOGG is intended to be a dialect that represents increased specification of the
-algorithms a kernel is implemented with. This section provides motivation and
-a high level design, but further design work is needed.
+MOGG is the codegen-focused dialect that MAP kernels lower into. This section
+provides motivation and a high level design, but further design work is needed.
 
 As a concrete example, there are two implementations of sgemm in mlas: one
 which assumes nothing about the input, and another that assumes input tensors
@@ -181,16 +202,15 @@ It may not be clear which of these interfaces is fastest for a given situation.
 Thus, the lowering from MO->MOGG will be a tree-based search that reuses the
 search and elaboration infrastructure developed for kGen.
 
-Once we have selected a kernel interface by lowering to MOGG, we have sufficient
-information about the numerics of the kernels to decide if fusion will be a
-numerically safe optimization to perform. MOGG ops will contain regions
-indicating possible fusion opportunities, and an initially rule-based fusion
-pass will fuse kernels by embedding them in the output region of the root
-kernel.
+Kernel fusion no longer happens in MOGG. The current pipeline lowers MO into the
+[MAP dialect](#map-modular-access-primitives-dialect), runs advanced fusion
+there, and only then lowers the fused MAP kernels into MOGG for code generation.
+MOGG is now the codegen-focused IR that results from that lowering, rather than
+the dialect where fusion decisions are made.
 
-This fused kernel will then be lowered to kGen for kernel generation and
-comparison of kGen and hand-tuned kernel implementations of a given numerically
-specified kernel.
+The fused kernel is then lowered to kGen for kernel generation and comparison of
+kGen and hand-tuned kernel implementations of a given numerically specified
+kernel.
 
 TODO: Flesh out MOGG/kGen interface
 
