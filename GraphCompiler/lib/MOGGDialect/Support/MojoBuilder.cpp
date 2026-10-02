@@ -216,7 +216,7 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
     effects += llvm::formatv("{{{0}}", captureConvention).str();
   }
 
-  statement(isAsync ? "async def " : "def ", lambdaParam,
+  statement(isAsync ? "__async def " : "def ", lambdaParam,
             funcDefBase(parameters, arguments, returnType, effects, body));
 
   MojoBuilderScopeGuard guard(this);
