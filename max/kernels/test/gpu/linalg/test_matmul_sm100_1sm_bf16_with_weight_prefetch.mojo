@@ -110,8 +110,8 @@ def test_blackwell_matmul_with_weight_prefetch[
     var c_device_ref = ctx.enqueue_create_buffer[c_type](c_size)
     var c_ref_tensor = TileTensor(c_device_ref, c_shape)
 
-    rand(a_host._storage, a_host.num_elements())
-    rand(b_host._storage, b_host.num_elements())
+    rand(a_host.as_span())
+    rand(b_host.as_span())
 
     ctx.enqueue_copy(a_device, a_host_ptr)
     ctx.enqueue_copy(b_device, b_host_ptr)
@@ -139,20 +139,16 @@ def test_blackwell_matmul_with_weight_prefetch[
         ctx,
     )
 
-    comptime assert a_type != DType.float8_e4m3fn or transpose_b, (
+    comptime assert a_type != .float8_e4m3fn or transpose_b, (
         "Testing is only supported for transposed_b==True when"
         " a_type==float8_e4m3fn. Add the non-transposed case if needed."
     )
 
-    var a_lt = a_tensor.to_layout_tensor()
-    var b_lt = b_tensor.to_layout_tensor()
-    var c_ref_tensor_lt = c_ref_tensor.to_layout_tensor()
-
     vendor_blas.matmul(
         ctx,
-        c_ref_tensor_lt,
-        a_lt,
-        b_lt,
+        c_ref_tensor,
+        a_tensor,
+        b_tensor,
         c_row_major=True,
         transpose_b=transpose_b,
     )
@@ -266,13 +262,13 @@ def test_rmsnorm_then_matmul[
     var weight_offset = Scalar[a_type](0.0)
     var norm_shape = Index(M, K)
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(a_raw_tensor)
     @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[a_type, width]:
         return a_raw_tensor.raw_load[width=width](a_raw_tensor.layout(coords))
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(a_normed_vendor_tensor)
     @__parameter
     def output_fn_vendor[
@@ -288,14 +284,14 @@ def test_rmsnorm_then_matmul[
 
     vendor_blas.matmul(
         ctx,
-        c_vendor_tensor.to_layout_tensor(),
-        a_normed_vendor_tensor.to_layout_tensor(),
-        b_tensor.to_layout_tensor(),
+        c_vendor_tensor,
+        a_normed_vendor_tensor,
+        b_tensor,
         c_row_major=True,
         transpose_b=transpose_b,
     )
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(a_normed_ours_tensor)
     @__parameter
     def output_fn_ours[
@@ -322,7 +318,7 @@ def test_rmsnorm_then_matmul[
     )
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(c_ours_tensor)
     def epilogue_fn[
         _dtype: DType,
@@ -400,9 +396,7 @@ def test_prefetch_depth_fits_the_ring[
 
 def main() raises:
     comptime for nk in [(2624, 6144), (2048, 2048), (256, 128), (8192, 7168)]:
-        test_prefetch_depth_fits_the_ring[DType.bfloat16, DType.bfloat16](
-            nk[0], nk[1]
-        )
+        test_prefetch_depth_fits_the_ring[.bfloat16, .bfloat16](nk[0], nk[1])
 
     with DeviceContext() as ctx:
         comptime dtype = DType.bfloat16
@@ -439,7 +433,7 @@ def main() raises:
                     test_blackwell_matmul_with_weight_prefetch[
                         dtype,
                         dtype,
-                        DType.bfloat16,
+                        .bfloat16,
                         block_tile_shape,
                         umma_shape,
                         cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
@@ -458,7 +452,7 @@ def main() raises:
                         test_blackwell_matmul_with_weight_prefetch[
                             dtype,
                             dtype,
-                            DType.bfloat16,
+                            .bfloat16,
                             block_tile_shape,
                             umma_shape,
                             cluster_shape=StaticTuple[Int32, 3](4, 4, 1),
@@ -476,7 +470,7 @@ def main() raises:
                         test_blackwell_matmul_with_weight_prefetch[
                             dtype,
                             dtype,
-                            DType.bfloat16,
+                            .bfloat16,
                             block_tile_shape,
                             umma_shape,
                             cluster_shape=StaticTuple[Int32, 3](4, 2, 1),
@@ -495,7 +489,7 @@ def main() raises:
                     test_blackwell_matmul_with_weight_prefetch[
                         dtype,
                         dtype,
-                        DType.bfloat16,
+                        .bfloat16,
                         block_tile_shape,
                         umma_shape,
                         cluster_shape=StaticTuple[Int32, 3](8, 2, 1),
@@ -513,7 +507,7 @@ def main() raises:
                     test_blackwell_matmul_with_weight_prefetch[
                         dtype,
                         dtype,
-                        DType.bfloat16,
+                        .bfloat16,
                         block_tile_shape,
                         umma_shape,
                         cluster_shape=StaticTuple[Int32, 3](4, 4, 1),
@@ -536,7 +530,7 @@ def main() raises:
                 test_rmsnorm_then_matmul[
                     dtype,
                     dtype,
-                    DType.bfloat16,
+                    .bfloat16,
                     block_tile_shape=Index(64, 128, BK),
                     mma_shape=Index(64, 128, MMA_K),
                     cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
@@ -557,7 +551,7 @@ def main() raises:
                 test_rmsnorm_then_matmul[
                     dtype,
                     dtype,
-                    DType.bfloat16,
+                    .bfloat16,
                     block_tile_shape=Index(64, 128, BK),
                     mma_shape=Index(64, 128, MMA_K),
                     cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
@@ -593,7 +587,7 @@ def main() raises:
             test_blackwell_matmul_with_weight_prefetch[
                 dtype,
                 dtype,
-                DType.bfloat16,
+                .bfloat16,
                 block_tile_shape=Index(64, 128, 64),
                 mma_shape=Index(64, 128, 16),
                 cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
@@ -607,7 +601,7 @@ def main() raises:
             test_blackwell_matmul_with_weight_prefetch[
                 dtype,
                 dtype,
-                DType.bfloat16,
+                .bfloat16,
                 block_tile_shape=Index(64, 128, 64),
                 mma_shape=Index(64, 128, 16),
                 cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
@@ -621,7 +615,7 @@ def main() raises:
             test_blackwell_matmul_with_weight_prefetch[
                 dtype,
                 dtype,
-                DType.bfloat16,
+                .bfloat16,
                 block_tile_shape=Index(64, 128, 64),
                 mma_shape=Index(64, 128, 16),
                 cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
@@ -635,7 +629,7 @@ def main() raises:
             test_blackwell_matmul_with_weight_prefetch[
                 dtype,
                 dtype,
-                DType.bfloat16,
+                .bfloat16,
                 block_tile_shape=Index(64, 128, 64),
                 mma_shape=Index(64, 128, 16),
                 cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
@@ -649,7 +643,7 @@ def main() raises:
             test_blackwell_matmul_with_weight_prefetch[
                 dtype,
                 dtype,
-                DType.bfloat16,
+                .bfloat16,
                 block_tile_shape=Index(64, 128, 64),
                 mma_shape=Index(64, 128, 16),
                 cluster_shape=StaticTuple[Int32, 3](1, 1, 1),

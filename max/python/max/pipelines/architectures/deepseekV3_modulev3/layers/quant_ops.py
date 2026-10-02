@@ -27,7 +27,7 @@ from max.experimental.nn.common_layers.functional_kernels import (
     fused_silu_quantized,
     grouped_matmul_ragged,
 )
-from max.experimental.sharding import DeviceMesh, PlacementMapping
+from max.experimental.sharding import DeviceMapping, DeviceMesh
 from max.experimental.sharding.action import Action, ActionSet, AxisAssignment
 from max.experimental.sharding.cost import (
     P,
@@ -112,7 +112,7 @@ def _quantize_finalize(action: Action) -> Action:
     mapping for the block-scale output (see :func:`_transpose2d_placement`).
     """
     (data_mapping,) = action.outputs
-    scales_mapping = PlacementMapping(
+    scales_mapping = DeviceMapping(
         data_mapping.mesh,
         tuple(_transpose2d_placement(p) for p in data_mapping.placements),
     )
@@ -409,7 +409,7 @@ class EPDispatchPayload:
                 scales=columns[1] if fp8_dispatch else None,
             )
 
-    def local_map_tokens(
+    def per_device_tokens(
         self,
         quant_config: QuantConfig | None,
         *,
@@ -469,6 +469,15 @@ def moe_requires_scales_offsets(quant_config: QuantConfig | None) -> bool:
 
 
 _SUPPORTED_FORMATS = (QuantFormat.BLOCKSCALED_FP8, QuantFormat.NVFP4)
+
+
+def routed_weight_dtype(quant_config: QuantConfig | None) -> DType:
+    """The storage dtype :func:`quantized_weight` picks for ``quant_config``."""
+    if is_nvfp4_quantized(quant_config):
+        return DType.uint8
+    if is_fp8_block_quantized(quant_config):
+        return DType.float8_e4m3fn
+    return DType.bfloat16
 
 
 def quantized_weight(
@@ -624,7 +633,7 @@ def stack_device_shards(
     """Reassembles a per-device weight-shard bundle into one ``Sharded`` tensor."""
     if len(shards) == 1:
         return shards[0]
-    mapping = PlacementMapping(mesh, (Sharded(axis=axis),))
+    mapping = DeviceMapping(mesh, (Sharded(axis=axis),))
     first = shards[0]
     if isinstance(first, FP8BlockTensor):
         assert all_fp8_block(shards)
@@ -1117,8 +1126,8 @@ def grouped_silu(
             scales_offsets=scales_offset,
         )
         return NVFP4Activation(
-            data=data,
-            scales=scales,
+            data=data.rebind_mapping(x.mapping),
+            scales=scales.rebind_mapping(x.mapping),
             input_scale=out_weight.input_scale,
             scales_offset=scales_offset,
         )
@@ -1129,8 +1138,8 @@ def grouped_silu(
             x, expert_start_indices, quant_config, DType.float8_e4m3fn
         )
         return FP8BlockTensor(
-            data=data,
-            weight_scale_inv=weight_scale_inv,
+            data=data.rebind_mapping(x.mapping),
+            weight_scale_inv=weight_scale_inv.rebind_mapping(x.mapping),
             block_size=(1, block_k),
         )
     # Exhaustive: a new quantized down-weight must not silently skip its

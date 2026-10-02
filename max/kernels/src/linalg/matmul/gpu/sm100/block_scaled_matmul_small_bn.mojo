@@ -21,7 +21,7 @@ from std.math import align_up, ceildiv
 from std.math.uutils import umod, ufloordiv, udivmod_unchecked
 from std.sys import align_of, size_of
 
-from std.gpu import MAX_THREADS_PER_BLOCK_METADATA, WARP_SIZE
+from max.gpu import MAX_THREADS_PER_BLOCK_METADATA, WARP_SIZE
 from max.gpu.sync import barrier
 from max.gpu.primitives.cluster import (
     block_rank_in_cluster,
@@ -29,11 +29,12 @@ from max.gpu.primitives.cluster import (
     elect_one_sync_with_mask,
     cluster_wait,
     cluster_arrive_relaxed,
+    cluster_sync,
 )
 from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.host.info import B200
-from std.gpu import block_id_in_cluster, lane_id, warp_id as get_warp_id
+from max.gpu import block_id_in_cluster, lane_id, warp_id as get_warp_id
 from max.gpu.memory import (
     async_copy,
     external_memory,
@@ -142,53 +143,53 @@ struct WarpRole(TrivialRegisterPassable):
     comptime Scheduler = Self(4)
     comptime Epilogue = Self(3)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Int) -> Bool:
         return self._role == Int32(other)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Self) -> Bool:
         return self._role == other._role
 
-    @always_inline
+    @inline(.always)
     def __ne__(self, other: Self) -> Bool:
         return self._role != other._role
 
-    @always_inline
+    @inline(.always)
     def __ge__(self, other: Int) -> Bool:
         return self._role >= Int32(other)
 
-    @always_inline
+    @inline(.always)
     def __le__(self, other: Int) -> Bool:
         return self._role <= Int32(other)
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_sfb_ready() -> Bool:
         return Self.SfbReady == get_warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_sfb_load() -> Bool:
         return Self.SfbLoad == get_warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_main_load() -> Bool:
         return Self.MainLoad == get_warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_mma() -> Bool:
         return Self.Mma == get_warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_epilogue() -> Bool:
         return Self.Epilogue >= get_warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_scheduler() -> Bool:
         return Self.Scheduler == get_warp_id()
 
@@ -308,7 +309,7 @@ struct B200BlockScaledMatmulSmem[
     var tmem_addr: Array[UInt32, 1]
 
 
-@always_inline
+@inline(.always)
 def load_AB_SFA[
     a_type: DType,
     b_type: DType,
@@ -513,13 +514,13 @@ def load_AB_SFA[
                 sfa_tma_dtype,
                 sfa_smem_tile.LayoutType,
                 MutAnyOrigin,
-                address_space=AddressSpace.SHARED,
+                address_space=.SHARED,
             ](
                 rebind[
                     UnsafePointer[
                         Scalar[sfa_tma_dtype],
                         MutAnyOrigin,
-                        address_space=AddressSpace.SHARED,
+                        address_space=.SHARED,
                     ]
                 ](sfa_smem_tile.ptr),
                 sfa_smem_tile.layout,
@@ -536,7 +537,7 @@ def load_AB_SFA[
             )
 
 
-@always_inline
+@inline(.always)
 def _prefetch_weight_tiles_sbn[
     a_type: DType,
     b_type: DType,
@@ -671,13 +672,13 @@ def _prefetch_weight_tiles_sbn[
                     sfa_tma_dtype,
                     sfa_smem_tile.LayoutType,
                     MutAnyOrigin,
-                    address_space=AddressSpace.SHARED,
+                    address_space=.SHARED,
                 ](
                     rebind[
                         UnsafePointer[
                             Scalar[sfa_tma_dtype],
                             MutAnyOrigin,
-                            address_space=AddressSpace.SHARED,
+                            address_space=.SHARED,
                         ]
                     ](sfa_smem_tile.ptr),
                     sfa_smem_tile.layout,
@@ -694,7 +695,7 @@ def _prefetch_weight_tiles_sbn[
                 )
 
 
-@always_inline
+@inline(.always)
 def _complete_activation_tiles_sbn[
     a_type: DType,
     b_type: DType,
@@ -796,13 +797,13 @@ def _complete_activation_tiles_sbn[
                     sfa_tma_dtype,
                     sfa_smem_tile.LayoutType,
                     MutAnyOrigin,
-                    address_space=AddressSpace.SHARED,
+                    address_space=.SHARED,
                 ](
                     rebind[
                         UnsafePointer[
                             Scalar[sfa_tma_dtype],
                             MutAnyOrigin,
-                            address_space=AddressSpace.SHARED,
+                            address_space=.SHARED,
                         ]
                     ](sfa_smem_tile.ptr),
                     sfa_smem_tile.layout,
@@ -835,7 +836,7 @@ def _complete_activation_tiles_sbn[
                 )
 
 
-@always_inline
+@inline(.always)
 def consumer_main_loop[
     accum_type: DType,
     c_type: DType,
@@ -880,9 +881,7 @@ def consumer_main_loop[
     sfb_smem_tiles: SMemTileArrayWithLayout[sfb_dtype, ...],
     load_mma_pipeline: ProducerConsumerPipeline[pipeline_stages],
     sfb_pipeline: ProducerConsumerPipeline[num_group_pipeline_stages],
-    sfb_ready_mbars: UnsafePointer[
-        SharedMemBarrier, _, address_space=AddressSpace.SHARED
-    ],
+    sfb_ready_mbars: UnsafePointer[SharedMemBarrier, _, address_space=.SHARED],
     mut sfb_ready_state: PipelineState[num_group_pipeline_stages],
     mma_op: MmaOpSM100_BlockScaled_SS[
         c_type,
@@ -1025,7 +1024,7 @@ def consumer_main_loop[
         mma_op.commit(load_mma_pipeline.consumer_mbar(stage))
 
 
-@always_inline
+@inline(.always)
 def _sfb_cpasync_produce_tile[
     sfb_dtype: DType,
     MMA_N: Int,
@@ -1038,7 +1037,7 @@ def _sfb_cpasync_produce_tile[
     num_iters: UInt32,
     mut sfb_pipeline: ProducerConsumerPipeline[num_sfb_pipeline_stages],
     sfb_smem_base_ptr: UnsafePointer[
-        mut=True, Scalar[sfb_dtype], _, address_space=AddressSpace.SHARED
+        mut=True, Scalar[sfb_dtype], _, address_space=.SHARED
     ],
     sfb_global_ptr: UnsafePointer[mut=False, Scalar[sfb_dtype], _],
     sfb_batch_stride: Int,
@@ -1150,10 +1149,10 @@ def _sfb_cpasync_produce_tile[
                             async_copy[size=SF_ATOM_K * size_of[sfb_dtype](),](
                                 (
                                     sfb_global_ptr + global_offset
-                                ).address_space_cast[AddressSpace.GLOBAL](),
+                                ).address_space_cast[.GLOBAL](),
                                 (
                                     sfb_smem_tile_ptr + smem_offset
-                                ).address_space_cast[AddressSpace.SHARED](),
+                                ).address_space_cast[.SHARED](),
                             )
                         else:
                             (sfb_smem_tile_ptr + smem_offset).store(
@@ -1171,7 +1170,7 @@ def _sfb_cpasync_produce_tile[
         sfb_pipeline.producer_step()
 
 
-@always_inline
+@inline(.always)
 def _sfb_cpasync_produce_tile_warpwide[
     sfb_dtype: DType,
     MMA_N: Int,
@@ -1184,7 +1183,7 @@ def _sfb_cpasync_produce_tile_warpwide[
     num_iters: UInt32,
     mut sfb_pipeline: ProducerConsumerPipeline[num_sfb_pipeline_stages],
     sfb_smem_base_ptr: UnsafePointer[
-        mut=True, Scalar[sfb_dtype], _, address_space=AddressSpace.SHARED
+        mut=True, Scalar[sfb_dtype], _, address_space=.SHARED
     ],
     sfb_global_ptr: UnsafePointer[mut=False, Scalar[sfb_dtype], _],
     sfb_batch_stride: Int,
@@ -1239,8 +1238,7 @@ def _sfb_cpasync_produce_tile_warpwide[
     )
 
     # Map lane_id to (k_atom, position) across the full warp.
-    var my_k_atom = lane_id() // MMA_N
-    var my_pos = lane_id() % MMA_N
+    var my_k_atom, my_pos = divmod(lane_id(), MMA_N)
     var active = lane_id() < MMA_N * num_sf_k_tiles
 
     # Per-lane absolute N position; compute n_group/outer per-lane so that
@@ -1299,10 +1297,10 @@ def _sfb_cpasync_produce_tile_warpwide[
                     )
                     async_copy[size=SF_ATOM_K * size_of[sfb_dtype](),](
                         (sfb_global_ptr + global_offset).address_space_cast[
-                            AddressSpace.GLOBAL
+                            .GLOBAL
                         ](),
                         (sfb_smem_tile_ptr + smem_offset).address_space_cast[
-                            AddressSpace.SHARED
+                            .SHARED
                         ](),
                     )
                 else:
@@ -1317,7 +1315,7 @@ def _sfb_cpasync_produce_tile_warpwide[
         sfb_pipeline.producer_step()
 
 
-@always_inline
+@inline(.always)
 @__llvm_metadata(`nvvm.cluster_dim`=cluster_shape)
 # Declare the kernel's actual launch block size so the compiler register-allocates
 # accordingly and the CUDA driver permits the launch. Without this, the compiled
@@ -1396,7 +1394,7 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     var _sfb_n_stride = Int(sfb_n_stride)
     var _sfb_k_tiles = Int(sfb_k_tiles)
     var _sfb_n_total = Int(sfb_n_total)
-    comptime assert c_type != DType.float32, "c_type cannot be float32"
+    comptime assert c_type != .float32, "c_type cannot be float32"
     comptime assert transpose_b, "only support k-major B"
 
     comptime num_output_warps = 4
@@ -1501,8 +1499,8 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     ]
 
     ref smem_storage = external_memory[
-        Scalar[DType.uint8],
-        address_space=AddressSpace.SHARED,
+        UInt8,
+        address_space=.SHARED,
         alignment=128,
     ]().bitcast[SmemType]()[]
 
@@ -1645,28 +1643,26 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     )
 
     var ptr_tmem_addr: UnsafePointer[
-        UInt32,
-        origin_of(tmem_addr_storage),
-        address_space=AddressSpace.SHARED,
+        UInt32, origin_of(tmem_addr_storage), address_space=.SHARED
     ] = tmem_addr_storage.unsafe_ptr()
 
     var clc_response = clc_response_storage.unsafe_ptr()
     var clc_full_mbar: UnsafePointer[
         SharedMemBarrier,
         origin_of(clc_mbars_full_storage),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ] = clc_mbars_full_storage.unsafe_ptr()
     var clc_empty_mbar: UnsafePointer[
         SharedMemBarrier,
         origin_of(clc_mbars_empty_storage),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ] = clc_mbars_empty_storage.unsafe_ptr()
 
     var tmem_dealloc_mbar = tmem_dealloc_mbar_storage.unsafe_ptr()
     var sfb_ready_mbars: UnsafePointer[
         SharedMemBarrier,
         origin_of(sfb_ready_mbars_storage),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ] = sfb_ready_mbars_storage.unsafe_ptr()
 
     var warp_id = get_warp_id()
@@ -2066,12 +2062,15 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
 
                 work_info = next_work_info
 
-    if WarpRole.is_scheduler() and is_first_cta_in_cluster:
-        # Implies each SM will only process initial work, there is no
-        # more work to schedule.
-        comptime if config.num_clc_pipeline_stages == 0:
-            return
-
+    # KERN-3311: see the matching block in block_scaled_matmul.mojo. Fold the
+    # no-CLC case into the condition rather than `return`ing, so every thread
+    # reaches the cluster exit barrier.
+    comptime has_clc_scheduling = config.num_clc_pipeline_stages != 0
+    if (
+        has_clc_scheduling
+        and WarpRole.is_scheduler()
+        and is_first_cta_in_cluster
+    ):
         with MatmulProfilerType[1](workspace, 0):
             var required_clc_query = True
 
@@ -2200,6 +2199,15 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
                     mma_output_pipeline.producer_step()
                 work_info = next_work_info
 
+            # KERN-3311: the cta_group=2 peer never issues MMA; wait on the
+            # accumulator barrier before the TMEM dealloc handshake. See
+            # block_scaled_matmul.mojo.
+            comptime if (
+                config.cta_group == 2 and config.num_clc_pipeline_stages == 0
+            ):
+                if not elect_one_cta:
+                    mma_output_pipeline.wait_producer()
+
             tcgen05_release_allocation_lock[Int32(config.cta_group)]()
 
             # wait for epilogue to finish
@@ -2253,6 +2261,11 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
         comptime if config.cta_group == 2:
             _ = tmem_dealloc_mbar[].arrive_cluster(block_rank_in_cluster() ^ 1)
         _ = tmem_dealloc_mbar[].arrive()
+
+    # KERN-3311: keep the peer resident for the `arrive_cluster` above. See
+    # block_scaled_matmul.mojo.
+    comptime if config.cta_group == 2:
+        cluster_sync()
 
 
 # =============================================================================
@@ -2380,11 +2393,9 @@ def _create_tma_and_launch[
     )
     var sfa_4d_layout = tt_row_major(sfa_4d_shape)
     var sfa_4d_tensor = TileTensor[
-        DType.uint16, type_of(sfa_4d_layout), ImmutAnyOrigin
+        .uint16, type_of(sfa_4d_layout), ImmutAnyOrigin
     ](
-        rebind[UnsafePointer[Scalar[DType.uint16], ImmutAnyOrigin]](
-            sfa_5d_tensor.ptr
-        ),
+        rebind[UnsafePointer[UInt16, ImmutAnyOrigin]](sfa_5d_tensor.ptr),
         sfa_4d_layout,
     )
 
@@ -2667,7 +2678,6 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
 
     # Reshape scale factors to 5D TileTensor for TMA.
     # create_tensor_tile reads .layout.shape/stride from the TileTensor.
-    @__parameter
     def _scales_5d_shape(
         scales: TileTensor,
     ) -> Coord[

@@ -18,7 +18,7 @@ coords. The body composes a few helpers from this module:
 
 - `reduce` — tier-aware iteration over the reduce axis, then a
   cross-thread join of the body's accumulators. Takes a per-tile
-  callback `tile_fn[ws, _r]` (which closes over input closures +
+  callback `tile_fn[ws]` (which closes over input closures +
   local monoid states) and a variadic of `ReduceOp` states to pjoin
   after the loop. Zero states runs iteration only — used by
   2-pass algorithms' second pass.
@@ -37,7 +37,7 @@ the helpers above.
 
 from std.atomic import Atomic, Ordering, fence
 from std.bit import log2_floor, next_power_of_two
-from std.gpu import (
+from max.gpu import (
     WARP_SIZE,
     MAX_THREADS_PER_BLOCK_METADATA,
     block_idx,
@@ -49,8 +49,8 @@ from std.gpu import (
 from max.gpu import barrier, syncwarp
 from max.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
 from max.gpu.primitives import block
-from std.gpu.intrinsics import threadfence
-from std.gpu.primitives import warp
+from max.gpu.intrinsics import threadfence
+from max.gpu.primitives import warp
 from max.gpu.primitives.grid_controls import (
     PDL,
     PDLLevel,
@@ -65,12 +65,18 @@ from std.sys.info import (
     has_apple_gpu_accelerator,
     is_apple_gpu,
 )
-from std.utils.coord import Coord, coord_to_index_list
-from std.utils.index import IndexList
+from std.utils.coord import Coord, DynamicCoord, coord_to_index_list
 from std.utils.static_tuple import StaticTuple
 
 from algorithm.cpu.rowwise import SerialReducer
-from algorithm.rowwise_types import Context, ContextParams, ReduceTier, RowBody
+from algorithm.rowwise_types import (
+    Context,
+    ContextParams,
+    ReduceTier,
+    RowBody,
+    RowCoord,
+    _num_outputs_excluding_axis,
+)
 from std.algorithm.backend.unswitch import unswitch
 from algorithm.reduce_op import ReduceOp, Reducer
 from max.algorithm.reduction import _get_nd_indices_from_flat_index
@@ -231,7 +237,7 @@ is `TrivialRegisterPassable`, so any state is byte-shuffle-safe; this is purely
 a size cutoff (Welford = 3 words → shuffle; ArgMax/ArgMin → tree)."""
 
 
-@always_inline
+@inline(.always)
 def _state_fits_warp_shuffle[S: ReduceOp]() -> Bool:
     """Returns `True` when `S` is small enough that the register-only
     warp-shuffle butterfly beats the shmem tree in `generic`.
@@ -257,7 +263,7 @@ def _state_fits_warp_shuffle[S: ReduceOp]() -> Bool:
     )
 
 
-@always_inline
+@inline(.always)
 def _warp_shuffle_combine[S: ReduceOp](mut state: S):
     """Within-warp butterfly all-reduce over `state.join`, exchanging
     the multi-field state between lanes as `uint32` words. Register-only
@@ -300,12 +306,12 @@ struct BlockReducer[BLOCK_SIZE: Int](Reducer, TrivialRegisterPassable):
         BLOCK_SIZE: Number of threads in the launching block.
     """
 
-    @always_inline
+    @inline(.always)
     def __init__(out self):
         """Default-initializes a `BlockReducer`."""
         pass
 
-    @always_inline
+    @inline(.always)
     def sum[dtype: DType](self, val: Scalar[dtype]) -> Scalar[dtype]:
         """Returns the sum of `val` across the block.
 
@@ -320,7 +326,7 @@ struct BlockReducer[BLOCK_SIZE: Int](Reducer, TrivialRegisterPassable):
         """
         return block.sum[block_size=Self.BLOCK_SIZE, broadcast=True](val)
 
-    @always_inline
+    @inline(.always)
     def max[dtype: DType](self, val: Scalar[dtype]) -> Scalar[dtype]:
         """Returns the maximum of `val` across the block.
 
@@ -335,7 +341,7 @@ struct BlockReducer[BLOCK_SIZE: Int](Reducer, TrivialRegisterPassable):
         """
         return block.max[block_size=Self.BLOCK_SIZE, broadcast=True](val)
 
-    @always_inline
+    @inline(.always)
     def min[dtype: DType](self, val: Scalar[dtype]) -> Scalar[dtype]:
         """Returns the minimum of `val` across the block.
 
@@ -350,7 +356,7 @@ struct BlockReducer[BLOCK_SIZE: Int](Reducer, TrivialRegisterPassable):
         """
         return block.min[block_size=Self.BLOCK_SIZE, broadcast=True](val)
 
-    @always_inline
+    @inline(.always)
     def generic[S: ReduceOp](self, mut state: S):
         """Block-wide all-reduce over `state.join`; on return every
         thread holds the combined value.
@@ -380,9 +386,7 @@ struct BlockReducer[BLOCK_SIZE: Int](Reducer, TrivialRegisterPassable):
             _warp_shuffle_combine(state)
 
             comptime n_warps = Self.BLOCK_SIZE // WARP_SIZE
-            var shmem = stack_allocation[
-                n_warps, S, address_space=AddressSpace.SHARED
-            ]()
+            var shmem = stack_allocation[n_warps, S, address_space=.SHARED]()
             var w_idx = Int(warp_id())
             var l_idx = Int(lane_id())
 
@@ -403,10 +407,22 @@ struct BlockReducer[BLOCK_SIZE: Int](Reducer, TrivialRegisterPassable):
                     shmem[0] = state
             barrier()
             state = shmem[0]
+            # The broadcast read above is the last shmem access of this
+            # combine, with no barrier after it — so when a kernel calls
+            # `generic` again (the block tier grid-strides several rows per
+            # block), a fast warp's next-call publish can overwrite `shmem`
+            # while a lagging warp still reads it. NVIDIA/AMD warps never
+            # drift that far in practice; Metal loses this race readily
+            # (measured: layer_norm block tier, run-to-run divergent bytes
+            # on M5, frequency scaling with rows per block). Close the
+            # reuse window on Apple only, keeping other targets' codegen
+            # byte-identical.
+            comptime if is_apple_gpu():
+                barrier()
         else:
             # Block-wide shmem tree: log2(BLOCK_SIZE) halving steps.
             var shmem = stack_allocation[
-                Self.BLOCK_SIZE, S, address_space=AddressSpace.SHARED
+                Self.BLOCK_SIZE, S, address_space=.SHARED
             ]()
             var tid = Int(thread_idx.x)
             shmem[tid] = state
@@ -425,6 +441,10 @@ struct BlockReducer[BLOCK_SIZE: Int](Reducer, TrivialRegisterPassable):
                 barrier()
 
             state = shmem[0]
+            # Same cross-call shmem-reuse race as the small-state path
+            # above; same Apple-only close.
+            comptime if is_apple_gpu():
+                barrier()
 
 
 struct WarpReducer[WARPS_PER_BLOCK: Int = 1](Reducer, TrivialRegisterPassable):
@@ -439,12 +459,12 @@ struct WarpReducer[WARPS_PER_BLOCK: Int = 1](Reducer, TrivialRegisterPassable):
         WARPS_PER_BLOCK: Number of warps in the launching block.
     """
 
-    @always_inline
+    @inline(.always)
     def __init__(out self):
         """Default-initializes a `WarpReducer`."""
         pass
 
-    @always_inline
+    @inline(.always)
     def sum[dtype: DType](self, val: Scalar[dtype]) -> Scalar[dtype]:
         """Returns the sum of `val` across the warp.
 
@@ -459,7 +479,7 @@ struct WarpReducer[WARPS_PER_BLOCK: Int = 1](Reducer, TrivialRegisterPassable):
         """
         return warp.sum(val)
 
-    @always_inline
+    @inline(.always)
     def max[dtype: DType](self, val: Scalar[dtype]) -> Scalar[dtype]:
         """Returns the maximum of `val` across the warp.
 
@@ -474,7 +494,7 @@ struct WarpReducer[WARPS_PER_BLOCK: Int = 1](Reducer, TrivialRegisterPassable):
         """
         return warp.max(val)
 
-    @always_inline
+    @inline(.always)
     def min[dtype: DType](self, val: Scalar[dtype]) -> Scalar[dtype]:
         """Returns the minimum of `val` across the warp.
 
@@ -489,7 +509,7 @@ struct WarpReducer[WARPS_PER_BLOCK: Int = 1](Reducer, TrivialRegisterPassable):
         """
         return warp.min(val)
 
-    @always_inline
+    @inline(.always)
     def generic[S: ReduceOp](self, mut state: S):
         """Warp-wide all-reduce over `state.join`; on return every lane
         holds the combined value.
@@ -523,7 +543,7 @@ struct WarpReducer[WARPS_PER_BLOCK: Int = 1](Reducer, TrivialRegisterPassable):
             var shmem = stack_allocation[
                 Self.WARPS_PER_BLOCK * WARP_SIZE,
                 S,
-                address_space=AddressSpace.SHARED,
+                address_space=.SHARED,
             ]()
             var warp_base = Int(warp_id()) * WARP_SIZE
             var lid = Int(lane_id())
@@ -550,17 +570,23 @@ struct WarpReducer[WARPS_PER_BLOCK: Int = 1](Reducer, TrivialRegisterPassable):
 # ===-----------------------------------------------------------------------===#
 
 
-@always_inline
+@inline(.always)
 def reduce[
     params: ContextParams,
+    rank: Int,
     //,
-    TileFn: ImplicitlyCopyable & (def[ws: Int, _r: Int](IndexList[_r]) -> None),
-](row_coords: Coord, axis_size: Int, mut ctx: Context[params], tile_fn: TileFn):
+    TileFn: ImplicitlyCopyable & (def[ws: Int](RowCoord[rank]) -> None),
+](
+    row_coords: RowCoord[rank],
+    axis_size: Int,
+    mut ctx: Context[params],
+    tile_fn: TileFn,
+):
     """Drives the tier-aware iteration over the reduce axis, with no
     monoid state — pure per-tile iteration for map/emit terminals (see
     the state-carrying overload below for reduce phases).
 
-    `tile_fn[ws, _r]` is invoked per tile with the scaffolder's SIMD
+    `tile_fn[ws]` is invoked per tile with the scaffolder's SIMD
     width and the row's coords. It's a value closure (its copy-captured
     state — input/output closures — rides the value).
 
@@ -599,13 +625,12 @@ def reduce[
         ctx: The dispatch bundle.
         tile_fn: Per-tile callback; closes over input/output closures.
     """
-    comptime rank = row_coords.rank
-    var coords = coord_to_index_list(row_coords)
+    var coords = row_coords
 
     comptime if ctx._tier == ReduceTier.Serial:
         for k in range(axis_size):
-            coords[ctx.axis] = k
-            tile_fn[1, rank](coords)
+            coords.write_axis[ctx.axis](k)
+            tile_fn[1](coords)
     elif ctx._tier == ReduceTier.Warp:
         # One warp covers the row, grid-striding by `WARP_SIZE * sw` to
         # span up to `_WARP_TIER_CHUNK_CAP` SIMD chunks; each lane handles
@@ -622,20 +647,20 @@ def reduce[
             if lane_base < axis_size:
                 var lane_count = min(axis_size - lane_base, sw)
                 if lane_count == sw:
-                    coords[ctx.axis] = lane_base
-                    tile_fn[sw, rank](coords)
+                    coords.write_axis[ctx.axis](lane_base)
+                    tile_fn[sw](coords)
                 else:
                     for j in range(lane_count):
-                        coords[ctx.axis] = lane_base + j
-                        tile_fn[1, rank](coords)
+                        coords.write_axis[ctx.axis](lane_base + j)
+                        tile_fn[1](coords)
     elif ctx.emit_tile_width > 1:
         # Tiled (SIMD-on-outputs). One thread owns `emit_tile_width`
         # adjacent rows; per axis step, one SIMD load on innermost
         # dim — the body's tile_fn dispatches each lane.
         comptime W = ctx.emit_tile_width
         for k in range(axis_size):
-            coords[ctx.axis] = k
-            tile_fn[W, rank](coords)
+            coords.write_axis[ctx.axis](k)
+            tile_fn[W](coords)
     elif ctx._tier == ReduceTier.Splitk:
         # Split-K iteration: threads stripe `sw`-wide tiles across
         # `blocks_per_row * BLOCK_SIZE` lanes, so adjacent threads load
@@ -651,8 +676,8 @@ def reduce[
         # needs no ragged tail: every in-range `elem_idx` has a full tile behind
         # it.
         for elem_idx in range(row_tid * sw, axis_size, row_total_threads * sw):
-            coords[ctx.axis] = elem_idx
-            tile_fn[sw, rank](coords)
+            coords.write_axis[ctx.axis](elem_idx)
+            tile_fn[sw](coords)
     else:
         # Block tier (cooperative, simd along axis).
         comptime BLOCK_SPAN = ctx.BLOCK_SIZE * ctx.simd_width
@@ -662,23 +687,24 @@ def reduce[
             if lane_base < axis_size:
                 var lane_count = min(axis_size - lane_base, ctx.simd_width)
                 if lane_count == ctx.simd_width:
-                    coords[ctx.axis] = lane_base
-                    tile_fn[ctx.simd_width, rank](coords)
+                    coords.write_axis[ctx.axis](lane_base)
+                    tile_fn[ctx.simd_width](coords)
                 else:
                     for j in range(lane_count):
-                        coords[ctx.axis] = lane_base + j
-                        tile_fn[1, rank](coords)
+                        coords.write_axis[ctx.axis](lane_base + j)
+                        tile_fn[1](coords)
 
 
-@always_inline
+@inline(.always)
 def reduce[
     State: ReduceOp,
     params: ContextParams,
+    rank: Int,
     //,
     TileFn: ImplicitlyCopyable
-    & (def[ws: Int, _r: Int](mut State, IndexList[_r]) -> None),
+    & (def[ws: Int](mut State, RowCoord[rank]) -> None),
 ](
-    row_coords: Coord,
+    row_coords: RowCoord[rank],
     axis_size: Int,
     mut ctx: Context[params],
     mut state: State,
@@ -704,13 +730,12 @@ def reduce[
         tile_fn: Per-tile callback; closes over input closures and
             folds each tile into `state`.
     """
-    comptime rank = row_coords.rank
-    var coords = coord_to_index_list(row_coords)
+    var coords = row_coords
 
     comptime if ctx._tier == ReduceTier.Serial:
         for k in range(axis_size):
-            coords[ctx.axis] = k
-            tile_fn[1, rank](state, coords)
+            coords.write_axis[ctx.axis](k)
+            tile_fn[1](state, coords)
     elif ctx._tier == ReduceTier.Warp:
         comptime sw = ctx.simd_width
         comptime warp_span = WARP_SIZE * sw
@@ -720,17 +745,17 @@ def reduce[
             if lane_base < axis_size:
                 var lane_count = min(axis_size - lane_base, sw)
                 if lane_count == sw:
-                    coords[ctx.axis] = lane_base
-                    tile_fn[sw, rank](state, coords)
+                    coords.write_axis[ctx.axis](lane_base)
+                    tile_fn[sw](state, coords)
                 else:
                     for j in range(lane_count):
-                        coords[ctx.axis] = lane_base + j
-                        tile_fn[1, rank](state, coords)
+                        coords.write_axis[ctx.axis](lane_base + j)
+                        tile_fn[1](state, coords)
     elif ctx.emit_tile_width > 1:
         comptime W = ctx.emit_tile_width
         for k in range(axis_size):
-            coords[ctx.axis] = k
-            tile_fn[W, rank](state, coords)
+            coords.write_axis[ctx.axis](k)
+            tile_fn[W](state, coords)
     elif ctx._tier == ReduceTier.Splitk:
         comptime sw = ctx.simd_width
         var blocks_per_row = Int(ctx._blocks_per_row)
@@ -740,8 +765,8 @@ def reduce[
         var row_total_threads = blocks_per_row * ctx.BLOCK_SIZE
 
         for elem_idx in range(row_tid * sw, axis_size, row_total_threads * sw):
-            coords[ctx.axis] = elem_idx
-            tile_fn[sw, rank](state, coords)
+            coords.write_axis[ctx.axis](elem_idx)
+            tile_fn[sw](state, coords)
     else:
         comptime BLOCK_SPAN = ctx.BLOCK_SIZE * ctx.simd_width
         var tid = thread_idx.x
@@ -750,15 +775,15 @@ def reduce[
             if lane_base < axis_size:
                 var lane_count = min(axis_size - lane_base, ctx.simd_width)
                 if lane_count == ctx.simd_width:
-                    coords[ctx.axis] = lane_base
-                    tile_fn[ctx.simd_width, rank](state, coords)
+                    coords.write_axis[ctx.axis](lane_base)
+                    tile_fn[ctx.simd_width](state, coords)
                 else:
                     for j in range(lane_count):
-                        coords[ctx.axis] = lane_base + j
-                        tile_fn[1, rank](state, coords)
+                        coords.write_axis[ctx.axis](lane_base + j)
+                        tile_fn[1](state, coords)
 
 
-@always_inline
+@inline(.always)
 def pjoin[
     State: ReduceOp,
     params: ContextParams,
@@ -846,9 +871,7 @@ def pjoin[
             + row_idx_ * blocks_per_row_ * _SPLITK_STATE_BYTES
         )
         var counter_ptr = ctx._counters_base + row_idx_
-        var last_shmem = stack_allocation[
-            1, Bool, address_space=AddressSpace.SHARED
-        ]()
+        var last_shmem = stack_allocation[1, Bool, address_space=.SHARED]()
         var tid_ = thread_idx.x
         if tid_ == 0:
             var slot_ptr = (
@@ -900,7 +923,7 @@ def pjoin[
         state = State(s)
 
 
-@always_inline
+@inline(.always)
 def once[
     Emit: ImplicitlyCopyable & RegisterPassable & (def() -> None),
     params: ContextParams,
@@ -958,7 +981,7 @@ def once[
 # ===-----------------------------------------------------------------------===#
 
 
-@always_inline
+@inline(.always)
 def _pointwise_splitk_slot_base[
     params: ContextParams, //
 ](ctx: Context[params], reduce_index: Int) -> Int:
@@ -973,7 +996,7 @@ def _pointwise_splitk_slot_base[
     ) * _SPLITK_STATE_BYTES
 
 
-@always_inline
+@inline(.always)
 def _pointwise_splitk_store_partial[
     State: ReduceOp, params: ContextParams, //
 ](mut state: State, ctx: Context[params], reduce_index: Int):
@@ -992,7 +1015,7 @@ def _pointwise_splitk_store_partial[
         (ctx._partials_base + off).bitcast[State]()[0] = state
 
 
-@always_inline
+@inline(.always)
 def _pointwise_splitk_combine[
     params: ContextParams, //, State: ReduceOp
 ](ctx: Context[params], reduce_index: Int) -> State:
@@ -1036,10 +1059,14 @@ struct _BlockKernel[rank: Int, params: ContextParams, Body: RowBody](
     """Block-per-row kernel: one block per row, grid-strided over rows."""
 
     var body: Self.Body
-    var shape: IndexList[Self.rank]
+    var shape: DynamicCoord[.int64, Self.rank]
 
-    @always_inline
-    def __init__(out self, body: Self.Body, shape: IndexList[Self.rank]):
+    @inline(.always)
+    def __init__(
+        out self,
+        body: Self.Body,
+        shape: DynamicCoord[.int64, Self.rank],
+    ):
         # `body` borrowed + copied (not consumed) so the launch's dispatch
         # closures can construct the kernel without moving out of a
         # copy-captured value.
@@ -1052,8 +1079,7 @@ struct _BlockKernel[rank: Int, params: ContextParams, Body: RowBody](
         )
     )
     def __call__(self) capturing:
-        var row_size = self.shape[Self.params.axis]
-        var num_rows = self.shape.flattened_length() // row_size
+        var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
         with PDL():
             var ctx = Context[Self.params].empty()
@@ -1061,7 +1087,7 @@ struct _BlockKernel[rank: Int, params: ContextParams, Body: RowBody](
                 var row_coords = _get_nd_indices_from_flat_index(
                     row_idx, self.shape, Self.params.axis
                 )
-                self.body[Self.params](Coord(row_coords.canonicalize()), ctx)
+                self.body[Self.params](row_coords, ctx)
 
 
 struct _WarpKernel[rank: Int, params: ContextParams, Body: RowBody](
@@ -1071,10 +1097,14 @@ struct _WarpKernel[rank: Int, params: ContextParams, Body: RowBody](
     grid-strided over row groups."""
 
     var body: Self.Body
-    var shape: IndexList[Self.rank]
+    var shape: DynamicCoord[.int64, Self.rank]
 
-    @always_inline
-    def __init__(out self, body: Self.Body, shape: IndexList[Self.rank]):
+    @inline(.always)
+    def __init__(
+        out self,
+        body: Self.Body,
+        shape: DynamicCoord[.int64, Self.rank],
+    ):
         self.body = body
         self.shape = shape
 
@@ -1085,8 +1115,7 @@ struct _WarpKernel[rank: Int, params: ContextParams, Body: RowBody](
     )
     def __call__(self) capturing:
         comptime warps_per_block = Self.params.BLOCK_SIZE // WARP_SIZE
-        var row_size = self.shape[Self.params.axis]
-        var num_rows = self.shape.flattened_length() // row_size
+        var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
         with PDL():
             var ctx = Context[Self.params].empty()
@@ -1100,9 +1129,7 @@ struct _WarpKernel[rank: Int, params: ContextParams, Body: RowBody](
                     var row_coords = _get_nd_indices_from_flat_index(
                         row_idx, self.shape, Self.params.axis
                     )
-                    self.body[Self.params](
-                        Coord(row_coords.canonicalize()), ctx
-                    )
+                    self.body[Self.params](row_coords, ctx)
 
 
 struct _TiledKernel[rank: Int, params: ContextParams, Body: RowBody](
@@ -1113,10 +1140,14 @@ struct _TiledKernel[rank: Int, params: ContextParams, Body: RowBody](
     Grid-strided over output tiles."""
 
     var body: Self.Body
-    var shape: IndexList[Self.rank]
+    var shape: DynamicCoord[.int64, Self.rank]
 
-    @always_inline
-    def __init__(out self, body: Self.Body, shape: IndexList[Self.rank]):
+    @inline(.always)
+    def __init__(
+        out self,
+        body: Self.Body,
+        shape: DynamicCoord[.int64, Self.rank],
+    ):
         self.body = body
         self.shape = shape
 
@@ -1134,8 +1165,9 @@ struct _TiledKernel[rank: Int, params: ContextParams, Body: RowBody](
             or Self.params._tier == ReduceTier.Serial
         ), "tiled kernel needs a one-thread-per-output tier"
 
-        var axis_size = self.shape[Self.params.axis]
-        var num_outputs = self.shape.flattened_length() // axis_size
+        var num_outputs = _num_outputs_excluding_axis[Self.params.axis](
+            self.shape
+        )
 
         # Index math is not data-dependent — compute it before the PDL
         # wait so it overlaps with the prior grid's tail.
@@ -1153,7 +1185,7 @@ struct _TiledKernel[rank: Int, params: ContextParams, Body: RowBody](
                 var row_coords = _get_nd_indices_from_flat_index(
                     base, self.shape, Self.params.axis
                 )
-                self.body[Self.params](Coord(row_coords.canonicalize()), ctx)
+                self.body[Self.params](row_coords, ctx)
                 base += stride
 
 
@@ -1167,16 +1199,16 @@ struct _SplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
     without seeing the split-K plumbing."""
 
     var body: Self.Body
-    var shape: IndexList[Self.rank]
+    var shape: DynamicCoord[.int64, Self.rank]
     var partials: UnsafePointer[UInt8, MutUntrackedOrigin]
     var counters: UnsafePointer[Int32, MutUntrackedOrigin]
     var blocks_per_row: Int32
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         body: Self.Body,
-        shape: IndexList[Self.rank],
+        shape: DynamicCoord[.int64, Self.rank],
         partials: UnsafePointer[UInt8, MutUntrackedOrigin],
         counters: UnsafePointer[Int32, MutUntrackedOrigin],
         blocks_per_row: Int32,
@@ -1193,8 +1225,7 @@ struct _SplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
         )
     )
     def __call__(self) capturing:
-        var row_size = self.shape[Self.params.axis]
-        var num_rows = self.shape.flattened_length() // row_size
+        var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
         var qr = udivmod(Int(block_idx.x), Int(self.blocks_per_row))
         var row_idx_ = qr[0]
@@ -1216,7 +1247,7 @@ struct _SplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
                 row_idx=Int32(row_idx_),
                 is_last_block=False,
             )
-            self.body[Self.params](Coord(row_coords.canonicalize()), ctx)
+            self.body[Self.params](row_coords, ctx)
 
 
 struct _PointwiseSplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
@@ -1229,16 +1260,16 @@ struct _PointwiseSplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
     unchanged; the `Row`'s pointwise-split-K branch reads `ctx._phase`."""
 
     var body: Self.Body
-    var shape: IndexList[Self.rank]
+    var shape: DynamicCoord[.int64, Self.rank]
     var partials: UnsafePointer[UInt8, MutUntrackedOrigin]
     var num_splits: Int32
     var phase: Int32
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         body: Self.Body,
-        shape: IndexList[Self.rank],
+        shape: DynamicCoord[.int64, Self.rank],
         partials: UnsafePointer[UInt8, MutUntrackedOrigin],
         num_splits: Int32,
         phase: Int32,
@@ -1255,8 +1286,7 @@ struct _PointwiseSplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
         )
     )
     def __call__(self) capturing:
-        var row_size = self.shape[Self.params.axis]
-        var num_rows = self.shape.flattened_length() // row_size
+        var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
         var qr = udivmod(Int(block_idx.x), Int(self.num_splits))
         var row_idx_ = qr[0]
@@ -1278,7 +1308,7 @@ struct _PointwiseSplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
             is_last_block=False,
             phase=self.phase,
         )
-        self.body[Self.params](Coord(row_coords.canonicalize()), ctx)
+        self.body[Self.params](row_coords, ctx)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1387,9 +1417,16 @@ def launch[
     )
 
     var shape_il = coord_to_index_list(shape)
+    var shape_dc = Coord(shape_il)
     var row_size = shape_il[axis]
-    var num_rows = shape_il.flattened_length() // row_size
-    if num_rows == 0 or row_size == 0:
+    # `num_rows` is the product of every dim other than `axis`, so it stays
+    # well-defined when the reduce axis itself is empty (`row_size == 0`) —
+    # unlike `flattened_length() // row_size`, which is a `0 // 0` form in
+    # that case. A reduce-shaped body still owns one output per row when
+    # the axis is empty (the monoid identity), so only `num_rows == 0`
+    # (no rows at all) means there is truly nothing to launch.
+    var num_rows = _num_outputs_excluding_axis[axis](shape_dc)
+    if num_rows == 0:
         return
 
     # ----- Non-inner axis ------------------------------------------------
@@ -1429,7 +1466,7 @@ def launch[
                 sm_count * _SM_OVERPROVISION,
             )
             ctx.enqueue_function(
-                _TiledKernel[rank, tiled_params, Body](body, shape_il),
+                _TiledKernel[rank, tiled_params, Body](body, shape_dc),
                 grid_dim=num_blocks,
                 block_dim=tiled_block_size,
                 attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1460,7 +1497,7 @@ def launch[
                 sm_count * _SM_OVERPROVISION,
             )
             ctx.enqueue_function(
-                _TiledKernel[rank, w1_params, Body](body, shape_il),
+                _TiledKernel[rank, w1_params, Body](body, shape_dc),
                 grid_dim=w1_num_blocks,
                 block_dim=tiled_block_size,
                 attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1477,7 +1514,7 @@ def launch[
         )
         var coop_num_blocks = min(num_rows, sm_count * _SM_OVERPROVISION)
         ctx.enqueue_function(
-            _BlockKernel[rank, coop_params, Body](body, shape_il),
+            _BlockKernel[rank, coop_params, Body](body, shape_dc),
             grid_dim=coop_num_blocks,
             block_dim=COOPERATIVE_BLOCK_SIZE,
             attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1517,7 +1554,7 @@ def launch[
             # write phase needs no slot of its own). No memset — slot
             # [row, reduce, split] is written in its reduce's partial phase
             # before any combine reads it.
-            var partials_buf = ctx.enqueue_create_buffer[DType.uint8](
+            var partials_buf = ctx.enqueue_create_buffer[.uint8](
                 num_rows * (num_phases - 1) * num_splits * _SPLITK_STATE_BYTES
             )
             var partials_ptr = partials_buf.unsafe_ptr().unsafe_origin_cast[
@@ -1541,7 +1578,7 @@ def launch[
                 ctx.enqueue_function(
                     _PointwiseSplitkKernel[rank, splitk_params, Body](
                         body,
-                        shape_il,
+                        shape_dc,
                         partials_ptr,
                         Int32(num_splits),
                         Int32(phase),
@@ -1582,9 +1619,9 @@ def launch[
             sm_count * _SM_OVERPROVISION,
         )
 
-        @__parameter
-        @__copy_capture(shape_il, num_blocks, body)
-        def dispatch_warp[sw: Int]() raises:
+        def dispatch_warp[
+            sw: Int
+        ]() raises {var shape_il, var num_blocks, var body, imm}:
             comptime warp_params = ContextParams(
                 axis=axis,
                 emit_tile_width=1,
@@ -1594,7 +1631,7 @@ def launch[
                 target="gpu",
             )
             ctx.enqueue_function(
-                _WarpKernel[rank, warp_params, Body](body, shape_il),
+                _WarpKernel[rank, warp_params, Body](body, shape_dc),
                 grid_dim=num_blocks,
                 block_dim=WARP_BLOCK_SIZE,
                 attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1667,10 +1704,10 @@ def launch[
                 )
             var total_blocks = num_rows * blocks_per_row
 
-            var partials_buf = ctx.enqueue_create_buffer[DType.uint8](
+            var partials_buf = ctx.enqueue_create_buffer[.uint8](
                 total_blocks * _SPLITK_STATE_BYTES
             )
-            var counters_buf = ctx.enqueue_create_buffer[DType.int32](num_rows)
+            var counters_buf = ctx.enqueue_create_buffer[.int32](num_rows)
             ctx.enqueue_memset(counters_buf, Int32(0))
 
             var partials_ptr = partials_buf.unsafe_ptr().unsafe_origin_cast[
@@ -1680,16 +1717,17 @@ def launch[
                 MutUntrackedOrigin
             ]()
 
-            @__parameter
-            @__copy_capture(
-                shape_il,
-                body,
-                partials_ptr,
-                counters_ptr,
-                blocks_per_row,
-                total_blocks,
-            )
-            def dispatch_splitk[use_simd: Bool]() raises:
+            def dispatch_splitk[
+                use_simd: Bool
+            ]() raises {
+                var shape_il,
+                var body,
+                var partials_ptr,
+                var counters_ptr,
+                var blocks_per_row,
+                var total_blocks,
+                imm,
+            }:
                 comptime sw = effective_simd if use_simd else 1
                 comptime splitk_params = ContextParams(
                     axis=axis,
@@ -1702,7 +1740,7 @@ def launch[
                 ctx.enqueue_function(
                     _SplitkKernel[rank, splitk_params, Body](
                         body,
-                        shape_il,
+                        shape_dc,
                         partials_ptr,
                         counters_ptr,
                         Int32(blocks_per_row),
@@ -1725,7 +1763,7 @@ def launch[
             # folding the tier flag into the predicate: off the tuned path the
             # wide-stripe kernel could never launch but would still be compiled.
             comptime if _SPLITK_ROW_TIER_TUNED:
-                unswitch[dispatch_splitk](use_simd_full)
+                unswitch(use_simd_full, dispatch_splitk)
             else:
                 dispatch_splitk[False]()
 
@@ -1753,15 +1791,14 @@ def launch[
     # smaller block that one-pass-covers the row at full SIMD wins.
     var rows_saturate_gpu = num_rows >= sm_count
 
-    @__parameter
-    @__copy_capture(shape_il, num_blocks, body)
-    def dispatch_bs_one_pass[BS: Int]() raises:
+    def dispatch_bs_one_pass[
+        BS: Int
+    ]() raises {var shape_il, var num_blocks, var body, imm}:
         # Smaller-BS one-pass path: `BS * simd >= row_size`. Active
         # threads do one SIMD tile; tail threads stay idle (contribute
         # identity to the block reduce). Reached only when
         # `num_rows >= sm_count`, so the GPU stays saturated.
-        @__parameter
-        def dispatch[use_simd: Bool]() raises:
+        def dispatch[use_simd: Bool]() raises {imm}:
             comptime sw = effective_simd if use_simd else 1
             comptime block_params = ContextParams(
                 axis=axis,
@@ -1775,7 +1812,7 @@ def launch[
                     row_size * cache_count * size_of[cache_dtype.value()]()
                 )
                 ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_il),
+                    _BlockKernel[rank, block_params, Body](body, shape_dc),
                     grid_dim=num_blocks,
                     block_dim=BS,
                     attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1786,7 +1823,7 @@ def launch[
                 )
             else:
                 ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_il),
+                    _BlockKernel[rank, block_params, Body](body, shape_dc),
                     grid_dim=num_blocks,
                     block_dim=BS,
                     attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1795,11 +1832,11 @@ def launch[
         var use_simd_full = (
             effective_simd > 1 and row_size % effective_simd == 0
         )
-        unswitch[dispatch](use_simd_full)
+        unswitch(use_simd_full, dispatch)
 
-    @__parameter
-    @__copy_capture(shape_il, num_blocks, body)
-    def dispatch_bs_default() raises:
+    def dispatch_bs_default() raises {
+        var shape_il, var num_blocks, var body, imm
+    }:
         # Default block tier: BS = launched BLOCK_SIZE, multi-pass via
         # grid stride. Under-utilization gate (#104) drops to sw=1 when
         # `row_size < BLOCK_SIZE * simd` so all threads stay busy with
@@ -1816,8 +1853,7 @@ def launch[
             )
         )
 
-        @__parameter
-        def dispatch[use_simd: Bool]() raises:
+        def dispatch[use_simd: Bool]() raises {imm}:
             comptime sw = effective_simd if use_simd else 1
             comptime block_params = ContextParams(
                 axis=axis,
@@ -1831,7 +1867,7 @@ def launch[
                     row_size * cache_count * size_of[cache_dtype.value()]()
                 )
                 ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_il),
+                    _BlockKernel[rank, block_params, Body](body, shape_dc),
                     grid_dim=num_blocks,
                     block_dim=BLOCK_SIZE,
                     attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1842,17 +1878,17 @@ def launch[
                 )
             else:
                 ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_il),
+                    _BlockKernel[rank, block_params, Body](body, shape_dc),
                     grid_dim=num_blocks,
                     block_dim=BLOCK_SIZE,
                     attributes=pdl_launch_attributes(_PDL_LEVEL),
                 )
 
-        unswitch[dispatch](use_simd_full)
+        unswitch(use_simd_full, dispatch)
 
-    @__parameter
-    @__copy_capture(shape_il, num_blocks, body)
-    def dispatch_bs_large[BS: Int]() raises:
+    def dispatch_bs_large[
+        BS: Int
+    ]() raises {var shape_il, var num_blocks, var body, imm}:
         # Larger-BS path: few rows leave the GPU under-saturated even at
         # `BLOCK_SIZE=256`, so grow BS to make each row's block fat
         # enough to fill its SM — the counterpart of
@@ -1860,8 +1896,7 @@ def launch[
         # rows). Reached when `num_rows < sm_count` and the row is big
         # enough that `BS * effective_simd` keeps threads busy (no
         # idle-tail).
-        @__parameter
-        def dispatch[use_simd: Bool]() raises:
+        def dispatch[use_simd: Bool]() raises {imm}:
             comptime sw = effective_simd if use_simd else 1
             comptime block_params = ContextParams(
                 axis=axis,
@@ -1875,7 +1910,7 @@ def launch[
                     row_size * cache_count * size_of[cache_dtype.value()]()
                 )
                 ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_il),
+                    _BlockKernel[rank, block_params, Body](body, shape_dc),
                     grid_dim=num_blocks,
                     block_dim=BS,
                     attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1886,7 +1921,7 @@ def launch[
                 )
             else:
                 ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_il),
+                    _BlockKernel[rank, block_params, Body](body, shape_dc),
                     grid_dim=num_blocks,
                     block_dim=BS,
                     attributes=pdl_launch_attributes(_PDL_LEVEL),
@@ -1895,8 +1930,8 @@ def launch[
         # SIMD width only on SIMD-divisible rows so a body's `ws > 1`
         # tile lands on an aligned offset (the alignment contract, same
         # guard as the other dispatchers); odd rows fall to scalar.
-        unswitch[dispatch](
-            effective_simd > 1 and row_size % effective_simd == 0
+        unswitch(
+            effective_simd > 1 and row_size % effective_simd == 0, dispatch
         )
 
     # Pick BS adaptively:

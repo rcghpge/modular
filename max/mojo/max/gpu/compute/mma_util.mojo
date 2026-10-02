@@ -32,11 +32,11 @@ AMD Matrix Cores: https://gpuopen.com/learn/amd-lab-notes/amd-lab-notes-matrix-c
 """
 
 from std.sys import CompilationTarget, is_amd_gpu, is_nvidia_gpu
-from std.gpu import grid_dim, lane_id
+from std._gpu import grid_dim, lane_id
 from std.math.uutils import umod
 
 
-@always_inline
+@inline(.always)
 def load_matrix_a[
     m: Int, n: Int, k: Int
 ](
@@ -44,7 +44,7 @@ def load_matrix_a[
     tile_row: Int,
     tile_col: Int,
     ldm: Int,
-) -> SIMD[DType.float32, 4]:
+) -> SIMD[.float32, 4]:
     """Loads a tile of matrix A from memory to registers for TF32 tensor core operations.
 
     Parameters:
@@ -74,7 +74,7 @@ def load_matrix_a[
     var a13_row = group_id + 8
     var a23_col = group_lane_id + 4
 
-    return SIMD[DType.float32, 4](
+    return SIMD[.float32, 4](
         a_ptr[unsafe_offset=(tile_row + a02_row) * ldm + (tile_col + a01_col)],
         a_ptr[unsafe_offset=(tile_row + a13_row) * ldm + (tile_col + a01_col)],
         a_ptr[unsafe_offset=(tile_row + a02_row) * ldm + (tile_col + a23_col)],
@@ -82,7 +82,7 @@ def load_matrix_a[
     )
 
 
-@always_inline
+@inline(.always)
 def load_matrix_a[
     m: Int, n: Int, k: Int
 ](
@@ -90,7 +90,7 @@ def load_matrix_a[
     tile_row: Int,
     tile_col: Int,
     ldm: Int,
-) -> SIMD[DType.float16, 4]:
+) -> SIMD[.float16, 4]:
     """Loads a tile of matrix A from memory to registers for FP16 tensor core operations.
 
     Parameters:
@@ -122,7 +122,7 @@ def load_matrix_a[
     var a2_col = (group_lane_id * 2) + (2 & 0x1)
     var a3_col = (group_lane_id * 2) + (3 & 0x1)
 
-    return SIMD[DType.float16, 4](
+    return SIMD[.float16, 4](
         a_ptr[unsafe_offset=(tile_row + a01_row) * ldm + (tile_col + a0_col)],
         a_ptr[unsafe_offset=(tile_row + a01_row) * ldm + (tile_col + a1_col)],
         a_ptr[unsafe_offset=(tile_row + a23_row) * ldm + (tile_col + a2_col)],
@@ -130,7 +130,7 @@ def load_matrix_a[
     )
 
 
-@always_inline
+@inline(.always)
 def load_matrix_a[
     m: Int, n: Int, k: Int
 ](
@@ -138,7 +138,7 @@ def load_matrix_a[
     tile_row: Int,
     tile_col: Int,
     ldm: Int,
-) -> SIMD[DType.bfloat16, k // 2]:
+) -> SIMD[.bfloat16, k // 2]:
     """Loads a tile of matrix A from memory to registers for BF16 tensor core operations.
 
     Parameters:
@@ -170,7 +170,7 @@ def load_matrix_a[
         var a2_col = (group_lane_id * 2) + (2 & 0x1)
         var a3_col = (group_lane_id * 2) + (3 & 0x1)
 
-        return SIMD[DType.bfloat16, k // 2](
+        return SIMD[.bfloat16, k // 2](
             a_ptr[
                 unsafe_offset=(tile_row + a01_row) * ldm + (tile_col + a0_col)
             ],
@@ -201,7 +201,7 @@ def load_matrix_a[
         var a_col_6 = (group_lane_id * 2) + (6 & 0x1) + 8
         var a_col_7 = (group_lane_id * 2) + (7 & 0x1) + 8
 
-        var a = SIMD[DType.bfloat16, k // 2]()
+        var a = SIMD[.bfloat16, k // 2]()
         a[0] = a_ptr[
             unsafe_offset=(tile_row + a_row_0) * ldm + (tile_col + a_col_0)
         ]
@@ -230,7 +230,7 @@ def load_matrix_a[
         return a
 
 
-@always_inline
+@inline(.always)
 def load_matrix_a_amd[
     m: Int, n: Int, k: Int
 ](
@@ -268,7 +268,7 @@ def load_matrix_a_amd[
     ]
 
 
-@always_inline
+@inline(.always)
 def load_matrix_a_amd[
     dtype: DType, //, m: Int, n: Int, k: Int, n_blocks: Int = 1
 ](
@@ -335,7 +335,7 @@ def load_matrix_a_amd[
         return a
 
 
-@always_inline
+@inline(.always)
 def load_matrix_b[
     m: Int, n: Int, k: Int
 ](
@@ -343,7 +343,7 @@ def load_matrix_b[
     tile_row: Int,
     tile_col: Int,
     ldm: Int,
-) -> SIMD[DType.float32, 2]:
+) -> SIMD[.float32, 2]:
     """Loads a tile of matrix B from memory to registers for TF32 tensor core operations.
 
     Parameters:
@@ -372,13 +372,13 @@ def load_matrix_b[
     var b01_col = group_id
     var b1_row = group_lane_id + 4
 
-    return SIMD[DType.float32, 2](
+    return SIMD[.float32, 2](
         b_ptr[unsafe_offset=(tile_row + b0_row) * ldm + (tile_col + b01_col)],
         b_ptr[unsafe_offset=(tile_row + b1_row) * ldm + (tile_col + b01_col)],
     )
 
 
-@always_inline
+@inline(.always)
 def load_matrix_b[
     m: Int, n: Int, k: Int
 ](
@@ -386,7 +386,7 @@ def load_matrix_b[
     tile_row: Int,
     tile_col: Int,
     ldm: Int,
-) -> SIMD[DType.float16, 2]:
+) -> SIMD[.float16, 2]:
     """Loads a tile of matrix B from memory to registers for FP16 tensor core operations.
 
     Parameters:
@@ -415,13 +415,13 @@ def load_matrix_b[
     var b01_col = group_id
     var b1_row = (group_lane_id * 2) + (1 & 0x1)
 
-    return SIMD[DType.float16, 2](
+    return SIMD[.float16, 2](
         b_ptr[unsafe_offset=(tile_row + b0_row) * ldm + (tile_col + b01_col)],
         b_ptr[unsafe_offset=(tile_row + b1_row) * ldm + (tile_col + b01_col)],
     )
 
 
-@always_inline
+@inline(.always)
 def load_matrix_b[
     m: Int, n: Int, k: Int
 ](
@@ -429,7 +429,7 @@ def load_matrix_b[
     tile_row: Int,
     tile_col: Int,
     ldm: Int,
-) -> SIMD[DType.bfloat16, k // 4]:
+) -> SIMD[.bfloat16, k // 4]:
     """Loads a tile of matrix B from memory to registers for BF16 tensor core operations.
 
     Parameters:
@@ -458,7 +458,7 @@ def load_matrix_b[
         var b01_col = group_id
         var b1_row = (group_lane_id * 2) + (1 & 0x1)
 
-        return SIMD[DType.bfloat16, k // 4](
+        return SIMD[.bfloat16, k // 4](
             b_ptr[
                 unsafe_offset=(tile_row + b0_row) * ldm + (tile_col + b01_col)
             ],
@@ -477,7 +477,7 @@ def load_matrix_b[
         var b_row_3 = (group_lane_id * 2) + (3 & 0x1) + 8
         var b_col = group_id
 
-        return SIMD[DType.bfloat16, k // 4](
+        return SIMD[.bfloat16, k // 4](
             b_ptr[
                 unsafe_offset=(tile_row + b_row_0) * ldm + (tile_col + b_col)
             ],
@@ -493,7 +493,7 @@ def load_matrix_b[
         )
 
 
-@always_inline
+@inline(.always)
 def load_matrix_b_amd[
     m: Int, n: Int, k: Int
 ](
@@ -527,7 +527,7 @@ def load_matrix_b_amd[
     ]
 
 
-@always_inline
+@inline(.always)
 def load_matrix_b_amd[
     dtype: DType, //, m: Int, n: Int, k: Int, n_blocks: Int = 1
 ](
@@ -599,7 +599,7 @@ def load_matrix_b_amd[
         return b
 
 
-@always_inline
+@inline(.always)
 def _store_matrix_d_nvidia[
     dtype: DType, //, m: Int, n: Int, k: Int
 ](
@@ -650,7 +650,7 @@ def _store_matrix_d_nvidia[
     d_ptr[unsafe_offset=(tile_row + d23_row) * ldm + (tile_col + d3_col)] = d[3]
 
 
-@always_inline
+@inline(.always)
 def _store_matrix_d_amd[
     dtype: DType, //, m: Int, n: Int, k: Int, n_blocks: Int = 1
 ](
@@ -717,7 +717,7 @@ def _store_matrix_d_amd[
             d_ptr[unsafe_offset=d_idx] = d[i]
 
 
-@always_inline
+@inline(.always)
 def store_matrix_d[
     dtype: DType, //, m: Int, n: Int, k: Int, n_blocks: Int = 1
 ](

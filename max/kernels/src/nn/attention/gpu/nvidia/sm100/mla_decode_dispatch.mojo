@@ -14,7 +14,7 @@
 from std.algorithm.functional import unswitch
 from std.collections import OptionalReg
 from std.math import ceildiv, clamp, gcd
-from std.sys import size_of
+from std.sys import get_defined_int, size_of
 from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from max.gpu.primitives.grid_controls import pdl_launch_attributes, PDLLevel
 from layout import (
@@ -46,7 +46,7 @@ from nn.attention.mha_utils import (
     MHAConfig,
 )
 from nn.attention.gpu.nvidia.common import KVTMATile
-from std.utils.numerics import get_accum_type
+from std.utils.numerics import get_accum_type, nan
 from std.utils.index import Index, IndexList
 
 comptime logger = Logger()
@@ -59,38 +59,36 @@ comptime logger = Logger()
 comptime MIN_FOLD_Q = 2
 comptime MAX_FOLD_Q = 8
 
+
 # TODO: Remove once stdlib's SwitchedFunction2 supports `raises`.
-# The stdlib unswitch 2-predicate overload uses SwitchedFunction2 which
-# is `def[sw0: Bool, sw1: Bool]() capturing[_] -> None` (no raises).
-# Our sparse dispatch needs raises, so we define a local raises variant.
-comptime _SwitchedFunction2Raises = def[
-    sw0: Bool, sw1: Bool
-]() raises capturing[_] -> None
-
-
-@always_inline
+# The stdlib 2-predicate unswitch uses SwitchedFunction2 which is
+# `def[sw0: Bool, sw1: Bool]() -> None` (no raises). Sparse dispatch needs
+# raises, so this local helper takes a raising unified closure value.
+@inline(.always)
 def _unswitch_raises[
-    switched_func: _SwitchedFunction2Raises
-](dynamic_switch_a: Bool, dynamic_switch_b: Bool) raises:
+    FuncType: def[sw0: Bool, sw1: Bool]() raises -> None
+](
+    dynamic_switch_a: Bool,
+    dynamic_switch_b: Bool,
+    switched_func: FuncType,
+) raises:
     if dynamic_switch_a:
 
-        @always_inline
-        @__parameter
-        def switched_a_true[static_switch: Bool]() raises:
+        @inline(.always)
+        def switched_a_true[static_switch: Bool]() raises {imm}:
             switched_func[True, static_switch]()
 
-        unswitch[switched_a_true](dynamic_switch_b)
+        unswitch(dynamic_switch_b, switched_a_true)
     else:
 
-        @always_inline
-        @__parameter
-        def switched_a_false[static_switch: Bool]() raises:
+        @inline(.always)
+        def switched_a_false[static_switch: Bool]() raises {imm}:
             switched_func[False, static_switch]()
 
-        unswitch[switched_a_false](dynamic_switch_b)
+        unswitch(dynamic_switch_b, switched_a_false)
 
 
-@always_inline
+@inline(.always)
 def _get_partition_bucket[half_sms: Int, i: Int]() -> Int:
     """Return the i-th partition bucket value.
 
@@ -104,17 +102,18 @@ def _get_partition_bucket[half_sms: Int, i: Int]() -> Int:
     comptime _NUM_PARTITIONS = {
         0: 1,
         1: 2,
-        2: 4,
-        3: 8,
-        4: 9,
-        5: 16,
-        6: 18,
-        7: 20,
-        8: 32,
-        9: 37,
-        10: 64,
-        11: 72,
-        12: half_sms,
+        2: 3,
+        3: 4,
+        4: 8,
+        5: 9,
+        6: 16,
+        7: 18,
+        8: 20,
+        9: 32,
+        10: 37,
+        11: 64,
+        12: 72,
+        13: half_sms,
     }
     comptime _default = _NUM_PARTITIONS.get(len(_NUM_PARTITIONS) - 1, 0)
     comptime res = _NUM_PARTITIONS.get(i, _default)
@@ -130,17 +129,18 @@ def _bucket_num_partitions[half_sms: Int](num_partitions: Int) -> Int:
     comptime _NUM_PARTITIONS = {
         0: 1,
         1: 2,
-        2: 4,
-        3: 8,
-        4: 9,
-        5: 16,
-        6: 18,
-        7: 20,
-        8: 32,
-        9: 37,
-        10: 64,
-        11: 72,
-        12: half_sms,
+        2: 3,
+        3: 4,
+        4: 8,
+        5: 9,
+        6: 16,
+        7: 18,
+        8: 20,
+        9: 32,
+        10: 37,
+        11: 64,
+        12: 72,
+        13: half_sms,
     }
     comptime _default = _NUM_PARTITIONS.get(len(_NUM_PARTITIONS) - 1, 0)
     comptime for kv in _NUM_PARTITIONS.items():
@@ -150,15 +150,41 @@ def _bucket_num_partitions[half_sms: Int](num_partitions: Int) -> Int:
     return _default
 
 
-# Number of bucket entries in the partition table (fixed at 13).
-comptime _NUM_PARTITION_BUCKETS = 13
+# Number of bucket entries in the partition table (fixed at 14).
+comptime _NUM_PARTITION_BUCKETS = 14
+
+
+def _unbucketed_split_error(num_partitions: Int) -> Error:
+    """Builds the error for a split count with no compiled combine kernel.
+
+    Falling through instead would skip the split-K reduction and leave the
+    output at whatever it held, which is indistinguishable from a correct
+    result and faster than one.
+
+    Args:
+        num_partitions: The split count that matched no bucket.
+
+    Returns:
+        The error to raise.
+    """
+    return Error(
+        "MLA decode split-K: num_partitions=",
+        num_partitions,
+        (
+            " has no compiled combine kernel (not in the bucket table), so the"
+            " partial outputs would never be reduced. Route the split count"
+            " through `_bucket_num_partitions` or add the value to the table."
+        ),
+    )
 
 
 from nn.attention.gpu.nvidia.sm100.mla_decode_utils import (
     MLA_SM100_Decode_Config,
     QOTMATile,
+    ORaggedTMATile,
     ScalesTMATile,
     tma_tile_qo,
+    tma_tile_o,
     tma_tile_scales,
     MLA_Decode_Pack,
     num_matrix_view_rows_decode,
@@ -207,6 +233,76 @@ from nn.attention.gpu.nvidia.sm100.mla_decode_sparse_kv_bf16 import (
 # ------------------------------------------------------------------------------
 
 
+# The part of a CTA's cost that does not scale with the tokens it gathers
+# (prologue, pipeline fill, drain, epilogue), in gathered-token equivalents so
+# that only its ratio to the per-token cost enters the choice below. Fitted;
+# the selected split is insensitive to the exact value.
+comptime _CTA_FIXED_COST_IN_TOKENS = 187
+
+# The model charges a partial wave as a whole one, so a difference below this
+# margin is noise. Splits it cannot tell apart go to the tie-break below
+# rather than the cost.
+comptime _COST_TIE_MARGIN_PERCENT = 2
+
+
+def _cost_optimal_partition_bucket[
+    half_sms: Int
+](
+    ctas_per_partition: Int,
+    split_len: Int,
+    sm_count: Int,
+    max_partitions: Int,
+) -> Int:
+    """Returns the cheapest split count the combine kernel can be launched for.
+
+    Wall time for a decode launch is
+    `ceil(total_ctas / sm_count) * (fixed_cost + work_per_split)`: splitting
+    divides the work per split but multiplies the CTA count, and every extra
+    wave re-pays the fixed cost. Sizing the split to fill one wave models
+    neither term — measured at batch 16, the largest one-wave split is the
+    worst reachable choice — so minimise the product directly over the (small)
+    candidate set.
+
+    The search runs over the partition buckets rather than over every integer
+    because `dispatch_combine` matches `num_partitions` against that set
+    exactly, with no fallback: a count outside it launches the decode and never
+    reduces its partial outputs. Rounding an unconstrained optimum up to the
+    next bucket is not the optimum of the reachable set — at the spec-decode
+    verify shape the unconstrained optimum is 3, which rounds to the value the
+    shipped policy already picks — so the constraint belongs inside the search.
+
+    Parameters:
+        half_sms: sm_count // 2 — the largest bucket value (compile-time).
+
+    Args:
+        ctas_per_partition: CTAs launched per split, i.e. `grid.x * grid.y *
+            batch_size`.
+        split_len: KV tokens each (batch, position) attends before splitting.
+        sm_count: Number of SMs on the target GPU.
+        max_partitions: Largest admissible split count.
+
+    Returns:
+        The cost-minimising number of split-K partitions.
+    """
+    var best_np = 1
+    var best_cost = -1
+    # Ascending, so taking a candidate only when it is materially cheaper keeps
+    # the smallest split among those the model cannot distinguish.
+    comptime for b in range(_NUM_PARTITION_BUCKETS):
+        var np = _get_partition_bucket[half_sms, b]()
+        if np <= max_partitions:
+            var waves = ceildiv(ctas_per_partition * np, sm_count)
+            var cost = waves * (
+                _CTA_FIXED_COST_IN_TOKENS + ceildiv(split_len, np)
+            )
+            if best_cost < 0 or cost * 100 < best_cost * (
+                100 - _COST_TIE_MARGIN_PERCENT
+            ):
+                best_cost = cost
+                best_np = np
+    return best_np
+
+
 def _compute_num_partitions_64[
     num_heads: Int,
     is_fp8_kv: Bool = False,
@@ -223,6 +319,7 @@ def _compute_num_partitions_64[
     split_page_size: Int,
     sm_count: Int,
     relax_split_floor: Bool = False,
+    cost_optimal_split: Bool = False,
 ) -> Int:
     """Wave-aligned split count for single head group (e.g. Kimi K2.5, 64 heads).
 
@@ -248,11 +345,28 @@ def _compute_num_partitions_64[
             q_len=1 sparse FP8 split-K tuning (KERN-3217); the gating predicate
             lives at the dispatch call site. Default False retains the previous
             partition-selection logic (the production floor of 4).
+        cost_optimal_split: When True, choose the split minimising modelled wall
+            time (`_cost_optimal_partition_bucket`) instead of the wave target,
+            page floor and bucket rounding below. Set only for the unfolded
+            sparse spec-decode verify; the gating predicate lives at the
+            dispatch call site, which alone sees whether the launch folds.
 
     Returns:
         The number of split-K partitions.
     """
     var num_kv_cache_pages = ceildiv(effective_max_cache_len, split_page_size)
+
+    if cost_optimal_split:
+        # The gate at the call site fires only for a launch that does not fold
+        # q into the M tile, so grid.y is q_max_seq_len and every q position
+        # costs its own CTA — which is exactly what the shape-keyed fold below
+        # gets wrong for this launch.
+        return _cost_optimal_partition_bucket[half_sms](
+            ceildiv(num_heads, 64) * q_max_seq_len * batch_size,
+            effective_max_cache_len,
+            sm_count,
+            min(half_sms, num_kv_cache_pages),
+        )
 
     # When fold is active (spec decoding with num_heads * q_max_seq_len <= 64),
     # the kernel packs all q_tokens into the M tile of a single CTA, so
@@ -492,6 +606,7 @@ def _compute_num_partitions[
     split_page_size: Int,
     sm_count: Int,
     relax_split_floor: Bool = False,
+    cost_optimal_split: Bool = False,
 ) -> Int:
     """Routing function that dispatches to head-count-specific heuristics.
 
@@ -518,6 +633,9 @@ def _compute_num_partitions[
             lives at the dispatch call site). Default False retains the previous
             partition-selection logic (the production floor); ignored by the
             multi-head-group (128-head) path.
+        cost_optimal_split: Choose the split minimising modelled wall time; see
+            `_compute_num_partitions_64`. Ignored by the multi-head-group
+            (128-head) path.
 
     Returns:
         The number of split-K partitions.
@@ -534,6 +652,7 @@ def _compute_num_partitions[
             split_page_size,
             sm_count,
             relax_split_floor=relax_split_floor,
+            cost_optimal_split=cost_optimal_split,
         )
     else:
         return _compute_num_partitions_128[num_heads, is_fp8_kv, half_sms](
@@ -583,6 +702,25 @@ def compute_mla_dispatch_scalars[
     return (batch_size, q_max_seq_len, num_partitions)
 
 
+def _dispatch_scalars_for_heads[
+    num_heads: Int
+](
+    batch_size: Int,
+    max_cache_valid_length: Int,
+    q_max_seq_len: Int,
+    is_fp8_kv: Bool,
+    sm_count: Int,
+) -> Tuple[Int, Int, Int]:
+    """Binds `is_fp8_kv` at comptime for one already-bound head count."""
+    if is_fp8_kv:
+        return compute_mla_dispatch_scalars[num_heads, is_fp8_kv=True](
+            batch_size, max_cache_valid_length, q_max_seq_len, sm_count
+        )
+    return compute_mla_dispatch_scalars[num_heads](
+        batch_size, max_cache_valid_length, q_max_seq_len, sm_count
+    )
+
+
 def compute_mla_dispatch_scalars_runtime(
     batch_size: Int,
     max_cache_valid_length: Int,
@@ -591,78 +729,77 @@ def compute_mla_dispatch_scalars_runtime(
     is_fp8_kv: Bool,
     sm_count: Int,
 ) raises -> Tuple[Int, Int, Int]:
-    if is_fp8_kv:
-        if num_heads == 8:
-            return compute_mla_dispatch_scalars[8, is_fp8_kv=True](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 16:
-            return compute_mla_dispatch_scalars[16, is_fp8_kv=True](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 32:
-            return compute_mla_dispatch_scalars[32, is_fp8_kv=True](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 64:
-            return compute_mla_dispatch_scalars[64, is_fp8_kv=True](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 128:
-            return compute_mla_dispatch_scalars[128, is_fp8_kv=True](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-    else:
-        if num_heads == 8:
-            return compute_mla_dispatch_scalars[8](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 16:
-            return compute_mla_dispatch_scalars[16](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 32:
-            return compute_mla_dispatch_scalars[32](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 64:
-            return compute_mla_dispatch_scalars[64](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
-        if num_heads == 128:
-            return compute_mla_dispatch_scalars[128](
-                batch_size,
-                max_cache_valid_length,
-                q_max_seq_len,
-                sm_count,
-            )
+    """Binds a runtime Q-head count to a comptime dispatch instantiation.
+
+    Every count here is one the kernel is measured correct at; 12, 24 and 48
+    are Kimi K3 at TP8/TP4/TP2. The list is not exhaustive — a count the kernel
+    supports but that no model asks for yet is left out rather than paying its
+    instantiation, so add an arm when a model needs one.
+    """
+    if num_heads == 8:
+        return _dispatch_scalars_for_heads[8](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
+    if num_heads == 12:
+        return _dispatch_scalars_for_heads[12](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
+    if num_heads == 16:
+        return _dispatch_scalars_for_heads[16](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
+    if num_heads == 24:
+        return _dispatch_scalars_for_heads[24](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
+    if num_heads == 32:
+        return _dispatch_scalars_for_heads[32](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
+    if num_heads == 48:
+        return _dispatch_scalars_for_heads[48](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
+    if num_heads == 64:
+        return _dispatch_scalars_for_heads[64](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
+    if num_heads == 128:
+        return _dispatch_scalars_for_heads[128](
+            batch_size,
+            max_cache_valid_length,
+            q_max_seq_len,
+            is_fp8_kv,
+            sm_count,
+        )
     raise Error(
         "Unsupported MLA num_heads for direct dispatch metadata binding: "
         + String(num_heads)
@@ -698,10 +835,10 @@ struct MLADispatchScalarArgs[
     """
 
     comptime MLAScalarArgsLT = LayoutTensor[
-        DType.int64, Layout.row_major(3), MutAnyOrigin
+        .int64, Layout.row_major(3), MutAnyOrigin
     ]
 
-    var gpu_buf: DeviceBuffer[DType.int64]
+    var gpu_buf: DeviceBuffer[.int64]
     var batch_size: Int
     var q_max_seq_len: Int
 
@@ -712,7 +849,7 @@ struct MLADispatchScalarArgs[
         q_max_seq_len: Int,
         ctx: DeviceContext,
     ) raises:
-        self.gpu_buf = ctx.enqueue_create_buffer[DType.int64](3)
+        self.gpu_buf = ctx.enqueue_create_buffer[.int64](3)
         self.batch_size = batch_size
         self.q_max_seq_len = q_max_seq_len
 
@@ -728,31 +865,32 @@ struct MLADispatchScalarArgs[
 
         # Note: scalars[3] (effective_split_len) is only consumed by the
         # capturable-graph dispatcher path, not by the legacy GPU buffer.
-        var host_args = Array[Int64, 3](uninitialized=True)
-        host_args[0] = Int64(scalars[0])
-        host_args[1] = Int64(scalars[1])
-        host_args[2] = Int64(scalars[2])
-        var output_buf = DeviceBuffer[DType.int64](
+        var host_args: Array[Int64, 3] = [
+            Int64(scalars[0]),
+            Int64(scalars[1]),
+            Int64(scalars[2]),
+        ]
+        var output_buf = DeviceBuffer[.int64](
             ctx, self.gpu_buf.unsafe_ptr(), 3, owning=False
         )
         output_buf.enqueue_copy_from(
-            UnsafePointer(to=host_args).bitcast[Scalar[DType.int64]]()
+            UnsafePointer(to=host_args).bitcast[Int64]()
         )
 
     def gpu_layout_tensor(
         self,
     ) -> Self.MLAScalarArgsLT:
         return Self.MLAScalarArgsLT(
-            rebind[UnsafePointer[Scalar[DType.int64], origin=MutAnyOrigin]](
+            rebind[UnsafePointer[Int64, origin=MutAnyOrigin]](
                 self.gpu_buf.unsafe_ptr()
             ),
         )
 
     def gpu_tile_tensor(
         self,
-    ) -> TileTensor[DType.int64, RowMajorLayout[ComptimeInt[3]], MutAnyOrigin]:
+    ) -> TileTensor[.int64, RowMajorLayout[ComptimeInt[3]], MutAnyOrigin]:
         return TileTensor(
-            rebind[UnsafePointer[Scalar[DType.int64], MutAnyOrigin]](
+            rebind[UnsafePointer[Int64, MutAnyOrigin]](
                 self.gpu_buf.unsafe_ptr()
             ),
             row_major((Idx[3],)),
@@ -786,40 +924,28 @@ def mla_decode_sm100_dispatch[
     # kernel's fold + the split-K floor relax. False -> unchanged baseline.
     fold_shared_index: Bool = False,
 ](
-    q: TileTensor[q_type, address_space=AddressSpace.GENERIC, ...],
+    q: TileTensor[q_type, address_space=.GENERIC, ...],
     k: k_t,
-    output: TileTensor[
-        mut=True, output_type, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: TileTensor[mut=True, output_type, address_space=.GENERIC, ...],
     scale: Float32,
-    valid_length: TileTensor[
-        DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
+    valid_length: TileTensor[.uint32, address_space=.GENERIC, ...],
     mask: mask_t,
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     batch_size: Int,
     q_max_seq_len: Int,
     max_cache_valid_length: Int,
     ctx: DeviceContext,
-    q_scale_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    q_scale_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
     topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
-    attn_sink_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    attn_sink_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     # Extra KV parameters (forwarded to mla_decode_sm100_sink_split_k).
     extra_k: OptionalReg[k_t] = None,
     extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
     extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
-    extra_scales_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     # Pre-computed grid-time scalar from the dispatcher input list (capturable
     # graph path). When provided, the value bypasses the local recompute so
     # the host-side grid sizing matches the device-side divmod on
@@ -906,6 +1032,22 @@ def mla_decode_sm100_dispatch[
     var _np_split_len = min(
         effective_split_len, effective_max_cache_len
     ) if _relax_q1_sparse_floor else effective_split_len
+    # Unfolded sparse spec-decode verify, where the shape-keyed fold below
+    # reports a fold that only `fold_shared_index` actually performs, so the
+    # split is sized for a grid `q_max_seq_len` times smaller than the one
+    # launched. Sound here because sparse np comes from the top-k stride
+    # rather than the cache length, so it stays a pure function of the shape
+    # the caller already specialises on; the rest is scope.
+    var _cost_optimal_split = (
+        sparse
+        and _is_fp8_kv
+        and not fold_shared_index
+        and not rope_aware_kv_sparse
+        and q_max_seq_len > 1
+        and q_max_seq_len <= MAX_FOLD_Q
+        and num_heads * q_max_seq_len <= 64
+        and extra_indices_stride == 0
+    )
     var num_partitions = _compute_num_partitions[
         num_heads, _is_fp8_kv, _half_sms, fold_shared_index
     ](
@@ -915,6 +1057,7 @@ def mla_decode_sm100_dispatch[
         split_page_size,
         sm_count,
         relax_split_floor=_relax_q1_sparse_floor,
+        cost_optimal_split=_cost_optimal_split,
     )
 
     if num_partitions_in:
@@ -931,9 +1074,8 @@ def mla_decode_sm100_dispatch[
     # For example, bs=64/cl=256 gets 5 pages at page_size=64 (vs 3 at 128),
     # allowing np=2 with 2-3 pages per split instead of 1-2.
     # =========================================================================
-    @__parameter
-    @always_inline
-    def launch_impl[split_page_size_param: Int]() raises:
+    @inline(.always)
+    def launch_impl[split_page_size_param: Int]() raises {imm}:
         _mla_decode_sm100_dispatch_impl[
             q_type=q_type,
             k_t=k_t,
@@ -1001,6 +1143,20 @@ def mla_decode_sm100_dispatch[
 # ------------------------------------------------------------------------------
 # Inner dispatch implementation parameterized on split_page_size
 # ------------------------------------------------------------------------------
+# Mirrors `FA4_WS_POISON` in `sm100/dispatch.mojo`: the split-K workspaces
+# below are deliberately allocated without a fill, because an empty partition
+# skips its O store while still writing `-inf` to its LSE slot, and
+# `mla_decode_combine`'s scale check is what keeps the unwritten O slots from
+# contributing. `mla_decode_combine.mojo`'s prefetch load therefore reads
+# uninitialized memory by design and initcheck reports it. NaN-filling both
+# workspaces initializes them (silencing the false report) and grades that
+# contract: a dropped scale check or a missing `-inf` write propagates NaN into
+# the output and trips the test's own assert. Off by default and
+# comptime-pruned, so production codegen is untouched. Shares the FA4 flag so
+# one `-D` covers every attention split-K workspace. See KERN-3535.
+comptime MLA_WS_POISON: Bool = get_defined_int["FA4_WS_POISON", 0]() != 0
+
+
 def _mla_decode_sm100_dispatch_impl[
     q_type: DType,
     k_t: MHAOperand,
@@ -1021,42 +1177,30 @@ def _mla_decode_sm100_dispatch_impl[
     # Read-once shared-index fold (KERN-3141); see mla_decode_sm100_dispatch.
     fold_shared_index: Bool = False,
 ](
-    q: TileTensor[q_type, address_space=AddressSpace.GENERIC, ...],
+    q: TileTensor[q_type, address_space=.GENERIC, ...],
     k: k_t,
-    output: TileTensor[
-        mut=True, output_type, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: TileTensor[mut=True, output_type, address_space=.GENERIC, ...],
     scale: Float32,
-    valid_length: TileTensor[
-        DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
+    valid_length: TileTensor[.uint32, address_space=.GENERIC, ...],
     mask: mask_t,
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     batch_size: Int,
     q_max_seq_len: Int,
     num_partitions: Int,
     effective_max_cache_len: Int,
     ctx: DeviceContext,
-    q_scale_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    q_scale_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
     topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
-    attn_sink_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    attn_sink_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     # Extra KV parameters (forwarded to mla_decode_sm100_sink_split_k).
     extra_k: OptionalReg[k_t] = None,
     extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
     extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
-    extra_scales_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
 ) raises:
     comptime hw_info = ctx.default_device_info
@@ -1064,7 +1208,9 @@ def _mla_decode_sm100_dispatch_impl[
     comptime _half_sms = sm_count // 2
 
     comptime AccumType = get_accum_type[output.dtype]()
-    comptime v_depth = depth - 64
+    # The split-K output is the 512 latent (shared by both rows), not the row
+    # width the model stores, so it stays 512 under NoPE.
+    comptime v_depth = 512
     comptime _is_fp8_kv = (k_t.dtype == DType.float8_e4m3fn)
 
     # Ensure KV cache page_size is evenly divisible by split_page_size.
@@ -1106,6 +1252,9 @@ def _mla_decode_sm100_dispatch_impl[
         var lse_accum_data = ctx.enqueue_create_buffer[AccumType](
             Int(num_partitions * batch_size * q_max_seq_len * num_heads)
         )
+        comptime if MLA_WS_POISON:
+            ctx.enqueue_memset(o_accum_split_data, nan[output_type]())
+            ctx.enqueue_memset(lse_accum_data, nan[AccumType]())
         var lse_accum_split = TileTensor(
             lse_accum_data,
             row_major(
@@ -1126,15 +1275,14 @@ def _mla_decode_sm100_dispatch_impl[
 
         # Get input_row_offsets pointer for combine kernel's ragged output writes.
         var input_row_offsets_ptr = rebind[
-            UnsafePointer[Scalar[DType.uint32], origin=MutAnyOrigin]
+            UnsafePointer[UInt32, origin=MutAnyOrigin]
         ](valid_length.ptr)
 
         # Inner function parameterized on has_attn_sink to specialize both
         # the decode kernel and combine kernel at compile time. The runtime
         # branch on attn_sink_ptr happens once (below) to select the right
         # compile-time specialization.
-        @__parameter
-        def _launch_split_k_path[_has_attn_sink: Bool]() raises:
+        def _launch_split_k_path[_has_attn_sink: Bool]() raises {imm}:
             # Launch main MLA decode kernel (writes partial results to accumulators)
             mla_decode_sm100_sink_split_k[
                 q_type=q_type,
@@ -1186,8 +1334,7 @@ def _mla_decode_sm100_dispatch_impl[
 
             # Dispatch to specialized kernel based on num_partitions for compile-time unrolling.
             # Supports up to sm_count//2 splits to allow higher SM utilization.
-            @__parameter
-            def launch_combine[n_splits: Int, wph: Int]() raises:
+            def launch_combine[n_splits: Int, wph: Int]() raises {imm}:
                 mla_decode_combine_partial_outputs[
                     output_type=output_type,
                     accum_type=AccumType,
@@ -1208,8 +1355,7 @@ def _mla_decode_sm100_dispatch_impl[
                     ctx,
                 )
 
-            @__parameter
-            def launch_combine_split_parallel[n_splits: Int]() raises:
+            def launch_combine_split_parallel[n_splits: Int]() raises {imm}:
                 mla_decode_combine_partial_outputs[
                     output_type=output_type,
                     accum_type=AccumType,
@@ -1231,14 +1377,15 @@ def _mla_decode_sm100_dispatch_impl[
                     ctx,
                 )
 
-            @__parameter
-            def dispatch_combine[wph: Int]() raises:
+            def dispatch_combine[wph: Int]() raises {imm}:
                 """Dispatch the combine kernel with the given warps_per_head,
                 matching num_partitions to the correct compile-time bucket.
 
                 Raises:
-                    If the kernel dispatch fails.
+                    If the kernel dispatch fails, or if `num_partitions` is not
+                    a compiled bucket.
                 """
+                var launched = False
                 comptime for _b in range(_NUM_PARTITION_BUCKETS):
                     comptime if _get_partition_bucket[_half_sms, _b]() >= 2:
                         if (
@@ -1248,15 +1395,19 @@ def _mla_decode_sm100_dispatch_impl[
                             launch_combine[
                                 _get_partition_bucket[_half_sms, _b](), wph
                             ]()
+                            launched = True
+                if not launched:
+                    raise _unbucketed_split_error(num_partitions)
 
-            @__parameter
-            def dispatch_combine_split_parallel() raises:
+            def dispatch_combine_split_parallel() raises {imm}:
                 """Dispatch the split-parallel combine kernel, matching
                 num_partitions to the correct compile-time bucket.
 
                 Raises:
-                    If the kernel dispatch fails.
+                    If the kernel dispatch fails, or if `num_partitions` is not
+                    a compiled bucket.
                 """
+                var launched = False
                 comptime for _b in range(_NUM_PARTITION_BUCKETS):
                     comptime if _get_partition_bucket[_half_sms, _b]() >= 2:
                         if (
@@ -1266,6 +1417,9 @@ def _mla_decode_sm100_dispatch_impl[
                             launch_combine_split_parallel[
                                 _get_partition_bucket[_half_sms, _b]()
                             ]()
+                            launched = True
+                if not launched:
+                    raise _unbucketed_split_error(num_partitions)
 
             # Choose combine strategy based on split count and batch size.
             #
@@ -1384,8 +1538,7 @@ def _mla_decode_sm100_dispatch_impl[
         comptime SplitAccumType = NullPointer[AccumType]
         var lse_accum_split_ptr: SplitAccumType = {}
 
-        @__parameter
-        def _launch_no_split_path[_has_attn_sink: Bool]() raises:
+        def _launch_no_split_path[_has_attn_sink: Bool]() raises {imm}:
             mla_decode_sm100_sink_split_k[
                 q_type=q_type,
                 k_t=k_t,
@@ -1466,33 +1619,25 @@ def mla_decode_sm100_sink_split_k[
     # Read-once shared-index MTP fold (KERN-3141); see mla_decode_sm100_dispatch.
     fold_shared_index: Bool = False,
 ](
-    q: TileTensor[q_type, address_space=AddressSpace.GENERIC, ...],
+    q: TileTensor[q_type, address_space=.GENERIC, ...],
     k: k_t,
-    output: TileTensor[mut=True, address_space=AddressSpace.GENERIC, ...],
+    output: TileTensor[mut=True, address_space=.GENERIC, ...],
     lse_accum_split_ptr: SplitAccumType,
     scale: Float32,
     batch_size: Int,
     block_z: Int,
     num_partitions: Int,
     q_max_seq_len: Int,
-    valid_length: TileTensor[
-        DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
+    valid_length: TileTensor[.uint32, address_space=.GENERIC, ...],
     mask: mask_t,
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
-    q_scale_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    q_scale_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
     topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
-    attn_sink_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    attn_sink_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     # Extra KV: separate always-attend cache. When extra_k is provided
     # (non-default), the sparse kernel appends extra_topk tokens after
     # the original topk tokens in a unified loop.
@@ -1500,9 +1645,7 @@ def mla_decode_sm100_sink_split_k[
     extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
     extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
-    extra_scales_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ] = None,
+    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     # Effective max cache length.  Layout G structural eligibility uses
     # `num_heads * q_len <= BM_G(32)`.  Defaults to 0 so unrelated callers
     # (BF16, sparse, etc.) pass through to the BN_QK=64 branch unchanged.
@@ -1517,9 +1660,9 @@ def mla_decode_sm100_sink_split_k[
     # 2. Q is also FP8 (q_type must match kv_type) — the pipeline provides FP8 Q
     # When Q is BF16, fall through to the old FP8 converter or BF16 path.
     comptime _native_fp8 = (
-        k_t.dtype == DType.float8_e4m3fn
+        k_t.dtype == .float8_e4m3fn
         and _scale_block_size == 0
-        and q_type == DType.float8_e4m3fn
+        and q_type == .float8_e4m3fn
     )
     # Per-tensor rope-aware: split content (FP8 tensorwise) + rope (BF16) path
     comptime _per_token_scale_rope_aware = per_token_scale_rope_aware
@@ -1533,9 +1676,9 @@ def mla_decode_sm100_sink_split_k[
         q_type
     ]()
     # Comptime-local aliases so the nested `_launch_sparse_kv_fp8_fold_sel`
-    # @__parameter closure can read these in its `comptime if` (nested closures
-    # capture comptime locals, not the enclosing function's comptime params by
-    # bare name).
+    # closure can read these in its `comptime if` (nested closures capture
+    # comptime locals, not the enclosing function's comptime params by bare
+    # name).
     comptime _fold_shared_index = fold_shared_index
     comptime _has_attn_sink = has_attn_sink
     # Scoped to the sparse native-FP8 kernel ONLY: this same mla_config
@@ -1544,11 +1687,16 @@ def mla_decode_sm100_sink_split_k[
     # existing single-buffer SW64-gather kernel bodies, so
     # native_fp8_unified_gather must be False there.
     comptime _native_fp8_unified_gather = sparse and _native_fp8
+    # V/output is the 512 latent. SMEM stays 576 so the trailing block P
+    # aliases survives a NoPE row. Neither tracks the row the model stores.
+    comptime _latent_depth = 512
+    comptime _smem_q_depth = 576
     comptime mla_config = MLA_SM100_Decode_Config(
         num_q_heads=num_heads,
         group=group,  # num_q_heads/h_k(1)
-        depth=(depth - 64),  # 512
-        q_depth=depth,  # 576
+        depth=_latent_depth,
+        q_depth=_smem_q_depth,
+        input_q_depth=depth,  # 576 with rotary, 512 NoPE
         dtype_size=_dtype_size,
         kv_type_size=size_of[k_t.dtype](),
         swizzle_mode=config.swizzle_mode,
@@ -1563,17 +1711,18 @@ def mla_decode_sm100_sink_split_k[
     )
     var num_rows_q = num_matrix_view_rows_decode(q)
 
+    # `depth` and `BK` are the row as the model stores it (NoPE narrows both).
     var k_tma_op = k.create_tma_tile[
         BN=mla_config.BK_PV,  # tile_m =64
-        depth=mla_config.q_depth,
-        BK=mla_config.BK_QK,  # tile_n =576
+        depth=mla_config.input_q_depth,
+        BK=mla_config.input_q_depth,
         swizzle_mode=mla_config.kv_tma_swizzle_mode,
     ](ctx)
     var o_ptr = rebind[UnsafePointer[Scalar[output_type], origin=MutAnyOrigin]](
         output.ptr
     )
     var num_rows_o = num_matrix_view_rows_decode(output)
-    var o_tma_op = tma_tile_qo[
+    var o_tma_op = tma_tile_o[
         swizzle_mode=mla_config.swizzle_mode,
         BM=mla_config.out_rows,
         BK=mla_config.BN_PV // 4,
@@ -1598,8 +1747,8 @@ def mla_decode_sm100_sink_split_k[
             # ---------- BF16 KV sparse dispatch ----------
             # BF16 KV cache: single BF16 + SWIZZLE_128B gather4 TMA
             # descriptor covering the full 576-element row (1152 bytes).
-            comptime if k_t.dtype == DType.bfloat16:
-                comptime _kv_bf16_tile_width = mla_config.padded_q_depth
+            comptime if k_t.dtype == .bfloat16:
+                comptime _kv_bf16_tile_width = mla_config.input_q_depth
                 var k_gather4_tma_bf16 = k.create_gather4_tma_tile[
                     tile_width=_kv_bf16_tile_width,
                     tile_stride=_kv_bf16_tile_width,
@@ -1624,17 +1773,16 @@ def mla_decode_sm100_sink_split_k[
                 var q_tma_sparse = tma_tile_qo[
                     swizzle_mode=mla_config.swizzle_mode,
                     BM=mla_config.BM,
-                    BK=mla_config.BK_QK,
-                    depth=mla_config.q_depth,
+                    BK=mla_config.input_q_depth,
+                    depth=mla_config.input_q_depth,
                 ](ctx, q_ptr, num_rows_q)
 
-                @__parameter
-                @always_inline
+                @inline(.always)
                 def _launch_sparse_kv_bf16[
                     _has_extra_kv: Bool, _has_variable_topk: Bool
-                ]() raises:
+                ]() raises {imm}:
                     if ragged:
-                        comptime ValidLengthType = NonNullPointer[DType.uint32]
+                        comptime ValidLengthType = NonNullPointer[.uint32]
                         var valid_len: ValidLengthType = {
                             valid_length.ptr.as_imm().as_unsafe_any_origin()
                         }
@@ -1677,7 +1825,7 @@ def mla_decode_sm100_sink_split_k[
                             ctx,
                         )
                     else:
-                        comptime ValidLengthType = NullPointer[DType.uint32]
+                        comptime ValidLengthType = NullPointer[.uint32]
                         var valid_len: ValidLengthType = {}
                         launch_mla_sm100_decode_sparse_kv_bf16[
                             q_type=q_type,
@@ -1718,15 +1866,17 @@ def mla_decode_sm100_sink_split_k[
                             ctx,
                         )
 
-                _unswitch_raises[_launch_sparse_kv_bf16](
-                    extra_k is not None, Bool(topk_lengths)
+                _unswitch_raises(
+                    extra_k is not None,
+                    Bool(topk_lengths),
+                    _launch_sparse_kv_bf16,
                 )
                 return
 
             # ---------- FP8 KV sparse dispatch (default) ----------
             # Single K gather4 TMA covering full 576-byte row
             # (INT64, SWIZZLE_NONE, tile_width=72 INT64 = 576 B).
-            comptime _kv_tile_width = mla_config.padded_q_depth // 8
+            comptime _kv_tile_width = mla_config.input_q_depth // 8
             var k_gather4_tma = k.create_gather4_tma_tile[
                 tile_width=_kv_tile_width,
                 tile_stride=_kv_tile_width,
@@ -1751,8 +1901,8 @@ def mla_decode_sm100_sink_split_k[
                 var q_tma_sparse_fp8 = tma_tile_qo[
                     swizzle_mode=mla_config.kv_tma_swizzle_mode,
                     BM=mla_config.BM,
-                    BK=mla_config.BK_QK,
-                    depth=mla_config.q_depth,
+                    BK=mla_config.input_q_depth,
+                    depth=mla_config.input_q_depth,
                 ](ctx, q_ptr, num_rows_q)
 
                 # Unified gather: reuse the SAME contiguous INT64/
@@ -1762,16 +1912,15 @@ def mla_decode_sm100_sink_split_k[
                 # layout in SMEM instead of TMA hardware doing it directly,
                 # so no separate SW64/FP8 gather4 descriptor is needed here.
 
-                @__parameter
-                @always_inline
+                @inline(.always)
                 def _launch_sparse_qkv_fp8[
                     _has_extra_kv: Bool,
                     _has_variable_topk: Bool,
                     _fold_shared_index_val: Bool = False,
                     _q_len_fold_val: Int = 1,
-                ]() raises:
+                ]() raises {imm}:
                     if ragged:
-                        comptime ValidLengthType = NonNullPointer[DType.uint32]
+                        comptime ValidLengthType = NonNullPointer[.uint32]
                         var valid_len: ValidLengthType = {
                             valid_length.ptr.as_imm().as_unsafe_any_origin()
                         }
@@ -1819,7 +1968,7 @@ def mla_decode_sm100_sink_split_k[
                             logical_indices=logical_indices,
                         )
                     else:
-                        comptime ValidLengthType = NullPointer[DType.uint32]
+                        comptime ValidLengthType = NullPointer[.uint32]
                         var valid_len: ValidLengthType = {}
                         launch_mla_sm100_decode_sparse_qkv_fp8[
                             q_type=q_type,
@@ -1865,11 +2014,10 @@ def mla_decode_sm100_sink_split_k[
                             logical_indices=logical_indices,
                         )
 
-                @__parameter
-                @always_inline
+                @inline(.always)
                 def _launch_sparse_qkv_fp8_fold_sel[
                     _has_extra_kv: Bool, _has_variable_topk: Bool
-                ]() raises:
+                ]() raises {imm}:
                     comptime _fold_ok = (
                         _fold_shared_index
                         and not _has_extra_kv
@@ -1889,8 +2037,10 @@ def mla_decode_sm100_sink_split_k[
                                     return
                     _launch_sparse_qkv_fp8[_has_extra_kv, _has_variable_topk]()
 
-                _unswitch_raises[_launch_sparse_qkv_fp8_fold_sel](
-                    extra_k is not None, Bool(topk_lengths)
+                _unswitch_raises(
+                    extra_k is not None,
+                    Bool(topk_lengths),
+                    _launch_sparse_qkv_fp8_fold_sel,
                 )
                 return
 
@@ -1903,20 +2053,19 @@ def mla_decode_sm100_sink_split_k[
                 var q_tma_sparse = tma_tile_qo[
                     swizzle_mode=mla_config.swizzle_mode,
                     BM=mla_config.BM,
-                    BK=mla_config.BK_QK,
-                    depth=mla_config.q_depth,
+                    BK=mla_config.input_q_depth,
+                    depth=mla_config.input_q_depth,
                 ](ctx, q_ptr, num_rows_q)
 
-                @__parameter
-                @always_inline
+                @inline(.always)
                 def _launch_sparse_kv_fp8[
                     _has_extra_kv: Bool,
                     _has_variable_topk: Bool,
                     _fold_shared_index: Bool = False,
                     _q_len_fold: Int = 1,
-                ]() raises:
+                ]() raises {imm}:
                     if ragged:
-                        comptime ValidLengthType = NonNullPointer[DType.uint32]
+                        comptime ValidLengthType = NonNullPointer[.uint32]
                         var valid_len: ValidLengthType = {
                             valid_length.ptr.as_imm().as_unsafe_any_origin()
                         }
@@ -1963,7 +2112,7 @@ def mla_decode_sm100_sink_split_k[
                             ctx,
                         )
                     else:
-                        comptime ValidLengthType = NullPointer[DType.uint32]
+                        comptime ValidLengthType = NullPointer[.uint32]
                         var valid_len: ValidLengthType = {}
                         launch_mla_sm100_decode_sparse_kv_fp8[
                             q_type=q_type,
@@ -2008,11 +2157,10 @@ def mla_decode_sm100_sink_split_k[
                             ctx,
                         )
 
-                @__parameter
-                @always_inline
+                @inline(.always)
                 def _launch_sparse_kv_fp8_fold_sel[
                     _has_extra_kv: Bool, _has_variable_topk: Bool
-                ]() raises:
+                ]() raises {imm}:
                     comptime _fold_ok = (
                         _fold_shared_index
                         and not _has_extra_kv
@@ -2032,8 +2180,10 @@ def mla_decode_sm100_sink_split_k[
                                     return
                     _launch_sparse_kv_fp8[_has_extra_kv, _has_variable_topk]()
 
-                _unswitch_raises[_launch_sparse_kv_fp8_fold_sel](
-                    extra_k is not None, Bool(topk_lengths)
+                _unswitch_raises(
+                    extra_k is not None,
+                    Bool(topk_lengths),
+                    _launch_sparse_kv_fp8_fold_sel,
                 )
                 return
 
@@ -2092,17 +2242,16 @@ def mla_decode_sm100_sink_split_k[
             var q_tma_sparse = tma_tile_qo[
                 swizzle_mode=mla_config.swizzle_mode,
                 BM=mla_config.BM,
-                BK=mla_config.BK_QK,
-                depth=mla_config.q_depth,
+                BK=mla_config.input_q_depth,
+                depth=mla_config.input_q_depth,
             ](ctx, q_ptr, num_rows_q)
 
-            @__parameter
-            @always_inline
+            @inline(.always)
             def _launch_sparse[
                 _has_extra_kv: Bool, _has_variable_topk: Bool
-            ]() raises:
+            ]() raises {imm}:
                 if ragged:
-                    comptime ValidLengthType = NonNullPointer[DType.uint32]
+                    comptime ValidLengthType = NonNullPointer[.uint32]
                     var valid_len: ValidLengthType = {
                         valid_length.ptr.as_imm().as_unsafe_any_origin()
                     }
@@ -2149,7 +2298,7 @@ def mla_decode_sm100_sink_split_k[
                         ctx,
                     )
                 else:
-                    comptime ValidLengthType = NullPointer[DType.uint32]
+                    comptime ValidLengthType = NullPointer[.uint32]
                     var valid_len: ValidLengthType = {}
                     launch_mla_sm100_decode_sparse[
                         q_type=q_type,
@@ -2194,8 +2343,8 @@ def mla_decode_sm100_sink_split_k[
                         ctx,
                     )
 
-            _unswitch_raises[_launch_sparse](
-                extra_k is not None, Bool(topk_lengths)
+            _unswitch_raises(
+                extra_k is not None, Bool(topk_lengths), _launch_sparse
             )
             return
 
@@ -2215,7 +2364,7 @@ def mla_decode_sm100_sink_split_k[
 
         # Q_nope TMA: FP8 content, SWIZZLE_64B, BM x padded_depth (512)
         var q_ptr_fp8_content = rebind[
-            UnsafePointer[Scalar[DType.float8_e4m3fn], origin=MutAnyOrigin]
+            UnsafePointer[Float8_e4m3fn, origin=MutAnyOrigin]
         ](q.ptr)
         var q_nope_tma = tma_tile_qo[
             swizzle_mode=mla_config.content_swizzle_mode,  # SWIZZLE_64B
@@ -2227,7 +2376,7 @@ def mla_decode_sm100_sink_split_k[
         # Q_rope TMA: BF16 rope, SWIZZLE_128B, BM x rope_depth (64)
         # Rope starts at byte offset padded_depth (512) from Q row start.
         var q_ptr_bf16_rope = rebind[
-            UnsafePointer[Scalar[DType.bfloat16], origin=MutAnyOrigin]
+            UnsafePointer[BFloat16, origin=MutAnyOrigin]
         ](q.ptr + mla_config.padded_depth)
         var q_rope_tma = tma_tile_qo[
             swizzle_mode=mla_config.rope_swizzle_mode,  # SWIZZLE_128B
@@ -2267,7 +2416,7 @@ def mla_decode_sm100_sink_split_k[
         )
 
         if ragged:
-            comptime ValidLengthType = NonNullPointer[DType.uint32]
+            comptime ValidLengthType = NonNullPointer[.uint32]
             var valid_len: ValidLengthType = {
                 valid_length.ptr.as_imm().as_unsafe_any_origin()
             }
@@ -2303,7 +2452,7 @@ def mla_decode_sm100_sink_split_k[
                 ctx,
             )
         else:
-            comptime ValidLengthType = NullPointer[DType.uint32]
+            comptime ValidLengthType = NullPointer[.uint32]
             var valid_len: ValidLengthType = {}
             launch_mla_sm100_decode_fp8_per_token_scale_rope_aware[
                 q_type=q_type,
@@ -2343,8 +2492,8 @@ def mla_decode_sm100_sink_split_k[
         var q_tma_fp8 = tma_tile_qo[
             swizzle_mode=mla_config.kv_tma_swizzle_mode,  # SWIZZLE_64B
             BM=mla_config.BM,
-            BK=mla_config.BK_QK,
-            depth=mla_config.q_depth,
+            BK=mla_config.input_q_depth,
+            depth=mla_config.input_q_depth,
         ](ctx, q_ptr_fp8, num_rows_q)
 
         # Layout G config + BM=32 Q TMA tile. Built unconditionally so the
@@ -2355,6 +2504,7 @@ def mla_decode_sm100_sink_split_k[
             group=mla_config.group,
             depth=mla_config.depth,
             q_depth=mla_config.q_depth,
+            input_q_depth=mla_config.input_q_depth,
             dtype_size=mla_config.dtype_size,
             kv_type_size=size_of[k_t.dtype](),
             swizzle_mode=mla_config.swizzle_mode,
@@ -2370,8 +2520,8 @@ def mla_decode_sm100_sink_split_k[
         var q_tma_fp8_g = tma_tile_qo[
             swizzle_mode=mla_config_g.kv_tma_swizzle_mode,  # SWIZZLE_64B
             BM=mla_config_g.BM,  # 32
-            BK=mla_config_g.BK_QK,
-            depth=mla_config_g.q_depth,
+            BK=mla_config_g.input_q_depth,
+            depth=mla_config_g.input_q_depth,
         ](ctx, q_ptr_fp8, num_rows_q)
 
         # Dispatch is routed at comptime by num_q_heads × q_max_seq_len.
@@ -2383,18 +2533,17 @@ def mla_decode_sm100_sink_split_k[
         # Layout-G non-fold, else → Layout-E non-fold.
 
         if ragged:
-            comptime ValidLengthType = NonNullPointer[DType.uint32]
+            comptime ValidLengthType = NonNullPointer[.uint32]
             var valid_len: ValidLengthType = {
                 valid_length.ptr.as_imm().as_unsafe_any_origin()
             }
 
-            @__parameter
-            @always_inline
+            @inline(.always)
             def _launch_r[
                 _fold_q: Bool,
                 _q_len_fold: Int,
                 _layout_g: Bool = False,
-            ]() raises:
+            ]() raises {imm}:
                 comptime if _layout_g:
                     launch_mla_sm100_decode_native_fp8_layout_g[
                         q_type=q_type,
@@ -2483,16 +2632,15 @@ def mla_decode_sm100_sink_split_k[
                 _launch_r[False, 1, False]()  # Layout-E non-fold
             return
         else:
-            comptime ValidLengthType = NullPointer[DType.uint32]
+            comptime ValidLengthType = NullPointer[.uint32]
             var valid_len: ValidLengthType = {}
 
-            @__parameter
-            @always_inline
+            @inline(.always)
             def _launch_n[
                 _fold_q: Bool,
                 _q_len_fold: Int,
                 _layout_g: Bool = False,
-            ]() raises:
+            ]() raises {imm}:
                 comptime if _layout_g:
                     launch_mla_sm100_decode_native_fp8_layout_g[
                         q_type=q_type,
@@ -2588,12 +2736,12 @@ def mla_decode_sm100_sink_split_k[
         var q_tma_op = tma_tile_qo[
             swizzle_mode=mla_config.swizzle_mode,
             BM=mla_config.BM,
-            BK=mla_config.BK_QK,
-            depth=mla_config.q_depth,
+            BK=mla_config.input_q_depth,
+            depth=mla_config.input_q_depth,
         ](ctx, q_ptr, num_rows_q)
 
         if ragged:
-            comptime ValidLengthType = NonNullPointer[DType.uint32]
+            comptime ValidLengthType = NonNullPointer[.uint32]
             var valid_len: ValidLengthType = {
                 valid_length.ptr.as_imm().as_unsafe_any_origin()
             }
@@ -2625,7 +2773,7 @@ def mla_decode_sm100_sink_split_k[
                 ctx,
             )
         else:
-            comptime ValidLengthType = NullPointer[DType.uint32]
+            comptime ValidLengthType = NullPointer[.uint32]
             var valid_len: ValidLengthType = {}
             launch_mla_sm100_decode_enqueue_kernel[
                 q_type=q_type,
@@ -2656,7 +2804,7 @@ def mla_decode_sm100_sink_split_k[
             )
 
 
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_enqueue_kernel[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -2671,16 +2819,16 @@ def launch_mla_sm100_decode_enqueue_kernel[
     q_tma: QOTMATile[
         dtype=q_type,
         BM=config.BM,  # tile_m =64
-        BK=config.BK_QK,  # tile_n =576
+        BK=config.input_q_depth,
         swizzle_mode=config.swizzle_mode,
     ],
     k_tma: KVTMATile[
         dtype=KVLUTType.dtype,
         swizzle_mode=config.kv_tma_swizzle_mode,
         BN=config.BK_PV,  # tile_m =64
-        BK=config.BK_QK,  # tile_n =576
+        BK=config.input_q_depth,
     ],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config.out_rows,
         BK=config.BN_PV // 4,
@@ -2695,10 +2843,8 @@ def launch_mla_sm100_decode_enqueue_kernel[
     q_max_seq_len: Int,
     valid_len: ValidLengthType,
     mask: MaskType,
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     var mla_decode_pack = MLA_Decode_Pack[
@@ -2790,6 +2936,7 @@ def launch_mla_sm100_decode_enqueue_kernel[
         ValidLengthType=ValidLengthType,
         _is_cache_length_accurate=_is_cache_length_accurate,
         ragged=ragged,
+        Engine=scalar_args_buf.Engine,
     ].kernel if _is_old_fp8 else MLA_SM100_Decode_KV_BF16[
         q_type=q_type,
         KVLUTType=KVLUTType,
@@ -2800,6 +2947,7 @@ def launch_mla_sm100_decode_enqueue_kernel[
         ValidLengthType=ValidLengthType,
         _is_cache_length_accurate=_is_cache_length_accurate,
         ragged=ragged,
+        Engine=scalar_args_buf.Engine,
     ].kernel
     # Enable PDL (Programmatic Dependent Launch) for split-K mode to chain
     # the MLA decode kernel with the combine kernel, reducing host synchronization.
@@ -2824,7 +2972,7 @@ def launch_mla_sm100_decode_enqueue_kernel[
     )
 
 
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_native_fp8[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -2845,16 +2993,16 @@ def launch_mla_sm100_decode_native_fp8[
     q_tma: QOTMATile[
         dtype=KVLUTType.dtype,  # FP8 Q TMA
         BM=config.BM,
-        BK=config.BK_QK,
+        BK=config.input_q_depth,
         swizzle_mode=config.kv_tma_swizzle_mode,  # SWIZZLE_64B
     ],
     k_tma: KVTMATile[
         dtype=KVLUTType.dtype,
         swizzle_mode=config.kv_tma_swizzle_mode,
         BN=config.BK_PV,
-        BK=config.BK_QK,
+        BK=config.input_q_depth,
     ],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config.out_rows,
         BK=config.BN_PV // 4,
@@ -2869,10 +3017,8 @@ def launch_mla_sm100_decode_native_fp8[
     q_max_seq_len: Int,
     valid_len: ValidLengthType,
     mask: MaskType,
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Launch the native FP8 MLA decode kernel with FP8 Q TMA.
@@ -2910,6 +3056,7 @@ def launch_mla_sm100_decode_native_fp8[
         ragged=ragged,
         fold_q=fold_q,
         q_len_fold=q_len_fold,
+        Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config.decoding_warp_split_k else PDLLevel.OFF
     ctx.enqueue_function[kernel](
@@ -2935,7 +3082,7 @@ def launch_mla_sm100_decode_native_fp8[
 # 5-stage). Takes two configs because k_tma / o_tma are identical between
 # Layout E and Layout G — `config_e` types those, while `config_g`
 # (`decode_layout_g=True`) types the kernel struct and BM=32 Q TMA tile.
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_native_fp8_layout_g[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -2953,16 +3100,16 @@ def launch_mla_sm100_decode_native_fp8_layout_g[
     q_tma: QOTMATile[
         dtype=KVLUTType.dtype,
         BM=config_g.BM,
-        BK=config_g.BK_QK,
+        BK=config_g.input_q_depth,
         swizzle_mode=config_g.kv_tma_swizzle_mode,  # SWIZZLE_64B
     ],
     k_tma: KVTMATile[
         dtype=KVLUTType.dtype,
         swizzle_mode=config_e.kv_tma_swizzle_mode,
         BN=config_e.BK_PV,
-        BK=config_e.BK_QK,
+        BK=config_e.input_q_depth,
     ],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config_e.out_rows,
         BK=config_e.BN_PV // 4,
@@ -2977,10 +3124,8 @@ def launch_mla_sm100_decode_native_fp8_layout_g[
     q_max_seq_len: Int,
     valid_len: ValidLengthType,
     mask: MaskType,
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Launch the Layout G native FP8 MLA decode kernel (BM=32, 5-stage)."""
@@ -3026,6 +3171,7 @@ def launch_mla_sm100_decode_native_fp8_layout_g[
         ragged=ragged,
         fold_q=fold_q,
         q_len_fold=q_len_fold,
+        Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config_g.decoding_warp_split_k else PDLLevel.OFF
     ctx.enqueue_function[kernel](
@@ -3047,7 +3193,7 @@ def launch_mla_sm100_decode_native_fp8_layout_g[
     )
 
 
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_fp8_per_token_scale_rope_aware[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -3085,7 +3231,7 @@ def launch_mla_sm100_decode_fp8_per_token_scale_rope_aware[
         BK=config.rope_depth,  # 64
     ],
     scale_tma: ScalesTMATile[BN_QK=config.BN_QK],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config.out_rows,
         BK=config.BN_PV // 4,
@@ -3100,12 +3246,8 @@ def launch_mla_sm100_decode_fp8_per_token_scale_rope_aware[
     q_max_seq_len: Int,
     valid_len: ValidLengthType,
     mask: MaskType,
-    q_scale_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    q_scale_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
+    scalar_args_buf: TileTensor[DType.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Launch the FP8 per-token-scale rope-aware MLA decode kernel with split content/rope TMAs.
@@ -3139,6 +3281,7 @@ def launch_mla_sm100_decode_fp8_per_token_scale_rope_aware[
         _is_cache_length_accurate=_is_cache_length_accurate,
         ragged=ragged,
         has_per_token_scales=has_per_token_scales,
+        Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config.decoding_warp_split_k else PDLLevel.OFF
     ctx.enqueue_function[kernel](
@@ -3163,7 +3306,7 @@ def launch_mla_sm100_decode_fp8_per_token_scale_rope_aware[
     )
 
 
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_sparse[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -3181,7 +3324,7 @@ def launch_mla_sm100_decode_sparse[
     q_tma: QOTMATile[
         dtype=q_type,
         BM=config.BM,
-        BK=config.BK_QK,
+        BK=config.input_q_depth,
         swizzle_mode=config.swizzle_mode,
     ],
     # K_nope gather4 TMA: INT64, SWIZZLE_NONE (linear SMEM layout).
@@ -3227,7 +3370,7 @@ def launch_mla_sm100_decode_sparse[
             ](),
         ),
     ],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config.out_rows,
         BK=config.BN_PV // 4,
@@ -3245,10 +3388,8 @@ def launch_mla_sm100_decode_sparse[
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     indices_stride: Int,
     topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    attn_sink_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    attn_sink_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
     # Extra KV parameters (separate always-attend cache).
     extra_k_nope_tma: TMATensorTile[
         DType.int64,
@@ -3294,12 +3435,8 @@ def launch_mla_sm100_decode_sparse[
     extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_indices_stride: Int,
-    extra_scales_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Launch the sparse MLA decode kernel with gather4 TMA descriptors.
@@ -3341,6 +3478,7 @@ def launch_mla_sm100_decode_sparse[
         has_attn_sink=has_attn_sink,
         has_extra_kv=has_extra_kv,
         has_variable_topk=has_variable_topk,
+        Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config.decoding_warp_split_k else PDLLevel.OFF
     # Sparse kernel needs extra SMEM beyond config.smem_used:
@@ -3381,7 +3519,7 @@ def launch_mla_sm100_decode_sparse[
     )
 
 
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_sparse_kv_fp8[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -3404,7 +3542,7 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
     q_tma: QOTMATile[
         dtype=q_type,
         BM=config.BM,
-        BK=config.BK_QK,
+        BK=config.input_q_depth,
         swizzle_mode=config.swizzle_mode,
     ],
     # Single K gather4 TMA: INT64, SWIZZLE_NONE, tile_width=72 INT64 (576 B).
@@ -3415,7 +3553,7 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
             config.BK_PV,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
@@ -3423,12 +3561,12 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
             1,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
     ],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config.out_rows,
         BK=config.BN_PV // 4,
@@ -3446,10 +3584,8 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     indices_stride: Int,
     topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    attn_sink_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    attn_sink_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
     # Extra KV parameters (separate always-attend cache).
     extra_k_tma: TMATensorTile[
         DType.int64,
@@ -3458,7 +3594,7 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
             config.BK_PV,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
@@ -3466,7 +3602,7 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
             1,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
@@ -3475,12 +3611,8 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
     extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_indices_stride: Int,
-    extra_scales_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Launches the all-FP8 sparse MLA decode kernel.
@@ -3519,6 +3651,7 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
         has_variable_topk=has_variable_topk,
         fold_shared_index=fold_shared_index,
         q_len_fold=q_len_fold,
+        Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config.decoding_warp_split_k else PDLLevel.OFF
     # Extra SMEM beyond the BF16-rope sparse kernel's budget:
@@ -3563,7 +3696,7 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
     )
 
 
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_sparse_kv_bf16[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -3581,11 +3714,12 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
     q_tma: QOTMATile[
         dtype=q_type,
         BM=config.BM,
-        BK=config.BK_QK,
+        BK=config.input_q_depth,
         swizzle_mode=config.swizzle_mode,
     ],
-    # Single BF16 gather4 TMA: SWIZZLE_128B, BN_QK rows,
-    # tile_width=padded_q_depth (576 BF16 elems = 1152 bytes).
+    # Single BF16 gather4 TMA: SWIZZLE_128B, BN_QK rows, tile_width =
+    # `input_q_depth` (the row as stored). The box width is swizzle-derived
+    # and so is the same at either row width. Only the column-group count moves.
     k_tma: TMATensorTile[
         DType.bfloat16,
         2,
@@ -3593,7 +3727,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
             config.BK_PV,
             _gather4_box_width[
                 DType.bfloat16,
-                config.padded_q_depth,
+                config.input_q_depth,
                 TensorMapSwizzle.SWIZZLE_128B,
             ](),
         ),
@@ -3601,12 +3735,12 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
             1,
             _gather4_box_width[
                 DType.bfloat16,
-                config.padded_q_depth,
+                config.input_q_depth,
                 TensorMapSwizzle.SWIZZLE_128B,
             ](),
         ),
     ],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config.out_rows,
         BK=config.BN_PV // 4,
@@ -3624,9 +3758,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     indices_stride: Int,
     topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
-    attn_sink_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
+    attn_sink_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
     # Extra KV TMA (separate always-attend cache): BF16, SWIZZLE_128B,
     # same descriptor shape as the main K TMA.
     extra_k_tma: TMATensorTile[
@@ -3636,7 +3768,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
             config.BK_PV,
             _gather4_box_width[
                 DType.bfloat16,
-                config.padded_q_depth,
+                config.input_q_depth,
                 TensorMapSwizzle.SWIZZLE_128B,
             ](),
         ),
@@ -3644,7 +3776,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
             1,
             _gather4_box_width[
                 DType.bfloat16,
-                config.padded_q_depth,
+                config.input_q_depth,
                 TensorMapSwizzle.SWIZZLE_128B,
             ](),
         ),
@@ -3653,9 +3785,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
     extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_indices_stride: Int,
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Launches the all-BF16 sparse MLA decode kernel.
@@ -3682,6 +3812,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
         has_attn_sink=has_attn_sink,
         has_extra_kv=has_extra_kv,
         has_variable_topk=has_variable_topk,
+        Engine=scalar_args_buf.Engine,
     ]
     var block_x = ceildiv(config.num_q_heads, config.BM)
     var grid_dim = (block_x, q_max_seq_len, block_z)
@@ -3728,7 +3859,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
     )
 
 
-@always_inline
+@inline(.always)
 def launch_mla_sm100_decode_sparse_qkv_fp8[
     q_type: DType,
     KVLUTType: MHAOperand,
@@ -3748,7 +3879,7 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
     q_tma: QOTMATile[
         dtype=q_type,
         BM=config.BM,
-        BK=config.BK_QK,
+        BK=config.input_q_depth,
         swizzle_mode=config.kv_tma_swizzle_mode,
     ],
     # Single K gather4 TMA covering the full 576-byte row: INT64,
@@ -3763,7 +3894,7 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
             config.BK_PV,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
@@ -3771,12 +3902,12 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
             1,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
     ],
-    o_tma: QOTMATile[
+    o_tma: ORaggedTMATile[
         dtype=output_type,
         BM=config.out_rows,
         BK=config.BN_PV // 4,
@@ -3794,10 +3925,8 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     indices_stride: Int,
     topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
-    scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-    attn_sink_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
+    scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+    attn_sink_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
     extra_k_tma: TMATensorTile[
         DType.int64,
         2,
@@ -3805,7 +3934,7 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
             config.BK_PV,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
@@ -3813,7 +3942,7 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
             1,
             _gather4_box_width[
                 DType.int64,
-                config.padded_q_depth // 8,
+                config.input_q_depth // 8,
                 TensorMapSwizzle.SWIZZLE_NONE,
             ](),
         ),
@@ -3822,12 +3951,8 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
     extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
     extra_indices_stride: Int,
-    extra_scales_ptr: OptionalReg[
-        UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-    ],
-    scalar_args_buf: TileTensor[
-        DType.int64, address_space=AddressSpace.GENERIC, ...
-    ],
+    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
@@ -3869,6 +3994,7 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
         has_variable_topk=has_variable_topk,
         fold_shared_index=fold_shared_index,
         q_len_fold=q_len_fold,
+        Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config.decoding_warp_split_k else PDLLevel.OFF
     # Extra SMEM beyond config.smem_used (unified-gather native FP8, no

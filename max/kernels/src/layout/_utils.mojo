@@ -12,14 +12,13 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.collections import Optional
-from std.sys import size_of
 from std.sys.intrinsics import readfirstlane
 
 from max.gpu.host import DeviceBuffer, DeviceContext, HostBuffer
-from std.gpu.intrinsics import AMDBufferResource
+from max.gpu.intrinsics import AMDBufferResource
 from max.gpu.compute.mma import mma
 from layout import *
-from layout.layout_tensor import LayoutTensor, LayoutTensorIter
+from layout.layout_tensor import LayoutTensor
 from std.memory.unsafe import bitcast
 
 from std.utils import IndexList
@@ -32,12 +31,8 @@ struct ManagedLayoutTensor[
     layout: Layout,
     *,
 ]:
-    comptime index_type: DType = _get_index_type(
-        Self.layout, AddressSpace.GENERIC
-    )
-    comptime element_type: DType = _get_layout_type(
-        Self.layout, AddressSpace.GENERIC
-    )
+    comptime index_type: DType = _get_index_type(Self.layout, .GENERIC)
+    comptime element_type: DType = _get_layout_type(Self.layout, .GENERIC)
     comptime layout_tensor_type = LayoutTensor[
         Self.dtype,
         Self.layout,
@@ -55,7 +50,7 @@ struct ManagedLayoutTensor[
     ]
     var ctx: DeviceContext
 
-    @always_inline
+    @inline(.always)
     def __init__(out self) raises:
         self.ctx = DeviceContext(api="cpu")
         self.runtime_layout = {}
@@ -65,7 +60,7 @@ struct ManagedLayoutTensor[
         )
         self.ctx.synchronize()
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self, runtime_layout: RuntimeLayout[Self.layout, ...]
     ) raises:
@@ -88,7 +83,7 @@ struct ManagedLayoutTensor[
         )
         self.ctx.synchronize()
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, ctx: DeviceContext) raises:
         self.ctx = ctx
         self.runtime_layout = {}
@@ -100,7 +95,7 @@ struct ManagedLayoutTensor[
         )
         self.ctx.synchronize()
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         runtime_layout: RuntimeLayout[Self.layout, ...],
@@ -181,7 +176,7 @@ struct ManagedLayoutTensor[
             self.ctx.enqueue_copy(self.host_data, self.device_data.value())
             self.ctx.synchronize()
 
-    @always_inline
+    @inline(.always)
     def __deinit__(deinit self):
         pass
 
@@ -199,7 +194,7 @@ def load_to_simd(
     )
 
 
-@always_inline
+@inline(.always)
 def _get_bounds(tensor: LayoutTensor) -> Int:
     comptime assert (
         tensor.element_layout.all_dims_known()
@@ -222,7 +217,7 @@ def _get_bounds(tensor: LayoutTensor) -> Int:
     return offset + 1
 
 
-@always_inline
+@inline(.always)
 def make_amd_buffer_resource(
     tensor: LayoutTensor,
 ) -> AMDBufferResource:
@@ -231,16 +226,7 @@ def make_amd_buffer_resource(
     return AMDBufferResource(readfirstlane(ptr), readfirstlane(size))
 
 
-@always_inline
-def make_amd_buffer_resource(
-    tensor_iter: LayoutTensorIter, bound: Int
-) -> AMDBufferResource:
-    return AMDBufferResource(
-        readfirstlane(tensor_iter.ptr), readfirstlane(bound)
-    )
-
-
-@always_inline
+@inline(.always)
 def _get_bounds(tensor: TileTensor) -> Int:
     """Computes buffer bounds from a rank-2 TileTensor.
 
@@ -257,7 +243,7 @@ def _get_bounds(tensor: TileTensor) -> Int:
     return (dim0 - 1) * stride0 + (dim1 - 1) * stride1 + 1
 
 
-@always_inline
+@inline(.always)
 def make_amd_buffer_resource(
     tensor: TileTensor,
 ) -> AMDBufferResource:
@@ -271,7 +257,7 @@ def make_amd_buffer_resource(
     return AMDBufferResource(readfirstlane(tensor.ptr), readfirstlane(size))
 
 
-@always_inline
+@inline(.always)
 def idx2crd[layout: Layout](idx: Int) -> IndexList[layout.rank()]:
     comptime assert layout.all_dims_known(), "Layout must be known for idx2crd"
     var res = IndexList[layout.rank()]()
@@ -281,22 +267,3 @@ def idx2crd[layout: Layout](idx: Int) -> IndexList[layout.rank()]:
         comptime shape = layout.shape[i].value()
         res[i] = (idx // stride) % shape
     return res
-
-
-@always_inline
-def hash(tensor: LayoutTensor) -> Int:
-    # Calculate hash of the content of the layout tensor, it can be useful for debugging
-    comptime assert (
-        size_of[tensor.dtype]() == 2
-    ), "Only support 2 byte types for hash"
-    var hash_value: Int = 0
-    comptime size = tensor.layout.size()
-
-    for i in range(tensor.dim[0]()):
-        for j in range(tensor.dim[1]()):
-            var val = tensor[i, j]
-            var addr = UnsafePointer(to=val)
-            var addr_int = addr.bitcast[Int16]()
-            var val_int = addr_int[0]
-            hash_value = ((hash_value << 5) + hash_value) + Int(val_int)
-    return hash_value

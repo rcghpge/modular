@@ -24,7 +24,7 @@ ported to `TileTensor` and the tile path is productionized (see GEX-3919).
 
 import extensibility
 
-from std.gpu import block_idx, thread_idx
+from max.gpu import block_idx, thread_idx
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_gpu
 from layout import (
@@ -80,7 +80,7 @@ struct _ComputeFusionTileOp[
 
     var fusion: Self.FusionType
 
-    @always_inline
+    @inline(.always)
     def __call__[
         dtype: DType,
         LayoutType: TensorLayout,
@@ -150,7 +150,7 @@ struct _TileStoreConsumer[
 
     var c: TileTensor[Self.c_dtype, Self.CLayout, MutUntrackedOrigin]
 
-    @always_inline
+    @inline(.always)
     def __call__[
         dtype: DType,
         LayoutType: TensorLayout,
@@ -221,7 +221,7 @@ struct _NaiveMatmulTileAdapter[
     var tile_operation: OptionalReg[Self.TileOperationType]
     var tile_consumer: OptionalReg[Self.TileConsumerType]
 
-    @always_inline
+    @inline(.always)
     def __call__(self) capturing:
         comptime TM = Self.tile_shape[0]
         comptime TN = Self.tile_shape[1]
@@ -238,8 +238,7 @@ struct _NaiveMatmulTileAdapter[
         var tile_row = Int(block_idx.y)
         var tile_col = Int(block_idx.x)
         var tid = Int(thread_idx.x)
-        var i = tid // TN
-        var j = tid % TN
+        var i, j = divmod(tid, TN)
         var row = tile_row * TM + i
         var col = tile_col * TN + j
 
@@ -264,7 +263,7 @@ struct _NaiveMatmulTileAdapter[
         # an `inout` `dst` so the passed-in tile is the output buffer instead of
         # a layout carrier) would remove this dance entirely.
         var dst_local = stack_allocation[
-            dtype=Self.c_dtype, address_space=AddressSpace.LOCAL
+            dtype=Self.c_dtype, address_space=.LOCAL
         ](row_major[1, 1]())
         # TODO(jtodd): comptime assert/where the epilogue address space
         var dst = TileTensor(
@@ -290,7 +289,7 @@ struct _NaiveMatmulTileAdapter[
         # kernel store path); otherwise the adapter stores the fragment itself.
         # The `address_space_cast` back to LOCAL is the store-side half of the
         # staging dance noted above (see TODO(GEX-3912)).
-        var res_local = res.address_space_cast[AddressSpace.LOCAL]()
+        var res_local = res.address_space_cast[.LOCAL]()
         comptime if is_valid_epilogue[Self.TileConsumerType]():
             var consumer = self.tile_consumer.value()
             consumer(

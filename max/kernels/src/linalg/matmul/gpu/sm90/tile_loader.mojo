@@ -30,8 +30,9 @@ from layout import (
     Coord,
     Idx,
     MixedLayout,
-    PointerStorage,
+    DefaultEngine,
     TensorLayout,
+    TensorEngine,
     TileTensor,
 )
 from max.gpu.memory import (
@@ -39,8 +40,8 @@ from max.gpu.memory import (
 )
 from ....structuring import SMemBarrier
 from layout.swizzle import make_swizzle
-from std.gpu import thread_idx
-from std.gpu.globals import WARPGROUP_SIZE
+from max.gpu import thread_idx
+from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.sync import async_copy_arrive
 from structured_kernels.pipeline import (
     ProducerConsumerPipeline,
@@ -59,13 +60,14 @@ trait TileLoader(TrivialRegisterPassable):
 
     comptime _dtype: DType
 
-    @always_inline
+    @inline(.always)
     def load_tile(
         self,
         dst: TileTensor[
             mut=True,
-            address_space=AddressSpace.SHARED,
-            Storage=PointerStorage[element_width=1],
+            address_space=.SHARED,
+            # Shared memory is raw-pointer addressed so pin DefaultEngine.
+            Engine=DefaultEngine[element_width=1],
             ...,
         ],
         mem_barrier: SMemBarrier,
@@ -92,7 +94,7 @@ trait BarrierHandler(TrivialRegisterPassable):
     cp.async: prepare is noop, complete commits copies and signals arrival.
     """
 
-    @always_inline
+    @inline(.always)
     def prepare_stage(self, mem_barrier: SMemBarrier):
         """Prepare barrier for incoming transfers.
 
@@ -104,7 +106,7 @@ trait BarrierHandler(TrivialRegisterPassable):
         """
         ...
 
-    @always_inline
+    @inline(.always)
     def complete_stage(self, mem_barrier: SMemBarrier):
         """Signal that all transfers for this stage are done.
 
@@ -141,11 +143,11 @@ struct TMABarrierHandler[expected_bytes: Int](BarrierHandler):
                 consumer_arrive_count=Int32(num_consumers * cluster_size),
             )
 
-    @always_inline
+    @inline(.always)
     def prepare_stage(self, mem_barrier: SMemBarrier):
         mem_barrier[].expect_bytes(Int32(Self.expected_bytes))
 
-    @always_inline
+    @inline(.always)
     def complete_stage(self, mem_barrier: SMemBarrier):
         pass
 
@@ -171,11 +173,11 @@ struct CPAsyncBarrierHandler(BarrierHandler):
                 consumer_arrive_count=Int32(num_consumers * cluster_size),
             )
 
-    @always_inline
+    @inline(.always)
     def prepare_stage(self, mem_barrier: SMemBarrier):
         pass
 
-    @always_inline
+    @inline(.always)
     def complete_stage(self, mem_barrier: SMemBarrier):
         async_copy_arrive(mem_barrier)
         _ = mem_barrier[].arrive()
@@ -222,7 +224,7 @@ struct TileLoaderTMA[
     var rank: Int
     var multicast_mask: UInt16
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         tma_op: Self.TMATensorTilePtr,
@@ -240,13 +242,14 @@ struct TileLoaderTMA[
         self.rank = rank
         self.multicast_mask = multicast_mask
 
-    @always_inline
+    @inline(.always)
     def load_tile(
         self,
         dst: TileTensor[
             mut=True,
-            address_space=AddressSpace.SHARED,
-            Storage=PointerStorage[element_width=1],
+            address_space=.SHARED,
+            # Shared memory is raw-pointer addressed so pin DefaultEngine.
+            Engine=DefaultEngine[element_width=1],
             ...,
         ],
         mem_barrier: SMemBarrier,
@@ -272,10 +275,10 @@ struct TileLoaderTMA[
         # TileTensor, but TMATensorTile is parameterized on Self._dtype.
         var dst_exact = TileTensor[
             mut=True,
-            dtype=Self._dtype,
+            Self._dtype,
             LayoutType=type_of(dst).LayoutType,
             origin=MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
             linear_idx_type=type_of(dst).linear_idx_type,
         ](
             dst._storage.as_unsafe_any_origin().bitcast[Scalar[Self._dtype]](),
@@ -333,6 +336,7 @@ struct TileLoaderCPAsync[
     thread_layout: MixedLayout,
     swizzle_mode: TensorMapSwizzle,
     vector_size: Int,
+    src_engine: TensorEngine,
 ](TileLoader):
     """Software-based tile loader using cp.async instructions.
 
@@ -346,6 +350,7 @@ struct TileLoaderCPAsync[
         thread_layout: Thread arrangement for distributed copying.
         swizzle_mode: Swizzling pattern for shared memory access.
         vector_size: Number of elements loaded per thread.
+        src_engine: Engine of the source tensor.
     """
 
     comptime _dtype = Self.dtype
@@ -353,21 +358,23 @@ struct TileLoaderCPAsync[
     @__allow_legacy_any_origin_fields
     var src: TileTensor[
         mut=False,
-        dtype=Self.dtype,
+        Self.dtype,
         LayoutType=Self.src_layout,
         origin=ImmutAnyOrigin,
-        address_space=AddressSpace.GENERIC,
+        address_space=.GENERIC,
+        Engine=Self.src_engine,
     ]
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         src: TileTensor[
             mut=False,
-            dtype=Self.dtype,
+            Self.dtype,
             LayoutType=Self.src_layout,
             origin=ImmutAnyOrigin,
-            address_space=AddressSpace.GENERIC,
+            address_space=.GENERIC,
+            Engine=Self.src_engine,
         ],
     ):
         """Initialize the cp.async tile loader.
@@ -381,8 +388,9 @@ struct TileLoaderCPAsync[
         self,
         dst: TileTensor[
             mut=True,
-            address_space=AddressSpace.SHARED,
-            Storage=PointerStorage[element_width=1],
+            address_space=.SHARED,
+            # Shared memory is raw-pointer addressed so pin DefaultEngine.
+            Engine=DefaultEngine[element_width=1],
             ...,
         ],
         mem_barrier: SMemBarrier,
@@ -418,14 +426,14 @@ struct TileLoaderCPAsync[
         # through an exact destination type so the dtype parameter can unify
         # across the source and destination TileTensor arguments.
         # Materialize an exact, any-origin destination tile from the raw
-        # pointer (non-vectorized `PointerStorage[element_width=1]`), then vectorize it.
+        # pointer (non-vectorized `DefaultEngine[element_width=1]`), then vectorize it.
         # Vectorized tiles cannot be reconstructed directly from a pointer.
         var dst_exact = TileTensor[
             mut=True,
-            dtype=Self._dtype,
+            Self._dtype,
             LayoutType=type_of(dst).LayoutType,
             origin=MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
             linear_idx_type=type_of(dst).linear_idx_type,
         ](
             dst._storage.as_unsafe_any_origin().bitcast[Scalar[Self._dtype]](),
@@ -438,7 +446,7 @@ struct TileLoaderCPAsync[
         ](a_gmem_tile, dst_vec)
 
 
-@always_inline
+@inline(.always)
 def async_copy_with_bound_check[
     dtype: DType,
     src_layout: TensorLayout,
@@ -449,22 +457,24 @@ def async_copy_with_bound_check[
     thread_layout: MixedLayout,
     swizzle_mode: TensorMapSwizzle,
 ](
+    # Both operands arrive from `vectorize`, which collapses any source engine
+    # to `DefaultEngine`, and the copy below walks raw pointers anyway.
     src: TileTensor[
         mut=False,
-        dtype=dtype,
+        dtype,
         LayoutType=src_layout,
         origin=ImmutAnyOrigin,
-        address_space=AddressSpace.GENERIC,
-        Storage=PointerStorage[element_width=src_element_width],
+        address_space=.GENERIC,
+        Engine=DefaultEngine[element_width=src_element_width],
         ...,
     ],
     dst: TileTensor[
         mut=True,
-        dtype=dtype,
+        dtype,
         LayoutType=dst_layout,
         origin=MutAnyOrigin,
-        address_space=AddressSpace.SHARED,
-        Storage=PointerStorage[element_width=dst_element_width],
+        address_space=.SHARED,
+        Engine=DefaultEngine[element_width=dst_element_width],
         ...,
     ],
 ):
@@ -562,9 +572,7 @@ def async_copy_with_bound_check[
 
         # Calculate source pointer based on 2D coordinates
         var src_ptr = (
-            src._storage.bitcast[Scalar[dtype]]().address_space_cast[
-                AddressSpace.GLOBAL
-            ]()
+            src._storage.bitcast[Scalar[dtype]]().address_space_cast[.GLOBAL]()
             + dst_coord1
             + dst_coord0 * Int32(src_stride0)
         )

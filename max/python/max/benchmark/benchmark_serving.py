@@ -35,7 +35,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -48,8 +48,6 @@ from transformers import PreTrainedTokenizerBase
 
 if TYPE_CHECKING:
     from max.benchmark.benchmark_shared.server_metrics import ParsedMetrics
-    from max.profiler.gpu import BackgroundRecorder as GPUBackgroundRecorder
-    from max.profiler.gpu import GPUStats
 
 from max.benchmark.benchmark_shared.config import (
     CACHE_RESET_ENDPOINT_MAP,
@@ -66,11 +64,24 @@ from max.benchmark.benchmark_shared.datasets.all import sample_requests
 from max.benchmark.benchmark_shared.datasets.chat_judge import (
     ChatJudgeChatSamples,
 )
+from max.benchmark.benchmark_shared.datasets.image_augmentation import (
+    augment_samples_with_images,
+)
+from max.benchmark.benchmark_shared.datasets.response_format_augmentation import (
+    augment_samples_with_response_format,
+)
+from max.benchmark.benchmark_shared.datasets.tool_augmentation import (
+    augment_samples_with_tools,
+)
 from max.benchmark.benchmark_shared.datasets.types import (
     ChatSamples,
     ChatSession,
     RequestSamples,
     Samples,
+)
+from max.benchmark.benchmark_shared.gpu_metrics_scraper import (
+    DCGMBackgroundRecorder,
+    GPUStatsSnapshot,
 )
 from max.benchmark.benchmark_shared.lora_benchmark_manager import (
     LoRABenchmarkManager,
@@ -119,6 +130,7 @@ from max.benchmark.benchmark_shared.utils import (
     fetch_server_max_model_len,
     get_tokenizer,
     is_castable_to_int,
+    openai_bearer_auth_headers,
     print_section,
     resolve_revision,
     set_ulimit,
@@ -133,7 +145,8 @@ from max.profiler.cpu import (
     CPUMetricsCollector,
     collect_pids_for_port,
 )
-from max.profiler.gpu import GPUDiagContext
+from max.profiler.gpu import GPUDiagContext, GpuStatsRecorder
+from openai.types.chat import ChatCompletionToolParam
 from openai.types.chat.completion_create_params import ResponseFormat
 from pydantic import TypeAdapter, ValidationError
 
@@ -164,6 +177,40 @@ def _expand_pids(pids: list[int]) -> list[int]:
         result.add(pid)
         queue.extend(ppid_to_children.get(pid, []))
     return list(result)
+
+
+def _make_gpu_recorder(
+    *, collect_gpu_stats: bool, gpu_metrics_host: str
+) -> GpuStatsRecorder | None:
+    """Choose the GPU-stats recorder for this run, or None to disable it.
+
+    ``gpu_metrics_host`` is a source selector, not an additive toggle: a
+    non-empty value means the load generator runs off the accelerator node (a
+    disaggregated Mammoth bench pod) with no local engine GPUs, so stats must
+    come from the engine nodes' DCGM exporter(s) rather than local NVML.
+    Running both would double-count and destabilize the device set
+    :func:`_aggregate_gpu_stats` aggregates over. Returned un-entered; the
+    caller is responsible for entering it as a context manager.
+
+    Args:
+        collect_gpu_stats: Whether GPU-stats collection is enabled at all.
+        gpu_metrics_host: Remote DCGM endpoint(s); empty selects local NVML.
+
+    Returns:
+        A recorder to sample GPU stats, or None when disabled/unavailable.
+    """
+    if not collect_gpu_stats:
+        return None
+    if gpu_metrics_host:
+        return DCGMBackgroundRecorder(gpu_metrics_host)
+    try:
+        from max.profiler.gpu import BackgroundRecorder
+    except ImportError:
+        logger.warning(
+            "max.profiler not available, skipping GPU stats collection"
+        )
+        return None
+    return BackgroundRecorder()
 
 
 def parse_response_format(arg: str) -> ResponseFormat:
@@ -200,6 +247,37 @@ def parse_response_format(arg: str) -> ResponseFormat:
         return TypeAdapter(ResponseFormat).validate_json(arg)
     except (json.JSONDecodeError, ValidationError) as e:
         raise ValueError(f"Invalid response format: {e}") from e
+
+
+def parse_tools(arg: str) -> list[Mapping[str, Any]]:
+    """Parses tool definitions from a CLI arg (inline JSON or @filepath).
+
+    Args:
+        arg: Either a JSON list or '@path/to/tools.json' to load from file.
+
+    Returns:
+        The tool definitions, validated against the OpenAI tool shape.
+
+    Raises:
+        ValueError: If the JSON is invalid, the file cannot be read, or the
+            value is not a non-empty list of OpenAI tool definitions.
+    """
+    source = "tools"
+    raw = arg
+    if arg.startswith("@"):
+        file_path = Path(arg[1:])
+        source = f"tools file {file_path}"
+        try:
+            raw = file_path.read_text()
+        except FileNotFoundError as e:
+            raise ValueError(f"Tools file not found: {file_path}") from e
+    try:
+        tools = TypeAdapter(list[ChatCompletionToolParam]).validate_json(raw)
+    except (json.JSONDecodeError, ValidationError) as e:
+        raise ValueError(f"Invalid {source}: {e}") from e
+    if not tools:
+        raise ValueError(f"Invalid {source}: the list is empty")
+    return [dict(tool) for tool in tools]
 
 
 def get_default_trace_path() -> str:
@@ -512,6 +590,7 @@ async def benchmark(
             sampling=args.sampling,
             disable_tqdm=args.disable_tqdm,
             max_concurrency=args.warmup_concurrency,
+            use_session_id_as_cache_salt=args.use_session_id_as_cache_salt,
         )
 
     # Capture baseline server metrics after priming so priming requests
@@ -540,18 +619,12 @@ async def benchmark(
         semaphore = contextlib.nullcontext()
 
     with contextlib.ExitStack() as benchmark_stack:
-        gpu_recorder: GPUBackgroundRecorder | None = None
-        if args.collect_gpu_stats:
-            try:
-                from max.profiler.gpu import BackgroundRecorder
-            except ImportError:
-                logger.warning(
-                    "max.profiler not available, skipping GPU stats collection"
-                )
-            else:
-                gpu_recorder = benchmark_stack.enter_context(
-                    BackgroundRecorder()
-                )
+        gpu_recorder = _make_gpu_recorder(
+            collect_gpu_stats=args.collect_gpu_stats,
+            gpu_metrics_host=args.gpu_metrics_host,
+        )
+        if gpu_recorder is not None:
+            gpu_recorder = benchmark_stack.enter_context(gpu_recorder)
 
         cpu_collector = None
         if args.collect_cpu_stats:
@@ -667,6 +740,7 @@ async def benchmark(
                 burstiness=args.burstiness,
                 est_ttft_ms=args.warmup_delay_estimated_ttft_ms,
                 est_tpot_ms=args.warmup_delay_estimated_tpot_ms,
+                use_session_id_as_cache_salt=args.use_session_id_as_cache_salt,
             )
             all_outputs = [
                 out for outs in outputs_by_session.values() for out in outs
@@ -688,6 +762,7 @@ async def benchmark(
                 warmup_delay_ms=args.chat_warmup_delay_ms,
                 max_concurrency=max_concurrency,
                 sampling=args.sampling,
+                use_session_id_as_cache_salt=args.use_session_id_as_cache_salt,
             )
             all_outputs = [
                 out for outs in outputs_by_session.values() for out in outs
@@ -715,6 +790,7 @@ async def benchmark(
                 burstiness=args.burstiness,
                 est_ttft_ms=args.warmup_delay_estimated_ttft_ms,
                 est_tpot_ms=args.warmup_delay_estimated_tpot_ms,
+                use_session_id_as_cache_salt=args.use_session_id_as_cache_salt,
             )
             all_outputs = [
                 out for outs in outputs_by_session.values() for out in outs
@@ -773,7 +849,7 @@ async def benchmark(
             api_url=session.base_url,
         )
 
-    gpu_metrics: list[dict[str, GPUStats]] | None = None
+    gpu_metrics: list[GPUStatsSnapshot] | None = None
     if args.collect_gpu_stats and gpu_recorder is not None:
         gpu_metrics = gpu_recorder.stats
 
@@ -823,6 +899,7 @@ async def benchmark(
             metrics_by_endpoint=endpoint_metrics,
             spec_decode_stats=spec_decode_stats,
             kv_block_size=args.kv_block_size,
+            record_request_text=args.record_request_text,
         )
         if outputs_by_session is not None:
             text_result.session_server_stats = {
@@ -849,7 +926,6 @@ async def benchmark(
         achieved_request_rate=achieved_request_rate,
         collect_gpu_stats=args.collect_gpu_stats,
         collect_cpu_stats=args.collect_cpu_stats,
-        spec_decode_stats=spec_decode_stats,
         lora_manager=session.lora_manager,
     )
 
@@ -934,9 +1010,19 @@ def _apply_workload_to_config(
 
 
 def flush_prefix_cache(
-    backend: Backend, host: str, port: int, dry_run: bool
+    backend: Backend,
+    host: str,
+    port: int,
+    dry_run: bool,
+    base_url: str | None = None,
 ) -> None:
-    """Flush the serving engine's prefix cache via HTTP POST."""
+    """Flush the serving engine's prefix cache via HTTP POST.
+
+    When ``base_url`` is set (a remote endpoint, e.g. ``--base-url``), it
+    replaces the ``http://<host>:<port>`` prefix and the request carries an
+    ``Authorization: Bearer $OPENAI_API_KEY`` header, matching the auth the
+    benchmark requests themselves send.
+    """
     if backend not in CACHE_RESET_ENDPOINT_MAP:
         raise ValueError(
             f"Cannot flush prefix cache for {backend} backend: this backend"
@@ -944,11 +1030,16 @@ def flush_prefix_cache(
         )
     import requests as _http_requests  # lazy - avoid hard dep for non-sweep use
 
-    api_url = f"http://{host}:{port}{CACHE_RESET_ENDPOINT_MAP[backend]}"
+    headers: Mapping[str, str] | None = None
+    if base_url is not None:
+        api_url = f"{base_url.rstrip('/')}{CACHE_RESET_ENDPOINT_MAP[backend]}"
+        headers = openai_bearer_auth_headers()
+    else:
+        api_url = f"http://{host}:{port}{CACHE_RESET_ENDPOINT_MAP[backend]}"
     if dry_run:
         logger.info(f"Dry-run flush: POST {api_url}")
         return
-    response = _http_requests.post(api_url)
+    response = _http_requests.post(api_url, headers=headers)
     if response.status_code == 400:
         logger.warning(
             f"Prefix caching is not enabled on backend {backend} at {api_url};"
@@ -1033,20 +1124,35 @@ def _session_sort_key(sid: str) -> tuple[int, int, str]:
         return (1, 0, sid)
 
 
+_PATH_SUPPORTING_WORKLOAD_KEYS = (
+    "dataset-path",
+    "output-lengths",
+    "extra-body",
+    "agentic-tool-profiles",
+)
+"""Workload keys whose value may name a file rather than hold content."""
+
+
 def _load_workload_yaml(args: ServingBenchmarkConfig) -> None:
     if not args.workload_config:
         return
     with open(args.workload_config) as workload_file:
         workload = yaml.safe_load(workload_file)
     # Resolve relative paths against the YAML's directory.
-    for key in ("dataset-path", "output-lengths"):
-        if workload.get(key) is not None:
-            if is_castable_to_int(str(workload[key])):
-                continue
-            path = Path(os.path.expandvars(workload[key]))
-            if not path.is_absolute():
-                path = Path(args.workload_config).parent / path
-            workload[key] = path
+    for key in _PATH_SUPPORTING_WORKLOAD_KEYS:
+        value = workload.get(key)
+        # A key may hold the value itself -- a mapping, or inline JSON --
+        # rather than a path to it.
+        if (
+            not isinstance(value, str)
+            or value.lstrip().startswith("{")
+            or is_castable_to_int(value)
+        ):
+            continue
+        path = Path(os.path.expandvars(value))
+        if not path.is_absolute():
+            path = Path(args.workload_config).parent / path
+        workload[key] = path
     # Resolve max_concurrency: CLI > YAML.
     yaml_max_concurrency = workload.pop("max-concurrency", None)
     if (
@@ -1143,6 +1249,28 @@ def _seed_for_concurrency(seed: int | None, max_concurrency: int | None) -> int:
     return int.from_bytes(digest[:4], "big")
 
 
+def _run_prefix_len(
+    args: ServingBenchmarkConfig,
+    benchmark_task: BenchmarkTask,
+    tokenizer: PreTrainedTokenizerBase | None,
+) -> int:
+    """Tokens ``--force-unique-runs`` adds to a session's first measured turn.
+
+    Zero when the flag is off, when there is no tokenizer, and for
+    pixel-generation tasks, which do not track ``prompt_len`` at all.
+
+    ``benchmark()`` builds the real prefix, but that runs after sampling, so
+    the budget check here has to measure an equivalent one. Only the length
+    matters and every ``uuid4()`` has the same shape, so a throwaway one is
+    as good as the prefix the run will actually use.
+    """
+    if not args.force_unique_runs or tokenizer is None:
+        return 0
+    if benchmark_task in PIXEL_GENERATION_TASKS:
+        return 0
+    return len(tokenizer.encode(f"{uuid4()}: ", add_special_tokens=False))
+
+
 def _sample_for_seed(
     args: ServingBenchmarkConfig,
     benchmark_task: BenchmarkTask,
@@ -1160,20 +1288,41 @@ def _sample_for_seed(
         chat=chat,
     )
 
-    # Inject response_format into all sampled requests if specified
     if args.response_format is not None:
-        response_format = parse_response_format(args.response_format)
-        if isinstance(samples, RequestSamples):
-            for request in samples.requests:
-                request.response_format = response_format
-            logger.info(
-                f"Injected response_format into {len(samples.requests)} requests"
-            )
-        else:
-            logger.warning(
-                "response_format is only supported for single-turn benchmarks, "
-                "ignoring for multi-turn chat sessions"
-            )
+        augment_samples_with_response_format(
+            samples,
+            response_format=parse_response_format(args.response_format),
+            fraction=args.response_format_fraction,
+            turn=args.response_format_turn,
+            seed=seed,
+        )
+
+    if args.tools is not None:
+        augment_samples_with_tools(
+            samples,
+            tools=parse_tools(args.tools),
+            fraction=args.tools_fraction,
+            tokenizer=tokenizer,
+            seed=seed,
+        )
+
+    if args.image_fraction > 0:
+        augment_samples_with_images(
+            samples,
+            fraction=args.image_fraction,
+            image_count=args.image_count,
+            image_long_side=args.image_long_side,
+            image_aspect_ratio=args.image_aspect_ratio,
+            turn=args.image_turn,
+            max_chat_len=(
+                tokenizer.model_max_length if tokenizer is not None else None
+            ),
+            run_prefix_len=_run_prefix_len(args, benchmark_task, tokenizer),
+            # Offset from the response-format mixer's stream so the two pick
+            # independently rather than in lockstep.
+            seed=None if seed is None else seed + 1,
+        )
+
     return samples
 
 
@@ -1224,11 +1373,17 @@ def _build_session(args: ServingBenchmarkConfig) -> BenchmarkSession:
 
     if benchmark_task == "text-generation":
         model_max_length = args.model_max_length
-        if model_max_length is None and not args.dry_run:
+        if model_max_length is None:
             # Best-effort: when the server is already up (e.g. benchmarking a
             # running deployment), adopt its real context limit so the
             # context-length guards derived from tokenizer.model_max_length
             # bind even when the tokenizer reports the HF unbounded sentinel.
+            #
+            # --dry-run asks this too. It returns before the later clamp in
+            # main_with_parsed_args, so this is its only chance to learn the
+            # real bound, and without it a preview reports a workload the
+            # server would truncate. Costs one 2s-timeout request when no
+            # server is listening.
             model_max_length = fetch_server_max_model_len(
                 base_url, model_id, timeout_s=2.0
             )
@@ -1236,6 +1391,13 @@ def _build_session(args: ServingBenchmarkConfig) -> BenchmarkSession:
                 logger.info(
                     "Using server-reported max_model_len=%d from %s/v1/models",
                     model_max_length,
+                    base_url,
+                )
+            elif args.dry_run:
+                logger.warning(
+                    "No server reachable at %s; --dry-run is using the"
+                    " tokenizer's context limit, so any workload the server"
+                    " would truncate is reported here as if it fit.",
                     base_url,
                 )
         logger.info(f"getting tokenizer. api url: {api_url}")
@@ -1261,9 +1423,7 @@ def _build_session(args: ServingBenchmarkConfig) -> BenchmarkSession:
         lora_manager = LoRABenchmarkManager(
             lora_paths=args.lora_paths,
             num_requests=num_requests,
-            traffic_ratios=args.per_lora_traffic_ratio
-            if args.per_lora_traffic_ratio
-            else None,
+            traffic_ratios=args.per_lora_traffic_ratio or None,
             uniform_ratio=args.lora_uniform_traffic_ratio,
             seed=args.seed,
             max_concurrent_lora_ops=args.max_concurrent_lora_ops,
@@ -1274,9 +1434,7 @@ def _build_session(args: ServingBenchmarkConfig) -> BenchmarkSession:
     trace_path = None
     if args.trace:
         assert_nvidia_gpu()
-        trace_path = (
-            args.trace_file if args.trace_file else get_default_trace_path()
-        )
+        trace_path = args.trace_file or get_default_trace_path()
         logger.info(f"Tracing enabled, output: {trace_path}")
 
     return BenchmarkSession(
@@ -1381,7 +1539,11 @@ def _run_benchmark_sweep(
             for _iteration in range(args.num_iters):
                 if args.flush_prefix_cache:
                     flush_prefix_cache(
-                        args.backend, args.host, args.port, args.dry_run
+                        args.backend,
+                        args.host,
+                        args.port,
+                        args.dry_run,
+                        base_url=args.base_url,
                     )
 
                 logger.info("mc=%s seed=%d", mc, mc_seed)
@@ -1478,6 +1640,7 @@ def main_with_parsed_args(
         timeout_s=args.server_ready_timeout_s,
         backend=args.backend,
         liveness_check=server_liveness,
+        base_url=args.base_url,
     )
 
     # The server may not have been up during session build (it is launched
@@ -1566,7 +1729,7 @@ def parse_args(
     def _capture(
         config: Annotated[
             ServingBenchmarkConfig, Parameter(name="*")
-        ] = ServingBenchmarkConfig(),
+        ] = ServingBenchmarkConfig(),  # noqa: B008
     ) -> None:
         parsed_configs.append(config)
 

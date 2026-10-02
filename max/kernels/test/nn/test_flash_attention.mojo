@@ -35,13 +35,11 @@ from std.utils.index import Index
 def reference_attention_bshd[
     dtype: DType
 ](
-    q_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
-    k_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
-    v_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
-    mask_nd: LayoutTensor[dtype, address_space=AddressSpace.GENERIC, ...],
-    output_nd: LayoutTensor[
-        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
-    ],
+    q_nd: LayoutTensor[dtype, address_space=.GENERIC, ...],
+    k_nd: LayoutTensor[dtype, address_space=.GENERIC, ...],
+    v_nd: LayoutTensor[dtype, address_space=.GENERIC, ...],
+    mask_nd: LayoutTensor[dtype, address_space=.GENERIC, ...],
+    output_nd: LayoutTensor[mut=True, dtype, address_space=.GENERIC, ...],
     scale: Float32,
 ) raises:
     comptime assert dtype.is_floating_point(), "dtype must be floating point"
@@ -306,12 +304,12 @@ struct TestCaseConfig[batch_rank: Int](TrivialRegisterPassable):
     var depth_dim: Int
     var scale: Float32
 
-    @always_inline
+    @inline(.always)
     def prev_seq_len(self) -> Int:
         """Returns the KV cache length from previous iterations."""
         return self.kv_seq_len - self.seq_len
 
-    @always_inline
+    @inline(.always)
     def build_shape[
         *, shape_rank: Int = Self.rank, is_kv: Bool = False
     ](self, x: Int, y: Int) -> IndexList[shape_rank]:
@@ -337,7 +335,7 @@ struct TestCaseConfig[batch_rank: Int](TrivialRegisterPassable):
 
         return shape
 
-    @always_inline
+    @inline(.always)
     def build_shape_bshd[
         *, shape_rank: Int = Self.rank, is_kv: Bool = False
     ](self, x: Int, y: Int) -> IndexList[shape_rank]:
@@ -456,21 +454,21 @@ def test_case[
     reference_attention_bshd(q, k, v, mask, ref_output, cfg.scale)
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_k_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
         return k.load[width=simd_width](rebind[IndexList[k.rank]](idx))
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_v_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
         return v.load[width=simd_width](rebind[IndexList[v.rank]](idx))
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def mask_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
@@ -622,7 +620,7 @@ def test_case_split_kv[
 
     # Define input lambdas for split KV cache attn `flash_attention_split_kv`.
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_k_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
@@ -633,7 +631,7 @@ def test_case_split_kv[
         )
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_v_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
@@ -644,7 +642,7 @@ def test_case_split_kv[
         )
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_k_cache_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
@@ -653,7 +651,7 @@ def test_case_split_kv[
         )
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_v_cache_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
@@ -662,7 +660,7 @@ def test_case_split_kv[
         )
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def mask_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
@@ -806,21 +804,21 @@ def test_flash_attention_with_sinks[dtype: DType]() raises:
 
     # Test flash attention without sinks
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_k_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
         return k.load[width=simd_width](rebind[IndexList[k.rank]](idx))
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def input_v_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
         return v.load[width=simd_width](rebind[IndexList[v.rank]](idx))
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def mask_fn[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[dtype, simd_width]:
@@ -946,6 +944,6 @@ def test_flash_attention_with_sinks[dtype: DType]() raises:
 
 
 def main() raises:
-    test_flash_attention[DType.float32]()
-    test_flash_attention_split_kv[DType.float32]()
-    test_flash_attention_with_sinks[DType.float32]()
+    test_flash_attention[.float32]()
+    test_flash_attention_split_kv[.float32]()
+    test_flash_attention_with_sinks[.float32]()

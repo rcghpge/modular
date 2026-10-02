@@ -31,10 +31,11 @@ from max.gpu.primitives.grid_controls import PDLLevel
 from std.sys import size_of
 
 from internal_utils import Table
-from layout import Coord, RowMajorLayout, TileTensor
+from layout import Coord, RowMajorLayout, TensorEngine, TileTensor
 from std.logger import Logger
 from std.utils.index import Index, IndexList
 
+from .....utils import identity_compute_fn
 from .dispatch import (
     matmul_dispatch_sm100,
     sm100_heuristic_and_outliers_dispatch,
@@ -49,11 +50,12 @@ from .tuning_configs import (
 comptime logger = Logger()
 
 
-@always_inline
+@inline(.always)
 def fused_bias_residual_matmul_dispatch_sm100[
     c_type: DType,
     a_type: DType,
     b_type: DType,
+    EpilogueEngine: TensorEngine,
     //,
     transpose_b: Bool = False,
     pdl_level: PDLLevel = PDLLevel(),
@@ -64,7 +66,10 @@ def fused_bias_residual_matmul_dispatch_sm100[
     a: TileTensor[mut=False, a_type, ...],
     b: TileTensor[mut=False, b_type, ...],
     epilogue_tensor: TileTensor[
-        c_type, RowMajorLayout[Int64, Int64], ImmutAnyOrigin
+        c_type,
+        RowMajorLayout[Int64, Int64],
+        ImmutAnyOrigin,
+        Engine=EpilogueEngine,
     ],
     ctx: DeviceContext,
 ) raises:
@@ -79,6 +84,7 @@ def fused_bias_residual_matmul_dispatch_sm100[
         c_type: Output element dtype of `c`.
         a_type: Element dtype of `a`; must equal `b_type` and be bfloat16.
         b_type: Element dtype of `b`; must equal `a_type` and be bfloat16.
+        EpilogueEngine: Engine of the `epilogue_tensor` bias/residual tensor.
         transpose_b: Whether `b` is transposed.
         pdl_level: Persistent kernel launch grid control level.
         epilogue_is_1d: Treats `epilogue_tensor` as a 1D bias broadcast across rows.
@@ -104,7 +110,7 @@ def fused_bias_residual_matmul_dispatch_sm100[
     comptime static_K = a.static_shape[1]
 
     comptime assert (
-        a_type == b_type == DType.bfloat16
+        a_type == b_type == .bfloat16
     ), "a_type and b_type must be bfloat16 and must be the same"
     comptime assert c_type in (DType.bfloat16,), "c_type must be bfloat16"
 
@@ -120,7 +126,7 @@ def fused_bias_residual_matmul_dispatch_sm100[
     # broadcasting row 0 for a 1D bias. Every non-TMA kernel (GEMV, small-MN,
     # cuBLAS) applies this exactly once.
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(c, epilogue_tensor)
     def bias_residual_elementwise_lambda[
         _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
@@ -186,7 +192,15 @@ def fused_bias_residual_matmul_dispatch_sm100[
                 pdl_level=pdl_level,
                 has_epilogue_tensor=True,
                 epilogue_is_1d=epilogue_is_1d,
-            ](c, a, b, ctx, epilogue_tensor=OptionalReg(epilogue_tensor))
+                has_compute_fn=False,
+            ](
+                c,
+                a,
+                b,
+                identity_compute_fn,
+                ctx,
+                epilogue_tensor=OptionalReg(epilogue_tensor),
+            )
             if status:
                 logger.info(
                     "------ Fused matmul+bias/residual: TMA epilogue ----"

@@ -23,6 +23,8 @@ family.
    pipelines.architectures.deepseekV3
    pipelines.architectures.deepseekV3_2
    pipelines.architectures.deepseekV3_nextn
+   pipelines.architectures.deepseekV4
+   pipelines.architectures.dflash2_qwen3_5
    pipelines.architectures.dflash_llama3
    pipelines.architectures.diffusion_gemma
    pipelines.architectures.dspark_draft
@@ -39,6 +41,7 @@ family.
    pipelines.architectures.hy_v3
    pipelines.architectures.idefics3
    pipelines.architectures.ideogram4
+   pipelines.architectures.inkling
    pipelines.architectures.internvl
    pipelines.architectures.kimik2_5
    pipelines.architectures.laguna
@@ -46,7 +49,9 @@ family.
    pipelines.architectures.llama3
    pipelines.architectures.llama4
    pipelines.architectures.mamba
+   pipelines.architectures.mimo_v2
    pipelines.architectures.minimax_m2
+   pipelines.architectures.minimax_music3
    pipelines.architectures.mistral
    pipelines.architectures.mistral3
    pipelines.architectures.mpnet
@@ -65,14 +70,20 @@ family.
    pipelines.architectures.qwen_image
    pipelines.architectures.qwen_image_edit
    pipelines.architectures.step3p5
+   pipelines.architectures.unified_dflash2_qwen3_5
+   pipelines.architectures.unified_dflash_gemma4_31b
    pipelines.architectures.unified_dflash_kimi_k25
    pipelines.architectures.unified_dflash_llama3
+   pipelines.architectures.unified_dflash_mimo_v2
+   pipelines.architectures.unified_dspark_deepseekV4
    pipelines.architectures.unified_dspark_gemma4_12b
    pipelines.architectures.unified_dspark_gemma4_31b
    pipelines.architectures.unified_eagle_llama3
    pipelines.architectures.unified_mtp_deepseekV3
    pipelines.architectures.unified_mtp_gemma4
    pipelines.architectures.unified_mtp_glm5_2
+   pipelines.architectures.unified_mtp_inkling
+   pipelines.architectures.unified_mtp_qwen3_5
    pipelines.architectures.wan
 
 Text generation
@@ -85,6 +96,8 @@ Text generation
    ~max.pipelines.architectures.deepseekV3
    ~max.pipelines.architectures.deepseekV3_2
    ~max.pipelines.architectures.deepseekV3_nextn
+   ~max.pipelines.architectures.deepseekV4
+   ~max.pipelines.architectures.dflash2_qwen3_5
    ~max.pipelines.architectures.dflash_llama3
    ~max.pipelines.architectures.diffusion_gemma
    ~max.pipelines.architectures.dspark_draft
@@ -99,6 +112,7 @@ Text generation
    ~max.pipelines.architectures.granite
    ~max.pipelines.architectures.hy_v3
    ~max.pipelines.architectures.idefics3
+   ~max.pipelines.architectures.inkling
    ~max.pipelines.architectures.internvl
    ~max.pipelines.architectures.kimik2_5
    ~max.pipelines.architectures.laguna
@@ -106,6 +120,7 @@ Text generation
    ~max.pipelines.architectures.llama3
    ~max.pipelines.architectures.llama4
    ~max.pipelines.architectures.mamba
+   ~max.pipelines.architectures.mimo_v2
    ~max.pipelines.architectures.minimax_m2
    ~max.pipelines.architectures.mistral
    ~max.pipelines.architectures.mistral3
@@ -121,14 +136,20 @@ Text generation
    ~max.pipelines.architectures.qwen3_5
    ~max.pipelines.architectures.qwen3vl_moe
    ~max.pipelines.architectures.step3p5
+   ~max.pipelines.architectures.unified_dflash2_qwen3_5
+   ~max.pipelines.architectures.unified_dflash_gemma4_31b
    ~max.pipelines.architectures.unified_dflash_kimi_k25
    ~max.pipelines.architectures.unified_dflash_llama3
+   ~max.pipelines.architectures.unified_dflash_mimo_v2
+   ~max.pipelines.architectures.unified_dspark_deepseekV4
    ~max.pipelines.architectures.unified_dspark_gemma4_12b
    ~max.pipelines.architectures.unified_dspark_gemma4_31b
    ~max.pipelines.architectures.unified_eagle_llama3
    ~max.pipelines.architectures.unified_mtp_deepseekV3
    ~max.pipelines.architectures.unified_mtp_gemma4
    ~max.pipelines.architectures.unified_mtp_glm5_2
+   ~max.pipelines.architectures.unified_mtp_inkling
+   ~max.pipelines.architectures.unified_mtp_qwen3_5
 
 Embeddings
 ----------
@@ -151,3 +172,11 @@ Image generation
    ~max.pipelines.architectures.qwen_image
    ~max.pipelines.architectures.qwen_image_edit
    ~max.pipelines.architectures.wan
+
+Audio generation
+----------------
+
+.. autosummary::
+   :nosignatures:
+
+   ~max.pipelines.architectures.minimax_music3

@@ -21,7 +21,7 @@ from max.driver import CPU, Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef
-from max.nn.kv_cache import KVCacheInputs, MHAKVCacheParams
+from max.nn.kv_cache import KVCacheInputsPerDevice, MHAKVCacheParams
 from max.pipelines.context import (
     ImageMetadata,
     TextAndVisionContext,
@@ -40,15 +40,16 @@ def gen_prompt(length: int) -> np.ndarray:
 
 
 def get_blocks_from_kv_tuple(
-    kv_tuple: KVCacheInputs[Buffer, Buffer],
+    kv_tuple: tuple[KVCacheInputsPerDevice[Buffer, Buffer], ...],
 ) -> list[list[int]]:
-    return kv_tuple.inputs[0].lookup_table.to_numpy().tolist()
+    return kv_tuple[0].lookup_table.to_numpy().tolist()
 
 
 # Runtime lookup tables are padded with sentinel `total_num_pages` in any
 # unused columns, so tests should compare only assigned block ids.
 def assigned_blocks(
-    kv_tuple: KVCacheInputs[Buffer, Buffer], total_num_pages: int
+    kv_tuple: tuple[KVCacheInputsPerDevice[Buffer, Buffer], ...],
+    total_num_pages: int,
 ) -> list[list[int]]:
     return [
         [block for block in row if block != total_num_pages]
@@ -57,18 +58,18 @@ def assigned_blocks(
 
 
 def get_uncommitted_and_committed_block_counts(
-    kv_tuple: KVCacheInputs[Buffer, Buffer],
+    kv_tuple: tuple[KVCacheInputsPerDevice[Buffer, Buffer], ...],
 ) -> list[list[int]]:
-    per_device = kv_tuple.inputs[0]
+    per_device = kv_tuple[0]
     max_prompt = per_device.max_prompt_length.to_numpy().tolist()
     max_cache = per_device.max_cache_length.to_numpy().tolist()
     return [[max_prompt[0], max_cache[0]]]
 
 
 def get_cache_lengths_from_kv_tuple(
-    kv_tuple: KVCacheInputs[Buffer, Buffer],
+    kv_tuple: tuple[KVCacheInputsPerDevice[Buffer, Buffer], ...],
 ) -> list[int]:
-    return kv_tuple.inputs[0].cache_lengths.to_numpy().tolist()
+    return kv_tuple[0].cache_lengths.to_numpy().tolist()
 
 
 def create_kv_cache(
@@ -201,21 +202,25 @@ async def test_prefix_caching_reset_prefix_cache() -> None:
     context_3 = create_text_context(prompt)
 
     # Get cache hit of 0 tokens since the prefix cache is empty
-    with kv_manager.reserve([[context_1]]):
-        kv_manager.runtime_inputs([[context_1]])
-        context_1.update(15)
-        kv_manager.step(context_1)
+    kv_manager.claim(context_1)
+    kv_manager.alloc(context_1)
+    kv_manager.runtime_inputs([[context_1]])
+    context_1.update(15)
+    kv_manager.step(context_1)
+    kv_manager.release(context_1)
     assert kv_manager.get_metrics_aggregated().cache_tokens == 0
 
     # Get cache hit of 4 tokens
-    with kv_manager.reserve([[context_2]]):
-        pass
+    kv_manager.claim(context_2)
+    kv_manager.alloc(context_2)
+    kv_manager.release(context_2)
     assert kv_manager.get_metrics_aggregated().cache_tokens == 4
 
     # Get cache hit of 0 tokens since we reset the prefix cache
     kv_manager.reset_prefix_cache()
-    with kv_manager.reserve([[context_3]]):
-        pass
+    kv_manager.claim(context_3)
+    kv_manager.alloc(context_3)
+    kv_manager.release(context_3)
     assert kv_manager.get_metrics_aggregated().cache_tokens == 4
 
 
@@ -231,25 +236,27 @@ async def test_prefix_caching_with_repeating_prompt() -> None:
         prompt = np.array([100, 101, 102, 103, 104], dtype=np.int64)
         batch = [create_text_context(prompt)]
         context = batch[0]
-        with kv_manager.reserve([[context]]):
-            _ = kv_manager.runtime_inputs([batch])
+        kv_manager.claim(context)
+        kv_manager.alloc(context)
+        _ = kv_manager.runtime_inputs([batch])
 
-            if i == 0:
-                # During first fetch, we do not get a cache hit so we use 5 blocks.
-                available_blocks -= 5
-            else:
-                # During later fetches, we get a cache hit so we use 1 block.
-                available_blocks -= 1
-            assert available_blocks >= 0
+        if i == 0:
+            # During first fetch, we do not get a cache hit so we use 5 blocks.
+            available_blocks -= 5
+        else:
+            # During later fetches, we get a cache hit so we use 1 block.
+            available_blocks -= 1
+        assert available_blocks >= 0
 
-            context.update(42)
-            for ctx in batch:
-                kv_manager.step(ctx)
+        context.update(42)
+        for ctx in batch:
+            kv_manager.step(ctx)
 
-            if i != 0:
-                # During later fetches, we will just release the block we wrote to
-                # since a different block already exists for the same token.
-                available_blocks += 1
+        if i != 0:
+            # During later fetches, we will just release the block we wrote to
+            # since a different block already exists for the same token.
+            available_blocks += 1
+        kv_manager.release(context)
 
     # cache hit rate is ~= 4 / 5 tokens
     assert kv_manager.get_metrics_aggregated().cache_hit_rate > 0.79
@@ -344,7 +351,7 @@ async def test_prefix_caching_with_random_prompts(page_size: int) -> None:
 
         kv_manager.release(context)
 
-    assert kv_manager.get_num_used_pages(replica_idx=0) == 0
+    assert kv_manager.block_count(replica_idx=0).used == 0
 
 
 @pytest.mark.asyncio
@@ -409,7 +416,7 @@ class FakeModel:
 
     def __init__(self, kv_manager: PagedKVCacheManager) -> None:
         self.page_size = kv_manager.params.page_size
-        self.total_num_pages = kv_manager.get_num_pages(replica_idx=0)
+        self.total_num_pages = kv_manager.block_count(replica_idx=0).total
         # block_projections maps from bid -> offset -> prefix tokens
         self.block_projections: dict[int, dict[int, np.ndarray]] = defaultdict(
             dict
@@ -422,7 +429,7 @@ class FakeModel:
     def run(
         self,
         request_ids_and_prompts: dict[RequestID, np.ndarray],
-        kv_inputs: KVCacheInputs[Buffer, Buffer],
+        kv_inputs: tuple[KVCacheInputsPerDevice[Buffer, Buffer], ...],
         request_ids_and_new_tokens: dict[RequestID, np.ndarray] | None = None,
     ) -> dict[RequestID, np.ndarray]:
         """Given a batch and the kv_inputs, we `run` the model and check that
@@ -440,7 +447,7 @@ class FakeModel:
 
         # update all tokens to contain the tokens which should have a KV
         # projection in the cache after this forward step
-        for request_id in request_ids_and_prompts:
+        for request_id in request_ids_and_prompts:  # noqa: PLC0206
             self.request_ids_and_all_tokens[request_id] = np.concatenate(
                 [
                     self.request_ids_and_all_tokens.get(
@@ -610,8 +617,8 @@ async def test_prefix_caching_grouped_prefixes(
                 kv_manager.release(batch[request_id])
                 del batch[request_id]
 
-    for request_id in batch:
-        kv_manager.release(batch[request_id])
+    for value in batch.values():
+        kv_manager.release(value)
 
 
 def run_forward(
@@ -720,8 +727,8 @@ def run_and_check_num_cached_tokens(
     ctx: TextAndVisionContext,
     do_step: bool = True,
 ) -> int:
-    # reset cache_tokens to 0
-    kv_manager.reset_metrics()
+    # take (and discard) metrics to reset cache_tokens to 0
+    kv_manager.take_metrics_aggregated()
     kv_manager.claim(ctx)
     kv_manager.alloc(ctx)
     kv_manager.runtime_inputs([[ctx]])

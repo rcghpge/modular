@@ -27,20 +27,22 @@ from max.driver import Device, DLPackArray
 from max.dtype import DType
 from max.experimental.realization_context import ensure_context
 from max.experimental.sharding import (
+    BufferLayout,
     DeviceMapping,
     DeviceMesh,
-    DistributedTensorType,
     Placement,
-    PlacementMapping,
     Replicated,
+    TensorLayout,
 )
+from max.experimental.sharding.mappings import as_device_mapping
 from max.experimental.sharding.placements import local_shard_shape_from_global
-from max.experimental.tensor import Tensor, TensorType, defaults
+from max.experimental.tensor import Tensor, defaults
 from max.graph import (
     DeviceRef,
     DimLike,
     Shape,
     ShapeLike,
+    TensorType,
     TensorValue,
     TensorValueLike,
     ops,
@@ -56,35 +58,26 @@ def _trace_only() -> bool:
 
 
 def _normalized_device(
-    device: Device | DeviceMapping | DeviceRef | None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None,
 ) -> DeviceMapping:
     """Coerce any device specification to a :class:`DeviceMapping`."""
-    if isinstance(device, DeviceMapping):
-        return device
-    if isinstance(device, DeviceRef):
-        device = device.to_device()
-    if isinstance(device, Device):
-        return PlacementMapping(DeviceMesh.single(device), (Replicated(),))
-    _, resolved = defaults(None, None)
-    return PlacementMapping(DeviceMesh.single(resolved), (Replicated(),))
+    if device is None:
+        _, device = defaults(None, None)
+    return as_device_mapping(device)
 
 
-def _device_from_like(
-    like: Tensor | TensorType | DistributedTensorType,
-) -> Device | DeviceMapping:
-    """Extract device or mapping from a tensor-like for ``*_like`` factories."""
-    if isinstance(like, Tensor):
-        if like.is_distributed:
-            return PlacementMapping(like.mesh, like.placements)
-        return like.device
-    if isinstance(like, DistributedTensorType):
-        return PlacementMapping(like.mesh, like.placements)
-    return like.device.to_device()
+def _device_from_like(like: Tensor) -> DeviceMapping:
+    """Returns the placement a ``*_like`` factory should create on.
+
+    A factory is asked for a value shaped like this one, so reading a live
+    tensor's placement is the point here, unlike at a boundary.
+    """
+    return like.layout.mapping
 
 
 def _reject_sharded_creation(mapping: DeviceMapping, op_name: str) -> None:
     """Raises if ``mapping`` localizes any tensor axis (sharded creation is unsupported)."""
-    for p in mapping.to_placements():
+    for p in mapping.placements:
         if p.localized_axis() is not None:
             raise ValueError(
                 f"{op_name}: cannot create with sharded placement {p!r}. "
@@ -97,7 +90,7 @@ def full(
     value: Number,
     *,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Creates a tensor filled with a single value.
 
@@ -122,7 +115,7 @@ def full(
     mapping = _normalized_device(device)
     resolved_dtype, _ = defaults(dtype, mapping.mesh.devices[0])
     mesh = mapping.mesh
-    placements = mapping.to_placements()
+    placements = mapping.placements
     shard_shapes = local_shard_shape_from_global(Shape(shape), mesh, placements)
     with ensure_context():
         tvs = [
@@ -145,7 +138,7 @@ def ones(
     shape: ShapeLike,
     *,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Creates a tensor filled with ones.
 
@@ -168,7 +161,7 @@ def zeros(
     shape: ShapeLike,
     *,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Creates a tensor filled with zeros.
 
@@ -189,7 +182,7 @@ def zeros(
 
 def _full_like_distributed(like: Tensor, value: Number) -> Tensor:
     """Build a ``full`` tensor from *like*'s per-shard TV shapes directly."""
-    mapping = PlacementMapping(like.mesh, like.placements)
+    mapping = DeviceMapping(like.mesh, like.placements)
     mesh = mapping.mesh
     resolved_dtype, _ = defaults(like.dtype, mesh.devices[0])
     with ensure_context():
@@ -209,14 +202,11 @@ def _full_like_distributed(like: Tensor, value: Number) -> Tensor:
         return Tensor.from_shard_values(tvs, mapping)
 
 
-def full_like(
-    like: Tensor | TensorType | DistributedTensorType, value: Number
-) -> Tensor:
+def full_like(like: Tensor, value: Number) -> Tensor:
     """Creates a tensor filled with a single value, matching another tensor's shape and dtype.
 
     Args:
-        like: The template tensor whose shape, dtype, and placement are
-            copied.
+        like: The tensor whose shape, dtype, and placement are copied.
         value: The fill value.
 
     Returns:
@@ -233,12 +223,11 @@ def full_like(
     )
 
 
-def ones_like(like: Tensor | TensorType | DistributedTensorType) -> Tensor:
+def ones_like(like: Tensor) -> Tensor:
     """Creates a tensor filled with ones, matching another tensor's shape and dtype.
 
     Args:
-        like: The template tensor whose shape, dtype, and placement are
-            copied.
+        like: The tensor whose shape, dtype, and placement are copied.
 
     Returns:
         A tensor matching the shape, dtype, and placement of ``like``,
@@ -251,12 +240,11 @@ def ones_like(like: Tensor | TensorType | DistributedTensorType) -> Tensor:
     )
 
 
-def zeros_like(like: Tensor | TensorType | DistributedTensorType) -> Tensor:
+def zeros_like(like: Tensor) -> Tensor:
     """Creates a tensor filled with zeros, matching another tensor's shape and dtype.
 
     Args:
-        like: The template tensor whose shape, dtype, and placement are
-            copied.
+        like: The tensor whose shape, dtype, and placement are copied.
 
     Returns:
         A tensor matching the shape, dtype, and placement of ``like``,
@@ -315,7 +303,7 @@ def _distributed_random_op(
             )
             return Tensor.from_graph_value(op_fn(tt, **op_kwargs))
         mesh = device.mesh
-        placements = device.to_placements()
+        placements = device.placements
         shard_shapes = local_shard_shape_from_global(
             Shape(shape), mesh, placements
         )
@@ -341,7 +329,7 @@ def uniform(
     range: tuple[float, float] = (0, 1),
     *,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Samples values uniformly from the half-open interval ``[range[0], range[1])``.
 
@@ -387,7 +375,7 @@ def gaussian(
     std: float = 1.0,
     *,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Samples values from a Gaussian (normal) distribution with the given mean and standard deviation.
 
@@ -441,10 +429,10 @@ def _random_like_distributed(
     std: float = 1.0,
 ) -> Tensor:
     """Per-shard random sampling that preserves *like*'s per-rank symbol names."""
-    mapping = PlacementMapping(like.mesh, like.placements)
+    mapping = DeviceMapping(like.mesh, like.placements)
     mesh = mapping.mesh
     resolved_dtype, _ = defaults(like.dtype, mesh.devices[0])
-    placements = mapping.to_placements()
+    placements = mapping.placements
     assert all(
         isinstance(p, Replicated) or p.localized_axis() is not None
         for p in placements
@@ -471,14 +459,13 @@ def _random_like_distributed(
 
 
 def uniform_like(
-    like: Tensor | TensorType | DistributedTensorType,
+    like: Tensor,
     range: tuple[float, float] = (0, 1),
 ) -> Tensor:
     """Samples uniform values matching another tensor's shape and dtype.
 
     Args:
-        like: The template tensor whose shape, dtype, and placement are
-            copied.
+        like: The tensor whose shape, dtype, and placement are copied.
         range: A ``(low, high)`` pair giving the half-open interval to
             sample from. Defaults to ``(0, 1)``.
 
@@ -497,15 +484,14 @@ def uniform_like(
 
 
 def gaussian_like(
-    like: Tensor | TensorType | DistributedTensorType,
+    like: Tensor,
     mean: float = 0.0,
     std: float = 1.0,
 ) -> Tensor:
     """Samples Gaussian values matching another tensor's shape and dtype.
 
     Args:
-        like: The template tensor whose shape, dtype, and placement are
-            copied.
+        like: The tensor whose shape, dtype, and placement are copied.
         mean: The mean of the distribution. Defaults to ``0.0``.
         std: The standard deviation of the distribution. Defaults to
             ``1.0``.
@@ -533,7 +519,7 @@ def hann_window(
     *,
     periodic: bool = True,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Computes a Hann window of a given length.
 
@@ -603,7 +589,7 @@ def range(
     out_dim: DimLike | None = None,
     *,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Creates a sequence of evenly spaced values from ``start`` to ``stop``.
 
@@ -676,7 +662,7 @@ arange = range
 def constant(
     value: DLPackArray | NestedArray | Number,
     dtype: DType | None = None,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    device: Device | DeviceMapping | DeviceMesh | DeviceRef | None = None,
 ) -> Tensor:
     """Creates a constant tensor from a Python literal or array-like value.
 
@@ -692,12 +678,12 @@ def constant(
         result = F.constant([[1.0, 2.0], [3.0, 4.0]], DType.float32)
         # result holds [[1.0, 2.0], [3.0, 4.0]].
 
-    .. warning::
+    .. caution::
 
         Loading a constant can lose precision. For example, loading
         ``16777217`` as a ``float32`` produces ``16777216.0``.
 
-    .. warning::
+    .. caution::
 
         When ``device`` is a multi-device
         :class:`~max.experimental.sharding.DeviceMapping`, the full
@@ -748,8 +734,7 @@ def constant(
 
 def constant_external(
     name: str,
-    type: TensorType,
-    device: Device | DeviceMapping | DeviceRef | None = None,
+    layout: TensorLayout,
     align: int | None = None,
     is_placeholder: bool = False,
 ) -> Tensor:
@@ -761,13 +746,11 @@ def constant_external(
     Args:
         name: The external symbol name to load (typically a weight
             identifier).
-        type: The :class:`~max.graph.TensorType` describing the
-            constant's shape and dtype.
-        device: A single device or a
-            :class:`~max.experimental.sharding.DeviceMapping` for
-            distributed placement.
+        layout: The constant's dtype, shape and placement. It is recorded on
+            the first device of the layout's mesh and transferred if the
+            layout spans more.
         align: The alignment of the constant. If not provided,
-            the default alignment for the type's dtype will be used.
+            the default alignment for the dtype will be used.
         is_placeholder: When :obj:`True`, marks the constant as a placeholder
             whose name is resolved by the enclosing subgraph call's ``prefix``
             (see :func:`max.graph.ops.call`). Used to thread per-layer weights
@@ -776,11 +759,27 @@ def constant_external(
     Returns:
         A tensor on the requested placement initialized from the
         external data.
+
+    Raises:
+        TypeError: If ``layout`` is a
+            :class:`~max.experimental.sharding.BufferLayout`, which a
+            constant can never be.
     """
-    mapping = _normalized_device(device) if device is not None else None
+    # A constant is never a buffer, so a mutable layout is a category error.
+    if isinstance(layout, BufferLayout):
+        raise TypeError(
+            "constant_external: a constant cannot be a buffer, so it needs "
+            f"a TensorLayout, not {type(layout).__name__}."
+        )
+    home = TensorType(
+        layout.dtype,
+        layout.shape,
+        DeviceRef.from_device(layout.mesh.devices[0]),
+    )
     with ensure_context():
-        tv = ops.constant_external(name, type, align, is_placeholder)
-        t = Tensor.from_graph_value(tv)
-    if mapping is not None:
-        return transfer_to(t, mapping)
-    return t
+        tensor = Tensor.from_graph_value(
+            ops.constant_external(name, home, align, is_placeholder)
+        )
+    if layout.mapping.is_fully_replicated and layout.mesh.num_devices == 1:
+        return tensor
+    return transfer_to(tensor, layout.mapping)

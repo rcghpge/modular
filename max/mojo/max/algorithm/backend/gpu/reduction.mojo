@@ -17,8 +17,8 @@ from std.math.uutils import udivmod, ufloordiv
 
 from max.algorithm.reduction import _get_nd_indices_from_flat_index
 from max.gpu.primitives.block import broadcast
-from max.gpu.host import DeviceContext
-from std.gpu import (
+from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
     block_dim,
@@ -35,8 +35,7 @@ from max.gpu.primitives.grid_controls import (
     PDLLevel,
     pdl_launch_attributes,
 )
-from max.gpu.host import DeviceContext, get_gpu_target
-from std.gpu.primitives import warp
+from max.gpu.primitives import warp
 from std.memory import unsafe_stack_allocation
 from std.atomic import Atomic
 
@@ -51,7 +50,7 @@ from std.sys.info import simd_width_of
 comptime _PDL_LEVEL = PDLLevel.ON
 
 
-@always_inline
+@inline(.always)
 def block_reduce[
     BLOCK_SIZE: Int,
     reduce_fn: def[dtype: DType, width: SIMDLength](
@@ -78,8 +77,7 @@ def block_reduce[
     """
     comptime num_reductions = 1
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def reduce_wrapper[
         dtype: DType, width: SIMDLength, reduction_idx: Int
     ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[dtype, width]:
@@ -100,7 +98,7 @@ def block_reduce[
     ](val_tup, init_tup)[0]
 
 
-@always_inline
+@inline(.always)
 def block_reduce[
     BLOCK_SIZE: Int,
     num_reductions: Int,
@@ -135,8 +133,7 @@ def block_reduce[
         BLOCK_SIZE % WARP_SIZE == 0
     ), "block size must be a multiple of the warp size"
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def do_warp_reduce(
         val: StaticTuple[SIMD[dtype, simd_width], num_reductions]
     ) -> StaticTuple[SIMD[dtype, simd_width], num_reductions]:
@@ -144,8 +141,7 @@ def block_reduce[
 
         comptime for i in range(num_reductions):
 
-            @always_inline
-            @__parameter
+            @inline(.always)
             def reduce_wrapper[
                 dtype: DType, width: SIMDLength
             ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -153,14 +149,14 @@ def block_reduce[
             ]:
                 return reduce_fn[dtype, width, i](lhs, rhs)
 
-            result[i] = warp.reduce[warp.shuffle_down, reduce_wrapper](val[i])
+            result[i] = warp.reduce[warp.shuffle_down](val[i], reduce_wrapper)
 
         return result
 
     var shared = unsafe_stack_allocation[
         (BLOCK_SIZE // WARP_SIZE) * num_reductions * simd_width,
         dtype,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ]()
 
     var warp = warp_id()
@@ -192,14 +188,21 @@ def block_reduce[
     var result = StaticTuple[Scalar[dtype], num_reductions]()
 
     comptime for i in range(num_reductions):
-        result[i] = result_packed[i].reduce[
-            reduce_fn[dtype, reduction_idx=i, ...]
-        ]()
+
+        @inline(.always)
+        def reduce_wrapper[
+            width: SIMDLength
+        ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
+            dtype, width
+        ]:
+            return reduce_fn[dtype, width, i](lhs, rhs)
+
+        result[i] = result_packed[i].reduce(reduce_wrapper)
 
     return result
 
 
-@always_inline
+@inline(.always)
 def row_reduce[
     BLOCK_SIZE: Int,
     input_fn: def[dtype: DType, width: Int, rank: Int](
@@ -243,8 +246,7 @@ def row_reduce[
     """
     comptime num_reductions = 1
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def reduce_wrapper[
         dtype: DType, width: SIMDLength, reduction_idx: Int
     ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[dtype, width]:
@@ -268,7 +270,7 @@ def row_reduce[
     ](row_coords, init_tup, row_size)[0]
 
 
-@always_inline
+@inline(.always)
 def row_reduce[
     BLOCK_SIZE: Int,
     num_reductions: Int,
@@ -521,17 +523,16 @@ def small_reduce_kernel[
 
                 comptime for i in range(num_reductions):
 
-                    @always_inline
-                    @__parameter
+                    @inline(.always)
                     def reduce_wrapper[
                         dtype: DType, width: SIMDLength
-                    ](
-                        x: SIMD[dtype, width], y: SIMD[dtype, width]
-                    ) capturing -> SIMD[dtype, width]:
+                    ](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[
+                        dtype, width
+                    ]:
                         return reduce_fn[dtype, width, i](x, y)
 
-                    result[i] = warp.reduce[warp.shuffle_down, reduce_wrapper](
-                        val[i]
+                    result[i] = warp.reduce[warp.shuffle_down](
+                        val[i], reduce_wrapper
                     )
 
                 if lane_id() == 0:
@@ -573,7 +574,7 @@ def twophase_reduce_kernel[
     # that device memory has no tracked Mojo origin; the safe `Pointer` matches
     # the buffers' `UnsafePointer` `device_type` at the enqueue boundary.
     partials: Pointer[Scalar[accum_type], MutAnyOrigin],
-    counters: Pointer[Scalar[DType.int32], MutAnyOrigin],
+    counters: Pointer[Int32, MutAnyOrigin],
     # `Int` is not device-passable; use a fixed-width `Int32`.
     blocks_per_row: Int32,
 ):
@@ -645,7 +646,7 @@ def twophase_reduce_kernel[
         ](accum, init_cast)
 
         # Thread 0 writes partial result for this block and signals completion.
-        var is_last_block: Scalar[DType.bool] = False
+        var is_last_block: Scalar[.bool] = False
         if thread_idx.x == 0:
             var base = block_idx.x * num_reductions
             comptime for i in range(num_reductions):
@@ -759,11 +760,10 @@ def saturated_reduce_kernel[
 
             # Declare & initialize registers
             var val = Array[SIMD[accum_type, simd_width], num_reductions](
-                uninitialized=True
+                fill_with_unrolled=lambda [i: Int]() -> SIMD[
+                    accum_type, simd_width
+                ]: init[i].cast[accum_type]()
             )
-
-            comptime for i in range(num_reductions):
-                val[i] = init[i].cast[accum_type]()
 
             # Load data & reduce
             for val_idx in range(row_size):
@@ -925,7 +925,7 @@ def reduce_launch[
         var partials_buf = ctx.enqueue_create_buffer[_accum_type](
             total_blocks * num_reductions
         )
-        var counter_buf = ctx.enqueue_create_buffer[DType.int32](num_rows)
+        var counter_buf = ctx.enqueue_create_buffer[.int32](num_rows)
         ctx.enqueue_memset(counter_buf, Int32(0))
 
         comptime kernel = twophase_reduce_kernel[
@@ -999,7 +999,7 @@ def reduce_launch[
             )
 
 
-@always_inline
+@inline(.always)
 def _reduce_generator_gpu[
     num_reductions: Int,
     init_type: DType,

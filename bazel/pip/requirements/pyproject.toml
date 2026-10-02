@@ -52,6 +52,7 @@ dependencies = [
   "numpy>=2.3.0; python_version >= '3.11'",
   "nvitop",
   "opentelemetry-api",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.28.2",
   "opentelemetry-exporter-otlp-proto-http>=1.28.2",
   "opentelemetry-exporter-prometheus",
   "opentelemetry-proto",
@@ -139,8 +140,10 @@ dependencies = [
   "platformdirs>=2",
 
   # pillow is required to get the torch tests configured correctly
-  # in the wheel build.
-  "pillow>=10.0.0",
+  # in the wheel build. Floor pinned to 12.3.0, which fixes the CVEs
+  # affecting 12.0.0-12.2.0 (heap OOB writes in Image.paste/crop/
+  # alpha_composite, EPS infinite-loop DoS, etc.).
+  "pillow>=12.3.0",
   "locust",
   "openai==2.11.0",
 
@@ -168,7 +171,6 @@ dependencies = [
 [dependency-groups]
 # Common dependencies for amd/nvidia/cpu groups that conflict with vllm or sglang's deps
 common = [
-  "llguidance==1.7.5",
   # Pinned to 5.12.x. We previously held at <5.3.0 to avoid two upstream
   # issues:
   #   - a v5.3.0 LlamaTokenizer regression that overwrote the ByteLevel
@@ -235,7 +237,7 @@ nvidia = [
 # Separate dependency groups for large dependencies used in a few places,
 # to avoid conflicts with the other groups (mainly torch versions).
 nvidia-vllm = [
-  "vllm==0.24.0; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version >= '3.11'",
+  "vllm==0.26.0; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version >= '3.11'",
   "torch; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version >= '3.11'",
   "torchaudio; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version >= '3.11'",
   "torchvision; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version >= '3.11'",

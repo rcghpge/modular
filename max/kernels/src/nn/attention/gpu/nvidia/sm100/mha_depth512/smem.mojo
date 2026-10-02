@@ -129,11 +129,11 @@ struct Depth512AttentionSMem[
 
     # ---- storage -------------------------------------------------------------
     @__allow_legacy_any_origin_fields
-    var base: SharedMemPointer[Scalar[DType.uint8]]
+    var base: SharedMemPointer[UInt8]
 
     # ---- construction --------------------------------------------------------
 
-    @always_inline
+    @inline(.always)
     def __init__(out self):
         """Obtain the base pointer from the kernel's dynamic shared memory."""
         # K slot (BN//2 × BK0) and V half-tile (BK1 × v_cols_per_cta) must
@@ -145,22 +145,22 @@ struct Depth512AttentionSMem[
         ), "K slot and V half-tile must have equal element count for fused KV"
 
         self.base = external_memory[
-            Scalar[DType.uint8],
-            address_space=AddressSpace.SHARED,
+            UInt8,
+            address_space=.SHARED,
             alignment=128,
             name="mha_dynamic_shared_memory",
         ]().as_unsafe_any_origin()
 
     # ---- accessors -----------------------------------------------------------
 
-    @always_inline
+    @inline(.always)
     def q_smem(self) -> SharedMemPointer[Scalar[Self.qkv_dtype]]:
         """Base of the Q region (offset 0)."""
         return (self.base + Self.q_byte_offset).bitcast[
             Scalar[Self.qkv_dtype]
         ]()
 
-    @always_inline
+    @inline(.always)
     def o_smem[
         output_type: DType,
     ](self) -> SharedMemPointer[Scalar[output_type]]:
@@ -172,14 +172,14 @@ struct Depth512AttentionSMem[
         """
         return (self.base + Self.q_byte_offset).bitcast[Scalar[output_type]]()
 
-    @always_inline
+    @inline(.always)
     def p_smem(self) -> SharedMemPointer[Scalar[Self.qkv_dtype]]:
         """Base of the P buffer region for SS MMA P@V."""
         return (self.base + Self.p_byte_offset).bitcast[
             Scalar[Self.qkv_dtype]
         ]()
 
-    @always_inline
+    @inline(.always)
     def kv_smem_base(self) -> SharedMemPointer[Scalar[Self.qkv_dtype]]:
         """Base of the KV pipeline region (stage 0).
 
@@ -191,12 +191,12 @@ struct Depth512AttentionSMem[
             Scalar[Self.qkv_dtype]
         ]()
 
-    @always_inline
+    @inline(.always)
     def correction_smem(self) -> SharedMemPointer[Float32]:
         """Base of the correction region (BM Float32 elements)."""
         return (self.base + Self.correction_byte_offset).bitcast[Float32]()
 
-    @always_inline
+    @inline(.always)
     def mbar_base(self) -> MBarType:
         """Base of the barrier region.
 
@@ -206,13 +206,13 @@ struct Depth512AttentionSMem[
         """
         return (self.base + Self.mbar_byte_offset).bitcast[SharedMemBarrier]()
 
-    @always_inline
+    @inline(.always)
     def tmem_addr_ptr(self) -> SharedMemPointer[UInt32]:
         """Pointer to the single UInt32 storing the TMEM address."""
         return (self.base + Self.tmem_addr_byte_offset).bitcast[UInt32]()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def smem_size() -> Int:
         """Total dynamic shared memory bytes required."""
         return Self.tmem_addr_byte_offset + size_of[UInt32]()

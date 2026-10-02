@@ -16,7 +16,7 @@ from std.random import rand
 from std.sys.info import simd_width_of
 
 from std.algorithm.functional import vectorize
-from layout import Layout, LayoutTensor, RuntimeLayout
+from layout import Coord, Layout, LayoutTensor, RuntimeLayout
 from layout import lt_to_tt
 from nn.conv.conv import (
     ConvDirectNHWC,
@@ -79,16 +79,16 @@ def test[
 
     var conv_shape = ConvShape[rank](
         n=N,
-        input_dims=input_dims,
-        output_dims=output_dims,
-        filter_dims=filter_dims,
+        input_dims=Coord(input_dims),
+        output_dims=Coord(output_dims),
+        filter_dims=Coord(filter_dims),
         c=C,
         f=F,
-        stride=stride,
-        dilation=dilation,
-        pad_d=pad_d,
-        pad_h=pad_h,
-        pad_w=pad_w,
+        stride=Coord(stride),
+        dilation=Coord(dilation),
+        pad_d=Coord(pad_d),
+        pad_h=Coord(pad_h),
+        pad_w=Coord(pad_w),
         num_groups=num_groups,
     )
 
@@ -157,8 +157,7 @@ def test[
 
     comptime conv_attr = ConvInfoStatic[rank]()
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def null_epilogue[rank: Int](coords: IndexList[rank], f_size: Int):
         pass
 
@@ -203,7 +202,7 @@ def test[
                 i + output_image_size * n
             )
 
-            @always_inline
+            @inline(.always)
             def body0[width: Int](offset: Int) {var}:
                 output_ref_ptr.store(
                     offset,
@@ -217,10 +216,10 @@ def test[
             vectorize[simd_size](F, body0)
 
     # Test epilogue
-    @always_inline
+    @inline(.always)
     @__parameter
     def epilogue[_rank: Int](coords: IndexList[_rank], f_size: Int):
-        @always_inline
+        @inline(.always)
         def body1[width: Int](idx: Int) {imm}:
             var curr_coords = rebind[IndexList[rank + 2]](coords)
             curr_coords[rank + 1] += idx
@@ -300,7 +299,7 @@ def test[
 
 def main() raises:
     # No packing or padding.
-    test[2, DType.float32, False](
+    test[2, .float32, False](
         1,  # N
         Index(6, 5),  # H, W
         1,  # C
@@ -312,7 +311,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[3, DType.float32, False](
+    test[3, .float32, False](
         1,  # N
         Index(4, 8, 13),
         16,  # C
@@ -324,7 +323,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[1, DType.float32, False](
+    test[1, .float32, False](
         1,  # N
         Index(14),
         7,  # C
@@ -338,7 +337,7 @@ def main() raises:
 
     # Pre-packed test w/o padding.
 
-    test[2, DType.float32, True](
+    test[2, .float32, True](
         1,  # N
         Index(12, 12),
         12,  # C
@@ -350,7 +349,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[3, DType.float32, True](
+    test[3, .float32, True](
         5,  # N
         Index(9, 12, 11),
         8,  # C
@@ -362,7 +361,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[1, DType.float32, True](
+    test[1, .float32, True](
         1,  # N
         Index(17),
         11,  # C
@@ -376,7 +375,7 @@ def main() raises:
 
     # No packing, w/ padding, and F not multiple of simd_size.
 
-    test[2, DType.float32, False](
+    test[2, .float32, False](
         1,  # N
         Index(5, 5),
         3,  # C
@@ -388,7 +387,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[3, DType.float32, False](
+    test[3, .float32, False](
         1,  # N
         Index(9, 10, 5),
         2,  # C
@@ -401,7 +400,7 @@ def main() raises:
     )
 
     # Pre-packed, F not multiple of simd_size
-    test[2, DType.float32, True](
+    test[2, .float32, True](
         1,  # N
         Index(7, 7),
         2,  # C
@@ -413,7 +412,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[1, DType.float32, True](
+    test[1, .float32, True](
         1,  # N
         Index(11),
         2,  # C
@@ -425,7 +424,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[3, DType.float32, True](
+    test[3, .float32, True](
         1,  # N
         Index(7, 7, 9),
         2,  # C
@@ -437,7 +436,7 @@ def main() raises:
         1,  # num_groups
     )
 
-    test[2, DType.float32, True](
+    test[2, .float32, True](
         1,  # N
         Index(14, 14),
         3,  # C
@@ -450,7 +449,7 @@ def main() raises:
     )
 
     # grouped conv tests
-    test[2, DType.float32, True](
+    test[2, .float32, True](
         1,  # N
         Index(3, 3),
         18,  # C
@@ -462,7 +461,7 @@ def main() raises:
         3,  # num_groups
     )
 
-    test[2, DType.float32, True](
+    test[2, .float32, True](
         3,  # N
         Index(11, 17),
         36,  # C
@@ -474,7 +473,7 @@ def main() raises:
         3,  # num_groups
     )
 
-    test[2, DType.float32, True](
+    test[2, .float32, True](
         1,  # N
         Index(11, 17),
         36,  # C
@@ -487,7 +486,7 @@ def main() raises:
     )
 
     # depthwise conv
-    test[2, DType.float32, True](
+    test[2, .float32, True](
         1,  # N
         Index(11, 7),
         33,  # C
@@ -500,7 +499,7 @@ def main() raises:
     )
 
     # 1D edge case
-    test[1, DType.float32, True](
+    test[1, .float32, True](
         2,  # N
         Index(49),  # W
         1024,  # C

@@ -19,9 +19,9 @@ from std.math import ceildiv, recip
 from std.math.uutils import umod, ufloordiv
 from std.sys import simd_width_of, size_of
 
-from std.gpu import lane_id, WARP_SIZE
-from std.gpu.intrinsics import cvt_pk_fp8_f32_raw
-from layout import TensorLayout, TileTensor
+from max.gpu import lane_id, WARP_SIZE
+from max.gpu.intrinsics import cvt_pk_fp8_f32_raw
+from layout import TensorEngine, TensorLayout, TileTensor
 from layout.coord import Coord, ComptimeInt, Idx
 from layout.swizzle import Swizzle
 from layout.tile_layout import (
@@ -40,7 +40,7 @@ from .utils import get_warp_coords
 import std.itertools
 
 
-@always_inline
+@inline(.always)
 def _cast_f32_to_fp8_raw[
     src_dtype: DType,
     size: SIMDLength,
@@ -54,16 +54,16 @@ def _cast_f32_to_fp8_raw[
     P→PV cast where softmax output is in (0, 1].
     """
     comptime assert (
-        src_dtype == DType.float32
+        src_dtype == .float32
     ), "_cast_f32_to_fp8_raw source dtype must be float32."
     comptime assert (
         size % 4 == 0
     ), "_cast_f32_to_fp8_raw requires size divisible by 4."
     comptime assert (
-        dtype == DType.float8_e4m3fn or dtype == DType.float8_e5m2
+        dtype == .float8_e4m3fn or dtype == .float8_e5m2
     ), "_cast_f32_to_fp8_raw requires E4M3FN or E5M2 destination dtype."
 
-    var f32_src = rebind[SIMD[DType.float32, size]](src)
+    var f32_src = rebind[SIMD[.float32, size]](src)
     var result = SIMD[dtype, size]()
     comptime for i in range(size // 4):
         var chunk = cvt_pk_fp8_f32_raw[dtype](f32_src.slice[4, offset=i * 4]())
@@ -83,6 +83,9 @@ struct QRegisterBuffer[
     thread_rows: Int,
     thread_cols: Int,
     zero_partial_tile_pad: Bool = True,
+    # See `Parameters:` below. Off by default because it is measurably not free:
+    # carried unconditionally it cost depth-512 prefill ~150 bytes of spill.
+    clamp_to_parent: Bool = False,
 ]:
     """Holds the Q query tile in register memory for gfx950 attention MMAs.
 
@@ -114,6 +117,13 @@ struct QRegisterBuffer[
             `RegTileLoader` col-major thread distribution.
         zero_partial_tile_pad: Whether to zero the invalid tail of a
             partial BK strip after loading it.
+        clamp_to_parent: Whether to bound the Q load's buffer descriptor by
+            the parent tile rather than this warp's own slab. `.tile[]`
+            yields comptime shapes, so a slab-built descriptor clamps
+            nothing and a warp entirely past the live rows reads past the
+            tensor. The decode fold turns it on because a padded width
+            reaches that state on every launch; prefill can too but pays
+            for the bound in address math, so it keeps the default.
     """
 
     comptime reg_dtype = Self.dtype
@@ -140,7 +150,7 @@ struct QRegisterBuffer[
         Self.dtype,
         type_of(Self.reg_layout),
         MutUntrackedOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
     ]
     var reg_tile: Self.RegType
 
@@ -149,10 +159,16 @@ struct QRegisterBuffer[
     comptime _q_thread_rows = Self.thread_rows
     comptime _q_thread_cols = Self.thread_cols
 
-    @always_inline
+    @inline(.always)
     def __init__[
-        q_tile_layout: TensorLayout
-    ](out self, q_tile: TileTensor[Self.dtype, q_tile_layout, ImmutAnyOrigin],):
+        q_tile_layout: TensorLayout,
+        q_tile_engine: TensorEngine,
+    ](
+        out self,
+        q_tile: TileTensor[
+            Self.dtype, q_tile_layout, ImmutAnyOrigin, Engine=q_tile_engine
+        ],
+    ):
         """Load Q tile from DRAM into registers via buffer_load intrinsics.
 
         Each warp loads its [WM, depth] sub-tile using col-major thread
@@ -162,11 +178,12 @@ struct QRegisterBuffer[
         Parameters:
             q_tile_layout: Compile-time `TensorLayout` of the input `q_tile`
                 DRAM tile.
+            q_tile_engine: `TensorEngine` of the input `q_tile` DRAM tile.
 
         Args:
             q_tile: The full Q tile as a DRAM TileTensor.
         """
-        self.reg_tile = stack_allocation[Self.dtype, AddressSpace.LOCAL](
+        self.reg_tile = stack_allocation[Self.dtype, address_space=.LOCAL](
             Self.reg_layout
         )
         # Zero before DMA: the partial-tile case (depth % BK != 0) loads OOB
@@ -185,11 +202,17 @@ struct QRegisterBuffer[
         # `num_mmas`. (For M=1 cases — BM=32 FP8, BF16 multi-k — col_major
         # would coincide with row_major, but BM=64 with M=2 needs row_major.)
         comptime load_width = simd_width_of[Self.dtype]()
-        var reg_loader = RegTileLoader[
+        # `q_tile` carries the runtime live-row count while `.tile[]` yields
+        # comptime shapes never clipped to it, so a `warp_tile`-built loader
+        # describes only its own slab and clamps nothing — see `clamp_to_parent`.
+        comptime QLoaderT = RegTileLoader[
             Self.dtype,
             col_major[Self._q_thread_rows, Self._q_thread_cols](),
             warp_scope=True,
-        ](warp_tile)
+        ]
+        var reg_loader = QLoaderT(
+            warp_tile, bounds_from=q_tile
+        ) if Self.clamp_to_parent else QLoaderT(warp_tile)
         comptime for i in range(Self.num_tiles):
             var src = warp_tile.tile[Self.WM, Self.BK](0, i)
             var dst = self.reg_tile.tile[
@@ -222,14 +245,14 @@ struct QRegisterBuffer[
                 .fill(0)
             )
 
-    @always_inline
+    @inline(.always)
     def mma_tile[
         tile_idx: Int, k_idx: Int
     ](self) -> TileTensor[
         Self.dtype,
         type_of(row_major[Self.num_mmas, Self.input_frag_size]()),
         MutUntrackedOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
     ]:
         """Return MMA-sized sub-tile for the given tile and k indices.
 
@@ -243,7 +266,7 @@ struct QRegisterBuffer[
                 Self.dtype,
                 type_of(row_major[Self.num_mmas, Self.input_frag_size]()),
                 MutUntrackedOrigin,
-                address_space=AddressSpace.LOCAL,
+                address_space=.LOCAL,
             ]
         ](
             self.reg_tile.tile[Self._rows_per_tile, Self.input_frag_size](
@@ -251,7 +274,7 @@ struct QRegisterBuffer[
             ).tile[Self.num_mmas, Self.input_frag_size](k_idx, 0)
         )
 
-    @always_inline
+    @inline(.always)
     def scale[accum_type: DType](self, scale_factor: Scalar[accum_type]):
         """Scale all Q register elements in-place.
 
@@ -278,7 +301,7 @@ struct QRegisterBuffer[
                     q_f32 *= scale_factor
                     vec[row, 0] = q_f32.cast[Self.dtype]()
 
-    @always_inline
+    @inline(.always)
     def zero(self):
         _ = self.reg_tile.fill(0)
 
@@ -318,29 +341,35 @@ struct OutputRegisterBuffer[
         Self.dtype,
         type_of(Self.reg_layout),
         MutUntrackedOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
     ]
     var reg_tile: Self.RegType
 
-    @always_inline
+    @inline(.always)
     def __init__(out self):
-        self.reg_tile = stack_allocation[Self.dtype, AddressSpace.LOCAL](
+        self.reg_tile = stack_allocation[Self.dtype, address_space=.LOCAL](
             Self.reg_layout
         )
 
-    @always_inline
+    @inline(.always)
     def apply_softmax_denominator[
-        layout_type: TensorLayout, //
+        layout_type: TensorLayout,
+        //,
+        p_scale_log2: Int = 0,
     ](self, rowsum: TileTensor[Self.dtype, layout_type, ...]):
         comptime assert rowsum.flat_rank == 2
         var reg_vec = self.reg_tile.vectorize[1, Self.output_frag_size]()
         comptime for m_mma in range(Self.num_m_mmas):
             var rowsum_inv = recip(rowsum[m_mma, 0][0])
+            comptime if p_scale_log2 != 0:
+                rowsum_inv *= Scalar[Self.dtype](
+                    1.0 / Float64(1 << p_scale_log2)
+                )
 
             comptime for n_mma in range(Self.num_n_mmas):
                 reg_vec[n_mma * Self.num_m_mmas + m_mma, 0] *= rowsum_inv
 
-    @always_inline
+    @inline(.always)
     def zero(self):
         _ = self.reg_tile.fill(0)
 
@@ -413,12 +442,33 @@ struct PRegisterBuffer[
             `get_mma_tile_shared` (defaults to None).
         raw_fp8_cast: When True, use raw `v_cvt_pk_fp8_f32` without
             the compiler's clamp + NaN-scrub wrapper for f32 to fp8
-            casts; only safe when inputs are bounded in (0, 1]
-            (defaults to False).
+            casts; only safe when P is a softmax output in (0, 1]. With a
+            float8_e4m3fn operand it also scales P by 2^`p_scale_log2`
+            before the cast (defaults to False).
     """
 
     comptime reg_dtype = Self.accum_type_
     comptime mma_dtype = Self.dtype
+
+    # With `raw_fp8_cast`, P is a softmax output in (0, 1]. Converting it to
+    # e4m3 rounds values below 2^-10 to zero while the fp32 row sum still
+    # includes them, so the output is too small. P is scaled by
+    # 2^p_scale_log2 before the conversion, which keeps values down to 2^-18
+    # of the row max and stays below the e4m3 maximum of 448. Callers pass
+    # `p_scale_log2` to `OutputRegisterBuffer.apply_softmax_denominator`,
+    # which divides it back out, so the row sum and LSE are unchanged.
+    comptime p_scale_log2 = 8 if (
+        Self.raw_fp8_cast and Self.dtype == .float8_e4m3fn
+    ) else 0
+
+    @staticmethod
+    @inline(.always)
+    def _scale_p[
+        width: Int
+    ](p: SIMD[Self.accum_type_, width]) -> SIMD[Self.accum_type_, width]:
+        comptime if Self.p_scale_log2 != 0:
+            return p * Scalar[Self.accum_type_](1 << Self.p_scale_log2)
+        return p
 
     # TileTensor storage (with staging dimension).
     comptime _staged_rows = (
@@ -430,7 +480,7 @@ struct PRegisterBuffer[
         Self.accum_type_,
         type_of(Self.reg_layout),
         MutUntrackedOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
     ]
     var reg_tile: Self.RegType
 
@@ -442,7 +492,7 @@ struct PRegisterBuffer[
         Self.accum_type_,
         type_of(Self.stage_layout),
         MutUntrackedOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
     ]
 
     # TiledMmaOp for SMEM→register A-matrix loads.
@@ -467,7 +517,7 @@ struct PRegisterBuffer[
         Self.dtype,
         type_of(Self._smem_layout),
         MutAnyOrigin,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ]
 
     @__allow_legacy_any_origin_fields
@@ -481,26 +531,29 @@ struct PRegisterBuffer[
         Self.dtype,
         type_of(Self._block_smem_layout),
         MutAnyOrigin,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ]
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, smem_tile: Self.SmemTileType):
-        self.reg_tile = stack_allocation[Self.accum_type_, AddressSpace.LOCAL](
-            Self.reg_layout
-        )
+        comptime assert (
+            Self.dtype == .bfloat16 or Self.dtype == .float8_e4m3fn
+        ), "attention P operand supports bf16 or float8_e4m3fn"
+        self.reg_tile = stack_allocation[
+            Self.accum_type_, address_space=.LOCAL
+        ](Self.reg_layout)
         self.smem_tile = smem_tile
 
-    @always_inline
+    @inline(.always)
     def _block_smem(self, block_idx: Int) -> Self.BlockSmemType:
         """TileTensor view of the `block_idx`-th blocked SMEM slice."""
         return self.smem_tile.tile[Self.BM, Self.BK](block_idx, 0)
 
-    @always_inline
+    @inline(.always)
     def get_mma_tile_shared[
         tile_idx: Int, k_idx: Int
     ](self) -> Self.MmaTileType:
-        var result = stack_allocation[Self.mma_dtype, AddressSpace.LOCAL](
+        var result = stack_allocation[Self.mma_dtype, address_space=.LOCAL](
             Self._mma_layout
         )
         var warp_row = get_warp_coords[Self.BN, Self.WN]()[0]
@@ -615,7 +668,7 @@ struct PRegisterBuffer[
 
         return result
 
-    @always_inline
+    @inline(.always)
     def stage_tile[stage: Int = 0](self) -> Self.StageTileType:
         """Return the TileTensor sub-tile for the given pipeline stage.
 
@@ -639,10 +692,10 @@ struct PRegisterBuffer[
         Self.mma_dtype,
         type_of(Self._mma_layout),
         MutUntrackedOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
     ]
 
-    @always_inline
+    @inline(.always)
     def mma_tile[
         tile_idx: Int, k_idx: Int, stage: Int = 0
     ](self) -> Self.MmaTileType:
@@ -661,7 +714,7 @@ struct PRegisterBuffer[
         comptime if Self.shared_memory_backed:
             return self.get_mma_tile_shared[tile_idx, k_idx]()
 
-        var result = stack_allocation[Self.mma_dtype, AddressSpace.LOCAL](
+        var result = stack_allocation[Self.mma_dtype, address_space=.LOCAL](
             Self._mma_layout
         )
         var result_vec = result.vectorize[1, Self.input_frag_size]()
@@ -685,7 +738,9 @@ struct PRegisterBuffer[
                 comptime if num_gather <= 1:
                     # input_frag_size <= output_frag_size: cast one row, slice.
                     # bf16 [32,32,16]: input_frag_size=8, frag=16 → slice 8 of 16.
-                    var casted = src_vec[tile_idx, 0].cast[Self.mma_dtype]()
+                    var casted = Self._scale_p(src_vec[tile_idx, 0]).cast[
+                        Self.mma_dtype
+                    ]()
                     result_vec[0, 0] = rebind[type_of(result_vec[0, 0])](
                         casted.slice[
                             Self.input_frag_size,
@@ -694,6 +749,13 @@ struct PRegisterBuffer[
                     )
                 elif num_gather == 2:
                     # Gather 2 rows, cast each to mma_dtype, join to full frag.
+                    # Source rows `tile_idx*2 (+1)` are the (m=0, n) pair only
+                    # at one M-tile — the stage tile is col-major over (M, N),
+                    # so at two they become (m=0,n=0) and (m=1,n=0) and row 1's
+                    # operand is never written. Gated by `_p_register_chain_ok`.
+                    comptime assert (
+                        Self.shared_memory_backed or Self.num_m_mmas == 1
+                    ), "register-resident P gather handles one M tile per warp"
                     var lo: SIMD[Self.mma_dtype, Self.output_frag_size]
                     var hi: SIMD[Self.mma_dtype, Self.output_frag_size]
                     comptime if (
@@ -703,14 +765,18 @@ struct PRegisterBuffer[
                         # compiler's clamp + NaN-scrub wrapper is a no-op
                         # that just adds ~6 VALU ops per f32→fp8 pair.
                         lo = _cast_f32_to_fp8_raw[Self.mma_dtype](
-                            src_vec[tile_idx * 2, 0]
+                            Self._scale_p(src_vec[tile_idx * 2, 0])
                         )
                         hi = _cast_f32_to_fp8_raw[Self.mma_dtype](
-                            src_vec[tile_idx * 2 + 1, 0]
+                            Self._scale_p(src_vec[tile_idx * 2 + 1, 0])
                         )
                     else:
-                        lo = src_vec[tile_idx * 2, 0].cast[Self.mma_dtype]()
-                        hi = src_vec[tile_idx * 2 + 1, 0].cast[Self.mma_dtype]()
+                        lo = Self._scale_p(src_vec[tile_idx * 2, 0]).cast[
+                            Self.mma_dtype
+                        ]()
+                        hi = Self._scale_p(src_vec[tile_idx * 2 + 1, 0]).cast[
+                            Self.mma_dtype
+                        ]()
                     var joined = lo.join(hi)
                     result_vec[0, 0] = rebind[type_of(result_vec[0, 0])](
                         joined.slice[
@@ -740,8 +806,8 @@ struct PRegisterBuffer[
                 ).vectorize[1, Self.output_frag_size]()
 
                 comptime for m in range(Self.num_m_mmas):
-                    var lo = group[m, 0].cast[Self.mma_dtype]()
-                    var hi = group[m + Self.num_m_mmas, 0].cast[
+                    var lo = Self._scale_p(group[m, 0]).cast[Self.mma_dtype]()
+                    var hi = Self._scale_p(group[m + Self.num_m_mmas, 0]).cast[
                         Self.mma_dtype
                     ]()
                     var joined = lo.join(hi)
@@ -759,7 +825,7 @@ struct PRegisterBuffer[
             # Non-tr_load: cast + interleave pairs of 4-element sub-groups.
             # Input [0..3, 4..7, 8..11, 12..15] →
             # Output [0,4, 1,5, 2,6, 3,7, 8,12, 9,13, 10,14, 11,15]
-            var row = src_vec[tile_idx, 0].cast[Self.mma_dtype]()
+            var row = Self._scale_p(src_vec[tile_idx, 0]).cast[Self.mma_dtype]()
             var lo4 = row.slice[4, offset=0]()
             var hi4 = row.slice[4, offset=4]()
             var lo_half = lo4.interleave(hi4)  # 8 elems
@@ -777,19 +843,17 @@ struct PRegisterBuffer[
 
         return result
 
-    @always_inline
+    @inline(.always)
     def zero[stage: Int](self):
         _ = self.stage_tile[stage]().fill(0)
 
-    @always_inline
+    @inline(.always)
     def _store_mma_tile[
         reg_idx: Int
     ](
         self,
         smem_base: UnsafePointer[
-            Scalar[Self.dtype],
-            MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            Scalar[Self.dtype], MutAnyOrigin, address_space=.SHARED
         ],
         byte_offset: Int,
         m_mma: Int,
@@ -812,7 +876,7 @@ struct PRegisterBuffer[
             Self.dtype,
             type_of(row_major[Self.WM, Self.BK]()),
             MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ](smem_base + byte_offset, row_major[Self.WM, Self.BK]())
 
         var mma_tile_res = smem_warp_tile.tile_with_offset[
@@ -842,10 +906,7 @@ struct PRegisterBuffer[
             )
         )
         var mma_3d = TileTensor[
-            Self.dtype,
-            layout_3d,
-            MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            Self.dtype, layout_3d, MutAnyOrigin, address_space=.SHARED
         ](mma_tile.ptr, layout_3d())
 
         var dist_res = mma_3d.distribute_with_offset[tl_3d](lane_id())
@@ -857,7 +918,9 @@ struct PRegisterBuffer[
         ]()
         var p_reg_tile = p_reg_vec.tile[1, 1](reg_idx, 0)
         comptime frag_size = p_reg_tile.element_size
-        var reg_val = p_reg_tile.ptr.load[width=frag_size]().cast[Self.dtype]()
+        var reg_val = Self._scale_p(
+            p_reg_tile.ptr.load[width=frag_size]()
+        ).cast[Self.dtype]()
 
         # Apply swizzle to spread rows across different LDS banks.
         # Use block base (smem_base + byte_offset) so the swizzle
@@ -870,12 +933,13 @@ struct PRegisterBuffer[
         else:
             dst_frag.raw_store[width=frag_w](0, reg_val)
 
-    @always_inline
+    @inline(.always)
     def copy_to_shared(self):
         # When P is not SMEM-backed there is no P SMEM region and `mma_tile`
-        # reads P from registers, but the decode driver calls this
-        # unconditionally — so no-op the register-resident path. This fires only
-        # for a BN==WN config that is NOT warp-local. Warp-local also has
+        # reads P from registers. `mla_decode` and `mha_decode_streaming` still
+        # call unconditionally, so the no-op has to stay or they would write
+        # into a zero-sized region. Fires only for a BN==WN config that is NOT
+        # warp-local. Warp-local also has
         # BN==WN, but is deliberately forced SMEM-backed (see `_warp_local_p` in
         # attention.mojo) because the register-resident 16x16x128 P→PV path does
         # not compile, so warp-local does NOT take this no-op. Comptime-dead on
@@ -929,8 +993,9 @@ struct PRegisterBuffer[
                 "P SMEM block size must equal"
                 " num_m_mmas*warps_per_block*num_n_mmas*64*16B."
             )
-            var block_idx = warp_col // Int(warps_per_block)
-            var n_mma_in_block = warp_col % Int(warps_per_block)
+            var block_idx, n_mma_in_block = divmod(
+                warp_col, Int(warps_per_block)
+            )
             var block_base = self.smem_tile.tile[Self.BM, Self.BK](
                 block_idx, 0
             ).ptr
@@ -948,9 +1013,11 @@ struct PRegisterBuffer[
                         # so the compiler's clamp + NaN-scrub wrapper around
                         # pop.cast is a no-op that just adds ~6 VALU ops per
                         # f32→fp8 pair.
-                        reg16 = _cast_f32_to_fp8_raw[Self.dtype](loaded)
+                        reg16 = _cast_f32_to_fp8_raw[Self.dtype](
+                            Self._scale_p(loaded)
+                        )
                     else:
-                        reg16 = loaded.cast[Self.dtype]()
+                        reg16 = Self._scale_p(loaded).cast[Self.dtype]()
                     var warp_off = m_mma * Int(m_mma_stride) + (
                         n_mma_in_block * Int(Self.num_n_mmas) + n_mma
                     ) * Int(warp_stride)
@@ -962,8 +1029,9 @@ struct PRegisterBuffer[
         comptime if Self.WN < Self.BK:
             # WN < BK: multiple warps fill each [BM, BK] SMEM block.
             comptime warps_per_block = Self.BK // Self.WN
-            var block_idx = warp_col // Int(warps_per_block)
-            var n_mma_in_block = warp_col % Int(warps_per_block)
+            var block_idx, n_mma_in_block = divmod(
+                warp_col, Int(warps_per_block)
+            )
             var smem_offset = block_idx * Self.BM * Self.BK
             var warp_offset = smem_offset + warp_row * Self.WM * Self.BK
 
@@ -992,9 +1060,11 @@ struct PRegisterBuffer[
                     comptime for n_mma in range(Self.num_n_mmas):
                         comptime reg_idx = n_mma * Self.num_m_mmas + m_mma
                         var p_reg_tile = p_reg_vec.tile[1, 1](reg_idx, 0)
-                        var reg_val = p_reg_tile.raw_load[
-                            width=p_reg_tile.element_size
-                        ](0).cast[Self.dtype]()
+                        var reg_val = Self._scale_p(
+                            p_reg_tile.raw_load[width=p_reg_tile.element_size](
+                                0
+                            )
+                        ).cast[Self.dtype]()
 
                         var elem_off = (
                             swizzled_group * simd_w
@@ -1038,16 +1108,16 @@ struct PRegisterBuffer[
                         comptime hi_idx = (
                             1 + i * num_n_mmas_per_bk
                         ) * Self.num_m_mmas + m_mma
-                        var lo = (
-                            p_reg_vec.tile[1, 1](lo_idx, 0)
-                            .raw_load[width=frag_w](0)
-                            .cast[Self.dtype]()
-                        )
-                        var hi = (
-                            p_reg_vec.tile[1, 1](hi_idx, 0)
-                            .raw_load[width=frag_w](0)
-                            .cast[Self.dtype]()
-                        )
+                        var lo = Self._scale_p(
+                            p_reg_vec.tile[1, 1](lo_idx, 0).raw_load[
+                                width=frag_w
+                            ](0)
+                        ).cast[Self.dtype]()
+                        var hi = Self._scale_p(
+                            p_reg_vec.tile[1, 1](hi_idx, 0).raw_load[
+                                width=frag_w
+                            ](0)
+                        ).cast[Self.dtype]()
                         var joined = lo.join(hi)
 
                         var group_idx = r * (Self.BK // group_w) + c

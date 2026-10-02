@@ -75,7 +75,9 @@ def test_grouped_matmul_dynamic_scaled_fp8_zero_edge_case[
     # Use minimal buffer size for efficiency since nothing will execute
     var total_tokens = max(max_num_tokens_per_expert, 16)
     var num_offsets = max(num_active_experts + 1, 1)
-    var num_expert_ids = max(num_active_experts, 0)
+    # Floor at 1: a device tile cannot wrap a zero-size buffer, and the
+    # launcher early-returns before reading expert ids when there are none.
+    var num_expert_ids = max(num_active_experts, 1)
 
     # Create host buffers
     var a_size = total_tokens * K
@@ -98,10 +100,10 @@ def test_grouped_matmul_dynamic_scaled_fp8_zero_edge_case[
     )
 
     # Create offsets and expert_ids
-    var a_offsets_host_ptr = ctx.enqueue_create_host_buffer[DType.uint32](
+    var a_offsets_host_ptr = ctx.enqueue_create_host_buffer[.uint32](
         num_offsets
     )
-    var expert_ids_host_ptr = ctx.enqueue_create_host_buffer[DType.int32](
+    var expert_ids_host_ptr = ctx.enqueue_create_host_buffer[.int32](
         num_expert_ids
     )
 
@@ -120,10 +122,10 @@ def test_grouped_matmul_dynamic_scaled_fp8_zero_edge_case[
         num_experts * (N // BLOCK_SCALE_K) * (K // BLOCK_SCALE_K)
     )
 
-    var a_scales_host_ptr = ctx.enqueue_create_host_buffer[DType.float32](
+    var a_scales_host_ptr = ctx.enqueue_create_host_buffer[.float32](
         a_scales_size
     )
-    var b_scales_host_ptr = ctx.enqueue_create_host_buffer[DType.float32](
+    var b_scales_host_ptr = ctx.enqueue_create_host_buffer[.float32](
         b_scales_size
     )
 
@@ -146,16 +148,16 @@ def test_grouped_matmul_dynamic_scaled_fp8_zero_edge_case[
     var a_device_buffer = ctx.enqueue_create_buffer[in_type](a_size)
     var b_device_buffer = ctx.enqueue_create_buffer[in_type](b_size)
     var c_device_buffer = ctx.enqueue_create_buffer[out_type](c_size)
-    var a_offsets_device_buffer = ctx.enqueue_create_buffer[DType.uint32](
+    var a_offsets_device_buffer = ctx.enqueue_create_buffer[.uint32](
         num_offsets
     )
-    var expert_ids_device_buffer = ctx.enqueue_create_buffer[DType.int32](
+    var expert_ids_device_buffer = ctx.enqueue_create_buffer[.int32](
         num_expert_ids
     )
-    var a_scales_device_buffer = ctx.enqueue_create_buffer[DType.float32](
+    var a_scales_device_buffer = ctx.enqueue_create_buffer[.float32](
         a_scales_size
     )
-    var b_scales_device_buffer = ctx.enqueue_create_buffer[DType.float32](
+    var b_scales_device_buffer = ctx.enqueue_create_buffer[.float32](
         b_scales_size
     )
 

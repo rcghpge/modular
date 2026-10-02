@@ -28,12 +28,13 @@ Weight layout: natural row-interleaved (gate, up) pairs in both swap modes.
 """
 
 from std.math import ceildiv, exp, recip
+from std.collections import OptionalReg
 from std.sys import size_of
 from std.math.uutils import umod, ufloordiv
 
-from std.gpu import WARP_SIZE, warp_id as get_warp_id
+from max.gpu import WARP_SIZE, warp_id as get_warp_id
 from max.gpu.sync import barrier
-from std.gpu import block_id_in_cluster, lane_id
+from max.gpu import block_id_in_cluster, lane_id
 from max.gpu.primitives.cluster import (
     block_rank_in_cluster,
     elect_one_sync,
@@ -63,10 +64,16 @@ from max.gpu.primitives.grid_controls import (
     PDLLevel,
     wait_on_dependent_grids,
 )
-import std.gpu.primitives.warp as warp
+import max.gpu.primitives.warp as warp
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 
-from layout import Layout, RowMajorLayout, TileTensor, row_major
+from layout import (
+    Layout,
+    RowMajorLayout,
+    TensorEngine,
+    TileTensor,
+    row_major,
+)
 from layout.tma_async import SharedMemBarrier, TMATensorTile, _idx_product
 from structured_kernels.tile_types import (
     SMemTileArray2D,
@@ -170,7 +177,7 @@ struct _SwiGLUSmem[
 # ===----------------------------------------------------------------------=== #
 
 
-@always_inline
+@inline(.always)
 def load_AB[
     a_type: DType,
     b_type: DType,
@@ -336,7 +343,7 @@ def load_AB[
 # ===----------------------------------------------------------------------=== #
 
 
-@always_inline
+@inline(.always)
 def consumer_main_loop[
     accum_type: DType,
     c_type: DType,
@@ -450,7 +457,7 @@ def consumer_main_loop[
 # ===----------------------------------------------------------------------=== #
 
 
-@always_inline
+@inline(.always)
 def _swiglu_epilogue_gmem[
     a_type: DType,
     b_type: DType,
@@ -469,7 +476,7 @@ def _swiglu_epilogue_gmem[
     M_bound: UInt32,
     H_bound: UInt32,
     bias_smem_ptr: UnsafePointer[
-        Scalar[c_type], MutAnyOrigin, address_space=AddressSpace.SHARED
+        Scalar[c_type], MutAnyOrigin, address_space=.SHARED
     ],
 ):
     """TMEM → FP32 SwiGLU → BF16 GMEM epilogue. No SMEM, no TMA."""
@@ -846,7 +853,7 @@ def _swiglu_epilogue_gmem[
 # ===----------------------------------------------------------------------=== #
 
 
-@always_inline
+@inline(.always)
 def _swiglu_epilogue_smem_tma[
     a_type: DType,
     b_type: DType,
@@ -863,16 +870,14 @@ def _swiglu_epilogue_smem_tma[
     output_stage_index: UInt32,
     c_tma_op: TMATensorTile[c_type, c_rank, c_tile_shape, c_desc_shape],
     c_out_smem: UnsafePointer[
-        Scalar[c_type],
-        MutAnyOrigin,
-        address_space=AddressSpace.SHARED,
+        Scalar[c_type], MutAnyOrigin, address_space=.SHARED
     ],
     c_m_base: UInt32,
     c_h_base: UInt32,
     M_bound: UInt32,
     H_bound: UInt32,
     bias_smem_ptr: UnsafePointer[
-        Scalar[c_type], MutAnyOrigin, address_space=AddressSpace.SHARED
+        Scalar[c_type], MutAnyOrigin, address_space=.SHARED
     ],
 ):
     """TMEM → FP32 SwiGLU → half SMEM → TMA store epilogue."""
@@ -1362,6 +1367,7 @@ struct SwiGLUKernelConstants[
     c_type: DType,
     transpose_b: Bool,
     config: FusedSwiGLUMatmulConfig[a_type, b_type, c_type, transpose_b],
+    BiasEngine: TensorEngine,
 ]:
     """Compile-time constants for TMA descriptor creation and kernel launch.
 
@@ -1372,6 +1378,7 @@ struct SwiGLUKernelConstants[
         transpose_b: Whether B is transposed (always True for SwiGLU).
         config: Fused SwiGLU matmul config carrying tile shapes and pipeline
             stages.
+        BiasEngine: Engine of the 1D bias tile.
     """
 
     comptime BM = Self.config.block_tile_shape[0]
@@ -1450,6 +1457,7 @@ struct SwiGLUKernelConstants[
         Self.c_type,
         type_of(Self.Bias1DTileLayout),
         ImmutAnyOrigin,
+        Engine=Self.BiasEngine,
     ]
 
 
@@ -1481,6 +1489,7 @@ def blackwell_swiglu_warp_specialized_kernel[
     c_desc_shape: IndexList[c_rank],
     transpose_b: Bool,
     config: FusedSwiGLUMatmulConfig[a_type, b_type, c_type, transpose_b],
+    BiasEngine: TensorEngine,
     cluster_shape: StaticTuple[Int32, 3] = StaticTuple[Int32, 3](1),
     pdl_level: PDLLevel = PDLLevel(),
 ](
@@ -1489,13 +1498,16 @@ def blackwell_swiglu_warp_specialized_kernel[
     c_tma_op: TMATensorTile[c_type, c_rank, c_tile_shape, c_desc_shape],
     c_gmem_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
     c_gmem_stride: UInt32,
-    bias_1d_tile: SwiGLUKernelConstants[
-        a_type,
-        b_type,
-        c_type,
-        transpose_b,
-        config=config,
-    ].Bias1DTile,
+    bias_1d_tile: OptionalReg[
+        SwiGLUKernelConstants[
+            a_type,
+            b_type,
+            c_type,
+            transpose_b,
+            config=config,
+            BiasEngine=BiasEngine,
+        ].Bias1DTile
+    ],
     cluster_dim: StaticTuple[Int32, 3],
     mnk: StaticTuple[UInt32, 3],
     workspace: Span[UInt64, MutAnyOrigin],
@@ -1525,6 +1537,7 @@ def blackwell_swiglu_warp_specialized_kernel[
         transpose_b: Whether B is transposed (always True for SwiGLU).
         config: Fused SwiGLU matmul config carrying tile shapes and pipeline
             stages.
+        BiasEngine: Engine of the 1D bias tile.
         cluster_shape: CTA cluster shape as an (M, N, K) ``StaticTuple``
             (defaults to a singleton cluster).
         pdl_level: Programmatic dependency level for grid launch (defaults to
@@ -1538,7 +1551,8 @@ def blackwell_swiglu_warp_specialized_kernel[
         c_gmem_ptr: Base pointer to the C output tensor in GMEM (register to
             GMEM path).
         c_gmem_stride: Row stride of the C output tensor in GMEM, in elements.
-        bias_1d_tile: 1D bias tile in GMEM loaded by the epilogue load warp.
+        bias_1d_tile: 1D bias tile in GMEM loaded by the epilogue load warp;
+            absent when the config has no bias.
         cluster_dim: CTA cluster dimensions used by the tile scheduler.
         mnk: Kernel-frame (M, N, K) dimensions; N is the pre-SwiGLU width,
             equal to twice the output H.
@@ -1600,15 +1614,13 @@ def blackwell_swiglu_warp_specialized_kernel[
 
     # ===== Shared memory =====
     var smem_bytes = external_memory[
-        Scalar[DType.uint8],
-        address_space=AddressSpace.SHARED,
+        UInt8,
+        address_space=.SHARED,
         alignment=128,
     ]()
     ref smem = smem_bytes.bitcast[SmemType]()[]
     var ptr_tmem_addr: UnsafePointer[
-        UInt32,
-        origin_of(smem.tmem_addr),
-        address_space=AddressSpace.SHARED,
+        UInt32, origin_of(smem.tmem_addr), address_space=.SHARED
     ] = smem.tmem_addr.unsafe_ptr()
     var tmem_dealloc_mbar = smem.tmem_dealloc_mbar.unsafe_ptr()
     var c_out_smem = (smem_bytes + c_out_smem_offset).bitcast[Scalar[c_type]]()
@@ -1863,6 +1875,9 @@ def blackwell_swiglu_warp_specialized_kernel[
             var epi_load_pl = ProducerConsumerPipeline[2](
                 smem.epilogue_load_mbars.unsafe_ptr()
             )
+            comptime assert (
+                BiasEngine.element_size == 1
+            ), "bias load assumes a scalar-element engine"
             comptime bias_dim = BM if AB_swapped else MMA_N
             comptime elems_per_lane = 8
             comptime bytes_per_lane = elems_per_lane * size_of[c_type]()
@@ -1889,12 +1904,12 @@ def blackwell_swiglu_warp_specialized_kernel[
                         0
                     )
                     var src_ptr = (
-                        bias_1d_tile._storage + gmem_offset + lane_start
-                    ).address_space_cast[AddressSpace.GLOBAL]()
+                        bias_1d_tile.value().ptr + gmem_offset + lane_start
+                    ).address_space_cast[.GLOBAL]()
                     var bias_smem_base: UnsafePointer[
                         Scalar[c_type],
                         origin_of(smem.bias_smem),
-                        address_space=AddressSpace.SHARED,
+                        address_space=.SHARED,
                     ] = smem.bias_smem.unsafe_ptr()
                     var dst_ptr = (
                         bias_smem_base + Int(stage) * bias_dim + lane_start
@@ -1951,7 +1966,7 @@ def blackwell_swiglu_warp_specialized_kernel[
                 var bias_smem_base: UnsafePointer[
                     Scalar[c_type],
                     origin_of(smem.bias_smem),
-                    address_space=AddressSpace.SHARED,
+                    address_space=.SHARED,
                 ] = smem.bias_smem.unsafe_ptr()
                 var bias_smem_ptr = bias_smem_base + epi_stage * bias_dim
                 comptime if config.register_swiglu:

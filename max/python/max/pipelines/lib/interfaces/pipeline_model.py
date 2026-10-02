@@ -21,8 +21,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
+from max import tree
 from max.driver import Buffer, Device
 from max.dtype import DType
 from max.engine import InferenceSession, Model
@@ -32,7 +33,7 @@ from max.graph import DeviceRef, Graph, Module, Value
 from max.graph.weights import Weights, WeightsAdapter
 from max.nn.kv_cache import (
     KVCacheInputs,
-    KVCacheInputsInterface,
+    KVCacheInputsPerDevice,
     KVCacheParamInterface,
     PagedCacheValues,
 )
@@ -63,9 +64,14 @@ from transformers import AutoConfig
 if TYPE_CHECKING:
     from max.pipelines.lib.config import PipelineConfig
 
+    # TODO(MXF-517): Remove the interfaces/memory_estimation import cycle.
+    from max.pipelines.lib.memory_estimation import MemoryPlan
+
     from .batch_processor import BatchProcessor
 
 logger = logging.getLogger("max.pipelines")
+
+ArchConfigT = TypeVar("ArchConfigT")
 
 
 class AlwaysSignalBuffersMixin:
@@ -151,15 +157,6 @@ class ModelOutputs:
     For data parallel models, the hs will be on the first gpu since it is replicated.
     """
 
-    sampled_tokens: Buffer | None = None
-    """Greedy token ids selected inside the forward graph, shape ``[B, 1]``.
-
-    Present only when ``fold_sampler_into_graph`` is enabled and the
-    architecture emits a folded argmax output. Consumed by the overlap
-    pipeline for all-greedy decode batches in place of a separate sampler
-    submission; ``None`` otherwise.
-    """
-
 
 @dataclass(kw_only=True)
 class ModelInputs:
@@ -195,10 +192,11 @@ class ModelInputs:
         assert inputs.input_row_offsets is input_row_offsets
     """
 
-    kv_cache_inputs: KVCacheInputsInterface[Buffer, Buffer] | None = None
+    kv_cache_inputs: KVCacheInputs[Buffer, Buffer] | None = None
     """KV cache graph inputs holding every (DP replica x TP shard) device's
-    inputs: a ``KVCacheInputs`` leaf, or a ``MultiKVCacheInputs`` tree for
-    multi-cache models. ``flatten()`` yields the full positional input list."""
+    inputs: a ``KVCacheInputs`` pytree (a per-device tuple leaf, or a dict
+    of named subtrees for multi-cache models). ``max.tree.leaves``
+    yields the full positional input list."""
 
     lora_buffers: tuple[Buffer, ...] = ()
     """ModuleV3 LoRA graph inputs (routing triple + per-slot adapter stacks)
@@ -247,6 +245,10 @@ class UnifiedEagleOutputs(ModelOutputs):
     num_accepted_draft_tokens: Buffer
     next_tokens: Buffer
     next_draft_tokens: Buffer
+    next_draft_probs_full: Buffer | None = None
+    """The distribution each next-step draft token was sampled from,
+    ``[batch_size, num_speculative_tokens, vocab_size]``. Only populated when
+    the graph was built with ``draft_proposal="sampled"``."""
 
     # HACK: These are required to inherit from ModelOutputs but are unused
     # for UnifiedEagleOutputs!
@@ -265,6 +267,10 @@ class UnifiedSpecDecodeInputs(ModelInputs):
     """
 
     draft_tokens: Buffer | None = None
+    draft_probs_full: Buffer | None = None
+    """The distribution each ``draft_tokens`` entry was sampled from,
+    ``[batch_size, num_speculative_tokens, vocab_size]``. Only set when
+    ``draft_proposal="sampled"``."""
     seed: Buffer | None = None
     temperature: Buffer | None = None
     top_k: Buffer | None = None
@@ -283,11 +289,17 @@ class UnifiedSpecDecodeInputs(ModelInputs):
     so the buffer tail and the graph signature derive the decision from one
     place. Set by each capable module's ``prepare_initial_token_inputs``."""
 
+    sampled_draft_proposal: bool = False
+    """Whether this graph was compiled with ``draft_proposal="sampled"``,
+    which gates the ``draft_probs_full`` buffer in the tail. Only
+    ``UnifiedEagleLlama3`` and ``Eagle3MHAMiniMaxM3Unified`` set this today."""
+
     def _spec_decode_tail_buffers(
         self,
         *,
         include_in_thinking_phase: bool,
         supports_structured_output: bool = True,
+        include_draft_probs_full: bool = False,
     ) -> tuple[Buffer, ...]:
         # draft_tokens, seed, and the five sampling params are unconditional in
         # build_spec_decode_input_types; assert them so a missing one is a loud
@@ -295,6 +307,9 @@ class UnifiedSpecDecodeInputs(ModelInputs):
         # {"target", "draft"} tree, packed by super().buffers.)
         assert self.draft_tokens is not None
         tail: tuple[Buffer, ...] = (self.draft_tokens,)
+        if include_draft_probs_full:
+            assert self.draft_probs_full is not None
+            tail += (self.draft_probs_full,)
         assert self.seed is not None
         tail += (self.seed,)
         assert self.temperature is not None
@@ -335,7 +350,7 @@ class PipelineModel(ABC, Generic[BaseContextType]):
 
     #: Optional batch processor class for input/output handling.
     batch_processor_cls: ClassVar[type[BatchProcessor[Any, Any]] | None] = None
-    #: Config class used to delegate ``calculate_max_seq_len`` and KV params.
+    #: Config class used to build the arch config and delegate KV params.
     model_config_cls: ClassVar[type[Any] | None] = None
     #: Whether this arch serves LoRA via the ModuleV3 adapters-as-inputs path
     #: (``LoRAManagerV3``). Non-ModuleV3 archs cannot serve LoRA.
@@ -353,10 +368,13 @@ class PipelineModel(ABC, Generic[BaseContextType]):
         weights: Weights,
         adapter: WeightsAdapter | None,
         return_logits: ReturnLogits,
+        *,
+        memory_plan: MemoryPlan,
         return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE,
         max_batch_size: int = 1,
     ) -> None:
         self.pipeline_config = pipeline_config
+        self.memory_plan = memory_plan
         self.max_batch_size = max_batch_size
         self.devices = devices
         self.device_refs = [DeviceRef.from_device(d) for d in devices]
@@ -366,9 +384,14 @@ class PipelineModel(ABC, Generic[BaseContextType]):
         self.return_logits = return_logits
         self.return_hidden_states = return_hidden_states
 
-        # Initialize `max_seq_len` here to avoid repeated HF config access.
-        self.max_seq_len = self.calculate_max_seq_len(
-            pipeline_config, self.huggingface_config
+        # Graph modules read the length off this config.
+        model_config_cls = type(self).model_config_cls
+        self.arch_config: Any = (
+            model_config_cls.initialize(
+                pipeline_config, max_seq_len=self.max_seq_len
+            )
+            if model_config_cls is not None
+            else None
         )
 
         if pipeline_config.lora and kv_cache_config.enable_prefix_caching:
@@ -412,25 +435,27 @@ class PipelineModel(ABC, Generic[BaseContextType]):
         if batch_processor_cls is not None:
             from .batch_processor import BatchProcessorRuntime
 
-            model_config_cls = getattr(type(self), "model_config_cls", None)
-            if model_config_cls is None:
+            if self.arch_config is None:
                 raise ValueError(
                     f"{type(self).__qualname__} sets batch_processor_cls but "
                     "does not define model_config_cls."
                 )
-            arch_config = model_config_cls.initialize(pipeline_config)
             pad_token_id = getattr(self.huggingface_config, "pad_token_id", 0)
             self._batch_processor = batch_processor_cls(
-                arch_config,
+                self.arch_config,
                 BatchProcessorRuntime(
                     pipeline_config=pipeline_config,
                     devices=devices,
                     return_logits=return_logits,
+                    max_batch_size=self.max_batch_size,
+                    max_seq_len=self.max_seq_len,
+                    max_batch_input_tokens=pipeline_config.runtime.max_batch_input_tokens,
+                    enable_chunked_prefill=pipeline_config.runtime.enable_chunked_prefill,
+                    data_parallel_degree=pipeline_config.model.data_parallel_degree,
                     return_hidden_states=return_hidden_states,
                     signal_buffers=self.signal_buffers,
                     lora_manager=self._lora_manager,
                     pad_token_id=pad_token_id or 0,
-                    max_batch_size=self.max_batch_size,
                 ),
             )
 
@@ -438,6 +463,33 @@ class PipelineModel(ABC, Generic[BaseContextType]):
     def batch_processor(self) -> BatchProcessor[Any, Any] | None:
         """Returns the batch processor when configured."""
         return self._batch_processor
+
+    def arch_config_as(self, cls: type[ArchConfigT]) -> ArchConfigT:
+        """Returns the built-once arch config, narrowed to ``cls``."""
+        assert isinstance(self.arch_config, cls), (
+            f"{type(self).__qualname__} built "
+            f"{type(self.arch_config).__name__}, expected {cls.__name__}"
+        )
+        return self.arch_config
+
+    @property
+    def max_seq_len(self) -> int:
+        """The effective maximum sequence length, read from the memory plan.
+
+        A view of the plan's ``planned_max_length`` — the model stores no
+        copy of it.
+        """
+        max_length = self.memory_plan.planned_max_length
+        assert max_length is not None, (
+            f"{type(self).__qualname__} requires a memory plan with a max "
+            "length; only multi-component plans carry none"
+        )
+        return max_length
+
+    @property
+    def planned_max_batch_total_tokens(self) -> int | None:
+        """The plan's batch token budget."""
+        return self.memory_plan.planned_max_batch_total_tokens
 
     def _maybe_release_host_weights(self, *models: Any) -> None:
         """Releases the host copies of the weights after the model is loaded.
@@ -554,58 +606,6 @@ class PipelineModel(ABC, Generic[BaseContextType]):
         """Custom-op extension paths to compile the sampler graph with."""
         return ()
 
-    @property
-    def emits_folded_sampled_tokens(self) -> bool:
-        """Whether the forward graph appends a folded greedy-token output.
-
-        Architectures that fold the sampler (argmax) into the forward graph
-        emit the sampled-token buffer as a trailing graph output and override
-        this to return ``True``. Callers must peel that trailing output into
-        :attr:`ModelOutputs.sampled_tokens` only when this is ``True``;
-        otherwise the ``fold_sampler_into_graph`` runtime flag is a no-op for
-        the architecture.
-        """
-        return False
-
-    @classmethod
-    def _calculate_max_seq_len_from_config(
-        cls,
-        pipeline_config: PipelineConfig,
-        huggingface_config: AutoConfig,
-    ) -> int:
-        """Delegates to ``model_config_cls.calculate_max_seq_len`` or ``initialize().get_max_seq_len()``."""
-        model_config_cls = cls.model_config_cls
-        if model_config_cls is None:
-            raise NotImplementedError(
-                f"{cls.__qualname__} must set `model_config_cls` "
-                "or override `calculate_max_seq_len()`."
-            )
-        calculate = getattr(model_config_cls, "calculate_max_seq_len", None)
-        if calculate is not None:
-            return calculate(pipeline_config, huggingface_config)
-        return model_config_cls.initialize(pipeline_config).get_max_seq_len()
-
-    @classmethod
-    def calculate_max_seq_len(
-        cls, pipeline_config: PipelineConfig, huggingface_config: AutoConfig
-    ) -> int:
-        """Calculates the optimal max sequence length for the model.
-
-        Default implementation delegates to ``model_config_cls``. Override when
-        pipeline-model semantics differ from the config (for example, bounding
-        ``max_length`` where the config is permissive).
-
-        Args:
-            pipeline_config: Configuration for the pipeline.
-            huggingface_config: Hugging Face model configuration.
-
-        Returns:
-            int: The maximum sequence length to use.
-        """
-        return cls._calculate_max_seq_len_from_config(
-            pipeline_config, huggingface_config
-        )
-
     @abstractmethod
     def execute(
         self,
@@ -627,7 +627,7 @@ class PipelineModel(ABC, Generic[BaseContextType]):
     def prepare_initial_token_inputs(
         self,
         replica_batches: Sequence[Sequence[BaseContextType]],
-        kv_cache_inputs: KVCacheInputsInterface[Buffer, Buffer] | None = None,
+        kv_cache_inputs: KVCacheInputs[Buffer, Buffer] | None = None,
         return_n_logits: int = 1,
     ) -> ModelInputs:
         """Prepares the initial inputs to be passed to ``execute()``.
@@ -653,7 +653,7 @@ class PipelineModel(ABC, Generic[BaseContextType]):
     def _prepare_initial_token_inputs(
         self,
         replica_batches: Sequence[Sequence[BaseContextType]],
-        kv_cache_inputs: KVCacheInputsInterface[Buffer, Buffer] | None = None,
+        kv_cache_inputs: KVCacheInputs[Buffer, Buffer] | None = None,
         return_n_logits: int = 1,
     ) -> ModelInputs:
         raise NotImplementedError(
@@ -735,7 +735,7 @@ class GraphPipelineModel(PipelineModel[BaseContextType]):
         return None
 
     def _wire_batch_processor(
-        self, model: Any = None, model_config: Any = None
+        self, model: Model | None = None, model_config: Any = None
     ) -> None:
         """Optional hook to construct ``self.batch_processor`` after compile."""
         del model, model_config
@@ -753,7 +753,7 @@ class GraphPipelineModel(PipelineModel[BaseContextType]):
 
 
 class ModuleV3PipelineModel(PipelineModel[BaseContextType]):
-    """ModuleV3 eager pipeline model without KV cache.
+    """ModuleV3 pipeline model without KV cache.
 
     Subclasses implement :meth:`_instantiate_module` and optionally
     :meth:`_create_model_config`, :meth:`_prepare_state_dict`, and
@@ -803,7 +803,7 @@ class ModuleV3PipelineModel(PipelineModel[BaseContextType]):
     def _module_default_dtype(
         self, state_dict: dict[str, Any], model_config: Any
     ) -> DType:
-        """Default dtype for the eager module build context."""
+        """Default dtype for the module build context."""
         del state_dict, model_config
         return self.dtype
 
@@ -840,6 +840,8 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
         weights: Weights,
         adapter: WeightsAdapter | None,
         return_logits: ReturnLogits,
+        *,
+        memory_plan: MemoryPlan,
         return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE,
         max_batch_size: int = 1,
     ) -> None:
@@ -853,6 +855,7 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
             return_logits=return_logits,
             return_hidden_states=return_hidden_states,
             max_batch_size=max_batch_size,
+            memory_plan=memory_plan,
         )
         self.kv_params = type(self).get_kv_params(
             huggingface_config=self.huggingface_config,
@@ -871,8 +874,7 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
         # This helper supports single-cache (leaf) models; multi-cache trees
         # are unflattened by the architecture itself.
         kv_inputs = self.kv_params.unflatten_kv_inputs(iter(kv_inputs_flat))
-        assert isinstance(kv_inputs, KVCacheInputs)
-        return list(kv_inputs.inputs)
+        return tree.leaves(kv_inputs, leaf=KVCacheInputsPerDevice)
 
     @classmethod
     def get_kv_params(
@@ -915,6 +917,11 @@ class PipelineModelWithKVCache(PipelineModel[BaseContextType]):
         """HuggingFace config passed to the weight adapter, if any."""
         return None
 
+    # `model` is deliberately untyped here, unlike the hook on
+    # `GraphPipelineModel`: a graph subclass passes what a session load
+    # returned, while a ModuleV3 subclass passes the compiled callable, and
+    # naming the union of the two would stop either from declaring what it
+    # actually receives. Each override below says which it is.
     def _wire_batch_processor(
         self,
         model: Any = None,
@@ -937,7 +944,7 @@ class GraphPipelineModelWithKVCache(PipelineModelWithKVCache[BaseContextType]):
     :meth:`_create_model_config`, :meth:`_init_distributed_runtime`) rather than
     duplicating weight loading, timing, and EP batch-processor wiring.
 
-    ModuleV3 (eager) models and multi-graph VLMs should inherit
+    ModuleV3 models and multi-graph VLMs should inherit
     :class:`MultiGraphPipelineModelWithKVCache` instead.
     """
 
@@ -1098,12 +1105,13 @@ class MultiGraphPipelineModelWithKVCache(
 class ModuleV3PipelineModelWithKVCache(
     PipelineModelWithKVCache[BaseContextType]
 ):
-    """ModuleV3 (eager) pipeline model with shared compile template.
+    """ModuleV3 pipeline model with shared compile template.
 
     Subclasses override :meth:`_instantiate_module` (and optionally
-    :meth:`_create_model_config`, :meth:`_init_distributed_runtime`,
-    :meth:`_module_default_dtype`, :meth:`_get_compile_input_types`) rather than
-    duplicating weight loading, timing, and ``nn.compile`` wiring.
+    :meth:`_create_model_config`, :meth:`_prepare_state_dict`,
+    :meth:`_init_distributed_runtime`, :meth:`_module_default_dtype`,
+    :meth:`_get_compile_input_types`) rather than duplicating weight loading,
+    timing, and ``nn.compile`` wiring.
 
     Graph-API models should inherit :class:`GraphPipelineModelWithKVCache`
     instead. Encoder models without KV cache should inherit
@@ -1112,15 +1120,91 @@ class ModuleV3PipelineModelWithKVCache(
     :class:`ModuleV3MultiGraphPipelineModelWithKVCache` (ModuleV3).
     ``ComponentModel`` types and unified spec-decode pipelines should override
     :meth:`load_model` entirely.
+
+    The constructor compiles the model into :attr:`model`, and the default
+    :meth:`execute` feeds it ``model_inputs.buffers``.
     """
 
+    model: Callable[..., Any]
     _modulev3_extra_input_types: list[Any]
+
+    def __init__(
+        self,
+        pipeline_config: PipelineConfig,
+        session: InferenceSession,
+        devices: list[Device],
+        kv_cache_config: KVCacheConfig,
+        weights: Weights,
+        *,
+        memory_plan: MemoryPlan,
+        adapter: WeightsAdapter | None = None,
+        return_logits: ReturnLogits = ReturnLogits.LAST_TOKEN,
+        return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE,
+        max_batch_size: int = 1,
+    ) -> None:
+        super().__init__(
+            pipeline_config,
+            session,
+            devices,
+            kv_cache_config,
+            weights,
+            adapter=adapter,
+            return_logits=return_logits,
+            return_hidden_states=return_hidden_states,
+            max_batch_size=max_batch_size,
+            memory_plan=memory_plan,
+        )
+        self.model = self.load_model()
+
+    def execute(self, model_inputs: ModelInputs) -> ModelOutputs:
+        """Runs :attr:`model` on ``model_inputs.buffers``.
+
+        Args:
+            model_inputs: The prepared inputs, whose
+                :attr:`~ModelInputs.buffers` match the compiled input order.
+
+        Returns:
+            The outputs mapped by :meth:`_to_model_outputs`.
+        """
+        return self._to_model_outputs(self.model(*model_inputs.buffers))
+
+    def _to_model_outputs(self, model_outputs: Sequence[Any]) -> ModelOutputs:
+        """Maps the compiled model's outputs to :class:`ModelOutputs`.
+
+        The graph returns ``next_token_logits``, then ``logits`` and
+        ``logit_offsets`` when it returns all or variable logits, then
+        ``hidden_states`` when it returns hidden states. With a single logits
+        output, it serves as both ``logits`` and ``next_token_logits``.
+
+        Args:
+            model_outputs: The tensors returned by :attr:`model`.
+
+        Returns:
+            The outputs as driver buffers.
+        """
+        outputs = [
+            cast(Buffer, output.driver_tensor) for output in model_outputs
+        ]
+        hidden_states = outputs[-1] if len(outputs) in (2, 4) else None
+        if len(outputs) >= 3:
+            return ModelOutputs(
+                logits=outputs[1],
+                next_token_logits=outputs[0],
+                logit_offsets=outputs[2],
+                hidden_states=hidden_states,
+            )
+        return ModelOutputs(
+            logits=outputs[0],
+            next_token_logits=outputs[0],
+            hidden_states=hidden_states,
+        )
 
     @traced
     def load_model(self) -> Callable[..., Any]:
         """Build and compile the ModuleV3 callable."""
         state_dict = self._load_state_dict()
         model_config = self._create_model_config(state_dict)
+        state_dict = self._prepare_state_dict(state_dict, model_config)
         self._init_distributed_runtime(model_config)
         module_default_dtype = self._module_default_dtype(
             state_dict, model_config
@@ -1142,6 +1226,13 @@ class ModuleV3PipelineModelWithKVCache(
             f"{type(self).__qualname__} must implement `_create_model_config`."
         )
 
+    def _prepare_state_dict(
+        self, state_dict: dict[str, Any], model_config: Any
+    ) -> dict[str, Any]:
+        """Optional hook to cast or rewrite weights before ``nn.compile``."""
+        del model_config
+        return state_dict
+
     def _init_distributed_runtime(self, model_config: Any) -> None:
         """Initializes EP/NVSHMEM or other distributed runtime (no-op by default)."""
         del model_config
@@ -1150,7 +1241,7 @@ class ModuleV3PipelineModelWithKVCache(
     def _module_default_dtype(
         self, state_dict: dict[str, Any], model_config: Any
     ) -> DType:
-        """Default dtype for the eager module build context."""
+        """Default dtype for the module build context."""
         del state_dict
         return model_config.dtype
 

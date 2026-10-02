@@ -57,7 +57,6 @@ from nn.conv.gpu.nvidia.sm100.conv_config import (
     Conv2dConfig,
     Conv2dProblemShape,
 )
-from linalg.utils import elementwise_compute_lambda_type
 
 
 def test_conv2d_implicit_im2col[
@@ -558,15 +557,10 @@ def test_conv2d_epilogue_lambda[
     # Define epilogue lambda that adds bias (broadcast over M dimension)
     # Output shape is [M, N] where N = out_channels
     # Bias is [N], so we index by idx[1] (the column/channel index)
-    @__parameter
-    @always_inline
-    @__copy_capture(bias_tensor)
+    @inline(.always)
     def epilogue_add_bias[
-        _dtype: DType,
-        width: SIMDLength,
-        *,
-        alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+        _dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var bias_tensor} -> SIMD[
         _dtype, width
     ]:
         # Load bias value for this channel and broadcast to SIMD width
@@ -575,20 +569,13 @@ def test_conv2d_epilogue_lambda[
         var bias_val = bias_tensor.load[width=width]((idx[1],)).cast[_dtype]()
         return val + bias_val
 
-    # Create optional lambda
-    comptime optional_lambda = Optional[elementwise_compute_lambda_type](
-        epilogue_add_bias
-    )
-
     # Run conv2d with epilogue lambda
-    conv2d_fprop[
-        config=config,
-        elementwise_compute_lambda_fn=optional_lambda,
-    ](
+    conv2d_fprop[config=config](
         out_device_nd,
         act_device_nd,
         filter_device_nd,
         problem,
+        epilogue_add_bias,
         ctx,
     )
 
@@ -757,42 +744,33 @@ def test_conv2d_bias_fusion[
     var bias_tensor = TileTensor(bias_dev, row_major(out_c))
 
     # Epilogue lambda: add bias (idx[1] = channel index in [M, N] output)
-    @__parameter
-    @always_inline
-    @__copy_capture(bias_tensor)
+    @inline(.always)
     def add_bias[
-        _dtype: DType,
-        width: SIMDLength,
-        *,
-        alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+        _dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var bias_tensor} -> SIMD[
         _dtype, width
     ]:
         return val + bias_tensor.load[width=width]((idx[1],)).cast[_dtype]()
-
-    comptime bias_lambda = Optional[elementwise_compute_lambda_type](add_bias)
 
     # Run conv2d with fused bias
     comptime if use_1sm:
         conv2d_fprop[
             config=Conv2dConfig[dtype, dtype, dtype].default_bf16_1sm(),
-            elementwise_compute_lambda_fn=bias_lambda,
         ](
             out_nd,
             act_nd,
             filter_nd,
             problem,
+            add_bias,
             ctx,
         )
     else:
-        conv2d_fprop[
-            config=Conv2dConfig[dtype, dtype, dtype].default_bf16(),
-            elementwise_compute_lambda_fn=bias_lambda,
-        ](
+        conv2d_fprop[config=Conv2dConfig[dtype, dtype, dtype].default_bf16(),](
             out_nd,
             act_nd,
             filter_nd,
             problem,
+            add_bias,
             ctx,
         )
 
@@ -840,7 +818,6 @@ def test_conv2d_bias_fusion[
     print("    PASSED")
     _ = act_dev^
     _ = filter_dev^
-    _ = bias_dev^
     _ = out_dev^
     _ = out_ref_dev^
     _ = im2col_dev^
@@ -1040,8 +1017,8 @@ def test_conv2d_residual_api[
     # Add residual to reference on host: ref = Conv(A,B) + beta * C
     for i in range(out_size):
         out_host_ref_ptr[i] = (
-            out_host_ref_ptr[i].cast[DType.float32]()
-            + test_beta * source_host_ptr[i].cast[DType.float32]()
+            out_host_ref_ptr[i].cast[.float32]()
+            + test_beta * source_host_ptr[i].cast[.float32]()
         ).cast[dtype]()
 
     # Validate: D = Conv(A,B) + beta*C
@@ -1190,12 +1167,12 @@ def test_conv_gpu_scale_epilogue[
     var out_ref_tt = TileTensor(out_ref_dev, output_tt_layout)
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(out_epilogue_tt)
     def scale_epilogue[
         _dtype: DType, _rank: Int, _width: SIMDLength, _alignment: Int = 1
     ](coords: IndexList[_rank], val: SIMD[_dtype, _width]):
-        var scaled = (val.cast[DType.float32]() * 2.0).cast[dtype]()
+        var scaled = (val.cast[.float32]() * 2.0).cast[dtype]()
         out_epilogue_tt.store[
             width=_width, alignment=align_of[dtype]() * _alignment
         ](
@@ -1242,11 +1219,9 @@ def test_conv_gpu_scale_epilogue[
     var max_diff: Float32 = 0.0
     var errors = 0
     for i in range(out_size):
-        var epilogue_val = out_epilogue_host[i].cast[DType.float32]()
-        var ref_val = out_ref_host[i].cast[DType.float32]()
-        var expected = (
-            (ref_val * 2.0).cast[DType.bfloat16]().cast[DType.float32]()
-        )
+        var epilogue_val = out_epilogue_host[i].cast[.float32]()
+        var ref_val = out_ref_host[i].cast[.float32]()
+        var expected = (ref_val * 2.0).cast[.bfloat16]().cast[.float32]()
         var diff = abs(epilogue_val - expected)
         if diff > max_diff:
             max_diff = diff
@@ -1315,7 +1290,7 @@ def test_conv_gpu_additive_epilogue[
     var out_ref_tt = TileTensor(out_ref_dev, output_tt_layout)
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(out_epilogue_tt)
     def add_bias_epilogue[
         _dtype: DType, _rank: Int, _width: SIMDLength, _alignment: Int = 1
@@ -1324,9 +1299,9 @@ def test_conv_gpu_additive_epilogue[
         var existing = out_epilogue_tt.load[
             width=_width, alignment=align_of[_dtype]() * _alignment
         ](coord)
-        var result = (
-            val.cast[DType.float32]() + existing.cast[DType.float32]()
-        ).cast[dtype]()
+        var result = (val.cast[.float32]() + existing.cast[.float32]()).cast[
+            dtype
+        ]()
         out_epilogue_tt.store[
             width=_width, alignment=align_of[_dtype]() * _alignment
         ](coord, result)
@@ -1370,12 +1345,10 @@ def test_conv_gpu_additive_epilogue[
     var max_diff: Float32 = 0.0
     var errors = 0
     for i in range(out_size):
-        var epilogue_val = out_epilogue_host[i].cast[DType.float32]()
-        var ref_val = out_ref_host[i].cast[DType.float32]()
+        var epilogue_val = out_epilogue_host[i].cast[.float32]()
+        var ref_val = out_ref_host[i].cast[.float32]()
         var expected = (
-            (ref_val + Float32(1.0))
-            .cast[DType.bfloat16]()
-            .cast[DType.float32]()
+            (ref_val + Float32(1.0)).cast[.bfloat16]().cast[.float32]()
         )
         var diff = abs(epilogue_val - expected)
         if diff > max_diff:
@@ -1485,12 +1458,10 @@ def test_conv_gpu_residual[
     var max_diff: Float32 = 0.0
     var errors = 0
     for i in range(out_size):
-        var residual_val = out_residual_host[i].cast[DType.float32]()
-        var ref_val = out_ref_host[i].cast[DType.float32]()
-        var src_val = source_host[i].cast[DType.float32]()
-        var expected = (
-            (ref_val + src_val).cast[DType.bfloat16]().cast[DType.float32]()
-        )
+        var residual_val = out_residual_host[i].cast[.float32]()
+        var ref_val = out_ref_host[i].cast[.float32]()
+        var src_val = source_host[i].cast[.float32]()
+        var expected = (ref_val + src_val).cast[.bfloat16]().cast[.float32]()
         var diff = abs(residual_val - expected)
         if diff > max_diff:
             max_diff = diff
@@ -1601,11 +1572,9 @@ def test_conv_gpu_residual_diag_no_lambda[
             for w in range(Wout):
                 for c in range(C_out):
                     var idx = ((b * Hout + h) * Wout + w) * C_out + c
-                    var got = out_host[idx].cast[DType.float32]()
+                    var got = out_host[idx].cast[.float32]()
                     var expected = (
-                        (Float32(c) * 0.01)
-                        .cast[DType.bfloat16]()
-                        .cast[DType.float32]()
+                        (Float32(c) * 0.01).cast[.bfloat16]().cast[.float32]()
                     )
                     var diff = abs(got - expected)
                     if diff > max_diff:
@@ -1714,7 +1683,7 @@ def test_conv_gpu_residual_with_bias[
     var out_tt = TileTensor(out_dev, output_tt_layout)
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(out_tt)
     def add_bias_epilogue[
         _dtype: DType, _rank: Int, _width: SIMDLength, _alignment: Int = 1
@@ -1723,9 +1692,9 @@ def test_conv_gpu_residual_with_bias[
         var existing = out_tt.load[
             width=_width, alignment=align_of[_dtype]() * _alignment
         ](coord)
-        var result = (
-            val.cast[DType.float32]() + existing.cast[DType.float32]()
-        ).cast[dtype]()
+        var result = (val.cast[.float32]() + existing.cast[.float32]()).cast[
+            dtype
+        ]()
         out_tt.store[width=_width, alignment=align_of[_dtype]() * _alignment](
             coord, result
         )
@@ -1763,11 +1732,11 @@ def test_conv_gpu_residual_with_bias[
             for w in range(Wout):
                 for c in range(C_out):
                     var idx = ((b * Hout + h) * Wout + w) * C_out + c
-                    var got = out_host[idx].cast[DType.float32]()
+                    var got = out_host[idx].cast[.float32]()
                     var expected = (
                         (Float32(1.0) + Float32(c) * 0.01)
-                        .cast[DType.bfloat16]()
-                        .cast[DType.float32]()
+                        .cast[.bfloat16]()
+                        .cast[.float32]()
                     )
                     var diff = abs(got - expected)
                     if diff > max_diff:
@@ -2160,7 +2129,7 @@ def main() raises:
         )
 
         # NOTE: FP16 tests require additional stdlib changes beyond TMA:
-        # - std/gpu/compute/mma.mojo st_matrix() also only supports BF16/F32
+        # - max/gpu/compute/mma.mojo st_matrix() also only supports BF16/F32
         # - Full FP16 support would require updates across multiple files
         # For now, CUTLASS comparison requires modifying CUTLASS to use BF16
 

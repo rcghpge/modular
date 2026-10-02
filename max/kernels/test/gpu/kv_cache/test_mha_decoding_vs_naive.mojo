@@ -48,12 +48,12 @@ from std.utils import IndexList
 
 def compute_hash[
     type: DType
-](ptr: UnsafePointer[Scalar[type], _], size: Int) -> UInt64:
+](ptr: Pointer[Scalar[type], _], size: Int) -> UInt64:
     var h: UInt64 = 14695981039346656037
     for i in range(size):
-        var val = ptr[i].cast[DType.float32]()
-        var bits = bitcast[DType.uint32, 1](val)
-        h ^= bits.cast[DType.uint64]()
+        var val = ptr[i].cast[.float32]()
+        var bits = bitcast[.uint32, 1](val)
+        h ^= bits.cast[.uint64]()
         h *= 1099511628211
     return h
 
@@ -66,12 +66,22 @@ def test_decode_kv_cache[
     cache_lengths: List[Int],
     ctx: DeviceContext,
     expected_hash: UInt64 = 0,
+    target_q_head: Int = -1,
+    channel_idx: Int = 0,
+    q_channel_value: Float32 = 0,
+    k_channel_value: Float32 = 0,
 ) raises:
     """Test mha_decoding by calling the KV cache flash_attention overload
     with max_prompt_length=1 (triggering is_token_generation=True).
 
     Compares against `mha_gpu_naive` within tolerance, and optionally against a
     known-good hash for bitwise reproducibility.
+
+    When `target_q_head >= 0`, one Q/K channel is overwritten so that head's
+    score against every key is `q_channel_value * k_channel_value` plus random
+    noise, while every other head keeps a zero Q in that channel and stays at
+    the noise floor. This drives the targeted head's scores to an extreme
+    magnitude that random inputs never reach.
     """
     comptime page_size = 256
     var batch_size = len(cache_lengths)
@@ -104,7 +114,7 @@ def test_decode_kv_cache[
     comptime lookup_table_layout = Layout(UNKNOWN_VALUE)
 
     # Row offsets
-    var row_offsets = ManagedLayoutTensor[DType.uint32, row_offsets_layout](
+    var row_offsets = ManagedLayoutTensor[.uint32, row_offsets_layout](
         RuntimeLayout[row_offsets_layout].row_major(
             IndexList[1](batch_size + 1)
         ),
@@ -118,7 +128,7 @@ def test_decode_kv_cache[
     row_offsets_host[batch_size] = running_offset
 
     # Cache lengths
-    var cache_lens = ManagedLayoutTensor[DType.uint32, cache_lengths_layout](
+    var cache_lens = ManagedLayoutTensor[.uint32, cache_lengths_layout](
         RuntimeLayout[cache_lengths_layout].row_major(IndexList[1](batch_size)),
         ctx,
     )
@@ -133,7 +143,15 @@ def test_decode_kv_cache[
         ),
         ctx,
     )
-    random(q.tensor[update=False]())
+    var q_host = q.tensor[update=False]()
+    random(q_host)
+    if target_q_head >= 0:
+        for r in range(total_length):
+            for h in range(num_q_heads):
+                if h == target_q_head:
+                    q_host[r, h, channel_idx] = Scalar[dtype](q_channel_value)
+                else:
+                    q_host[r, h, channel_idx] = Scalar[dtype](0)
 
     # Output
     var output = ManagedLayoutTensor[dtype, q_layout](
@@ -166,10 +184,19 @@ def test_decode_kv_cache[
         ),
         ctx,
     )
-    random(kv_block_continuous.tensor[update=False]())
+    var kv_block_host = kv_block_continuous.tensor[update=False]()
+    random(kv_block_host)
+    if target_q_head >= 0:
+        var group = num_q_heads // kv_params.num_heads
+        var target_kv_head = target_q_head // group
+        for blk in range(num_continuous_blocks):
+            for pos in range(max_full_context_length):
+                kv_block_host[
+                    blk, 0, layer_idx, pos, target_kv_head, channel_idx
+                ] = Scalar[dtype](k_channel_value)
 
     # Lookup table for continuous batching
-    var lookup_table = ManagedLayoutTensor[DType.uint32, lookup_table_layout](
+    var lookup_table = ManagedLayoutTensor[.uint32, lookup_table_layout](
         RuntimeLayout[lookup_table_layout].row_major(IndexList[1](batch_size)),
         ctx,
     )
@@ -293,3 +320,26 @@ def main() raises:
             KVCacheStaticParams(num_heads=1, head_size=128),
             DType.bfloat16,
         ]([500, 700, 200, 300], ctx, expected_hash=group16_large_hash)
+
+        # Mask-sentinel regression. Decode kernels substitute the finite
+        # MASK_VALUE for masked out-of-bounds score columns, and online
+        # softmax takes the row max over those columns too, so MASK_VALUE
+        # must sit below every reachable score or it wins the max and zeroes
+        # a head's real columns. This case drives one head's raw score to
+        # about -262144 against every key (about -33000 after scale and
+        # log2e), a magnitude random Q/K (roughly +-50) never reach, and
+        # num_keys=490 is not a multiple of any power-of-2 tile width, so
+        # the last KV tile always contains masked columns.
+        print("TG group=4 depth=128 bs=1 mask sentinel")
+        test_decode_kv_cache[
+            32,
+            KVCacheStaticParams(num_heads=8, head_size=128),
+            DType.bfloat16,
+        ](
+            [489],
+            ctx,
+            target_q_head=10,
+            channel_idx=5,
+            q_channel_value=1024.0,
+            k_channel_value=-256.0,
+        )

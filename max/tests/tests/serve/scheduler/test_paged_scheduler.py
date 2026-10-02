@@ -18,6 +18,7 @@ import pytest
 from max.driver import CPU
 from max.nn.kv_cache import KVConnectorType
 from max.pipelines.kv_cache import InsufficientBlocksError
+from max.pipelines.kv_cache.config import KVConnectorConfig
 from max.pipelines.modeling.types import BatchType
 from max.serve.scheduler.batch_constructor.text_batch_constructor import (
     TG_PRIORITY_KV_PERCENTAGE_ENV_VAR,
@@ -88,7 +89,7 @@ def create_scheduler_under_kv_pressure() -> TokenGenerationScheduler:
     assert create_batch_and_execute(scheduler).batch_type == CE
 
     kv_cache = scheduler.batch_constructor.kv_cache
-    assert kv_cache.get_num_used_pages(0) / kv_cache.get_num_pages(0) > 0.9
+    assert kv_cache.block_count().used_pct > 90
 
     enqueue_request(request_queue, prompt_len=2, max_seq_len=4)
     return scheduler
@@ -960,7 +961,7 @@ def test_paged_scheduler_dp8() -> None:
 def test_paged_scheduler_paging_to_host_on_cpu_raises() -> None:
     with pytest.raises(ValueError) as e:
         create_paged_scheduler(
-            kv_connector=KVConnectorType.tiered,
+            kv_connector_config=KVConnectorConfig(type=KVConnectorType.tiered),
             enable_prefix_caching=True,
             device=CPU(),
         )

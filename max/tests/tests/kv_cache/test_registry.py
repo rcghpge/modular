@@ -19,9 +19,23 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from max.dtype import DType
+from max.engine import InferenceSession
 from max.graph import DeviceRef
-from max.nn.kv_cache import KVCacheParams, MHAKVCacheParams
-from max.pipelines.kv_cache import load_kv_manager
+from max.nn.kv_cache import (
+    KVCacheParams,
+    MHAKVCacheParams,
+    MultiKVCacheParams,
+    RecurrentStateParams,
+    RecurrentStateRegion,
+    estimated_memory_size,
+)
+from max.pipelines.kv_cache import (
+    JengaKVCacheManager,
+    PagedKVCacheManagerInterface,
+    kv_cache_memory_size,
+    load_kv_manager,
+)
+from max.pipelines.kv_cache.registry import _use_jenga_kv_cache
 
 
 def create_kv_params(
@@ -42,6 +56,115 @@ def create_kv_params(
     )
 
 
+def _load_kv_manager_with_defaults(
+    params: KVCacheParams,
+    max_batch_size: int,
+    max_seq_len: int,
+    session: InferenceSession,
+    available_cache_memory: int,
+    is_di_enabled: bool = False,
+    model_name: str = "FAKE",
+) -> PagedKVCacheManagerInterface:
+    return load_kv_manager(
+        params=params,
+        max_batch_size=max_batch_size,
+        max_seq_len=max_seq_len,
+        session=session,
+        available_cache_memory=available_cache_memory,
+        is_di_enabled=is_di_enabled,
+        model_name=model_name,
+        max_num_input_tokens=None,
+    )
+
+
+class TestUseJengaKvCache:
+    """Allowlist and opt-out behavior for the Jenga manager."""
+
+    @pytest.mark.parametrize(
+        ("model_name", "expected"),
+        [
+            ("meta-llama/Llama-3.1-8B-Instruct", True),
+            ("google/gemma-4-31B-it", True),
+            ("openai/gpt-oss-20b", True),
+            ("openai/gpt-oss-120b", True),
+            ("GptOssForCausalLM", True),
+            ("allenai/Olmo-3-7B-Instruct", True),
+            ("Olmo3ForCausalLM", True),
+            ("allenai/OLMo-2-1124-7B-Instruct", True),
+            ("stepfun-ai/Step-3.5-Flash", True),
+            ("Step3p5ForCausalLM", True),
+            ("modularai/inkling", True),
+            ("nvidia/Kimi-K2.6-NVFP4", True),
+            ("amd/Kimi-K2.7-Code-MXFP4", True),
+            ("moonshotai/Kimi-VL-A3B-Instruct", True),
+            ("KimiK25ForConditionalGeneration", True),
+            ("deepseek-ai/DeepSeek-V3.2", True),
+            ("DeepseekV32ForCausalLM", True),
+            ("deepseek-ai/DeepSeek-V2-Lite", True),
+            ("Qwen/Qwen3-8B", False),
+            ("FAKE", False),
+        ],
+    )
+    def test_model_allowlist(
+        self, model_name: str, expected: bool, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MODULAR_USE_LEGACY_KV_CACHE", raising=False)
+        assert (
+            _use_jenga_kv_cache(
+                create_kv_params(),
+                is_di_enabled=False,
+                model_name=model_name,
+            )
+            is expected
+        )
+
+    def test_legacy_env_disables_jenga(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MODULAR_USE_LEGACY_KV_CACHE", "1")
+        assert not _use_jenga_kv_cache(
+            create_kv_params(),
+            is_di_enabled=False,
+            model_name="openai/gpt-oss-20b",
+        )
+
+    def test_disaggregated_inference_disables_jenga(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MODULAR_USE_LEGACY_KV_CACHE", raising=False)
+        assert not _use_jenga_kv_cache(
+            create_kv_params(),
+            is_di_enabled=True,
+            model_name="openai/gpt-oss-20b",
+        )
+
+    def test_a_state_selects_jenga_whatever_else_says(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A recurrent state can only live on Jenga."""
+        monkeypatch.setenv("MODULAR_USE_LEGACY_KV_CACHE", "1")
+        attn = create_kv_params()
+        with_state = MultiKVCacheParams.from_params(
+            {
+                "attn": attn,
+                "state": RecurrentStateParams(
+                    regions=(
+                        RecurrentStateRegion(
+                            leaf_id="conv_state",
+                            num_layers=2,
+                            row_shape=(8, 3),
+                            dtype=DType.float32,
+                        ),
+                    ),
+                    devices=attn.devices,
+                ),
+            }
+        )
+        assert _use_jenga_kv_cache(
+            with_state, is_di_enabled=True, model_name="FAKE"
+        )
+
+
 class TestLoadKvManager:
     """Tests for load_kv_manager function."""
 
@@ -56,7 +179,7 @@ class TestLoadKvManager:
         params = create_kv_params()
         mock_session = MagicMock()
 
-        result = load_kv_manager(
+        result = _load_kv_manager_with_defaults(
             params=params,
             max_batch_size=16,
             max_seq_len=2048,
@@ -75,7 +198,7 @@ class TestLoadKvManager:
         params = create_kv_params(num_layers=16)
         mock_session = MagicMock()
 
-        load_kv_manager(
+        _load_kv_manager_with_defaults(
             params=params,
             max_batch_size=8,
             max_seq_len=1024,
@@ -96,7 +219,7 @@ class TestLoadKvManager:
         with pytest.raises(
             ValueError, match="max_batch_size must be greater than 0"
         ):
-            load_kv_manager(
+            _load_kv_manager_with_defaults(
                 params=params,
                 max_batch_size=0,
                 max_seq_len=2048,
@@ -112,7 +235,7 @@ class TestLoadKvManager:
         with pytest.raises(
             ValueError, match="max_batch_size must be greater than 0"
         ):
-            load_kv_manager(
+            _load_kv_manager_with_defaults(
                 params=params,
                 max_batch_size=-1,
                 max_seq_len=2048,
@@ -130,7 +253,7 @@ class TestLoadKvManager:
         with pytest.raises(
             RuntimeError, match="one request at the max sequence length"
         ):
-            load_kv_manager(
+            _load_kv_manager_with_defaults(
                 params=params,
                 max_batch_size=16,
                 max_seq_len=8192 + 1,
@@ -155,7 +278,7 @@ class TestLoadKvManager:
         mock_session = MagicMock()
 
         with pytest.raises(ValueError, match="multiple of 128"):
-            load_kv_manager(
+            _load_kv_manager_with_defaults(
                 params=params,
                 max_batch_size=16,
                 max_seq_len=2048,
@@ -178,7 +301,7 @@ class TestLoadKvManagers:
         params = create_kv_params()
         mock_session = MagicMock()
 
-        result = load_kv_manager(
+        result = _load_kv_manager_with_defaults(
             params=params,
             max_batch_size=16,
             max_seq_len=2048,
@@ -203,7 +326,7 @@ class TestLoadKvManagerVirtualDevice:
         params = create_kv_params()
         mock_session = MagicMock()
 
-        result = load_kv_manager(
+        result = _load_kv_manager_with_defaults(
             params=params,
             max_batch_size=16,
             max_seq_len=2048,
@@ -212,3 +335,84 @@ class TestLoadKvManagerVirtualDevice:
         )
 
         assert isinstance(result, Mock)
+
+
+class TestKvCacheMemorySize:
+    """Tests the KV budget a pipeline's memory plan reserves."""
+
+    PLENTY = 256 * 1024**3
+    BATCH = 8
+    SEQ = 8192
+
+    def _windowed(self) -> MultiKVCacheParams:
+        """A sliding-window leaf beside a full one, as Gemma declares them."""
+        full = create_kv_params(num_layers=4)
+        sliding = MHAKVCacheParams(
+            dtype=DType.bfloat16,
+            n_kv_heads=8,
+            head_dim=128,
+            num_layers=20,
+            devices=full.devices,
+            page_size=128,
+            window_size=1024,
+        )
+        return MultiKVCacheParams.from_params(
+            {"full": full, "sliding": sliding}
+        )
+
+    def _size(self, params: MultiKVCacheParams, model_name: str) -> int:
+        return kv_cache_memory_size(
+            params,
+            self.PLENTY,
+            self.BATCH,
+            self.SEQ,
+            is_di_enabled=False,
+            model_name=model_name,
+        )
+
+    def test_a_windowed_jenga_cache_keeps_the_generic_estimate(self) -> None:
+        """Checks Jenga never sizes a windowed cache below the generic estimate.
+
+        The generic estimate charges a windowed leaf for every token, and
+        that room holds cached prefixes, so the exact need alone would take
+        it away.
+        """
+        params = self._windowed()
+        generic = estimated_memory_size(
+            params=params,
+            available_cache_memory=self.PLENTY,
+            max_batch_size=self.BATCH,
+            max_seq_len=self.SEQ,
+            include_null_block=True,
+        )
+        exact = JengaKVCacheManager.memory_size(
+            params, self.PLENTY, self.BATCH, self.SEQ
+        )
+        assert exact < generic, "the fixture must over-count its window"
+
+        assert self._size(params, "google/gemma-4-31B-it") == generic
+
+    def test_a_state_cache_gets_at_least_its_exact_need(self) -> None:
+        """Checks a state the generic estimate does not price still fits."""
+        attn = create_kv_params()
+        params = MultiKVCacheParams.from_params(
+            {
+                "attn": attn,
+                "state": RecurrentStateParams(
+                    regions=(
+                        RecurrentStateRegion(
+                            leaf_id="conv_state",
+                            num_layers=64,
+                            row_shape=(4096, 3),
+                            dtype=DType.float32,
+                        ),
+                    ),
+                    devices=attn.devices,
+                ),
+            }
+        )
+        exact = JengaKVCacheManager.memory_size(
+            params, self.PLENTY, self.BATCH, self.SEQ
+        )
+
+        assert self._size(params, "FAKE") >= exact

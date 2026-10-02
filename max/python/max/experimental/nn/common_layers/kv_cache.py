@@ -15,36 +15,20 @@
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
-from typing import Any, cast
+from dataclasses import dataclass, fields
+from typing import cast
 
 from max.experimental.sharding import DeviceMapping
 from max.experimental.tensor import Tensor
 from max.graph import BufferValue, TensorValue
-from max.nn.kv_cache.input_types import (
-    KVCacheInputsPerDevice,
-)
+from max.nn.kv_cache.input_types import KVCacheInputsPerDevice
 from max.nn.kv_cache.input_types import PagedCacheValues as _PagedCacheValues
 
 
 @dataclass
 class PagedCacheValues(KVCacheInputsPerDevice[Tensor, Tensor]):
-    """Tensors holding the values for the allocated paged KV cache.
-
-    May be located on multiple devices.
-    """
-
-    kv_blocks: Tensor
-    cache_lengths: Tensor
-    lookup_table: Tensor
-    max_prompt_length: Tensor
-    max_cache_length: Tensor
-    kv_scales: Tensor | None = None
-    attention_dispatch_metadata: Tensor | None = None
-    # MLA capturable-graph scalar; mirrors upstream PagedCacheValues.
-    mla_num_partitions: Tensor | None = None
+    """Distributed view of KV cache inputs."""
 
     @classmethod
     def from_upstream(
@@ -85,6 +69,28 @@ class PagedCacheValues(KVCacheInputsPerDevice[Tensor, Tensor]):
                 )
             )
 
+        page_stride = _wrap(
+            cast(list[TensorValue], [d.page_stride for d in per_device])
+        )
+
+        scales_page_stride: Tensor | None = None
+        if per_device[0].scales_page_stride is not None:
+            scales_page_stride = _wrap(
+                cast(
+                    list[TensorValue],
+                    [d.scales_page_stride for d in per_device],
+                )
+            )
+
+        scales_lookup_table: Tensor | None = None
+        if per_device[0].scales_lookup_table is not None:
+            scales_lookup_table = _wrap(
+                cast(
+                    list[TensorValue],
+                    [d.scales_lookup_table for d in per_device],
+                )
+            )
+
         return cls(
             kv_blocks=_wrap([d.kv_blocks for d in per_device]),
             cache_lengths=_wrap([d.cache_lengths for d in per_device]),
@@ -92,24 +98,27 @@ class PagedCacheValues(KVCacheInputsPerDevice[Tensor, Tensor]):
             max_prompt_length=_wrap([d.max_prompt_length for d in per_device]),
             max_cache_length=_wrap([d.max_cache_length for d in per_device]),
             kv_scales=kv_scales,
+            page_stride=page_stride,
+            scales_page_stride=scales_page_stride,
+            scales_lookup_table=scales_lookup_table,
             attention_dispatch_metadata=attention_dispatch_metadata,
             mla_num_partitions=mla_num_partitions,
         )
 
-    def __tree_flatten__(
-        self,
-    ) -> tuple[tuple[Tensor | None, ...], tuple[str, ...]]:
-        """Exposes the Tensor leaves to the subgraph pytree machinery."""
-        names = tuple(f.name for f in dataclasses.fields(self))
-        children = tuple(getattr(self, name) for name in names)
-        return children, names
+    def to_graph_values(self) -> _PagedCacheValues:
+        """Returns this single-device cache as graph values.
 
-    @classmethod
-    def __tree_unflatten__(
-        cls, aux: tuple[str, ...], children: Sequence[Any]
-    ) -> PagedCacheValues:
-        """Rebuilds a :class:`PagedCacheValues` from flattened leaves."""
-        return cls(**dict(zip(aux, children, strict=True)))
+        The blocks and scales become buffers, since attention kernels write
+        them in place.
+        """
+        values = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, Tensor):
+                is_buffer = f.name in ("kv_blocks", "kv_scales")
+                value = BufferValue(value) if is_buffer else TensorValue(value)
+            values[f.name] = value
+        return _PagedCacheValues(**values)
 
     @property
     def n_devices(self) -> int:
@@ -125,28 +134,3 @@ class PagedCacheValues(KVCacheInputsPerDevice[Tensor, Tensor]):
         yield self.max_cache_length
         if self.kv_scales is not None:
             yield self.kv_scales
-
-    def for_device(self, i: int) -> _PagedCacheValues:
-        """Returns the local PagedCacheValues for the given device."""
-        return _PagedCacheValues(
-            kv_blocks=BufferValue(self.kv_blocks.local_shards[i]),
-            cache_lengths=TensorValue(self.cache_lengths.local_shards[i]),
-            lookup_table=TensorValue(self.lookup_table.local_shards[i]),
-            max_prompt_length=TensorValue(
-                self.max_prompt_length.local_shards[i]
-            ),
-            max_cache_length=TensorValue(self.max_cache_length.local_shards[i]),
-            kv_scales=BufferValue(self.kv_scales.local_shards[i])
-            if self.kv_scales is not None
-            else None,
-            attention_dispatch_metadata=TensorValue(
-                self.attention_dispatch_metadata.local_shards[i]
-            )
-            if self.attention_dispatch_metadata is not None
-            else None,
-            mla_num_partitions=TensorValue(
-                self.mla_num_partitions.local_shards[i]
-            )
-            if self.mla_num_partitions is not None
-            else None,
-        )

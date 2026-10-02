@@ -27,10 +27,10 @@ from std.math.constants import log2e
 
 from std.sys import size_of
 
-import std.gpu.primitives.warp as warp
+import max.gpu.primitives.warp as warp
 from std.algorithm.functional import unswitch
-from std.gpu import thread_idx
-from std.gpu.globals import WARPGROUP_SIZE
+from max.gpu import thread_idx
+from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     IntTuple,
@@ -98,7 +98,7 @@ from nn.attention.gpu.nvidia.common import (
 )
 
 
-@always_inline
+@inline(.always)
 def _optional_lt_to_tt[
     dtype: DType,
 ](
@@ -120,7 +120,7 @@ def _optional_lt_to_tt[
     return None
 
 
-@always_inline
+@inline(.always)
 def _get_position[
     KVLUTType: MHAOperand,
     MaxSeqLenType: OptionallyStaticInt,
@@ -203,7 +203,7 @@ def _get_position[
     ret = {q_row, q_col, q_offset, num_keys, start_pos, seq_info}
 
 
-@always_inline
+@inline(.always)
 def get_q_head_idx[
     BM: Int,
     BN: Int,
@@ -253,7 +253,7 @@ def get_q_head_idx[
         indices = {position.head_idx}
 
 
-@always_inline
+@inline(.always)
 def _apply_mask[
     BM: Int,
     BN: Int,
@@ -287,7 +287,7 @@ def _apply_mask[
         accum_type,
         reg_tile_layout,
         MutAnyOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
         element_layout=element_layout,
     ],
 ):
@@ -317,9 +317,8 @@ def _apply_mask[
     var mask_warp_row: UInt32 = mask_warp_row_arg + fragment_row
     var mask_warp_col: UInt32 = kv_tile_start_row + fragment_col
 
-    @__parameter
-    @always_inline
-    def _apply_mask_capture[masked: Bool]():
+    @inline(.always)
+    def _apply_mask_capture[masked: Bool]() {imm}:
         comptime for m_mma in range(num_m_mmas):
             comptime for n_mma in range(num_n_mmas):
                 # Coordinates in mask for current mma tile.
@@ -356,7 +355,7 @@ def _apply_mask[
 
                         comptime if masked:
                             p = mask.mask(
-                                IndexList[4, element_type=DType.uint32](
+                                IndexList[4, element_type=.uint32](
                                     Int(position.prompt_idx),
                                     Int(q_head_idx),
                                     Int(score_row_with_start_pos),
@@ -370,27 +369,27 @@ def _apply_mask[
                         comptime if mask_t.apply_log2e_after_mask:
                             p *= log2e
 
-                        var bound: IndexList[2, element_type=DType.uint32]
+                        var bound: IndexList[2, element_type=.uint32]
 
                         comptime if decoding:
-                            bound = IndexList[2, element_type=DType.uint32](
+                            bound = IndexList[2, element_type=.uint32](
                                 Int(position.num_keys),
                                 Int(position.num_keys),
                             )
                             p = _kernel_mask(
-                                IndexList[2, element_type=DType.uint32](
+                                IndexList[2, element_type=.uint32](
                                     Int(score_row), Int(score_col)
                                 ),
                                 bound,
                                 p,
                             )
                         elif masked:
-                            bound = IndexList[2, element_type=DType.uint32](
+                            bound = IndexList[2, element_type=.uint32](
                                 Int(position.seq_len),
                                 Int(position.num_keys),
                             )
                             p = _kernel_mask(
-                                IndexList[2, element_type=DType.uint32](
+                                IndexList[2, element_type=.uint32](
                                     Int(score_row), Int(score_col)
                                 ),
                                 bound,
@@ -401,17 +400,18 @@ def _apply_mask[
     comptime if decoding:
         _apply_mask_capture[True]()
     else:
-        unswitch[_apply_mask_capture](
+        unswitch(
             (mask_status == TileMaskStatus.PARTIAL_MASK)
             # NOTE: mask_status should be either PARTIAL_MASK or NO_MASK at
             # this point.
             # In the NO_MASK case, we still need to mask out the scores for the
             # last tile, which goes beyond num_keys (for num_keys % 128 != 0).
-            or (UInt32(BN) + kv_tile_start_row > position.num_keys)
+            or (UInt32(BN) + kv_tile_start_row > position.num_keys),
+            _apply_mask_capture,
         )
 
 
-@always_inline
+@inline(.always)
 def produce[
     qkv_type: DType,
     BM: Int,
@@ -455,27 +455,21 @@ def produce[
         BN=kv_sub_tile_rows(BN, KVLUTType.page_size),
         BK=padded_depth,
     ],
-    q_smem: UnsafePointer[
-        mut=True, Scalar[qkv_type], _, address_space=AddressSpace.SHARED
-    ],
+    q_smem: UnsafePointer[mut=True, Scalar[qkv_type], _, address_space=.SHARED],
     kv_smem: UnsafePointer[
-        mut=True, Scalar[qkv_type], _, address_space=AddressSpace.SHARED
+        mut=True, Scalar[qkv_type], _, address_space=.SHARED
     ],
     produced_mbar_kv: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     consumed_mbar_kv: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     produced_mbar_q: Optional[
-        UnsafePointer[
-            SharedMemBarrier, MutAnyOrigin, address_space=AddressSpace.SHARED
-        ]
+        UnsafePointer[SharedMemBarrier, MutAnyOrigin, address_space=.SHARED]
     ],
     consumed_mbar_q: Optional[
-        UnsafePointer[
-            SharedMemBarrier, MutAnyOrigin, address_space=AddressSpace.SHARED
-        ]
+        UnsafePointer[SharedMemBarrier, MutAnyOrigin, address_space=.SHARED]
     ],
     kv_lut: KVLUTType,
     initial_position: MHAPosition[
@@ -601,39 +595,19 @@ def produce[
     var position = initial_position
 
     @__parameter
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def q_producer(
         q_idx: UInt32, offset: UInt32 = 0
     ) -> LayoutTensor[
         qkv_type,
         Layout.row_major(q_tile_shape),
         type_of(q_smem).origin,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=128,
     ]:
         return {q_smem + UInt32(q_size) * q_idx + offset}
 
-    comptime k_smem_layout = tile_layout_k_major[
-        qkv_type, BN, padded_depth, swizzle_mode
-    ]()
     comptime assert pipeline_stages >= 2
-
-    @__parameter
-    @always_inline
-    def kv_tile(
-        idx: UInt32,
-        out tile: LayoutTensor[
-            qkv_type,
-            k_smem_layout,
-            type_of(kv_smem).origin,
-            address_space=AddressSpace.SHARED,
-            layout_int_type=DType.int32,
-            linear_idx_type=DType.int32,
-            alignment=128,
-        ],
-    ):
-        comptime sz = BN * padded_depth
-        tile = {kv_smem + UInt32(sz) * idx}
 
     comptime kv_sub_BN = kv_sub_tile_rows(BN, KVLUTType.page_size)
 
@@ -655,7 +629,7 @@ def produce[
     ]()
 
     @__parameter
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def _num_valid_pages(end_row: UInt32, current_kv_row: UInt32) -> UInt32:
         return min(
             UInt32(ceildiv(Int(end_row - current_kv_row), page_size)),
@@ -663,7 +637,7 @@ def produce[
         )
 
     @__parameter
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def produce_kv[
         is_k_side: Bool,
         wait: Bool,
@@ -712,7 +686,7 @@ def produce[
         state.step()
 
     @__parameter
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def produce_kv_partial[
         is_k_side: Bool,
         wait: Bool,
@@ -768,7 +742,7 @@ def produce[
         state.step()
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def get_position(seq_info: SeqInfo) -> PositionType:
         return _get_position[
             BM,
@@ -1062,8 +1036,8 @@ def produce[
         )
 
 
-@always_inline
-@always_inline
+@inline(.always)
+@inline(.always)
 def output_reg_to_smem[
     output_type: DType,
     accum_type: DType,
@@ -1080,19 +1054,19 @@ def output_reg_to_smem[
     local_warp_group_idx: UInt32,
     warp_y: UInt32,
     q_smem: UnsafePointer[
-        Scalar[output_type], MutAnyOrigin, address_space=AddressSpace.SHARED
+        Scalar[output_type], MutAnyOrigin, address_space=.SHARED
     ],
     output_reg_tile: LayoutTensor[
         accum_type,
         Layout.row_major(num_m_mmas, o_frag_size),
         MutAnyOrigin,
-        address_space=AddressSpace.LOCAL,
+        address_space=.LOCAL,
     ],
 ) -> LayoutTensor[
     output_type,
     Layout.row_major(BM, padded_depth),
     MutAnyOrigin,
-    address_space=AddressSpace.SHARED,
+    address_space=.SHARED,
 ]:
     """Stores the output accumulator registers from local memory into shared memory.
 
@@ -1128,7 +1102,7 @@ def output_reg_to_smem[
     var accum_smem_tile = LayoutTensor[
         output_type,
         Layout.row_major(BM, padded_depth),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ](q_smem)
     comptime use_stmatrix = accum_type == DType.float32 and padded_depth % 16 == 0 and size_of[
         output_type

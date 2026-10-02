@@ -11,6 +11,15 @@ max.pipelines.kv_cache
 
 .. currentmodule:: max.pipelines.kv_cache
 
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   pipelines.kv_cache.paged_kv_cache.kv_group_coordinator
+   pipelines.kv_cache.paged_kv_cache.recurrent_coordinator
+
 Memory planning
 ---------------
 
@@ -43,6 +52,7 @@ Cache manager
    :toctree: generated
    :template: autosummary/class.rst
 
+   ByteCount
    DummyKVCache
    InsufficientBlocksError
    PagedKVCacheManager
@@ -69,6 +79,7 @@ Factory functions
 
    available_port
    load_kv_manager
+   max_seq_len_fitting_in_cache
 
 Utilities
 ---------

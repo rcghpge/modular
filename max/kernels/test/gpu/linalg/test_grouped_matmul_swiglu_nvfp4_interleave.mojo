@@ -37,8 +37,8 @@ from max.gpu.host import DeviceContext
 from std.memory import alloc
 from std.memory.unsafe import bitcast
 from std.random import random_ui64, seed, rand
-from std.builtin.simd import _convert_f32_to_float8_scalar
-from std.gpu import (
+from std.simd import _convert_f32_to_float8_scalar
+from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
     thread_idx,
@@ -51,7 +51,7 @@ from max.gpu.primitives.grid_controls import (
     PDLLevel,
     pdl_launch_attributes,
 )
-import std.gpu.primitives.warp as warp
+import max.gpu.primitives.warp as warp
 from std.utils.index import StaticTuple
 
 from layout import (
@@ -167,41 +167,39 @@ def _test_swiglu_interleave[
 
     # ---- Per-expert offsets / IDs (static lengths so the SwiGLU kernel's
     # ----  comptime n_groups = scales_offsets.static_shape[0] resolves) ----
-    var a_offsets_host_ptr = alloc[Scalar[DType.uint32]](num_active_experts + 1)
-    var a_scale_offsets_ptr = alloc[Scalar[DType.uint32]](num_active_experts)
-    var expert_ids_host_ptr = alloc[Scalar[DType.int32]](num_active_experts)
-    var expert_scales_host_ptr = alloc[Scalar[DType.float32]](num_experts)
-    var input_scales_host_ptr = alloc[Scalar[DType.float32]](num_active_experts)
+    var a_offsets_host_ptr = alloc[UInt32](num_active_experts + 1)
+    var a_scale_offsets_ptr = alloc[UInt32](num_active_experts)
+    var expert_ids_host_ptr = alloc[Int32](num_active_experts)
+    var expert_scales_host_ptr = alloc[Float32](num_experts)
+    var input_scales_host_ptr = alloc[Float32](num_active_experts)
 
-    var a_offsets_device = ctx.enqueue_create_buffer[DType.uint32](
+    var a_offsets_device = ctx.enqueue_create_buffer[.uint32](
         num_active_experts + 1
     )
     var a_offsets_tensor = TileTensor(
         a_offsets_device,
         row_major(Coord(Idx[num_active_experts + 1])),
     )
-    var a_scale_offsets_device = ctx.enqueue_create_buffer[DType.uint32](
+    var a_scale_offsets_device = ctx.enqueue_create_buffer[.uint32](
         num_active_experts
     )
     var a_scale_offsets_tensor = TileTensor(
         a_scale_offsets_device,
         row_major(Coord(Idx[num_active_experts])),
     )
-    var expert_ids_device = ctx.enqueue_create_buffer[DType.int32](
+    var expert_ids_device = ctx.enqueue_create_buffer[.int32](
         num_active_experts
     )
     var expert_ids_tensor = TileTensor(
         expert_ids_device,
         row_major(Coord(Idx[num_active_experts])),
     )
-    var expert_scales_device = ctx.enqueue_create_buffer[DType.float32](
-        num_experts
-    )
+    var expert_scales_device = ctx.enqueue_create_buffer[.float32](num_experts)
     var expert_scales_tensor = TileTensor(
         expert_scales_device,
         row_major(Coord(Idx[num_experts])),
     )
-    var input_scales_device = ctx.enqueue_create_buffer[DType.float32](
+    var input_scales_device = ctx.enqueue_create_buffer[.float32](
         num_active_experts
     )
     var input_scales_tensor = TileTensor(
@@ -302,12 +300,12 @@ def _test_swiglu_interleave[
 
     # ---- Init data: random uint8 weights/activations, power-of-2 e4m3
     #      input scales, random (zeroed-OOB) e4m3 weight scales ----
-    rand(a_host._storage, a_host.num_elements(), min=0, max=255)
-    rand(b_host._storage, b_host.num_elements(), min=0, max=255)
+    rand(a_host.as_span(), min=0, max=255)
+    rand(b_host.as_span(), min=0, max=255)
 
     for i in range(a_scales_host.num_elements()):
         a_scales_host._storage[i] = Scalar[scales_dtype](0.0)
-    rand(b_scales_host._storage, b_scales_host.num_elements())
+    rand(b_scales_host.as_span())
     for i in range(b_scales_perm_host.num_elements()):
         b_scales_perm_host._storage[i] = Scalar[scales_dtype](0.0)
 
@@ -328,7 +326,7 @@ def _test_swiglu_interleave[
                 if idx1 < K:
                     var scale_value = _convert_f32_to_float8_scalar[
                         scales_dtype
-                    ]((1 << random_ui64(0, 2)).cast[DType.float32]())
+                    ]((1 << random_ui64(0, 2)).cast[.float32]())
                     set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
                         a_scales_tensor_host, idx0, idx1, scale_value
                     )
@@ -575,11 +573,11 @@ def _test_swiglu_interleave[
 
     # Store the immutable views as named vars so .LayoutType resolves to a
     # stable comptime type rather than being read off a chained method call.
-    var c_ref_immut = c_ref_tensor.as_immut()
-    var c_perm_immut = c_perm_tensor.as_immut()
-    var a_offsets_immut = a_offsets_tensor.as_immut()
-    var a_scale_offsets_immut = a_scale_offsets_tensor.as_immut()
-    var input_scales_immut = input_scales_tensor.as_immut()
+    var c_ref_immut = c_ref_tensor.as_imm()
+    var c_perm_immut = c_perm_tensor.as_imm()
+    var a_offsets_immut = a_offsets_tensor.as_imm()
+    var a_scale_offsets_immut = a_scale_offsets_tensor.as_imm()
+    var input_scales_immut = input_scales_tensor.as_imm()
 
     comptime fused_silu_nvfp4 = fused_silu_nvfp4_kernel[
         fp4_dtype,

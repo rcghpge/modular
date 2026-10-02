@@ -159,28 +159,21 @@ def test_grouped_gemm_epilogue[
 
     # Scale factor device allocations
     var sfa_device = ctx.enqueue_create_buffer[scales_dtype](sfa_size)
-    var sfa_tensor = TileTensor(sfa_device, a_scales_shape)
     var sfb_device = ctx.enqueue_create_buffer[scales_dtype](sfb_size)
-    var sfb_tensor = TileTensor(sfb_device, b_scales_shape)
 
     # Scale factor host allocations — initialized to 1.0 (identity scaling)
     var sfa_host_ptr = ctx.enqueue_create_host_buffer[scales_dtype](sfa_size)
-    var sfa_host = TileTensor(sfa_host_ptr, a_scales_shape)
     var sfb_host_ptr = ctx.enqueue_create_host_buffer[scales_dtype](sfb_size)
-    var sfb_host = TileTensor(sfb_host_ptr, b_scales_shape)
     var scale_one = Float32(1.0).cast[scales_dtype]()
     for i in range(sfa_size):
         sfa_host_ptr[i] = scale_one
     for i in range(sfb_size):
         sfb_host_ptr[i] = scale_one
 
-    # The C LayoutTensor that will be captured by the epilogue lambda
-    var c_tensor_lt = c_tensor.to_layout_tensor()
-
     # Define epilogue lambda that adds original C value to matmul result
     @__parameter
-    @always_inline
-    @__copy_capture(c_tensor_lt)
+    @inline(.always)
+    @__copy_capture(c_tensor)
     def epilogue_add_c[
         _dtype: DType,
         width: SIMDLength,
@@ -190,12 +183,12 @@ def test_grouped_gemm_epilogue[
         _dtype, width
     ]:
         # C' = matmul(A, B) + C_original
-        return val + c_tensor_lt.load[width=width](idx).cast[_dtype]()
+        return val + c_tensor.load[width=width](Coord(idx)).cast[_dtype]()
 
     # Initialize random data
     seed(42)
-    rand(a_host._storage, a_host.num_elements())
-    rand(b_host._storage, b_host.num_elements())
+    rand(a_host.as_span())
+    rand(b_host.as_span())
 
     # Initialize C with random values for epilogue test
     for i in range(Int(m.value())):
@@ -224,7 +217,7 @@ def test_grouped_gemm_epilogue[
     )
 
     # Problem sizes tensor
-    var problem_sizes_host = ctx.enqueue_create_host_buffer[DType.int32](
+    var problem_sizes_host = ctx.enqueue_create_host_buffer[.int32](
         max_groups * 4
     )
     problem_sizes_host[0] = Int32(Int(m.value()))  # M
@@ -232,9 +225,7 @@ def test_grouped_gemm_epilogue[
     problem_sizes_host[2] = Int32(Int(k.value()))  # K
     problem_sizes_host[3] = Int32(1)  # L (batch)
 
-    var problem_sizes_device = ctx.enqueue_create_buffer[DType.int32](
-        max_groups * 4
-    )
+    var problem_sizes_device = ctx.enqueue_create_buffer[.int32](max_groups * 4)
     ctx.enqueue_copy(problem_sizes_device, problem_sizes_host)
 
     var problem_sizes_tensor = TileTensor(
@@ -242,11 +233,11 @@ def test_grouped_gemm_epilogue[
     )
 
     # Pointer arrays
-    var a_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
-    var b_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
-    var c_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
-    var sfa_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
-    var sfb_ptrs_host = ctx.enqueue_create_host_buffer[DType.uint64](max_groups)
+    var a_ptrs_host = ctx.enqueue_create_host_buffer[.uint64](max_groups)
+    var b_ptrs_host = ctx.enqueue_create_host_buffer[.uint64](max_groups)
+    var c_ptrs_host = ctx.enqueue_create_host_buffer[.uint64](max_groups)
+    var sfa_ptrs_host = ctx.enqueue_create_host_buffer[.uint64](max_groups)
+    var sfb_ptrs_host = ctx.enqueue_create_host_buffer[.uint64](max_groups)
 
     a_ptrs_host[0] = UInt64(Int(a_device.unsafe_ptr()))
     b_ptrs_host[0] = UInt64(Int(b_device.unsafe_ptr()))
@@ -254,11 +245,11 @@ def test_grouped_gemm_epilogue[
     sfa_ptrs_host[0] = UInt64(Int(sfa_device.unsafe_ptr()))
     sfb_ptrs_host[0] = UInt64(Int(sfb_device.unsafe_ptr()))
 
-    var a_ptrs_device = ctx.enqueue_create_buffer[DType.uint64](max_groups)
-    var b_ptrs_device = ctx.enqueue_create_buffer[DType.uint64](max_groups)
-    var c_ptrs_device = ctx.enqueue_create_buffer[DType.uint64](max_groups)
-    var sfa_ptrs_device = ctx.enqueue_create_buffer[DType.uint64](max_groups)
-    var sfb_ptrs_device = ctx.enqueue_create_buffer[DType.uint64](max_groups)
+    var a_ptrs_device = ctx.enqueue_create_buffer[.uint64](max_groups)
+    var b_ptrs_device = ctx.enqueue_create_buffer[.uint64](max_groups)
+    var c_ptrs_device = ctx.enqueue_create_buffer[.uint64](max_groups)
+    var sfa_ptrs_device = ctx.enqueue_create_buffer[.uint64](max_groups)
+    var sfb_ptrs_device = ctx.enqueue_create_buffer[.uint64](max_groups)
 
     ctx.enqueue_copy(a_ptrs_device, a_ptrs_host)
     ctx.enqueue_copy(b_ptrs_device, b_ptrs_host)
@@ -345,14 +336,11 @@ def test_grouped_gemm_epilogue[
     )
 
     # Run reference matmul (without epilogue)
-    var a_lt = a_tensor.to_layout_tensor()
-    var b_lt = b_tensor.to_layout_tensor()
-    var c_ref_tensor_lt = c_ref_tensor.to_layout_tensor()
     vendor_blas.matmul(
         ctx,
-        c_ref_tensor_lt,
-        a_lt,
-        b_lt,
+        c_ref_tensor,
+        a_tensor,
+        b_tensor,
         c_row_major=True,
         transpose_b=transpose_b,
     )
@@ -365,11 +353,10 @@ def test_grouped_gemm_epilogue[
     ctx.synchronize()
 
     # Apply epilogue lambda on CPU to reference
-    var c_tensor_host_lt = c_host_original.to_layout_tensor()
 
     @__parameter
-    @always_inline
-    @__copy_capture(c_tensor_host_lt)
+    @inline(.always)
+    @__copy_capture(c_host_original)
     def epilogue_add_c_host[
         _dtype: DType,
         width: SIMDLength,
@@ -378,7 +365,9 @@ def test_grouped_gemm_epilogue[
     ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
         _dtype, width
     ]:
-        return val + c_tensor_host_lt.load[width=width](idx).cast[_dtype]()
+        return (
+            val + c_host_original.load[width=width](Coord(idx)).cast[_dtype]()
+        )
 
     for i in range(Int(m.value())):
         for j in range(Int(n.value())):

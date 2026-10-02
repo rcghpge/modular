@@ -26,6 +26,7 @@ from max.benchmark.benchmark_serving import validate_task_and_endpoint
 from max.benchmark.benchmark_shared.config import SamplingConfig
 from max.benchmark.benchmark_shared.datasets.types import (
     ChatMessage,
+    OpenAIImage,
     PixelGenerationImageOptions,
     TextContentBlock,
 )
@@ -43,6 +44,7 @@ from max.benchmark.benchmark_shared.request import (
     TRTLLMRequestDriver,
     VllmOmniPixelGenerationRequestDriver,
     VllmOmniVideoRequestDriver,
+    _attach_images_to_first_user_message,
     _build_final_payload,
     _build_sglang_pixel_generation_payload,
     _build_sglang_video_payload,
@@ -53,6 +55,7 @@ from max.benchmark.benchmark_shared.request import (
     async_request_lora_unload,
     get_request_driver_class,
     mark_cancelled_if_past_deadline,
+    tag_response_format_outcome,
 )
 from pytest_mock import MockerFixture
 from tqdm.asyncio import tqdm
@@ -487,6 +490,139 @@ class TestRequestDriver:
         assert result.generated_text == ""
         assert result.error is not None
         assert "No text content" in result.error
+
+    @pytest.mark.asyncio
+    async def test_openai_chat_completions_tool_call_only_response_is_success(
+        self,
+        mock_aiohttp_session: Any,
+        mock_openai_env: None,
+        mocker: MockerFixture,
+    ) -> None:
+        """A pure tool-call turn is a successful, content-bearing response.
+
+        Regression test for the nemotron-opencode "No text content captured"
+        failures: an agentic response can consist entirely of ``tool_calls``
+        deltas (no ``content``/``reasoning`` at all). The client must model
+        the ``tool_calls`` field and treat those chunks as content-bearing
+        rather than reporting the request as failed.
+        """
+        request_input = RequestFuncInput(
+            model="test-model",
+            session_id=None,
+            sampling=SamplingConfig(),
+            prompt="Write a file",
+            images=[],
+            api_url="http://localhost:8000/chat/completions",
+            prompt_len=10,
+            max_tokens=100,
+            ignore_eos=False,
+        )
+
+        # Mirrors the server's streaming shape for a tool-call-only turn:
+        # an opener chunk with id + name, then argument fragments.
+        mock_response_data = [
+            (
+                b'data: {"choices": [{"delta": {"role": "assistant", '
+                b'"tool_calls": [{"index": 0, "id": "write:fa3c5398", '
+                b'"type": "function", '
+                b'"function": {"name": "write", "arguments": "{\\""}}]}}]}\n\n'
+            ),
+            (
+                b'data: {"choices": [{"delta": {"tool_calls": [{"index": 0, '
+                b'"function": {"arguments": "content\\": \\"hi\\"}"}}]}}]}\n\n'
+            ),
+            (
+                b'data: {"choices": [{"delta": {}, '
+                b'"finish_reason": "length"}]}\n\n'
+            ),
+            b"data: [DONE]\n\n",
+        ]
+
+        async def async_iter() -> AsyncIterator[bytes]:
+            for item in mock_response_data:
+                yield item
+
+        mock_response = mocker.AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+        mock_aiohttp_session.setup_post_response(mock_response)
+
+        driver = OpenAIChatCompletionsRequestDriver()
+        result = await driver.request(request_input)
+
+        assert result.success is True
+        assert result.error == ""
+        assert result.ttft > 0.0
+        # The tool name and argument bytes are the generated text.
+        assert result.generated_text == 'write{"content": "hi"}'
+
+    @pytest.mark.asyncio
+    async def test_openai_chat_completions_content_before_tool_call_is_not_double_counted(
+        self,
+        mock_aiohttp_session: Any,
+        mock_openai_env: None,
+        mocker: MockerFixture,
+    ) -> None:
+        """Content and tool_calls deltas are additive, never overlapping.
+
+        Regression guard for double-counting: a turn that streams prose
+        before deciding to call a tool must count that prose exactly once,
+        even though ``_extract_chat_delta_text`` sums ``content`` and
+        ``tool_calls`` text from the same delta object. The server only ever
+        populates one of the two per ``ParsedToolCallDelta``, so summing them
+        is additive by construction -- this test pins that with an exact
+        length/text check rather than relying on that invariant by
+        inspection alone.
+        """
+        request_input = RequestFuncInput(
+            model="test-model",
+            session_id=None,
+            sampling=SamplingConfig(),
+            prompt="What's the weather, then check the time",
+            images=[],
+            api_url="http://localhost:8000/chat/completions",
+            prompt_len=10,
+            max_tokens=100,
+            ignore_eos=False,
+        )
+
+        mock_response_data = [
+            (
+                b'data: {"choices": [{"delta": {"role": "assistant", '
+                b'"content": "Let me check that for you."}}]}\n\n'
+            ),
+            (
+                b'data: {"choices": [{"delta": {'
+                b'"tool_calls": [{"index": 0, "id": "get_weather:1", '
+                b'"type": "function", '
+                b'"function": {"name": "get_weather", "arguments": "{}"}}]}}]}\n\n'
+            ),
+            (
+                b'data: {"choices": [{"delta": {}, '
+                b'"finish_reason": "tool_calls"}]}\n\n'
+            ),
+            b"data: [DONE]\n\n",
+        ]
+
+        async def async_iter() -> AsyncIterator[bytes]:
+            for item in mock_response_data:
+                yield item
+
+        mock_response = mocker.AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+        mock_aiohttp_session.setup_post_response(mock_response)
+
+        driver = OpenAIChatCompletionsRequestDriver()
+        result = await driver.request(request_input)
+
+        assert result.success is True
+        # The prose and the tool call are disjoint deltas; the total is
+        # their concatenation, not double the prose or double the call.
+        assert (
+            result.generated_text == "Let me check that for you.get_weather{}"
+        )
+        assert result.generated_text.count("Let me check that for you.") == 1
 
     @pytest.mark.asyncio
     async def test_openai_chat_completions_merges_reasoning_reasoning_content_and_content(
@@ -1457,3 +1593,141 @@ class TestMarkCancelledIfPastDeadline:
         out = RequestFuncOutput(success=True)
         mark_cancelled_if_past_deadline(out, past)
         assert out.cancelled is False
+
+
+def test_attach_images_targets_first_user_message() -> None:
+    """A leading system message must not receive the images."""
+    img: OpenAIImage = {
+        "type": "image_url",
+        "image_url": {"url": "data:image/jpeg;base64,AAA"},
+    }
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": [{"type": "text", "text": "sys"}]},
+        {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+    ]
+    _attach_images_to_first_user_message(messages, [img])
+    assert messages[0]["content"] == [{"type": "text", "text": "sys"}]
+    assert messages[1]["content"][-1] == img
+
+
+def test_attach_images_normalizes_string_content() -> None:
+    """agentic-code passes plain-string content through, which used to raise
+    AttributeError on append."""
+    img: OpenAIImage = {
+        "type": "image_url",
+        "image_url": {"url": "data:image/jpeg;base64,AAA"},
+    }
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "plain string"}
+    ]
+    _attach_images_to_first_user_message(messages, [img])
+    assert messages[0]["content"] == [
+        {"type": "text", "text": "plain string"},
+        img,
+    ]
+
+
+def test_attach_images_without_user_message_is_a_noop() -> None:
+    img: OpenAIImage = {
+        "type": "image_url",
+        "image_url": {"url": "data:image/jpeg;base64,AAA"},
+    }
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": [{"type": "text", "text": "sys"}]}
+    ]
+    _attach_images_to_first_user_message(messages, [img])
+    assert messages[0]["content"] == [{"type": "text", "text": "sys"}]
+
+
+def _chat_input(response_format: object) -> RequestFuncInput:
+    return RequestFuncInput(
+        model="m",
+        session_id=None,
+        sampling=SamplingConfig(),
+        prompt="hi",
+        images=[],
+        api_url="http://localhost:8000/v1/chat/completions",
+        prompt_len=1,
+        max_tokens=16,
+        ignore_eos=False,
+        response_format=response_format,  # type: ignore[arg-type]
+    )
+
+
+_PERSON_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "person",
+        "schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+@pytest.mark.parametrize(
+    ("text", "conformed"),
+    [
+        ('{"name": "ada"}', True),
+        # Well-formed JSON that the schema rejects.
+        ('{"name": 7}', False),
+        # A backend that ignored response_format and answered in prose. This
+        # is the case the metric exists to catch.
+        ("Sure! The name is Ada.", False),
+        ("", False),
+    ],
+)
+def test_tag_response_format_outcome_judges_the_response(
+    text: str, conformed: bool
+) -> None:
+    output = RequestFuncOutput(success=True, generated_text=text)
+    tag_response_format_outcome(output, _chat_input(_PERSON_SCHEMA))
+    assert output.response_format_constrained
+    assert output.response_format_conformed is conformed
+
+
+def test_tag_response_format_outcome_leaves_unconstrained_unjudged() -> None:
+    output = RequestFuncOutput(success=True, generated_text="anything at all")
+    tag_response_format_outcome(output, _chat_input(None))
+    assert not output.response_format_constrained
+    assert output.response_format_conformed is None
+
+
+@pytest.mark.parametrize(
+    ("text", "conformed"), [('{"any": 1}', True), ("[1, 2]", False)]
+)
+def test_tag_response_format_outcome_holds_json_object_to_an_object(
+    text: str, conformed: bool
+) -> None:
+    """json_object means any JSON *object*, which is what the server's
+    permissive schema encodes -- a bare array does not satisfy it."""
+    output = RequestFuncOutput(success=True, generated_text=text)
+    tag_response_format_outcome(output, _chat_input({"type": "json_object"}))
+    assert output.response_format_conformed is conformed
+
+
+def test_tag_response_format_outcome_leaves_an_unusable_schema_unjudged() -> (
+    None
+):
+    """The conformance checker fails open, so an uncompilable schema scores
+    ``valid``. Counting that as conforming would report a perfect rate for a
+    schema that was never enforced, so it has to stay unjudged."""
+    broken = {
+        "type": "json_schema",
+        "json_schema": {"name": "broken", "schema": {"type": "not-a-type"}},
+    }
+    output = RequestFuncOutput(success=True, generated_text="prose, not json")
+    tag_response_format_outcome(output, _chat_input(broken))
+    assert output.response_format_constrained
+    assert output.response_format_conformed is None
+
+
+def test_tag_response_format_outcome_ignores_a_text_format() -> None:
+    """``text`` constrains nothing, so there is no schema to judge against."""
+    output = RequestFuncOutput(success=True, generated_text="prose")
+    tag_response_format_outcome(output, _chat_input({"type": "text"}))
+    assert output.response_format_constrained
+    assert output.response_format_conformed is None

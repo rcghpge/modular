@@ -105,7 +105,7 @@ from .kernels import (
 )
 
 
-@always_inline
+@inline(.always)
 def check_axis_in_range[idx: Int, dim_size: Int]() raises:
     """Indices passed to gather and scatter ops may be negative. This performs
     a check to see if the axis is valid.
@@ -119,7 +119,7 @@ def check_axis_in_range[idx: Int, dim_size: Int]() raises:
     raise Error("indices must be in range [-dim_size, dim_size)")
 
 
-@always_inline
+@inline(.always)
 def check_axis_in_range[dim_size: Int](idx: Int) raises:
     """Indices passed to gather and scatter ops may be negative. This performs
     a check to see if the axis is valid.
@@ -283,10 +283,10 @@ struct ScatterND:
     ) raises:
         # Existing implementations do not require static shape information
         scatter_nd[target=target](
-            input.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             context=ctx,
         )
 
@@ -300,9 +300,9 @@ def scatter_nd_shape_fn[](
     """Computes the output shape for the `mo.scatter_nd` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_nd_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
         )
     )
 
@@ -336,10 +336,10 @@ struct ScatterNDSkipNegIndices:
             reduce_fn=None,
             _trace_description="scatter_nd.skip_neg_indices",
         ](
-            input.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             context=ctx,
         )
 
@@ -358,7 +358,7 @@ struct ScatterNDAdd:
         indices: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @always_inline
+        @inline(.always)
         def reduce_fn[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -371,10 +371,10 @@ struct ScatterNDAdd:
             reduce_fn=reduce_fn,
             _trace_description="scatter_nd.add",
         ](
-            input.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             context=ctx,
         )
 
@@ -388,9 +388,9 @@ def scatter_nd_add_shape[](
     """Computes the output shape for the `mo.scatter_nd.add` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_nd_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
         )
     )
 
@@ -409,7 +409,7 @@ struct ScatterNDMul:
         indices: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @always_inline
+        @inline(.always)
         def reduce_fn[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -422,10 +422,10 @@ struct ScatterNDMul:
             reduce_fn=reduce_fn,
             _trace_description="scatter_nd.mul",
         ](
-            input.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             context=ctx,
         )
 
@@ -439,9 +439,9 @@ def scatter_nd_mul_shape[](
     """Computes the output shape for the `mo.scatter_nd.mul` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_nd_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
         )
     )
 
@@ -460,7 +460,7 @@ struct ScatterNDMin:
         indices: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @always_inline
+        @inline(.always)
         def reduce_fn[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -473,10 +473,10 @@ struct ScatterNDMin:
             reduce_fn=reduce_fn,
             _trace_description="scatter_nd.min",
         ](
-            input.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             context=ctx,
         )
 
@@ -490,9 +490,9 @@ def scatter_nd_min_shape[](
     """Computes the output shape for the `mo.scatter_nd.min` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_nd_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
         )
     )
 
@@ -511,7 +511,7 @@ struct ScatterNDMax:
         indices: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @always_inline
+        @inline(.always)
         def reduce_fn[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -524,10 +524,10 @@ struct ScatterNDMax:
             reduce_fn=reduce_fn,
             _trace_description="scatter_nd.max",
         ](
-            input.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             context=ctx,
         )
 
@@ -541,9 +541,9 @@ def scatter_nd_max_shape[](
     """Computes the output shape for the `mo.scatter_nd.max` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_nd_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
         )
     )
 
@@ -561,7 +561,7 @@ struct ApplyPackedBitmask:
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
         logits: InputTensor[dtype=dtype, rank=2, ...],
-        packed: InputTensor[dtype=DType.int32, rank=2, ...],
+        packed: InputTensor[dtype=.int32, rank=2, ...],
         fill_value: Scalar[dtype],
         ctx: DeviceContext,
     ) raises:
@@ -592,8 +592,8 @@ struct ScatterSetConstant:
         ctx: DeviceContext,
     ) raises:
         scatter_set_constant[target](
-            data.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            data.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
             fill_value,
             ctx,
         )
@@ -637,9 +637,9 @@ def scatter_shape_fn[
     """Computes the output shape for the `mo.scatter` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_elements_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
             axis,
         )
     )
@@ -662,7 +662,7 @@ struct ScatterAdd:
     ) raises:
         check_axis_in_range[output.rank](Int(axis))
 
-        @always_inline
+        @inline(.always)
         def reduce_func[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -690,9 +690,9 @@ def scatter_add_shape_fn(
     """Computes the output shape for the `mo.scatter.add` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_elements_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
             Int(axis),
         )
     )
@@ -715,7 +715,7 @@ struct ScatterMax:
     ) raises:
         check_axis_in_range[output.rank](Int(axis))
 
-        @always_inline
+        @inline(.always)
         def reduce_func[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -743,9 +743,9 @@ def scatter_max_shape_fn(
     """Computes the output shape for the `mo.scatter.max` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_elements_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
             Int(axis),
         )
     )
@@ -768,7 +768,7 @@ struct ScatterMin:
     ) raises:
         check_axis_in_range[output.rank](Int(axis))
 
-        @always_inline
+        @inline(.always)
         def reduce_func[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -796,9 +796,9 @@ def scatter_min_shape_fn(
     """Computes the output shape for the `mo.scatter.min` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_elements_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
             Int(axis),
         )
     )
@@ -821,7 +821,7 @@ struct ScatterMul:
     ) raises:
         check_axis_in_range[output.rank](Int(axis))
 
-        @always_inline
+        @inline(.always)
         def reduce_func[
             dtype: DType, width: SIMDLength
         ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[
@@ -849,9 +849,9 @@ def scatter_mul_shape_fn(
     """Computes the output shape for the `mo.scatter.mul` graph op."""
     return rebind[IndexList[input.rank]](
         scatter_elements_shape(
-            input.to_tile_tensor[DType.int64](),
-            updates.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            updates.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
             Int(axis),
         )
     )
@@ -926,7 +926,7 @@ def broadcast_to_shape_fn[
 struct BroadcastShape:
     """Registers the `mo.broadcast_shape` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def broadcast_shape_impl(
         out_buf: ManagedTensorSlice[rank=1, ...],
@@ -996,7 +996,7 @@ struct StaticBroadcastTo:
     """Registers the `mo.static.broadcast_to` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def build_view[
         out_rank: Int,
@@ -1110,7 +1110,7 @@ struct StaticReshape:
         ],
     ):
         var view_buffer = reshape(
-            input.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
             shape,
         )
 
@@ -1167,8 +1167,8 @@ def reshape_shape_fn[
 ]:
     """Computes the output shape for the `mo.reshape` graph op."""
     return reshape_shape[output_rank=output_rank](
-        input.to_tile_tensor[DType.int64](),
-        shape.to_tile_tensor[DType.int64](),
+        input.to_tile_tensor[.int64](),
+        shape.to_tile_tensor[.int64](),
     )
 
 
@@ -1177,7 +1177,7 @@ def reshape_shape_fn[
 struct Transpose:
     """Registers the `mo.transpose` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def transpose_in_place(
         input: InputTensor,
@@ -1246,7 +1246,7 @@ struct Transpose:
         ](output, view, ctx)
 
     # TODO(GEX-1033) Make it possible to have multiple raises.
-    @no_inline
+    @inline(.never)
     @staticmethod
     def shape_impl(
         input: InputTensor,
@@ -1296,9 +1296,9 @@ struct Slice:
     ](input_alignment: Int) -> Int:
         # Convert IntTuples to CoordLike types at the MLIR level, then
         # use type-level access (no interpreter heap allocation).
-        comptime stride_types = _IntTupleToCoordLike[DType.int, input_strides]
-        comptime start_types = _IntTupleToCoordLike[DType.int, static_starts]
-        comptime step_types = _IntTupleToCoordLike[DType.int, static_steps]
+        comptime stride_types = _IntTupleToCoordLike[.int, input_strides]
+        comptime start_types = _IntTupleToCoordLike[.int, static_starts]
+        comptime step_types = _IntTupleToCoordLike[.int, static_steps]
 
         var alignment = input_alignment
         comptime for i in range(rank):
@@ -1361,7 +1361,7 @@ struct Slice:
                     stride_types=_SliceStrideTypes[
                         rank,
                         input.static_spec.static_layout._stride_types,
-                        _IntTupleToCoordLike[DType.int, static_steps],
+                        _IntTupleToCoordLike[.int, static_steps],
                     ],
                 ],
             ](
@@ -1376,10 +1376,10 @@ struct Slice:
         ],
     ):
         var view_buffer = slice_as_view(
-            input.to_tile_tensor[DType.int64](),
-            starts.to_tile_tensor[DType.int64](),
-            stops.to_tile_tensor[DType.int64](),
-            steps.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            starts.to_tile_tensor[.int64](),
+            stops.to_tile_tensor[.int64](),
+            steps.to_tile_tensor[.int64](),
         )
 
         result = {
@@ -1428,10 +1428,10 @@ def slice_shape_fn(
     """Computes the output shape for the `mo.slice` graph op."""
     return rebind[IndexList[input.rank]](
         slice_shape(
-            input.to_tile_tensor[DType.int64](),
-            starts.to_tile_tensor[DType.int64](),
-            stops.to_tile_tensor[DType.int64](),
-            steps.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            starts.to_tile_tensor[.int64](),
+            stops.to_tile_tensor[.int64](),
+            steps.to_tile_tensor[.int64](),
         )
     )
 
@@ -1479,11 +1479,11 @@ struct MutableStoreSlice:
         ctx: DeviceContext,
     ) raises:
         copy_to_slice[target=target](
-            to_buffer.to_tile_tensor[DType.int64](),
-            in_slice.to_tile_tensor[DType.int64](),
-            starts.to_tile_tensor[DType.int64](),
-            stops.to_tile_tensor[DType.int64](),
-            steps.to_tile_tensor[DType.int64](),
+            to_buffer.to_tile_tensor[.int64](),
+            in_slice.to_tile_tensor[.int64](),
+            starts.to_tile_tensor[.int64](),
+            stops.to_tile_tensor[.int64](),
+            steps.to_tile_tensor[.int64](),
             ctx,
         )
 
@@ -1504,9 +1504,9 @@ struct GatherND:
         ctx: DeviceContext,
     ) raises:
         gather_nd[batch_dims=batchDims, target=target](
-            data.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            data.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             ctx,
         )
 
@@ -1520,8 +1520,8 @@ def gather_nd_shape_fn[
         batch_dims=batch_dims,
         output_rank=output_rank,
     ](
-        data.to_tile_tensor[DType.int64](),
-        indices.to_tile_tensor[DType.int64](),
+        data.to_tile_tensor[.int64](),
+        indices.to_tile_tensor[.int64](),
     )
 
 
@@ -1540,7 +1540,7 @@ struct Gather:
         indices: FusedInputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @always_inline
+        @inline(.always)
         def input_fn[
             width: Int, _rank: Int, element_alignment: Int
         ](coords: IndexList[_rank]) {var input} -> SIMD[output.dtype, width]:
@@ -1548,7 +1548,7 @@ struct Gather:
                 width=width, element_alignment=element_alignment
             ](rebind[IndexList[input.rank]](coords))
 
-        @always_inline
+        @inline(.always)
         def indices_fn[
             width: Int, _rank: Int
         ](coords: IndexList[_rank]) {var indices} -> SIMD[indices.dtype, width]:
@@ -1556,7 +1556,7 @@ struct Gather:
                 rebind[IndexList[indices.rank]](coords)
             )
 
-        @always_inline
+        @inline(.always)
         def output_fn[
             width: SIMDLength, _rank: Int, element_alignment: Int
         ](coords: IndexList[_rank], val: SIMD[output.dtype, width]) {
@@ -1592,8 +1592,8 @@ def gather_shape_fn[
 ](input: InputTensor, indices: InputTensor) raises -> IndexList[output_rank]:
     """Computes the output shape for the `mo.gather` graph op."""
     return gather_shape[output_rank=output_rank](
-        input.to_tile_tensor[DType.int64](),
-        indices.to_tile_tensor[DType.int64](),
+        input.to_tile_tensor[.int64](),
+        indices.to_tile_tensor[.int64](),
         axis,
     )
 
@@ -1608,7 +1608,7 @@ struct GatherSum:
     ](
         output: OutputTensor,
         input: InputTensor[dtype=output.dtype, ...],
-        indices: InputTensor[dtype=DType.int32, ...],
+        indices: InputTensor[dtype=.int32, ...],
         ctx: DeviceContext,
     ) raises:
         comptime assert is_cpu[target](), "only valid on CPUs"
@@ -1621,9 +1621,9 @@ struct GatherSum:
             return x + y
 
         gather_reduce[output.dtype, 0, 1, simd_width_of[output.dtype](), add](
-            output.to_tile_tensor[DType.int64](),
-            input.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
+            output.to_tile_tensor[.int64](),
+            input.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
             0,
             Optional[DeviceContext](ctx),
         )
@@ -1642,9 +1642,9 @@ struct Tile:
         repeats: InputTensor,
     ) raises:
         tile(
-            input.to_tile_tensor[DType.int64](),
-            repeats.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            repeats.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
         )
 
 
@@ -1656,8 +1656,8 @@ def tile_shape_fn(
     """Computes the output shape for the `mo.tile` graph op."""
     return rebind[IndexList[input.rank]](
         tile_shape(
-            input.to_tile_tensor[DType.int64](),
-            repeats.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
+            repeats.to_tile_tensor[.int64](),
         )
     )
 
@@ -1709,7 +1709,7 @@ struct Concat:
         # capture and reads garbage (concat with >=3 inputs silently returned
         # all-zeros). `inputs` (`FusedInputVariadicTensors`) stores its tensors
         # by value, so the copy brings their device pointers into the kernel.
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(inputs)
         def inputs_lambda[
@@ -1725,7 +1725,7 @@ struct Concat:
         # Copy-capture `output` for the same reason as `inputs` above: a
         # by-reference capture leaves the device kernel holding a host pointer
         # to the output tensor on Metal.
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(output)
         def epilogue_wrapper[
@@ -1745,7 +1745,7 @@ struct Concat:
             target=target,
         ](
             input_shapes,
-            output.to_tile_tensor[DType.int64](),
+            output.to_tile_tensor[.int64](),
             ctx,
         )
 
@@ -1793,7 +1793,7 @@ struct FusedConcatSlice:
         # pointers on Metal, so it reads garbage/zeros (the concat>=4-input
         # all-zeros bug). Copy-capture brings the device pointers into the
         # closure.
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(inputs)
         def inputs_lambda[
@@ -1809,7 +1809,7 @@ struct FusedConcatSlice:
                 width=width, element_alignment=alignment
             ](rebind[IndexList[rank]](indices))
 
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(concat_output, slice_output)
         def epilogue_wrapper[
@@ -1874,7 +1874,7 @@ struct FusedConcatSlice:
             target=target,
         ](
             input_shapes,
-            concat_output.to_tile_tensor[DType.int64](),
+            concat_output.to_tile_tensor[.int64](),
             ctx,
         )
 
@@ -1918,7 +1918,7 @@ struct DualFusedConcatSlice:
         # A by-reference capture leaves the GPU kernel holding host-side
         # pointers on Metal, so it reads garbage/zeros. Copy-capture brings
         # the device pointers into the closure.
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(inputs)
         def inputs_lambda_0[
@@ -1934,7 +1934,7 @@ struct DualFusedConcatSlice:
                 width=width, element_alignment=alignment
             ](rebind[IndexList[rank]](indices))
 
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(inputs)
         def inputs_lambda_1[
@@ -1950,7 +1950,7 @@ struct DualFusedConcatSlice:
                 width=width, element_alignment=alignment
             ](rebind[IndexList[rank]](indices))
 
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(concat_output_0, slice_output_0)
         def epilogue_0[
@@ -2004,7 +2004,7 @@ struct DualFusedConcatSlice:
                 rebind[SIMD[slice_output_0.dtype, width]](value),
             )
 
-        @always_inline
+        @inline(.always)
         @__parameter
         @__copy_capture(concat_output_1, slice_output_1)
         def epilogue_1[
@@ -2070,9 +2070,9 @@ struct DualFusedConcatSlice:
         ](
             normalize_neg_index(axis, rank),
             input_shapes_0,
-            concat_output_0.to_tile_tensor[DType.int64](),
+            concat_output_0.to_tile_tensor[.int64](),
             input_shapes_1,
-            concat_output_1.to_tile_tensor[DType.int64](),
+            concat_output_1.to_tile_tensor[.int64](),
             ctx,
         )
 
@@ -2094,10 +2094,10 @@ struct Split:
         split_sizes: InputTensor[rank=1, ...],
         ctx: DeviceContext,
     ) raises:
-        comptime shape_types = DynamicCoord[DType.int64, rank].element_types
+        comptime shape_types = DynamicCoord[.int64, rank].element_types
         # Use Scalar for strides as well since make_dynamic produces all
         # runtime strides.
-        comptime stride_types = DynamicCoord[DType.int64, rank].element_types
+        comptime stride_types = DynamicCoord[.int64, rank].element_types
 
         check_axis_in_range[output.rank](axis)
 
@@ -2117,8 +2117,8 @@ struct Split:
                 TileTensor(
                     output[i].unsafe_ptr().as_unsafe_any_origin(),
                     output[i]
-                    .to_tile_tensor[DType.int64]()
-                    .layout.make_dynamic[DType.int64](),
+                    .to_tile_tensor[.int64]()
+                    .layout.make_dynamic[.int64](),
                 ),
             )
 
@@ -2128,7 +2128,7 @@ struct Split:
             trace_description=_trace_name,
             axis=normalized_axis,
         ](
-            input.to_tile_tensor[DType.int64](),
+            input.to_tile_tensor[.int64](),
             output_bufs,
             ctx,
         )
@@ -2207,9 +2207,9 @@ struct IndexTensor:
         ctx: DeviceContext,
     ) raises:
         index_tensor[dtype, indices_type, batch_dims, target=target](
-            data.to_tile_tensor[DType.int64](),
-            indices.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            data.to_tile_tensor[.int64](),
+            indices.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             ctx,
         )
 
@@ -2219,7 +2219,7 @@ struct AdvancedIndexingGetItem:
     """Registers the `advanced_indexing_getitem` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         input_rank: Int,
@@ -2247,9 +2247,9 @@ struct AdvancedIndexingGetItem:
             output_rank == input_rank + index_rank - num_index_tensors
         )
         # Do not support boolean masks at this time.
-        comptime assert index_type != DType.bool
+        comptime assert index_type != .bool
 
-        @always_inline
+        @inline(.always)
         def input_tensor_fn[
             dtype: DType, width: Int
         ](idx: IndexList[input_rank]) {var input_tensor} -> SIMD[dtype, width]:
@@ -2257,7 +2257,7 @@ struct AdvancedIndexingGetItem:
                 input_tensor._fused_load[width](idx)
             )
 
-        @always_inline
+        @inline(.always)
         def indices_fn[
             indices_index: Int,
         ](coordinates: IndexList[index_rank]) {var indices} -> Int:
@@ -2273,7 +2273,7 @@ struct AdvancedIndexingGetItem:
             target=target,
             trace_description=_trace_name,
         ](
-            out_tensor.to_tile_tensor[DType.int64](),
+            out_tensor.to_tile_tensor[.int64](),
             input_tensor.strides(),
             ctx,
             input_tensor_fn,
@@ -2308,7 +2308,7 @@ struct AdvancedIndexingSetItemInplace:
     """Registers the `advanced_indexing_setitem_inplace` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         input_rank: Int,
@@ -2334,13 +2334,13 @@ struct AdvancedIndexingSetItemInplace:
         ],
         ctx: DeviceContext,
     ) capturing raises:
-        @always_inline
+        @inline(.always)
         def updates_tensor_fn[
             dtype: DType, width: Int
         ](idx: IndexList[updates_rank]) {var updates} -> SIMD[dtype, width]:
             return rebind[SIMD[dtype, width]](updates._fused_load[width](idx))
 
-        @always_inline
+        @inline(.always)
         def indices_fn[
             indices_index: Int,
         ](coordinates: IndexList[index_rank]) {var indices} -> Int:
@@ -2355,7 +2355,7 @@ struct AdvancedIndexingSetItemInplace:
             target=target,
             trace_description=_trace_name,
         ](
-            input_tensor.to_tile_tensor[DType.int64](),
+            input_tensor.to_tile_tensor[.int64](),
             indices[0].shape(),
             updates.strides(),
             ctx,
@@ -2369,7 +2369,7 @@ struct AdvancedIndexingSetItem:
     """Registers the `advanced_indexing_setitem` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         input_rank: Int,
@@ -2399,7 +2399,7 @@ struct AdvancedIndexingSetItem:
 
         # First copy over input tensor into the output
         @__parameter
-        @always_inline
+        @inline(.always)
         def func[
             width: Int, element_alignment: Int
         ](idx: IndexList[output_tensor.rank]) -> SIMD[
@@ -2437,7 +2437,7 @@ struct AdvancedIndexingSetItem:
 struct Struct_sliced_add_ragged:
     """Registers the `mo.sliced.add.ragged` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -2447,17 +2447,17 @@ struct Struct_sliced_add_ragged:
         c: OutputTensor[dtype=dtype, rank=2, ...],
         a: InputTensor[dtype=dtype, rank=2, ...],
         b: InputTensor[dtype=dtype, rank=2, ...],
-        lora_end_idx: InputTensor[dtype=DType.int64, rank=1, ...],
+        lora_end_idx: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
-        var c_tile_tensor = c.to_tile_tensor[DType.int64]()
-        var a_tile_tensor = a.to_tile_tensor[DType.int64]()
-        var b_tile_tensor = b.to_tile_tensor[DType.int64]()
+        var c_tile_tensor = c.to_tile_tensor[.int64]()
+        var a_tile_tensor = a.to_tile_tensor[.int64]()
+        var b_tile_tensor = b.to_tile_tensor[.int64]()
 
         sliced_add[target=target](
             c_tile_tensor,
             a_tile_tensor,
             b_tile_tensor,
-            lora_end_idx.to_tile_tensor[DType.int64](),
+            lora_end_idx.to_tile_tensor[.int64](),
             context,
         )

@@ -24,7 +24,7 @@ Provides two paths for 2-D convolution on RDNA 3+:
 """
 
 from std.math import ceildiv
-from std.gpu import global_idx, WARP_SIZE
+from max.gpu import global_idx, WARP_SIZE
 from max.gpu.host import DeviceContext
 from layout import Coord, Idx, TileTensor, row_major
 from linalg.matmul.gpu import _matmul_gpu
@@ -303,11 +303,10 @@ def dispatch_rdna_conv2d[
         comptime BLOCK_K = 32
 
         # --- Helper to launch the implicit GEMM kernel ---
-        @__parameter
-        @always_inline
+        @inline(.always)
         def _launch_implicit_gemm[
             _epilogue: Optional[elementwise_epilogue_type] = None,
-        ]() raises:
+        ]() raises {imm}:
             comptime NUM_WARPS = 16  # 8x2 warp grid
             comptime BLOCK_M = 128
             comptime BLOCK_N = 128
@@ -323,6 +322,8 @@ def dispatch_rdna_conv2d[
                 type_of(filter_nk_tt).LayoutType,
                 elementwise_lambda_fn=_epilogue,
                 BLOCK_K=BLOCK_K,
+                out_engine=type_of(out_tt).Engine,
+                filter_nk_engine=type_of(filter_nk_tt).Engine,
             ]
 
             ctx.enqueue_function[conv_kernel](
@@ -346,11 +347,10 @@ def dispatch_rdna_conv2d[
             )
 
         # --- Helper to launch explicit im2col + matmul fallback ---
-        @__parameter
-        @always_inline
+        @inline(.always)
         def _launch_explicit_im2col[
             _epilogue: Optional[elementwise_epilogue_type] = None,
-        ]() raises:
+        ]() raises {imm}:
             var im2col_size = M * K
             var im2col_buf = ctx.enqueue_create_buffer[input_type](im2col_size)
             var im2col_ptr = im2col_buf.unsafe_ptr()
@@ -376,7 +376,7 @@ def dispatch_rdna_conv2d[
 
             var a_tt = TileTensor(im2col_ptr, row_major(Coord(M, K)))
             var b_tt = TileTensor(filter_nk_ptr, row_major(Coord(N, K)))
-            var c_tt = TileTensor(output.ptr, row_major(Coord(M, N)))
+            var c_tt = output.reshape(row_major(Coord(M, N)))
 
             _matmul_gpu[
                 use_tensor_core=True,
@@ -384,8 +384,8 @@ def dispatch_rdna_conv2d[
                 elementwise_lambda_fn=_epilogue,
             ](
                 c_tt,
-                a_tt.as_immut(),
-                b_tt.as_immut(),
+                a_tt.as_imm(),
+                b_tt.as_imm(),
                 ctx,
             )
             _ = im2col_buf^
@@ -401,7 +401,7 @@ def dispatch_rdna_conv2d[
             var out_ptr = output.ptr
 
             @__parameter
-            @always_inline
+            @inline(.always)
             @__copy_capture(hw, out_w, N, resid_src, resid_beta, out_ptr)
             def _gemm_epilogue[
                 _dtype: DType,

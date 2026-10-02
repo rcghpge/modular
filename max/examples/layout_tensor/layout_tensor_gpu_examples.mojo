@@ -13,7 +13,7 @@
 
 # DOC: max/layout/tensors.mdx
 
-from std.gpu import (
+from max.gpu import (
     thread_idx,
     block_idx,
     global_idx,
@@ -24,7 +24,6 @@ from max.gpu.sync import barrier
 from max.gpu.memory import async_copy_wait_all
 from max.gpu.host import DeviceContext, DeviceBuffer, get_gpu_target
 from layout import Layout, LayoutTensor, print_layout
-from layout.layout_tensor import copy_sram_to_local
 from std.memory import Pointer
 from std.sys import has_accelerator
 from std.sys.info import (
@@ -112,7 +111,7 @@ def shared_memory_alloc_example() raises:
             dtype,
             tile_layout,
             MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ].stack_allocation()
         # end-shared-memory-alloc-example
 
@@ -174,9 +173,9 @@ def layout_tensor_vectorized_example() raises:
     comptime rows = 64
     comptime columns = 64
     comptime layout = Layout.row_major(rows, columns)
-    var storage = Array[Scalar[dtype], rows * columns](uninitialized=True)
-    for i in range(rows * columns):
-        storage[i] = Int32(i)
+    var storage = Array[Int32, rows * columns](
+        fill_with=lambda (i: Int) -> Int32: Int32(i)
+    )
     var tensor = LayoutTensor[dtype, layout](storage)
     # start-vectorize-tensor-example
     var vectorized_tensor = tensor.vectorize[1, vector_width]()
@@ -203,10 +202,8 @@ def layout_tensor_distribute_example():
 
     try:
         var ctx = DeviceContext()
-        var dev_buf = ctx.enqueue_create_buffer[DType.int32](rows * columns)
-        var host_buf = ctx.enqueue_create_host_buffer[DType.int32](
-            rows * columns
-        )
+        var dev_buf = ctx.enqueue_create_buffer[.int32](rows * columns)
+        var host_buf = ctx.enqueue_create_host_buffer[.int32](rows * columns)
         for i in range(rows * columns):
             host_buf[i] = Int32(i)
         var tensor = LayoutTensor[dtype, layout](dev_buf)
@@ -240,7 +237,7 @@ def simple_copy_example():
             dtype,
             tile_layout,
             MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ].stack_allocation()
 
         if global_idx.y < rows and global_idx.x < cols:
@@ -310,7 +307,7 @@ def copy_from_async_example():
                 dtype,
                 tile_layout,
                 MutAnyOrigin,
-                address_space=AddressSpace.SHARED,
+                address_space=.SHARED,
             ].stack_allocation()
 
             # Create thread layouts for copying

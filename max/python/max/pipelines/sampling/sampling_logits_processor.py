@@ -26,7 +26,7 @@ from max.driver import (
     Buffer,
     Device,
     DeviceEvent,
-    DevicePinnedBuffer,
+    Usage,
     is_virtual_device_mode,
 )
 from max.dtype import DType
@@ -38,6 +38,8 @@ from max.pipelines.context import (
 )
 from max.profiler import Tracer, traced
 from typing_extensions import Self
+
+from .seeds import request_row_seed
 
 if TYPE_CHECKING:
     from max.pipelines.lib.config import PipelineConfig
@@ -80,10 +82,11 @@ def _to_pinned_host_buffer(
             device=device,
         )
     else:
-        buffer = DevicePinnedBuffer(
+        buffer = Buffer(
             shape=(len(values),),
             dtype=dtype,
             device=device,
+            usage=Usage.STAGING | Usage.UNTRACKED,
         )
 
     buffer_np = buffer.to_numpy()
@@ -170,10 +173,11 @@ class FusedSamplingProcessor:
                 )
             else:
                 # GPU - allocate pinned memory for faster H2D transfer
-                self._pinned_bitmask = DevicePinnedBuffer(
+                self._pinned_bitmask = Buffer(
                     shape=self.bitmask.shape,
                     dtype=DType.int32,
                     device=device,
+                    usage=Usage.STAGING | Usage.UNTRACKED,
                 )
             self._pinned_bitmask.to_numpy()[:] = self.bitmask
             self.tensor_bitmask = self._pinned_bitmask.to(self.device)
@@ -192,10 +196,11 @@ class FusedSamplingProcessor:
                 device=device,
             )
         else:
-            self.generated_tokens = DevicePinnedBuffer(
+            self.generated_tokens = Buffer(
                 shape=(batch_size, 0),
                 dtype=DType.int64,
                 device=device,
+                usage=Usage.STAGING | Usage.UNTRACKED,
             )
 
         self.sampler_inputs = SamplerInputs.create(context_batch, device)
@@ -292,15 +297,14 @@ class FusedSamplingProcessor:
     def update_bitmask(self, packed_bitmask: npt.NDArray[np.int32]) -> None:
         """Update the GPU bitmask with new FSM state for multi-step execution.
 
-        Copies the packed int32 bitmask from llguidance into the pinned host
-        buffer and transfers it to the GPU, keeping the bitmask synchronized
-        with the FSM state after each token is sampled. Unpacking is done on the
-        GPU by the sampler graph (apply_packed_bitmask), not here.
+        Copies the packed int32 bitmask from the grammar backend into the
+        pinned host buffer and transfers it to the GPU, keeping the bitmask
+        synchronized with the FSM state after each token is sampled. Unpacking
+        is done on the GPU by the sampler graph (apply_packed_bitmask), not here.
 
         Args:
-            packed_bitmask: Packed int32 bitmask from
-                llguidance.numpy.allocate_token_bitmask. Shape is
-                [batch_size, ceil(vocab_size/32)].
+            packed_bitmask: Packed int32 bitmask from the grammar backend's
+                allocate_token_bitmask. Shape is [batch_size, ceil(vocab_size/32)].
         """
         if (
             self.tensor_bitmask is None
@@ -331,7 +335,7 @@ class FusedSamplingProcessor:
         self._pinned_new_tokens.inplace_copy_from(self.new_tokens)
 
         # Record event after copy so we can wait for it specifically
-        self._d2h_copy_event = self.device.default_stream.record_event()
+        self._d2h_copy_event = self.device.default_queue.record_event()
 
     def get_new_tokens_numpy(self) -> npt.NDArray[np.int64]:
         """Wait for D2H copy and return the new tokens as numpy array.
@@ -665,10 +669,7 @@ class SamplerInputs:
 
         # seed is a tensor of shape (batch_size,)
         seed_host = _to_pinned_host_buffer(
-            [
-                context.sampling_params.seed + len(context.tokens)
-                for context in batch
-            ],
+            [request_row_seed(context) for context in batch],
             device=device,
             dtype=DType.uint64,
         )

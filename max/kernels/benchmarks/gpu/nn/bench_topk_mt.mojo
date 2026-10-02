@@ -80,7 +80,7 @@ def _get_run_name(
     )
 
 
-@always_inline
+@inline(.always)
 def _mix64(x: UInt64) -> UInt64:
     """SplitMix64's finalizer."""
     var z = x
@@ -89,7 +89,7 @@ def _mix64(x: UInt64) -> UInt64:
     return z ^ (z >> 31)
 
 
-@always_inline
+@inline(.always)
 def _u01(i: UInt64) -> Float64:
     """A uniform on [0, 1) keyed by `i` alone.
 
@@ -105,12 +105,12 @@ def _u01(i: UInt64) -> Float64:
     return Float64(h >> 11) * (1.0 / 9007199254740992.0)
 
 
-@always_inline
+@inline(.always)
 def _u_val(r: Int, c: Int, N: Int, k: Int) -> Float64:
     return _u01(((UInt64(r) * UInt64(N) + UInt64(c)) << 2) + UInt64(k))
 
 
-@always_inline
+@inline(.always)
 def _u_len(r: Int) -> Float64:
     return _u01(0x8000000000000000 + UInt64(r))
 
@@ -158,8 +158,8 @@ def execute_topk_bitonic[
     within a causal chunk), an `-inf` masked suffix, and valid values drawn
     from `dist`.
     """
-    var scores_buf = ctx.enqueue_create_buffer[DType.float32](rows * N)
-    var idxs_buf = ctx.enqueue_create_buffer[DType.int32](rows * K)
+    var scores_buf = ctx.enqueue_create_buffer[.float32](rows * N)
+    var idxs_buf = ctx.enqueue_create_buffer[.int32](rows * K)
 
     var csum = UInt64(0xCBF29CE484222325)
     with scores_buf.map_to_host() as h:
@@ -171,40 +171,33 @@ def execute_topk_bitonic[
                     v = _sample(dist, r, c, N)
                 else:
                     v = Float32(-3.0e38)  # min_or_neg_inf sentinel
-                h[r * N + c] = Scalar[DType.float32](v)
-                csum = (
-                    csum ^ UInt64(bitcast[DType.uint32, 1](v))
-                ) * 0x100000001B3
+                h[r * N + c] = Float32(v)
+                csum = (csum ^ UInt64(bitcast[.uint32, 1](v))) * 0x100000001B3
     print("input_checksum=", hex(csum), sep="")
 
     var scores_t = TileTensor(scores_buf, row_major(rows, N))
     var idxs_t = TileTensor(idxs_buf, row_major(rows, K))
     ctx.synchronize()
 
-    @always_inline
+    @inline(.always)
     def kernel_launch(c: DeviceContext) raises {mut idxs_t, imm}:
         persistent_topk_block_split[
             ordered=ordered, deterministic=deterministic
         ](
             c,
-            rebind[UnsafePointer[Scalar[DType.float32], ImmutAnyOrigin]](
-                scores_t.ptr
-            ),
-            rebind[UnsafePointer[Scalar[DType.int32], MutAnyOrigin]](
-                idxs_t.ptr
-            ),
+            rebind[ImmPointer[Float32, ImmutAnyOrigin]](scores_t.ptr),
+            rebind[MutPointer[Int32, MutAnyOrigin]](idxs_t.ptr),
             N,
             K,
             rows,
         )
 
-    @__parameter
-    @always_inline
-    def bench_func(mut b: Bencher) raises:
+    @inline(.always)
+    def bench_func(mut b: Bencher) raises {imm}:
         bencher_iter_custom(b, kernel_launch, ctx)
 
-    m.bench_function[bench_func](
-        BenchId(_get_run_name(rows, N, K, dist, mode)), []
+    m.bench_function(
+        bench_func, BenchId(_get_run_name(rows, N, K, dist, mode)), []
     )
 
     _ = scores_buf

@@ -46,14 +46,15 @@ _ALLOWED_DUPLICATE_PACKAGES = (
         # resolvable in `override-dependencies` (i.e. we
         # are required to diverge).
         "fastapi",  # vllm 0.24.0 caps fastapi below what other groups resolve to
-        "llguidance",  # We use >1.0, sglang pins to 0.7.30
+        "llguidance",  # Not used by MAX directly; vllm pulls 1.7.5, sglang pins 0.7.30
         "nvidia-cudnn-cu12",  # Differs between dependency groups' torch/CUDA versions
         "nvidia-cudnn-frontend",  # vllm 0.24.0 pins a newer version than the default group
         "nvidia-nccl-cu12",  # Differs between dependency groups' torch/CUDA versions
         "outlines-core",  # Conflicts between vllm and sglang
-        "quack-kernels",  # sglang pins >=0.4.1; flash-attn-4/vllm pin >=0.3.3
+        "quack-kernels",  # sglang/vllm pin 0.6.1; flash-attn-4 (aarch64/darwin) pins >=0.3.3
         "tilelang",  # MAX itself doesn't use tilelang, but the default environment group does; vllm 0.20.0 hard-pins 0.1.9
-        "tokenspeed-mla",  # vllm pins ==0.1.2, sglang pins ==0.1.1
+        "tokenspeed-mla",  # vllm pins ==0.1.8, sglang pins ==0.1.1
+        "torchcodec",  # vllm pins a newer version than sglang
         "transformers",  # MAX pins 5.12.x; sglang pins 5.3.0, vllm aligns on 5.12.x
         "vllm",
         "sglang",
@@ -135,7 +136,7 @@ def _main(uv_lock: str, output_path: str) -> None:
         print("\nerror: Found duplicate packages that are not expected:")
         for package in sorted(unexpected_duplicates):
             print(f"  {package}")
-        exit(1)
+        sys.exit(1)
 
     targets = ""
     all_downloads = set()

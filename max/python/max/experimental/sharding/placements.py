@@ -53,6 +53,16 @@ class ShardingError(RuntimeError):
     """Raised when a sharding constraint cannot be satisfied."""
 
 
+Transition = tuple[type["Placement"], type["Placement"]]
+"""A placement change on one mesh axis, as ``(from, to)`` placement types.
+
+``(Partial, Replicated)`` is an allreduce, ``(Sharded, Replicated)`` an
+allgather, ``(Replicated, Sharded)`` a local slice, ``(Sharded, Sharded)``
+a re-shard along another tensor axis, and ``(Partial, Sharded)`` a
+reduce-scatter. Moving an input from another mesh is not a transition.
+"""
+
+
 def _shard_sizes_along_axis(global_size: int, num_shards: int) -> list[int]:
     """Splits ``global_size`` across ``num_shards``; sizes differ by at most 1.
 
@@ -69,7 +79,8 @@ class Placement(ABC):
 
     Each placement describes what a single mesh axis does to a tensor:
     ``Replicated`` (full copy), ``Sharded`` (split along a tensor dim),
-    or ``Partial`` (partial result needing reduction).
+    ``Partial`` (partial result needing reduction), or ``Unknown`` (per-device
+    values with no known relation).
     """
 
     @abstractmethod
@@ -143,25 +154,36 @@ class Replicated(Placement):
 
 
 @dataclass(frozen=True)
+class Unknown(Placement):
+    """Per-device values on this mesh axis with no known relation.
+
+    The devices may hold different values, or happen to hold equal ones; only
+    a claim with :meth:`~max.experimental.tensor.Tensor.rebind_mapping` or a
+    collective establishes a relation.
+    """
+
+    def __repr__(self) -> str:
+        return "Unknown()"
+
+    def global_dim(self, cells: Dim) -> Dim:
+        """Returns each shard's own cell; no global extent relates them."""
+        if is_per_shard_dim(cells):
+            return make_per_shard_dim(cells.per_shard)
+        return cells
+
+
+@dataclass(frozen=True)
 class Sharded(Placement):
     """Every device on this mesh axis holds a slice along ``axis``.
 
     Args:
         axis: The tensor axis along which data is split.
-        even: When ``True``, per-shard cells of a dynamic ``axis`` parent
-            stay connected via uniform ``parent // n``. When ``False``,
-            scatter mints fresh per-shard cells so each rank can bind to
-            a different extent.
     """
 
     axis: int
-    even: bool = True
 
     def __repr__(self) -> str:
-        parts = [f"axis={self.axis}"]
-        if not self.even:
-            parts.append("even=False")
-        return f"Sharded({', '.join(parts)})"
+        return f"Sharded(axis={self.axis})"
 
     def localized_axis(self) -> int | None:
         """Returns the tensor axis this Sharded localizes."""
@@ -343,3 +365,22 @@ def local_shard_shape_from_global(
                 x = p.local_dim(x, mesh, mesh_axis)
         wrapped.append(x)
     return [local_shape_at(wrapped, r) for r in range(mesh.num_devices)]
+
+
+ALL_TRANSITIONS: frozenset[Transition] = frozenset(
+    {
+        (Replicated, Sharded),
+        (Sharded, Replicated),
+        (Sharded, Sharded),
+        (Partial, Replicated),
+        (Partial, Sharded),
+    }
+)
+"""Every transition the picker can plan with."""
+
+DEFAULT_TRANSITIONS: frozenset[Transition] = ALL_TRANSITIONS - {
+    (Partial, Sharded)
+}
+"""Every transition except ``(Partial, Sharded)``, so a partial sum resolves
+to Replicated by allreduce; :data:`ALL_TRANSITIONS` also allows reduce-scatter.
+"""

@@ -38,9 +38,9 @@ def multistage_gemm_simple[
     M: Int,
     N: Int,
     K: Int,
-    a_type: DType = DType.bfloat16,
-    b_type: DType = DType.bfloat16,
-    c_type: DType = DType.bfloat16,
+    a_type: DType = .bfloat16,
+    b_type: DType = .bfloat16,
+    c_type: DType = .bfloat16,
     transpose_b: Bool = False,
 ](ctx: DeviceContext,) raises:
     comptime kernels = MatmulKernels[a_type, b_type, c_type, transpose_b]()
@@ -66,9 +66,9 @@ def multistage_gemm_simple[
         b_type,
         b_tt_layout,
         transpose_b,
-        c_linear_idx_type=DType.int64,
-        a_linear_idx_type=DType.int64,
-        b_linear_idx_type=DType.int64,
+        c_linear_idx_type=.int64,
+        a_linear_idx_type=.int64,
+        b_linear_idx_type=.int64,
         config=config,
     ]
 
@@ -117,8 +117,8 @@ def multistage_gemm_fp32_run[
     var c_tensor = TileTensor(c_device, c_shape)
     var c_ref_tensor = TileTensor(c_device_ref, c_shape)
 
-    rand(a_host._storage, a_host.num_elements())
-    rand(b_host._storage, b_host.num_elements())
+    rand(a_host.as_span())
+    rand(b_host.as_span())
     _ = c_host.fill(0)
     _ = c_host_ref.fill(0)
 
@@ -127,19 +127,17 @@ def multistage_gemm_fp32_run[
     ctx.enqueue_copy(c_device, c_host_ptr)
     ctx.enqueue_copy(c_device_ref, c_host_ref_ptr)
 
-    var c_tensor_lt = c_tensor.to_layout_tensor()
-
     @__parameter
-    @always_inline
-    @__copy_capture(c_tensor_lt)
+    @inline(.always)
+    @__copy_capture(c_tensor)
     def epilogue_fn[
         _dtype: DType,
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
     ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
-        c_tensor_lt.store[store_alignment=alignment](
-            idx, rebind[SIMD[dtype, width]](val)
+        c_tensor.store[alignment=alignment](
+            Coord(idx), rebind[SIMD[dtype, width]](val)
         )
 
     # The config the vendor BLAS fallback hardcodes (KERN-1812).
@@ -203,23 +201,23 @@ def main() raises:
             1024,
             1024,
             1024,
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             False,
         ](ctx)
         multistage_gemm_simple[
             1024,
             1024,
             1024,
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             False,
         ](ctx)
 
         multistage_gemm_simple[
-            550, 2048, 8, DType.float32, DType.float32, DType.float32, False
+            550, 2048, 8, .float32, .float32, .float32, False
         ](ctx)
 
         # fp32 C shapes the vectorized store cannot take: an odd N misaligns

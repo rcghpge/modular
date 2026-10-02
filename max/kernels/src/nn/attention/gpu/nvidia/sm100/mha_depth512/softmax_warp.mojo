@@ -34,8 +34,8 @@ from std.math import exp2, recip
 from std.math.constants import log2e
 from std.memory import bitcast
 from std.sys import size_of
-import std.gpu.primitives.warp as warp
-from std.gpu.globals import WARPGROUP_SIZE, WARP_SIZE
+import max.gpu.primitives.warp as warp
+from max.gpu.globals import WARPGROUP_SIZE, WARP_SIZE
 from max.gpu.memory import fence_async_view_proxy
 from max.gpu.sync import (
     named_barrier,
@@ -51,7 +51,6 @@ from max.gpu.compute.arch.tcgen05 import (
     tcgen05_release_allocation_lock,
     tcgen05_store_wait,
 )
-from std.gpu.primitives.warp import _vote_nvidia_helper
 from max.gpu.primitives.cluster import block_rank_in_cluster
 from linalg.matmul.gpu.sm100_structured.structured_kernels.tmem import (
     TmemAddress,
@@ -79,6 +78,7 @@ from nn.attention.gpu.nvidia.sm100.attention_utils import (
 )
 from nn.attention.mha_mask import MHAMask, TileMaskStatus, MaskStrategy
 from nn.attention.mha_operand import MHAOperand
+from nn.attention.gpu.nvidia.common import OptionalPointer
 from nn.attention.gpu.nvidia.mha_tile_scheduler import SeqInfo
 from std.utils.index import Index
 from std.utils.static_tuple import StaticTuple
@@ -92,7 +92,7 @@ from .smem import Depth512AttentionSMem
 comptime _SOFTMAX_EXCHANGE_BARRIER: Int32 = 0
 
 
-@always_inline
+@inline(.always)
 def depth512_scale_write_output[
     output_type: DType,
     qkv_dtype: DType,
@@ -107,7 +107,7 @@ def depth512_scale_write_output[
     tmem_addr: UInt32,
     ragged_tma_store: RaggedTMA3DTile[
         output_type,
-        TensorMapSwizzle.SWIZZLE_NONE,
+        TensorMapSwizzle.SWIZZLE_128B,
         BM=config.BM,
         BN=config.ov_depth,
         middle_dim=_,
@@ -165,18 +165,16 @@ def depth512_scale_write_output[
 
     # Output SMEM base (reuses Q buffer).
     var o_smem = smem.o_smem[output_type]()
-    # O SMEM is row-major (SWIZZLE_NONE): the gmem output is row-major and the
-    # O accumulator is loaded one-row-per-thread, so no swizzle is needed and
-    # the per-row writes stay bank-conflict-free (8 rows * 16 B = 128 B = all
-    # 32 banks once). O's TMA store swizzle is decoupled from `config.swizzle_mode`
-    # (which still governs the swizzled Q/K/V/S/P buffers).
-    comptime o_swizzle_mode = TensorMapSwizzle.SWIZZLE_NONE
-    # O SMEM must match tile_layout_k_major[BM, ov_depth] for TMA store.
-    # Decompose col into k-block + inner offset; SWIZZLE_NONE makes the inner
-    # swizzle the identity, so the layout is plain row-major within each k-block.
+    # O SMEM is staged in 64-column SWIZZLE_128B k-blocks, the layout of the
+    # per-block O store. The O accumulator is loaded one-row-per-thread; each
+    # 16 B chunk goes to its swizzled slot within its k-block, so the 8 rows of
+    # a store phase hit 8 distinct bank groups. O's TMA store swizzle is
+    # decoupled from `config.swizzle_mode` (which still governs the swizzled
+    # Q/K/V/S/P buffers).
+    comptime o_swizzle_mode = TensorMapSwizzle.SWIZZLE_128B
     comptime o_swizzle = make_swizzle[output_type, o_swizzle_mode]()
     comptime o_sw_K = o_swizzle_mode.bytes() // size_of[output_type]()
-    # ov_depth is a multiple of o_sw_K for every supported head size.
+    # ov_depth (256 or 512) is a multiple of o_sw_K.
     comptime n_blocks = config.ov_depth // o_sw_K
     comptime batched = tma_bpo > 0
     comptime if batched:
@@ -186,7 +184,7 @@ def depth512_scale_write_output[
 
     # ---- Helper: load from TMEM, scale, write to SMEM --------------------
     @__parameter
-    @always_inline
+    @inline(.always)
     def read_scale_write(
         o_tmem: TmemAddress,
         col_base: Int,
@@ -202,8 +200,7 @@ def depth512_scale_write_output[
                 width=batch_size,
             ]((o_tmem + col_offset).addr)
 
-            # Scale+pack each group of 8 into one 16 B row-major (SWIZZLE_NONE)
-            # store (f32x2 compute, wide store; see scale_pack_o_row).
+            # Scale+pack each group of 8 into one 16 B swizzled chunk (f32x2 compute, wide store; see scale_pack_o_row).
             comptime for g in range(batch_size // 8):
                 comptime base = g * 8
                 var packed = scale_pack_o_row[output_type, w=8, start=base](
@@ -214,7 +211,7 @@ def depth512_scale_write_output[
                 var o_k_block = col // o_sw_K
                 var o_inner = Int(m_row) * o_sw_K + col % o_sw_K
                 (o_smem + o_k_block * BM * o_sw_K + o_swizzle(o_inner)).bitcast[
-                    Scalar[DType.uint32]
+                    UInt32
                 ]().store(packed)
 
     comptime if config.split_o:
@@ -268,8 +265,10 @@ def depth512_scale_write_output[
     cp_async_bulk_wait_group[0]()
 
 
-@always_inline
+@inline(.always)
 def depth512_softmax[
+    SinkType: OptionalPointer,
+    //,
     MaskType: MHAMask,
     qkv_dtype: DType,
     output_type: DType,
@@ -285,7 +284,7 @@ def depth512_softmax[
     scale: Float32,
     ragged_tma_store: RaggedTMA3DTile[
         output_type,
-        TensorMapSwizzle.SWIZZLE_NONE,
+        TensorMapSwizzle.SWIZZLE_128B,
         BM=config.BM,
         BN=config.ov_depth,
         middle_dim=_,
@@ -297,6 +296,7 @@ def depth512_softmax[
     num_output_rows: Int32,
     out_head_idx: UInt32,
     out_row_idx: UInt32,
+    sink_weights: SinkType,
 ):
     """Runs the online softmax warp group for pair-CTA SM100 attention.
 
@@ -308,7 +308,13 @@ def depth512_softmax[
     sum values are combined via correction SMEM; for d256 each thread owns a
     unique M row and no exchange is needed.
 
+    A non-null `SinkType` folds the per-head sink logit into the row max and
+    sum once, in the peeled first KV tile; later tiles' `correction` factors
+    rescale it along with the rest of `row_sum`.
+
     Parameters:
+        SinkType: Optional pointer type for the per-head sink weights
+            (inferred).
         MaskType: Compile-time mask type for causal/attention masking.
         qkv_dtype: DType of the Q/K/V inputs; specializes the config.
         output_type: DType of the output store to global memory.
@@ -329,6 +335,7 @@ def depth512_softmax[
         num_output_rows: Dynamic output row count for the TMA store.
         out_head_idx: Output head index for the TMA store.
         out_row_idx: Output row index for the TMA store.
+        sink_weights: Optional per-head sink weights, indexed by query head.
     """
     comptime accum_dtype = DType.float32
     comptime BM = config.BM
@@ -340,7 +347,7 @@ def depth512_softmax[
     comptime fuse_gqa = config.fuse_gqa
     comptime BM_eff: Int = config.BM_eff()
     comptime PairBM_mask = BM_eff * 2
-    comptime f32x2 = SIMD[DType.float32, 2]
+    comptime f32x2 = SIMD[.float32, 2]
 
     # Batch size for pipelined TMEM loads and exp computation.
     comptime batch_size = 32
@@ -374,6 +381,16 @@ def depth512_softmax[
     # split_o: lower→0, upper→effective_bn. !split_o: always 0.
     var col_offset: UInt32 = 0 if is_lower else UInt32(effective_bn)
 
+    comptime sink = not SinkType.is_null
+    var sink_raw: Float32 = 0.0
+    comptime if sink:
+        # Under fuse_gqa, `out_head_idx` is the KV head.
+        var q_head_idx: UInt32 = (
+            out_head_idx * UInt32(group) + (m_row % UInt32(group))
+        ) if fuse_gqa else out_head_idx
+        # The sink is a scaled logit, but `row_max` holds unscaled scores.
+        sink_raw = sink_weights.value()[q_head_idx].cast[accum_dtype]() / scale
+
     # ---- TMEM addresses --------------------------------------------------
     # `tmem_addr` passed in by register (read once post-`cluster_sync` in the
     # kernel prologue); do NOT re-read `smem.tmem_addr_ptr()` here.
@@ -391,7 +408,7 @@ def depth512_softmax[
     # exactly an additive +bias in the exp2 argument (added raw, NOT
     # multiplied by scale_log2e). row_sum is accumulated from the SAME scaled
     # P and the output is normalized by 1/row_sum, so the scale cancels
-    # exactly -- no explicit descale. This path has no sink term.
+    # exactly -- no explicit descale.
     #
     # `p_fp8_bias` and the lazy-rescale gate `rescale_threshold` are the same
     # knob (both in the exp2/log2 domain), linked as
@@ -458,18 +475,18 @@ def depth512_softmax[
     # ---- Inner helpers ---------------------------------------------------
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def s_load[i: Int]() -> f32x2:
         return f32x2(s[2 * i], s[2 * i + 1])
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def s_store[i: Int](v: f32x2):
         s[2 * i] = v[0]
         s[2 * i + 1] = v[1]
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def mask_batch[
         N: Int, //, mask_strategy: MaskStrategy
     ](mut batch: Array[Scalar[accum_dtype], N], kv_col: UInt32):
@@ -490,7 +507,7 @@ def depth512_softmax[
         )
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def exchange_reduce[
         op: StringLiteral,  # "max" or "add"
     ](partial_val: Float32) -> Float32:
@@ -527,7 +544,7 @@ def depth512_softmax[
     # masking + max of batch N overlaps with the TMEM load of batch N+1.
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def load_mask_max_impl[
         *, mask_strategy: MaskStrategy
     ](s_tmem: UInt32, kv_row: UInt32) -> StaticTuple[Float32, max_unroll]:
@@ -598,7 +615,7 @@ def depth512_softmax[
         return vrow_max
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def init_load_mask_max[
         mask_strategy: MaskStrategy
     ](kv_row: UInt32) -> Float32:
@@ -607,8 +624,7 @@ def depth512_softmax[
             load_mask_max_impl[mask_strategy=mask_strategy](s_even_tmem, kv_row)
         )
 
-    @__parameter
-    @always_inline
+    @inline(.always)
     def load_mask_max[
         mask_strategy: MaskStrategy
     ](s_tmem: UInt32, kv_row: UInt32, old_max: Float32) -> Float32:
@@ -623,7 +639,7 @@ def depth512_softmax[
     # score_to_logit_ratio, then write P to SMEM in batches.
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def store_exp(row_max: Float32) -> f32x2:
         comptime exp_simd = 2
         comptime vs_len = effective_bn // exp_simd
@@ -647,13 +663,13 @@ def depth512_softmax[
             vneg_max_scaled = f32x2(-row_max * scale_log2e)
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def score_to_logit(score: f32x2) -> f32x2:
             return fma_ftz(score, vscale, vneg_max_scaled)
 
         # Interleaved exp: score_to_logit runs ahead by score_to_logit_ratio.
         @__parameter
-        @always_inline
+        @inline(.always)
         def exp_iter[idx: Int]():
             comptime if idx < vs_len // score_to_logit_ratio:
                 comptime for i in range(score_to_logit_ratio):
@@ -675,7 +691,7 @@ def depth512_softmax[
         ), "P store byte width (16) must be a multiple of dtype size"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def write_p_batch[start_elem: Int, num_elems: Int]():
             comptime assert num_elems % p_elems_per_store == 0, (
                 "write_p_batch num_elems must be a multiple of the per-store"
@@ -685,7 +701,7 @@ def depth512_softmax[
                 comptime base = start_elem + c
 
                 @__parameter
-                @always_inline
+                @inline(.always)
                 def pack_vals[n: Int]() -> SIMD[qkv_dtype, n]:
                     var vec = SIMD[accum_dtype, n](0)
                     comptime for k in range(n):
@@ -699,8 +715,8 @@ def depth512_softmax[
                 comptime r = base % p_sw_K
                 var p_inner = Int(m_row) * p_sw_K + r
                 (p_smem + p_k_block * BM * p_sw_K + p_swizzle(p_inner)).bitcast[
-                    Scalar[DType.uint32]
-                ]().store(bitcast[DType.uint32, 4](vals))
+                    UInt32
+                ]().store(bitcast[.uint32, 4](vals))
 
         # Batch 0: compute exp.
         comptime for idx in range(p_batch):
@@ -762,6 +778,8 @@ def depth512_softmax[
         row_max = exchange_reduce["max"](partial_max)
     else:
         row_max = partial_max
+    comptime if sink:
+        row_max = max(row_max, sink_raw)
 
     # Compute exp, write P to SMEM (signals PO_lo inside), get partial sum.
     var partial_sum = store_exp(row_max)
@@ -770,6 +788,13 @@ def depth512_softmax[
         global_sum = exchange_reduce["add"](partial_sum.reduce_add())
     else:
         global_sum = partial_sum.reduce_add()
+    # Added after the exchange; before it, both split_o halves would each
+    # contribute a copy. Carries the same `p_fp8_bias` as the summed P values.
+    comptime if sink:
+        comptime if p_fp8_bias != 0:
+            global_sum += exp2((sink_raw - row_max) * scale_log2e + p_fp8_bias)
+        else:
+            global_sum += exp2((sink_raw - row_max) * scale_log2e)
     var row_sum = f32x2(global_sum, 0)
 
     # ---- Main loop (alternating S_even / S_odd) --------------------------
@@ -782,7 +807,7 @@ def depth512_softmax[
     var s_nxt_tmem = s_even_tmem
 
     @__parameter
-    @always_inline
+    @inline(.always)
     def main_loop_body[mask_strategy: MaskStrategy]():
         """One iteration of the main softmax loop."""
         var old_max = row_max
@@ -807,7 +832,12 @@ def depth512_softmax[
 
         var correction: Float32
         comptime if rescale_threshold < 0:
-            if _vote_nvidia_helper(diff < rescale_threshold) != 0:
+            # Per-lane predicate, not a warp vote: under `fuse_gqa`,
+            # `per_thread_score_row` packs multiple distinct query rows
+            # (heads and/or seq positions) into one warp's 32 `m_row`
+            # values, so an OR here would leak a sibling row's rescale
+            # trajectory into this one's.
+            if diff < rescale_threshold:
                 row_max = new_row_max
                 correction = exp2(diff)
             else:

@@ -14,19 +14,22 @@
 
 from std.collections import OptionalReg
 from std.math import gcd
-from std.sys.info import _current_target, align_of, simd_width_of
+from std.sys.info import CompilationTarget, align_of, simd_width_of
 
 from max.algorithm.functional import elementwise
 from std.utils.numerics import get_accum_type
 from std.complex import ComplexSIMD
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.info import is_cpu
+from internal_utils.fp8_utils import cast_saturating
 from kv_cache.types import KVCacheT, KVCollectionT
 from layout import (
     Coord,
     CoordLike,
+    DefaultEngine,
     Idx,
     RowMajorLayout,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     coord_to_index_list,
@@ -36,7 +39,7 @@ from nn._ragged_utils import get_batch_from_row_offsets
 from std.utils import IndexList
 
 
-@always_inline
+@inline(.always)
 def rope_value[
     dtype: DType,
     freq_dtype: DType,
@@ -69,7 +72,7 @@ def rope_value[
 # In GGUF, weights are organized as real, imag, real, imag, real, imag, …,
 # while in safetensors, the data is stored as real, …, real, imag, …, imag.
 # This function return the indices for the real and imaginary part.
-@always_inline
+@inline(.always)
 def get_safetensors_idx(head_dim_idx: Int, head_size: Int) -> Tuple[Int, Int]:
     """Returns the real and imaginary element indices for a safetensors layout.
 
@@ -87,7 +90,7 @@ def get_safetensors_idx(head_dim_idx: Int, head_size: Int) -> Tuple[Int, Int]:
     return (head_dim_idx // 2, head_dim_idx // 2 + head_size // 2)
 
 
-@always_inline
+@inline(.always)
 def get_identity_rope_coeff[width: Int, dtype: DType]() -> SIMD[dtype, width]:
     """Returns a SIMD vector representing an identity RoPE coefficient.
 
@@ -108,7 +111,7 @@ def get_identity_rope_coeff[width: Int, dtype: DType]() -> SIMD[dtype, width]:
     )
 
 
-@always_inline
+@inline(.always)
 def rope_q_proj[
     dtype: DType,
     freq_dtype: DType,
@@ -172,7 +175,9 @@ def rope_q_proj[
 
     comptime if interleaved:
         var val_inter = q_proj.load[width=width, alignment=alignment](coord)
-        var res_inter = rope_value(val_inter, freq_val).cast[output_dtype]()
+        var res_inter = cast_saturating[output_dtype](
+            rope_value(val_inter, freq_val)
+        )
         output.store[alignment=alignment](coord, res_inter)
     else:
         comptime if has_nope_prefix:
@@ -181,7 +186,7 @@ def rope_q_proj[
                     coord
                 )
                 output.store[alignment=alignment](
-                    coord, val_pass.cast[output_dtype]()
+                    coord, cast_saturating[output_dtype](val_pass)
                 )
                 return
 
@@ -208,13 +213,13 @@ def rope_q_proj[
             )
         )
 
-        var res = rope_value(val, freq_val).cast[output_dtype]()
+        var res = cast_saturating[output_dtype](rope_value(val, freq_val))
         var output_re, output_im = res.deinterleave()
         output.store[alignment=half_alignment](coord_re, output_re)
         output.store[alignment=half_alignment](coord_im, output_im)
 
 
-@always_inline
+@inline(.always)
 def rope_k_cache[
     freq_dtype: DType,
     cache_t: KVCacheT,
@@ -299,7 +304,7 @@ def rope_k_cache[
         k_cache.store(b_idx, h_idx, s_idx, h_im, output_im)
 
 
-@always_inline
+@inline(.always)
 def fused_qk_rope[
     dtype: DType,
     collection_t: KVCollectionT,
@@ -313,7 +318,7 @@ def fused_qk_rope[
     kv_collection: collection_t,
     freqs_cis: TileTensor[dtype, ...],
     layer_idx: UInt32,
-    valid_lengths: TileTensor[DType.uint32, ...],
+    valid_lengths: TileTensor[.uint32, ...],
     output: TileTensor[mut=True, dtype, ...],
     context: DeviceContext,
 ) raises:
@@ -359,7 +364,7 @@ def fused_qk_rope[
     # pointer element-type verification). Keep using the deprecated
     # parameter-closure overload until cache captures in unified closures are
     # supported.
-    @always_inline
+    @inline(.always)
     @__parameter
     @__copy_capture(k_cache, valid_lengths)
     def rope_fn[width: Int, alignment: Int = 1](idx: Coord):
@@ -418,10 +423,11 @@ def fused_qk_rope[
         num_q_heads + num_k_heads,  # concat q and k along head dim
         head_size,
     )
-    comptime compile_target = _current_target() if is_cpu[
-        target
-    ]() else get_gpu_target()
-    comptime target_simd_width = simd_width_of[dtype, target=compile_target]()
+    comptime target_simd_width = (
+        simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
+            target
+        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+    )
     comptime kernel_simd_width = gcd(target_simd_width, kv_params.head_size)
     comptime assert kernel_simd_width >= 2, "invalid simd_width and head size"
 
@@ -433,7 +439,7 @@ def fused_qk_rope[
     ](launch_shape, context)
 
 
-@always_inline
+@inline(.always)
 def fused_qk_rope_ragged[
     dtype: DType,
     freq_dtype: DType,
@@ -450,13 +456,20 @@ def fused_qk_rope_ragged[
     PositionIdsLayoutType: TensorLayout = RowMajorLayout[
         *Coord[Int64, Int64].element_types
     ],
+    # `position_ids` is optional, so its engine cannot be inferred.
+    PositionIdsEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     q_proj: TileTensor[dtype, ...],
-    input_row_offsets: TileTensor[DType.uint32, ...],
+    input_row_offsets: TileTensor[.uint32, ...],
     kv_collection: collection_t,
     freqs_cis: TileTensor[freq_dtype, ...],
     position_ids: OptionalReg[
-        TileTensor[DType.uint32, PositionIdsLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            .uint32,
+            PositionIdsLayoutType,
+            ImmutAnyOrigin,
+            Engine=PositionIdsEngine,
+        ]
     ],
     layer_idx: UInt32,
     output: TileTensor[mut=True, dtype, ...],
@@ -485,6 +498,8 @@ def fused_qk_rope_ragged[
             (defaults to `None`).
         PositionIdsLayoutType: The tensor layout of the `position_ids`
             tensor (defaults to `RowMajorLayout`).
+        PositionIdsEngine: The engine policy of the `position_ids` tensor
+            (defaults to `DefaultEngine`).
 
     Args:
         q_proj: Query projection tensor of shape [total_tokens, n_heads, head_dim].
@@ -542,7 +557,7 @@ def fused_qk_rope_ragged[
     # pointer element-type verification). Keep using the deprecated
     # parameter-closure overload until cache captures in unified closures are
     # supported.
-    @always_inline
+    @inline(.always)
     @__parameter
     @__copy_capture(k_cache, batch_size, input_row_offsets, position_ids)
     def rope_fn[width: Int, alignment: Int = 1](idx: Coord):
@@ -657,10 +672,11 @@ def fused_qk_rope_ragged[
         num_q_heads + num_k_heads,  # concat q and k along head dim
         q_head_size,
     )
-    comptime compile_target = _current_target() if is_cpu[
-        target
-    ]() else get_gpu_target()
-    comptime target_simd_width = simd_width_of[dtype, target=compile_target]()
+    comptime target_simd_width = (
+        simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
+            target
+        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+    )
     comptime kernel_simd_width = gcd(target_simd_width, rope_dim)
 
     comptime if mrope_section:

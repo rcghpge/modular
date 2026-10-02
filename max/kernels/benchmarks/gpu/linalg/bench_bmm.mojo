@@ -87,8 +87,7 @@ comptime epilogue_func_type = def[
 ](SIMD[dtype, width]) capturing -> SIMD[dtype, width]
 
 
-@always_inline
-@__parameter
+@inline(.always)
 def elementwise_epilogue_fn[
     dtype: DType,
     width: SIMDLength,
@@ -159,7 +158,7 @@ def bench_bmm[
     init_vector_launch[a_type](b_device_buffer, b_size, init_type, ctx)
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(c_device)
     def epilogue_fn[
         dtype: DType,
@@ -174,7 +173,7 @@ def bench_bmm[
 
     comptime pack_size = simd_width_of[c_type, target=get_gpu_target()]()
 
-    @always_inline
+    @inline(.always)
     def func[simd_width: Int, alignment: Int = 1](idx: Coord) {var}:
         var val = c_device.load[width=simd_width](idx)
         comptime element_lambda = lambda_fn.value()
@@ -185,11 +184,11 @@ def bench_bmm[
             update_val,
         )
 
-    @__parameter
-    @__copy_capture(a_device, b_device, c_device)
-    @always_inline
-    def bench_func(mut bench: Bencher):
-        @always_inline
+    @inline(.always)
+    def bench_func(
+        mut bench: Bencher,
+    ) {var a_device, var b_device, var c_device, imm}:
+        @inline(.always)
         def kernel_launch(ctx: DeviceContext, iteration: Int) raises {imm}:
             comptime if use_vendor_blas:
                 comptime if has_amd_gpu_accelerator():
@@ -289,7 +288,8 @@ def bench_bmm[
 
         bencher_iter_custom(bench, kernel_launch, ctx)
 
-    bench.bench_function[bench_func](
+    bench.bench_function(
+        bench_func,
         BenchId(
             _get_run_name[
                 c_type,
@@ -357,8 +357,8 @@ def create_bmm_bench[
 
 
 def main() raises:
-    comptime a_type = get_defined_dtype["atype", DType.bfloat16]()
-    comptime c_type = get_defined_dtype["ctype", DType.bfloat16]()
+    comptime a_type = get_defined_dtype["atype", .bfloat16]()
+    comptime c_type = get_defined_dtype["ctype", .bfloat16]()
 
     var b = Int(arg_parse("B", 1))
     var m = Int(arg_parse("M", 1))

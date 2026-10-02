@@ -18,6 +18,7 @@ from collections.abc import Iterator, Sequence
 from unittest.mock import MagicMock, patch
 
 import pytest
+from max import tree
 from max.driver import Device
 from max.dtype import DType
 from max.experimental import functional as F
@@ -28,8 +29,8 @@ from max.experimental.nn.common_layers.multi_latent_attention import (
     tensor_parallel_latent_attention_with_rope,
 )
 from max.experimental.sharding import (
+    DeviceMapping,
     DeviceMesh,
-    PlacementMapping,
     Replicated,
     Sharded,
 )
@@ -42,7 +43,10 @@ from max.graph import (
     SymbolicDim,
     TensorValue,
 )
-from max.nn.kv_cache import KVCacheParams, MLAKVCacheParams
+from max.nn.kv_cache import (
+    KVCacheParams,
+    MLAKVCacheParams,
+)
 
 # Small model dimensions for fast graph-trace tests.
 _N_HEADS = 8
@@ -112,8 +116,8 @@ def _build_kv_collection(
         return result
 
     graph_values: list[BufferValue | TensorValue] = []
-    for per_device_types in kv_inputs.inputs:
-        for field_type in per_device_types.flatten():
+    for per_device_types in kv_inputs:
+        for field_type in tree.leaves(per_device_types):
             t = Tensor.zeros(
                 resolve_shape(field_type.shape),
                 dtype=field_type.dtype,
@@ -124,11 +128,11 @@ def _build_kv_collection(
             else:
                 graph_values.append(TensorValue(t))
 
-    kv_concrete = kv_inputs.unflatten(iter(graph_values))
-    mapping = PlacementMapping(
+    kv_concrete = kv_params.unflatten_kv_inputs(iter(graph_values))
+    mapping = DeviceMapping(
         DeviceMesh(tuple(devices), (len(devices),), ("axis",)), (Replicated(),)
     )
-    return PagedCacheValues.from_upstream(kv_concrete.inputs, mapping)
+    return PagedCacheValues.from_upstream(kv_concrete, mapping)
 
 
 def _make_fake_gpu(id: int = 0) -> MagicMock:
@@ -194,7 +198,7 @@ def test_tensor_parallel_layer(
         kv_params = _make_kv_params(devices)
 
         mesh = DeviceMesh(tuple(devices), (len(devices),), (TP,))
-        replicated_mapping = PlacementMapping(mesh, (Replicated(),))
+        replicated_mapping = DeviceMapping(mesh, (Replicated(),))
 
         layer = tensor_parallel_latent_attention_with_rope(
             _make_layer(kv_params, q_lora_rank=q_lora_rank)
@@ -234,8 +238,8 @@ def test_data_parallel_layer(
         kv_params = _make_kv_params(devices)
 
         mesh = DeviceMesh(tuple(devices), (len(devices),), (DP,))
-        replicated_mapping = PlacementMapping(mesh, (Replicated(),))
-        data_parallel_mapping = PlacementMapping(mesh, (Sharded(0),))
+        replicated_mapping = DeviceMapping(mesh, (Replicated(),))
+        data_parallel_mapping = DeviceMapping(mesh, (Sharded(0),))
 
         layer = _make_layer(kv_params, q_lora_rank=q_lora_rank).to(mesh)
 
@@ -271,8 +275,8 @@ def test_data_parallel_layer_symbolic(
         kv_params = _make_kv_params(devices)
 
         mesh = DeviceMesh(tuple(devices), (len(devices),), (DP,))
-        replicated_mapping = PlacementMapping(mesh, (Replicated(),))
-        data_parallel_mapping = PlacementMapping(mesh, (Sharded(0),))
+        replicated_mapping = DeviceMapping(mesh, (Replicated(),))
+        data_parallel_mapping = DeviceMapping(mesh, (Sharded(0),))
 
         layer = _make_layer(kv_params, q_lora_rank=q_lora_rank)
 

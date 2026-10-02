@@ -19,12 +19,12 @@ from std.math import ceildiv, gcd
 from std.math.uutils import umod, ufloordiv
 from std.sys import align_of, size_of
 
-from std.gpu import WARP_SIZE
+from max.gpu import WARP_SIZE
 from max.gpu.sync import barrier
 from max.gpu.primitives.cluster import block_rank_in_cluster, elect_one_sync
 from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu import block_idx, lane_id, warp_id as get_warp_id
+from max.gpu import block_idx, lane_id, warp_id as get_warp_id
 from max.gpu.memory import external_memory
 from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from max.gpu.compute.arch.tcgen05 import *
@@ -43,6 +43,8 @@ from std.logger import Logger
 from std.utils.index import Index, IndexList
 from std.utils.numerics import get_accum_type
 from std.utils.static_tuple import StaticTuple
+
+from internal_utils.fp8_utils import cast_saturating
 
 from ....arch.sm100 import MmaOpSM100_SS
 from ....utils import elementwise_epilogue_type
@@ -105,7 +107,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     comptime accum_type = get_accum_type[a_type]()
 
     comptime assert (
-        b_scales_type == a_scales_type == accum_type == DType.float32
+        b_scales_type == a_scales_type == accum_type == .float32
     ), "Only support float32 for a_scales and b_scales"
 
     comptime N = c_layout.static_shape[1]
@@ -142,7 +144,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
 
     var a_smem = external_memory[
         Scalar[a_type],
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=128,
         name="tmem_test_dynamic_shared_memory",
     ]().as_unsafe_any_origin()
@@ -445,10 +447,15 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
                     var n = UInt32(c_gmem_frag_coords[1] + dst_n_offset)
 
                     if m < UInt32(M) and n < UInt32(N):
-                        var c_mn = SIMD[accum_type, 2](
-                            c_frag[2 * i_vec],
-                            c_frag[2 * i_vec + 1],
-                        ).cast[c_type]()
+                        # Saturating: a plain cast of an out-of-range f32 to
+                        # FP8 yields NaN on NVIDIA (the `cvt` is not
+                        # `satfinite`). No-op for non-FP8 `c_type`.
+                        var c_mn = cast_saturating[c_type](
+                            SIMD[accum_type, 2](
+                                c_frag[2 * i_vec],
+                                c_frag[2 * i_vec + 1],
+                            )
+                        )
 
                         comptime if elementwise_lambda_fn:
                             comptime alignment = align_of[SIMD[c_type, 2]]()
@@ -612,11 +619,11 @@ def matmul_sm100_blockwise_scaled_fp8[
     comptime b_scales_type = type_of(b_scales).dtype
 
     comptime assert (
-        a_type == b_type and a_type == DType.float8_e4m3fn
+        a_type == b_type and a_type == .float8_e4m3fn
     ), "Only support float8_e4m3fn"
 
     comptime assert (
-        a_scales_type == b_scales_type and a_scales_type == DType.float32
+        a_scales_type == b_scales_type and a_scales_type == .float32
     ), "Only support float32 for scales"
 
     comptime assert (
@@ -721,7 +728,7 @@ def matmul_sm100_blockwise_scaled_fp8[
     comptime block_dim = 128
 
     var c_kernel = c.as_unsafe_any_origin()
-    var b_scales_kernel = b_scales.as_immut().as_unsafe_any_origin()
+    var b_scales_kernel = b_scales.as_imm().as_unsafe_any_origin()
 
     comptime kernel = matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
         a_type,

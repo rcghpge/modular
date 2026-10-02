@@ -43,18 +43,23 @@ Deterministic behaviour across restarts for benchmarking.
 
 
 def _make_root_parent_hash(seed: bytes | None, salt: str | None) -> bytes:
-    """Combine cluster-level `seed` and per-request `salt` into a 32-byte root parent hash for the SHA-256 chain.
+    """Combine cluster-level `seed` and per-request `salt` into 32 bytes.
 
     `effective = (seed or _ZERO_SEED) XOR sha256(salt or b"")`
 
     Both factors are 32 bytes; the XOR is byte-wise. When neither is
     supplied, returns 32 zero bytes (preserves cross-restart cache reuse
-    for benchmark workloads).
+    for benchmark workloads). An empty-string salt is treated the same as
+    no salt at all, not as its own distinct salt value.
+
+    Shared by both hash families: for `sha256`/`sha256_64` this is the
+    32-byte root parent hash for the SHA-256 chain; for `ahash64` these
+    same 32 bytes are reinterpreted as the `AHasher` seed.
     """
     base = seed if seed is not None else _ZERO_SEED
     if len(base) != 32:
         raise ValueError(f"seed must be exactly 32 bytes, got {len(base)}")
-    if salt is None:
+    if not salt:
         return bytes(base)
     # Hash the salt to get a 32-byte digest
     salt_digest = hashlib.sha256(salt.encode("utf-8")).digest()
@@ -153,13 +158,12 @@ def hash_request_tokens(
     item with a content hash while computing prefix-cache keys.
 
     This method should leave the contents of the array unchanged on return.
-    """
-    if algo == "ahash64" and (seed is not None or salt is not None):
-        raise ValueError(
-            "seed/salt are only valid with algo=sha256 or "
-            "algo=sha256_64; pass algo to enable"
-        )
 
+    `seed`/`salt` apply to all three algos: for `sha256`/`sha256_64` they
+    combine into the 256-bit chain root (a cryptographic guarantee); for
+    `ahash64` they seed AHash's runtime keyed state (fast, non-cryptographic
+    -- best-effort collision resistance, not a cryptographic guarantee).
+    """
     overrides_in_slice: dict[int, int] = {}
     if token_hash_overrides:
         if prefix_length == -1:
@@ -189,7 +193,13 @@ def hash_request_tokens(
             ph_bytes_ahash = (
                 DEFAULT_PARENT_HASH if parent_hash is None else parent_hash
             )
-            hash_vals = block_hasher(token_ids, block_size, ph_bytes_ahash)
+            if seed is not None or salt is not None:
+                effective_seed = _make_root_parent_hash(seed, salt)
+                hash_vals = block_hasher(
+                    token_ids, block_size, ph_bytes_ahash, seed=effective_seed
+                )
+            else:
+                hash_vals = block_hasher(token_ids, block_size, ph_bytes_ahash)
 
         elif algo in ("sha256", "sha256_64"):
             if parent_hash is None:
@@ -337,7 +347,7 @@ class _FreeKVCacheBlockQueue(Generic[BlockT]):
 
     def __init__(self, blocks: Sequence[BlockT] = ()) -> None:
         self.num_free_blocks = len(blocks)
-        self.free_blocks = set(block.bid for block in blocks)
+        self.free_blocks = {block.bid for block in blocks}
 
         # Initialize the doubly linked list of free blocks.
         self.free_list_head: BlockT | None = blocks[0] if blocks else None
@@ -411,6 +421,28 @@ class _FreeKVCacheBlockQueue(Generic[BlockT]):
         block.next_free_block = None
         self.num_free_blocks += 1
         self.free_blocks.add(block.bid)
+
+    def appendleft(self, block: BlockT) -> None:
+        """Puts a block back at the head, so it is popped before older entries.
+
+        Args:
+            block: The block to append.
+        """
+        if self.free_list_head is not None:
+            self.free_list_head.prev_free_block = block
+            block.next_free_block = self.free_list_head
+            self.free_list_head = block
+        else:
+            assert self.free_list_tail is None
+            self.free_list_head = self.free_list_tail = block
+
+        block.prev_free_block = None
+        self.num_free_blocks += 1
+        self.free_blocks.add(block.bid)
+
+    def peek_front(self) -> BlockT | None:
+        """Returns the least-recently-used free block without removing it."""
+        return self.free_list_head
 
 
 FreeKVCacheBlockQueue = _FreeKVCacheBlockQueue[KVCacheBlock]

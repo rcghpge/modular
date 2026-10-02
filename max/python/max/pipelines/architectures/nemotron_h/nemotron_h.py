@@ -427,7 +427,7 @@ class NemotronHMoE(MoE):
         permutated_states = ops.gather(
             x,
             ops.cast(
-                ops.floor_div(token_expert_order, self.num_experts_per_token),
+                token_expert_order // self.num_experts_per_token,
                 DType.int32,
             ),
             axis=0,
@@ -795,7 +795,7 @@ class NemotronHMamba2Mixer(Module):
             bias=conv_bias,
             conv_states=conv_pool,
             query_start_loc=query_start_loc,
-            cache_indices=ops.cast(slot_idx, DType.int32),
+            cache_indices=slot_idx,
             has_initial_state=has_initial_state,
             activation="silu",
             channels_last=True,
@@ -1064,7 +1064,7 @@ class NemotronH(Module):
         return_n_logits_type = TensorType(
             DType.int64, shape=["return_n_logits"], device=DeviceRef.CPU()
         )
-        kv_types = list(kv_params.get_symbolic_inputs().flatten())
+        kv_types = list(kv_params.flattened_kv_inputs())
 
         slot_idx_type = TensorType(
             DType.uint32, shape=["batch_size"], device=dev

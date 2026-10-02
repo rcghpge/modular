@@ -314,6 +314,7 @@ class GrammarCompiler:
         require_object_root: bool = False,
         reject_unsupported: bool = False,
         separators: tuple[str, str] | None = None,
+        max_whitespace_cnt: int | None = None,
     ) -> CompiledGrammar:
         return self._impl.compile_json_schema(
             schema,
@@ -322,6 +323,7 @@ class GrammarCompiler:
             require_object_root=require_object_root,
             reject_unsupported=reject_unsupported,
             separators=separators,
+            max_whitespace_cnt=max_whitespace_cnt,
         )
 
     def compile_grammar(
@@ -351,7 +353,7 @@ def allocate_token_bitmask(
 ) -> npt.NDArray[np.int32]:
     """Allocate a packed ``[batch_size, ceil(vocab_size/32)]`` int32 bitmask.
 
-    ``-1`` (all bits set) means unconstrained, matching MAX's and llguidance's
+    ``-1`` (all bits set) means unconstrained, matching MAX's
     convention; ``fill_next_token_bitmask`` overwrites filled rows. Torch-free
     (numpy), unlike upstream's torch-tensor allocator.
     """

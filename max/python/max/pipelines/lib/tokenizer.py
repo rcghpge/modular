@@ -20,9 +20,8 @@ import io
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -34,23 +33,70 @@ from max.pipelines.context import (
     TextContext,
     TokenBuffer,
 )
-from max.pipelines.context.exceptions import PromptTooLongError
+from max.pipelines.context.exceptions import InputError, PromptTooLongError
 from max.pipelines.modeling.types import (
     PipelineTokenizer,
     TextGenerationRequest,
     TextGenerationRequestMessage,
     TextGenerationRequestTool,
+    TokenIds,
 )
 from max.support.image import find_contiguous_ranges, hash_image
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from transformers import (
     AutoProcessor,
     AutoTokenizer,
+    PreTrainedTokenizerBase,
 )
 from typing_extensions import ParamSpec
 
 if TYPE_CHECKING:
     from max.pipelines.lib.config import PipelineConfig
+
+
+# Formats we are willing to decode. Passing this to ``Image.open`` means the
+# decoder is chosen from this set rather than from every registered PIL plugin
+# by magic bytes, which shrinks the native-decoder attack surface. Most
+# importantly it keeps attacker-controlled bytes away from PIL's EPS plugin,
+# which shells out to Ghostscript (``subprocess.check_call`` with no timeout) --
+# a repeat CVE target and an unbounded-runtime DoS vector reachable from an
+# unauthenticated-shaped request. "JPEG" also covers MPO (multi-picture JPEG),
+# which PIL opens through the JPEG factory.
+#
+# The set is the common web formats a vision client sends plus a few
+# semi-popular ones. HEIC/HEIF are deliberately absent: base Pillow cannot
+# decode them without the optional ``pillow-heif`` plugin (not a dependency),
+# and JPEG2000/EPS-style exotic decoders are left out to keep the surface small.
+_DESIRED_IMAGE_FORMATS = (
+    "PNG",
+    "JPEG",
+    "WEBP",
+    "GIF",
+    "BMP",
+    "PPM",
+    "TIFF",
+    "TGA",
+    "AVIF",
+)
+
+# Register every PIL plugin now, then keep only the formats this build actually
+# provides. Intersecting is what makes it safe to list an *optional* codec such
+# as AVIF: on a platform whose Pillow wheel ships without libavif the name is
+# simply dropped here, instead of turning every non-first-format image into an
+# uncaught ``KeyError`` inside ``Image.open`` (which looks up ``OPEN[name]``
+# after a one-shot ``init()``). ``init()`` is idempotent and runs once at import.
+Image.init()
+ALLOWED_IMAGE_FORMATS = tuple(
+    fmt for fmt in _DESIRED_IMAGE_FORMATS if fmt in Image.OPEN
+)
+"""Image formats ``Image.open`` may select a decoder from.
+
+Defined here, beside :func:`open_image`, because both places that open
+client-supplied image bytes must apply it: the API server's admission decode
+and this module's per-image fallback. ``max.serve.router._image_resolution``
+imports it from here -- the serve router already depends on this package, and
+the reverse direction is not available.
+"""
 
 
 def open_image(image: bytes | Image.Image) -> Image.Image:
@@ -63,15 +109,36 @@ def open_image(image: bytes | Image.Image) -> Image.Image:
     Routing both through this helper lets a tokenizer reuse the pre-decoded
     image instead of decoding the same bytes a second time.
 
+    Bytes are opened against :data:`ALLOWED_IMAGE_FORMATS`, decoded eagerly
+    (``load()`` rather than PIL's lazy header parse), and any failure becomes
+    an :class:`InputError` -- a clean 400. Both matter because this is the
+    second place client bytes can be opened: the API server skips its own
+    admission decode for an image whose preprocessed tensor is already cached,
+    and offline callers never had one.
+
     Args:
         image: Raw encoded image bytes, or an already-decoded ``PIL.Image``.
 
     Returns:
         The decoded ``PIL.Image``.
+
+    Raises:
+        InputError: If ``image`` is bytes that do not decode to an image.
     """
     if isinstance(image, Image.Image):
         return image
-    return Image.open(io.BytesIO(image))
+    try:
+        decoded = Image.open(io.BytesIO(image), formats=ALLOWED_IMAGE_FORMATS)
+        decoded.load()
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+        SyntaxError,
+        Image.DecompressionBombError,
+    ) as e:
+        raise InputError("invalid or unreadable image content") from e
+    return decoded
 
 
 async def convert_token_to_id(
@@ -113,81 +180,78 @@ def resolve_single_special_token(delegate: Any, token: str) -> int:
     return int(token_id)
 
 
-logger = logging.getLogger("max.pipelines")
+class ReasoningDelimitersMixin:
+    """Resolves and exposes a tokenizer's reasoning-delimiter token ids.
 
-_UINT64_MASK = (1 << 64) - 1
-
-
-@dataclass(frozen=True, slots=True)
-class _HintBlock:
-    """A single block descriptor from the Orchestrator's dkv_cache_hint."""
-
-    hash: int
-
-
-@dataclass(frozen=True, slots=True)
-class _DkvCacheHint:
-    """Typed representation of a dkv_cache_hint payload from the Orchestrator."""
-
-    instance_name: str
-    blocks: list[_HintBlock]
-    version: int = 1
-
-
-@dataclass(frozen=True, slots=True)
-class _ParsedDkvCacheHint:
-    """Parsed dkv_cache_hint, ready to attach to a TextContext.
-
-    ``external_block_metadata`` becomes ``ctx.external_block_metadata`` —
-    a set-like dict the connector iterates in lookup().
-    ``instance_name`` becomes ``ctx.dkv_hint_instance_name`` — the
-    connector compares it to its own dKV instance name to short-circuit
-    fetches when the cache source is local.
+    Mixing this into a tokenizer satisfies
+    :class:`~max.pipelines.modeling.types.ReasoningPipelineTokenizer`.
+    Subclasses override :attr:`reasoning_delimiters` when their model does not
+    use ``<think>``/``</think>``, and call
+    :meth:`_resolve_reasoning_delimiters` from ``__init__`` once the delegate
+    is loaded. :class:`ReasoningTextTokenizer` does the call itself.
     """
 
-    instance_name: str
-    external_block_metadata: dict[int, Any]
+    reasoning_delimiters: ClassVar[tuple[str, str]] = ("<think>", "</think>")
+    """The special tokens that open and close a reasoning span."""
 
+    _reasoning_start_token_id: int
+    _reasoning_end_token_id: int
 
-def _parse_dkv_cache_hint(
-    hint: dict[str, Any] | None,
-) -> _ParsedDkvCacheHint | None:
-    """Convert a ``dkv_cache_hint`` JSON payload into the form the DKVConnector reads.
+    def _resolve_reasoning_delimiters(self, delegate: Any) -> None:
+        """Resolves :attr:`reasoning_delimiters` to ids via ``delegate``.
 
-    The Orchestrator injects a ``dkv_cache_hint`` field into the request
-    body (see SERVOPT-1143). Returns ``None`` when no hint is present or
-    the hint carries no blocks.
-
-    Raises ``TypeError`` or ``KeyError`` if the hint is malformed.
-    """
-    if hint is None:
-        return None
-
-    parsed = _DkvCacheHint(
-        instance_name=hint["instance_name"],
-        blocks=[_HintBlock(**b) for b in hint.get("blocks", [])],
-        version=hint.get("version", 1),
-    )
-
-    if not parsed.blocks:
-        return None
-
-    # Lazy import to avoid pulling dkv deps when dKV is not configured.
-    from max.pipelines.kv_cache.connectors.dkv.connector import (
-        DKVExternalBlockMetadata,
-    )
-
-    external_block_metadata: dict[int, DKVExternalBlockMetadata] = {}
-    for block in parsed.blocks:
-        block_hash = block.hash & _UINT64_MASK
-        external_block_metadata[block_hash] = DKVExternalBlockMetadata(
-            seq_hash=block_hash
+        Raises:
+            ValueError: If either delimiter is not a single special token in
+                the vocab.
+        """
+        start, end = self.reasoning_delimiters
+        self._reasoning_start_token_id = resolve_single_special_token(
+            delegate, start
+        )
+        self._reasoning_end_token_id = resolve_single_special_token(
+            delegate, end
         )
 
-    return _ParsedDkvCacheHint(
-        instance_name=parsed.instance_name,
-        external_block_metadata=external_block_metadata,
-    )
+    @property
+    def reasoning_start_token_id(self) -> int:
+        """The token id that opens a reasoning span."""
+        return self._reasoning_start_token_id
+
+    @property
+    def reasoning_end_token_id(self) -> int:
+        """The token id that closes a reasoning span."""
+        return self._reasoning_end_token_id
+
+
+logger = logging.getLogger("max.pipelines")
+
+
+def encode_dkv_cache_hint(hint: dict[str, Any] | None) -> bytes | None:
+    """Re-serializes a request's ``dkv_cache_hint`` to the bytes dKV parses.
+
+    The hint arrives as a decoded JSON object and the dKV connector parses it
+    in Rust, so MAX only has to hand back its wire form. Nothing here reads the
+    contents: the version gate, the instance table, and every routing decision
+    live in ``dkv-connector`` (see ``dkv/docs/cache-hint.md``), which is what
+    lets the Orchestrator adopt a new hint schema without redeploying MAX.
+
+    Returns ``None`` when the field is absent, empty, or not encodable, all of
+    which the connector serves as an unhinted load. A hint never fails a
+    request: an HTTP caller cannot reach the unencodable case, because the
+    field is typed ``dict[str, Any]`` and filled from a parsed JSON body, but
+    a caller building a request in Python can, and a cache is not worth a
+    failed request.
+    """
+    if not hint:
+        return None
+    try:
+        return json.dumps(hint, separators=(",", ":")).encode()
+    except (TypeError, ValueError):
+        logger.warning(
+            "Dropping an unencodable dkv_cache_hint; serving as though the "
+            "cache missed."
+        )
+        return None
 
 
 TokenGeneratorContext = TypeVar("TokenGeneratorContext")
@@ -269,7 +333,7 @@ class IdentityPipelineTokenizer(
 
     async def decode(
         self,
-        encoded: str,
+        encoded: TokenIds | str,
         **kwargs,
     ) -> str:
         """Returns the encoded string unchanged (identity decoding)."""
@@ -334,6 +398,53 @@ def replace_unpaired_surrogates(prompt: str) -> str:
             for char in prompt
         )
     return prompt
+
+
+def _as_token_id_set(eos_token_id: object) -> set[int]:
+    if isinstance(eos_token_id, int):
+        return {eos_token_id}
+    if isinstance(eos_token_id, list):
+        return {
+            token_id for token_id in eos_token_id if isinstance(token_id, int)
+        }
+    return set()
+
+
+def resolve_eos_token_ids(
+    tokenizer_eos_token_id: int | None,
+    pipeline_config: PipelineConfig | None,
+) -> set[int]:
+    """Returns every token id that ends generation for the model.
+
+    Unions the tokenizer's EOS token with the ``eos_token_id`` of the target
+    model's ``config.json``, the draft model's ``config.json`` and the target
+    model's ``generation_config.json``. Each ``eos_token_id`` may be one id, a
+    list of ids or unset. Hugging Face ``generate`` stops on the
+    ``generation_config.json`` list, which often names more tokens than
+    ``config.json`` (for example a chat turn terminator).
+
+    Args:
+        tokenizer_eos_token_id: The tokenizer's ``eos_token_id``, if any.
+        pipeline_config: The pipeline configuration to read model configs
+            from, or ``None`` to use only the tokenizer's EOS token.
+
+    Returns:
+        The set of EOS token ids.
+    """
+    eos_token_ids = _as_token_id_set(tokenizer_eos_token_id)
+    if pipeline_config is None:
+        return eos_token_ids
+    model = pipeline_config.model
+    draft_hf_config = getattr(
+        pipeline_config.draft_model, "huggingface_config", None
+    )
+    for eos in (
+        getattr(model.huggingface_config, "eos_token_id", None),
+        getattr(draft_hf_config, "eos_token_id", None),
+        model.generation_config.eos_token_id,
+    ):
+        eos_token_ids.update(_as_token_id_set(eos))
+    return eos_token_ids
 
 
 async def build_eos_tracker_for_request(
@@ -426,6 +537,7 @@ class TextTokenizer(
         # Override chat template if provided
         # This will be used by the delegate's apply_chat_template method automatically
         self._custom_template_provided = chat_template is not None
+        self._chat_template = chat_template
         if chat_template is not None:
             self.delegate.chat_template = chat_template
             logger.info(
@@ -443,25 +555,9 @@ class TextTokenizer(
             self._llama_whitespace_fix_dummy_token_len,
         ) = self._llama_whitespace_fix_dummy_token
 
-        # cache tokenizer eos token ids
-        eos_token_id = self.delegate.eos_token_id
-        self._eos_token_ids = (
-            {eos_token_id} if eos_token_id is not None else set()
+        self._eos_token_ids = resolve_eos_token_ids(
+            self.delegate.eos_token_id, pipeline_config
         )
-
-        if pipeline_config:
-            target_eos = getattr(
-                pipeline_config.model.huggingface_config, "eos_token_id", None
-            )
-            draft_hf = getattr(
-                pipeline_config.draft_model, "huggingface_config", None
-            )
-            draft_eos = getattr(draft_hf, "eos_token_id", None)
-            for eos in (target_eos, draft_eos):
-                if isinstance(eos, int):
-                    self._eos_token_ids.add(eos)
-                elif isinstance(eos, list):
-                    self._eos_token_ids.update(eos)
 
     @property
     def eos_token_ids(self) -> set[int]:
@@ -485,13 +581,31 @@ class TextTokenizer(
             **chat_template_options,
         }
 
+        flattened = [message.flatten_content() for message in messages]
+
         try:
-            templated_message = self.delegate.apply_chat_template(
-                [message.flatten_content() for message in messages],
-                tokenize=False,
-                tools=tools,
-                **chat_template_options,
-            )
+            if self._custom_template_provided:
+                # A ``trust_remote_code`` tokenizer may override
+                # ``apply_chat_template`` to render a format hardcoded in
+                # Python, never reading the ``chat_template`` attribute -- which
+                # silently discards an explicit ``--chat-template``. Render the
+                # requested template through the base implementation so the
+                # override is the format that actually reaches the model.
+                templated_message = PreTrainedTokenizerBase.apply_chat_template(
+                    self.delegate,
+                    flattened,
+                    chat_template=self._chat_template,
+                    tokenize=False,
+                    tools=tools,
+                    **chat_template_options,
+                )
+            else:
+                templated_message = self.delegate.apply_chat_template(
+                    flattened,
+                    tokenize=False,
+                    tools=tools,
+                    **chat_template_options,
+                )
         except Exception as e:
             if self._custom_template_provided:
                 # Provide additional context when a custom template is used
@@ -541,22 +655,18 @@ class TextTokenizer(
                 add_special_tokens,
             )
 
-            if self.max_length and len(encoded_prompt) > self.max_length:
-                raise PromptTooLongError(len(encoded_prompt), self.max_length)
-
             encoded_prompt = np.array(encoded_prompt)
         else:
             encoded_prompt = np.array(list(prompt))
 
+        if self.max_length and len(encoded_prompt) > self.max_length:
+            raise PromptTooLongError(len(encoded_prompt), self.max_length)
+
         return encoded_prompt
 
-    async def decode(
-        self, encoded: npt.NDArray[np.integer[Any]], **kwargs
-    ) -> str:
+    async def decode(self, encoded: TokenIds, **kwargs) -> str:
         """Transforms a provided encoded token array back into readable text."""
-        # Sometimes, encoded comes in as an int so, make it np array
-        if isinstance(encoded, int):
-            encoded = np.array(encoded)
+        encoded = np.asarray(encoded)
 
         # There is an issue where Llama tokenizer strips leading spaces
         # if a single token is decoded at a time. This is a temporary
@@ -580,9 +690,7 @@ class TextTokenizer(
         tools: list[TextGenerationRequestTool] | None = None,
         **chat_template_options: Any,
     ) -> tuple[str | list[int], npt.NDArray[np.integer[Any]]]:
-        if isinstance(prompt, str):
-            return prompt, await self.encode(prompt, add_special_tokens=True)
-        elif isinstance(prompt, list):
+        if isinstance(prompt, str | list):
             return prompt, await self.encode(prompt, add_special_tokens=True)
         elif isinstance(messages, list):
             prompt = self.apply_chat_template(
@@ -670,7 +778,6 @@ class TextTokenizer(
             array=token_ids.astype(np.int64, copy=False),
         )
 
-        parsed_hint = _parse_dkv_cache_hint(request.dkv_cache_hint)
         context = TextContext(
             request_id=request.request_id,
             eos_tracker=await self.create_eos_tracker(request),
@@ -687,12 +794,7 @@ class TextTokenizer(
             sampling_params=request.sampling_params,
             model_name=request.model_name,
             target_endpoint=request.target_endpoint,
-            external_block_metadata=(
-                parsed_hint.external_block_metadata if parsed_hint else None
-            ),
-            dkv_hint_instance_name=(
-                parsed_hint.instance_name if parsed_hint else ""
-            ),
+            dkv_cache_hint=encode_dkv_cache_hint(request.dkv_cache_hint),
             cache_salt=request.cache_salt,
         )
 
@@ -739,6 +841,21 @@ class TextTokenizer(
         return decoded[self._llama_whitespace_fix_dummy_token_len :]
 
 
+class ReasoningTextTokenizer(ReasoningDelimitersMixin, TextTokenizer):
+    """A :class:`TextTokenizer` that resolves its reasoning-delimiter ids.
+
+    Resolves :attr:`~ReasoningDelimitersMixin.reasoning_delimiters` at
+    construction, so an architecture whose reasoning parser needs them can
+    use this class directly or subclass it.
+    """
+
+    def __init__(
+        self, model_path: str, pipeline_config: PipelineConfig, **kwargs: Any
+    ) -> None:
+        super().__init__(model_path, pipeline_config, **kwargs)
+        self._resolve_reasoning_delimiters(self.delegate)
+
+
 class TextAndVisionTokenizer(
     PipelineTokenizer[
         TextAndVisionContext,
@@ -776,17 +893,9 @@ class TextAndVisionTokenizer(
         self.processor = AutoProcessor.from_pretrained(
             model_path, revision=revision, trust_remote_code=trust_remote_code
         )
-        eos_token_id = self.delegate.eos_token_id
-        self._eos_token_ids = (
-            {eos_token_id} if eos_token_id is not None else set()
+        self._eos_token_ids = resolve_eos_token_ids(
+            self.delegate.eos_token_id, pipeline_config
         )
-
-        huggingface_config = pipeline_config.model.huggingface_config
-        if eos_token_id := getattr(huggingface_config, "eos_token_id", None):
-            if isinstance(eos_token_id, int):
-                self._eos_token_ids.add(eos_token_id)
-            elif isinstance(eos_token_id, list):
-                self._eos_token_ids.update(eos_token_id)
 
         self.enable_prefix_caching = (
             pipeline_config.model.kv_cache.enable_prefix_caching
@@ -889,14 +998,9 @@ class TextAndVisionTokenizer(
 
         return encoded_prompt
 
-    async def decode(
-        self, encoded: npt.NDArray[np.integer[Any]] | int, **kwargs
-    ) -> str:
+    async def decode(self, encoded: TokenIds, **kwargs) -> str:
         """Transforms a provided encoded token array back into readable text."""
-        # Log-probability responses decode one token id (a plain int) at a
-        # time; match the text tokenizer's handling.
-        if isinstance(encoded, int):
-            encoded = np.array(encoded)
+        encoded = np.asarray(encoded)
         try:
             return self.delegate.decode(encoded.tolist(), **kwargs)
         except OverflowError as e:
@@ -1039,7 +1143,6 @@ class TextAndVisionTokenizer(
             array=encoded_prompt.astype(np.int64, copy=False),
         )
 
-        parsed_hint = _parse_dkv_cache_hint(request.dkv_cache_hint)
         context = TextAndVisionContext(
             request_id=request.request_id,
             eos_tracker=await self.create_eos_tracker(request),
@@ -1055,12 +1158,7 @@ class TextAndVisionTokenizer(
             grammar=grammar,
             grammar_state=grammar_state,
             sampling_params=request.sampling_params,
-            external_block_metadata=(
-                parsed_hint.external_block_metadata if parsed_hint else None
-            ),
-            dkv_hint_instance_name=(
-                parsed_hint.instance_name if parsed_hint else ""
-            ),
+            dkv_cache_hint=encode_dkv_cache_hint(request.dkv_cache_hint),
             images=[
                 ImageMetadata(
                     start_idx=start_idx,
@@ -1075,6 +1173,7 @@ class TextAndVisionTokenizer(
                 )
             ],
             vision_token_ids=self.vision_token_ids,
+            cache_salt=request.cache_salt,
         )
 
         return context

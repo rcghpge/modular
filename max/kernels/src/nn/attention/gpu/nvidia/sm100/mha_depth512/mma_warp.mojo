@@ -56,7 +56,7 @@ from .smem import Depth512AttentionSMem
 from std.utils.index import Index
 
 
-@always_inline
+@inline(.always)
 def depth512_mma[
     MaskType: MHAMask,
     qkv_dtype: DType,
@@ -241,9 +241,10 @@ def depth512_mma[
 
     # ---- Helper: P@V with depth-dependent commit strategy ---------------------
 
-    @__parameter
-    @always_inline
-    def pv_mma(*, is_first: Bool):
+    @inline(.always)
+    def pv_mma(
+        *, is_first: Bool
+    ) {mut kv_pipeline, mut pipeline_o_lo, mut pipeline_o_hi, imm}:
         """Execute P@V multiplication(s) and commit O barriers.
 
         split_o: P@V_lo → commit O_mma_lo, then P@V_hi → commit O_mma_hi.

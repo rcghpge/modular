@@ -106,11 +106,11 @@ def test_v2_causal_paged[depth: Int](ctx: DeviceContext) raises:
         ") ---",
     )
 
-    var dev_q = ctx.enqueue_create_buffer[DType.bfloat16](SIZE_Q)
-    var dev_out = ctx.enqueue_create_buffer[DType.float32](SIZE_OUT)
-    var dev_kv_block = ctx.enqueue_create_buffer[DType.bfloat16](SIZE_KV_BLOCK)
-    var dev_cache_lengths = ctx.enqueue_create_buffer[DType.uint32](BATCH)
-    var dev_paged_lut = ctx.enqueue_create_buffer[DType.uint32](
+    var dev_q = ctx.enqueue_create_buffer[.bfloat16](SIZE_Q)
+    var dev_out = ctx.enqueue_create_buffer[.float32](SIZE_OUT)
+    var dev_kv_block = ctx.enqueue_create_buffer[.bfloat16](SIZE_KV_BLOCK)
+    var dev_cache_lengths = ctx.enqueue_create_buffer[.uint32](BATCH)
+    var dev_paged_lut = ctx.enqueue_create_buffer[.uint32](
         BATCH * PAGES_PER_SEQ
     )
 
@@ -132,8 +132,7 @@ def test_v2_causal_paged[depth: Int](ctx: DeviceContext) raises:
         for i in range(SIZE_KV_BLOCK):
             host_kv[i] = BFloat16(0)
         for k in range(NUM_KEYS):
-            var block_idx = k // PAGE_SIZE
-            var tok_in_page = k % PAGE_SIZE
+            var block_idx, tok_in_page = divmod(k, PAGE_SIZE)
             var page = _LUT_PERM[block_idx]
             var v_val = Float32(k + 1) / Float32(512)
             for m in range(depth):
@@ -188,7 +187,7 @@ def test_v2_causal_paged[depth: Int](ctx: DeviceContext) raises:
     # PagedKVCacheCollection. LayoutTensor wrappers over the device buffers.
     comptime kv_block_layout = Layout.row_major[6]()
     var kv_block_tensor = LayoutTensor[
-        DType.bfloat16,
+        .bfloat16,
         kv_block_layout,
     ](
         dev_kv_block,
@@ -202,7 +201,7 @@ def test_v2_causal_paged[depth: Int](ctx: DeviceContext) raises:
     comptime cache_lengths_layout = Layout(UNKNOWN_VALUE)
     var cache_lengths_tensor = LayoutTensor[
         mut=False,
-        DType.uint32,
+        .uint32,
         cache_lengths_layout,
     ](
         dev_cache_lengths,
@@ -212,7 +211,7 @@ def test_v2_causal_paged[depth: Int](ctx: DeviceContext) raises:
     comptime paged_lut_layout = Layout.row_major[2]()
     var paged_lut_tensor = LayoutTensor[
         mut=False,
-        DType.uint32,
+        .uint32,
         paged_lut_layout,
     ](
         dev_paged_lut.unsafe_ptr(),

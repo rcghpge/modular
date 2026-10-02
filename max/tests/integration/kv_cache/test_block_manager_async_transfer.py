@@ -15,15 +15,17 @@
 
 These run CPU-only and construct a ``BlockManager`` directly with a fake
 connector whose ``load``/``offload`` return a *controllable, not-yet-complete*
-``KVConnectorTransfer`` (the behavior of the ``rust_tiered`` connector, whose
-H2D/D2H run on a separate copy engine). They cover the parts of the async path
-that the synchronous connectors never exercise:
+``KVConnectorTransfer`` (the behavior of every connector, whose H2D/D2H run
+off the forward stream). They cover the parts of the async path that a
+transfer completing on its first poll never exercises:
 
 - an in-flight onload defers its device-prefix-cache commit and pins the
   destination blocks (a same-batch request must not read them before the copy
   lands),
 - ``poll_transfers`` is a no-op while the transfer is incomplete and, once it
-  completes, commits the onloaded blocks and unpins them,
+  completes, commits the onloaded blocks and unpins them; it gives the
+  connector its own drain either way, and a poll that raises unpins without
+  committing rather than leaving its entry to be drained twice,
 - an in-flight offload pins its source blocks without a deferred commit, and
 - pinned blocks are held out of the free queue (the primitive behind the
   scheduler's "defer instead of OOM while transfers are in flight" guard).
@@ -31,16 +33,18 @@ that the synchronous connectors never exercise:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 from typing import cast
 
-from max.nn.kv_cache import KVHashAlgo
+import pytest
+from max.nn.kv_cache import KVCacheGroupId
 from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.pipelines.context import TextContext
 from max.pipelines.kv_cache.kv_connector import (
+    ByteCount,
     KVConnectorTransfer,
-    TransferDirection,
+    KVTransfer,
 )
 from max.pipelines.kv_cache.paged_kv_cache.block_manager import BlockManager
 from max.pipelines.kv_cache.paged_kv_cache.block_pool import BlockPool
@@ -58,25 +62,24 @@ class _ControllableTransfer:
 
     Models an asynchronous connector's handle: ``is_complete`` returns ``False``
     until the test sets ``complete`` (or calls ``synchronize``), so the block
-    manager takes the deferred-commit / pinning branch.
+    manager takes the deferred-commit / pinning branch. Setting ``fails`` makes
+    every poll raise, which is what a terminal transfer failure does (the dKV
+    connector's, whose destination blocks then hold no valid KV, and whose
+    failure is sticky so a second poller cannot see completion instead).
     """
 
-    def __init__(
-        self, direction: TransferDirection, g0_blocks: list[int]
-    ) -> None:
-        self._direction = direction
-        self._g0_blocks = list(g0_blocks)
+    def __init__(self, g0_blocks: list[int]) -> None:
+        self._g0_blocks = {"full": list(g0_blocks)}
         self.complete = False
+        self.fails = False
 
     @property
-    def direction(self) -> TransferDirection:
-        return self._direction
-
-    @property
-    def g0_blocks(self) -> list[int]:
+    def g0_blocks_per_leaf(self) -> Mapping[str, Sequence[int]]:
         return self._g0_blocks
 
     def is_complete(self) -> bool:
+        if self.fails:
+            raise RuntimeError("transfer failed")
         return self.complete
 
     def synchronize(self) -> None:
@@ -86,84 +89,83 @@ class _ControllableTransfer:
 class _AsyncConnector:
     """A fake external-tier connector that returns in-flight transfers.
 
-    ``num_host_blocks`` is positive so the block manager runs its host-onload
-    path; ``num_blocks_to_load`` controls how many of a ``load``'s requested
-    hashes are reported as found. Every returned transfer is recorded so a test
-    can flip it complete and then drive ``poll_transfers``.
+    ``host_byte_count.total`` is positive so the block manager runs its
+    host-onload path; ``num_blocks_to_load`` controls how many of a request's
+    leading hashes ``lookup`` reports as held. Every returned transfer is
+    recorded so a test can flip it complete and then drive ``poll_transfers``.
     """
 
     def __init__(self) -> None:
         self.num_blocks_to_load = 0
         self.loads: list[_ControllableTransfer] = []
         self.offload_events: list[_ControllableTransfer] = []
+        self.polls = 0
+
+    @property
+    def leaves(self) -> Mapping[str, KVCacheGroupId]:
+        return {"full": KVCacheGroupId.full()}
 
     @property
     def name(self) -> str:
         return "async-fake"
 
-    @property
-    def supported_hash_algos(self) -> frozenset[KVHashAlgo]:
-        return frozenset({"ahash64", "sha256", "sha256_64"})
+    def lookup(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> Mapping[str, Sequence[bool]]:
+        held = min(len(block_hashes), self.num_blocks_to_load)
+        return {
+            "full": [idx < held for idx in range(len(block_hashes))],
+        }
 
     def load(
         self,
-        device_block_ids: list[int],
-        block_hashes: Sequence[bytes],
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Mapping[str, Sequence[bytes]],
         replica_idx: int = 0,
-    ) -> KVConnectorTransfer:
-        num_loaded = min(len(block_hashes), self.num_blocks_to_load)
-        event = _ControllableTransfer(
-            TransferDirection.LOAD, list(device_block_ids[:num_loaded])
-        )
+        hint: bytes | None = None,
+    ) -> KVTransfer:
+        event = _ControllableTransfer(list(block_ids["full"]))
         self.loads.append(event)
         return event
 
     def offload(
         self,
-        block_ids: list[int],
+        block_ids: Mapping[str, Sequence[int]],
         block_hashes: Sequence[bytes],
         replica_idx: int = 0,
     ) -> KVConnectorTransfer:
-        event = _ControllableTransfer(
-            TransferDirection.OFFLOAD, list(block_ids)
-        )
+        bids = list(block_ids["full"])
+        event = _ControllableTransfer(bids)
         self.offload_events.append(event)
         return event
 
     def touch(
         self, block_hashes: Sequence[bytes], replica_idx: int = 0
     ) -> None: ...
-    def count_cached_prefix(
-        self, block_hashes: Sequence[bytes]
-    ) -> tuple[int, int]:
-        return (0, 0)
 
-    def wait_for_loads(self) -> None: ...
-    def wait_for_offloads(self) -> None: ...
+    def poll_transfers(self) -> None:
+        self.polls += 1
+
     def shutdown(self) -> None: ...
     def reset_prefix_cache(self) -> None: ...
 
     @property
-    def num_host_blocks(self) -> int:
-        return 1024
+    def host_byte_count(self) -> ByteCount:
+        return ByteCount(free=1024 * 4096, total=1024 * 4096)
 
     @property
-    def num_used_host_blocks(self) -> int:
-        return 0
-
-    @property
-    def num_disk_blocks(self) -> int:
-        return 0
-
-    @property
-    def num_used_disk_blocks(self) -> int:
-        return 0
+    def disk_byte_count(self) -> ByteCount:
+        return ByteCount(free=0, total=0)
 
     @property
     def metrics(self) -> KVCacheMetrics:
         return KVCacheMetrics()
 
-    def reset_metrics(self) -> None: ...
+    def take_metrics(self) -> KVCacheMetrics:
+        return self.metrics
 
 
 def _make_block_manager() -> tuple[BlockManager, _AsyncConnector]:
@@ -180,10 +182,14 @@ def _make_block_manager() -> tuple[BlockManager, _AsyncConnector]:
 def _make_ctx(bm: BlockManager, request_id: RequestID) -> TextContext:
     """Minimal claimed ctx stub.
 
-    The host-onload path reads only ``ctx.request_id``, but the claim is what
-    pins which replica's pool the request resolves against.
+    The host-onload path reads only ``ctx.request_id`` and
+    ``ctx.dkv_cache_hint``, but the claim is what pins which replica's pool the
+    request resolves against.
     """
-    ctx = cast(TextContext, SimpleNamespace(request_id=request_id))
+    ctx = cast(
+        TextContext,
+        SimpleNamespace(request_id=request_id, dkv_cache_hint=None),
+    )
     bm.claim(ctx)
     return ctx
 
@@ -218,7 +224,7 @@ def test_async_onload_defers_commit_and_pins_blocks() -> None:
     rid = RequestID("req-onload")
     bm.req_to_hashes[rid] = [_b(1), _b(2)]
 
-    blocks, event = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
+    blocks, event, _ = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
 
     assert len(blocks) == 2
     assert not event.is_complete()
@@ -241,7 +247,7 @@ def test_poll_transfers_is_noop_while_onload_incomplete() -> None:
     rid = RequestID("req-poll-incomplete")
     bm.req_to_hashes[rid] = [_b(1), _b(2)]
 
-    _, event = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
+    _, event, _ = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
     assert not event.is_complete()
 
     bm.poll_transfers()
@@ -249,6 +255,24 @@ def test_poll_transfers_is_noop_while_onload_incomplete() -> None:
     assert bm.pending_transfers_exist()
     assert _b(1) not in pool.prefix_cache
     assert _b(2) not in pool.prefix_cache
+
+
+def test_poll_transfers_drains_the_connector_even_with_nothing_in_flight() -> (
+    None
+):
+    """The connector's own drain runs on every poll, not only on a completion.
+
+    A transfer the manager never sees -- one dropped before it settled --
+    leaves resources only the connector can reclaim, and there is no pending
+    entry to hang that reclaim off. So the drain leads, unconditionally.
+    """
+    bm, connector = _make_block_manager()
+
+    bm.poll_transfers()
+    bm.poll_transfers()
+
+    assert not bm.pending_transfers_exist()
+    assert connector.polls == 2
 
 
 def test_poll_transfers_commits_and_unpins_on_completion() -> None:
@@ -259,7 +283,7 @@ def test_poll_transfers_commits_and_unpins_on_completion() -> None:
     rid = RequestID("req-poll-complete")
     bm.req_to_hashes[rid] = [_b(1), _b(2)]
 
-    blocks, event = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
+    blocks, event, _ = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
 
     # Complete the transfer, then drain.
     event.synchronize()
@@ -274,25 +298,99 @@ def test_poll_transfers_commits_and_unpins_on_completion() -> None:
         assert block.ref_cnt == 1
 
 
-def test_partial_onload_frees_surplus_blocks() -> None:
-    """A connector that loads fewer blocks than requested frees the surplus.
+def test_a_failed_poll_unpins_without_committing_and_drains_once() -> None:
+    """A poll that raises must not leave its entry to be drained twice.
 
-    The manager allocates one destination block per requested hash, but the
-    connector reports only ``num_blocks_to_load`` in ``g0_blocks``; the unused
-    destinations must be returned to the pool rather than leaked.
+    The failing transfer settled itself, and the blocks it was filling hold no
+    valid KV -- committing them would publish garbage for any later request to
+    hit, and leaving the entry on a list this pass already drained would free
+    the earlier transfer's blocks a second time.
     """
     bm, connector = _make_block_manager()
-    connector.num_blocks_to_load = 1  # only the first of two hashes loads
+    connector.num_blocks_to_load = 2
+    pool = bm.device_block_pool
+
+    first_rid = RequestID("req-fails")
+    bm.req_to_hashes[first_rid] = [_b(1), _b(2)]
+    failing_blocks, failing, _ = bm.get_full_blocks_from_prefix_cache(
+        _make_ctx(bm, first_rid)
+    )
+    second_rid = RequestID("req-survives")
+    bm.req_to_hashes[second_rid] = [_b(3), _b(4)]
+    _, survivor, _ = bm.get_full_blocks_from_prefix_cache(
+        _make_ctx(bm, second_rid)
+    )
+    assert isinstance(failing, _ControllableTransfer)
+    failing.fails = True
+
+    with pytest.raises(RuntimeError, match="transfer failed"):
+        bm.poll_transfers()
+
+    assert _b(1) not in pool.prefix_cache, "garbage must not be published"
+    assert _b(2) not in pool.prefix_cache
+    for block in failing_blocks:
+        assert block.ref_cnt == 1, "the failed transfer's pin is released"
+
+    # The entry the raise never reached is still queued, and draining it once
+    # more settles it exactly once.
+    assert bm.pending_transfers_exist()
+    survivor.synchronize()
+    bm.poll_transfers()
+    assert not bm.pending_transfers_exist()
+    assert _b(3) in pool.prefix_cache
+
+
+def test_a_failure_the_scheduler_already_saw_still_blocks_the_commit() -> None:
+    """The manager re-polls a transfer another poller already failed.
+
+    The scheduler sweeps its own cordon, over the same transfer objects, and it
+    runs before this drain -- so it is what sees the failure first. The
+    manager's pending entry is still queued, so it polls that transfer again,
+    and the failure being sticky is the whole reason the second poll does not
+    read complete and publish blocks the copy never filled.
+    """
+    bm, connector = _make_block_manager()
+    connector.num_blocks_to_load = 2
+    pool = bm.device_block_pool
+    rid = RequestID("req-already-failed")
+    bm.req_to_hashes[rid] = [_b(1), _b(2)]
+
+    blocks, event, _ = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
+    assert isinstance(event, _ControllableTransfer)
+    event.fails = True
+
+    # The scheduler's sweep, outside the manager.
+    with pytest.raises(RuntimeError, match="transfer failed"):
+        event.is_complete()
+
+    with pytest.raises(RuntimeError, match="transfer failed"):
+        bm.poll_transfers()
+
+    assert _b(1) not in pool.prefix_cache, "garbage must not be published"
+    assert _b(2) not in pool.prefix_cache
+    assert not bm.pending_transfers_exist()
+    for block in blocks:
+        assert block.ref_cnt == 1, "the failed transfer's pin is released"
+
+
+def test_a_partial_hit_allocates_no_surplus_blocks() -> None:
+    """The manager draws one block per hash the LOOKUP reported, and no more.
+
+    It used to allocate one per requested hash and free the surplus after the
+    load reported back. Asking first means the surplus is never drawn, so
+    there is nothing to leak.
+    """
+    bm, connector = _make_block_manager()
+    connector.num_blocks_to_load = 1  # only the first of two hashes is held
     pool = bm.device_block_pool
     free_before = pool.num_free_blocks
     rid = RequestID("req-partial")
     bm.req_to_hashes[rid] = [_b(1), _b(2)]
 
-    blocks, event = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
+    blocks, _, _ = bm.get_full_blocks_from_prefix_cache(_make_ctx(bm, rid))
 
     assert len(blocks) == 1
-    assert len(event.g0_blocks) == 1
-    # Exactly one block is held for the transfer; the surplus was freed.
+    # Exactly one block is held for the transfer, and only one was ever drawn.
     assert pool.num_free_blocks == free_before - 1
     assert bm.pending_transfers_exist()
 

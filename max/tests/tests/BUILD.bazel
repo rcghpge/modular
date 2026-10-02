@@ -34,6 +34,11 @@ modular_py_test(
         # Unsure why, test_tensor slows down if this doesn't exist.
         "//max/python/max/_interpreter_ops",
     ],
+    # Every case compiles a distinct graph, which serializes past the timeout
+    # in one process.
+    per_test_shard_count = {
+        "test_compilation.py": 4,
+    },
     target_compatible_with = select({
         "@platforms//os:macos": ["@platforms//:incompatible"],
         "//conditions:default": [],
@@ -41,7 +46,9 @@ modular_py_test(
     deps = [
         "//max/python/max:_core",
         "//max/python/max:_mlir_context",
+        "//max/python/max:_validation_hooks",
         "//max/python/max:tensor",
+        "//max/python/max:tree",
         "//max/python/max/_interpreter_ops",
         "//max/python/max/driver",
         "//max/python/max/dtype",
@@ -49,7 +56,9 @@ modular_py_test(
         "//max/python/max/experimental/nn",
         "//max/python/max/graph",
         "//max/python/max/mlir",
+        "//max/python/max/nn",
         "//max/python/max/pipelines/context",
+        "//max/python/max/pipelines/modeling",
         requirement("numpy"),
     ],
 )
@@ -150,6 +159,7 @@ modular_py_test(
     name = "test_dim_substitute",
     srcs = ["test_dim_substitute.py"],
     deps = [
+        "//max/python/max:_core",
         "//max/python/max/graph",
     ],
 )
@@ -186,6 +196,7 @@ modular_eager_py_test(
     ignore_extra_deps = [
         # lazy import
         "//max/python/max/_interpreter_ops",
+        "//max/python/max/nn",
     ],
     tags = ["gpu"],
     target_compatible_with = ["//:nvidia_gpu"],
@@ -197,6 +208,7 @@ modular_eager_py_test(
         "//max/python/max/driver",
         "//max/python/max/dtype",
         "//max/python/max/graph",
+        "//max/python/max/nn",
         requirement("numpy"),
         requirement("torch"),
     ],

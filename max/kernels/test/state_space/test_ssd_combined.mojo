@@ -32,7 +32,7 @@ comptime MAX_DSTATE = 16
 comptime LOG2E = 1.4426950408889634
 
 
-@always_inline
+@inline(.always)
 def softplus_ref(val: Float32) -> Float32:
     """Reference softplus: log(1 + exp(x)) with numerical stability."""
     if val > 20.0:
@@ -40,7 +40,7 @@ def softplus_ref(val: Float32) -> Float32:
     return log(Float32(1.0) + exp(val))
 
 
-@always_inline
+@inline(.always)
 def silu_ref(val: Float32) -> Float32:
     """Reference SiLU: x * sigmoid(x) = x / (1 + exp(-x))."""
     if val < -20.0:
@@ -187,6 +187,7 @@ def run_ssd_combined[
         z_h.LayoutType,
         delta_bias_h.LayoutType,
         gamma_h.LayoutType,
+        output_h.Engine,
     ](
         batch,
         dim,
@@ -220,7 +221,7 @@ def run_ssd_combined[
             var group_id = d_idx // group_size
 
             # Pre-load A values with LOG2E scaling (matches kernel)
-            var A_ref = SIMD[DType.float32, MAX_DSTATE](0.0)
+            var A_ref = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
                 A_ref[n] = Float32(A_h._storage[d_idx * dstate + n]) * LOG2E
 
@@ -235,7 +236,7 @@ def run_ssd_combined[
             var weight_offset_val = Float32(weight_offset)
 
             # Initialize state to zero
-            var state_ref = SIMD[DType.float32, MAX_DSTATE](0.0)
+            var state_ref = SIMD[.float32, MAX_DSTATE](0.0)
 
             for t in range(seqlen):
                 var off_3d = b_idx * dim * seqlen + d_idx * seqlen + t
@@ -251,8 +252,8 @@ def run_ssd_combined[
                 var delta_u = delta_val * u_val
 
                 # Load B, C values
-                var B_vals = SIMD[DType.float32, MAX_DSTATE](0.0)
-                var C_vals = SIMD[DType.float32, MAX_DSTATE](0.0)
+                var B_vals = SIMD[.float32, MAX_DSTATE](0.0)
+                var C_vals = SIMD[.float32, MAX_DSTATE](0.0)
                 for n in range(dstate):
                     var bc_offset = (
                         b_idx * n_groups * dstate * seqlen

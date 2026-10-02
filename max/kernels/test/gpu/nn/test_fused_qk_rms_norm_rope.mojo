@@ -142,12 +142,8 @@ def run_fused_qk_rms_norm_rope[
     )
     var freqs_shape = IndexList[2](max_seq_len, rope_dim)
 
-    var row_offsets_device = ctx.enqueue_create_buffer[DType.uint32](
-        batch_size + 1
-    )
-    var cache_lengths_device = ctx.enqueue_create_buffer[DType.uint32](
-        batch_size
-    )
+    var row_offsets_device = ctx.enqueue_create_buffer[.uint32](batch_size + 1)
+    var cache_lengths_device = ctx.enqueue_create_buffer[.uint32](batch_size)
     var q_in_device = ctx.enqueue_create_buffer[dtype](
         q_ragged_shape.flattened_length()
     )
@@ -168,19 +164,17 @@ def run_fused_qk_rms_norm_rope[
     var kv_block_fused_device = ctx.enqueue_create_buffer[dtype](
         kv_block_shape.flattened_length()
     )
-    var paged_lut_device = ctx.enqueue_create_buffer[DType.uint32](
+    var paged_lut_device = ctx.enqueue_create_buffer[.uint32](
         paged_lut_shape.flattened_length()
     )
     var freqs_device = ctx.enqueue_create_buffer[dtype](
         freqs_shape.flattened_length()
     )
 
-    var row_offsets_host = ctx.enqueue_create_host_buffer[DType.uint32](
+    var row_offsets_host = ctx.enqueue_create_host_buffer[.uint32](
         batch_size + 1
     )
-    var cache_lengths_host = ctx.enqueue_create_host_buffer[DType.uint32](
-        batch_size
-    )
+    var cache_lengths_host = ctx.enqueue_create_host_buffer[.uint32](batch_size)
     var offset = 0
     for i in range(batch_size):
         row_offsets_host[i] = UInt32(offset)
@@ -245,7 +239,7 @@ def run_fused_qk_rms_norm_rope[
         paged_lut_shape
     )
     with paged_lut_device.map_to_host() as paged_lut_host:
-        var paged_lut_tensor = LayoutTensor[DType.uint32, paged_lut_layout](
+        var paged_lut_tensor = LayoutTensor[.uint32, paged_lut_layout](
             paged_lut_host, paged_lut_runtime_layout
         )
         var paged_lut_set = Set[Int]()
@@ -282,13 +276,13 @@ def run_fused_qk_rms_norm_rope[
     var freqs_tt = TileTensor(freqs_device, freqs_tile_layout)
 
     var cache_lengths_tensor = LayoutTensor[
-        mut=False, DType.uint32, Layout(UNKNOWN_VALUE)
+        mut=False, .uint32, Layout(UNKNOWN_VALUE)
     ](
         cache_lengths_device,
         RuntimeLayout[Layout(UNKNOWN_VALUE)].row_major(cache_lengths_shape),
     )
     var paged_lut_tensor = LayoutTensor[
-        mut=False, DType.uint32, Layout.row_major[2]()
+        mut=False, .uint32, Layout.row_major[2]()
     ](
         paged_lut_device,
         RuntimeLayout[Layout.row_major[2]()].row_major(paged_lut_shape),
@@ -352,21 +346,19 @@ def run_fused_qk_rms_norm_rope[
         context=ctx,
     )
 
-    @always_inline
-    @__parameter
-    @__copy_capture(q_in_tt)
+    @inline(.always)
     def q_input_fn[
         width: Int, alignment: Int
-    ](token: Int, head: Int, col: Int) -> SIMD[dtype, width]:
+    ](token: Int, head: Int, col: Int) {var q_in_tt} -> SIMD[dtype, width]:
         return q_in_tt.load[width=width](Coord(Index(token, head, col)))
 
     fused_qk_rms_norm_rope_ragged_paged[
         target="gpu",
         multiply_before_cast=True,
         interleaved=False,
-        q_input_fn=q_input_fn,
     ](
         fused_collection,
+        q_input_fn,
         gamma_q_tt,
         gamma_k_tt,
         freqs_tt,
@@ -403,7 +395,7 @@ def run_fused_qk_rms_norm_rope[
         kv_block_shape.flattened_length()
     )
     ctx.enqueue_copy(kv_block_fused_host, kv_block_fused_device)
-    var paged_lut_host_ptr = ctx.enqueue_create_host_buffer[DType.uint32](
+    var paged_lut_host_ptr = ctx.enqueue_create_host_buffer[.uint32](
         paged_lut_shape.flattened_length()
     )
     ctx.enqueue_copy(paged_lut_host_ptr, paged_lut_device)
@@ -415,7 +407,7 @@ def run_fused_qk_rms_norm_rope[
     var fused_kv_host_tensor = LayoutTensor[dtype, kv_block_layout](
         kv_block_fused_host.unsafe_ptr(), kv_block_runtime_layout
     )
-    var paged_lut_host_tensor = LayoutTensor[DType.uint32, paged_lut_layout](
+    var paged_lut_host_tensor = LayoutTensor[.uint32, paged_lut_layout](
         paged_lut_host_ptr.unsafe_ptr(), paged_lut_runtime_layout
     )
 
@@ -441,8 +433,8 @@ def run_fused_qk_rms_norm_rope[
                     )
 
     # FIXME(MSTDL-2742): HostBuffer is origin incorrect.
-    _ = UnsafePointer(to=kv_block_host).as_unsafe_any_origin()[]
-    _ = UnsafePointer(to=kv_block_fused_host).as_unsafe_any_origin()[]
+    _ = Pointer(to=kv_block_host).as_unsafe_any_origin()[]
+    _ = Pointer(to=kv_block_fused_host).as_unsafe_any_origin()[]
 
     _ = row_offsets_device^
     _ = cache_lengths_device^
@@ -568,25 +560,19 @@ def run_fused_dual_qk_rms_norm_rope[
     var freqs_shape = IndexList[2](max_seq_len, rope_dim)
 
     # Shared metadata.
-    var row_offsets_device = ctx.enqueue_create_buffer[DType.uint32](
-        batch_size + 1
-    )
-    var cache_lengths_device = ctx.enqueue_create_buffer[DType.uint32](
-        batch_size
-    )
-    var paged_lut_device = ctx.enqueue_create_buffer[DType.uint32](
+    var row_offsets_device = ctx.enqueue_create_buffer[.uint32](batch_size + 1)
+    var cache_lengths_device = ctx.enqueue_create_buffer[.uint32](batch_size)
+    var paged_lut_device = ctx.enqueue_create_buffer[.uint32](
         paged_lut_shape.flattened_length()
     )
     var freqs_device = ctx.enqueue_create_buffer[dtype](
         freqs_shape.flattened_length()
     )
 
-    var row_offsets_host = ctx.enqueue_create_host_buffer[DType.uint32](
+    var row_offsets_host = ctx.enqueue_create_host_buffer[.uint32](
         batch_size + 1
     )
-    var cache_lengths_host = ctx.enqueue_create_host_buffer[DType.uint32](
-        batch_size
-    )
+    var cache_lengths_host = ctx.enqueue_create_host_buffer[.uint32](batch_size)
     var offset = 0
     for i in range(batch_size):
         row_offsets_host[i] = UInt32(offset)
@@ -610,7 +596,7 @@ def run_fused_dual_qk_rms_norm_rope[
         paged_lut_shape
     )
     with paged_lut_device.map_to_host() as paged_lut_host:
-        var paged_lut_tensor_h = LayoutTensor[DType.uint32, paged_lut_layout](
+        var paged_lut_tensor_h = LayoutTensor[.uint32, paged_lut_layout](
             paged_lut_host, paged_lut_runtime_layout
         )
         var paged_lut_set = Set[Int]()
@@ -777,14 +763,12 @@ def run_fused_dual_qk_rms_norm_rope[
     )
 
     var cache_lengths_tt = LayoutTensor[
-        mut=False, DType.uint32, Layout(UNKNOWN_VALUE)
+        mut=False, .uint32, Layout(UNKNOWN_VALUE)
     ](
         cache_lengths_device,
         RuntimeLayout[Layout(UNKNOWN_VALUE)].row_major(Index(batch_size)),
     )
-    var paged_lut_tt = LayoutTensor[
-        mut=False, DType.uint32, Layout.row_major[2]()
-    ](
+    var paged_lut_tt = LayoutTensor[mut=False, .uint32, Layout.row_major[2]()](
         paged_lut_device,
         RuntimeLayout[Layout.row_major[2]()].row_major(paged_lut_shape),
     )
@@ -863,20 +847,19 @@ def run_fused_dual_qk_rms_norm_rope[
         UInt32(max_cache_length),
     )
 
-    @always_inline
-    @__parameter
-    @__copy_capture(q_main_in_tt)
+    @inline(.always)
+    @inline(.always)
     def main_q_input_fn[
         width: Int, alignment: Int
-    ](token: Int, head: Int, col: Int) -> SIMD[dtype, width]:
+    ](token: Int, head: Int, col: Int) {var q_main_in_tt} -> SIMD[dtype, width]:
         return q_main_in_tt.load[width=width](Coord(Index(token, head, col)))
 
-    @always_inline
-    @__parameter
-    @__copy_capture(q_index_in_tt)
+    @inline(.always)
     def index_q_input_fn[
         width: Int, alignment: Int
-    ](token: Int, head: Int, col: Int) -> SIMD[dtype, width]:
+    ](token: Int, head: Int, col: Int) {var q_index_in_tt} -> SIMD[
+        dtype, width
+    ]:
         return q_index_in_tt.load[width=width](Coord(Index(token, head, col)))
 
     # Reference: two separate single-kernel launches.
@@ -884,9 +867,9 @@ def run_fused_dual_qk_rms_norm_rope[
         target="gpu",
         multiply_before_cast=True,
         interleaved=interleaved,
-        q_input_fn=main_q_input_fn,
     ](
         main_ref_collection,
+        main_q_input_fn,
         gamma_main_q_tt,
         gamma_main_k_tt,
         freqs_tt,
@@ -901,9 +884,9 @@ def run_fused_dual_qk_rms_norm_rope[
         target="gpu",
         multiply_before_cast=True,
         interleaved=interleaved,
-        q_input_fn=index_q_input_fn,
     ](
         index_ref_collection,
+        index_q_input_fn,
         gamma_index_q_tt,
         gamma_index_k_tt,
         freqs_tt,
@@ -920,8 +903,6 @@ def run_fused_dual_qk_rms_norm_rope[
         target="gpu",
         multiply_before_cast=True,
         interleaved=interleaved,
-        main_q_input_fn=main_q_input_fn,
-        index_q_input_fn=index_q_input_fn,
     ](
         main_fused_collection,
         index_fused_collection,
@@ -935,6 +916,8 @@ def run_fused_dual_qk_rms_norm_rope[
         Scalar[dtype](weight_offset),
         UInt32(layer_idx),
         row_offsets_tt,
+        main_q_input_fn,
+        index_q_input_fn,
         q_main_fused_tt,
         q_index_fused_tt,
         ctx,
@@ -969,12 +952,12 @@ def run_fused_dual_qk_rms_norm_rope[
                     for d in range(head_size):
                         assert_equal(fused_t[tok, h, d], ref_t[tok, h, d])
 
-    var paged_lut_check = ctx.enqueue_create_host_buffer[DType.uint32](
+    var paged_lut_check = ctx.enqueue_create_host_buffer[.uint32](
         paged_lut_shape.flattened_length()
     )
     ctx.enqueue_copy(paged_lut_check, paged_lut_device)
     ctx.synchronize()
-    var paged_lut_check_t = LayoutTensor[DType.uint32, paged_lut_layout](
+    var paged_lut_check_t = LayoutTensor[.uint32, paged_lut_layout](
         paged_lut_check.unsafe_ptr(), paged_lut_runtime_layout
     )
 
@@ -1045,12 +1028,12 @@ def run_fused_dual_qk_rms_norm_rope[
                     )
 
     # FIXME(MSTDL-2742): HostBuffer is origin incorrect.
-    _ = UnsafePointer(to=main_kv_host).as_unsafe_any_origin()[]
-    _ = UnsafePointer(to=index_kv_host).as_unsafe_any_origin()[]
-    _ = UnsafePointer(to=main_kv_ref_out).as_unsafe_any_origin()[]
-    _ = UnsafePointer(to=main_kv_fused_out).as_unsafe_any_origin()[]
-    _ = UnsafePointer(to=index_kv_ref_out).as_unsafe_any_origin()[]
-    _ = UnsafePointer(to=index_kv_fused_out).as_unsafe_any_origin()[]
+    _ = Pointer(to=main_kv_host).as_unsafe_any_origin()[]
+    _ = Pointer(to=index_kv_host).as_unsafe_any_origin()[]
+    _ = Pointer(to=main_kv_ref_out).as_unsafe_any_origin()[]
+    _ = Pointer(to=main_kv_fused_out).as_unsafe_any_origin()[]
+    _ = Pointer(to=index_kv_ref_out).as_unsafe_any_origin()[]
+    _ = Pointer(to=index_kv_fused_out).as_unsafe_any_origin()[]
 
     # Re-run both ops with an FP8 main-Q output and compare byte for byte; the
     # bf16 equality above misses that threading. Must stay last: these launches
@@ -1076,9 +1059,9 @@ def run_fused_dual_qk_rms_norm_rope[
         target="gpu",
         multiply_before_cast=True,
         interleaved=interleaved,
-        q_input_fn=main_q_input_fn,
     ](
         main_ref_collection,
+        main_q_input_fn,
         gamma_main_q_tt,
         gamma_main_k_tt,
         freqs_tt,
@@ -1093,8 +1076,6 @@ def run_fused_dual_qk_rms_norm_rope[
         target="gpu",
         multiply_before_cast=True,
         interleaved=interleaved,
-        main_q_input_fn=main_q_input_fn,
-        index_q_input_fn=index_q_input_fn,
     ](
         main_fused_collection,
         index_fused_collection,
@@ -1108,6 +1089,8 @@ def run_fused_dual_qk_rms_norm_rope[
         Scalar[dtype](weight_offset),
         UInt32(layer_idx),
         row_offsets_tt,
+        main_q_input_fn,
+        index_q_input_fn,
         q_main_dual_fp8_tt,
         q_index_fused_tt,
         ctx,

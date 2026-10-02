@@ -36,7 +36,7 @@ from std.sys import align_of, size_of
 from std.atomic import Atomic
 from std.collections import Array
 
-from std.gpu import WARP_SIZE, block_idx, grid_dim, thread_idx
+from max.gpu import WARP_SIZE, block_idx, grid_dim, thread_idx
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.primitives import block
@@ -67,10 +67,10 @@ def _allreduce_lamport_rmsnorm_kernel[
     pdl: Bool = True,
     early_launch: Bool = True,
 ](
-    result: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    src: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
-    gamma: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
-    rank_sigs: Array[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS],
+    result: MutPointer[Scalar[dtype], MutAnyOrigin],
+    src: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
+    gamma: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
+    rank_sigs: Array[MutPointer[Signal, MutAnyOrigin], ngpus],
     rows_dev: Int32,
     cols_dev: Int32,
     epsilon: Scalar[dtype],
@@ -107,21 +107,21 @@ def _allreduce_lamport_rmsnorm_kernel[
 
     # This rank's own region (polled) + peer regions in round-robin order.
     var my_region = rank_sigs[my_rank][].lamport_region_ptr[dtype]()
-    var peer_regions = Array[UnsafePointer[Scalar[dtype], MutAnyOrigin], ngpus](
-        uninitialized=True
+    comptime PtrType = MutPointer[Scalar[dtype], MutAnyOrigin]
+    var peer_regions = Array[_, ngpus](
+        fill_with_unrolled=lambda [i: Int]() -> PtrType: rank_sigs[
+            circular_add[ngpus](my_rank, i)
+        ][].lamport_region_ptr[dtype]()
     )
-    comptime for i in range(ngpus):
-        var target = circular_add[ngpus](my_rank, i)
-        peer_regions[i] = rank_sigs[target][].lamport_region_ptr[dtype]()
     var sentinel = set_neg_zero[dtype, atomic_width]()
 
     # Generation geometry (read the device-resident counter once per call).
     var state = rank_sigs[my_rank][].lamport_state_ptr()
     var flag = Int(state.load[width=1, volatile=True](Lamport.STATE_FLAG))
-    var clear_size = Int(
-        state.load[width=1, volatile=True](Lamport.STATE_PREV_ELEMS)
+    # Previous call's written extent in dtype-independent 16-byte packs.
+    var clear_packs = Int(
+        state.load[width=1, volatile=True](Lamport.STATE_PREV_PACKS)
     )
-    var clear_packs = clear_size // atomic_width
     comptime gen_stride_packs = ngpus * Lamport.MAX_PACKS
     var data_gen_off = LamportGeneration.data_index(flag) * gen_stride_packs
     var clear_gen_off = LamportGeneration.clear_index(flag) * gen_stride_packs
@@ -236,8 +236,8 @@ def _allreduce_lamport_rmsnorm_kernel[
         var arrived = Atomic.fetch_add(state + Lamport.STATE_ARRIVAL, UInt32(1))
         if Int(arrived) == Int(grid_dim.x) - 1:
             (state + Lamport.STATE_FLAG).store[volatile=True](UInt32(flag + 1))
-            (state + Lamport.STATE_PREV_ELEMS).store[volatile=True](
-                UInt32(rows * cols)
+            (state + Lamport.STATE_PREV_PACKS).store[volatile=True](
+                UInt32(cur_packs)
             )
             (state + Lamport.STATE_ARRIVAL).store[volatile=True](UInt32(0))
 
@@ -250,10 +250,10 @@ def lamport_allreduce_rmsnorm[
     early_launch: Bool = True,
 ](
     my_rank: Int,
-    src: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
-    dst: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    gamma: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
-    rank_sigs: Array[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS],
+    src: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
+    dst: MutPointer[Scalar[dtype], MutAnyOrigin],
+    gamma: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
+    rank_sigs: Array[MutPointer[Signal, MutAnyOrigin], ngpus],
     rows: Int,
     cols: Int,
     epsilon: Scalar[dtype],

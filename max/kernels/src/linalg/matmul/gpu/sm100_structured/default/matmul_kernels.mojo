@@ -33,7 +33,7 @@ from std.math import ceildiv
 from std.sys import align_of, size_of
 
 from std.memory import UnsafePointer
-from std.gpu import WARP_SIZE, warp_id as get_warp_id
+from max.gpu import WARP_SIZE, warp_id as get_warp_id
 from max.gpu.sync import barrier
 from max.gpu.primitives.cluster import (
     block_rank_in_cluster,
@@ -41,7 +41,7 @@ from max.gpu.primitives.cluster import (
     elect_one_sync,
 )
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu import block_idx, lane_id
+from max.gpu import block_idx, lane_id
 from max.gpu.memory import (
     async_copy,
     async_copy_commit_group,
@@ -59,12 +59,14 @@ from max.gpu.primitives.grid_controls import (
 from max.gpu.sync import async_copy_arrive, syncwarp
 from max.gpu.compute.arch.tcgen05 import *
 from layout import (
+    DefaultEngine,
     ComptimeInt,
     Coord,
     CoordLike,
     Idx,
     Layout,
     RowMajorLayout,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     coord,
@@ -92,8 +94,10 @@ from std.utils.static_tuple import StaticTuple
 
 from linalg.arch.sm100 import MmaOpSM100_SS
 from linalg.utils import (
+    ElementwiseComputeFn,
     elementwise_compute_lambda_type,
     elementwise_epilogue_type,
+    identity_compute_fn,
 )
 from ..structured_kernels.config import MatmulConfig, OutputPipelineConfig
 from ..structured_kernels.tile_pipeline import (
@@ -128,7 +132,7 @@ from ..structured_kernels.tile_scheduler_splitk import (
 )
 from linalg.structuring import SMemPtr
 from linalg.matmul.gpu.profiler import MatmulProfileWarp
-from comm import MAX_GPUS, Signal
+from comm import Signal
 from comm.sync import _multi_gpu_barrier
 
 # Import shared kernel components from kernel_common
@@ -272,19 +276,19 @@ struct B200MatmulSmem[
     var epilogue_load_tiles_storage: Self.EpilogueLoadTileArray.Storage
 
     # ========== Tile Accessors (Delegated) ==========
-    @always_inline
+    @inline(.always)
     def a_tiles(ref[AddressSpace.SHARED] self) -> Self.ATileArray:
         return self.input_tiles.a_tiles()
 
-    @always_inline
+    @inline(.always)
     def b_tiles(ref[AddressSpace.SHARED] self) -> Self.BTileArray:
         return self.input_tiles.b_tiles()
 
-    @always_inline
+    @inline(.always)
     def c_tiles(ref[AddressSpace.SHARED] self) -> Self.CTileArray:
         return self.output_tiles.c_tiles()
 
-    @always_inline
+    @inline(.always)
     def epilogue_load_tiles(
         ref[AddressSpace.SHARED] self,
     ) -> Self.EpilogueLoadTileArray:
@@ -311,26 +315,26 @@ struct B200MatmulSmem[
     # ========== Size Calculations ==========
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def ab_pipeline_size() -> Int:
         """Total size of A+B tiles for all pipeline stages (in elements)."""
         return Self.ATileArray.num_elements + Self.BTileArray.num_elements
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def c_output_size() -> Int:
         """Size of C tiles for all output stages (in elements)."""
         return Self.CTileArray.num_elements
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def epilogue_load_tile_size() -> Int:
         """Size of epilogue load tiles for all stages (in elements). Zero when config.use_tma_epilogue_load=False.
         """
         return Self.EpilogueLoadTileArray.num_elements
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def total_tile_size() -> Int:
         """Total tile storage size (A+B+C+epilogue load) in elements."""
         return (
@@ -369,6 +373,7 @@ struct BlackwellMatmulSM100Kernel[
     # 0 means "use c_tile_dim0" (default, whole SMEM tile per TMA — prefill).
     # Decode wants this set to 1 (one row per TMA).
     c_desc_dim0_override: Int = 0,
+    BiasEngine: TensorEngine = DefaultEngine[element_width=1],
 ]:
     """Blackwell SM100 GEMM kernel with warp specialization.
 
@@ -407,6 +412,8 @@ struct BlackwellMatmulSM100Kernel[
             written to global memory (defaults to `StandardOutputWriter`).
         c_desc_dim0_override: Override for the C TMA descriptor box row count
             per TMA store; 0 uses the full SMEM tile dim0 (defaults to 0).
+        BiasEngine: Engine of the 1D bias tile (`Bias1DTile`), defaulting to
+            `DefaultEngine[element_width=1]`.
     """
 
     # ========== Derived Constants (from config) ==========
@@ -786,7 +793,7 @@ struct BlackwellMatmulSM100Kernel[
     comptime num_c_tma_descriptors = Self.output_writer_type.num_peers
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def write_output_tile[
         tma_origin: ImmOrigin
     ](
@@ -850,7 +857,7 @@ struct BlackwellMatmulSM100Kernel[
     # ========== Compile-Time Validation ==========
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def validate_constraints():
         """Validate parameter constraints at compile time."""
         comptime assert Self.c_type in (
@@ -878,7 +885,7 @@ struct BlackwellMatmulSM100Kernel[
     # ========== Static Helper Methods ==========
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def init_barriers[
         use_tma_epilogue_load: Bool = False
     ](
@@ -958,7 +965,7 @@ struct BlackwellMatmulSM100Kernel[
         cluster_sync()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def mma[
         tiles_origin: MutOrigin,
         //,
@@ -1027,7 +1034,7 @@ struct BlackwellMatmulSM100Kernel[
             mma_op.commit(tiles.mbar())
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def load_input_tiles[
         tiles_origin: MutOrigin,
         //,
@@ -1123,7 +1130,7 @@ struct BlackwellMatmulSM100Kernel[
                 )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def prefetch_a_tiles[
         tiles_origin: MutOrigin,
         //,
@@ -1193,7 +1200,7 @@ struct BlackwellMatmulSM100Kernel[
                 )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def complete_b_tiles(
         b_tma_op: Self.BTmaOp,
         stage: UInt32,
@@ -1250,7 +1257,7 @@ struct BlackwellMatmulSM100Kernel[
                 )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def prefetch_b_tiles[
         tiles_origin: MutOrigin,
         //,
@@ -1323,7 +1330,7 @@ struct BlackwellMatmulSM100Kernel[
                 )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def complete_a_tiles(
         a_tma_op: Self.ATmaOp,
         stage: UInt32,
@@ -1377,7 +1384,7 @@ struct BlackwellMatmulSM100Kernel[
                 )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def load_input_tiles_splitk[
         a_tma_origin: ImmOrigin,
         b_tma_origin: ImmOrigin,
@@ -1497,6 +1504,7 @@ struct BlackwellMatmulSM100Kernel[
         Self.c_type,
         type_of(Self.Bias1DTileLayout),
         ImmutAnyOrigin,
+        Engine=Self.BiasEngine,
     ]
 
     comptime WorkIter = WorkIterator[
@@ -1511,7 +1519,7 @@ struct BlackwellMatmulSM100Kernel[
     ]
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def epilogue_load_producer[
         _epi_pipeline_stages: Int,
     ](
@@ -1585,9 +1593,13 @@ struct BlackwellMatmulSM100Kernel[
                     ) if lane_start + elems_per_lane <= valid_elems else Int32(
                         0
                     )
-                    var src_ptr = (
-                        bias_1d_tile._storage + gmem_offset + lane_start
-                    ).address_space_cast[AddressSpace.GLOBAL]()
+                    # Advance the handle through the engine (not raw pointer
+                    # arithmetic) so the offset is correct under any engine,
+                    # then take the resulting scalar pointer.
+                    var src_ptr = TileTensor(
+                        bias_1d_tile._offset_storage(gmem_offset + lane_start),
+                        bias_1d_tile.layout,
+                    ).ptr.address_space_cast[.GLOBAL]()
                     var dst_ptr = smem_tile._storage + lane_start
                     comptime for chunk in range(num_copies):
                         async_copy[
@@ -1670,7 +1682,7 @@ struct BlackwellMatmulSM100Kernel[
                         epilogue_load_pipeline.producer_step()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     @__llvm_metadata(`nvvm.cluster_dim`=Self.cluster_shape)
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
@@ -1696,7 +1708,10 @@ struct BlackwellMatmulSM100Kernel[
         mnk: StaticTuple[UInt32, 3],
         workspace: Span[UInt64, MutAnyOrigin],
         rank_sigs: Optional[
-            Array[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS]
+            Array[
+                UnsafePointer[Signal, MutAnyOrigin],
+                Self.num_c_tma_descriptors,
+            ]
         ] = None,
         my_rank_dev: Int32 = 0,
     ):
@@ -1723,13 +1738,122 @@ struct BlackwellMatmulSM100Kernel[
             my_rank_dev: Rank index of this GPU for multi-GPU reduce-scatter
                 (defaults to 0).
         """
+        Self._run_impl[has_compute_fn=False](
+            a_tma_op,
+            b_tma_op,
+            c_tma_ops,
+            epilogue_load_tma_op,
+            bias_1d_tile,
+            cluster_dim,
+            mnk,
+            workspace,
+            rank_sigs,
+            my_rank_dev,
+            identity_compute_fn,
+        )
+
+    @staticmethod
+    @inline(.always)
+    @__llvm_metadata(`nvvm.cluster_dim`=Self.cluster_shape)
+    @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
+    @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
+    @__llvm_arg_metadata(c_tma_ops, `nvvm.grid_constant`)
+    @__llvm_arg_metadata(epilogue_load_tma_op, `nvvm.grid_constant`)
+    @__name(
+        StaticString(Self.config.get_kernel_name())
+        + StaticString("_compute_fn")
+    )
+    def run_with_compute_fn[
+        ComputeFnType: ElementwiseComputeFn
+    ](
+        a_tma_op: Self.ATmaOp,
+        b_tma_op: Self.BTmaOp,
+        c_tma_ops: Array[Self.CTmaOp, Self.num_c_tma_descriptors],
+        epilogue_load_tma_op: Self.EpilogueLoadTmaOp,
+        bias_1d_tile: Self.Bias1DTile,
+        cluster_dim: StaticTuple[Int32, 3],
+        mnk: StaticTuple[UInt32, 3],
+        workspace: Span[UInt64, MutAnyOrigin],
+        compute_fn: ComputeFnType,
+    ):
+        """Kernel entry point for SM100 matmul with a compute epilogue value.
+
+        Same as `run` for the local TMA store, with the compute epilogue
+        passed as a closure instead of the `elementwise_compute_lambda_fn`
+        parameter.
+
+        Parameters:
+            ComputeFnType: Type of the compute epilogue closure.
+
+        Args:
+            a_tma_op: 3D TMA descriptor for the A input matrix.
+            b_tma_op: 3D TMA descriptor for the B input matrix.
+            c_tma_ops: Array holding the single C TMA descriptor.
+            epilogue_load_tma_op: TMA descriptor for the epilogue load
+                (bias) tensor; unused on this path.
+            bias_1d_tile: 1D bias tile in global memory; unused on this path.
+            cluster_dim: Thread block cluster dimensions for CLC scheduling.
+            mnk: Problem dimensions `(M, N, K)` in elements.
+            workspace: Workspace buffer for profiling and scheduling state.
+            compute_fn: Element-wise epilogue applied to each output value.
+        """
+        comptime assert (
+            not Self.output_writer_type.needs_sync
+            and Self.num_c_tma_descriptors == 1
+        ), "a value compute epilogue requires the local output writer"
+        comptime assert (
+            not Self.config.use_tma_epilogue_load
+        ), "use_tma_epilogue_load is mutually exclusive with a compute epilogue"
+        Self._run_impl[has_compute_fn=True](
+            a_tma_op,
+            b_tma_op,
+            c_tma_ops,
+            epilogue_load_tma_op,
+            bias_1d_tile,
+            cluster_dim,
+            mnk,
+            workspace,
+            None,
+            Int32(0),
+            compute_fn,
+        )
+
+    @staticmethod
+    @inline(.always)
+    def _run_impl[
+        ComputeFnType: ElementwiseComputeFn,
+        //,
+        has_compute_fn: Bool,
+    ](
+        a_tma_op: Self.ATmaOp,
+        b_tma_op: Self.BTmaOp,
+        c_tma_ops: Array[Self.CTmaOp, Self.num_c_tma_descriptors],
+        epilogue_load_tma_op: Self.EpilogueLoadTmaOp,
+        bias_1d_tile: Self.Bias1DTile,
+        cluster_dim: StaticTuple[Int32, 3],
+        mnk: StaticTuple[UInt32, 3],
+        workspace: Span[UInt64, MutAnyOrigin],
+        rank_sigs: Optional[
+            Array[
+                UnsafePointer[Signal, MutAnyOrigin],
+                Self.num_c_tma_descriptors,
+            ]
+        ],
+        my_rank_dev: Int32,
+        compute_fn: ComputeFnType,
+    ):
+        """Shared body of `run` and `run_with_compute_fn`.
+
+        `compute_fn` is applied in the epilogue when `has_compute_fn` is True
+        and ignored otherwise.
+        """
         var my_rank = Int(my_rank_dev)
         Self.validate_constraints()
 
         # Access shared memory via bitcast
         ref smem = external_memory[
-            Scalar[DType.uint8],
-            address_space=AddressSpace.SHARED,
+            UInt8,
+            address_space=.SHARED,
             alignment=128,
         ]().bitcast[Self.SmemType]()[]
 
@@ -2085,18 +2209,33 @@ struct BlackwellMatmulSM100Kernel[
                     for current in epi_iter:
                         with MatmulProfilerType[3](workspace, UInt32(tile_idx)):
                             with epi_ctx.output_pipeline.consumer() as output_stage:  # waits for MMA
-                                # Uniform write through the injected writer policy
-                                Self.write_output_tile(
-                                    Pointer(to=c_tma_ops),
-                                    smem.c_tiles(),
-                                    output_stage,
-                                    (
-                                        current.m,
-                                        current.n,
-                                        current.k_start,
-                                    ),
-                                    (mnk[0], mnk[1]),
-                                )
+                                comptime if has_compute_fn:
+                                    Self.TileWriterType(
+                                        Pointer(to=c_tma_ops[0])
+                                    ).write_batched(
+                                        smem.c_tiles(),
+                                        output_stage,
+                                        (
+                                            current.m,
+                                            current.n,
+                                            current.k_start,
+                                        ),
+                                        (mnk[0], mnk[1]),
+                                        compute_fn,
+                                    )
+                                else:
+                                    # Uniform write through the injected writer policy
+                                    Self.write_output_tile(
+                                        Pointer(to=c_tma_ops),
+                                        smem.c_tiles(),
+                                        output_stage,
+                                        (
+                                            current.m,
+                                            current.n,
+                                            current.k_start,
+                                        ),
+                                        (mnk[0], mnk[1]),
+                                    )
                         tile_idx += 1
 
                 # Post-barrier: ensure all peers have finished reduce-add writes.
@@ -2207,7 +2346,7 @@ struct BlackwellMatmulSM100Kernel[
             cluster_sync()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     @__llvm_metadata(`nvvm.cluster_dim`=Self.cluster_shape)
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
@@ -2224,12 +2363,16 @@ struct BlackwellMatmulSM100Kernel[
     )
     def run_splitk[
         reduction_layout: TensorLayout,
+        reduction_engine: TensorEngine,
     ](
         a_tma_op: Self.ATmaOp_splitk,
         b_tma_op: Self.BTmaOp_splitk,
         c_tma_op: Self.CTmaOp_splitk,
         reduction_tensor: TileTensor[
-            Self.config.accum_type, reduction_layout, MutAnyOrigin
+            Self.config.accum_type,
+            reduction_layout,
+            MutAnyOrigin,
+            Engine=reduction_engine,
         ],
         lock_ptr: UnsafePointer[UInt8, AnyOrigin[mut=True]],
         cluster_dim: StaticTuple[Int32, 3],
@@ -2244,6 +2387,7 @@ struct BlackwellMatmulSM100Kernel[
         Parameters:
             reduction_layout: Memory layout of the reduction workspace tensor,
                 must match the layout of `reduction_tensor`.
+            reduction_engine: Engine of the reduction workspace tensor.
 
         Args:
             a_tma_op: TMA descriptor for matrix A.
@@ -2259,8 +2403,8 @@ struct BlackwellMatmulSM100Kernel[
 
         # Access shared memory via bitcast
         ref smem = external_memory[
-            Scalar[DType.uint8],
-            address_space=AddressSpace.SHARED,
+            UInt8,
+            address_space=.SHARED,
             alignment=128,
         ]().bitcast[Self.SmemType]()[]
 
@@ -2508,6 +2652,7 @@ struct BlackwellMatmulSM100FallbackKernel[
     b_type: DType,
     c_type: DType,
     c_layout: TensorLayout,
+    c_engine: TensorEngine,
     block_tile_shape: IndexList[3],
     mma_shape: IndexList[3],
     transpose_b: Bool = True,
@@ -2534,6 +2679,7 @@ struct BlackwellMatmulSM100FallbackKernel[
         c_type: Element type of the C output matrix.
         c_layout: Memory layout of the C output tensor in global memory, used
             for output tiling and static stride computation.
+        c_engine: Engine of the C output tensor in global memory.
         block_tile_shape: Block tile dimensions `(BM, BN, BK)` for
             CTA-level tiling of the output and reduction dimensions.
         mma_shape: MMA instruction dimensions `(MMA_M, MMA_N, MMA_K)` for
@@ -2599,8 +2745,18 @@ struct BlackwellMatmulSM100FallbackKernel[
     comptime b_size: Int = Self.BN * Self.BK
 
     # ========== Tile Type Aliases (TileTensor-based) ==========
-    comptime ATile = TTSMemTile[Self.a_type, Self.a_smem_layout_typed]
-    comptime BTile = TTSMemTile[Self.b_type, Self.b_smem_layout_typed]
+    comptime ATile = TTSMemTile[
+        Self.a_type,
+        Self.a_smem_layout_typed,
+        # Shared memory is raw-pointer addressed so pin DefaultEngine.
+        Engine=DefaultEngine[element_width=1],
+    ]
+    comptime BTile = TTSMemTile[
+        Self.b_type,
+        Self.b_smem_layout_typed,
+        # Shared memory is raw-pointer addressed so pin DefaultEngine.
+        Engine=DefaultEngine[element_width=1],
+    ]
 
     comptime accum_type = get_accum_type[Self.a_type]()
     comptime c_frag_size = Self.MMA_M * Self.MMA_N // Self.num_threads
@@ -2608,7 +2764,7 @@ struct BlackwellMatmulSM100FallbackKernel[
 
     # ========== Validation ==========
     @staticmethod
-    @always_inline
+    @inline(.always)
     def validate_constraints():
         """Validate compile-time constraints for this kernel configuration."""
         comptime assert Self.num_threads == 128 or Self.num_threads == 256
@@ -2621,14 +2777,16 @@ struct BlackwellMatmulSM100FallbackKernel[
 
     # ========== Kernel Entry Point ==========
     @staticmethod
-    @always_inline
+    @inline(.always)
     @__llvm_metadata(`nvvm.cluster_dim`=Self.cluster_shape)
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
     def run(
         a_tma_op: Self.ATmaOp,
         b_tma_op: Self.BTmaOp,
-        c: TileTensor[Self.c_type, Self.c_layout, MutAnyOrigin],
+        c: TileTensor[
+            Self.c_type, Self.c_layout, MutAnyOrigin, Engine=Self.c_engine
+        ],
         num_iters: Int32,
     ):
         """Run the fallback matmul kernel.
@@ -2646,7 +2804,7 @@ struct BlackwellMatmulSM100FallbackKernel[
         var a_smem = rebind[SMemPtr[Scalar[Self.a_type]]](
             external_memory[
                 Scalar[Self.a_type],
-                address_space=AddressSpace.SHARED,
+                address_space=.SHARED,
                 alignment=128,
                 name="tmem_test_dynamic_shared_memory",
             ]()

@@ -123,14 +123,14 @@ def fused_reduce_inner_test[
     with res_device0.map_to_host() as res_host0:
         for i in range(out_shape.flattened_length()):
             assert_equal(
-                String(res_host0[i].cast[DType.float32]()),
+                String(res_host0[i].cast[.float32]()),
                 String(expected_vals0[i]),
             )
 
     with res_device1.map_to_host() as res_host1:
         for i in range(out_shape.flattened_length()):
             assert_equal(
-                String(res_host1[i].cast[DType.float32]()),
+                String(res_host1[i].cast[.float32]()),
                 String(expected_vals1[i]),
             )
 
@@ -180,8 +180,7 @@ def reduce_inner_test[
         unsafe_ptr=res_device.unsafe_ptr(), length=out_shape.flattened_length()
     )
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def reduce_wrapper[
         dtype: DType, width: SIMDLength, reduction_idx: Int
     ](lhs: SIMD[dtype, width], rhs: SIMD[dtype, width]) -> SIMD[dtype, width]:
@@ -246,21 +245,18 @@ def reduce_inner_test[
 
 
 def test_reduce() raises:
-    @__parameter
     def reduce_add[
         dtype: DType,
         width: SIMDLength,
     ](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return x + y
 
-    @__parameter
     def reduce_max[
         dtype: DType,
         width: SIMDLength,
     ](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return max(x, y)
 
-    @__parameter
     def fused_reduce_add_max[
         dtype: DType,
         width: SIMDLength,
@@ -436,14 +432,12 @@ def test_multiblock_reduce() raises:
     """Tests the multiblock_reduce_kernel path for under-saturated cases
     where num_rows is small but the reduction axis is large."""
 
-    @__parameter
     def reduce_add[
         dtype: DType,
         width: SIMDLength,
     ](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[dtype, width]:
         return x + y
 
-    @__parameter
     def reduce_max[
         dtype: DType,
         width: SIMDLength,
@@ -509,7 +503,6 @@ def test_thread_saturated_contiguous_reduce() raises:
     boundary.
     """
 
-    @__parameter
     def reduce_add[
         dtype: DType,
         width: SIMDLength,

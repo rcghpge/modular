@@ -25,6 +25,7 @@ from .sampling import (
     token_sampler,
 )
 from .sampling_config import (
+    DEFAULT_STRUCTURED_OUTPUT_ANY_WHITESPACE,
     DEFAULT_STRUCTURED_OUTPUT_BACKEND,
     SamplingConfig,
 )
@@ -34,8 +35,10 @@ from .sampling_logits_processor import (
     PenaltyInputs,
     SamplerInputs,
 )
+from .seeds import request_row_seed
 
 __all__ = [
+    "DEFAULT_STRUCTURED_OUTPUT_ANY_WHITESPACE",
     "DEFAULT_STRUCTURED_OUTPUT_BACKEND",
     "FrequencyData",
     "FusedSamplingProcessor",
@@ -52,5 +55,6 @@ __all__ = [
     "rejection_runner_registry",
     "rejection_sampler",
     "rejection_sampler_with_residuals",
+    "request_row_seed",
     "token_sampler",
 ]

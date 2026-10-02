@@ -51,15 +51,20 @@ permute, not a dtype conversion):
                       BF16-overlay aliasing -- this uses a separate,
                       non-overlaid destination buffer).
 
-SMEM layout (FP8, N = num_kv_stages; expect N ~= 2 at the GLM-5.2 shape,
-since the linear + SW64 buffer pair costs the same total bytes/stage as the
-old kernel's own KV region):
+SMEM layout (FP8, N = num_kv_stages, M = num_kv_mma_stages; expect N ~= 2 at
+the target shape, since the linear + SW64 buffer pair costs the same total
+bytes/stage as the old kernel's own KV region). The two KV buffers do NOT
+share a depth: `PV_REL(i)` frees the SW64 slot that `CVT` reclaims for tile
+i + M, and that WAR edge is the back-edge of the loop that sets the kernel's
+steady-state rate, so the rate is bounded by (cycle weight) / M. The gather
+ring is not on that loop, so leftover SMEM buys depth on the SW64 side only
+-- a symmetric extra stage does not fit:
   Q FP8:          64 x 576 x 1 = 36864 bytes         (SWIZZLE_64B, persistent)
   KV linear-in:   N x 64 x 576 x 1 bytes              (SWIZZLE_NONE, gather dest)
-  KV SW64-out:    N x 64 x 576 x 1 bytes              (SWIZZLE_64B, MMA operand)
+  KV SW64-out:    M x 64 x 576 x 1 bytes              (SWIZZLE_64B, MMA operand)
   P stages:       N x 64 x 64 x 1 bytes               (SWIZZLE_64B, separate region)
   max/li:         128 x 4 x 3 = 1536 bytes
-  barriers:       (8N+11) fixed + output + idx_bars (2N) barriers
+  barriers:       (6N+2M+11) fixed + output + idx_bars (2N) barriers
   ptr_tmem_addr:  4 bytes
   idx_smem:       N x 64 x 4 bytes
 """
@@ -69,7 +74,7 @@ from std.memory import UnsafePointer
 from std.math import ceildiv, clamp
 from std.math.constants import log2e
 from std.sys import size_of
-from std.gpu import (
+from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     thread_idx,
     block_idx,
@@ -77,9 +82,9 @@ from std.gpu import (
     lane_id,
 )
 from max.gpu.sync import barrier
-from std.gpu.globals import WARPGROUP_SIZE
+from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.primitives.grid_controls import launch_dependent_grids
-from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
+from max.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from max.gpu.memory import (
     CacheEviction,
     external_memory,
@@ -98,7 +103,13 @@ from layout.tma_async import (
     _gather4_box_width,
 )
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
-from layout import ComptimeInt, RowMajorLayout, TileTensor
+from layout import (
+    ComptimeInt,
+    DefaultEngine,
+    RowMajorLayout,
+    TensorEngine,
+    TileTensor,
+)
 from layout.tile_layout import row_major as tt_row_major
 from nn.attention.gpu.nvidia.common import OptionalPointer
 from nn.attention.mha_mask import MHAMask
@@ -120,6 +131,7 @@ from nn.attention.gpu.nvidia.sm100.mla_decode_utils import (
     MLA_SM100_Decode_Config,
     MLA_SM100_Decode_Common,
     QOTMATile,
+    ORaggedTMATile,
     MLA_Decode_Pack,
     OffsetPosition,
     KVPipelineGeneric,
@@ -153,6 +165,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
     has_variable_topk: Bool = False,
     fold_shared_index: Bool = False,
     q_len_fold: Int = 1,
+    Engine: TensorEngine = DefaultEngine[element_width=1],
 ](TrivialRegisterPassable):
     """Sparse MLA decode with native FP8 WGMMA for SM100 (B200), unified gather.
 
@@ -180,7 +193,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
     # covering the full 576-byte row (matches
     # MLA_SM100_Decode_Sparse_KV_FP8 exactly -- 16 gather4 instructions/tile
     # instead of the SW64-fragmented 144/tile).
-    comptime kv_gather4_tile_width = Self.config.padded_q_depth // 8
+    comptime kv_gather4_tile_width = Self.config.input_q_depth // 8
     comptime kv_gather4_box_w = _gather4_box_width[
         DType.int64,
         Self.kv_gather4_tile_width,
@@ -199,6 +212,12 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
     ]
 
     comptime num_stages = Self.config.num_kv_stages
+    # Depth of the SW64 ring only. `PV_REL(i)` frees the slot that
+    # `CVT_SW64_ACQ(i + num_mma_stages)` reclaims, and that WAR edge is the
+    # back-edge of the loop that sets this kernel's steady-state rate, so the
+    # bound is (cycle weight) / this depth. The linear gather ring is not on
+    # that loop and stays at `num_stages`.
+    comptime num_mma_stages = Self.config.num_kv_mma_stages
 
     # The ground-truth SW64 destination layout the MMA operand descriptor
     # already reads today -- the re-swizzle WG's job is to reproduce this
@@ -220,6 +239,30 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
     ]
 
     @staticmethod
+    @inline(.always)
+    def zero_input_tail(
+        q_smem: SharedMemPointer[Scalar[Self.fp8_type]],
+        kv_smem: SharedMemPointer[Scalar[Self.fp8_type]],
+    ):
+        """Zero the SMEM columns past the input row, once per CTA.
+
+        Once is enough without qualification: `p_smem` is its own region here,
+        not an alias of the tail, so nothing rewrites these columns.
+        """
+        comptime tail_block0 = Self.config.input_q_depth // Self.config.BN_QK
+        comptime tail_elems = (Self.NumQKBlocks - tail_block0) * Self.BlockElems
+        comptime tail_off = tail_block0 * Self.BlockElems
+        comptime zero = Scalar[Self.fp8_type](0)
+
+        var tid = Int(thread_idx.x)
+        for i in range(tid, tail_elems, Self.config.num_threads):
+            q_smem[tail_off + i] = zero
+        comptime for stage in range(Self.num_mma_stages):
+            var base = kv_smem + stage * Self.KVStageElems + tail_off
+            for i in range(tid, tail_elems, Self.config.num_threads):
+                base[i] = zero
+
+    @staticmethod
     @__llvm_arg_metadata(q_tma, `nvvm.grid_constant`)
     @__llvm_arg_metadata(k_tma, `nvvm.grid_constant`)
     @__llvm_arg_metadata(o_tma, `nvvm.grid_constant`)
@@ -234,11 +277,11 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         q_tma: QOTMATile[
             dtype=Self.fp8_type,
             BM=Self.config.BM,
-            BK=Self.config.BK_QK,
+            BK=Self.config.input_q_depth,
             swizzle_mode=Self.config.kv_tma_swizzle_mode,
         ],
-        # Single K gather4 TMA covering full 576-byte row: INT64,
-        # SWIZZLE_NONE, tile_width=72 INT64 = 576 bytes (matches
+        # Single K gather4 TMA covering the row as stored: INT64,
+        # SWIZZLE_NONE, tile_width = input_q_depth / 8 INT64 (matches
         # MLA_SM100_Decode_Sparse_KV_FP8's efficient contiguous gather).
         k_tma: TMATensorTile[
             DType.int64,
@@ -246,7 +289,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             tile_shape=IndexList[2](Self.config.BK_PV, Self.kv_gather4_box_w),
             desc_shape=IndexList[2](1, Self.kv_gather4_box_w),
         ],
-        o_tma: QOTMATile[
+        o_tma: ORaggedTMATile[
             dtype=Self.output_type,
             BM=Self.config.out_rows,
             BK=Self.config.BN_PV // 4,
@@ -265,10 +308,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         # position-based causal masking. See mla_decode_utils.mojo.
         logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
         topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
-        scales_ptr: UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin],
-        attn_sink_ptr: OptionalReg[
-            UnsafePointer[Scalar[DType.float32], origin=MutAnyOrigin]
-        ],
+        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        attn_sink_ptr: OptionalReg[UnsafePointer[Float32, origin=MutAnyOrigin]],
         extra_k_tma: TMATensorTile[
             DType.int64,
             2,
@@ -279,11 +320,12 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
         extra_topk_lengths: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
         extra_indices_stride_dev: Int32,
-        extra_scales_ptr: OptionalReg[
-            UnsafePointer[Scalar[DType.float32], MutAnyOrigin]
-        ],
+        extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
         scalar_args: TileTensor[
-            DType.int64, RowMajorLayout[ComptimeInt[3]], MutAnyOrigin
+            .int64,
+            RowMajorLayout[ComptimeInt[3]],
+            MutAnyOrigin,
+            Engine=Self.Engine,
         ],
     ):
         comptime _mask_type_name: String = Self.MaskType.get_type_name()
@@ -310,7 +352,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         var extra_indices_stride = Int(extra_indices_stride_dev)
         var batch_size = Int(scalar_args.ptr[0])
         var q_max_seq_len = Int(scalar_args.ptr[1])
-        var num_partitions = mla_decode_pack.num_partitions
+        var num_partitions = Int(mla_decode_pack.num_partitions)
         var mask = mla_decode_pack.mask
         var valid_length = mla_decode_pack.valid_length
         var lse_accum_split_ptr = mla_decode_pack.lse_accum_split_ptr
@@ -331,7 +373,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 UnsafePointer[
                     Scalar[Self.ValidLengthType.dtype],
                     ImmutAnyOrigin,
-                    address_space=AddressSpace.GENERIC,
+                    address_space=.GENERIC,
                 ]
             ](valid_length.value()),
             q_max_seq_len,
@@ -364,19 +406,16 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
 
         var num_orig_blocks = ceildiv(topk, Self.config.BN_QK)
 
-        @__parameter
-        @always_inline
-        def _pdl_early_exit_all_q():
+        @inline(.always)
+        def _pdl_early_exit_all_q() {imm}:
             comptime if Self.fold_shared_index:
                 comptime for q_local in range(Self.q_len_fold):
                     Self.Common_MLA_Op.pdl_early_exit[fold_q=True](
                         offset_position.split_idx,
                         offset_position.batch_idx,
                         offset_position.max_seq_len,
-                        offset_position.out_row_offset_at(q_local),
                         batch_size,
                         lse_accum_split_ptr,
-                        o_tma,
                         seq_idx_fold=UInt32(q_local),
                     )
             else:
@@ -384,10 +423,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                     offset_position.split_idx,
                     offset_position.batch_idx,
                     offset_position.max_seq_len,
-                    offset_position.out_row_offset,
                     batch_size,
                     lse_accum_split_ptr,
-                    o_tma,
                 )
 
         comptime if Self.config.decoding_warp_split_k:
@@ -403,7 +440,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
 
         var q_smem = external_memory[
             Scalar[Self.fp8_type],
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
             alignment=128,
             name="mha_dynamic_shared_memory",
         ]()
@@ -414,9 +451,9 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         # source. Same per-stage size as the SW64 destination below.
         var kv_smem_linear = q_smem + Self.BlockElems * Self.NumQKBlocks
         # SW64 destination the native FP8 MMA reads -- byte-identical role
-        # to the single-buffer kernel's `kv_smem`.
+        # to the single-buffer kernel's `kv_smem`, one ring deeper.
         var kv_smem = kv_smem_linear + Self.KVStageElems * kv_total_stages
-        var p_smem = kv_smem + Self.KVStageElems * kv_total_stages
+        var p_smem = kv_smem + Self.KVStageElems * Self.num_mma_stages
 
         # Output SMEM reuses the SW64 KV region (same as the single-buffer
         # native FP8 kernel and the BF16 kernel).
@@ -451,7 +488,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         # kernel's own KV pipeline, just producer side is now a warpgroup
         # instead of a single TMA leader thread.
         var kv_pipeline_mma = KVPipelineGeneric[
-            num_kv_stages=Self.config.num_kv_stages,
+            num_kv_stages=Self.num_mma_stages,
             num_qk_stages=1,
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
@@ -537,14 +574,20 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             tcgen05_alloc[Self.config.cta_group](
                 ptr_tmem_addr, Self.config.sm100_tmem_cols
             )
+        # Zero the NoPE tail before the warpgroups read it. The fence publishes
+        # the generic-proxy stores to the async proxy for the tcgen05 read.
+        comptime if Self.config.input_q_depth < Self.config.padded_q_depth:
+            Self.zero_input_tail(
+                q_smem.as_unsafe_any_origin(), kv_smem.as_unsafe_any_origin()
+            )
         barrier()
+        comptime if Self.config.input_q_depth < Self.config.padded_q_depth:
+            fence_async_view_proxy()
 
         if warp_idx < 4:
             warpgroup_reg_alloc[num_reg_softmax]()
 
-            var attn_sink_log2 = Scalar[DType.float32](
-                min_or_neg_inf[DType.float32]()
-            )
+            var attn_sink_log2 = Float32(min_or_neg_inf[.float32]())
             comptime if Self.has_attn_sink:
                 var lane_idx = Int(lane_id())
                 var row = lane_idx & 0x3F
@@ -552,7 +595,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 if head_idx_local < Self.config.num_q_heads:
                     attn_sink_log2 = attn_sink_ptr.unsafe_value()[
                         head_idx_local
-                    ] * Scalar[DType.float32](log2e)
+                    ] * Float32(log2e)
 
             Self.Common_MLA_Op.Softmax[
                 native_fp8=True,
@@ -689,7 +732,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _transform_indices_to_smem(
         d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
         idx_smem: SharedMemPointer[Int32],
@@ -711,7 +754,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             idx_smem[row_in_tile] = tma_row
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def idx_producer(
         idx_bars: DecodeSM100MiscMBars[
             num_stages=Self.num_stages,
@@ -833,12 +876,12 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 te += 1
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def load(
         q_tma: QOTMATile[
             dtype=Self.fp8_type,
             BM=Self.config.BM,
-            BK=Self.config.BK_QK,
+            BK=Self.config.input_q_depth,
             swizzle_mode=Self.config.kv_tma_swizzle_mode,
         ],
         k_tma: TMATensorTile[
@@ -909,11 +952,12 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             )
             num_orig_tiles = ceildiv(orig_tokens_in_split, Self.config.BN_QK)
 
+        # Match the Q TMA's transfer size (the row as stored), not the SMEM width.
         expect_bytes_pred(
             mbar_q,
             Int32(
                 Self.config.BM
-                * Self.config.q_depth
+                * Self.config.input_q_depth
                 * Self.fp8_bytes_per_element
             ),
             elect_mask,
@@ -927,11 +971,11 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 Self.fp8_type,
                 type_of(q_tt_layout),
                 MutAnyOrigin,
-                address_space=AddressSpace.SHARED,
+                address_space=.SHARED,
             ](q_smem.bitcast[Scalar[Self.fp8_type]](), q_tt_layout)
             q_tma.async_copy(q_smem_tensor, mbar_q[], (0, row))
 
-        # Full 576-byte row: BN_QK * 72 INT64 = 64 * 576 = 36864 bytes.
+        # The row as stored: BN_QK * (input_q_depth / 8) INT64 bytes.
         comptime kv_bytes = Self.config.BN_QK * Self.kv_gather4_box_w * size_of[
             DType.int64
         ]()
@@ -987,7 +1031,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _load_one_tile(
         mut kv_prod: DecodeKVProducer[
             Self.fp8_type,
@@ -1017,10 +1061,10 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         expect_bytes_pred(k_mbar, Int32(kv_bytes), Int32(is_leader))
         if is_leader:
             cur_k_tma.async_copy_gather4_tile[
-                tile_width=Self.config.padded_q_depth // 8,
+                tile_width=Self.config.input_q_depth // 8,
                 eviction_policy=CacheEviction.EVICT_LAST,
             ](
-                kv_stage_ptr.bitcast[Scalar[DType.int64]](),
+                kv_stage_ptr.bitcast[Int64](),
                 k_mbar[],
                 idx_smem,
                 start_idx=0,
@@ -1030,7 +1074,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         kv_prod.commit_step()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _load_tile_range(
         mut kv_prod: DecodeKVProducer[
             Self.fp8_type,
@@ -1068,10 +1112,10 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             expect_bytes_pred(k_mbar, Int32(kv_bytes), Int32(is_leader))
             if is_leader:
                 cur_k_tma.async_copy_gather4_tile[
-                    tile_width=Self.config.padded_q_depth // 8,
+                    tile_width=Self.config.input_q_depth // 8,
                     eviction_policy=CacheEviction.EVICT_LAST,
                 ](
-                    kv_stage_ptr.bitcast[Scalar[DType.int64]](),
+                    kv_stage_ptr.bitcast[Int64](),
                     k_mbar[],
                     idx_smem,
                     start_idx=0,
@@ -1082,7 +1126,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             t += 1
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def reswizzleFP8(
         kv_smem_linear: SharedMemPointer[Scalar[Self.fp8_type]],
         kv_smem_sw64: SharedMemPointer[Scalar[Self.fp8_type]],
@@ -1093,7 +1137,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             num_consumer=WARPGROUP_SIZE,
         ],
         kv_pipeline_mma: KVPipelineGeneric[
-            num_kv_stages=Self.config.num_kv_stages,
+            num_kv_stages=Self.num_mma_stages,
             num_qk_stages=1,
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
@@ -1119,7 +1163,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
 
         Thread mapping mirrors convertFP8ToBF16 exactly (GROUP_SIZE=4,
         128 threads -> 32 groups of 2 rows each, 9 column iterations of
-        16 bytes/thread cover the full 576-byte row) so the same
+        16 bytes/thread cover the row as stored) so the same
         bank-conflict-reduction rationale applies.
         """
         var num_k_tiles = ceildiv(
@@ -1129,11 +1173,11 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             return
 
         comptime BN_QK: Int = Self.config.BN_QK
-        comptime fp8_row_stride: Int = Self.config.padded_q_depth  # 576
+        comptime fp8_row_stride: Int = Self.config.input_q_depth
         comptime GROUP_SIZE: Int = 4
         comptime NUM_GROUPS: Int = WARPGROUP_SIZE // GROUP_SIZE  # 32
-        # 576 / (4 threads * 16 bytes) = 9 column iterations.
-        comptime COLS_PER_GROUP: Int = fp8_row_stride // (GROUP_SIZE * 16)  # 9
+        # input_q_depth / (4 threads * 16 bytes) column iterations.
+        comptime COLS_PER_GROUP: Int = fp8_row_stride // (GROUP_SIZE * 16)
 
         var kv_gather_cons = DecodeKVConsumer[
             Self.fp8_type,
@@ -1146,6 +1190,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             Self.config,
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
+            num_stages=Self.num_mma_stages,
         ](kv_pipeline_mma, kv_smem_sw64)
 
         var lane: Int = thread_idx.x & 0x7F
@@ -1173,9 +1218,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             kv_gather_cons.wait()
             kv_mma_prod.acquire()
 
-            var src_u8 = kv_gather_cons.stage_base_ptr().bitcast[
-                Scalar[DType.uint8]
-            ]()
+            var src_u8 = kv_gather_cons.stage_base_ptr().bitcast[UInt8]()
             var dst = kv_mma_prod.stage_base_ptr()
 
             comptime for c in range(COLS_PER_GROUP):
@@ -1199,7 +1242,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             tile_idx += 1
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def mmaQK(
         tmem_addr: UInt32,
         q_smem: SharedMemPointer[Scalar[Self.fp8_type]],
@@ -1211,7 +1254,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             num_consumer=WARPGROUP_SIZE,
         ],
         kv_pipeline_mma: KVPipelineGeneric[
-            num_kv_stages=Self.config.num_kv_stages,
+            num_kv_stages=Self.num_mma_stages,
             num_qk_stages=1,
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
@@ -1242,6 +1285,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             Self.config,
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
+            num_stages=Self.num_mma_stages,
         ](kv_pipeline_mma, kv_smem)
         var s_prod = DecodeSProducerN[Self.num_stages](s_bars.producer())
         comptime s_stride = UInt32(Self.config.TMEM_S1 - Self.config.TMEM_S0)
@@ -1276,7 +1320,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             tile_idx += 1
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def mmaPV(
         tmem_addr: UInt32,
         kv_smem: SharedMemPointer[Scalar[Self.fp8_type]],
@@ -1290,7 +1334,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             num_stages=2, num_producer=1, num_consumer=WARPGROUP_SIZE
         ],
         kv_pipeline_mma: KVPipelineGeneric[
-            num_kv_stages=Self.config.num_kv_stages,
+            num_kv_stages=Self.num_mma_stages,
             num_qk_stages=1,
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
@@ -1321,6 +1365,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             Self.config,
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
+            num_stages=Self.num_mma_stages,
         ](kv_pipeline_mma, kv_smem)
         var p_cons = DecodePConsumerN[Self.num_stages](p_bars.consumer())
         var o_prod = DecodeOProducer(o_bars.producer())

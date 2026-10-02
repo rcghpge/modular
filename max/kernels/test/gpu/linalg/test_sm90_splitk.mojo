@@ -97,8 +97,8 @@ def test_warp_specialize_gemm_with_multicasting[
     var c_ref_tensor = TileTensor(c_device_ref, c_shape)
 
     # Initialize matmul operands
-    rand(a_host._storage, a_host.num_elements())
-    rand(b_host._storage, b_host.num_elements())
+    rand(a_host.as_span())
+    rand(b_host.as_span())
 
     _ = c_host.fill(0)
     _ = c_host_ref.fill(0)
@@ -115,7 +115,7 @@ def test_warp_specialize_gemm_with_multicasting[
 
     comptime wgmma_shape = Index(
         64, BN, 32
-    ) if a_type == DType.float8_e4m3fn else Index(64, BN, 16)
+    ) if a_type == .float8_e4m3fn else Index(64, BN, 16)
 
     print(
         "wgmma_n",
@@ -177,19 +177,16 @@ def test_warp_specialize_gemm_with_multicasting[
 
     ctx.synchronize()
 
-    comptime assert a_type != DType.float8_e4m3fn or transpose_b, (
+    comptime assert a_type != .float8_e4m3fn or transpose_b, (
         "Testing is only supported for transposed_b==True when"
         " a_type==float8_e4m3fn. Add the non-transposed case if needed."
     )
 
-    var a_lt = a_tensor.to_layout_tensor()
-    var b_lt = b_tensor.to_layout_tensor()
-    var c_ref_tensor_lt = c_ref_tensor.to_layout_tensor()
     vendor_blas.matmul(
         ctx,
-        c_ref_tensor_lt,
-        a_lt,
-        b_lt,
+        c_ref_tensor,
+        a_tensor,
+        b_tensor,
         c_row_major=True,
         transpose_b=transpose_b,
     )
@@ -231,9 +228,9 @@ def main() raises:
         print("FLOAT8 GEMM TESTS")
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             num_pipeline_stages=6,
             partitioned_multicast=False,
@@ -242,9 +239,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             num_pipeline_stages=2,
             partitioned_multicast=False,
@@ -253,9 +250,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             num_pipeline_stages=2,
             partitioned_multicast=False,
@@ -264,9 +261,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 80, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             num_pipeline_stages=2,
             partitioned_multicast=False,
@@ -275,9 +272,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=False,
             num_pipeline_stages=4,
@@ -291,9 +288,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=False,
             num_pipeline_stages=4,
@@ -306,9 +303,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 112, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             num_pipeline_stages=4,
             partitioned_multicast=False,
@@ -321,9 +318,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=4,
@@ -332,9 +329,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             partitioned_multicast=False,
             num_pipeline_stages=1,
@@ -343,9 +340,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -353,9 +350,9 @@ def main() raises:
         ](ctx, Int(257), Idx[384], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -363,9 +360,9 @@ def main() raises:
         ](ctx, Int(257), Idx[384], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -374,9 +371,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -384,9 +381,9 @@ def main() raises:
         ](ctx, Int(255), Idx[384], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -394,9 +391,9 @@ def main() raises:
         ](ctx, Int(255), Idx[384], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -405,9 +402,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -415,9 +412,9 @@ def main() raises:
         ](ctx, Int(129), Idx[512], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -425,9 +422,9 @@ def main() raises:
         ](ctx, Int(129), Idx[512], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -436,9 +433,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(1, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -446,9 +443,9 @@ def main() raises:
         ](ctx, Int(127), Idx[512], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 2, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -456,9 +453,9 @@ def main() raises:
         ](ctx, Int(127), Idx[512], Idx[256])
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 128),
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fn,
-            DType.bfloat16,
+            .float8_e4m3fn,
+            .float8_e4m3fn,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=True,
             num_pipeline_stages=2,
@@ -468,9 +465,9 @@ def main() raises:
         print("BFLOAT16 GEMM TESTS")
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 128, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 1, 1),
             num_pipeline_stages=2,
             partitioned_multicast=False,
@@ -479,9 +476,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 80, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             num_pipeline_stages=8,
             partitioned_multicast=False,
@@ -490,9 +487,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 128, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 1, 1),
             num_pipeline_stages=4,
             partitioned_multicast=False,
@@ -505,9 +502,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 80, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 1, 1),
             num_pipeline_stages=6,
             partitioned_multicast=False,
@@ -520,9 +517,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 1, 1),
             num_pipeline_stages=4,
             partitioned_multicast=False,
@@ -536,9 +533,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 80, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 2, 1),
             num_pipeline_stages=6,
             partitioned_multicast=False,
@@ -552,9 +549,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 128, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 1, 1),
             num_pipeline_stages=4,
             partitioned_multicast=False,
@@ -568,9 +565,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 128, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 2, 1),
             num_pipeline_stages=2,
             partitioned_multicast=False,
@@ -579,9 +576,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 128, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             num_pipeline_stages=2,
             partitioned_multicast=True,
@@ -590,9 +587,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 80, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 2, 1),
             num_pipeline_stages=2,
             partitioned_multicast=True,
@@ -601,9 +598,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(64, 80, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             num_pipeline_stages=2,
             partitioned_multicast=True,
@@ -612,9 +609,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=False,
             splits=4,
@@ -622,9 +619,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=False,
             splits=4,
@@ -632,9 +629,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=False,
             use_tma_store=True,
@@ -643,9 +640,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=False,
             splits=4,
@@ -658,9 +655,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 1, 1),
             partitioned_multicast=False,
         ](
@@ -672,9 +669,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(1, 2, 1),
             partitioned_multicast=False,
             splits=2,
@@ -687,9 +684,9 @@ def main() raises:
 
         test_warp_specialize_gemm_with_multicasting[
             Index(128, 256, 64),
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             Index(2, 2, 1),
             partitioned_multicast=False,
             splits=4,

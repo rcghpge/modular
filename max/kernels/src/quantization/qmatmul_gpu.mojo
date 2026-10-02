@@ -32,7 +32,7 @@ from std.sys import align_of, is_nvidia_gpu, simd_width_of, size_of
 
 from std.bit import log2_floor
 from std.collections import OptionalReg
-from std.gpu import (
+from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
     block_idx,
@@ -70,7 +70,7 @@ from layout.swizzle import Swizzle, make_ldmatrix_swizzle, make_swizzle
 from layout.tile_io import GenericToSharedAsyncTileCopier
 from layout.tensor_core import TensorCore, get_fragment_size, get_mma_shape
 from linalg.matmul.gpu._multistage_gemm_gpu import warp_split_k_reduction
-from linalg.utils import GemmShape, apply_epilogue, elementwise_epilogue_type
+from linalg.utils import GemmShape, elementwise_epilogue_type
 from linalg.utils_gpu import MatmulConfig, block_swizzle
 from std.memory.unsafe import bitcast
 
@@ -79,7 +79,7 @@ from std.utils.index import Index, StaticTuple
 from std.utils.numerics import get_accum_type
 
 
-@always_inline
+@inline(.always)
 @doc_hidden
 def args_to_tuple[swap: Bool](arg_0: Int, arg_1: Int) -> Tuple[Int, Int]:
     """Returns the two integer arguments as a tuple, swapping their order when `swap` is set.
@@ -100,7 +100,7 @@ def args_to_tuple[swap: Bool](arg_0: Int, arg_1: Int) -> Tuple[Int, Int]:
         return (arg_0, arg_1)
 
 
-@always_inline
+@inline(.always)
 @doc_hidden
 def multistage_mma_q[
     BM: Int,
@@ -136,29 +136,27 @@ def multistage_mma_q[
     b_next_smem_layout: Layout = Layout(),
     next_op_b_iter_alignment: Int = align_of[b_type](),
 ](
-    c: LayoutTensor[
-        mut=True, c_type, c_layout, address_space=AddressSpace.LOCAL, ...
-    ],
+    c: LayoutTensor[mut=True, c_type, c_layout, address_space=.LOCAL, ...],
     a_iter_arg: LayoutTensorIter[_, a_layout, ...],
     b_iter_arg: LayoutTensorIter[b_type, b_layout, ...],
     a_smem_iter_arg: LayoutTensorIter[
         mut=True,
         a_type,
         a_smem_layout,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         ...,
     ],
     mut b_smem_iter: LayoutTensorIter[
         mut=True,
         b_type,
         b_smem_layout,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         ...,
     ],
     scales_smem_iter_arg: LayoutTensorIter[
         scales_type,
         scales_smem_layout,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         ...,
     ],
     scales_iter_arg: LayoutTensorIter[scales_type, scales_layout, ...],
@@ -281,7 +279,7 @@ def multistage_mma_q[
     ) if swizzle_a else Optional[Swizzle]()
 
     # `a_iter_arg` / `b_iter_arg` have an inferred dtype, so call sites must
-    # `.bitcast[a_type | b_type, target_address_space=AddressSpace.GENERIC]()`
+    # `.bitcast[a_type | b_type, target_address_space=.GENERIC]()`
     # the iterator's dereferenced tile before passing it in. The helpers
     # require concrete `a_type` / `b_type` arguments so the body can reference
     # `simd_size` / `simd_b_size` and the captured swizzle without
@@ -300,13 +298,10 @@ def multistage_mma_q[
     comptime a_idx_t = a_iter_arg.linear_idx_type
     comptime b_idx_t = b_iter_arg.linear_idx_type
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def _async_copy_a_tile(
-        dst: LayoutTensor[
-            mut=True, a_type, address_space=AddressSpace.SHARED, ...
-        ],
-        src: LayoutTensor[a_type, address_space=AddressSpace.GENERIC, ...],
+        dst: LayoutTensor[mut=True, a_type, address_space=.SHARED, ...],
+        src: LayoutTensor[a_type, address_space=.GENERIC, ...],
     ):
         GenericToSharedAsyncTileCopier[
             async_copy_a_layout_tt,
@@ -320,13 +315,10 @@ def multistage_mma_q[
             ](),
         )
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def _async_copy_b_tile(
-        dst: LayoutTensor[
-            mut=True, b_type, address_space=AddressSpace.SHARED, ...
-        ],
-        src: LayoutTensor[b_type, address_space=AddressSpace.GENERIC, ...],
+        dst: LayoutTensor[mut=True, b_type, address_space=.SHARED, ...],
+        src: LayoutTensor[b_type, address_space=.GENERIC, ...],
     ):
         GenericToSharedAsyncTileCopier[async_copy_b_layout_tt]().copy(
             lt_to_tt_idx[linear_idx_type=b_idx_t](dst).vectorize[
@@ -340,37 +332,33 @@ def multistage_mma_q[
     # Prefetch (num_pipeline_stages - 1) stages.
     comptime if prefetch_init:
         comptime for stage in range(num_pipeline_stages - 1):
-            comptime if a_iter.address_space == AddressSpace.GENERIC:
+            comptime if a_iter.address_space == .GENERIC:
                 var a_smem_tile = a_smem_iter.next_unsafe(
                     a_smem_iter.linear_uint_type(stage)
                 )[]
 
                 _async_copy_a_tile(
                     a_smem_tile,
-                    a_iter[].bitcast[
-                        a_type, target_address_space=AddressSpace.GENERIC
-                    ](),
+                    a_iter[].bitcast[a_type, target_address_space=.GENERIC](),
                 )
 
                 a_iter._incr()
 
-            comptime if b_iter.address_space == AddressSpace.GENERIC:
+            comptime if b_iter.address_space == .GENERIC:
                 var b_smem_tile = b_smem_iter.next_unsafe(
                     b_smem_iter.linear_uint_type(stage)
                 )[]
 
                 _async_copy_b_tile(
                     b_smem_tile,
-                    b_iter[].bitcast[
-                        b_type, target_address_space=AddressSpace.GENERIC
-                    ](),
+                    b_iter[].bitcast[b_type, target_address_space=.GENERIC](),
                 )
 
                 b_iter._incr()
 
             # Every group_size rows share a scale
             # Only load scales when necessary
-            comptime if scales_iter.address_space == AddressSpace.GENERIC:
+            comptime if scales_iter.address_space == .GENERIC:
                 if stage % (group_size // BK) == 0:
                     comptime scales_stage = stage // (group_size // BK)
                     var scales_smem_tile = scales_smem_iter.next_unsafe(
@@ -383,7 +371,7 @@ def multistage_mma_q[
                             scales_iter[]
                             .bitcast[
                                 scales_type,
-                                target_address_space=AddressSpace.GENERIC,
+                                target_address_space=.GENERIC,
                             ]()
                             .vectorize[1, async_copy_scales_veclen]()
                             .distribute[async_copy_scales_layout](Int(tid))
@@ -396,11 +384,9 @@ def multistage_mma_q[
                             scales_type
                         ]() * async_copy_scales_veclen
                         async_copy[element_size_bytes](
-                            src_fragments.ptr.address_space_cast[
-                                AddressSpace.GLOBAL
-                            ](),
+                            src_fragments.ptr.address_space_cast[.GLOBAL](),
                             dst_fragments.ptr.address_space_cast[
-                                AddressSpace.SHARED
+                                .SHARED
                             ]().unsafe_mut_cast[True](),
                         )
 
@@ -434,7 +420,7 @@ def multistage_mma_q[
             a_type,
             a_reg_layout,
             MutAnyOrigin,
-            address_space=AddressSpace.LOCAL,
+            address_space=.LOCAL,
         ]
         .stack_allocation()
         .split[2]()
@@ -446,7 +432,7 @@ def multistage_mma_q[
             a_type,
             b_reg_layout,
             MutAnyOrigin,
-            address_space=AddressSpace.LOCAL,
+            address_space=.LOCAL,
         ]
         .stack_allocation()
         .vectorize[1, b_frag_size]()
@@ -459,7 +445,7 @@ def multistage_mma_q[
             scales_type,
             Layout.row_major(num_n_mmas, 1),
             MutAnyOrigin,
-            address_space=AddressSpace.LOCAL,
+            address_space=.LOCAL,
         ]
         .stack_allocation()
         .vectorize[1, 1]()
@@ -561,7 +547,7 @@ def multistage_mma_q[
                 # Prefetch one k tile (if valid) from global memory to current
                 # shared memory buffer.
                 if prefetch_tile_id < num_iters:
-                    comptime if a_iter.address_space == AddressSpace.GENERIC:
+                    comptime if a_iter.address_space == .GENERIC:
                         var a_smem_prefetch_tile = a_smem_iter.next_unsafe(
                             a_smem_iter.linear_uint_type(
                                 num_pipeline_stages - 1
@@ -572,13 +558,13 @@ def multistage_mma_q[
                             a_smem_prefetch_tile,
                             a_iter[].bitcast[
                                 a_type,
-                                target_address_space=AddressSpace.GENERIC,
+                                target_address_space=.GENERIC,
                             ](),
                         )
 
                         a_iter._incr()
 
-                    comptime if b_iter.address_space == AddressSpace.GENERIC:
+                    comptime if b_iter.address_space == .GENERIC:
                         var b_smem_prefetch_tile = b_smem_iter.next_unsafe(
                             b_smem_iter.linear_uint_type(
                                 num_pipeline_stages - 1
@@ -589,13 +575,13 @@ def multistage_mma_q[
                             b_smem_prefetch_tile,
                             b_iter[].bitcast[
                                 b_type,
-                                target_address_space=AddressSpace.GENERIC,
+                                target_address_space=.GENERIC,
                             ](),
                         )
 
                         b_iter._incr()
 
-                    comptime if scales_iter.address_space == AddressSpace.GENERIC:
+                    comptime if scales_iter.address_space == .GENERIC:
                         # Every group_size rows share a scale
                         # Only load scales when necessary
                         if (k_tile_id + num_pipeline_stages - 1) % (
@@ -613,7 +599,7 @@ def multistage_mma_q[
                                     scales_iter[]
                                     .bitcast[
                                         scales_type,
-                                        target_address_space=AddressSpace.GENERIC,
+                                        target_address_space=.GENERIC,
                                     ]()
                                     .vectorize[1, async_copy_scales_veclen]()
                                     .distribute[async_copy_scales_layout](
@@ -631,10 +617,10 @@ def multistage_mma_q[
                                 ]() * async_copy_scales_veclen
                                 async_copy[element_size_bytes](
                                     src_fragments.ptr.address_space_cast[
-                                        AddressSpace.GLOBAL
+                                        .GLOBAL
                                     ](),
                                     dst_fragments.ptr.address_space_cast[
-                                        AddressSpace.SHARED
+                                        .SHARED
                                     ]().unsafe_mut_cast[True](),
                                 )
 
@@ -757,7 +743,7 @@ def multistage_qgemm_kernel[
     comptime alignment = align_of[SIMD[a_type, simd_size]]()
     var a_smem = external_memory[
         Scalar[a_type],
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=alignment,
     ]()
     comptime a_smem_size = num_pipeline_stages * BM * BK
@@ -766,7 +752,7 @@ def multistage_qgemm_kernel[
         a_type,
         Layout.row_major(BM, BK),
         _,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=alignment,
         circular=True,
     ]
@@ -788,7 +774,7 @@ def multistage_qgemm_kernel[
         b_type,
         b_smem_layout,
         _,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         circular=True,
     ]
     var b_smem_iter = IteratorTypeB(
@@ -810,7 +796,7 @@ def multistage_qgemm_kernel[
         scales_type,
         scales_smem_layout,
         _,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         circular=True,
     ]
     var scales_smem_iter = IteratorTypeScales(
@@ -853,7 +839,7 @@ def multistage_qgemm_kernel[
             accum_type,
             c_reg_layout,
             MutAnyOrigin,
-            address_space=AddressSpace.LOCAL,
+            address_space=.LOCAL,
         ]
         .stack_allocation()
         .fill(0)
@@ -899,9 +885,8 @@ def multistage_qgemm_kernel[
     var c_gmem_tile = c.tile[BM, BN](block_idx[1], block_idx[0])
     var c_gmem_warp_tile = c_gmem_tile.tile[WM, WN](warp_y, warp_x)
 
-    @always_inline
-    @__parameter
-    def apply_epilogue():
+    @inline(.always)
+    def apply_epilogue() {imm}:
         # This block is identical to the one used for f32 case
         # but putting this in a lambda function leads to test failures
         # TODO: Refactor to remove code duplication
@@ -934,8 +919,7 @@ def multistage_qgemm_kernel[
             else:
                 dst_idx = Int(c_gmem_frag.runtime_layout(i))
             comptime alignment = align_of[SIMD[c_type, src_simd_width_y]]()
-            var m = (Int(thread_offset) + dst_idx) // N
-            var n = (Int(thread_offset) + dst_idx) % N
+            var m, n = divmod((Int(thread_offset) + dst_idx), N)
             if m < M and n < N:
                 var vec = (c_reg_frag.ptr + src_idx).load[
                     width=src_simd_width_y,
@@ -964,7 +948,7 @@ def multistage_qgemm_kernel[
         var accum_smem_warp_tile = LayoutTensor[
             c_type,
             Layout.row_major(WM, WN),
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ](a_smem.bitcast[Scalar[c_type]]() + warp_id * WM * WN)
 
         copy_local_to_shared[
@@ -1016,8 +1000,7 @@ def multistage_qgemm_kernel[
                 else:
                     dst_idx = Int(c_gmem_frag.runtime_layout(i))
 
-                var m = (Int(thread_offset) + dst_idx) // N
-                var n = (Int(thread_offset) + dst_idx) % N
+                var m, n = divmod((Int(thread_offset) + dst_idx), N)
                 comptime alignment = align_of[SIMD[c_type, simd_size]]()
                 if m < M and n < N:
                     epilogue[alignment=alignment](
@@ -1047,7 +1030,7 @@ def multistage_qgemm_kernel[
                 c_type,
                 c_reg_tile.layout,
                 MutAnyOrigin,
-                address_space=AddressSpace.LOCAL,
+                address_space=.LOCAL,
             ].stack_allocation()
 
             comptime for i in range(c_reg_tile.shape[0]()):
@@ -1120,9 +1103,9 @@ def multistage_qgemm_kernel[
 # This data layout can be expressed by UInt32 LayoutTensor
 # with shape = IntTuple(IntTuple(64, TN),IntTuple(2, TK))
 # and stride = IntTuple(IntTuple(2, TK * 128),IntTuple(1, 128))
-@always_inline
+@inline(.always)
 @doc_hidden
-def pack_Q_tile(input: SIMD[DType.uint8, 16]) -> SIMD[DType.uint32, 4]:
+def pack_Q_tile(input: SIMD[.uint8, 16]) -> SIMD[.uint32, 4]:
     """Packs sixteen bytes (thirty-two 4-bit weights, two per byte) into four `uint32` lanes for the repacked weight layout.
 
     Args:
@@ -1134,25 +1117,25 @@ def pack_Q_tile(input: SIMD[DType.uint8, 16]) -> SIMD[DType.uint32, 4]:
     # Q-tile is the smallest indivisible unit when performing gemm
     # operations with quantized matrices.
 
-    var res: SIMD[DType.uint32, 4] = 0
+    var res: SIMD[.uint32, 4] = 0
 
     comptime for i in range(4):
-        res[i] |= input[i * 4 + 0].cast[DType.uint32]() & 0x0F
-        res[i] |= (input[i * 4 + 0].cast[DType.uint32]() & 0xF0) << 12
-        res[i] |= (input[i * 4 + 1].cast[DType.uint32]() & 0x0F) << 4
-        res[i] |= (input[i * 4 + 1].cast[DType.uint32]() & 0xF0) << 16
+        res[i] |= input[i * 4 + 0].cast[.uint32]() & 0x0F
+        res[i] |= (input[i * 4 + 0].cast[.uint32]() & 0xF0) << 12
+        res[i] |= (input[i * 4 + 1].cast[.uint32]() & 0x0F) << 4
+        res[i] |= (input[i * 4 + 1].cast[.uint32]() & 0xF0) << 16
 
-        res[i] |= (input[i * 4 + 2].cast[DType.uint32]() & 0x0F) << 8
-        res[i] |= (input[i * 4 + 2].cast[DType.uint32]() & 0xF0) << 20
-        res[i] |= (input[i * 4 + 3].cast[DType.uint32]() & 0x0F) << 12
-        res[i] |= (input[i * 4 + 3].cast[DType.uint32]() & 0xF0) << 24
+        res[i] |= (input[i * 4 + 2].cast[.uint32]() & 0x0F) << 8
+        res[i] |= (input[i * 4 + 2].cast[.uint32]() & 0xF0) << 20
+        res[i] |= (input[i * 4 + 3].cast[.uint32]() & 0x0F) << 12
+        res[i] |= (input[i * 4 + 3].cast[.uint32]() & 0xF0) << 24
 
     return res
 
 
-@always_inline
+@inline(.always)
 @doc_hidden
-def unpack_4bit_int(val: SIMD[DType.uint32, _], idx: Int) -> UInt8:
+def unpack_4bit_int(val: SIMD[.uint32, _], idx: Int) -> UInt8:
     """Extracts a single 4-bit value from the packed `uint32` lane at the given nibble index.
 
     Args:
@@ -1163,7 +1146,7 @@ def unpack_4bit_int(val: SIMD[DType.uint32, _], idx: Int) -> UInt8:
         The extracted 4-bit value as a `UInt8`.
     """
     var u32_val = rebind[UInt32](val)
-    return (u32_val >> UInt32(idx * 4)).cast[DType.uint8]() & 0x0F
+    return (u32_val >> UInt32(idx * 4)).cast[.uint8]() & 0x0F
 
 
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](128))
@@ -1174,9 +1157,9 @@ def repack_Q4_0_for_sm8x[
     repack_layout: Layout,
     scales_type: DType,
 ](
-    q_weight: LayoutTensor[mut=False, DType.uint8, q_layout, ImmutAnyOrigin],
+    q_weight: LayoutTensor[mut=False, .uint8, q_layout, ImmutAnyOrigin],
     q_packed_weight: LayoutTensor[
-        mut=True, DType.uint8, repack_layout, MutAnyOrigin
+        mut=True, .uint8, repack_layout, MutAnyOrigin
     ],
 ):
     """Repacks Q4_0 quantized weights into the tiled layout expected by the SM8x quantized GEMM kernel.
@@ -1215,14 +1198,11 @@ def repack_Q4_0_for_sm8x[
     comptime uint_K = K // pack_factor
     comptime uint_BK = BK // pack_factor
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def convert_bytes_to_bf16[
         scales_type: DType
-    ](input_bytes: SIMD[DType.uint8, _]) -> Scalar[scales_type]:
-        var f32_values = bitcast[DType.float16, 1](input_bytes).cast[
-            DType.float32
-        ]()
+    ](input_bytes: SIMD[.uint8, _]) -> Scalar[scales_type]:
+        var f32_values = bitcast[.float16, 1](input_bytes).cast[.float32]()
         return bitcast[scales_type, 2](f32_values)[1]
 
     comptime repacked_b_layout = Layout(
@@ -1235,7 +1215,7 @@ def repack_Q4_0_for_sm8x[
             IntTuple(1, 128),
         ),
     )
-    var repack_weights = LayoutTensor[DType.uint32, repacked_b_layout](
+    var repack_weights = LayoutTensor[.uint32, repacked_b_layout](
         q_packed_weight.ptr.bitcast[UInt32](),
     )
 
@@ -1248,13 +1228,13 @@ def repack_Q4_0_for_sm8x[
     # We keep 128x2 Q4_0 GGUF blocks in smem
     var smem = external_memory[
         UInt8,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=align_of[UInt8](),
     ]()
     var qb_smem = LayoutTensor[
-        DType.uint8,
+        .uint8,
         Layout.row_major(BN, 2 * group_bytes),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ](smem.bitcast[UInt8]())
 
     var q_gmem_tile = q_weight.tile[BN, BK_groups * group_bytes](
@@ -1288,7 +1268,7 @@ def repack_Q4_0_for_sm8x[
         copy_dram_to_sram[thread_layout=Layout.row_major(128, 1)](
             qb_smem.vectorize[1, 4](),
             q_gmem_iter[]
-            .bitcast[DType.uint8, target_address_space=AddressSpace.GENERIC]()
+            .bitcast[.uint8, target_address_space=.GENERIC]()
             .vectorize[1, 4](),
         )
         q_gmem_iter._incr()
@@ -1298,8 +1278,8 @@ def repack_Q4_0_for_sm8x[
         )
 
         if (BK_groups * block_idx[1] + i * 2 + warp_y) < K_groups:
-            var frag_0: SIMD[DType.uint8, 16] = 0
-            var frag_1: SIMD[DType.uint8, 16] = 0
+            var frag_0: SIMD[.uint8, 16] = 0
+            var frag_1: SIMD[.uint8, 16] = 0
             var raw_Q_tile = q_warp_tile.tile[repack_tile[0], group_bytes]()
             comptime thd_layout = Layout.row_major(8, 4)
             # The first 2 Bytes is the scale for this Q4_0 block
@@ -1380,9 +1360,9 @@ def repack_GPTQ_for_sm8x[
     *,
     perm_layout: Layout = Layout(),
 ](
-    in_tensor: LayoutTensor[mut=False, DType.uint8, in_layout, ImmutAnyOrigin],
-    out_tensor: LayoutTensor[mut=True, DType.uint8, out_layout, MutAnyOrigin],
-    perm_idx: LayoutTensor[mut=False, DType.int32, perm_layout, ImmutAnyOrigin],
+    in_tensor: LayoutTensor[mut=False, .uint8, in_layout, ImmutAnyOrigin],
+    out_tensor: LayoutTensor[mut=True, .uint8, out_layout, MutAnyOrigin],
+    perm_idx: LayoutTensor[mut=False, .int32, perm_layout, ImmutAnyOrigin],
 ):
     """Repacks GPTQ quantized weights into the tiled layout expected by the SM8x quantized GEMM kernel.
 
@@ -1424,19 +1404,16 @@ def repack_GPTQ_for_sm8x[
     comptime uint_K = K // pack_factor
     comptime uint_BK = BK // pack_factor
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def convert_bytes_to_bf16[
         scales_type: DType
     ](input_bytes: SIMD[raw_scales_type, _]) -> Scalar[scales_type]:
-        var f32_values = bitcast[DType.float16, 1](input_bytes).cast[
-            DType.float32
-        ]()
+        var f32_values = bitcast[.float16, 1](input_bytes).cast[.float32]()
         return bitcast[scales_type, 2](f32_values)[1]
 
     # Define 4-bit weights and scales for the raw input
     comptime raw_weights_layout = Layout.row_major(uint_K, N)
-    var raw_weights = LayoutTensor[DType.uint32, raw_weights_layout](
+    var raw_weights = LayoutTensor[.uint32, raw_weights_layout](
         in_tensor.ptr.bitcast[UInt32](),
     ).transpose()
     comptime raw_scales_layout = Layout.row_major(K_groups, N)
@@ -1456,7 +1433,7 @@ def repack_GPTQ_for_sm8x[
             IntTuple(1, 128),
         ),
     )
-    var repack_weights = LayoutTensor[DType.uint32, repacked_weights_layout](
+    var repack_weights = LayoutTensor[.uint32, repacked_weights_layout](
         out_tensor.ptr.bitcast[UInt32](),
     )
     comptime repacked_scales_layout = Layout.row_major(K_groups, N)
@@ -1468,18 +1445,18 @@ def repack_GPTQ_for_sm8x[
     # We keep 128x2 GPTQ blocks in smem
     var smem = external_memory[
         UInt8,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=align_of[UInt8](),
     ]()
     var weights_smem = LayoutTensor[
-        DType.uint8,
+        .uint8,
         Layout.row_major(BN, 2 * weights_bytes_per_group),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ](smem.bitcast[UInt8]())
     var weights_smem_uint4 = LayoutTensor[
-        DType.uint32,
+        .uint32,
         Layout.row_major(BN, 2 * group_size // pack_factor),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ](smem.bitcast[UInt32]())
 
     var raw_weights_gmem_tile = raw_weights.tile[BN, uint_BK](
@@ -1533,7 +1510,7 @@ def repack_GPTQ_for_sm8x[
             ](warp_x, warp_y)
 
             comptime for i_Q_tile in range(group_size // repack_tile[1]):
-                var tmp: SIMD[DType.uint8, 16] = 0
+                var tmp: SIMD[.uint8, 16] = 0
                 comptime thd_layout = Layout.row_major(8, 4)
 
                 comptime if has_perm:
@@ -1623,7 +1600,7 @@ def repack_GPTQ_for_sm8x[
             raw_scales_gmem_iter._incr()
 
 
-@always_inline
+@inline(.always)
 @doc_hidden
 def q_smem_usage[config: MatmulConfig, group_size: Int]() -> Int:
     """Computes the shared memory footprint in bytes for the quantized GEMM kernel under the given configuration.
@@ -1656,6 +1633,7 @@ def q_smem_usage[config: MatmulConfig, group_size: Int]() -> Int:
 
 
 @doc_hidden
+@inline(.always)
 def multistage_gemm_q[
     c_type: DType,
     a_type: DType,
@@ -1667,9 +1645,61 @@ def multistage_gemm_q[
     config: MatmulConfig[a_type, b_type, c_type, True],
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
-    c: LayoutTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a: LayoutTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
-    b: LayoutTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
+    c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
+    runtime_config: MatmulConfig[a_type, b_type, c_type, True],
+    ctx: DeviceContext,
+) raises:
+    """TileTensor overload of `multistage_gemm_q`.
+
+    Bridges to the LayoutTensor implementation, which stays the reference
+    until the quantized multistage GEMM is TileTensor-native.
+
+    Parameters:
+        c_type: The dtype of the output matrix.
+        a_type: The dtype of the A matrix elements.
+        b_type: The dtype of the packed quantized B matrix elements.
+        group_size: The number of K elements sharing a single scale.
+        pack_factor: The number of quantized values packed per B element.
+        config: The compile-time matmul configuration.
+        elementwise_lambda_fn: An optional elementwise epilogue.
+
+    Args:
+        c: The output tile tensor in global memory.
+        a: The left-hand (activation) tile tensor in global memory.
+        b: The packed quantized weight tile tensor in global memory.
+        runtime_config: The runtime matmul configuration.
+        ctx: The device context used to enqueue the kernel.
+    """
+    multistage_gemm_q[
+        group_size=group_size,
+        pack_factor=pack_factor,
+        config=config,
+        elementwise_lambda_fn=elementwise_lambda_fn,
+    ](
+        c.to_layout_tensor(),
+        a.to_layout_tensor(),
+        b.to_layout_tensor(),
+        runtime_config,
+        ctx,
+    )
+
+
+def multistage_gemm_q[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    //,
+    *,
+    group_size: Int,
+    pack_factor: Int,
+    config: MatmulConfig[a_type, b_type, c_type, True],
+    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+](
+    c: LayoutTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: LayoutTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b: LayoutTensor[mut=False, b_type, address_space=.GENERIC, ...],
     runtime_config: MatmulConfig[a_type, b_type, c_type, True],
     ctx: DeviceContext,
 ) raises:
@@ -1785,7 +1815,7 @@ def multistage_gemm_q[
     )
 
 
-@always_inline
+@inline(.always)
 def matmul_gpu_qint4[
     c_type: DType,
     a_type: DType,
@@ -1794,13 +1824,9 @@ def matmul_gpu_qint4[
     target: StaticString,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
-    c_tt: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a_tt: TileTensor[
-        mut=False, a_type, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_tt: TileTensor[
-        mut=False, DType.uint8, address_space=AddressSpace.GENERIC, ...
-    ],
+    c_tt: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a_tt: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     ctx: Optional[DeviceContext] = None,
 ) raises:
     """Launches a GPU int4 quantized matrix multiplication for the given tile tensors.
@@ -1839,7 +1865,7 @@ def matmul_gpu_qint4[
     )
 
 
-@always_inline
+@inline(.always)
 def matmul_gpu_qint4_impl[
     c_type: DType,
     a_type: DType,
@@ -1848,11 +1874,9 @@ def matmul_gpu_qint4_impl[
     target: StaticString,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
-    c: LayoutTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a: LayoutTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
-    b: LayoutTensor[
-        mut=False, DType.uint8, address_space=AddressSpace.GENERIC, ...
-    ],
+    c: LayoutTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: LayoutTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b: LayoutTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     ctx: Optional[DeviceContext],
 ) raises:
     """Dispatches a GPU int4 quantized matrix multiplication to the tuned kernel configuration for the runtime M dimension.
@@ -2338,7 +2362,7 @@ def matmul_gpu_qint4_impl[
             )
             return
 
-    comptime default_config = MatmulConfig[a_type, DType.uint8, c_type, True](
+    comptime default_config = MatmulConfig[a_type, .uint8, c_type, True](
         block_tile_shape=Index(128, 128, 32),
         warp_tile_shape=Index(64, 64, 32),
         num_pipeline_stages=5,
@@ -2360,16 +2384,12 @@ def matmul_gpu_qint4_impl[
     )
 
 
-@always_inline
+@inline(.always)
 def gpu_qint4_repack_Q4_0[
     target: StaticString,
 ](
-    b_tt: TileTensor[
-        mut=False, DType.uint8, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_packed_tt: TileTensor[
-        mut=True, DType.uint8, address_space=AddressSpace.GENERIC, ...
-    ],
+    b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
+    b_packed_tt: TileTensor[mut=True, .uint8, address_space=.GENERIC, ...],
     ctx: Optional[DeviceContext] = None,
 ) raises:
     """Launches the GPU kernel that repacks Q4_0 weights into the packed GEMM layout.
@@ -2424,21 +2444,17 @@ def gpu_qint4_repack_Q4_0[
     )
 
 
-@always_inline
+@inline(.always)
 def gpu_qint4_repack_GPTQ[
     group_size: Int,
     target: StaticString,
 ](
-    b_tt: TileTensor[
-        mut=False, DType.uint8, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_packed_tt: TileTensor[
-        mut=True, DType.uint8, address_space=AddressSpace.GENERIC, ...
-    ],
+    b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
+    b_packed_tt: TileTensor[mut=True, .uint8, address_space=.GENERIC, ...],
     perm_idx: OptionalReg[
         LayoutTensor[
             mut=False,
-            DType.int32,
+            .int32,
             Layout.row_major(UNKNOWN_VALUE),
             ImmutAnyOrigin,
         ]
@@ -2516,9 +2532,9 @@ def gpu_qint4_repack_GPTQ[
         ]
 
         # Create null tensor using MutUntrackedOrigin (null pointer with no real origin)
-        var null_tensor = LayoutTensor[
-            DType.int32, Layout(), MutUntrackedOrigin
-        ](None)
+        var null_tensor = LayoutTensor[.int32, Layout(), MutUntrackedOrigin](
+            None
+        )
 
         cuda_ctx.enqueue_function[repack](
             b,

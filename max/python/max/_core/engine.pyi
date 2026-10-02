@@ -21,7 +21,7 @@ import os
 import pathlib
 import types
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Any, overload
+from typing import Any, TypeAlias, overload
 
 import max._core.driver
 import max._core.dtype
@@ -30,7 +30,7 @@ from max._core.driver import Buffer
 from max._core.mlrt import AsyncValue
 from max._core_types.driver import DLPackArray
 
-InputType = DLPackArray | Buffer | int | float | bool
+InputType: TypeAlias = DLPackArray | Buffer | int | float | bool
 
 class TensorSpec:
     """
@@ -55,9 +55,6 @@ class TensorSpec:
         If a dimension size is unknown/dynamic (such as the batch size), its
         value is ``None``.
         """
-
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
 
 class ModelMetadata:
     """Input and output metadata for a compiled model function."""
@@ -284,7 +281,6 @@ class Model:
     def __call__(self, *args: InputType, **kwargs: InputType) -> list[Buffer]:
         """Executes the model. See :class:`Model` for details."""
 
-    def __repr__(self) -> str: ...
     def capture(
         self, graph_keys: int | Sequence[int], *inputs: Buffer
     ) -> list[Buffer]:
@@ -422,6 +418,14 @@ class DebugConfig:
     @uninitialized_read_check.setter
     def uninitialized_read_check(self, arg: bool, /) -> None: ...
     @property
+    def uninitialized_read_mode(self) -> str:
+        r"""
+        A string that sets what :attr:`uninitialized_read_check` does on a match. One of ``\'\'``, ``'abort'``, ``'report'``. ``\'\'`` (unset) behaves as ``'abort'``, which stops at the first match. ``'report'`` prints each match and keeps running so a single run enumerates every offending load, with no bound on its output. On Apple GPUs, ``'report'`` currently aborts at the first match without printing. Ignored unless :attr:`uninitialized_read_check` is set. Takes effect at model build time.
+        """
+
+    @uninitialized_read_mode.setter
+    def uninitialized_read_mode(self, arg: str, /) -> None: ...
+    @property
     def device_sync_mode(self) -> bool:
         """
         A boolean that, when ``True``, triggers MAX to force synchronous GPU execution so every device operation waits for completion. This surfaces async errors at their call site but serializes the pipeline. Takes effect at run time.
@@ -453,6 +457,14 @@ class DebugConfig:
 
     @source_tracebacks.setter
     def source_tracebacks(self, arg: bool, /) -> None: ...
+    @property
+    def pre_jit(self) -> bool:
+        """
+        A boolean that, when ``True``, stops graph compilation once the Mojo for the graph has been emitted (see ``ir_output_dir``), skipping the kernel JIT. ``InferenceSession.compile`` then raises :class:`~max.engine.CompilationStopped`. Takes effect at model build time.
+        """
+
+    @pre_jit.setter
+    def pre_jit(self, arg: bool, /) -> None: ...
     @property
     def op_log_level(self) -> str:
         r"""

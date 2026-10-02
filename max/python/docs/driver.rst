@@ -24,9 +24,8 @@ Devices
    CPU
    Device
    DeviceEvent
+   DeviceQueue
    DeviceSpec
-   DeviceStream
-   NPU
 
 Buffers
 -------
@@ -37,8 +36,9 @@ Buffers
    :template: autosummary/class.rst
 
    Buffer
-   DevicePinnedBuffer
    DLPackArray
+   HostHazardError
+   Usage
 
 .. autosummary::
    :nosignatures:

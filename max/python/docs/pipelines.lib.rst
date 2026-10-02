@@ -17,6 +17,7 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   pipelines.lib.arch_lookup
    pipelines.lib.interfaces
    pipelines.lib.log_probabilities
 
@@ -29,6 +30,7 @@ Configuration
    :template: autosummary/class.rst
 
    DenoisingCacheConfig
+   DenoisingCacheSettings
    KVConnectorConfig
    MAXConfig
    MAXModelConfigBase
@@ -66,6 +68,7 @@ Tokenizers
    :toctree: generated
    :template: autosummary/class.rst
 
+   AudioGenerationTokenizer
    PixelGenerationTokenizer
 
 Utilities
@@ -78,7 +81,11 @@ Utilities
 
    CompilationTimer
    HuggingFaceRepo
+   MemoryPlan
    ModelManifest
+   RetrievedPipeline
+   Speculator
+   VisionPreprocessCache
    WeightPathParser
 
 Functions

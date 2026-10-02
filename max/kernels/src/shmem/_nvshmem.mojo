@@ -65,7 +65,7 @@ def _init_nvshmem_dylib() -> OwnedDLHandle:
         abort(t"failed to load NVSHMEM library: {e}")
 
 
-@always_inline
+@inline(.always)
 def _get_nvshmem_function[
     func_name: StaticString, result_type: TrivialRegisterPassable
 ]() -> result_type:
@@ -260,33 +260,34 @@ def _dtype_to_nvshmem_type[
     ptrdiff_t            ptrdiff       64
     """
 
-    comptime if dtype == DType.float16:
+    comptime __match dtype:
+    case .float16:
         return get_static_string[prefix, "half", suffix, scope]()
-    elif dtype == DType.bfloat16:
+    case .bfloat16:
         return get_static_string[prefix, "bfloat16", suffix, scope]()
-    elif dtype == DType.float32:
+    case .float32:
         return get_static_string[prefix, "float", suffix, scope]()
-    elif dtype == DType.float64:
+    case .float64:
         return get_static_string[prefix, "double", suffix, scope]()
-    elif dtype == DType.int8:
+    case .int8:
         return get_static_string[prefix, "int8", suffix, scope]()
-    elif dtype == DType.uint8:
+    case .uint8:
         return get_static_string[prefix, "uint8", suffix, scope]()
-    elif dtype == DType.int16:
+    case .int16:
         return get_static_string[prefix, "int16", suffix, scope]()
-    elif dtype == DType.uint16:
+    case .uint16:
         return get_static_string[prefix, "uint16", suffix, scope]()
-    elif dtype == DType.int32:
+    case .int32:
         return get_static_string[prefix, "int32", suffix, scope]()
-    elif dtype == DType.uint32:
+    case .uint32:
         return get_static_string[prefix, "uint32", suffix, scope]()
-    elif dtype == DType.int64:
+    case .int64:
         return get_static_string[prefix, "int64", suffix, scope]()
-    elif dtype == DType.uint64:
+    case .uint64:
         return get_static_string[prefix, "uint64", suffix, scope]()
-    elif dtype == DType.int:
+    case .int:
         return get_static_string[prefix, "size", suffix, scope]()
-    else:
+    case _:
         CompilationTarget.unsupported_target_error[
             operation=__get_current_function_name()
         ]()

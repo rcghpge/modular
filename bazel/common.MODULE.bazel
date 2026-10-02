@@ -75,6 +75,9 @@ archive_override(
         "//bazel/public-patches:rules_mypy_pyi_files.patch",
         # https://github.com/bazel-contrib/rules_mypy/pull/141
         "//bazel/public-patches:rules_mypy_transitives.patch",
+        # The aspect applies to every top-level target, so target-configured
+        # type stubs make any cross-compile fail during loading. TODO: upstream.
+        "//bazel/public-patches:rules_mypy_exec_types.patch",
     ],
     strip_prefix = "rules_mypy-0.41.0",
     urls = [
@@ -250,17 +253,17 @@ http_archive(
 http_archive(
     name = "efa_libfabric_prebuilt",
     build_file = "//bazel/public-patches:efa_libfabric_prebuilt.BUILD",
-    sha256 = "a35ed6624ddadd0db37be561c844c0a5cfe71aaf604e6c919e1a8bf914b4cd1f",
+    sha256 = "40fddd77f62e14bb60bafff5b979011cbaa3ac61598d53183da168db779eafda",
     strip_prefix = "efa-libfabric-prebuilt",
-    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/efa-libfabric-prebuilt/2.4.0amzn5.0-mod3/a35ed6624ddadd0db37be561c844c0a5cfe71aaf604e6c919e1a8bf914b4cd1f/efa-libfabric-prebuilt-cpu.tar.xz",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/efa-libfabric-prebuilt/2.4.0amzn5.0-mod4/40fddd77f62e14bb60bafff5b979011cbaa3ac61598d53183da168db779eafda/efa-libfabric-prebuilt-cpu.tar.xz",
 )
 
 http_archive(
     name = "efa_libfabric_prebuilt_cuda",
     build_file = "//bazel/public-patches:efa_libfabric_prebuilt.BUILD",
-    sha256 = "0bfd9160bcc4a79e65833c94b5fee3e873488d0cac830f5da3cb9d308926a3fa",
+    sha256 = "b11916953f7737b5967ff4b8e188a87ee0141196c333cc7dbf54878c90d535f2",
     strip_prefix = "efa-libfabric-prebuilt",
-    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/efa-libfabric-prebuilt/2.4.0amzn5.0-mod3/0bfd9160bcc4a79e65833c94b5fee3e873488d0cac830f5da3cb9d308926a3fa/efa-libfabric-prebuilt-cuda.tar.xz",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/efa-libfabric-prebuilt/2.4.0amzn5.0-mod4/b11916953f7737b5967ff4b8e188a87ee0141196c333cc7dbf54878c90d535f2/efa-libfabric-prebuilt-cuda.tar.xz",
 )
 
 # CUDA Driver API + runtime headers used by libfabric_plugin_lib (-DHAVE_CUDA).
@@ -296,7 +299,7 @@ http_archive(
     url = "https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-30-2.tar.gz",
 )
 
-RUFF_VERSION = "0.14.0"
+RUFF_VERSION = "0.16.3"
 
 [
     http_archive(
@@ -310,9 +313,9 @@ RUFF_VERSION = "0.14.0"
         ),
     )
     for arch, sha in [
-        ("x86_64-unknown-linux-gnu", "28fe06f700caf99eee235f90e6e349f48b7f9a4b0d42e3ee5b3686f9259649a3"),
-        ("aarch64-unknown-linux-gnu", "60fc3b464a723456ba1bc8cd91d29806753c885f72e26ac67b718cee6b35aaca"),
-        ("aarch64-apple-darwin", "0b7c193d5c45eda02226720eb75239fabeca995d5a0eb3830fd2973caa3030ec"),
+        ("x86_64-unknown-linux-gnu", "7ab3b978d2c0b1c96b2323d4e5c4f35284ae1cdf35d2f7399595c74c805f5fa3"),
+        ("aarch64-unknown-linux-gnu", "b9cc833f5db856484b38718c9da195a6ec990707307bda30530913a09705419a"),
+        ("aarch64-apple-darwin", "136a4db6512d9b16dda56ac8604696ed65c3b1a914a142de029e7f8d5006f1d9"),
     ]
 ]
 
@@ -519,8 +522,8 @@ http_archive(
     # Override adds: include_dir (directory rule), resource_directory_filegroup,
     # and exports_files for direct file refs (bin/llvm-strip, libclang_rt.*).
     build_file = "//bazel/public-patches:clang.BUILD",
-    sha256 = "2b3ce493f43c2206275ac34cdfd9d42450bccd79ce725df570bfdc4b7674e29b",
-    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-linux-x86_64/22.1.4/2b3ce493f43c2206275ac34cdfd9d42450bccd79ce725df570bfdc4b7674e29b/llvm-linux-x86_64.tar.xz",
+    sha256 = "4a8c1bd46ac42ee8ff73a27d86b2ec7d922304e0e9ded8b8b7e50c29cc38408f",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-linux-x86_64/23.1.1/4a8c1bd46ac42ee8ff73a27d86b2ec7d922304e0e9ded8b8b7e50c29cc38408f/llvm-linux-x86_64.tar.xz",
 )
 
 http_archive(
@@ -528,8 +531,8 @@ http_archive(
     # Override adds: include_dir (directory rule), resource_directory_filegroup,
     # and exports_files for direct file refs (bin/llvm-strip, libclang_rt.*).
     build_file = "//bazel/public-patches:clang.BUILD",
-    sha256 = "474ff5052ccff6c676ad43f48da1385822bc8ec0120caaacd891c21d813475ab",
-    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-linux-aarch64/22.1.4/474ff5052ccff6c676ad43f48da1385822bc8ec0120caaacd891c21d813475ab/llvm-linux-aarch64.tar.xz",
+    sha256 = "29cc18da13b7a730bc7a9a67c8cfa3048d62cb2133f171a276d41924303f90db",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-linux-aarch64/23.1.1/29cc18da13b7a730bc7a9a67c8cfa3048d62cb2133f171a276d41924303f90db/llvm-linux-aarch64.tar.xz",
 )
 
 http_archive(
@@ -537,8 +540,8 @@ http_archive(
     # Override adds: include_dir (directory rule), resource_directory_filegroup,
     # and exports_files for direct file refs (bin/llvm-strip, libclang_rt.*).
     build_file = "//bazel/public-patches:clang.BUILD",
-    sha256 = "ea118e41dfffd5027b378ec932fff70a06be1ab054ffbdaf8209f64579aeee1c",
-    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-macos/22.1.4/ea118e41dfffd5027b378ec932fff70a06be1ab054ffbdaf8209f64579aeee1c/llvm-macos.tar.xz",
+    sha256 = "84003683b6574d9be56e92f6397a56c1c49ff14739277cb2f7ef3c3d1fb11ac3",
+    url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-macos/23.1.1/84003683b6574d9be56e92f6397a56c1c49ff14739277cb2f7ef3c3d1fb11ac3/llvm-macos.tar.xz",
 )
 
 SHELLCHECK_VERSION = "v0.11.0"
@@ -741,17 +744,36 @@ node.toolchain(node_version = "22.15.1")
 
 npm.npm_translate_lock(
     name = "mojo-lsp-server-node-tests",
-    data = ["//KGEN/test/mojo-lsp-server-node:package.json"],
+    data = ["//Mojo/test/mojo-lsp-server-node:package.json"],
     dev = True,
-    pnpm_lock = "//KGEN/test/mojo-lsp-server-node:pnpm-lock.yaml",
+    pnpm_lock = "//Mojo/test/mojo-lsp-server-node:pnpm-lock.yaml",
 )
 use_repo(npm, "mojo-lsp-server-node-tests")
 
 rules_ts_ext = use_extension("@aspect_rules_ts//ts:extensions.bzl", "ext", dev_dependency = True)
 rules_ts_ext.deps(
-    ts_version_from = "//KGEN/test/mojo-lsp-server-node:package.json",
+    ts_version_from = "//Mojo/test/mojo-lsp-server-node:package.json",
 )
 use_repo(rules_ts_ext, "npm_typescript")
+
+# Used by nanobind
+http_archive(
+    name = "robin_map",
+    build_file = "//bazel/public-patches:robin_map.BUILD",
+    sha256 = "7930dbf9634acfc02686d87f615c0f4f33135948130b8922331c16d90a03250c",
+    strip_prefix = "robin-map-1.4.0",
+    url = "https://github.com/Tessil/robin-map/archive/refs/tags/v1.4.0.tar.gz",
+)
+
+http_archive(
+    name = "nanobind",
+    build_file = "//bazel/public-patches:nanobind.BUILD",
+    integrity = "sha256-JdKEQXtOcml45y690w0nMM4WT89IFXlVS7KE4YmTodU=",
+    strip_prefix = "nanobind-eb2414ef2eda40f07fadaca400bdf9558ed121fe",
+    urls = [
+        "https://github.com/wjakob/nanobind/archive/eb2414ef2eda40f07fadaca400bdf9558ed121fe.tar.gz",
+    ],
+)
 
 # BEGIN GENERATED LOGIT_VERIFICATION GOLDEN HTTP_FILES
 

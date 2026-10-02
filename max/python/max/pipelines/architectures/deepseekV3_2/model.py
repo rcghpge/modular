@@ -22,10 +22,13 @@ from max.engine import InferenceSession
 from max.graph import Graph
 from max.graph.weights import WeightData
 from max.nn.comm.ep import EPCommInitializer, EPConfig
-from max.pipelines.lib import PipelineConfig
 from max.pipelines.weights.quant import parse_quant_config
 from typing_extensions import override
 
+from ..deepseekV3.memory_planner import (
+    _ep_max_rank_send_tokens_for_pipeline,
+    ep_fuse_ffn_combine_send_for_pipeline,
+)
 from ..deepseekV3.model import DeepseekV3Model
 from .deepseekV3_2 import DeepseekV3_2
 from .model_config import DeepseekV3_2Config
@@ -38,13 +41,6 @@ class DeepseekV3_2Model(DeepseekV3Model):
 
     model_config_cls: ClassVar[type[Any]] = DeepseekV3_2Config
 
-    @classmethod
-    def _ep_max_rank_send_tokens_for_pipeline(
-        cls, pipeline_config: PipelineConfig
-    ) -> int:
-        """Each rank holds full-length activations before EP MoE (no RS like V3 TP_EP)."""
-        return pipeline_config.runtime.max_batch_input_tokens
-
     def _create_model_config(
         self, state_dict: dict[str, WeightData]
     ) -> DeepseekV3_2Config:
@@ -55,9 +51,7 @@ class DeepseekV3_2Model(DeepseekV3Model):
         #   == num_devices  ->  DP attention  (each device owns a batch shard)
         #   == 1            ->  TP attention  (heads sharded, tokens replicated)
         data_parallel_degree = self.pipeline_config.model.data_parallel_degree
-        max_batch_total_tokens = (
-            self.pipeline_config.runtime.max_batch_total_tokens
-        )
+        max_batch_total_tokens = self.planned_max_batch_total_tokens
         # PipelineConfig would automatically resolve it if not set by user.
         assert max_batch_total_tokens is not None, "max_length must be set"
 
@@ -87,8 +81,8 @@ class DeepseekV3_2Model(DeepseekV3Model):
                 )
             n_nodes = ep_size // len(self.devices)
 
-            ep_max_rank_send_tokens = (
-                self._ep_max_rank_send_tokens_for_pipeline(self.pipeline_config)
+            ep_max_rank_send_tokens = _ep_max_rank_send_tokens_for_pipeline(
+                self.pipeline_config
             )
 
             ep_kwargs: dict[str, Any] = dict(
@@ -102,6 +96,9 @@ class DeepseekV3_2Model(DeepseekV3Model):
                 n_nodes=n_nodes,
                 dispatch_quant_config=None,
                 use_allreduce=self.pipeline_config.runtime.ep_use_allreduce,
+                fuse_ffn_combine_send=ep_fuse_ffn_combine_send_for_pipeline(
+                    self.pipeline_config, config
+                ),
             )
 
             if config.n_shared_experts == 1:
@@ -138,7 +135,7 @@ class DeepseekV3_2Model(DeepseekV3Model):
             correction_bias_dtype = None
 
         # Initialize config with parameters from pipeline_config
-        model_config = self.model_config_cls.initialize(self.pipeline_config)
+        model_config = self.arch_config
 
         # Finalize config with state_dict-dependent parameters
         model_config.norm_dtype = norm_dtype

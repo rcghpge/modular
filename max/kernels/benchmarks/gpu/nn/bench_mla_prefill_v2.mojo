@@ -90,7 +90,7 @@ from std.benchmark import (
     BenchMetric,
     ThroughputMeasure,
 )
-from std.gpu import *
+from max.gpu import *
 from max.gpu.host import DeviceContext
 from std.utils import StaticTuple
 
@@ -280,10 +280,10 @@ def run_mla_prefill_v2[
             ),
         )
         var _knope0 = LayoutTensorMHAOperand(
-            _k0.as_immut().as_unsafe_any_origin()
+            _k0.as_imm().as_unsafe_any_origin()
         )
         var _krope0 = LayoutTensorMHAOperand(
-            _k0.as_immut().as_unsafe_any_origin()
+            _k0.as_imm().as_unsafe_any_origin()
         )
         var _v0 = TileTensor(
             cb_v.offset_ptr(0).bitcast[Scalar[qkv_type]](),
@@ -296,9 +296,7 @@ def run_mla_prefill_v2[
                 )
             ),
         )
-        var _vop0 = LayoutTensorMHAOperand(
-            _v0.as_immut().as_unsafe_any_origin()
-        )
+        var _vop0 = LayoutTensorMHAOperand(_v0.as_imm().as_unsafe_any_origin())
         comptime _kernel_run = _kernel.run[
             type_of(_knope0),
             type_of(_krope0),
@@ -308,6 +306,8 @@ def run_mla_prefill_v2[
             _o0.dtype,
             _q0.LayoutType,
             _o0.LayoutType,
+            _q0.Engine,
+            _o0.Engine,
             ragged=False,
         ]
         comptime _DUMP_ASM: StaticString = get_defined_string["dump_asm", ""]()
@@ -336,17 +336,15 @@ def run_mla_prefill_v2[
         var num_cu = len(md.work_indptr) - 1
         var n_indptr = len(md.work_indptr)
         var n_info = len(md.work_info)
-        var host_work_indptr = ctx.enqueue_create_host_buffer[DType.int32](
-            n_indptr
-        )
-        var host_work_info = ctx.enqueue_create_host_buffer[DType.int32](n_info)
+        var host_work_indptr = ctx.enqueue_create_host_buffer[.int32](n_indptr)
+        var host_work_info = ctx.enqueue_create_host_buffer[.int32](n_info)
         ctx.synchronize()
         for i in range(n_indptr):
             host_work_indptr[i] = md.work_indptr[i]
         for i in range(n_info):
             host_work_info[i] = md.work_info[i]
-        var dev_work_indptr = ctx.enqueue_create_buffer[DType.int32](n_indptr)
-        var dev_work_info = ctx.enqueue_create_buffer[DType.int32](n_info)
+        var dev_work_indptr = ctx.enqueue_create_buffer[.int32](n_indptr)
+        var dev_work_info = ctx.enqueue_create_buffer[.int32](n_info)
         ctx.enqueue_copy(dev_work_indptr, host_work_indptr)
         ctx.enqueue_copy(dev_work_info, host_work_info)
         ctx.synchronize()
@@ -354,22 +352,23 @@ def run_mla_prefill_v2[
         var work_info_ptr = dev_work_info.unsafe_ptr()
         var num_works = md.num_works
 
-        @__parameter
-        @always_inline
-        @__copy_capture(
-            cb_q,
-            cb_k,
-            cb_v,
-            cb_o,
-            compiled,
-            mask,
-            work_indptr_ptr,
-            work_info_ptr,
-            num_works,
-            num_cu,
-        )
-        def bench_func(mut b: Bencher):
-            @always_inline
+        @inline(.always)
+        def bench_func(
+            mut b: Bencher,
+        ) raises {
+            var cb_q,
+            var cb_k,
+            var cb_v,
+            var cb_o,
+            var compiled,
+            var mask,
+            var work_indptr_ptr,
+            var work_info_ptr,
+            var num_works,
+            var num_cu,
+            imm,
+        }:
+            @inline(.always)
             def _kernel_launch(ctx: DeviceContext, iteration: Int) raises {imm}:
                 var q_ptr = cb_q.offset_ptr(iteration).bitcast[
                     Scalar[qkv_type]
@@ -425,10 +424,10 @@ def run_mla_prefill_v2[
                     ),
                 )
                 var k_nope_op = LayoutTensorMHAOperand(
-                    k_tt.as_immut().as_unsafe_any_origin()
+                    k_tt.as_imm().as_unsafe_any_origin()
                 )
                 var k_rope_op = LayoutTensorMHAOperand(
-                    k_tt.as_immut().as_unsafe_any_origin()
+                    k_tt.as_imm().as_unsafe_any_origin()
                 )
 
                 var v_tt = TileTensor(
@@ -443,7 +442,7 @@ def run_mla_prefill_v2[
                     ),
                 )
                 var v_op = LayoutTensorMHAOperand(
-                    v_tt.as_immut().as_unsafe_any_origin()
+                    v_tt.as_imm().as_unsafe_any_origin()
                 )
 
                 # Enqueue ONLY — the kernel was compiled once above and the
@@ -510,7 +509,8 @@ def run_mla_prefill_v2[
             var o_bytes = batch_size * num_heads * seq_len * _D_NOPE * out_b
             return q_bytes + k_bytes + v_bytes + o_bytes
 
-        m.bench_function[bench_func](
+        m.bench_function(
+            bench_func,
             BenchId(
                 "mla_prefill_v2",
                 # fmt: off
@@ -566,8 +566,8 @@ def main() raises:
     # The defaults below pin that shape (FP8 e4m3fn, kv_block=128) at the
     # DSV-TP4 head count (num_heads=32, num_kv_heads=1) — the reference target
     # config and the MlaPrefillV2 Phase-1 correctness shape.
-    comptime qkv_type = get_defined_dtype["dtype", DType.float8_e4m3fn]()
-    comptime out_type = get_defined_dtype["out_type", DType.bfloat16]()
+    comptime qkv_type = get_defined_dtype["dtype", .float8_e4m3fn]()
+    comptime out_type = get_defined_dtype["out_type", .bfloat16]()
     comptime num_heads = get_defined_int["num_heads", 32]()
     comptime num_kv_heads = get_defined_int["num_kv_heads", 1]()
     comptime kv_block = get_defined_int["kv_block", 128]()

@@ -17,14 +17,16 @@ import os
 import time
 
 import opentelemetry.trace as otel_trace
+from max._core import request_context as _request_context
 from max.pipelines.context import (
     TextAndVisionContext,
     TextContext,
     TextGenerationOutput,
 )
-from max.pipelines.kv_cache import PagedKVCacheManager
+from max.pipelines.kv_cache import PagedKVCacheManagerInterface
 from max.pipelines.lib import (
     PIPELINE_REGISTRY,
+    MemoryPlan,
     OverlapTextGenerationPipeline,
     PipelineConfig,
     TextGenerationPipeline,
@@ -42,6 +44,7 @@ from max.serve.queue import (
 )
 from max.serve.scheduler.interface import Scheduler
 from max.serve.scheduler_result import SchedulerResult
+from max.serve.telemetry.common import batch_spans_enabled
 from opentelemetry import propagate as otel_propagate
 from opentelemetry.context import Context as OtelContext
 
@@ -94,7 +97,7 @@ class TokenGenerationScheduler(Scheduler):
             dict[RequestID, SchedulerResult[TextGenerationOutput]]
         ],
         cancel_queue: MAXPullQueue[list[RequestID]],
-        kv_cache: PagedKVCacheManager,
+        kv_cache: PagedKVCacheManagerInterface,
         support_empty_batches: bool = False,
         dp_padder: DPBatchPadder | None = None,
         max_pending_requests: int | None = None,
@@ -145,6 +148,7 @@ class TokenGenerationScheduler(Scheduler):
         )
         self._prefill_spans: dict[RequestID, otel_trace.Span] = {}
         self._decode_spans: dict[RequestID, otel_trace.Span] = {}
+        self._batch_counter: int = 0
 
     @traced
     def _retrieve_pending_requests(self) -> None:
@@ -225,8 +229,8 @@ class TokenGenerationScheduler(Scheduler):
 
         # When the overlap pipeline is actually overlapping, the wall-clock
         # time measured below reflects the previous batch's sync, not the
-        # current batch. Flag it so the logger emits "Previous Execution:"
-        # and defers execution telemetry to the completed-batch stats below.
+        # current batch. Flag it so the logger attributes execution time and
+        # throughput to the completed-batch stats collected below.
         is_overlap_active = bool(
             getattr(self.pipeline, "overlap_active", False)
         )
@@ -268,7 +272,7 @@ class TokenGenerationScheduler(Scheduler):
             batch_video_metrics=self.pipeline.batch_video_metrics()
             if hasattr(self.pipeline, "batch_video_metrics")
             else None,
-            batch_execution_time_is_previous=is_overlap_active,
+            overlap_active=is_overlap_active,
             completed_batch_stats=completed_batch_stats,
         )
 
@@ -288,6 +292,8 @@ class TokenGenerationScheduler(Scheduler):
     def _schedule(self, inputs: TextGenerationInputs[TextContext]) -> int:
         """Returns the number of terminated requests."""
         tracing_enabled = _tracing_enabled()
+        batch_id = self._batch_counter
+        self._batch_counter += 1
 
         # Capture which requests are currently in the CE (prefill) phase so we
         # can detect the CE→TG transition and end their prefill spans below.
@@ -298,62 +304,93 @@ class TokenGenerationScheduler(Scheduler):
             if tracing_enabled
             else None
         )
-
-        # Execute the batch.
-        responses = self.pipeline.execute(inputs)
-
-        # Filter out all responses for requests that are already released.
-        # We can get a response for a request that is already released due to
-        # the quirk of overlap scheduling where the pipeline may produce an extra
-        # token after EOS.
-        responses = {
-            req_id: response
-            for req_id, response in responses.items()
-            if self.batch_constructor.contains(req_id)
-        }
-
-        # Advance the requests: moves completed CE requests into TG.
-        self.batch_constructor.advance_requests(inputs)
-
-        # Any request that was CE before and is now TG just completed prefill.
-        if tracing_enabled:
-            assert ce_ids_before is not None
-            tg_ids_after = set(self.batch_constructor.all_tg_reqs.keys())
-            for req_id in ce_ids_before & tg_ids_after:
-                if req_id in self._prefill_spans:
-                    self._prefill_spans.pop(req_id).end()
-                if req_id in self._decode_spans:
-                    # Preempted back to CE and now decoding again: the prior
-                    # decode span was never closed on preemption, so close it
-                    # here instead of leaking it via overwrite below.
-                    self._decode_spans.pop(req_id).end()
-                self._decode_spans[req_id] = _tracer.start_span(
-                    "max.phase.decode",
-                    context=_parent_trace_context(
-                        self.batch_constructor.all_tg_reqs[req_id]
-                    ),
-                    attributes={"max.request_id": str(req_id)},
-                )
-
-        # Release terminated requests from the batch
-        num_terminated_requests = 0
-        for request_id, response in responses.items():
-            if response.is_done:
-                self.batch_constructor.release_request(request_id)
-                num_terminated_requests += 1
-                if request_id in self._decode_spans:
-                    self._decode_spans.pop(request_id).end()
-
-        # send the responses to the API process
-        if responses:
-            self.response_queue.put_nowait(
-                {
-                    req_id: SchedulerResult.create(response)
-                    for req_id, response in responses.items()
-                }
+        # INVALID_SPAN is OTel's no-op singleton. Real spans are opt-in: a
+        # root span per forward pass escapes parent-based sampling, which is
+        # too much export volume to be always-on.
+        batch_span: otel_trace.Span = otel_trace.INVALID_SPAN
+        if tracing_enabled and batch_spans_enabled():
+            batch_span = _tracer.start_span(
+                "max.batch",
+                attributes={
+                    "max.batch_id": batch_id,
+                    "max.ce_count": len(self.batch_constructor.all_ce_reqs),
+                    "max.tg_count": len(self.batch_constructor.all_tg_reqs),
+                },
             )
 
-        return num_terminated_requests
+        try:
+            # Execute the batch. C++ telemetry that opts in reads the batch id
+            # set here.
+            _request_context.set_batch_id(batch_id)
+            try:
+                responses = self.pipeline.execute(inputs)
+            finally:
+                _request_context.clear_batch_id()
+
+            # Filter out all responses for requests that are already released.
+            # We can get a response for a request that is already released due to
+            # the quirk of overlap scheduling where the pipeline may produce an extra
+            # token after EOS.
+            responses = {
+                req_id: response
+                for req_id, response in responses.items()
+                if self.batch_constructor.contains(req_id)
+            }
+
+            # Advance the requests: moves completed CE requests into TG.
+            self.batch_constructor.advance_requests(inputs)
+
+            # Any request that was CE before and is now TG just completed
+            # prefill. Skipped when tracing is disabled: see ce_ids_before.
+            if tracing_enabled:
+                assert ce_ids_before is not None
+                tg_ids_after = set(self.batch_constructor.all_tg_reqs.keys())
+                for req_id in ce_ids_before & tg_ids_after:
+                    if req_id in self._prefill_spans:
+                        span = self._prefill_spans.pop(req_id)
+                        span.set_attribute("max.batch_id", batch_id)
+                        span.end()
+                    if req_id in self._decode_spans:
+                        # Preempted back to CE and now decoding again: the
+                        # prior decode span was never closed on preemption,
+                        # so close it here instead of leaking it via
+                        # overwrite below.
+                        self._decode_spans.pop(req_id).end()
+                    self._decode_spans[req_id] = _tracer.start_span(
+                        "max.phase.decode",
+                        context=_parent_trace_context(
+                            self.batch_constructor.all_tg_reqs[req_id]
+                        ),
+                        attributes={
+                            "max.request_id": str(req_id),
+                            "max.batch_id": batch_id,
+                        },
+                    )
+
+            # Release terminated requests from the batch
+            num_terminated_requests = 0
+            for request_id, response in responses.items():
+                if response.is_done:
+                    self.batch_constructor.release_request(request_id)
+                    num_terminated_requests += 1
+                    if request_id in self._decode_spans:
+                        self._decode_spans.pop(request_id).end()
+
+            # send the responses to the API process
+            if responses:
+                self.response_queue.put_nowait(
+                    {
+                        req_id: SchedulerResult.create(response, batch_id)
+                        for req_id, response in responses.items()
+                    }
+                )
+
+            batch_span.set_attribute(
+                "max.terminated_count", num_terminated_requests
+            )
+            return num_terminated_requests
+        finally:
+            batch_span.end()
 
 
 def load_text_generation_scheduler(
@@ -364,11 +401,12 @@ def load_text_generation_scheduler(
         dict[RequestID, SchedulerResult[TextGenerationOutput]]
     ],
     cancel_queue: MAXPullQueue[list[RequestID]],
+    memory_plan: MemoryPlan | None,
     max_pending_requests: int | None = None,
 ) -> TokenGenerationScheduler:
     # Create Scheduler Config.
     scheduler_config = TokenGenerationSchedulerConfig.from_pipeline_config(
-        pipeline_config, pipeline.max_batch_size
+        pipeline_config, pipeline.max_batch_size, memory_plan
     )
 
     # Build DP batch padder when DP > 1 with device graph capture.
@@ -385,10 +423,14 @@ def load_text_generation_scheduler(
         # the first padded batch.
         context_type = PIPELINE_REGISTRY.retrieve_context_type(pipeline_config)
         assert issubclass(context_type, TextContext)
+        assert (
+            memory_plan is not None
+            and memory_plan.planned_max_length is not None
+        ), "DP batch padding requires a memory plan with a max length"
         dp_padder = DPBatchPadder(
             dp_size=scheduler_config.data_parallel_degree,
             kv_manager=kv_manager,
-            max_length=pipeline._pipeline_model.max_seq_len,
+            max_length=memory_plan.planned_max_length,
             model_name=pipeline_config.model.model_name,
             pipeline=pipeline,
             context_type=context_type,

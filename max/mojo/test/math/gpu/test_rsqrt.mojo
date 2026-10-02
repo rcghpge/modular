@@ -15,7 +15,7 @@ from std.math import rsqrt, sqrt
 from std.sys import simd_width_of
 
 from max.algorithm.functional import elementwise
-from std.gpu import *
+from max.gpu import *
 from max.gpu.host import DeviceContext, HostBuffer, get_gpu_target
 from std.testing import *
 
@@ -45,7 +45,7 @@ def run_elementwise[
     var in_buffer = Span(unsafe_ptr=in_device.unsafe_ptr(), length=length)
     var out_buffer = Span(unsafe_ptr=out_device.unsafe_ptr(), length=length)
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(out_buffer, in_buffer)
     @__parameter
     def func[simd_width: Int, alignment: Int = 1](idx: Coord):
@@ -66,7 +66,7 @@ def run_elementwise[
                 "values did not match at position ", i, " for dtype=", dtype
             )
 
-            comptime if dtype == DType.float32:
+            comptime if dtype == .float32:
                 assert_almost_equal(
                     out_host[i],
                     rsqrt(in_host[i]),
@@ -86,12 +86,12 @@ def run_elementwise[
 
 def test_rsqrt() raises:
     with DeviceContext() as ctx:
-        run_elementwise[DType.float16, sqrt](ctx)
-        run_elementwise[DType.float32, sqrt](ctx)
-        run_elementwise[DType.float64, sqrt](ctx)
-        run_elementwise[DType.float16, rsqrt](ctx)
-        run_elementwise[DType.float32, rsqrt](ctx)
-        run_elementwise[DType.float64, rsqrt](ctx)
+        run_elementwise[.float16, sqrt](ctx)
+        run_elementwise[.float32, sqrt](ctx)
+        run_elementwise[.float64, sqrt](ctx)
+        run_elementwise[.float16, rsqrt](ctx)
+        run_elementwise[.float32, rsqrt](ctx)
+        run_elementwise[.float64, rsqrt](ctx)
 
 
 def main() raises:

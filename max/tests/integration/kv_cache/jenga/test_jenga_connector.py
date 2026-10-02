@@ -1,0 +1,668 @@
+# ===----------------------------------------------------------------------=== #
+# Copyright (c) 2026, Modular Inc. All rights reserved.
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ===----------------------------------------------------------------------=== #
+
+"""Jenga's KVConnector hookup, driven by a fake connector.
+
+The real connectors need a GPU, so these use a stand-in that records what it
+was asked for and completes only when told to -- which is what lets the
+deferred publish be tested: an onloaded page must stay invisible to other
+requests until its copy has actually landed.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+
+import numpy as np
+import pytest
+from max.nn.kv_cache import KVCacheGroupId, PagedKVLeafRegion
+from max.nn.kv_cache.metrics import KVCacheMetrics
+from max.pipelines.context import TextContext, TokenBuffer
+from max.pipelines.kv_cache import InsufficientBlocksError
+from max.pipelines.kv_cache.kv_connector import (
+    ByteCount,
+    KVConnector,
+    KVConnectorTransfer,
+    KVLoadRefused,
+    KVTransfer,
+)
+from max.pipelines.kv_cache.paged_kv_cache.jenga_block_manager import (
+    JengaBlockManager,
+    KVLeafInfo,
+    create_groups,
+    create_pools,
+)
+from max.pipelines.request.base import RequestID
+
+FULL = "full"
+VALUES = "values"
+SCALES = "scales"
+SLIDING = "sliding"
+
+
+class FakeTransfer:
+    """A transfer that reports complete only once ``synchronize`` is called.
+
+    Setting ``fails`` makes every poll raise, as a terminal transfer failure
+    does: the destination blocks hold no valid KV, and the failure is sticky so
+    a second poller cannot see completion instead.
+    """
+
+    def __init__(self, g0: Mapping[str, Sequence[int]] | None = None) -> None:
+        self.g0_blocks_per_leaf = {} if g0 is None else g0
+        self.done = False
+        self.fails = False
+
+    def is_complete(self) -> bool:
+        if self.fails:
+            raise RuntimeError("transfer failed")
+        return self.done
+
+    def synchronize(self) -> None:
+        self.done = True
+
+
+class FakeConnector:
+    """Serves whatever hashes it has been told it holds, and records calls."""
+
+    name = "FakeConnector"
+
+    def __init__(
+        self,
+        leaves: Mapping[str, KVCacheGroupId] | Sequence[str],
+        asynchronous: bool = True,
+    ) -> None:
+        self.leaves = (
+            dict(leaves)
+            if isinstance(leaves, Mapping)
+            else {leaf: KVCacheGroupId.full() for leaf in leaves}
+        )
+        self.held: set[bytes] = set()
+        self.evict_before_load: set[bytes] = set()
+        self.asynchronous = asynchronous
+        self.lookups: list[tuple[list[bytes], int, bytes | None]] = []
+        self.loads: list[
+            tuple[dict[str, list[int]], dict[str, list[bytes]], int]
+        ] = []
+        self.offloads: list[tuple[dict[str, list[int]], list[bytes]]] = []
+        self.touches: list[tuple[list[bytes], int]] = []
+        self.transfers: list[FakeTransfer] = []
+        self.polls = 0
+
+    def lookup(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> Mapping[str, Sequence[bool]]:
+        """States residency and nothing else.
+
+        What a pattern of residency is WORTH is the manager's to work out from
+        each leaf's shape, which is the point of the split.
+        """
+        self.lookups.append((list(block_hashes), replica_idx, hint))
+        return {
+            leaf_id: [h in self.held for h in block_hashes]
+            for leaf_id in self.leaves
+        }
+
+    def load(
+        self,
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Mapping[str, Sequence[bytes]],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> KVTransfer:
+        self.loads.append(
+            (
+                {leaf: list(ids) for leaf, ids in block_ids.items()},
+                {leaf: list(hs) for leaf, hs in block_hashes.items()},
+                replica_idx,
+            )
+        )
+        for leaf_id, hashes in block_hashes.items():
+            assert len(hashes) == len(block_ids[leaf_id]), (
+                f"leaf {leaf_id!r} got {len(block_ids[leaf_id])} blocks for "
+                f"{len(hashes)} hashes"
+            )
+            for block_hash in hashes:
+                if block_hash in self.evict_before_load:
+                    raise KVLoadRefused(
+                        f"evicted between lookup and load: {block_hash!r}",
+                        leaf_id=leaf_id,
+                        block_hash=block_hash,
+                    )
+                assert block_hash in self.held, (
+                    f"asked for {block_hash!r}, which lookup never reported"
+                )
+        transfer = FakeTransfer()
+        if not self.asynchronous:
+            transfer.done = True
+        self.transfers.append(transfer)
+        return transfer
+
+    def offload(
+        self,
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+    ) -> KVConnectorTransfer:
+        self.offloads.append(
+            (
+                {leaf: list(ids) for leaf, ids in block_ids.items()},
+                list(block_hashes),
+            )
+        )
+        self.held.update(block_hashes)
+        transfer = FakeTransfer(
+            {leaf: list(ids) for leaf, ids in block_ids.items()},
+        )
+        if not self.asynchronous:
+            transfer.done = True
+        self.transfers.append(transfer)
+        return transfer
+
+    def touch(
+        self, block_hashes: Sequence[bytes], replica_idx: int = 0
+    ) -> None:
+        self.touches.append((list(block_hashes), replica_idx))
+
+    def poll_transfers(self) -> None:
+        self.polls += 1
+
+    def reset_prefix_cache(self) -> None:
+        self.held.clear()
+
+    def shutdown(self) -> None:
+        return None
+
+    @property
+    def metrics(self) -> KVCacheMetrics:
+        return KVCacheMetrics()
+
+    def take_metrics(self) -> KVCacheMetrics:
+        return self.metrics
+
+    @property
+    def host_byte_count(self) -> ByteCount:
+        return ByteCount(free=1, total=2)
+
+    @property
+    def disk_byte_count(self) -> ByteCount:
+        return ByteCount(free=3, total=4)
+
+
+def make_ctx(tokens: Sequence[int]) -> TextContext:
+    return TextContext(
+        request_id=RequestID(),
+        max_length=4096,
+        tokens=TokenBuffer(np.array(tokens, dtype=np.int64)),
+    )
+
+
+def make_manager(
+    connector: KVConnector | None,
+    leaves: Sequence[str] = (FULL,),
+    num_huge_blocks: int = 16,
+    leaf_infos: Mapping[str, KVLeafInfo] | None = None,
+) -> JengaBlockManager:
+    leaf_infos = leaf_infos or {
+        leaf: KVLeafInfo(1, KVCacheGroupId.full()) for leaf in leaves
+    }
+    pools = create_pools(leaf_infos, num_huge_blocks)
+    return JengaBlockManager(
+        pools=pools,
+        groups=create_groups(leaf_infos, pools, 1, enable_prefix_caching=True),
+        leaves={
+            leaf_id: PagedKVLeafRegion(
+                leaf_id=leaf_id,
+                group_id=info.group_id,
+                bytes_per_page=1,
+                page_size=1,
+            )
+            for leaf_id, info in leaf_infos.items()
+            if not info.group_id.is_recurrent()
+        },
+        block_size=1,
+        enable_prefix_caching=True,
+        max_num_input_tokens=None,
+        num_draft_tokens=0,
+        num_draft_tokens_per_step=0,
+        connector=connector,
+    )
+
+
+def test_offload_then_onload_defers_publish_until_the_copy_lands() -> None:
+    connector = FakeConnector([FULL])
+    manager = make_manager(connector)
+
+    # A forward's committed blocks are saved out, and an async offload pins
+    # its sources until the write lands.
+    first = make_ctx([1, 2, 3, 4])
+    manager.claim(first)
+    manager.alloc(first)
+    first.update(9)
+    manager.step(first)
+    manager.offload(0)
+    assert connector.offloads, "no offload issued"
+    _, offloaded_hashes = connector.offloads[-1]
+    assert manager.pending_transfers_exist(0), "async offload did not pin"
+    manager.release(first)
+
+    # Land the offload: a pinned commit survives reset_prefix_cache, so the
+    # device tier is only truly empty once those pins are gone.
+    for pending in connector.transfers:
+        pending.synchronize()
+    manager.poll_transfers()
+    assert not manager.pending_transfers_exist(0), "offload pins never dropped"
+    manager.reset_prefix_cache()
+    assert not manager.pools[0].prefix_caches[FULL], "device tier not empty"
+
+    # With the device tier empty, the same prompt must be served by the
+    # connector instead.
+    connector.held = set(offloaded_hashes)
+    connector.loads.clear()
+    second = make_ctx([1, 2, 3, 4])
+    manager.claim(second)
+    transfer = manager.alloc(second)
+    assert connector.loads, "no load issued"
+    asked = connector.loads[-1][1][FULL]
+    served = len(asked)
+    assert served > 0
+    assert second.tokens.processed_length == served
+    assert not transfer.is_complete(), "async load should still be in flight"
+
+    # The heart of it: nothing may read these pages before the copy lands.
+    prefix_cache = manager.pools[0].prefix_caches[FULL]
+    assert all(h not in prefix_cache for h in asked[:served]), (
+        "onloaded pages were published before their copy landed"
+    )
+    transfer.synchronize()
+    manager.poll_transfers()
+    assert any(h in prefix_cache for h in asked[:served]), (
+        "onloaded pages were never published after landing"
+    )
+    assert not manager.pending_transfers_exist(0), "onload pins never dropped"
+
+
+def test_multi_leaf_sends_distinct_per_leaf_block_ids() -> None:
+    """Each leaf is tiled separately, so both must reach the connector.
+
+    A single id list broadcast across leaves -- what a non-Jenga manager can
+    get away with -- would address one leaf with the other's page index.
+    """
+    connector = FakeConnector([VALUES, SCALES])
+    manager = make_manager(connector, leaves=(VALUES, SCALES))
+    ctx = make_ctx([1, 2, 3, 4])
+    manager.claim(ctx)
+    manager.alloc(ctx)
+    ctx.update(9)
+    manager.step(ctx)
+    manager.offload(0)
+
+    assert connector.offloads, "no offload issued"
+    block_ids, hashes = connector.offloads[-1]
+    assert set(block_ids) == {VALUES, SCALES}
+    assert len(block_ids[VALUES]) == len(block_ids[SCALES]) == len(hashes)
+    assert block_ids[VALUES] != block_ids[SCALES], (
+        "leaves shared a page index; they have separate bid spaces"
+    )
+
+
+def test_device_hit_and_onload_splice_into_one_run() -> None:
+    """A partial device hit is extended by the connector, not replaced."""
+    connector = FakeConnector([FULL], asynchronous=False)
+    manager = make_manager(connector)
+
+    first = make_ctx([1, 2, 3, 4, 5])
+    manager.claim(first)
+    manager.alloc(first)
+    first.update(9)
+    manager.step(first)
+    manager.offload(0)
+    _, offloaded = connector.offloads[-1]
+    manager.release(first)
+
+    # Keep only the leading block on device; the connector still holds the
+    # rest, so the two hits have to meet in the middle.
+    manager.reset_prefix_cache()
+    connector.held = set(offloaded)
+    pool = manager.pools[0]
+    assert not pool.prefix_caches[FULL]
+    replay = make_ctx([1])
+    manager.claim(replay)
+    manager.alloc(replay)
+    replay.update(9)
+    manager.step(replay)
+    manager.release(replay)
+    assert len(pool.prefix_caches[FULL]) == 1
+
+    connector.loads.clear()
+    second = make_ctx([1, 2, 3, 4, 5])
+    manager.claim(second)
+    manager.alloc(second)
+
+    # The replay's own last token is never hashed, so one block stays uncached.
+    reusable = offloaded[:-1]
+    asked = connector.loads[-1][1][FULL]
+    assert manager.metrics.device_blocks_served == 1, (
+        "device hit should stop at the one cached block"
+    )
+    assert asked == list(reusable[1:]), (
+        "onload must resume after the device hit"
+    )
+    assert second.cached_prefix_length == len(reusable)
+    assert second.cached_prefix_external_length == len(reusable) - 1
+    assert second.tokens.processed_length == len(reusable)
+    # Recency covers the whole reused run, device hit AND connector onload,
+    # which is what BlockManager touches on the legacy path. Gating the touch
+    # on the device hit alone would skip it entirely under
+    # MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE, where there is never one.
+    # `release` also re-ranks a finished request's sequence (CLIN-1893), so
+    # earlier releases in this test contribute touches of their own. The
+    # admission touch is the one under test, and it is the most recent.
+    assert connector.touches[-1] == (list(reusable), 0)
+    # One contiguous row: the device page first, then the onloaded ones,
+    # then whatever the forward still has to fill.
+    row = manager.get_req_blocks_per_leaf(second)[FULL]
+    assert row[: len(reusable)] == [
+        pool.prefix_caches[FULL][h].bid for h in reusable
+    ]
+
+
+def test_onload_is_skipped_when_the_run_does_not_fit() -> None:
+    """Onloading is all-or-nothing: a run the pool cannot hold is dropped."""
+    connector = FakeConnector([VALUES, SCALES], asynchronous=False)
+    filler = make_manager(
+        connector, leaves=(VALUES, SCALES), num_huge_blocks=16
+    )
+    ctx = make_ctx([1, 2, 3, 4, 5])
+    filler.claim(ctx)
+    filler.alloc(ctx)
+    ctx.update(9)
+    filler.step(ctx)
+    filler.offload(0)
+    assert connector.held
+
+    # Two huge blocks between them cannot carve a 4-page run for both leaves.
+    tight = make_manager(connector, leaves=(VALUES, SCALES), num_huge_blocks=3)
+    pool = tight.pools[0]
+    free_before = len(pool.free_huge_blocks)
+    connector.loads.clear()
+    replay = make_ctx([1, 2, 3, 4, 5])
+    tight.claim(replay)
+    with pytest.raises(InsufficientBlocksError):
+        tight.alloc(replay)
+
+    assert not connector.loads, "asked for a run the pool cannot hold"
+    assert replay.tokens.processed_length == 0
+    # Nothing was drawn on the way out.
+    assert len(pool.free_huge_blocks) == free_before
+    assert not pool.prefix_caches[VALUES]
+
+
+def test_a_lookup_that_finds_nothing_posts_no_load() -> None:
+    """A miss asks and then stops. Nothing is owed back to the connector.
+
+    The connector holds nothing, so the reconcile agrees on no prefix. What a
+    leasing connector does with the lookup it took is its own business -- the
+    manager has no release to call.
+    """
+    connector = FakeConnector([VALUES, SCALES], asynchronous=False)
+    manager = make_manager(
+        connector, leaves=(VALUES, SCALES), num_huge_blocks=16
+    )
+    ctx = make_ctx([1, 2, 3, 4, 5])
+    manager.claim(ctx)
+    manager.alloc(ctx)
+
+    assert connector.lookups, "the connector was never asked"
+    assert not connector.loads
+
+
+def test_last_level_cache_only_forces_every_hit_through_the_connector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The benchmarking flag disables device hits, not device commits."""
+    monkeypatch.setenv("MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE", "1")
+    connector = FakeConnector([FULL], asynchronous=False)
+    manager = make_manager(connector)
+
+    first = make_ctx([1, 2, 3, 4, 5])
+    manager.claim(first)
+    manager.alloc(first)
+    first.update(9)
+    manager.step(first)
+    manager.offload(0)
+    _, offloaded = connector.offloads[-1]
+    manager.release(first)
+
+    # The device prefix cache still holds the run; the lookup must ignore it.
+    pool = manager.pools[0]
+    assert all(h in pool.prefix_caches[FULL] for h in offloaded)
+
+    connector.held = set(offloaded)
+    connector.loads.clear()
+    second = make_ctx([1, 2, 3, 4, 5])
+    manager.claim(second)
+    manager.alloc(second)
+
+    assert manager.metrics.device_blocks_served == 0
+    assert second.cached_prefix_external_length == second.cached_prefix_length
+    assert second.cached_prefix_length > 0
+    assert connector.loads[-1][1][FULL] == list(offloaded[:-1])
+    # The recency touch must still fire with NO device hit. This is the
+    # regression guard for the call site's own rationale: gating it on
+    # `num_hit_blocks` instead of the reused run skips it entirely under
+    # MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE, which is exactly the
+    # configuration that leans on the connector hardest. No other test can see
+    # that mutation, because every other one has a device hit and the touch
+    # argument is byte-identical either way.
+    assert connector.touches[-1] == (list(offloaded[:-1]), 0)
+
+
+def test_alloc_drains_landed_transfers_so_pins_do_not_accumulate() -> None:
+    """Offload pins are returned by the next alloc, as in the paged manager.
+
+    Nothing in the serving loop calls ``poll_transfers`` on its own, so an
+    alloc that skips the drain leaks every offload source for the whole run.
+    """
+    connector = FakeConnector([FULL])
+    manager = make_manager(connector)
+    pool = manager.pools[0]
+    free_huge = len(pool.free_huge_blocks)
+
+    for _ in range(4):
+        ctx = make_ctx([1, 2, 3, 4])
+        manager.claim(ctx)
+        manager.alloc(ctx)
+        ctx.update(9)
+        manager.step(ctx)
+        manager.offload(0)
+        manager.release(ctx)
+        # The copy engine finishes between iterations.
+        for pending in connector.transfers:
+            pending.synchronize()
+
+    assert manager.pending_transfers_exist(0), "offload never pinned"
+    drain = make_ctx([7, 8])
+    manager.claim(drain)
+    manager.alloc(drain)
+    manager.release(drain)
+
+    assert not manager.pending_transfers_exist(0), "alloc did not drain pins"
+    assert len(pool.free_huge_blocks) == free_huge, (
+        "huge blocks never came back: pinned pages kept them out of the pool"
+    )
+
+
+def test_swa_connector_onload_null_pads_and_skips_prefix_cache_commit() -> None:
+    groups = {
+        FULL: KVCacheGroupId.full(),
+        SLIDING: KVCacheGroupId("sliding_window", 4),
+    }
+    connector = FakeConnector(groups, asynchronous=False)
+    manager = make_manager(
+        connector,
+        leaf_infos={
+            FULL: KVLeafInfo(1, groups[FULL]),
+            SLIDING: KVLeafInfo(1, groups[SLIDING]),
+        },
+    )
+
+    first = make_ctx([1, 2, 3, 4, 5, 6])
+    manager.claim(first)
+    manager.alloc(first)
+    first.update(9)
+    manager.step(first)
+    manager.offload(0)
+    _, offloaded = connector.offloads[-1]
+    manager.release(first)
+    manager.reset_prefix_cache()
+    connector.held = set(offloaded)
+
+    replay = make_ctx([1, 2, 3, 4, 5, 6])
+    manager.claim(replay)
+    manager.alloc(replay)
+
+    block_ids, hashes, _ = connector.loads[-1]
+    asked = hashes[FULL]
+    assert asked == list(offloaded[:-1])
+    # The windowed leaf is asked only for the tail its attention reads, and
+    # given exactly that many blocks.
+    window = groups[SLIDING].blocks_in_window(1)
+    assert hashes[SLIDING] == asked[-window:]
+    assert len(block_ids[SLIDING]) == window
+
+    pool = manager.pools[0]
+    sliding_blocks = manager.get_req_blocks_per_leaf(replay)[SLIDING]
+    null_count = len(asked) - groups[SLIDING].blocks_in_window(1)
+    assert sliding_blocks[:null_count] == [0] * null_count
+    assert len(pool.prefix_caches[SLIDING]) == len(asked) - null_count
+    assert all(
+        not block.is_null for block in pool.prefix_caches[SLIDING].values()
+    )
+    assert len(pool.prefix_caches[FULL]) == len(asked)
+
+
+def test_the_drain_settles_offloads_rather_than_step() -> None:
+    """A posted offload is settled by the manager's drain, not by ``step``.
+
+    dKV's ``offload`` only acquires its slots and posts the writes; the blocks
+    stay ``Filling`` -- counted under ``g1_blocks`` but unreadable -- until
+    their transfer settles. Nothing settling them is a 0% hit rate while dKV
+    appears to fill up. ``step`` used to run a post-forward barrier for that;
+    the transfer's own completion is what does it now, observed by
+    ``poll_transfers``, which also hands the connector its own drain.
+    """
+    connector = FakeConnector([FULL])
+    manager = make_manager(connector)
+
+    ctx = make_ctx([1, 2, 3, 4])
+    manager.claim(ctx)
+    manager.alloc(ctx)
+    ctx.update(9)
+    manager.step(ctx)
+    manager.offload(0)
+
+    assert connector.offloads, "step should leave a committed run to offload"
+    posted = connector.transfers[-1]
+    assert not posted.done, "an in-flight offload is not settled by step"
+
+    polls_before = connector.polls
+    manager.poll_transfers()
+    assert connector.polls > polls_before, (
+        "the drain has to reach the connector, whose own transfers settle "
+        "resources no poll of the manager's covers"
+    )
+
+    pool = manager.pools[0]
+    sources = [pool.block(FULL, bid) for bid in posted.g0_blocks_per_leaf[FULL]]
+    # The request holds these pages too, so the write's own pin shows up as one
+    # ref on top of that rather than as an absolute count.
+    pinned = [block.ref_cnt for block in sources]
+
+    posted.synchronize()
+    manager.poll_transfers()
+
+    assert not manager.pending_transfers_exist(0)
+    assert [block.ref_cnt for block in sources] == [n - 1 for n in pinned], (
+        "a settled write has to hand its source pages back"
+    )
+
+
+def test_a_failed_poll_unpins_without_publishing() -> None:
+    """A poll that raises unpins the onload's pages and commits nothing.
+
+    The transfer settled itself on the way to failing, and the pages it was
+    filling hold no valid KV, so publishing them would let any later request
+    hit garbage. The pin still has to come off, or those pages are lost to the
+    pool for the rest of the process.
+    """
+    connector = FakeConnector([FULL])
+    manager = make_manager(connector)
+
+    # Fill the connector from a forward, then empty the device tier so the
+    # same prompt has to come back over an onload.
+    first = make_ctx([1, 2, 3, 4])
+    manager.claim(first)
+    manager.alloc(first)
+    first.update(9)
+    manager.step(first)
+    manager.offload(0)
+    _, offloaded_hashes = connector.offloads[-1]
+    for pending in connector.transfers:
+        pending.synchronize()
+    manager.poll_transfers()
+    manager.release(first)
+    manager.reset_prefix_cache()
+
+    connector.held = set(offloaded_hashes)
+    second = make_ctx([1, 2, 3, 4])
+    manager.claim(second)
+    transfer = manager.alloc(second)
+    asked = connector.loads[-1][1][FULL]
+    assert asked, "no onload issued"
+    assert isinstance(transfer, FakeTransfer)
+    transfer.fails = True
+
+    pool = manager.pools[0]
+    onloaded = [
+        pool.block(FULL, bid)
+        for bid in manager.get_req_blocks_per_leaf(second)[FULL]
+    ]
+
+    with pytest.raises(RuntimeError, match="transfer failed"):
+        manager.poll_transfers()
+
+    prefix_cache = pool.prefix_caches[FULL]
+    assert all(h not in prefix_cache for h in asked), (
+        "a failed onload's pages must not be published"
+    )
+    assert not manager.pending_transfers_exist(0)
+    assert all(block.ref_cnt == 1 for block in onloaded), (
+        "the failed transfer's pin is released, leaving the allocation's own"
+    )
+
+
+def test_step_without_a_connector_still_commits() -> None:
+    """A manager with no connector must not reach for one."""
+    manager = make_manager(None)
+
+    ctx = make_ctx([1, 2, 3, 4])
+    manager.claim(ctx)
+    manager.alloc(ctx)
+    ctx.update(9)
+    manager.step(ctx)
+
+    manager.release(ctx)

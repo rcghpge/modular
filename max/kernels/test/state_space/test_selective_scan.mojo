@@ -41,7 +41,7 @@ comptime LOG2E = 1.4426950408889634
 comptime MAX_DSTATE = 16
 
 
-@always_inline
+@inline(.always)
 def softplus_ref(val: Float32) -> Float32:
     """Reference softplus implementation: log(1 + exp(x))."""
     if val > 20.0:
@@ -51,7 +51,7 @@ def softplus_ref(val: Float32) -> Float32:
     return log(one + exp_val)
 
 
-@always_inline
+@inline(.always)
 def sigmoid_ref(val: Float32) -> Float32:
     """Reference sigmoid implementation."""
     if val < -20.0:
@@ -60,7 +60,7 @@ def sigmoid_ref(val: Float32) -> Float32:
     return 1.0 / (1.0 + exp_neg)
 
 
-@always_inline
+@inline(.always)
 def silu_ref(val: Float32) -> Float32:
     """Reference SiLU implementation."""
     if val < -20.0:
@@ -557,21 +557,21 @@ def run_selective_scan_update[
             var x_val = Float32(x_buf.ptr[x_offset])
 
             # Load A values and compute dA
-            var dA_vals = SIMD[DType.float32, MAX_DSTATE](0.0)
+            var dA_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
                 var A_offset = d * dstate + n
                 var A_val = Float32(A_buf.ptr[A_offset]) * LOG2E
                 dA_vals[n] = exp2(A_val * dt_val)
 
             # Load B values and compute dB
-            var dB_vals = SIMD[DType.float32, MAX_DSTATE](0.0)
+            var dB_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
                 var B_offset = b * n_groups * dstate + group_id * dstate + n
                 var B_val = Float32(B_buf.ptr[B_offset])
                 dB_vals[n] = B_val * dt_val
 
             # Load current state
-            var state_vals = SIMD[DType.float32, MAX_DSTATE](0.0)
+            var state_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
                 var state_offset = b * dim * dstate + d * dstate + n
                 state_vals[n] = Float32(state_out_ref_h.ptr[state_offset])
@@ -585,7 +585,7 @@ def run_selective_scan_update[
                 state_out_ref_h.ptr[state_offset] = Scalar[dtype](state_vals[n])
 
             # Load C values
-            var C_vals = SIMD[DType.float32, MAX_DSTATE](0.0)
+            var C_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
                 var C_offset = b * n_groups * dstate + group_id * dstate + n
                 C_vals[n] = Float32(C_buf.ptr[C_offset])

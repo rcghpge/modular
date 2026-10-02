@@ -15,10 +15,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
-from max.driver import Buffer, Device, is_virtual_device_mode
+from max.driver import Device, is_virtual_device_mode
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.experimental.sharding import DeviceMesh
@@ -38,47 +37,17 @@ from max.pipelines.lib import (
     ModelOutputs,
     PipelineConfig,
 )
+from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.pipelines.weights.quant import parse_quant_config
 from transformers import AutoConfig
 from typing_extensions import override
 
-from ..deepseekV2_modulev3.model import DeepseekV2Inputs, DeepseekV2Model
+from ..deepseekV2_modulev3.model import DeepseekV2Model
 from .batch_processor import DeepseekV3ModuleV3BatchProcessor
 from .deepseekV3 import DeepseekV3
 from .model_config import DeepseekV3Config
 
 logger = logging.getLogger("max.pipelines")
-
-
-@dataclass
-class DeepseekV3Inputs(DeepseekV2Inputs):
-    batch_context_lengths: list[Buffer] = field(kw_only=True)
-    """Host (CPU) page-aligned KV context length, one per DP replica.
-
-    Substituted for the planner's device-resident ``buffer_lengths`` so the
-    per-layer ``.to(CPU())`` stays host-to-host and the graph is capturable.
-    """
-
-    data_parallel_splits: Buffer | None = field(default=None, kw_only=True)
-    input_row_offsets_i64: Buffer | None = field(default=None, kw_only=True)
-    ep_inputs: tuple[Buffer, ...] = field(default=(), kw_only=True)
-
-    @property
-    def buffers(self) -> tuple[Buffer, ...]:
-        """Flat graph inputs in compile ABI order."""
-        dp_inputs: tuple[Buffer, ...] = ()
-        if self.data_parallel_splits is not None:
-            assert self.input_row_offsets_i64 is not None
-            dp_inputs = (self.data_parallel_splits, self.input_row_offsets_i64)
-        return (
-            self.tokens,
-            self.return_n_logits,
-            self.input_row_offsets,
-            *self.batch_context_lengths,
-            *dp_inputs,
-            *(self.kv_cache_inputs.flatten() if self.kv_cache_inputs else ()),
-            *self.ep_inputs,
-        )
 
 
 class DeepseekV3Model(DeepseekV2Model):
@@ -96,6 +65,8 @@ class DeepseekV3Model(DeepseekV2Model):
         devices: list[Device],
         kv_cache_config: KVCacheConfig,
         weights: Weights,
+        *,
+        memory_plan: MemoryPlan,
         adapter: WeightsAdapter | None = None,
         return_logits: ReturnLogits = ReturnLogits.LAST_TOKEN,
         max_batch_size: int = 1,
@@ -109,9 +80,10 @@ class DeepseekV3Model(DeepseekV2Model):
             devices,
             kv_cache_config,
             weights,
-            adapter,
-            return_logits,
+            adapter=adapter,
+            return_logits=return_logits,
             max_batch_size=max_batch_size,
+            memory_plan=memory_plan,
         )
 
     def _build_ep_config(
@@ -184,9 +156,11 @@ class DeepseekV3Model(DeepseekV2Model):
 
     @override
     def _create_model_config(self, state_dict: dict[str, Any]) -> Any:
-        model_config = DeepseekV3Config.initialize(self.pipeline_config)
+        model_config = DeepseekV3Config.initialize(
+            self.pipeline_config, max_seq_len=self.max_seq_len
+        )
         model_config.max_batch_context_length = (
-            self.pipeline_config.runtime.max_batch_total_tokens
+            self.planned_max_batch_total_tokens
             or model_config.max_batch_context_length
         )
 
@@ -273,14 +247,4 @@ class DeepseekV3Model(DeepseekV2Model):
 
     def execute(self, model_inputs: ModelInputs) -> ModelOutputs:
         """Execute the model."""
-        model_outputs = self.model(*model_inputs.buffers)
-        if len(model_outputs) == 3:
-            return ModelOutputs(
-                logits=cast(Buffer, model_outputs[1].driver_tensor),
-                next_token_logits=cast(Buffer, model_outputs[0].driver_tensor),
-                logit_offsets=cast(Buffer, model_outputs[2].driver_tensor),
-            )
-        return ModelOutputs(
-            logits=cast(Buffer, model_outputs[0].driver_tensor),
-            next_token_logits=cast(Buffer, model_outputs[0].driver_tensor),
-        )
+        return self._to_model_outputs(self.model(*model_inputs.buffers))

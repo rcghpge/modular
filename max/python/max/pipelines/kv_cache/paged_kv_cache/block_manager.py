@@ -27,10 +27,11 @@ from __future__ import annotations
 import logging
 import os
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from max.driver import Buffer, batch_inplace_copy
+from max.nn.kv_cache import KVCacheGroupId
 from max.nn.kv_cache.cache_params import KVCacheMemory
 from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.pipelines.context import (
@@ -41,13 +42,14 @@ from max.pipelines.context import (
 from max.pipelines.kv_cache.kv_connector import (
     CompletedTransfer,
     KVConnector,
-    KVConnectorTransfer,
-    TransferDirection,
+    KVLoadRefused,
+    KVTransfer,
 )
 from max.pipelines.modeling.types import RequestID
 from max.profiler import traced
 from max.support.math import ceildiv
 
+from ..prefix_hit import longest_joint_prefix_hit
 from .block_pool import BlockPool
 from .block_utils import (
     InsufficientBlocksError,
@@ -57,8 +59,6 @@ from .block_utils import (
 )
 
 logger = logging.getLogger("max.pipelines")
-
-SALT_DROPPED_WARNED: bool = False
 
 
 def compute_block_hashes(
@@ -93,12 +93,7 @@ def compute_block_hashes(
     # We do not compute the hash for the last token because it is ineligible
     # for prefix caching. This is because 100% prefix cache hit is illegal
     # and will result in a 0 input tokens for the request. Hence the minus 1.
-    # When the request carries pending future-token placeholders, all of
-    # them are excluded instead: a placeholder value must never be hashed
-    # into a block key, or the committed block's content would desync from
-    # its key. (With one placeholder pending, this coincides with the
-    # classic minus 1.)
-    num_hashable_tokens = len(ctx.tokens) - max(1, ctx.pending_future_count)
+    num_hashable_tokens = len(ctx.tokens) - 1
     num_unhashed_tokens = num_hashable_tokens - num_hashed_tokens
     if num_unhashed_tokens < block_size:
         return []
@@ -125,19 +120,6 @@ def compute_block_hashes(
             )
         token_hash_overrides.extend(ctx.token_hash_overrides)
 
-    cache_salt = ctx.cache_salt
-    if cache_salt is not None and kv_hash_algo == "ahash64":
-        global SALT_DROPPED_WARNED
-        if not SALT_DROPPED_WARNED:
-            logger.warning(
-                "cache_salt was supplied on a request but "
-                "kv_cache_hash_algo=ahash64; salt is being dropped. Set "
-                "kv_cache_hash_algo=sha256 to enable per-request "
-                "prefix-cache isolation."
-            )
-            SALT_DROPPED_WARNED = True
-        cache_salt = None
-
     return hash_request_tokens(
         token_ids=unhashed_tokens,
         block_size=block_size,
@@ -146,7 +128,7 @@ def compute_block_hashes(
         token_hash_overrides=token_hash_overrides,
         algo=kv_hash_algo,
         seed=kv_hash_seed,
-        salt=cache_salt,
+        salt=ctx.cache_salt,
     )
 
 
@@ -159,12 +141,11 @@ class _PendingTransfer:
     ``event`` completes. ``commit_hashes`` is set for onloads only: the onloaded
     blocks are committed into the device prefix cache on completion (deferred so
     a concurrent request cannot read them before the H2D lands), keyed by these
-    hashes in ``blocks`` order. Only asynchronous connectors (``rust_tiered``)
-    produce these; synchronous connectors' transfers are already complete and
-    never tracked.
+    hashes in ``blocks`` order. A transfer that came back already complete moved
+    nothing and is never tracked.
     """
 
-    event: KVConnectorTransfer
+    event: KVTransfer
     blocks: list[KVCacheBlock]
     commit_hashes: list[bytes] | None = None
 
@@ -172,7 +153,7 @@ class _PendingTransfer:
 def _compute_seq_len(
     ctx: TextContext,
     num_draft_tokens: int,
-    num_draft_tokens_per_step: int = 1,
+    num_draft_tokens_per_step: int = 0,
     max_num_input_tokens: int | None = None,
 ) -> int:
     # Each term accounts for one category of tokens that need a KV slot:
@@ -184,11 +165,9 @@ def _compute_seq_len(
     #   2 * num_draft_tokens          : drafts to verify *next* batch
     #                                   + drafts written *during* that batch
     #   1                             : one regular decode step
-    #   -max(1, pending_future_count) : the trailing tokens with no KV entry:
-    #                                   the pending future-token placeholders
-    #                                   (each is a not-yet-run forward's input),
-    #                                   or, with none pending, the last
-    #                                   generated token
+    #   -1                            : the last generated token has no KV
+    #                                   entry yet (overlap's in-flight
+    #                                   placeholder, or the just-sampled token)
     #
     # Block-draft correction (DFlash): the draft model's ``forward_block``
     # writes ``num_draft_tokens_per_step + 1`` positions in a single batched
@@ -198,9 +177,14 @@ def _compute_seq_len(
     # bonus token — exactly the slot the ``- 1`` here was reclaiming under the
     # "last generated token has no KV entry" optimization. For block drafts
     # that bonus position *does* get a KV entry (forward_block writes it as
-    # part of the speculative tail), so we add it back.
+    # part of the speculative tail), so we add it back. Guard on
+    # ``num_draft_tokens > 0`` so a disabled request (0, 0) never matches this
+    # by coincidence.
     block_draft_extra = (
-        1 if num_draft_tokens_per_step == num_draft_tokens else 0
+        1
+        if num_draft_tokens > 0
+        and num_draft_tokens_per_step == num_draft_tokens
+        else 0
     )
     # Avoid allocating blocks for the entire sequence when chunked prefill is used.
     # This is critically important for SWA.
@@ -213,7 +197,7 @@ def _compute_seq_len(
         + 2 * num_draft_tokens
         + 1
         + block_draft_extra
-        - max(1, ctx.pending_future_count)
+        - 1
     )
     return seq_len
 
@@ -250,23 +234,25 @@ class PrefixCacheHits:
 
     Counts are blocks, not tokens, and describe one contiguous run from the
     start of the request's block hash chain: the leading ``device_blocks``
-    are resident in the device prefix cache, and ``host_blocks`` plus
-    ``disk_blocks`` continue that run from the connector's external tiers.
+    are resident in the device prefix cache, and ``external_blocks``
+    continue that run from the connector's tiers.
+
+    The external count is not split by tier. ``KVConnector.lookup`` reports
+    whether a connector holds a block, not which of its tiers holds it, and
+    which tier a block is read from is the connector's business -- a disk hit
+    is promoted through host memory on its way to the device anyway.
     """
 
     device_blocks: int = 0
     """Leading blocks resident in the device prefix cache."""
 
-    host_blocks: int = 0
-    """Blocks continuing the run that are resident in the host tier."""
-
-    disk_blocks: int = 0
-    """Blocks continuing the run that are resident in the disk tier."""
+    external_blocks: int = 0
+    """Blocks continuing the run that the connector's tiers hold."""
 
     @property
     def total_blocks(self) -> int:
         """Total contiguous cached blocks across all tiers."""
-        return self.device_blocks + self.host_blocks + self.disk_blocks
+        return self.device_blocks + self.external_blocks
 
 
 class BlockManager:
@@ -303,7 +289,7 @@ class BlockManager:
         num_replicas: int = 1,
         kv_hash_algo: KVHashAlgo = "ahash64",
         kv_hash_seed: bytes | None = None,
-        replica_kv_memory: Sequence[Sequence[KVCacheMemory]] | None = None,
+        replica_kv_memory: Sequence[Mapping[str, KVCacheMemory]] | None = None,
         enable_dp_cross_replica_prefix_copy: bool = True,
     ) -> None:
         if num_replicas < 1:
@@ -316,13 +302,6 @@ class BlockManager:
         self.kv_hash_algo: KVHashAlgo = kv_hash_algo
         self.kv_hash_seed: bytes | None = kv_hash_seed
 
-        if kv_hash_algo not in connector.supported_hash_algos:
-            raise ValueError(
-                f"kv_cache_hash_algo={kv_hash_algo!r} is not supported by "
-                f"connector={connector.name!r} (supports="
-                f"{sorted(connector.supported_hash_algos)})"
-            )
-
         # Whether to enable prefix caching.
         self.enable_prefix_caching = enable_prefix_caching
 
@@ -332,13 +311,12 @@ class BlockManager:
         # to select the device endpoint.
         self.connector = connector
 
-        # Per-replica offload-ready device memory units, used to copy committed
-        # prefix blocks device-to-device between replicas. Required (non-None)
-        # when ``num_replicas > 1`` and prefix caching is on.
-        self._replica_kv_memory: list[list[KVCacheMemory]] | None = (
-            [list(units) for units in replica_kv_memory]
-            if replica_kv_memory is not None
-            else None
+        # Per-replica offload-ready device memory units, keyed by leaf id,
+        # used to copy committed prefix blocks device-to-device between
+        # replicas. Required (non-None) when ``num_replicas > 1`` and prefix
+        # caching is on.
+        self._replica_kv_memory: list[Mapping[str, KVCacheMemory]] | None = (
+            list(replica_kv_memory) if replica_kv_memory is not None else None
         )
 
         # Whether a cross-replica device prefix-cache hit may be served by a
@@ -359,9 +337,9 @@ class BlockManager:
         ]
 
         # In-flight async transfers (host/disk onloads and offloads) per
-        # replica, each pinning its device blocks until it completes. Only
-        # asynchronous connectors (``rust_tiered``) populate this; drained on
-        # the main thread by ``poll_transfers``.
+        # replica, each pinning its device blocks until it completes. A
+        # transfer that came back already complete moved nothing and never
+        # lands here; drained on the main thread by ``poll_transfers``.
         self._pending_transfers: list[list[_PendingTransfer]] = [
             [] for _ in range(self.num_replicas)
         ]
@@ -474,7 +452,7 @@ class BlockManager:
     def reuse_blocks_from_prefix_cache(
         self,
         ctx: TextContext,
-    ) -> tuple[int, KVConnectorTransfer]:
+    ) -> tuple[int, KVTransfer]:
         """Reuses blocks from prefix cache.
 
         Full blocks are directly reused and appended to the request's blocks.
@@ -487,9 +465,9 @@ class BlockManager:
             ``(skip_amount, event)`` where ``skip_amount`` is the number of
             tokens skipped due to prefix-cache reuse (0 when no blocks were
             reused) and ``event`` is the async onload transfer for the reused
-            prefix -- an already-complete :class:`CompletedTransfer` when nothing
-            was onloaded asynchronously (the common case: device hits and
-            synchronous connectors), so callers can just poll ``is_complete()``.
+            prefix -- an already-complete :class:`CompletedTransfer` when
+            nothing was onloaded (the common case: a device hit), so callers
+            can just poll ``is_complete()``.
         """
         # Reject an unclaimed request here rather than deeper in: the early
         # returns below skip every other call that would resolve its replica.
@@ -497,7 +475,7 @@ class BlockManager:
         self.assert_runtime_invariants(ctx)
 
         if not self.enable_prefix_caching or ctx.tokens.active_length == 1:
-            return 0, CompletedTransfer(TransferDirection.LOAD)
+            return 0, CompletedTransfer()
 
         # Identify a request's first admission so we record one cache-hit
         # observation per request, not one per chunked-prefill chunk.
@@ -509,7 +487,7 @@ class BlockManager:
         self.compute_hashes_for_request(ctx)
 
         # Query prefix cache for full blocks.
-        prefix_cache_blocks, load_event = (
+        prefix_cache_blocks, load_event, num_external_blocks = (
             self.get_full_blocks_from_prefix_cache(ctx)
         )
 
@@ -539,10 +517,23 @@ class BlockManager:
             )
             if is_first_admission:
                 ctx.cached_prefix_length = skip_amount
+                external_tokens = num_external_blocks * self.block_size
+                # The connector's blocks are the tail of the committed prefix,
+                # and `release_uncommitted_blocks` above re-synced
+                # `processed_length` to the committed index, so `skip_amount`
+                # covers every block just spliced in. Assert rather than clamp:
+                # a clamp would silently under-report `external` and inflate
+                # `g0` if that ever stopped holding.
+                assert external_tokens <= skip_amount, (
+                    f"external prefix {external_tokens} tokens exceeds the "
+                    f"{skip_amount} tokens skipped"
+                )
+                ctx.cached_prefix_external_length = external_tokens
             return skip_amount, load_event
 
         if is_first_admission:
             ctx.cached_prefix_length = 0
+            ctx.cached_prefix_external_length = 0
         return 0, load_event
 
     @traced
@@ -712,16 +703,19 @@ class BlockManager:
 
         dst_pages: list[Buffer] = []
         src_pages: list[Buffer] = []
-        for src_unit, dst_unit in zip(src_units, dst_units, strict=True):
+        for leaf_id, src_unit in src_units.items():
+            dst_unit = dst_units[leaf_id]
+            # Every shard is fanned out with an independent point-to-point copy
+            # (no broadcast collective).
             for src_buf, dst_buf in zip(
-                src_unit.all_buffers, dst_unit.all_buffers, strict=True
+                src_unit.buffers, dst_unit.buffers, strict=True
             ):
                 for dst_id, src_id in block_id_pairs:
                     dst_pages.append(dst_buf[dst_id, :])
                     src_pages.append(src_buf[src_id, :])
             self._metrics.cross_replica_bytes_copied += (
-                src_unit.buffer.shape[1]
-                * len(src_unit.all_buffers)
+                src_unit.bytes_per_page
+                * len(src_unit.buffers)
                 * len(block_id_pairs)
             )
 
@@ -732,63 +726,82 @@ class BlockManager:
         self,
         desired_hashes: Sequence[bytes],
         replica_idx: int = 0,
-    ) -> tuple[list[KVCacheBlock], KVConnectorTransfer]:
+        *,
+        hint: bytes | None,
+    ) -> tuple[list[KVCacheBlock], KVTransfer]:
         """Onloads device blocks with the desired hashes from the connector.
 
         The device blocks are newly allocated and initialized with the contents
         of the host/external blocks via the connector's ``load``.
 
-        For a synchronous / stream-ordered connector the H2D is already ordered
-        ahead of the forward, so the onloaded blocks are committed into the
-        device prefix cache immediately and the (already-complete) transfer is
-        returned unchanged.
+        The H2D runs off the forward stream, so the destination blocks are
+        pinned and their prefix-cache commit is deferred until the copy lands
+        (``poll_transfers``) -- a concurrent request in the same batch cannot
+        read them early, and the scheduler holds this one out of the batch
+        meanwhile. A transfer that comes back already complete moved nothing,
+        and its blocks are committed at once.
 
-        For an asynchronous connector (``rust_tiered``) the H2D runs on a
-        separate copy engine: the destination blocks are pinned and their
-        prefix-cache commit is deferred until the copy lands (``poll_transfers``)
-        so a concurrent request in the same batch cannot read them early.
+        ``hint`` is the request's raw ``dkv_cache_hint``, passed through to the
+        connector; see :meth:`KVConnector.load`.
 
         Returns:
             ``(loaded_blocks, event)``; ``event`` is an already-complete
-            :class:`CompletedTransfer` when nothing was onloaded or the onload
-            was synchronous, otherwise the in-flight transfer.
+            :class:`CompletedTransfer` when nothing was onloaded, otherwise the
+            in-flight transfer.
         """
         connector = self.connector
         pool = self.device_block_pools[replica_idx]
-        if connector.num_host_blocks == 0 or not desired_hashes:
-            return [], CompletedTransfer(TransferDirection.LOAD)
+        if not desired_hashes:
+            return [], CompletedTransfer()
 
-        # Limit by available device blocks.
-        num_hashes_to_load = min(len(desired_hashes), pool.num_free_blocks)
-        desired_hashes = desired_hashes[:num_hashes_to_load]
-        blocks = [
-            self.allocate_device_block(replica_idx)
-            for _ in range(num_hashes_to_load)
-        ]
-
-        # Query connector for available blocks from host cache.
-        block_ids = [b.bid for b in blocks]
-        event = connector.load(
-            block_ids,
-            desired_hashes,
-            replica_idx=replica_idx,
+        # Ask what the tiers hold, then reconcile. This manager declares every
+        # leaf full attention (see ``create_connector`` in ``cache_manager``),
+        # so each leaf's hit is its run from the root and the prefix they agree
+        # on is the shortest of those -- but the run is still settled by the
+        # shared rules rather than here, so a leaf tree that is not uniformly
+        # full attention cannot quietly get the wrong answer.
+        resident = connector.lookup(
+            desired_hashes, replica_idx=replica_idx, hint=hint
         )
+        num_loaded = longest_joint_prefix_hit(
+            [(KVCacheGroupId.full(), mask) for mask in resident.values()],
+            self.block_size,
+        )
+        # Truncating is safe: a full-attention hit is downward-closed, so a
+        # shorter prefix of an agreed one is also agreed.
+        num_loaded = min(num_loaded, pool.num_free_blocks)
+        if num_loaded == 0:
+            return [], CompletedTransfer()
 
-        # The connector may load fewer blocks than requested; its event reports
-        # the loaded device blocks in ``g0_blocks``.
-        num_loaded = len(event.g0_blocks)
-        for surplus_block in blocks[num_loaded:]:
-            pool.free_block(surplus_block)
-        loaded_blocks = blocks[:num_loaded]
         loaded_hashes = list(desired_hashes[:num_loaded])
-
-        if not loaded_blocks:
-            return [], CompletedTransfer(TransferDirection.LOAD)
+        loaded_blocks = [
+            self.allocate_device_block(replica_idx) for _ in range(num_loaded)
+        ]
+        block_ids = [b.bid for b in loaded_blocks]
+        try:
+            event = connector.load(
+                {leaf_id: block_ids for leaf_id in connector.leaves},
+                {leaf_id: loaded_hashes for leaf_id in connector.leaves},
+                replica_idx=replica_idx,
+                hint=hint,
+            )
+        except KVLoadRefused as refused:
+            # A block the lookup reported is gone, which a connector that
+            # holds nothing between the two calls cannot rule out. Serve the
+            # request as a miss rather than a shallower hit.
+            logger.warning(
+                "%s refused a %d-block load; serving this request as a miss: %s",
+                connector.name,
+                num_loaded,
+                refused,
+            )
+            for block in loaded_blocks:
+                pool.free_block(block)
+            return [], CompletedTransfer()
 
         if event.is_complete():
-            # Synchronous / stream-ordered connector (dKV): the
-            # H2D is already ordered ahead of the forward, so commit into the
-            # device prefix cache now.
+            # Nothing is in flight, so the blocks are readable now; commit them
+            # into the device prefix cache.
             for block, block_hash in zip(
                 loaded_blocks, loaded_hashes, strict=True
             ):
@@ -799,9 +812,9 @@ class BlockManager:
                     continue
                 pool.commit_into_prefix_cache(block_hash, block)
         else:
-            # Asynchronous connector (``rust_tiered``): pin the destination
-            # blocks and defer their prefix-cache commit until the H2D lands, so
-            # a concurrent request cannot read them before the data arrives.
+            # Pin the destination blocks and defer their prefix-cache commit
+            # until the H2D lands, so a concurrent request cannot read them
+            # before the data arrives.
             self._track_transfer(
                 event, loaded_blocks, replica_idx, commit_hashes=loaded_hashes
             )
@@ -809,15 +822,16 @@ class BlockManager:
 
     @traced
     def count_cached_prefix_blocks(
-        self, block_hashes: Sequence[bytes]
+        self, block_hashes: Sequence[bytes], replica_idx: int = 0
     ) -> PrefixCacheHits:
         """Counts contiguous leading blocks resident in this replica's caches.
 
         Walks ``block_hashes`` in prefix order through the device prefix
-        cache and then the connector's external tiers (host, then disk per
-        block), mirroring the reuse order of
+        cache and then the connector's tiers, mirroring the reuse order of
         :meth:`get_full_blocks_from_prefix_cache`, and stops at the first
-        block found in no tier.
+        block found in no tier. The external half runs the same
+        ``lookup``-and-reconcile the reuse path runs, so the two cannot
+        disagree about what a hit would be worth.
 
         Unlike the reuse path this is strictly read-only: no blocks are
         allocated or onboarded, no LRU state is touched, and no per-request
@@ -829,6 +843,7 @@ class BlockManager:
 
         Args:
             block_hashes: The request's block hash chain, in prefix order.
+            replica_idx: The replica whose caches are probed.
 
         Returns:
             Per-tier counts of the contiguous cached prefix.
@@ -838,39 +853,51 @@ class BlockManager:
 
         num_device_hits = 0
         if not self._only_use_kv_connector_last_level_cache:
-            device_prefix_cache = self.device_block_pool.prefix_cache
+            device_prefix_cache = self.device_block_pools[
+                replica_idx
+            ].prefix_cache
             for block_hash in block_hashes:
-                if block_hash not in device_prefix_cache:
+                if self._cross_replica_copy_enabled:
+                    _, blk = self._find_block_in_any_replica(
+                        block_hash, replica_idx
+                    )
+                    present = blk is not None
+                else:
+                    present = block_hash in device_prefix_cache
+                if not present:
                     break
                 num_device_hits += 1
 
         remaining = block_hashes[num_device_hits:]
-        num_host_hits = 0
-        num_disk_hits = 0
-        if len(remaining) > 0 and self.connector.num_host_blocks > 0:
-            num_host_hits, num_disk_hits = self.connector.count_cached_prefix(
-                remaining
+        num_external_hits = 0
+        if remaining:
+            resident = self.connector.lookup(remaining, replica_idx=replica_idx)
+            num_external_hits = longest_joint_prefix_hit(
+                [(KVCacheGroupId.full(), mask) for mask in resident.values()],
+                self.block_size,
             )
 
         return PrefixCacheHits(
             device_blocks=num_device_hits,
-            host_blocks=num_host_hits,
-            disk_blocks=num_disk_hits,
+            external_blocks=num_external_hits,
         )
 
     @traced
     def get_full_blocks_from_prefix_cache(
         self, ctx: TextContext
-    ) -> tuple[list[KVCacheBlock], KVConnectorTransfer]:
+    ) -> tuple[list[KVCacheBlock], KVTransfer, int]:
         """Gets the computed (cached) blocks for the request.
 
         Note that the computed blocks must be full.
 
         Returns:
-            ``(blocks, event)`` where ``event`` is the async onload transfer for
-            the host-tier portion, or an already-complete
+            ``(blocks, event, num_external_blocks)`` where ``event`` is the async
+            onload transfer for the host-tier portion, or an already-complete
             :class:`CompletedTransfer` when nothing was onloaded asynchronously
             (device / cross-replica hits are served synchronously).
+            ``num_external_blocks`` is how many trailing entries of ``blocks``
+            the connector served rather than the device prefix cache, for
+            per-tier hit attribution.
         """
         assert self.enable_prefix_caching
 
@@ -886,54 +913,25 @@ class BlockManager:
             uncommitted_hashes, replica_idx
         )
 
-        if self.connector.num_host_blocks == 0:
-            return device_blocks, CompletedTransfer(TransferDirection.LOAD)
+        if self.connector.name == "NullConnector":
+            return device_blocks, CompletedTransfer(), 0
 
         # remove the hashes that were found in the device prefix cache
-        if len(device_blocks) > 0:
-            uncommitted_hashes = uncommitted_hashes[len(device_blocks) :]
+        uncommitted_hashes = uncommitted_hashes[len(device_blocks) :]
 
         # query the host prefix cache for full blocks via connector
         host_blocks, load_event = self._get_full_blocks_from_host_prefix_cache(
-            uncommitted_hashes, replica_idx
+            uncommitted_hashes, replica_idx, hint=ctx.dkv_cache_hint
         )
 
-        # Sole load-path recency anchor for this request's cached prefix.
-        # Fires AFTER the load so that, as the only load-path toucher, it
-        # reserves the last (most-recent) recency stamp and cannot be
-        # inverted by the load's own touches. The read path and dKV's
-        # `touch_hits` no longer touch. Best-effort / fire-and-forget: a
-        # dropped touch degrades to neutral, never inverted. Pass the full
-        # cached prefix from the true root, in order -- NOT a root-omitting
-        # slice. The payload MUST include the already-committed prefix
-        # (`req_hashes[:num_committed_blocks]`); omitting the root re-creates
-        # a recency inversion (the root ages below the touched subset and
-        # evicts first). It trims the tail past the served prefix -- keys not
-        # served this step. Most are genuinely uncached (absent in dKV, so
-        # touching them only costs no-op index lookups on a contended path),
-        # but the host load is capped at this replica's device free capacity
-        # (`pool.num_free_blocks`), so a dKV-resident block can also fall in
-        # the trim when capacity binds. Not refreshing that capacity-truncated
-        # remainder is an accepted best-effort recency miss: it was not loaded
-        # this step and self-heals on a later step (or a peer request) that
-        # loads it. Refreshing it would require touching the full `req_hashes`
-        # on every admission -- the contended behavior this change removes.
-        # dKV touches the resident subset and tolerates
-        # missing keys. The num_host_blocks early-return above gates on "has
-        # host blocks," NOT "has an external tier": it skips only a connector
-        # with no host blocks (NullConnector); the host/disk tiered connector
-        # passes the gate and calls its no-op touch -- only DKVConnector does
-        # real touch work.
-        if device_blocks or host_blocks:
-            cached_hashes = req_hashes[
-                : num_committed_blocks + len(device_blocks) + len(host_blocks)
-            ]
-            self.connector.touch(
-                cached_hashes,
-                replica_idx=replica_idx,
-            )
+        # refresh the lru status of all hit hashes associated with the request.
+        hit_hashes = req_hashes[
+            : num_committed_blocks + len(device_blocks) + len(host_blocks)
+        ]
+        if hit_hashes:
+            self.connector.touch(hit_hashes, replica_idx=replica_idx)
 
-        return device_blocks + host_blocks, load_event
+        return device_blocks + host_blocks, load_event, len(host_blocks)
 
     @traced
     def commit_to_prefix_cache(
@@ -956,16 +954,8 @@ class BlockManager:
         )
 
         # Count the number of tokens for which we know the values of and align
-        # to the block size. Trailing future-token placeholders count as
-        # processed positions once a later forward is enqueued behind them,
-        # but their host token values are unrealized (-999), so they are not
-        # committable: committing one would poison a prefix block (and there
-        # is no hash for it — compute_hashes_for_request excludes them).
-        num_realized_tokens = len(ctx.tokens) - ctx.pending_future_count
-        num_computed_blocks = (
-            min(ctx.tokens.processed_length, num_realized_tokens)
-            // self.block_size
-        )
+        # to the block size.
+        num_computed_blocks = ctx.tokens.processed_length // self.block_size
 
         # Commit blocks into the prefix cache.
         for block_idx in range(num_committed_blocks, num_computed_blocks):
@@ -1013,20 +1003,20 @@ class BlockManager:
                 src_blocks.append(block)
             if block_hashes:
                 event = connector.offload(
-                    block_ids,
+                    {leaf_id: block_ids for leaf_id in connector.leaves},
                     block_hashes,
                     replica_idx=replica_idx,
                 )
-                # Asynchronous connector: pin the device source blocks until the
-                # D2H lands so they are not evicted / reused mid-copy. Synchronous
-                # connectors report the offload already complete (no pin).
+                # Pin the device source blocks until the D2H lands so they are
+                # not evicted / reused mid-copy. An offload that moved nothing
+                # reports complete and takes no pin.
                 if not event.is_complete():
                     self._track_transfer(event, src_blocks, replica_idx)
         self._pending_offloads[replica_idx].clear()
 
     def _track_transfer(
         self,
-        event: KVConnectorTransfer,
+        event: KVTransfer,
         blocks: list[KVCacheBlock],
         replica_idx: int,
         commit_hashes: list[bytes] | None = None,
@@ -1035,8 +1025,7 @@ class BlockManager:
 
         Pinning (a ``ref_cnt`` bump via ``touch``) keeps the blocks out of the
         eviction / free path until ``poll_transfers`` observes ``event``
-        complete and unpins them. Only asynchronous connectors reach here; a
-        no-op for an empty block list.
+        complete and unpins them. A no-op for an empty block list.
         """
         if not blocks:
             return
@@ -1055,16 +1044,31 @@ class BlockManager:
         For each completed transfer: commits any deferred onload blocks into the
         device prefix cache (now safe for cross-request reuse) and unpins the
         transfer's device blocks. Cheap to call every scheduler iteration -- an
-        ``is_complete`` poll per in-flight transfer. A no-op unless an
-        asynchronous connector (``rust_tiered``) is in use.
+        ``is_complete`` poll per in-flight transfer, and a no-op when none is.
         """
+        self.connector.poll_transfers()
         for replica_idx, pending_list in enumerate(self._pending_transfers):
             if not pending_list:
                 continue
             pool = self.device_block_pools[replica_idx]
             still_pending: list[_PendingTransfer] = []
-            for pending in pending_list:
-                if not pending.event.is_complete():
+            unreached = iter(pending_list)
+            for pending in unreached:
+                try:
+                    complete = pending.event.is_complete()
+                except BaseException:
+                    # A poll that raises has settled its own transfer, and the
+                    # blocks it was filling hold no valid KV. Unpin them
+                    # without committing, and put back the entries this pass
+                    # never reached -- leaving them on a list it already drained
+                    # would free their blocks a second time.
+                    for block in pending.blocks:
+                        pool.free_block(block)
+                    self._pending_transfers[replica_idx] = still_pending + list(
+                        unreached
+                    )
+                    raise
+                if not complete:
                     still_pending.append(pending)
                     continue
                 if pending.commit_hashes is not None:
@@ -1106,6 +1110,8 @@ class BlockManager:
         for block in ordered_blocks:
             pool.free_block(block)
 
+        self._touch_committed_sequence(ctx)
+
         self.req_to_blocks.pop(request_id, None)
         self.req_to_hashes.pop(request_id, None)
         self.req_to_replica.pop(request_id, None)
@@ -1115,12 +1121,43 @@ class BlockManager:
         if request_id in self.req_to_committed_idx:
             del self.req_to_committed_idx[request_id]
 
+    def _touch_committed_sequence(self, ctx: TextContext) -> None:
+        """Re-ranks the request's whole committed sequence in the external tier.
+
+        An external tier that evicts by recency takes a group's order from the
+        keys of one call, and the engine commits a sequence over several calls
+        (one per completed block, plus one per chunked-prefill chunk). Each
+        later call therefore ranks its own blocks above everything committed
+        before them, leaving the boundary between two commits as the coldest
+        block rather than the sequence tail (CLIN-1893). Handing the tier the
+        whole root-anchored sequence once, here, restores tail-coldest order.
+
+        Release rather than the load-path anchor, because the anchor only fires
+        for a sequence that is read back, and most written sequences never are.
+        This does not undo an eviction that already happened during generation;
+        it stops the next one landing in the middle, and demotes a stranded
+        tail so its capacity is reclaimed rather than held.
+
+        Best-effort: ``touch`` never raises into the caller.
+        """
+        if not self.enable_prefix_caching:
+            return
+        if self.connector.name == "NullConnector":
+            return
+        num_committed_blocks = (
+            self.req_to_committed_idx[ctx.request_id] // self.block_size
+        )
+        if not num_committed_blocks:
+            return
+        committed = self.req_to_hashes[ctx.request_id][:num_committed_blocks]
+        self.connector.touch(committed, replica_idx=self._replica_of(ctx))
+
     @traced
     def allocate_new_blocks(
         self,
         ctx: TextContext,
         num_draft_tokens: int = 0,
-        num_draft_tokens_per_step: int = 1,
+        num_draft_tokens_per_step: int = 0,
     ) -> None:
         """Allocate new blocks for a request to accommodate additional tokens.
 
@@ -1134,12 +1171,12 @@ class BlockManager:
             num_draft_tokens: Total draft tokens generated per speculative
                 iteration. Zero for non-speculative decode.
             num_draft_tokens_per_step: Number of draft KV positions written
-                per draft forward. One for autoregressive drafts
-                (``eagle``, ``mtp``); equal to
-                ``num_draft_tokens`` for block drafts (``dflash``). Used by
-                ``_compute_seq_len`` to size the cache for block drafts,
-                whose ``forward_block`` writes one extra position past the
-                bonus token.
+                per draft forward. Zero when speculative decoding is
+                disabled; one for autoregressive drafts (``eagle``, ``mtp``);
+                equal to ``num_draft_tokens`` for block drafts (``dflash``).
+                Used by ``_compute_seq_len`` to size the cache for block
+                drafts, whose ``forward_block`` writes one extra position
+                past the bonus token.
 
         Raises:
             InsufficientBlocksError: If there are insufficient free blocks to
@@ -1207,7 +1244,7 @@ class BlockManager:
         self,
         ctx: TextContext,
         num_draft_tokens: int = 0,
-        num_draft_tokens_per_step: int = 1,
+        num_draft_tokens_per_step: int = 0,
     ) -> int:
         """Calculates the number of new blocks to allocate for a request.
 
@@ -1216,12 +1253,12 @@ class BlockManager:
             num_draft_tokens: Total draft tokens generated per speculative
                 iteration. Zero for non-speculative decode.
             num_draft_tokens_per_step: Number of draft KV positions written
-                per draft forward. One for autoregressive drafts
-                (``eagle``, ``mtp``); equal to
-                ``num_draft_tokens`` for block drafts (``dflash``). Used by
-                ``_compute_seq_len`` to size the cache for block drafts,
-                whose ``forward_block`` writes one extra position past the
-                bonus token.
+                per draft forward. Zero when speculative decoding is
+                disabled; one for autoregressive drafts (``eagle``, ``mtp``);
+                equal to ``num_draft_tokens`` for block drafts (``dflash``).
+                Used by ``_compute_seq_len`` to size the cache for block
+                drafts, whose ``forward_block`` writes one extra position
+                past the bonus token.
 
         Returns:
             The number of new blocks to allocate.
@@ -1268,6 +1305,24 @@ class BlockManager:
         elif delta < 0:
             ctx.tokens.skip_processing(-delta)
 
+    def rollback_prefix_reuse(self, ctx: TextContext, num_tokens: int) -> None:
+        """Undoes a ``reuse_blocks_from_prefix_cache`` splice of ``num_tokens``.
+
+        For an allocation that fails after the splice, so the request is left
+        as consistent as it was found: the spliced blocks go back to the pool
+        (an in-flight onload keeps its own pin until it lands), the token
+        window is rewound over them, and a first admission's cached-prefix
+        attribution is cleared.
+        """
+        if num_tokens == 0:
+            return
+        self.req_to_committed_idx[ctx.request_id] -= num_tokens
+        self.release_uncommitted_blocks(ctx)
+        self._metrics.cache_tokens -= num_tokens
+        if ctx.tokens.processed_length == 0:
+            ctx.cached_prefix_length = 0
+            ctx.cached_prefix_external_length = 0
+
     def register_dummy_request(self, ctx: TextContext) -> None:
         """Maps a dummy request to the replica pool's reserved null block."""
         request_id = ctx.request_id
@@ -1296,10 +1351,11 @@ class BlockManager:
         """Returns combined metrics for this manager and its connector."""
         return self._metrics + self.connector.metrics
 
-    def reset_metrics(self) -> None:
-        """Resets block-manager and connector transfer metrics to zero."""
+    def take_metrics(self) -> KVCacheMetrics:
+        """Reads and clears block-manager and connector transfer metrics."""
+        own = self._metrics
         self._metrics = KVCacheMetrics()
-        self.connector.reset_metrics()
+        return own + self.connector.take_metrics()
 
     @traced
     def assert_runtime_invariants(self, ctx: TextContext) -> None:
@@ -1323,7 +1379,7 @@ class BlockManager:
         # queue while their copy lands, and an offload's sources outlive the
         # request that owned them, so they are neither free nor request-active.
         # Count them here or the pool's free + active == total check trips
-        # whenever an asynchronous connector has a transfer in flight.
+        # whenever a connector has a transfer in flight.
         for replica_idx_, pending_list in enumerate(self._pending_transfers):
             for pending in pending_list:
                 for block in pending.blocks:

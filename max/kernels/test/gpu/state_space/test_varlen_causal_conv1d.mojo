@@ -29,7 +29,7 @@ from state_space.varlen_causal_conv1d import (
     causal_conv1d_varlen_fwd_seqparallel_gpu,
     causal_conv1d_varlen_update_gpu,
 )
-from std.testing import TestSuite, assert_almost_equal
+from std.testing import TestSuite, assert_almost_equal, assert_equal
 
 from std.utils.index import Index, IndexList
 
@@ -38,13 +38,13 @@ from std.utils.index import Index, IndexList
 comptime PAD_SLOT_ID: Int32 = -1
 
 
-@always_inline
+@inline(.always)
 def silu_ref[dtype: DType](x: Scalar[dtype]) -> Scalar[dtype]:
     """Reference SiLU implementation: x * sigmoid(x) = x / (1 + exp(-x))."""
-    var x_f32 = x.cast[DType.float32]()
+    var x_f32 = x.cast[.float32]()
     var neg_x = -x_f32
     var exp_neg_x = exp(neg_x)
-    var one = Scalar[DType.float32](1.0)
+    var one = Float32(1.0)
     var sigmoid_x = one / (one + exp_neg_x)
     return (x_f32 * sigmoid_x).cast[dtype]()
 
@@ -52,6 +52,7 @@ def silu_ref[dtype: DType](x: Scalar[dtype]) -> Scalar[dtype]:
 def run_varlen_causal_conv1d_fwd_gpu[
     dtype: DType,
     activation: StaticString,
+    use_residual: Bool = False,
 ](
     batch: Int,
     dim: Int,
@@ -66,6 +67,9 @@ def run_varlen_causal_conv1d_fwd_gpu[
     Also cross-checks the sequence-parallel prefill kernel
     (`causal_conv1d_varlen_fwd_seqparallel_gpu`) against both the CPU
     reference and the serial GPU kernel's output and final `conv_states`.
+
+    `use_residual` threads through all three, so the same cross-check covers
+    the fused residual add.
     """
     # Calculate total_seqlen (sum of all sequence lengths)
     var total_seqlen = 0
@@ -91,9 +95,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
     )
 
     # query_start_loc: (batch + 1,) - cumulative sequence lengths
-    var query_start_loc_heap = List(
-        length=batch + 1, fill=Scalar[DType.int32](0)
-    )
+    var query_start_loc_heap = List(length=batch + 1, fill=Int32(0))
     var query_start_loc_h = TileTensor(
         query_start_loc_heap,
         row_major(
@@ -101,13 +103,13 @@ def run_varlen_causal_conv1d_fwd_gpu[
         ),
     )
     var cumsum = 0
-    query_start_loc_h.raw_store(0, Scalar[DType.int32](0))
+    query_start_loc_h.raw_store(0, Int32(0))
     for i in range(batch):
         cumsum += seq_lengths[i]
-        query_start_loc_h.raw_store(i + 1, Scalar[DType.int32](cumsum))
+        query_start_loc_h.raw_store(i + 1, Int32(cumsum))
 
     # cache_indices: (batch,) - identity mapping
-    var cache_indices_heap = List(length=batch, fill=Scalar[DType.int32](0))
+    var cache_indices_heap = List(length=batch, fill=Int32(0))
     var cache_indices_h = TileTensor(
         cache_indices_heap,
         row_major(
@@ -115,12 +117,10 @@ def run_varlen_causal_conv1d_fwd_gpu[
         ),
     )
     for i in range(batch):
-        cache_indices_h.raw_store(i, Scalar[DType.int32](i))
+        cache_indices_h.raw_store(i, Int32(i))
 
     # has_initial_state: (batch,) - all False
-    var has_initial_state_heap = List(
-        length=batch, fill=Scalar[DType.bool](False)
-    )
+    var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](False))
     var has_initial_state_h = TileTensor(
         has_initial_state_heap,
         row_major(
@@ -128,9 +128,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
         ),
     )
     for i in range(batch):
-        has_initial_state_h.raw_store(
-            i, Scalar[DType.bool](nonzero_initial_state)
-        )
+        has_initial_state_h.raw_store(i, Scalar[.bool](nonzero_initial_state))
 
     # conv_states: (batch, dim, width - 1)
     var state_len = width - 1
@@ -186,9 +184,6 @@ def run_varlen_causal_conv1d_fwd_gpu[
     var weight_width_stride: UInt32 = 1
     var out_dim_stride: UInt32 = UInt32(total_seqlen)
     var out_seqlen_stride: UInt32 = 1
-    var conv_states_batch_stride: UInt32 = UInt32(dim * state_len)
-    var conv_states_dim_stride: UInt32 = UInt32(state_len)
-    var conv_states_width_stride: UInt32 = 1
 
     var silu_activation = activation == "silu"
     var silu_activation_int8 = Int8(silu_activation)
@@ -197,11 +192,9 @@ def run_varlen_causal_conv1d_fwd_gpu[
     var x_device = ctx.enqueue_create_buffer[dtype](dim * total_seqlen)
     var weight_device = ctx.enqueue_create_buffer[dtype](dim * width)
     var bias_device = ctx.enqueue_create_buffer[dtype](dim)
-    var query_start_loc_device = ctx.enqueue_create_buffer[DType.int32](
-        batch + 1
-    )
-    var cache_indices_device = ctx.enqueue_create_buffer[DType.int32](batch)
-    var has_initial_state_device = ctx.enqueue_create_buffer[DType.bool](batch)
+    var query_start_loc_device = ctx.enqueue_create_buffer[.int32](batch + 1)
+    var cache_indices_device = ctx.enqueue_create_buffer[.int32](batch)
+    var has_initial_state_device = ctx.enqueue_create_buffer[.bool](batch)
     var conv_states_device = ctx.enqueue_create_buffer[dtype](
         batch * dim * state_len
     )
@@ -285,6 +278,15 @@ def run_varlen_causal_conv1d_fwd_gpu[
                 has_initial_state_device_tt.LayoutType,
                 conv_states_device_tt.LayoutType,
                 output_device_tt.LayoutType,
+                x_device_tt.Engine,
+                weight_device_tt.Engine,
+                bias_device_tt.Engine,
+                query_start_loc_device_tt.Engine,
+                cache_indices_device_tt.Engine,
+                has_initial_state_device_tt.Engine,
+                conv_states_device_tt.Engine,
+                output_device_tt.Engine,
+                use_residual,
             ]
         ]()
         ctx.enqueue_function(
@@ -306,9 +308,6 @@ def run_varlen_causal_conv1d_fwd_gpu[
             weight_width_stride,
             out_dim_stride,
             out_seqlen_stride,
-            conv_states_batch_stride,
-            conv_states_dim_stride,
-            conv_states_width_stride,
             silu_activation_int8,
             PAD_SLOT_ID,
             Int8(1),  # has_cache_indices
@@ -341,6 +340,15 @@ def run_varlen_causal_conv1d_fwd_gpu[
                 has_initial_state_device_tt.LayoutType,
                 conv_states_device_tt.LayoutType,
                 output_device_tt.LayoutType,
+                x_device_tt.Engine,
+                weight_device_tt.Engine,
+                bias_device_tt.Engine,
+                query_start_loc_device_tt.Engine,
+                cache_indices_device_tt.Engine,
+                has_initial_state_device_tt.Engine,
+                conv_states_device_tt.Engine,
+                output_device_tt.Engine,
+                use_residual,
             ]
         ]()
         ctx.enqueue_function(
@@ -362,9 +370,6 @@ def run_varlen_causal_conv1d_fwd_gpu[
             weight_width_stride,
             out_dim_stride,
             out_seqlen_stride,
-            conv_states_batch_stride,
-            conv_states_dim_stride,
-            conv_states_width_stride,
             silu_activation_int8,
             PAD_SLOT_ID,
             Int8(1),  # has_cache_indices
@@ -397,6 +402,15 @@ def run_varlen_causal_conv1d_fwd_gpu[
                 has_initial_state_device_tt.LayoutType,
                 conv_states_device_tt.LayoutType,
                 output_device_tt.LayoutType,
+                x_device_tt.Engine,
+                weight_device_tt.Engine,
+                bias_device_tt.Engine,
+                query_start_loc_device_tt.Engine,
+                cache_indices_device_tt.Engine,
+                has_initial_state_device_tt.Engine,
+                conv_states_device_tt.Engine,
+                output_device_tt.Engine,
+                use_residual,
             ]
         ]()
         ctx.enqueue_function(
@@ -418,9 +432,6 @@ def run_varlen_causal_conv1d_fwd_gpu[
             weight_width_stride,
             out_dim_stride,
             out_seqlen_stride,
-            conv_states_batch_stride,
-            conv_states_dim_stride,
-            conv_states_width_stride,
             silu_activation_int8,
             PAD_SLOT_ID,
             Int8(1),  # has_cache_indices
@@ -453,6 +464,15 @@ def run_varlen_causal_conv1d_fwd_gpu[
                 has_initial_state_device_tt.LayoutType,
                 conv_states_device_tt.LayoutType,
                 output_device_tt.LayoutType,
+                x_device_tt.Engine,
+                weight_device_tt.Engine,
+                bias_device_tt.Engine,
+                query_start_loc_device_tt.Engine,
+                cache_indices_device_tt.Engine,
+                has_initial_state_device_tt.Engine,
+                conv_states_device_tt.Engine,
+                output_device_tt.Engine,
+                use_residual,
             ]
         ]()
         ctx.enqueue_function(
@@ -474,9 +494,6 @@ def run_varlen_causal_conv1d_fwd_gpu[
             weight_width_stride,
             out_dim_stride,
             out_seqlen_stride,
-            conv_states_batch_stride,
-            conv_states_dim_stride,
-            conv_states_width_stride,
             silu_activation_int8,
             PAD_SLOT_ID,
             Int8(1),  # has_cache_indices
@@ -561,9 +578,8 @@ def run_varlen_causal_conv1d_fwd_gpu[
 
     comptime TILE_SEQ = 128
 
-    @__parameter
-    @always_inline
-    def launch_seqpar_gpu[kWidth: Int]() raises:
+    @inline(.always)
+    def launch_seqpar_gpu[kWidth: Int]() raises {imm}:
         var compiled_func = ctx.compile_function[
             causal_conv1d_varlen_fwd_seqparallel_gpu[
                 dtype,
@@ -585,6 +601,15 @@ def run_varlen_causal_conv1d_fwd_gpu[
                 has_initial_state_device_tt.LayoutType,
                 conv_states_seqpar_device_tt.LayoutType,
                 output_seqpar_device_tt.LayoutType,
+                x_device_tt.Engine,
+                weight_device_tt.Engine,
+                bias_device_tt.Engine,
+                query_start_loc_device_tt.Engine,
+                cache_indices_device_tt.Engine,
+                has_initial_state_device_tt.Engine,
+                conv_states_seqpar_device_tt.Engine,
+                output_seqpar_device_tt.Engine,
+                use_residual,
             ]
         ]()
         with ctx.push_context():
@@ -607,9 +632,6 @@ def run_varlen_causal_conv1d_fwd_gpu[
                 weight_width_stride,
                 out_dim_stride,
                 out_seqlen_stride,
-                conv_states_batch_stride,
-                conv_states_dim_stride,
-                conv_states_width_stride,
                 silu_activation_int8,
                 PAD_SLOT_ID,
                 Int8(1),  # has_cache_indices
@@ -619,7 +641,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
                 grid_dim=(
                     batch,
                     ceildiv(dim, BLOCK_DIM),
-                    ceildiv(total_seqlen, TILE_SEQ) + batch,
+                    ceildiv(total_seqlen, TILE_SEQ),
                 ),
                 block_dim=(BLOCK_DIM, 1),
             )
@@ -701,6 +723,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
         DType.int32,
         DType.bool,
         dtype,
+        use_residual,
     ](
         dim,
         total_seqlen,
@@ -720,9 +743,6 @@ def run_varlen_causal_conv1d_fwd_gpu[
         weight_width_stride,
         out_dim_stride,
         out_seqlen_stride,
-        conv_states_batch_stride,
-        conv_states_dim_stride,
-        conv_states_width_stride,
         silu_activation,
         PAD_SLOT_ID,
         True,  # has_cache_indices
@@ -816,7 +836,7 @@ def run_varlen_causal_conv1d_update_gpu[
     )
 
     # cache_seqlens: (batch,) - all zeros
-    var cache_seqlens_heap = List(length=batch, fill=Scalar[DType.int32](0))
+    var cache_seqlens_heap = List(length=batch, fill=Int32(0))
     var cache_seqlens_h = TileTensor(
         cache_seqlens_heap,
         row_major(
@@ -824,12 +844,10 @@ def run_varlen_causal_conv1d_update_gpu[
         ),
     )
     for i in range(batch):
-        cache_seqlens_h.raw_store(i, Scalar[DType.int32](0))
+        cache_seqlens_h.raw_store(i, Int32(0))
 
     # conv_state_indices: (batch,) - identity mapping
-    var conv_state_indices_heap = List(
-        length=batch, fill=Scalar[DType.int32](0)
-    )
+    var conv_state_indices_heap = List(length=batch, fill=Int32(0))
     var conv_state_indices_h = TileTensor(
         conv_state_indices_heap,
         row_major(
@@ -837,7 +855,7 @@ def run_varlen_causal_conv1d_update_gpu[
         ),
     )
     for i in range(batch):
-        conv_state_indices_h.raw_store(i, Scalar[DType.int32](i))
+        conv_state_indices_h.raw_store(i, Int32(i))
 
     # output: (batch, dim, seqlen)
     var output_gpu_heap = List(
@@ -915,10 +933,8 @@ def run_varlen_causal_conv1d_update_gpu[
     var conv_state_device = ctx.enqueue_create_buffer[dtype](
         batch * dim * state_len
     )
-    var cache_seqlens_device = ctx.enqueue_create_buffer[DType.int32](batch)
-    var conv_state_indices_device = ctx.enqueue_create_buffer[DType.int32](
-        batch
-    )
+    var cache_seqlens_device = ctx.enqueue_create_buffer[.int32](batch)
+    var conv_state_indices_device = ctx.enqueue_create_buffer[.int32](batch)
     var output_device = ctx.enqueue_create_buffer[dtype](batch * dim * seqlen)
 
     # Copy data to device
@@ -988,6 +1004,13 @@ def run_varlen_causal_conv1d_update_gpu[
                 cache_seqlens_device_tt.LayoutType,
                 conv_state_indices_device_tt.LayoutType,
                 output_upd_device_tt.LayoutType,
+                x_upd_device_tt.Engine,
+                weight_upd_device_tt.Engine,
+                bias_upd_device_tt.Engine,
+                conv_state_upd_device_tt.Engine,
+                cache_seqlens_device_tt.Engine,
+                conv_state_indices_device_tt.Engine,
+                output_upd_device_tt.Engine,
             ]
         ]()
         ctx.enqueue_function(
@@ -1042,6 +1065,13 @@ def run_varlen_causal_conv1d_update_gpu[
                 cache_seqlens_device_tt.LayoutType,
                 conv_state_indices_device_tt.LayoutType,
                 output_upd_device_tt.LayoutType,
+                x_upd_device_tt.Engine,
+                weight_upd_device_tt.Engine,
+                bias_upd_device_tt.Engine,
+                conv_state_upd_device_tt.Engine,
+                cache_seqlens_device_tt.Engine,
+                conv_state_indices_device_tt.Engine,
+                output_upd_device_tt.Engine,
             ]
         ]()
         ctx.enqueue_function(
@@ -1096,6 +1126,13 @@ def run_varlen_causal_conv1d_update_gpu[
                 cache_seqlens_device_tt.LayoutType,
                 conv_state_indices_device_tt.LayoutType,
                 output_upd_device_tt.LayoutType,
+                x_upd_device_tt.Engine,
+                weight_upd_device_tt.Engine,
+                bias_upd_device_tt.Engine,
+                conv_state_upd_device_tt.Engine,
+                cache_seqlens_device_tt.Engine,
+                conv_state_indices_device_tt.Engine,
+                output_upd_device_tt.Engine,
             ]
         ]()
         ctx.enqueue_function(
@@ -1150,6 +1187,13 @@ def run_varlen_causal_conv1d_update_gpu[
                 cache_seqlens_device_tt.LayoutType,
                 conv_state_indices_device_tt.LayoutType,
                 output_upd_device_tt.LayoutType,
+                x_upd_device_tt.Engine,
+                weight_upd_device_tt.Engine,
+                bias_upd_device_tt.Engine,
+                conv_state_upd_device_tt.Engine,
+                cache_seqlens_device_tt.Engine,
+                conv_state_indices_device_tt.Engine,
+                output_upd_device_tt.Engine,
             ]
         ]()
         ctx.enqueue_function(
@@ -1309,7 +1353,7 @@ def test_varlen_causal_conv1d_fwd_gpu_equal_lengths() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=2, dim=4, seq_lengths=Index(8, 8), width=3, ctx=ctx
     )
 
@@ -1319,7 +1363,7 @@ def test_varlen_causal_conv1d_fwd_gpu_variable_lengths() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=3, dim=4, seq_lengths=Index(10, 6, 1), width=3, ctx=ctx
     )
 
@@ -1329,7 +1373,7 @@ def test_varlen_causal_conv1d_fwd_gpu_with_silu() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "silu"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "silu"](
         batch=2, dim=4, seq_lengths=Index(8, 8), width=3, ctx=ctx
     )
 
@@ -1339,11 +1383,35 @@ def test_varlen_causal_conv1d_fwd_gpu_various_widths() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=2, dim=4, seq_lengths=Index(8, 8), width=2, ctx=ctx
     )
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=2, dim=4, seq_lengths=Index(8, 8), width=4, ctx=ctx
+    )
+
+
+def test_varlen_causal_conv1d_fwd_gpu_residual_decode_shape() raises:
+    """`use_residual=True` at a decode shape: one token per sequence, so
+    `total_seqlen == batch` routes to the serial kernel.
+    """
+    var ctx = DeviceContext()
+    if not ctx.is_compatible():
+        return
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none", use_residual=True](
+        batch=4, dim=16, seq_lengths=Index(1, 1, 1, 1), width=4, ctx=ctx
+    )
+
+
+def test_varlen_causal_conv1d_fwd_gpu_residual_prefill_shape() raises:
+    """`use_residual=True` at a multi-tile prefill shape: `total_seqlen >
+    batch` routes to the seq-parallel kernel.
+    """
+    var ctx = DeviceContext()
+    if not ctx.is_compatible():
+        return
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none", use_residual=True](
+        batch=2, dim=8, seq_lengths=Index(512, 300), width=4, ctx=ctx
     )
 
 
@@ -1358,7 +1426,8 @@ def test_varlen_causal_conv1d_fwd_gpu_various_widths() raises:
 def test_varlen_causal_conv1d_fwd_gpu_seqparallel_prefill_shapes() raises:
     """Single-sequence prefill at production-relevant lengths, spanning
     multiple TILE_SEQ=128 tiles and exact tile boundaries (255/256/257), for
-    every supported kernel width."""
+    each kernel width the models use (2, 3, 4; width 1 also dispatches but no
+    model uses it)."""
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
@@ -1366,7 +1435,7 @@ def test_varlen_causal_conv1d_fwd_gpu_seqparallel_prefill_shapes() raises:
     var widths: List[Int] = [2, 3, 4]
     for seqlen in seqlens:
         for width in widths:
-            run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+            run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
                 batch=1,
                 dim=8,
                 seq_lengths=Index(seqlen),
@@ -1384,7 +1453,7 @@ def test_varlen_causal_conv1d_fwd_gpu_seqparallel_ragged_batch() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=4,
         dim=8,
         seq_lengths=Index(1024, 512, 4032, 1),
@@ -1395,11 +1464,11 @@ def test_varlen_causal_conv1d_fwd_gpu_seqparallel_ragged_batch() raises:
 
 def test_varlen_causal_conv1d_fwd_gpu_seqparallel_nonzero_initial_state() raises:
     """Long prefill sequences with a non-zero initial conv_states pool (the
-    `has_initial_state`-gated read path), for every supported width."""
+    `has_initial_state`-gated read path), at the narrowest and widest width."""
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=2,
         dim=8,
         seq_lengths=Index(1024, 257),
@@ -1407,7 +1476,7 @@ def test_varlen_causal_conv1d_fwd_gpu_seqparallel_nonzero_initial_state() raises
         ctx=ctx,
         nonzero_initial_state=True,
     )
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=2,
         dim=8,
         seq_lengths=Index(4032, 256),
@@ -1430,7 +1499,7 @@ def test_varlen_causal_conv1d_fwd_gpu_chunk_shorter_than_width() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=2,
         dim=8,
         seq_lengths=Index(1, 1),
@@ -1438,7 +1507,7 @@ def test_varlen_causal_conv1d_fwd_gpu_chunk_shorter_than_width() raises:
         ctx=ctx,
         nonzero_initial_state=True,
     )
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=2,
         dim=8,
         seq_lengths=Index(2, 2),
@@ -1446,11 +1515,30 @@ def test_varlen_causal_conv1d_fwd_gpu_chunk_shorter_than_width() raises:
         ctx=ctx,
         nonzero_initial_state=True,
     )
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=3,
         dim=8,
         seq_lengths=Index(1, 1, 1),
         width=3,
+        ctx=ctx,
+        nonzero_initial_state=True,
+    )
+
+
+def test_varlen_causal_conv1d_fwd_gpu_seqparallel_with_silu() raises:
+    """The seq-parallel kernel's silu path over multi-tile sequences.
+
+    The activation is a production path, not a hypothetical: Nemotron-H calls
+    this kernel with `activation="silu"` while Inkling passes `"none"`, and the
+    single-tile `with_silu` case above is the only other silu coverage."""
+    var ctx = DeviceContext()
+    if not ctx.is_compatible():
+        return
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "silu"](
+        batch=3,
+        dim=8,
+        seq_lengths=Index(512, 255, 1024),
+        width=4,
         ctx=ctx,
         nonzero_initial_state=True,
     )
@@ -1463,7 +1551,7 @@ def test_varlen_causal_conv1d_fwd_gpu_seqparallel_zero_length_sequence() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_fwd_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=3,
         dim=8,
         seq_lengths=Index(0, 1024, 0),
@@ -1482,7 +1570,7 @@ def test_varlen_causal_conv1d_update_gpu_basic() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_update_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_update_gpu[.float32, "none"](
         batch=2, dim=4, seqlen=1, width=3, state_len=4, ctx=ctx
     )
 
@@ -1492,7 +1580,7 @@ def test_varlen_causal_conv1d_update_gpu_with_silu() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_update_gpu[DType.float32, "silu"](
+    run_varlen_causal_conv1d_update_gpu[.float32, "silu"](
         batch=2, dim=4, seqlen=1, width=3, state_len=4, ctx=ctx
     )
 
@@ -1502,7 +1590,7 @@ def test_varlen_causal_conv1d_update_gpu_seqlen_gt_1() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_update_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_update_gpu[.float32, "none"](
         batch=2, dim=4, seqlen=4, width=3, state_len=4, ctx=ctx
     )
 
@@ -1512,12 +1600,206 @@ def test_varlen_causal_conv1d_update_gpu_various_widths() raises:
     var ctx = DeviceContext()
     if not ctx.is_compatible():
         return
-    run_varlen_causal_conv1d_update_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_update_gpu[.float32, "none"](
         batch=2, dim=4, seqlen=1, width=2, state_len=3, ctx=ctx
     )
-    run_varlen_causal_conv1d_update_gpu[DType.float32, "none"](
+    run_varlen_causal_conv1d_update_gpu[.float32, "none"](
         batch=2, dim=4, seqlen=1, width=4, state_len=5, ctx=ctx
     )
+
+
+# =============================================================================
+# Regression test: a `conv_states` row past a 32-bit offset
+# =============================================================================
+
+
+def test_varlen_causal_conv1d_fwd_gpu_conv_states_deep_row_no_alias() raises:
+    """A `conv_states` row past 2**32 elements must not alias onto the front
+    of the pool.
+
+    The row is kept tiny (`dim=4`, `state_len=1`, `UInt8`) so that
+    `cache_idx_deep * batch_stride` lands on 2**32 with a ~4 GiB pool,
+    rather than the ~17 GiB a realistic row width would need. Only the
+    two sentinel bytes are touched from the host.
+    """
+    var ctx = DeviceContext()
+    if not ctx.is_compatible():
+        return
+
+    comptime conv_states_dtype = DType.uint8
+    comptime dtype = DType.float32
+    comptime width = 2
+    comptime state_len = width - 1  # 1
+    comptime dim = 4
+    comptime batch_stride = dim * state_len  # 4, a power of two
+    comptime batch = 1
+    comptime total_seqlen = 1
+    comptime BLOCK_DIM = 128
+    comptime BLOCK_SEQ = 1
+
+    # cache_idx_deep * batch_stride == 2**32 exactly: one past UInt32.MAX.
+    var cache_idx_deep = 1 << 30
+    var num_slots = cache_idx_deep + 1
+    var deep_offset = cache_idx_deep * batch_stride
+
+    var front_sentinel = Scalar[conv_states_dtype](111)
+    var deep_sentinel = Scalar[conv_states_dtype](222)
+    var x_val = Scalar[dtype](5)
+
+    var x_heap = List(length=dim * total_seqlen, fill=x_val)
+    var x_h = TileTensor(x_heap, row_major(dim, total_seqlen))
+    var weight_heap = List(length=dim * width, fill=Scalar[dtype](0))
+    var weight_h = TileTensor(weight_heap, row_major(dim, width))
+    for d in range(dim):
+        weight_h.raw_store(d * width, Scalar[dtype](1))
+    var bias_heap = List(length=dim, fill=Scalar[dtype](0))
+    var bias_h = TileTensor(bias_heap, row_major(dim))
+    var query_start_loc_heap = List(length=batch + 1, fill=Int32(0))
+    var query_start_loc_h = TileTensor(
+        query_start_loc_heap, row_major(batch + 1)
+    )
+    query_start_loc_h.raw_store(1, Int32(total_seqlen))
+    var cache_indices_heap = List(length=batch, fill=Int32(cache_idx_deep))
+    var cache_indices_h = TileTensor(cache_indices_heap, row_major(batch))
+    var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](True))
+    var has_initial_state_h = TileTensor(
+        has_initial_state_heap, row_major(batch)
+    )
+
+    var x_device = ctx.enqueue_create_buffer[dtype](dim * total_seqlen)
+    ctx.enqueue_copy(x_device, x_h._storage)
+    var weight_device = ctx.enqueue_create_buffer[dtype](dim * width)
+    ctx.enqueue_copy(weight_device, weight_h._storage)
+    var bias_device = ctx.enqueue_create_buffer[dtype](dim)
+    ctx.enqueue_copy(bias_device, bias_h._storage)
+    var query_start_loc_device = ctx.enqueue_create_buffer[.int32](batch + 1)
+    ctx.enqueue_copy(query_start_loc_device, query_start_loc_h._storage)
+    var cache_indices_device = ctx.enqueue_create_buffer[.int32](batch)
+    ctx.enqueue_copy(cache_indices_device, cache_indices_h._storage)
+    var has_initial_state_device = ctx.enqueue_create_buffer[.bool](batch)
+    ctx.enqueue_copy(has_initial_state_device, has_initial_state_h._storage)
+    var output_device = ctx.enqueue_create_buffer[dtype](dim * total_seqlen)
+
+    var x_device_tt = TileTensor(x_device, row_major(dim, total_seqlen))
+    var weight_device_tt = TileTensor(weight_device, row_major(dim, width))
+    var bias_device_tt = TileTensor(bias_device, row_major(dim))
+    var query_start_loc_device_tt = TileTensor(
+        query_start_loc_device, row_major(batch + 1)
+    )
+    var cache_indices_device_tt = TileTensor(
+        cache_indices_device, row_major(batch)
+    )
+    var has_initial_state_device_tt = TileTensor(
+        has_initial_state_device, row_major(batch)
+    )
+    var output_device_tt = TileTensor(
+        output_device, row_major(dim, total_seqlen)
+    )
+
+    var conv_states_device = ctx.enqueue_create_buffer[conv_states_dtype](
+        num_slots * dim * state_len
+    )
+    var conv_states_device_tt = TileTensor(
+        conv_states_device, row_major(num_slots, dim, state_len)
+    )
+
+    var front_sub = conv_states_device.create_sub_buffer[conv_states_dtype](
+        0, 1
+    )
+    var deep_sub = conv_states_device.create_sub_buffer[conv_states_dtype](
+        deep_offset, 1
+    )
+    var front_seed_heap = List(length=1, fill=front_sentinel)
+    var front_seed_h = TileTensor(front_seed_heap, row_major(1))
+    var deep_seed_heap = List(length=1, fill=deep_sentinel)
+    var deep_seed_h = TileTensor(deep_seed_heap, row_major(1))
+    ctx.enqueue_copy(front_sub, front_seed_h._storage)
+    ctx.enqueue_copy(deep_sub, deep_seed_h._storage)
+    ctx.synchronize()
+
+    var compiled_func = ctx.compile_function[
+        causal_conv1d_varlen_fwd_gpu[
+            dtype,
+            dtype,
+            dtype,
+            dtype,
+            DType.int32,
+            DType.int32,
+            DType.bool,
+            conv_states_dtype,
+            width,
+            BLOCK_DIM,
+            BLOCK_SEQ,
+            x_device_tt.LayoutType,
+            weight_device_tt.LayoutType,
+            bias_device_tt.LayoutType,
+            query_start_loc_device_tt.LayoutType,
+            cache_indices_device_tt.LayoutType,
+            has_initial_state_device_tt.LayoutType,
+            conv_states_device_tt.LayoutType,
+            output_device_tt.LayoutType,
+            x_device_tt.Engine,
+            weight_device_tt.Engine,
+            bias_device_tt.Engine,
+            query_start_loc_device_tt.Engine,
+            cache_indices_device_tt.Engine,
+            has_initial_state_device_tt.Engine,
+            conv_states_device_tt.Engine,
+            output_device_tt.Engine,
+        ]
+    ]()
+    ctx.enqueue_function(
+        compiled_func,
+        Int32(dim),
+        Int32(total_seqlen),
+        Int32(batch),
+        x_device_tt,
+        weight_device_tt,
+        bias_device_tt,
+        query_start_loc_device_tt,
+        cache_indices_device_tt,
+        has_initial_state_device_tt,
+        conv_states_device_tt,
+        output_device_tt,
+        UInt32(total_seqlen),  # x_dim_stride
+        UInt32(1),  # x_seqlen_stride
+        UInt32(width),  # weight_dim_stride
+        UInt32(1),  # weight_width_stride
+        UInt32(total_seqlen),  # out_dim_stride
+        UInt32(1),  # out_seqlen_stride
+        Int8(0),  # silu_activation ("none")
+        PAD_SLOT_ID,
+        Int8(1),  # has_cache_indices
+        Int8(1),  # has_initial_state_flag
+        Int8(1),  # has_conv_states
+        Int8(1),  # has_bias
+        grid_dim=(batch, ceildiv(dim, BLOCK_DIM)),
+        block_dim=(BLOCK_DIM, BLOCK_SEQ),
+    )
+
+    var output_readback_heap = List(
+        length=dim * total_seqlen, fill=Scalar[dtype](0)
+    )
+    var output_h = TileTensor(
+        output_readback_heap, row_major(dim, total_seqlen)
+    )
+    var front_readback_heap = List(length=1, fill=Scalar[conv_states_dtype](0))
+    var front_readback_h = TileTensor(front_readback_heap, row_major(1))
+    var deep_readback_heap = List(length=1, fill=Scalar[conv_states_dtype](0))
+    var deep_readback_h = TileTensor(deep_readback_heap, row_major(1))
+    ctx.enqueue_copy(output_h._storage, output_device)
+    ctx.enqueue_copy(front_readback_h._storage, front_sub)
+    ctx.enqueue_copy(deep_readback_h._storage, deep_sub)
+    ctx.synchronize()
+
+    # The deep sentinel, not the front row it would alias onto.
+    assert_equal(output_h.raw_load(0), Scalar[dtype](deep_sentinel))
+
+    # The front of the pool must be untouched.
+    assert_equal(front_readback_h.raw_load(0), front_sentinel)
+
+    # The deep row itself must carry the write.
+    assert_equal(deep_readback_h.raw_load(0), Scalar[conv_states_dtype](x_val))
 
 
 def main() raises:

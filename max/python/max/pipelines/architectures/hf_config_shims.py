@@ -205,6 +205,41 @@ except ValueError:
     pass
 
 
+class DeepseekV4HFConfig(PretrainedConfig):
+    """HuggingFace configuration class for DeepSeek-V4-Flash models.
+
+    ``deepseek_v4`` is not registered in transformers and the repo ships no
+    ``auto_map``, so ``AutoConfig.from_pretrained`` cannot resolve it. The
+    config is flat (no sub-configs) and, unlike V3.2, drops the MLA fields
+    (``kv_lora_rank``, ``qk_nope_head_dim``, ``v_head_dim``) and every dense-MLP
+    field (``intermediate_size``, ``first_k_dense_replace``, ``moe_layer_freq``)
+    -- every layer is MoE and KV is a single ``head_dim``-wide latent. So this
+    subclasses ``PretrainedConfig`` directly and preserves each field verbatim
+    rather than inheriting ``DeepseekV3Config``'s shape.
+    """
+
+    model_type = "deepseek_v4"
+
+    def __init__(
+        self, max_position_embeddings: int = 1048576, **kwargs: Any
+    ) -> None:
+        # Same trap as ``_KimiK2Config``: transformers >= 5.12 standardizes
+        # RoPE params in ``__post_init__`` and, for a scaling rope type (V4
+        # ships ``yarn``), eagerly reads ``self.max_position_embeddings`` as the
+        # ``setdefault`` fallback for ``original_max_position_embeddings``. It
+        # is not a declared field on the base config, so on a bare
+        # ``PretrainedConfig`` subclass it is never set before ``__post_init__``
+        # runs. Bind it before delegating.
+        self.max_position_embeddings = max_position_embeddings
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+
+
+AutoConfig.register("deepseek_v4", DeepseekV4HFConfig, exist_ok=True)
+
+
 class LagunaHFConfig(PretrainedConfig):
     """Local config class for poolside's Laguna models (``model_type: laguna``).
 
@@ -230,6 +265,146 @@ class LagunaHFConfig(PretrainedConfig):
 
 try:
     AutoConfig.register("laguna", LagunaHFConfig)
+except ValueError:
+    pass
+
+
+class _MiMoV2HFConfig(PretrainedConfig):
+    """Local config class for MiMo-V2 (``model_type: mimo_v2``).
+
+    MiMo-V2 repos point ``auto_map`` at ``configuration_mimo_v2.py``, so
+    ``AutoConfig.from_pretrained`` otherwise demands ``trust_remote_code=True``
+    and executes the repo's config code. The published ``config.json`` states
+    every field ``MiMoV2Config`` reads, so each is kept verbatim rather than
+    re-deriving the repo class's defaults.
+    """
+
+    model_type = "mimo_v2"
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            if not hasattr(self, k):
+                setattr(self, k, v)
+
+
+AutoConfig.register("mimo_v2", _MiMoV2HFConfig, exist_ok=True)
+
+
+class _KimiK3SubHFConfig(PretrainedConfig):
+    """A Kimi K3 sub-config that preserves every field verbatim.
+
+    ``KimiK3Config`` reads K3's own field names straight off these objects
+    (``qk_nope_head_dim``, ``kv_lora_rank``, ``linear_attn_config``,
+    ``attn_res_block_size``, ...), none of which ``PretrainedConfig`` knows,
+    so anything not consumed by the base class is kept as an attribute.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            if not hasattr(self, k):
+                setattr(self, k, v)
+
+
+# Defaults from `KimiLinearConfig.__init__` in the repo's
+# `configuration_kimi_k3.py`. Replicated rather than imported: the point of the
+# shim is to load `config.json` WITHOUT executing repo code, and a default the
+# reference applies is part of the config's meaning. Kimi-K3's published
+# `config.json` omits `rope_theta` entirely, so without this the architecture
+# raises `AttributeError` on the real checkpoint.
+_KIMI_K3_TEXT_DEFAULTS: dict[str, Any] = {
+    "attn_res_block_size": None,
+    "first_k_dense_replace": 0,
+    "hidden_act": "silu",
+    "initializer_range": 0.02,
+    "latent_moe_use_norm": False,
+    "linear_attn_config": None,
+    "max_position_embeddings": 4096,
+    "mla_use_nope": False,
+    "mla_use_output_gate": False,
+    "moe_layer_freq": 1,
+    "moe_renormalize": True,
+    "moe_router_activation_func": "sigmoid",
+    "num_expert_group": 1,
+    "num_nextn_predict_layers": 0,
+    "num_shared_experts": 0,
+    "rms_norm_eps": 1e-6,
+    "rope_scaling": None,
+    "rope_theta": 10000.0,
+    "routed_scaling_factor": 1.0,
+    "topk_group": 1,
+    "topk_method": "noaux_tc",
+    "use_grouped_topk": True,
+}
+
+
+class _KimiK3TextHFConfig(_KimiK3SubHFConfig):
+    """The ``text_config`` half, with the reference class's defaults applied."""
+
+    model_type = "kimi_linear"
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        # transformers v5 nests rope under `rope_parameters`; prefer a value the
+        # repo actually stated, either spelling, over the reference default.
+        if getattr(self, "rope_theta", None) is None:
+            rope_params = getattr(self, "rope_parameters", None)
+            if isinstance(rope_params, dict):
+                self.rope_theta = rope_params.get("rope_theta")
+        for key, value in _KIMI_K3_TEXT_DEFAULTS.items():
+            if getattr(self, key, None) is None:
+                setattr(self, key, value)
+        # Two the reference derives rather than defaults. Guarded because
+        # transformers instantiates a declared sub-config with no kwargs.
+        heads = getattr(self, "num_attention_heads", None)
+        hidden = getattr(self, "hidden_size", None)
+        if getattr(self, "num_key_value_heads", None) is None and heads:
+            self.num_key_value_heads = heads
+        if getattr(self, "head_dim", None) is None and heads and hidden:
+            self.head_dim = hidden // heads
+
+
+class KimiK3HFConfig(PretrainedConfig):
+    """Local config class for Kimi K3 (``model_type: kimi_k3``).
+
+    K3 repos point ``auto_map`` at ``configuration_kimi_k3.py``, so
+    ``AutoConfig.from_pretrained`` otherwise demands ``trust_remote_code=True``
+    and executes the repo's own config code. Registering this subclass lets the
+    repo's ``config.json`` load directly instead.
+
+    ``text_config`` becomes an object rather than a dict because
+    ``KimiK3Config`` reaches through it by attribute
+    (``model_config.py:104``); ``linear_attn_config`` stays a dict because
+    that is how ``_layer_indices`` reads it.
+    """
+
+    model_type = "kimi_k3"
+    sub_configs = {
+        "text_config": _KimiK3TextHFConfig,
+        "vision_config": _KimiK3SubHFConfig,
+    }
+
+    def __init__(
+        self,
+        text_config: dict[str, Any] | _KimiK3TextHFConfig | None = None,
+        vision_config: dict[str, Any] | _KimiK3SubHFConfig | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if isinstance(text_config, dict) or text_config is None:
+            text_config = _KimiK3TextHFConfig(**(text_config or {}))
+        if isinstance(vision_config, dict) or vision_config is None:
+            vision_config = _KimiK3SubHFConfig(**(vision_config or {}))
+        self.text_config = text_config
+        self.vision_config = vision_config
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            if not hasattr(self, k):
+                setattr(self, k, v)
+
+
+try:
+    AutoConfig.register("kimi_k3", KimiK3HFConfig)
 except ValueError:
     pass
 
@@ -294,3 +469,83 @@ except ImportError:
         AutoConfig.register("llama4", _Llama4HFConfig)
     except ValueError:
         pass  # Already registered
+
+
+class _InklingMMHFConfig(PretrainedConfig):
+    """Shim for the top-level ``inkling_mm_model`` model type; unmapped blocks
+    (``audio_config``, ``mtp_config``) stay as plain attributes."""
+
+    model_type = "inkling_mm_model"
+
+    def __init__(
+        self,
+        text_config: Any = None,
+        vision_config: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        self.text_config = PretrainedConfig(**(text_config or {}))
+        self.vision_config = PretrainedConfig(**(vision_config or {}))
+        super().__init__(**kwargs)
+
+
+AutoConfig.register("inkling_mm_model", _InklingMMHFConfig, exist_ok=True)
+
+
+class _Glm5NextHFConfig(PretrainedConfig):
+    """Shim for GLM-5.3-Flash's ``glm5_next`` model type."""
+
+    model_type = "glm5_next"
+
+    def __init__(
+        self,
+        text_config: Any = None,
+        vision_config: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        self.text_config = PretrainedConfig(**(text_config or {}))
+        self.vision_config = PretrainedConfig(**(vision_config or {}))
+        super().__init__(**kwargs)
+
+
+AutoConfig.register("glm5_next", _Glm5NextHFConfig, exist_ok=True)
+
+
+class _Qwen4ExpTextHFConfig(PretrainedConfig):
+    """Shim for the ``qwen4_exp_text`` decoder config.
+
+    Every field is forwarded verbatim; only ``intermediate_size`` is
+    defaulted, because :class:`Llama3Config` reads it directly while this
+    model has no dense MLP to declare one -- every layer's feed-forward is
+    the MoE block.
+    """
+
+    model_type = "qwen4_exp_text"
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+        if not hasattr(self, "intermediate_size"):
+            self.intermediate_size = getattr(self, "moe_intermediate_size", 0)
+
+
+class _Qwen4ExpHFConfig(PretrainedConfig):
+    """Shim for the top-level ``qwen4_exp`` model type."""
+
+    model_type = "qwen4_exp"
+    sub_configs = {"text_config": _Qwen4ExpTextHFConfig}
+
+    def __init__(
+        self,
+        text_config: Any = None,
+        vision_config: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        self.text_config = _Qwen4ExpTextHFConfig(**(text_config or {}))
+        self.vision_config = PretrainedConfig(**(vision_config or {}))
+        super().__init__(**kwargs)
+
+
+AutoConfig.register("qwen4_exp_text", _Qwen4ExpTextHFConfig, exist_ok=True)
+AutoConfig.register("qwen4_exp", _Qwen4ExpHFConfig, exist_ok=True)

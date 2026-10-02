@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import contextlib
 import threading
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextvars import ContextVar
+from pathlib import Path
 from types import TracebackType
 from typing import Generic, TypeVar
 
@@ -100,6 +101,79 @@ class SetterContext(Generic[T], contextlib.AbstractContextManager[T]):
         traceback: TracebackType | None,
     ) -> None:
         self._restore(self._previous)
+
+
+def _set_default_store(
+    store: engine.MefStore | None,
+) -> SetterContext[engine.MefStore | None]:
+    """Installs ``store`` process-wide and returns the handle undoing it.
+
+    Args:
+        store: The store to install, or :obj:`None` to compile in process.
+
+    Returns:
+        An undo handle restoring the previously installed store.
+    """
+    previous = engine.InferenceSession.default_mef_store
+    engine.InferenceSession.default_mef_store = store
+
+    def restore(restored: engine.MefStore | None) -> None:
+        engine.InferenceSession.default_mef_store = restored
+
+    return SetterContext(store, previous, restore)
+
+
+def set_precompiled_mefs(
+    directory: str | Path | Iterable[str | Path] | None,
+) -> SetterContext[engine.MefStore | None]:
+    """Initializes graphs from artifacts in ``directory`` instead of compiling.
+
+    Graph compilation does not need the accelerator it targets, only that
+    target's arch, so a caller that compiles where it executes spends
+    accelerator time on work a CPU could have done. Point an earlier run's
+    :func:`set_export_mefs` directory at this to split the two, and the
+    accelerator is only held for execution. See
+    ``docs/internal/CompileOnCpuRunOnGpu.md``.
+
+    Every graph compiled after this by a session that was given no artifacts of
+    its own -- whether through :meth:`~max.experimental.nn.Module.compile`,
+    eager execution, or a session the caller built itself -- is matched to an
+    artifact by its name and signature, so a divergence raises rather than
+    quietly recompiling. The consuming run has to build the same graphs, but not
+    in the same order, and may build only some of them.
+
+    Args:
+        directory: A directory written by :func:`set_export_mefs`, or several,
+            or :obj:`None` to stop reusing artifacts.
+
+    Returns:
+        An undo handle restoring the previously installed store.
+    """
+    return _set_default_store(
+        engine.MefStore.for_import(directory) if directory is not None else None
+    )
+
+
+def set_export_mefs(
+    directory: str | Path | None,
+) -> SetterContext[engine.MefStore | None]:
+    """Records every graph compiled after this into ``directory``.
+
+    The producing half of the split :func:`set_precompiled_mefs` describes: each
+    compiled graph lands there as a MEF alongside a manifest naming it, for a
+    later run to initialize. Governs every session that was given no artifacts
+    of its own, as :func:`set_precompiled_mefs` does.
+
+    Args:
+        directory: Where to write the artifacts and their manifest, created if
+            it does not exist, or :obj:`None` to stop recording.
+
+    Returns:
+        An undo handle restoring the previously installed store.
+    """
+    return _set_default_store(
+        engine.MefStore.for_export(directory) if directory is not None else None
+    )
 
 
 @contextlib.contextmanager

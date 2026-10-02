@@ -12,24 +12,24 @@
 # ===----------------------------------------------------------------------=== #
 
 
-from std.gpu import thread_idx
+from max.gpu import thread_idx
 from max.gpu.host import get_gpu_target
 from max.gpu.host.compile import _compile_code
-from std.gpu.intrinsics import ldg
+from max.gpu.intrinsics import ldg
 from std.testing import *
 
 
 def register_intrinsics(
-    i8: UnsafePointer[Int8, MutAnyOrigin],
-    ui8: UnsafePointer[UInt8, MutAnyOrigin],
-    i16: UnsafePointer[Int16, MutAnyOrigin],
-    ui16: UnsafePointer[UInt16, MutAnyOrigin],
-    i32: UnsafePointer[Int32, MutAnyOrigin],
-    ui32: UnsafePointer[UInt32, MutAnyOrigin],
-    i64: UnsafePointer[Int64, MutAnyOrigin],
-    ui64: UnsafePointer[UInt64, MutAnyOrigin],
-    f32: UnsafePointer[Float32, MutAnyOrigin],
-    f64: UnsafePointer[Float64, MutAnyOrigin],
+    i8: MutPointer[Int8, MutAnyOrigin],
+    ui8: MutPointer[UInt8, MutAnyOrigin],
+    i16: MutPointer[Int16, MutAnyOrigin],
+    ui16: MutPointer[UInt16, MutAnyOrigin],
+    i32: MutPointer[Int32, MutAnyOrigin],
+    ui32: MutPointer[UInt32, MutAnyOrigin],
+    i64: MutPointer[Int64, MutAnyOrigin],
+    ui64: MutPointer[UInt64, MutAnyOrigin],
+    f32: MutPointer[Float32, MutAnyOrigin],
+    f64: MutPointer[Float64, MutAnyOrigin],
 ):
     # Note we perform the store purely to avoid the compiler from optimizing
     # away the statements.
@@ -46,7 +46,7 @@ def register_intrinsics(
     f64.store(tid, ldg(f64))
 
 
-@always_inline
+@inline(.always)
 def _verify_register_intrinsics(asm: StringSlice) raises -> None:
     assert_true("ld.global.nc.b8" in asm)
     assert_true("ld.global.nc.b16" in asm)

@@ -18,7 +18,7 @@ from std.os import abort
 from std.sys import _RegisterPackType, size_of
 from std.sys._assembly import inlined_assembly
 from std.sys.info import _has_blackwell_tcgen05
-from std.gpu.intrinsics import _get_nvtx_register_constraint
+from std._gpu.intrinsics import _get_nvtx_register_constraint
 from std.memory import bitcast
 
 from max.gpu import external_memory
@@ -26,7 +26,7 @@ from max.gpu.compute.mma import _str_iota  # TODO: move to a string module
 from max.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptor
 
 
-@always_inline("nodebug")
+@inline(.nodebug)
 def check_blackwell_constraint():
     """Compile-time constraint ensuring Blackwell hardware is targeted."""
     comptime assert _has_blackwell_tcgen05(), (
@@ -38,15 +38,13 @@ def check_blackwell_constraint():
 struct TensorMemory(TrivialRegisterPassable):
     """A wrapper around tensor memory allocated for tcgen05 instructions."""
 
-    var ptr: Pointer[
-        UInt32, MutUntrackedOrigin, address_space=AddressSpace.SHARED
-    ]
+    var ptr: Pointer[UInt32, MutUntrackedOrigin, address_space=.SHARED]
     """Pointer to the tensor memory address."""
 
     var num_cols: UInt32
     """The number of columns in the tensor memory."""
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, num_cols: UInt32):
         """Initialize the TensorMemory struct.
 
@@ -55,22 +53,18 @@ struct TensorMemory(TrivialRegisterPassable):
         """
         # Bitcast to avoid `cannot implicitly convert` error.
         self.ptr = (
-            external_memory[
-                UInt32, address_space=AddressSpace.SHARED, alignment=16
-            ]()
+            external_memory[UInt32, address_space=.SHARED, alignment=16]()
             .unsafe_bitcast[UInt32]()
             .unsafe_origin_cast[MutUntrackedOrigin]()
         )
         self.num_cols = num_cols
 
 
-@always_inline("nodebug")
+@inline(.nodebug)
 def tcgen05_alloc[
     cta_group: Int32
 ](
-    ptr_tmem_addr: Pointer[
-        mut=True, UInt32, _, address_space=AddressSpace.SHARED
-    ],
+    ptr_tmem_addr: Pointer[mut=True, UInt32, _, address_space=.SHARED],
     num_cols: UInt32,
 ):
     """Allocates tensor memory for use with tcgen05 instructions.
@@ -100,7 +94,7 @@ def tcgen05_alloc[
     )
 
 
-@always_inline
+@inline(.always)
 def tcgen05_dealloc[cta_group: Int32](tmem_addr: UInt32, num_cols: UInt32):
     """Deallocates tensor memory allocated by tcgen05_alloc().
 
@@ -129,7 +123,7 @@ def tcgen05_dealloc[cta_group: Int32](tmem_addr: UInt32, num_cols: UInt32):
     ](tmem_addr, num_cols)
 
 
-@always_inline
+@inline(.always)
 def tcgen05_ld[
     *,
     datapaths: Int,
@@ -222,11 +216,10 @@ def tcgen05_ld[
     ]() + "}"
     comptime addr_str = "[$" + String(width) + "]"
 
-    @__parameter
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def call_ld_intrinsic[
         pack_type: TrivialRegisterPassable
-    ]() -> Array[Scalar[dtype], width]:
+    ]() {imm} -> Array[Scalar[dtype], width]:
         var r = inlined_assembly[
             "tcgen05.ld.sync.aligned."
             + shape_str
@@ -243,9 +236,11 @@ def tcgen05_ld[
             has_side_effect=True,
         ](tmem_addr)
         var ptr = Pointer(to=r).unsafe_bitcast[Scalar[dtype]]()
-        var result = Array[Scalar[dtype], width](uninitialized=True)
-        comptime for i in range(width):
-            result[i] = ptr[unsafe_offset=i]
+        var result = Array[Scalar[dtype], width](
+            fill_with_unrolled=lambda [i: Int]() -> Scalar[dtype]: ptr[
+                unsafe_offset=i
+            ]
+        )
         return result^
 
     # fmt: off
@@ -464,7 +459,7 @@ def tcgen05_st[
     # fmt: on
 
 
-@always_inline
+@inline(.always)
 def tcgen05_release_allocation_lock[cta_group: Int32]():
     """Releases the allocation lock for the current CTA group.
 
@@ -487,7 +482,7 @@ def tcgen05_release_allocation_lock[cta_group: Int32]():
     ]()
 
 
-@always_inline
+@inline(.always)
 def tcgen05_load_wait():
     """Waits for tensor memory loads to complete.
 
@@ -505,7 +500,7 @@ def tcgen05_load_wait():
     ]()
 
 
-@always_inline
+@inline(.always)
 def tcgen05_store_wait():
     """Waits for tensor memory stores to complete.
 
@@ -522,7 +517,7 @@ def tcgen05_store_wait():
     ]()
 
 
-@always_inline
+@inline(.always)
 def tcgen05_fence_before():
     """Orders all the prior asynchronous `tcgen05` operations.
 
@@ -539,7 +534,7 @@ def tcgen05_fence_before():
     ]()
 
 
-@always_inline
+@inline(.always)
 def tcgen05_fence_after():
     """Orders all the subsequent asynchronous `tcgen05` operations.
 
@@ -556,7 +551,7 @@ def tcgen05_fence_after():
     ]()
 
 
-@always_inline
+@inline(.always)
 def tcgen05_cp[
     *,
     cta_group: Int32,

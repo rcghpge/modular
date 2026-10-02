@@ -25,13 +25,13 @@ without touching the TMA im2col descriptor layer.
 from std.math import ceildiv, gcd
 from std.math.uutils import udivmod
 from std.sys import simd_width_of, size_of
-from std.gpu import block_dim, block_idx, global_idx, thread_idx
+from max.gpu import block_dim, block_idx, global_idx, thread_idx
 from max.gpu.host import DeviceContext
 from layout import (
     Coord,
     Idx,
     TensorLayout,
-    TensorStorage,
+    TensorEngine,
     TileTensor,
     row_major,
 )
@@ -54,20 +54,20 @@ def _im2col_ndhwc_kernel[
     input_layout_type: TensorLayout,
     filter_layout_type: TensorLayout,
     output_layout_type: TensorLayout,
-    input_storage: TensorStorage,
-    filter_storage: TensorStorage,
-    output_storage: TensorStorage,
+    input_engine: TensorEngine,
+    filter_engine: TensorEngine,
+    output_engine: TensorEngine,
     filter_is_fcrs: Bool,
 ](
     im2col_ptr: UnsafePointer[Scalar[input_dtype], MutAnyOrigin],
     input: TileTensor[
-        input_dtype, input_layout_type, ImmutAnyOrigin, Storage=input_storage
+        input_dtype, input_layout_type, ImmutAnyOrigin, Engine=input_engine
     ],
     filter: TileTensor[
-        filter_dtype, filter_layout_type, ImmutAnyOrigin, Storage=filter_storage
+        filter_dtype, filter_layout_type, ImmutAnyOrigin, Engine=filter_engine
     ],
     output: TileTensor[
-        output_dtype, output_layout_type, ImmutAnyOrigin, Storage=output_storage
+        output_dtype, output_layout_type, ImmutAnyOrigin, Engine=output_engine
     ],
     pad_d: Int32,
     pad_h: Int32,
@@ -177,10 +177,10 @@ def _im2col_ndhwc_kernel[
 def _transpose_qrscf_to_nk[
     dtype: DType,
     filter_layout_type: TensorLayout,
-    filter_storage: TensorStorage,
+    filter_engine: TensorEngine,
 ](
     filter: TileTensor[
-        dtype, filter_layout_type, ImmutAnyOrigin, Storage=filter_storage
+        dtype, filter_layout_type, ImmutAnyOrigin, Engine=filter_engine
     ],
     dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
 ):
@@ -215,10 +215,10 @@ def _transpose_qrscf_to_nk[
 def _transpose_fcqrs_to_nk[
     dtype: DType,
     filter_layout_type: TensorLayout,
-    filter_storage: TensorStorage,
+    filter_engine: TensorEngine,
 ](
     filter: TileTensor[
-        dtype, filter_layout_type, ImmutAnyOrigin, Storage=filter_storage
+        dtype, filter_layout_type, ImmutAnyOrigin, Engine=filter_engine
     ],
     dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
 ):
@@ -322,7 +322,7 @@ def dispatch_im2col_matmul_conv3d[
     comptime assert filter.flat_rank == 5, "filter must be rank 5"
     comptime assert output.flat_rank == 5, "output must be rank 5 (NDHWC)"
 
-    comptime if input_type != DType.bfloat16:
+    comptime if input_type != .bfloat16:
         return False
     comptime if not filter.shape_known:
         return False
@@ -368,10 +368,10 @@ def dispatch_im2col_matmul_conv3d[
     comptime if filter_is_fcrs:
         ctx.enqueue_function[
             _transpose_fcqrs_to_nk[
-                filter_type, filter.LayoutType, filter.Storage
+                filter_type, filter.LayoutType, filter.Engine
             ]
         ](
-            filter.as_immut(),
+            filter.as_imm(),
             filter_nk_buf,
             grid_dim=transpose_grid,
             block_dim=transpose_block,
@@ -379,10 +379,10 @@ def dispatch_im2col_matmul_conv3d[
     else:
         ctx.enqueue_function[
             _transpose_qrscf_to_nk[
-                filter_type, filter.LayoutType, filter.Storage
+                filter_type, filter.LayoutType, filter.Engine
             ]
         ](
-            filter.as_immut(),
+            filter.as_imm(),
             filter_nk_buf,
             grid_dim=transpose_grid,
             block_dim=transpose_block,
@@ -424,16 +424,16 @@ def dispatch_im2col_matmul_conv3d[
             input.LayoutType,
             filter.LayoutType,
             output.LayoutType,
-            input.Storage,
-            filter.Storage,
-            output.Storage,
+            input.Engine,
+            filter.Engine,
+            output.Engine,
             filter_is_fcrs,
         ]
         ctx.enqueue_function[im2col_kernel](
             im2col_buf,
-            input.as_immut(),
-            filter.as_immut(),
-            output.as_immut(),
+            input.as_imm(),
+            filter.as_imm(),
+            output.as_imm(),
             Int32(symmetric_padding[0]),
             Int32(symmetric_padding[1]),
             Int32(symmetric_padding[2]),
@@ -457,7 +457,7 @@ def dispatch_im2col_matmul_conv3d[
             comptime epilogue_5d = maybe_epilogue_func.value()
 
             @__parameter
-            @always_inline
+            @inline(.always)
             @__copy_capture(DHW_out, HW_out, H_out, W_out, _m_offset)
             def _gemm_epilogue[
                 _dtype: DType,
@@ -484,12 +484,12 @@ def dispatch_im2col_matmul_conv3d[
                 elementwise_lambda_fn=Optional[elementwise_epilogue_type](
                     _gemm_epilogue
                 ),
-            ](c_tt, a_tt.as_immut(), b_tt.as_immut(), ctx)
+            ](c_tt, a_tt.as_imm(), b_tt.as_imm(), ctx)
         else:
             _matmul_gpu[
                 use_tensor_core=True,
                 transpose_b=True,
-            ](c_tt, a_tt.as_immut(), b_tt.as_immut(), ctx)
+            ](c_tt, a_tt.as_imm(), b_tt.as_imm(), ctx)
 
         _m_offset += _m_count
 

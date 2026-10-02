@@ -36,12 +36,14 @@ from max.pipelines.weights.hf_utils import (
 from max.pipelines.weights.quant import parse_quant_config
 from max.pipelines.weights.weight_path_parser import WeightPathParser
 
+from .audio_tokenizer import AudioGenerationTokenizer
 from .bfloat16_utils import (
     float32_array_to_buffer,
     float32_to_bfloat16_as_uint16,
 )
 from .config import (
     DenoisingCacheConfig,
+    DenoisingCacheSettings,
     KVCacheConfig,
     KVConnectorConfig,
     LoRAConfig,
@@ -83,7 +85,7 @@ from .interfaces import (
     process_ragged_kv_outputs,
     ragged_kv_symbolic_inputs,
 )
-from .memory_estimation import MemoryEstimator
+from .memory_estimation import MemoryEstimator, MemoryPlan
 from .model_manifest import ModelManifest
 from .pipeline_runtime_config import PipelineRuntimeConfig
 from .pipeline_variants import PixelGenerationPipeline, TextGenerationPipeline
@@ -95,6 +97,8 @@ from .pixel_tokenizer import PixelGenerationTokenizer
 from .registry import (
     PIPELINE_REGISTRY,
     PipelineModelType,
+    RetrievedPipeline,
+    Speculator,
     SupportedArchitecture,
 )
 from .tokenizer import (
@@ -103,16 +107,20 @@ from .tokenizer import (
     TextTokenizer,
     build_eos_tracker_for_request,
     max_tokens_to_generate,
+    resolve_eos_token_ids,
 )
 from .utils import CompilationTimer, upper_bounded_default
+from .vision_preprocess_cache import VisionPreprocessCache
 
 __all__ = [
     "PIPELINE_REGISTRY",
     "AlwaysSignalBuffersMixin",
+    "AudioGenerationTokenizer",
     "BatchProcessor",
     "BatchProcessorRuntime",
     "CompilationTimer",
     "DenoisingCacheConfig",
+    "DenoisingCacheSettings",
     "EmbeddingsPipeline",
     "EmbeddingsPipelineType",
     "GraphPipelineModel",
@@ -126,6 +134,7 @@ __all__ = [
     "MAXModelConfig",
     "MAXModelConfigBase",
     "MemoryEstimator",
+    "MemoryPlan",
     "ModelInputs",
     "ModelManifest",
     "ModelOutputs",
@@ -146,9 +155,11 @@ __all__ = [
     "ProfilingConfig",
     "RaggedBatchProcessor",
     "RepoType",
+    "RetrievedPipeline",
     "RopeType",
     "SamplingConfig",
     "SpeculativeConfig",
+    "Speculator",
     "SupportedArchitecture",
     "SupportedEncoding",
     "SupportsSSMStateWarmup",
@@ -157,6 +168,7 @@ __all__ = [
     "TextTokenizer",
     "UnifiedEagleOutputs",
     "UnifiedSpecDecodeInputs",
+    "VisionPreprocessCache",
     "WeightPathParser",
     "build_eos_tracker_for_request",
     "convert_max_config_value",
@@ -174,6 +186,7 @@ __all__ = [
     "ragged_kv_symbolic_inputs",
     "rejection_sampler",
     "rejection_sampler_with_residuals",
+    "resolve_eos_token_ids",
     "resolve_max_config_inheritance",
     "supported_encoding_dtype",
     "supported_encoding_quantization",

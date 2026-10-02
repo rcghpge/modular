@@ -109,7 +109,7 @@ def _bench_prefill[
     var v_op = LayoutTensorMHAOperand(v_t)
 
     # Dummy valid_length (dense path doesn't read it).
-    var vl_d = ctx.enqueue_create_buffer[DType.uint32](batch + 1)
+    var vl_d = ctx.enqueue_create_buffer[.uint32](batch + 1)
     var vl_t = TileTensor(vl_d, row_major(batch + 1))
 
     comptime SinkOpt = OptionalReg[
@@ -117,12 +117,19 @@ def _bench_prefill[
     ]
     var sink_opt = SinkOpt(None)
 
-    @__parameter
-    @always_inline
-    @__copy_capture(
-        q_t, k_t, v_t, o_t, k_op, v_op, vl_t, sink_opt, scale, seq, num_keys
-    )
-    def _launch() raises:
+    @inline(.always)
+    def _launch() raises {
+        var q_t,
+        var o_t,
+        var k_op,
+        var v_op,
+        var vl_t,
+        var sink_opt,
+        var scale,
+        var seq,
+        var num_keys,
+        imm,
+    }:
         comptime if naive:
             mha_gpu_naive[
                 ragged=False,

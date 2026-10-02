@@ -16,7 +16,7 @@
 
 from std.math import align_up
 from std.sys import simd_width_of, size_of
-from std.gpu import (
+from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     thread_idx,
     warp_id,
@@ -27,9 +27,9 @@ from max.gpu.primitives.grid_controls import (
     launch_dependent_grids,
     wait_on_dependent_grids,
 )
-from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
+from max.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from max.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
-from std.gpu.primitives.warp import broadcast
+from max.gpu.primitives.warp import broadcast
 from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,
     tcgen05_dealloc,
@@ -45,7 +45,7 @@ from nn.attention.gpu.nvidia.sm100.attention_utils import (
     SM100TensorAccumulator,
     elect,
     kv_sub_tile_rows,
-    o_store_tma_blocks_per_op,
+    fa4_o_store_swizzle,
 )
 from nn.attention.gpu.nvidia.common import (
     get_seq_info,
@@ -146,8 +146,7 @@ struct SM100MHA2Q[
     # which the K-ahead producer in `load_warp` does not implement.
     # Store-shape conjunct for `softmax_warp`'s per-tile cross-P store, which
     # assumes exactly 4 full batches. Mirrors that function's own arithmetic
-    # (`exp_simd == 2`) off the SAME `UMMA1Type` built above, so the two agree
-    # without either duplicating the accumulator type.
+    # (`exp_simd == 2`) off this file's `UMMA1Type`.
     comptime _crossp_vs_len: Int = (Self.config.BN // Self.config.m_pack) // 2
     comptime _crossp_batch: Int = 32 if Self.config.num_pv_stages == 1 else (
         Self._crossp_vs_len
@@ -261,9 +260,8 @@ struct SM100MHA2Q[
     ]
     comptime OTMAStoreType = RaggedTMA3DTile[
         Self.output_type,
-        # O output store is row-major SWIZZLE_NONE (decoupled from the swizzled
-        # Q/K/V/S/P buffers governed by `config.swizzle_mode`).
-        TensorMapSwizzle.SWIZZLE_NONE,
+        # Must match dispatch.mojo's store (`fa4_o_store_swizzle`, per-block).
+        fa4_o_store_swizzle[Self.output_type, Self.config](),
         # 2Q: BM=128 (each WG writes one of two Q halves).
         # 1Q: BM=128 (both WGs cover the full BM=128 Q rows and write
         # disjoint depth-column ranges).
@@ -271,22 +269,7 @@ struct SM100MHA2Q[
         BN=Self.config.ov_depth,
         middle_dim=Self.config.num_kv_heads if Self.fuse_gqa else Self.config.num_q_heads,
         group=Self.config.group if Self.fuse_gqa else 1,
-        # Batched rank-5 O store (must match dispatch.mojo's store) for every
-        # non-split config; the 1Q split-K (reduce-scatter) config uses the
-        # PER-BLOCK (rank-3) store because each partition TMA-stores only its own
-        # depth band via `async_copy_from_col` at a non-{0,half} offset (see the
-        # matching conditional + rationale in dispatch.mojo).
-        # WS (MMA_M=32) also uses the per-block WG0 egress (fa4_tma_store_o_smem),
-        # so it takes the rank-3 store like the 1Q split-K path.
-        tma_blocks_per_op=0 if (
-            Self.config.splitk_partitions > 1 or Self.config.use_ws
-        ) else o_store_tma_blocks_per_op[
-            Self.output_type,
-            TensorMapSwizzle.SWIZZLE_NONE,
-            Self.config.ov_depth,
-            Self.config.group if Self.fuse_gqa else 1,
-            depth_splits=2,
-        ](),
+        tma_blocks_per_op=0,
     ]
     comptime PackType = Pack[
         Self.MaskType,
@@ -349,7 +332,7 @@ struct SM100MHA2Q[
         )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _entry_body(
         q_tma_op: Self.QTMAOpType,
         k_tma_op: Self.KTMAOpType,
@@ -362,23 +345,22 @@ struct SM100MHA2Q[
         pack: Self.PackType,
         num_rows_q: UInt32,
     ):
-        # Thin entrypoint. Compute this tile's `SeqInfo` once and forward it to
-        # `_kernel_impl` (all warp groups share it — it is derived from
-        # blockIdx, not threadIdx, so it is identical on every lane/warp).
-        #
         # When this 2Q config admits a type-compatible 1Q variant
-        # (`can_switch_to_1q`), route short sequences through the cheaper 1Q
-        # body. The 1Q body covers `Kernel1Q.BM_eff` *sequence positions* per
-        # tile at `blockIdx.x == 0` (BM // group when fusing GQA, else BM), so
-        # the switch is only correct when the whole prompt fits in that one
-        # tile: `seq_len <= Kernel1Q.BM_eff`. Then the prompt is a single tile
-        # at `prompt_offset == 0` in BOTH the 1Q and 2Q tilings, where their
-        # `SeqInfo` coincide, so passing the 2Q `seq_info` into the 1Q body is
-        # correct. `broadcast` (lane-0 shuffle) makes the branch warp-uniform;
-        # the decision is the same on all 16 warps because `seq_len` is, so no
-        # cross-warp sync is needed. The grid is unchanged (still 2Q-tiled) —
-        # a prompt this short occupies only `blockIdx.x == 0`, which the 2Q
-        # grid always covers.
+        # (`can_switch_to_1q`), route any tile whose REMAINING valid rows fit a
+        # single 1Q tile through the cheaper 1Q body:
+        # `seq_len - prompt_offset <= Kernel1Q.BM_eff`.
+        #
+        # That width is LOAD-BEARING — do not narrow it to `prompt_offset == 0`.
+        # It equals `softmax_warp`'s `wg_row_offset_seq`, so the predicate is
+        # precisely "WG1's output half is empty"; the 2Q caller passes
+        # `output_nonempty=can_switch_to_1q()` on the strength of it and the WS
+        # epilogue then statically discharges its `num_output_rows > 0` guard.
+        # Restricted to whole prompts, every 2Q tile with an empty second half
+        # loses that guard and writes 128 rows past the end of the sequence.
+        #
+        # A tile with `prompt_offset > seq_len` underflows the UInt32 subtract,
+        # fails the predicate, and falls to the 2Q body's `is_valid()` early-out
+        # — correct, but by wraparound.
         var seq_info: SeqInfo = get_seq_info[
             Self.BM_mask,
             Self.config.num_kv_heads if Self.fuse_gqa else Self.num_q_heads,
@@ -409,6 +391,10 @@ struct SM100MHA2Q[
                 # matching `num_qk_stages` ⇒ matching `BK0`; per-half BM=128,
                 # BN/depth/group/swizzle already match), but the parser sees
                 # distinct parameter expressions, so `rebind`.
+                comptime assert (
+                    Kernel1Q.OTMAStoreType.swizzle_mode
+                    == Self.OTMAStoreType.swizzle_mode
+                ), "the 1Q switch reuses the 2Q O store and its smem layout"
                 Kernel1Q._kernel_impl(
                     rebind[Kernel1Q.QTMAOpType](q_tma_op),
                     rebind[Kernel1Q.KTMAOpType](k_tma_op),
@@ -436,7 +422,7 @@ struct SM100MHA2Q[
         )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _kernel_impl(
         q_tma_op: Self.QTMAOpType,
         k_tma_op: Self.KTMAOpType,
@@ -629,16 +615,6 @@ struct SM100MHA2Q[
         # KV windowing in the load/mma/correction warps. The softmax warp derives
         # the same predicate from `ws_lse`'s type instead of being told, so its
         # egress cannot be enabled without a buffer to write to.
-        #
-        # That equivalence is what the assert below pins. `MHAPartitionScheme`
-        # states it only in prose ("Null exactly when `do_partition` is False"),
-        # and `NullPointer.value()` yields a dangling address rather than
-        # trapping, so a conformer that broke it would produce a silent store to
-        # unowned memory. `lse_pointer()` below is called unconditionally, so
-        # this is the one site in this kernel that both conformers reach and the
-        # full biconditional binds for every 2Q instantiation. Callers outside
-        # this kernel (sm90, MSA, `mha_1q`) never instantiate it and instead get
-        # the one-sided check in `MHAPosition.exp_sum_qk_max_ptr`.
         comptime assert Self.PartitionType.do_partition == (
             not Self.PartitionType.LSEPointerType.is_null
         ), (
@@ -890,7 +866,7 @@ struct SM100MHA2Q[
                 )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def mask_status(
         mask: Self.MaskType,
         seq_id: UInt32,
@@ -907,7 +883,7 @@ struct SM100MHA2Q[
         )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def descriptor_q(
         q_smem: SharedMemPointer[Scalar[Self.qkv_type]],
     ) -> MMASmemDescriptorPair:

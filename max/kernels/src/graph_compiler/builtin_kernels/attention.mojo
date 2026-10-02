@@ -30,12 +30,14 @@ from layout.tile_tensor import row_major
 from max.gpu.host.info import is_cpu, is_gpu
 from kv_cache.paged_sparse_kv_index_remap import paged_sparse_kv_index_remap
 from kv_cache.types import KVCacheStaticParams
+from linalg.mx_format import MXFormat
 from layout import (
     Layout,
     LayoutTensor,
     RuntimeLayout,
     TileTensor,
     UNKNOWN_VALUE,
+    coord_to_index_list,
     row_major,
 )
 from nn.attention.cpu.mha import flash_attention as nn_flash_attention
@@ -64,7 +66,7 @@ from nn.attention.gpu.mha_decode_partition_heuristic import (
     mha_decoding_num_partitions,
 )
 from nn.attention.mha_mask import MHAMask
-from nn.attention.mha_utils import as_dynamic_row_major_1d, dispatch_mask
+from nn.attention.mha_utils import dispatch_mask
 from nn.attention.gpu.mla_graph import (
     mla_prefill_branch_fp8,
     mla_prefill_branch_bf16,
@@ -74,6 +76,9 @@ from nn.attention.gpu.mla_graph import (
     mla_prefill_decode_graph_bf16,
 )
 from nn.attention.gpu.mla_index_fp8 import mla_indexer_ragged_float8_paged
+from nn.attention.latent_sparse_attention import (
+    latent_sparse_attention_ragged_paged,
+)
 from nn.attention.gpu.mla_decode_dispatch_scalars import (
     mla_decode_dispatch_scalars,
 )
@@ -83,6 +88,7 @@ from nn.attention.gpu.nvidia.sm100.mla_prefill import (
 )
 from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id
 from extensibility import DynamicTensor, InputTensor, OutputTensor
+from extensibility import Tensor
 from extensibility import (
     _FusedInputTensor as FusedInputTensor,
 )
@@ -119,21 +125,24 @@ struct MLAIndexerRaggedFloat8Paged:
         k: Int,
         quantization_granularity: Int,
         mask_str: StaticString,
+        kpool: Int = 1,
     ](
-        output_indices: OutputTensor[dtype=DType.int32, rank=2, ...],
-        q: InputTensor[dtype=DType.float8_e4m3fn, rank=3, ...],
-        qs: InputTensor[dtype=DType.float32, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        k_blocks: MutableInputTensor[dtype=DType.float8_e4m3fn, rank=6, ...],
-        k_cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        k_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        k_max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        k_max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        k_scales: MutableInputTensor[dtype=DType.float32, rank=6, ...],
+        output_indices: OutputTensor[dtype=.int32, rank=2, ...],
+        q: InputTensor[dtype=.float8_e4m3fn, rank=3, ...],
+        qs: InputTensor[dtype=.float32, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        k_blocks: MutableInputTensor[dtype=.float8_e4m3fn, rank=6, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        k_cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        k_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        k_max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        k_max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        k_scales: MutableInputTensor[dtype=.float32, rank=6, ...],
+        scales_page_stride: InputTensor[dtype=.int64, rank=1, ...],
         # Resolves a request's scale pages. Pass `k_lookup_table` itself when
         # the scales share the values' block-id space; pass a distinct table
         # when they are paged independently.
-        k_scales_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
+        k_scales_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
@@ -150,6 +159,9 @@ struct MLAIndexerRaggedFloat8Paged:
             k: Number of top indices to return per token.
             quantization_granularity: Quantization granularity for the K cache.
             mask_str: Mask type - either MaskName.NULL (no mask) or MaskName.CAUSAL.
+            kpool: Tokens per pooled cache row. `1` scores one row per token;
+                `k > 1` scores one pooled key per `kpool` consecutive tokens,
+                so the K cache holds pooled keys and `k` counts pools.
 
         Args:
             output_indices: Output tensor [total_seq_len, top_k] containing
@@ -160,6 +172,7 @@ struct MLAIndexerRaggedFloat8Paged:
             input_row_offsets: Ragged row offsets [batch_size + 1] for queries.
             k_blocks: Paged K cache blocks [num_blocks, 1, num_layers, page_size,
                 num_heads, head_size] in FP8.
+            page_stride: Page-to-page distance in elements; -1 when packed.
             k_cache_lengths: Cache lengths [batch_size] - number of cached tokens
                 per sequence.
             k_lookup_table: Page lookup table [batch_size, pages_per_seq] mapping
@@ -167,6 +180,7 @@ struct MLAIndexerRaggedFloat8Paged:
             k_max_prompt_length: Max prompt (query) length scalar tensor [1].
             k_max_cache_length: Max cache length scalar tensor [1].
             k_scales: K scale blocks matching k_blocks shape with scale values.
+            scales_page_stride: The same, for the scales leaf.
             k_scales_lookup_table: Page lookup table for the scale blocks
                 [batch_size, pages_per_seq]. Equal to `k_lookup_table` when the
                 scales share the values' block-id space.
@@ -192,45 +206,55 @@ struct MLAIndexerRaggedFloat8Paged:
             page_size,
             quantization_granularity,
         ](
-            LayoutTensor[
-                DType.float8_e4m3fn, Layout.row_major[6](), MutAnyOrigin
-            ](
+            LayoutTensor[.float8_e4m3fn, Layout.row_major[6](), MutAnyOrigin](
                 k_blocks.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[6]()].row_major(
                     k_blocks.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout(UNKNOWN_VALUE), ImmutAnyOrigin](
+            LayoutTensor[.int64, Layout.row_major[1](), ImmutAnyOrigin](
+                page_stride.to_layout_tensor().ptr,
+                RuntimeLayout[Layout.row_major[1]()].row_major(
+                    page_stride.to_layout_tensor().runtime_layout.shape.value
+                ),
+            ),
+            LayoutTensor[.uint32, Layout(UNKNOWN_VALUE), ImmutAnyOrigin](
                 k_cache_lengths.to_layout_tensor().ptr,
                 RuntimeLayout[Layout(UNKNOWN_VALUE)].row_major(
                     k_cache_lengths.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[2](), ImmutAnyOrigin](
+            LayoutTensor[.uint32, Layout.row_major[2](), ImmutAnyOrigin](
                 k_lookup_table.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[2]()].row_major(
                     k_lookup_table.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[1](), ImmutAnyOrigin](
+            LayoutTensor[.uint32, Layout.row_major[1](), ImmutAnyOrigin](
                 k_max_prompt_length.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[1]()].row_major(
                     k_max_prompt_length.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[1](), ImmutAnyOrigin](
+            LayoutTensor[.uint32, Layout.row_major[1](), ImmutAnyOrigin](
                 k_max_cache_length.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[1]()].row_major(
                     k_max_cache_length.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.float32, Layout.row_major[6](), MutAnyOrigin](
+            LayoutTensor[.float32, Layout.row_major[6](), MutAnyOrigin](
                 k_scales.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[6]()].row_major(
                     k_scales.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[2](), ImmutAnyOrigin](
+            LayoutTensor[.int64, Layout.row_major[1](), ImmutAnyOrigin](
+                scales_page_stride.to_layout_tensor().ptr,
+                RuntimeLayout[Layout.row_major[1]()].row_major(
+                    scales_page_stride.to_layout_tensor().runtime_layout.shape.value
+                ),
+            ),
+            LayoutTensor[.uint32, Layout.row_major[2](), ImmutAnyOrigin](
                 k_scales_lookup_table.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[2]()].row_major(
                     k_scales_lookup_table.to_layout_tensor().runtime_layout.shape.value
@@ -245,11 +269,12 @@ struct MLAIndexerRaggedFloat8Paged:
             depth,
             k,
             mask_str,
+            kpool=kpool,
         ](
-            output_indices.to_tile_tensor[DType.int64](),
-            q.to_tile_tensor[DType.int64](),
-            qs.to_tile_tensor[DType.int64](),
-            input_row_offsets.to_tile_tensor[DType.int64](),
+            output_indices.to_tile_tensor[.int64](),
+            q.to_tile_tensor[.int64](),
+            qs.to_tile_tensor[.int64](),
+            input_row_offsets.to_tile_tensor[.int64](),
             k_collection,
             layer_idx,
             ctx,
@@ -427,9 +452,15 @@ struct FlashAttentionGPU:
         var k_buffer = k.to_layout_tensor()
         var v_buffer = v.to_layout_tensor()
 
-        @__parameter
-        @__copy_capture(output_buffer, q_buffer, k_buffer, v_buffer)
-        def _dispatch_flash_attention[mask_t: MHAMask](mask: mask_t) raises:
+        def _dispatch_flash_attention[
+            mask_t: MHAMask
+        ](mask: mask_t) raises {
+            var output_buffer,
+            var q_buffer,
+            var k_buffer,
+            var v_buffer,
+            imm,
+        }:
             flash_attention[](
                 output_buffer,
                 q_buffer,
@@ -440,11 +471,7 @@ struct FlashAttentionGPU:
                 ctx,
             )
 
-        dispatch_mask[
-            mask_str,
-            _dispatch_flash_attention,
-            local_window_size,
-        ]()
+        dispatch_mask[mask_str, local_window_size](_dispatch_flash_attention)
 
 
 @extensibility.register("mo.mha.padded.no_cache")
@@ -464,7 +491,7 @@ struct PaddedFlashAttentionGPU:
         q: InputTensor[rank=rank, ...],
         k: InputTensor[rank=rank, ...],
         v: InputTensor[rank=rank, ...],
-        valid_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        valid_length: InputTensor[dtype=.uint32, rank=1, ...],
         scale: Float32,
         ctx: DeviceContext,
     ) raises:
@@ -476,15 +503,21 @@ struct PaddedFlashAttentionGPU:
         var v_buffer = v.to_layout_tensor()
 
         comptime valid_length_t = LayoutTensor[
-            DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+            .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
         ]
         var _valid_length = rebind[valid_length_t](
             valid_length.to_layout_tensor()
         )
 
-        @__parameter
-        @__copy_capture(output_buffer, q_buffer, k_buffer, v_buffer)
-        def _dispatch_flash_attention[mask_t: MHAMask](mask: mask_t) raises:
+        def _dispatch_flash_attention[
+            mask_t: MHAMask
+        ](mask: mask_t) raises {
+            var output_buffer,
+            var q_buffer,
+            var k_buffer,
+            var v_buffer,
+            imm,
+        }:
             flash_attention[
                 _use_valid_length=True,
                 _padded_ndbuffer=True,
@@ -499,11 +532,7 @@ struct PaddedFlashAttentionGPU:
                 valid_length=OptionalReg[valid_length_t](_valid_length),
             )
 
-        dispatch_mask[
-            mask_str,
-            _dispatch_flash_attention,
-            local_window_size,
-        ]()
+        dispatch_mask[mask_str, local_window_size](_dispatch_flash_attention)
 
 
 @extensibility.register("mo.mha.ragged.no_cache")
@@ -523,8 +552,8 @@ struct RaggedFlashAttentionGPU:
         q: InputTensor[rank=rank, ...],
         k: InputTensor[rank=rank, ...],
         v: InputTensor[rank=rank, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        q_max_seq_len: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        q_max_seq_len: InputTensor[dtype=.uint32, rank=1, ...],
         scale: Float32,
         ctx: DeviceContext,
     ) raises:
@@ -564,15 +593,21 @@ struct RaggedFlashAttentionGPU:
         var v_buffer = v.to_layout_tensor()
 
         comptime input_row_offsets_t = LayoutTensor[
-            DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+            .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
         ]
         var _input_row_offsets = rebind[input_row_offsets_t](
             input_row_offsets.to_layout_tensor()
         )
 
-        @__parameter
-        @__copy_capture(output_buffer, q_buffer, k_buffer, v_buffer)
-        def _dispatch_flash_attention[mask_t: MHAMask](mask: mask_t) raises:
+        def _dispatch_flash_attention[
+            mask_t: MHAMask
+        ](mask: mask_t) raises {
+            var output_buffer,
+            var q_buffer,
+            var k_buffer,
+            var v_buffer,
+            imm,
+        }:
             flash_attention_ragged[](
                 output_buffer,
                 q_buffer,
@@ -585,11 +620,7 @@ struct RaggedFlashAttentionGPU:
                 ctx,
             )
 
-        dispatch_mask[
-            mask_str,
-            _dispatch_flash_attention,
-            local_window_size,
-        ]()
+        dispatch_mask[mask_str, local_window_size](_dispatch_flash_attention)
 
 
 @extensibility.register("mo.composite.no_mask_flash_attention_cpu")
@@ -613,7 +644,7 @@ struct NoMaskFlashAttentionCPU:
         comptime assert is_cpu[target](), "only valid on CPUs"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def k_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[k.dtype, width]:
@@ -622,7 +653,7 @@ struct NoMaskFlashAttentionCPU:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def v_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[v.dtype, width]:
@@ -630,8 +661,7 @@ struct NoMaskFlashAttentionCPU:
                 rebind[IndexList[v.rank]](coords)
             )
 
-        @__parameter
-        @always_inline
+        @inline(.always)
         def mask_input_fn[
             width: Int, _rank: Int
         ](idx: IndexList[_rank]) -> SIMD[dtype, width]:
@@ -643,7 +673,7 @@ struct NoMaskFlashAttentionCPU:
             v.shape(),
             IndexList[0](),
             output.to_layout_tensor(),
-            scale.cast[DType.float32](),
+            scale.cast[.float32](),
             ctx=Optional[DeviceContext](ctx),
         )
 
@@ -672,7 +702,7 @@ struct WithMaskFlashAttentionSplitKVCPU:
         comptime assert is_cpu[target](), "only valid on CPUs"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def k_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[k.dtype, width]:
@@ -681,7 +711,7 @@ struct WithMaskFlashAttentionSplitKVCPU:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def v_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[v.dtype, width]:
@@ -690,7 +720,7 @@ struct WithMaskFlashAttentionSplitKVCPU:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def k_cache_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[k_cache.dtype, width]:
@@ -699,7 +729,7 @@ struct WithMaskFlashAttentionSplitKVCPU:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def v_cache_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[v_cache.dtype, width]:
@@ -708,7 +738,7 @@ struct WithMaskFlashAttentionSplitKVCPU:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def mask_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[mask.dtype, width]:
@@ -730,27 +760,53 @@ struct WithMaskFlashAttentionSplitKVCPU:
             v_cache.shape(),
             mask.shape(),
             output.to_layout_tensor(),
-            scale.cast[DType.float32](),
+            scale.cast[.float32](),
             ctx=Optional[DeviceContext](ctx),
         )
 
 
 @extensibility.register_shape_function("with_mask_flash_attention_split_kv_cpu")
-def with_mask_flash_attention_split_kv_cpu_shape[
-    dtype: DType,
-    rank: Int,
-](
-    q: InputTensor[dtype=dtype, rank=rank, ...],
-    k: InputTensor[dtype=dtype, rank=rank, ...],
-    v: InputTensor[dtype=dtype, rank=rank, ...],
-    k_cache: InputTensor[dtype=dtype, rank=rank + 1, ...],
-    v_cache: InputTensor[dtype=dtype, rank=rank + 1, ...],
-    mask: InputTensor[dtype=dtype, ...],
+def with_mask_flash_attention_split_kv_cpu_shape(
+    q: Some[Tensor],
+    k: Some[Tensor],
+    v: Some[Tensor],
+    k_cache: Some[Tensor],
+    v_cache: Some[Tensor],
+    mask: Some[Tensor],
     scale: Scalar[dtype=DType.float32],
-) -> IndexList[q.rank]:
+) -> IndexList[type_of(q).rank]:
     """Computes the output shape for the `with_mask_flash_attention_split_kv_cpu` graph op.
     """
-    return q.shape()
+    comptime assert (
+        type_of(k).dtype == type_of(q).dtype
+    ), "k and q must share a dtype"
+    comptime assert (
+        type_of(v).dtype == type_of(q).dtype
+    ), "v and q must share a dtype"
+    comptime assert (
+        type_of(k_cache).dtype == type_of(q).dtype
+    ), "k_cache and q must share a dtype"
+    comptime assert (
+        type_of(v_cache).dtype == type_of(q).dtype
+    ), "v_cache and q must share a dtype"
+    comptime assert (
+        type_of(mask).dtype == type_of(q).dtype
+    ), "mask and q must share a dtype"
+    comptime assert (
+        type_of(k).rank == type_of(q).rank
+    ), "k and q must share a rank"
+    comptime assert (
+        type_of(v).rank == type_of(q).rank
+    ), "v and q must share a rank"
+    comptime assert (
+        type_of(k_cache).rank == type_of(q).rank + 1
+    ), "k_cache rank must be q rank + 1"
+    comptime assert (
+        type_of(v_cache).rank == type_of(q).rank + 1
+    ), "v_cache rank must be q rank + 1"
+    return rebind[IndexList[type_of(q).rank]](
+        coord_to_index_list(q.shape().tuple())
+    )
 
 
 @extensibility.register("mo.composite.masked_flash_attention_cpu")
@@ -775,7 +831,7 @@ struct WithMaskFlashAttentionCPU:
         comptime assert is_cpu[target](), "only valid on CPUs"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def k_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[k.dtype, width]:
@@ -784,7 +840,7 @@ struct WithMaskFlashAttentionCPU:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def v_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[v.dtype, width]:
@@ -793,7 +849,7 @@ struct WithMaskFlashAttentionCPU:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def mask_input_fn[
             width: Int, rank: Int
         ](coords: IndexList[rank]) -> SIMD[mask.dtype, width]:
@@ -807,7 +863,7 @@ struct WithMaskFlashAttentionCPU:
             v.shape(),
             mask.shape(),
             output.to_layout_tensor(),
-            scale.cast[DType.float32](),
+            scale.cast[.float32](),
             ctx=Optional[DeviceContext](ctx),
         )
 
@@ -817,7 +873,7 @@ struct Struct_fused_qkv_matmul_padded_paged:
     """Registers the `mo.fused_qkv_matmul.padded.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -828,16 +884,18 @@ struct Struct_fused_qkv_matmul_padded_paged:
         hidden_state: InputTensor[dtype=dtype, rank=3, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
-        valid_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
+        valid_lengths: InputTensor[dtype=.uint32, rank=1, ...],
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -851,7 +909,7 @@ struct Struct_fused_qkv_matmul_padded_paged:
             kv_collection,
             layer_idx,
             LayoutTensor[
-                DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+                .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
             ](
                 valid_lengths_lt.ptr,
                 RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
@@ -868,7 +926,7 @@ struct Struct_fused_qkv_matmul_padded_ragged:
     """Registers the `mo.fused_qkv_matmul.ragged.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -877,18 +935,20 @@ struct Struct_fused_qkv_matmul_padded_ragged:
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -912,7 +972,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_quantized:
     """Registers the `mo.fused_qkv_matmul.ragged.paged.quantized` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -924,13 +984,14 @@ struct Struct_fused_qkv_matmul_padded_ragged_quantized:
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=weight_type, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
@@ -940,6 +1001,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_quantized:
         comptime has_zp = True if has_zp_int == 1 else False
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -965,7 +1027,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_bias:
     """Registers the `mo.fused_qkv_matmul.ragged.paged.bias` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -974,19 +1036,21 @@ struct Struct_fused_qkv_matmul_padded_ragged_bias:
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         bias: InputTensor[dtype=dtype, rank=1, ...],
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1011,7 +1075,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale:
     """Registers the `mo.fused_qkv_matmul.ragged.paged.scale` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1026,20 +1090,22 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale:
     ](
         output: OutputTensor[dtype=output_type, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         input_scale: InputTensor[dtype=scale_type, rank=2, ...],
         weight_scale: InputTensor[dtype=scale_type, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1066,7 +1132,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale:
                     output_type,
                     Layout.row_major(UNKNOWN_VALUE),
                     ImmutAnyOrigin,
-                    address_space=AddressSpace.GENERIC,
+                    address_space=.GENERIC,
                 ]
             ](),
         )
@@ -1077,7 +1143,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_float4:
     """Registers the `mo.fused_qkv_matmul.ragged.paged.scale.float4` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1090,21 +1156,23 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_float4:
     ](
         output: OutputTensor[dtype=output_type, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         input_scale: InputTensor[dtype=scale_type, rank=5, ...],
         weight_scale: InputTensor[dtype=scale_type, rank=5, ...],
         tensor_sf: Float32,
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1136,7 +1204,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_mxfp8:
     # MXFP8 from its data dtype, scale dtype, and SF_VECTOR_SIZE parameters. The
     # "float4" in the callee name is intentional. Do not split off a separate
     # MXFP8 path.
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1149,21 +1217,23 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_mxfp8:
     ](
         output: OutputTensor[dtype=output_type, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         input_scale: InputTensor[dtype=scale_type, rank=5, ...],
         weight_scale: InputTensor[dtype=scale_type, rank=5, ...],
         tensor_sf: Float32,
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1196,7 +1266,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_mxfp8_amd:
     # differs by vendor: SM100 wants the rank-5 SF-atom interleave, CDNA4
     # consumes the checkpoint's plain rank-2 [N, K // 32] E8M0 scales.
     # Everything below the entry point is shared.
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1209,21 +1279,23 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_mxfp8_amd:
     ](
         output: OutputTensor[dtype=output_type, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         input_scale: InputTensor[dtype=scale_type, rank=2, ...],
         weight_scale: InputTensor[dtype=scale_type, rank=2, ...],
         tensor_sf: Float32,
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1232,6 +1304,72 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_mxfp8_amd:
         return generic_fused_qkv_matmul_kv_cache_paged_ragged_scale_float4[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             target=target,
+        ](
+            hidden_state.to_layout_tensor(),
+            input_row_offsets.to_layout_tensor(),
+            weight.to_layout_tensor(),
+            input_scale.to_layout_tensor(),
+            weight_scale.to_layout_tensor(),
+            tensor_sf,
+            kv_collection,
+            layer_idx,
+            output.to_layout_tensor(),
+            ctx,
+        )
+
+
+@extensibility.register("mo.fused_qkv_matmul.ragged.paged.scale.mxfp6.amd")
+struct Struct_fused_qkv_matmul_padded_ragged_scale_mxfp6_amd:
+    """Registers the `mo.fused_qkv_matmul.ragged.paged.scale.mxfp6.amd` graph op with the graph compiler.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        dtype: DType,
+        scale_type: DType,
+        output_type: DType,
+        kv_type: DType,
+        //,
+        SF_VECTOR_SIZE: Int,
+        FP6_FORMAT: Int,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=output_type, rank=2, ...],
+        hidden_state: InputTensor[dtype=dtype, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        weight: InputTensor[dtype=dtype, rank=2, ...],
+        input_scale: InputTensor[dtype=scale_type, rank=2, ...],
+        weight_scale: InputTensor[dtype=scale_type, rank=2, ...],
+        tensor_sf: Float32,
+        kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        layer_idx: UInt32,
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert FP6_FORMAT in (
+            0,
+            1,
+        ), "FP6_FORMAT must be 0 (E2M3) or 1 (E3M2)"
+        comptime fmt = (
+            MXFormat.FP6_E2M3 if FP6_FORMAT == 0 else MXFormat.FP6_E3M2
+        )
+        var kv_collection = generic_get_paged_cache(
+            kv_blocks,
+            page_stride,
+            cache_lengths,
+            kv_lookup_table,
+            max_prompt_length,
+            max_cache_length,
+        )
+        return generic_fused_qkv_matmul_kv_cache_paged_ragged_scale_float4[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            target=target,
+            mx_format=fmt,
         ](
             hidden_state.to_layout_tensor(),
             input_row_offsets.to_layout_tensor(),
@@ -1265,7 +1403,7 @@ struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp8:
     # `IQ_DIM` is the IndexQ output-band width (num_index_heads * idx_head_dim).
     # It is a parameter because, for the MLA index cache, it cannot be recovered
     # from the index cache's `num_heads` (== 1 for the single latent head).
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1281,26 +1419,29 @@ struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp8:
         q_output: OutputTensor[dtype=output_type, rank=2, ...],
         iq_output: OutputTensor[dtype=output_type, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         input_scale: InputTensor[dtype=scale_type, rank=5, ...],
         weight_scale: InputTensor[dtype=scale_type, rank=5, ...],
         tensor_sf: Float32,
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         index_kv_blocks: MutableInputTensor[dtype=index_kv_type, rank=6, ...],
-        index_cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        index_kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        index_max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        index_max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        index_page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        index_cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        index_kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        index_max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        index_max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1308,6 +1449,7 @@ struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp8:
         )
         var index_kv_collection = generic_get_paged_cache(
             index_kv_blocks,
+            index_page_stride,
             index_cache_lengths,
             index_kv_lookup_table,
             index_max_prompt_length,
@@ -1356,7 +1498,7 @@ struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp8_amd:
     # `IQ_DIM` is the IndexQ output-band width (num_index_heads * idx_head_dim).
     # It is a parameter because, for the MLA index cache, it cannot be recovered
     # from the index cache's `num_heads` (== 1 for the single latent head).
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1372,26 +1514,29 @@ struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp8_amd:
         q_output: OutputTensor[dtype=output_type, rank=2, ...],
         iq_output: OutputTensor[dtype=output_type, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         input_scale: InputTensor[dtype=scale_type, rank=2, ...],
         weight_scale: InputTensor[dtype=scale_type, rank=2, ...],
         tensor_sf: Float32,
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         index_kv_blocks: MutableInputTensor[dtype=index_kv_type, rank=6, ...],
-        index_cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        index_kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        index_max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        index_max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        index_page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        index_cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        index_kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        index_max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        index_max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1399,6 +1544,7 @@ struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp8_amd:
         )
         var index_kv_collection = generic_get_paged_cache(
             index_kv_blocks,
+            index_page_stride,
             index_cache_lengths,
             index_kv_lookup_table,
             index_max_prompt_length,
@@ -1408,6 +1554,96 @@ struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp8_amd:
             generic_fused_qkv_index_matmul_kv_cache_paged_ragged_scale_float4[
                 SF_VECTOR_SIZE=SF_VECTOR_SIZE,
                 target=target,
+            ](
+                hidden_state.to_layout_tensor(),
+                input_row_offsets.to_layout_tensor(),
+                weight.to_layout_tensor(),
+                input_scale.to_layout_tensor(),
+                weight_scale.to_layout_tensor(),
+                tensor_sf,
+                kv_collection,
+                index_kv_collection,
+                layer_idx,
+                IQ_DIM,
+                q_output.to_layout_tensor(),
+                iq_output.to_layout_tensor(),
+                ctx,
+            )
+        )
+
+
+@extensibility.register(
+    "mo.fused_qkv_index_matmul.ragged.paged.scale.mxfp6.amd"
+)
+struct Struct_fused_qkv_index_matmul_padded_ragged_scale_mxfp6_amd:
+    """Registers the `mo.fused_qkv_index_matmul.ragged.paged.scale.mxfp6.amd` graph op with the graph compiler.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        dtype: DType,
+        scale_type: DType,
+        output_type: DType,
+        kv_type: DType,
+        index_kv_type: DType,
+        //,
+        SF_VECTOR_SIZE: Int,
+        IQ_DIM: Int,
+        FP6_FORMAT: Int,
+        target: StaticString,
+    ](
+        q_output: OutputTensor[dtype=output_type, rank=2, ...],
+        iq_output: OutputTensor[dtype=output_type, rank=2, ...],
+        hidden_state: InputTensor[dtype=dtype, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        weight: InputTensor[dtype=dtype, rank=2, ...],
+        input_scale: InputTensor[dtype=scale_type, rank=2, ...],
+        weight_scale: InputTensor[dtype=scale_type, rank=2, ...],
+        tensor_sf: Float32,
+        kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        index_kv_blocks: MutableInputTensor[dtype=index_kv_type, rank=6, ...],
+        index_page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        index_cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        index_kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        index_max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        index_max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        layer_idx: UInt32,
+        ctx: DeviceContext,
+    ) raises:
+        var kv_collection = generic_get_paged_cache(
+            kv_blocks,
+            page_stride,
+            cache_lengths,
+            kv_lookup_table,
+            max_prompt_length,
+            max_cache_length,
+        )
+        var index_kv_collection = generic_get_paged_cache(
+            index_kv_blocks,
+            index_page_stride,
+            index_cache_lengths,
+            index_kv_lookup_table,
+            index_max_prompt_length,
+            index_max_cache_length,
+        )
+        comptime assert FP6_FORMAT in (
+            0,
+            1,
+        ), "FP6_FORMAT must be 0 (E2M3) or 1 (E3M2)"
+        comptime fmt = (
+            MXFormat.FP6_E2M3 if FP6_FORMAT == 0 else MXFormat.FP6_E3M2
+        )
+        return (
+            generic_fused_qkv_index_matmul_kv_cache_paged_ragged_scale_float4[
+                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                target=target,
+                mx_format=fmt,
             ](
                 hidden_state.to_layout_tensor(),
                 input_row_offsets.to_layout_tensor(),
@@ -1442,7 +1678,7 @@ struct Struct_fused_qkv_index_matmul_padded_ragged:
     # `IQ_DIM` is the IndexQ output-band width (num_index_heads * idx_head_dim).
     # It is a parameter because, for the MLA index cache, it cannot be recovered
     # from the index cache's `num_heads` (== 1 for the single latent head).
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1454,23 +1690,26 @@ struct Struct_fused_qkv_index_matmul_padded_ragged:
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         index_kv_blocks: MutableInputTensor[dtype=index_kv_type, rank=6, ...],
-        index_cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        index_kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        index_max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        index_max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        index_page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        index_cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        index_kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        index_max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        index_max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1478,6 +1717,7 @@ struct Struct_fused_qkv_index_matmul_padded_ragged:
         )
         var index_kv_collection = generic_get_paged_cache(
             index_kv_blocks,
+            index_page_stride,
             index_cache_lengths,
             index_kv_lookup_table,
             index_max_prompt_length,
@@ -1503,7 +1743,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_bias:
     """Registers the `mo.fused_qkv_matmul.ragged.paged.scale.bias` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1518,21 +1758,23 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_bias:
     ](
         output: OutputTensor[dtype=output_type, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         input_scale: InputTensor[dtype=scale_type, rank=2, ...],
         weight_scale: InputTensor[dtype=scale_type, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=kv_type, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         bias: InputTensor[dtype=output_type, rank=1, ...],
         ctx: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1543,7 +1785,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_scale_bias:
             output_type,
             Layout.row_major(UNKNOWN_VALUE),
             ImmutAnyOrigin,
-            address_space=AddressSpace.GENERIC,
+            address_space=.GENERIC,
         ]
         var bias_tensor = bias.to_layout_tensor()
         var rebound_bias = rebind[ExpectedBiasType](bias_tensor)
@@ -1571,7 +1813,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_bias_quantized:
     """Registers the `mo.fused_qkv_matmul.ragged.paged.bias.quantized` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1583,13 +1825,14 @@ struct Struct_fused_qkv_matmul_padded_ragged_bias_quantized:
     ](
         output: OutputTensor[dtype=dtype, rank=2, ...],
         hidden_state: InputTensor[dtype=dtype, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         weight: InputTensor[dtype=weight_type, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         bias: InputTensor[dtype=dtype, rank=1, ...],
         ctx: DeviceContext,
@@ -1600,6 +1843,7 @@ struct Struct_fused_qkv_matmul_padded_ragged_bias_quantized:
         comptime has_zp = True if has_zp_int == 1 else False
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1626,7 +1870,7 @@ struct Struct_fused_qk_rope_ragged_paged_with_position_id[interleaved: Bool]:
     """Registers the `mo.fused_qk_rope.ragged.paged.with_position_id` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1638,19 +1882,21 @@ struct Struct_fused_qk_rope_ragged_paged_with_position_id[interleaved: Bool]:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q_proj: InputTensor[dtype=dtype, rank=3, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
-        position_ids: InputTensor[dtype=DType.uint32, rank=2, ...],
+        position_ids: InputTensor[dtype=.uint32, rank=2, ...],
         layer_idx: UInt32,
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1680,7 +1926,7 @@ struct Struct_fused_qk_rope_ragged_paged[interleaved: Bool]:
     """Registers the `mo.fused_qk_rope.ragged.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1691,12 +1937,13 @@ struct Struct_fused_qk_rope_ragged_paged[interleaved: Bool]:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q_proj: InputTensor[dtype=dtype, rank=3, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         layer_idx: UInt32,
         context: DeviceContext,
@@ -1708,6 +1955,7 @@ struct Struct_fused_qk_rope_ragged_paged[interleaved: Bool]:
         )
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1734,7 +1982,7 @@ struct Struct_fused_qk_rope_padded_paged[interleaved: Bool]:
     """Registers the `mo.fused_qk_rope.padded.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1744,17 +1992,19 @@ struct Struct_fused_qk_rope_padded_paged[interleaved: Bool]:
         output: OutputTensor[dtype=dtype, rank=4, ...],
         q_proj: InputTensor[dtype=dtype, rank=4, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=dtype, rank=2, ...],
         layer_idx: UInt32,
-        valid_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
+        valid_lengths: InputTensor[dtype=.uint32, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1764,12 +2014,12 @@ struct Struct_fused_qk_rope_padded_paged[interleaved: Bool]:
             interleaved=Self.interleaved,
             target=target,
         ](
-            q_proj.to_tile_tensor[DType.int64](),
+            q_proj.to_tile_tensor[.int64](),
             kv_collection,
-            freqs_cis.to_tile_tensor[DType.int64](),
+            freqs_cis.to_tile_tensor[.int64](),
             layer_idx,
-            valid_lengths.to_tile_tensor[DType.int64](),
-            output.to_tile_tensor[DType.int64](),
+            valid_lengths.to_tile_tensor[.int64](),
+            output.to_tile_tensor[.int64](),
             context,
         )
 
@@ -1778,7 +2028,7 @@ struct Struct_fused_qk_rope_padded_paged[interleaved: Bool]:
 struct Struct_mha_padded_paged:
     """Registers the `mo.mha.padded.paged` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1790,17 +2040,19 @@ struct Struct_mha_padded_paged:
         output: OutputTensor[dtype=dtype, rank=4, ...],
         q: InputTensor[dtype=dtype, rank=4, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
-        valid_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
+        valid_lengths: InputTensor[dtype=.uint32, rank=1, ...],
         scale: Float32,
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1817,7 +2069,7 @@ struct Struct_mha_padded_paged:
             kv_collection,
             layer_idx,
             LayoutTensor[
-                DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+                .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
             ](
                 valid_lengths_lt.ptr,
                 RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
@@ -1835,12 +2087,12 @@ struct Struct_mha_decode_num_partitions:
     """Registers the `mo.mha.decode.get_num_partitions` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         *, n_kv_heads: Int
     ](
-        num_partitions: OutputTensor[dtype=DType.int64, rank=1, ...],
+        num_partitions: OutputTensor[dtype=.int64, rank=1, ...],
         decode_num_partitions_request: InputTensor[
             dtype=DType.int64, rank=1, ...
         ],
@@ -1881,7 +2133,7 @@ struct Struct_mha_decode_num_partitions:
 struct Struct_mha_ragged_paged_scalar_args:
     """Registers the `mo.mha.ragged.paged` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         out_dtype: DType,
@@ -1894,12 +2146,13 @@ struct Struct_mha_ragged_paged_scalar_args:
     ](
         output: OutputTensor[dtype=out_dtype, rank=3, ...],
         q: InputTensor[dtype=q_dtype, rank=3, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         mha_decode_dispatch_metadata: InputTensor[
@@ -1918,6 +2171,7 @@ struct Struct_mha_ragged_paged_scalar_args:
             q,
             input_row_offsets,
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1934,7 +2188,7 @@ struct Struct_mha_ragged_paged_sink_weights_scalar_args:
     """Registers the `mo.mha.ragged.paged.sink_weights` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -1945,12 +2199,13 @@ struct Struct_mha_ragged_paged_sink_weights_scalar_args:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         sink_weights: InputTensor[dtype=dtype, rank=1, ...],
@@ -1959,8 +2214,11 @@ struct Struct_mha_ragged_paged_sink_weights_scalar_args:
         ],
         context: DeviceContext,
     ) raises:
-        var sink_weights_lt = sink_weights.to_layout_tensor()
-        var sink_weights_rebound = as_dynamic_row_major_1d(sink_weights_lt)
+        var sink_weights_tt = (
+            sink_weights.to_tile_tensor[.int64]()
+            .as_imm()
+            .as_unsafe_any_origin()
+        )
         _execute_mha_ragged_paged_scalar_args[
             target=target,
             mask_str=mask_str,
@@ -1973,6 +2231,7 @@ struct Struct_mha_ragged_paged_sink_weights_scalar_args:
             q,
             input_row_offsets,
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -1981,11 +2240,7 @@ struct Struct_mha_ragged_paged_sink_weights_scalar_args:
             scale,
             mha_decode_dispatch_metadata,
             context,
-            OptionalReg[
-                LayoutTensor[
-                    dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
-                ]
-            ](sink_weights_rebound),
+            OptionalReg[type_of(sink_weights_tt)](sink_weights_tt),
         )
 
 
@@ -1998,7 +2253,7 @@ struct Struct_mha_ragged_paged_rel_logits:
     materializing a dense `(q, k)` mask.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         out_dtype: DType,
@@ -2010,12 +2265,13 @@ struct Struct_mha_ragged_paged_rel_logits:
     ](
         output: OutputTensor[dtype=out_dtype, rank=3, ...],
         q: InputTensor[dtype=q_dtype, rank=3, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         bias: InputTensor[dtype=q_dtype, rank=3, ...],
@@ -2034,6 +2290,7 @@ struct Struct_mha_ragged_paged_rel_logits:
             q,
             input_row_offsets,
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2051,7 +2308,7 @@ struct Struct_mla_decode_ragged_paged:
     """Registers the `mo.mla.decode.ragged.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -2063,15 +2320,16 @@ struct Struct_mla_decode_ragged_paged:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=q_dtype, rank=3, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=kv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         comptime assert (
@@ -2079,6 +2337,7 @@ struct Struct_mla_decode_ragged_paged:
         ), "Only support only_k=True for MLA decompress"
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2088,13 +2347,13 @@ struct Struct_mla_decode_ragged_paged:
             target=target,
             mask_str=mask_str,
         ](
-            q.to_tile_tensor[DType.int64](),
-            input_row_offsets.to_tile_tensor[DType.int64](),
+            q.to_tile_tensor[.int64](),
+            input_row_offsets.to_tile_tensor[.int64](),
             kv_collection,
             layer_idx,
             scale,
-            output.to_tile_tensor[DType.int64](),
-            scalar_args.to_tile_tensor[DType.int64](),
+            output.to_tile_tensor[.int64](),
+            scalar_args.to_tile_tensor[.int64](),
             context,
         )
 
@@ -2104,7 +2363,7 @@ struct Struct_mla_decode_ragged_paged_scaled:
     """Registers the `mo.mla.decode.ragged.paged.scaled` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -2118,21 +2377,23 @@ struct Struct_mla_decode_ragged_paged_scaled:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=q_dtype, rank=3, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=kv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_scales: MutableInputTensor[dtype=DType.float32, rank=6, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_scales: MutableInputTensor[dtype=.float32, rank=6, ...],
+        scales_page_stride: InputTensor[dtype=.int64, rank=1, ...],
         # Resolves a request's scale pages. Pass `kv_lookup_table` itself when
         # the scales share the values' block-id space; pass a distinct table
         # when they are paged independently.
-        kv_scales_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        q_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        kv_scales_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        q_scales: InputTensor[dtype=.float32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         comptime assert (
@@ -2157,37 +2418,49 @@ struct Struct_mla_decode_ragged_paged_scaled:
                     kv_blocks.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout(UNKNOWN_VALUE), ImmutAnyOrigin](
+            LayoutTensor[.int64, Layout.row_major[1](), ImmutAnyOrigin](
+                page_stride.to_layout_tensor().ptr,
+                RuntimeLayout[Layout.row_major[1]()].row_major(
+                    page_stride.to_layout_tensor().runtime_layout.shape.value
+                ),
+            ),
+            LayoutTensor[.uint32, Layout(UNKNOWN_VALUE), ImmutAnyOrigin](
                 cache_lengths.to_layout_tensor().ptr,
                 RuntimeLayout[Layout(UNKNOWN_VALUE)].row_major(
                     cache_lengths.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[2](), ImmutAnyOrigin](
+            LayoutTensor[.uint32, Layout.row_major[2](), ImmutAnyOrigin](
                 kv_lookup_table.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[2]()].row_major(
                     kv_lookup_table.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[1](), ImmutAnyOrigin](
+            LayoutTensor[.uint32, Layout.row_major[1](), ImmutAnyOrigin](
                 max_prompt_length.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[1]()].row_major(
                     max_prompt_length.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[1](), ImmutAnyOrigin](
+            LayoutTensor[.uint32, Layout.row_major[1](), ImmutAnyOrigin](
                 max_cache_length.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[1]()].row_major(
                     max_cache_length.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.float32, Layout.row_major[6](), MutAnyOrigin](
+            LayoutTensor[.float32, Layout.row_major[6](), MutAnyOrigin](
                 kv_scales.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[6]()].row_major(
                     kv_scales.to_layout_tensor().runtime_layout.shape.value
                 ),
             ),
-            LayoutTensor[DType.uint32, Layout.row_major[2](), ImmutAnyOrigin](
+            LayoutTensor[.int64, Layout.row_major[1](), ImmutAnyOrigin](
+                scales_page_stride.to_layout_tensor().ptr,
+                RuntimeLayout[Layout.row_major[1]()].row_major(
+                    scales_page_stride.to_layout_tensor().runtime_layout.shape.value
+                ),
+            ),
+            LayoutTensor[.uint32, Layout.row_major[2](), ImmutAnyOrigin](
                 kv_scales_lookup_table.to_layout_tensor().ptr,
                 RuntimeLayout[Layout.row_major[2]()].row_major(
                     kv_scales_lookup_table.to_layout_tensor().runtime_layout.shape.value
@@ -2203,13 +2476,13 @@ struct Struct_mla_decode_ragged_paged_scaled:
             mask_str=mask_str,
             per_token_scale_rope_aware=per_token_scale_rope_aware != 0,
         ](
-            q.to_tile_tensor[DType.int64](),
-            input_row_offsets.to_tile_tensor[DType.int64](),
+            q.to_tile_tensor[.int64](),
+            input_row_offsets.to_tile_tensor[.int64](),
             kv_collection,
             layer_idx,
             scale,
-            output.to_tile_tensor[DType.int64](),
-            scalar_args.to_tile_tensor[DType.int64](),
+            output.to_tile_tensor[.int64](),
+            scalar_args.to_tile_tensor[.int64](),
             context,
             q_scale_ptr,
         )
@@ -2220,7 +2493,7 @@ struct Struct_mla_prefill_ragged_paged:
     """Registers the `mo.mla.prefill.ragged.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -2233,20 +2506,22 @@ struct Struct_mla_prefill_ragged_paged:
         q: InputTensor[dtype=qkv_dtype, rank=3, ...],
         k: InputTensor[dtype=qkv_dtype, rank=3, ...],
         v: InputTensor[dtype=qkv_dtype, rank=3, ...],
-        buffer_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=qkv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2256,16 +2531,16 @@ struct Struct_mla_prefill_ragged_paged:
             target=target,
             mask_str=mask_str,
         ](
-            q.to_tile_tensor[DType.int64](),
-            k.to_tile_tensor[DType.int64](),
-            v.to_tile_tensor[DType.int64](),
-            buffer_row_offsets.to_tile_tensor[DType.int64](),
-            cache_offsets.to_tile_tensor[DType.int64](),
-            input_row_offsets.to_tile_tensor[DType.int64](),
+            q.to_tile_tensor[.int64](),
+            k.to_tile_tensor[.int64](),
+            v.to_tile_tensor[.int64](),
+            buffer_row_offsets.to_tile_tensor[.int64](),
+            cache_offsets.to_tile_tensor[.int64](),
+            input_row_offsets.to_tile_tensor[.int64](),
             kv_collection,
             layer_idx,
             scale,
-            output.to_tile_tensor[DType.int64](),
+            output.to_tile_tensor[.int64](),
             context,
         )
 
@@ -2275,22 +2550,23 @@ struct Struct_mla_prefill_ragged_plan:
     """Registers the `mo.mla.prefill.ragged.plan` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
         //,
         target: StaticString,
     ](
-        buffer_row_offsets: OutputTensor[dtype=DType.uint32, rank=2, ...],
-        cache_offsets: OutputTensor[dtype=DType.uint32, rank=2, ...],
-        buffer_lengths: OutputTensor[dtype=DType.int32, rank=1, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets: OutputTensor[dtype=.uint32, rank=2, ...],
+        cache_offsets: OutputTensor[dtype=.uint32, rank=2, ...],
+        buffer_lengths: OutputTensor[dtype=.int32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         buffer_tok_size: UInt32,
         context: DeviceContext,
@@ -2301,6 +2577,7 @@ struct Struct_mla_prefill_ragged_plan:
         )
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2323,7 +2600,7 @@ struct Struct_mla_decompress_k_cache_ragged_paged:
     """Registers the `mo.mla.decompress.k.cache.ragged.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dtype: DType,
@@ -2332,20 +2609,22 @@ struct Struct_mla_decompress_k_cache_ragged_paged:
     ](
         k_latent_buffer: OutputTensor[dtype=dtype, rank=2, ...],
         k_buffer: OutputTensor[dtype=dtype, rank=2, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
         weight: InputTensor[dtype=dtype, rank=2, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2369,9 +2648,8 @@ struct Struct_mla_prefill_graph_paged:
     """Registers the `mo.mla.graph.prefill.paged.fp8` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         dtype: DType,
         freq_dtype: DType,
@@ -2387,20 +2665,21 @@ struct Struct_mla_prefill_graph_paged:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
         w_k: InputTensor[dtype=fp8_dtype, rank=2, ...],
         w_uv: InputTensor[dtype=fp8_dtype, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
@@ -2410,6 +2689,7 @@ struct Struct_mla_prefill_graph_paged:
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2421,10 +2701,10 @@ struct Struct_mla_prefill_graph_paged:
         ](), "mo.mla.graph.prefill.paged.fp8 is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         mla_prefill_branch_fp8[
@@ -2435,22 +2715,22 @@ struct Struct_mla_prefill_graph_paged:
             kv_input_fn=kv_input_fn,
             target=target,
         ](
-            output.to_tile_tensor[DType.int64](),
-            q.to_tile_tensor[DType.int64](),
-            input_row_offsets.to_tile_tensor[DType.int64](),
-            freqs_cis.to_tile_tensor[DType.int64](),
-            kv_norm_gamma.to_tile_tensor[DType.int64](),
+            output.to_tile_tensor[.int64](),
+            q.to_tile_tensor[.int64](),
+            input_row_offsets.to_tile_tensor[.int64](),
+            freqs_cis.to_tile_tensor[.int64](),
+            kv_norm_gamma.to_tile_tensor[.int64](),
             kv_collection,
             layer_idx,
             scale,
             epsilon,
-            buffer_row_offsets_1d.to_tile_tensor[DType.int64](),
-            cache_offsets_1d.to_tile_tensor[DType.int64](),
+            buffer_row_offsets_1d.to_tile_tensor[.int64](),
+            cache_offsets_1d.to_tile_tensor[.int64](),
             Int(buffer_length),
-            w_k.to_tile_tensor[DType.int64](),
-            w_k_scale.to_tile_tensor[DType.int64](),
-            w_uv.to_tile_tensor[DType.int64](),
-            w_uv_scale.to_tile_tensor[DType.int64](),
+            w_k.to_tile_tensor[.int64](),
+            w_k_scale.to_tile_tensor[.int64](),
+            w_uv.to_tile_tensor[.int64](),
+            w_uv_scale.to_tile_tensor[.int64](),
             context,
         )
 
@@ -2460,7 +2740,7 @@ struct Struct_mla_compute_dispatch_args_scalar:
     """Registers the `mo.mla.compute_dispatch_args.scalar` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         num_heads: Int,
@@ -2517,9 +2797,8 @@ struct Struct_mla_decode_graph_paged_fp8:
     """Registers the `mo.mla.graph.decode.paged.fp8` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         dtype: DType,
         freq_dtype: DType,
@@ -2535,28 +2814,30 @@ struct Struct_mla_decode_graph_paged_fp8:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
         w_uk: InputTensor[dtype=fp8_dtype, rank=3, ...],
         w_uv: InputTensor[dtype=fp8_dtype, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
         w_uk_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
         w_uv_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2568,10 +2849,10 @@ struct Struct_mla_decode_graph_paged_fp8:
         ](), "mo.mla.graph.decode.paged.fp8 is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -2588,20 +2869,20 @@ struct Struct_mla_decode_graph_paged_fp8:
                 kv_input_fn=kv_input_fn,
                 target=target,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uk_scale.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                w_uv_scale.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uk_scale.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                w_uv_scale.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -2612,9 +2893,8 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
     """Registers the `mo.mla.graph.decode.paged.fp8.sparse` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         dtype: DType,
         freq_dtype: DType,
@@ -2637,31 +2917,33 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
         w_uk: InputTensor[dtype=fp8_dtype, rank=3, ...],
         w_uv: InputTensor[dtype=fp8_dtype, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
         w_uk_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
         w_uv_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        sparse_indices: InputTensor[dtype=DType.int32, rank=2, ...],
-        topk_lengths: InputTensor[dtype=DType.int32, rank=1, ...],
-        attn_sink: InputTensor[dtype=DType.float32, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
+        topk_lengths: InputTensor[dtype=.int32, rank=1, ...],
+        attn_sink: InputTensor[dtype=.float32, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2673,10 +2955,10 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
         ](), "mo.mla.graph.decode.paged.fp8.sparse is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         comptime mla_page_size = Int(kv_blocks.static_spec.shape_tuple[3])
@@ -2719,20 +3001,20 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
                 sparse_mla=True,
                 fold_shared_index=index_share,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uk_scale.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                w_uv_scale.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uk_scale.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                w_uv_scale.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 scratch_sparse_indices.unsafe_ptr().unsafe_origin_cast[
                     MutAnyOrigin
@@ -2753,9 +3035,8 @@ struct Struct_mla_prefill_graph_bf16_paged:
     """Registers the `mo.mla.graph.prefill.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         kv_dtype: DType,
         freq_dtype: DType,
@@ -2764,22 +3045,23 @@ struct Struct_mla_prefill_graph_bf16_paged:
         mask_str: StaticString,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=DType.bfloat16, rank=3, ...],
-        q: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        output: OutputTensor[dtype=.bfloat16, rank=3, ...],
+        q: InputTensor[dtype=.bfloat16, rank=3, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
-        w_k: InputTensor[dtype=DType.bfloat16, rank=2, ...],
-        w_uv: InputTensor[dtype=DType.bfloat16, rank=3, ...],
+        w_k: InputTensor[dtype=.bfloat16, rank=2, ...],
+        w_uv: InputTensor[dtype=.bfloat16, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=kv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
@@ -2787,6 +3069,7 @@ struct Struct_mla_prefill_graph_bf16_paged:
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2798,10 +3081,10 @@ struct Struct_mla_prefill_graph_bf16_paged:
         ](), "mo.mla.graph.prefill.paged is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         mla_prefill_branch_bf16[
@@ -2809,20 +3092,20 @@ struct Struct_mla_prefill_graph_bf16_paged:
             kv_input_fn=kv_input_fn,
             target=target,
         ](
-            output.to_tile_tensor[DType.int64](),
-            q.to_tile_tensor[DType.int64](),
-            input_row_offsets.to_tile_tensor[DType.int64](),
-            freqs_cis.to_tile_tensor[DType.int64](),
-            kv_norm_gamma.to_tile_tensor[DType.int64](),
+            output.to_tile_tensor[.int64](),
+            q.to_tile_tensor[.int64](),
+            input_row_offsets.to_tile_tensor[.int64](),
+            freqs_cis.to_tile_tensor[.int64](),
+            kv_norm_gamma.to_tile_tensor[.int64](),
             kv_collection,
             layer_idx,
             scale,
             epsilon,
-            buffer_row_offsets_1d.to_tile_tensor[DType.int64](),
-            cache_offsets_1d.to_tile_tensor[DType.int64](),
+            buffer_row_offsets_1d.to_tile_tensor[.int64](),
+            cache_offsets_1d.to_tile_tensor[.int64](),
             Int(buffer_length),
-            w_k.to_tile_tensor[DType.int64](),
-            w_uv.to_tile_tensor[DType.int64](),
+            w_k.to_tile_tensor[.int64](),
+            w_uv.to_tile_tensor[.int64](),
             context,
         )
 
@@ -2832,9 +3115,8 @@ struct Struct_mla_decode_graph_bf16_paged:
     """Registers the `mo.mla.graph.decode.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         kv_dtype: DType,
         freq_dtype: DType,
@@ -2843,28 +3125,30 @@ struct Struct_mla_decode_graph_bf16_paged:
         mask_str: StaticString,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=DType.bfloat16, rank=3, ...],
-        q: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        output: OutputTensor[dtype=.bfloat16, rank=3, ...],
+        q: InputTensor[dtype=.bfloat16, rank=3, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        w_uk: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        w_uv: InputTensor[dtype=DType.bfloat16, rank=3, ...],
+        w_uk: InputTensor[dtype=.bfloat16, rank=3, ...],
+        w_uv: InputTensor[dtype=.bfloat16, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=kv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2876,10 +3160,10 @@ struct Struct_mla_decode_graph_bf16_paged:
         ](), "mo.mla.graph.decode.paged is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -2893,18 +3177,18 @@ struct Struct_mla_decode_graph_bf16_paged:
                 kv_input_fn=kv_input_fn,
                 target=target,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -2915,9 +3199,8 @@ struct Struct_mla_decode_graph_bf16_paged_sparse:
     """Registers the `mo.mla.graph.decode.paged.sparse` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         kv_dtype: DType,
         freq_dtype: DType,
@@ -2927,31 +3210,33 @@ struct Struct_mla_decode_graph_bf16_paged_sparse:
         target: StaticString,
         indices_stride: Int,
     ](
-        output: OutputTensor[dtype=DType.bfloat16, rank=3, ...],
-        q: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        output: OutputTensor[dtype=.bfloat16, rank=3, ...],
+        q: InputTensor[dtype=.bfloat16, rank=3, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        w_uk: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        w_uv: InputTensor[dtype=DType.bfloat16, rank=3, ...],
+        w_uk: InputTensor[dtype=.bfloat16, rank=3, ...],
+        w_uv: InputTensor[dtype=.bfloat16, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=kv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        sparse_indices: InputTensor[dtype=DType.int32, rank=2, ...],
-        topk_lengths: InputTensor[dtype=DType.int32, rank=1, ...],
-        attn_sink: InputTensor[dtype=DType.float32, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
+        topk_lengths: InputTensor[dtype=.int32, rank=1, ...],
+        attn_sink: InputTensor[dtype=.float32, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -2963,10 +3248,10 @@ struct Struct_mla_decode_graph_bf16_paged_sparse:
         ](), "mo.mla.graph.decode.paged.sparse is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         comptime mla_page_size = Int(kv_blocks.static_spec.shape_tuple[3])
@@ -2999,18 +3284,18 @@ struct Struct_mla_decode_graph_bf16_paged_sparse:
                 target=target,
                 sparse_mla=True,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 scratch_sparse_indices.unsafe_ptr().unsafe_origin_cast[
                     MutAnyOrigin
@@ -3027,9 +3312,8 @@ struct Struct_mla_prefill_graph_decode_paged_fp8:
     """Registers the `mo.mla.graph.prefill.decode.paged.fp8` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         dtype: DType,
         freq_dtype: DType,
@@ -3046,33 +3330,35 @@ struct Struct_mla_prefill_graph_decode_paged_fp8:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
         w_k: InputTensor[dtype=fp8_dtype, rank=2, ...],
         w_uk: InputTensor[dtype=fp8_dtype, rank=3, ...],
         w_uv: InputTensor[dtype=fp8_dtype, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
         w_k_scale: InputTensor[dtype=fp8_scale_dtype, rank=2, ...],
         w_uk_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
         w_uv_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3084,10 +3370,10 @@ struct Struct_mla_prefill_graph_decode_paged_fp8:
         ](), "mo.mla.graph.prefill.decode.paged.fp8 is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -3104,26 +3390,26 @@ struct Struct_mla_prefill_graph_decode_paged_fp8:
                 kv_input_fn=kv_input_fn,
                 target=target,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                buffer_row_offsets_1d.to_tile_tensor[DType.int64](),
-                cache_offsets_1d.to_tile_tensor[DType.int64](),
+                buffer_row_offsets_1d.to_tile_tensor[.int64](),
+                cache_offsets_1d.to_tile_tensor[.int64](),
                 Int(buffer_length),
                 Int(kv_collection.max_seq_length),
-                w_k.to_tile_tensor[DType.int64](),
-                w_k_scale.to_tile_tensor[DType.int64](),
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uk_scale.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                w_uv_scale.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_k.to_tile_tensor[.int64](),
+                w_k_scale.to_tile_tensor[.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uk_scale.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                w_uv_scale.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -3134,9 +3420,8 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
     """Registers the `mo.mla.graph.prefill.decode.paged.fp8.sparse` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         dtype: DType,
         freq_dtype: DType,
@@ -3159,36 +3444,38 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
         w_k: InputTensor[dtype=fp8_dtype, rank=2, ...],
         w_uk: InputTensor[dtype=fp8_dtype, rank=3, ...],
         w_uv: InputTensor[dtype=fp8_dtype, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
         w_k_scale: InputTensor[dtype=fp8_scale_dtype, rank=2, ...],
         w_uk_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
         w_uv_scale: InputTensor[dtype=fp8_scale_dtype, rank=3, ...],
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        sparse_indices: InputTensor[dtype=DType.int32, rank=2, ...],
-        topk_lengths: InputTensor[dtype=DType.int32, rank=1, ...],
-        attn_sink: InputTensor[dtype=DType.float32, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
+        topk_lengths: InputTensor[dtype=.int32, rank=1, ...],
+        attn_sink: InputTensor[dtype=.float32, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3201,10 +3488,10 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
         )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         comptime mla_page_size = Int(kv_blocks.static_spec.shape_tuple[3])
@@ -3243,26 +3530,26 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
                 sparse_indices_stride=indices_stride,
                 fold_shared_index=index_share,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                buffer_row_offsets_1d.to_tile_tensor[DType.int64](),
-                cache_offsets_1d.to_tile_tensor[DType.int64](),
+                buffer_row_offsets_1d.to_tile_tensor[.int64](),
+                cache_offsets_1d.to_tile_tensor[.int64](),
                 Int(buffer_length),
                 Int(kv_collection.max_seq_length),
-                w_k.to_tile_tensor[DType.int64](),
-                w_k_scale.to_tile_tensor[DType.int64](),
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uk_scale.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                w_uv_scale.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_k.to_tile_tensor[.int64](),
+                w_k_scale.to_tile_tensor[.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uk_scale.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                w_uv_scale.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 scratch_sparse_indices.unsafe_ptr().unsafe_origin_cast[
                     MutAnyOrigin
@@ -3280,9 +3567,8 @@ struct Struct_mla_prefill_sparse_paged:
     """Registers the `mo.mla.prefill.sparse.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         dtype: DType,
         cache_dtype: DType,
@@ -3293,15 +3579,16 @@ struct Struct_mla_prefill_sparse_paged:
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        sparse_indices: InputTensor[dtype=DType.int32, rank=2, ...],
-        topk_lengths: InputTensor[dtype=DType.int32, rank=1, ...],
-        attn_sink: InputTensor[dtype=DType.float32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
+        topk_lengths: InputTensor[dtype=.int32, rank=1, ...],
+        attn_sink: InputTensor[dtype=.float32, rank=1, ...],
         scale: Float32,
         context: DeviceContext,
     ) raises:
@@ -3311,6 +3598,7 @@ struct Struct_mla_prefill_sparse_paged:
 
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3327,9 +3615,9 @@ struct Struct_mla_prefill_sparse_paged:
         var dev_ctx = context
         var num_indices_sparse = sparse_indices.size()
 
-        var attn_sink_ptr = UnsafePointer[
-            Scalar[DType.float32], origin=ImmutAnyOrigin
-        ](attn_sink.to_layout_tensor().ptr)
+        var attn_sink_ptr = UnsafePointer[Float32, origin=ImmutAnyOrigin](
+            attn_sink.to_layout_tensor().ptr
+        )
 
         var k_cache = kv_collection.get_key_cache(Int(layer_idx))
 
@@ -3363,15 +3651,11 @@ struct Struct_mla_prefill_sparse_paged:
             # negative ones (cf. the `idx >= 0` check in the gather4 path),
             # so reinterpreting the bits via `bitcast` is sound.
             var indices_tt = TileTensor(
-                scratch_sparse_indices.unsafe_ptr().bitcast[
-                    Scalar[DType.uint32]
-                ](),
+                scratch_sparse_indices.unsafe_ptr().bitcast[UInt32](),
                 row_major(num_indices_sparse),
             )
             var topk_lengths_tt = TileTensor(
-                topk_lengths.to_layout_tensor().ptr.bitcast[
-                    Scalar[DType.uint32]
-                ](),
+                topk_lengths.to_layout_tensor().ptr.bitcast[UInt32](),
                 row_major(Int(topk_lengths.dim_size(0))),
             )
 
@@ -3381,8 +3665,8 @@ struct Struct_mla_prefill_sparse_paged:
                 v_depth=v_depth,
                 indices_stride=indices_stride,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
                 k_cache,
                 indices_tt,
                 topk_lengths_tt,
@@ -3397,9 +3681,8 @@ struct Struct_mla_prefill_sparse_paged_fp8:
     """Registers the `mo.mla.prefill.sparse.paged.fp8` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         dtype: DType,
         //,
@@ -3408,17 +3691,18 @@ struct Struct_mla_prefill_sparse_paged_fp8:
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
-        kv_blocks: MutableInputTensor[dtype=DType.float8_e4m3fn, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        kv_blocks: MutableInputTensor[dtype=.float8_e4m3fn, rank=6, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        sparse_indices: InputTensor[dtype=DType.int32, rank=2, ...],
-        topk_lengths: InputTensor[dtype=DType.int32, rank=1, ...],
-        attn_sink: InputTensor[dtype=DType.float32, rank=1, ...],
-        kv_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
+        topk_lengths: InputTensor[dtype=.int32, rank=1, ...],
+        attn_sink: InputTensor[dtype=.float32, rank=1, ...],
+        kv_scales: InputTensor[dtype=.float32, rank=1, ...],
         scale: Float32,
         context: DeviceContext,
     ) raises:
@@ -3428,6 +3712,7 @@ struct Struct_mla_prefill_sparse_paged_fp8:
 
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3442,9 +3727,9 @@ struct Struct_mla_prefill_sparse_paged_fp8:
         var dev_ctx = context
         var num_indices_sparse = sparse_indices.size()
 
-        var attn_sink_ptr = UnsafePointer[
-            Scalar[DType.float32], origin=ImmutAnyOrigin
-        ](attn_sink.to_layout_tensor().ptr)
+        var attn_sink_ptr = UnsafePointer[Float32, origin=ImmutAnyOrigin](
+            attn_sink.to_layout_tensor().ptr
+        )
 
         var scales_ptr = UnsafePointer[Float32, ImmutAnyOrigin](
             kv_scales.to_layout_tensor().ptr
@@ -3471,15 +3756,11 @@ struct Struct_mla_prefill_sparse_paged_fp8:
             )
 
             var indices_tt = TileTensor(
-                scratch_sparse_indices.unsafe_ptr().bitcast[
-                    Scalar[DType.uint32]
-                ](),
+                scratch_sparse_indices.unsafe_ptr().bitcast[UInt32](),
                 row_major(num_indices_sparse),
             )
             var topk_lengths_tt = TileTensor(
-                topk_lengths.to_layout_tensor().ptr.bitcast[
-                    Scalar[DType.uint32]
-                ](),
+                topk_lengths.to_layout_tensor().ptr.bitcast[UInt32](),
                 row_major(Int(topk_lengths.dim_size(0))),
             )
 
@@ -3490,8 +3771,8 @@ struct Struct_mla_prefill_sparse_paged_fp8:
                 indices_stride=indices_stride,
                 scale_block_size=qk_depth,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
                 k_cache,
                 indices_tt,
                 topk_lengths_tt,
@@ -3507,9 +3788,8 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
     """Registers the `mo.mla.graph.prefill.decode.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         kv_dtype: DType,
         freq_dtype: DType,
@@ -3518,32 +3798,34 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
         mask_str: StaticString,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=DType.bfloat16, rank=3, ...],
-        q: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        output: OutputTensor[dtype=.bfloat16, rank=3, ...],
+        q: InputTensor[dtype=.bfloat16, rank=3, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
-        w_k: InputTensor[dtype=DType.bfloat16, rank=2, ...],
-        w_uk: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        w_uv: InputTensor[dtype=DType.bfloat16, rank=3, ...],
+        w_k: InputTensor[dtype=.bfloat16, rank=2, ...],
+        w_uk: InputTensor[dtype=.bfloat16, rank=3, ...],
+        w_uv: InputTensor[dtype=.bfloat16, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=kv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3555,10 +3837,10 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
         ](), "mo.mla.graph.prefill.decode.paged is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -3572,23 +3854,23 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
                 kv_input_fn=kv_input_fn,
                 target=target,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                buffer_row_offsets_1d.to_tile_tensor[DType.int64](),
-                cache_offsets_1d.to_tile_tensor[DType.int64](),
+                buffer_row_offsets_1d.to_tile_tensor[.int64](),
+                cache_offsets_1d.to_tile_tensor[.int64](),
                 Int(buffer_length),
                 Int(kv_collection.max_seq_length),
-                w_k.to_tile_tensor[DType.int64](),
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_k.to_tile_tensor[.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -3596,9 +3878,8 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
 
 @extensibility.register("mo.mla.graph.prefill.decode.paged.sparse")
 struct Struct_mla_prefill_graph_decode_paged_sparse:
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         freq_dtype: DType,
         gamma_dtype: DType,
@@ -3608,35 +3889,37 @@ struct Struct_mla_prefill_graph_decode_paged_sparse:
         target: StaticString,
         indices_stride: Int,
     ](
-        output: OutputTensor[dtype=DType.bfloat16, rank=3, ...],
-        q: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        output: OutputTensor[dtype=.bfloat16, rank=3, ...],
+        q: InputTensor[dtype=.bfloat16, rank=3, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
-        w_k: InputTensor[dtype=DType.bfloat16, rank=2, ...],
-        w_uk: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        w_uv: InputTensor[dtype=DType.bfloat16, rank=3, ...],
+        w_k: InputTensor[dtype=.bfloat16, rank=2, ...],
+        w_uk: InputTensor[dtype=.bfloat16, rank=3, ...],
+        w_uv: InputTensor[dtype=.bfloat16, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        sparse_indices: InputTensor[dtype=DType.int32, rank=2, ...],
-        topk_lengths: InputTensor[dtype=DType.int32, rank=1, ...],
-        attn_sink: InputTensor[dtype=DType.float32, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
+        topk_lengths: InputTensor[dtype=.int32, rank=1, ...],
+        attn_sink: InputTensor[dtype=.float32, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3648,10 +3931,10 @@ struct Struct_mla_prefill_graph_decode_paged_sparse:
         ](), "mo.mla.graph.prefill.decode.paged.sparse is only supported on GPU"
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         comptime mla_page_size = Int(kv_blocks.static_spec.shape_tuple[3])
@@ -3686,23 +3969,23 @@ struct Struct_mla_prefill_graph_decode_paged_sparse:
                 sparse_mla=True,
                 sparse_indices_stride=indices_stride,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                buffer_row_offsets_1d.to_tile_tensor[DType.int64](),
-                cache_offsets_1d.to_tile_tensor[DType.int64](),
+                buffer_row_offsets_1d.to_tile_tensor[.int64](),
+                cache_offsets_1d.to_tile_tensor[.int64](),
                 Int(buffer_length),
                 Int(kv_collection.max_seq_length),
-                w_k.to_tile_tensor[DType.int64](),
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_k.to_tile_tensor[.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 scratch_sparse_indices.unsafe_ptr().unsafe_origin_cast[
                     MutAnyOrigin
@@ -3720,9 +4003,8 @@ struct Struct_mla_prefill_graph_decode_bf16_paged_quantized:
     """Registers the `mo.mla.graph.prefill.decode.paged.quantized` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         kv_dtype: DType,
         freq_dtype: DType,
@@ -3732,33 +4014,35 @@ struct Struct_mla_prefill_graph_decode_bf16_paged_quantized:
         mask_str: StaticString,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=DType.bfloat16, rank=3, ...],
-        q: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        kv: FusedInputTensor[dtype=DType.bfloat16, rank=2, ...],
-        input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        output: OutputTensor[dtype=.bfloat16, rank=3, ...],
+        q: InputTensor[dtype=.bfloat16, rank=3, ...],
+        kv: FusedInputTensor[dtype=.bfloat16, rank=2, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         kv_norm_gamma: InputTensor[dtype=gamma_dtype, rank=1, ...],
-        buffer_row_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
-        cache_offsets_1d: InputTensor[dtype=DType.uint32, rank=1, ...],
+        buffer_row_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
+        cache_offsets_1d: InputTensor[dtype=.uint32, rank=1, ...],
         buffer_length: Int32,
-        w_k: InputTensor[dtype=DType.bfloat16, rank=2, ...],
-        w_uk: InputTensor[dtype=DType.bfloat16, rank=3, ...],
-        w_uv: InputTensor[dtype=DType.bfloat16, rank=3, ...],
+        w_k: InputTensor[dtype=.bfloat16, rank=2, ...],
+        w_uk: InputTensor[dtype=.bfloat16, rank=3, ...],
+        w_uv: InputTensor[dtype=.bfloat16, rank=3, ...],
         kv_blocks: MutableInputTensor[dtype=kv_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         kv_scales: MutableInputTensor[dtype=scales_dtype, rank=6, ...],
         layer_idx: UInt32,
         scale: Float32,
         epsilon: Float32,
-        scalar_args: InputTensor[dtype=DType.int64, rank=1, ...],
-        num_partitions_scalar: InputTensor[dtype=DType.int64, rank=1, ...],
+        scalar_args: InputTensor[dtype=.int64, rank=1, ...],
+        num_partitions_scalar: InputTensor[dtype=.int64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3771,10 +4055,10 @@ struct Struct_mla_prefill_graph_decode_bf16_paged_quantized:
         )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[DType.bfloat16, width]:
+        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -3788,23 +4072,23 @@ struct Struct_mla_prefill_graph_decode_bf16_paged_quantized:
                 kv_input_fn=kv_input_fn,
                 target=target,
             ](
-                output.to_tile_tensor[DType.int64](),
-                q.to_tile_tensor[DType.int64](),
-                input_row_offsets.to_tile_tensor[DType.int64](),
-                freqs_cis.to_tile_tensor[DType.int64](),
-                kv_norm_gamma.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
+                q.to_tile_tensor[.int64](),
+                input_row_offsets.to_tile_tensor[.int64](),
+                freqs_cis.to_tile_tensor[.int64](),
+                kv_norm_gamma.to_tile_tensor[.int64](),
                 kv_collection,
                 layer_idx,
                 scale,
                 epsilon,
-                buffer_row_offsets_1d.to_tile_tensor[DType.int64](),
-                cache_offsets_1d.to_tile_tensor[DType.int64](),
+                buffer_row_offsets_1d.to_tile_tensor[.int64](),
+                cache_offsets_1d.to_tile_tensor[.int64](),
                 Int(buffer_length),
                 Int(kv_collection.max_seq_length),
-                w_k.to_tile_tensor[DType.int64](),
-                w_uk.to_tile_tensor[DType.int64](),
-                w_uv.to_tile_tensor[DType.int64](),
-                scalar_args.to_tile_tensor[DType.int64](),
+                w_k.to_tile_tensor[.int64](),
+                w_uk.to_tile_tensor[.int64](),
+                w_uv.to_tile_tensor[.int64](),
+                scalar_args.to_tile_tensor[.int64](),
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -3815,7 +4099,7 @@ struct Struct_cross_attention_ragged_paged:
     """Registers the `mo.cross_attention.ragged.paged` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         out_dtype: DType,
@@ -3828,20 +4112,22 @@ struct Struct_cross_attention_ragged_paged:
     ](
         output: OutputTensor[dtype=out_dtype, rank=3, ...],
         q: InputTensor[dtype=q_dtype, rank=3, ...],
-        q_input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        q_max_seq_len: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        q_input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        q_max_seq_len: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
-        cache_lengths: InputTensor[dtype=DType.uint32, rank=1, ...],
-        kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
-        max_prompt_length: InputTensor[dtype=DType.uint32, rank=1, ...],
-        max_cache_length: InputTensor[dtype=DType.uint32, rank=1, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         layer_idx: UInt32,
         scale: Float32,
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
             kv_blocks,
+            page_stride,
             cache_lengths,
             kv_lookup_table,
             max_prompt_length,
@@ -3861,5 +4147,81 @@ struct Struct_cross_attention_ragged_paged:
             layer_idx,
             scale,
             output.to_layout_tensor(),
+            context,
+        )
+
+
+# ===-----------------------------------------------------------------------===#
+# Latent sparse attention (DeepSeek-V4 CSA): window leaf + compressed leaf
+# ===-----------------------------------------------------------------------===#
+
+
+@extensibility.register("mo.latent_sparse_attention.ragged.paged")
+struct Struct_latent_sparse_attention_ragged_paged:
+    """Registers the `mo.latent_sparse_attention.ragged.paged` graph op with the graph compiler.
+
+    Sparse attention over a shared K=V latent read from two paged leaves: the
+    sliding-window leaf by position range and the compressed leaf by an
+    explicit per-query entry list, with a per-head attention sink in the
+    denominator. See `nn.attention.latent_sparse_attention`.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        q_type: DType,
+        swa_type: DType,
+        comp_type: DType,
+        //,
+        window: Int,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=q_type, rank=3, ...],
+        q: InputTensor[dtype=q_type, rank=3, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        comp_indices: InputTensor[dtype=.int32, rank=2, ...],
+        attn_sink: InputTensor[dtype=.float32, rank=1, ...],
+        swa_kv_blocks: MutableInputTensor[dtype=swa_type, rank=6, ...],
+        swa_page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        swa_cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        swa_kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        swa_max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        swa_max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        comp_kv_blocks: MutableInputTensor[dtype=comp_type, rank=6, ...],
+        comp_page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        comp_cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        comp_kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        comp_max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        comp_max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        layer_swa: UInt32,
+        layer_comp: UInt32,
+        scale: Float32,
+        context: DeviceContext,
+    ) raises:
+        var swa_collection = generic_get_paged_cache(
+            swa_kv_blocks,
+            swa_page_stride,
+            swa_cache_lengths,
+            swa_kv_lookup_table,
+            swa_max_prompt_length,
+            swa_max_cache_length,
+        )
+        var comp_collection = generic_get_paged_cache(
+            comp_kv_blocks,
+            comp_page_stride,
+            comp_cache_lengths,
+            comp_kv_lookup_table,
+            comp_max_prompt_length,
+            comp_max_cache_length,
+        )
+        latent_sparse_attention_ragged_paged[target=target, window=window](
+            output.to_layout_tensor(),
+            q.to_layout_tensor(),
+            input_row_offsets.to_layout_tensor(),
+            comp_indices.to_layout_tensor(),
+            attn_sink.to_layout_tensor(),
+            swa_collection.get_key_cache(Int(layer_swa)),
+            comp_collection.get_key_cache(Int(layer_comp)),
+            scale,
             context,
         )

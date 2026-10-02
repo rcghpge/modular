@@ -75,7 +75,7 @@ def run_elementwise[dtype: DType](ctx: DeviceContext) raises:
         unsafe_ptr=out_device.unsafe_ptr(), length=flattened_length
     )
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(in_buffer, out_buffer, shape)
     @__parameter
     def func[simd_width: Int, alignment: Int = 1](idx0: Coord):
@@ -152,7 +152,7 @@ def run_elementwise_uneven_simd[dtype: DType](ctx: DeviceContext) raises:
         unsafe_ptr=out_device.unsafe_ptr(), length=flattened_length
     )
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(in_buffer, out_buffer, shape)
     @__parameter
     def func[simd_width: Int, alignment: Int = 1](idx0: Coord):
@@ -210,7 +210,7 @@ def run_elementwise_exact_boundary_uses_simd[
     )
     var shape = IndexList[2](pack_size, pack_size + 1)
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(out_buffer, shape)
     @__parameter
     def func[simd_width: Int, alignment: Int = 1](idx0: Coord):
@@ -267,7 +267,7 @@ def run_elementwise_transpose_copy[dtype: DType](ctx: DeviceContext) raises:
         unsafe_ptr=out_device.unsafe_ptr(), length=flattened_length
     )
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(in_buffer, out_buffer, in_strides, out_shape)
     @__parameter
     def func[simd_width: Int, alignment: Int = 1](idx0: Coord):
@@ -359,7 +359,7 @@ def _test_elementwise_zero_dimension_3d(ctx: DeviceContext) raises:
     # Test with zero in first dimension
     var shape = IndexList[3](0, 4, 4)
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(input_buffer, output_buffer, shape)
     @__parameter
     def func[simd_width: Int, alignment: Int = 1](idx0: Coord):
@@ -396,18 +396,18 @@ def _test_elementwise_zero_dimension_3d(ctx: DeviceContext) raises:
 
 def test_elementwise_gpu() raises:
     with DeviceContext() as ctx:
-        run_elementwise[DType.float32](ctx)
-        run_elementwise_uneven_simd[DType.float32](ctx)
-        run_elementwise_exact_boundary_uses_simd[DType.float32](ctx)
-        run_elementwise_transpose_copy[DType.float32](ctx)
-        run_elementwise[DType.bfloat16](ctx)
-        run_elementwise_uneven_simd[DType.bfloat16](ctx)
-        run_elementwise_exact_boundary_uses_simd[DType.bfloat16](ctx)
-        run_elementwise_transpose_copy[DType.bfloat16](ctx)
-        run_elementwise[DType.float16](ctx)
-        run_elementwise_uneven_simd[DType.float16](ctx)
-        run_elementwise_exact_boundary_uses_simd[DType.float16](ctx)
-        run_elementwise_transpose_copy[DType.float16](ctx)
+        run_elementwise[.float32](ctx)
+        run_elementwise_uneven_simd[.float32](ctx)
+        run_elementwise_exact_boundary_uses_simd[.float32](ctx)
+        run_elementwise_transpose_copy[.float32](ctx)
+        run_elementwise[.bfloat16](ctx)
+        run_elementwise_uneven_simd[.bfloat16](ctx)
+        run_elementwise_exact_boundary_uses_simd[.bfloat16](ctx)
+        run_elementwise_transpose_copy[.bfloat16](ctx)
+        run_elementwise[.float16](ctx)
+        run_elementwise_uneven_simd[.float16](ctx)
+        run_elementwise_exact_boundary_uses_simd[.float16](ctx)
+        run_elementwise_transpose_copy[.float16](ctx)
         _test_elementwise_zero_dimension_3d(ctx)
 
 

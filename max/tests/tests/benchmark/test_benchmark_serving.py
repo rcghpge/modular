@@ -15,14 +15,67 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from max.benchmark.benchmark_serving import (
+    _make_gpu_recorder,
     _resolve_skip_counts,
+    _sample_for_seed,
     _seed_for_concurrency,
     parse_args,
 )
+from max.benchmark.benchmark_shared.datasets.types import (
+    ChatSamples,
+    ChatSession,
+    RequestSamples,
+    ResponseFormat,
+    SampledRequest,
+    SessionMessage,
+)
+
+
+@patch("max.profiler.gpu.BackgroundRecorder")
+@patch("max.benchmark.benchmark_serving.DCGMBackgroundRecorder")
+def test_make_gpu_recorder_host_selects_dcgm(
+    mock_dcgm: MagicMock, mock_local: MagicMock
+) -> None:
+    """A configured gpu_metrics_host picks the DCGM recorder, not local NVML."""
+    recorder = _make_gpu_recorder(
+        collect_gpu_stats=True, gpu_metrics_host="10.0.0.5,10.0.0.6"
+    )
+
+    mock_dcgm.assert_called_once_with("10.0.0.5,10.0.0.6")
+    mock_local.assert_not_called()
+    assert recorder is mock_dcgm.return_value
+
+
+@patch("max.profiler.gpu.BackgroundRecorder")
+@patch("max.benchmark.benchmark_serving.DCGMBackgroundRecorder")
+def test_make_gpu_recorder_empty_host_selects_local(
+    mock_dcgm: MagicMock, mock_local: MagicMock
+) -> None:
+    """An empty host preserves the local NVML recorder path."""
+    recorder = _make_gpu_recorder(collect_gpu_stats=True, gpu_metrics_host="")
+
+    mock_local.assert_called_once_with()
+    mock_dcgm.assert_not_called()
+    assert recorder is mock_local.return_value
+
+
+@patch("max.profiler.gpu.BackgroundRecorder")
+@patch("max.benchmark.benchmark_serving.DCGMBackgroundRecorder")
+def test_make_gpu_recorder_disabled_selects_neither(
+    mock_dcgm: MagicMock, mock_local: MagicMock
+) -> None:
+    """collect_gpu_stats=False disables both recorders."""
+    recorder = _make_gpu_recorder(
+        collect_gpu_stats=False, gpu_metrics_host="10.0.0.5"
+    )
+
+    assert recorder is None
+    mock_dcgm.assert_not_called()
+    mock_local.assert_not_called()
 
 
 def test_resolve_skip_counts() -> None:
@@ -115,3 +168,107 @@ def test_benchmark_serving_help(capsys: pytest.CaptureFixture[str]) -> None:
         # Capture and verify the help output
         captured = capsys.readouterr()
         assert "usage:" in captured.out.lower()
+
+
+def _one_request_sample() -> tuple[SampledRequest, RequestSamples]:
+    request = SampledRequest(
+        prompt_formatted="hi",
+        prompt_len=1,
+        output_len=64,
+        encoded_images=[],
+        ignore_eos=True,
+    )
+    return request, RequestSamples(requests=[request], shared_contexts=[])
+
+
+def test_response_format_injection_clears_ignore_eos() -> None:
+    """A constrained response ends where its schema is satisfied, so the drawn
+    output length caps it rather than pinning it. Leaving ``ignore_eos`` set
+    asks the server to keep generating past the end of the response, which it
+    can only do unconstrained."""
+    request, samples = _one_request_sample()
+    args = parse_args(
+        [
+            "--model",
+            "myorg/model",
+            "--response-format",
+            '{"type": "json_object"}',
+        ]
+    )
+
+    with patch(
+        "max.benchmark.benchmark_serving.sample_requests", return_value=samples
+    ):
+        _sample_for_seed(args, "text-generation", None, False, 0)
+
+    assert request.response_format is not None
+    assert not request.ignore_eos
+
+
+def test_ignore_eos_survives_without_a_response_format() -> None:
+    """Control: an unconstrained request still honours its drawn length."""
+    request, samples = _one_request_sample()
+    args = parse_args(["--model", "myorg/model"])
+
+    with patch(
+        "max.benchmark.benchmark_serving.sample_requests", return_value=samples
+    ):
+        _sample_for_seed(args, "text-generation", None, False, 0)
+
+    assert request.response_format is None
+    assert request.ignore_eos
+
+
+def _one_chat_sample() -> tuple[ChatSession, ChatSamples]:
+    session = ChatSession(
+        id=0,
+        messages=[
+            SessionMessage(source="user", content="hi", num_tokens=1),
+            SessionMessage(source="assistant", content="ok", num_tokens=1),
+            SessionMessage(source="user", content="again", num_tokens=1),
+            SessionMessage(source="assistant", content="ok", num_tokens=1),
+        ],
+    )
+    return session, ChatSamples(chat_sessions=[session], shared_contexts=[])
+
+
+def test_response_format_injection_marks_every_user_turn() -> None:
+    """The mark lands on the user turns, which are the ones that carry a
+    request; an assistant message is replayed history and never asks the
+    server for anything."""
+    session, samples = _one_chat_sample()
+    args = parse_args(
+        [
+            "--model",
+            "myorg/model",
+            "--response-format",
+            '{"type": "json_object"}',
+        ]
+    )
+
+    with patch(
+        "max.benchmark.benchmark_serving.sample_requests", return_value=samples
+    ):
+        _sample_for_seed(args, "text-generation", None, True, 0)
+
+    by_source: dict[str, list[ResponseFormat | None]] = {
+        "user": [],
+        "assistant": [],
+    }
+    for message in session.messages:
+        by_source[message.source].append(message.response_format)
+    assert all(rf is not None for rf in by_source["user"])
+    assert all(rf is None for rf in by_source["assistant"])
+
+
+def test_chat_turns_unmarked_without_a_response_format() -> None:
+    """Control: no flag, no constrained turns."""
+    session, samples = _one_chat_sample()
+    args = parse_args(["--model", "myorg/model"])
+
+    with patch(
+        "max.benchmark.benchmark_serving.sample_requests", return_value=samples
+    ):
+        _sample_for_seed(args, "text-generation", None, True, 0)
+
+    assert all(m.response_format is None for m in session.messages)

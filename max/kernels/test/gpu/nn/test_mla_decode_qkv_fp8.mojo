@@ -41,7 +41,7 @@ from std.sys import (
     has_nvidia_gpu_accelerator,
 )
 
-from std.gpu import *
+from max.gpu import *
 from max.gpu.host import DeviceContext
 from layout import (
     Idx,
@@ -90,13 +90,13 @@ struct MLAMaskType(TrivialRegisterPassable):
         return self.value != rhs.value
 
 
-@always_inline
+@inline(.always)
 def host_cast_fp8_to_bf16[
     fp8_t: DType,
     bf16_t: DType,
 ](
-    src: UnsafePointer[Scalar[fp8_t], _],
-    dst: UnsafePointer[mut=True, Scalar[bf16_t], _],
+    src: Pointer[Scalar[fp8_t], _],
+    dst: MutPointer[Scalar[bf16_t], _],
     size: Int,
 ):
     """Cast FP8 data to BF16 element-by-element on the host."""
@@ -104,13 +104,13 @@ def host_cast_fp8_to_bf16[
         dst[i] = src[i].cast[bf16_t]()
 
 
-@always_inline
+@inline(.always)
 def host_quantize_bf16_to_fp8[
     bf16_t: DType,
     fp8_t: DType,
 ](
-    src: UnsafePointer[Scalar[bf16_t], _],
-    dst: UnsafePointer[mut=True, Scalar[fp8_t], _],
+    src: Pointer[Scalar[bf16_t], _],
+    dst: MutPointer[Scalar[fp8_t], _],
     size: Int,
 ):
     """Quantize BF16 data to FP8 element-by-element on the host."""
@@ -279,7 +279,7 @@ def test[
 
     # Valid length (empty -- not using ragged) for mha_gpu_naive
     var null_valid_length = LayoutTensor[
-        DType.uint32,
+        .uint32,
         Layout.row_major(UNKNOWN_VALUE),
         MutAnyOrigin,
     ](
@@ -302,15 +302,10 @@ def test[
     )
     var scalar_args_buf_tt = mla_args.gpu_tile_tensor()
 
-    @__parameter
-    @always_inline
-    @__copy_capture(
-        q_fp8_tt,
-        k_fp8_tt,
-        out_tt,
-        scalar_args_buf_tt,
-    )
-    def kernel_launch(ctx: DeviceContext) raises:
+    @inline(.always)
+    def kernel_launch(
+        ctx: DeviceContext,
+    ) raises {var q_fp8_tt, var k_fp8_tt, var out_tt, var scalar_args_buf_tt}:
         comptime config = MHAConfig[q_type](num_heads, depth)
         comptime if mla_mask_type == MLAMaskType.CAUSAL:
             flare_mla_decoding[config=config](
@@ -439,13 +434,13 @@ def test[
                         d
                         + depth * (h + s * num_heads)
                         + b * depth * num_heads * seq_len
-                    ].cast[DType.float64]()
+                    ].cast[.float64]()
                     # Kernel output: [b, s, h, d] with stride v_depth
                     var actual = flash_output_ptr[
                         d
                         + v_depth * (h + s * num_heads)
                         + b * v_depth * num_heads * seq_len
-                    ].cast[DType.float64]()
+                    ].cast[.float64]()
                     if abs((actual - expect)) > 1e-1:
                         if num_mismatches < 10:
                             print(b, h, s, d, actual, expect)
@@ -544,15 +539,12 @@ def bench[
     )
     var scalar_args_buf_tt = mla_args.gpu_tile_tensor()
 
-    @__parameter
-    @always_inline
-    @__copy_capture(
-        q_fp8_tt,
-        k_fp8_tt,
-        out_tt,
-        scalar_args_buf_tt,
-    )
-    def kernel_launch(ctx: DeviceContext) raises:
+    @inline(.always)
+    def kernel_launch(
+        ctx: DeviceContext,
+    ) raises {
+        var q_fp8_tt, var k_fp8_tt, var out_tt, var scalar_args_buf_tt, imm
+    }:
         comptime config = MHAConfig[q_type](num_heads, depth)
         flare_mla_decoding[config=config](
             out_tt.as_unsafe_any_origin(),
@@ -571,7 +563,7 @@ def bench[
         kernel_launch(ctx)
     ctx.synchronize()
 
-    var nstime = Float64(ctx.execution_time[kernel_launch](nrun)) / Float64(
+    var nstime = Float64(ctx.execution_time(kernel_launch, nrun)) / Float64(
         nrun
     )
     var ustime = nstime / 1000.0
@@ -816,7 +808,7 @@ def test_sw[
     )
 
     var null_valid_length = LayoutTensor[
-        DType.uint32,
+        .uint32,
         Layout.row_major(UNKNOWN_VALUE),
         MutAnyOrigin,
     ](
@@ -838,15 +830,10 @@ def test_sw[
     )
     var scalar_args_buf_tt = mla_args.gpu_tile_tensor()
 
-    @__parameter
-    @always_inline
-    @__copy_capture(
-        q_fp8_tt,
-        k_fp8_tt,
-        out_tt,
-        scalar_args_buf_tt,
-    )
-    def kernel_launch(ctx: DeviceContext) raises:
+    @inline(.always)
+    def kernel_launch(
+        ctx: DeviceContext,
+    ) raises {var q_fp8_tt, var k_fp8_tt, var out_tt, var scalar_args_buf_tt}:
         comptime config = MHAConfig[q_type](num_heads, depth)
         flare_mla_decoding[config=config](
             out_tt.as_unsafe_any_origin(),
@@ -930,12 +917,12 @@ def test_sw[
                         d
                         + depth * (h + s * num_heads)
                         + b * depth * num_heads * seq_len
-                    ).cast[DType.float64]()
+                    ).cast[.float64]()
                     var actual = flash_output_ptr.load(
                         d
                         + v_depth * (h + s * num_heads)
                         + b * v_depth * num_heads * seq_len
-                    ).cast[DType.float64]()
+                    ).cast[.float64]()
                     if abs((actual - expect)) > 1e-1:
                         if num_mismatches < 10:
                             print(b, h, s, d, actual, expect)

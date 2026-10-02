@@ -53,7 +53,7 @@ from nn.topk_bitonic import (
 )
 
 
-@always_inline
+@inline(.always)
 def _mix64(x: UInt64) -> UInt64:
     """SplitMix64's finalizer."""
     var z = x
@@ -62,18 +62,18 @@ def _mix64(x: UInt64) -> UInt64:
     return z ^ (z >> 31)
 
 
-@always_inline
+@inline(.always)
 def _u01(i: UInt64) -> Float64:
     var h = _mix64((i + 1) * 0x9E3779B97F4A7C15)
     return Float64(h >> 11) * (1.0 / 9007199254740992.0)
 
 
-@always_inline
+@inline(.always)
 def _u_val(r: Int, c: Int, N: Int, k: Int) -> Float64:
     return _u01(((UInt64(r) * UInt64(N) + UInt64(c)) << 2) + UInt64(k))
 
 
-@always_inline
+@inline(.always)
 def _u_len(r: Int) -> Float64:
     return _u01(0x8000000000000000 + UInt64(r))
 
@@ -111,18 +111,17 @@ def _launch[
     deterministic: Bool = True,
 ](
     ctx: DeviceContext,
-    scores_t: TileTensor[DType.float32, ...],
-    idxs_t: TileTensor[DType.int32, ...],
-    trace_ptr: UnsafePointer[UInt64, MutUntrackedOrigin],
+    scores_t: TileTensor[.float32, ...],
+    idxs_t: TileTensor[.int32, ...],
+    trace_ptr: MutPointer[UInt64, MutUntrackedOrigin],
     N: Int,
     K: Int,
     rows: Int,
 ) raises:
     comptime if unordered:
 
-        @__parameter
-        @always_inline
-        def resident[res_vecs: Int]() raises:
+        @inline(.always)
+        def resident[res_vecs: Int]() raises {imm}:
             ctx.enqueue_function[
                 _histsel_resident_kernel[
                     GmemTrace,
@@ -133,12 +132,8 @@ def _launch[
                     res_vecs=res_vecs,
                 ]
             ](
-                rebind[UnsafePointer[Scalar[DType.float32], ImmutAnyOrigin]](
-                    scores_t.ptr
-                ),
-                rebind[UnsafePointer[Scalar[DType.int32], MutAnyOrigin]](
-                    idxs_t.ptr
-                ),
+                rebind[ImmPointer[Float32, ImmutAnyOrigin]](scores_t.ptr),
+                rebind[MutPointer[Int32, MutAnyOrigin]](idxs_t.ptr),
                 Int32(N),
                 Int32(K),
                 GmemTrace(trace_ptr),
@@ -159,12 +154,8 @@ def _launch[
                 GmemTrace, enable_trace=True, bin_digit=True
             ]
         ](
-            rebind[UnsafePointer[Scalar[DType.float32], ImmutAnyOrigin]](
-                scores_t.ptr
-            ),
-            rebind[UnsafePointer[Scalar[DType.int32], MutAnyOrigin]](
-                idxs_t.ptr
-            ),
+            rebind[ImmPointer[Float32, ImmutAnyOrigin]](scores_t.ptr),
+            rebind[MutPointer[Int32, MutAnyOrigin]](idxs_t.ptr),
             Int32(N),
             Int32(K),
             GmemTrace(trace_ptr),
@@ -177,12 +168,8 @@ def _launch[
         ctx.enqueue_function[
             _histsel_resident_kernel[GmemTrace, enable_trace=True]
         ](
-            rebind[UnsafePointer[Scalar[DType.float32], ImmutAnyOrigin]](
-                scores_t.ptr
-            ),
-            rebind[UnsafePointer[Scalar[DType.int32], MutAnyOrigin]](
-                idxs_t.ptr
-            ),
+            rebind[ImmPointer[Float32, ImmutAnyOrigin]](scores_t.ptr),
+            rebind[MutPointer[Int32, MutAnyOrigin]](idxs_t.ptr),
             Int32(N),
             Int32(K),
             GmemTrace(trace_ptr),
@@ -207,12 +194,8 @@ def _launch[
                 deterministic=False,
             ]
         ](
-            rebind[UnsafePointer[Scalar[DType.float32], ImmutAnyOrigin]](
-                scores_t.ptr
-            ),
-            rebind[UnsafePointer[Scalar[DType.int32], MutAnyOrigin]](
-                idxs_t.ptr
-            ),
+            rebind[ImmPointer[Float32, ImmutAnyOrigin]](scores_t.ptr),
+            rebind[MutPointer[Int32, MutAnyOrigin]](idxs_t.ptr),
             Int32(N),
             Int32(K),
             GmemTrace(trace_ptr),
@@ -236,10 +219,8 @@ def _launch[
             sel_cap=_HSEL_SEL_CAP,
         ]
     ](
-        rebind[UnsafePointer[Scalar[DType.float32], ImmutAnyOrigin]](
-            scores_t.ptr
-        ),
-        rebind[UnsafePointer[Scalar[DType.int32], MutAnyOrigin]](idxs_t.ptr),
+        rebind[ImmPointer[Float32, ImmutAnyOrigin]](scores_t.ptr),
+        rebind[MutPointer[Int32, MutAnyOrigin]](idxs_t.ptr),
         Int32(N),
         Int32(K),
         GmemTrace(trace_ptr),
@@ -261,9 +242,9 @@ def main() raises:
     var deterministic = arg_parse("deterministic", True)
 
     with DeviceContext() as ctx:
-        var scores_buf = ctx.enqueue_create_buffer[DType.float32](rows * N)
-        var idxs_buf = ctx.enqueue_create_buffer[DType.int32](rows * K)
-        var trace_buf = ctx.enqueue_create_buffer[DType.uint64](
+        var scores_buf = ctx.enqueue_create_buffer[.float32](rows * N)
+        var idxs_buf = ctx.enqueue_create_buffer[.int32](rows * K)
+        var trace_buf = ctx.enqueue_create_buffer[.uint64](
             rows * HSEL_TRACE_EVENTS
         )
 
@@ -274,9 +255,7 @@ def main() raises:
                 var nk = N - Int(_u_len(r) * Float64(N) / 8.0)
                 for c in range(N):
                     if c < nk:
-                        h[r * N + c] = Scalar[DType.float32](
-                            _sample(dist, r, c, N)
-                        )
+                        h[r * N + c] = Float32(_sample(dist, r, c, N))
                     else:
                         h[r * N + c] = Float32(-3.0e38)
         ctx.enqueue_memset(trace_buf, 0)
@@ -285,7 +264,7 @@ def main() raises:
         var idxs_t = TileTensor(idxs_buf, row_major(rows, K))
         ctx.synchronize()
 
-        var trace_ptr = rebind[UnsafePointer[UInt64, MutUntrackedOrigin]](
+        var trace_ptr = rebind[MutPointer[UInt64, MutUntrackedOrigin]](
             trace_buf.unsafe_ptr()
         )
 

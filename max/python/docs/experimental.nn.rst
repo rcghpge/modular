@@ -17,6 +17,7 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   experimental.nn.common_layers.functional_kernels
    experimental.nn.norm
    experimental.nn.rope
 
@@ -28,7 +29,6 @@ Base classes
    :toctree: generated
    :template: autosummary/class.rst
 
-   CompiledModel
    Module
    ModuleList
    PinnedDeviceTensor
@@ -54,6 +54,6 @@ Functions
    :toctree: generated
    :template: autosummary/function.rst
 
+   as_subgraph
    module_dataclass
-   subgraphable
 

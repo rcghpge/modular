@@ -122,7 +122,7 @@ def _init_ccl_dylib() -> OwnedDLHandle:
 comptime CCL_LIBRARY = _Global["CCL_LIBRARY", _init_ccl_dylib]
 
 
-@always_inline
+@inline(.always)
 def _get_ccl_function[
     func_name: StaticString, result_type: TrivialRegisterPassable
 ]() raises -> result_type:
@@ -189,7 +189,7 @@ def ncclCommInitAll(
     ]()(comms, ndev, devlist)
 
 
-@always_inline
+@inline(.always)
 def _ccl_allreduce(
     sendbuff: OpaquePointer,
     recvbuff: OpaquePointer,
@@ -215,7 +215,7 @@ def _ccl_allreduce(
 
 
 # === AllGather binding (unified) ===
-@always_inline
+@inline(.always)
 def _ccl_allgather(
     sendbuff: OpaquePointer,
     recvbuff: OpaquePointer,
@@ -239,7 +239,7 @@ def _ccl_allgather(
 
 
 # === Broadcast binding (unified) ===
-@always_inline
+@inline(.always)
 def _ccl_broadcast(
     sendbuff: OpaquePointer,
     recvbuff: OpaquePointer,
@@ -272,7 +272,7 @@ def _ccl_broadcast(
     )
 
 
-@always_inline
+@inline(.always)
 def _ccl_stream_ptr(
     ctx: DeviceContext,
 ) raises -> OptionalPointer[NoneType, UntrackedOrigin[mut=True]]:
@@ -304,17 +304,17 @@ struct Communicators(ImplicitlyCopyable):
 
 
 def _dtype_to_ccl[dtype: DType]() raises -> ncclDataType_t:
-    comptime if dtype == DType.float32:
+    comptime if dtype == .float32:
         return ncclDataType_t.ncclFloat32
-    elif dtype == DType.bfloat16:
+    elif dtype == .bfloat16:
         return ncclDataType_t.ncclBfloat16
-    elif dtype == DType.float16:
+    elif dtype == .float16:
         return ncclDataType_t.ncclFloat16
 
     raise Error("vendor_ccl: dtype not supported: ", dtype)
 
 
-@always_inline
+@inline(.always)
 def _check_ccl_ok(status: ncclResult_t) raises:
     if status != ncclResult_t.ncclSuccess:
         raise Error("CCL call failed with status ", Int(status._value))
@@ -372,7 +372,6 @@ def wait_for_comms(ngpus: Int):
         pass
 
 
-@__parameter
 def allreduce[
     dtype: DType,
     in_layout: TensorLayout,
@@ -391,7 +390,7 @@ def allreduce[
         TileTensor[dtype, in_layout, in_origin], 1 if use_multimem else ngpus
     ],
     output_tensor: TileTensor[mut=True, dtype, out_layout, out_origin],
-    rank_sigs: Array[UnsafePointer[Signal, rank_sigs_origin], MAX_GPUS],
+    rank_sigs: Array[MutPointer[Signal, rank_sigs_origin], ngpus],
     ctx: DeviceContext,
     _max_num_blocks: Optional[Int] = None,
 ) raises:
@@ -450,7 +449,6 @@ def allreduce[
         ](epilogue_wrapper, Coord(output_tensor.num_elements()), ctx)
 
 
-@__parameter
 def _is_ccl_symbol_available[name: StaticString]() -> Bool:
     # Resolve a CCL symbol by name from the appropriate vendor DSO.
     # We intentionally cast to a trivial signature and do not call it.
@@ -500,7 +498,6 @@ def is_broadcast_available() -> Bool:
     return _is_ccl_symbol_available["ncclBroadcast"]()
 
 
-@__parameter
 def allgather[
     dtype: DType,
     in_layout: TensorLayout,
@@ -595,7 +592,6 @@ def allgather[
             ctx.enqueue_copy(dest_db, src_db)
 
 
-@__parameter
 def broadcast[
     dtype: DType,
     in_layout: TensorLayout,
@@ -609,7 +605,7 @@ def broadcast[
 ](
     input_tensor: TileTensor[dtype, in_layout, in_origin],
     output_tensor: TileTensor[mut=True, dtype, out_layout, out_origin],
-    rank_sigs: Array[UnsafePointer[Signal, MutAnyOrigin], MAX_GPUS],
+    rank_sigs: Array[MutPointer[Signal, MutAnyOrigin], ngpus],
     ctx: DeviceContext,
     root: Int,
     _max_num_blocks: Optional[Int] = None,

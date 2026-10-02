@@ -13,7 +13,7 @@
 
 from std.math import ceildiv
 
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from layout import (
     Idx,
     Layout,
@@ -25,7 +25,7 @@ from layout import (
 )
 from std.random import rand
 from state_space.gated_delta_conv1d import gated_delta_conv1d_fwd_gpu
-from std.testing import TestSuite, assert_almost_equal
+from std.testing import TestSuite, assert_almost_equal, assert_equal
 from std.utils.index import Index, IndexList
 
 
@@ -33,6 +33,7 @@ def run_slot_indexed_gpu[
     work_dtype: DType,
     state_dtype: DType,
     KERNEL_SIZE: Int,
+    WRITE_STATE: Bool = True,
 ](
     batch_size: Int,
     total_seq_len: Int,
@@ -51,6 +52,9 @@ def run_slot_indexed_gpu[
         so slots not referenced by ``slot_assignments`` must remain
         untouched.
       - In-place mutation: there is no conv_state_out tensor.
+
+    With ``WRITE_STATE = False`` the reference pool is left unchanged, so
+    the pool comparison checks the kernel wrote nothing.
     """
     comptime CONV1D_BLOCK_DIM = 128
     comptime layout_2d = Layout.row_major[2]()
@@ -94,27 +98,27 @@ def run_slot_indexed_gpu[
     rand[state_dtype](conv_state_initial_h.ptr, pool_size)
 
     # Slot assignments device buffer.
-    var slot_idx_heap = ctx.enqueue_create_host_buffer[DType.uint32](batch_size)
-    var slot_idx_h = LayoutTensor[DType.uint32, layout_1d, _](
+    var slot_idx_heap = ctx.enqueue_create_host_buffer[.uint32](batch_size)
+    var slot_idx_h = LayoutTensor[.uint32, layout_1d, _](
         slot_idx_heap,
         RuntimeLayout[layout_1d].row_major(Index(batch_size)),
     )
     for b in range(batch_size):
-        slot_idx_h.ptr.store(b, Scalar[DType.uint32](slot_assignments[b]))
+        slot_idx_h.ptr.store(b, UInt32(slot_assignments[b]))
 
     # input_row_offsets: [batch_size + 1]
-    var input_row_offsets_heap = ctx.enqueue_create_host_buffer[DType.uint32](
+    var input_row_offsets_heap = ctx.enqueue_create_host_buffer[.uint32](
         batch_size + 1
     )
-    var input_row_offsets_h = LayoutTensor[DType.uint32, layout_1d, _](
+    var input_row_offsets_h = LayoutTensor[.uint32, layout_1d, _](
         input_row_offsets_heap,
         RuntimeLayout[layout_1d].row_major(Index(batch_size + 1)),
     )
     var cumsum = 0
-    input_row_offsets_h.ptr.store(0, Scalar[DType.uint32](0))
+    input_row_offsets_h.ptr.store(0, UInt32(0))
     for b in range(batch_size):
         cumsum += seq_lengths[b]
-        input_row_offsets_h.ptr.store(b + 1, Scalar[DType.uint32](cumsum))
+        input_row_offsets_h.ptr.store(b + 1, UInt32(cumsum))
 
     var conv_output_gpu_heap = ctx.enqueue_create_host_buffer[work_dtype](
         total_seq_len * conv_dim
@@ -145,8 +149,8 @@ def run_slot_indexed_gpu[
         conv_dim * KERNEL_SIZE
     )
     var conv_state_device = ctx.enqueue_create_buffer[state_dtype](pool_size)
-    var slot_idx_device = ctx.enqueue_create_buffer[DType.uint32](batch_size)
-    var input_row_offsets_device = ctx.enqueue_create_buffer[DType.uint32](
+    var slot_idx_device = ctx.enqueue_create_buffer[.uint32](batch_size)
+    var input_row_offsets_device = ctx.enqueue_create_buffer[.uint32](
         batch_size + 1
     )
     var conv_output_device = ctx.enqueue_create_buffer[work_dtype](
@@ -182,6 +186,8 @@ def run_slot_indexed_gpu[
     var qkv_input_channel_stride: UInt32 = 1
     var conv_weight_channel_stride: UInt32 = UInt32(KERNEL_SIZE)
     var conv_weight_offset_stride: UInt32 = 1
+    # Not passed to the kernel (it indexes `conv_state_tt` via `Coord`), but
+    # the CPU reference below still addresses `pool_ref_h` by hand.
     var conv_state_pool_stride: UInt32 = UInt32(conv_dim * state_len)
     var conv_state_channel_stride: UInt32 = UInt32(state_len)
     var conv_state_window_stride: UInt32 = 1
@@ -194,12 +200,14 @@ def run_slot_indexed_gpu[
             state_dtype,
             KERNEL_SIZE,
             CONV1D_BLOCK_DIM,
+            WRITE_STATE,
             qkv_input_tt.LayoutType,
             conv_weight_tt.LayoutType,
             conv_state_tt.LayoutType,
             slot_idx_tt.LayoutType,
             input_row_offsets_tt.LayoutType,
             conv_output_tt.LayoutType,
+            qkv_input_tt.Engine,
         ]
     ]()
 
@@ -219,9 +227,6 @@ def run_slot_indexed_gpu[
             qkv_input_channel_stride,
             conv_weight_channel_stride,
             conv_weight_offset_stride,
-            conv_state_pool_stride,
-            conv_state_channel_stride,
-            conv_state_window_stride,
             conv_output_seqlen_stride,
             conv_output_channel_stride,
             grid_dim=(batch_size, ceildiv(conv_dim, CONV1D_BLOCK_DIM)),
@@ -304,36 +309,38 @@ def run_slot_indexed_gpu[
             # carry-forward if seq_len < K-1). Reads of the old window
             # complete before any write because the write loop runs after the
             # token loop.
-            var old_window = Array[Scalar[state_dtype], KERNEL_SIZE_MINUS_ONE](
-                fill=0
-            )
-            comptime for j in range(KERNEL_SIZE_MINUS_ONE):
-                old_window[j] = pool_ref_h.ptr[
-                    UInt32(slot) * conv_state_pool_stride
-                    + UInt32(c) * conv_state_channel_stride
-                    + UInt32(j) * conv_state_window_stride
-                ]
+            comptime if WRITE_STATE:
+                var old_window = Array[
+                    Scalar[state_dtype], KERNEL_SIZE_MINUS_ONE
+                ](fill=0)
+                comptime for j in range(KERNEL_SIZE_MINUS_ONE):
+                    old_window[j] = pool_ref_h.ptr[
+                        UInt32(slot) * conv_state_pool_stride
+                        + UInt32(c) * conv_state_channel_stride
+                        + UInt32(j) * conv_state_window_stride
+                    ]
 
-            comptime for j in range(KERNEL_SIZE_MINUS_ONE):
-                var src = seq_len - KERNEL_SIZE_MINUS_ONE + j
-                var v: Scalar[state_dtype] = 0
-                if src >= 0:
-                    v = Scalar[state_dtype](
-                        qkv_input_h.ptr[
-                            UInt32(seq_start + src) * qkv_input_seqlen_stride
-                            + UInt32(c) * qkv_input_channel_stride
-                        ]
+                comptime for j in range(KERNEL_SIZE_MINUS_ONE):
+                    var src = seq_len - KERNEL_SIZE_MINUS_ONE + j
+                    var v: Scalar[state_dtype] = 0
+                    if src >= 0:
+                        v = Scalar[state_dtype](
+                            qkv_input_h.ptr[
+                                UInt32(seq_start + src)
+                                * qkv_input_seqlen_stride
+                                + UInt32(c) * qkv_input_channel_stride
+                            ]
+                        )
+                    else:
+                        var old_slot = KERNEL_SIZE_MINUS_ONE + src
+                        if old_slot >= 0:
+                            v = old_window[old_slot]
+                    pool_ref_h.ptr.store(
+                        UInt32(slot) * conv_state_pool_stride
+                        + UInt32(c) * conv_state_channel_stride
+                        + UInt32(j) * conv_state_window_stride,
+                        v,
                     )
-                else:
-                    var old_slot = KERNEL_SIZE_MINUS_ONE + src
-                    if old_slot >= 0:
-                        v = old_window[old_slot]
-                pool_ref_h.ptr.store(
-                    UInt32(slot) * conv_state_pool_stride
-                    + UInt32(c) * conv_state_channel_stride
-                    + UInt32(j) * conv_state_window_stride,
-                    v,
-                )
 
     # ── Compare ──────────────────────────────────────────────────────────────
     for i in range(total_seq_len * conv_dim):
@@ -354,7 +361,7 @@ def run_slot_indexed_gpu[
 def test_slot_indexed_single_sequence_targets_chosen_slot() raises:
     """One-sequence smoke test: writes only to the slot named in slot_idx."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[DType.float32, DType.float32, 4](
+    run_slot_indexed_gpu[.float32, DType.float32, 4](
         batch_size=1,
         total_seq_len=5,
         conv_dim=8,
@@ -368,7 +375,7 @@ def test_slot_indexed_single_sequence_targets_chosen_slot() raises:
 def test_slot_indexed_two_sequences_disjoint_slots() raises:
     """Two sequences hitting non-adjacent slots; bf16 pool, fp32 work."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[DType.float32, DType.bfloat16, 4](
+    run_slot_indexed_gpu[.float32, DType.bfloat16, 4](
         batch_size=2,
         total_seq_len=7,
         conv_dim=8,
@@ -384,7 +391,7 @@ def test_slot_indexed_short_sequence_carries_state_forward() raises:
     """When seq_len < K-1: window must carry forward from existing pool entry.
     """
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[DType.float32, DType.float32, 4](
+    run_slot_indexed_gpu[.float32, DType.float32, 4](
         batch_size=1,
         total_seq_len=2,
         conv_dim=8,
@@ -393,6 +400,357 @@ def test_slot_indexed_short_sequence_carries_state_forward() raises:
         slot_assignments=Index(1),
         ctx=ctx,
     )
+
+
+def test_suppressing_the_window_write_leaves_the_pool_alone() raises:
+    """Checks ``WRITE_STATE = False`` leaves the pool unchanged."""
+    var ctx = DeviceContext()
+    run_slot_indexed_gpu[.float32, DType.bfloat16, 4, WRITE_STATE=False](
+        batch_size=2,
+        total_seq_len=7,
+        conv_dim=8,
+        max_slots=4,
+        seq_lengths=Index(4, 3),
+        slot_assignments=Index(3, 0),
+        ctx=ctx,
+        rtol=0.05,
+    )
+
+
+def test_suppressing_the_window_write_spares_a_carry_forward_row() raises:
+    """Checks the same for a row shorter than the window."""
+    var ctx = DeviceContext()
+    run_slot_indexed_gpu[.float32, DType.float32, 4, WRITE_STATE=False](
+        batch_size=1,
+        total_seq_len=2,
+        conv_dim=8,
+        max_slots=2,
+        seq_lengths=Index(2),
+        slot_assignments=Index(1),
+        ctx=ctx,
+    )
+
+
+def _launch_conv[
+    WRITE_STATE: Bool
+](
+    ctx: DeviceContext,
+    qkv: DeviceBuffer[DType.float32],
+    weight: DeviceBuffer[DType.float32],
+    pool: DeviceBuffer[DType.float32],
+    slot: DeviceBuffer[DType.uint32],
+    offsets: DeviceBuffer[DType.uint32],
+    conv_out: DeviceBuffer[DType.float32],
+    seq_len: Int,
+) raises:
+    """Runs one kernel-size-4 conv launch over one row of `seq_len` tokens."""
+    comptime KERNEL_SIZE = 4
+    comptime CONV_DIM = 8
+    comptime MAX_SLOTS = 2
+    comptime CONV1D_BLOCK_DIM = 128
+    var qkv_tt = TileTensor(qkv, row_major(seq_len, CONV_DIM))
+    var weight_tt = TileTensor(weight, row_major(CONV_DIM, KERNEL_SIZE))
+    var pool_tt = TileTensor(
+        pool, row_major(MAX_SLOTS, CONV_DIM, KERNEL_SIZE - 1)
+    )
+    var slot_tt = TileTensor(slot, row_major(1))
+    var offsets_tt = TileTensor(offsets, row_major(2))
+    var out_tt = TileTensor(conv_out, row_major(seq_len, CONV_DIM))
+    var kernel = ctx.compile_function[
+        gated_delta_conv1d_fwd_gpu[
+            DType.float32,
+            DType.float32,
+            KERNEL_SIZE,
+            CONV1D_BLOCK_DIM,
+            WRITE_STATE,
+            qkv_tt.LayoutType,
+            weight_tt.LayoutType,
+            pool_tt.LayoutType,
+            slot_tt.LayoutType,
+            offsets_tt.LayoutType,
+            out_tt.LayoutType,
+            qkv_tt.Engine,
+        ]
+    ]()
+    ctx.enqueue_function(
+        kernel,
+        Int32(1),
+        Int32(seq_len),
+        Int32(CONV_DIM),
+        qkv_tt,
+        weight_tt,
+        pool_tt,
+        slot_tt,
+        offsets_tt,
+        out_tt,
+        UInt32(CONV_DIM),
+        UInt32(1),
+        UInt32(KERNEL_SIZE),
+        UInt32(1),
+        UInt32(CONV_DIM),
+        UInt32(1),
+        grid_dim=(1, ceildiv(CONV_DIM, CONV1D_BLOCK_DIM)),
+        block_dim=(CONV1D_BLOCK_DIM,),
+    )
+    ctx.synchronize()
+
+
+def run_deferred_window_write(accepted: Int) raises:
+    """Checks a deferred window, written at `accepted` tokens, is the forward's.
+
+    One launch covers a four-token window with the write suppressed, and a
+    second writes the window over the first `accepted` tokens. The pool must
+    match a single launch over those tokens from the same starting window,
+    which below `KERNEL_SIZE - 1` carries slots of that window forward.
+    """
+    comptime KERNEL_SIZE = 4
+    comptime CONV_DIM = 8
+    comptime WINDOW = 4
+    comptime POOL_ELEMS = 2 * CONV_DIM * (KERNEL_SIZE - 1)
+    var ctx = DeviceContext()
+
+    var qkv_h = ctx.enqueue_create_host_buffer[DType.float32](WINDOW * CONV_DIM)
+    rand[DType.float32](qkv_h.unsafe_ptr(), WINDOW * CONV_DIM)
+    var weight_h = ctx.enqueue_create_host_buffer[DType.float32](
+        CONV_DIM * KERNEL_SIZE
+    )
+    rand[DType.float32](weight_h.unsafe_ptr(), CONV_DIM * KERNEL_SIZE)
+    var pool_h = ctx.enqueue_create_host_buffer[DType.float32](POOL_ELEMS)
+    rand[DType.float32](pool_h.unsafe_ptr(), POOL_ELEMS)
+    var slot_h = ctx.enqueue_create_host_buffer[DType.uint32](1)
+    slot_h[0] = 1
+    var window_offsets_h = ctx.enqueue_create_host_buffer[DType.uint32](2)
+    window_offsets_h[0] = 0
+    window_offsets_h[1] = UInt32(WINDOW)
+    var accepted_offsets_h = ctx.enqueue_create_host_buffer[DType.uint32](2)
+    accepted_offsets_h[0] = 0
+    accepted_offsets_h[1] = UInt32(accepted)
+
+    var qkv = ctx.enqueue_create_buffer[DType.float32](WINDOW * CONV_DIM)
+    var weight = ctx.enqueue_create_buffer[DType.float32](
+        CONV_DIM * KERNEL_SIZE
+    )
+    var pool = ctx.enqueue_create_buffer[DType.float32](POOL_ELEMS)
+    var reference_pool = ctx.enqueue_create_buffer[DType.float32](POOL_ELEMS)
+    var slot = ctx.enqueue_create_buffer[DType.uint32](1)
+    var window_offsets = ctx.enqueue_create_buffer[DType.uint32](2)
+    var accepted_offsets = ctx.enqueue_create_buffer[DType.uint32](2)
+    var conv_out = ctx.enqueue_create_buffer[DType.float32](WINDOW * CONV_DIM)
+    ctx.enqueue_copy(qkv, qkv_h.unsafe_ptr())
+    ctx.enqueue_copy(weight, weight_h.unsafe_ptr())
+    ctx.enqueue_copy(pool, pool_h.unsafe_ptr())
+    ctx.enqueue_copy(reference_pool, pool_h.unsafe_ptr())
+    ctx.enqueue_copy(slot, slot_h.unsafe_ptr())
+    ctx.enqueue_copy(window_offsets, window_offsets_h.unsafe_ptr())
+    ctx.enqueue_copy(accepted_offsets, accepted_offsets_h.unsafe_ptr())
+    ctx.synchronize()
+
+    _launch_conv[False](
+        ctx, qkv, weight, pool, slot, window_offsets, conv_out, WINDOW
+    )
+    _launch_conv[True](
+        ctx, qkv, weight, pool, slot, accepted_offsets, conv_out, WINDOW
+    )
+    _launch_conv[True](
+        ctx,
+        qkv,
+        weight,
+        reference_pool,
+        slot,
+        accepted_offsets,
+        conv_out,
+        WINDOW,
+    )
+
+    var pool_after = ctx.enqueue_create_host_buffer[DType.float32](POOL_ELEMS)
+    var reference_after = ctx.enqueue_create_host_buffer[DType.float32](
+        POOL_ELEMS
+    )
+    ctx.enqueue_copy(pool_after.unsafe_ptr(), pool)
+    ctx.enqueue_copy(reference_after.unsafe_ptr(), reference_pool)
+    ctx.synchronize()
+    for i in range(POOL_ELEMS):
+        assert_equal(
+            pool_after[i],
+            reference_after[i],
+            "the deferred window diverged at element " + String(i),
+        )
+
+
+def test_a_deferred_window_carries_the_old_window_forward() raises:
+    run_deferred_window_write(1)
+    run_deferred_window_write(2)
+
+
+def test_a_deferred_window_rebuilt_from_inputs() raises:
+    run_deferred_window_write(3)
+
+
+# =============================================================================
+# Regression test: a `conv_state` row past a 32-bit offset
+# =============================================================================
+
+
+def test_gated_delta_conv1d_gpu_deep_slot_no_alias() raises:
+    """A `conv_state` slot past 2**32 elements must not alias onto the front
+    of the pool.
+
+    The row is kept tiny (`conv_dim=4`, `KERNEL_SIZE=2`, `UInt8`) so that
+    `slot_deep * row_elements` lands on 2**32 with a ~4 GiB pool. Only
+    the two sentinel bytes are touched from the host.
+    """
+    var ctx = DeviceContext()
+    if not ctx.is_compatible():
+        return
+
+    comptime state_dtype = DType.uint8
+    comptime work_dtype = DType.float32
+    comptime KERNEL_SIZE = 2
+    comptime state_len = KERNEL_SIZE - 1  # 1
+    comptime conv_dim = 4
+    comptime row_elements = conv_dim * state_len  # 4, a power of two
+    comptime batch_size = 1
+    comptime total_seq_len = 1
+    comptime CONV1D_BLOCK_DIM = 128
+
+    # slot_deep * row_elements == 2**32 exactly: one past UInt32.MAX.
+    var slot_deep = 1 << 30
+    var num_slots = slot_deep + 1
+    var deep_offset = slot_deep * row_elements
+
+    var front_sentinel = Scalar[state_dtype](111)
+    var deep_sentinel = Scalar[state_dtype](222)
+    var x_val = Float32(5)
+
+    var qkv_input_heap = List(length=conv_dim * total_seq_len, fill=x_val)
+    var qkv_input_h = TileTensor(
+        qkv_input_heap, row_major(total_seq_len, conv_dim)
+    )
+    var conv_weight_heap = List(length=conv_dim * KERNEL_SIZE, fill=Float32(0))
+    var conv_weight_h = TileTensor(
+        conv_weight_heap, row_major(conv_dim, KERNEL_SIZE)
+    )
+    for c in range(conv_dim):
+        conv_weight_h.raw_store(c * KERNEL_SIZE, Float32(1))
+    var slot_idx_heap = List(length=batch_size, fill=UInt32(slot_deep))
+    var slot_idx_h = TileTensor(slot_idx_heap, row_major(batch_size))
+    var input_row_offsets_heap = List(length=batch_size + 1, fill=UInt32(0))
+    var input_row_offsets_h = TileTensor(
+        input_row_offsets_heap, row_major(batch_size + 1)
+    )
+    input_row_offsets_h.raw_store(1, UInt32(total_seq_len))
+
+    var qkv_input_device = ctx.enqueue_create_buffer[work_dtype](
+        total_seq_len * conv_dim
+    )
+    ctx.enqueue_copy(qkv_input_device, qkv_input_h._storage)
+    var conv_weight_device = ctx.enqueue_create_buffer[work_dtype](
+        conv_dim * KERNEL_SIZE
+    )
+    ctx.enqueue_copy(conv_weight_device, conv_weight_h._storage)
+    var slot_idx_device = ctx.enqueue_create_buffer[.uint32](batch_size)
+    ctx.enqueue_copy(slot_idx_device, slot_idx_h._storage)
+    var input_row_offsets_device = ctx.enqueue_create_buffer[.uint32](
+        batch_size + 1
+    )
+    ctx.enqueue_copy(input_row_offsets_device, input_row_offsets_h._storage)
+    var conv_output_device = ctx.enqueue_create_buffer[work_dtype](
+        total_seq_len * conv_dim
+    )
+
+    var qkv_input_tt = TileTensor(
+        qkv_input_device, row_major(total_seq_len, conv_dim)
+    )
+    var conv_weight_tt = TileTensor(
+        conv_weight_device, row_major(conv_dim, KERNEL_SIZE)
+    )
+    var slot_idx_tt = TileTensor(slot_idx_device, row_major(batch_size))
+    var input_row_offsets_tt = TileTensor(
+        input_row_offsets_device, row_major(batch_size + 1)
+    )
+    var conv_output_tt = TileTensor(
+        conv_output_device, row_major(total_seq_len, conv_dim)
+    )
+
+    var conv_state_device = ctx.enqueue_create_buffer[state_dtype](
+        num_slots * row_elements
+    )
+    var conv_state_tt = TileTensor(
+        conv_state_device, row_major(num_slots, conv_dim, state_len)
+    )
+
+    var front_sub = conv_state_device.create_sub_buffer[state_dtype](0, 1)
+    var deep_sub = conv_state_device.create_sub_buffer[state_dtype](
+        deep_offset, 1
+    )
+    var front_seed_heap = List(length=1, fill=front_sentinel)
+    var front_seed_h = TileTensor(front_seed_heap, row_major(1))
+    var deep_seed_heap = List(length=1, fill=deep_sentinel)
+    var deep_seed_h = TileTensor(deep_seed_heap, row_major(1))
+    ctx.enqueue_copy(front_sub, front_seed_h._storage)
+    ctx.enqueue_copy(deep_sub, deep_seed_h._storage)
+    ctx.synchronize()
+
+    var compiled_func = ctx.compile_function[
+        gated_delta_conv1d_fwd_gpu[
+            work_dtype,
+            state_dtype,
+            KERNEL_SIZE,
+            CONV1D_BLOCK_DIM,
+            True,
+            qkv_input_tt.LayoutType,
+            conv_weight_tt.LayoutType,
+            conv_state_tt.LayoutType,
+            slot_idx_tt.LayoutType,
+            input_row_offsets_tt.LayoutType,
+            conv_output_tt.LayoutType,
+            qkv_input_tt.Engine,
+        ]
+    ]()
+    ctx.enqueue_function(
+        compiled_func,
+        Int32(batch_size),
+        Int32(total_seq_len),
+        Int32(conv_dim),
+        qkv_input_tt,
+        conv_weight_tt,
+        conv_state_tt,
+        slot_idx_tt,
+        input_row_offsets_tt,
+        conv_output_tt,
+        UInt32(conv_dim),  # qkv_input_seqlen_stride
+        UInt32(1),  # qkv_input_channel_stride
+        UInt32(KERNEL_SIZE),  # conv_weight_channel_stride
+        UInt32(1),  # conv_weight_offset_stride
+        UInt32(conv_dim),  # conv_output_seqlen_stride
+        UInt32(1),  # conv_output_channel_stride
+        grid_dim=(batch_size, ceildiv(conv_dim, CONV1D_BLOCK_DIM)),
+        block_dim=(CONV1D_BLOCK_DIM,),
+    )
+
+    var output_readback_heap = List(
+        length=total_seq_len * conv_dim, fill=Float32(0)
+    )
+    var output_h = TileTensor(
+        output_readback_heap, row_major(total_seq_len, conv_dim)
+    )
+    var front_readback_heap = List(length=1, fill=Scalar[state_dtype](0))
+    var front_readback_h = TileTensor(front_readback_heap, row_major(1))
+    var deep_readback_heap = List(length=1, fill=Scalar[state_dtype](0))
+    var deep_readback_h = TileTensor(deep_readback_heap, row_major(1))
+    ctx.enqueue_copy(output_h._storage, conv_output_device)
+    ctx.enqueue_copy(front_readback_h._storage, front_sub)
+    ctx.enqueue_copy(deep_readback_h._storage, deep_sub)
+    ctx.synchronize()
+
+    # The deep sentinel, not the front row it would alias onto.
+    assert_equal(output_h.raw_load(0), Scalar[work_dtype](deep_sentinel))
+
+    # The front of the pool must be untouched.
+    assert_equal(front_readback_h.raw_load(0), front_sentinel)
+
+    # The deep slot itself must carry the write.
+    assert_equal(deep_readback_h.raw_load(0), Scalar[state_dtype](x_val))
 
 
 def main() raises:

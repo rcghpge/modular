@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 from max.dtype import DType
 from max.graph import DeviceRef, TensorValue, ops
@@ -215,6 +215,19 @@ class Fp8Strategy:
         )
 
 
+class _PreparedSwigluOperands(NamedTuple):
+    """Operands the fused SwiGLU kernels share, normalized once."""
+
+    hidden: TensorValue
+    hidden_scales: TensorValue
+    expert_start: TensorValue
+    scales_offsets: TensorValue
+    expert_ids: TensorValue
+    usage_stats: TensorValue
+    c_input_scales: TensorValue | None
+    expert_scales: TensorValue | None
+
+
 class NvMxf4f8Strategy:
     """NVIDIA NVFP4/MXFP4/MXFP8 quantization for MoE."""
 
@@ -244,6 +257,7 @@ class NvMxf4f8Strategy:
         expert_start: TensorValue,
         scales_offset: TensorValue,
         expert_ids: TensorValue,
+        indices: TensorValue | None = None,
     ) -> tuple[TensorValue, TensorValue]:
         """Quantizes activations per-expert with padded scale alignment."""
         if self.is_nvfp4 and input_scale is None:
@@ -267,6 +281,7 @@ class NvMxf4f8Strategy:
                 DType.float8_e4m3fn if self.is_nvfp4 else DType.float8_e8m0fnu
             ),
             out_type=self.dtype,
+            indices=indices,
         )
 
     def grouped_matmul(
@@ -368,6 +383,75 @@ class NvMxf4f8Strategy:
             scales_offsets,
         )
 
+    def prepare_swiglu_operands(
+        self,
+        expert_inputs: tuple[TensorValue, ...],
+        *,
+        expert_scales: TensorValue | None = None,
+        input_scales: TensorValue | None = None,
+    ) -> _PreparedSwigluOperands:
+        """Normalizes the operands every fused-SwiGLU kernel call needs.
+
+        Both the chained path and the EP-combine-send path hand the same
+        operands to the same kernel, so the two derivations that are easy to
+        get wrong live here instead of at each call site: the per-expert
+        SiLU-output scale must be INVERTED, and the usage stats must be on the
+        host. A call site that re-derived either one silently disagreed with
+        this one.
+
+        Args:
+            expert_inputs: ``(hidden, hidden_scales, expert_start,
+                scales_offsets, expert_ids, usage_stats)``.
+            expert_scales: Per-expert matmul-epilogue scaling factors.
+            input_scales: Raw per-expert SiLU-output scale.
+
+        Returns:
+            The normalized operands.
+
+        Raises:
+            ValueError: If NVFP4 is missing a required scale tensor.
+        """
+        if self.is_nvfp4 and input_scales is None:
+            raise ValueError("NVFP4 requires input_scales")
+        if self.is_nvfp4 and expert_scales is None:
+            raise ValueError("NVFP4 requires expert_scales")
+
+        (
+            hidden,
+            hidden_scales,
+            expert_start,
+            scales_offsets,
+            expert_ids,
+            usage_stats,
+        ) = expert_inputs
+
+        # The kernel binds the active-expert count as a HOST scalar.
+        if usage_stats.device.is_gpu():
+            usage_stats = ops.constant(
+                [8192, int(expert_ids.shape[0])],
+                dtype=DType.uint32,
+                device=DeviceRef.CPU(),
+            )
+
+        return _PreparedSwigluOperands(
+            hidden=hidden,
+            hidden_scales=hidden_scales,
+            expert_start=expert_start,
+            scales_offsets=scales_offsets,
+            expert_ids=expert_ids,
+            usage_stats=usage_stats,
+            c_input_scales=(
+                (1.0 / input_scales).to(hidden.device)
+                if input_scales is not None
+                else None
+            ),
+            expert_scales=(
+                expert_scales.to(hidden.device)
+                if expert_scales is not None
+                else None
+            ),
+        )
+
     def grouped_matmul_swiglu(
         self,
         weight: TensorValue,
@@ -380,6 +464,7 @@ class NvMxf4f8Strategy:
         use_swigluoai: bool = False,
         swiglu_alpha: float = 0.0,
         swiglu_limit: float = 0.0,
+        a_row_scales: TensorValue | None = None,
     ) -> tuple[TensorValue, TensorValue]:
         """Runs the fused quantized grouped matmul + SwiGLU + quant kernel.
 
@@ -389,7 +474,9 @@ class NvMxf4f8Strategy:
         ``max.nn.kernels.grouped_matmul_blocked_swiglu``); the layout is
         produced by :meth:`MoE.gate_up_proj` and
         :meth:`MoEQuantized.gate_up_proj_scales` when
-        ``quant_config.can_use_fused_swiglu`` is set.
+        ``quant_config.can_use_fused_swiglu`` is set, or ships natively
+        (gate, up)-interleaved in the checkpoint (the TP path gated by
+        :meth:`MoEQuantized._can_fuse_swiglu_interleaved`).
 
         Args:
             weight: Sigma-permuted gate/up projection weights.
@@ -408,61 +495,36 @@ class NvMxf4f8Strategy:
                 function.
             swiglu_alpha: The alpha value for the clamped SwiGLU activation function.
             swiglu_limit: The limit value for the clamped SwiGLU activation function.
+            a_row_scales: Optional BF16 scale per ``hidden`` row, applied with
+                the expert scale before the SwiGLU. NVFP4 only.
 
         Returns:
             Tuple ``(c_packed, c_swiglu_scales)`` matching the chained
             reference path byte-for-byte under the kernel's default
             ``match_bf16=True`` setting.
         """
-        if self.is_nvfp4 and input_scales is None:
-            raise ValueError("NVFP4 requires input_scales")
-        if self.is_nvfp4 and expert_scales is None:
-            raise ValueError("NVFP4 requires expert_scales")
-
-        (
-            hidden,
-            hidden_scales,
-            expert_start,
-            scales_offsets,
-            expert_ids,
-            usage_stats,
-        ) = expert_inputs
-
-        # Replace gpu usage stats with a dummy cpu usage stats (same as
-        # grouped_matmul above).
-        if usage_stats.device.is_gpu():
-            usage_stats = ops.constant(
-                [8192, int(expert_ids.shape[0])],
-                dtype=DType.uint32,
-                device=DeviceRef.CPU(),
-            )
-
-        c_input_scales = (
-            (1.0 / input_scales).to(hidden.device)
-            if input_scales is not None
-            else None
-        )
-        expert_scales = (
-            expert_scales.to(hidden.device)
-            if expert_scales is not None
-            else None
+        prepared = self.prepare_swiglu_operands(
+            expert_inputs,
+            expert_scales=expert_scales,
+            input_scales=input_scales,
         )
 
         return grouped_matmul_blocked_swiglu(
-            hidden,
+            prepared.hidden,
             weight,
-            hidden_scales,
+            prepared.hidden_scales,
             weight_scales,
-            expert_start,
-            scales_offsets,
-            expert_ids,
-            usage_stats,
-            expert_scales=expert_scales,
-            c_input_scales=c_input_scales,
+            prepared.expert_start,
+            prepared.scales_offsets,
+            prepared.expert_ids,
+            prepared.usage_stats,
+            expert_scales=prepared.expert_scales,
+            c_input_scales=prepared.c_input_scales,
             estimated_total_m=estimated_total_m,
             clamp_activation=use_swigluoai,
             swiglu_alpha=swiglu_alpha,
             swiglu_limit=swiglu_limit,
+            a_row_scales=a_row_scales,
         )
 
 
@@ -596,7 +658,7 @@ class Mxfp6Strategy:
     Preshuffled-B only: an FP6 lane fragment is 24 bytes, which the kernel
     reads plane-split, and the dense row-major grouped kernel has no path for
     that layout. The weight loader must apply
-    ``preshuffle_mxfp4_b_experts(..., lane_bytes=MXFP6_LANE_BYTES)``.
+    ``preshuffle_block_scaled_b_experts(..., lane_bytes=MXFP6_LANE_BYTES)``.
 
     Unlike :class:`Mxfp4Strategy` there is no fused activation kernel, so the
     down-projection input is produced as bf16 SwiGLU followed by a standalone
@@ -647,12 +709,10 @@ class Mxfp6Strategy:
         decode_grid_m_rows: int = 0,
     ) -> TensorValue:
         """Runs the grouped MXFP6 matmul with per-expert scales."""
-        if a_scales_preshuffled:
-            # No FP6 producer writes A-scales in slot layout, so honouring the
-            # flag would mean skipping the only preshuffle there is.
+        if a_scales_preshuffled and a_scales_max_padded_m <= 0:
             raise ValueError(
-                "MXFP6 has no fused A-scale slot producer; "
-                "a_scales_preshuffled must be False"
+                "a_scales_max_padded_m must be > 0 when a_scales_preshuffled"
+                " is set for MXFP6"
             )
 
         (
@@ -675,6 +735,8 @@ class Mxfp6Strategy:
             estimated_total_m=estimated_total_m,
             decode_grid_m_cap=decode_grid_m_cap,
             decode_grid_m_rows=decode_grid_m_rows,
+            a_scales_preshuffled=a_scales_preshuffled,
+            a_scales_max_padded_m=a_scales_max_padded_m,
         )
 
     def prepare_weight_scales(
@@ -704,18 +766,14 @@ class Mxfp6Strategy:
         per MoE layer per device (456 of each at dp=2/ep=8) and an extra
         ``mo.quantize.dynamic.block.scaled.mxfp6``.
 
-        ``max_padded_M`` is still refused: writing the A-scale in the grouped
-        matmul's slot layout is unimplemented in the FP6 kernel (both the kernel
-        body and its registration assert on ``fuse_a_scale_preshuffle``), so the
-        standalone preshuffle still runs for both projections.
+        ``max_padded_M`` > 0 enables the down-proj A-scale fold: the kernel
+        writes the E8M0 scale straight into the grouped matmul's per-expert
+        slot, dropping the standalone preshuffle. The slot layout is shared
+        across MX formats (``scale_4d_slot_byte_off`` keys on ``K_SCALES`` and
+        ``MXFP6_SF_VECTOR_SIZE`` is 32 like FP4/FP8), so the reader is
+        unchanged. The up-proj fold stays MXFP4-only -- its producer is the EP
+        dispatch path, which has no FP6 slot writer.
         """
-        if max_padded_M:
-            raise ValueError(
-                "MXFP6 cannot write slot-layout A-scales yet: "
-                "fused_silu_mxfp6_kernel asserts on fuse_a_scale_preshuffle. "
-                "max_padded_M must be 0"
-            )
-
         _, _, expert_start_indices, _, _ = expert_inputs
         return fused_silu_quantized(
             gate_up_projs,
@@ -728,6 +786,49 @@ class Mxfp6Strategy:
             swiglu_alpha=swiglu_alpha,
             swiglu_limit=swiglu_limit,
         )
+
+
+# The SM100 block-scaled matmuls read scales in 128-row by 4-column granules,
+# each stored as a [32, 4, 4] atom: see `set_scale_factor` in
+# `linalg/fp4_utils.mojo`.
+_SF_ATOM_ROWS = 32
+_SF_GRANULE_ROWS = 128
+_SF_ATOM_COLS = 4
+
+
+def interleaved_block_scales_shape(rows: int, cols: int) -> list[int]:
+    """Returns the SM100 interleaved layout's shape for ``[rows, cols]`` scales.
+
+    The layout is ``[rows / 128, cols / 4, 32, 4, 4]``, the shape
+    :func:`~max.nn.kernels.block_scales_interleave` produces. Scale row ``r``,
+    column ``c`` is stored at
+    ``[r // 128, c // 4, r % 32, (r % 128) // 32, c % 4]``, so a range of whole
+    row granules or whole column granules of the interleaved tensor is the
+    interleave of the matching slice of the row-major scales.
+
+    Args:
+        rows: The number of scale rows, one per weight output row.
+        cols: The number of scale columns, one per 32-element block.
+
+    Returns:
+        The rank-5 interleaved shape.
+
+    Raises:
+        ValueError: If ``rows`` is not a multiple of 128 or ``cols`` is not a
+            multiple of 4.
+    """
+    if rows % _SF_GRANULE_ROWS or cols % _SF_ATOM_COLS:
+        raise ValueError(
+            f"block scales [{rows}, {cols}] are not whole "
+            f"{_SF_GRANULE_ROWS}x{_SF_ATOM_COLS} interleave granules"
+        )
+    return [
+        rows // _SF_GRANULE_ROWS,
+        cols // _SF_ATOM_COLS,
+        _SF_ATOM_ROWS,
+        _SF_GRANULE_ROWS // _SF_ATOM_ROWS,
+        _SF_ATOM_COLS,
+    ]
 
 
 def _nv_interleave_block_scales(

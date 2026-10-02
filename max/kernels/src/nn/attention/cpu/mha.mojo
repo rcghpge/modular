@@ -55,7 +55,11 @@ from std.memory import (
     unsafe_memset_zero,
     unsafe_stack_allocation,
 )
-from std.memory.alloc import ManagedAllocation, Layout as AllocLayout
+from std.memory.alloc import (
+    Alignment,
+    ManagedAllocation,
+    Layout as AllocLayout,
+)
 from nn.attention.mha_mask import MHAMask
 from max.runtime.asyncrt import parallelism_level
 from max.runtime.tracing import Trace, TraceLevel, trace_arg
@@ -103,7 +107,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
     ) capturing -> SIMD[Self.dtype, simd_width]
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _inner_loop_a_lane[
         tile_m: Int, tile_n: Int
     ](
@@ -117,13 +121,15 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         var ak_ptr = a_ptr
         var bk_ptr = b_ptr
 
-        @__parameter
-        @always_inline
-        def loop_body[lane_count: Int](k: Int):
-            var a_tile = Array[SIMD[Self.dtype, lane_count], tile_m](fill=0)
-
-            comptime for m in range(tile_m):
-                a_tile[m] = ak_ptr.load[width=lane_count](m * a_stride)
+        @inline(.always)
+        def loop_body[
+            lane_count: Int
+        ](k: Int) {mut ak_ptr, mut bk_ptr, mut c_tile, imm}:
+            var a_tile = Array[_, tile_m](
+                fill_with=lambda (m: Int) -> SIMD[
+                    Self.dtype, lane_count
+                ]: ak_ptr.load[width=lane_count](m * a_stride)
+            )
 
             ak_ptr += lane_count
 
@@ -138,13 +144,13 @@ struct _Matmul[dtype: DType, simd_width: Int]:
 
                 bk_ptr += b_stride
 
-        tile[loop_body, [Self.simd_width, 1]](0, K)
+        tile[[Self.simd_width, 1]](0, K, loop_body)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = ak_ptr
         _ = bk_ptr
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _inner_loop_a_broadcast[
         tile_m: Int, tile_n: Int
     ](
@@ -158,9 +164,10 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         var ak_ptr = a_ptr
         var bk_ptr = b_ptr
 
-        @__parameter
-        @always_inline
-        def loop_body[unroll_factor: Int](k: Int):
+        @inline(.always)
+        def loop_body[
+            unroll_factor: Int
+        ](k: Int) {mut ak_ptr, mut bk_ptr, mut c_tile, imm}:
             var b_tile = Array[SIMD[Self.dtype, Self.simd_width], tile_n](
                 fill=0
             )
@@ -180,12 +187,12 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 ak_ptr += 1
                 bk_ptr += b_stride
 
-        tile[loop_body, [2, 1]](0, K)
+        tile[[2, 1]](0, K, loop_body)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = ak_ptr
         _ = bk_ptr
 
-    @no_inline
+    @inline(.never)
     @staticmethod
     def _matmul_packed(
         M: Int,
@@ -201,13 +208,13 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         var am_ptr = a_ptr
         var cm_ptr = c_ptr
 
-        @__parameter
-        def process_rows[tile_m: Int](m: Int):
+        def process_rows[tile_m: Int](m: Int) {mut am_ptr, mut cm_ptr, imm}:
             var bn_ptr = b_ptr
             var cn_ptr = cm_ptr
 
-            @__parameter
-            def process_cols[tile_n: Int](n_unscaled: Int):
+            def process_cols[
+                tile_n: Int
+            ](n_unscaled: Int) {mut bn_ptr, mut cn_ptr, imm}:
                 var c_tile = _Accumulator[
                     Self.dtype, tile_m, tile_n, Self.simd_width
                 ]()
@@ -231,8 +238,8 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 bn_ptr += tile_n * Self.simd_width
                 cn_ptr += tile_n * Self.simd_width
 
-            tile[process_cols, Self._matmul_config.col_sizes](
-                0, ceildiv(N, Self.simd_width)
+            tile[Self._matmul_config.col_sizes](
+                0, ceildiv(N, Self.simd_width), process_cols
             )
 
             am_ptr += tile_m * a_stride
@@ -242,12 +249,12 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             _ = bn_ptr
             _ = cn_ptr
 
-        tile[process_rows, Self._matmul_config.row_sizes](0, M)
+        tile[Self._matmul_config.row_sizes](0, M, process_rows)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = am_ptr
         _ = cm_ptr
 
-    @no_inline
+    @inline(.never)
     @staticmethod
     def _pack_buffer_transposed[
         input_b_fn: Self._input_fn_type, static_k: Int
@@ -270,9 +277,10 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             row_major[transpose_width, transpose_width]()
         )
 
-        @__parameter
-        @always_inline
-        def process_tile[tile_n: Int, tile_k: Int](n: Int, k: Int):
+        @inline(.always)
+        def process_tile[
+            tile_n: Int, tile_k: Int
+        ](n: Int, k: Int) {mut transpose_buffer, imm}:
             comptime if transpose_width == tile_n == tile_k:
                 # Use an optimized path to transpose a square tile of the
                 # input tensor.
@@ -304,7 +312,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                             (k + kk) * aligned_n + (n + nn), val[kk]
                         )
 
-        tile[process_tile, tile_sizes, tile_sizes](0, 0, N, K)
+        tile[tile_sizes, tile_sizes](0, 0, N, K, process_tile)
         _ = transpose_buffer
 
         if aligned_n != N:
@@ -313,7 +321,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                     packed_ptr + k * aligned_n + N, aligned_n - N
                 )
 
-    @no_inline
+    @inline(.never)
     @staticmethod
     def _pack_buffer[
         input_b_fn: Self._input_fn_type
@@ -326,21 +334,21 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         var aligned_n = align_up(N, Self.simd_width)
 
         for _k in range(K):
-
-            @__parameter
-            @always_inline
-            def packed_copy[_simd_width: Int](idx: Int):
+            # TODO(MOCO-4664): `var _k` copy-captures the loop variable to work
+            # around wrong debug-info scopes on implicit nested-scope captures.
+            @inline(.always)
+            def packed_copy[_simd_width: Int](idx: Int) {var _k, imm}:
                 var val = input_b_fn[_simd_width](idx, _k)
                 output_ptr.store(idx, val)
 
-            tile[packed_copy, Self._matmul_config.pack_sizes](0, N)
+            tile[Self._matmul_config.pack_sizes](0, N, packed_copy)
 
             if aligned_n != N:
                 unsafe_memset_zero(output_ptr + N, aligned_n - N)
 
             output_ptr += aligned_n
 
-    @no_inline
+    @inline(.never)
     @staticmethod
     def _gemv_transposed[
         input_b_fn: Self._input_fn_type, static_k: Int
@@ -353,18 +361,16 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         var K = static_k if static_k != UNKNOWN_VALUE else dynamic_k
         var cn_ptr = c_ptr
 
-        @__parameter
-        @always_inline
-        def process_cols[tile_n: Int](n: Int):
-            @__parameter
-            @always_inline
+        @inline(.always)
+        def process_cols[tile_n: Int](n: Int) {mut cn_ptr, imm}:
+            @inline(.always)
             def do_reduce[
                 _simd_width: SIMDLength
             ](
                 start: Int,
                 end: Int,
                 mut accum: Array[SIMD[Self.dtype, _simd_width], tile_n],
-            ):
+            ) {imm}:
                 for _k in range(start, end, _simd_width):
                     var a_data = a_ptr.load[width=_simd_width](_k)
 
@@ -372,13 +378,12 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                         var b_data = input_b_fn[_simd_width](n + nn, _k)
                         accum[nn] = b_data.fma(a_data, accum[nn])
 
-            @__parameter
-            @always_inline
+            @inline(.always)
             def do_reduce_accum[
                 target_width: Int, _simd_width: SIMDLength
-            ](accum: Array[SIMD[Self.dtype, _simd_width], tile_n]) -> Array[
-                SIMD[Self.dtype, target_width], tile_n
-            ]:
+            ](accum: Array[SIMD[Self.dtype, _simd_width], tile_n]) {
+                imm
+            } -> Array[SIMD[Self.dtype, target_width], tile_n]:
                 var accum_reduce = Array[
                     SIMD[Self.dtype, target_width], tile_n
                 ](fill=0)
@@ -408,12 +413,12 @@ struct _Matmul[dtype: DType, simd_width: Int]:
 
             cn_ptr += tile_n
 
-        tile[process_cols, [4, 1]](0, N)
+        tile[[4, 1]](0, N, process_cols)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = K
         _ = cn_ptr
 
-    @no_inline
+    @inline(.never)
     @staticmethod
     def _gemv[
         input_b_fn: Self._input_fn_type
@@ -426,9 +431,8 @@ struct _Matmul[dtype: DType, simd_width: Int]:
     ):
         var cn_ptr = c_ptr
 
-        @__parameter
-        @always_inline
-        def process_cols[_simd_width: Int](n: Int):
+        @inline(.always)
+        def process_cols[_simd_width: Int](n: Int) {mut cn_ptr, imm}:
             var accum = SIMD[Self.dtype, _simd_width]()
 
             for k in range(K):
@@ -441,11 +445,11 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             cn_ptr.store(accum)
             cn_ptr += _simd_width
 
-        tile[process_cols, Self._matmul_config.gemv_sizes](0, N)
+        tile[Self._matmul_config.gemv_sizes](0, N, process_cols)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
         _ = cn_ptr
 
-    @no_inline
+    @inline(.never)
     @staticmethod
     def _matmul[
         input_b_fn: Self._input_fn_type,
@@ -555,8 +559,7 @@ struct _FlashAttention[
     output_origin: Origin[mut=True],
     //,
     input_q_ptr_fn: def(IndexList[rank]) capturing -> UnsafePointer[
-        Scalar[dtype],
-        q_origin,
+        Scalar[dtype], q_origin
     ],
     input_k_fn: def[simd_width: Int, rank: Int](
         idx: IndexList[rank]
@@ -621,7 +624,7 @@ struct _FlashAttention[
             )
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def pass1_input_gen_fn[
                 _dtype: DType, _simd_width: Int
             ](idx: Int) -> SIMD[_dtype, _simd_width]:
@@ -630,7 +633,7 @@ struct _FlashAttention[
                     _dtype
                 ]()
 
-            @always_inline
+            @inline(.always)
             @__parameter
             def output_fn[
                 _dtype: DType, width: SIMDLength, rank: Int
@@ -658,7 +661,7 @@ struct _FlashAttention[
                 max_val = max(max_val, sink_logit)
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def pass2_input_gen_fn[
                 _dtype: DType, _simd_width: Int
             ](idx: Int) -> SIMD[_dtype, _simd_width]:
@@ -688,7 +691,7 @@ struct _FlashAttention[
             max_vals[m] = max_val
             sum_vals[m] = sum_vals[m] * fixup_val + accum_val
 
-            @always_inline
+            @inline(.always)
             def do_correction[
                 _simd_width: Int
             ](idx: Int) {o_row_ptr, fixup_val, mut}:
@@ -729,20 +732,21 @@ struct _FlashAttention[
 
         var num_threads = min(work_count, parallelism_level(ctx))
 
-        @__copy_capture(
-            num_threads,
-            work_count,
-            num_blocks_n,
-            num_blocks_m,
-            packed_size,
-            kv_group_count,
-            depth_dim,
-            max_seq_len,
-            num_heads,
-            sink_weights,
-        )
-        @__parameter
-        def task_func(task_id: Int):
+        def task_func(
+            task_id: Int,
+        ) {
+            var num_threads,
+            var work_count,
+            var num_blocks_n,
+            var num_blocks_m,
+            var packed_size,
+            var kv_group_count,
+            var depth_dim,
+            var max_seq_len,
+            var num_heads,
+            var sink_weights,
+            imm,
+        }:
             var qk_block_ptr = unsafe_stack_allocation[
                 Self._config.block_m * Self._config.qk_block_n,
                 Self.dtype,
@@ -766,16 +770,22 @@ struct _FlashAttention[
                 Span(sum_vals_storage), row_major[Self._config.block_m]()
             )
 
-            var packed_alloc = Optional[ManagedAllocation[Scalar[Self.dtype]]]()
+            comptime packed_alignment = Alignment.of[
+                SIMD[Self.dtype, Self.simd_width]
+            ]()
+            var packed_alloc = Optional[
+                ManagedAllocation[
+                    Scalar[Self.dtype], alignment=packed_alignment
+                ]
+            ]()
             var packed_ptr = type_of(
                 packed_alloc.value().unsafe_ptr()
             ).unsafe_dangling()
 
             if max_seq_len != 1:
                 packed_alloc = alloc(
-                    AllocLayout[Scalar[Self.dtype]](
-                        count=packed_size,
-                        alignment=align_of[SIMD[Self.dtype, Self.simd_width]](),
+                    AllocLayout[Scalar[Self.dtype], alignment=packed_alignment](
+                        count=packed_size
                     )
                 ).into_managed()
                 packed_ptr = packed_alloc.unsafe_value().unsafe_ptr()
@@ -804,7 +814,7 @@ struct _FlashAttention[
 
                 @__parameter
                 @__copy_capture(batch, batch_head, kv_head, head)
-                @always_inline
+                @inline(.always)
                 def get_nd_index[
                     is_kv: Bool = False
                 ](x: Int, y: Int) -> IndexList[Self.rank]:
@@ -817,7 +827,7 @@ struct _FlashAttention[
 
                 @__parameter
                 @__copy_capture(batch, head)
-                @always_inline
+                @inline(.always)
                 def get_mask_nd_index(
                     x: Int, y: Int
                 ) -> IndexList[Self.mask_rank]:
@@ -845,7 +855,7 @@ struct _FlashAttention[
                     )
 
                     @__parameter
-                    @always_inline
+                    @inline(.always)
                     def input_k_2d_fn[
                         _simd_width: Int
                     ](_n: Int, _k: Int) -> SIMD[Self.dtype, _simd_width]:
@@ -874,7 +884,7 @@ struct _FlashAttention[
                         abort(String(e))
 
                     @__parameter
-                    @always_inline
+                    @inline(.always)
                     def mask_2d_fn[
                         _simd_width: SIMDLength
                     ](
@@ -905,7 +915,7 @@ struct _FlashAttention[
                     )
 
                     @__parameter
-                    @always_inline
+                    @inline(.always)
                     def input_v_2d_fn[
                         _simd_width: Int
                     ](_n: Int, _k: Int) -> SIMD[Self.dtype, _simd_width]:
@@ -936,7 +946,7 @@ struct _FlashAttention[
                 for m in range(count_m):
                     var reciprocal = 1 / sum_vals[m][0]
 
-                    @always_inline
+                    @inline(.always)
                     def do_final[
                         _simd_width: Int
                     ](idx: Int) {oz_ptr, o_ptr, reciprocal, mut}:
@@ -953,16 +963,18 @@ struct _FlashAttention[
             # NOTE: passing `dealloc[Scalar[Self.dtype]]` directly crashes the
             # when the dtype is parametric; wrap it in a local function as a workaround.
             def _dealloc_packed(
-                var packed: ManagedAllocation[Scalar[Self.dtype]],
+                var packed: ManagedAllocation[
+                    Scalar[Self.dtype], alignment=packed_alignment
+                ],
             ):
                 dealloc(packed^)
 
             packed_alloc^.deinit_with(_dealloc_packed)
 
-        sync_parallelize[task_func](num_threads, ctx)
+        sync_parallelize(task_func, num_threads, ctx)
 
 
-@always_inline
+@inline(.always)
 def _flash_attention[
     dtype: DType,
     rank: Int,
@@ -980,15 +992,11 @@ def _flash_attention[
         IndexList[mask_rank]
     ) capturing -> SIMD[dtype, simd_width],
 ](
-    q: LayoutTensor[
-        dtype, _, q_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[dtype, _, q_origin, address_space=.GENERIC, ...],
     k_shape: IndexList[rank],
     v_shape: IndexList[rank],
     mask_shape: IndexList[mask_rank],
-    output: LayoutTensor[
-        dtype, _, output_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: LayoutTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     scale: Float32,
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
@@ -1002,7 +1010,7 @@ def _flash_attention[
     var kv_cache_len = v_shape[1] - max_seq_len
     var num_kv_heads = k_shape[rank - 2] if rank == 4 else 1
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def input_q_ptr_fn(
         coords: IndexList[rank],
@@ -1010,7 +1018,7 @@ def _flash_attention[
         var idx = q._offset(coords)
         return q.ptr + idx
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def output_ptr_fn(
         coords: IndexList[rank],
@@ -1018,8 +1026,7 @@ def _flash_attention[
         var idx = output._offset(coords)
         return output.ptr + idx
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def mask_fn[
         simd_width: SIMDLength, rank: Int
     ](
@@ -1029,13 +1036,13 @@ def _flash_attention[
     ) -> SIMD[dtype, simd_width]:
         return score_vec + input_mask_fn[simd_width, rank](idx)
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(kv_cache_len)
     @__parameter
     def kv_cache_length_fn(batch: Int) -> Int:
         return kv_cache_len
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(max_seq_len)
     @__parameter
     def q_length_fn(batch: Int) -> Int:
@@ -1086,15 +1093,11 @@ def flash_attention[
         IndexList[mask_rank]
     ) capturing -> SIMD[dtype, simd_width],
 ](
-    q: LayoutTensor[
-        dtype, _, q_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[dtype, _, q_origin, address_space=.GENERIC, ...],
     k_shape: IndexList[rank],
     v_shape: IndexList[rank],
     mask_shape: IndexList[mask_rank],
-    output: LayoutTensor[
-        dtype, _, output_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: LayoutTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     scale: Float32,
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
@@ -1164,16 +1167,14 @@ def flash_attention_split_kv[
         IndexList[mask_rank]
     ) capturing -> SIMD[dtype, simd_width],
 ](
-    q: LayoutTensor[mut=False, dtype, address_space=AddressSpace.GENERIC, ...],
+    q: LayoutTensor[mut=False, dtype, address_space=.GENERIC, ...],
     k_shape: IndexList[rank],
     v_shape: IndexList[rank],
     # {k,v}_cache_shape are rank + 1 because reshape in MO IR prevents fusion.
     k_cache_shape: IndexList[rank + 1],
     v_cache_shape: IndexList[rank + 1],
     mask_shape: IndexList[mask_rank],
-    output: LayoutTensor[
-        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: LayoutTensor[mut=True, dtype, address_space=.GENERIC, ...],
     scale: Float32,
     ctx: Optional[DeviceContext] = None,
 ) raises:
@@ -1226,9 +1227,8 @@ def flash_attention_split_kv[
     # v_cache (input_v_cache_fn): 1BHS'D
     comptime assert rank == 4
 
-    @always_inline
-    @__parameter
-    def description_fn() -> String:
+    @inline(.always)
+    def description_fn() {imm} -> String:
         return String(";").join(
             Span(
                 [
@@ -1244,19 +1244,18 @@ def flash_attention_split_kv[
 
     with Trace[TraceLevel.OP, target=StaticString("cpu")](
         "flash_attention_split_kv",
-        Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+        Trace[TraceLevel.OP]._get_detail_str(description_fn),
     ):
         comptime kv_rank = rank + 1
 
         var kv_cache_len = v_cache_shape[3]
 
-        @always_inline
-        @__parameter
+        @inline(.always)
         def kv_index[rank: Int](idx: IndexList[rank]) -> IndexList[kv_rank]:
             # Index into the previous kv_cache by unsqueezing dim 0.
             return IndexList[kv_rank](0, idx[0], idx[2], idx[1], idx[3])
 
-        @always_inline
+        @inline(.always)
         @__copy_capture(kv_cache_len)
         @__parameter
         def load_from_split_cache[
@@ -1284,7 +1283,7 @@ def flash_attention_split_kv[
 
             return cache_fn[simd_width, kv_rank](kv_index(idx))
 
-        @always_inline
+        @inline(.always)
         @__parameter
         def input_k_cache_fn_wrapper[
             simd_width: Int,
@@ -1294,7 +1293,7 @@ def flash_attention_split_kv[
                 input_k_fn, input_k_cache_fn, rank, simd_width
             ](idx)
 
-        @always_inline
+        @inline(.always)
         @__parameter
         def input_v_cache_fn_wrapper[
             simd_width: Int,
@@ -1325,7 +1324,7 @@ def flash_attention_split_kv[
         )
 
 
-@always_inline
+@inline(.always)
 def _flash_attention_kv_cache[
     dtype: DType,
     cache_t: KVCacheT,
@@ -1339,15 +1338,11 @@ def _flash_attention_kv_cache[
     ) capturing -> SIMD[dtype, simd_width],
     mask_rank: Int,
 ](
-    q: LayoutTensor[
-        dtype, _, q_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[dtype, _, q_origin, address_space=.GENERIC, ...],
     k: cache_t,
     v: cache_t,
     scale: Float32,
-    output: LayoutTensor[
-        dtype, _, output_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: LayoutTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
     ] = None,
@@ -1362,7 +1357,7 @@ def _flash_attention_kv_cache[
         UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, head_size
     )
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def input_q_ptr_fn(
         coords: IndexList[4],
@@ -1370,7 +1365,7 @@ def _flash_attention_kv_cache[
         var idx = q._offset(coords)
         return q.ptr + idx
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def output_ptr_fn(
         coords: IndexList[4],
@@ -1378,7 +1373,7 @@ def _flash_attention_kv_cache[
         var idx = output._offset(coords)
         return output.ptr + idx
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(max_seq_len)
     @__parameter
     def q_length_fn(batch: Int) -> Int:
@@ -1396,7 +1391,7 @@ def _flash_attention_kv_cache[
     ](k, v, num_batches, num_heads, max_seq_len, scale, sink_weights)
 
 
-@always_inline
+@inline(.always)
 def _flash_attention_kv_cache[
     dtype: DType,
     cache_t: KVCacheT,
@@ -1459,7 +1454,7 @@ def _flash_attention_kv_cache[
             v.load[width=width](idx[0], idx[2], idx[1], idx[3])
         )
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def kv_cache_length_fn(batch: Int) -> Int:
         return k.cache_length(batch)
@@ -1496,18 +1491,12 @@ def flash_attention_kv_cache[
     output_origin: Origin[mut=True],
     //,
 ](
-    q: LayoutTensor[
-        dtype, _, q_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[dtype, _, q_origin, address_space=.GENERIC, ...],
     k: cache_t,
     v: cache_t,
-    mask: LayoutTensor[
-        mut=False, dtype, address_space=AddressSpace.GENERIC, ...
-    ],
+    mask: LayoutTensor[mut=False, dtype, address_space=.GENERIC, ...],
     scale: Float32,
-    output: LayoutTensor[
-        dtype, _, output_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: LayoutTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
     ] = None,
@@ -1523,7 +1512,7 @@ def flash_attention_kv_cache[
         output: Output tensor to write the attention results into.
         sink_weights: Optional per-head attention sink weights."""
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def mask_fn[
         simd_width: SIMDLength, rank: Int
@@ -1550,16 +1539,12 @@ def flash_attention_kv_cache[
     output_origin: Origin[mut=True],
     //,
 ](
-    q: LayoutTensor[
-        dtype, _, q_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[dtype, _, q_origin, address_space=.GENERIC, ...],
     k: cache_t,
     v: cache_t,
     mask: mask_t,
     scale: Float32,
-    output: LayoutTensor[
-        dtype, _, output_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: LayoutTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     sink_weights: OptionalReg[
         LayoutTensor[
             mut=False, dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
@@ -1577,7 +1562,7 @@ def flash_attention_kv_cache[
         output: Output tensor to write the attention results into.
         sink_weights: Optional per-head attention sink weights."""
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def mask_fn[
         simd_width: SIMDLength,
@@ -1609,22 +1594,18 @@ def flash_attention_kv_cache[
     output_origin: Origin[mut=True],
     //,
 ](
-    q: LayoutTensor[
-        dtype, _, q_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    q: LayoutTensor[dtype, _, q_origin, address_space=.GENERIC, ...],
     q_input_row_offsets: LayoutTensor[
-        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+        mut=False, .uint32, address_space=.GENERIC, ...
     ],
     kv_input_row_offsets: LayoutTensor[
-        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+        mut=False, .uint32, address_space=.GENERIC, ...
     ],
     k: cache_t,
     v: cache_t,
     mask: mask_t,
     scale: Float32,
-    output: LayoutTensor[
-        dtype, _, output_origin, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: LayoutTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     sink_weights: OptionalReg[
         LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
     ] = None,
@@ -1657,7 +1638,7 @@ def flash_attention_kv_cache[
         sink_weights: Optional per-head attention sink weights.
     """
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def mask_fn[
         simd_width: SIMDLength,
@@ -1672,19 +1653,19 @@ def flash_attention_kv_cache[
             Index(idx[0], idx[1], idx[2] + kv_cache_len, idx[3]), score_vec
         )
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def q_length_fn(batch: Int) -> Int:
         return Int(q_input_row_offsets[batch + 1] - q_input_row_offsets[batch])
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def kv_length_fn(batch: Int) -> Int:
         return Int(
             kv_input_row_offsets[batch + 1] - kv_input_row_offsets[batch]
         )
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def input_q_ptr_fn(
         idx: IndexList[4],
@@ -1696,7 +1677,7 @@ def flash_attention_kv_cache[
         var out_idx = q._offset(flat_idx)
         return q.ptr + out_idx
 
-    @always_inline
+    @inline(.always)
     @__parameter
     def output_ptr_fn(
         idx: IndexList[4],

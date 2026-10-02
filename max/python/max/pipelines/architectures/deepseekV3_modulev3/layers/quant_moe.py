@@ -22,16 +22,15 @@ from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn import Module
 from max.experimental.nn.common_layers.functional_kernels import (
-    local_map,
     moe_create_indices,
     shard_and_stack,
 )
 from max.experimental.nn.common_layers.moe import MoEGate
 from max.experimental.nn.sequential import ModuleList
+from max.experimental.realization_context import ensure_context
 from max.experimental.sharding import (
     DeviceMapping,
     DeviceMesh,
-    PlacementMapping,
     Sharded,
 )
 from max.experimental.tensor import Tensor
@@ -46,6 +45,7 @@ from .quant_ops import (
     EPDispatchPayload,
     ep_requires_dispatch_scales,
     moe_requires_scales_offsets,
+    routed_weight_dtype,
 )
 from .quant_tensor import FP8BlockTensor, NVFP4Tensor, QuantAwareTensor
 
@@ -85,7 +85,7 @@ def _stack_experts(
     if isinstance(stacked, (FP8BlockTensor, NVFP4Tensor)):
         return stacked.shard(shard_axis, mesh)
     assert isinstance(stacked, Tensor)
-    return stacked.to(PlacementMapping(mesh, (Sharded(axis=shard_axis),)))
+    return stacked.to(DeviceMapping(mesh, (Sharded(axis=shard_axis),)))
 
 
 def _local_expert_matmul(
@@ -155,10 +155,16 @@ class QuantizedMoE(Module[..., Tensor]):
         self.shared_experts: QuantizedMLP | None = None
         if has_shared_experts:
             assert shared_experts_dim > 0
+            shared_experts_quant_config: QuantConfig | None = None
+            if quant_config is not None:
+                if quant_config.shared_experts_use_quant(
+                    routed_weight_dtype(quant_config)
+                ):
+                    shared_experts_quant_config = quant_config
             self.shared_experts = QuantizedMLP(
                 hidden_dim=hidden_dim,
                 feed_forward_length=shared_experts_dim,
-                quant_config=quant_config,
+                quant_config=shared_experts_quant_config,
             )
 
         self.experts = ModuleList(
@@ -453,23 +459,11 @@ class TensorParallelMoE(QuantizedMoE):
             quant_config=self.quant_config,
             scales_offset=scales_offset,
         )
-        # Combine the experts outputs on each device shard locally, then rejoin
-        # as a distributed tensor with the original mapping.
-        combined_shards = local_map(
-            self._combine_expert_outputs,
-            {
-                "down_projs": down_projs,
-                "restore_token_order": restore_token_order,
-                "router_weight": router_weight,
-            },
-            {
-                "dtype": dtype,
-            },
-        )
-        return Tensor.from_shard_values(
-            [TensorValue(s) for s in combined_shards],
-            mapping=down_projs.mapping,
-        )
+        # The rule-less combine runs on each device's own expert outputs; its
+        # result keeps their placement.
+        return F.functional(self._combine_expert_outputs)(
+            down_projs, restore_token_order, router_weight, dtype
+        ).rebind_mapping(down_projs.mapping)
 
 
 class ExpertParallelMoE(QuantizedMoE):
@@ -595,24 +589,29 @@ class ExpertParallelMoE(QuantizedMoE):
         self, payload: EPDispatchPayload, global_scale: Tensor | None
     ) -> list[TensorValue]:
         """Runs the per-device expert matmuls on dispatched tokens."""
-        local_expert_matmul_args: dict[str, object] = {
-            "tokens": payload.local_map_tokens(
-                self.quant_config, nvfp4_global_scale=global_scale
-            ),
-            "gate_up": self.gate_up_proj,
-            "down": self.down_proj,
-            "expert_start": payload.expert_start,
-            "expert_ids": payload.expert_ids,
-        }
-        if payload.usage_stats is not None:
-            local_expert_matmul_args["usage_stats"] = payload.usage_stats
-
-        down_bundle = local_map(
-            _local_expert_matmul,
-            local_expert_matmul_args,
-            {"quant_config": self.quant_config},
+        # The EP dispatch hands back one bundle per device, so each device's
+        # expert matmuls run on its own entries.
+        tokens = payload.per_device_tokens(
+            self.quant_config, nvfp4_global_scale=global_scale
         )
-        return [TensorValue(t) for t in down_bundle]
+        gate_up = self.gate_up_proj
+        down = self.down_proj
+        usage_stats = payload.usage_stats
+        with ensure_context():
+            return [
+                TensorValue(
+                    _local_expert_matmul(
+                        tokens[i],
+                        gate_up[i],
+                        down[i],
+                        payload.expert_start[i],
+                        payload.expert_ids[i],
+                        usage_stats[i] if usage_stats is not None else None,
+                        quant_config=self.quant_config,
+                    )
+                )
+                for i in range(len(tokens))
+            ]
 
     def forward(self, x: Tensor, comm: EPCommBuffers | None = None) -> Tensor:
         """Expert-parallel forward: gate -> dispatch -> local compute -> combine.
@@ -687,6 +686,10 @@ class ExpertParallelMoE(QuantizedMoE):
             )
 
         # Optional (unfused) shared-expert add, then cast back to input dtype.
+        # TODO(kathywu): the replicated shared expert recomputes the same
+        # MLP on every device. Tensor-parallelize it (as ``TensorParallelMoE``
+        # does) once the mixed-precision EP path has a numerical regression
+        # test.
         shared_shards: list[TensorValue] | None = None
         if self.shared_experts is not None and not config.fused_shared_expert:
             shared_shards = [
@@ -695,11 +698,17 @@ class ExpertParallelMoE(QuantizedMoE):
 
         # ``ep_combine`` returns each device exactly the tokens it dispatched,
         # so the output placement matches the input's.
-        placement = PlacementMapping(self.mesh, x.placements)
+        placement = DeviceMapping(self.mesh, x.placements)
         outputs: list[TensorValue] = []
         for i in range(self.mesh.num_devices):
             out = combine_results[i]
-            if shared_shards is not None:
+            # Under allreduce every device holds a partial sum over its own
+            # experts, which the layer reduces afterwards; the replicated
+            # shared expert therefore contributes on exactly one device. (The
+            # fused path splits its tokens across ranks for the same reason.)
+            if shared_shards is not None and not (
+                config.use_allreduce and i != 0
+            ):
                 out = out + shared_shards[i]
             outputs.append(out.cast(x_shards[i].dtype))
         return Tensor.from_shard_values(outputs, mapping=placement)

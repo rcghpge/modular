@@ -17,20 +17,25 @@ Covers the two building blocks added for prefix-aware data-parallel routing:
 
 - ``compute_block_hashes``: pure block hashing that neither reads nor writes
   per-request state and chains onto existing hashes.
-- ``BlockManager.count_cached_prefix_blocks`` and the connectors'
-  ``count_cached_prefix``: contiguous, tier-ordered (device -> host -> disk)
+- ``BlockManager.count_cached_prefix_blocks`` over the device prefix cache
+  and ``KVConnector.lookup``: contiguous, tier-ordered (device -> external)
   hit counting with no side effects on pools, LRUs, or request state.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 from typing import cast
 
 import numpy as np
+from max.nn.kv_cache import KVCacheGroupId
 from max.pipelines.context import TextContext
 from max.pipelines.kv_cache.connectors.null_connector import NullConnector
+from max.pipelines.kv_cache.kv_connector import (
+    ByteCount,
+    CompletedTransfer,
+)
 from max.pipelines.kv_cache.paged_kv_cache.block_manager import (
     BlockManager,
     PrefixCacheHits,
@@ -44,19 +49,14 @@ BLOCK_SIZE = 8
 
 def _make_ctx(
     tokens: np.ndarray,
-    request_id: RequestID = RequestID("req-1"),
+    request_id: RequestID = RequestID("req-1"),  # noqa: B008
 ) -> TextContext:
-    """Build a minimal TextContext-like stub (see test_block_manager_sha256).
-
-    ``compute_block_hashes`` reads ``ctx.pending_future_count`` (trailing
-    future-token placeholders are excluded from hashing); the real
-    ``TextContext`` always defines it (defaults to 0), so the stub must too.
-    """
+    """Build a minimal TextContext-like stub (see test_block_manager_sha256)."""
     ctx = SimpleNamespace(
         request_id=request_id,
         tokens=tokens,
         cache_salt=None,
-        pending_future_count=0,
+        dkv_cache_hint=None,
     )
     return cast(TextContext, ctx)
 
@@ -97,63 +97,117 @@ def _seed_device_prefix_cache(
 
 
 class _TierStubConnector:
-    """KVConnector-shaped stub with host/disk membership sets.
+    """KVConnector-shaped stub with a membership set.
 
     Exercises the BlockManager -> connector hand-off: records the hashes it
     receives so tests can assert the walk starts where the device prefix
-    ended, and asserts the canonical bytes form crossing the boundary.
+    ended, and asserts the canonical bytes form crossing the boundary. Its
+    ``load`` raises on purpose, so a count path that transferred anything
+    would fail loudly.
     """
 
-    def __init__(
-        self,
-        host_hashes: set[bytes] | None = None,
-        disk_hashes: set[bytes] | None = None,
-    ) -> None:
-        self._host_hashes = host_hashes or set()
-        self._disk_hashes = disk_hashes or set()
+    def __init__(self, held: set[bytes] | None = None) -> None:
+        self._held = held or set()
         self.received_hashes: list[bytes] | None = None
+
+    @property
+    def leaves(self) -> Mapping[str, KVCacheGroupId]:
+        return {"full": KVCacheGroupId.full()}
 
     @property
     def name(self) -> str:
         return "TierStubConnector"
 
     @property
-    def num_host_blocks(self) -> int:
-        return 4
+    def host_byte_count(self) -> ByteCount:
+        return ByteCount(free=4 * 4096, total=4 * 4096)
 
-    @property
-    def supported_hash_algos(self) -> frozenset[str]:
-        return frozenset({"ahash64", "sha256", "sha256_64"})
-
-    def count_cached_prefix(
-        self, block_hashes: Sequence[bytes]
-    ) -> tuple[int, int]:
+    def lookup(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> Mapping[str, Sequence[bool]]:
         assert all(isinstance(h, bytes) for h in block_hashes)
         self.received_hashes = list(block_hashes)
-        num_host_hits = 0
-        num_disk_hits = 0
-        for h in block_hashes:
-            if h in self._host_hashes:
-                num_host_hits += 1
-            elif h in self._disk_hashes:
-                num_disk_hits += 1
-            else:
-                break
-        return (num_host_hits, num_disk_hits)
+        return {"full": [h in self._held for h in block_hashes]}
 
     def load(
         self,
-        device_block_ids: list[int],
-        block_hashes: Sequence[bytes],
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Mapping[str, Sequence[bytes]],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
     ) -> int:
         raise NotImplementedError("must not be called by count paths")
 
     def offload(
         self,
-        block_ids: list[int],
+        block_ids: Mapping[str, Sequence[int]],
         block_hashes: Sequence[bytes],
     ) -> None:
         raise NotImplementedError("must not be called by count paths")
+
+
+class _ReusableTierStubConnector:
+    """KVConnector-shaped stub that actually serves blocks from its host tier.
+
+    Separate from :class:`_TierStubConnector`, whose ``load`` raises on purpose
+    to prove the count path never transfers. This one drives the *reuse* path,
+    so it implements ``load`` and ``touch``.
+    """
+
+    def __init__(self, host_hashes: set[bytes] | None = None) -> None:
+        self._host_hashes = host_hashes or set()
+        self.touched: list[bytes] | None = None
+
+    @property
+    def leaves(self) -> Mapping[str, KVCacheGroupId]:
+        return {"full": KVCacheGroupId.full()}
+
+    @property
+    def name(self) -> str:
+        return "ReusableTierStubConnector"
+
+    @property
+    def host_byte_count(self) -> ByteCount:
+        return ByteCount(free=8 * 4096, total=8 * 4096)
+
+    def lookup(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> Mapping[str, Sequence[bool]]:
+        return {"full": [h in self._host_hashes for h in block_hashes]}
+
+    def load(
+        self,
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Mapping[str, Sequence[bytes]],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> CompletedTransfer:
+        # The manager settled the run from `lookup`, so everything it asks for
+        # is here; anything else is the manager getting it wrong.
+        for h in block_hashes["full"]:
+            assert h in self._host_hashes, (
+                f"asked for {h!r}, which we never held"
+            )
+        return CompletedTransfer()
+
+    def touch(
+        self, block_hashes: Sequence[bytes], replica_idx: int = 0
+    ) -> None:
+        self.touched = list(block_hashes)
+
+    def offload(
+        self,
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+    ) -> None:
+        raise NotImplementedError("this stub does not exercise offload")
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +342,92 @@ def test_device_hit_increments_device_blocks_served() -> None:
     assert bm._metrics.cross_replica_bytes_copied == 0
 
 
+def test_device_hit_attributes_no_cached_prefix_to_the_external_tier() -> None:
+    """CLIN-1785: a pure device hit leaves ``cached_prefix_external_length`` 0.
+
+    This is the field the scheduler subtracts from ``cached_prefix_length`` to
+    tag ``maxserve.cache.hits`` per tier, so a non-zero value here would charge
+    an on-device hit to the connector and understate the device share. Asserted
+    on the admission path rather than on ``get_full_blocks_from_prefix_cache``'s
+    block count, because the scheduler reads the context field, not the count.
+    """
+    bm = _make_block_manager()
+
+    num_prompt_tokens = 2 * BLOCK_SIZE + 1
+    ctx = create_text_context(np.arange(num_prompt_tokens))
+    bm.claim(ctx)
+    bm.compute_hashes_for_request(ctx)
+    hashes = cast("list[bytes]", list(bm.req_to_hashes[ctx.request_id]))
+    _seed_device_prefix_cache(bm, hashes)
+
+    skip_amount, _ = bm.reuse_blocks_from_prefix_cache(ctx)
+
+    assert skip_amount == 2 * BLOCK_SIZE
+    assert ctx.cached_prefix_length == 2 * BLOCK_SIZE
+    assert ctx.cached_prefix_external_length == 0
+    # The whole cached prefix is therefore attributed to the device tier.
+    assert (
+        ctx.cached_prefix_length - ctx.cached_prefix_external_length
+        == 2 * BLOCK_SIZE
+    )
+
+
+def test_external_tier_hit_is_attributed_away_from_the_device() -> None:
+    """CLIN-1785: a connector-served prefix lands in ``external``, not ``g0``.
+
+    This is the only place the non-zero split is produced end to end. Without
+    it, dropping the ``cached_prefix_external_length`` assignment in
+    ``reuse_blocks_from_prefix_cache`` leaves every test green while ``g0``
+    silently absorbs the connector's blocks -- which is the pre-change reading
+    and the exact misattribution this metric exists to prevent.
+
+    Block 0 is on device and block 1 only in the connector's host tier, so the
+    cached prefix spans both tiers and the split must divide it 1:1.
+    """
+    connector = _ReusableTierStubConnector()
+    bm = _make_block_manager(connector=connector)
+
+    ctx = create_text_context(np.arange(2 * BLOCK_SIZE + 1))
+    bm.claim(ctx)
+    bm.compute_hashes_for_request(ctx)
+    hashes = cast("list[bytes]", list(bm.req_to_hashes[ctx.request_id]))
+    assert len(hashes) == 2
+
+    _seed_device_prefix_cache(bm, hashes[:1])
+    connector._host_hashes = {hashes[1]}
+
+    skip_amount, _ = bm.reuse_blocks_from_prefix_cache(ctx)
+
+    assert skip_amount == 2 * BLOCK_SIZE
+    assert ctx.cached_prefix_length == 2 * BLOCK_SIZE
+    # One block from the connector, one from the device prefix cache.
+    assert ctx.cached_prefix_external_length == BLOCK_SIZE
+    assert (
+        ctx.cached_prefix_length - ctx.cached_prefix_external_length
+        == BLOCK_SIZE
+    )
+
+
+def test_a_full_miss_zeroes_both_cached_prefix_fields() -> None:
+    """Both fields are written together, so neither can go stale.
+
+    A request admitted with nothing cached must leave the pair at ``(0, 0)``:
+    if only ``cached_prefix_length`` were reset, a later admission would
+    subtract a previous request's external length and misattribute the split.
+    """
+    bm = _make_block_manager()
+
+    ctx = create_text_context(np.arange(2 * BLOCK_SIZE + 1))
+    bm.claim(ctx)
+    bm.compute_hashes_for_request(ctx)
+
+    skip_amount, _ = bm.reuse_blocks_from_prefix_cache(ctx)
+
+    assert skip_amount == 0
+    assert ctx.cached_prefix_length == 0
+    assert ctx.cached_prefix_external_length == 0
+
+
 def test_count_is_read_only() -> None:
     bm = _make_block_manager()
     ctx = _make_ctx(np.arange(33, dtype=np.int32))
@@ -311,23 +451,20 @@ def test_count_is_read_only() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_count_continues_into_host_and_disk_tiers() -> None:
+def test_count_continues_into_the_connectors_tiers() -> None:
     connector = _TierStubConnector()
     bm = _make_block_manager(connector=connector)
     ctx = _make_ctx(np.arange(41, dtype=np.int32))  # 5 full blocks
     hashes = _compute_block_hashes(bm, ctx, [])
 
-    # Block 0 on device, block 1 on host, block 2 on disk, block 3 missing,
-    # block 4 on host (unreachable past the gap).
+    # Block 0 on device, blocks 1 and 2 in the connector, block 3 missing,
+    # block 4 in the connector but unreachable past the gap.
     _seed_device_prefix_cache(bm, hashes[:1])
-    connector._host_hashes = {hashes[1], hashes[4]}
-    connector._disk_hashes = {hashes[2]}
+    connector._held = {hashes[1], hashes[2], hashes[4]}
 
     hits = bm.count_cached_prefix_blocks(hashes)
 
-    assert hits == PrefixCacheHits(
-        device_blocks=1, host_blocks=1, disk_blocks=1
-    )
+    assert hits == PrefixCacheHits(device_blocks=1, external_blocks=2)
     assert hits.total_blocks == 3
     # The connector must only be asked about the run after the device prefix.
     assert connector.received_hashes == list(hashes[1:])
@@ -351,8 +488,8 @@ def test_count_all_device_hits_skips_connector() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_null_connector_counts_nothing() -> None:
-    assert NullConnector().count_cached_prefix([b"\x00" * 8]) == (0, 0)
+def test_null_connector_holds_nothing() -> None:
+    assert NullConnector().lookup([b"\x00" * 8]) == {"full": [False]}
 
 
 # The host/disk tier's own host-then-disk walk lives in Rust now; it is covered

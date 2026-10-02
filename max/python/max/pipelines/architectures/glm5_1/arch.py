@@ -36,6 +36,7 @@ glm5_1_arch = SupportedArchitecture(
         "zai-org/GLM-5.2",
         "zai-org/GLM-5.2-FP8",
         "zai-org/GLM-5",
+        "zai-org/GLM-5.3",
     ],
     default_encoding=Glm5_1Config.DEFAULT_ENCODING,
     supported_encodings=Glm5_1Config.SUPPORTED_ENCODINGS,
@@ -54,5 +55,10 @@ glm5_1_arch = SupportedArchitecture(
     memory_planner=PagedMemoryPlanner,
     tool_parser="glm45",
     reasoning_parser="glm45",
-    default_structured_output_backend="xgrammar",
+    # GLM strongly prefers pretty-printed JSON: under the compact grammar its
+    # content-bearing continuations are all masked at the first array decision
+    # and the schema's shortest terminator wins (measured 8/8 degenerate
+    # {"findings":[]} vs 0/8 whitespace-tolerant on GLM-5.2). Whitespace runs
+    # stay bounded via STRUCTURED_OUTPUT_MAX_WHITESPACE_RUN.
+    default_structured_output_any_whitespace=True,
 )

@@ -40,17 +40,16 @@ struct CoordinateTransformationMode(ImplicitlyCopyable):
     comptime Asymmetric = CoordinateTransformationMode(2)
     comptime HalfPixel1D = CoordinateTransformationMode(3)
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, value: Int):
         self.value = value
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: CoordinateTransformationMode) -> Bool:
         return self.value == other.value
 
 
-@__parameter
-@always_inline
+@inline(.always)
 def coord_transform[
     mode: CoordinateTransformationMode
 ](out_coord: Int, in_dim: Int, out_dim: Int, scale: Float32) -> Float32:
@@ -70,18 +69,19 @@ def coord_transform[
     """
     var out_coord_f32 = Float32(out_coord)
 
-    comptime if mode == CoordinateTransformationMode.HalfPixel:
+    comptime __match mode:
+    case .HalfPixel:
         # note: coordinates are for the CENTER of the pixel
         # - 0.5 term at the end is so that when we round to the nearest integer
         # coordinate, we get the coordinate whose center is closest
         return (out_coord_f32 + Float32(0.5)) / scale - 0.5
-    elif mode == CoordinateTransformationMode.HalfPixel1D:
+    case .HalfPixel1D:
         # Same as HalfPixel except for 1D output. Described here:
         # https://onnx.ai/onnx/operators/onnx__Resize.html
         if out_dim == 1:
             return 0
         return (out_coord_f32 + Float32(0.5)) / scale - 0.5
-    elif mode == CoordinateTransformationMode.AlignCorners:
+    case .AlignCorners:
         # aligning "corners" when output is 1D isn't well defined
         # this matches pytorch
         if out_dim == 1:
@@ -89,11 +89,11 @@ def coord_transform[
         # note: resized image will have same corners as original image
         return (
             out_coord_f32
-            * (Float64(in_dim - 1) / Float64(out_dim - 1)).cast[DType.float32]()
+            * (Float64(in_dim - 1) / Float64(out_dim - 1)).cast[.float32]()
         )
-    elif mode == CoordinateTransformationMode.Asymmetric:
+    case .Asymmetric:
         return out_coord_f32 / scale
-    else:
+    case _:
         comptime assert False, "coordinate_transformation_mode not implemented"
 
 
@@ -107,11 +107,11 @@ struct RoundMode(ImplicitlyCopyable):
     comptime Floor = RoundMode(2)
     comptime Ceil = RoundMode(3)
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, value: Int):
         self.value = value
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: RoundMode) -> Bool:
         return self.value == other.value
 
@@ -123,7 +123,7 @@ struct InterpolationMode(ImplicitlyCopyable):
     var value: Int
     comptime Linear = InterpolationMode(0)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: InterpolationMode) -> Bool:
         return self.value == other.value
 
@@ -136,23 +136,23 @@ struct Interpolator[mode: InterpolationMode](
 
     var cubic_coeff: Float32
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, cubic_coeff: Float32):
         self.cubic_coeff = cubic_coeff
 
-    @always_inline
+    @inline(.always)
     def __init__(out self):
         self.cubic_coeff = 0
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def filter_length() -> Int:
         comptime assert (
             Self.mode == InterpolationMode.Linear
         ), "InterpolationMode not supported"
         return 1
 
-    @always_inline
+    @inline(.always)
     def filter(self, x: Float32) -> Float32:
         comptime assert (
             Self.mode == InterpolationMode.Linear
@@ -190,18 +190,18 @@ def resize_nearest_neighbor[
             DType.float32
         ]()
 
-    @__parameter
-    @always_inline
+    @inline(.always)
     def round[dtype: DType](val: Scalar[dtype]) -> Scalar[dtype]:
-        comptime if round_mode == RoundMode.HalfDown:
+        comptime __match round_mode:
+        case .HalfDown:
             return ceil(val - 0.5)
-        elif round_mode == RoundMode.HalfUp:
+        case .HalfUp:
             return floor(val + 0.5)
-        elif round_mode == RoundMode.Floor:
+        case .Floor:
             return floor(val)
-        elif round_mode == RoundMode.Ceil:
+        case .Ceil:
             return ceil(val)
-        else:
+        case _:
             comptime assert False, "round_mode not implemented"
 
     def nn_interpolate[
@@ -233,7 +233,7 @@ def resize_nearest_neighbor[
     elementwise[1](nn_interpolate, output.layout.shape_coord(), ctx)
 
 
-@always_inline
+@inline(.always)
 def linear_filter(x: Float32) -> Float32:
     """This is a tent filter.
 
@@ -250,8 +250,7 @@ def linear_filter(x: Float32) -> Float32:
     return 0
 
 
-@__parameter
-@always_inline
+@inline(.always)
 def interpolate_point_1d[
     InputLayoutType: TensorLayout,
     //,
@@ -265,15 +264,9 @@ def interpolate_point_1d[
     out_coords: IndexList[InputLayoutType.rank],
     scale: Float32,
     input: TileTensor[
-        mut=False,
-        dtype,
-        InputLayoutType,
-        address_space=AddressSpace.GENERIC,
-        ...,
+        mut=False, dtype, InputLayoutType, address_space=.GENERIC, ...
     ],
-    output: TileTensor[
-        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
-    ],
+    output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
 ):
     """Computes one-dimensional interpolation for a single output point along a given dimension.
 
@@ -327,10 +320,8 @@ def resize_linear[
     antialias: Bool,
     dtype: DType,
 ](
-    input: TileTensor[mut=True, dtype, address_space=AddressSpace.GENERIC, ...],
-    output: TileTensor[
-        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
-    ],
+    input: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
+    output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
 ):
     """Resizes input to output shape using linear interpolation.
 
@@ -357,10 +348,8 @@ def _resize[
     antialias: Bool,
     dtype: DType,
 ](
-    input: TileTensor[mut=True, dtype, address_space=AddressSpace.GENERIC, ...],
-    output: TileTensor[
-        mut=True, dtype, address_space=AddressSpace.GENERIC, ...
-    ],
+    input: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
+    output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
 ):
     comptime assert (
         input.rank == output.rank

@@ -19,15 +19,14 @@ communication in distributed inference scenarios.
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import os
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+from max import tree
 from max.driver import (
     Accelerator,
     Buffer,
@@ -49,6 +48,7 @@ from max.graph import (
     ops,
 )
 from max.support.human_readable_formatter import to_human_readable_bytes
+from max.support.math import ceildiv
 from numpy.typing import NDArray
 
 from .ep_config import (
@@ -56,6 +56,7 @@ from .ep_config import (
     EPConfig,
 )
 from .ep_kernels import (
+    _call_mega_ffn_ep_combine_send,
     call_distributed_ep_combine,
     call_distributed_ep_dispatch,
     call_ep_combine,
@@ -70,6 +71,15 @@ from .ep_kernels import (
 logger = logging.getLogger("max.pipelines")
 
 
+# MegaFFN scheduler constants, restated because a graph cannot read them from
+# the kernel. `ATOMIC_PAD` is the pool-slot stride in words
+# (`MegaFFNScheduler`'s `atomic_pad`) and the token block is the smallest MMA_N
+# the tile-regime cascade can select, which is what makes the slot-count bound
+# an upper bound across every geometry.
+_MEGA_FFN_ATOMIC_PAD = 32
+_MEGA_FFN_MIN_TOKEN_BLOCK = 8
+
+
 def get_ep_local_sync_counters_size(n_experts: int) -> int:
     """Returns the total size in Int32 elements needed for EP sync counters.
 
@@ -77,8 +87,18 @@ def get_ep_local_sync_counters_size(n_experts: int) -> int:
 
     Memory Layout (all sizes in Int32 elements):
     - dispatch_async: 2 * n_experts + MAX_GPUS_PER_NODE
-    - dispatch_wait/combine_async: 4 * n_experts + 4
-    - combine_wait: 2 * n_experts
+    - dispatch_wait/combine_async: 8 * n_experts + 8
+    - combine_wait: MAX_SMS_PER_DEVICE
+
+    The dispatch_wait region holds the per-expert counters and the cleanup,
+    ready and shared-expert flags in its first 4 * n_experts + 4 words, then
+    the L1 virtual-slot ticket and the L2 pool cursors. Those sit inside the
+    unused part of the per-expert window at high expert-parallel degree, and
+    only past the flags when a low degree closes it, needing
+    2 * n_local_experts + 3 further words. A further n_local_experts words
+    past those hold the dispatch_wait SM-to-expert schedule. This size is the
+    worst case over the degree (n_local_experts == n_experts), because the
+    caller allocating the buffer knows n_experts but not the degree.
 
     Args:
         n_experts: Number of experts in the model.
@@ -87,21 +107,29 @@ def get_ep_local_sync_counters_size(n_experts: int) -> int:
         Total size in Int32 elements needed for all EP sync counters.
     """
     MAX_GPUS_PER_NODE = 8
+    # Mirrors ``MAX_SMS_PER_DEVICE`` in
+    # ``max/kernels/src/shmem/ep_comm.mojo``.
+    MAX_SMS_PER_DEVICE = 304
 
     dispatch_async_size = 2 * n_experts + MAX_GPUS_PER_NODE
-    dispatch_wait_size = 4 * n_experts + 4
-    combine_wait_size = 2 * n_experts
+    # Mirrors ``EPLocalSyncCounters`` in ``max/kernels/src/shmem/ep_comm.mojo``,
+    # which is the definition of record; Mojo comptime constants are not
+    # reachable from Python, so the two are kept in step by hand. Past the
+    # regions described above sit the dispatch_wait SM-to-expert schedule and
+    # combine_async's completion counters, both sized at the worst-case degree.
+    dispatch_wait_size = 8 * n_experts + 8
+    combine_wait_size = MAX_SMS_PER_DEVICE
     return dispatch_async_size + dispatch_wait_size + combine_wait_size
 
 
-@dataclass
+@tree.dataclass
 class EPCommBuffers:
     """SHMEM communication buffers for one Expert Parallelism MoE forward pass.
 
     Bundles the per-device send, receive, and synchronization tensors produced
     by ``EPBatchManager.comm_buffers()`` into a single value so they can be
     passed through the subgraph pytree machinery as one forward argument. The
-    ``__tree_flatten__`` / ``__tree_unflatten__`` hooks expose the
+    ``@tree.dataclass`` hooks expose the
     :class:`~max.experimental.tensor.Tensor` leaves to that machinery.
     """
 
@@ -132,21 +160,6 @@ class EPCommBuffers:
     eplb_logcnt: dict[int, Tensor] | None = None
     """Per-device count of physical replicas per logical expert (EPLB), keyed by
     device ID. Populated only when EPLB is enabled; otherwise ``None``."""
-
-    def __tree_flatten__(
-        self,
-    ) -> tuple[tuple[object, ...], tuple[str, ...]]:
-        """Exposes the Tensor leaves to the subgraph pytree machinery."""
-        names = tuple(f.name for f in dataclasses.fields(self))
-        children = tuple(getattr(self, name) for name in names)
-        return children, names
-
-    @classmethod
-    def __tree_unflatten__(
-        cls, aux: tuple[str, ...], children: Sequence[Any]
-    ) -> EPCommBuffers:
-        """Rebuilds an :class:`EPCommBuffers` from flattened leaves."""
-        return cls(**dict(zip(aux, children, strict=True)))
 
 
 class EPBatchManager:
@@ -577,6 +590,127 @@ class EPBatchManager:
         # reset src_info to None to avoid reusing it for the next batch
         self._src_info[device_id] = None
 
+    def mega_ffn_ep_combine_send(
+        self,
+        device_id: int,
+        *,
+        n_local_experts: int,
+        max_recv_tokens: int,
+        hidden_states: TensorValue,
+        gate_up_weight: TensorValue,
+        gate_up_a_scales: TensorValue,
+        gate_up_b_scales: TensorValue,
+        down_weight: TensorValue,
+        down_b_scales: TensorValue,
+        expert_start_indices: TensorValue,
+        expert_ids: TensorValue,
+        a_scale_offsets: TensorValue,
+        gate_up_expert_scales: TensorValue,
+        down_expert_scales: TensorValue,
+        c_input_scales: TensorValue,
+        estimated_total_m: TensorValue,
+        num_active_experts: TensorValue,
+        clamp_activation: bool = False,
+    ) -> None:
+        """Runs the MoE FFN with the combine send fused into its epilogue.
+
+        Replaces the FFN's two grouped matmuls *and* :meth:`ep_combine_async`
+        with one launch, so the FFN's output is never staged in a local tensor.
+        Follow it with :meth:`ep_combine_wait`, which reads only the symmetric
+        receive buffers.
+
+        Args:
+            device_id: Device ID for the current device.
+            n_local_experts: Experts owned by this device; the leading dim of
+                the weights.
+            max_recv_tokens: Row capacity of the dispatched-token tensor.
+            hidden_states: Dispatched tokens.
+            gate_up_weight: Pre-permuted gate/up weights.
+            gate_up_a_scales: Token A-scale tile for the gate/up matmul.
+            gate_up_b_scales: Pre-permuted gate/up weight scale tile.
+            down_weight: Down-projection weights.
+            down_b_scales: Down-projection weight scale tile.
+            expert_start_indices: Per-expert prefix-sum token offsets.
+            expert_ids: Active local expert IDs.
+            a_scale_offsets: Per-expert scale-block offsets.
+            gate_up_expert_scales: Per-expert scaling for the gate/up leg.
+            down_expert_scales: Per-expert scaling for the down leg.
+            c_input_scales: Per-expert input scale for the re-quant.
+            estimated_total_m: Estimated total non-padded tokens.
+            num_active_experts: Active expert slots.
+            clamp_activation: Select the clamped (``swigluoai``) activation.
+        """
+        COMBINE_GROUP = 1
+
+        src_info = self._src_info[device_id]
+        assert src_info is not None, (
+            "Source info is not set, you should call ep_dispatch() or "
+            "ep_dispatch_wait() first."
+        )
+
+        # Cross-CTA pool-slot counters, minted here rather than taken as a
+        # graph input: `init_value` makes it persistent state that is allocated
+        # and zeroed ONCE at model load and reused across executions, which is
+        # exactly the kernel's contract. It must NOT be zeroed per launch --
+        # that would pin the launch generation and disarm the rotation the
+        # kernel uses to reset its own state.
+        #
+        # One buffer PER CALL SITE, i.e. per MoE layer, matching what the
+        # graph-compiler fusion mints. Layers must not share one: the
+        # generation advances on every launch, so two launches of the SAME
+        # layer are separated by all the others, and with an even layer count
+        # they would land on the same parity with the intervening clear having
+        # swept the other one.
+        #
+        # Mirrors the fusion pattern's bound on `total_m_blocks`. The
+        # `n_local_experts` term is load-bearing twice over: it covers that
+        # bound's partial blocks AND the per-expert words the send keeps in
+        # slot padding.
+        arrival_words = (
+            ceildiv(max_recv_tokens, _MEGA_FFN_MIN_TOKEN_BLOCK)
+            + n_local_experts
+            + 1
+        ) * _MEGA_FFN_ATOMIC_PAD
+        arrival_count = ops.buffer_create(
+            BufferType(
+                DType.uint32,
+                shape=[arrival_words],
+                device=hidden_states.device,
+            ),
+            init_value=0,
+        )
+
+        _call_mega_ffn_ep_combine_send(
+            arrival_count,
+            # Group 0 unless two-batch-overlap is on, as `ep_combine_async`
+            # does it -- the counters are not indexed by comm group.
+            self.atomic_counters[0][device_id],
+            hidden_states,
+            gate_up_weight,
+            gate_up_a_scales,
+            gate_up_b_scales,
+            down_weight,
+            down_b_scales,
+            expert_start_indices,
+            expert_ids,
+            a_scale_offsets,
+            gate_up_expert_scales,
+            down_expert_scales,
+            c_input_scales,
+            src_info,
+            self.recv_buf_ptrs[COMBINE_GROUP],
+            self.recv_count_ptrs[COMBINE_GROUP],
+            estimated_total_m,
+            num_active_experts,
+            self.config,
+            clamp_activation=clamp_activation,
+        )
+
+        # Reset so a stale routing table cannot be reused for the next
+        # batch; `ep_combine_wait` reads only the symmetric buffers and does
+        # not need it. Same discipline as `ep_combine_async`.
+        self._src_info[device_id] = None
+
     def ep_combine_wait(
         self, router_weight: TensorValue, device_id: int
     ) -> TensorValue:
@@ -650,6 +784,9 @@ class EPBatchManager:
                 Shape: (max_recv_tokens, hidden_size).
             - For FP8: output_scales: Scales for the FP8 tokens.
                 Shape: (hidden_size // block_size, max_recv_tokens).
+            - With ``nvfp4_dyn_global_scales``: output_rowwise_scales, each
+                received row's inverse global scale.
+                Shape: (max_recv_tokens,).
             - expert_start_indices: Row offsets for grouped matmul.
                 Shape: (n_local_experts + 1,).
             - expert_ids: Local expert IDs for the grouped operation.

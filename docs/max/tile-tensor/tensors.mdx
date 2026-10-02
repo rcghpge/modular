@@ -55,7 +55,7 @@ data in one view changes the data seen by all of the views.
 
 Each element in a tensor can be either a single (scalar) value or a SIMD vector
 of values. This is reflected by the tensor's `element_size`, which is derived
-from its `Storage` parameter (`PointerStorage[element_width=N]`). For more
+from its `Engine` parameter (`DefaultEngine[element_width=N]`). For more
 information, see [Vectorizing tensors](#vectorizing-tensors).
 
 :::note TileTensor and LayoutTensor
@@ -128,12 +128,12 @@ the vector is equal to the `element_size` of the tensor (default 1). As long
 as the `element_size` is known to be 1 at the call site, you can treat the
 return value as a scalar value. For example, the following function constrains
 its parameter to a non-vectorized tensor using the default storage
-(`Storage=PointerStorage[element_width=1]`), so you can cast the element value
+(`Engine=DefaultEngine[element_width=1]`), so you can cast the element value
 directly to an `Int`.
 
 ```mojo
 def takes_scalar_tensor(
-    tensor: TileTensor[DType.int32, Storage=PointerStorage[element_width=1], ...]
+    tensor: TileTensor[.int32, Engine=DefaultEngine[element_width=1], ...]
 ) -> Int:
     comptime assert tensor.flat_rank == 2
     return Int(tensor[1, 1])
@@ -292,7 +292,7 @@ on the buffer prior to invoking the kernel. The following example shows
 initializing a `TileTensor` from the CPU and passing it to a GPU kernel.
 
 ```mojo
-from std.gpu import global_idx
+from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from layout import TileTensor, stack_allocation
 from layout.tile_layout import row_major
@@ -359,7 +359,7 @@ reduce memory access time.
 ```mojo
 comptime tile_layout = row_major[block_size, block_size]()
 var shared_tile = stack_allocation[
-    dtype, address_space=AddressSpace.SHARED
+    dtype, address_space=.SHARED
 ](tile_layout)
 ```
 
@@ -491,9 +491,9 @@ var layout = row_major_nested(
         Coord(Idx[grid_cols], Idx[frag_cols]),
     )
 )
-var storage = Array[Float32, total](uninitialized=True)
-for i in range(total):
-    storage[i] = Float32(i)
+var storage = Array[Float32, total](
+    fill_with=lambda (i: Int) -> Float32: Float32(i)
+)
 var tensor = TileTensor(storage, layout)
 
 # On a nested parent, tile() slices one outer index per mode: the
@@ -597,7 +597,7 @@ var thread_id = thread_idx.z * block_dim.y * block_dim.x
 ```
 
 When dividing work across a single warp, you can use
-[`lane_id()`](https://mojolang.org/docs/std/gpu/primitives/id/lane_id/) as the
+[`lane_id()`](https://docs.modular.com/api/mojo/max/gpu/lane_id/) as the
 thread ID. Lane ID represents a thread's ID within the warp (from 0 to
 `WARP_SIZE - 1`).
 
@@ -621,7 +621,7 @@ The
 method divides a tensor into non-overlapping partitions along an axis. Unlike
 `tile()`, which returns a single sub-tile, `split()` returns every partition at
 once (or a single requested partition). Split views are immutable, so call
-[`as_immut()`](/api/mojo/layout/tile_tensor/TileTensor/#as_immut)
+[`as_imm()`](/api/mojo/layout/tile_tensor/TileTensor/#as_imm)
 on a mutable tensor first.
 
 `split()` has two forms. The static form, `split[count]()`, takes a compile-time
@@ -629,28 +629,24 @@ partition count and returns a `StaticTuple` of `count` equal-sized views. The
 split axis must be statically divisible by `count`:
 
 ```mojo
-var data = Array[Int32, 16](uninitialized=True)
-for i in range(16):
-    data[i] = Int32(i)
+var data = Array[Int32, 16](fill_with=lambda (i: Int) -> Int32: Int32(i))
 var tensor = TileTensor(data, row_major[4, 4]())
 
 # Split into 2 equal halves along axis 0. Split views are immutable,
-# so call as_immut() first.
-var halves = tensor.as_immut().split[2]()
+# so call as_imm() first.
+var halves = tensor.as_imm().split[2]()
 ```
 
 The dynamic form, `split(count, idx)`, takes a run-time partition count and
 returns a single partition with a run-time-sized split axis:
 
 ```mojo
-var data = Array[Int32, 16](uninitialized=True)
-for i in range(16):
-    data[i] = Int32(i)
+var data = Array[Int32, 16](fill_with=lambda (i: Int) -> Int32: Int32(i))
 var tensor = TileTensor(data, row_major[8, 2]())
 
 # Return a single runtime-sized partition: split axis 0 into 4 parts
 # and take partition index 1.
-var partition = tensor.as_immut().split[axis=0](4, 1)
+var partition = tensor.as_imm().split[axis=0](4, 1)
 ```
 
 By default, the dynamic form divides the axis as evenly as possible. The
@@ -745,7 +741,7 @@ The following example exercises the `GenericToSharedAsyncTileCopier` and
 `SharedToGenericTileCopier` types.
 
 ```mojo
-from std.gpu import (
+from max.gpu import (
     thread_idx,
     block_idx,
     global_idx,
@@ -778,7 +774,7 @@ def tile_copier_example() raises:
         )
         comptime tile_layout = row_major[block_size, block_size]()
         var shared_tile = stack_allocation[
-            dtype, address_space=AddressSpace.SHARED
+            dtype, address_space=.SHARED
         ](tile_layout)
 
         comptime thread_layout = row_major[WARP_SIZE // simd_width, simd_width]()

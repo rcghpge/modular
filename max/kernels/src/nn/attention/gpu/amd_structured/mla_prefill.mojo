@@ -23,7 +23,7 @@ Two-phase QK matmul per tile:
 from std.math.uutils import ufloordiv
 from std.sys import align_of, simd_width_of
 from std.sys.intrinsics import readfirstlane
-from std.gpu import warp_id as get_warp_id
+from max.gpu import warp_id as get_warp_id
 from std.memory import bitcast, unsafe_stack_allocation
 from layout.swizzle import Swizzle
 from nn.attention.mha_mask import CausalMask, TileMaskStatus
@@ -38,7 +38,7 @@ from .mma import TiledMmaOp
 
 
 __extension Attention:
-    @always_inline
+    @inline(.always)
     def mla_prefill[
         k_rope_t: MHAOperand,
         //,
@@ -72,7 +72,7 @@ __extension Attention:
         )
 
         var warp_id = UInt32(
-            readfirstlane(bitcast[DType.int32](UInt32(get_warp_id())))
+            readfirstlane(bitcast[.int32](UInt32(get_warp_id())))
         )
 
         # K buffer (nope): depth=128, double-buffered gfx950 style.
@@ -143,7 +143,7 @@ __extension Attention:
         var k_rope_smem_ptr = unsafe_stack_allocation[
             k_rope_smem_elems,
             k_rope_t.dtype,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
             alignment=alignment,
         ]()
         comptime KRopeBufT = KVBuffer[
@@ -175,7 +175,7 @@ __extension Attention:
         comptime accum_type = get_accum_type[Self.k_t.dtype]()
 
         # Phase 1: Q_nope @ K^T (depth // BK iterations)
-        @always_inline
+        @inline(.always)
         @__parameter
         def mma_qk_nope():
             comptime MmaOp = TiledMmaOp[
@@ -195,7 +195,7 @@ __extension Attention:
                     )
 
         # Phase 2: Q_rope @ K_rope^T (rope_depth // BK iterations)
-        @always_inline
+        @inline(.always)
         @__parameter
         def mma_qk_rope():
             comptime MmaOp = TiledMmaOp[
@@ -214,7 +214,7 @@ __extension Attention:
                         self.p_reg_buffer.stage_tile[0](),
                     )
 
-        @always_inline
+        @inline(.always)
         @__parameter
         def mma_pv():
             comptime PVMmaOp = TiledMmaOp[
@@ -263,7 +263,38 @@ __extension Attention:
 
         comptime has_interior_full_mask = Self.mask_t != CausalMask
 
-        @always_inline
+        @inline(.always)
+        def prefetch_next_tile[
+            next_slot: Int
+        ](
+            mut k_buffer: KBufT,
+            mut k_rope_buffer: KRopeBufT,
+            mut v_buffer: VBufT,
+        ):
+            # The pipeline prefetches one tile ahead even from the final
+            # tile. Past `num_keys` that would be a paged-cache OOB read, so
+            # re-read the last valid tile instead: the data is unused, but
+            # the DMA count (and the `vmcnt` waits below) stays the same.
+            if (
+                k_buffer.kv_cache_iter.tile_start_row
+                >= k_buffer.kv_cache_iter.end
+            ):
+                k_buffer.kv_cache_iter.tile_start_row -= Self.BN
+            if (
+                k_rope_buffer.kv_cache_iter.tile_start_row
+                >= k_rope_buffer.kv_cache_iter.end
+            ):
+                k_rope_buffer.kv_cache_iter.tile_start_row -= Self.BN
+            if (
+                v_buffer.kv_cache_iter.tile_start_row
+                >= v_buffer.kv_cache_iter.end
+            ):
+                v_buffer.kv_cache_iter.tile_start_row -= Self.BN
+            _ = k_buffer.load_from_dram[next_slot]()
+            _ = k_rope_buffer.load_from_dram[next_slot]()
+            _ = v_buffer.load_from_dram[next_slot]()
+
+        @inline(.always)
         @__parameter
         def process_tile[slot: Int, has_next: Bool]():
             comptime next_slot = 1 - slot
@@ -287,9 +318,9 @@ __extension Attention:
                     self.kv_start_row += UInt32(Self.BN)
                     self.mask_advance()
                     comptime if has_next:
-                        _ = k_buffer.load_from_dram[next_slot]()
-                        _ = k_rope_buffer.load_from_dram[next_slot]()
-                        _ = v_buffer.load_from_dram[next_slot]()
+                        prefetch_next_tile[next_slot](
+                            k_buffer, k_rope_buffer, v_buffer
+                        )
                         barrier()
                     return
 
@@ -303,9 +334,7 @@ __extension Attention:
 
             # Prefetch next K+K_rope+V tile before softmax to hide latency.
             comptime if has_next:
-                _ = k_buffer.load_from_dram[next_slot]()
-                _ = k_rope_buffer.load_from_dram[next_slot]()
-                _ = v_buffer.load_from_dram[next_slot]()
+                prefetch_next_tile[next_slot](k_buffer, k_rope_buffer, v_buffer)
 
             # Online softmax: deferred-scale variant that emits packed FMAs
             # (`v_pk_fma_f32 score, scale, neg_scaled_max`) instead of the
@@ -340,7 +369,7 @@ __extension Attention:
             process_tile[0, False]()
 
         # Apply final softmax denominator and store.
-        self.out_reg_buffer.apply_softmax_denominator(
-            self.softmax.rowsum_tensor
-        )
+        self.out_reg_buffer.apply_softmax_denominator[
+            p_scale_log2=type_of(self.p_reg_buffer).p_scale_log2
+        ](self.softmax.rowsum_tensor)
         self.store_output()

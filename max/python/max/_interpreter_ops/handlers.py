@@ -25,12 +25,14 @@ from math import prod
 from typing import Any, Protocol, cast
 
 import numpy as np
+import numpy.typing as npt
 from max import _core, graph
 from max._core.dialects import builtin, kgen, mo, mosh
 from max._interpreter_ops import (
     band_part_gc,
     cast_gc,
     conv_gc,
+    custom_gc,
     data_movement_gc,
     elementwise_binary_gc,
     gather_gc,
@@ -56,6 +58,7 @@ from max._interpreter_ops import (
 )
 from max.driver import CPU, Buffer, Device
 from max.dtype import DType
+from max.experimental import custom
 
 
 class _HasAxis(Protocol):
@@ -248,11 +251,9 @@ def _handle_constant_scalar(
 
     attr = op.value
     value: bool | int | float
-    if isinstance(attr, builtin.BoolAttr):
-        value = attr.value
-    elif isinstance(attr, builtin.IntegerAttr):
-        value = attr.value
-    elif isinstance(attr, builtin.FloatAttr):
+    if isinstance(
+        attr, builtin.BoolAttr | builtin.IntegerAttr | builtin.FloatAttr
+    ):
         value = attr.value
     else:
         raise ValueError(
@@ -595,11 +596,11 @@ def _handle_broadcast_to(
     # shape from the second input if the shape is parametric.
     target_shape = None
     result_mlir_type: mo.TensorType = list(op.results)[0].type  # type: ignore[assignment]
-    shape_attr = result_mlir_type.shape_attr
-    if isinstance(shape_attr, mosh.ShapeAttr):
-        shape = graph.Shape.from_mlir(shape_attr)
-        if graph.Shape.is_static(shape):
-            target_shape = graph.Shape(shape).static_dims
+    shape_attr = result_mlir_type.shape
+
+    shape = graph.Shape.from_mlir(shape_attr)
+    if graph.Shape.is_static(shape):
+        target_shape = graph.Shape(shape).static_dims
 
     if target_shape is None and len(inputs) > 1:
         # For dynamic/parametric shapes, get from the shape operand
@@ -965,66 +966,6 @@ def _handle_unsqueeze_shape(
 
     result_np = np.array(result_shape, dtype=np.int64)
     return [Buffer.from_numpy(result_np)]
-
-
-@register_op_handler(mo.AddSingletonDimOp)
-def _handle_add_singleton_dim(
-    op: mo.AddSingletonDimOp,
-    inputs: Sequence[Buffer | None],
-) -> Sequence[Buffer]:
-    """Handle mo.add_singleton_dim - adds a dimension of size 1 at the given axis.
-
-    This is a shape-change op that does not copy data. It uses numpy.reshape
-    with the target shape from the MLIR result type.
-
-    Args:
-        op: The add singleton dim operation.
-        inputs: Input buffers - contains the tensor to reshape.
-
-    Returns:
-        List containing the reshaped tensor buffer.
-    """
-    return _reshape_common(op, inputs, "add_singleton_dim")
-
-
-@register_op_handler(mo.SplitDimOp)
-def _handle_split_dim(
-    op: mo.SplitDimOp,
-    inputs: Sequence[Buffer | None],
-) -> Sequence[Buffer]:
-    """Handle mo.split_dim - splits one dimension into two dimensions.
-
-    E.g., a tensor of shape [N, K] with axis=0 becomes [S1, S2, K] where
-    S1 * S2 = N. The target shape comes from the MLIR result type.
-
-    Args:
-        op: The split dim operation.
-        inputs: Input buffers - contains the tensor to reshape.
-
-    Returns:
-        List containing the reshaped tensor buffer.
-    """
-    return _reshape_common(op, inputs, "split_dim")
-
-
-@register_op_handler(mo.MergeDimOp)
-def _handle_merge_dim(
-    op: mo.MergeDimOp,
-    inputs: Sequence[Buffer | None],
-) -> Sequence[Buffer]:
-    """Handle mo.merge_dim - merges two adjacent dimensions into one.
-
-    E.g., a tensor of shape [A, B, C, D] with axis=1 becomes [A, B*C, D].
-    The target shape comes from the MLIR result type.
-
-    Args:
-        op: The merge dim operation.
-        inputs: Input buffers - contains the tensor to reshape.
-
-    Returns:
-        List containing the reshaped tensor buffer.
-    """
-    return _reshape_common(op, inputs, "merge_dim")
 
 
 @register_op_handler(mo.TransposeOp)
@@ -2451,18 +2392,23 @@ def _handle_distributed_allreduce_sum(
         assert isinstance(b, Buffer), f"allreduce input {i} is not a Buffer"
         bufs.append(b)
 
-    # Sum all inputs on the CPU via NumPy.
-    total = bufs[0].to(CPU()).to_numpy().copy()
-    for buf in bufs[1:]:
-        total += buf.to(CPU()).to_numpy()
+    # Sum inputs on the CPU via NumPy, one independent sum per group.
+    # group_size == 0 (the attribute default) means one full-world group.
+    group_size = op.group_size or num_inputs
+    totals: list[npt.NDArray[Any]] = []
+    for group_start in range(0, num_inputs, group_size):
+        total = bufs[group_start].to(CPU()).to_numpy().copy()
+        for buf in bufs[group_start + 1 : group_start + group_size]:
+            total += buf.to(CPU()).to_numpy()
+        totals.extend([total] * group_size)
 
-    # Place the sum on each output device.
+    # Place each group's sum on its output devices.
     results = list(op.results)
     output_buffers: list[Buffer | None] = []
-    for result in results[:-1]:
+    for i, result in enumerate(results[:-1]):
         result_type: mo.TensorType = result.type  # type: ignore[assignment]
         device = graph.DeviceRef.from_mlir(result_type.device_ref).to_device()
-        output_buffers.append(Buffer.from_numpy(total).to(device))
+        output_buffers.append(Buffer.from_numpy(totals[i]).to(device))
 
     # Trailing None for the output chain.
     output_buffers.append(None)
@@ -2745,3 +2691,130 @@ def _handle_distributed_reducescatter_sum(
     # Trailing None for the output chain.
     output_buffers.append(None)
     return output_buffers
+
+
+# User custom operations (MXF-353)
+
+
+def _resolve_spec(op: mo.CustomOp) -> custom.CustomOp | None:
+    """Resolves the ``CustomOp`` used to stage *op*, or ``None``.
+
+    Reads the registry token ``CustomOp._stage`` stamps onto the op's
+    discardable attributes at trace time, verified to survive
+    ``graph.copy()`` and RMO->MO lowering. ``None`` covers both an op never
+    staged through a ``CustomOp`` and a stamped token whose spec can no
+    longer be resolved; the two are indistinguishable to the caller, which
+    refuses the graph either way.
+
+    A resolved def that disagrees with *op* is refused too. The token is
+    ``f"{name}#{content_digest}"`` (see ``CustomOp.token``), so
+    two defs sharing one token already share a name; reaching an unrelated
+    declaration through this lookup takes a 64-bit digest collision or a
+    hand-forged attribute value, not an honest replay in another process. The
+    name check here only guards against that forged or foreign input -- the
+    arity comparison (operand and result counts) is the check still doing
+    real work, catching a resolved def whose signature no longer matches what
+    *op* was staged with. Either mismatch degrades to ``None``, which the
+    caller treats as the compile fallback.
+    """
+    attrs = op.discardable_attributes
+    if custom._SPEC_ATTR_KEY not in attrs:
+        return None
+    token = attrs[custom._SPEC_ATTR_KEY]
+    if not isinstance(token, builtin.StringAttr):
+        return None
+    defn = custom._SPEC_REGISTRY.get(token.value)
+    if defn is None:
+        return None
+    if (
+        defn.name != op.symbol
+        or len(defn.inputs) != len(op.operands)
+        or len(defn.outputs) != len(op.results)
+    ):
+        return None
+    return defn
+
+
+def _check_realized_shape(out: Buffer, result: _core.Value[Any]) -> None:
+    """Raises ``RuntimeError`` when *out*'s realized rank, dtype, device, or
+    a statically-known dim disagrees with *result*'s staged type.
+
+    A binding compiled from a ``CustomOp`` (:mod:`custom_gc`) is
+    rank-polymorphic: only rank, dtype, and device key the compiled model,
+    not shape. So a defn whose declared signature computed something the
+    kernel doesn't actually produce would otherwise silently corrupt the
+    slot instead of raising.
+
+    A hard error, not an ``UnsupportedGraphError``: the kernel contradicting
+    its own declaration is a contract violation, and falling back to
+    compilation would both hide it and rerun any mutation an earlier op in
+    this graph already applied.
+    """
+    result_type = graph.TensorType.from_mlir(result.type)
+    staged_shape = tuple(result_type.shape)
+    realized_shape = tuple(out.shape)
+    staged_device = result_type.device.to_device()
+
+    def mismatch(kind: str, realized: object, staged: object) -> RuntimeError:
+        return RuntimeError(
+            f"custom op result {kind} mismatch: model produced "
+            f"{realized}, staged type declared {staged}"
+        )
+
+    if len(realized_shape) != len(staged_shape):
+        raise mismatch("rank", len(realized_shape), len(staged_shape))
+    if out.dtype != result_type.dtype:
+        raise mismatch("dtype", out.dtype, result_type.dtype)
+    if out.device != staged_device:
+        raise mismatch("device", out.device, staged_device)
+    # A symbolic staged dim has no expected static size, since the kernel's
+    # shape function is authoritative for it.
+    if not all(
+        int(staged) == realized
+        for staged, realized in zip(staged_shape, realized_shape, strict=True)
+        if isinstance(staged, graph.StaticDim)
+    ):
+        raise mismatch("shape", realized_shape, staged_shape)
+
+
+@register_op_handler(mo.CustomOp)
+def _handle_custom(
+    op: mo.CustomOp, inputs: Sequence[Buffer | None]
+) -> Sequence[Buffer | None]:
+    """Executes a user custom op via its rank-polymorphic interpreter binding.
+
+    ``_is_interpretable_custom`` (``_interpreter.py``) has already admitted
+    the op: it is pure tensor-in/tensor-out, single-device, and carries a
+    resolvable ``CustomOp``. Realized output shapes are validated against
+    the staged types before being trusted.
+    """
+    defn = _resolve_spec(op)
+    if defn is None:
+        raise RuntimeError(
+            f"custom op {op.symbol!r} reached the interpreter with no "
+            "resolvable CustomOp; can_execute should have refused it"
+        )
+
+    # Raises rather than asserting so it still fires under `python -O`: the
+    # staged types agree on one device by admission, so a realized buffer
+    # elsewhere is an interpreter bug, not a graph to hand back to the
+    # compiler.
+    target_device = _get_target_device(op)
+    _check_buffers_on_device(inputs, target_device)
+
+    in_types = []
+    for v in op.operands:
+        v_type: mo.TensorType = v.type  # type: ignore[assignment]
+        in_types.append(graph.TensorType.from_mlir(v_type))
+    realized_inputs: list[Buffer] = []
+    for b in inputs:
+        assert isinstance(b, Buffer)
+        realized_inputs.append(b)
+
+    model = custom_gc.binding_for(
+        defn, target_device, in_types, defn.extensions
+    )
+    outs = model(*realized_inputs)
+    for out, result in zip(outs, op.results, strict=True):
+        _check_realized_shape(out, result)
+    return list(outs)

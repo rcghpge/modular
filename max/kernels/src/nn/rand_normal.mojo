@@ -36,7 +36,7 @@ def random_normal[
     shape: IndexList[rank],
     mean: Float32,
     stddev: Float32,
-    seed_ptr: UnsafePointer[Scalar[DType.uint64], ImmutAnyOrigin],
+    seed_ptr: UnsafePointer[UInt64, ImmutAnyOrigin],
     ctx: DeviceContext,
     output_fn: OutputFn,
 ) raises:
@@ -100,7 +100,7 @@ def random_normal[
     else:
         grid_block = numel
 
-    @always_inline
+    @inline(.always)
     def generate[width: Int, alignment: Int = 1](idx: Coord) {var}:
         comptime assert (
             width == 1

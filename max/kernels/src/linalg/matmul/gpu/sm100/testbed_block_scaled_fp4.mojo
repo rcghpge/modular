@@ -58,7 +58,7 @@ from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 
 def _rand_mxfp4_value() -> Scalar[MXFP4_SF_DTYPE]:
     # E8M0 is all-exponent: valid non-zero, non-NaN values are 0x01..0xFE.
-    return bitcast[MXFP4_SF_DTYPE](random_ui64(1, 254).cast[DType.uint8]())
+    return bitcast[MXFP4_SF_DTYPE](random_ui64(1, 254).cast[.uint8]())
 
 
 def _rand_mxfp4[
@@ -348,7 +348,7 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     # invoked — if TileWriter skips the lambda the result will be 1x, not 2x,
     # and the comparison against 2x reference will fail.
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(c_tensor)
     def epilogue_fn[
         _dtype: DType,

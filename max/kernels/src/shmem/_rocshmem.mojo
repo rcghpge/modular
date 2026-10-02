@@ -22,7 +22,7 @@ from std.ffi import (
     _Global,
     c_int,
     c_size_t,
-    CStringSlice,
+    CStringSpan,
     external_call,
     OwnedDLHandle,
     RTLD,
@@ -68,7 +68,7 @@ def _init_rocshmem_dylib() -> OwnedDLHandle:
         abort(t"failed to load ROCSHMEM library: {e}")
 
 
-@always_inline
+@inline(.always)
 def _get_rocshmem_function[
     func_name: StaticString, result_type: TrivialRegisterPassable
 ]() -> result_type:
@@ -228,31 +228,32 @@ def _dtype_to_rocshmem_type[
     ptrdiff_t            ptrdiff       64
     """
 
-    comptime if dtype == DType.float16:
+    comptime __match dtype:
+    case .float16:
         return get_static_string[prefix, "half", suffix]()
-    elif dtype == DType.float32:
+    case .float32:
         return get_static_string[prefix, "float", suffix]()
-    elif dtype == DType.float64:
+    case .float64:
         return get_static_string[prefix, "double", suffix]()
-    elif dtype == DType.int8:
+    case .int8:
         return get_static_string[prefix, "schar", suffix]()
-    elif dtype == DType.uint8:
+    case .uint8:
         return get_static_string[prefix, "char", suffix]()
-    elif dtype == DType.int16:
+    case .int16:
         return get_static_string[prefix, "short", suffix]()
-    elif dtype == DType.uint16:
+    case .uint16:
         return get_static_string[prefix, "ushort", suffix]()
-    elif dtype == DType.int32:
+    case .int32:
         return get_static_string[prefix, "int", suffix]()
-    elif dtype == DType.uint32:
+    case .uint32:
         return get_static_string[prefix, "uint", suffix]()
-    elif dtype == DType.int64:
+    case .int64:
         return get_static_string[prefix, "long", suffix]()
-    elif dtype == DType.uint64:
+    case .uint64:
         return get_static_string[prefix, "ulong", suffix]()
-    elif dtype == DType.int:
+    case .int:
         return get_static_string[prefix, "longlong", suffix]()
-    else:
+    case _:
         CompilationTarget.unsupported_target_error[
             operation=__get_current_function_name()
         ]()
@@ -338,11 +339,11 @@ def rocshmem_create_uniqueid(
     _get_rocshmem_function[
         "rocshmem_create_uniqueid",
         def(
-            CStringSlice[origin_of(server_ip)],
+            CStringSpan[origin_of(server_ip)],
             c_int,
             UnsafePointer[SHMEMUniqueID, origin_of(uid)],
         ) thin -> None,
-    ]()(server_ip.as_c_string_slice(), server_port, UnsafePointer(to=uid))
+    ]()(server_ip.as_c_string_span(), server_port, UnsafePointer(to=uid))
     return uid
 
 

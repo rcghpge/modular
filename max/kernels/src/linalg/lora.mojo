@@ -26,17 +26,13 @@ from layout import (
 )
 
 
-@always_inline
+@inline(.always)
 def shrink_qkv_permute_3mn_sm100(
-    c_lora: TileTensor[mut=True, address_space=AddressSpace.GENERIC, ...],
-    a: TileTensor[mut=False, address_space=AddressSpace.GENERIC, ...],
-    b: TileTensor[mut=False, address_space=AddressSpace.GENERIC, ...],
-    a_offsets: TileTensor[
-        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
-    expert_ids: TileTensor[
-        mut=False, DType.int32, address_space=AddressSpace.GENERIC, ...
-    ],
+    c_lora: TileTensor[mut=True, address_space=.GENERIC, ...],
+    a: TileTensor[mut=False, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, address_space=.GENERIC, ...],
+    a_offsets: TileTensor[mut=False, .uint32, address_space=.GENERIC, ...],
+    expert_ids: TileTensor[mut=False, .int32, address_space=.GENERIC, ...],
     max_num_tokens_per_expert: Int,
     num_active_experts: Int,
     ctx: DeviceContext,
@@ -99,7 +95,7 @@ def shrink_qkv_permute_3mn_sm100(
         row_major(Coord(M, N_Total)),
     )
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(c_tensor_lora, M)
     @__parameter
     def permute_dim_lora_bmn[
@@ -178,18 +174,14 @@ def shrink_qkv_permute_3mn_sm100(
 # specialize loading and storing only, no new kernel.
 
 
-@always_inline
+@inline(.always)
 def expand_qkv_sm100(
-    q_out: TileTensor[mut=True, address_space=AddressSpace.GENERIC, ...],
-    kv_out: TileTensor[mut=True, address_space=AddressSpace.GENERIC, ...],
-    p: TileTensor[mut=False, address_space=AddressSpace.GENERIC, ...],
-    b: TileTensor[mut=False, address_space=AddressSpace.GENERIC, ...],
-    a_offsets: TileTensor[
-        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
-    expert_ids: TileTensor[
-        mut=False, DType.int32, address_space=AddressSpace.GENERIC, ...
-    ],
+    q_out: TileTensor[mut=True, address_space=.GENERIC, ...],
+    kv_out: TileTensor[mut=True, address_space=.GENERIC, ...],
+    p: TileTensor[mut=False, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, address_space=.GENERIC, ...],
+    a_offsets: TileTensor[mut=False, .uint32, address_space=.GENERIC, ...],
+    expert_ids: TileTensor[mut=False, .int32, address_space=.GENERIC, ...],
     max_num_tokens_per_expert: Int,
     num_active_experts: Int,
     ctx: DeviceContext,
@@ -317,7 +309,7 @@ def expand_qkv_sm100(
     # count (M).
     comptime a_plane_splits = Index(q_dim, q_dim + kv_dim)
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(q_tensor, kv_tensor, M)
     @__parameter
     def route_qkv[

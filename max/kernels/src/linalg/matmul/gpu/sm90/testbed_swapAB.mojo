@@ -134,8 +134,8 @@ def test_matmul_sm90_swapAB_comparison[
 
     # Construct TileTensors for device buffers
     # transpose_b=True: b shape is (N, K)
-    var a_tensor = TileTensor(a_dev_buffer, row_major(Coord(m, k))).as_immut()
-    var b_tensor = TileTensor(b_dev_buffer, row_major(Coord(n, k))).as_immut()
+    var a_tensor = TileTensor(a_dev_buffer, row_major(Coord(m, k))).as_imm()
+    var b_tensor = TileTensor(b_dev_buffer, row_major(Coord(n, k))).as_imm()
     var c_normal_tensor = TileTensor(
         c_normal_dev_buffer, row_major(Coord(m, n))
     )
@@ -321,8 +321,8 @@ def test_matmul_sm90_swapAB_comparison[
 
     for i in range(M):
         for j in range(N):
-            var val_swapAB = c_swapAB_host_ptr[i * N + j].cast[DType.float64]()
-            var val_normal = c_normal_host_ptr[i * N + j].cast[DType.float64]()
+            var val_swapAB = c_swapAB_host_ptr[i * N + j].cast[.float64]()
+            var val_normal = c_normal_host_ptr[i * N + j].cast[.float64]()
             var diff = abs(val_swapAB - val_normal)
 
             if diff > 0.01:  # Threshold for counting mismatches
@@ -548,8 +548,8 @@ def test_matmul_sm90_swapAB_comparison_v2[
 
     # Construct TileTensors for device buffers
     # transpose_b=True: b shape is (N, K)
-    var a_tensor = TileTensor(a_dev_buffer, row_major(Coord(m, k))).as_immut()
-    var b_tensor = TileTensor(b_dev_buffer, row_major(Coord(n, k))).as_immut()
+    var a_tensor = TileTensor(a_dev_buffer, row_major(Coord(m, k))).as_imm()
+    var b_tensor = TileTensor(b_dev_buffer, row_major(Coord(n, k))).as_imm()
     var c_normal_tensor = TileTensor(
         c_normal_dev_buffer, row_major(Coord(m, n))
     )
@@ -681,7 +681,7 @@ def test_matmul_sm90_swapAB_comparison_v2[
     # Set up epilogue functions if requested
     # =========================================================================
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(c_normal_tensor)
     def epilogue_fn_normal[
         _dtype: DType,
@@ -694,7 +694,7 @@ def test_matmul_sm90_swapAB_comparison_v2[
         )
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(c_swapAB_tensor)
     def epilogue_fn_swapAB[
         _dtype: DType,
@@ -828,8 +828,8 @@ def test_matmul_sm90_swapAB_comparison_v2[
 
     for i in range(M):
         for j in range(N):
-            var val_swapAB = c_swapAB_host_ptr[i * N + j].cast[DType.float64]()
-            var val_ref = c_normal_host_ptr[i * N + j].cast[DType.float64]()
+            var val_swapAB = c_swapAB_host_ptr[i * N + j].cast[.float64]()
+            var val_ref = c_normal_host_ptr[i * N + j].cast[.float64]()
             var diff = abs(val_swapAB - val_ref)
 
             if diff > 0.01:  # Threshold for counting mismatches

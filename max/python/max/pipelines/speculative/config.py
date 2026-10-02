@@ -22,14 +22,25 @@ from __future__ import annotations
 from typing import Literal
 
 from max.config import ConfigFileModel
-from pydantic import Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from typing_extensions import Self
+
+from .depth_schedule import DepthScheduleEntry, normalize_depth_schedule
 
 __all__ = [
     "MAGIC_DRAFT_TOKEN_ID",
+    "RecurrentStateRollback",
     "RejectionSamplingStrategy",
     "SpeculativeConfig",
     "SpeculativeMethod",
+    "VerifyWidthRange",
 ]
 
 MAGIC_DRAFT_TOKEN_ID = 42
@@ -42,8 +53,22 @@ draft slots before any real draft exists. Defined here so the graph side
 (``architectures``) and the runtime side (``lib``) agree on a single value.
 """
 
-SpeculativeMethod = Literal["eagle", "mtp", "dflash"]
+SpeculativeMethod = Literal["eagle", "mtp", "dflash", "dflash2"]
 """The supported methods for speculative decoding."""
+
+RecurrentStateRollback = Literal["snapshot", "ring"]
+"""How a target with recurrent state rolls it back after a verify.
+
+- ``snapshot``: verify on a shadow copy of the state, then replay the
+  accepted tokens into the live pool.
+- ``ring``: verify from the live pool without writing it, recording each
+  token's update, then apply the accepted records in one launch.
+
+Both produce the same state. Targets without recurrent state ignore this.
+"""
+
+_ONE_TOKEN_PER_STEP: tuple[SpeculativeMethod, ...] = ("eagle", "mtp")
+"""Methods that draft one token per step, and so default to a width of 2."""
 
 RejectionSamplingStrategy = Literal[
     "greedy", "residual", "typical-acceptance", "logit-comparison"
@@ -57,10 +82,37 @@ RejectionSamplingStrategy = Literal[
   matching the target distribution.
 - ``typical-acceptance``: accepts drafted tokens that fall within the
   target's typical set, trading a small distributional mismatch for higher
-  acceptance rates. Default for ``eagle`` and ``mtp``.
+  acceptance rates.
 - ``logit-comparison``: compares target and draft logits directly to decide
   acceptance.
+
+No speculative path reads this selection today: every unified speculative
+architecture builds its own ``AcceptanceSampler``
+(``max/python/max/nn/sampling/rejection_sampler.py``), which dispatches on
+``synthetic_acceptance_rate`` and ``use_greedy_acceptance`` instead.
 """
+
+
+class VerifyWidthRange(BaseModel):
+    """One inclusive decode-batch-size range and the drafts to verify in it."""
+
+    batch_start: int = Field(
+        description="First decode batch size in the range, inclusive."
+    )
+    """First decode batch size this range covers, inclusive."""
+
+    batch_end: int = Field(
+        description="Last decode batch size in the range, inclusive."
+    )
+    """Last decode batch size this range covers, inclusive."""
+
+    num_tokens: int = Field(
+        description=(
+            "How many of the carried drafts the target verifies at these "
+            "batch sizes."
+        )
+    )
+    """How many of the carried drafts the target verifies in this range."""
 
 
 class SpeculativeConfig(ConfigFileModel):
@@ -70,13 +122,17 @@ class SpeculativeConfig(ConfigFileModel):
     draft step propose several candidate tokens that the larger target
     verifies in one forward pass. This class selects the method
     (:attr:`speculative_method`), how many tokens to draft per step
-    (:attr:`num_speculative_tokens`), and how the target verifies them
-    (:attr:`rejection_sampling_strategy`).
+    (:attr:`num_speculative_tokens`), and the knobs that decide how the
+    target verifies them (:attr:`synthetic_acceptance_rate`,
+    :attr:`use_greedy_acceptance`).
 
     The CLI surfaces these fields as ``--speculative-method``,
-    ``--num-speculative-tokens``, ``--rejection-sampling-strategy``, and
-    ``--synthetic-acceptance-rate``. Construct the config directly when
-    configuring a pipeline programmatically:
+    ``--num-speculative-tokens``,
+    ``--num-speculative-tokens-per-batch-size``,
+    ``--num-speculative-tokens-mixed-batch``,
+    ``--rejection-sampling-strategy``, and ``--synthetic-acceptance-rate``.
+    Construct the config directly when configuring a pipeline
+    programmatically:
 
     .. code-block:: python
 
@@ -86,19 +142,25 @@ class SpeculativeConfig(ConfigFileModel):
             speculative_method="eagle",
             num_speculative_tokens=3,
         )
+
+    Instances are immutable. Assigning a field after construction raises.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     speculative_method: SpeculativeMethod | None = Field(
         default=None, description="The speculative decoding method to use."
     )
     """The speculative decoding method to use.
 
-    One of ``"eagle"``, ``"mtp"``, or ``"dflash"``. When ``None``,
-    speculative decoding is disabled.
+    One of ``"eagle"``, ``"mtp"``, ``"dflash"``, or ``"dflash2"``. When
+    ``None``, speculative decoding is disabled.
     """
 
     num_speculative_tokens: int | None = Field(
         default=None,
+        # So the default below runs when the field is unset.
+        validate_default=True,
         description=(
             "The number of speculative tokens. Unset selects a per-method "
             "default: 2 for ``eagle``/``mtp``, and the draft checkpoint's "
@@ -115,29 +177,115 @@ class SpeculativeConfig(ConfigFileModel):
     increase kernel latencies from the additional tokens.
     """
 
-    @model_validator(mode="after")
-    def _resolve_autoregressive_draft_width(self) -> Self:
-        # Eagle/MTP draft one token per autoregressive step and keep their
-        # longstanding default of 2. DFlash-style block drafts derive the
-        # width from the draft checkpoint's trained block size, so unset
-        # stays None until the architecture resolves it.
-        if self.num_speculative_tokens is None and (
-            self.is_eagle() or self.is_mtp()
-        ):
-            self.num_speculative_tokens = 2
-        return self
+    @field_validator("num_speculative_tokens", mode="after")
+    @classmethod
+    def _resolve_autoregressive_draft_width(
+        cls, value: int | None, info: ValidationInfo
+    ) -> int | None:
+        # DFlash leaves it unset for the architecture to fill.
+        method = info.data.get("speculative_method")
+        if value is None and method in _ONE_TOKEN_PER_STEP:
+            return 2
+        return value
+
+    num_speculative_tokens_per_batch_size: list[VerifyWidthRange] | None = (
+        Field(
+            default=None,
+            description=(
+                "Batch-size schedule for how many drafted tokens to verify, as "
+                "inclusive ranges. For example "
+                '\'[{"batch_start": 1, "batch_end": 16, "num_tokens": 3}, '
+                '{"batch_start": 17, "batch_end": 64, "num_tokens": 1}]\'. '
+                "Unset verifies every drafted token."
+            ),
+        )
+    )
+    """How many of the drafted tokens the target verifies, by decode batch size.
+
+    A step always drafts :attr:`num_speculative_tokens` proposals; this narrows
+    how many of them the target checks.
+
+    Ranges are inclusive on both ends. The first must start at batch size 1 so
+    every runtime batch size resolves to a count; gaps and the tail past the
+    final range carry the previous count forward, and every count is capped at
+    :attr:`num_speculative_tokens` since a step cannot verify more drafts than
+    it carries. ``None`` verifies every drafted token, which is the behavior
+    when the field is unset.
+
+    Applies to every speculative method. Block drafters (``dflash``) still
+    draft their whole checkpoint-fixed block every step; only how much of that
+    block the target verifies narrows.
+    """
+
+    @property
+    def verify_width_schedule(self) -> list[DepthScheduleEntry] | None:
+        """The schedule as validated, sorted ``(start, end, count)`` triples.
+
+        ``None`` when no schedule was configured.
+        """
+        ranges = self.num_speculative_tokens_per_batch_size
+        if ranges is None:
+            return None
+        return [(r.batch_start, r.batch_end, r.num_tokens) for r in ranges]
+
+    @field_validator("num_speculative_tokens_per_batch_size", mode="after")
+    @classmethod
+    def _validate_verify_width_schedule(
+        cls, ranges: list[VerifyWidthRange] | None
+    ) -> list[VerifyWidthRange] | None:
+        if ranges is None:
+            return None
+        # Validating here rather than at pipeline build means a malformed
+        # schedule fails while the config is being read, next to the value that
+        # caused it, instead of minutes into a model load.
+        normalized = normalize_depth_schedule(
+            [(r.batch_start, r.batch_end, r.num_tokens) for r in ranges]
+        )
+        return [
+            VerifyWidthRange(batch_start=start, batch_end=end, num_tokens=count)
+            for start, end, count in normalized
+        ]
+
+    num_speculative_tokens_mixed_batch: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "How many drafted tokens the target verifies on a mixed "
+            "prefill+decode batch. Unset uses the count a pure decode batch "
+            "of the same size would."
+        ),
+    )
+    """How many of the drafted tokens the target verifies on a mixed batch.
+
+    Narrows for a different reason than
+    :attr:`num_speculative_tokens_per_batch_size`: that schedule trades
+    acceptance for decode throughput at large batch sizes, while this trades it
+    for the latency of the prefill rows sharing the step, which sit on the
+    critical path of a prompt's time to first token.
+
+    Capped at :attr:`num_speculative_tokens` where it is read, not here:
+    ``dflash`` leaves that width for the architecture to resolve from the draft
+    checkpoint, so the ceiling is not yet known at config-validation time.
+
+    ``None`` leaves mixed batches on the batch-size schedule, which is the
+    behavior when the field is unset. Reachable only alongside
+    ``--enable-spec-decode-mixed-batches``; without it a mixed batch verifies
+    nothing at all.
+    """
 
     rejection_sampling_strategy: RejectionSamplingStrategy | None = Field(
         default=None,
         description=(
             "Rejection sampling strategy for verifying draft tokens. "
-            "Defaults to ``typical-acceptance`` for ``eagle``/``mtp``."
+            "Currently inert: the architecture's AcceptanceSampler decides "
+            "the acceptance rule."
         ),
     )
-    """The rejection sampling strategy used to verify drafted tokens.
+    """The requested rejection sampling strategy for verifying drafted tokens.
 
-    When ``None``, defaults to ``"typical-acceptance"`` for ``eagle`` and
-    ``mtp``.
+    Inert: see :data:`RejectionSamplingStrategy`. The acceptance rule in
+    effect is ``AcceptanceSampler.acceptance_rule``, and the startup config
+    dump reports it alongside the fields that decide it.
     """
 
     synthetic_acceptance_rate: float | None = Field(
@@ -181,7 +329,8 @@ class SpeculativeConfig(ConfigFileModel):
             "threshold ``top1_prob - relaxed_delta``) are compared "
             "against the draft token; matching any candidate accepts "
             "the draft. Outside the thinking span, the existing strict "
-            "acceptance rule still applies."
+            "acceptance rule still applies. Requires "
+            "``draft_proposal='argmax'``."
         ),
     )
 
@@ -217,6 +366,44 @@ class SpeculativeConfig(ConfigFileModel):
         ),
     )
 
+    recurrent_state_rollback: RecurrentStateRollback = Field(
+        default="snapshot",
+        description=(
+            "How a target with recurrent state rolls it back after a "
+            "verify. 'snapshot' (default) verifies on a shadow copy and "
+            "replays the accepted tokens. 'ring' verifies from the live "
+            "state, records each token's update, and applies the accepted "
+            "records afterwards."
+        ),
+    )
+
+    draft_proposal: Literal["argmax", "sampled"] = Field(
+        default="argmax",
+        description=(
+            "How the draft model proposes tokens. 'argmax' (default) "
+            "proposes deterministically. 'sampled' makes the draft sample "
+            "its own proposal and keep the distribution it drew from, so "
+            "verification runs true speculative sampling instead of "
+            "typical acceptance. Incompatible with "
+            "``use_relaxed_acceptance_for_thinking``. Inert unless the "
+            "serving architecture supports it."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_draft_proposal(self) -> Self:
+        if (
+            self.draft_proposal == "sampled"
+            and self.use_relaxed_acceptance_for_thinking
+        ):
+            raise ValueError(
+                "draft_proposal='sampled' cannot be combined with"
+                " use_relaxed_acceptance_for_thinking: relaxed acceptance"
+                " takes the drafted token to be the draft's argmax, which a"
+                " sampled proposal does not guarantee"
+            )
+        return self
+
     @field_validator("relaxed_topk")
     @classmethod
     def _validate_relaxed_topk(cls, v: int) -> int:
@@ -235,6 +422,19 @@ class SpeculativeConfig(ConfigFileModel):
 
     _config_file_section_name: str = "speculative_config"
 
+    @property
+    def draft_width(self) -> int:
+        """The number of tokens drafted per step.
+
+        Set for every config the pipeline builds: the architecture supplies
+        it for checkpoints that fix it, and the rest take the default.
+        """
+        assert self.num_speculative_tokens is not None, (
+            "num_speculative_tokens is unset; the config was not built by"
+            " PipelineConfig.from_args()."
+        )
+        return self.num_speculative_tokens
+
     def is_eagle(self) -> bool:
         """Returns whether the configured method is EAGLE.
 
@@ -248,8 +448,21 @@ class SpeculativeConfig(ConfigFileModel):
         return self.speculative_method == "mtp"
 
     def is_dflash(self) -> bool:
-        """Returns whether the configured method is DFlash."""
-        return self.speculative_method == "dflash"
+        """Returns whether the configured method is a DFlash block draft.
+
+        True for both ``"dflash"`` and ``"dflash2"``: v2 keeps v1's fused
+        graph shape and block-drafting contract, so consumers that only
+        need "the draft arrives a block at a time" -- pipeline-class
+        selection, KV cache sizing -- want both. Architecture selection is
+        the exception: each fused graph is built for one drafter, so the
+        v1 and Eagle arms in ``lib.config`` exclude v2 and a v2 target
+        gets its own arm. Use :meth:`is_dflash2` where they differ.
+        """
+        return self.speculative_method in ("dflash", "dflash2")
+
+    def is_dflash2(self) -> bool:
+        """Returns whether the configured method is DFlash2 specifically."""
+        return self.speculative_method == "dflash2"
 
     def uses_greedy_rejection(self) -> bool:
         """Returns whether the ``"greedy"`` rejection sampling strategy is selected."""

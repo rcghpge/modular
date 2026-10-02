@@ -146,12 +146,12 @@ def test_conv3d_qslice_direct[
     comptime if with_epilogue:
 
         @__parameter
-        @always_inline
+        @inline(.always)
         @__copy_capture(output_lt)
         def scale_epilogue[
             _dtype: DType, _rank: Int, _width: SIMDLength, _alignment: Int = 1
         ](coords: IndexList[_rank], val: SIMD[_dtype, _width]):
-            var scaled = (val.cast[DType.float32]() * 2.0).cast[dtype]()
+            var scaled = (val.cast[.float32]() * 2.0).cast[dtype]()
             output_lt.store[
                 width=_width, store_alignment=align_of[dtype]() * _alignment
             ](

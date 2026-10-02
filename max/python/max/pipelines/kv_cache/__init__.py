@@ -27,21 +27,31 @@ from .memory_planner import (
     PagedMemoryPlanner,
 )
 from .paged_kv_cache import (
+    BlockCount,
+    ByteCount,
     DummyKVCache,
     InsufficientBlocksError,
+    JengaKVCacheManager,
     KVTransferEngine,
     KVTransferEngineMetadata,
     PagedKVCacheManager,
+    PagedKVCacheManagerInterface,
     TransferReqData,
     available_port,
 )
-from .registry import load_kv_manager
+from .registry import (
+    kv_cache_memory_size,
+    load_kv_manager,
+    max_seq_len_fitting_in_cache,
+)
 
 __all__ = [
+    "BlockCount",
+    "ByteCount",
     "DummyKVCache",
     "InsufficientBlocksError",
+    "JengaKVCacheManager",
     "KVCacheConfig",
-    "KVCacheGroupId",
     "KVConnectorConfig",
     "KVTransferEngine",
     "KVTransferEngineMetadata",
@@ -49,9 +59,12 @@ __all__ = [
     "ModelConfig",
     "ModelConfigWithKVCache",
     "PagedKVCacheManager",
+    "PagedKVCacheManagerInterface",
     "PagedMemoryPlanner",
     "TransferReqData",
     "available_port",
     "cache_dtype_for_encoding",
+    "kv_cache_memory_size",
     "load_kv_manager",
+    "max_seq_len_fitting_in_cache",
 ]

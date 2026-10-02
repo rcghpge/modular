@@ -62,7 +62,7 @@ comptime cacheline_size: Int = 64
 # Firestorm core's l1 caches are so large, that we wouldn't
 # really need this, though.
 # Also: cacheline_size of 64 is currently hard coded.
-@always_inline
+@inline(.always)
 def stride[elt: DType](nrw: Int) -> Int:
     if nrw * size_of[elt]() >= cacheline_size:
         return cacheline_size // size_of[elt]()
@@ -70,7 +70,7 @@ def stride[elt: DType](nrw: Int) -> Int:
         return nrw
 
 
-@always_inline
+@inline(.always)
 def getKr[mode: IntTuple]() -> Int:
     if mode.is_value() or len(mode) == 1:
         return 1
@@ -79,13 +79,13 @@ def getKr[mode: IntTuple]() -> Int:
 
 
 # Assumes that we have packed `A` and `B`, `C` also uses a packed layout.
-# @always_inline
+# @inline(.always)
 def matmul_ukern[
     elt: DType, width: Int, mr: Int, nr: Int, kr: Int, kf: Int
 ](
-    C: UnsafePointer[mut=True, Scalar[elt], _],
-    A: UnsafePointer[Scalar[elt], _],
-    B: UnsafePointer[Scalar[elt], _],
+    C: MutPointer[Scalar[elt], _],
+    A: ImmPointer[Scalar[elt], _],
+    B: ImmPointer[Scalar[elt], _],
     inc: Bool,
 ):
     comptime Align: Int = size_of[elt]() * width
@@ -336,44 +336,48 @@ def delete_idx(arg: List[Int], idx: Int) -> List[Int]:
     return res^
 
 
-@always_inline
+@inline(.always)
 def strided_load[
     elt: DType, //, W: Int, X: Int
-](p: UnsafePointer[Scalar[elt], _], i: Int) -> SIMD[elt, W]:
+](p: ImmPointer[Scalar[elt], _], i: Int) -> SIMD[elt, W]:
     comptime if X == 1:
         return p.load[width=W](i)
     else:
         return (p + i * X).unsafe_strided_load[width=W](X)
 
 
-@always_inline
+@inline(.always)
 def strided_store[
     elt: DType, W: Int, //, X: Int
-](p: UnsafePointer[mut=True, Scalar[elt], _], i: Int, x: SIMD[elt, W]):
+](p: MutPointer[Scalar[elt], _], i: Int, x: SIMD[elt, W]):
     comptime if X == 1:
         p.store(i, x)
     else:
         (p + i * X).unsafe_strided_store(x, X)
 
 
-@always_inline
+@inline(.always)
 def vectorize_flat[
     elt_a: DType,
     elt_b: DType,
     //,
-    f: def[width: Int, stride_a: Int, stride_b: Int](
-        UnsafePointer[mut=True, Scalar[elt_a], _],
-        UnsafePointer[Scalar[elt_b], _],
-        Int,
-    ) capturing -> None,
     simd_width: Int,
     unroll_factor: Int,
     shape: List[Int],
     stride_a: List[Int],
     stride_b: List[Int],
 ](
-    a: UnsafePointer[mut=True, Scalar[elt_a], _],
-    b: UnsafePointer[Scalar[elt_b], _],
+    a: MutPointer[Scalar[elt_a], _],
+    b: ImmPointer[Scalar[elt_b], _],
+    f: Some[
+        def[
+            width: Int, stride_a: Int, stride_b: Int
+        ](
+            MutPointer[Scalar[elt_a], _],
+            ImmPointer[Scalar[elt_b], _],
+            Int,
+        ) -> None
+    ],
 ):
     comptime assert len(shape) == len(stride_a)
     comptime assert len(shape) == len(stride_b)
@@ -384,8 +388,8 @@ def vectorize_flat[
         comptime int_stride_b: Int = stride_b[0]
         comptime size = shape[0]
 
-        @always_inline
-        def vf[width: Int](i: Int) {var a, var b}:
+        @inline(.always)
+        def vf[width: Int](i: Int) {var a, var b, imm f}:
             f[width, int_stride_a, int_stride_b](a, b, i)
 
         vectorize[
@@ -403,13 +407,12 @@ def vectorize_flat[
         comptime b_stride: Int = stride_b[max_idx]
         for i in range(loop_size):
             vectorize_flat[
-                f,
                 simd_width,
                 unroll_factor,
                 subset_shape,
                 subset_stride_a,
                 subset_stride_b,
-            ](a + i * a_stride, b + i * b_stride)
+            ](a + i * a_stride, b + i * b_stride, f)
 
 
 def tolist(x: IntTuple) -> List[Int]:
@@ -426,16 +429,20 @@ def vectorize_layout_tensor[
     elt_b: DType,
     layout_b: Layout,
     //,
-    f: def[width: Int, stride_a: Int, stride_b: Int](
-        UnsafePointer[mut=True, Scalar[elt_a], _],
-        UnsafePointer[Scalar[elt_b], _],
-        Int,
-    ) capturing -> None,
     simd_width: Int = max(simd_width_of[elt_a](), simd_width_of[elt_b]()),
     unroll_factor: Int = 4,
 ](
     a: LayoutTensor[elt_a, layout_a, MutAnyOrigin],
     b: LayoutTensor[elt_b, layout_b, MutAnyOrigin],
+    f: Some[
+        def[
+            width: Int, stride_a: Int, stride_b: Int
+        ](
+            MutPointer[Scalar[elt_a], _],
+            ImmPointer[Scalar[elt_b], _],
+            Int,
+        ) -> None
+    ],
 ):
     comptime expanded = expand_modes_alike(
         layout_a.shape, layout_a.stride, layout_b.shape, layout_b.stride
@@ -443,8 +450,8 @@ def vectorize_layout_tensor[
     comptime shape = tolist(expanded[0])
     comptime stride_a = tolist(expanded[1])
     comptime stride_b = tolist(expanded[2])
-    vectorize_flat[f, simd_width, unroll_factor, shape, stride_a, stride_b](
-        a.ptr, b.ptr
+    vectorize_flat[simd_width, unroll_factor, shape, stride_a, stride_b](
+        a.ptr, b.ptr, f
     )
 
 
@@ -460,19 +467,18 @@ def copy_to[
     dst: LayoutTensor[elt_dst, layout_dst, MutAnyOrigin],
     src: LayoutTensor[elt_src, layout_src, MutAnyOrigin],
 ):
-    @always_inline
-    @__parameter
+    @inline(.always)
     def copy[
         width: Int, stride_a: Int, stride_b: Int
     ](
-        dstp: UnsafePointer[mut=True, Scalar[elt_dst], _],
-        srcp: UnsafePointer[Scalar[elt_src], _],
+        dstp: MutPointer[Scalar[elt_dst], _],
+        srcp: ImmPointer[Scalar[elt_src], _],
         i: Int,
-    ):
+    ) {var}:
         var vsrc = strided_load[width, stride_b](srcp, i)
         strided_store[stride_a](dstp, i, vsrc.cast[elt_dst]())
 
-    vectorize_layout_tensor[copy, simd_width, unroll_factor](dst, src)
+    vectorize_layout_tensor[simd_width, unroll_factor](dst, src, copy)
 
 
 def check_approx_equal[
@@ -494,21 +500,20 @@ def check_approx_equal[
 ) raises:
     var fail: Bool = False
 
-    @always_inline
-    @__parameter
+    @inline(.always)
     def check[
         width: Int, stride_a: Int, stride_b: Int
     ](
-        pa: UnsafePointer[mut=True, Scalar[elt_dst], _],
-        pb: UnsafePointer[Scalar[elt_src], _],
+        pa: MutPointer[Scalar[elt_dst], _],
+        pb: ImmPointer[Scalar[elt_src], _],
         i: Int,
-    ):
+    ) {mut}:
         var va = strided_load[width, stride_a](pa, i).cast[cmp_elt]()
         var vb = strided_load[width, stride_b](pb, i).cast[cmp_elt]()
         if not all(isclose(va, vb, atol=atol, rtol=rtol, equal_nan=equal_nan)):
             fail = True
 
-    vectorize_layout_tensor[check, simd_width, unroll_factor](dst, src)
+    vectorize_layout_tensor[simd_width, unroll_factor](dst, src, check)
     assert_false(fail)
 
 
@@ -764,7 +769,7 @@ def matmulb2b[
         pd = pdk
 
 
-@always_inline
+@inline(.always)
 def bench_b2b[
     elt: DType,
     M: Int,
@@ -873,11 +878,11 @@ def bench_b2b[
     var Ctile = alloc_tensor[elt, layout_C]()
     var ABtile = alloc_tensor[elt, layout_AB]()
 
-    var Drm64 = alloc_tensor[DType.float64, Layout.row_major(M, N)]()
-    var Arm64 = alloc_tensor[DType.float64, Layout.row_major(M, K)]()
-    var Brm64 = alloc_tensor[DType.float64, Layout.row_major(K, L)]()
-    var Crm64 = alloc_tensor[DType.float64, Layout.row_major(L, N)]()
-    var ABrm64 = alloc_tensor[DType.float64, Layout.row_major(M, L)]()
+    var Drm64 = alloc_tensor[.float64, Layout.row_major(M, N)]()
+    var Arm64 = alloc_tensor[.float64, Layout.row_major(M, K)]()
+    var Brm64 = alloc_tensor[.float64, Layout.row_major(K, L)]()
+    var Crm64 = alloc_tensor[.float64, Layout.row_major(L, N)]()
+    var ABrm64 = alloc_tensor[.float64, Layout.row_major(M, L)]()
     comptime layout_A_size: Int = layout_A.size()
     comptime layout_B_size: Int = layout_B.size()
     comptime layout_C_size: Int = layout_C.size()
@@ -891,7 +896,7 @@ def bench_b2b[
     matmul_naive(ABrm64, Arm64, Brm64)
     matmul_naive(Drm64, ABrm64, Crm64)
 
-    @always_inline
+    @inline(.always)
     def test_tile_fn() {var}:
         matmul[elt, M, L, K, W, Mc, Nc, Kc, Mr, Nr, Kr](ABtile, Atile, Btile)
         matmul[elt, M, N, L, W, Mc, Nc, Kc, Mr, Nr, Kr](Dtile, ABtile, Ctile)
@@ -905,9 +910,9 @@ def bench_b2b[
     else:
         test_tile_fn()
 
-    check_approx_equal[DType.float32](Dtile, Drm64)
+    check_approx_equal[.float32](Dtile, Drm64)
 
-    @always_inline
+    @inline(.always)
     def test_tile_b2b_fn() {var}:
         matmulb2b[elt, M, N, K, L, W, Mc, Nc, Mr, Nr, Kr](
             Dtile, Atile, Btile, Ctileb2b
@@ -921,7 +926,7 @@ def bench_b2b[
     else:
         test_tile_b2b_fn()
 
-    check_approx_equal[DType.float32](Dtile, Drm64)
+    check_approx_equal[.float32](Dtile, Drm64)
 
     Atile.ptr.free()
     Btile.ptr.free()
@@ -961,7 +966,7 @@ def main() raises -> None:
     comptime Mc = 50 * Mr
 
     comptime Nc = 20 * Nr * W
-    comptime Stride = stride[DType.float32](W * Nr)
+    comptime Stride = stride[.float32](W * Nr)
     comptime Kc = Nc
     comptime assert Kc % Stride == 0
     comptime M = 4 * Mc

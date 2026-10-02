@@ -89,8 +89,38 @@ class EPConfig:
     dispatch_quant_config: QuantConfig | None = None
     """Quantization configuration used for dispatch token quantization."""
 
+    nvfp4_dyn_global_scales: bool = False
+    """Quantize each NVFP4 dispatch token against its own global scale.
+
+    Instead of the checkpoint's static input scale, the dispatch kernel first
+    reduces each token's absolute max, then quantizes the token against
+    ``2688 / rowmax``. The scale's BF16 inverse travels with the token, and
+    the dispatch outputs gain ``output_rowwise_scales`` -- one per received
+    row, directly after the block scales -- so a received row dequantizes as
+    ``fp4 * block_scale * rowwise_scale``. Requires NVFP4 dispatch.
+    """
+
     fused_shared_expert: bool = False
     """Whether to fuse the shared expert computation with the routed experts."""
+
+    fuse_ffn_combine_send: bool = False
+    """Fuse the combine send into the MoE FFN's own epilogue.
+
+    The FFN's down-projection epilogue scatters each finished row straight
+    into the owning rank's receive buffer and releases the arrival signal
+    itself, so the FFN's output is never staged in a local tensor: the
+    ``(max_recv_tokens, hidden_size)`` buffer the unfused chain has to
+    materialize -- the largest single activation in the MoE region -- is not
+    allocated. The caller drops its ``combine_async`` and goes straight to
+    the wait, which reads only the symmetric receive buffers.
+
+    Opt-in per model rather than always-on: the send pays for itself at
+    prefill-scale tokens per expert and is neutral below, so it is a recipe
+    choice rather than a universal default. Incompatible with
+    ``use_allreduce`` (no peer buffers to write) and with
+    ``fused_shared_expert`` (which keeps the shared expert's rows in the very
+    tensor being elided); both raise rather than degrade silently.
+    """
 
     use_allreduce: bool = False
     """Whether to use allreduce for the cross-device communication."""
@@ -205,6 +235,14 @@ class EPConfig:
                 raise ValueError(
                     f"Unsupported dispatch dtype: {self.dispatch_dtype}"
                 )
+
+        if self.nvfp4_dyn_global_scales and (
+            self.dispatch_quant_config is None
+            or not self.dispatch_quant_config.is_nvfp4
+        ):
+            raise ValueError(
+                "nvfp4_dyn_global_scales requires an NVFP4 dispatch_quant_config"
+            )
 
         if self.use_allreduce and self.n_nodes > 1:
             raise ValueError(

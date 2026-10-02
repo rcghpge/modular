@@ -96,7 +96,10 @@ def test_wan_arch_config_initialize_uses_transformer_component() -> None:
         ),
     )
 
-    config = WanArchConfig.initialize(pipeline_config=pipeline_config)
+    # WanArchConfig ignores the received length (metadata-only policy).
+    config = WanArchConfig.initialize(
+        pipeline_config=pipeline_config, max_seq_len=512
+    )
 
     assert config.pipeline_config is pipeline_config
 
@@ -187,8 +190,7 @@ def test_wan_tokenizer_uses_single_frame_video_latents_for_images(
     tokenizer._scheduler = SimpleNamespace(
         use_flow_sigmas=False,
         order=1,
-        retrieve_timesteps_and_sigmas=lambda image_seq_len,
-        num_inference_steps: (
+        retrieve_timesteps_and_sigmas=lambda image_seq_len, num_inference_steps: (
             np.array([1.0, 0.0], dtype=np.float32),
             np.array([1.0, 0.0], dtype=np.float32),
         ),

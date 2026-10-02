@@ -26,11 +26,23 @@ import threading
 import time
 import traceback
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import (
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    Sequence,
+)
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import aiohttp
+from max.serve._tool_call_validation import (
+    check_response_format_conformance,
+    response_format_schema_is_checkable,
+)
+from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from openai.types.chat.completion_create_params import ResponseFormat
 from pydantic import BaseModel
 from tqdm.asyncio import tqdm
@@ -49,7 +61,7 @@ from .datasets.types import (
     PixelGenerationImageOptions,
 )
 from .sse import iter_events
-from .utils import deadline_passed
+from .utils import deadline_passed, openai_bearer_auth_headers
 
 # 30 minute timeout per request session
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=30 * 60)
@@ -92,6 +104,10 @@ class BaseRequestFuncInput(ABC):
 
     model: str
     session_id: str | None
+    # kw_only so this can default without disturbing the required-field
+    # ordering of subclasses (RequestFuncInput adds several fields with no
+    # default after inheriting from this base).
+    cache_salt: str | None = field(default=None, kw_only=True)
 
     @abstractmethod
     def get_output_type(self) -> type[BaseRequestFuncOutput]:
@@ -110,6 +126,47 @@ def _apply_sampling_to_request_payload(
         payload["top_k"] = sampling.top_k
     if sampling.top_p is not None:
         payload["top_p"] = sampling.top_p
+
+
+# A ChatMessage after model_dump(): "role" plus "content", which is either a
+# plain string or a list of content blocks. Not a TypedDict because these
+# arrive from model_dump() as dict[str, Any], which would need a cast.
+SerializedChatMessage = MutableMapping[str, Any]
+
+
+def _attach_images_to_first_user_message(
+    messages: Sequence[SerializedChatMessage],
+    images: Sequence[OpenAIImage],
+) -> None:
+    """Attach images to the first user message, normalizing string content.
+
+    Neither "index 0" nor "content is a list" holds in general: a conversation
+    can lead with a system message, and datasets such as agentic-code pass
+    plain-string content straight through.
+
+    The drop paths below are a safety net, not a supported outcome. Image
+    augmentation skips prompts with no user message rather than counting
+    tokens for images it knows would be dropped here, so reaching a drop
+    means sampling and sending disagree about the prompt shape.
+    """
+    target = next((m for m in messages if m.get("role") == "user"), None)
+    if target is None:
+        logger.warning(
+            "Dropping %d image(s): the conversation has no user message.",
+            len(images),
+        )
+        return
+    content = target.get("content")
+    if isinstance(content, str):
+        target["content"] = [{"type": "text", "text": content}]
+    elif not isinstance(content, list):
+        logger.warning(
+            "Dropping %d image(s): unexpected content type %s.",
+            len(images),
+            type(content).__name__,
+        )
+        return
+    target["content"].extend(images)
 
 
 def _build_final_payload(
@@ -185,6 +242,51 @@ class BaseRequestFuncOutput:
         if self.request_submit_time is None:
             return None
         return self.request_submit_time + self.latency
+
+
+def tag_response_format_outcome(
+    output: BaseRequestFuncOutput, request_func_input: BaseRequestFuncInput
+) -> None:
+    """Record whether *output* was constrained, and whether it conformed.
+
+    Conformance is judged client-side, from the response text alone, so it
+    reports on any backend rather than only on one that exposes a metrics
+    endpoint.
+
+    The check is the same one the server runs for its own conformance log, so
+    the two numbers mean the same thing and can be compared. Failures here are
+    a property of the response, never of the benchmark: the checker is
+    documented as never raising.
+
+    A schema that does not compile leaves the request unjudged rather than
+    scoring it. The checker itself fails open, which is right for the server's
+    log but would be backwards here -- an unusable schema would report a
+    perfect conformance rate, and the metric reads healthiest exactly where it
+    measured nothing.
+    """
+    if not isinstance(output, RequestFuncOutput) or not isinstance(
+        request_func_input, RequestFuncInput
+    ):
+        return
+    response_format = request_func_input.response_format
+    output.response_format_constrained = response_format is not None
+    if response_format is None:
+        return
+    schema = cast(dict[str, Any], response_format).get("json_schema")
+    # json_object asks for any well-formed JSON object, which the permissive
+    # schema below expresses; a bare "text" format constrains nothing at all.
+    if isinstance(schema, dict):
+        schema = schema.get("schema")
+    elif cast(dict[str, Any], response_format).get("type") == "json_object":
+        schema = {"type": "object"}
+    else:
+        return
+    if not isinstance(schema, dict):
+        return
+    if not response_format_schema_is_checkable(schema):
+        return
+    result = check_response_format_conformance(output.generated_text, schema)
+    output.response_format_conformed = result.outcome == "valid"
 
 
 def mark_cancelled_if_past_deadline(
@@ -276,6 +378,20 @@ class RequestFuncOutput(BaseRequestFuncOutput):
     # retention can group/order turns within a session. None for single-turn.
     session_id: str | None = None
     turn_index: int | None = None
+    # Whether this request carried a response_format. Set by the driver, which
+    # is the last place holding both the input and the output -- metrics see
+    # only the outputs.
+    response_format_constrained: bool = False
+    # Whether the generated text satisfied that response_format. ``None`` when
+    # the request was unconstrained or produced nothing to judge.
+    response_format_conformed: bool | None = None
+    # Whether the request offered ``tools``, and whether the response contained
+    # a tool call. Offered but never called means the prompts gave the model no
+    # reason to use its tools: MAX Serve builds the tool grammar but never
+    # enforces it, so the run measures the definitions in the prompt and little
+    # of tool-call decoding.
+    tools_offered: bool = False
+    tool_call_returned: bool = False
 
 
 @dataclass
@@ -323,7 +439,6 @@ class RequestDriver(ABC):
         Returns:
             RequestFuncOutput containing the response data and metrics.
         """
-        pass
 
 
 class ProgressBarRequestDriver(RequestDriver):
@@ -502,6 +617,7 @@ class _ChatDelta(BaseModel):
     reasoning: str | None = None
     reasoning_content: str | None = None
     content: str | None = None
+    tool_calls: list[ChoiceDeltaToolCall] | None = None
 
 
 class _ChatChoice(BaseModel):
@@ -538,11 +654,38 @@ class _TRTLLMChunk(BaseModel):
 _ChunkT = TypeVar("_ChunkT", _ChatCompletionChunk, _CompletionChunk)
 
 
+def _extract_chat_delta_text(data: _ChatCompletionChunk) -> str:
+    """Extracts all generated text carried by a chat streaming chunk.
+
+    "reasoning" and "reasoning_content" are NOT official OpenAI fields.
+    Different model providers and serving frameworks may emit one or both to
+    stream chain-of-thought tokens separately from "content". These fields may
+    also be None in some chunks. We merge them here to preserve all streamed
+    text.
+
+    Tool-call fragments (function name and argument bytes) also count: a pure
+    tool-call turn has no ``content`` by design, and without this a successful
+    agentic response is misreported as "No text content captured".
+    """
+    delta = data.choices[0].delta
+    tool_call_text = "".join(
+        (tc.function.name or "") + (tc.function.arguments or "")
+        for tc in delta.tool_calls or []
+        if tc.function is not None
+    )
+    return (
+        (delta.reasoning or "")
+        + (delta.reasoning_content or "")
+        + (delta.content or "")
+        + tool_call_text
+    )
+
+
 async def _run_openai_stream_request(
     *,
     api_url: str,
     payload: dict[str, Any],
-    headers: dict[str, str],
+    headers: Mapping[str, str],
     prompt_len: int,
     chunk_type: type[_ChunkT],
     content_extractor: Callable[[_ChunkT], str],
@@ -593,15 +736,19 @@ async def _run_openai_stream_request(
                         # Skip content processing for chunks with no choices.
                         if not data.choices:
                             continue
+                        if (
+                            isinstance(data, _ChatCompletionChunk)
+                            and data.choices[0].delta.tool_calls
+                        ):
+                            output.tool_call_returned = True
 
                         # Only track timing for chunks with actual text
                         text_content = content_extractor(data)
                         if text_content:
                             # A response only counts as content-bearing once it
-                            # streams actual text. Chunks that carry only a role
-                            # or finish_reason, or that put text in a delta
-                            # field we don't model (e.g. a model whose output
-                            # lands outside reasoning/reasoning_content/content),
+                            # streams actual text or tool-call fragments.
+                            # Chunks that carry only a role or finish_reason,
+                            # or that put text in a delta field we don't model,
                             # leave this False so the request is flagged rather
                             # than recorded as a success with ttft=0 and no
                             # tokens.
@@ -628,9 +775,9 @@ async def _run_openai_stream_request(
                         output.error = (
                             "No text content captured from the response"
                             " (choices were present but"
-                            " delta.reasoning/reasoning_content/content were"
-                            " all empty). The model may stream text in a field"
-                            " this client does not parse."
+                            " delta.reasoning/reasoning_content/content/"
+                            "tool_calls were all empty). The model may stream"
+                            " text in a field this client does not parse."
                         )
                         output.success = False
                     else:
@@ -681,9 +828,7 @@ class OpenAICompletionsRequestDriver(RequestDriver):
         )
         payload = _build_final_payload(base_payload, self.extra_body)
 
-        headers = {
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
-        }
+        headers = openai_bearer_auth_headers()
 
         return await _run_openai_stream_request(
             api_url=api_url,
@@ -700,7 +845,7 @@ async def _run_atom_nonstream_chat_request(
     *,
     api_url: str,
     payload: dict[str, Any],
-    headers: dict[str, str],
+    headers: Mapping[str, str],
     prompt_len: int,
 ) -> RequestFuncOutput:
     """ATOM workaround: non-streaming chat request using server-reported timing.
@@ -740,10 +885,20 @@ async def _run_atom_nonstream_chat_request(
         return output
 
     # Merge reasoning/reasoning_content/content (ATOM puts <mm:think> in content).
+    # Tool-call name and argument text counts too, as in the streaming path: a
+    # pure tool-call response has no content by design.
+    tool_calls = message.get("tool_calls") or []
+    output.tool_call_returned = bool(tool_calls)
     generated_text = (
         (message.get("reasoning") or "")
         + (message.get("reasoning_content") or "")
         + (message.get("content") or "")
+        + "".join(
+            (fn.get("name") or "") + (fn.get("arguments") or "")
+            for tc in tool_calls
+            if isinstance(tc, dict)
+            and isinstance(fn := tc.get("function"), dict)
+        )
     )
     usage = body.get("usage") or {}
     ttft_s = usage.get("ttft_s")
@@ -835,18 +990,20 @@ class OpenAIChatCompletionsRequestDriver(RequestDriver):
             )
         if request_func_input.tools:
             base_payload["tools"] = request_func_input.tools
-        for img in request_func_input.images:
-            # TODO: Remove this type ignore
-            # (error: Value of type "object" is not indexable)
-            base_payload["messages"][0]["content"].append(img)  # type: ignore[index, union-attr]
+        if request_func_input.images:
+            _attach_images_to_first_user_message(
+                messages_data, request_func_input.images
+            )
         payload = _build_final_payload(base_payload, self.extra_body)
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+            **openai_bearer_auth_headers(),
         }
         if request_func_input.session_id:
             headers["X-Session-ID"] = request_func_input.session_id
+        if request_func_input.cache_salt:
+            headers["X-Cache-Salt"] = request_func_input.cache_salt
 
         if self.backend == "atom":
             # ATOM doesn't per-token-stream chat/completions: send non-streaming
@@ -854,33 +1011,24 @@ class OpenAIChatCompletionsRequestDriver(RequestDriver):
             nonstream_payload = dict(payload)
             nonstream_payload["stream"] = False
             nonstream_payload.pop("stream_options", None)
-            return await _run_atom_nonstream_chat_request(
+            output = await _run_atom_nonstream_chat_request(
                 api_url=api_url,
                 payload=nonstream_payload,
                 headers=headers,
                 prompt_len=request_func_input.prompt_len,
             )
-
-        return await _run_openai_stream_request(
-            api_url=api_url,
-            payload=payload,
-            headers=headers,
-            prompt_len=request_func_input.prompt_len,
-            # NOTE:
-            # "reasoning" and "reasoning_content" are NOT official OpenAI fields.
-            # Different model providers and serving frameworks may emit one or both
-            # to stream chain-of-thought tokens separately from "content". These
-            # fields may also be None in some chunks.
-            #
-            # We merge them here to preserve all streamed text.
-            chunk_type=_ChatCompletionChunk,
-            content_extractor=lambda data: (
-                (data.choices[0].delta.reasoning or "")
-                + (data.choices[0].delta.reasoning_content or "")
-                + (data.choices[0].delta.content or "")
-            ),
-            tokenizer=self.tokenizer,
-        )
+        else:
+            output = await _run_openai_stream_request(
+                api_url=api_url,
+                payload=payload,
+                headers=headers,
+                prompt_len=request_func_input.prompt_len,
+                chunk_type=_ChatCompletionChunk,
+                content_extractor=_extract_chat_delta_text,
+                tokenizer=self.tokenizer,
+            )
+        output.tools_offered = "tools" in payload
+        return output
 
 
 _GENERATED_MEDIA_TYPES = frozenset({"output_image", "output_video"})
@@ -994,7 +1142,7 @@ class OpenResponsesRequestDriver(RequestDriver):
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+            **openai_bearer_auth_headers(),
         }
 
         output = PixelGenerationRequestFuncOutput()
@@ -1085,7 +1233,7 @@ class SglangPixelGenerationRequestDriver(RequestDriver):
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+            **openai_bearer_auth_headers(),
         }
 
         output = PixelGenerationRequestFuncOutput()
@@ -1256,9 +1404,7 @@ class SglangVideoRequestDriver(RequestDriver):
         # image-to-video uploads the conditioning image, which requires
         # multipart/form-data; text-to-video stays JSON. Let aiohttp set the
         # multipart Content-Type (with boundary) for the form path.
-        headers = {
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
-        }
+        headers = dict(openai_bearer_auth_headers())
         if request_func_input.input_image_paths:
             post_kwargs: dict[str, Any] = {
                 "data": _build_sglang_video_form(request_func_input)
@@ -1405,7 +1551,7 @@ class VllmOmniPixelGenerationRequestDriver(RequestDriver):
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
+            **openai_bearer_auth_headers(),
         }
 
         output = PixelGenerationRequestFuncOutput()
@@ -1522,9 +1668,7 @@ class VllmOmniVideoRequestDriver(RequestDriver):
         else:
             post_data = payload
 
-        headers = {
-            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
-        }
+        headers = openai_bearer_auth_headers()
 
         output = PixelGenerationRequestFuncOutput()
         start = time.perf_counter()

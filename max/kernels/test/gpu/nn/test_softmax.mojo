@@ -14,9 +14,9 @@
 from std.math import isclose, isnan
 from std.utils.numerics import min_or_neg_inf
 from std.random import rand, random_float64, seed
-from std.sys import has_amd_gpu_accelerator, simd_width_of
+from std.sys import simd_width_of
 
-from std.gpu import WARP_SIZE
+from max.gpu import WARP_SIZE
 from max.gpu.host import DeviceContext, get_gpu_target
 from layout import (
     Coord,
@@ -31,7 +31,6 @@ from layout import (
 )
 from layout._utils import ManagedLayoutTensor
 from nn.softmax import (
-    _online_softmax_kernel,
     _softmax_cpu,
     _softmax_gpu,
     softmax_with_temperature,
@@ -172,7 +171,7 @@ def test_gpu_softmax_half[test_type: DType](ctx: DeviceContext) raises:
     for i in range(length):
         # TODO use randn when GCC Float64 -> Float16 truncation is fixed #33932
         in_host_test_ptr[i] = (
-            random_float64(1, 10).cast[DType.float32]().cast[test_type]()
+            random_float64(1, 10).cast[.float32]().cast[test_type]()
         )
         in_host_ref_ptr[i] = in_host_test_ptr[i].cast[ref_type]()
 
@@ -400,7 +399,7 @@ def test_gpu_softmax_large_vocab[test_type: DType](ctx: DeviceContext) raises:
     var in_host_test = in_test.tensor[update=False]()
     var in_host_ref = in_ref.tensor[update=False]()
     for i in range(length):
-        var v = random_float64(-3, 3).cast[DType.float32]().cast[test_type]()
+        var v = random_float64(-3, 3).cast[.float32]().cast[test_type]()
         in_host_test.ptr[i] = v
         in_host_ref.ptr[i] = v.cast[ref_type]()
 
@@ -576,97 +575,6 @@ def test_gpu_softmax_masked_split[test_type: DType](ctx: DeviceContext) raises:
     _ = in_device
 
 
-def test_gpu_online_softmax[
-    WM: Int, WN: Int, transpose_fragments: Bool
-](ctx: DeviceContext) raises:
-    print("== test_online_softmax")
-
-    comptime type = DType.float32
-    comptime rank = 3
-    comptime seqlen = 256
-
-    # For testing purpose, call online softmax twice and each time updates half
-    # seq_len. Limit to WM rows and arrange warps in N dim.
-    comptime shape = IndexList[rank](1, WM, seqlen)
-    comptime num_warps = seqlen // (2 * WN)
-    comptime num_threads = num_warps * WARP_SIZE
-
-    var in_host_ptr = ctx.enqueue_create_host_buffer[type](
-        shape.flattened_length()
-    )
-    var out_host_ptr = ctx.enqueue_create_host_buffer[type](
-        shape.flattened_length()
-    )
-    var out_ref_ptr = ctx.enqueue_create_host_buffer[type](
-        shape.flattened_length()
-    )
-
-    comptime layout_dyn = Layout.row_major[rank]()
-    var in_host = LayoutTensor[type, layout_dyn](
-        in_host_ptr, RuntimeLayout[layout_dyn].row_major(shape)
-    )
-    var out_ref = LayoutTensor[type, layout_dyn](
-        out_ref_ptr, RuntimeLayout[layout_dyn].row_major(shape)
-    )
-
-    var in_device_ptr = ctx.enqueue_create_buffer[type](
-        shape.flattened_length()
-    )
-    var out_device_ptr = ctx.enqueue_create_buffer[type](
-        shape.flattened_length()
-    )
-
-    var in_device = LayoutTensor[type, Layout.row_major(shape[1], shape[2])](
-        in_device_ptr
-    )
-    var out_device = LayoutTensor[type, Layout.row_major(shape[1], shape[2])](
-        out_device_ptr
-    )
-
-    rand[type](in_host_ptr.as_span())
-
-    ctx.enqueue_copy(in_device_ptr, in_host_ptr)
-    comptime kernel = _online_softmax_kernel[
-        WM,
-        WN,
-        DType.float32,
-        Layout.row_major(shape[1], shape[2]),
-        transpose_fragments,
-    ]
-
-    ctx.enqueue_function[kernel](
-        in_device,
-        out_device,
-        grid_dim=1,
-        block_dim=num_threads,
-    )
-
-    @__parameter
-    @__copy_capture(in_host)
-    def input_fn_host[
-        _simd_width: Int
-    ](coords: Coord) -> SIMD[type, _simd_width]:
-        return in_host.load[width=_simd_width](coord_to_index_list(coords))
-
-    _softmax_cpu[type, 1, rank, origin_of()._mlir_origin, input_fn_host](
-        Coord(shape),
-        TileTensor(out_ref.ptr, row_major(Coord(shape))),
-        rank - 1,
-    )
-
-    ctx.synchronize()
-    ctx.enqueue_copy(out_host_ptr, out_device_ptr)
-    ctx.synchronize()
-
-    for i in range(shape.flattened_length()):
-        assert_almost_equal(
-            out_host_ptr[i], out_ref_ptr[i], atol=1e-4, rtol=1e-5
-        )
-
-    _ = in_device_ptr
-    _ = out_device_ptr
-
-
 def test_gpu_logsoftmax(ctx: DeviceContext) raises:
     print("== test_gpu_logsoftmax")
 
@@ -817,7 +725,7 @@ def test_gpu_softmax_temperature[per_row: Bool](ctx: DeviceContext) raises:
             ctx,
             in_tt,
             out_tt,
-            temperature_arr=temp_tt.as_unsafe_any_origin().as_immut(),
+            temperature_arr=temp_tt.as_unsafe_any_origin().as_imm(),
         )
     else:
         var temperature = Scalar[type](0.7)
@@ -882,30 +790,16 @@ def test_gpu_softmax_temperature[per_row: Bool](ctx: DeviceContext) raises:
 def main() raises:
     with DeviceContext() as ctx:
         test_gpu_softmax(ctx)
-        test_gpu_softmax_half[DType.bfloat16](ctx)
-        test_gpu_softmax_half[DType.float16](ctx)
-        test_gpu_softmax_warp_short_axis[DType.bfloat16, IndexList[2](12, 5)](
-            ctx
-        )
-        test_gpu_softmax_warp_short_axis[DType.float16, IndexList[2](12, 5)](
-            ctx
-        )
-        test_gpu_softmax_verify_shapes[DType.bfloat16](ctx)
-        test_gpu_softmax_verify_shapes[DType.float32](ctx)
-        test_gpu_softmax_large_vocab[DType.bfloat16](ctx)
-        test_gpu_softmax_large_vocab[DType.float32](ctx)
-        test_gpu_softmax_masked_split[DType.float32](ctx)
-        test_gpu_softmax_masked_split[DType.bfloat16](ctx)
+        test_gpu_softmax_half[.bfloat16](ctx)
+        test_gpu_softmax_half[.float16](ctx)
+        test_gpu_softmax_warp_short_axis[.bfloat16, IndexList[2](12, 5)](ctx)
+        test_gpu_softmax_warp_short_axis[.float16, IndexList[2](12, 5)](ctx)
+        test_gpu_softmax_verify_shapes[.bfloat16](ctx)
+        test_gpu_softmax_verify_shapes[.float32](ctx)
+        test_gpu_softmax_large_vocab[.bfloat16](ctx)
+        test_gpu_softmax_large_vocab[.float32](ctx)
+        test_gpu_softmax_masked_split[.float32](ctx)
+        test_gpu_softmax_masked_split[.bfloat16](ctx)
         test_gpu_logsoftmax(ctx)
         test_gpu_softmax_temperature[per_row=False](ctx)
         test_gpu_softmax_temperature[per_row=True](ctx)
-        # Test general online-softmax, communicating data via shared memory.
-
-        test_gpu_online_softmax[32, 32, False](ctx)
-        # Test covering entire row within one warp
-        test_gpu_online_softmax[16, 128, False](ctx)
-
-        comptime if has_amd_gpu_accelerator():
-            test_gpu_online_softmax[32, 32, True](ctx)
-            # Test covering entire row within one warp
-            test_gpu_online_softmax[16, 128, True](ctx)

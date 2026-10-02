@@ -13,7 +13,7 @@
 
 from std.collections import OptionalReg
 from std.math import gcd
-from std.sys.info import _current_target, simd_width_of
+from std.sys.info import CompilationTarget, simd_width_of
 
 from max.algorithm.functional import elementwise
 from std.complex import ComplexSIMD
@@ -22,7 +22,9 @@ from max.gpu.host.info import is_cpu
 from layout import (
     Coord,
     CoordLike,
+    DefaultEngine,
     RowMajorLayout,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     coord,
@@ -33,7 +35,7 @@ from nn._ragged_utils import get_batch_from_row_offsets
 from std.utils import IndexList
 
 
-@always_inline
+@inline(.always)
 def _rope[
     dtype: DType,
     freq_dtype: DType,
@@ -48,12 +50,12 @@ def _rope[
 # In GGUF, weights are organized as real, imag, real, imag, real, imag, …,
 # while in safetensors, the data is stored as real, …, real, imag, …, imag.
 # This function return the indices for the real and imaginary part.
-@always_inline
+@inline(.always)
 def get_safetensors_idx(head_dim_idx: Int, head_size: Int) -> Tuple[Int, Int]:
     return (head_dim_idx // 2, head_dim_idx // 2 + head_size // 2)
 
 
-@always_inline
+@inline(.always)
 def get_identity_rope_coeff[width: Int, dtype: DType]() -> SIMD[dtype, width]:
     # Creates a SIMD vector with real parts set to 1 and imaginary parts to
     # 0, effectively making the RoPE transformation an identity operation.
@@ -62,7 +64,7 @@ def get_identity_rope_coeff[width: Int, dtype: DType]() -> SIMD[dtype, width]:
     )
 
 
-@always_inline
+@inline(.always)
 def apply_rope[
     dtype: DType,
     freq_dtype: DType,
@@ -115,7 +117,7 @@ def apply_rope[
         output_fn[alignment=alignment](pos_im, output_im)
 
 
-@always_inline
+@inline(.always)
 def rope_ragged[
     dtype: DType,
     freq_dtype: DType,
@@ -127,6 +129,7 @@ def rope_ragged[
     & def[width: SIMDLength, alignment: Int](
         idx: IndexList[3], val: SIMD[dtype, width]
     ) -> None,
+    rope_first: Bool = False,
     mrope_types: TypeList[Trait=CoordLike, ...] = TypeList.of[
         Trait=CoordLike
     ](),
@@ -134,15 +137,22 @@ def rope_ragged[
     PositionIdsLayoutType: TensorLayout = RowMajorLayout[
         *Coord[Int64, Int64].element_types
     ],
+    # `position_ids` is optional, so its engine cannot be inferred.
+    PositionIdsEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     x: TileTensor[dtype, ...],
-    input_row_offsets: TileTensor[DType.uint32, ...],
-    start_pos: TileTensor[DType.uint32, ...],
+    input_row_offsets: TileTensor[.uint32, ...],
+    start_pos: TileTensor[.uint32, ...],
     freqs_cis: TileTensor[freq_dtype, ...],
     context: DeviceContext,
     output_fn: OutputFn,
     position_ids: OptionalReg[
-        TileTensor[DType.uint32, PositionIdsLayoutType, ImmutAnyOrigin]
+        TileTensor[
+            .uint32,
+            PositionIdsLayoutType,
+            ImmutAnyOrigin,
+            Engine=PositionIdsEngine,
+        ]
     ] = None,
 ) raises where (
     input_row_offsets.flat_rank == 1
@@ -156,6 +166,20 @@ def rope_ragged[
     comptime rope_dim = Int(freqs_cis.static_shape[1])
     comptime unroped_dim = head_size - rope_dim
     comptime has_nope = unroped_dim > 0
+    # `rope_first` puts the rotated columns at the front of each head (the
+    # DSA Indexer layout, where Q and K are chunked as `pe, nope`) rather than
+    # at the back (the MLA layout). It only changes which side of the head the
+    # passthrough columns sit on, so it also moves where `freqs_cis` starts
+    # being indexed.
+    comptime freq_col_offset = 0 if rope_first else unroped_dim
+    # Non-interleaved RoPE pairs column j with j + head_size // 2
+    # (`get_safetensors_idx`), a rotate-half split spanning the whole head.
+    # That only lines up with the roped region when the region is the
+    # trailing half, so a leading roped region would rotate roped columns
+    # against passthrough ones.
+    comptime assert interleaved or not (
+        rope_first and has_nope
+    ), "rope_ragged: rope_first partial RoPE requires interleaved layout"
 
     # Extract the position_ids raw pointer + row stride into primitive locals so
     # they can be `@__copy_capture`'d into the device kernel closure. Capturing
@@ -182,7 +206,7 @@ def rope_ragged[
         pos_ids_ptr = rebind[PtrType](start_pos.ptr.as_imm())
         pos_ids_stride = 0
 
-    @always_inline
+    @inline(.always)
     def rope_fn[width: Int, alignment: Int = 1](idx_arg: Coord) {var}:
         comptime assert idx_arg.rank == 3, "Invalid rank passed to rope kernel"
         comptime assert freqs_cis.flat_rank >= 2
@@ -231,7 +255,11 @@ def rope_ragged[
 
             # WARN assumes head_size % simd_width == 0
             # guarded by constrained statement below
-            var is_unroped_region = head_dim_idx < unroped_dim
+            var is_unroped_region: Bool
+            comptime if rope_first:
+                is_unroped_region = head_dim_idx >= rope_dim
+            else:
+                is_unroped_region = head_dim_idx < unroped_dim
 
             var f_c_temp: SIMD[freq_dtype, width]
 
@@ -243,7 +271,7 @@ def rope_ragged[
                         (
                             Scalar[freqs_cis.linear_idx_type](position_ids_idx),
                             Scalar[freqs_cis.linear_idx_type](
-                                head_dim_idx - unroped_dim
+                                head_dim_idx - freq_col_offset
                             ),
                         )
                     )
@@ -259,10 +287,11 @@ def rope_ragged[
                 alignment=alignment,
             ](x, idx, f_c_temp, output_fn)
 
-    comptime compile_target = _current_target() if is_cpu[
-        target
-    ]() else get_gpu_target()
-    comptime target_simd_width = simd_width_of[dtype, target=compile_target]()
+    comptime target_simd_width = (
+        simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
+            target
+        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+    )
     comptime kernel_simd_width = gcd(target_simd_width, rope_dim)
 
     comptime if mrope_section:

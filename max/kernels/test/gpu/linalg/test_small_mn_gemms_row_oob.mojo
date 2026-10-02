@@ -147,7 +147,7 @@ def run_case[
     var c_tt = TileTensor(c_dev, row_major(Coord(Int64(M), Idx[N])))
 
     matmul_dispatch_sm100[transpose_b=True](
-        c_tt, a_tt.as_immut(), b_tt.as_immut(), ctx
+        c_tt, a_tt.as_imm(), b_tt.as_imm(), ctx
     )
 
     # (a) reference: cuBLAS on-device for the logical [M, N] region. cuBLAS is
@@ -160,9 +160,9 @@ def run_case[
     var c_ref_tt = TileTensor(c_ref_dev, row_major(Coord(Int64(M), Idx[N])))
     vendor_blas.matmul(
         ctx,
-        c_ref_tt.to_layout_tensor(),
-        a_tt.to_layout_tensor(),
-        b_tt.to_layout_tensor(),
+        c_ref_tt,
+        a_tt,
+        b_tt,
         c_row_major=True,
         transpose_b=True,
     )
@@ -231,7 +231,7 @@ def main() raises:
             # gemm_mma_cpasync_kernel). A smaller table value would undersize
             # the guard, so a regressed kernel could fault past it instead of
             # tripping the sentinel check.
-            comptime if config.kernel_kind == GEMVAlgorithm.GEMM_MMA_CPASYNC:
+            comptime if config.kernel_kind == GEMVAlgorithm.GemmMmaCpasync:
                 comptime assert config.tile_m == 16, (
                     "GEMM_MMA_CPASYNC entry must have tile_m=16 (the kernel's"
                     " hard-wired row tile); this test sizes its guard region"

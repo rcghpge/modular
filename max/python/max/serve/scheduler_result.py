@@ -44,6 +44,15 @@ class SchedulerResult(msgspec.Struct, Generic[PipelineOutputType]):
     """User-facing message for a request the scheduler failed without
     executing; ``None`` otherwise."""
 
+    batch_id: int | None = None
+    """Monotonic forward-pass counter stamped by the scheduler.
+
+    Identifies which GPU forward pass produced this result, acting as a join
+    key between the OTel ``max.phase.*`` spans and — when
+    ``kernel_trace_level`` is ``batch`` or above — the ``max.batch`` spans.
+    ``None`` for cancelled operations.
+    """
+
     @classmethod
     def cancelled(cls) -> SchedulerResult[PipelineOutputType]:
         """Creates a ``SchedulerResult`` representing a cancelled operation.
@@ -67,14 +76,19 @@ class SchedulerResult(msgspec.Struct, Generic[PipelineOutputType]):
 
     @classmethod
     def create(
-        cls, result: PipelineOutputType
+        cls,
+        result: PipelineOutputType,
+        batch_id: int | None = None,
     ) -> SchedulerResult[PipelineOutputType]:
         """Creates a ``SchedulerResult`` wrapping a pipeline output.
 
         Args:
             result: The pipeline output data.
+            batch_id: Monotonic forward-pass counter for this batch.
 
         Returns:
             A :class:`SchedulerResult` reflecting the output's completion state.
         """
-        return SchedulerResult(is_done=result.is_done, result=result)
+        return SchedulerResult(
+            is_done=result.is_done, result=result, batch_id=batch_id
+        )

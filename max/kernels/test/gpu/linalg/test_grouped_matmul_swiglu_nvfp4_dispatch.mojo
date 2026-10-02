@@ -49,13 +49,17 @@ Test path:
 
 Assert byte-equal: O_test == O_ref and S_test == S_ref (match_bf16=True);
 or rtol/atol-bounded fp32 dequant compare (match_bf16=False).
+
+Cases built `with_row_scales` pass the same bf16 per-row input scales to both
+paths, so the chain applies them in the BF16 matmul epilogue and the unified
+dispatch applies them before its fused SwiGLU.
 """
 from std.math import align_up, ceildiv
 from max.gpu.host import DeviceBuffer, DeviceContext
 from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
-from std.memory import alloc
-from std.random import random_ui64, seed, rand
-from std.builtin.simd import _convert_f32_to_float8_scalar
+from std.memory import Pointer, alloc
+from std.random import random_float64, random_ui64, seed, rand
+from std.simd import _convert_f32_to_float8_scalar
 
 from layout import (
     Coord,
@@ -77,6 +81,9 @@ from linalg.fp4_utils import (
     set_scale_factor,
 )
 from linalg import grouped_matmul_swiglu_nvfp4_dispatch
+from linalg.matmul.gpu.sm100_structured.structured_kernels.row_scales import (
+    RealRowScales,
+)
 from shmem.ep_comm import fused_silu_nvfp4_interleaved_kernel
 
 
@@ -110,17 +117,17 @@ struct _SharedB(Movable):
     N-axis permutation only run a single time instead of 17 times.
     """
 
-    var b_perm: DeviceBuffer[DType.uint8]
+    var b_perm: DeviceBuffer[.uint8]
     var b_scales_perm: DeviceBuffer[NVFP4_SF_DTYPE]
-    var expert_scales: DeviceBuffer[DType.float32]
-    var input_scales: DeviceBuffer[DType.float32]
+    var expert_scales: DeviceBuffer[.float32]
+    var input_scales: DeviceBuffer[.float32]
 
     def __init__(
         out self,
-        var b_perm: DeviceBuffer[DType.uint8],
+        var b_perm: DeviceBuffer[.uint8],
         var b_scales_perm: DeviceBuffer[NVFP4_SF_DTYPE],
-        var expert_scales: DeviceBuffer[DType.float32],
-        var input_scales: DeviceBuffer[DType.float32],
+        var expert_scales: DeviceBuffer[.float32],
+        var input_scales: DeviceBuffer[.float32],
     ):
         self.b_perm = b_perm^
         self.b_scales_perm = b_scales_perm^
@@ -170,14 +177,14 @@ def _build_shared_b[
     var b_scales_host = TileTensor(b_scales_host_ptr, b_scales_shape)
     var b_scales_perm_host = TileTensor(b_scales_perm_host_ptr, b_scales_shape)
 
-    var expert_scales_host_ptr = alloc[Scalar[DType.float32]](num_experts)
-    var input_scales_host_ptr = alloc[Scalar[DType.float32]](num_experts)
+    var expert_scales_host_ptr = alloc[Float32](num_experts)
+    var input_scales_host_ptr = alloc[Float32](num_experts)
     for i in range(num_experts):
         expert_scales_host_ptr[i] = 1.0 + Float32(i + 1) / Float32(num_experts)
         input_scales_host_ptr[i] = 1.0 + Float32(i + 1) * 0.01
 
     rand(b_host_ptr, b_size, min=0, max=255)
-    rand(b_scales_host._storage, b_scales_host.num_elements())
+    rand(b_scales_host.as_span())
     for i in range(b_scales_perm_host.num_elements()):
         b_scales_perm_host._storage[i] = Scalar[scales_dtype](0.0)
 
@@ -271,12 +278,8 @@ def _build_shared_b[
     var b_scales_perm_device = ctx.enqueue_create_buffer[scales_dtype](
         b_scales_total
     )
-    var expert_scales_device = ctx.enqueue_create_buffer[DType.float32](
-        num_experts
-    )
-    var input_scales_device = ctx.enqueue_create_buffer[DType.float32](
-        num_experts
-    )
+    var expert_scales_device = ctx.enqueue_create_buffer[.float32](num_experts)
+    var input_scales_device = ctx.enqueue_create_buffer[.float32](num_experts)
 
     ctx.enqueue_copy(b_perm_device, b_perm_host_ptr)
     ctx.enqueue_copy(b_scales_perm_device, b_scales_perm_host_ptr)
@@ -304,6 +307,7 @@ def _test_swiglu_dispatch[
     N: Int,
     K: Int,
     match_bf16: Bool = True,
+    with_row_scales: Bool = False,
 ](
     num_tokens_by_expert: List[Int],
     expert_ids: List[Int],
@@ -395,25 +399,21 @@ def _test_swiglu_dispatch[
     # ---- Per-expert offsets / IDs sized for the comptime upper bound
     # `num_experts`. Tail slots `[num_active_experts, num_experts)` are
     # padded `(0 tokens, -1 id)` and the kernel skips `expert_id < 0`.
-    var a_offsets_host_ptr = alloc[Scalar[DType.uint32]](num_experts + 1)
-    var a_scale_offsets_ptr = alloc[Scalar[DType.uint32]](num_experts)
-    var expert_ids_host_ptr = alloc[Scalar[DType.int32]](num_experts)
+    var a_offsets_host_ptr = alloc[UInt32](num_experts + 1)
+    var a_scale_offsets_ptr = alloc[UInt32](num_experts)
+    var expert_ids_host_ptr = alloc[Int32](num_experts)
 
-    var a_offsets_device = ctx.enqueue_create_buffer[DType.uint32](
-        num_experts + 1
-    )
+    var a_offsets_device = ctx.enqueue_create_buffer[.uint32](num_experts + 1)
     var a_offsets_tensor = TileTensor(
         a_offsets_device,
         row_major(Coord(Idx[num_experts + 1])),
     )
-    var a_scale_offsets_device = ctx.enqueue_create_buffer[DType.uint32](
-        num_experts
-    )
+    var a_scale_offsets_device = ctx.enqueue_create_buffer[.uint32](num_experts)
     var a_scale_offsets_tensor = TileTensor(
         a_scale_offsets_device,
         row_major(Coord(Idx[num_experts])),
     )
-    var expert_ids_device = ctx.enqueue_create_buffer[DType.int32](num_experts)
+    var expert_ids_device = ctx.enqueue_create_buffer[.int32](num_experts)
     var expert_ids_tensor = TileTensor(
         expert_ids_device,
         row_major(Coord(Idx[num_experts])),
@@ -493,7 +493,7 @@ def _test_swiglu_dispatch[
     var S_test_host_ptr = alloc[Scalar[scales_dtype]](S_size)
 
     # ---- Init A-side data (per-test) ----
-    rand(a_host._storage, a_host.num_elements(), min=0, max=255)
+    rand(a_host.as_span(), min=0, max=255)
 
     for i in range(a_scales_host.num_elements()):
         a_scales_host._storage[i] = Scalar[scales_dtype](0.0)
@@ -515,10 +515,18 @@ def _test_swiglu_dispatch[
                 if idx1 < K:
                     var scale_value = _convert_f32_to_float8_scalar[
                         scales_dtype
-                    ]((1 << random_ui64(0, 2)).cast[DType.float32]())
+                    ]((1 << random_ui64(0, 2)).cast[.float32]())
                     set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
                         a_scales_tensor_host, idx0, idx1, scale_value
                     )
+
+    # Per-row input scales, drawn after the A data so the A stream matches
+    # the cases built without them.
+    var row_scales_host_ptr = alloc[BFloat16](max(M, 1))
+    for m in range(M):
+        row_scales_host_ptr[m] = random_float64(0.25, 4.0).cast[.bfloat16]()
+    var row_scales_device = ctx.enqueue_create_buffer[.bfloat16](max(M, 1))
+    ctx.enqueue_copy(row_scales_device, row_scales_host_ptr)
 
     # ---- Copy A-side data to device ----
     ctx.enqueue_copy(a_device, a_host_ptr)
@@ -582,26 +590,49 @@ def _test_swiglu_dispatch[
     # ============================================================
     # REF: manual chain (matmul -> fused_silu_nvfp4_interleaved).
     # ============================================================
-    grouped_matmul_nvfp4_dispatch[transpose_b=transpose_b](
-        c_ref_tensor,
-        a_tensor,
-        b_perm_tensor,
-        a_scales_tt,
-        b_scales_perm_tt,
-        a_offsets_tensor,
-        a_scale_offsets_tensor,
-        expert_ids_tensor,
-        expert_scales_tt,
-        num_active_experts,
-        total_num_tokens,
-        ctx,
-    )
+    comptime if with_row_scales:
+        grouped_matmul_nvfp4_dispatch[
+            transpose_b=transpose_b, RowScalesT=RealRowScales
+        ](
+            c_ref_tensor,
+            a_tensor,
+            b_perm_tensor,
+            a_scales_tt,
+            b_scales_perm_tt,
+            a_offsets_tensor,
+            a_scale_offsets_tensor,
+            expert_ids_tensor,
+            expert_scales_tt,
+            num_active_experts,
+            total_num_tokens,
+            ctx,
+            a_row_scales=RealRowScales(
+                rebind[Pointer[BFloat16, ImmutAnyOrigin]](
+                    row_scales_device.unsafe_ptr()
+                )
+            ),
+        )
+    else:
+        grouped_matmul_nvfp4_dispatch[transpose_b=transpose_b](
+            c_ref_tensor,
+            a_tensor,
+            b_perm_tensor,
+            a_scales_tt,
+            b_scales_perm_tt,
+            a_offsets_tensor,
+            a_scale_offsets_tensor,
+            expert_ids_tensor,
+            expert_scales_tt,
+            num_active_experts,
+            total_num_tokens,
+            ctx,
+        )
 
     comptime hw_info = ctx.default_device_info
-    var c_ref_immut = c_ref_tensor.as_immut()
-    var a_offsets_immut = a_offsets_tensor.as_immut()
-    var a_scale_offsets_immut = a_scale_offsets_tensor.as_immut()
-    var input_scales_immut = input_scales_tensor.as_immut()
+    var c_ref_immut = c_ref_tensor.as_imm()
+    var a_offsets_immut = a_offsets_tensor.as_imm()
+    var a_scale_offsets_immut = a_scale_offsets_tensor.as_imm()
+    var input_scales_immut = input_scales_tensor.as_imm()
 
     comptime fused_silu_ref = fused_silu_nvfp4_interleaved_kernel[
         fp4_dtype,
@@ -635,25 +666,52 @@ def _test_swiglu_dispatch[
     # cooperative loop on prefill (`mma_bn >= 64`); both are exercised
     # without a separate build.
     # ============================================================
-    grouped_matmul_swiglu_nvfp4_dispatch[
-        transpose_b=transpose_b,
-        match_bf16=match_bf16,
-    ](
-        O_test_tensor,
-        S_test_tensor,
-        a_tensor,
-        b_perm_tensor,
-        a_scales_tt,
-        b_scales_perm_tt,
-        a_offsets_tensor,
-        a_scale_offsets_tensor,
-        expert_ids_tensor,
-        expert_scales_tt,
-        input_scales_tensor,
-        num_active_experts,
-        total_num_tokens,
-        ctx,
-    )
+    comptime if with_row_scales:
+        grouped_matmul_swiglu_nvfp4_dispatch[
+            transpose_b=transpose_b,
+            match_bf16=match_bf16,
+            RowScalesT=RealRowScales,
+        ](
+            O_test_tensor,
+            S_test_tensor,
+            a_tensor,
+            b_perm_tensor,
+            a_scales_tt,
+            b_scales_perm_tt,
+            a_offsets_tensor,
+            a_scale_offsets_tensor,
+            expert_ids_tensor,
+            expert_scales_tt,
+            input_scales_tensor,
+            num_active_experts,
+            total_num_tokens,
+            ctx,
+            a_row_scales=RealRowScales(
+                rebind[Pointer[BFloat16, ImmutAnyOrigin]](
+                    row_scales_device.unsafe_ptr()
+                )
+            ),
+        )
+    else:
+        grouped_matmul_swiglu_nvfp4_dispatch[
+            transpose_b=transpose_b,
+            match_bf16=match_bf16,
+        ](
+            O_test_tensor,
+            S_test_tensor,
+            a_tensor,
+            b_perm_tensor,
+            a_scales_tt,
+            b_scales_perm_tt,
+            a_offsets_tensor,
+            a_scale_offsets_tensor,
+            expert_ids_tensor,
+            expert_scales_tt,
+            input_scales_tensor,
+            num_active_experts,
+            total_num_tokens,
+            ctx,
+        )
     ctx.synchronize()
 
     # ---- Copy outputs back ----
@@ -775,9 +833,8 @@ def _test_swiglu_dispatch[
                     (ref_hi_dq, test_hi_dq),
                 )
                 comptime for k in range(2):
-                    var pair = rebind[type_of(nibble_pairs[0])](nibble_pairs[k])
-                    var r = pair[0]
-                    var t = pair[1]
+                    var r = nibble_pairs[k][0]
+                    var t = nibble_pairs[k][1]
                     var ad = abs(r - t)
                     if ad > max_abs_diff:
                         max_abs_diff = ad
@@ -828,6 +885,8 @@ def _test_swiglu_dispatch[
     S_test_host_ptr.free()
     sf_garbage_ref_ptr.free()
     sf_garbage_test_ptr.free()
+    row_scales_host_ptr.free()
+    _ = row_scales_device^
     _ = a_device^
     _ = c_ref_device^
     _ = a_scales_device^
@@ -1041,6 +1100,69 @@ def main() raises:
         _test_swiglu_dispatch[NUM_E, N, K, match_bf16=False](
             _make_ragged(4096, 85, 48),
             _make_range(49),
+            shared,
+            ctx,
+        )
+
+        # ====================================================================
+        # Per-row input scales on both paths, byte-exact: decode (in-place
+        # epilogue) and prefill (cooperative), with prime and ragged token
+        # counts, masked slots, and per-expert SF tail padding.
+        # ====================================================================
+        print("\n=== Row scales (match_bf16=True) ===")
+
+        print("  rs decode: 4 experts, [3,7,1,5]")
+        _test_swiglu_dispatch[NUM_E, N, K, with_row_scales=True](
+            [3, 7, 1, 5],
+            [2, 0, 5, 1],
+            shared,
+            ctx,
+        )
+
+        print("  rs decode-B8: 9 experts, [8] + 8*[1]")
+        _test_swiglu_dispatch[NUM_E, N, K, with_row_scales=True](
+            _make_ragged(8, 1, 8),
+            _make_range(9),
+            shared,
+            ctx,
+        )
+
+        print("  rs masked: 5 experts, [4,0,1,1,1], expert_ids=[0,-1,1,2,3]")
+        _test_swiglu_dispatch[NUM_E, N, K, with_row_scales=True](
+            [4, 0, 1, 1, 1],
+            [0, -1, 1, 2, 3],
+            shared,
+            ctx,
+        )
+
+        print("  rs small prefill: 49 experts, 49 × [16] tokens")
+        _test_swiglu_dispatch[NUM_E, N, K, with_row_scales=True](
+            _make_uniform(16, 49),
+            _make_range(49),
+            shared,
+            ctx,
+        )
+
+        print("  rs large prefill: 49 experts, 49 × [64] tokens")
+        _test_swiglu_dispatch[NUM_E, N, K, with_row_scales=True](
+            _make_uniform(64, 49),
+            _make_range(49),
+            shared,
+            ctx,
+        )
+
+        print("  rs tail-pad: 3 experts, [129,50,1] tokens")
+        _test_swiglu_dispatch[NUM_E, N, K, with_row_scales=True](
+            [129, 50, 1],
+            [0, 1, 2],
+            shared,
+            ctx,
+        )
+
+        print("  rs prefill primes: 4 experts, [97,13,211,61]")
+        _test_swiglu_dispatch[NUM_E, N, K, with_row_scales=True](
+            [97, 13, 211, 61],
+            [3, 0, 7, 1],
             shared,
             ctx,
         )

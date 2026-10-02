@@ -18,7 +18,9 @@ from max._core import __version__
 from max._core.driver import (
     CompletionFlag,
     DeviceEvent,
+    HostHazardError,
     LaunchTraceEntry,
+    Usage,
     __unsafe_pack_py_host_func,
     begin_launch_trace,
     enable_all_peer_access,
@@ -37,20 +39,17 @@ from max._core_types.driver import DLPackArray
 
 from .buffer import (
     Buffer,
-    DevicePinnedBuffer,
-    _unsafe_alloc_fast_pinned_buffer,
-    _unsafe_free_fast_pinned_buffer,
+    _ChunkedStagingRegion,
     batch_inplace_copy,
     copy_pinned_to_destinations,
     load_max_buffer,
 )
 from .driver import (
     CPU,
-    NPU,
     Accelerator,
     Device,
+    DeviceQueue,
     DeviceSpec,
-    DeviceStream,
     accelerator_api,
     accelerator_architecture_name,
     accelerator_count,
@@ -60,9 +59,6 @@ from .driver import (
     load_devices,
     scan_available_devices,
 )
-
-del driver  # type: ignore
-del buffer  # type: ignore
 
 
 @contextlib.contextmanager
@@ -99,17 +95,17 @@ def launch_trace() -> Iterator[list[LaunchTraceEntry]]:
 
 __all__ = [
     "CPU",
-    "NPU",
     "Accelerator",
     "Buffer",
     "CompletionFlag",
     "DLPackArray",
     "Device",
     "DeviceEvent",
-    "DevicePinnedBuffer",
+    "DeviceQueue",
     "DeviceSpec",
-    "DeviceStream",
+    "HostHazardError",
     "LaunchTraceEntry",
+    "Usage",
     "accelerator_api",
     "accelerator_architecture_name",
     "accelerator_count",

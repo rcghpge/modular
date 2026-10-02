@@ -161,6 +161,7 @@ to the `torch_debug` directory:
 class Gemma3MLP(nn.Module):
     def forward(self, x):
         import os
+
         os.makedirs("torch_debug", exist_ok=True)
 
         torch.save(x, "torch_debug/mlp_input.pt")
@@ -266,7 +267,7 @@ Check that weights are loaded and transformed correctly.
 ### FMA contraction differences
 
 MAX enables FMA (fused multiply-add) contraction by default via the LLVM
-`contract` fastmath flag (set in `KGEN/lib/KGENToLLVM/LLVMLoweringUtils.h`).
+`contract` fastmath flag (set in `Mojo/lib/KGENToLLVM/LLVMLoweringUtils.h`).
 This allows the compiler to fuse a `fmul + fadd` into a single FMA instruction,
 which rounds once instead of twice.
 
@@ -341,20 +342,18 @@ session.set_debug_print_options(style=PrintStyle.COMPACT)
 # Full tensor contents to console (with configurable decimal precision)
 session.set_debug_print_options(
     style=PrintStyle.FULL,
-    precision=8  # digits of precision (default: 6)
+    precision=8,  # digits of precision (default: 6)
 )
 
 # Save as MAX checkpoint files (recommended for compare_tensors)
 session.set_debug_print_options(
-    style=PrintStyle.BINARY_MAX_CHECKPOINT,
-    output_directory="/tmp/max_output"
+    style=PrintStyle.BINARY_MAX_CHECKPOINT, output_directory="/tmp/max_output"
 )
 
 # Raw binary buffer (loadable with numpy.frombuffer, but requires
 # you to specify dtype and shape when loading)
 session.set_debug_print_options(
-    style=PrintStyle.BINARY,
-    output_directory="/tmp/max_output"
+    style=PrintStyle.BINARY, output_directory="/tmp/max_output"
 )
 ```
 

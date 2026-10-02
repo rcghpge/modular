@@ -164,10 +164,10 @@ def _test_impl[
     )
     var b_scales_tensor = TileTensor(b_scales_device, b_scales_shape)
 
-    rand(a_host._storage, a_host.num_elements(), min=0, max=255)
-    rand(b_host._storage, b_host.num_elements(), min=0, max=255)
-    rand(a_scales_host._storage, a_scales_host.num_elements())
-    rand(b_scales_host._storage, b_scales_host.num_elements())
+    rand(a_host.as_span(), min=0, max=255)
+    rand(b_host.as_span(), min=0, max=255)
+    rand(a_scales_host.as_span())
+    rand(b_scales_host.as_span())
 
     for idx0 in range(align_up(Int(m.value()), SF_MN_GROUP_SIZE)):
         for idx1 in range(
@@ -195,12 +195,6 @@ def _test_impl[
     ctx.enqueue_copy(b_device, b_host_ptr)
     ctx.enqueue_copy(a_scales_device, a_scales_host_ptr)
     ctx.enqueue_copy(b_scales_device, b_scales_host_ptr)
-
-    var a_lt = a_tensor.to_layout_tensor()
-    var b_lt = b_tensor.to_layout_tensor()
-    var a_scales_lt = a_scales_tensor.to_layout_tensor()
-    var b_scales_lt = b_scales_tensor.to_layout_tensor()
-    var c_ref_tensor_lt = c_ref_tensor.to_layout_tensor()
 
     comptime matmul_config = BlockScaledMatmulConfig[
         a_type, b_type, c_type, scales_dtype, scales_dtype, transpose_b
@@ -237,11 +231,11 @@ def _test_impl[
 
     vendor_blas.matmul(
         ctx,
-        c_ref_tensor_lt.as_unsafe_any_origin(),
-        a_lt,
-        b_lt,
-        a_scales=a_scales_lt.as_imm().as_unsafe_any_origin(),
-        b_scales=b_scales_lt.as_imm().as_unsafe_any_origin(),
+        c_ref_tensor,
+        a_tensor,
+        b_tensor,
+        a_scales=a_scales_tensor,
+        b_scales=b_scales_tensor,
         transpose_b=transpose_b,
         c_row_major=True,
         alpha=alpha,
@@ -284,8 +278,7 @@ def run_matmul_sm100_block_scaled_fp4_2sm_prefetch_suite[
         comptime BK = (swizzle.bytes() // size_of[dtype]())
         comptime MMA_K = 32
 
-        @__parameter
-        @always_inline
+        @inline(.always)
         def run[
             MType: CoordLike,
             NType: CoordLike,

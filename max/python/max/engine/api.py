@@ -23,10 +23,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum, IntEnum, auto
 from inspect import Parameter, Signature
 from pathlib import Path
-from typing import Any, BinaryIO, Literal, cast
-from unittest import mock
+from typing import Any, BinaryIO, ClassVar, Literal, NoReturn, cast
 
 import numpy as np
+from max import _validation_hooks
 from max._core.engine import CompiledModels as _CompiledModels
 from max._core.engine import DebugConfig as DebugConfig
 from max._core.engine import InferenceSession as _InferenceSession
@@ -142,6 +142,7 @@ def _Model_execute(self: Model, *args: InputType) -> list[Buffer]:
             )
 
         input_impls.append(buffer)
+    _validation_hooks.mark_used(input_impls)
     return self._execute_device_tensors(input_impls)
 
 
@@ -283,7 +284,7 @@ def _Model_release_captured_graph(
 
 Model.execute = _Model_execute  # type: ignore[method-assign]
 Model.__call__ = _Model_call  # type: ignore[method-assign]
-Model.__repr__ = _Model_repr  # type: ignore[method-assign]
+Model.__repr__ = _Model_repr  # type: ignore[assignment, method-assign]
 Model.signature = property(_Model_signature)  # type: ignore[assignment]
 Model.capture = _Model_capture  # type: ignore[method-assign]
 Model.replay = _Model_replay  # type: ignore[method-assign]
@@ -308,8 +309,8 @@ def _TensorSpec_repr(self: TensorSpec) -> str:
     )
 
 
-TensorSpec.__str__ = _TensorSpec_str  # type: ignore[method-assign]
-TensorSpec.__repr__ = _TensorSpec_repr  # type: ignore[method-assign]
+TensorSpec.__str__ = _TensorSpec_str  # type: ignore[assignment, method-assign]
+TensorSpec.__repr__ = _TensorSpec_repr  # type: ignore[assignment, method-assign]
 
 
 def _is_torch_tensor(obj: Any) -> bool:
@@ -385,6 +386,17 @@ class LogLevel(str, Enum):
     CRITICAL = "critical"
 
 
+class CompilationStopped(RuntimeError):
+    """Raised by :meth:`InferenceSession.compile` when ``pre_jit`` stopped it.
+
+    With :attr:`DebugConfig.pre_jit` set, the graph compiler writes the Mojo
+    for the graph into :attr:`DebugConfig.ir_output_dir` and stops there, so
+    there is no compiled artifact to return. This is the requested outcome,
+    not a failure; callers that only wanted the emitted Mojo catch it and
+    carry on.
+    """
+
+
 class CompiledModel:
     """A compiled model artifact, ready for initialization with weights.
 
@@ -438,6 +450,74 @@ class CompiledModel:
         if (exc := self._compiled.exception()) is not None:
             raise exc
         self._compiled.result().export_mef(str(path))
+
+
+class CompileOnlyExecutionError(RuntimeError):
+    """A model compiled under virtual devices was asked to do something real."""
+
+
+class CompileOnlyModel:
+    """Stands in for a :class:`Model` compiled under virtual devices.
+
+    A virtual device compiles for hardware that is not attached, so the compile
+    half of a load finishes and the initialize half has nothing to do. Callers
+    doing exactly that -- cross-compiling, benchmarking a compile -- want the
+    load to return, so it returns this: an object that carries what was compiled
+    and raises :class:`CompileOnlyExecutionError` from everything that would
+    need the device. A stand-in that answered those calls with placeholder
+    values would move the failure to whatever consumed them.
+    """
+
+    def __init__(self, name: str, compiled: CompiledModel) -> None:
+        self.name = name
+        self.compiled = compiled
+
+    def __repr__(self) -> str:
+        return f"CompileOnlyModel({self.name!r})"
+
+    def _refuse(self, what: str) -> NoReturn:
+        """Raises, naming what was asked of a model that was never initialized.
+
+        Args:
+            what: The member the caller reached for.
+
+        Raises:
+            CompileOnlyExecutionError: Always.
+        """
+        raise CompileOnlyExecutionError(
+            f"{what} needs the device that graph {self.name!r} was compiled "
+            "for, and it was compiled under a virtual device, which stands in "
+            "for hardware that is not attached. Initialize the compiled "
+            "artifact on a real device to execute it."
+        )
+
+    def execute(self, *args: object, **kwargs: object) -> NoReturn:
+        """Raises: a compile-only stand-in has nothing to execute on."""
+        self._refuse("execute")
+
+    # Explicit, unlike the refusals below, so that this stays callable: a
+    # caller testing `callable(model)` gets the same answer a Model gives.
+    __call__ = execute
+
+    def __getattr__(self, name: str) -> NoReturn:
+        """Refuses any :class:`Model` member this stand-in does not carry.
+
+        Every member is refused rather than enumerated, because a load returns
+        this where a :class:`Model` is expected: one left out answers with an
+        :class:`AttributeError`, which reads as a broken caller rather than as
+        the absence of the device, and a member added to :class:`Model` later
+        would be left out silently.
+
+        Args:
+            name: The member the caller reached for.
+
+        Raises:
+            CompileOnlyExecutionError: If :class:`Model` carries ``name``.
+            AttributeError: If it does not, as any object would.
+        """
+        if hasattr(Model, name):
+            self._refuse(name)
+        raise AttributeError(name)
 
 
 def read(source: str | os.PathLike[str] | BinaryIO) -> CompiledModel:
@@ -534,10 +614,11 @@ class InferenceSession:
         custom_extensions: The extensions to load for the model. Supports
             paths to a ``.mojoc`` custom ops library or a ``.mojo`` source file.
         precompiled_mefs: A directory of compiled-graph artifacts written by an
-            earlier session's ``export_mefs``. Every graph this session loads is
-            initialized from its artifact instead of being compiled, which lets
-            the compiling and the executing run happen on different machines.
-            Raises if a graph does not match the artifact recorded for it.
+            earlier session's ``export_mefs``, or several of them -- a large set
+            of graphs is often split across producers. Every graph this session
+            loads is initialized from its artifact instead of being compiled,
+            which lets the compiling and the executing run happen on different
+            machines. Raises if a graph has no artifact.
         export_mefs: A directory to write a compiled-graph artifact into for
             every graph this session loads, alongside a manifest describing
             them. Pass the same directory as another session's
@@ -550,6 +631,21 @@ class InferenceSession:
     # ``session.debug`` return the same underlying object, and any
     # ``MODULAR_DEBUG`` env-var parsing happens exactly once (at import).
     debug: DebugConfig = _InferenceSession.debug
+    default_mef_store: ClassVar[MefStore | None] = None
+    """The store a session consults when given neither ``precompiled_mefs``
+    nor ``export_mefs``.
+
+    For a caller that does not construct the session itself -- a test harness
+    running code that builds its own -- and so has nowhere to pass one. An
+    explicit ``precompiled_mefs``/``export_mefs`` always wins, and this is read
+    when a graph is compiled rather than when the session is constructed, so
+    installing it after a session exists still governs that session.
+
+    A process wants exactly one store object here: :meth:`MefStore.write_manifest`
+    writes the entries of the store it is called on, so artifacts exported
+    through a store that was swapped out go unnamed by the manifest that
+    follows.
+    """
 
     def __init__(
         self,
@@ -557,7 +653,7 @@ class InferenceSession:
         num_threads: int | None = None,
         *,
         custom_extensions: CustomExtensionsType | None = None,
-        precompiled_mefs: str | Path | None = None,
+        precompiled_mefs: str | Path | Iterable[str | Path] | None = None,
         export_mefs: str | Path | None = None,
     ) -> None:
         if precompiled_mefs is not None and export_mefs is not None:
@@ -635,6 +731,17 @@ class InferenceSession:
         # Read the uninit-read check from the max-debug.uninitialized-read-check
         # Config key.
         if _InferenceSession.debug.uninitialized_read_check:
+            # The mode picks what a match does: "abort" stops at the first
+            # one, "report" prints it and keeps running so a single run
+            # enumerates every offending load, which matters when a run is
+            # expensive enough that iterating one site at a time is not
+            # affordable.
+            mode = _InferenceSession.debug.uninitialized_read_mode or "abort"
+            if mode not in ("abort", "report"):
+                raise ValueError(
+                    f"Invalid uninitialized read mode ({mode}). Please use one"
+                    " of: abort, report"
+                )
             # Enable debug allocator poison
             existing = os.environ.get("MODULAR_DEBUG_DEVICE_ALLOCATOR", "")
             if existing:
@@ -647,7 +754,10 @@ class InferenceSession:
                     "uninitialized-poison"
                 )
             # Enable compile-time checks
-            self._set_mojo_define("MOJO_STDLIB_SIMD_UNINIT_CHECK", "true")
+            self._set_mojo_define(
+                "MOJO_STDLIB_SIMD_UNINIT_CHECK",
+                "report" if mode == "report" else "true",
+            )
 
     def __repr__(self) -> str:
         if self.num_threads:
@@ -763,29 +873,84 @@ class InferenceSession:
         Raises:
             RuntimeError: If the path provided is invalid.
         """
-        # Reuse or produce artifacts when the session was constructed to, so a
-        # caller need not hold an accelerator to compile. See
-        # `_precompiled_mefs`.
-        store = self._mef_store
-        if store is not None and isinstance(model, Graph):
-            if store.exporting:
-                compiled = self.compile(
-                    model,
-                    custom_extensions=custom_extensions,
-                    tile_based_fusion=tile_based_fusion,
-                )
-                compiled.export_mef(store.claim_export(model))
-                store.write_manifest()
-            else:
-                compiled = self.compile(store.claim_import(model))
-            return self.init_all(compiled, weights_registry=weights_registry)
+        compiled = self.compile_reusing_mefs(
+            model,
+            custom_extensions=custom_extensions,
+            tile_based_fusion=tile_based_fusion,
+        )
+        return self.init_all(compiled, weights_registry=weights_registry)
+
+    def compile_reusing_mefs(
+        self,
+        model: str | Path | Module | Graph,
+        *,
+        custom_extensions: CustomExtensionsType | None = None,
+        tile_based_fusion: bool = False,
+    ) -> CompiledModel:
+        """Compiles ``model``, or reuses an artifact if the session has a store.
+
+        The compiling half of :meth:`load_all`, split out for callers that trace
+        a graph and initialize it themselves rather than handing it over -- a
+        :class:`~max.experimental.nn.Module`, for one, which keeps the compiled
+        artifact and the input/output plumbing it derived alongside it. Without
+        this they would call :meth:`compile` and silently bypass the session's
+        ``precompiled_mefs``/``export_mefs``.
+
+        Behaves exactly like :meth:`compile` on a session with no store at all,
+        and only :class:`~max.graph.Graph` models participate: the store
+        identifies an artifact by a graph's name and signature. A session
+        constructed with neither consults the process-wide store installed with
+        :attr:`default_mef_store`, if one is installed; an explicit
+        ``precompiled_mefs``/``export_mefs`` always wins.
+
+        Args:
+            model: As :meth:`compile`.
+            custom_extensions: As :meth:`compile`. Ignored when reusing an
+                artifact, which is already compiled.
+            tile_based_fusion: As :meth:`compile`. Ignored when reusing an
+                artifact.
+
+        Returns:
+            The compiled artifact, ready for :meth:`init` or :meth:`init_all`.
+
+        Raises:
+            RuntimeError: If reusing and no recorded artifact matches
+                ``model``'s name and signature.
+        """
+        # See `_precompiled_mefs` for why a caller would want this: it lets the
+        # compile happen somewhere that holds no accelerator.
+        store = (
+            self._mef_store
+            if self._mef_store is not None
+            else InferenceSession.default_mef_store
+        )
+        if store is None or not isinstance(model, Graph):
+            return self.compile(
+                model,
+                custom_extensions=custom_extensions,
+                tile_based_fusion=tile_based_fusion,
+            )
+
+        if not store.exporting:
+            artifact = store.claim_import(model)
+            # A store with nothing to say about this graph declines it, and
+            # the compile happens here as it would with no store at all.
+            if artifact is not None:
+                return self.compile(artifact)
+            return self.compile(
+                model,
+                custom_extensions=custom_extensions,
+                tile_based_fusion=tile_based_fusion,
+            )
 
         compiled = self.compile(
             model,
             custom_extensions=custom_extensions,
             tile_based_fusion=tile_based_fusion,
         )
-        return self.init_all(compiled, weights_registry=weights_registry)
+        compiled.export_mef(store.claim_export(model))
+        store.write_manifest()
+        return compiled
 
     def compile_async(
         self,
@@ -934,6 +1099,8 @@ class InferenceSession:
         exception = handle.exception()
         if exception is None:
             return compiled
+        if self.debug.pre_jit and "pre-jit" in str(exception):
+            raise CompilationStopped(str(exception)) from exception
         # compile_async surfaces the compile failure here rather than from the
         # compile call, so the Graph/Module wrapping that _compile_module
         # applies to synchronous setup errors is repeated here for the async
@@ -1002,8 +1169,9 @@ class InferenceSession:
         if is_virtual_device_mode():
             # Virtual device mode can't actually initialize the model, but
             # users (eg. cross compilation, benchmarking) want it to not fail.
-            # Return one mock per top-level graph in the artifact so callers
-            # that key by graph name still work.
+            # Return one stand-in per top-level graph in the artifact so callers
+            # that key by graph name still work; the stand-in refuses anything
+            # that would need the device rather than pretending to have one.
             if not compiled._graph_names:
                 raise ValueError(
                     "Cannot initialize a path-compiled artifact in "
@@ -1011,7 +1179,11 @@ class InferenceSession:
                     "an MLIR module to inspect. Initialize on a real device "
                     "instead, or compile from a Graph/Module."
                 )
-            return {name: mock.Mock(Model) for name in compiled._graph_names}
+            # Deliberately not a Model: the point is that it cannot execute.
+            return {
+                name: cast(Model, CompileOnlyModel(name, compiled))
+                for name in compiled._graph_names
+            }
 
         weights_registry_real: Mapping[str, DLPackArray] = (
             weights_registry or {}
@@ -1286,7 +1458,7 @@ class InferenceSession:
         Be aware that :meth:`gpu_profiling` overrides the
         ``MODULAR_ENABLE_PROFILING`` environment variable if also used.
 
-        Learn more in `GPU profiling with Nsight Systems </max/gpu-system-profiling>`_.
+        Learn more in `GPU profiling with Nsight Systems </gpu-system-profiling>`_.
 
         .. note::
 

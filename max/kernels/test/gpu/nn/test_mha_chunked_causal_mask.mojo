@@ -56,7 +56,9 @@ def build_ChunkedCausalMask[
                     var masked = chunk_masked or causal_masked
                     mask.store(
                         Index(b, h, q_idx, k_idx),
-                        Scalar[mask.dtype](0 if not masked else MASK_VALUE),
+                        Scalar[mask.dtype](MASK_VALUE) if masked else Scalar[
+                            mask.dtype
+                        ](0),
                     )
 
 
@@ -256,7 +258,7 @@ def test_attention[
                 ]()
                 var actual = flash_output_ptr[
                     d + depth * (h + s * num_heads)
-                ].cast[DType.float64]()
+                ].cast[.float64]()
                 if not isclose(actual, expect, atol=1e-5, rtol=rtol):
                     var rerr = abs((actual - expect) / expect)
                     print(h, s, d, actual, expect, rerr)
@@ -273,7 +275,7 @@ def test_attention_suite(ctx: DeviceContext) raises:
     comptime types = (DType.bfloat16, DType.float32)
 
     comptime for type_idx in range(len(types)):
-        comptime type = rebind[DType](types[type_idx])
+        comptime type = types[type_idx]
         # context encoding
         test_attention[
             type,
@@ -385,14 +387,14 @@ def test_mask_apply() raises:
     comptime local_window_size = 4
     var mask = ChunkedCausalMask[local_window_size]()
 
-    var score_vec = SIMD[DType.float32, 4](0.0)
+    var score_vec = SIMD[.float32, 4](0.0)
     score_vec[0] = 1.0
     score_vec[1] = 2.0
     score_vec[2] = 3.0
     score_vec[3] = 4.0
 
     comptime simd_width = 4
-    comptime SIMD_T = SIMD[DType.float32, simd_width]
+    comptime SIMD_T = SIMD[.float32, simd_width]
     comptime UNMASKED_INPUT = SIMD_T(0.0)
     var inf_vec = SIMD_T(MASK_VALUE)
 

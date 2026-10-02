@@ -55,7 +55,7 @@ leading to the final output.
 from std.math import exp
 
 from max.gpu.host import DeviceContext
-from std.gpu import block_idx
+from max.gpu import block_idx
 from max.gpu.sync import barrier
 from layout import Layout, LayoutTensor
 from layout.math import max, sum
@@ -131,7 +131,7 @@ struct FusedAttentionAlias:
         )
 
 
-@always_inline
+@inline(.always)
 def matmul_b_transpose(
     lhs: LayoutTensor,
     rhs: LayoutTensor,
@@ -171,7 +171,7 @@ def matmul_b_transpose(
 # $$$
 
 
-@always_inline
+@inline(.always)
 def fused_attention_cpu[
     BN: Int, BD: Int
 ](
@@ -225,7 +225,7 @@ def fused_attention_cpu[
             O.tile[BN, BD](tile_n, tile_d).copy_from(O_i)
 
 
-@always_inline
+@inline(.always)
 def matmul[
     target: StaticString,
     transpose_b: Bool = False,
@@ -262,7 +262,7 @@ def matmul[
             res.dtype,
             Layout.row_major(M, N),
             MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ].stack_allocation()
 
         comptime BK = 8

@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.sys.info import _current_target, simd_width_of
+from std.sys.info import CompilationTarget, simd_width_of
 from std.math.uutils import ufloordiv
 
 from max.algorithm.functional import elementwise
@@ -23,9 +23,9 @@ from layout import Coord, Idx, coord_to_index_list
 from std.utils import IndexList
 
 
-@always_inline
+@inline(.always)
 def get_batch_from_row_offsets(
-    row_offsets: LayoutTensor[mut=False, DType.uint32, ...], tok_idx: Int
+    row_offsets: LayoutTensor[mut=False, .uint32, ...], tok_idx: Int
 ) -> Int:
     """Calculate the batch_idx for the given flattened token_idx using row_offsets.
     """
@@ -48,9 +48,9 @@ def get_batch_from_row_offsets(
     return low
 
 
-@always_inline
+@inline(.always)
 def get_batch_from_row_offsets(
-    row_offsets: TileTensor[mut=False, DType.uint32, ...], tok_idx: Int
+    row_offsets: TileTensor[mut=False, .uint32, ...], tok_idx: Int
 ) -> Int:
     """Calculate the batch_idx for the given flattened token_idx using row_offsets.
     """
@@ -75,9 +75,9 @@ def get_batch_from_row_offsets(
     return low
 
 
-@always_inline
+@inline(.always)
 def get_batch_and_token_idx_from_row_offsets(
-    row_offsets: TileTensor[mut=False, DType.uint32, ...], tok_idx: Int
+    row_offsets: TileTensor[mut=False, .uint32, ...], tok_idx: Int
 ) -> Tuple[Int, Int]:
     """Calculate the batch_idx for the given flattened token_idx using row_offsets.
     """
@@ -94,11 +94,11 @@ def merge_ragged_tensors[
     target: StaticString = "cpu",
 ](
     c: TileTensor[mut=True, dtype, ...],
-    c_row_offsets: TileTensor[mut=True, DType.uint32, ...],
+    c_row_offsets: TileTensor[mut=True, .uint32, ...],
     a: TileTensor[mut=False, dtype, ...],
-    a_row_offsets: TileTensor[mut=False, DType.uint32, ...],
+    a_row_offsets: TileTensor[mut=False, .uint32, ...],
     b: TileTensor[mut=False, dtype, ...],
-    b_row_offsets: TileTensor[mut=False, DType.uint32, ...],
+    b_row_offsets: TileTensor[mut=False, .uint32, ...],
     ctx: DeviceContext,
 ) raises:
     comptime assert c.flat_rank == rank, "c.flat_rank must equal rank"
@@ -114,7 +114,7 @@ def merge_ragged_tensors[
         b_row_offsets.flat_rank == 1
     ), "b_row_offsets.flat_rank must be 1"
 
-    @always_inline
+    @inline(.always)
     def merge_fn[width: Int, alignment: Int = 1](idx: Coord) {var}:
         comptime assert idx.rank == rank, "Invalid rank passed to the kernel"
 
@@ -142,17 +142,6 @@ def merge_ragged_tensors[
             dst_row_idx += Int(a_row_offsets[batch_id + 1])
 
         dst_idx[0] = dst_row_idx
-
-        # Compute flat offsets for pointer load/store (Horner form).
-        # Inner dimensions are the same across a, b, and c.
-        @always_inline
-        @__parameter
-        def _flat_offset[r: Int](index: IndexList[r]) -> Int:
-            comptime assert r == rank
-            var flat = index[0]
-            comptime for i in range(1, rank):
-                flat = flat * Int(c.dim[i]()) + index[i]
-            return flat
 
         # The elementwise function takes care of handling the scenario where
         # tensors' last dimension is not multiple of simdwidth. It will call
@@ -182,10 +171,11 @@ def merge_ragged_tensors[
                 var total_size = Int(a.dim[0]()) + Int(b.dim[0]())
                 c_row_offsets[batch_id + 1] = UInt32(total_size)
 
-    comptime compile_target = _current_target() if is_cpu[
-        target
-    ]() else get_gpu_target()
-    comptime target_simd_width = simd_width_of[dtype, target=compile_target]()
+    comptime target_simd_width = (
+        simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
+            target
+        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+    )
     comptime kernel_simd_width = 1 if rank == 1 else target_simd_width
 
     elementwise[
@@ -202,7 +192,7 @@ def eagle_prefill_shift_tokens[
 ](
     output: TileTensor[mut=True, dtype, ...],
     tokens: TileTensor[mut=False, dtype, ...],
-    offsets: TileTensor[mut=False, DType.uint32, ...],
+    offsets: TileTensor[mut=False, .uint32, ...],
     shift_next_tokens: TileTensor[mut=False, dtype, ...],
     ctx: DeviceContext,
 ) raises:
@@ -212,7 +202,7 @@ def eagle_prefill_shift_tokens[
     comptime assert offsets.flat_rank == 1
     comptime assert shift_next_tokens.flat_rank == 1
 
-    @always_inline
+    @inline(.always)
     def shift_fn[width: Int, alignment: Int = 1](idx: Coord) {var}:
         comptime assert idx.rank == 1
 

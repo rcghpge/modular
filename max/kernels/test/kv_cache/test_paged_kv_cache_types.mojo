@@ -17,6 +17,7 @@ from kv_cache.types import (
     PagedKVCacheCollection,
 )
 from layout import (
+    DefaultEngine,
     IntTuple,
     Layout,
     LayoutTensor,
@@ -25,6 +26,7 @@ from layout import (
     Coord,
 )
 from std.memory import alloc
+from std.sys import size_of
 from std.testing import assert_true
 
 from std.utils.coord import dyn_coord
@@ -51,12 +53,12 @@ def do_test[
     )
 
     var blocks_ptr = List(length=shape.flattened_length(), fill=Float32(0))
-    var blocks = LayoutTensor[DType.float32, Layout.row_major[6]()](
+    var blocks = LayoutTensor[.float32, Layout.row_major[6]()](
         blocks_ptr, RuntimeLayout[Layout.row_major[6]()].row_major(shape)
     )
     comptime layout_1d = Layout(UNKNOWN_VALUE)
     var cache_lengths_ptr = List(length=batch_size, fill=UInt32(0))
-    var cache_lengths = LayoutTensor[DType.uint32, layout_1d](
+    var cache_lengths = LayoutTensor[.uint32, layout_1d](
         cache_lengths_ptr,
         RuntimeLayout[layout_1d].row_major(IndexList[1](batch_size)),
     )
@@ -64,7 +66,7 @@ def do_test[
     var lookup_table_ptr = List(
         length=batch_size * max_num_blocks, fill=UInt32(0)
     )
-    var lookup_table = LayoutTensor[DType.uint32, layout_2d](
+    var lookup_table = LayoutTensor[.uint32, layout_2d](
         lookup_table_ptr,
         RuntimeLayout[layout_2d].row_major(
             IndexList[2](batch_size, max_num_blocks)
@@ -151,9 +153,13 @@ def test_paged_kv_cache_stride_is_unknown() raises:
         kv_params,
         16,
         MutUntrackedOrigin,
+        DefaultEngine[element_width=1],
         ImmUntrackedOrigin,
+        DefaultEngine[element_width=1],
         ImmUntrackedOrigin,
+        DefaultEngine[element_width=1],
         MutUntrackedOrigin,
+        DefaultEngine[element_width=1],
     ]
 
     # Verify stride[0] is UNKNOWN_VALUE
@@ -232,7 +238,7 @@ def test_paged_kv_cache_offset_correctness() raises:
     for i in range(total_elems):
         blocks_ptr[i] = Float32(i)
 
-    var blocks = LayoutTensor[DType.float32, Layout.row_major[6]()](
+    var blocks = LayoutTensor[.float32, Layout.row_major[6]()](
         blocks_ptr, RuntimeLayout[Layout.row_major[6]()].row_major(shape_6d)
     )
 
@@ -240,7 +246,7 @@ def test_paged_kv_cache_offset_correctness() raises:
     comptime batch_size = 1
     var cache_lengths_ptr = List(length=batch_size, fill=UInt32(0))
     comptime layout_1d = Layout(UNKNOWN_VALUE)
-    var cache_lengths = LayoutTensor[DType.uint32, layout_1d](
+    var cache_lengths = LayoutTensor[.uint32, layout_1d](
         cache_lengths_ptr,
         RuntimeLayout[layout_1d].row_major(IndexList[1](batch_size)),
     )
@@ -249,7 +255,7 @@ def test_paged_kv_cache_offset_correctness() raises:
     var lookup_table_ptr = List(length=batch_size * num_blocks, fill=UInt32(0))
     for i in range(num_blocks):
         lookup_table_ptr[i] = UInt32(i)  # Identity mapping
-    var lookup_table = LayoutTensor[DType.uint32, layout_2d](
+    var lookup_table = LayoutTensor[.uint32, layout_2d](
         lookup_table_ptr,
         RuntimeLayout[layout_2d].row_major(
             IndexList[2](batch_size, num_blocks)
@@ -260,21 +266,21 @@ def test_paged_kv_cache_offset_correctness() raises:
     var collection = PagedKVCacheCollection[
         DType.float32, kv_params_small, page_size
     ](
-        LayoutTensor[DType.float32, Layout.row_major[6]()](
+        LayoutTensor[.float32, Layout.row_major[6]()](
             blocks.ptr,
             RuntimeLayout[Layout.row_major[6]()](
                 blocks.runtime_layout.shape.value,
                 blocks.runtime_layout.stride.value,
             ),
         ),
-        LayoutTensor[mut=False, DType.uint32, Layout(UNKNOWN_VALUE)](
+        LayoutTensor[mut=False, .uint32, Layout(UNKNOWN_VALUE)](
             cache_lengths.ptr,
             RuntimeLayout[Layout(UNKNOWN_VALUE)](
                 cache_lengths.runtime_layout.shape.value,
                 cache_lengths.runtime_layout.stride.value,
             ),
         ),
-        LayoutTensor[mut=False, DType.uint32, Layout.row_major[2]()](
+        LayoutTensor[mut=False, .uint32, Layout.row_major[2]()](
             lookup_table.ptr,
             RuntimeLayout[Layout.row_major[2]()](
                 lookup_table.runtime_layout.shape.value,
@@ -316,7 +322,7 @@ def test_paged_kv_cache_offset_correctness() raises:
     # we'd compute wrong offset: 1*16 + 0*8 + 1*4 + 2 = 22 (wrong!)
 
     # Access via the blocks TileTensor - this tests the layout offset computation
-    var idx = dyn_coord[DType.int64]((1, 0, 1, 2))
+    var idx = dyn_coord[.int64]((1, 0, 1, 2))
     var value = key_cache.blocks.raw_load[width=1](key_cache.blocks.layout(idx))
     var expected_value = Float32(expected_6d_offset)
 
@@ -338,9 +344,13 @@ def test_paged_kv_cache_quantization() raises:
         kv_params,
         16,
         MutUntrackedOrigin,
+        DefaultEngine[element_width=1],
         ImmUntrackedOrigin,
+        DefaultEngine[element_width=1],
         ImmUntrackedOrigin,
+        DefaultEngine[element_width=1],
         MutUntrackedOrigin,
+        DefaultEngine[element_width=1],
         scale_dtype_=DType.float8_e4m3fn,
         quantization_granularity_=256,
     ]
@@ -373,14 +383,14 @@ def test_scales_resolve_through_their_own_lookup_table() raises:
     var blocks_ptr = List(
         length=blocks_shape.flattened_length(), fill=Float32(0)
     )
-    var blocks = LayoutTensor[DType.float32, Layout.row_major[6]()](
+    var blocks = LayoutTensor[.float32, Layout.row_major[6]()](
         blocks_ptr,
         RuntimeLayout[Layout.row_major[6]()].row_major(blocks_shape),
     )
 
     comptime layout_1d = Layout(UNKNOWN_VALUE)
     var cache_lengths_ptr = List(length=batch_size, fill=UInt32(1))
-    var cache_lengths = LayoutTensor[DType.uint32, layout_1d](
+    var cache_lengths = LayoutTensor[.uint32, layout_1d](
         cache_lengths_ptr,
         RuntimeLayout[layout_1d].row_major(IndexList[1](batch_size)),
     )
@@ -397,7 +407,7 @@ def test_scales_resolve_through_their_own_lookup_table() raises:
     # Values resolve through block 0.
     var lookup_table_ptr = alloc[UInt32](batch_size)
     lookup_table_ptr[0] = UInt32(0)
-    var lookup_table = LayoutTensor[mut=False, DType.uint32, layout_2d](
+    var lookup_table = LayoutTensor[mut=False, .uint32, layout_2d](
         lookup_table_ptr,
         RuntimeLayout[layout_2d].row_major(IndexList[2](batch_size, 1)),
     )
@@ -407,8 +417,8 @@ def test_scales_resolve_through_their_own_lookup_table() raises:
     var scales_lookup_table_ptr = alloc[UInt32](batch_size)
     scales_lookup_table_ptr[0] = UInt32(2)
     var scales_lookup_table_opt: OptionalReg[
-        LayoutTensor[mut=False, DType.uint32, layout_2d, MutUntrackedOrigin]
-    ] = LayoutTensor[mut=False, DType.uint32, layout_2d](
+        LayoutTensor[mut=False, .uint32, layout_2d, MutUntrackedOrigin]
+    ] = LayoutTensor[mut=False, .uint32, layout_2d](
         scales_lookup_table_ptr,
         RuntimeLayout[layout_2d].row_major(IndexList[2](batch_size, 1)),
     )
@@ -417,7 +427,7 @@ def test_scales_resolve_through_their_own_lookup_table() raises:
         num_scale_blocks, 2, 1, page_size, kv_params_small.num_heads, 1
     )
     var scales_ptr = alloc[Float32](scales_shape.flattened_length())
-    var scales = LayoutTensor[DType.float32, Layout.row_major[6]()](
+    var scales = LayoutTensor[.float32, Layout.row_major[6]()](
         scales_ptr,
         RuntimeLayout[Layout.row_major[6]()].row_major(scales_shape),
     ).fill(Float32(-1.0))
@@ -428,7 +438,7 @@ def test_scales_resolve_through_their_own_lookup_table() raises:
     scales[2, 0, 0, 0, 0, 0] = Float32(222.0)
 
     var scales_opt: OptionalReg[
-        LayoutTensor[DType.float32, Layout.row_major[6](), MutUntrackedOrigin]
+        LayoutTensor[.float32, Layout.row_major[6](), MutUntrackedOrigin]
     ] = scales
 
     var collection = PagedKVCacheCollection[
@@ -472,7 +482,137 @@ def test_scales_resolve_through_their_own_lookup_table() raises:
     )
 
 
+def _build_collection_and_page_stride[
+    page_size: Int, num_layers: Int
+](page_stride: Int) raises -> Int:
+    """Returns the byte distance between consecutive pages of a collection.
+
+    Builds a paged collection over `num_blocks` pages, then measures the page
+    stride the way a kernel experiences it: the distance between the pointers
+    two adjacent physical pages resolve to. `page_stride` is forwarded
+    verbatim, so -1 exercises the packed path.
+    """
+    comptime num_blocks = 8
+    comptime batch_size = 1
+    comptime shape = IndexList[6](
+        num_blocks,
+        2,
+        num_layers,
+        page_size,
+        kv_params.num_heads,
+        kv_params.head_size,
+    )
+
+    # The pool owes `num_blocks * page_stride` elements when a padded stride is
+    # supplied, since the tensor below still describes packed pages.
+    var packed_page = (
+        2 * num_layers * page_size * kv_params.num_heads * kv_params.head_size
+    )
+    var page = packed_page if page_stride < 0 else page_stride
+    var blocks_ptr = List(length=num_blocks * page, fill=Float32(0))
+    var blocks = LayoutTensor[.float32, Layout.row_major[6]()](
+        blocks_ptr, RuntimeLayout[Layout.row_major[6]()].row_major(shape)
+    )
+
+    comptime layout_1d = Layout(UNKNOWN_VALUE)
+    var cache_lengths_ptr = List(length=batch_size, fill=UInt32(0))
+    var cache_lengths = LayoutTensor[.uint32, layout_1d](
+        cache_lengths_ptr,
+        RuntimeLayout[layout_1d].row_major(IndexList[1](batch_size)),
+    )
+    comptime layout_2d = Layout.row_major[2]()
+    var lookup_table_ptr = List(length=batch_size * num_blocks, fill=UInt32(0))
+    var lookup_table = LayoutTensor[.uint32, layout_2d](
+        lookup_table_ptr,
+        RuntimeLayout[layout_2d].row_major(
+            IndexList[2](batch_size, num_blocks)
+        ),
+    )
+    for j in range(num_blocks):
+        lookup_table[0, j] = UInt32(j)
+
+    var collection = PagedKVCacheCollection[
+        DType.float32, kv_params, page_size
+    ](
+        LayoutTensor[blocks.dtype, Layout.row_major[6]()](
+            blocks.ptr,
+            RuntimeLayout[Layout.row_major[6]()](
+                blocks.runtime_layout.shape.value,
+                blocks.runtime_layout.stride.value,
+            ),
+        ),
+        LayoutTensor[mut=False, cache_lengths.dtype, Layout(UNKNOWN_VALUE)](
+            cache_lengths.ptr.as_imm().as_unsafe_any_origin(),
+            RuntimeLayout[Layout(UNKNOWN_VALUE)](
+                cache_lengths.runtime_layout.shape.value,
+                cache_lengths.runtime_layout.stride.value,
+            ),
+        ),
+        LayoutTensor[mut=False, lookup_table.dtype, Layout.row_major[2]()](
+            lookup_table.ptr,
+            RuntimeLayout[Layout.row_major[2]()](
+                lookup_table.runtime_layout.shape.value,
+                lookup_table.runtime_layout.stride.value,
+            ),
+        ),
+        UInt32(page_size * num_blocks),
+        UInt32(page_size * num_blocks),
+        page_stride=page_stride,
+    )
+
+    var cache = collection.get_key_cache(0)
+    var page0 = cache.block_paged_ptr[page_size](0, 0, 0)
+    var page1 = cache.block_paged_ptr[page_size](0, page_size, 0)
+    return Int(page1) - Int(page0)
+
+
+def test_page_stride_of_minus_one_keeps_pages_packed() raises:
+    """A -1 stride must reproduce the geometry callers already depend on."""
+    comptime page_size = 16
+    comptime num_layers = 3
+    var measured = _build_collection_and_page_stride[page_size, num_layers](-1)
+    comptime packed = (
+        2 * num_layers * page_size * kv_params.num_heads * kv_params.head_size
+    )
+    comptime element_size = size_of[Float32]()
+    assert_true(
+        measured == packed * element_size,
+        String("packed page stride should be ")
+        + String(packed * element_size)
+        + " bytes, got "
+        + String(measured),
+    )
+
+
+def test_page_stride_overrides_the_packed_distance() raises:
+    """A padded page is reached at the supplied stride, not the packed one."""
+    comptime page_size = 16
+    comptime num_layers = 3
+    comptime packed = (
+        2 * num_layers * page_size * kv_params.num_heads * kv_params.head_size
+    )
+    # A padded page: the pad is a whole number of rows, which the allocator
+    # so that the row division in `_stride()` stays exact.
+    comptime row = kv_params.num_heads * kv_params.head_size
+    comptime padded = packed + 16 * row
+    comptime assert padded % row == 0, "a padded page must be whole rows"
+
+    var measured = _build_collection_and_page_stride[page_size, num_layers](
+        padded
+    )
+    comptime element_size = size_of[Float32]()
+    assert_true(
+        measured == padded * element_size,
+        String("padded page stride should be ")
+        + String(padded * element_size)
+        + " bytes, got "
+        + String(measured),
+    )
+
+
 def main() raises:
+    test_page_stride_of_minus_one_keeps_pages_packed()
+    test_page_stride_overrides_the_packed_distance()
     test_paged_kv_cache_stride_is_unknown()
     test_paged_kv_cache_offset_correctness()
     test_paged_kv_cache_quantization()

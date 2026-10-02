@@ -14,7 +14,7 @@
 from std.sys import simd_width_of
 
 from max.algorithm.functional import elementwise
-from std.gpu import *
+from max.gpu import *
 from max.gpu.host import DeviceContext, get_gpu_target
 from std.random import NormalRandom, Random
 from std.testing import *
@@ -33,13 +33,13 @@ def run_elementwise[
 
     comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
 
-    var out_stack = Array[Scalar[dtype], length](uninitialized=True)
+    var out_stack = Array[Scalar[dtype], length](fill={})
     var out_host = TileTensor(out_stack, row_major[length]())
 
     var out_device = ctx.enqueue_create_buffer[dtype](length)
     var out_buffer = TileTensor(out_device, row_major(length))
 
-    @always_inline
+    @inline(.always)
     def func_uniform[simd_width: Int, alignment: Int = 1](idx0: Coord) {var}:
         var rng_state = Random(seed=UInt64(idx0[0].value()))
         var rng = rng_state.step_uniform()
@@ -53,7 +53,7 @@ def run_elementwise[
                     dtype
                 ]()
 
-    @always_inline
+    @inline(.always)
     def func_normal[simd_width: Int, alignment: Int = 1](idx0: Coord) {var}:
         var rng_state = NormalRandom(seed=UInt64(idx0[0].value()))
         var rng = rng_state.step_normal()
@@ -82,11 +82,11 @@ def run_elementwise[
 
 def main() raises:
     with DeviceContext() as ctx:
-        run_elementwise[DType.float16](ctx)
-        run_elementwise[DType.float32](ctx)
-        run_elementwise[DType.float16, "normal"](ctx)
-        run_elementwise[DType.float32, "normal"](ctx)
+        run_elementwise[.float16](ctx)
+        run_elementwise[.float32](ctx)
+        run_elementwise[.float16, "normal"](ctx)
+        run_elementwise[.float32, "normal"](ctx)
         comptime if not has_apple_gpu_accelerator():
             # Metal does not support DType.float64
-            run_elementwise[DType.float64](ctx)
-            run_elementwise[DType.float64, "normal"](ctx)
+            run_elementwise[.float64](ctx)
+            run_elementwise[.float64, "normal"](ctx)

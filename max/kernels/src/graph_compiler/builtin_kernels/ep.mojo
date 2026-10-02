@@ -85,7 +85,7 @@ comptime RT_LAYOUT_2D = type_of(row_major(Int64(1), Int64(1)))
 struct Struct_ep_init:
     """Registers the `ep.init` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dispatch_dtype: DType,
@@ -100,11 +100,13 @@ struct Struct_ep_init:
         dispatch_fmt_str: StaticString,
         //,
         target: StaticString,
+        *,
+        nvfp4_dyn_global_scales: Bool = False,
     ](
-        dev_ptrs: OutputTensor[dtype=DType.uint64, rank=2, ...],
-        my_rank_tensor: OutputTensor[dtype=DType.int32, rank=1, ...],
-        atomic_counters_0: MutableInputTensor[dtype=DType.int32, ...],
-        atomic_counters_1: MutableInputTensor[dtype=DType.int32, ...],
+        dev_ptrs: OutputTensor[dtype=.uint64, rank=2, ...],
+        my_rank_tensor: OutputTensor[dtype=.int32, rank=1, ...],
+        atomic_counters_0: MutableInputTensor[dtype=.int32, ...],
+        atomic_counters_1: MutableInputTensor[dtype=.int32, ...],
         context: DeviceContext,
     ) raises:
         """This kernel initializes the vendor library for Expert Parallelism
@@ -122,6 +124,8 @@ struct Struct_ep_init:
             dispatch_scale_dtype: DType of the dispatch scale.
             dispatch_fmt_str: String indicating the dispatch format.
             target: Target for this kernel.
+            nvfp4_dyn_global_scales: Whether the `BLOCK_SCALED_NV` messages
+                carry a per-token global scale, which makes them larger.
 
         Arguments:
             dev_ptrs: Output tensor to store device pointers. Shape [2, 3] where:
@@ -159,6 +163,7 @@ struct Struct_ep_init:
                 scales_offset_layout=RT_LAYOUT_2D,
                 hidden_size,
                 top_k,
+                nvfp4_dyn_global_scales=nvfp4_dyn_global_scales,
             ]
             dispatch_msg_size = token_fmt_type.msg_size()
 
@@ -239,25 +244,25 @@ struct Struct_ep_init:
                 shmem_init_thread_mpi(gpu_ctx, gpus_per_node=n_gpus_per_node)
 
             # Allocate SHMEM buffers for dispatch phase
-            dispatch_send_p = shmem_malloc[DType.uint8](dispatch_send_size)
-            dispatch_recv_p = shmem_malloc[DType.uint8](dispatch_recv_size)
-            dispatch_recv_count_p = shmem_malloc[DType.uint64](n_experts)
+            dispatch_send_p = shmem_malloc[.uint8](dispatch_send_size)
+            dispatch_recv_p = shmem_malloc[.uint8](dispatch_recv_size)
+            dispatch_recv_count_p = shmem_malloc[.uint64](n_experts)
 
             # Allocate SHMEM buffers for combine phase
-            combine_send_p = shmem_malloc[DType.uint8](combine_send_size)
-            combine_recv_p = shmem_malloc[DType.uint8](combine_recv_size)
-            combine_recv_count_p = shmem_malloc[DType.uint64](n_experts)
+            combine_send_p = shmem_malloc[.uint8](combine_send_size)
+            combine_recv_p = shmem_malloc[.uint8](combine_recv_size)
+            combine_recv_count_p = shmem_malloc[.uint64](n_experts)
 
         else:
             if not is_p2p_enabled():
                 raise Error("P2P is not supported on this system.")
-            dispatch_send_p = gpu_ctx.enqueue_create_buffer[DType.uint8](
+            dispatch_send_p = gpu_ctx.enqueue_create_buffer[.uint8](
                 dispatch_send_size
             ).take_ptr()
-            dispatch_recv_p = gpu_ctx.enqueue_create_buffer[DType.uint8](
+            dispatch_recv_p = gpu_ctx.enqueue_create_buffer[.uint8](
                 dispatch_recv_size
             ).take_ptr()
-            dispatch_recv_count_p = gpu_ctx.enqueue_create_buffer[DType.uint64](
+            dispatch_recv_count_p = gpu_ctx.enqueue_create_buffer[.uint64](
                 n_experts
             ).take_ptr()
 
@@ -265,10 +270,10 @@ struct Struct_ep_init:
             # send buffer and directly send tokens to each device's recv buffer.
             # Hence, we don't need to allocate the combine send buffer.
             combine_send_p = None
-            combine_recv_p = gpu_ctx.enqueue_create_buffer[DType.uint8](
+            combine_recv_p = gpu_ctx.enqueue_create_buffer[.uint8](
                 combine_recv_size
             ).take_ptr()
-            combine_recv_count_p = gpu_ctx.enqueue_create_buffer[DType.uint64](
+            combine_recv_count_p = gpu_ctx.enqueue_create_buffer[.uint64](
                 n_experts
             ).take_ptr()
 
@@ -308,7 +313,7 @@ struct Struct_ep_init:
 struct Struct_ep_dispatch_async:
     """Registers the `ep.dispatch_async` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         input_dtype: DType,
@@ -324,12 +329,12 @@ struct Struct_ep_dispatch_async:
         //,
         target: StaticString,
     ](
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=input_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism async dispatch kernel. Tokens are
@@ -389,12 +394,12 @@ struct Struct_ep_dispatch_async:
                 n_nodes,
                 target,
             ](
-                atomic_counters.to_tile_tensor[DType.int64](),
-                input_tokens.to_tile_tensor[DType.int64]().as_immut(),
-                topk_ids.to_tile_tensor[DType.int64]().as_immut(),
-                send_ptrs.to_tile_tensor[DType.int64](),
-                recv_ptrs.to_tile_tensor[DType.int64](),
-                recv_count_ptrs.to_tile_tensor[DType.int64](),
+                atomic_counters.to_tile_tensor[.int64](),
+                input_tokens.to_tile_tensor[.int64]().as_imm(),
+                topk_ids.to_tile_tensor[.int64]().as_imm(),
+                send_ptrs.to_tile_tensor[.int64](),
+                recv_ptrs.to_tile_tensor[.int64](),
+                recv_count_ptrs.to_tile_tensor[.int64](),
                 context,
             )
 
@@ -411,12 +416,12 @@ struct Struct_ep_dispatch_async:
                 n_nodes,
                 target,
             ](
-                atomic_counters.to_tile_tensor[DType.int64](),
-                input_tokens.to_tile_tensor[DType.int64]().as_immut(),
-                topk_ids.to_tile_tensor[DType.int64]().as_immut(),
-                send_ptrs.to_tile_tensor[DType.int64](),
-                recv_ptrs.to_tile_tensor[DType.int64](),
-                recv_count_ptrs.to_tile_tensor[DType.int64](),
+                atomic_counters.to_tile_tensor[.int64](),
+                input_tokens.to_tile_tensor[.int64]().as_imm(),
+                topk_ids.to_tile_tensor[.int64]().as_imm(),
+                send_ptrs.to_tile_tensor[.int64](),
+                recv_ptrs.to_tile_tensor[.int64](),
+                recv_count_ptrs.to_tile_tensor[.int64](),
                 context,
             )
 
@@ -429,9 +434,8 @@ struct Struct_ep_dispatch_async_block_scaled_nv:
     """Registers the `ep.dispatch_async.block.scaled.nv` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         input_dtype: DType,
         dispatch_dtype: DType,
@@ -445,13 +449,13 @@ struct Struct_ep_dispatch_async_block_scaled_nv:
         //,
         target: StaticString,
     ](
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=input_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        input_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        input_scales: InputTensor[dtype=.float32, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism async dispatch kernel. Tokens are
@@ -491,11 +495,11 @@ struct Struct_ep_dispatch_async_block_scaled_nv:
             input_scales: Global input scales for NVFP4 quantization.
             context: GPU device context for the current device.
         """
-        var input_scales_tensor = input_scales.to_tile_tensor[DType.int64]()
+        var input_scales_tensor = input_scales.to_tile_tensor[.int64]()
         comptime assert input_scales_tensor.flat_rank == 1
 
         @__parameter
-        @always_inline
+        @inline(.always)
         @__copy_capture(input_scales_tensor)
         def input_scales_fn[dtype: DType](expert_id: Int) -> Scalar[dtype]:
             # Currently only use one global input scale for all experts
@@ -518,12 +522,12 @@ struct Struct_ep_dispatch_async_block_scaled_nv:
             target,
             input_scales_wrapper=input_scales_fn,
         ](
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64]().as_immut(),
-            topk_ids.to_tile_tensor[DType.int64]().as_immut(),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64]().as_imm(),
+            topk_ids.to_tile_tensor[.int64]().as_imm(),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -533,7 +537,7 @@ struct Struct_ep_dispatch_async_mxfp4:
     """Registers the `ep.dispatch_async.mxfp4` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         input_dtype: DType,
@@ -550,12 +554,12 @@ struct Struct_ep_dispatch_async_mxfp4:
         *,
         MX_FORMAT: StaticString = "auto",
     ](
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=input_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism async dispatch kernel. Tokens are
@@ -622,12 +626,12 @@ struct Struct_ep_dispatch_async_mxfp4:
             n_nodes,
             target,
         ](
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64]().as_immut(),
-            topk_ids.to_tile_tensor[DType.int64]().as_immut(),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64]().as_imm(),
+            topk_ids.to_tile_tensor[.int64]().as_imm(),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -636,7 +640,7 @@ struct Struct_ep_dispatch_async_mxfp4:
 struct Struct_ep_dispatch_wait:
     """Registers the `ep.dispatch_wait` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         hidden_size: Int,
@@ -649,13 +653,13 @@ struct Struct_ep_dispatch_wait:
         target: StaticString,
         num_input_tokens: Int = -1,
     ](
-        output_tokens: OutputTensor[dtype=DType.bfloat16, rank=2, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        output_tokens: OutputTensor[dtype=.bfloat16, rank=2, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism dispatch completion kernel. Received
@@ -668,7 +672,7 @@ struct Struct_ep_dispatch_wait:
         ), "EP dispatch_wait: output tokens shape doesn't match hidden size."
 
         var format_handler = BF16TokenFormat[hidden_size, top_k](
-            output_tokens.to_tile_tensor[DType.int64]()
+            output_tokens.to_tile_tensor[.int64]()
         )
 
         ep_dispatch_wait_kernel_api[
@@ -679,12 +683,12 @@ struct Struct_ep_dispatch_wait:
             target,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
             context,
             num_input_tokens,
         )
@@ -694,7 +698,7 @@ struct Struct_ep_dispatch_wait:
 struct Struct_ep_dispatch_wait_fp8:
     """Registers the `ep.dispatch_wait.fp8` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dispatch_dtype: DType,
@@ -712,20 +716,20 @@ struct Struct_ep_dispatch_wait_fp8:
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
         output_scales: OutputTensor[dtype=dispatch_scale_dtype, rank=2, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism dispatch completion kernel. Received
         tokens are in Blockwise FP8 format.
         """
 
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
-        var output_scales_tensor = output_scales.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
+        var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
         # Ensure the shape for the input tensors are correct
         comptime assert (
             output_tokens_tensor.static_shape[1] == hidden_size
@@ -744,12 +748,12 @@ struct Struct_ep_dispatch_wait_fp8:
             target,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
             context,
             num_input_tokens,
         )
@@ -760,7 +764,7 @@ struct Struct_ep_dispatch_wait_block_scaled_nv:
     """Registers the `ep.dispatch_wait.block.scaled.nv` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dispatch_dtype: DType,
@@ -777,21 +781,21 @@ struct Struct_ep_dispatch_wait_block_scaled_nv:
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
         output_scales: OutputTensor[dtype=dispatch_scale_dtype, rank=5, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        scales_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        scales_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism dispatch completion kernel. Received
         tokens are in NVFP4 format.
         """
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
-        var output_scales_tensor = output_scales.to_tile_tensor[DType.int64]()
-        var scales_offsets_tensor = scales_offsets.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
+        var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
+        var scales_offsets_tensor = scales_offsets.to_tile_tensor[.int64]()
 
         comptime assert (
             output_tokens_tensor.static_shape[1] * 2 == hidden_size
@@ -812,12 +816,12 @@ struct Struct_ep_dispatch_wait_block_scaled_nv:
             target,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
             context,
             num_input_tokens,
         )
@@ -828,7 +832,7 @@ struct Struct_ep_dispatch_wait_mxfp4:
     """Registers the `ep.dispatch_wait.mxfp4` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dispatch_dtype: DType,
@@ -849,12 +853,12 @@ struct Struct_ep_dispatch_wait_mxfp4:
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
         output_scales: OutputTensor[dtype=dispatch_scale_dtype, rank=2, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism dispatch completion kernel. Received
@@ -869,8 +873,8 @@ struct Struct_ep_dispatch_wait_mxfp4:
         critical path. The scales output tensor must then have shape
         ``[n_local_experts * max_padded_M, K_SCALES]``.
         """
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
-        var output_scales_tensor = output_scales.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
+        var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
 
         comptime mx_fmt = MXFormat.from_dtype[
             dispatch_dtype
@@ -899,12 +903,12 @@ struct Struct_ep_dispatch_wait_mxfp4:
             target,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
             context,
             num_input_tokens,
         )
@@ -914,7 +918,7 @@ struct Struct_ep_dispatch_wait_mxfp4:
 struct Struct_ep_dispatch:
     """Registers the `ep.dispatch` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         dispatch_dtype: DType,
@@ -930,16 +934,16 @@ struct Struct_ep_dispatch:
         //,
         target: StaticString,
     ](
-        output_tokens: OutputTensor[dtype=DType.bfloat16, rank=2, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        output_tokens: OutputTensor[dtype=.bfloat16, rank=2, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=dispatch_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the fused Expert Parallelism dispatch kernel.
@@ -997,9 +1001,9 @@ struct Struct_ep_dispatch:
             context: GPU device context for the current device.
         """
 
-        comptime assert dispatch_dtype == DType.bfloat16
+        comptime assert dispatch_dtype == .bfloat16
 
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
         var format_handler = BF16TokenFormat[hidden_size, top_k](
             output_tokens_tensor
         )
@@ -1015,15 +1019,15 @@ struct Struct_ep_dispatch:
             allreduce_world_size=allreduce_world_size,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64](),
-            topk_ids.to_tile_tensor[DType.int64](),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            topk_ids.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -1032,7 +1036,7 @@ struct Struct_ep_dispatch:
 struct Struct_ep_dispatch_fp8:
     """Registers the `ep.dispatch.fp8` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         input_dtype: DType,
@@ -1053,22 +1057,22 @@ struct Struct_ep_dispatch_fp8:
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
         output_scales: OutputTensor[dtype=dispatch_scale_dtype, rank=2, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=input_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the fused Expert Parallelism FP8 dispatch kernel. Tokens are
         dispatched in Blockwise FP8 format.
         """
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
-        var output_scales_tensor = output_scales.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
+        var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
 
         var format_handler = BlockwiseFP8TokenFormat[hidden_size, top_k](
             output_tokens_tensor, output_scales_tensor
@@ -1085,15 +1089,15 @@ struct Struct_ep_dispatch_fp8:
             allreduce_world_size=allreduce_world_size,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64](),
-            topk_ids.to_tile_tensor[DType.int64](),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            topk_ids.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -1103,9 +1107,8 @@ struct Struct_ep_dispatch_block_scaled_nv:
     """Registers the `ep.dispatch.block.scaled.nv` graph op with the graph compiler.
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         input_dtype: DType,
         dispatch_dtype: DType,
@@ -1124,17 +1127,17 @@ struct Struct_ep_dispatch_block_scaled_nv:
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
         output_scales: OutputTensor[dtype=dispatch_scale_dtype, rank=5, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        scales_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        scales_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=input_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        input_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        input_scales: InputTensor[dtype=.float32, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the fused Expert Parallelism NVFP4 dispatch kernel. Tokens
@@ -1194,14 +1197,14 @@ struct Struct_ep_dispatch_block_scaled_nv:
             input_scales: Global input scales for NVFP4 quantization.
             context: GPU device context for the current device.
         """
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
-        var output_scales_tensor = output_scales.to_tile_tensor[DType.int64]()
-        var scales_offsets_tensor = scales_offsets.to_tile_tensor[DType.int64]()
-        var input_scales_tensor = input_scales.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
+        var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
+        var scales_offsets_tensor = scales_offsets.to_tile_tensor[.int64]()
+        var input_scales_tensor = input_scales.to_tile_tensor[.int64]()
         comptime assert input_scales_tensor.flat_rank == 1
 
         @__parameter
-        @always_inline
+        @inline(.always)
         @__copy_capture(input_scales_tensor)
         def input_scales_fn[dtype: DType](expert_id: Int) -> Scalar[dtype]:
             # Currently only use one global input scale for all experts
@@ -1226,15 +1229,171 @@ struct Struct_ep_dispatch_block_scaled_nv:
             allreduce_world_size=allreduce_world_size,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64](),
-            topk_ids.to_tile_tensor[DType.int64](),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            topk_ids.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
+            context,
+        )
+
+
+@inline(.always)
+def _check_rowwise_scales_rows(
+    output_rowwise_scales: OutputTensor[dtype=.bfloat16, rank=1, ...],
+    output_tokens: OutputTensor[rank=2, ...],
+) raises:
+    """Rejects a per-row scales output that cannot hold one scale per
+    received row, since the token format sizes it from `output_tokens`."""
+    if output_rowwise_scales.dim_size(0) != output_tokens.dim_size(0):
+        raise Error(
+            "EP dispatch: output_rowwise_scales has ",
+            output_rowwise_scales.dim_size(0),
+            " rows, but output_tokens has ",
+            output_tokens.dim_size(0),
+        )
+
+
+@extensibility.register("ep.dispatch.block.scaled.nv.dyn_global_scales")
+struct Struct_ep_dispatch_block_scaled_nv_dyn_global_scales:
+    """Registers the `ep.dispatch.block.scaled.nv.dyn_global_scales` graph op
+    with the graph compiler.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        input_dtype: DType,
+        dispatch_dtype: DType,
+        dispatch_scale_dtype: DType,
+        hidden_size: Int,
+        top_k: Int,
+        n_experts: Int,
+        max_token_per_rank: Int,
+        n_gpus_per_node: Int,
+        n_nodes: Int,
+        fused_shared_expert: Bool,
+        skip_a2a: Bool,
+        allreduce_world_size: Int,
+        //,
+        target: StaticString,
+    ](
+        output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
+        output_scales: OutputTensor[dtype=dispatch_scale_dtype, rank=5, ...],
+        output_rowwise_scales: OutputTensor[dtype=.bfloat16, rank=1, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        scales_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
+        input_tokens: InputTensor[dtype=input_dtype, rank=2, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        context: DeviceContext,
+    ) raises:
+        """Execute the fused Expert Parallelism NVFP4 dispatch kernel with
+        dynamic global scales.
+
+        Each token is quantized against its own global scale,
+        `2688 / rowmax`, rather than a caller-supplied input scale. The
+        scale's BF16 inverse travels with the token and lands in
+        `output_rowwise_scales`, so a received row dequantizes as
+        `fp4 * block_scale * rowwise_scale`.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before dispatch
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token
+                payload during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the block scales
+                accompanying the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension
+                (inferred).
+            top_k: Number of experts each token is routed to
+                (inferred).
+            n_experts: Total number of experts across all GPUs
+                (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            fused_shared_expert: Whether a shared expert is fused
+                into the dispatch kernel (inferred).
+            skip_a2a: Whether to skip the all-to-all communication
+                and send tokens only within the current device
+                (inferred).
+            allreduce_world_size: Number of ranks participating in
+                the allreduce following dispatch (inferred).
+            target: Compile-time device target.
+
+        Args:
+            output_tokens: Output tensor storing the received tokens
+                in NVFP4 format.
+            output_scales: Output tensor storing the NVFP4 block
+                scales for the received tokens.
+            output_rowwise_scales: Output tensor storing each received
+                token's BF16 inverse global scale, `rowmax / 2688`. Shape
+                `[max_recv_tokens]`, one entry per row of `output_tokens`.
+            row_offsets: Output tensor storing the row offsets for
+                the received tokens.
+            scales_offsets: Output tensor storing the offsets into
+                the scales buffer for the received tokens.
+            expert_ids: Output tensor storing the expert ID for
+                each received token.
+            src_info: Output tensor recording the originating rank
+                and token index for each received token. Shape
+                `[num_tokens, 2]`.
+            atomic_counters: Atomic counters coordinating work
+                across thread blocks during the dispatch phase.
+            input_tokens: Input tokens to dispatch to experts. Shape
+                `[num_tokens, hidden_size]`.
+            topk_ids: Input tensor of top-k expert IDs per token.
+                Shape `[num_tokens, top_k]`.
+            send_ptrs: Send buffer pointers for the dispatch phase.
+            recv_ptrs: Receive buffer pointers for the dispatch
+                phase.
+            recv_count_ptrs: Receive count buffer pointers tracking
+                tokens received per expert.
+            context: GPU device context for the current device.
+        """
+        _check_rowwise_scales_rows(output_rowwise_scales, output_tokens)
+
+        var format_handler = NVBlockScaledTokenFormat[
+            hidden_size, top_k, nvfp4_dyn_global_scales=True
+        ](
+            output_tokens.to_tile_tensor[.int64](),
+            output_scales.to_tile_tensor[.int64](),
+            scales_offsets.to_tile_tensor[.int64](),
+            context,
+            output_rowwise_scales.unsafe_ptr(),
+        )
+
+        ep_fused_dispatch_kernel_api[
+            n_experts,
+            max_token_per_rank,
+            n_gpus_per_node,
+            n_nodes,
+            fused_shared_expert,
+            target,
+            skip_a2a=skip_a2a,
+            allreduce_world_size=allreduce_world_size,
+        ](
+            format_handler,
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            topk_ids.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -1243,9 +1402,8 @@ struct Struct_ep_dispatch_block_scaled_nv:
 struct Struct_ep_dispatch_mxfp4:
     """Registers the `ep.dispatch.mxfp4` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         input_dtype: DType,
         dispatch_dtype: DType,
@@ -1268,15 +1426,15 @@ struct Struct_ep_dispatch_mxfp4:
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
         output_scales: OutputTensor[dtype=dispatch_scale_dtype, rank=2, ...],
-        row_offsets: OutputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: OutputTensor[dtype=DType.int32, rank=1, ...],
-        src_info: OutputTensor[dtype=DType.int32, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        row_offsets: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        src_info: OutputTensor[dtype=.int32, rank=2, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=input_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the fused Expert Parallelism MXFP4 dispatch kernel. Tokens
@@ -1289,8 +1447,8 @@ struct Struct_ep_dispatch_mxfp4:
         preshuffle. The scales output tensor must then be slot-sized
         (``[n_local_experts * max_padded_M, K_SCALES]``).
         """
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
-        var output_scales_tensor = output_scales.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
+        var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
 
         comptime mx_fmt = MXFormat.from_dtype[
             dispatch_dtype
@@ -1317,15 +1475,15 @@ struct Struct_ep_dispatch_mxfp4:
             allreduce_world_size=allreduce_world_size,
         ](
             format_handler,
-            row_offsets.to_tile_tensor[DType.int64](),
-            expert_ids.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64](),
-            topk_ids.to_tile_tensor[DType.int64](),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            topk_ids.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -1430,7 +1588,7 @@ struct DistributedEPDispatchBlockScaledNV:
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
 
-        @always_inline
+        @inline(.always)
         def launch_dispatch[
             index: Int
         ]() raises {
@@ -1449,14 +1607,14 @@ struct DistributedEPDispatchBlockScaledNV:
             imm input_scales,
             imm gpu_ctxs,
         }:
-            var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
-            var out_scales = output_scales[index].to_tile_tensor[DType.int64]()
-            var sc_offsets = scales_offsets[index].to_tile_tensor[DType.int64]()
-            var in_scales = input_scales[index].to_tile_tensor[DType.int64]()
+            var out_tokens = output_tokens[index].to_tile_tensor[.int64]()
+            var out_scales = output_scales[index].to_tile_tensor[.int64]()
+            var sc_offsets = scales_offsets[index].to_tile_tensor[.int64]()
+            var in_scales = input_scales[index].to_tile_tensor[.int64]()
             comptime assert in_scales.flat_rank == 1
 
             @__parameter
-            @always_inline
+            @inline(.always)
             @__copy_capture(in_scales)
             def input_scales_fn[dtype: DType](expert_id: Int) -> Scalar[dtype]:
                 return rebind[Scalar[dtype]](in_scales[0].cast[dtype]())
@@ -1478,15 +1636,181 @@ struct DistributedEPDispatchBlockScaledNV:
                 input_scales_wrapper=input_scales_fn,
             ](
                 format_handler,
-                row_offsets[index].to_tile_tensor[DType.int64](),
-                expert_ids[index].to_tile_tensor[DType.int64](),
-                src_info[index].to_tile_tensor[DType.int64](),
-                atomic_counters[index].to_tile_tensor[DType.int64](),
-                input_tokens[index].to_tile_tensor[DType.int64](),
-                topk_ids[index].to_tile_tensor[DType.int64](),
-                send_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_count_ptrs[index].to_tile_tensor[DType.int64](),
+                row_offsets[index].to_tile_tensor[.int64](),
+                expert_ids[index].to_tile_tensor[.int64](),
+                src_info[index].to_tile_tensor[.int64](),
+                atomic_counters[index].to_tile_tensor[.int64](),
+                input_tokens[index].to_tile_tensor[.int64](),
+                topk_ids[index].to_tile_tensor[.int64](),
+                send_ptrs[index].to_tile_tensor[.int64](),
+                recv_ptrs[index].to_tile_tensor[.int64](),
+                recv_count_ptrs[index].to_tile_tensor[.int64](),
+                gpu_ctxs[index],
+            )
+
+        _launch_device_collective[num_devices](launch_dispatch, gpu_ctxs.copy())
+
+
+@extensibility.register(
+    "mo.distributed.ep.dispatch.block.scaled.nv.dyn_global_scales"
+)
+struct DistributedEPDispatchBlockScaledNVDynGlobalScales:
+    """Registers the
+    `mo.distributed.ep.dispatch.block.scaled.nv.dyn_global_scales` graph op
+    with the graph compiler.
+    """
+
+    @staticmethod
+    def execute[
+        input_dtype: DType,
+        dispatch_dtype: DType,
+        dispatch_scale_dtype: DType,
+        hidden_size: Int,
+        top_k: Int,
+        n_experts: Int,
+        max_token_per_rank: Int,
+        n_gpus_per_node: Int,
+        n_nodes: Int,
+        fused_shared_expert: Bool,
+        //,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        output_tokens: OutputVariadicTensors[dtype=dispatch_dtype, rank=2, ...],
+        output_scales: OutputVariadicTensors[
+            dtype=dispatch_scale_dtype, rank=5, ...
+        ],
+        output_rowwise_scales: OutputVariadicTensors[
+            dtype=DType.bfloat16, rank=1, ...
+        ],
+        row_offsets: OutputVariadicTensors[dtype=DType.uint32, rank=1, ...],
+        scales_offsets: OutputVariadicTensors[dtype=DType.uint32, rank=1, ...],
+        expert_ids: OutputVariadicTensors[dtype=DType.int32, rank=1, ...],
+        src_info: OutputVariadicTensors[dtype=DType.int32, rank=2, ...],
+        input_tokens: InputVariadicTensors[dtype=input_dtype, rank=2, ...],
+        topk_ids: InputVariadicTensors[dtype=DType.int32, rank=2, ...],
+        send_ptrs: InputVariadicTensors[dtype=DType.uint64, rank=1, ...],
+        recv_ptrs: InputVariadicTensors[dtype=DType.uint64, rank=1, ...],
+        recv_count_ptrs: InputVariadicTensors[dtype=DType.uint64, rank=1, ...],
+        atomic_counters: MutableInputVariadicTensors[
+            dtype=DType.int32, rank=1, ...
+        ],
+        dev_ctxs: DeviceContextArray,
+    ) capturing raises:
+        """Multi-device fused Expert Parallelism NVFP4 dispatch with dynamic
+        global scales.
+
+        Launches the EP dispatch kernel on all devices simultaneously via
+        _ep_launch_device_collective. Each device routes its tokens to experts
+        based on top-k IDs, quantizes each token to NVFP4 against its own
+        global scale, `2688 / rowmax`, and sends it to the appropriate peer
+        devices. The receivers store the scales' BF16 inverses in
+        `output_rowwise_scales`.
+
+        Parameters:
+            input_dtype: `DType` of the input tokens before quantization
+                (inferred).
+            dispatch_dtype: `DType` used for the quantized token payload
+                during dispatch (inferred).
+            dispatch_scale_dtype: `DType` of the block scales accompanying
+                the dispatched tokens (inferred).
+            hidden_size: Size of the model's hidden dimension (inferred).
+            top_k: Number of experts each token is routed to (inferred).
+            n_experts: Total number of experts across all GPUs (inferred).
+            max_token_per_rank: Maximum number of tokens per GPU
+                (inferred).
+            n_gpus_per_node: Number of GPUs per node (inferred).
+            n_nodes: Number of physical nodes (inferred).
+            fused_shared_expert: Whether a shared expert is fused into the
+                dispatch kernel (inferred).
+            target: Compile-time device target.
+            _trace_name: Trace label for this op.
+
+        Args:
+            output_tokens: Output variadic tensors storing the dispatched
+                NVFP4-quantized tokens, one per device.
+            output_scales: Output variadic tensors storing the NVFP4 block
+                scales, one per device.
+            output_rowwise_scales: Output variadic tensors storing each
+                received token's BF16 inverse global scale, one per device.
+            row_offsets: Output variadic tensors storing the row offsets for
+                the received tokens, one per device.
+            scales_offsets: Output variadic tensors storing the offsets into
+                the scales buffer, one per device.
+            expert_ids: Output variadic tensors storing the expert ID for
+                each received token, one per device.
+            src_info: Output variadic tensors recording the originating
+                rank and token index for each received token, one per
+                device.
+            input_tokens: Input variadic tensors of tokens to dispatch,
+                one per device.
+            topk_ids: Input variadic tensors of top-k expert IDs per token,
+                one per device.
+            send_ptrs: Send buffer pointers for the dispatch phase, one
+                per device.
+            recv_ptrs: Receive buffer pointers for the dispatch phase,
+                one per device.
+            recv_count_ptrs: Receive count buffer pointers tracking tokens
+                received per expert, one per device.
+            atomic_counters: Atomic counters coordinating work across
+                thread blocks, one per device.
+            dev_ctxs: List of GPU device contexts, one per device.
+        """
+        comptime num_devices = input_tokens.size
+
+        var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
+        comptime for i in range(num_devices):
+            _check_rowwise_scales_rows(
+                output_rowwise_scales[i], output_tokens[i]
+            )
+
+        @inline(.always)
+        def launch_dispatch[
+            index: Int
+        ]() raises {
+            imm output_tokens,
+            imm output_scales,
+            imm output_rowwise_scales,
+            imm row_offsets,
+            imm scales_offsets,
+            imm expert_ids,
+            imm src_info,
+            imm atomic_counters,
+            imm input_tokens,
+            imm topk_ids,
+            imm send_ptrs,
+            imm recv_ptrs,
+            imm recv_count_ptrs,
+            imm gpu_ctxs,
+        }:
+            var format_handler = NVBlockScaledTokenFormat[
+                hidden_size, top_k, nvfp4_dyn_global_scales=True
+            ](
+                output_tokens[index].to_tile_tensor[.int64](),
+                output_scales[index].to_tile_tensor[.int64](),
+                scales_offsets[index].to_tile_tensor[.int64](),
+                gpu_ctxs[index],
+                output_rowwise_scales[index].unsafe_ptr(),
+            )
+
+            ep_fused_dispatch_kernel_api[
+                n_experts,
+                max_token_per_rank,
+                n_gpus_per_node,
+                n_nodes,
+                fused_shared_expert,
+                target,
+            ](
+                format_handler,
+                row_offsets[index].to_tile_tensor[.int64](),
+                expert_ids[index].to_tile_tensor[.int64](),
+                src_info[index].to_tile_tensor[.int64](),
+                atomic_counters[index].to_tile_tensor[.int64](),
+                input_tokens[index].to_tile_tensor[.int64](),
+                topk_ids[index].to_tile_tensor[.int64](),
+                send_ptrs[index].to_tile_tensor[.int64](),
+                recv_ptrs[index].to_tile_tensor[.int64](),
+                recv_count_ptrs[index].to_tile_tensor[.int64](),
                 gpu_ctxs[index],
             )
 
@@ -1596,7 +1920,7 @@ struct DistributedEPDispatchMXFP4:
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
 
-        @always_inline
+        @inline(.always)
         def launch_dispatch[
             index: Int
         ]() raises {
@@ -1613,8 +1937,8 @@ struct DistributedEPDispatchMXFP4:
             imm recv_count_ptrs,
             imm gpu_ctxs,
         }:
-            var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
-            var out_scales = output_scales[index].to_tile_tensor[DType.int64]()
+            var out_tokens = output_tokens[index].to_tile_tensor[.int64]()
+            var out_scales = output_scales[index].to_tile_tensor[.int64]()
 
             comptime mx_fmt = MXFormat.from_dtype[
                 dispatch_dtype
@@ -1639,15 +1963,15 @@ struct DistributedEPDispatchMXFP4:
                 target,
             ](
                 format_handler,
-                row_offsets[index].to_tile_tensor[DType.int64](),
-                expert_ids[index].to_tile_tensor[DType.int64](),
-                src_info[index].to_tile_tensor[DType.int64](),
-                atomic_counters[index].to_tile_tensor[DType.int64](),
-                input_tokens[index].to_tile_tensor[DType.int64](),
-                topk_ids[index].to_tile_tensor[DType.int64](),
-                send_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_count_ptrs[index].to_tile_tensor[DType.int64](),
+                row_offsets[index].to_tile_tensor[.int64](),
+                expert_ids[index].to_tile_tensor[.int64](),
+                src_info[index].to_tile_tensor[.int64](),
+                atomic_counters[index].to_tile_tensor[.int64](),
+                input_tokens[index].to_tile_tensor[.int64](),
+                topk_ids[index].to_tile_tensor[.int64](),
+                send_ptrs[index].to_tile_tensor[.int64](),
+                recv_ptrs[index].to_tile_tensor[.int64](),
+                recv_count_ptrs[index].to_tile_tensor[.int64](),
                 gpu_ctxs[index],
             )
 
@@ -1729,11 +2053,11 @@ struct DistributedEPDispatch:
             dev_ctxs: List of GPU device contexts, one per device.
         """
         comptime num_devices = input_tokens.size
-        comptime assert dispatch_dtype == DType.bfloat16
+        comptime assert dispatch_dtype == .bfloat16
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
 
-        @always_inline
+        @inline(.always)
         def launch_dispatch[
             index: Int
         ]() raises {
@@ -1749,7 +2073,7 @@ struct DistributedEPDispatch:
             imm recv_count_ptrs,
             imm gpu_ctxs,
         }:
-            var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
+            var out_tokens = output_tokens[index].to_tile_tensor[.int64]()
             var format_handler = BF16TokenFormat[hidden_size, top_k](out_tokens)
 
             ep_fused_dispatch_kernel_api[
@@ -1761,15 +2085,15 @@ struct DistributedEPDispatch:
                 target,
             ](
                 format_handler,
-                row_offsets[index].to_tile_tensor[DType.int64](),
-                expert_ids[index].to_tile_tensor[DType.int64](),
-                src_info[index].to_tile_tensor[DType.int64](),
-                atomic_counters[index].to_tile_tensor[DType.int64](),
-                input_tokens[index].to_tile_tensor[DType.int64](),
-                topk_ids[index].to_tile_tensor[DType.int64](),
-                send_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_count_ptrs[index].to_tile_tensor[DType.int64](),
+                row_offsets[index].to_tile_tensor[.int64](),
+                expert_ids[index].to_tile_tensor[.int64](),
+                src_info[index].to_tile_tensor[.int64](),
+                atomic_counters[index].to_tile_tensor[.int64](),
+                input_tokens[index].to_tile_tensor[.int64](),
+                topk_ids[index].to_tile_tensor[.int64](),
+                send_ptrs[index].to_tile_tensor[.int64](),
+                recv_ptrs[index].to_tile_tensor[.int64](),
+                recv_count_ptrs[index].to_tile_tensor[.int64](),
                 gpu_ctxs[index],
             )
 
@@ -1873,7 +2197,7 @@ struct DistributedEPDispatchFP8:
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
 
-        @always_inline
+        @inline(.always)
         def launch_dispatch[
             index: Int
         ]() raises {
@@ -1890,8 +2214,8 @@ struct DistributedEPDispatchFP8:
             imm recv_count_ptrs,
             imm gpu_ctxs,
         }:
-            var out_tokens = output_tokens[index].to_tile_tensor[DType.int64]()
-            var out_scales = output_scales[index].to_tile_tensor[DType.int64]()
+            var out_tokens = output_tokens[index].to_tile_tensor[.int64]()
+            var out_scales = output_scales[index].to_tile_tensor[.int64]()
             var format_handler = BlockwiseFP8TokenFormat[hidden_size, top_k](
                 out_tokens, out_scales
             )
@@ -1905,15 +2229,15 @@ struct DistributedEPDispatchFP8:
                 target,
             ](
                 format_handler,
-                row_offsets[index].to_tile_tensor[DType.int64](),
-                expert_ids[index].to_tile_tensor[DType.int64](),
-                src_info[index].to_tile_tensor[DType.int64](),
-                atomic_counters[index].to_tile_tensor[DType.int64](),
-                input_tokens[index].to_tile_tensor[DType.int64](),
-                topk_ids[index].to_tile_tensor[DType.int64](),
-                send_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_count_ptrs[index].to_tile_tensor[DType.int64](),
+                row_offsets[index].to_tile_tensor[.int64](),
+                expert_ids[index].to_tile_tensor[.int64](),
+                src_info[index].to_tile_tensor[.int64](),
+                atomic_counters[index].to_tile_tensor[.int64](),
+                input_tokens[index].to_tile_tensor[.int64](),
+                topk_ids[index].to_tile_tensor[.int64](),
+                send_ptrs[index].to_tile_tensor[.int64](),
+                recv_ptrs[index].to_tile_tensor[.int64](),
+                recv_count_ptrs[index].to_tile_tensor[.int64](),
                 gpu_ctxs[index],
             )
 
@@ -1998,7 +2322,7 @@ struct DistributedEPCombine:
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
 
-        @always_inline
+        @inline(.always)
         def launch_combine[
             index: Int
         ]() raises {
@@ -2012,20 +2336,20 @@ struct DistributedEPCombine:
             imm atomic_counters,
             imm gpu_ctxs,
         }:
-            var rw_tensor = router_weights[index].to_tile_tensor[DType.int64]()
+            var rw_tensor = router_weights[index].to_tile_tensor[.int64]()
 
             @__parameter
-            @always_inline
+            @inline(.always)
             @__copy_capture(rw_tensor)
             def router_weights_fn[
                 width: Int
-            ](token_idx: Int, topk_id: Int) -> SIMD[DType.float32, width]:
+            ](token_idx: Int, topk_id: Int) -> SIMD[.float32, width]:
                 return rw_tensor.load[width=width]((token_idx, topk_id)).cast[
                     DType.float32
                 ]()
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def output_fn[
                 dtype: DType, width: SIMDLength, *, alignment: Int = 1
             ](coords: IndexList[2], val: SIMD[dtype, width]):
@@ -2050,13 +2374,13 @@ struct DistributedEPCombine:
                 ) if has_epilogue_fusion else None,
                 fused_shared_expert=fused_shared_expert,
             ](
-                output_tokens[index].to_tile_tensor[DType.int64](),
-                atomic_counters[index].to_tile_tensor[DType.int64](),
-                input_tokens[index].to_tile_tensor[DType.int64](),
-                src_info[index].to_tile_tensor[DType.int64](),
-                send_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_ptrs[index].to_tile_tensor[DType.int64](),
-                recv_count_ptrs[index].to_tile_tensor[DType.int64](),
+                output_tokens[index].to_tile_tensor[.int64](),
+                atomic_counters[index].to_tile_tensor[.int64](),
+                input_tokens[index].to_tile_tensor[.int64](),
+                src_info[index].to_tile_tensor[.int64](),
+                send_ptrs[index].to_tile_tensor[.int64](),
+                recv_ptrs[index].to_tile_tensor[.int64](),
+                recv_count_ptrs[index].to_tile_tensor[.int64](),
                 gpu_ctxs[index],
             )
 
@@ -2067,7 +2391,7 @@ struct DistributedEPCombine:
 struct Struct_ep_combine_async:
     """Registers the `ep.combine_async` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         combine_dtype: DType,
@@ -2080,12 +2404,12 @@ struct Struct_ep_combine_async:
         //,
         target: StaticString,
     ](
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=combine_dtype, rank=2, ...],
-        src_info: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        src_info: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism combine kernel.
@@ -2134,12 +2458,12 @@ struct Struct_ep_combine_async:
             n_nodes,
             target,
         ](
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -2148,8 +2472,7 @@ struct Struct_ep_combine_async:
 struct Struct_ep_combine_wait:
     """Registers the `ep.combine_wait` graph op with the graph compiler."""
 
-    @__parameter
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         combine_dtype: DType,
@@ -2165,9 +2488,9 @@ struct Struct_ep_combine_wait:
         target: StaticString,
     ](
         output_tokens: FusedOutputTensor[dtype=combine_dtype, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         router_weights: InputTensor[dtype=router_weights_dtype, rank=2, ...],
         context: DeviceContext,
     ) raises:
@@ -2209,22 +2532,22 @@ struct Struct_ep_combine_wait:
                 Shape `[num_tokens, top_k]`.
             context: GPU device context for the current device.
         """
-        var router_weights_tensor = router_weights.to_tile_tensor[DType.int64]()
+        var router_weights_tensor = router_weights.to_tile_tensor[.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
 
         @__parameter
-        @always_inline
+        @inline(.always)
         @__copy_capture(router_weights_tensor)
         def router_weights_fn[
             width: Int
-        ](token_idx: Int, topk_id: Int) -> SIMD[DType.float32, width]:
+        ](token_idx: Int, topk_id: Int) -> SIMD[.float32, width]:
             return router_weights_tensor.load[width=width](
                 (token_idx, topk_id)
-            ).cast[DType.float32]()
+            ).cast[.float32]()
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def output_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int = 1
         ](coords: IndexList[2], val: SIMD[dtype, width]):
@@ -2235,7 +2558,7 @@ struct Struct_ep_combine_wait:
                 rebind[SIMD[combine_dtype, width]](val),
             )
 
-        var output_tokens_tensor = output_tokens.to_tile_tensor[DType.int64]()
+        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
         # `output_tokens.dim(0)` is the per-token combine result count
         # (= num_input_tokens). Pass it to enable the decode-fast-path
         # grid sizing in `ep_combine_wait_kernel_api`.
@@ -2254,9 +2577,9 @@ struct Struct_ep_combine_wait:
             ) if has_epilogue_fusion else None,
         ](
             output_tokens_tensor,
-            atomic_counters.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
             num_input_tokens,
         )
@@ -2266,9 +2589,8 @@ struct Struct_ep_combine_wait:
 struct Struct_ep_combine:
     """Registers the `ep.combine` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         combine_dtype: DType,
         router_weights_dtype: DType,
@@ -2285,12 +2607,12 @@ struct Struct_ep_combine:
         target: StaticString,
     ](
         output_tokens: FusedOutputTensor[dtype=combine_dtype, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=combine_dtype, rank=2, ...],
-        src_info: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        src_info: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         router_weights: InputTensor[dtype=router_weights_dtype, rank=2, ...],
         context: DeviceContext,
     ) raises:
@@ -2349,22 +2671,22 @@ struct Struct_ep_combine:
                 `[num_tokens, top_k]`.
             context: GPU device context for the current device.
         """
-        var router_weights_tensor = router_weights.to_tile_tensor[DType.int64]()
+        var router_weights_tensor = router_weights.to_tile_tensor[.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
 
         @__parameter
-        @always_inline
+        @inline(.always)
         @__copy_capture(router_weights_tensor)
         def router_weights_fn[
             width: Int
-        ](token_idx: Int, topk_id: Int) -> SIMD[DType.float32, width]:
+        ](token_idx: Int, topk_id: Int) -> SIMD[.float32, width]:
             return router_weights_tensor.load[width=width](
                 (token_idx, topk_id)
-            ).cast[DType.float32]()
+            ).cast[.float32]()
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def output_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int = 1
         ](coords: IndexList[2], val: SIMD[dtype, width]):
@@ -2390,13 +2712,13 @@ struct Struct_ep_combine:
             fused_shared_expert=fused_shared_expert,
             skip_a2a=skip_a2a,
         ](
-            output_tokens.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            output_tokens.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
         )
 
@@ -2405,9 +2727,8 @@ struct Struct_ep_combine:
 struct Struct_ep_combine_skip_a2a:
     """Registers the `ep.combine.skip_a2a` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
-    @__parameter
     def execute[
         combine_dtype: DType,
         router_weights_dtype: DType,
@@ -2425,14 +2746,14 @@ struct Struct_ep_combine_skip_a2a:
         target: StaticString,
     ](
         output_tokens: FusedOutputTensor[dtype=combine_dtype, rank=2, ...],
-        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=.int32, rank=1, ...],
         input_tokens: InputTensor[dtype=combine_dtype, rank=2, ...],
-        src_info: InputTensor[dtype=DType.int32, rank=2, ...],
-        send_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
-        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        src_info: InputTensor[dtype=.int32, rank=2, ...],
+        send_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=.uint64, rank=1, ...],
         router_weights: InputTensor[dtype=router_weights_dtype, rank=2, ...],
-        topk_ids: InputTensor[dtype=DType.int32, rank=2, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=2, ...],
         context: DeviceContext,
     ) raises:
         """Execute the fused Expert Parallelism combine kernel.
@@ -2498,22 +2819,22 @@ struct Struct_ep_combine_skip_a2a:
                 Shape `[num_tokens, top_k]`.
             context: GPU device context for the current device.
         """
-        var router_weights_tensor = router_weights.to_tile_tensor[DType.int64]()
+        var router_weights_tensor = router_weights.to_tile_tensor[.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
 
         @__parameter
-        @always_inline
+        @inline(.always)
         @__copy_capture(router_weights_tensor)
         def router_weights_fn[
             width: Int
-        ](token_idx: Int, topk_id: Int) -> SIMD[DType.float32, width]:
+        ](token_idx: Int, topk_id: Int) -> SIMD[.float32, width]:
             return router_weights_tensor.load[width=width](
                 (token_idx, topk_id)
-            ).cast[DType.float32]()
+            ).cast[.float32]()
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def output_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int = 1
         ](coords: IndexList[2], val: SIMD[dtype, width]):
@@ -2540,13 +2861,13 @@ struct Struct_ep_combine_skip_a2a:
             skip_a2a=skip_a2a,
             allreduce_world_size=allreduce_world_size,
         ](
-            output_tokens.to_tile_tensor[DType.int64](),
-            atomic_counters.to_tile_tensor[DType.int64](),
-            input_tokens.to_tile_tensor[DType.int64](),
-            src_info.to_tile_tensor[DType.int64](),
-            send_ptrs.to_tile_tensor[DType.int64](),
-            recv_ptrs.to_tile_tensor[DType.int64](),
-            recv_count_ptrs.to_tile_tensor[DType.int64](),
+            output_tokens.to_tile_tensor[.int64](),
+            atomic_counters.to_tile_tensor[.int64](),
+            input_tokens.to_tile_tensor[.int64](),
+            src_info.to_tile_tensor[.int64](),
+            send_ptrs.to_tile_tensor[.int64](),
+            recv_ptrs.to_tile_tensor[.int64](),
+            recv_count_ptrs.to_tile_tensor[.int64](),
             context,
             topk_ids._ptr.as_imm().unsafe_origin_cast[ImmUntrackedOrigin](),
         )
@@ -2556,7 +2877,7 @@ struct Struct_ep_combine_skip_a2a:
 struct Struct_ep_fused_silu:
     """Registers the `ep.fused_silu` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         output_dtype: DType,
@@ -2566,7 +2887,7 @@ struct Struct_ep_fused_silu:
     ](
         output: OutputTensor[dtype=output_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
-        row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism fused SILU kernel.
@@ -2583,11 +2904,11 @@ struct Struct_ep_fused_silu:
         # Ensure this kernel only runs on GPU targets
         comptime assert is_gpu[target](), "EP is only supported on GPU."
 
-        var output_tensor = output.to_tile_tensor[DType.int64]()
-        var input_tensor = input.to_tile_tensor[DType.int64]().as_immut()
+        var output_tensor = output.to_tile_tensor[.int64]()
+        var input_tensor = input.to_tile_tensor[.int64]().as_imm()
         var row_offsets_tensor = row_offsets.to_tile_tensor[
             DType.int64
-        ]().as_immut()
+        ]().as_imm()
 
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
@@ -2602,9 +2923,8 @@ struct Struct_ep_fused_silu:
             hw_info.sm_count,
         ]
 
-        @always_inline
-        @__parameter
-        def description_fn() -> String:
+        @inline(.always)
+        def description_fn() {imm} -> String:
             # fmt: off
             return String(
                 "output_dtype=", output_dtype,
@@ -2614,7 +2934,7 @@ struct Struct_ep_fused_silu:
 
         with Trace[TraceLevel.OP, target=target](
             "ep.fused_silu",
-            Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+            Trace[TraceLevel.OP]._get_detail_str(description_fn),
             task_id=get_safe_task_id(context),
         ):
             gpu_ctx.enqueue_function[fused_silu](
@@ -2631,7 +2951,7 @@ struct Struct_ep_fused_silu:
 struct Struct_ep_fused_silu_fp8:
     """Registers the `ep.fused_silu.fp8` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         fp8_dtype: DType,
@@ -2642,7 +2962,7 @@ struct Struct_ep_fused_silu_fp8:
         output: OutputTensor[dtype=fp8_dtype, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
-        row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism fused SILU kernel with FP8
@@ -2662,12 +2982,12 @@ struct Struct_ep_fused_silu_fp8:
 
         comptime group_size = 128
 
-        var output_tensor = output.to_tile_tensor[DType.int64]()
-        var scales_tensor = scales.to_tile_tensor[DType.int64]()
-        var input_tensor = input.to_tile_tensor[DType.int64]().as_immut()
+        var output_tensor = output.to_tile_tensor[.int64]()
+        var scales_tensor = scales.to_tile_tensor[.int64]()
+        var input_tensor = input.to_tile_tensor[.int64]().as_imm()
         var row_offsets_tensor = row_offsets.to_tile_tensor[
             DType.int64
-        ]().as_immut()
+        ]().as_imm()
 
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
@@ -2685,9 +3005,8 @@ struct Struct_ep_fused_silu_fp8:
             group_size,
         ]
 
-        @always_inline
-        @__parameter
-        def description_fn() -> String:
+        @inline(.always)
+        def description_fn() {imm} -> String:
             # fmt: off
             return String(
                 "fp8_dtype=", fp8_dtype,
@@ -2699,7 +3018,7 @@ struct Struct_ep_fused_silu_fp8:
 
         with Trace[TraceLevel.OP, target=target](
             "ep.fused_silu.fp8",
-            Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+            Trace[TraceLevel.OP]._get_detail_str(description_fn),
             task_id=get_safe_task_id(context),
         ):
             gpu_ctx.enqueue_function[fused_silu_fp8](
@@ -2717,7 +3036,7 @@ struct Struct_ep_fused_silu_fp8:
 struct Struct_ep_fused_silu_mxfp4:
     """Registers the `ep.fused_silu.mxfp4` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         quant_dtype: DType,
@@ -2734,7 +3053,7 @@ struct Struct_ep_fused_silu_mxfp4:
         output: OutputTensor[dtype=quant_dtype, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
-        row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         # Clamped-SwiGLU alpha/L (trailing CPU f32 constants); unused when
         # clamp_activation=False.
         alpha: Float32,
@@ -2768,12 +3087,12 @@ struct Struct_ep_fused_silu_mxfp4:
         # Ensure this kernel only runs on GPU targets
         comptime assert is_gpu[target](), "EP is only supported on GPU."
 
-        var output_tensor = output.to_tile_tensor[DType.int64]()
-        var scales_tensor = scales.to_tile_tensor[DType.int64]()
-        var input_tensor = input.to_tile_tensor[DType.int64]().as_immut()
+        var output_tensor = output.to_tile_tensor[.int64]()
+        var scales_tensor = scales.to_tile_tensor[.int64]()
+        var input_tensor = input.to_tile_tensor[.int64]().as_imm()
         var row_offsets_tensor = row_offsets.to_tile_tensor[
             DType.int64
-        ]().as_immut()
+        ]().as_imm()
 
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
@@ -2792,9 +3111,8 @@ struct Struct_ep_fused_silu_mxfp4:
             clamp_activation=clamp_activation,
         ]
 
-        @always_inline
-        @__parameter
-        def description_fn() -> String:
+        @inline(.always)
+        def description_fn() {imm} -> String:
             # fmt: off
             return String(
                 "quant_dtype=", quant_dtype,
@@ -2807,7 +3125,7 @@ struct Struct_ep_fused_silu_mxfp4:
 
         with Trace[TraceLevel.OP, target=target](
             trace_name,
-            Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+            Trace[TraceLevel.OP]._get_detail_str(description_fn),
             task_id=get_safe_task_id(context),
         ):
             gpu_ctx.enqueue_function[fused_silu_mx](
@@ -2828,7 +3146,7 @@ struct Struct_ep_fused_silu_mxfp4:
 struct Struct_ep_fused_silu_mxfp8:
     """Registers the `ep.fused_silu.mxfp8` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         fp8_dtype: DType,
@@ -2843,7 +3161,7 @@ struct Struct_ep_fused_silu_mxfp8:
         output: OutputTensor[dtype=fp8_dtype, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
-        row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         alpha: Float32,
         limit: Float32,
         context: DeviceContext,
@@ -2869,7 +3187,7 @@ struct Struct_ep_fused_silu_mxfp8:
 struct Struct_ep_fused_silu_mxfp6:
     """Registers the `ep.fused_silu.mxfp6` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         scales_dtype: DType,
@@ -2881,10 +3199,10 @@ struct Struct_ep_fused_silu_mxfp6:
         max_padded_M: Int = 0,
         clamp_activation: Bool = False,
     ](
-        output: OutputTensor[dtype=DType.uint8, rank=2, ...],
+        output: OutputTensor[dtype=.uint8, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
-        row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         # Clamped-SwiGLU alpha/L (trailing CPU f32 constants); unused when
         # clamp_activation=False.
         alpha: Float32,
@@ -2903,21 +3221,20 @@ struct Struct_ep_fused_silu_mxfp6:
         it from the bytes -- it must match what the checkpoint declares.
         """
         comptime assert is_gpu[target](), "EP is only supported on GPU."
-        comptime assert not fuse_a_scale_preshuffle, (
-            "MXFP6 has no A-scale slot-layout producer; run the standalone"
-            " preshuffle instead"
-        )
-        comptime assert max_padded_M == 0, (
-            "max_padded_M belongs to the A-scale fold, which MXFP6 does not"
-            " support"
+        comptime assert not fuse_a_scale_preshuffle or (
+            max_padded_M > 0 and max_padded_M % 32 == 0
+        ), (
+            "the A-scale fold needs the graph-build-time slot stride:"
+            " max_padded_M must be a positive multiple of 32, since the"
+            " matmul reads with align_up(max_num_tokens_per_expert, 32)"
         )
 
-        var output_tensor = output.to_tile_tensor[DType.int64]()
-        var scales_tensor = scales.to_tile_tensor[DType.int64]()
-        var input_tensor = input.to_tile_tensor[DType.int64]().as_immut()
+        var output_tensor = output.to_tile_tensor[.int64]()
+        var scales_tensor = scales.to_tile_tensor[.int64]()
+        var input_tensor = input.to_tile_tensor[.int64]().as_imm()
         var row_offsets_tensor = row_offsets.to_tile_tensor[
             DType.int64
-        ]().as_immut()
+        ]().as_imm()
 
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
@@ -2932,24 +3249,25 @@ struct Struct_ep_fused_silu_mxfp6:
             hw_info.max_thread_block_size,
             hw_info.sm_count,
             fp6_format=FP6Format(FP6_FORMAT),
+            fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
             clamp_activation=clamp_activation,
         ]
 
-        @always_inline
-        @__parameter
-        def description_fn() -> String:
+        @inline(.always)
+        def description_fn() {imm} -> String:
             # fmt: off
             return String(
                 "scales_dtype=", scales_dtype,
                 ";input_dtype=", input_dtype,
                 ";FP6_FORMAT=", FP6_FORMAT,
+                ";fuse_a_scale_preshuffle=", fuse_a_scale_preshuffle,
                 ";clamp_activation=", clamp_activation,
             )
             # fmt: on
 
         with Trace[TraceLevel.OP, target=target](
             "ep.fused_silu.mxfp6",
-            Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+            Trace[TraceLevel.OP]._get_detail_str(description_fn),
             task_id=get_safe_task_id(context),
         ):
             gpu_ctx.enqueue_function[fused_silu_fp6](
@@ -2957,6 +3275,7 @@ struct Struct_ep_fused_silu_mxfp6:
                 scales_tensor,
                 input_tensor,
                 row_offsets_tensor,
+                Int32(max_padded_M),
                 alpha,
                 limit,
                 grid_dim=hw_info.sm_count,
@@ -2969,7 +3288,7 @@ struct Struct_ep_fused_silu_mxfp6:
 struct Struct_ep_fused_silu_nvfp4:
     """Registers the `ep.fused_silu.nvfp4` graph op with the graph compiler."""
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         fp4_dtype: DType,
@@ -2980,9 +3299,9 @@ struct Struct_ep_fused_silu_nvfp4:
         output: OutputTensor[dtype=fp4_dtype, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=5, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
-        row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        scales_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        input_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        scales_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        input_scales: InputTensor[dtype=.float32, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism fused SILU kernel with NVFP4
@@ -3000,18 +3319,18 @@ struct Struct_ep_fused_silu_nvfp4:
         # Ensure this kernel only runs on GPU targets
         comptime assert is_gpu[target](), "EP is only supported on GPU."
 
-        var output_tensor = output.to_tile_tensor[DType.int64]()
-        var scales_tensor = scales.to_tile_tensor[DType.int64]()
-        var input_tensor = input.to_tile_tensor[DType.int64]().as_immut()
+        var output_tensor = output.to_tile_tensor[.int64]()
+        var scales_tensor = scales.to_tile_tensor[.int64]()
+        var input_tensor = input.to_tile_tensor[.int64]().as_imm()
         var row_offsets_tensor = row_offsets.to_tile_tensor[
             DType.int64
-        ]().as_immut()
+        ]().as_imm()
         var scales_offsets_tensor = scales_offsets.to_tile_tensor[
             DType.int64
-        ]().as_immut()
+        ]().as_imm()
         var input_scales_tensor = input_scales.to_tile_tensor[
             DType.int64
-        ]().as_immut()
+        ]().as_imm()
 
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
@@ -3030,9 +3349,8 @@ struct Struct_ep_fused_silu_nvfp4:
             hw_info.sm_count,
         ]
 
-        @always_inline
-        @__parameter
-        def description_fn() -> String:
+        @inline(.always)
+        def description_fn() {imm} -> String:
             # fmt: off
             return String(
                 "fp4_dtype=", fp4_dtype,
@@ -3043,7 +3361,7 @@ struct Struct_ep_fused_silu_nvfp4:
 
         with Trace[TraceLevel.OP, target=target](
             "ep.fused_silu.nvfp4",
-            Trace[TraceLevel.OP]._get_detail_str[description_fn](),
+            Trace[TraceLevel.OP]._get_detail_str(description_fn),
             task_id=get_safe_task_id(context),
         ):
             gpu_ctx.enqueue_function[fused_silu_nvfp4](

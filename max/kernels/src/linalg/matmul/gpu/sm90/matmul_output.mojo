@@ -22,12 +22,20 @@ swapAB small-M strategy.
 from std.math import ceildiv
 from std.sys import simd_width_of, size_of
 
-from std.gpu.globals import WARPGROUP_SIZE
+from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.sync import named_barrier
-from layout import Coord, Idx, Layout, TensorLayout, TileTensor, row_major
+from layout import (
+    Coord,
+    DefaultEngine,
+    Idx,
+    Layout,
+    TensorLayout,
+    TileTensor,
+    row_major,
+)
 from layout.swizzle import make_ldmatrix_swizzle
-from layout.tensor_storage import TensorStorage
+from layout.tensor_engine import TensorEngine
 from layout.tma_async import TMATensorTile
 
 from std.utils.index import IndexList
@@ -50,7 +58,7 @@ import std.itertools
 struct MatmulTileWriter[
     dtype: DType,
     tensor_layout: TensorLayout,
-    tensor_storage: TensorStorage,
+    output_engine: TensorEngine,
     linear_idx_type: DType,
     smem_tile_layout: TensorLayout,
     //,
@@ -80,7 +88,7 @@ struct MatmulTileWriter[
             (inferred).
         tensor_layout: Memory layout of the output tensor in global memory
             (inferred).
-        tensor_storage: Storage backing the output tensor in global memory
+        output_engine: Engine backing the output tensor in global memory
             (inferred).
         linear_idx_type: Integer type used for linear index arithmetic
             into the output tensor (inferred).
@@ -125,11 +133,11 @@ struct MatmulTileWriter[
 
     comptime CTensorType = TileTensor[
         mut=True,
-        dtype=Self.dtype,
+        Self.dtype,
         LayoutType=Self.tensor_layout,
         origin=MutAnyOrigin,
-        Storage=Self.tensor_storage,
-        address_space=AddressSpace.GENERIC,
+        Engine=Self.output_engine,
+        address_space=.GENERIC,
         linear_idx_type=Self.linear_idx_type,
     ]
     comptime lambda_type = def[
@@ -143,10 +151,12 @@ struct MatmulTileWriter[
     @__allow_legacy_any_origin_fields
     var smem_tile: TileTensor[
         mut=True,
-        dtype=Self.dtype,
+        Self.dtype,
         LayoutType=Self.smem_tile_layout,
         origin=MutAnyOrigin,
-        address_space=AddressSpace.SHARED,
+        # Shared memory is raw-pointer addressed so pin DefaultEngine.
+        Engine=DefaultEngine[element_width=1],
+        address_space=.SHARED,
     ]
     var warp_group_thread_idx: Int
     var local_warp_group_idx: Int
@@ -154,16 +164,18 @@ struct MatmulTileWriter[
     var block_y: Int
     var block_x: Int
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         tensor: Self.CTensorType,
         smem_tile: TileTensor[
             mut=True,
-            dtype=Self.dtype,
+            Self.dtype,
             LayoutType=Self.smem_tile_layout,
             origin=MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            # Shared memory is raw-pointer addressed so pin DefaultEngine.
+            Engine=DefaultEngine[element_width=1],
+            address_space=.SHARED,
         ],
         warp_group_thread_idx: Int,
         local_warp_group_idx: Int,
@@ -179,7 +191,7 @@ struct MatmulTileWriter[
         self.block_y = block_y
         self.block_x = block_x
 
-    @always_inline
+    @inline(.always)
     def _calculate_output_bounds(self) -> Tuple[UInt32, UInt32]:
         """Calculate valid output bounds for the current block's tile."""
         var rows = self.tensor.dim[0]()
@@ -197,7 +209,7 @@ struct MatmulTileWriter[
 
         return max_row, max_col
 
-    @always_inline
+    @inline(.always)
     def _apply_epilogue[
         F: ImplicitlyCopyable & RegisterPassable & Self.lambda_type
     ](
@@ -249,7 +261,7 @@ struct MatmulTileWriter[
                 ](IndexList[2](Int(row), Int(col)), shared_value)
                 shared_fragment.store(Coord(Idx[i], Idx[0]), shared_value)
 
-    @always_inline
+    @inline(.always)
     def _write_tile_to_gmem[
         accum_type: DType,
         reg_tile_layout: Layout,
@@ -322,7 +334,7 @@ struct MatmulTileWriter[
                 (row_tile, col_tile),
             )
 
-    @always_inline
+    @inline(.always)
     def _write_tile_stmatrix[
         tma_rank: Int,
         tma_tile_shape: IndexList[tma_rank],
@@ -418,7 +430,7 @@ struct MatmulTileWriter[
 
             def apply_epilogue[
                 F: ImplicitlyCopyable & RegisterPassable & Self.lambda_type
-            ](epilogue_fn: F):
+            ](epilogue_fn: F) {imm}:
                 self._apply_epilogue(
                     epilogue_fn,
                     workgroup_tile,
@@ -461,10 +473,13 @@ struct MatmulTileWriter[
                         ]()
                         var tma_tile = TileTensor[
                             mut=True,
-                            dtype=Self.dtype,
+                            Self.dtype,
                             LayoutType=type_of(tma_smem_layout),
                             origin=MutAnyOrigin,
-                            address_space=AddressSpace.SHARED,
+                            # Shared memory is raw-pointer addressed so pin
+                            # DefaultEngine.
+                            Engine=DefaultEngine[element_width=1],
+                            address_space=.SHARED,
                         ](smem_offset, tma_smem_layout)
 
                         var tma_coords = (
@@ -488,9 +503,7 @@ struct MatmulTileWriter[
                         half_tile=is_partial_tile,
                         swapAB=Self.swapAB,
                     ](
-                        workgroup_tile.address_space_cast[
-                            AddressSpace.GENERIC
-                        ](),
+                        workgroup_tile.address_space_cast[.GENERIC](),
                         self.local_thread_idx,
                     )
 
@@ -498,7 +511,7 @@ struct MatmulTileWriter[
 
             named_barrier[Int32(Self.num_consumer_threads)](10)
 
-    @always_inline
+    @inline(.always)
     def write_tile[
         tma_rank: Int,
         tma_tile_shape: IndexList[tma_rank],
@@ -553,7 +566,7 @@ struct MatmulTileWriter[
         # Check if st.matrix optimization can be used
         # fmt: off
         comptime can_use_stmatrix_normal = (
-            accum_type == DType.float32 and Self.dtype == DType.bfloat16  # F32→BF16
+            accum_type == .float32 and Self.dtype == .bfloat16  # F32→BF16
             and Self.frag_size % 4 == 0                               # Register count
             and Self.BM % Self.wgmma_shape[0] == 0                              # M alignment
             and Self.WG_BN % 16 == 0                                  # Shared memory
@@ -564,7 +577,7 @@ struct MatmulTileWriter[
         )
 
         comptime can_use_stmatrix_swapAB = (
-            accum_type == DType.float32 and Self.dtype == DType.bfloat16             # F32→BF16
+            accum_type == .float32 and Self.dtype == .bfloat16             # F32→BF16
             and Self.frag_size % 4 == 0                                              # Register count (at least stmatrix x2 can be used)
             and Self.BM % Self.wgmma_shape[0] == 0                                   # each consumer should get one wgmma tile
             and Self.WG_BM % 8 == 0                                                  # Shared memory, must have at least 8 rows for swapAB

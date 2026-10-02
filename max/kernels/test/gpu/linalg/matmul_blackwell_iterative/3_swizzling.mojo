@@ -11,13 +11,14 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.builtin._closure import __ownership_keepalive
 from std.math import ceildiv
 from std.sys import argv, size_of
 
 import linalg.matmul.vendor.blas as vendor_blas
-from std.gpu import WARP_SIZE
+from max.gpu import WARP_SIZE
 from max.gpu.sync import barrier
-from std.gpu import block_idx, lane_id, thread_idx, warp_id
+from max.gpu import block_idx, lane_id, thread_idx, warp_id
 from max.gpu.primitives.cluster import block_rank_in_cluster
 from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
@@ -27,7 +28,7 @@ from max.gpu.compute.arch.tcgen05 import *
 
 # Additional imports for testing
 from internal_utils import assert_almost_equal
-from layout import IntTuple, Layout, LayoutTensor
+from layout import IntTuple, Layout, LayoutTensor, TileTensor, row_major
 from layout._utils import ManagedLayoutTensor
 from layout.tensor_core_async import (
     tile_layout_k_major,
@@ -112,15 +113,11 @@ def kernel_3[
     ]()
 
     var a_smem = rebind[
-        UnsafePointer[
-            Scalar[a_type],
-            address_space=AddressSpace.SHARED,
-            UntrackedOrigin[mut=True],
-        ]
+        MutPointer[Scalar[a_type], address_space=.SHARED, MutUntrackedOrigin]
     ](
         external_memory[
             Scalar[a_type],
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
             alignment=128,
             name="tmem_test_dynamic_shared_memory",
         ]()
@@ -131,28 +128,28 @@ def kernel_3[
         a_type,
         a_smem_layout,
         _,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=128,
     ]
     comptime b_smem_tile_t = LayoutTensor[
         b_type,
         b_smem_layout,
         _,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=128,
     ]
     comptime sub_a_smem_tile_t = LayoutTensor[
         a_type,
         sub_a_smem_layout,
         _,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=128,
     ]
     comptime sub_b_smem_tile_t = LayoutTensor[
         b_type,
         sub_b_smem_layout,
         _,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=128,
     ]
     comptime a_size = a_smem_layout.size()
@@ -231,7 +228,7 @@ def kernel_3[
         accum_type,
         a_type,
         b_type,
-        Index[dtype=DType.uint32](mma_shape[0], mma_shape[1]),
+        Index[dtype=.uint32](mma_shape[0], mma_shape[1]),
         transpose_b=transpose_b,
     ]()
 
@@ -530,9 +527,11 @@ def test_blackwell_kernel_3[
     var c_device = ctx.enqueue_create_buffer[c_type](M * N)
     var c_device_lt = LayoutTensor[c_type, c_layout](c_device.unsafe_ptr())
     var c_device_ref = ctx.enqueue_create_buffer[c_type](M * N)
-    var c_device_ref_lt = LayoutTensor[c_type, c_layout](
-        c_device_ref.unsafe_ptr()
+    var a_device_tt = TileTensor(a_device, row_major[M, K]())
+    var b_device_tt = TileTensor(
+        b_device, row_major[N if transpose_b else K, K if transpose_b else N]()
     )
+    var c_device_ref_tt = TileTensor(c_device_ref, row_major[M, N]())
 
     # Initialize matmul operands
     for m_idx in range(M):
@@ -573,9 +572,8 @@ def test_blackwell_kernel_3[
         comptime num_runs = 100
         comptime num_warmup = 10
 
-        @always_inline
-        @__parameter
-        def run_kernel(ctx: DeviceContext) raises:
+        @inline(.always)
+        def run_kernel(ctx: DeviceContext) raises {imm}:
             blackwell_kernel_3[
                 transpose_b=transpose_b,
                 umma_shape=umma_shape,  # 64, 128, 16
@@ -594,7 +592,7 @@ def test_blackwell_kernel_3[
         print("finished warmup")
 
         var nstime = (
-            Float64(ctx.execution_time[run_kernel](num_runs)) / num_runs
+            Float64(ctx.execution_time(run_kernel, num_runs)) / num_runs
         )
         var sectime = nstime * 1e-9
         var TFlop = 2.0 * Float64(M) * Float64(N) * Float64(K) * 1e-12
@@ -605,9 +603,9 @@ def test_blackwell_kernel_3[
     else:
         vendor_blas.matmul(
             ctx,
-            c_device_ref_lt,
-            a_device_lt,
-            b_device_lt,
+            c_device_ref_tt,
+            a_device_tt,
+            b_device_tt,
             c_row_major=True,
             transpose_b=transpose_b,
         )
@@ -626,6 +624,10 @@ def test_blackwell_kernel_3[
             rtol=rtol,
         )
 
+    # `a_device_lt` / `b_device_lt` are raw pointer views, so past the copies
+    # above nothing else refers to the buffers backing them.
+    __ownership_keepalive(a_device, b_device)
+
 
 def main() raises:
     with DeviceContext() as ctx:
@@ -635,9 +637,9 @@ def main() raises:
             benchmark_blackwell_matmul(ctx)
 
         test_blackwell_kernel_3[
-            DType.bfloat16,
-            DType.bfloat16,
-            DType.bfloat16,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
             umma_shape=Index(64, 256, 16),
             transpose_b=True,
             BK=64,

@@ -126,7 +126,7 @@ def test_kv_cache_store_ragged_basic(ctx: DeviceContext) raises:
     var q_device_tensor = q_managed.device_tensor()
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(q_device_tensor)
     def input_fn[
         width: Int, alignment: Int
@@ -300,15 +300,13 @@ def test_kv_cache_store_padded_basic(ctx: DeviceContext) raises:
                         batch_idx, token_idx, head_idx, head_dim_idx
                     ] = Float32(expected_linear_idx)
 
-    var valid_lengths_device = ctx.enqueue_create_buffer[DType.uint32](
-        batch_size
-    )
+    var valid_lengths_device = ctx.enqueue_create_buffer[.uint32](batch_size)
     with valid_lengths_device.map_to_host() as valid_lengths_host:
         for i in range(batch_size):
             valid_lengths_host[i] = UInt32(valid_lengths[i])
 
     var valid_lengths_tensor = LayoutTensor[
-        DType.uint32,
+        .uint32,
         Layout.row_major(UNKNOWN_VALUE),
     ](
         valid_lengths_device,
@@ -320,7 +318,7 @@ def test_kv_cache_store_padded_basic(ctx: DeviceContext) raises:
     var q_device_tensor = q_managed.device_tensor()
 
     @__parameter
-    @always_inline
+    @inline(.always)
     @__copy_capture(q_device_tensor)
     def input_fn[
         width: Int, alignment: Int

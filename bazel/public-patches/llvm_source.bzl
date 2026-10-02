@@ -4,9 +4,9 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # BEGIN_GENERATED
 # NOTE: Use 'update-llvm' to update these values
-LLVM_COMMIT = "d280d7945f6986c53c3def59d31477857b5e18a7"
+LLVM_COMMIT = "7ed0d7d42019ab5ad6df8fb89e968ecef24b01a5"
 
-LLVM_SHA = "180badf61522c92999dde633fac8a0bba58c89e81b1a661f33fa83a81df69580"
+LLVM_SHA = "bf2223b40829339d16e0be7457e895b637047fd34da79d0a3147db771bc38f32"
 # END_GENERATED
 
 PATCHES = [
@@ -23,44 +23,24 @@ PATCHES = [
     # https://github.com/llvm/llvm-project/pull/188978
     # https://github.com/llvm/llvm-project/issues/190255
     "//bazel/public-patches:llvm-elf-extractor-local-copy.patch",
-    # Revert the config.bzl musl/gnu select() from llvm/llvm-project#207295,
-    # which keys HAVE_BACKTRACE/BACKTRACE_HEADER/HAVE_MALLINFO on
-    # @llvm//platforms/config:{musl,gnu}. That package is not present in the
-    # repo produced by our llvm_configure module extension, so the select()
-    # fails to resolve ("No repository visible as '@llvm'"). Restore the
-    # unconditional glibc/macOS defines, which are correct for our builds
-    # (we do not target musl).
+    # Revert llvm/llvm-project#218490, which changed ELFSectionHeaderInfo's
+    # section_name from ConstString to std::string. ConstString is a pointer
+    # into a never-freed intern pool; std::string owns its buffer, so the
+    # header info now frees memory and reintroduces the same corrupted
+    # double-linked list on teardown that the patch above fixes. Regenerated
+    # over llvm/llvm-project#224170 and llvm/llvm-project#224407, which moved
+    # Section names to std::string as well; keeping only the header info on
+    # ConstString is still enough to avoid the crash.
+    # TODO(MOTO-1590): drop once the ownership is sound across DSO boundaries.
+    "//bazel/public-patches:llvm-revert-lldb-elf-section-name-string.patch",
+    # Revert the config.bzl musl/glibc select() from llvm/llvm-project#207295,
+    # which keys HAVE_BACKTRACE/BACKTRACE_HEADER/HAVE_MALLINFO on libc config
+    # settings. llvm/llvm-project#223549 moved those settings to
+    # @rules_cc//cc/libc:{musl,glibc}, which need rules_cc >= 0.2.25; we pin
+    # 0.2.18, so the labels do not resolve. Restore the unconditional
+    # glibc/macOS defines, which are correct for our builds (we do not target
+    # musl). Drop this once rules_cc is bumped to 0.2.25 or newer.
     "//bazel/public-patches:llvm-config-musl-select.patch",
-    # OrcTargetProcess's OrcRTBootstrap.cpp now includes
-    # RTBridge/SPS/Calls.h (llvm/llvm-project#213265), which pulls in Core.h
-    # and, transitively, most of the top-level Orc/*.h headers plus
-    # JITLink/JITLinkDylib.h. TargetProcess depends on :OrcShared, not
-    # :OrcJIT/:JITLink (the targets that already glob those headers) --
-    # and can't depend on either without a dependency cycle, since both
-    # :OrcJIT and :JITLink already depend on :OrcTargetProcess (:JITLink
-    # also depends on :OrcShared directly). Mirror their header globs onto
-    # :OrcShared's hdrs (a plain file list, not a link dependency) so the
-    # headers are visible where they're actually included from; this is
-    # header-only exposure, the .cpp only uses header-defined type aliases,
-    # not anything requiring OrcJIT's/JITLink's .cpp-defined symbols.
-    "//bazel/public-patches:llvm-orcshared-sps-rtbridge-headers.patch",
-    # ARM TableGen Update (llvm/llvm-project#208380) replaced
-    # BuiltinsARM.def with BuiltinsARM.td/BuiltinsARMBase.td, generating
-    # BuiltinsARM.inc via clang-tblgen (mirroring BuiltinsAArch64's existing
-    # gentbl_cc_library). The CMake build picked up the new tablegen rule
-    # (clang/include/clang/Basic/CMakeLists.txt) but the Bazel overlay
-    # wasn't updated, so BuiltinsARM.inc was never generated. Add the
-    # missing td_library + gentbl_cc_library and wire it into the `basic`
-    # cc_library's deps, mirroring the AArch64 pattern exactly.
-    "//bazel/public-patches:llvm-clang-builtins-arm-tablegen.patch",
-    # The libc Bazel overlay's __support_osutil_syscall target lists
-    # "src/__support/OSUtil/darwin/arm/syscall.h" for macOS, but the actual
-    # directory (and the #include in darwin/syscall.h itself) is
-    # darwin/aarch64/, not darwin/arm/ -- this mismatch predates our update
-    # range but was previously unreached on macOS; something in this range
-    # newly pulls this target into the macOS build graph, surfacing a
-    # "missing input file" error. Fix the path to match the real directory.
-    "//bazel/public-patches:llvm-libc-darwin-aarch64-syscall.patch",
 ]
 
 def _llvm_source_impl(module_ctx):

@@ -21,7 +21,7 @@ from std.sys import simd_width_of, has_nvidia_gpu_accelerator
 from std.sys import align_of, size_of, get_defined_bool
 import max.gpu.primitives.block as block
 from max.algorithm.functional import _elementwise_impl_gpu
-from std.gpu import (
+from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
     block_idx,
@@ -41,7 +41,7 @@ from layout import (
     row_major,
 )
 from layout.tile_layout import TensorLayout
-from layout.tensor_storage import TensorStorage
+from layout.tensor_engine import TensorEngine
 from std.logger import Logger
 from std.memory import bitcast
 from max.runtime.tracing import Trace, TraceLevel, trace_arg
@@ -85,14 +85,14 @@ comptime _batched_input_fn_trait[
 ########################################################
 
 
-@always_inline
+@inline(.always)
 def quantize_static_scaled_fp8[
     out_dtype: DType,
     in_dtype: DType,
     scale_is_inverted: Bool = True,
 ](
-    out_tensor: TileTensor[mut=True, dtype=out_dtype, ...],
-    in_tensor: TileTensor[mut=False, dtype=in_dtype, ...],
+    out_tensor: TileTensor[mut=True, out_dtype, ...],
+    in_tensor: TileTensor[mut=False, in_dtype, ...],
     scale: Float32,
     context: DeviceContext,
 ) raises:
@@ -109,7 +109,7 @@ def quantize_static_scaled_fp8[
         DType.float8_e4m3fnuz,
     ), "output dtype should be float8_e4m3fn or float8_e4m3fnuz"
 
-    @always_inline
+    @inline(.always)
     @__parameter
     @__copy_capture(out_tensor, in_tensor, scale)
     def scaled_fp8_quant[
@@ -117,7 +117,7 @@ def quantize_static_scaled_fp8[
     ](idx: IndexList[rank]):
         comptime assert rank == 2, "rank should be equal to 2"
 
-        var in_vec_f32 = in_tensor.load_linear[width](idx).cast[DType.float32]()
+        var in_vec_f32 = in_tensor.load_linear[width](idx).cast[.float32]()
         var inversed_scale: Float32 = 1.0 / scale
         out_tensor.store_linear(
             idx,
@@ -170,9 +170,7 @@ def max_reduction_scale_kernel[
     scale_layout: TensorLayout,
     num_threads: Int,
 ](
-    scale_global: TileTensor[
-        mut=True, DType.float32, scale_layout, MutAnyOrigin
-    ],
+    scale_global: TileTensor[mut=True, .float32, scale_layout, MutAnyOrigin],
     input_tensor: TileTensor[in_dtype, input_layout, MutAnyOrigin],
 ):
     """Per-row strided max-|x| reduction into a global FP8 scale.
@@ -194,7 +192,7 @@ def max_reduction_scale_kernel[
     with PDL():
         for e in range(tid, hidden_size, num_threads):
             var v = abs(
-                input_tensor.load_linear(Index(row, e)).cast[DType.float32]()
+                input_tensor.load_linear(Index(row, e)).cast[.float32]()
             ).reduce_max()
             thread_max = max(thread_max, v)
 
@@ -206,7 +204,7 @@ def max_reduction_scale_kernel[
             _ = Atomic[Float32].max(scale_global.ptr, row_max / fp8_max)
 
 
-@always_inline
+@inline(.always)
 def quantize_tensor_dynamic_scaled_fp8[
     out_dtype: DType,
     in_dtype: DType,
@@ -218,8 +216,8 @@ def quantize_tensor_dynamic_scaled_fp8[
     pdl_level: PDLLevel = PDLLevel.ON,
 ](
     input_fn: InputFnType,
-    scaled_output: TileTensor[mut=True, dtype=out_dtype, ...],
-    scales: TileTensor[mut=True, dtype=scales_dtype, ...],
+    scaled_output: TileTensor[mut=True, out_dtype, ...],
+    scales: TileTensor[mut=True, scales_dtype, ...],
     scale_ub: Float32,
     ctx: DeviceContext,
     num_rows: Int,
@@ -266,8 +264,8 @@ def quantize_tensor_dynamic_scaled_fp8[
         DType.float8_e4m3fn,
     ), "output dtype should be float8_e4m3fn or float8_e4m3fnuz"
 
-    comptime assert (scales_dtype != DType.float8_e8m0fnu) or (
-        out_dtype == DType.float8_e4m3fn
+    comptime assert (scales_dtype != .float8_e8m0fnu) or (
+        out_dtype == .float8_e4m3fn
     ), "float8_e8m0fnu is only supported for float8_e4m3fn output dtype"
 
     comptime group_size = num_cols if group_size_or_per_token == -1 else group_size_or_per_token
@@ -283,7 +281,7 @@ def quantize_tensor_dynamic_scaled_fp8[
     ), "group size must be multiple of simd size"
 
     # TODO: MOCO-4295
-    @always_inline
+    @inline(.always)
     def wrap[
         width: Int, alignment: Int
     ](row: Int, col: Int) {var input_fn} -> SIMD[in_dtype, width]:
@@ -310,7 +308,7 @@ def quantize_tensor_dynamic_scaled_fp8[
                 simd_width=simd_width,
             ](
                 wrap,
-                scales.address_space_cast[AddressSpace.GENERIC](),
+                scales.address_space_cast[.GENERIC](),
                 scale_ub.cast[scales_dtype](),
             )
 
@@ -328,8 +326,8 @@ def quantize_tensor_dynamic_scaled_fp8[
                 num_groups=num_cols // group_size,
             ](
                 wrap,
-                scaled_output.address_space_cast[AddressSpace.GENERIC](),
-                scales.address_space_cast[AddressSpace.GENERIC](),
+                scaled_output.address_space_cast[.GENERIC](),
+                scales.address_space_cast[.GENERIC](),
                 scale_ub.cast[scales_dtype](),
                 Int32(num_rows),
             )
@@ -347,9 +345,10 @@ def quantize_tensor_dynamic_scaled_fp8[
                 simd_width=simd_width,
             ](
                 wrap,
-                scaled_output.address_space_cast[AddressSpace.GENERIC](),
-                scales.address_space_cast[AddressSpace.GENERIC](),
+                scaled_output.address_space_cast[.GENERIC](),
+                scales.address_space_cast[.GENERIC](),
                 scale_ub.cast[scales_dtype](),
+                0.0,
             )
 
             ctx.enqueue_function(
@@ -365,7 +364,7 @@ def quantize_tensor_dynamic_scaled_fp8[
 ########################################################
 
 
-@always_inline
+@inline(.always)
 def quantize_dynamic_scaled_fp8[
     out_dtype: DType,
     in_dtype: DType,
@@ -377,13 +376,21 @@ def quantize_dynamic_scaled_fp8[
     pdl_level: PDLLevel = PDLLevel.ON,
 ](
     input_fn: InputFnType,
-    scaled_output: TileTensor[mut=True, dtype=out_dtype, ...],
-    scales: TileTensor[mut=True, dtype=scales_dtype, ...],
+    scaled_output: TileTensor[mut=True, out_dtype, ...],
+    scales: TileTensor[mut=True, scales_dtype, ...],
     scale_ub: Float32,
     ctx: DeviceContext,
     num_rows: Int,
+    amax_floor: Float32 = 0.0,
 ) raises:
-    """TileTensor primary implementation of dynamic scaled FP8 quantization."""
+    """TileTensor primary implementation of dynamic scaled FP8 quantization.
+
+    `amax_floor` lower-bounds a group's max-abs before the scale is derived,
+    which is how QAT recipes such as DeepSeek-V4's `act_quant` (floor 1e-4)
+    keep near-zero activation groups on the scale grid the checkpoint was
+    trained against. It is only honored on the `float8_e8m0fnu` scale path;
+    `0` (the default) leaves the scale unchanged.
+    """
     comptime assert scaled_output.rank == 2, "expected rank-2 output"
     comptime assert scales.rank == 2, "expected rank-2 scales"
 
@@ -398,8 +405,8 @@ def quantize_dynamic_scaled_fp8[
         DType.float8_e4m3fnuz,
     ), "output dtype should be float8_e4m3fn or float8_e4m3fnuz"
 
-    comptime assert (scales_dtype != DType.float8_e8m0fnu) or (
-        out_dtype == DType.float8_e4m3fn
+    comptime assert (scales_dtype != .float8_e8m0fnu) or (
+        out_dtype == .float8_e4m3fn
     ), "float8_e8m0fnu is only supported for float8_e4m3fn output dtype"
 
     comptime group_size = num_cols if group_size_or_per_token == -1 else group_size_or_per_token
@@ -415,7 +422,7 @@ def quantize_dynamic_scaled_fp8[
     ), "group size must be multiple of simd size"
 
     # TODO: MOCO-4295
-    @always_inline
+    @inline(.always)
     def wrap[
         width: Int, alignment: Int
     ](row: Int, col: Int) {var input_fn} -> SIMD[in_dtype, width]:
@@ -450,9 +457,10 @@ def quantize_dynamic_scaled_fp8[
                 simd_width=simd_width,
             ](
                 wrap,
-                scaled_output.address_space_cast[AddressSpace.GENERIC](),
-                scales.address_space_cast[AddressSpace.GENERIC](),
+                scaled_output.address_space_cast[.GENERIC](),
+                scales.address_space_cast[.GENERIC](),
                 scale_ub.cast[scales_dtype](),
+                amax_floor,
             )
 
             ctx.enqueue_function(
@@ -469,11 +477,11 @@ struct _QuantizeFp8Kernel[
     scales_type: DType,
     output_layout: TensorLayout,
     output_origin: MutOrigin,
-    output_storage: TensorStorage,
+    output_engine: TensorEngine,
     output_idx_type: DType,
     scales_layout: TensorLayout,
     scales_origin: MutOrigin,
-    scales_storage: TensorStorage,
+    scales_engine: TensorEngine,
     scales_idx_type: DType,
     //,
     in_type: DType,
@@ -488,7 +496,7 @@ struct _QuantizeFp8Kernel[
         Self.out_type,
         Self.output_layout,
         Self.output_origin,
-        Storage=Self.output_storage,
+        Engine=Self.output_engine,
         linear_idx_type=Self.output_idx_type,
     ]
     var scales: TileTensor[
@@ -496,10 +504,11 @@ struct _QuantizeFp8Kernel[
         Self.scales_type,
         Self.scales_layout,
         Self.scales_origin,
-        Storage=Self.scales_storage,
+        Engine=Self.scales_engine,
         linear_idx_type=Self.scales_idx_type,
     ]
     var scale_ub: Scalar[Self.scales_type]
+    var amax_floor: Float32
 
     @__llvm_metadata(
         MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](
@@ -511,12 +520,13 @@ struct _QuantizeFp8Kernel[
         var output = TileTensor(self.output.ptr, self.output.layout)
         var scales = TileTensor(self.scales.ptr, self.scales.layout)
         var scale_ub = self.scale_ub
+        var amax_floor = self.amax_floor
         comptime use_warp_tiling = Self.group_size <= Self.num_threads * Self.simd_width
         comptime fp8_max = Scalar[Self.out_type].MAX_FINITE
         comptime accum_type = get_accum_type[Self.in_type]()
 
-        comptime assert (Self.scales_type != DType.float8_e8m0fnu) or (
-            accum_type == DType.float32
+        comptime assert (Self.scales_type != .float8_e8m0fnu) or (
+            accum_type == .float32
         ), (
             "float8_e8m0fnu quantization is only supported for float32 accum"
             " type"
@@ -547,9 +557,10 @@ struct _QuantizeFp8Kernel[
             var scale_factor: Scalar[Self.scales_type]
             var scale_factor_recip: Scalar[accum_type]
 
-            comptime if Self.scales_type == DType.float8_e8m0fnu:
+            comptime if Self.scales_type == .float8_e8m0fnu:
                 scale_factor = max(
-                    group_max / fp8_max.cast[accum_type](),
+                    max(group_max, amax_floor.cast[accum_type]())
+                    / fp8_max.cast[accum_type](),
                     Scalar[accum_type](1e-10),
                 ).cast[Self.scales_type]()
                 scale_factor_recip = (
@@ -589,7 +600,7 @@ struct _ComputeScalesFp8Kernel[
     scales_type: DType,
     scales_layout: TensorLayout,
     scales_origin: MutOrigin,
-    scales_storage: TensorStorage,
+    scales_engine: TensorEngine,
     scales_idx_type: DType,
     //,
     in_type: DType,
@@ -604,7 +615,7 @@ struct _ComputeScalesFp8Kernel[
         Self.scales_type,
         Self.scales_layout,
         Self.scales_origin,
-        Storage=Self.scales_storage,
+        Engine=Self.scales_engine,
         linear_idx_type=Self.scales_idx_type,
     ]
     var scale_ub: Scalar[Self.scales_type]
@@ -632,8 +643,8 @@ struct _ComputeScalesFp8Kernel[
             DType.float16,
             DType.float32,
         ), "scales dtype should be bfloat16, float16 or float32"
-        comptime assert (Self.scales_type != DType.float8_e8m0fnu) or (
-            accum_type == DType.float32
+        comptime assert (Self.scales_type != .float8_e8m0fnu) or (
+            accum_type == .float32
         ), (
             "float8_e8m0fnu quantization is only supported for float32 accum"
             " type"
@@ -672,11 +683,11 @@ struct _QuantizeFp8KernelPerTensor[
     scales_type: DType,
     output_layout: TensorLayout,
     output_origin: MutOrigin,
-    output_storage: TensorStorage,
+    output_engine: TensorEngine,
     output_idx_type: DType,
     scales_layout: TensorLayout,
     scales_origin: MutOrigin,
-    scales_storage: TensorStorage,
+    scales_engine: TensorEngine,
     scales_idx_type: DType,
     //,
     in_type: DType,
@@ -692,7 +703,7 @@ struct _QuantizeFp8KernelPerTensor[
         Self.out_type,
         Self.output_layout,
         Self.output_origin,
-        Storage=Self.output_storage,
+        Engine=Self.output_engine,
         linear_idx_type=Self.output_idx_type,
     ]
     var scales: TileTensor[
@@ -700,7 +711,7 @@ struct _QuantizeFp8KernelPerTensor[
         Self.scales_type,
         Self.scales_layout,
         Self.scales_origin,
-        Storage=Self.scales_storage,
+        Engine=Self.scales_engine,
         linear_idx_type=Self.scales_idx_type,
     ]
     var scale_ub: Scalar[Self.scales_type]
@@ -775,7 +786,7 @@ struct _QuantizeFp8KernelPerTensor[
                 )
 
 
-@always_inline
+@inline(.always)
 def batched_quantize_dynamic_scaled_fp8[
     out_dtype: DType,
     in_dtype: DType,
@@ -787,8 +798,8 @@ def batched_quantize_dynamic_scaled_fp8[
     pdl_level: PDLLevel = PDLLevel.ON,
 ](
     input_fn: InputFnType,
-    scaled_output: TileTensor[mut=True, dtype=out_dtype, ...],
-    scales: TileTensor[mut=True, dtype=scales_dtype, ...],
+    scaled_output: TileTensor[mut=True, out_dtype, ...],
+    scales: TileTensor[mut=True, scales_dtype, ...],
     scale_ub: Float32,
     ctx: DeviceContext,
     num_rows: Int,
@@ -825,7 +836,7 @@ def batched_quantize_dynamic_scaled_fp8[
         return
 
     # TODO: MOCO-4295
-    @always_inline
+    @inline(.always)
     def wrap[
         width: Int, alignment: Int
     ](batch: Int, row: Int, col: Int) {var input_fn} -> SIMD[in_dtype, width]:
@@ -839,8 +850,8 @@ def batched_quantize_dynamic_scaled_fp8[
         simd_width=simd_width,
     ](
         wrap,
-        scaled_output.address_space_cast[AddressSpace.GENERIC](),
-        scales.address_space_cast[AddressSpace.GENERIC](),
+        scaled_output.address_space_cast[.GENERIC](),
+        scales.address_space_cast[.GENERIC](),
         scale_ub.cast[scales_dtype](),
     )
 
@@ -858,11 +869,11 @@ struct _BatchedQuantizeFp8Kernel[
     scales_type: DType,
     output_layout: TensorLayout,
     output_origin: MutOrigin,
-    output_storage: TensorStorage,
+    output_engine: TensorEngine,
     output_idx_type: DType,
     scales_layout: TensorLayout,
     scales_origin: MutOrigin,
-    scales_storage: TensorStorage,
+    scales_engine: TensorEngine,
     scales_idx_type: DType,
     //,
     in_type: DType,
@@ -877,7 +888,7 @@ struct _BatchedQuantizeFp8Kernel[
         Self.out_type,
         Self.output_layout,
         Self.output_origin,
-        Storage=Self.output_storage,
+        Engine=Self.output_engine,
         linear_idx_type=Self.output_idx_type,
     ]
     var scales: TileTensor[
@@ -885,7 +896,7 @@ struct _BatchedQuantizeFp8Kernel[
         Self.scales_type,
         Self.scales_layout,
         Self.scales_origin,
-        Storage=Self.scales_storage,
+        Engine=Self.scales_engine,
         linear_idx_type=Self.scales_idx_type,
     ]
     var scale_ub: Scalar[Self.scales_type]
@@ -959,7 +970,7 @@ struct _BatchedQuantizeFp8Kernel[
 ########################################################
 
 
-@always_inline
+@inline(.always)
 def matmul_dynamic_scaled_fp8[
     c_type: DType,
     a_type: DType,
@@ -975,15 +986,11 @@ def matmul_dynamic_scaled_fp8[
     transpose_b: Bool = False,
     target: StaticString = "cpu",
 ](
-    c: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a: TileTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
-    b: TileTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
-    a_scales: TileTensor[
-        mut=False, a_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_scales: TileTensor[
-        mut=False, b_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
+    c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
+    a_scales: TileTensor[mut=False, a_scales_type, address_space=.GENERIC, ...],
+    b_scales: TileTensor[mut=False, b_scales_type, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """TileTensor primary implementation of dynamic scaled FP8 matmul."""
@@ -1050,15 +1057,11 @@ def _matmul_dynamic_scaled_fp8_impl[
     transpose_b: Bool = False,
     target: StaticString = "cpu",
 ](
-    c: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a: TileTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
-    b: TileTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
-    a_scales: TileTensor[
-        mut=False, a_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_scales: TileTensor[
-        mut=False, b_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
+    c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
+    a_scales: TileTensor[mut=False, a_scales_type, address_space=.GENERIC, ...],
+    b_scales: TileTensor[mut=False, b_scales_type, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """TileTensor implementation of dynamic scaled FP8 matmul."""
@@ -1146,7 +1149,7 @@ def _matmul_dynamic_scaled_fp8_impl[
         comptime if _is_sm10x_gpu(ctx.default_device_info):
 
             @__parameter
-            @always_inline
+            @inline(.always)
             @__copy_capture(a_scales, b_scales)
             def scale_compute_lambda_fn[
                 _dtype: DType,
@@ -1158,23 +1161,23 @@ def _matmul_dynamic_scaled_fp8_impl[
             ]:
                 var a_scale = a_scales.load[width=1](
                     Coord(Idx[0], idx[0])
-                ).cast[DType.float32]()
-                var b_scale: SIMD[DType.float32, width]
+                ).cast[.float32]()
+                var b_scale: SIMD[.float32, width]
 
                 comptime if transpose_b:
                     b_scale = b_scales.load[width=width](
                         Coord(idx[1], Idx[0])
-                    ).cast[DType.float32]()
+                    ).cast[.float32]()
                 else:
                     b_scale = b_scales.load[width=width](
                         Coord(Idx[0], idx[1])
-                    ).cast[DType.float32]()
+                    ).cast[.float32]()
 
-                var scaled_val = val.cast[DType.float32]() * a_scale * b_scale
+                var scaled_val = val.cast[.float32]() * a_scale * b_scale
                 return scaled_val.cast[_dtype]()
 
             @__parameter
-            @always_inline
+            @inline(.always)
             @__copy_capture(a_scales, b_scales)
             def scale_compute_lambda_fn_tensor[
                 _dtype: DType,
@@ -1186,11 +1189,11 @@ def _matmul_dynamic_scaled_fp8_impl[
             ]:
                 var a_scale = a_scales.load[width=1](
                     Coord(Idx[0], Idx[0])
-                ).cast[DType.float32]()
+                ).cast[.float32]()
                 var b_scale = b_scales.load[width=1](
                     Coord(Idx[0], Idx[0])
-                ).cast[DType.float32]()
-                var scaled_val = val.cast[DType.float32]() * a_scale * b_scale
+                ).cast[.float32]()
+                var scaled_val = val.cast[.float32]() * a_scale * b_scale
                 return scaled_val.cast[_dtype]()
 
             comptime if input_scale_granularity == "tensor":
@@ -1214,7 +1217,7 @@ def _matmul_dynamic_scaled_fp8_impl[
 
             @__parameter
             @__copy_capture(c, a_scales, b_scales)
-            @always_inline
+            @inline(.always)
             def scaled_output_fn[
                 dtype: DType, width: SIMDLength, *, alignment: Int = 1
             ](idx: IndexList[2], val: SIMD[dtype, width]):
@@ -1241,7 +1244,7 @@ def _matmul_dynamic_scaled_fp8_impl[
 
             @__parameter
             @__copy_capture(c, a_scales, b_scales)
-            @always_inline
+            @inline(.always)
             def scaled_output_fn_tensor[
                 dtype: DType, width: SIMDLength, *, alignment: Int = 1
             ](idx: IndexList[2], val: SIMD[dtype, width]):
@@ -1265,7 +1268,7 @@ def _matmul_dynamic_scaled_fp8_impl[
             # SM90 dispatch sees c.static_shape[1] > -1.
             comptime b_N = b.static_shape[b_row_axis]
             comptime if b_N > -1:
-                var scratch_buffer = ctx.enqueue_create_buffer[DType.float32](
+                var scratch_buffer = ctx.enqueue_create_buffer[.float32](
                     M * b_N
                 )
                 var c_scratch = TileTensor(
@@ -1289,7 +1292,7 @@ def _matmul_dynamic_scaled_fp8_impl[
                     ](c_scratch, a, b, Optional[DeviceContext](ctx))
             else:
                 var N_rt = Int(b.dim[b_row_axis]())
-                var scratch_buffer = ctx.enqueue_create_buffer[DType.float32](
+                var scratch_buffer = ctx.enqueue_create_buffer[.float32](
                     M * N_rt
                 )
                 var c_scratch = TileTensor(
@@ -1348,21 +1351,16 @@ def naive_blockwise_scaled_fp8_matmul[
     accum_type: DType = get_accum_type[c_type](),
     scales_granularity_mnk: Optional[IndexList[3]] = None,
 ](
-    c: LayoutTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a: LayoutTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
-    b: LayoutTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
-    a_scales: LayoutTensor[
-        mut=False, a_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_scales: LayoutTensor[
-        mut=False, b_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
+    c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
+    a_scales: TileTensor[mut=False, a_scales_type, address_space=.GENERIC, ...],
+    b_scales: TileTensor[mut=False, b_scales_type, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Dispatches the naive blockwise scaled FP8 matmul kernel on the GPU.
 
-    Converts the ``LayoutTensor`` operands to ``TileTensor`` views and enqueues
-    ``naive_blockwise_scaled_fp8_matmul_kernel`` with a 2D grid of
+    Enqueues ``naive_blockwise_scaled_fp8_matmul_kernel`` with a 2D grid of
     ``BLOCK_DIM``-sized tiles covering the ``M`` x ``N`` output.
 
     Args:
@@ -1373,7 +1371,7 @@ def naive_blockwise_scaled_fp8_matmul[
         b_scales: Rank-2 per-block scales for ``b``; K-major when ``transpose_b`` is True, otherwise N-major.
         ctx: Device context used to enqueue the kernel.
     """
-    comptime assert a_type == b_type == DType.float8_e4m3fn, (
+    comptime assert a_type == b_type == .float8_e4m3fn, (
         "Only float8_e4m3fn is supported for input dtype for blockwise"
         " scaled fp8 matmul"
     )
@@ -1383,16 +1381,16 @@ def naive_blockwise_scaled_fp8_matmul[
     ), "input A and B scales dtype should be same"
 
     comptime assert (
-        accum_type == DType.float32
+        accum_type == .float32
     ), "Only float32 is supported for accumulation for scaled matmul"
 
-    var M = c.dim(0)
-    var N = c.dim(1)
-    var K = a.dim(1)
+    var M = Int(c.dim[0]())
+    var N = Int(c.dim[1]())
+    var K = Int(a.dim[1]())
 
-    var a_scales_dim0 = a_scales.dim(0)
-    var b_scales_dim0 = b_scales.dim(0)
-    var b_scales_dim1 = b_scales.dim(1)
+    var a_scales_dim0 = Int(a_scales.dim[0]())
+    var b_scales_dim0 = Int(b_scales.dim[0]())
+    var b_scales_dim1 = Int(b_scales.dim[1]())
 
     if M == 0 or N == 0 or K == 0:
         return
@@ -1428,12 +1426,6 @@ def naive_blockwise_scaled_fp8_matmul[
         "B Scales Shape: [", b_scales.dim(0), ", ", b_scales.dim(1), "]", sep=""
     )
 
-    var a_tt = lt_to_tt(a).as_immut()
-    var b_tt = lt_to_tt(b).as_immut()
-    var c_tt = lt_to_tt(c)
-    var a_scales_tt = lt_to_tt(a_scales).as_immut()
-    var b_scales_tt = lt_to_tt(b_scales).as_immut()
-
     comptime kernel = naive_blockwise_scaled_fp8_matmul_kernel[
         c_type,
         a_type,
@@ -1441,11 +1433,11 @@ def naive_blockwise_scaled_fp8_matmul[
         a_scales_type,
         b_scales_type,
         accum_type,
-        type_of(a_tt).LayoutType,
-        type_of(b_tt).LayoutType,
-        type_of(c_tt).LayoutType,
-        type_of(a_scales_tt).LayoutType,
-        type_of(b_scales_tt).LayoutType,
+        a.LayoutType,
+        b.LayoutType,
+        c.LayoutType,
+        a_scales.LayoutType,
+        b_scales.LayoutType,
         BLOCK_DIM=BLOCK_DIM,
         transpose_b=transpose_b,
         elementwise_lambda_fn=elementwise_lambda_fn,
@@ -1453,11 +1445,11 @@ def naive_blockwise_scaled_fp8_matmul[
     ]
 
     ctx.enqueue_function[kernel](
-        c_tt,
-        a_tt,
-        b_tt,
-        a_scales_tt,
-        b_scales_tt,
+        c,
+        a,
+        b,
+        a_scales,
+        b_scales,
         grid_dim=(ceildiv(M, BLOCK_DIM), ceildiv(N, BLOCK_DIM), 1),
         block_dim=(BLOCK_DIM, BLOCK_DIM, 1),
     )
@@ -1523,7 +1515,7 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
     # 4. b_scales should be in K-major format if transpose_b is True otherwise it is in N-major format
 
     comptime assert (
-        accum_type == DType.float32
+        accum_type == .float32
     ), "Only float32 is supported for accumulation for scaled matmul"
 
     comptime assert c.rank == 2
@@ -1682,19 +1674,19 @@ def naive_blockwise_scaled_fp8_grouped_matmul[
     comptime assert (
         transpose_b
     ), "Only support transposed B in grouped fp8 matmul."
-    comptime assert a_type == b_type == DType.float8_e4m3fn, (
+    comptime assert a_type == b_type == .float8_e4m3fn, (
         "Only float8_e4m3fn is supported for inputs in grouped blockwise"
         " scaled fp8 matmul"
     )
     comptime assert (
-        accum_type == DType.float32
+        accum_type == .float32
     ), "Only float32 is supported for accumulation for scaled matmul"
 
-    comptime assert a_offsets_type == DType.uint32, (
+    comptime assert a_offsets_type == .uint32, (
         "Only uint32 is supported for a_offsets in grouped blockwise scaled"
         " fp8 matmul"
     )
-    comptime assert expert_ids_type == DType.int32, (
+    comptime assert expert_ids_type == .int32, (
         "Only int32 is supported for expert_ids in grouped blockwise scaled"
         " fp8 matmul"
     )
@@ -1739,6 +1731,100 @@ def naive_blockwise_scaled_fp8_grouped_matmul[
             num_active_experts,
         ),
         block_dim=(BLOCK_DIM_N, BLOCK_DIM_M, 1),
+    )
+
+
+def naive_blockwise_scaled_fp8_grouped_matmul[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    a_scales_type: DType,
+    b_scales_type: DType,
+    a_offsets_type: DType,
+    expert_ids_type: DType,
+    c_tt_layout: TensorLayout,
+    a_tt_layout: TensorLayout,
+    b_tt_layout: TensorLayout,
+    a_scale_tt_layout: TensorLayout,
+    b_scale_tt_layout: TensorLayout,
+    a_offsets_tt_layout: TensorLayout,
+    expert_ids_tt_layout: TensorLayout,
+    //,
+    BLOCK_DIM_N: Int = 32,
+    BLOCK_DIM_M: Int = 16,
+    transpose_b: Bool = True,
+    scales_granularity_mnk: Optional[IndexList[3]] = None,
+    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+](
+    c: TileTensor[mut=True, c_type, c_tt_layout, ...],
+    a: TileTensor[mut=False, a_type, a_tt_layout, ...],
+    b: TileTensor[mut=False, b_type, b_tt_layout, ...],
+    a_scales: TileTensor[mut=False, a_scales_type, a_scale_tt_layout, ...],
+    b_scales: TileTensor[mut=False, b_scales_type, b_scale_tt_layout, ...],
+    a_offsets: TileTensor[mut=False, a_offsets_type, a_offsets_tt_layout, ...],
+    expert_ids: TileTensor[
+        mut=False, expert_ids_type, expert_ids_tt_layout, ...
+    ],
+    max_num_tokens_per_expert: Int,
+    num_active_experts: Int,
+    ctx: DeviceContext,
+) raises:
+    """TileTensor overload of the naive blockwise scaled FP8 grouped matmul.
+
+    Bridges to the LayoutTensor implementation, which stays the reference
+    until the grouped FP8 path is TileTensor-native.
+
+    Parameters:
+        c_type: Element type of the output accumulator.
+        a_type: Element type of the FP8 input matrix.
+        b_type: Element type of the FP8 weight tensor.
+        a_scales_type: Element type of the per-block scales for `a`.
+        b_scales_type: Element type of the per-block scales for `b`.
+        a_offsets_type: Element type of the per-expert row offsets.
+        expert_ids_type: Element type of the expert id tensor.
+        c_tt_layout: Compile-time `TensorLayout` of `c`.
+        a_tt_layout: Compile-time `TensorLayout` of `a`.
+        b_tt_layout: Compile-time `TensorLayout` of `b`.
+        a_scale_tt_layout: Compile-time `TensorLayout` of `a_scales`.
+        b_scale_tt_layout: Compile-time `TensorLayout` of `b_scales`.
+        a_offsets_tt_layout: Compile-time `TensorLayout` of `a_offsets`.
+        expert_ids_tt_layout: Compile-time `TensorLayout` of `expert_ids`.
+        BLOCK_DIM_N: Thread-block width over the N dimension.
+        BLOCK_DIM_M: Thread-block height over the M dimension.
+        transpose_b: `True` when `b` is stored transposed.
+        scales_granularity_mnk: Optional per-dimension scale block sizes.
+        elementwise_lambda_fn: Optional elementwise epilogue.
+
+    Args:
+        c: Rank-2 output accumulator tensor holding all expert outputs.
+        a: Rank-2 FP8 input matrix in K-major format.
+        b: Rank-3 FP8 weight tensor indexed by expert, in K-major format.
+        a_scales: Per-block scales for `a` in M-major format.
+        b_scales: Per-block scales for `b` indexed by expert.
+        a_offsets: Prefix-sum offsets delimiting each expert's rows in `a`.
+        expert_ids: Expert id (or `-1` to skip) for each grid-Z slice.
+        max_num_tokens_per_expert: Maximum row count assigned to any single
+            expert.
+        num_active_experts: Number of active experts to dispatch.
+        ctx: Device context used to enqueue the kernel.
+    """
+    naive_blockwise_scaled_fp8_grouped_matmul[
+        BLOCK_DIM_N=BLOCK_DIM_N,
+        BLOCK_DIM_M=BLOCK_DIM_M,
+        transpose_b=transpose_b,
+        scales_granularity_mnk=scales_granularity_mnk,
+        elementwise_lambda_fn=elementwise_lambda_fn,
+    ](
+        c.to_layout_tensor(),
+        a.to_layout_tensor(),
+        b.to_layout_tensor(),
+        a_scales.to_layout_tensor(),
+        b_scales.to_layout_tensor(),
+        a_offsets.to_layout_tensor(),
+        expert_ids.to_layout_tensor(),
+        max_num_tokens_per_expert,
+        num_active_experts,
+        ctx,
     )
 
 
@@ -1791,7 +1877,7 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
         b_scales: Per-block scales for ``b`` indexed by expert.
     """
     comptime assert (
-        accum_type == DType.float32
+        accum_type == .float32
     ), "Only float32 is supported for accumulation for scaled matmul"
 
     var N = b.dim[1]()
@@ -1870,10 +1956,10 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
 ########################################################
 
 
-@always_inline
+@inline(.always)
 def convert_e4m3fn_to_e4m3fnuz(
-    input_buffer: TileTensor[mut=False, dtype=DType.float8_e4m3fn, ...],
-    output_buffer: TileTensor[mut=True, dtype=DType.float8_e4m3fnuz, ...],
+    input_buffer: TileTensor[mut=False, .float8_e4m3fn, ...],
+    output_buffer: TileTensor[mut=True, .float8_e4m3fnuz, ...],
     context: DeviceContext,
 ) raises:
     """Convert E4M3FN weights to E4M3FNUZ format for AMD GPU compatibility.
@@ -1894,7 +1980,7 @@ def convert_e4m3fn_to_e4m3fnuz(
         "Input and output shapes must match",
     )
 
-    @always_inline
+    @inline(.always)
     @__parameter
     @__copy_capture(input_buffer, output_buffer)
     def convert_kernel[
@@ -1903,14 +1989,14 @@ def convert_e4m3fn_to_e4m3fnuz(
         comptime assert rank == 2, "rank should be equal to 2"
 
         var input_vec_e4m3fn = input_buffer.load_linear[width](idx)
-        var input_vec_int8 = bitcast[DType.int8](input_vec_e4m3fn)
+        var input_vec_int8 = bitcast[.int8](input_vec_e4m3fn)
 
         comptime ROCM_FP8_NAN_AS_INT = -128
 
         input_vec_int8 = input_vec_int8.eq(ROCM_FP8_NAN_AS_INT).select(
             Int8(0), input_vec_int8
         )
-        var output_vec = bitcast[DType.float8_e4m3fnuz](input_vec_int8)
+        var output_vec = bitcast[.float8_e4m3fnuz](input_vec_int8)
         output_buffer.store_linear(idx, output_vec)
 
     comptime target_simd_width = simd_width_of[
@@ -1950,15 +2036,11 @@ def blockwise_scaled_fp8_with_epilogue[
     transpose_b: Bool = False,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
-    c: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a: TileTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
-    b: TileTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
-    a_scales: TileTensor[
-        mut=False, a_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
-    b_scales: TileTensor[
-        mut=False, b_scales_type, address_space=AddressSpace.GENERIC, ...
-    ],
+    c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
+    a_scales: TileTensor[mut=False, a_scales_type, address_space=.GENERIC, ...],
+    b_scales: TileTensor[mut=False, b_scales_type, address_space=.GENERIC, ...],
     ctx: DeviceContext,
 ) raises:
     """Our sm100 blockwise scaled fp8 matmul kernel still does not support fusion of elementwise
@@ -1974,7 +2056,7 @@ def blockwise_scaled_fp8_with_epilogue[
     comptime if (
         _is_sm10x_gpu(ctx.default_device_info)
         and transpose_b
-        and c_type == DType.bfloat16
+        and c_type == .bfloat16
         and scales_granularity_mnk[0] == 1
         and scales_granularity_mnk[2] == 128
         and scales_granularity_mnk[1] in (64, 128)
@@ -2050,11 +2132,11 @@ def blockwise_scaled_fp8_with_epilogue[
             scales_granularity_mnk=scales_granularity_mnk,
             elementwise_lambda_fn=elementwise_lambda_fn,
         ](
-            c.to_layout_tensor(),
-            a.to_layout_tensor(),
-            b.to_layout_tensor(),
-            a_scales.to_layout_tensor(),
-            b_scales.to_layout_tensor(),
+            c,
+            a,
+            b,
+            a_scales,
+            b_scales,
             ctx,
         )
         return

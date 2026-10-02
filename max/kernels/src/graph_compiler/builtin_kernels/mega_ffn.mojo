@@ -53,7 +53,7 @@ See KERN-3085.
 Modeled on the sibling `msa.mojo` / `linalg.mojo` registrations (private
 `//Kernels` kernels registered in dedicated builtin_kernels files). MegaFFN is
 internal-only: unlike `msa` / `matmul_rs` it is NOT shipped in the OSS wheel, so
-open-source builds drop the `//Kernels/src/mega_ffn` dep (in `api.bzl`) and
+open-source builds drop the `//Kernels/lib/mega_ffn` dep (in `api.bzl`) and
 exclude this file from the public export (copybara).
 
 On-chip scratch (the composite op does not expose these): `c_packed` and
@@ -67,21 +67,32 @@ launch, so they need no initialization.
 `arrival_count` (the cross-CTA pool-slot counters) is instead a
 PERSISTENT graph buffer OPERAND: the MegaFFN fusion mints it once
 (`mo.buffer.create`) and zeroes it once at setup.  Under the dispatch
-default `POST_SELF_CLEAN_UP` the kernel resets every touched slot in
-band, so the buffer is all-zero at every launch boundary (correct under
-single-stream serialization).  This replaces the per-launch allocate +
-memset this binding used to do, which sat on the launch-bound decode
-critical path (one memset per FFN launch).  The fusion sizes the buffer
-to a static upper bound on `total_m_blocks`; the kernel only
-touches/resets `[0, total_m_blocks)`, so over-allocation is safe.
+default `POST_SELF_CLEAN_UP` each launch claims one 16-bit half of every
+slot as its arrival count -- chosen by a generation parity the kernel
+keeps in the buffer itself -- and clears the half its predecessor used.
+So the buffer is NOT all-zero between launches: it carries the last
+launch's counts in that launch's half, and a reader has to know the
+generation to interpret it.  What the caller needs is unchanged: no
+per-launch memset (this replaces the per-launch allocate + memset this
+binding used to do, which sat on the launch-bound decode critical path),
+and one zeroing at setup.  Slot 0's padding carries the generation, the
+CTA entry tally and a high-water mark over every launch's pool count; a
+comptime assert keeps those words inside that padding rather than
+aliasing a pool slot.  The fusion sizes the buffer to a static upper
+bound on `total_m_blocks`.  A launch touches its own pools and clears
+the stale half across the high-water span, which can exceed its own
+pool count but not that bound, so over-allocation is safe.
 """
 
 import extensibility as compiler
 
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_gpu
+from std.collections import Array
 from std.math import ceildiv
 from std.memory import UnsafePointer
+from std.sys import size_of
+from std.utils.static_tuple import StaticTuple
 
 from layout import Coord, Idx, TileTensor, row_major
 
@@ -94,8 +105,20 @@ from linalg.fp4_utils import (
     SF_ATOM_K,
     SF_ATOM_M,
 )
+from linalg.matmul.gpu.sm100_structured.structured_kernels.output_writer import (
+    P3_MAX_RANKS,
+)
+from linalg.matmul.gpu.sm100_structured.structured_kernels.row_scales import (
+    RealRowScales,
+)
 
+from shmem import shmem_my_pe
+from shmem.ep import pack_ptrs_array
+from shmem.ep_comm import EPLocalSyncCounters
+
+from mega_ffn.mega_ffn_scheduler import ATOMIC_PAD
 from mega_ffn.mega_ffn_matmul import (
+    EPCombineSendOperands,
     mega_ffn_mxfp8_dispatch,
     mega_ffn_nvfp4_dispatch,
 )
@@ -113,15 +136,17 @@ struct Struct_mega_ffn_nvfp4:
     module docstring).
     """
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def execute[
         c_type: DType,
         a_type: DType,
         b_type: DType,
         scales_type: DType,
+        row_scales_type: DType,
         //,
         clamp_activation: Bool,
+        has_gate_up_a_row_scales: Bool,
         target: StaticString,
     ](
         output: OutputTensor[dtype=c_type, rank=2, ...],
@@ -131,16 +156,17 @@ struct Struct_mega_ffn_nvfp4:
         gate_up_b_scales: InputTensor[dtype=scales_type, rank=6, ...],
         down_weight: InputTensor[dtype=b_type, rank=3, ...],
         down_b_scales: InputTensor[dtype=scales_type, rank=6, ...],
-        expert_start_indices: InputTensor[dtype=DType.uint32, rank=1, ...],
-        expert_ids: InputTensor[dtype=DType.int32, rank=1, ...],
-        a_scale_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-        gate_up_expert_scales: InputTensor[dtype=DType.float32, rank=1, ...],
-        down_expert_scales: InputTensor[dtype=DType.float32, rank=1, ...],
-        c_input_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        expert_start_indices: InputTensor[dtype=.uint32, rank=1, ...],
+        expert_ids: InputTensor[dtype=.int32, rank=1, ...],
+        a_scale_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        gate_up_expert_scales: InputTensor[dtype=.float32, rank=1, ...],
+        gate_up_a_row_scales: InputTensor[dtype=row_scales_type, rank=1, ...],
+        down_expert_scales: InputTensor[dtype=.float32, rank=1, ...],
+        c_input_scales: InputTensor[dtype=.float32, rank=1, ...],
         estimated_total_m: UInt32,
         gate_up_num_active_experts: UInt32,
         down_num_active_experts: UInt32,
-        arrival_count: MutableInputTensor[dtype=DType.uint32, rank=1, ...],
+        arrival_count: MutableInputTensor[dtype=.uint32, rank=1, ...],
         context: DeviceContext,
     ) raises:
         """Executes the fused single-launch MegaFFN NVFP4 MoE FFN.
@@ -158,7 +184,8 @@ struct Struct_mega_ffn_nvfp4:
         on-chip `c_packed` / `c_swiglu_scales` scratch is allocated per call
         (capture-safe `enqueue_create_buffer`); the `arrival_count` pool-slot
         counters are a persistent graph buffer operand (zeroed once at setup;
-        kept zero in band by `POST_SELF_CLEAN_UP`).
+        thereafter `POST_SELF_CLEAN_UP` rotates them per launch rather than
+        returning them to zero).
 
         Parameters:
             c_type: The output tensor data type (`bfloat16`).
@@ -168,10 +195,15 @@ struct Struct_mega_ffn_nvfp4:
                 NVFP4 or `float8_e4m3fn` for MXFP8).
             scales_type: The block scale-factor dtype (`float8_e4m3fn` for
                 NVFP4, `float8_e8m0fnu` for MXFP8).
+            row_scales_type: The L1 per-row input scale dtype (`bfloat16`
+                when `has_gate_up_a_row_scales`).
             clamp_activation: Activation flavor for the fused L1 SwiGLU
                 epilogue. `False` = plain SwiGLU; `True` = clamped
                 (`swigluoai`). Bound from the op's `clamp_activation`
                 attribute.
+            has_gate_up_a_row_scales: Whether `gate_up_a_row_scales` holds
+                per-row input scales for the L1 leg. Constraints: NVFP4
+                only.
             target: The target GPU device.
 
         Args:
@@ -194,6 +226,9 @@ struct Struct_mega_ffn_nvfp4:
                 `(E,)` uint32.
             gate_up_expert_scales: L1 (gate+up) per-expert scaling
                 `(E,)` f32. Applied in the fused SwiGLU store.
+            gate_up_a_row_scales: L1 per-row input scales `(M_total,)`,
+                applied with `gate_up_expert_scales` before the SwiGLU.
+                Unread unless `has_gate_up_a_row_scales`.
             down_expert_scales: L2 / final-output per-expert scaling
                 `(E,)` f32. Applied in the down store. May differ from
                 `gate_up_expert_scales`.
@@ -207,10 +242,14 @@ struct Struct_mega_ffn_nvfp4:
                 `gate_up_num_active_experts`; the kernel walks one shared
                 expert list).
             arrival_count: Persistent cross-CTA pool-slot counters (`uint32`,
-                rank 1), minted + zeroed once by the MegaFFN fusion. Kept zero
-                at every launch boundary by the `POST_SELF_CLEAN_UP` in-band
-                reset; sized to a static upper bound on `total_m_blocks` (the
-                kernel only touches `[0, total_m_blocks)`).
+                rank 1), minted + zeroed once by the MegaFFN fusion. Under
+                `POST_SELF_CLEAN_UP` a launch accumulates into the slot half
+                its generation parity selects and clears the half the launch
+                before it used, so this buffer holds the last launch's counts
+                rather than zeros between launches -- do not assume an
+                all-zero buffer or reset it per launch, which would pin the
+                generation. Sized to a static upper bound on `total_m_blocks`,
+                which also bounds the high-water span a launch clears.
             context: The device context.
         """
         comptime assert is_gpu[
@@ -323,13 +362,14 @@ struct Struct_mega_ffn_nvfp4:
         # Cross-CTA pool-slot counters (strided by ATOMIC_PAD) come in as the
         # PERSISTENT `arrival_count` buffer operand: the MegaFFN fusion mints it
         # once (`mo.buffer.create`) and zeroes it once at setup. Under the
-        # `POST_SELF_CLEAN_UP` default the kernel resets every touched slot in
-        # band, so the buffer is all-zero at every launch boundary (correct
-        # under single-stream serialization). This replaces the per-launch
-        # allocate + memset this binding used to do (a launch-bound decode
-        # cost). The fusion sizes the buffer to a static upper bound on
-        # `total_m_blocks`; the kernel only touches/resets `[0, total_m_blocks)`,
-        # so over-allocation is safe.
+        # `POST_SELF_CLEAN_UP` default each launch claims one half of every slot
+        # and clears the half its predecessor used, so this binding must not
+        # memset it per launch -- that pins the generation and disarms the
+        # rotation. This replaces the per-launch allocate + memset this binding
+        # used to do (a launch-bound decode cost). The fusion sizes the buffer
+        # to a static upper bound on `total_m_blocks`, which bounds both this
+        # launch's pools and the high-water span it clears, so over-allocation
+        # is safe.
         var arrival_count_ptr = arrival_count.unsafe_ptr()
 
         # The clamped-SwiGLU (`swigluoai`) runtime alpha/limit cannot ride as op
@@ -346,28 +386,32 @@ struct Struct_mega_ffn_nvfp4:
         )
 
         comptime if is_mxfp8:
+            comptime assert (
+                not has_gate_up_a_row_scales
+            ), "per-row input scales are only supported for NVFP4"
             # MXFP8 carries no `tensor_sf`; the `c_input_scales` op operand is
             # unused on this path (consume for `-Werror`).
             _ = c_input_scales
+            _ = gate_up_a_row_scales
             mega_ffn_mxfp8_dispatch[
                 num_experts=num_experts,
                 transpose_b=True,
                 clamp_activation=clamp_activation,
             ](
-                output.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
                 c_packed,
                 c_swiglu_scales,
-                hidden_states.to_tile_tensor[DType.int64](),
-                gate_up_weight.to_tile_tensor[DType.int64](),
-                down_weight.to_tile_tensor[DType.int64](),
-                gate_up_a_scales.to_tile_tensor[DType.int64](),
-                gate_up_b_scales.to_tile_tensor[DType.int64](),
-                down_b_scales.to_tile_tensor[DType.int64](),
-                expert_start_indices.to_tile_tensor[DType.int64](),
-                a_scale_offsets.to_tile_tensor[DType.int64](),
-                expert_ids.to_tile_tensor[DType.int64](),
-                gate_up_expert_scales.to_tile_tensor[DType.int64](),
-                down_expert_scales.to_tile_tensor[DType.int64](),
+                hidden_states.to_tile_tensor[.int64](),
+                gate_up_weight.to_tile_tensor[.int64](),
+                down_weight.to_tile_tensor[.int64](),
+                gate_up_a_scales.to_tile_tensor[.int64](),
+                gate_up_b_scales.to_tile_tensor[.int64](),
+                down_b_scales.to_tile_tensor[.int64](),
+                expert_start_indices.to_tile_tensor[.int64](),
+                a_scale_offsets.to_tile_tensor[.int64](),
+                expert_ids.to_tile_tensor[.int64](),
+                gate_up_expert_scales.to_tile_tensor[.int64](),
+                down_expert_scales.to_tile_tensor[.int64](),
                 num_active,
                 Int(estimated_total_m),
                 context,
@@ -375,27 +419,65 @@ struct Struct_mega_ffn_nvfp4:
                 swiglu_alpha=swiglu_alpha,
                 swiglu_limit=swiglu_limit,
             )
+        elif has_gate_up_a_row_scales:
+            comptime assert (
+                row_scales_type == DType.bfloat16
+            ), "per-row input scales must be bfloat16"
+            mega_ffn_nvfp4_dispatch[
+                num_experts=num_experts,
+                transpose_b=True,
+                clamp_activation=clamp_activation,
+                RowScalesT=RealRowScales,
+            ](
+                output.to_tile_tensor[.int64](),
+                c_packed,
+                c_swiglu_scales,
+                hidden_states.to_tile_tensor[.int64](),
+                gate_up_weight.to_tile_tensor[.int64](),
+                down_weight.to_tile_tensor[.int64](),
+                gate_up_a_scales.to_tile_tensor[.int64](),
+                gate_up_b_scales.to_tile_tensor[.int64](),
+                down_b_scales.to_tile_tensor[.int64](),
+                expert_start_indices.to_tile_tensor[.int64](),
+                a_scale_offsets.to_tile_tensor[.int64](),
+                expert_ids.to_tile_tensor[.int64](),
+                gate_up_expert_scales.to_tile_tensor[.int64](),
+                down_expert_scales.to_tile_tensor[.int64](),
+                c_input_scales.to_tile_tensor[.int64](),
+                num_active,
+                Int(estimated_total_m),
+                context,
+                arrival_count_ptr,
+                swiglu_alpha=swiglu_alpha,
+                swiglu_limit=swiglu_limit,
+                a_row_scales=RealRowScales(
+                    rebind[Pointer[BFloat16, ImmutAnyOrigin]](
+                        gate_up_a_row_scales.unsafe_ptr()
+                    )
+                ),
+            )
         else:
+            _ = gate_up_a_row_scales
             mega_ffn_nvfp4_dispatch[
                 num_experts=num_experts,
                 transpose_b=True,
                 clamp_activation=clamp_activation,
             ](
-                output.to_tile_tensor[DType.int64](),
+                output.to_tile_tensor[.int64](),
                 c_packed,
                 c_swiglu_scales,
-                hidden_states.to_tile_tensor[DType.int64](),
-                gate_up_weight.to_tile_tensor[DType.int64](),
-                down_weight.to_tile_tensor[DType.int64](),
-                gate_up_a_scales.to_tile_tensor[DType.int64](),
-                gate_up_b_scales.to_tile_tensor[DType.int64](),
-                down_b_scales.to_tile_tensor[DType.int64](),
-                expert_start_indices.to_tile_tensor[DType.int64](),
-                a_scale_offsets.to_tile_tensor[DType.int64](),
-                expert_ids.to_tile_tensor[DType.int64](),
-                gate_up_expert_scales.to_tile_tensor[DType.int64](),
-                down_expert_scales.to_tile_tensor[DType.int64](),
-                c_input_scales.to_tile_tensor[DType.int64](),
+                hidden_states.to_tile_tensor[.int64](),
+                gate_up_weight.to_tile_tensor[.int64](),
+                down_weight.to_tile_tensor[.int64](),
+                gate_up_a_scales.to_tile_tensor[.int64](),
+                gate_up_b_scales.to_tile_tensor[.int64](),
+                down_b_scales.to_tile_tensor[.int64](),
+                expert_start_indices.to_tile_tensor[.int64](),
+                a_scale_offsets.to_tile_tensor[.int64](),
+                expert_ids.to_tile_tensor[.int64](),
+                gate_up_expert_scales.to_tile_tensor[.int64](),
+                down_expert_scales.to_tile_tensor[.int64](),
+                c_input_scales.to_tile_tensor[.int64](),
                 num_active,
                 Int(estimated_total_m),
                 context,
@@ -408,5 +490,332 @@ struct Struct_mega_ffn_nvfp4:
         # (stream-ordered free schedules after the kernel completes).
         # `arrival_count` is a persistent graph buffer operand (owned by the
         # runtime, not allocated here), so it needs no keep-alive.
+        _ = c_packed_buf^
+        _ = c_swiglu_scales_buf^
+
+
+@compiler.register("mega_ffn.ep_combine_send")
+struct Struct_mega_ffn_ep_combine_send:
+    """MOGG wrapper for the MegaFFN MoE FFN with the EP combine send fused in.
+
+    Same kernel as `mo.composite.mega_ffn_nvfp4`, with the L2 epilogue's peer
+    scatter-send and its pair-space arrival signal switched on. That makes the
+    send the only consumer of the FFN's output, so the local store and its TMA
+    descriptor are both elided and this op has NO tensor result: the down
+    projection's `(max_recv_tokens, hidden_size)` staging buffer -- the largest
+    single activation in the MoE region -- is never allocated.
+
+    The model emits this op directly rather than a graph-compiler pattern
+    rewriting into it. The send only pays for itself at prefill-scale tokens
+    per expert, so it is a per-model choice rather than a universal fusion
+    rule, and the caller here is the one place that knows a combine WAIT is
+    downstream and therefore that the arrival signal must be published.
+
+    A consumer still has to run `ep.combine_wait` afterwards to drain the peer
+    buffers and reduce; that op reads only the symmetric receive buffers and
+    never took the FFN's output, which is what makes dropping it possible.
+
+    NVFP4 only, unlike its sibling: the send needs a per-expert input scale,
+    and E8M0 cannot carry one.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        a_type: DType,
+        b_type: DType,
+        scales_type: DType,
+        //,
+        combine_dtype: DType,
+        hidden_size: Int,
+        top_k: Int,
+        n_experts: Int,
+        max_token_per_rank: Int,
+        n_gpus_per_node: Int,
+        n_nodes: Int,
+        clamp_activation: Bool,
+        target: StaticString,
+    ](
+        arrival_count: MutableInputTensor[dtype=DType.uint32, rank=1, ...],
+        atomic_counters: MutableInputTensor[dtype=DType.int32, rank=1, ...],
+        hidden_states: InputTensor[dtype=a_type, rank=2, ...],
+        gate_up_weight: InputTensor[dtype=b_type, rank=3, ...],
+        gate_up_a_scales: InputTensor[dtype=scales_type, rank=5, ...],
+        gate_up_b_scales: InputTensor[dtype=scales_type, rank=6, ...],
+        down_weight: InputTensor[dtype=b_type, rank=3, ...],
+        down_b_scales: InputTensor[dtype=scales_type, rank=6, ...],
+        expert_start_indices: InputTensor[dtype=DType.uint32, rank=1, ...],
+        expert_ids: InputTensor[dtype=DType.int32, rank=1, ...],
+        a_scale_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
+        gate_up_expert_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        down_expert_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        c_input_scales: InputTensor[dtype=DType.float32, rank=1, ...],
+        src_info: InputTensor[dtype=DType.int32, rank=2, ...],
+        recv_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        recv_count_ptrs: InputTensor[dtype=DType.uint64, rank=1, ...],
+        estimated_total_m: UInt32,
+        num_active_experts: UInt32,
+        context: DeviceContext,
+    ) raises:
+        """Runs the fused MoE FFN and sends its output straight to the peers.
+
+        Parameters:
+            a_type: Token / activation element type (inferred).
+            b_type: Weight element type (inferred).
+            scales_type: Block scale-factor dtype (inferred).
+            combine_dtype: Payload dtype of the combine phase; also the dtype
+                of the output tensor this op declines to allocate.
+            hidden_size: Model hidden dimension, the send's row width.
+            top_k: Experts each token routes to; the receive buffer's second
+                dimension.
+            n_experts: GLOBAL expert count across ranks. Distinct from the
+                kernel's `num_experts`, which is this rank's LOCAL count and
+                comes from the weight shape; the sync-counter layout is keyed
+                on the global count.
+            max_token_per_rank: Receive-buffer capacity per rank, in tokens.
+            n_gpus_per_node: GPUs per node; the number of live pointer-table
+                entries.
+            n_nodes: Physical node count.
+            clamp_activation: `True` selects the clamped (`swigluoai`) L1
+                activation; the dispatch supplies its canonical constants.
+            target: Target GPU device.
+
+        Args:
+            arrival_count: Persistent cross-CTA pool-slot buffer, zeroed once
+                at setup. Also holds the send's own per-expert state -- the
+                arrival-signal election marker and the L2 completion counts --
+                in the padding of the slots the pool protocol never touches,
+                which is why this op needs no per-launch-zeroed operand of its
+                own.
+            atomic_counters: EP sync counters for this device. The send reads
+                the combine-async region for its destination resolve and the
+                rank-completion counter that follows it.
+            hidden_states: Dispatched tokens `(max_recv_tokens, K1 // 2)`.
+            gate_up_weight: Pre-permuted gate/up weights `(E, N1, K1 // 2)`.
+            gate_up_a_scales: Token A-scale tile for L1.
+            gate_up_b_scales: Pre-permuted W13 scale tile.
+            down_weight: Down-projection weights `(E, N2, moe_dim // 2)`.
+            down_b_scales: W2 scale tile.
+            expert_start_indices: Per-expert prefix-sum token offsets.
+            expert_ids: Active local expert IDs (`-1` = masked).
+            a_scale_offsets: Per-expert scale-block offsets.
+            gate_up_expert_scales: L1 per-expert output scaling.
+            down_expert_scales: L2 per-expert output scaling.
+            c_input_scales: L1 per-expert input scale for the NVFP4 re-quant.
+            src_info: Per-row dispatch metadata the send resolves destinations
+                from; the high bits carry the one-based source rank.
+            recv_ptrs: Peer combine receive-buffer addresses, one per rank.
+            recv_count_ptrs: Peer receive-count addresses the arrival signal
+                releases, one per rank.
+            estimated_total_m: Estimated total non-padded tokens; the tile
+                regime gate's numerator.
+            num_active_experts: Active expert slots; the kernel walks one
+                shared expert list for both legs.
+            context: Device context.
+        """
+        comptime assert is_gpu[
+            target
+        ](), "the fused MegaFFN combine send only supports GPUs"
+
+        comptime assert (
+            n_gpus_per_node * n_nodes <= P3_MAX_RANKS
+        ), "the send resolves destinations into fixed P3_MAX_RANKS-wide tables"
+
+        # The graph sizes `arrival_count` from constants restated on the Python
+        # side, because a graph cannot read a Mojo comptime. Nothing keeps the
+        # two in step, and a stride that disagrees silently corrupts the pool
+        # rather than failing, so check the shape the kernel actually needs.
+        var arrival_words = Int(arrival_count.dim_size[0]())
+        if (
+            arrival_words % ATOMIC_PAD != 0
+            or arrival_words < (n_experts + 1) * ATOMIC_PAD
+        ):
+            raise Error(
+                "arrival_count must be a whole number of ATOMIC_PAD-word pool"
+                " slots and hold at least n_experts + 1 of them, since the"
+                " send keeps its per-expert words in slot padding"
+            )
+
+        var num_active = Int(num_active_experts)
+        if num_active == 0:
+            return
+
+        # Enforced here too, so the binding cannot grow a second dispatch
+        # arm that nothing reaches.
+        comptime assert (
+            a_type != DType.float8_e4m3fn
+        ), "the fused combine send is NVFP4-only"
+        comptime sf_vector_size = NVFP4_SF_VECTOR_SIZE
+
+        comptime num_experts = Int(gate_up_weight.static_spec.shape_tuple[0])
+        comptime down_experts = Int(down_weight.static_spec.shape_tuple[0])
+        comptime assert (
+            num_experts == down_experts
+        ), "gate_up and down weights must have the same expert count"
+
+        comptime moe_dim = Int(gate_up_weight.static_spec.shape_tuple[1]) // 2
+        comptime packed_K2 = Int(down_weight.static_spec.shape_tuple[2])
+        comptime N2 = Int(down_weight.static_spec.shape_tuple[1])
+        comptime assert (
+            N2 == hidden_size
+        ), "the send's row width must equal the down projection's N"
+
+        comptime assert (
+            packed_K2 == moe_dim // 2
+        ), "down_weight K dim must equal moe_dim // 2 (packed NVFP4)"
+
+        comptime k_groups_swiglu = ceildiv(moe_dim, sf_vector_size * SF_ATOM_K)
+
+        var m_total = Int(hidden_states.dim_size[0]())
+        var a_scale_dim0 = Int(gate_up_a_scales.dim_size[0]())
+
+        # On-chip scratch, same capture-safe per-call pattern as the sibling
+        # registration: write-then-read inside the launch, so no init.
+        comptime CPackedType = DType.uint8
+        var c_packed_buf = context.enqueue_create_buffer[CPackedType](
+            m_total * packed_K2
+        )
+        var c_packed = TileTensor(
+            c_packed_buf.unsafe_ptr(),
+            row_major(Coord(Int64(m_total), Idx[packed_K2])),
+        )
+
+        var s_size = (
+            a_scale_dim0
+            * k_groups_swiglu
+            * SF_ATOM_M[0]
+            * SF_ATOM_M[1]
+            * SF_ATOM_K
+        )
+        var c_swiglu_scales_buf = context.enqueue_create_buffer[scales_type](
+            s_size
+        )
+        var c_swiglu_scales = TileTensor(
+            c_swiglu_scales_buf.unsafe_ptr(),
+            row_major(
+                Coord(
+                    Int64(a_scale_dim0),
+                    Idx[k_groups_swiglu],
+                    Idx[SF_ATOM_M[0]],
+                    Idx[SF_ATOM_M[1]],
+                    Idx[SF_ATOM_K],
+                )
+            ),
+        )
+
+        # The point of this op. With the peer send on, the epilogue's local
+        # store and its TMA encode are both gone, so C needs no allocation at
+        # all -- not even an empty one, which would still cost a stream-ordered
+        # alloc and free per layer per launch. It stays 2-D with a STATIC
+        # trailing dim because the launcher asserts `c_device`'s N equals the
+        # down projection's; only the row extent goes to zero.
+        var c_device = TileTensor(
+            UnsafePointer[
+                Scalar[combine_dtype], MutAnyOrigin
+            ].unsafe_dangling(),
+            row_major(Coord(Int(0), Idx[N2])),
+        )
+
+        # Destination resolve reads the combine-async counter region; the
+        # arrival signal's last-arriver election reads the rank-completion
+        # counter that follows it, keyed on the GLOBAL expert count.
+        var ep_counters = EPLocalSyncCounters[n_experts](
+            atomic_counters.unsafe_ptr().unsafe_origin_cast[
+                MutUntrackedOrigin
+            ]()
+        )
+        var combine_counter = ep_counters.get_combine_async_ptr()
+
+        # The rank is a property of the device this launch lands on, not of the
+        # graph, so derive it the way the EP host APIs do rather than baking it
+        # into a parameter and specializing the op per device.
+        var my_rank = Int32(context.id())
+        comptime if n_nodes > 1:
+            my_rank = Int32(shmem_my_pe())
+
+        # Peer address tables, widened from `n_gpus_per_node` live entries to
+        # the fixed width the kernel's stack arrays use. Entries past the world
+        # size are never indexed: the resolve walks `range(p3_n_ranks)`.
+        var recv_arr = pack_ptrs_array[DType.uint8](
+            recv_ptrs.to_tile_tensor[.int64](), my_rank
+        )
+        var recv_bufs = StaticTuple[
+            UnsafePointer[UInt8, MutUntrackedOrigin], P3_MAX_RANKS
+        ](UnsafePointer[UInt8, MutUntrackedOrigin].unsafe_dangling())
+        var count_arr = pack_ptrs_array[DType.uint64](
+            recv_count_ptrs.to_tile_tensor[.int64](), my_rank
+        )
+        var recv_counts = StaticTuple[
+            UnsafePointer[UInt64, MutUntrackedOrigin], P3_MAX_RANKS
+        ](UnsafePointer[UInt64, MutUntrackedOrigin].unsafe_dangling())
+        for r in range(n_gpus_per_node):
+            recv_bufs[r] = recv_arr[r]
+            recv_counts[r] = count_arr[r]
+
+        comptime n_ranks = n_gpus_per_node * n_nodes
+        comptime msg_bytes = size_of[combine_dtype]() * hidden_size
+
+        comptime swiglu_alpha = Float32(1.702) if clamp_activation else Float32(
+            0.0
+        )
+        comptime swiglu_limit = Float32(7.0) if clamp_activation else Float32(
+            0.0
+        )
+
+        var ep_send = EPCombineSendOperands(
+            control=0,
+            atomic_counter=combine_counter,
+            src_info_ptr=src_info.unsafe_ptr()
+            .unsafe_mut_cast[False]()
+            .unsafe_origin_cast[ImmUntrackedOrigin](),
+            row_base_ptr=UnsafePointer[
+                UInt64, MutUntrackedOrigin
+            ].unsafe_dangling(),
+            recv_buf_ptrs=recv_bufs,
+            n_ranks=n_ranks,
+            p2p_world_size=n_gpus_per_node,
+            top_k=top_k,
+            msg_bytes=msg_bytes,
+            max_tokens_per_rank=max_token_per_rank,
+            signal_control=0,
+            recv_count_ptrs=recv_counts,
+            rank_completion_counter=combine_counter.unsafe_offset(
+                2 * n_experts
+            ),
+            my_rank=my_rank,
+        )
+
+        mega_ffn_nvfp4_dispatch[
+            num_experts=num_experts,
+            transpose_b=True,
+            clamp_activation=clamp_activation,
+            p5_direct_scatter=True,
+            p4_signal=True,
+            emit_ffn_done=True,
+        ](
+            c_device,
+            c_packed,
+            c_swiglu_scales,
+            hidden_states.to_tile_tensor[.int64](),
+            gate_up_weight.to_tile_tensor[.int64](),
+            down_weight.to_tile_tensor[.int64](),
+            gate_up_a_scales.to_tile_tensor[.int64](),
+            gate_up_b_scales.to_tile_tensor[.int64](),
+            down_b_scales.to_tile_tensor[.int64](),
+            expert_start_indices.to_tile_tensor[.int64](),
+            a_scale_offsets.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            gate_up_expert_scales.to_tile_tensor[.int64](),
+            down_expert_scales.to_tile_tensor[.int64](),
+            c_input_scales.to_tile_tensor[.int64](),
+            num_active,
+            Int(estimated_total_m),
+            context,
+            arrival_count.unsafe_ptr(),
+            swiglu_alpha=swiglu_alpha,
+            swiglu_limit=swiglu_limit,
+            ep_send=ep_send,
+        )
+
         _ = c_packed_buf^
         _ = c_swiglu_scales_buf^

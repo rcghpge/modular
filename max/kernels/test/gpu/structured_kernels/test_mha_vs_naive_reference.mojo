@@ -89,7 +89,7 @@ def _is_finite_bf16(v: Float32) -> Bool:
     return v == v and abs(v) < Float32(1e38)
 
 
-@always_inline
+@inline(.always)
 def _mha_prefill_v2_launch[
     k_t: MHAOperand,
     v_t: MHAOperand,
@@ -132,11 +132,13 @@ def _mha_prefill_v2_launch[
         o.dtype,
         q.LayoutType,
         o.LayoutType,
+        q.Engine,
+        o.Engine,
         ragged=False,
     ]
 
     var compiled = ctx.compile_function[kernel_run]()
-    var sink_weights_ptr = UnsafePointer[
+    var sink_weights_ptr = ImmPointer[
         Scalar[q.dtype], ImmutAnyOrigin
     ].unsafe_dangling()
     ctx.enqueue_function(
@@ -353,25 +355,23 @@ def test_mha_vs_naive[
         ),
     )
     var k_ref_operand = LayoutTensorMHAOperand(
-        k_ref_tt.as_immut().as_unsafe_any_origin()
+        k_ref_tt.as_imm().as_unsafe_any_origin()
     )
     var v_ref_operand = LayoutTensorMHAOperand(
-        v_ref_tt.as_immut().as_unsafe_any_origin()
+        v_ref_tt.as_imm().as_unsafe_any_origin()
     )
-    var null_valid_length = LayoutTensor[
-        DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
-    ](
-        None,
-        RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(Index(0)),
+    var null_valid_length = TileTensor(
+        MutPointer[UInt32, MutAnyOrigin].unsafe_dangling(),
+        row_major(Coord(Idx[0])),
     )
 
     # MHA: group = num_q_heads / num_kv_heads = 1.
     mha_gpu_naive[_is_cache_length_accurate=True,](
-        q_naive_tt.to_layout_tensor(),
+        q_naive_tt,
         k_ref_operand,
         v_ref_operand,
         mask_functor,
-        out_ref_tt.to_layout_tensor(),
+        out_ref_tt,
         null_valid_length,
         scale,
         BATCH,

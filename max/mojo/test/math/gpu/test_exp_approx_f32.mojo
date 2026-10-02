@@ -13,14 +13,13 @@
 from std.math.fast import exp_approx_f32
 from std.math import exp as ref_exp
 from max.algorithm.functional import elementwise
-from std.gpu import *
+from max.gpu import *
 from max.gpu.host import DeviceContext, get_gpu_target
 from std.testing import *
 from std.utils import Index, IndexList
 from std.utils.coord import Coord
 
 
-@__parameter
 def run_exp_approx_test[
     simd_width: Int
 ](ctx: DeviceContext, *, half_range: Float32, rtol: Float64) raises:
@@ -40,7 +39,7 @@ def run_exp_approx_test[
     var in_buffer = Span(unsafe_ptr=in_device.unsafe_ptr(), length=length)
     var out_buffer = Span(unsafe_ptr=out_device.unsafe_ptr(), length=length)
 
-    @always_inline
+    @inline(.always)
     @__copy_capture(out_buffer, in_buffer)
     @__parameter
     def func[simd_width: Int, alignment: Int = 1](idx0: Coord):

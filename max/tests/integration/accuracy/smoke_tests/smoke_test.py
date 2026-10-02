@@ -19,11 +19,10 @@ It does two things:
     2. Runs a tiny evaluation task using against the chat/completions API
 
 Currently there is a hard dependency that two virtualenvs are already created:
-    - .venv-serve (not needed for max-ci, which uses bazel)
-    - .venv-eval
+    - .venv-serve, with MAX installed (not needed for max-ci, which uses
+      bazel, nor for vllm/sglang, which serve from their released images)
+    - .venv-eval, with lm-eval installed
 
-Where the serve environment should already have either MAX/VLLM/SGLang installed.
-The eval environment should already have lm-eval installed.
 These dependencies are to be removed once this script
 has been integrated into bazel.
 
@@ -31,11 +30,12 @@ Note that if you're running this script inside bazel, only available for max-ci,
 then the virtualenvs are not needed.
 """
 
-import csv
+import json
 import logging
 import os
 import shlex
 import sys
+from collections.abc import Mapping
 from functools import cache
 from pathlib import Path
 from pprint import pformat
@@ -63,6 +63,16 @@ from requests.structures import CaseInsensitiveDict
 
 URL = "http://127.0.0.1:8000/v1/chat/completions"
 
+GPU_ARGS = {
+    "nvidia": ["--device", "nvidia.com/gpu=all"],
+    "amd": [
+        "--device", "/dev/kfd",
+        "--device", "/dev/dri",
+        "--group-add", "video",
+        "--security-opt", "seccomp=unconfined",
+    ],
+}  # fmt: skip
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -86,9 +96,11 @@ def _metrics_url(framework: str) -> str:
 MODEL_RECIPES = CaseInsensitiveDict({
     "deepseek-ai/DeepSeek-V2-Lite-Chat__modulev3": "max/pipelines/architectures/deepseekV2_modulev3/recipes/deepseekv2_lite.yaml",
     "deepseek-ai/DeepSeek-V3.1-Terminus": "max/pipelines/architectures/deepseekV3/recipes/terminus_8x_b200.yaml",
-    "deepseek-ai/DeepSeek-V3.1-Terminus__modulev3": "max/pipelines/architectures/deepseekV3_modulev3/recipes/terminus_8x_b200.yaml",
+    "deepseek-ai/DeepSeek-V4-Flash-0731__tp2": "max/pipelines/architectures/deepseekV4/recipes/flash_0731_fp8_tp2_b200.yaml",
+    "google/gemma-4-12B-it__device_graph_synthesis": "max/pipelines/architectures/gemma4/recipes/gemma4_12b_device_graph_synthesis.yaml",
     "google/gemma-4-12B-it__dspark": "max/pipelines/architectures/gemma4/recipes/gemma4_12b_dspark.yaml",
     "google/gemma-4-26B-A4B-it__tuned": "max/pipelines/architectures/gemma4/recipes/gemma4_26b_a4b_tuned.yaml",
+    "google/gemma-4-31B-it__modulev3": "max/pipelines/architectures/gemma4_modulev3/recipes/gemma4_31b.yaml",
     "google/gemma-4-31B-it__tuned": "max/pipelines/architectures/gemma4/recipes/gemma4_31b_tuned.yaml",
     "nvidia/Gemma-4-26B-A4B-NVFP4__tuned": "max/pipelines/architectures/gemma4/recipes/gemma4_26b_a4b_nvfp4_tuned.yaml",
     "nvidia/Gemma-4-31B-IT-NVFP4__tuned": "max/pipelines/architectures/gemma4/recipes/gemma4_31b_nvfp4_tuned.yaml",
@@ -107,8 +119,14 @@ MODEL_RECIPES = CaseInsensitiveDict({
     "nvidia/DeepSeek-V3.1-NVFP4__tpep_ar": "max/pipelines/architectures/deepseekV3/recipes/nvfp4_tpep_ar_8x_b200.yaml",
     "nvidia/DeepSeek-V3.1-NVFP4__tptp": "max/pipelines/architectures/deepseekV3/recipes/nvfp4_tptp_8x_b200.yaml",
     "nvidia/GLM-5.2-NVFP4__mtp_tpep": "max/pipelines/architectures/glm5_1/recipes/glm_5_2_fp8_tp_ep_8x_b200_mtp.yaml",
+    "RadixArk/GLM-5.3-NVFP4__mtp_tpep": "max/pipelines/architectures/glm5_1/recipes/glm_5_3_nvfp4_tp_ep_8x_b200.yaml",
     "amd/Kimi-K2.7-Code-MXFP4": "max/pipelines/architectures/kimik2_5/recipes/mxfp4_kimi_k2_7_code_8x_mi355.yaml",
     "nvidia/Kimi-K2.7-Code-NVFP4": "max/pipelines/architectures/kimik2_5/recipes/nvfp4_kimi_k2_7_code_eagle_tpep_8x_b200.yaml",
+    "nvidia/Kimi-K2.7-Code-NVFP4__modulev3": "max/pipelines/architectures/kimik2_5_modulev3/recipes/nvfp4_kimi_k2_7_code_b200.yaml",
+    "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4__modulev3": "max/pipelines/architectures/nemotron_h_modulev3/recipes/lightning_nvfp4.yaml",
+    "thinkingmachines/Inkling-Small-NVFP4__mtp": "max/pipelines/architectures/inkling/recipes/inkling_small_nvfp4_mtp.yaml",
+    "RadixArk/Qwen3.8-27B-NVFP4__mtp": "max/pipelines/architectures/unified_mtp_qwen3_5/recipes/qwen38_27b_nvfp4_mtp_snapshot.yaml",
+    "RadixArk/Qwen3.8-27B-NVFP4__mtp_ring": "max/pipelines/architectures/unified_mtp_qwen3_5/recipes/qwen38_27b_nvfp4_mtp_ring.yaml",
 })
 # fmt: on
 
@@ -116,16 +134,24 @@ MODEL_RECIPES = CaseInsensitiveDict({
 class RecipeConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
+    class KVConnector(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+
+        type: str = "null"
+
     class KVCache(BaseModel):
         model_config = ConfigDict(extra="ignore")
 
         device_memory_utilization: float | None = None
-        kv_connector: str | None = None
+        kv_connector_config: RecipeConfig.KVConnector = Field(
+            default_factory=lambda: RecipeConfig.KVConnector()
+        )
 
     class Model(BaseModel):
         model_config = ConfigDict(extra="ignore")
 
         model_path: str | None = None
+        served_model_name: str | None = None
         device_specs: list[int] | None = None
         data_parallel_degree: int = 1
         kv_cache: RecipeConfig.KVCache = Field(
@@ -186,18 +212,30 @@ def _inside_bazel() -> bool:
     return os.getenv("BUILD_WORKSPACE_DIRECTORY") is not None
 
 
-@cache
-def _load_hf_repo_lock() -> dict[str, str]:
-    """Read hf-repo-lock.tsv, return {lowercase_repo: revision} mapping."""
-    tsv = Path(__file__).resolve().parent.parent.parent / "hf-repo-lock.tsv"
-    if not tsv.exists():
-        logger.warning("hf-repo-lock.tsv not found, skipping revision pinning")
-        return {}
-    db = {}
-    with open(tsv) as f:
-        for row in csv.DictReader(f, dialect="excel-tab"):
-            db[row["hf_repo"].lower()] = row["revision"]
-    return db
+# Private entrypoints keep hw-keyed recipe tables next to their recipes (this
+# OSS-synced file can't name them); the glob matches nothing in the OSS tree.
+_HW_RECIPES_GLOB = "max_private/*/recipes/hw_recipes.yaml"
+
+
+def _private_recipe_paths_for_model(model: str) -> list[str]:
+    """Recipes a private entrypoint may serve for this model, on any GPU.
+
+    Pre-fetching wants the union across hardware: every table entry for a
+    model serves the same weights, so the union warms exactly the repos the
+    entrypoint's own GPU-keyed selection will load.
+    """
+    for base in Path(__file__).resolve().parents:
+        tables = sorted(base.glob(_HW_RECIPES_GLOB))
+        if tables:
+            break
+    else:
+        return []
+    return [
+        str(table.parent / entry["recipe"])
+        for table in tables
+        for entry in yaml.safe_load(table.read_text()).values()
+        if entry["model"].lower() == model.lower()
+    ]
 
 
 def _resolve_recipe_path(recipe_path: str) -> str:
@@ -239,15 +277,13 @@ def resolve_model_path(
     return resolve_canonical_repo_id(hf_model_path), recipe_path
 
 
-def hf_repos_for_model(model: str) -> list[tuple[str, str | None]]:
-    """Return (repo, revision) pairs to pre-cache for the given model.
+def hf_repos_for_model(model: str) -> list[str]:
+    """Return the repos to pre-cache for the given model.
 
     Always includes the base repo (alias prefix before __), plus the
     draft_model.model_path when the alias maps to a recipe with one.
-    Revisions come from hf-repo-lock.tsv; None means unpinned.
     """
-    lock = _load_hf_repo_lock()
-    repos: list[tuple[str, str | None]] = []
+    repos: list[str] = []
     seen: set[str] = set()
 
     def add(repo: str) -> None:
@@ -258,18 +294,26 @@ def hf_repos_for_model(model: str) -> list[tuple[str, str | None]]:
         if key in seen:
             return
         seen.add(key)
-        repos.append((repo, lock.get(key)))
+        repos.append(repo)
 
-    # Recipe-derived paths win the casefold dedup, so a lowercased alias
-    # input still resolves to the canonical casing the cache expects.
-    recipe_path = MODEL_RECIPES.get(model)
-    if recipe_path is not None:
+    def add_recipe_repos(recipe_path: str) -> None:
         recipe = _load_recipe(recipe_path)
         if recipe.model.model_path:
             add(recipe.model.model_path)
         if recipe.draft_model and recipe.draft_model.model_path:
             add(recipe.draft_model.model_path)
+
+    # Recipe-derived paths win the casefold dedup, so a lowercased alias
+    # input still resolves to the canonical casing the cache expects.
+    recipe_path = MODEL_RECIPES.get(model)
+    if recipe_path is not None:
+        add_recipe_repos(recipe_path)
     add(model.split("__", 1)[0])
+    # A private recipe can serve a different repo than the alias; adding its
+    # repos after the alias keeps the alias as the base repo callers get back.
+    if recipe_path is None:
+        for private_path in _private_recipe_paths_for_model(model):
+            add_recipe_repos(private_path)
     return repos
 
 
@@ -323,49 +367,6 @@ def _recipe_gpu_overrides(recipe: RecipeConfig, gpu_count: int) -> list[str]:
     return args
 
 
-def _revision_args(
-    framework: str,
-    model: str,
-    recipe: RecipeConfig | None = None,
-) -> list[str]:
-    revision = _load_hf_repo_lock().get(model.casefold())
-    args: list[str] = []
-    if revision:
-        if framework in ("max", "max-ci"):
-            args += [
-                "--model-override",
-                f"main.huggingface_model_revision={revision}",
-                "--model-override",
-                f"main.huggingface_weight_revision={revision}",
-            ]
-        else:  # vllm, sglang
-            args += ["--revision", revision]
-        logger.info(f"Pinned to revision {revision[:12]}")
-    else:
-        logger.warning(f"No locked revision for {model}")
-
-    if (
-        recipe is not None
-        and framework in ("max", "max-ci")
-        and recipe.draft_model is not None
-        and recipe.draft_model.model_path is not None
-        and (
-            draft_revision := _load_hf_repo_lock().get(
-                recipe.draft_model.model_path.casefold()
-            )
-        )
-    ):
-        args += [
-            "--model-override",
-            f"draft.huggingface_model_revision={draft_revision}",
-            "--model-override",
-            f"draft.huggingface_weight_revision={draft_revision}",
-        ]
-        logger.info(f"Pinned draft model to revision {draft_revision[:12]}")
-
-    return args
-
-
 def merge_serve_extra_args(args: list[str], extra: str) -> list[str]:
     """Returns a copy of *args* with *extra* folded into ``--serve-extra-args``.
 
@@ -386,16 +387,40 @@ def merge_serve_extra_args(args: list[str], extra: str) -> list[str]:
     return merged + ["--serve-extra-args", extra]
 
 
+def accelerator(image: str) -> str:
+    return "amd" if "rocm" in image.lower() else "nvidia"
+
+
+def container_argv(image: str, env: Mapping[str, str]) -> list[str]:
+    """Build the ``docker run`` prefix that serves ``image`` on the local GPUs."""
+    offline = {
+        key: os.environ[key] for key in ("HF_HUB_OFFLINE",) if key in os.environ
+    }
+    hf_hub_cache = Path("~/.cache/huggingface/hub").expanduser()
+    return [
+        "docker", "run", "--rm", "--name", "smoke-server",
+        *GPU_ARGS[accelerator(image)],
+        "--ipc=host",
+        "-p", "127.0.0.1:8000:8000",
+        "-v", f"{hf_hub_cache}:/root/.cache/huggingface/hub:ro",
+        *[f for k, v in {**offline, **env}.items() for f in ("-e", f"{k}={v}")],
+        "--entrypoint", "python3",
+        image,
+        "-m",
+    ]  # fmt: skip
+
+
 def get_server_cmd(
     framework: str,
     model: str,
     *,
+    serve_image: str = "",
     serve_extra_args: str = "",
     recipe_path: str | None = None,
     autoscale_devices: bool = True,
     gpu_spec: tuple[str, int],
 ) -> ServerCommand:
-    gpu_model, gpu_count = gpu_spec
+    _, gpu_count = gpu_spec
     env: dict[str, str] = {}
     if recipe_path is None:
         recipe_path = MODEL_RECIPES.get(model)
@@ -408,25 +433,33 @@ def get_server_cmd(
     ):
         recipe_config = (recipe_path, recipe)
 
-    sglang_backend = "triton" if "b200" in gpu_model.lower() else "fa3"
     SGLANG = [
         "sglang.launch_server",
-        "--attention-backend",
-        sglang_backend,
         "--enable-metrics",
+        "--host",
+        "0.0.0.0",
     ]
     # limit-mm-per-prompt.video is for InternVL3 on B200
     VLLM = [
         "vllm.entrypoints.openai.api_server",
+        "--host",
+        "0.0.0.0",
         "--max-model-len",
         "auto",
         "--limit-mm-per-prompt.video",
+        "0",
+        "--limit-mm-per-prompt.audio",
         "0",
     ]
     # vLLM's KV cache sizing misses Inkling's mamba conv cache and OOMs.
     if "inkling" in model.casefold():
         VLLM += ["--gpu-memory-utilization", "0.8"]
     MAX = ["serve", "--pretty-print-config"]
+    # A smoke test is where an eager or host-transfer footgun should surface,
+    # so validate each request too and not just initialization. max-ci only:
+    # the flag is newer than the wheels the ``max`` framework installs.
+    if framework == "max-ci":
+        MAX += ["--eager-usage-validator", "enabled"]
 
     if gpu_count > 1:
         if recipe is not None:
@@ -473,29 +506,30 @@ def get_server_cmd(
             SGLANG += [f"--tp-size={gpu_count}"]
             VLLM += [f"--tensor-parallel-size={gpu_count}"]
 
-    # Force MAX to rely solely on the KVConnector for prefix cache hits to test
-    # cpu/disk KV offload code paths.
-    if framework in ("max", "max-ci") and (
-        "--kv-connector" in serve_extra_args
-        or (
+    if framework == "vllm" and accelerator(serve_image) == "amd":
+        env["VLLM_ROCM_USE_AITER"] = "1"
+
+    if framework in ("max", "max-ci"):
+        # Force MAX to rely solely on the KVConnector for prefix cache hits to test
+        # cpu/disk KV offload code paths.
+        if "--kv-connector-config" in serve_extra_args or (
             recipe is not None
-            and recipe.model.kv_cache.kv_connector is not None
-        )
-    ):
-        env["MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE"] = "1"
+            and recipe.model.kv_cache.kv_connector_config.type != "null"
+        ):
+            env["MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE"] = "1"
 
     if _inside_bazel():
         assert framework == "max-ci", "bazel invocation only supports max-ci"
         cmd = [sys.executable, "-m", "max._entrypoints.pipelines", *MAX]
     else:
         assert framework != "max-ci", "max-ci must be run through bazel"
-        interpreter = [".venv-serve/bin/python", "-m"]
-        commands = {
-            "sglang": [*interpreter, *SGLANG],
-            "vllm": [*interpreter, *VLLM],
-            "max": [".venv-serve/bin/max", *MAX],
-        }
-        cmd = commands[framework]
+        if framework == "max":
+            cmd = [".venv-serve/bin/max", *MAX]
+        else:
+            if not serve_image:
+                raise ValueError(f"--serve-image is required for {framework}")
+            server = {"sglang": SGLANG, "vllm": VLLM}[framework]
+            cmd, env = [*container_argv(serve_image, env), *server], {}
 
     cmd = cmd + ["--port", "8000"]
     if recipe_config is not None:
@@ -510,9 +544,6 @@ def get_server_cmd(
     # so we need to enable penalties on the server
     if "gpt-oss" in model.casefold() and framework in ["max-ci", "max"]:
         cmd += ["--enable-penalties"]
-
-    recipe = recipe_config[1] if recipe_config is not None else None
-    cmd += _revision_args(framework, model, recipe)
 
     if serve_extra_args:
         if framework in ["max-ci", "max"]:
@@ -559,6 +590,12 @@ def valid_tasks() -> set[str]:
     default="max-ci",
     required=False,
     help="Framework to use for the smoke test. Only max-ci is supported when running in bazel.",
+)
+@click.option(
+    "--serve-image",
+    type=str,
+    default="",
+    help="Container image serving the model. Required for vllm and sglang.",
 )
 @click.option(
     "--output-path",
@@ -642,6 +679,7 @@ def valid_tasks() -> set[str]:
 def smoke_test(
     hf_model_path: str,
     framework: str,
+    serve_image: str,
     output_path: Path | None,
     print_responses: bool,
     print_cot: bool,
@@ -676,10 +714,20 @@ def smoke_test(
         output_path = Path(build_workspace) / output_path
 
     model = hf_model_path.strip()
+    result_dir = None
+    if output_path is not None:
+        result_dir = output_path / safe_model_name(model)
+        result_dir.mkdir(parents=True, exist_ok=True)
+
     hf_model_path, recipe_path = resolve_model_path(model, recipe_path)
+    # A recipe can serve its weights under another name; requests must use it.
+    served = hf_model_path
+    if recipe_path:
+        served = _load_recipe(recipe_path).model.served_model_name or served
     cmd, server_env = get_server_cmd(
         framework,
         hf_model_path,
+        serve_image=serve_image,
         serve_extra_args=serve_extra_args,
         recipe_path=recipe_path,
         autoscale_devices=autoscale_devices,
@@ -709,17 +757,17 @@ def smoke_test(
 
         for task in tasks:
             test_single_request(
-                URL, hf_model_path, task, disable_timeouts=disable_timeouts
+                URL, served, task, disable_timeouts=disable_timeouts
             )
             result, samples = call_eval(
                 URL,
-                hf_model_path,
+                served,
                 task,
                 max_concurrent=max_concurrent,
                 num_questions=num_questions,
                 disable_timeouts=disable_timeouts,
                 metrics_url=metrics_url,
-                model_alias=model if hf_model_path != model else None,
+                model_alias=model if served != model else None,
                 lm_eval_metadata=lm_eval_metadata,
             )
 
@@ -734,12 +782,15 @@ def smoke_test(
             results, startup_time_seconds=server.startup_time
         )
 
-        if output_path is not None:
-            path = output_path / safe_model_name(model)
-            path.mkdir(parents=True, exist_ok=True)
-            write_results(path, summary, results, all_samples, tasks)
+        if result_dir is not None:
+            write_results(result_dir, summary, results, all_samples, tasks)
 
         logger.info(pformat(summary, indent=2))
+
+    if result_dir is not None:
+        (result_dir / "smoke_status.json").write_text(
+            json.dumps({"status": "FINISHED_OK"}) + "\n", encoding="utf-8"
+        )
 
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ from std.sys import get_defined_int
 from max.gpu.host import DeviceContext
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import (
+    Coord,
     Idx,
     Layout,
     LayoutTensor,
@@ -203,14 +204,12 @@ def run_test_paged_prefill_blockscale[
     var k_device_buf = ctx.enqueue_create_buffer[qkv_type](k_size)
     var v_device_buf = ctx.enqueue_create_buffer[qkv_type](v_size)
     var output_device_buf = ctx.enqueue_create_buffer[output_type](o_size)
-    var input_ro_buf = ctx.enqueue_create_buffer[DType.uint32](batch_size + 1)
-    var cache_ro_buf = ctx.enqueue_create_buffer[DType.uint32](batch_size + 1)
+    var input_ro_buf = ctx.enqueue_create_buffer[.uint32](batch_size + 1)
+    var cache_ro_buf = ctx.enqueue_create_buffer[.uint32](batch_size + 1)
     var blocks_device = ctx.enqueue_create_buffer[k_rope_type](block_elems)
-    var scales_device = ctx.enqueue_create_buffer[DType.float32](scales_elems)
-    var cache_lengths_device = ctx.enqueue_create_buffer[DType.uint32](
-        batch_size
-    )
-    var lookup_table_device = ctx.enqueue_create_buffer[DType.uint32](lut_size)
+    var scales_device = ctx.enqueue_create_buffer[.float32](scales_elems)
+    var cache_lengths_device = ctx.enqueue_create_buffer[.uint32](batch_size)
+    var lookup_table_device = ctx.enqueue_create_buffer[.uint32](lut_size)
 
     ctx.enqueue_copy(q_device_buf, q_ptr)
     ctx.enqueue_copy(k_device_buf, k_ptr)
@@ -277,19 +276,19 @@ def run_test_paged_prefill_blockscale[
         blocks_device.unsafe_ptr(),
         RuntimeLayout[Layout.row_major[6]()].row_major(block_shape),
     )
-    var scales_lt = LayoutTensor[DType.float32, Layout.row_major[6]()](
+    var scales_lt = LayoutTensor[.float32, Layout.row_major[6]()](
         scales_device.unsafe_ptr(),
         RuntimeLayout[Layout.row_major[6]()].row_major(scales_shape),
     )
 
     comptime cl_layout = Layout(UNKNOWN_VALUE)
-    var cache_lengths_lt = LayoutTensor[DType.uint32, cl_layout](
+    var cache_lengths_lt = LayoutTensor[.uint32, cl_layout](
         cache_lengths_device.unsafe_ptr(),
         RuntimeLayout[cl_layout].row_major(IndexList[1](batch_size)),
     )
 
     comptime lt_layout_2d = Layout.row_major[2]()
-    var lookup_table_lt = LayoutTensor[DType.uint32, lt_layout_2d](
+    var lookup_table_lt = LayoutTensor[.uint32, lt_layout_2d](
         lookup_table_device.unsafe_ptr(),
         RuntimeLayout[lt_layout_2d].row_major(
             IndexList[2](batch_size, max_pages_per_batch)
@@ -310,14 +309,14 @@ def run_test_paged_prefill_blockscale[
                 blocks_lt.runtime_layout.stride.value,
             ),
         ),
-        LayoutTensor[mut=False, DType.uint32, cl_layout](
+        LayoutTensor[mut=False, .uint32, cl_layout](
             cache_lengths_lt.ptr,
             RuntimeLayout[cl_layout](
                 cache_lengths_lt.runtime_layout.shape.value,
                 cache_lengths_lt.runtime_layout.stride.value,
             ),
         ),
-        LayoutTensor[mut=False, DType.uint32, lt_layout_2d](
+        LayoutTensor[mut=False, .uint32, lt_layout_2d](
             lookup_table_lt.ptr,
             RuntimeLayout[lt_layout_2d](
                 lookup_table_lt.runtime_layout.shape.value,
@@ -327,7 +326,7 @@ def run_test_paged_prefill_blockscale[
         UInt32(seq_len),  # max_seq_length
         UInt32(num_keys),  # max_cache_length
         # Pass the FP32 scales tensor.
-        LayoutTensor[DType.float32, Layout.row_major[6]()](
+        LayoutTensor[.float32, Layout.row_major[6]()](
             scales_lt.ptr,
             RuntimeLayout[Layout.row_major[6]()](
                 scales_lt.runtime_layout.shape.value,
@@ -337,9 +336,6 @@ def run_test_paged_prefill_blockscale[
     )
 
     var kv_cache = kv_collection.get_key_cache(0)
-
-    var k_lt = k_device.to_layout_tensor()
-    var v_lt = v_device.to_layout_tensor()
 
     # ------------------------------------------------------------------
     # Step 7: Launch the kernel. The same `flare_mla_prefill` overload
@@ -351,8 +347,8 @@ def run_test_paged_prefill_blockscale[
     flare_mla_prefill[rank=3](
         output_device,
         q_device,
-        k_lt,
-        v_lt,
+        k_device,
+        v_device,
         kv_cache,
         CausalMask(),
         input_ro_tt,
@@ -447,26 +443,24 @@ def run_test_paged_prefill_blockscale[
         row_major((batch_size, seq_len, Idx[num_heads], Idx[depth])),
     )
 
-    var null_valid_length = LayoutTensor[
-        DType.uint32, Layout.row_major(UNKNOWN_VALUE), MutAnyOrigin
-    ](
-        None,
-        RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(Index(0)),
+    var null_valid_length = TileTensor(
+        MutPointer[UInt32, MutAnyOrigin].unsafe_dangling(),
+        row_major(Coord(Idx[0])),
     )
 
     var k_ref_operand = LayoutTensorMHAOperand(
-        k_ref_device.as_immut().as_unsafe_any_origin()
+        k_ref_device.as_imm().as_unsafe_any_origin()
     )
     var v_ref_operand = LayoutTensorMHAOperand(
-        v_ref_device.as_immut().as_unsafe_any_origin()
+        v_ref_device.as_imm().as_unsafe_any_origin()
     )
 
     mha_gpu_naive[_is_cache_length_accurate=True](
-        q_device_rank4.to_layout_tensor(),
+        q_device_rank4,
         k_ref_operand,
         v_ref_operand,
         CausalMask(),
-        output_ref_device.to_layout_tensor(),
+        output_ref_device,
         null_valid_length,
         scale,
         batch_size,
@@ -503,10 +497,10 @@ def run_test_paged_prefill_blockscale[
                         (b * seq_len + s) * num_heads * kv_depth
                         + h * kv_depth
                         + d
-                    ).cast[DType.float64]()
+                    ).cast[.float64]()
                     var expect = output_ref_host.load(
                         ((b * seq_len + s) * num_heads + h) * depth + d
-                    ).cast[DType.float64]()
+                    ).cast[.float64]()
                     var abs_err = abs(actual - expect)
                     if abs_err > max_abs_err:
                         max_abs_err = abs_err

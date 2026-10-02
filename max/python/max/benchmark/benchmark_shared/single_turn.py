@@ -51,6 +51,7 @@ from max.benchmark.benchmark_shared.request import (
     RequestFuncInput,
     mark_cancelled_if_past_deadline,
     progressbar_request_driver,
+    tag_response_format_outcome,
 )
 from max.benchmark.benchmark_shared.utils import (
     deadline_passed,
@@ -270,6 +271,7 @@ async def run_single_turn_benchmark(
                 return request_func_input.get_output_type()(
                     cancelled=True, request_submit_time=time.perf_counter()
                 )
+            tag_response_format_outcome(output, request_func_input)
             return mark_cancelled_if_past_deadline(
                 output, benchmark_should_end_time
             )

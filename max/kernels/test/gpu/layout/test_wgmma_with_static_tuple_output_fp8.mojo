@@ -12,11 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 
 import linalg.matmul.vendor.blas as vendor_blas
-from std.gpu import warp_id, lane_id
+from max.gpu import warp_id, lane_id
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 
-from std.gpu import thread_idx
+from max.gpu import thread_idx
 from max.gpu.compute.mma import (
     wgmma_async,
     wgmma_commit_group_sync,
@@ -27,10 +27,9 @@ from internal_utils import assert_equal
 from std.random import rand
 from layout import Layout, LayoutTensor, TileTensor, row_major
 from layout.tensor_core_async import (
-    _lhs_descriptor,
-    _rhs_descriptor,
     tile_layout_k_major,
 )
+from wgmma_test_utils import _lhs_descriptor, _rhs_descriptor
 from std.utils import StaticTuple
 
 
@@ -56,14 +55,14 @@ def wgmma_kernel_ss[
         a_type,
         a_smem_layout,
         MutAnyOrigin,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ].stack_allocation()
 
     var b_smem_tile = LayoutTensor[
         b_type,
         b_smem_layout,
         MutAnyOrigin,
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ].stack_allocation()
 
     comptime num_output_regs = WMMA_M * WMMA_N // 128
@@ -139,17 +138,17 @@ def wgmma_e4m3_e4m3_f32[
     ]()
     comptime c_shape = row_major[M, N]()
 
-    var a_host_ptr = ctx.enqueue_create_host_buffer[DType.float8_e4m3fn](M * K)
+    var a_host_ptr = ctx.enqueue_create_host_buffer[.float8_e4m3fn](M * K)
     var b_size = N * K if transpose_b else K * N
-    var b_host_ptr = ctx.enqueue_create_host_buffer[DType.float8_e4m3fn](b_size)
+    var b_host_ptr = ctx.enqueue_create_host_buffer[.float8_e4m3fn](b_size)
     var c_host_ptr = ctx.enqueue_create_host_buffer[c_type](M * N)
     var c_host = TileTensor(c_host_ptr, c_shape)
     var c_host_ref_ptr = ctx.enqueue_create_host_buffer[c_type](M * N)
     var c_host_ref = TileTensor(c_host_ref_ptr, c_shape)
 
-    var a_device = ctx.enqueue_create_buffer[DType.float8_e4m3fn](M * K)
+    var a_device = ctx.enqueue_create_buffer[.float8_e4m3fn](M * K)
     var a_device_tt = TileTensor(a_device, a_shape)
-    var b_device = ctx.enqueue_create_buffer[DType.float8_e4m3fn](b_size)
+    var b_device = ctx.enqueue_create_buffer[.float8_e4m3fn](b_size)
     var b_device_tt = TileTensor(b_device, b_shape)
     var c_device = ctx.enqueue_create_buffer[c_type](M * N)
     var c_device_tt = TileTensor(c_device, c_shape)
@@ -200,16 +199,12 @@ def wgmma_e4m3_e4m3_f32[
 
     ctx.enqueue_copy(c_host_ptr, c_device)
 
-    var c_ref_lt = c_device_ref_tt.to_layout_tensor()
-    var a_lt = a_device_tt.to_layout_tensor()
-    var b_lt = b_device_tt.to_layout_tensor()
-
     if transpose_b:
         vendor_blas.matmul(
             ctx,
-            c_ref_lt,
-            a_lt,
-            b_lt,
+            c_device_ref_tt,
+            a_device_tt,
+            b_device_tt,
             c_row_major=True,
             transpose_b=True,
         )
@@ -224,7 +219,7 @@ def wgmma_e4m3_e4m3_f32[
             for j in range(K):
                 b_host_col_major_ptr[i * K + j] = b_host_ptr[j * N + i]
 
-        var b_device_col_major = ctx.enqueue_create_buffer[DType.float8_e4m3fn](
+        var b_device_col_major = ctx.enqueue_create_buffer[.float8_e4m3fn](
             N * K
         )
         var b_device_col_major_tt = TileTensor(
@@ -234,9 +229,9 @@ def wgmma_e4m3_e4m3_f32[
 
         vendor_blas.matmul(
             ctx,
-            c_ref_lt,
-            a_lt,
-            b_device_col_major_tt.to_layout_tensor(),
+            c_device_ref_tt,
+            a_device_tt,
+            b_device_col_major_tt,
             c_row_major=True,
             transpose_b=True,
         )

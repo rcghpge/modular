@@ -29,14 +29,14 @@ Warp assignment (384 threads = 12 warps, 3 warp groups of 128):
 
 from std.math import align_up, ceildiv, min
 from std.sys import size_of
-from std.gpu import (
+from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     thread_idx,
     warp_id,
 )
-from std.gpu.globals import WARPGROUP_SIZE, WARP_SIZE
+from max.gpu.globals import WARPGROUP_SIZE, WARP_SIZE
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
+from max.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from max.gpu.memory import external_memory, fence_mbarrier_init
 from max.gpu.primitives.cluster import block_rank_in_cluster, cluster_sync
 from max.gpu.compute.arch.tcgen05 import (
@@ -59,7 +59,6 @@ from nn.attention.gpu.nvidia.common import (
     get_seq_info,
     KVTMATile,
     MHAPosition,
-    NullPointer,
     OptionalPointer,
     Pack,
     PositionSummary,
@@ -94,6 +93,7 @@ struct SM100MHADepth512[
     SchedulerType: MHATileScheduler,
     config: Depth512SM100Config[KVLUTType.dtype],
     ValidLengthType: OptionalPointer,
+    SinkType: OptionalPointer,
     KVRowOffsetsType: OptionalPointer,
     _is_cache_length_accurate: Bool,
     MaxSeqLenType: OptionallyStaticInt,
@@ -121,6 +121,8 @@ struct SM100MHADepth512[
         ValidLengthType: Optional pointer type for the per-batch valid
             sequence lengths; when non-null the kernel runs in ragged
             mode.
+        SinkType: Optional pointer type for the per-head attention-sink
+            weights.
         KVRowOffsetsType: Optional pointer type for the KV input row
             offsets; when non-null used to compute the per-batch KV
             sequence length.
@@ -203,9 +205,9 @@ struct SM100MHADepth512[
         ],
         ragged_tma_store: RaggedTMA3DTile[
             Self.output_type,
-            # O output store is row-major SWIZZLE_NONE (decoupled from the
+            # O output store is SWIZZLE_128B (decoupled from the
             # swizzled Q/K/V/S/P buffers governed by `config.swizzle_mode`).
-            TensorMapSwizzle.SWIZZLE_NONE,
+            TensorMapSwizzle.SWIZZLE_128B,
             BM=Self.config.BM,
             BN=Self.config.ov_depth,
             middle_dim=Self.config.num_kv_heads if Self.fuse_gqa else Self.config.num_q_heads,
@@ -214,7 +216,7 @@ struct SM100MHADepth512[
             # batched rank-5 TMA. Must match dispatch.mojo's store.
             tma_blocks_per_op=o_store_tma_blocks_per_op[
                 Self.output_type,
-                TensorMapSwizzle.SWIZZLE_NONE,
+                TensorMapSwizzle.SWIZZLE_128B,
                 Self.config.ov_depth,
                 Self.config.group if Self.fuse_gqa else 1,
                 depth_splits=1,
@@ -228,7 +230,7 @@ struct SM100MHADepth512[
             Self.MaskType,
             Self.SchedulerType,
             Self.ValidLengthType,
-            NullPointer[DType.float32],  # SinkType (unused for depth512)
+            Self.SinkType,
             Self.KVRowOffsetsType,
             Self.MaxSeqLenType,
             Self.PartitionType,
@@ -242,6 +244,7 @@ struct SM100MHADepth512[
 
         var mask = pack.mask
         var valid_length = pack.valid_length
+        var sink_weights = pack.sink_weights
         var kv_input_row_offsets = pack.kv_input_row_offsets
         var max_seq_len = pack.max_seq_len
         var partition = pack.partition
@@ -262,18 +265,19 @@ struct SM100MHADepth512[
         # ---- Initialization (per-CTA, then cluster sync) ----------------
 
         var warp_idx = UInt32(warp_id[broadcast=True]())
-        if warp_idx == 0:
+        __match warp_idx:
+        case 0:
             # Initialize all barriers.
             Depth512MBars[Self.config.num_kv_stages, Self.config.split_o](
                 smem.mbar_base()
             ).init(lane_idx=Int32(thread_idx.x))
-        elif warp_idx == 1:
+        case 1:
             # TMEM allocation (pair-CTA cooperative).
             tcgen05_alloc[Int32(Self.cta_group)](
                 smem.tmem_addr_ptr(),
                 UInt32(Self.config.sm100_tmem_cols),
             )
-        elif warp_idx == 2:
+        case 2:
             var e = elect()
             if e != 0:
                 q_tma_op.prefetch_descriptor()
@@ -296,9 +300,9 @@ struct SM100MHADepth512[
         # (graph capture) a re-read could observe a stale/pre-alloc slot value
         # -> garbage TMEM base -> invalid `UTCHMMA` operand ->
         # CUDA_ERROR_ILLEGAL_INSTRUCTION. Reading once post-barrier and passing
-        # by register (matches the proven `mha_1q` structure) removes every
-        # in-body slot reload. Value is identical to the old per-warp reads
-        # (same published base), so single-shot is bit-identical.
+        # by register (matches the proven `SM100MHA2Q` FA4 structure) removes
+        # every in-body slot reload. Value is identical to the old per-warp
+        # reads (same published base), so single-shot is bit-identical.
         var tmem_addr: UInt32 = smem.tmem_addr_ptr()[]
 
         # ---- Warp dispatch -----------------------------------------------
@@ -361,6 +365,7 @@ struct SM100MHADepth512[
                 num_output_rows,
                 out_head_idx,
                 out_row_idx,
+                sink_weights,
             )
 
         elif warp_idx < 8:
@@ -524,7 +529,7 @@ struct SM100MHADepth512[
             warpgroup_reg_dealloc[24]()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def mask_status(
         mask: Self.MaskType,
         seq_id: UInt32,

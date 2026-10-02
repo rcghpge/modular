@@ -19,7 +19,7 @@ from std.math.uutils import umod, ufloordiv
 from std.memory import bitcast
 from std.sys import align_of, simd_width_of, size_of
 from std.bit import next_power_of_two
-from std.gpu import WARP_SIZE
+from max.gpu import WARP_SIZE
 from max.gpu.sync import barrier
 from max.gpu.primitives.cluster import (
     block_rank_in_cluster,
@@ -30,7 +30,7 @@ from max.gpu.primitives.cluster import (
 from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.host.info import B200
-from std.gpu import (
+from max.gpu import (
     block_id_in_cluster,
     thread_idx,
     lane_id,
@@ -101,39 +101,39 @@ struct WarpRole(TrivialRegisterPassable):
     comptime MainLoad = Self(4)
     comptime Epilogue = Self(3)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Int) -> Bool:
         return self._role == Int32(other)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Self) -> Bool:
         return self._role == other._role
 
-    @always_inline
+    @inline(.always)
     def __ne__(self, other: Self) -> Bool:
         return self._role != other._role
 
-    @always_inline
+    @inline(.always)
     def __ge__(self, other: Int) -> Bool:
         return self._role >= Int32(other)
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_main_load() -> Bool:
         return Self.MainLoad == get_warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_mma() -> Bool:
         return Self.Mma == get_warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_epilogue() -> Bool:
         return Self.Epilogue >= get_warp_id()
 
 
-@always_inline
+@inline(.always)
 def load_AB[
     a_type: DType,
     b_type: DType,
@@ -159,7 +159,7 @@ def load_AB[
     cta_group: Int = 1,
     a_plane_splits: IndexList[2] = Index(0, 0),
 ](
-    expert_ids: UnsafePointer[mut=False, Scalar[DType.int32], _],
+    expert_ids: UnsafePointer[mut=False, Int32, _],
     a_tma_op: TMATensorTile[a_type, a_tile_rank, a_tile_shape, a_desc_shape],
     b_tma_op: TMATensorTile[b_type, b_tile_rank, b_tile_shape, b_desc_shape],
     a_smem_tiles: SMemTileArray2D[
@@ -169,10 +169,10 @@ def load_AB[
         b_type, b_dim0, b_dim1, b_num_tiles, b_swizzle_bytes
     ],
     mma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     tma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     producer_phase: PipelineState[num_pipeline_stages],
     peer_cta_coord: Tuple[Int, Int, Int],
@@ -332,7 +332,7 @@ def load_AB[
         )
 
 
-@always_inline
+@inline(.always)
 def load_AB_cuda_core[
     a_type: DType,
     b_type: DType,
@@ -357,7 +357,7 @@ def load_AB_cuda_core[
 ](
     a_gmem: LayoutTensor[a_type, a_gmem_layout, ImmutAnyOrigin],
     b_gmem: LayoutTensor[b_type, b_gmem_layout, ImmutAnyOrigin],
-    expert_ids: UnsafePointer[mut=False, Scalar[DType.int32], _],
+    expert_ids: UnsafePointer[mut=False, Int32, _],
     a_smem_tiles: SMemTileArray2D[
         a_type, a_dim0, a_dim1, a_num_tiles, a_swizzle_bytes
     ],
@@ -365,10 +365,10 @@ def load_AB_cuda_core[
         b_type, b_dim0, b_dim1, b_num_tiles, b_swizzle_bytes
     ],
     mma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     tma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     producer_phase: PipelineState[num_pipeline_stages],
     peer_cta_coord: Tuple[Int, Int, Int],
@@ -553,7 +553,7 @@ def load_AB_cuda_core[
         _ = tma_mbar[stage].arrive()
 
 
-@always_inline
+@inline(.always)
 def consumer_main_loop[
     accum_type: DType,
     c_type: DType,
@@ -586,10 +586,10 @@ def consumer_main_loop[
         b_type, b_dim0, b_dim1, b_num_tiles, b_swizzle_bytes
     ],
     mma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     tma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     consumer_phase: PipelineState[pipeline_stages],
     mma_op: MmaOpSM100_SS[
@@ -687,7 +687,7 @@ def consumer_main_loop[
         mma_op.commit(mma_mbar + stage)
 
 
-@always_inline
+@inline(.always)
 def stsm_helper[
     swizzle: Swizzle,
     vec_dtype: DType,
@@ -695,7 +695,7 @@ def stsm_helper[
     transpose_c: Bool = False,
 ](
     vec: Array[Scalar[vec_dtype], vec_size],
-    dst: LayoutTensor[_, _, address_space=AddressSpace.SHARED, ...],
+    dst: LayoutTensor[_, _, address_space=.SHARED, ...],
 ):
     """Stores a register fragment to shared memory using the stmatrix instruction.
 
@@ -744,7 +744,7 @@ def stsm_helper[
 
     var lane = lane_id()
     comptime RLayout32Bits[layout: Layout] = RuntimeLayout[
-        layout, element_type=DType.uint32, linear_idx_type=DType.uint32
+        layout, element_type=.uint32, linear_idx_type=.uint32
     ]
     var stsm_lane_offset = UInt32(
         (lane & 15) * stride0 + (lane >> 4)
@@ -765,11 +765,11 @@ def stsm_helper[
                 v[k * cast_width + _j] = casted[_j]
         st_matrix[simd_width=4, transpose=transpose_c](
             dst.ptr.unsafe_mut_cast[True]() + offset,
-            bitcast[DType.float32, 4](v),
+            bitcast[.float32, 4](v),
         )
 
 
-@always_inline
+@inline(.always)
 def multi_stage_store_C[
     c_type: DType,
     c_tile_rank: Int,
@@ -791,16 +791,16 @@ def multi_stage_store_C[
     transpose_c: Bool = False,
 ](
     c_smem_base: UnsafePointer[
-        mut=True, Scalar[c_type], _, address_space=AddressSpace.SHARED
+        mut=True, Scalar[c_type], _, address_space=.SHARED
     ],
     c_tma_op: TMATensorTile[c_type, c_tile_rank, c_tile_shape, c_desc_shape],
     c_ptr: UnsafePointer[mut=True, Scalar[c_type], _],
     accum_pipeline_consumer_state: PipelineState[num_accum_pipeline_stages],
     accum_full_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     accum_empty_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+        mut=True, SharedMemBarrier, _, address_space=.SHARED
     ],
     tmem_addr: UInt32,
     work_tile_coord: Tuple[Int, Int],
@@ -958,7 +958,7 @@ def multi_stage_store_C[
         var c_smem_tile = LayoutTensor[
             c_type,
             c_smem_layout,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
             alignment=128,
         ](c_smem_base + (stage % 2) * c_smem_tile_size)
 
@@ -1128,9 +1128,9 @@ def multi_stage_store_C[
                             c_type, simd_size, alignment=alignment
                         ](Index(n, m), val_vec)
                     else:
-                        (c_ptr + n * UInt32(cN) + m).store[alignment=alignment](
-                            val_vec
-                        )
+                        (c_ptr + Int(n) * cN + Int(m)).store[
+                            alignment=alignment
+                        ](val_vec)
 
         comptime if stage > 0 or stage == num_stages - 1:
             # Guard the tma read from shared memory is done.
@@ -1180,7 +1180,7 @@ def zero_output[
 
     # Note that output_tile_shape is always the proper C tile shape independent of transpose_c.
     comptime output_N = output_tile_shape[1]
-    var ptr = c_ptr + coord[1] * UInt32(c_stride) + coord[0]
+    var ptr = c_ptr + Int(coord[1]) * c_stride + Int(coord[0])
     comptime assert thread_num * simd_size >= output_N, (
         "output_N must be less than thread_num * simd_size. Got "
         + String(output_N)
@@ -1199,7 +1199,7 @@ def zero_output[
             ptr += c_stride
 
 
-@always_inline
+@inline(.always)
 def zero_output_epilogue[
     c_type: DType,
     /,
@@ -1329,11 +1329,11 @@ def blackwell_tma_umma_warp_specialized_kernel[
     a_gmem_layout: Layout = Layout.row_major(1, 1),
     b_gmem_layout: Layout = Layout.row_major(1, 1),
 ](
-    expert_usage_stats: UnsafePointer[Scalar[DType.uint32], ImmutAnyOrigin],
+    expert_usage_stats: UnsafePointer[UInt32, ImmutAnyOrigin],
     a_tma_op: TMATensorTile[a_type, a_tile_rank, a_tile_shape, a_desc_shape],
-    expert_ids: UnsafePointer[Scalar[DType.int32], ImmutAnyOrigin],
+    expert_ids: UnsafePointer[Int32, ImmutAnyOrigin],
     b_tma_op: TMATensorTile[b_type, b_tile_rank, b_tile_shape, b_desc_shape],
-    b_offsets: UnsafePointer[Scalar[DType.uint32], ImmutAnyOrigin],
+    b_offsets: UnsafePointer[UInt32, ImmutAnyOrigin],
     c_tma_op: TMATensorTile[
         c_type, c_tile_rank, c_tile_shape_param, c_desc_shape
     ],
@@ -1426,7 +1426,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
         b_gmem: B operand tensor used only by the CUDA-core fallback when
             `use_tma` is False.
     """
-    comptime assert c_type != DType.float32, "c_type cannot be float32"
+    comptime assert c_type != .float32, "c_type cannot be float32"
     comptime if not use_tma:
         comptime assert (
             K_actual > 0
@@ -1475,7 +1475,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
 
     var base_ptr_smem = external_memory[
         Scalar[a_type],
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
         alignment=128,
     ]()
 
@@ -1592,7 +1592,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
 
     comptime _offsets_layout = Layout.row_major(UNKNOWN_VALUE)
     var b_offsets_tensor = LayoutTensor[
-        DType.uint32,
+        .uint32,
         _offsets_layout,
         ImmutAnyOrigin,
     ](
@@ -1809,7 +1809,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
                         transpose_c=transpose_c,
                     ](
                         work_tile_coord=(Int(work_info.m), Int(work_info.n)),
-                        group_end_idx=rebind[Scalar[DType.uint32]](
+                        group_end_idx=rebind[UInt32](
                             scheduler.group_offsets[
                                 Int(scheduler.current_group_idx + 1)
                             ]
@@ -1824,7 +1824,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
                     ](
                         c_ptr,
                         (work_info.m, work_info.n),
-                        rebind[Scalar[DType.uint32]](
+                        rebind[UInt32](
                             scheduler.group_offsets[
                                 Int(scheduler.current_group_idx + 1)
                             ]
@@ -1857,7 +1857,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
                 accum_empty_mbar,
                 tmem_addr,
                 work_tile_coord=(Int(work_info.m), Int(work_info.n)),
-                group_end_idx=rebind[Scalar[DType.uint32]](
+                group_end_idx=rebind[UInt32](
                     scheduler.group_offsets[
                         Int(scheduler.current_group_idx + 1)
                     ]
@@ -1891,17 +1891,13 @@ def grouped_matmul_sm100_persistent[
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     a_plane_splits: IndexList[2] = Index(0, 0),
 ](
-    c: TileTensor[mut=True, c_type, address_space=AddressSpace.GENERIC, ...],
-    a: TileTensor[mut=False, a_type, address_space=AddressSpace.GENERIC, ...],
-    a_offsets: TileTensor[
-        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
-    b: TileTensor[mut=False, b_type, address_space=AddressSpace.GENERIC, ...],
-    expert_ids: TileTensor[
-        mut=False, DType.int32, address_space=AddressSpace.GENERIC, ...
-    ],
+    c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    a_offsets: TileTensor[mut=False, .uint32, address_space=.GENERIC, ...],
+    b: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
+    expert_ids: TileTensor[mut=False, .int32, address_space=.GENERIC, ...],
     expert_usage_stats: TileTensor[
-        mut=False, DType.uint32, address_space=AddressSpace.GENERIC, ...
+        mut=False, .uint32, address_space=.GENERIC, ...
     ],
     ctx: DeviceContext,
 ) raises:
@@ -2009,10 +2005,10 @@ def _grouped_matmul_sm100_persistent[
 ](
     c_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
     a_ptr: UnsafePointer[Scalar[a_type], ImmutAnyOrigin],
-    expert_ids: UnsafePointer[Scalar[DType.int32], ImmutAnyOrigin],
+    expert_ids: UnsafePointer[Int32, ImmutAnyOrigin],
     b_ptr: UnsafePointer[Scalar[b_type], ImmutAnyOrigin],
-    b_offsets: UnsafePointer[Scalar[DType.uint32], ImmutAnyOrigin],
-    expert_usage_stats: UnsafePointer[Scalar[DType.uint32], ImmutAnyOrigin],
+    b_offsets: UnsafePointer[UInt32, ImmutAnyOrigin],
+    expert_usage_stats: UnsafePointer[UInt32, ImmutAnyOrigin],
     M_runtime: Int,
     b_desc_rows: Int,
     ctx: DeviceContext,

@@ -13,7 +13,7 @@
 
 """KVConnector shim over the Rust ``kv_tier_connector`` extension.
 
-The only host/disk tiered connector: it backs ``--kv-connector rust_tiered``
+The only host/disk tiered connector: it backs the ``rust_tiered`` connector type
 as well as the retired ``tiered`` alias, whose Python implementation it
 replaced. All of the host block pool, disk tier, and copy engine live in Rust
 and run on Rust OS threads with the GIL released, so the connector never
@@ -22,11 +22,18 @@ starving GPU utilization).
 
 How it works:
 
+* The Rust connector answers only which blocks it holds (``lookup``) and loads
+  exactly the blocks it is handed (``load``), so it carries no notion of
+  attention shape, window widths or null blocks. What that presence is worth is
+  decided here, with the :mod:`~max.pipelines.kv_cache.prefix_hit` rules the
+  device pools and the dKV connector also run.
 * ``load``/``offload`` run on the scheduler thread (GIL released via pyo3) and
   do only cheap host block-pool bookkeeping, then hand the H2D/D2H copies and
   disk I/O to background Rust lanes. They return immediately with a transfer
-  handle (the Rust ``TierTransfer``, which duck-types
-  :class:`~..kv_connector.KVConnectorTransfer`); the block manager pins the
+  handle (the Rust ``TierTransfer`` wrapped in :class:`_RustTierTransfer`,
+  which keys ``g0_blocks_per_leaf`` by leaf id so it satisfies
+  :class:`~..kv_connector.KVConnectorTransfer` -- the Rust side has no notion
+  of leaf names, only positional leaf indices); the block manager pins the
   device blocks and the scheduler cordons the request until the handle polls
   complete, so the GPU runs other ready work while the copy is in flight.
 * Each copy lane does a blocking ``memcpy; cuStreamSynchronize`` per block on a
@@ -36,7 +43,7 @@ How it works:
   (tiny) input/output copies -- copy-engine scheduling ignores CUDA stream
   priority, so this is the lever that matters.
 
-This shim owns the pinned host buffer (allocated the same way as
+This shim owns the host staging region (allocated the same way as
 ``BlockOffloadEngine``) and passes its address plus the per-replica device
 buffer pointers and compute-stream handles to the Rust connector.
 """
@@ -45,45 +52,130 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Sequence
-from pathlib import Path
-from typing import NamedTuple
+from collections.abc import Mapping, Sequence
+from typing import NamedTuple, Protocol
 
 import psutil
-from max.driver import (
-    Buffer,
-    _unsafe_alloc_fast_pinned_buffer,
-    _unsafe_free_fast_pinned_buffer,
-)
-from max.dtype import DType
-from max.nn.kv_cache.cache_params import (
+from max.driver import Device, _ChunkedStagingRegion, accelerator_api
+from max.nn.kv_cache import (
+    KVCacheGroupId,
     KVCacheMemory,
-    KVHashAlgo,
-    ReplicatedKVCacheMemory,
+    KVCacheParamInterface,
+    KVConnectorType,
 )
 from max.nn.kv_cache.metrics import KVCacheMetrics
+from max.pipelines.kv_cache.paged_kv_cache.jenga_block_pool import (
+    compute_jenga_ratios,
+)
+from max.support.host_memory import available_host_memory
+from max.support.human_readable_formatter import to_human_readable_bytes
 
-from ..kv_connector import KVConnectorTransfer
-from ..paged_kv_cache.block_copy_engine import _check_host_memory_capacity
+from ..kv_connector import (
+    ByteCount,
+    KVConnector,
+    KVConnectorTransfer,
+    KVLoadRefused,
+    KVTransfer,
+)
 from ..paged_kv_cache.block_manager import (
     _resolve_only_use_kv_connector_last_level_cache,
 )
+from ._offload_dir import OffloadDirectory, acquire_offload_dir
 
 logger = logging.getLogger("max.pipelines")
 
+# The default host tier is page-locked up front, so cap it below what the
+# process can still allocate, leaving headroom for everything else.
+_HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE = 0.9
 
-def _check_disk_capacity(
-    cache_dir: Path | str, max_disk_size_bytes: int
-) -> None:
+
+def _check_disk_capacity(cache_dir: str, max_disk_size_bytes: int) -> None:
     """Raises when a disk offload budget exceeds free space at cache_dir."""
-    available_bytes = psutil.disk_usage(str(cache_dir)).free
+    available_bytes = psutil.disk_usage(cache_dir).free
     if max_disk_size_bytes > available_bytes:
         raise RuntimeError(
             "disk_offload_max_gb requests "
-            f"{max_disk_size_bytes / (1024**3):.1f} GiB at "
+            f"{to_human_readable_bytes(max_disk_size_bytes)} at "
             f"{cache_dir} but only "
-            f"{available_bytes / (1024**3):.1f} GiB is available. Reduce "
+            f"{to_human_readable_bytes(available_bytes)} is available. Reduce "
             "disk_offload_max_gb or free space on the target filesystem."
+        )
+
+
+def _check_host_memory_capacity(requested_bytes: int) -> None:
+    """Raises when a pinned host allocation exceeds what this process may use."""
+    available_bytes = available_host_memory()
+    if available_bytes is None:
+        logger.warning(
+            "Unable to determine available host memory; skipping KV cache "
+            "host capacity preflight."
+        )
+        return
+    if requested_bytes > available_bytes:
+        raise RuntimeError(
+            "KV cache host offload buffer requires "
+            f"{to_human_readable_bytes(requested_bytes)} of pinned host "
+            f"memory but only {to_human_readable_bytes(available_bytes)} is "
+            "available to this process (free host memory, bounded by this "
+            "process's cgroup memory limit where one is set). Reduce "
+            "host_offload_max_gb, raise the container's memory limit, or "
+            "provision more host memory."
+        )
+
+
+def _default_host_offload_bytes(device_memory_bytes: int) -> int:
+    """Returns 1.5x the device page pool, capped to what the process may use.
+
+    Only the default is capped; an explicit ``host_offload_max_gb`` that
+    doesn't fit is refused instead.
+    """
+    requested = int(1.5 * device_memory_bytes)
+    available_bytes = available_host_memory()
+    if available_bytes is None:
+        return requested
+
+    cap = int(available_bytes * _HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE)
+    if requested <= cap:
+        return requested
+    logger.warning(
+        "Reduced the default KV cache host offload budget from %s to %s: it "
+        "exceeded %.0f%% of the %s this process can still allocate (free host "
+        "memory, bounded by this process's cgroup memory limit where one is "
+        "set). Set host_offload_max_gb to size the tier yourself.",
+        to_human_readable_bytes(requested),
+        to_human_readable_bytes(cap),
+        _HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE * 100,
+        to_human_readable_bytes(available_bytes),
+    )
+    return cap
+
+
+def _validate_leaves(leaves: Mapping[str, KVCacheGroupId]) -> None:
+    """Rejects a leaf tree whose hit the prefix rules cannot decide.
+
+    They cover full attention and sliding windows. A recurrent leaf's hit is
+    the deepest published state rather than a run, so treating it as either
+    shape would claim a prefix whose state pages are not the ones the row
+    needs. Refuse instead of serving wrong KV, as ``_validate_dkv_leaves``
+    does.
+
+    Called from :meth:`RustTierConnector.create` before it acquires anything,
+    so a tree this connector cannot serve leaks neither the offload directory
+    nor the pinned staging region.
+    """
+    if not leaves:
+        raise ValueError(
+            "RustTierConnector requires at least one KV cache leaf"
+        )
+    unsupported = {
+        leaf_id: group_id
+        for leaf_id, group_id in leaves.items()
+        if not (group_id.is_full() or group_id.is_sliding_window())
+    }
+    if unsupported:
+        raise ValueError(
+            "RustTierConnector supports full-attention and sliding-window "
+            f"leaves only. Found: {unsupported}"
         )
 
 
@@ -91,186 +183,430 @@ def _check_disk_capacity(
 # ``NamedTuple``s (still plain tuples to pyo3, but self-documenting) that the
 # Rust ``TierConnector`` extracts positionally.
 class _Unit(NamedTuple):
+    """One TP shard's device buffer endpoint, for FFI only."""
+
     device_id: int
     data_ptr: int
-    len_bytes: int
+    bytes: int
+
+
+class _Leaf(NamedTuple):
+    """One leaf's device buffer endpoints, one per TP shard, for FFI only."""
+
+    units: list[_Unit]
+    replicated: bool
 
     @classmethod
-    def from_buffer(cls, buffer: Buffer) -> _Unit:
-        """The ``_Unit`` endpoint for a KV device buffer."""
+    def from_mem(cls, mem: KVCacheMemory) -> _Leaf:
+        """The ``_Leaf`` endpoint for a KV device buffer."""
         return cls(
-            device_id=buffer.device.id,
-            data_ptr=buffer._data_ptr(),
-            len_bytes=buffer.num_elements * buffer.dtype.size_in_bytes,
+            units=[
+                _Unit(
+                    device_id=b.device.id,
+                    data_ptr=b._data_ptr(),
+                    # Per-block stride, not the buffer's full size -- every
+                    # shard shares one page width (`KVCacheMemory` requires it).
+                    bytes=mem.bytes_per_page,
+                )
+                for b in mem.buffers
+            ],
+            replicated=mem.replicated,
         )
 
 
-class _Replica(NamedTuple):
-    units: list[_Unit]
-    # ``peers[i]`` are the MLA-replicated copies of ``units[i]`` on other
-    # devices (empty for non-replicated units).
-    peers: list[list[_Unit]]
-    # ``(device_id, compute_stream_handle)`` for every device this replica uses.
-    compute_streams: list[tuple[int, int]]
+class _RawTierTransfer(Protocol):
+    """Structural type for the Rust ``TierTransfer`` this module wraps.
+
+    This is purely for FFI.
+
+    ``g0_blocks_per_leaf`` is positional (one list per leaf index) -- the Rust
+    connector has no notion of leaf names, only ``leaf_idx: usize``.
+    """
+
+    g0_blocks_per_leaf: list[Sequence[int]]
+
+    def is_complete(self) -> bool: ...
+    def synchronize(self) -> None: ...
 
 
-class RustTierConnector:
+class _RustTierTransfer:
+    """Wraps the Rust ``TierTransfer`` to key ``g0_blocks_per_leaf`` by leaf id.
+
+    ``leaves`` must be in the same order the connector built ``bytes_per_leaf``
+    and ``replica_kv_memory`` from, since that's the order the Rust side's
+    positional ``g0_blocks_per_leaf`` corresponds to.
+    """
+
+    def __init__(self, inner: _RawTierTransfer, leaves: Sequence[str]) -> None:
+        self._inner = inner
+        self._g0_blocks_per_leaf: Mapping[str, Sequence[int]] = dict(
+            zip(leaves, inner.g0_blocks_per_leaf, strict=True)
+        )
+
+    @property
+    def g0_blocks_per_leaf(self) -> Mapping[str, Sequence[int]]:
+        return self._g0_blocks_per_leaf
+
+    def is_complete(self) -> bool:
+        return self._inner.is_complete()
+
+    def synchronize(self) -> None:
+        self._inner.synchronize()
+
+
+def _alloc_chunked_staging_region(
+    host_offload_num_huge_blocks: int,
+    host_offload_huge_page_bytes: int,
+    device: Device,
+) -> _ChunkedStagingRegion:
+    host_offload_bytes = (
+        host_offload_num_huge_blocks * host_offload_huge_page_bytes
+    )
+    logger.info(
+        "Allocating %s host KV cache staging region...",
+        to_human_readable_bytes(host_offload_bytes),
+    )
+    start = time.perf_counter()
+    # Rust copies a block at a time, so no chunk boundary may split one.
+    region = _ChunkedStagingRegion(
+        byte_size=host_offload_bytes,
+        row_bytes=host_offload_huge_page_bytes,
+        device=device,
+    )
+    elapsed = time.perf_counter() - start
+    logger.info(
+        "Allocated %s host KV cache staging region in %.1f s (%.2f GiB/s)",
+        to_human_readable_bytes(host_offload_bytes),
+        elapsed,
+        host_offload_bytes / 1024**3 / elapsed,
+    )
+    return region
+
+
+class RustTierConnector(KVConnector):
     """KVConnector backed by the Rust host/disk tiered connector."""
 
     def __init__(
         self,
-        replica_kv_memory: Sequence[Sequence[KVCacheMemory]],
-        total_num_host_blocks: int,
-        disk_cache_dir: str,
-        kv_hash_algo: KVHashAlgo = "ahash64",
-        max_disk_size_gb: float = 50.0,
+        leaves: Mapping[str, KVCacheGroupId],
+        leaf_cache_sizes: Mapping[str, int],
+        replica_kv_memory: Sequence[Mapping[str, KVCacheMemory]],
+        page_size: int,
+        host_offload_num_huge_blocks: int,
+        host_offload_huge_page_bytes: int,
+        host_offload_cache_ratios: Mapping[str, int],
+        disk_dir: OffloadDirectory | None,
+        disk_offload_max_bytes: int,
         num_disk_workers: int = 32,
     ) -> None:
         """Initializes the connector over ``replica_kv_memory``'s device buffers.
 
-        Args:
-            replica_kv_memory: Per-DP-replica offload-ready KV memory units.
-            total_num_host_blocks: Size of the shared host block pool.
-            disk_cache_dir: Directory backing the disk last level.
-            kv_hash_algo: Hash algo the caller computes block hashes with.
-            max_disk_size_gb: Disk budget.
-            num_disk_workers: Disk I/O worker threads.
+        Takes ownership of ``disk_dir``, releasing it in :py:meth:`shutdown`.
+        It is ``None`` for a host-only connector with no disk last level.
         """
         # Lazy import: OSS MAX can import this module without the extension.
         from kv_tier_connector import (  # type: ignore[import-not-found]
             TierConnector,
         )
 
-        if not replica_kv_memory:
-            raise ValueError("RustTierConnector requires at least one replica")
-
-        # The Rust tier stores blocks keyed by the caller-computed hash bytes,
-        # so it is hash-algo agnostic; we only validate the caller's algo is one
-        # this connector advertises.
-        if kv_hash_algo not in self.supported_hash_algos:
-            raise ValueError(
-                f"RustTierConnector does not support kv_hash_algo="
-                f"{kv_hash_algo!r}; supported: {sorted(self.supported_hash_algos)}"
-            )
-
-        gpu0 = replica_kv_memory[0][0].buffer.device
-        if gpu0.is_host:
-            raise ValueError("KVCacheMemory is on the CPU; cannot offload")
-
-        # bytes_per_page (host row) = sum of each unit's per-page bytes; must
-        # match across replicas so a block written by one is readable by another.
-        bytes_per_page = sum(
-            unit.buffer.shape[1] for unit in replica_kv_memory[0]
+        leaf0 = next(iter(leaves.keys()))
+        gpu0 = replica_kv_memory[0][leaf0].buffers[0].device
+        self._host_region = _alloc_chunked_staging_region(
+            host_offload_num_huge_blocks,
+            host_offload_huge_page_bytes,
+            gpu0,
         )
-        total_num_pages = replica_kv_memory[0][0].buffer.shape[0]
+        host_base = self._host_region.address
 
-        # The shared pinned host buffer the Rust lanes copy to/from. It is not
-        # GC-managed (see `_unsafe_alloc_fast_pinned_buffer`), so it must be
-        # explicitly freed in `shutdown`.
-        total_bytes = total_num_host_blocks * bytes_per_page
-        _check_host_memory_capacity(total_bytes)
-        Path(disk_cache_dir).mkdir(parents=True, exist_ok=True)
-        _check_disk_capacity(disk_cache_dir, int(max_disk_size_gb * (1024**3)))
-        total_gib = total_bytes / (1024**3)
-        start = time.perf_counter()
-        self._host_buffer = _unsafe_alloc_fast_pinned_buffer(
-            DType.uint8, [total_num_host_blocks, bytes_per_page], gpu0
-        )
-        elapsed = time.perf_counter() - start
-        logger.info(
-            "Allocated %.1f GiB pinned host KV cache in %.1f s (%.2f GiB/s)",
-            total_gib,
-            elapsed,
-            total_gib / elapsed if elapsed > 0 else float("inf"),
-        )
-        host_base = self._host_buffer._data_ptr()
-
-        # Per-replica device endpoints + p2p peers (MLA) + compute streams.
-        replicas: list[_Replica] = []
-        for units in replica_kv_memory:
-            # Every buffer this replica touches (primary units + MLA peers), so
-            # we can collect each device's compute stream once.
-            peers = [
-                list(u.peers) if isinstance(u, ReplicatedKVCacheMemory) else []
-                for u in units
+        replica_memories: list[list[_Leaf]] = []
+        for memories in replica_kv_memory:
+            replica_leaves = [
+                _Leaf.from_mem(memories[leaf_id]) for leaf_id in leaves
             ]
-            all_buffers = [u.buffer for u in units] + [
-                p for peer_list in peers for p in peer_list
-            ]
-            compute_streams = {
-                b.device.id: b.device.default_stream.native_stream_handle
-                for b in all_buffers
-            }
-            replicas.append(
-                _Replica(
-                    units=[_Unit.from_buffer(u.buffer) for u in units],
-                    peers=[
-                        [_Unit.from_buffer(p) for p in peer_list]
-                        for peer_list in peers
-                    ],
-                    compute_streams=list(compute_streams.items()),
-                )
+            replica_memories.append(replica_leaves)
+
+        device_to_stream: dict[int, int] = {}
+        for memories in replica_kv_memory:
+            for mem in memories.values():
+                for b in mem.buffers:
+                    device_to_stream[b.device.id] = (
+                        b.device.default_queue.native_stream_handle
+                    )
+
+        self._leaves = leaves
+        self._page_size = page_size
+        self._disk_dir = disk_dir
+        self._shutdown = False
+
+        bytes_per_leaf = [leaf_cache_sizes[leaf_id] for leaf_id in leaves]
+        cache_ratios = [
+            host_offload_cache_ratios[leaf_id] for leaf_id in leaves
+        ]
+
+        only_last_level = _resolve_only_use_kv_connector_last_level_cache()
+        if only_last_level and disk_dir is None:
+            # Rust's `only_last_level` skips the host lookup, so with no disk
+            # tier it would leave nothing to hit.
+            only_last_level = False
+            logger.warning(
+                "Ignoring MODULAR_ONLY_USE_KV_CONNECTOR_LAST_LEVEL_CACHE: with "
+                "no disk tier the host tier is the last level."
             )
 
         self._rust = TierConnector(
-            total_num_host_blocks,
+            bytes_per_leaf,
+            host_offload_num_huge_blocks,
+            cache_ratios,
             host_base,
-            bytes_per_page,
-            total_num_pages,
-            replicas,
-            _resolve_only_use_kv_connector_last_level_cache(),
-            disk_cache_dir,
-            max_disk_size_gb,
+            replica_memories,
+            device_to_stream,
+            only_last_level,
+            disk_dir.path if disk_dir is not None else None,
+            disk_offload_max_bytes,
             num_disk_workers,
         )
-        self._shutdown = False
+
+    @classmethod
+    def create(
+        cls,
+        leaves: Mapping[str, KVCacheGroupId],
+        replica_kv_memory: Sequence[Mapping[str, KVCacheMemory]],
+        params: KVCacheParamInterface,
+        device_memory_bytes: int,
+    ) -> RustTierConnector:
+        _validate_leaves(leaves)
+        leaf0 = next(iter(leaves.keys()))
+        cfg = params.kv_connector_config
+
+        # Check the KV memory's own device before the build's accelerator API,
+        # so a CPU-device pipeline fails the same way on every host rather than
+        # reporting "no CUDA/HIP" only on GPU-less ones.
+        if (
+            replica_kv_memory
+            and replica_kv_memory[0][leaf0].buffers[0].device.is_host
+        ):
+            raise ValueError("KVCacheMemory is on the CPU; cannot offload")
+        # The Rust connector drives the GPU copy engines directly via its own
+        # dlopen'd driver shim, supporting NVIDIA (CUDA) and AMD (HIP) but not
+        # Metal/CPU.
+        api = accelerator_api()
+        if api not in ("cuda", "hip"):
+            raise ValueError(
+                f"kv_connector '{cfg.type.value}' requires a CUDA or HIP GPU, "
+                f"found incompatible accelerator API: '{api}'."
+            )
+
+        if cfg.type != KVConnectorType.rust_tiered:
+            logger.warning(
+                "kv_connector '%s' is deprecated: its Python implementation "
+                "was removed and it now runs the Rust 'rust_tiered' connector. "
+                'Pass --kv-connector-config \'{"type": "rust_tiered"}\' '
+                "instead.",
+                cfg.type.value,
+            )
+
+        GiB = 1024**3
+        host_offload_max_bytes: int = (
+            int(cfg.host_offload_max_gb * GiB)
+            if cfg.host_offload_max_gb is not None
+            else _default_host_offload_bytes(device_memory_bytes)
+        )
+        _check_host_memory_capacity(host_offload_max_bytes)
+
+        disk_offload_max_bytes: int = (
+            int(cfg.disk_offload_max_gb * GiB)
+            if cfg.disk_offload_max_gb is not None
+            else 2 * device_memory_bytes
+        )
+        # A zero disk budget means no disk last level. The tier sizes its
+        # capacity from the budget, so a 0 that still opened one would disable
+        # eviction rather than disable the tier.
+        disk_dir = (
+            None
+            if disk_offload_max_bytes == 0
+            else acquire_offload_dir(cfg.disk_offload_dir)
+        )
+        if disk_dir is not None:
+            _check_disk_capacity(disk_dir.path, disk_offload_max_bytes)
+
+        leaf_cache_sizes = {
+            leaf_id: leaf_buffers.host_bytes_per_page
+            for leaf_id, leaf_buffers in replica_kv_memory[0].items()
+        }
+        # The Rust pool hands out every huge block it is given -- unlike the
+        # Python pool, it reserves no null block -- so one is enough.
+        num_huge_blocks, huge_page_bytes, cache_ratios = compute_jenga_ratios(
+            available_bytes=host_offload_max_bytes,
+            cache_sizes=leaf_cache_sizes,
+            include_null_block=False,
+        )
+        host_offload_max_bytes = num_huge_blocks * huge_page_bytes
+
         logger.info(
-            "RustTierConnector initialized: host=%d blocks, disk=%s, "
-            "num_disk_workers=%d",
-            total_num_host_blocks,
-            disk_cache_dir,
-            num_disk_workers,
+            "Creating RustTierConnector: "
+            f"host_offload_max_bytes={to_human_readable_bytes(host_offload_max_bytes)}, "
+            f"disk_cache_dir={disk_dir.path if disk_dir else 'disabled (host-only)'}, "
+            f"disk_offload_max_bytes={to_human_readable_bytes(disk_offload_max_bytes)}, "
+            f"num_disk_workers={cfg.num_disk_workers}"
         )
+        logger.info(
+            f"RustTierConnector: {num_huge_blocks} huge pages x {to_human_readable_bytes(huge_page_bytes)} = {to_human_readable_bytes(host_offload_max_bytes)}"
+        )
+        max_leaf_id_len = max(len(leaf_id) for leaf_id in leaves)
+        for leaf_id in leaves:
+            ratio = cache_ratios[leaf_id]
+            mem = replica_kv_memory[0][leaf_id]
+            logger.info(
+                f"\t{leaf_id:<{max_leaf_id_len}}: {ratio * num_huge_blocks} pages of {mem.host_bytes_per_page}  ({ratio} per huge page)"
+            )
+
+        return cls(
+            leaves=leaves,
+            leaf_cache_sizes=leaf_cache_sizes,
+            replica_kv_memory=replica_kv_memory,
+            page_size=params.page_size,
+            host_offload_num_huge_blocks=num_huge_blocks,
+            host_offload_huge_page_bytes=huge_page_bytes,
+            host_offload_cache_ratios=cache_ratios,
+            disk_dir=disk_dir,
+            disk_offload_max_bytes=disk_offload_max_bytes,
+            num_disk_workers=cfg.num_disk_workers,
+        )
+
+    @property
+    def leaves(self) -> Mapping[str, KVCacheGroupId]:
+        return self._leaves
 
     @property
     def name(self) -> str:
         return "RustTieredConnector"
 
-    def load(
+    def lookup(
         self,
-        device_block_ids: list[int],
         block_hashes: Sequence[bytes],
         replica_idx: int = 0,
-    ) -> KVConnectorTransfer:
-        return self._rust.load(
-            device_block_ids, list(block_hashes), replica_idx
+        hint: bytes | None = None,
+    ) -> Mapping[str, Sequence[bool]]:
+        """Which of ``block_hashes`` the host and disk tiers hold, per leaf.
+
+        ``hint`` is ignored for the same reason :meth:`load` ignores it. The
+        Rust side knows leaves only by index, so the answer comes back in
+        ``leaves()`` order and is keyed here.
+
+        Takes no pin, and the disk index is not this thread's alone: an
+        offload's write-through LRU-evicts from it on the disk-write lane. A
+        disk-resident block reported here can therefore be gone by the time
+        :meth:`load` asks for it, which raises :class:`KVLoadRefused`. The
+        host tier has no such race.
+        """
+        leaf_ids = list(self._leaves)
+        width = len(block_hashes)
+        if not width:
+            return {leaf_id: [] for leaf_id in leaf_ids}
+        # Apply what the lanes handed back first: a block whose offload has
+        # landed is not in the host prefix cache until its commit event is
+        # drained, so a just-written block would read as absent. Moves no
+        # data and allocates nothing.
+        self._rust.reclaim()
+        resident = self._rust.lookup(
+            list(range(len(leaf_ids))), list(block_hashes)
         )
+        # O(leaves), not O(blocks): the caller indexes these masks
+        # positionally, so a mis-sized one has to fail here rather than as an
+        # IndexError inside a serving request.
+        if len(resident) != len(leaf_ids) or any(
+            len(mask) != width for mask in resident
+        ):
+            raise ValueError(
+                f"kv_tier_connector lookup answered {len(resident)} leaves "
+                f"{[len(mask) for mask in resident]} blocks wide for a "
+                f"{len(leaf_ids)}-leaf tree over {width} blocks"
+            )
+        return dict(zip(leaf_ids, resident, strict=True))
+
+    def load(
+        self,
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Mapping[str, Sequence[bytes]],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> KVTransfer:
+        """Copies each leaf's hashes into the device blocks it was handed.
+
+        Raises:
+            KVLoadRefused: If a hash is resident in neither tier -- a disk
+                block can be LRU-evicted between :meth:`lookup` and this -- or
+                if the host pool has no room to stage the copy.
+            ValueError: If the rows and hashes do not line up. A caller bug
+                rather than a race, so it does not become a cache miss.
+        """
+        # ``hint`` is ignored: every tier this connector owns is host-local, so
+        # a hint naming the instances that hold a prefix has nothing to route.
+        if (
+            block_ids.keys() != self._leaves.keys()
+            or block_hashes.keys() != self._leaves.keys()
+        ):
+            raise ValueError(
+                f"RustTierConnector.load was given block_ids {sorted(block_ids)} "
+                f"and block_hashes {sorted(block_hashes)}, which do not both "
+                f"match the connector's leaves {sorted(self._leaves)}"
+            )
+        leaf_ids = list(self._leaves)
+        rows = [list(block_ids[leaf_id]) for leaf_id in leaf_ids]
+        try:
+            inner = self._rust.load(
+                rows,
+                [list(block_hashes[leaf_id]) for leaf_id in leaf_ids],
+                replica_idx,
+            )
+        except RuntimeError as error:
+            # A vanished hash. The Rust side raises ValueError for a shape
+            # mismatch, which is a bug in the caller's sizing and deliberately
+            # not caught here.
+            raise KVLoadRefused(
+                f"kv_tier_connector refused a load: {error}"
+            ) from error
+        posted = [list(blocks) for blocks in inner.g0_blocks_per_leaf]
+        if posted != rows:
+            # The one way this happens is the Rust side giving the whole load
+            # up rather than truncating it -- its host pool is saturated by
+            # in-flight transfers, so a disk promotion had nowhere to land. It
+            # submits nothing and warns, which is what makes raising here safe;
+            # a partial post would strand the blocks it pinned.
+            assert not any(posted), (
+                f"kv_tier_connector posted a partial load: asked {rows}, "
+                f"it reports {posted}"
+            )
+            raise KVLoadRefused(
+                "kv_tier_connector could not stage the load: its host pool is "
+                "saturated by in-flight transfers"
+            )
+        return _RustTierTransfer(inner, leaf_ids)
 
     def offload(
         self,
-        block_ids: list[int],
+        block_ids: Mapping[str, Sequence[int]],
         block_hashes: Sequence[bytes],
         replica_idx: int = 0,
     ) -> KVConnectorTransfer:
-        return self._rust.offload(block_ids, list(block_hashes), replica_idx)
-
-    def wait_for_loads(self) -> None:
-        # No-op: this connector reports load completion through the
-        # KVConnectorTransfer it returns from ``load`` (the scheduler polls it),
-        # so there is no pre-forward barrier.
-        return None
-
-    def wait_for_offloads(self) -> None:
-        # No-op: offloads settle through ``poll_transfers`` (the returned
-        # transfer's ``is_complete``), not a post-forward barrier.
-        return None
+        if block_ids.keys() != self._leaves.keys():
+            raise ValueError(
+                f"RustTierConnector.offload block_ids keys {sorted(block_ids)} do not "
+                f"match the connector's leaves {sorted(self._leaves)}"
+            )
+        block_ids_2d = [block_ids[leaf_id] for leaf_id in self.leaves]
+        return _RustTierTransfer(
+            self._rust.offload(block_ids_2d, list(block_hashes), replica_idx),
+            list(self.leaves),
+        )
 
     def wait_for_writes(self) -> None:
         """Blocks until all in-flight transfers (incl. disk write-through) drain.
 
-        Not a scheduler hot-path barrier (see ``wait_for_offloads``); this is a
-        real quiesce for tests and teardown that need a stable tier state (e.g.
-        asserting disk residency after an offload's write-through has landed).
+        Not a scheduler hot-path call: transfers settle through
+        ``poll_transfers``. This is a real quiesce for tests and teardown that
+        need a stable tier state (e.g. asserting disk residency after an
+        offload's write-through has landed).
         """
         self._rust.wait_for_writes()
 
@@ -279,52 +615,50 @@ class RustTierConnector:
     ) -> None:
         return None
 
-    def count_cached_prefix(
-        self, block_hashes: Sequence[bytes]
-    ) -> tuple[int, int]:
-        return self._rust.count_cached_prefix(list(block_hashes))
-
     def shutdown(self) -> None:
         if self._shutdown:
             return
         self._shutdown = True
         self._rust.shutdown()
-        # Free the pinned host buffer after all Rust lanes have been drained/stopped.
-        _unsafe_free_fast_pinned_buffer(self._host_buffer)
+        # Rust holds a raw pointer, so the shutdown above is what makes the
+        # unmap safe.
+        del self._host_region
+        # Likewise the offload directory: the Rust shutdown above is what
+        # guarantees no worker is still writing into it.
+        if self._disk_dir is not None:
+            self._disk_dir.release()
 
     @property
-    def num_host_blocks(self) -> int:
-        return self._rust.num_host_blocks()
+    def host_byte_count(self) -> ByteCount:
+        return ByteCount(
+            free=self._rust.free_host_bytes(),
+            total=self._rust.host_bytes(),
+        )
 
     @property
-    def num_used_host_blocks(self) -> int:
-        return self._rust.num_used_host_blocks()
-
-    @property
-    def num_disk_blocks(self) -> int:
-        return self._rust.num_disk_blocks()
-
-    @property
-    def num_used_disk_blocks(self) -> int:
-        return self._rust.num_used_disk_blocks()
+    def disk_byte_count(self) -> ByteCount:
+        return ByteCount(
+            free=self._rust.free_disk_bytes(),
+            total=self._rust.disk_bytes(),
+        )
 
     def reset_prefix_cache(self) -> None:
         self._rust.reset_prefix_cache()
 
-    @property
-    def metrics(self) -> KVCacheMetrics:
-        h2d, d2h, disk_read, disk_write = self._rust.metrics()
+    def _wrap_rust_metrics(
+        self, h2d: int, d2h: int, disk_read: int, disk_write: int
+    ) -> KVCacheMetrics:
         return KVCacheMetrics(
-            h2d_blocks_copied=h2d,
-            d2h_blocks_copied=d2h,
-            disk_blocks_read=disk_read,
-            disk_blocks_written=disk_write,
+            h2d_bytes_copied=h2d,
+            d2h_bytes_copied=d2h,
+            disk_bytes_read=disk_read,
+            disk_bytes_written=disk_write,
             inflight_disk_ops=self._rust.inflight_disk_ops(),
         )
 
-    def reset_metrics(self) -> None:
-        self._rust.reset_metrics()
-
     @property
-    def supported_hash_algos(self) -> frozenset[KVHashAlgo]:
-        return frozenset({"ahash64", "sha256", "sha256_64"})
+    def metrics(self) -> KVCacheMetrics:
+        return self._wrap_rust_metrics(*self._rust.metrics())
+
+    def take_metrics(self) -> KVCacheMetrics:
+        return self._wrap_rust_metrics(*self._rust.take_metrics())

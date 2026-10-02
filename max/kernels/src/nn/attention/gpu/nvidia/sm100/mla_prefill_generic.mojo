@@ -48,8 +48,8 @@ from layout.tma_async import RaggedTMA3DTile, SharedMemBarrier
 from layout import TileTensor
 from layout.tile_layout import row_major as tt_row_major
 from max.gpu.host import DeviceAttribute, DeviceContext, FuncAttribute
-from std.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
-from std.gpu import MAX_THREADS_PER_BLOCK_METADATA, thread_idx, warp_id
+from max.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
+from max.gpu import MAX_THREADS_PER_BLOCK_METADATA, thread_idx, warp_id
 from max.gpu.sync import barrier
 from max.gpu.primitives.grid_controls import (
     PDLLevel,
@@ -57,7 +57,7 @@ from max.gpu.primitives.grid_controls import (
     pdl_launch_attributes,
     wait_on_dependent_grids,
 )
-from std.gpu.primitives.warp import broadcast
+from max.gpu.primitives.warp import broadcast
 from nn.attention.mha_utils import (
     _is_decoding,
     MHAConfig,
@@ -104,7 +104,7 @@ struct WarpRole(Equatable, TrivialRegisterPassable):
     comptime Load = Self(4)
     comptime Empty = Self(5)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Int) -> Bool:
         return self == Self(Int32(other))
 
@@ -353,7 +353,7 @@ __extension SM100MLA:
         )
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def _kernel_impl_generic(
         q_tma_op: QTMATile[
             Self.KVLUTType.dtype,
@@ -650,7 +650,7 @@ __extension SM100MLA:
             warpgroup_reg_dealloc[num_reg_empty]()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def load[
         KRopeType: MHAOperand
     ](
@@ -726,7 +726,7 @@ __extension SM100MLA:
             Self.KVLUTType.dtype,
             type_of(tt_row_major[elems]()),
             MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ]
         comptime q_elems = type_of(q_tma_op).tile_shape[0] * type_of(
             q_tma_op
@@ -810,7 +810,7 @@ __extension SM100MLA:
         )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def _k_num_valid_pages(current_kv_row: UInt32) -> UInt32:
             """Valid K_nope/V sub-tile pages at `current_kv_row`."""
             if current_kv_row >= num_keys:
@@ -821,7 +821,7 @@ __extension SM100MLA:
             )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def _rope_num_valid_pages(current_kv_row: UInt32) -> UInt32:
             """Valid K_rope sub-tile pages at `current_kv_row`."""
             if current_kv_row >= num_keys:
@@ -844,7 +844,7 @@ __extension SM100MLA:
             KRopeType.dtype,
             type_of(tt_row_major[k_rope_sub_elems]()),
             MutAnyOrigin,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ]
         # Full-tile byte counts (no partial bound applies).
         comptime k_nope_full_bytes = (
@@ -860,7 +860,7 @@ __extension SM100MLA:
         )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def _produce_k_rope[
             partial: Bool,
         ](
@@ -925,7 +925,7 @@ __extension SM100MLA:
                 )
 
         @__parameter
-        @always_inline
+        @inline(.always)
         def _produce_v[
             partial: Bool,
         ](
@@ -985,7 +985,7 @@ __extension SM100MLA:
             )
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def _fused_rope_smem_ptr(
                 idx: UInt32,
             ) -> SharedMemPointer[Scalar[KRopeType.dtype]]:
@@ -1002,7 +1002,7 @@ __extension SM100MLA:
                 ]() + idx * UInt32(rope_stage_elems)
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def _fused_v_smem_ptr() -> (
                 SharedMemPointer[Scalar[Self.KVLUTType.dtype]]
             ):
@@ -1012,7 +1012,7 @@ __extension SM100MLA:
                 )
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def _produce_k_fused[
                 partial: Bool,
                 with_q: Bool = False,
@@ -1081,7 +1081,7 @@ __extension SM100MLA:
                 # step). The first peeled K slot passes `acquire=False`
                 # (initial producer phase = 1).
                 @__parameter
-                @always_inline
+                @inline(.always)
                 def _emit_k_1q[
                     partial: Bool,
                     with_q: Bool = False,
@@ -1109,7 +1109,7 @@ __extension SM100MLA:
                     kv_pipeline.state.step()
 
                 @__parameter
-                @always_inline
+                @inline(.always)
                 def _emit_v_1q[
                     partial: Bool
                 ](paged: type_of(paged_rows), v_nvp: UInt32):
@@ -1460,7 +1460,7 @@ __extension SM100MLA:
             var k0_mbar = k_pipeline.producer_mbar[qk_stage=0]()
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def _split_v_smem_ptr(
                 pair: type_of(pipeline_v.get_tile[qk_stage=0]()),
             ) -> SharedMemPointer[Scalar[Self.KVLUTType.dtype]]:
@@ -1476,7 +1476,7 @@ __extension SM100MLA:
                 )
 
             @__parameter
-            @always_inline
+            @inline(.always)
             def _produce_k_split[
                 partial: Bool,
                 with_q: Bool = False,
@@ -1677,7 +1677,7 @@ __extension SM100MLA:
                         pipeline_v.commit_step()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def mma(
         tmem_addr: UInt32,
         mbars: Self.MiscMBarsType,
@@ -1795,9 +1795,9 @@ __extension SM100MLA:
                 # 2Q is non-shared-KV, never shared), so q1_rope is dead here;
                 # define it from the same base for type consistency.
                 q0_rope = Self.descriptor_q_rope(
-                    (
-                        q_smem.bitcast[Scalar[DType.uint8]]() + q_rope_off
-                    ).bitcast[Scalar[Self.rope_mma_dtype]]()
+                    (q_smem.bitcast[UInt8]() + q_rope_off).bitcast[
+                        Scalar[Self.rope_mma_dtype]
+                    ]()
                 )
                 q1_rope = q0_rope
 
@@ -1833,7 +1833,7 @@ __extension SM100MLA:
             # stage, wait for it, and return its slot index (1Q only;
             # mirrors mma_warp.mojo's `_advance_kv`).
             @__parameter
-            @always_inline
+            @inline(.always)
             def _advance_kv(release_idx: UInt32) -> UInt32:
                 kv_pipeline.consumer_release_at(release_idx, e)
                 kv_pipeline.state.step()
@@ -2067,11 +2067,11 @@ __extension SM100MLA:
             # correction-rescaled O0 with c_scale=1) and advance the S/O
             # phase. Called from BOTH the same-dtype and mixed-dtype
             # single-O serial loops below; the body is the verbatim inline
-            # tail both loops used, so `@always_inline` keeps them
+            # tail both loops used, so `@inline(.always)` keeps them
             # byte-identical. Captures pipeline_v/consumer_s0/pipeline_o0/
             # s0_tmem/o0_tmem from this scope (mirrors `_advance_kv`).
             @__parameter
-            @always_inline
+            @inline(.always)
             def _pv_into_o0(mut s_phase: UInt32, mut c_scale: UInt32, e: Int32):
                 pipeline_v.wait_v()
                 var vi = pipeline_v.get_v()
@@ -2559,7 +2559,7 @@ __extension SM100MLA:
                 pipeline_o1.commit_mma(e)
 
 
-@always_inline
+@inline(.always)
 def mla_sm100_prefill_generic[
     output_dtype: DType,
     q_type: DType,
@@ -2576,15 +2576,13 @@ def mla_sm100_prefill_generic[
     _ndbuffer_mha_operand: Bool,
     v_depth: Int = -1,
 ](
-    output: TileTensor[output_dtype, address_space=AddressSpace.GENERIC, ...],
-    q: TileTensor[q_type, address_space=AddressSpace.GENERIC, ...],
+    output: TileTensor[output_dtype, address_space=.GENERIC, ...],
+    q: TileTensor[q_type, address_space=.GENERIC, ...],
     k: KVType,
     v: VType,
     k_rope: KRopeType,
     mask_functor: MaskType,
-    valid_length: TileTensor[
-        DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
+    valid_length: TileTensor[.uint32, address_space=.GENERIC, ...],
     max_prompt_len: MaxPromptLenType,
     scale: Float32,
     batch_size: Int,
@@ -2704,7 +2702,7 @@ def mla_sm100_prefill_generic[
     )
 
 
-@always_inline
+@inline(.always)
 def _mla_prefill_sm100_valid_length_dispatch[
     KVType: MHAOperand,
     output_dtype: DType,
@@ -2761,18 +2759,16 @@ def _mla_prefill_sm100_valid_length_dispatch[
     kv_lut: KVType,
     k_rope_lut: KRopeType,
     mask_functor: MaskType,
-    valid_length: TileTensor[
-        DType.uint32, address_space=AddressSpace.GENERIC, ...
-    ],
+    valid_length: TileTensor[.uint32, address_space=.GENERIC, ...],
     max_prompt_len: MaxPromptLenType,
     scale: Float32,
     batch_size: Int,
     ctx: DeviceContext,
 ) raises:
-    comptime ValidLengthType = NonNullPointer[DType.uint32]
+    comptime ValidLengthType = NonNullPointer[.uint32]
     comptime SinkType = NullPointer[output_dtype]
-    comptime KVRowOffsetsType = NullPointer[DType.uint32]
-    comptime PartitionType = NoPartition[DType.float32]
+    comptime KVRowOffsetsType = NullPointer[.uint32]
+    comptime PartitionType = NoPartition[.float32]
     var valid_len: ValidLengthType = {
         rebind[UnsafePointer[UInt32, ImmutAnyOrigin]](valid_length.ptr)
     }
@@ -2783,7 +2779,7 @@ def _mla_prefill_sm100_valid_length_dispatch[
     # ragged store use `BM // num_q` = 128 in both modes; K/V/rope TMA
     # shapes are BM-independent), so they are passed through unchanged.
     @__parameter
-    @always_inline
+    @inline(.always)
     def _launch[cfg: MLAConfig]() raises:
         comptime assert cfg.supported(), cfg.fa4_config.description()
         comptime SchedulerType = TransientScheduler[

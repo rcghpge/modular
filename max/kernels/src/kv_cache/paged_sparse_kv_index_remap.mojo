@@ -39,7 +39,7 @@ the output slot is written ``-1``.
 """
 
 from std.math import ceildiv
-from std.gpu import block_dim, block_idx, thread_idx
+from max.gpu import block_dim, block_idx, thread_idx
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu
 from std.memory import UnsafePointer
@@ -50,7 +50,7 @@ from extensibility import (
 )
 
 
-@always_inline
+@inline(.always)
 def _remap_one(
     log_t: Int32,
     batch_u32: UInt32,
@@ -77,7 +77,7 @@ def _remap_one(
     return Int32(Int(block_id) * page_size + tok_in_page)
 
 
-@always_inline
+@inline(.always)
 def _find_batch_for_row(
     r: Int,
     row_offsets: UnsafePointer[mut=False, UInt32, _],
@@ -222,7 +222,7 @@ def paged_sparse_kv_logical_to_physical_indices_from_row_offsets_dispatch[
         )
 
 
-@always_inline
+@inline(.always)
 def paged_sparse_kv_index_remap[
     target: StaticString,
     page_size: Int,
@@ -230,9 +230,9 @@ def paged_sparse_kv_index_remap[
     cache_dtype: DType,
 ](
     physical_out: UnsafePointer[mut=True, Int32, _],
-    sparse_indices: InputTensor[dtype=DType.int32, rank=2, ...],
-    input_row_offsets: InputTensor[dtype=DType.uint32, rank=1, ...],
-    kv_lookup_table: InputTensor[dtype=DType.uint32, rank=2, ...],
+    sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
+    input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+    kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
     kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
     ctx: DeviceContext,
 ) raises:

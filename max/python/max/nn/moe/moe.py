@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 
 from max.dtype import DType
 from max.graph import (
@@ -57,10 +58,9 @@ def make_concatenated_gated_activation_fn(
         ) -> TensorValue:
             gate = activation_fn(gate_up[:, :moe_dim])
             up = gate_up[:, moe_dim:]
-            lim = ops.constant(limit, gate.dtype, device=gate.device)
-            neg_lim = ops.constant(-limit, up.dtype, device=up.device)
+            lim = float(limit)
             gate = ops.min(gate, lim)
-            up = ops.min(ops.max(up, neg_lim), lim)
+            up = ops.min(ops.max(up, -lim), lim)
             return gate * up
 
         return _clamped_concatenated_gated_activation_fn
@@ -75,25 +75,29 @@ def make_concatenated_gated_activation_fn(
     return _concatenated_gated_activation_fn
 
 
+@dataclass
+class _InterleavedGatedActivation:
+    """Gated activation for interleaved ``[g0, u0, g1, u1, ...]`` projections.
+
+    Reads the gate and up halves with a stride rather than a split point,
+    which lets a checkpoint with interleaved gate/up rows reach the matmul
+    unrearranged. A distinct type carrying ``activation_fn`` so
+    :class:`MoEQuantized` can recognize both the layout and the activation
+    when selecting the fused SwiGLU kernel.
+    """
+
+    activation_fn: Callable[[TensorValue], TensorValue]
+
+    def __call__(self, gate_up: TensorValue, moe_dim: int) -> TensorValue:
+        del moe_dim  # The halves are separated by a stride, not a split point.
+        return self.activation_fn(gate_up[:, 0::2]) * gate_up[:, 1::2]
+
+
 def make_interleaved_gated_activation_fn(
     activation_fn: Callable[[TensorValue], TensorValue],
 ) -> Callable[[TensorValue, int], TensorValue]:
-    """Builds a gated activation for interleaved ``[gate | up]`` projections.
-
-    The returned callable reads the gate and up halves with a stride rather
-    than a split point: ``activation_fn(gate_up[:, 0::2]) * gate_up[:, 1::2]``.
-    That is the layout a checkpoint fusing each expert's gate and up rows as
-    ``[g0, u0, g1, u1, ...]`` produces, and reading it with a stride is what
-    lets such a weight reach the matmul unrearranged.
-    """
-
-    def _interleaved_gated_activation_fn(
-        gate_up: TensorValue, moe_dim: int
-    ) -> TensorValue:
-        del moe_dim  # The halves are separated by a stride, not a split point.
-        return activation_fn(gate_up[:, 0::2]) * gate_up[:, 1::2]
-
-    return _interleaved_gated_activation_fn
+    """Builds a gated activation for interleaved ``[gate | up]`` projections."""
+    return _InterleavedGatedActivation(activation_fn)
 
 
 def _swigluoai_activation(
@@ -106,13 +110,11 @@ def _swigluoai_activation(
     gate = gate_up[:, :moe_dim]
     up = gate_up[:, moe_dim:]
 
-    lim = ops.constant(limit, gate.dtype, device=gate.device)
-    neg_lim = ops.constant(-limit, up.dtype, device=up.device)
-    alpha_value = ops.constant(alpha, gate.dtype, device=gate.device)
+    lim = float(limit)
 
     gate = ops.min(gate, lim)
-    up = ops.min(ops.max(up, neg_lim), lim)
-    return (up + 1.0) * gate * ops.sigmoid(gate * alpha_value)
+    up = ops.min(ops.max(up, -lim), lim)
+    return (up + 1.0) * gate * ops.sigmoid(gate * float(alpha))
 
 
 class MoEGate(Module):
@@ -174,6 +176,15 @@ class MoEGate(Module):
     @sharding_strategy.setter
     def sharding_strategy(self, strategy: ShardingStrategy) -> None:
         """Set the sharding strategy for the module."""
+        self._set_sharding_strategy(strategy)
+
+    def _set_sharding_strategy(self, strategy: ShardingStrategy) -> None:
+        """Applies ``strategy`` to this gate's weights.
+
+        Subclasses that add per-weight strategies override this and call
+        ``super()._set_sharding_strategy(strategy)``; a property setter cannot
+        be extended through ``super()``.
+        """
         if strategy.is_replicate:
             self._sharding_strategy = strategy
             self.gate_score.sharding_strategy = ShardingStrategy.replicate(
@@ -457,6 +468,15 @@ class MoE(Module, Shardable):
     @sharding_strategy.setter
     def sharding_strategy(self, strategy: ShardingStrategy) -> None:
         """Set the sharding strategy for the module."""
+        self._set_sharding_strategy(strategy)
+
+    def _set_sharding_strategy(self, strategy: ShardingStrategy) -> None:
+        """Applies ``strategy`` to the gate, shared experts, and experts.
+
+        Subclasses that add per-weight strategies override this and call
+        ``super()._set_sharding_strategy(strategy)``; a property setter cannot
+        be extended through ``super()``.
+        """
         if strategy.is_tensor_parallel:
             self._sharding_strategy = strategy
             self.gate.sharding_strategy = ShardingStrategy.replicate(
@@ -710,12 +730,17 @@ class MoE(Module, Shardable):
         expert_inputs: tuple[TensorValue, ...],
         x: TensorValue,
         estimated_total_m: TensorValue,
-    ) -> TensorValue:
+    ) -> TensorValue | None:
         """Runs local expert matmuls on dispatched tokens.
 
         This is the computation between ``ep_dispatch`` and
         ``ep_combine``.  ``x`` is unused by :class:`MoE` but accepted
         for interface consistency with :class:`MoEQuantized`.
+
+        A subclass may return ``None`` to signal that it has already sent its
+        output to the peers itself -- the fused combine send does this -- in
+        which case there is no local tensor for the caller to hand to a
+        combine. :class:`MoE` always returns a tensor.
 
         Args:
             expert_inputs: Dispatch outputs (tokens, row_offsets, ...).
@@ -821,7 +846,7 @@ class MoE(Module, Shardable):
         permutated_states = ops.gather(
             x,
             ops.cast(
-                ops.floor_div(token_expert_order, self.num_experts_per_token),
+                token_expert_order // self.num_experts_per_token,
                 DType.int32,
             ),
             axis=0,

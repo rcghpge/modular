@@ -31,7 +31,7 @@ language basics](https://mojolang.org/docs/manual/basics).
 ## Requirements
 
 <Requirements requirementsData={requirementsWithGPU}
-url="/max/packages#system-requirements" />
+url="/packages#system-requirements" />
 
 Although these examples work on both CPUs and GPUs, in order for the GPU code
 paths to run, your system must meet the [GPU
@@ -62,7 +62,7 @@ the package dependencies. If you don't have it, install it:
 3. Make sure everything works by running the first example:
 
     ```sh
-    cd modular/examples/custom_ops
+    cd modular/max/examples/custom_ops
 
     pixi run python addition.py
     ```
@@ -160,7 +160,7 @@ struct AddOne:
         ctx: DeviceContext,
     ) raises:
         @__parameter
-        @always_inline
+        @inline(.always)
         def elementwise_add_one[
             width: Int
         ](idx: Coord) -> SIMD[x.dtype, width]:
@@ -215,18 +215,20 @@ device = CPU() if accelerator_count() == 0 else Accelerator()
 
 graph = Graph(
     "addition",
-    forward=lambda x: ops.custom(
-        name="add_one",
-        device=DeviceRef.from_device(device),
-        values=[x],
-        out_types=[
-            TensorType(
-                dtype=x.dtype,
-                shape=x.tensor.shape,
-                device=DeviceRef.from_device(device),
-            )
-        ],
-    )[0].tensor,
+    forward=lambda x: (
+        ops.custom(
+            name="add_one",
+            device=DeviceRef.from_device(device),
+            values=[x],
+            out_types=[
+                TensorType(
+                    dtype=x.dtype,
+                    shape=x.tensor.shape,
+                    device=DeviceRef.from_device(device),
+                )
+            ],
+        )[0].tensor
+    ),
     input_types=[
         TensorType(
             dtype,
@@ -246,8 +248,8 @@ That's basically it. We created a custom op and added it to a graph!
 
 Now we can run an inference, using
 [`InferenceSession`](/api/python/generated/max.engine.InferenceSession). We
-start by loading the graph onto the selected `device` (see above; either a CPU
-or GPU "accelerator"):
+start by compiling the graph for the selected `device` (see above; either a CPU
+or GPU "accelerator"), then initializing it for execution:
 
 ```python title="addition.py"
 session = InferenceSession(

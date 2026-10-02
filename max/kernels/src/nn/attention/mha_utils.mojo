@@ -35,7 +35,7 @@ from std.sys import (
 from std.sys.info import _accelerator_arch
 
 from std.bit import prev_power_of_two
-from std.gpu import WARP_SIZE, lane_id
+from max.gpu import WARP_SIZE, lane_id
 from max.gpu.host import DeviceBuffer
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
@@ -78,13 +78,11 @@ comptime MHA_PDL_LEVEL = PDLLevel.OVERLAP_AT_END if get_defined_bool[
 ]() else PDLLevel.OFF
 
 
-@always_inline
+@inline(.always)
 def as_dynamic_row_major_1d[
     dtype: DType
 ](
-    tensor: LayoutTensor[
-        mut=False, dtype, address_space=AddressSpace.GENERIC, ...
-    ],
+    tensor: LayoutTensor[mut=False, dtype, address_space=.GENERIC, ...],
 ) -> LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]:
     """Reinterprets a generic-address `LayoutTensor` as a 1-D dynamic row-major tensor.
 
@@ -132,19 +130,19 @@ struct FlashAttentionAlgorithm(Defaultable, TrivialRegisterPassable, Writable):
     def __init__(out self, value: Int):
         self._value = Int32(value)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, version: Int) -> Bool:
         return self._value == Int32(version)
 
-    @always_inline
+    @inline(.always)
     def __ne__(self, other: Self) -> Bool:
         return self._value != other._value
 
-    @always_inline
+    @inline(.always)
     def init(self, dtype: DType) -> Self:
         if self._value == -1:
             comptime if is_sm90or100:
@@ -160,17 +158,18 @@ struct FlashAttentionAlgorithm(Defaultable, TrivialRegisterPassable, Writable):
         else:
             return self
 
-    @always_inline
+    @inline(.always)
     def write_to(self, mut writer: Some[Writer]):
-        if self._value == 0:
+        __match self._value:
+        case 0:
             writer.write("naive-attention")
-        elif self._value == 1:
+        case 1:
             writer.write("flash-attention-1")
-        elif self._value == 2:
+        case 2:
             writer.write("flash-attention-2")
-        elif self._value == 3:
+        case 3:
             writer.write("flash-attention-3")
-        else:
+        case _:
             writer.write("invalid algorithm")
 
 
@@ -392,15 +391,25 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
             self.WN = WN.or_else(min(self.num_keys_per_block, 256))
         else:
             # BN
+            # Doubling the K tile halves the loop iterations over the KV
+            # cache, and with them the per-iteration `s_barrier` count that
+            # measured as the dominant stall when the warp count was raised.
+            # Warp count is unchanged here; only the tile grows.
             self.num_keys_per_block = num_keys_per_block.or_else(
-                (
-                    32 if depth == 512 else 64
-                ) if has_amd_gpu_accelerator() else depth
+                128 if (
+                    has_amd_gpu_accelerator()
+                    and Self.dtype.is_float8()
+                    and depth == 128
+                ) else (
+                    (
+                        32 if depth == 512 else 64
+                    ) if has_amd_gpu_accelerator() else depth
+                )
             )
             # BM
             self.num_queries_per_block = num_queries_per_block.or_else(
                 32 if Self.dtype
-                == DType.float32 else (128 if has_amd_gpu_accelerator() else 64)
+                == .float32 else (128 if has_amd_gpu_accelerator() else 64)
             )
             var bk_arch_factor = 2 if num_pipeline_stages <= 2 else 1
             var bk_type_factor = 1 if Self.dtype == DType.float32 else 2
@@ -410,11 +419,11 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
                 64 if Self.dtype.is_float8() else 32
             )
             self.WN = WN.or_else(
-                32 if Self.dtype == DType.float32 else self.num_keys_per_block
+                32 if Self.dtype == .float32 else self.num_keys_per_block
             )
         self.WM = WM.or_else(
             32 if Self.dtype
-            == DType.float32 else (32 if has_amd_gpu_accelerator() else 16)
+            == .float32 else (32 if has_amd_gpu_accelerator() else 16)
         )
 
     def write_to(self, mut writer: Some[Writer]):
@@ -432,17 +441,25 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
         writer.write(",num_attention_heads = ", self.num_heads)
 
 
-@always_inline
-def indexer_key_bound(
-    num_keys: Int, seq_len: Int, tok_local: Int, causal: Int
-) -> Int:
-    """Keys the sparse indexer defines for token `tok_local` of a row.
+@inline(.always)
+def indexer_key_bound[
+    kpool: Int = 1
+](num_keys: Int, seq_len: Int, tok_local: Int, causal: Int) -> Int:
+    """Candidate rows the sparse indexer defines for token `tok_local` of a row.
 
     `num_keys` is the row's total key count (`cache_len + seq_len`); the
     result is all of them without a causal mask, `cache_len + tok_local + 1`
     with one. Branchless multiply form: a branch in the scorer
     epilogues' unrolled token loop measured +4-9% on the non-causal path from
     codegen alone.
+
+    With `kpool > 1` the cache holds one pooled key per `kpool` consecutive
+    tokens, and the result counts *pools* instead of tokens. A pool covering
+    tokens `[kpool*p, kpool*p + kpool)` is a candidate only once its last
+    member is visible, which is exactly `visible // kpool` pools -- so the
+    pooled bound is the token bound floored by `kpool`, and no separate
+    validity rule is needed. A non-positive token bound stays non-positive,
+    which both call sites already treat as "no rows".
 
     Read side of the indexer's write/read contract: the SM100 scorers
     (`sparse_index_fp8_sm100[_prefill].mojo`) write score slots `[0, bound)`
@@ -453,10 +470,11 @@ def indexer_key_bound(
     prefill between them. If either side drifts, the top-k reads score slots
     the scorer never wrote.
     """
-    return num_keys - (seq_len - 1 - tok_local) * causal
+    comptime assert kpool >= 1, "kpool must be positive"
+    return (num_keys - (seq_len - 1 - tok_local) * causal) // kpool
 
 
-@always_inline
+@inline(.always)
 def _kernel_mask[
     dtype: DType, width: SIMDLength
 ](
@@ -475,7 +493,7 @@ def _kernel_mask[
     return masked_vec
 
 
-@always_inline
+@inline(.always)
 def _copy_frag_to_smem_nvidia[
     BM: Int,
     BN: Int,
@@ -492,11 +510,9 @@ def _copy_frag_to_smem_nvidia[
     layout1: Layout,
 ](
     p_smem_iter: LayoutTensorIter[
-        mut=True, type0, layout0, address_space=AddressSpace.SHARED, ...
+        mut=True, type0, layout0, address_space=.SHARED, ...
     ],
-    p_reg_tile: LayoutTensor[
-        type1, layout1, _, address_space=AddressSpace.LOCAL
-    ],
+    p_reg_tile: LayoutTensor[type1, layout1, _, address_space=.LOCAL],
     warp_x: UInt32,
     warp_y: UInt32,
 ):
@@ -519,7 +535,7 @@ def _copy_frag_to_smem_nvidia[
         mut=False,
         p_smem_iter.dtype,
         Layout.row_major(BM, BN),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ](p_smem_iter.ptr)
     var p_smem_warp_tile = p_smem_tile.tile[WM, WN](Int(warp_y), Int(warp_x))
     var p_reg_vecs = p_reg_tile.vectorize[1, frag_simd_width]()
@@ -572,7 +588,7 @@ def _copy_frag_to_smem_nvidia[
                 tile_BMxBK.ptr.store[alignment=align](offset_BMxBK, vec)
 
 
-@always_inline
+@inline(.always)
 def _copy_frag_to_smem_amd[
     BM: Int,
     BN: Int,
@@ -589,11 +605,9 @@ def _copy_frag_to_smem_amd[
     layout1: Layout,
 ](
     p_smem_iter: LayoutTensorIter[
-        mut=True, type0, layout0, address_space=AddressSpace.SHARED, ...
+        mut=True, type0, layout0, address_space=.SHARED, ...
     ],
-    p_reg_tile: LayoutTensor[
-        type1, layout1, _, address_space=AddressSpace.LOCAL
-    ],
+    p_reg_tile: LayoutTensor[type1, layout1, _, address_space=.LOCAL],
     warp_x: UInt32,
     warp_y: UInt32,
 ):
@@ -613,7 +627,7 @@ def _copy_frag_to_smem_amd[
         mut=False,
         p_smem_iter.dtype,
         Layout.row_major(BM, BN),
-        address_space=AddressSpace.SHARED,
+        address_space=.SHARED,
     ](p_smem_iter.ptr)
 
     var p_smem_warp_tile = p_smem_tile.tile[WM, WN](Int(warp_y), Int(warp_x))
@@ -650,7 +664,7 @@ def _copy_frag_to_smem_amd[
                 tile_BMxBK.ptr.store(offset_BMxBK, vec)
 
 
-@always_inline
+@inline(.always)
 def _copy_frag_to_smem[
     BM: Int,
     BN: Int,
@@ -667,11 +681,9 @@ def _copy_frag_to_smem[
     layout1: Layout,
 ](
     p_smem_iter: LayoutTensorIter[
-        mut=True, type0, layout0, address_space=AddressSpace.SHARED, ...
+        mut=True, type0, layout0, address_space=.SHARED, ...
     ],
-    p_reg_tile: LayoutTensor[
-        type1, layout1, _, address_space=AddressSpace.LOCAL
-    ],
+    p_reg_tile: LayoutTensor[type1, layout1, _, address_space=.LOCAL],
     warp_x: UInt32,
     warp_y: UInt32,
 ):
@@ -689,7 +701,7 @@ def _copy_frag_to_smem[
         ]()
 
 
-@always_inline
+@inline(.always)
 def get_start_and_end_for_partitions[
     tile_size: Int
 ](num_keys: Int, num_partitions: Int, partition_idx: Int) -> Tuple[Int, Int]:
@@ -723,17 +735,14 @@ def get_start_and_end_for_partitions[
     return (start, end)
 
 
-comptime callback_fn_type = def[mask_t: MHAMask](
-    mask: mask_t
-) raises capturing -> None
+comptime callback_fn_type = def[mask_t: MHAMask](mask: mask_t) raises -> None
 
 
-@always_inline
+@inline(.always)
 def dispatch_mask[
     mask_type: String,
-    callback_fn: callback_fn_type,
     local_window_size: Int = -1,
-]() raises -> None:
+](callback_fn: Some[callback_fn_type],) raises -> None:
     """Instantiate an `MHAMask` by name and invoke a callback with it.
 
     Resolves the mask string to one of the built-in `MHAMask` implementations
@@ -745,19 +754,20 @@ def dispatch_mask[
         mask_type: Name of the mask (e.g. `"causal"`, `"null"`,
             `"sliding_window_causal"`). Must match one of the `MaskName`
             constants.
-        callback_fn: Parametric callback invoked with the resolved mask.
         local_window_size: Sliding-window or chunk size for masks that
             require it. Must be `-1` for masks that ignore it and positive
             for masks that require it.
+
+    Args:
+        callback_fn: Parametric callback invoked with the resolved mask.
 
     Raises:
         Compile-time assertion error if `mask_type` is unrecognised or if
         `local_window_size` is inconsistent with the selected mask.
     """
 
-    @always_inline
-    @__parameter
-    def outer_wrapper[mask_t: MHAMask](mask: mask_t) raises:
+    @inline(.always)
+    def outer_wrapper[mask_t: MHAMask](mask: mask_t) raises {imm}:
         return callback_fn(mask)
 
     # TODO: attach string constants to mask types themselves.
@@ -789,18 +799,16 @@ def dispatch_mask[
         comptime assert False, "Unsupported mask type: " + mask_type
 
 
-@always_inline
+@inline(.always)
 def dispatch_materialized_mask[
     dtype: DType,
     layout: Layout,
     //,
-    callback_fn: callback_fn_type,
 ](
     mask_nd: LayoutTensor[mut=False, dtype, layout, _],
+    callback_fn: Some[callback_fn_type],
     start_pos_nd: OptionalReg[
-        LayoutTensor[
-            DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
-        ]
+        LayoutTensor[.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
     ] = None,
 ) raises -> None:
     """Wrap a dense mask tensor in a `MaterializedMask` and invoke a callback.
@@ -814,11 +822,11 @@ def dispatch_materialized_mask[
     Parameters:
         dtype: Element type of the mask tensor.
         layout: Layout of the mask tensor.
-        callback_fn: Parametric callback invoked with the `MaterializedMask`.
 
     Args:
         mask_nd: The mask values tensor with shape `(batch, heads, q, k)` or
             compatible broadcast shape.
+        callback_fn: Parametric callback invoked with the `MaterializedMask`.
         start_pos_nd: Optional per-sequence start positions used to offset the
             key dimension.
     """
@@ -827,21 +835,21 @@ def dispatch_materialized_mask[
     return callback_fn(mask)
 
 
-@always_inline
+@inline(.always)
 def dispatch_relative_logits_mask[
     dtype: DType,
     layout: Layout,
     //,
-    callback_fn: callback_fn_type,
     local_window_size: Int = -1,
 ](
     bias_nd: LayoutTensor[mut=False, dtype, layout, _],
     cache_lengths: LayoutTensor[
-        DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+        .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
     ],
     input_row_offsets: LayoutTensor[
-        DType.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+        .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
     ],
+    callback_fn: Some[callback_fn_type],
 ) raises -> None:
     """Wrap `bias_nd` in a `RelativeLogitsMask` and invoke `callback_fn`.
 
@@ -905,15 +913,15 @@ struct StaticInt[value: Int](
 
     comptime static_value: Optional[Int] = Optional[Int](Self.value)
 
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def __init__(out self):
         pass
 
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def __int__(self) -> Int:
         return Self.value
 
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def as_uint32(self) -> UInt32:
         return UInt32(Self.value)
 
@@ -929,20 +937,20 @@ struct DynamicInt(OptionallyStaticInt, TrivialRegisterPassable):
     var value: UInt32
     comptime static_value: Optional[Int] = None
 
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def __init__(out self, value: Int):
         self.value = UInt32(value)
 
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def __int__(self) -> Int:
         return Int(self.value)
 
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def as_uint32(self) -> UInt32:
         return self.value
 
 
-@always_inline
+@inline(.always)
 def _is_decoding[int_t: OptionallyStaticInt]() -> Bool:
     return int_t.static_value.or_else(0) == 1
 
@@ -955,7 +963,7 @@ trait OptionalPointer(Copyable, TrivialRegisterPassable):
     comptime is_null: Bool
     comptime address_space: AddressSpace
 
-    @always_inline
+    @inline(.always)
     def value(
         self,
     ) -> UnsafePointer[
@@ -964,9 +972,9 @@ trait OptionalPointer(Copyable, TrivialRegisterPassable):
         ...
 
 
-struct NonNullPointer[
-    dtype_: DType, address_space_: AddressSpace = AddressSpace.GENERIC
-](OptionalPointer):
+struct NonNullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
+    OptionalPointer
+):
     """A pointer with a compile-time guarantee of being non-null.
 
     Parameters:
@@ -985,16 +993,16 @@ struct NonNullPointer[
     @__allow_legacy_any_origin_fields
     var ptr: Self.PtrType
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, ptr: Self.PtrType):
         self.ptr = ptr
 
-    @always_inline
+    @inline(.always)
     def __init__(out self, ptr: DeviceBuffer[Self.dtype]):
-        comptime assert Self.address_space == AddressSpace.GENERIC
+        comptime assert Self.address_space == .GENERIC
         self.ptr = rebind[Self.PtrType](ptr.unsafe_ptr())
 
-    @always_inline
+    @inline(.always)
     def value(self) -> Self.PtrType:
         assert Int(self.ptr) != 0, (
             "NonNullPointer is supposed to provide a compile-time guarantee"
@@ -1003,9 +1011,9 @@ struct NonNullPointer[
         return self.ptr
 
 
-struct NullPointer[
-    dtype_: DType, address_space_: AddressSpace = AddressSpace.GENERIC
-](OptionalPointer):
+struct NullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
+    OptionalPointer
+):
     """A pointer known at compile time to be null, used when an optional pointer argument is absent.
 
     Parameters:
@@ -1021,11 +1029,11 @@ struct NullPointer[
         Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
     ]
 
-    @always_inline
+    @inline(.always)
     def __init__(out self):
         pass
 
-    @always_inline
+    @inline(.always)
     def value(self) -> Self.PtrType:
         # NullPointer.value() should never be called at runtime — it exists
         # only for trait conformance. Return dangling as a safe sentinel.
@@ -1048,7 +1056,7 @@ trait MHAPartitionScheme(Copyable, TrivialRegisterPassable):
     # partial-statistics buffer cannot hand out a pointer to one.
     comptime LSEPointerType: OptionalPointer
 
-    @always_inline
+    @inline(.always)
     def num_partitions(self) -> UInt32:
         ...
 
@@ -1057,7 +1065,7 @@ trait MHAPartitionScheme(Copyable, TrivialRegisterPassable):
     # launched grid shape is stable across num_keys (one CUDA graph per batch
     # size). CTAs with partition index >= num_partitions() early-return. Equal
     # to num_partitions() when the scheme does not over-launch.
-    @always_inline
+    @inline(.always)
     def max_num_partitions(self) -> UInt32:
         ...
 
@@ -1065,7 +1073,7 @@ trait MHAPartitionScheme(Copyable, TrivialRegisterPassable):
     # through it must first establish `do_partition` (see
     # `MHAPosition.exp_sum_qk_max_ptr`), which is what makes the mutability
     # laundering at those sites sound.
-    @always_inline
+    @inline(.always)
     def lse_pointer(self) -> Self.LSEPointerType:
         ...
 
@@ -1087,19 +1095,19 @@ struct NoPartition[dtype: DType](
     comptime accum_dtype: DType = Self.dtype
     comptime LSEPointerType = NullPointer[Self.accum_dtype]
 
-    @always_inline
+    @inline(.always)
     def __init__(out self):
         pass
 
-    @always_inline
+    @inline(.always)
     def num_partitions(self) -> UInt32:
         return 1
 
-    @always_inline
+    @inline(.always)
     def max_num_partitions(self) -> UInt32:
         return 1
 
-    @always_inline
+    @inline(.always)
     def lse_pointer(self) -> Self.LSEPointerType:
         return {}
 
@@ -1129,7 +1137,7 @@ struct SplitKPartition[dtype: DType](
     var num_partitions_value: UInt32
     var max_num_partitions_value: UInt32
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         ptr: UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin],
@@ -1140,14 +1148,14 @@ struct SplitKPartition[dtype: DType](
         self.num_partitions_value = num_partitions_value
         self.max_num_partitions_value = max_num_partitions_value
 
-    @always_inline
+    @inline(.always)
     def num_partitions(self) -> UInt32:
         return self.num_partitions_value
 
-    @always_inline
+    @inline(.always)
     def max_num_partitions(self) -> UInt32:
         return self.max_num_partitions_value
 
-    @always_inline
+    @inline(.always)
     def lse_pointer(self) -> Self.LSEPointerType:
         return {self.ptr.as_imm().as_unsafe_any_origin()}

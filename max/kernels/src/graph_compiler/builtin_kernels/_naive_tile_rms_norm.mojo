@@ -27,7 +27,7 @@ ported to `TileTensor` and the tile path is productionized (see GEX-3919).
 
 import extensibility
 
-from std.gpu import block_idx, thread_idx
+from max.gpu import block_idx, thread_idx
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_gpu
 from std.math import sqrt
@@ -79,7 +79,7 @@ struct _OutputFusionTileConsumer[
 
     var fusion: Self.FusionType
 
-    @always_inline
+    @inline(.always)
     def __call__[
         dtype: DType,
         LayoutType: TensorLayout,
@@ -87,10 +87,7 @@ struct _OutputFusionTileConsumer[
         ref self,
         tile_coord: Coord,
         tile: TileTensor[
-            dtype,
-            LayoutType,
-            ...,
-            address_space=Self.src_address_space,
+            dtype, LayoutType, ..., address_space=Self.src_address_space
         ],
         thread_layout: _NewLayout,
     ) -> None:
@@ -164,7 +161,7 @@ struct _NaiveRMSNormTileAdapter[
     var weight_offset: Scalar[Self.dtype]
     var tile_consumer: OptionalReg[Self.TileConsumerType]
 
-    @always_inline
+    @inline(.always)
     def __call__(self) capturing:
         comptime TM = Self.tile_shape[0]
         comptime TN = Self.tile_shape[1]
@@ -172,8 +169,7 @@ struct _NaiveRMSNormTileAdapter[
         var tile_row = Int(block_idx.y)
         var tile_col = Int(block_idx.x)
         var tid = Int(thread_idx.x)
-        var i = tid // TN
-        var j = tid % TN
+        var i, j = divmod(tid, TN)
         var row = tile_row * TM + i
         var col = tile_col * TN + j
 
@@ -188,18 +184,18 @@ struct _NaiveRMSNormTileAdapter[
         var x_val = self.input.load[width=1](Coord(row, col)).cast[
             DType.float32
         ]()
-        var g_val = self.gamma.load[width=1](Coord(col)).cast[DType.float32]()
-        var w_off = self.weight_offset.cast[DType.float32]()
+        var g_val = self.gamma.load[width=1](Coord(col)).cast[.float32]()
+        var w_off = self.weight_offset.cast[.float32]()
         var y = (x_val * inv_rms) * (g_val + w_off)
 
         # Driver-owned per-thread output fragment; see `_NaiveMatmulTileAdapter`
         # for the LOCAL->GENERIC staging dance (TODO(GEX-3912)).
         var dst_local = stack_allocation[
-            dtype=Self.dtype, address_space=AddressSpace.LOCAL
+            dtype=Self.dtype, address_space=.LOCAL
         ](row_major[1, 1]())
         var dst = TileTensor(
             dst_local._storage.address_space_cast[
-                AddressSpace.GENERIC
+                .GENERIC
             ]().unsafe_origin_cast[MutAnyOrigin](),
             row_major[1, 1](),
         )
@@ -208,7 +204,7 @@ struct _NaiveRMSNormTileAdapter[
         # Terminal store. A bound `TileConsumer` OWNS the store (the fusion's
         # `store` performs the final `LocalToGenericTileCopier` copy itself);
         # otherwise the adapter stores the fragment directly.
-        var dst_local_view = dst.address_space_cast[AddressSpace.LOCAL]()
+        var dst_local_view = dst.address_space_cast[.LOCAL]()
         comptime if is_valid_epilogue[Self.TileConsumerType]():
             var consumer = self.tile_consumer.value()
             consumer(
@@ -267,7 +263,7 @@ struct RMSNormTileSM100:
             rank == 2
         ), "tile-codegen rms_norm only supports rank-2 tensors"
         comptime assert (
-            dtype == DType.float32
+            dtype == .float32
         ), "tile-codegen rms_norm is correctness-only and f32-only"
 
         # TODO(GEX-3905): a real rms_norm must own its own tile shape rather

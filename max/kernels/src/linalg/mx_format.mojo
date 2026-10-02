@@ -60,15 +60,15 @@ struct MXFormat(Equatable, TrivialRegisterPassable):
         Returns:
             The corresponding MX element format.
         """
-        if dtype == DType.float6_e2m3fn:
+        if dtype == .float6_e2m3fn:
             return Self.FP6_E2M3
-        if dtype == DType.float6_e3m2fn:
+        if dtype == .float6_e3m2fn:
             return Self.FP6_E3M2
-        if dtype == DType.float8_e4m3fn:
+        if dtype == .float8_e4m3fn:
             return Self.FP8_E4M3
-        if dtype == DType.float8_e5m2:
+        if dtype == .float8_e5m2:
             return Self.FP8_E5M2
-        if dtype == DType.uint8:
+        if dtype == .uint8:
             return Self.FP4_E2M1
         abort("dtype does not denote an MX element format")
 
@@ -112,6 +112,18 @@ struct MXFormat(Equatable, TrivialRegisterPassable):
         if self == Self.FP4_E2M1:
             return 4
         abort("invalid MX format")
+
+    def lane_bytes(self) -> Int:
+        """Returns the payload bytes one lane covers per MFMA fragment.
+
+        A lane covers 32 K-elements in every format, so this is 16, 24 or 32
+        bytes for FP4, FP6 and FP8 -- and it is what tells FP4 and FP6 apart,
+        since both arrive as `uint8`.
+
+        Returns:
+            The payload width in bytes.
+        """
+        return self.bits_per_element() * 32 // 8
 
     def is_fp6(self) -> Bool:
         """Returns whether this is one of the two six-bit encodings.

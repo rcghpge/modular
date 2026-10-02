@@ -24,13 +24,9 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 from max._core.driver import Buffer as Buffer
-from max._core.driver import DevicePinnedBuffer as DevicePinnedBuffer
 from max._core.driver import _batch_inplace_copy
 from max._core.driver import (
-    _unsafe_alloc_fast_pinned_buffer as _unsafe_alloc_fast_pinned_buffer,
-)
-from max._core.driver import (
-    _unsafe_free_fast_pinned_buffer as _unsafe_free_fast_pinned_buffer,
+    _ChunkedStagingRegion as _ChunkedStagingRegion,
 )
 from max.dtype import DType
 
@@ -231,7 +227,7 @@ def _from_dlpack(array: Any, *, copy: bool | None = None) -> Buffer:
                     msg
                     + " Consider passing `copy = True` to `Buffer.from_dlpack`."
                 )
-            raise e
+            raise
 
         return buffer.view(DType.bool) if is_bool else buffer
 
@@ -297,7 +293,8 @@ def batch_inplace_copy(dsts: Sequence[Buffer], srcs: Sequence[Buffer]) -> None:
     """Copies ``srcs[i]`` into ``dsts[i]`` in as few driver submissions as possible.
 
     Sources may be host, pinned, same-device or peer memory in any mix.
-    Identity pairs (``dst is src``) are skipped.
+    Identity pairs (``dst is src``), zero-byte pairs and repeats of an earlier
+    pair's destination, source and size are skipped.
 
     One submission is one stream, and a stream only orders the writes it
     performs, so destinations are grouped by device and each device's group is
@@ -315,7 +312,18 @@ def batch_inplace_copy(dsts: Sequence[Buffer], srcs: Sequence[Buffer]) -> None:
             "batch_inplace_copy: dsts and srcs must have the same length"
             f" (got {len(dsts)} dsts, {len(srcs)} srcs)"
         )
-    _batch_inplace_copy(dsts, srcs)
+    # Dedupe identical copy operations.
+    seen: set[tuple[int, int, int]] = set()
+    unique_dsts: list[Buffer] = []
+    unique_srcs: list[Buffer] = []
+    for dst, src in zip(dsts, srcs, strict=True):
+        nbytes = dst.num_elements * dst.dtype.size_in_bytes
+        key = (dst._data_ptr(), src._data_ptr(), nbytes)
+        if key not in seen:
+            seen.add(key)
+            unique_dsts.append(dst)
+            unique_srcs.append(src)
+    _batch_inplace_copy(unique_dsts, unique_srcs)
 
 
 def copy_pinned_to_destinations(
@@ -340,10 +348,10 @@ def copy_pinned_to_destinations(
     if not source.pinned:
         return
     source_device = source.device
-    source_stream = source_device.default_stream
+    source_stream = source_device.default_queue
     for destination in destinations:
         if destination.device.id != source_device.id:
-            source_stream.wait_for(destination.device.default_stream)
+            source_stream.wait_for(destination.device.default_queue)
 
 
 def load_max_buffer(path: PathLike[str]) -> Buffer:

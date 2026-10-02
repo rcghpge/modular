@@ -43,15 +43,15 @@ comptime SMemTile[
     /,
     *,
     element_layout: Layout = Layout(1, 1),
-    layout_int_type: DType = _get_layout_type(layout, AddressSpace.SHARED),
-    linear_idx_type: DType = _get_index_type(layout, AddressSpace.SHARED),
+    layout_int_type: DType = _get_layout_type(layout, .SHARED),
+    linear_idx_type: DType = _get_index_type(layout, .SHARED),
     masked: Bool = False,
     alignment: Int = align_of[_dtype](),
 ] = LayoutTensor[
     _dtype,
     layout,
     MutAnyOrigin,
-    address_space=AddressSpace.SHARED,
+    address_space=.SHARED,
     element_layout=element_layout,
     layout_int_type=layout_int_type,
     linear_idx_type=linear_idx_type,
@@ -66,15 +66,15 @@ comptime RegTile[
     /,
     *,
     element_layout: Layout = Layout(1, 1),
-    layout_int_type: DType = _get_layout_type(layout, AddressSpace.LOCAL),
-    linear_idx_type: DType = _get_index_type(layout, AddressSpace.LOCAL),
+    layout_int_type: DType = _get_layout_type(layout, .LOCAL),
+    linear_idx_type: DType = _get_index_type(layout, .LOCAL),
     masked: Bool = False,
     alignment: Int = align_of[_dtype](),
 ] = LayoutTensor[
     _dtype,
     layout,
     MutAnyOrigin,
-    address_space=AddressSpace.LOCAL,
+    address_space=.LOCAL,
     element_layout=element_layout,
     layout_int_type=layout_int_type,
     linear_idx_type=linear_idx_type,
@@ -84,7 +84,7 @@ comptime RegTile[
 """Type alias for register (local memory) tile tensors."""
 
 
-@always_inline
+@inline(.always)
 def reg_tile_to_tile_tensor[
     dtype: DType,
     layout: Layout,
@@ -98,7 +98,7 @@ def reg_tile_to_tile_tensor[
 
 
 comptime SMemBarrier = UnsafePointer[
-    mut=True, SharedMemBarrier, _, address_space=AddressSpace.SHARED
+    mut=True, SharedMemBarrier, _, address_space=.SHARED
 ]
 """Type alias for shared memory barrier pointer."""
 
@@ -114,7 +114,7 @@ comptime SMemTileIter[
     dtype,
     layout,
     MutAnyOrigin,
-    address_space=AddressSpace.SHARED,
+    address_space=.SHARED,
     alignment=128,
 ]
 
@@ -148,9 +148,7 @@ struct SMemTileArray[
     comptime Storage = Array[Scalar[Self.dtype], Self.num_elements]
 
     var ptr: UnsafePointer[
-        Scalar[Self.dtype],
-        MutUntrackedOrigin,
-        address_space=AddressSpace.SHARED,
+        Scalar[Self.dtype], MutUntrackedOrigin, address_space=.SHARED
     ]
 
     def __init__(
@@ -166,11 +164,7 @@ struct SMemTileArray[
     def __init__(
         out self,
         # TODO: This should correctly propagate mutability.
-        unsafe_ptr: UnsafePointer[
-            Scalar[Self.dtype],
-            _,
-            address_space=AddressSpace.SHARED,
-        ],
+        unsafe_ptr: UnsafePointer[Scalar[Self.dtype], _, address_space=.SHARED],
     ):
         """Initialize with shared memory pointer.
 
@@ -183,7 +177,7 @@ struct SMemTileArray[
 
         self.ptr = rebind[type_of(self.ptr)](unsafe_ptr)
 
-    @always_inline
+    @inline(.always)
     def __getitem__[T: Intable](self, index: T) -> Self.Tile:
         """Get tile at index.
 
@@ -210,14 +204,14 @@ struct SMemTileArray[
     ):
         return type_of(result)(self.ptr + eval[Self.layout.size()] * start)
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def stack_allocation() -> Self:
         var ptr = unsafe_stack_allocation[
             Self.storage_size,
             Self.dtype,
             alignment=Self.alignment,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ]()
         return Self(ptr)
 
@@ -233,14 +227,14 @@ struct SMemArray[type: TrivialRegisterPassable, size: Int](
     """
 
     comptime ptr_type = UnsafePointer[
-        Self.type, MutUntrackedOrigin, address_space=AddressSpace.SHARED
+        Self.type, MutUntrackedOrigin, address_space=.SHARED
     ]
     comptime storage_size = Self.size * size_of[Self.type]()
     comptime Storage = Array[Self.type, Self.size]
 
     var ptr: Self.ptr_type
 
-    @always_inline
+    @inline(.always)
     def __init__(
         out self,
         unsafe_ptr: Self.ptr_type,
@@ -256,7 +250,7 @@ struct SMemArray[type: TrivialRegisterPassable, size: Int](
         """Initialize from Storage."""
         return Self(rebind[Self.ptr_type](storage.unsafe_ptr()))
 
-    @always_inline
+    @inline(.always)
     def __getitem__[T: Intable](self, index: T) -> Self.ptr_type:
         """Get a pointer to the element at index.
 
@@ -268,7 +262,7 @@ struct SMemArray[type: TrivialRegisterPassable, size: Int](
         """
         return self.ptr + Int(index)
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def len() -> Int:
         """Get array length in bytes.
@@ -278,14 +272,14 @@ struct SMemArray[type: TrivialRegisterPassable, size: Int](
         """
         return Self.size * size_of[Self.type]()
 
-    @always_inline
+    @inline(.always)
     @staticmethod
     def stack_allocation[alignment: Int = align_of[Self.type]()]() -> Self:
         var ptr = unsafe_stack_allocation[
             Self.len(),
             Self.type,
             alignment=alignment,
-            address_space=AddressSpace.SHARED,
+            address_space=.SHARED,
         ]()
         return Self(ptr)
 
@@ -294,5 +288,5 @@ comptime eval[T: AnyType, //, val: T] = val
 """Helper alias to force evaluation of expressions at compile time."""
 
 comptime SMemPtr[type: AnyType] = UnsafePointer[
-    type, MutUntrackedOrigin, address_space=AddressSpace.SHARED
+    type, MutUntrackedOrigin, address_space=.SHARED
 ]

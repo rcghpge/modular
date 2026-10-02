@@ -38,6 +38,7 @@ from .pipeline import (
     PipelineOutputType,
 )
 from .pipeline_variants import (
+    AudioGenerationInputs,
     BatchType,
     CompletedBatchStats,
     EmbeddingsContext,
@@ -62,7 +63,15 @@ from .reasoning import (
     ReasoningSpan,
 )
 from .task import InputModality, PipelineTask
-from .tokenizer import PipelineTokenizer, TokenizerEncoded, UnboundContextType
+from .tokenizer import (
+    PipelineTokenizer,
+    PreprocessCacheStatsProbe,
+    PreprocessedImageProbe,
+    TokenIds,
+    TokenizerEncoded,
+    UnboundContextType,
+    VisionPreprocessCacheStats,
+)
 from .tool_parsing import (
     ParsedToolCall,
     ParsedToolCallDelta,
@@ -83,6 +92,7 @@ PipelinesFactory = Callable[
 
 __all__ = [
     "DUMMY_REQUEST_ID",
+    "AudioGenerationInputs",
     "BatchLogitsProcessor",
     "BatchProcessorInputs",
     "BatchType",
@@ -110,6 +120,8 @@ __all__ = [
     "PipelineTokenizer",
     "PipelinesFactory",
     "PixelGenerationInputs",
+    "PreprocessCacheStatsProbe",
+    "PreprocessedImageProbe",
     "ProcessorInputs",
     "ReasoningParser",
     "ReasoningPipelineTokenizer",
@@ -124,10 +136,12 @@ __all__ = [
     "TextGenerationRequestFunction",
     "TextGenerationRequestMessage",
     "TextGenerationRequestTool",
+    "TokenIds",
     "TokenizerEncoded",
     "ToolParser",
     "UnboundContextType",
     "VideoContentPart",
+    "VisionPreprocessCacheStats",
     "msgpack_numpy_decoder",
     "msgpack_numpy_encoder",
     "msgpack_numpy_oob_decoder",

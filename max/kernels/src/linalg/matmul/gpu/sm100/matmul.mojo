@@ -26,7 +26,7 @@ For new code, use sm100_structured directly:
 from std.sys import align_of, simd_width_of, size_of
 from std.math.uutils import umod, ufloordiv, udivmod
 
-from std.gpu import WARP_SIZE, lane_id, warp_id
+from max.gpu import WARP_SIZE, lane_id, warp_id
 from max.gpu.primitives.cluster import elect_one_sync
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.compute.mma import st_matrix
@@ -86,45 +86,45 @@ struct WarpRole[has_scheduler: Bool = True](TrivialRegisterPassable):
     comptime Scheduler = Self(4)
     comptime Epilogue = Self(3)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Int) -> Bool:
         return self._role == Int32(other)
 
-    @always_inline
+    @inline(.always)
     def __eq__(self, other: Self) -> Bool:
         return self._role == other._role
 
-    @always_inline
+    @inline(.always)
     def __ne__(self, other: Self) -> Bool:
         return self._role != other._role
 
-    @always_inline
+    @inline(.always)
     def __ge__(self, other: Int) -> Bool:
         return self._role >= Int32(other)
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_main_load() -> Bool:
         return Self.MainLoad == warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_mma() -> Bool:
         return Self.Mma == warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_epilogue() -> Bool:
         return Self.Epilogue >= warp_id()
 
     @staticmethod
-    @always_inline
+    @inline(.always)
     def is_scheduler() -> Bool:
         comptime assert Self.has_scheduler, "Scheduler warp is not enabled"
         return Self.Scheduler == warp_id()
 
 
-@always_inline
+@inline(.always)
 def consumer_main_loop[
     accum_type: DType,
     c_type: DType,
@@ -204,11 +204,11 @@ def consumer_main_loop[
 
 
 comptime RLayout32Bits[layout: Layout] = RuntimeLayout[
-    layout, element_type=DType.uint32, linear_idx_type=DType.uint32
+    layout, element_type=.uint32, linear_idx_type=.uint32
 ]
 
 
-@always_inline
+@inline(.always)
 def f32_frag_to_smem[
     swizzle_mode: TensorMapSwizzle,
     vec_dtype: DType,
@@ -216,9 +216,7 @@ def f32_frag_to_smem[
     DstLayout: TensorLayout,
 ](
     vec: Array[Scalar[vec_dtype], vec_size],
-    dst: TileTensor[
-        _, DstLayout, MutAnyOrigin, address_space=AddressSpace.SHARED
-    ],
+    dst: TileTensor[_, DstLayout, MutAnyOrigin, address_space=.SHARED],
 ):
     """Writes an FP32 TCGEN05 accumulator fragment to a swizzled shared-memory tile.
 
@@ -264,7 +262,7 @@ def f32_frag_to_smem[
             (dst.ptr + offset).store(val)
 
 
-@always_inline
+@inline(.always)
 def stsm_helper[
     swizzle: Swizzle,
     stageN: Int,
@@ -275,9 +273,7 @@ def stsm_helper[
     swizzle_mode: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
 ](
     vec: Array[Scalar[vec_dtype], vec_size],
-    dst: TileTensor[
-        _, DstLayout, MutAnyOrigin, address_space=AddressSpace.SHARED
-    ],
+    dst: TileTensor[_, DstLayout, MutAnyOrigin, address_space=.SHARED],
     warp_offset: UInt32 = 0,
 ):
     """Stores a TCGEN05 accumulator fragment to shared memory using st.matrix or scalar stores.
@@ -365,11 +361,11 @@ def stsm_helper[
             comptime for _j in range(cast_width):
                 v[k * cast_width + _j] = casted[_j]
         st_matrix[simd_width=stmtx_simd_width, transpose=transpose_c](
-            dst.ptr + offset, bitcast[DType.float32, stmtx_simd_width](v)
+            dst.ptr + offset, bitcast[.float32, stmtx_simd_width](v)
         )
 
 
-@always_inline
+@inline(.always)
 def shared_memory_epilogue[
     MMA_M: Int,
     data_paths: Int,
@@ -516,18 +512,16 @@ def shared_memory_epilogue[
         else:
             # can't cast to uint64 as it's not supported yet
             # this will cost us slightly in performance
-            comptime fast_div = FastDiv[DType.uint32](shared_n)
+            comptime fast_div = FastDiv[.uint32](shared_n)
 
             shared_upper_row = (
-                Scalar[DType.int](offset_upper).cast[fast_div.uint_type]()
-                / fast_div
-            ).cast[DType.int64]()
+                Int(offset_upper).cast[fast_div.uint_type]() / fast_div
+            ).cast[.int64]()
             shared_upper_col = Int64(offset_upper % shared_n)
 
             shared_lower_row = (
-                Scalar[DType.int](offset_lower).cast[fast_div.uint_type]()
-                / fast_div
-            ).cast[DType.int64]()
+                Int(offset_lower).cast[fast_div.uint_type]() / fast_div
+            ).cast[.int64]()
             shared_lower_col = Int64(offset_lower % shared_n)
 
         # now we need to add the global tile offset
@@ -566,7 +560,7 @@ def shared_memory_epilogue[
     named_barrier[Int32(num_output_warps * WARP_SIZE)]()
 
 
-@always_inline
+@inline(.always)
 def _compute_register_lambda_fn[
     epilogue_dtype: DType,
     frag_size: Int,
@@ -627,7 +621,7 @@ def _compute_register_lambda_fn[
             )
 
 
-@always_inline
+@inline(.always)
 def register_epilogue[
     MMA_M: Int,
     data_paths: Int,
@@ -766,7 +760,7 @@ def register_epilogue[
             )
 
 
-@always_inline
+@inline(.always)
 def accum_arrive[
     cta_group: Int
 ](mma_output_pipeline: ProducerConsumerPipeline, mma_output_stage: UInt32):

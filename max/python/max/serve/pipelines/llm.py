@@ -25,6 +25,7 @@ from max.pipelines.context import (
     TextAndVisionContext,
     TextContext,
     TextGenerationOutput,
+    TokenSlice,
 )
 from max.pipelines.lib import reasoning
 from max.pipelines.modeling.types import (
@@ -39,6 +40,9 @@ from max.profiler import Tracer
 from max.serve.pipelines.incremental_detokenizer import (
     BufferedDetokenizer,
     create_buffered_detokenizer,
+)
+from max.serve.pipelines.preprocess_cache_stats import (
+    PreprocessCacheStatsRecorder,
 )
 from max.serve.telemetry.common import request_trace_ctx
 from max.serve.telemetry.metrics import METRICS
@@ -72,10 +76,24 @@ class TokenGeneratorOutput:
     # TODO: (MODELS-1118) determine whether to include logprobs for reasoning tokens in the response delta
     token_log_probabilities: list[float] | None = None
     top_log_probabilities: list[dict[str, float]] | None = None
+    sampled_tokens: list[str] | None = None
+    """Decoded sampled token at each ``token_log_probabilities`` position."""
     prompt_token_count: int | None = None
     cached_token_count: int | None = None
     reasoning_token_count: int | None = None
     stop_sequence: str | None = None
+    batch_id: int | None = None
+    """Monotonic forward-pass counter from the scheduler that produced this
+    chunk. Used to correlate API-side OTel spans with model-worker spans."""
+    token_ids: list[int] | None = None
+    """Every token id committed by the sampler for this chunk, in generation
+    order, before reasoning-delimiter stripping and stop-string truncation."""
+    prompt_token_ids: Sequence[int] | TokenSlice | None = None
+    """Post-chat-template prompt token ids, carried on the first chunk only.
+    A ``TokenSlice`` is a zero-copy view into the context's token buffer, so
+    the type stays wide enough to hold one: the route materializes a list only
+    when the client asked for it. Test for presence with ``is not None``, never
+    truthiness, which an array of more than one element rejects."""
 
 
 def _merge_outputs(chunks: list[TokenGeneratorOutput]) -> TokenGeneratorOutput:
@@ -103,6 +121,10 @@ def _merge_outputs(chunks: list[TokenGeneratorOutput]) -> TokenGeneratorOutput:
         if c.top_log_probabilities
         for p in c.top_log_probabilities
     ]
+    sampled_tokens = [
+        t for c in chunks if c.sampled_tokens for t in c.sampled_tokens
+    ]
+    token_ids = [t for c in chunks if c.token_ids for t in c.token_ids]
 
     def _first_not_none(attr: str) -> Any:
         for c in chunks:
@@ -125,11 +147,15 @@ def _merge_outputs(chunks: list[TokenGeneratorOutput]) -> TokenGeneratorOutput:
         token_count=sum(c.token_count for c in chunks),
         token_log_probabilities=token_log_probs or None,
         top_log_probabilities=top_log_probs or None,
+        sampled_tokens=sampled_tokens or None,
         prompt_token_count=_first_not_none("prompt_token_count"),
         cached_token_count=_first_not_none("cached_token_count"),
         reasoning_token_count=sum(c.reasoning_token_count or 0 for c in chunks)
         or None,
         stop_sequence=stop_sequence,
+        batch_id=chunks[-1].batch_id,
+        token_ids=token_ids or None,
+        prompt_token_ids=_first_not_none("prompt_token_ids"),
     )
 
 
@@ -225,6 +251,13 @@ class BasePipeline(Generic[BaseContextType, RequestType, PipelineOutputType]):
         self.tokenizer = tokenizer
         self.lora_queue = lora_queue
         self.model_worker = model_worker
+        # On the base, not on TokenGeneratorPipeline: the responses routes
+        # run through a separate GeneralPipelineHandler over the same
+        # tokenizer, so its lookups move the same cache counters and need
+        # the same recorder to publish them.
+        self._preprocess_cache_stats = PreprocessCacheStatsRecorder(
+            self.tokenizer
+        )
 
 
 class TokenGeneratorPipeline(
@@ -273,7 +306,7 @@ class TokenGeneratorPipeline(
         return top_log_probabilities
 
     async def next_token_chunk(
-        self, request: TextGenerationRequest
+        self, request: TextGenerationRequest, *, parse_reasoning: bool = True
     ) -> AsyncGenerator[TokenGeneratorOutput, None]:
         """Tokenizes and submits ``request``, returning a token-chunk generator.
 
@@ -288,6 +321,9 @@ class TokenGeneratorPipeline(
         worker response. Benefits:
         - Single tokenizer.decode() call per chunk instead of per token
         - Callers can amortize Pydantic/SSE overhead across the chunk
+
+        With ``parse_reasoning=False`` no reasoning parser runs, so every
+        generated token, with its log probabilities, is returned as content.
         """
         itl = StopWatch()
         # TTFT runs from the arrival timestamp stamped by the HTTP middleware,
@@ -311,13 +347,18 @@ class TokenGeneratorPipeline(
 
         # Track whether we've yielded the first chunk (for TTFT metric)
         first_chunk_yielded = False
+        # Ids of chunks the reasoning parser reduced to nothing visible,
+        # carried onto the next emitted chunk so token_ids stays complete.
+        skipped_token_ids: list[int] = []
 
         # For reasoning models, we assume that there is always a reasoning span at the very start
         # We do not support multiple reasoning spans per response
         # We also do not support reasoning spans that are not at the very start of the response
         # This is consistent with vLLM
         # TODO: (MODELS-1115) assume that the reasoning tokens are at the start of the reasoning section
-        reasoning_parser = await self._reasoning_parser()
+        reasoning_parser = (
+            await self._reasoning_parser() if parse_reasoning else None
+        )
         if reasoning_parser is not None:
             reasoning_parser.reset()
         is_still_reasoning = reasoning_parser is not None
@@ -332,6 +373,11 @@ class TokenGeneratorPipeline(
         try:
             with record_ms(METRICS.input_time):
                 context = await self.tokenizer.new_context(request)
+            # Read after tokenization, which is what moved the cache's
+            # counters. Nothing is published for a text-only request.
+            self._preprocess_cache_stats.record(
+                carried_media=bool(request.images or request.videos)
+            )
             _inject_trace_carrier(context)
 
             # Create buffered detokenizers for proper UTF-8 handling.
@@ -420,7 +466,7 @@ class TokenGeneratorPipeline(
                 is_still_reasoning
             try:
                 with record_ms(METRICS.output_time):
-                    async for responses in response_stream:
+                    async for responses, batch_id in response_stream:
                         assert isinstance(responses, list)
                         assert len(responses) > 0
                         assert isinstance(responses[0], TextGenerationOutput)
@@ -504,7 +550,18 @@ class TokenGeneratorPipeline(
                                     cached_token_count=response.num_cached_tokens
                                     if not first_chunk_yielded
                                     else None,
+                                    batch_id=batch_id,
+                                    token_ids=(
+                                        skipped_token_ids
+                                        + list(response.tokens)
+                                    )
+                                    or None,
+                                    prompt_token_ids=context.tokens.prompt
+                                    if not first_chunk_yielded
+                                    else None,
                                 )
+                            else:
+                                skipped_token_ids.extend(response.tokens)
                             continue
 
                         token_count = len(tokens) if tokens is not None else 0
@@ -560,9 +617,11 @@ class TokenGeneratorPipeline(
                         top_token_log_prob_values: (
                             list[dict[str, float]] | None
                         ) = None
+                        sampled_token_values: list[str] | None = None
                         if token_log_probs is not None:
                             token_log_prob_values = []
                             top_token_log_prob_values = []
+                            sampled_token_values = []
                             for log_prob in token_log_probs:
                                 with Tracer("collect_log_probs"):
                                     token_probs = (
@@ -573,6 +632,13 @@ class TokenGeneratorPipeline(
                                     )
                                     token_log_prob_values.extend(token_probs)
                                     top_token_log_prob_values.extend(top_probs)
+                                    for token_id in log_prob.sampled_token_ids:
+                                        sampled_token_values.append(
+                                            await self.tokenizer.decode(
+                                                token_id,
+                                                skip_special_tokens=skip_special_tokens,
+                                            )
+                                        )
 
                         # Record metrics - one TTFT/ITL per chunk
                         is_first_chunk = not first_chunk_yielded
@@ -592,13 +658,20 @@ class TokenGeneratorPipeline(
                             token_count=token_count,
                             token_log_probabilities=token_log_prob_values,
                             top_log_probabilities=top_token_log_prob_values,
+                            sampled_tokens=sampled_token_values,
                             prompt_token_count=context.tokens.prompt_length,
                             cached_token_count=response.num_cached_tokens
                             if is_first_chunk
                             else None,
                             reasoning_token_count=reasoning_token_count,
                             stop_sequence=stop_sequence_match,
+                            batch_id=batch_id,
+                            token_ids=skipped_token_ids + list(response.tokens),
+                            prompt_token_ids=context.tokens.prompt
+                            if is_first_chunk
+                            else None,
                         )
+                        skipped_token_ids.clear()
             finally:
                 if first_chunk_yielded and num_generated_tokens > 1:
                     METRICS.time_per_output_token(
@@ -616,10 +689,12 @@ class TokenGeneratorPipeline(
         return _generate()
 
     async def all_tokens(
-        self, request: TextGenerationRequest
+        self, request: TextGenerationRequest, *, parse_reasoning: bool = True
     ) -> list[TokenGeneratorOutput]:
         """Generates all token chunks for the provided request."""
-        generator = await self.next_token_chunk(request)
+        generator = await self.next_token_chunk(
+            request, parse_reasoning=parse_reasoning
+        )
         return [chunk async for chunk in generator]
 
     async def encode(
@@ -627,7 +702,7 @@ class TokenGeneratorPipeline(
     ) -> EmbeddingsGenerationOutput:
         """Generates embedded outputs for the provided request."""
         total_sw = StopWatch()
-        self.logger.debug(
+        self.logger.debug(  # noqa: PLE1206 (maybe FIXME)
             "%s [%d]: Started: Elapsed: %0.2f ms",
             request.request_id,
             total_sw.elapsed_ms,
@@ -645,7 +720,7 @@ class TokenGeneratorPipeline(
                 response_stream = await self.model_worker.stream(
                     request.request_id, context
                 )
-                async for responses in response_stream:
+                async for responses, _batch_id in response_stream:
                     for response in responses:
                         # At runtime, response should be EmbeddingsGenerationOutput for embeddings tasks
                         # Cast to handle the generic type parameter mismatch

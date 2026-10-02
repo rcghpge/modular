@@ -12,18 +12,21 @@
 # ===----------------------------------------------------------------------=== #
 
 from asyncrt_test_utils import create_test_device_context
-from std.gpu import global_idx
+from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from std.testing import TestSuite, assert_equal
 
 
 def vec_func[
-    op: def(Float32, Float32) capturing[_] -> Float32
+    OpType: ImplicitlyCopyable
+    & RegisterPassable
+    & def(Float32, Float32) -> Float32
 ](
     in0: Pointer[Float32, MutAnyOrigin],
     in1: Pointer[Float32, MutAnyOrigin],
     output: Pointer[Float32, MutAnyOrigin],
     len_dev: Int32,
+    op: OpType,
 ):
     # `Int` is not device-passable; widen the fixed-width arg.
     var len = Int(len_dev)
@@ -45,17 +48,17 @@ def test_capture_neg_1_5() raises:
     run_captured_func(ctx, -1.5)
 
 
-@no_inline
+@inline(.never)
 def run_captured_func(ctx: DeviceContext, captured: Float32) raises:
     print("-")
     print("run_captured_func(", captured, "):")
 
     comptime length = 1024
 
-    var in0 = ctx.enqueue_create_buffer[DType.float32](length)
-    var in1 = ctx.enqueue_create_buffer[DType.float32](length)
+    var in0 = ctx.enqueue_create_buffer[.float32](length)
+    var in1 = ctx.enqueue_create_buffer[.float32](length)
     in1.enqueue_fill(2)
-    var out = ctx.enqueue_create_buffer[DType.float32](length)
+    var out = ctx.enqueue_create_buffer[.float32](length)
 
     # Initialize the input and outputs with known values.
     with in0.map_to_host() as in0_host, out.map_to_host() as out_host:
@@ -63,20 +66,20 @@ def run_captured_func(ctx: DeviceContext, captured: Float32) raises:
             in0_host[i] = Float32(i)
             out_host[i] = Float32(length + i)
 
-    @__parameter
-    def add_with_captured(left: Float32, right: Float32) -> Float32:
+    def add_with_captured(
+        left: Float32, right: Float32
+    ) {var captured} -> Float32:
         return left + right + captured
 
     var block_dim = 32
 
-    comptime kernel = vec_func[add_with_captured]
-    var kernel_func = ctx.compile_function[kernel]()
-    ctx.enqueue_function(
-        kernel_func,
+    comptime kernel = vec_func[OpType=type_of(add_with_captured)]
+    ctx.enqueue_function[kernel](
         in0,
         in1,
         out,
         Int32(length),
+        host_arg=add_with_captured,
         grid_dim=(length // block_dim),
         block_dim=(block_dim),
     )

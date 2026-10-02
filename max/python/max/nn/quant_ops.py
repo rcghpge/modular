@@ -18,9 +18,11 @@ from .kernels import (
     _apple_int8_w8a8_matmul,
     _apple_weight_only_block_scaled_matmul,
     _apple_weight_only_scaled_float8_matmul,
+    _fused_qkv_index_ragged_matmul_scaled_mxfp6,
     _fused_qkv_index_ragged_matmul_scaled_mxfp8,
     _fused_qkv_ragged_matmul_scaled_float4,
     _fused_qkv_ragged_matmul_scaled_float8,
+    _fused_qkv_ragged_matmul_scaled_mxfp6,
     _fused_qkv_ragged_matmul_scaled_mxfp8,
     _grouped_matmul_rowwise_dynamic_scaled_fp8,
     _is_amd_gpu,
@@ -238,6 +240,49 @@ def _matmul_float6_mxfp6(
     )
 
 
+def _matmul_float6_mxfp6_prequantized(
+    x_fp6: TensorValue,
+    x_scales: TensorValue,
+    weight: TensorValue,
+    weight_scale: TensorValue,
+    fp6_format: str,
+) -> TensorValue:
+    """Computes the MXFP6 matmul from an already-quantized activation.
+
+    :func:`_matmul_float6_mxfp6` minus the dynamic quantize, and the MXFP6
+    counterpart of :func:`_matmul_float8_mxfp8_prequantized`. Single owner for
+    the operand order, scale layout and output dtype, so callers that produce
+    the ``(data, scales)`` pair themselves -- the MSA attention op that fuses
+    the quantize into its split-K combine -- cannot drift from the
+    self-quantizing path.
+
+    Args:
+        x_fp6: The activation as packed FP6 ``uint8``, shape
+            ``[M, K * 3 // 4]``: four six-bit codes per three bytes.
+        x_scales: The activation's E8M0 block scales, rank-2 ``[M, K // 32]``.
+        weight: The weight as packed FP6 ``uint8``, shape ``[N, K * 3 // 4]``.
+        weight_scale: The E8M0 weight scales, rank-2 ``[N, K // 32]`` as loaded
+            from the checkpoint.
+        fp6_format: The FP6 encoding both operands hold.
+
+    Returns:
+        The output tensor in bf16, shape ``[M, N]``.
+    """
+    if not _is_amd_gpu():
+        raise ValueError(
+            "MXFP6 requires the AMD CDNA4 block-scaled MFMA (gfx950); no other "
+            "target implements a 6-bit block-scaled matmul"
+        )
+    return dynamic_block_scaled_matmul_mxfp6(
+        x_fp6,
+        weight,
+        x_scales,
+        weight_scale.to(x_fp6.device),
+        fp6_format=fp6_format,
+        out_type=DType.bfloat16,
+    )
+
+
 def _matmul_float8_mxfp8(
     x: TensorValue,
     weight: TensorValue,
@@ -273,12 +318,8 @@ def _matmul_float8_mxfp8(
             scales_type=DType.float8_e8m0fnu,
             out_type=DType.float8_e4m3fn,
         )
-        return dynamic_block_scaled_matmul_amd(
-            x_fp8,
-            weight,
-            x_scales,
-            weight_scale.to(x.device),
-            out_type=DType.bfloat16,
+        return _matmul_float8_mxfp8_prequantized(
+            x_fp8, x_scales, weight, weight_scale
         )
 
     x, x_scales = quantize_dynamic_block_scaled(
@@ -299,6 +340,40 @@ def _matmul_float8_mxfp8(
         x_scales,
         weight_scale,
         sf_vector_size=32,
+        out_type=DType.bfloat16,
+    )
+
+
+def _matmul_float8_mxfp8_prequantized(
+    x_fp8: TensorValue,
+    x_scales: TensorValue,
+    weight: TensorValue,
+    weight_scale: TensorValue,
+) -> TensorValue:
+    """Computes the AMD MXFP8 matmul from an already-quantized activation.
+
+    The AMD arm of :func:`_matmul_float8_mxfp8`, minus the dynamic quantize:
+    single owner for the operand order, scale layout (rank-2 E8M0, no SF-atom
+    interleave on CDNA), and output dtype. Callers that produce the
+    ``(data, scales)`` pair themselves -- e.g. the MSA attention op that fuses
+    the quantize into its split-K combine -- must go through here so a scale
+    layout change lands in one place.
+
+    Args:
+        x_fp8: The activation in ``float8_e4m3fn``, shape ``[M, K]``.
+        x_scales: The activation's E8M0 block scales, rank-2 ``[M, K // 32]``.
+        weight: The weight tensor in ``float8_e4m3fn``, shape ``[N, K]``.
+        weight_scale: The E8M0 weight scales, rank-2 ``[N, K // 32]`` as loaded
+            from the checkpoint.
+
+    Returns:
+        The output tensor in bf16, shape ``[M, N]``.
+    """
+    return dynamic_block_scaled_matmul_amd(
+        x_fp8,
+        weight,
+        x_scales,
+        weight_scale.to(x_fp8.device),
         out_type=DType.bfloat16,
     )
 
@@ -633,6 +708,35 @@ def quantized_fused_qkv_matmul(
                 weight_scale=weight_scale,
                 _output_dim=_output_dim,
             )
+        case QuantFormat.MXFP6:
+            if bias is not None:
+                raise NotImplementedError(
+                    "bias is not supported by the fused MXFP6 QKV kernel"
+                )
+            if not _is_amd_gpu():
+                raise NotImplementedError(
+                    "the fused MXFP6 QKV matmul is CDNA4-only"
+                )
+            x_fp6, x_scales = quantize_dynamic_block_scaled_mxfp6(
+                x,
+                fp6_format=quant_config.mxfp6_format,
+                scales_type=DType.float8_e8m0fnu,
+                out_type=DType.uint8,
+            )
+            return _fused_qkv_ragged_matmul_scaled_mxfp6(
+                kv_params,
+                input=x_fp6,
+                input_row_offsets=input_row_offsets,
+                wqkv=wqkv,
+                kv_collection=kv_collection,
+                layer_idx=layer_idx,
+                n_heads=n_heads,
+                input_scale=x_scales.to(x.device),
+                weight_scale=weight_scale.to(x.device),
+                fp6_format=quant_config.mxfp6_format,
+                _output_dim=_output_dim,
+            )
+
         case QuantFormat.NVFP4:
             assert input_scale is not None
             assert weight_scale_2 is not None
@@ -788,10 +892,40 @@ def quantized_fused_qkv_index_matmul(
         ``[total_seq_len, q_dim]`` and ``index_q`` is
         ``[total_seq_len, iq_dim]``.
     """
-    if quant_config.format != QuantFormat.MXFP8:
+    if quant_config.format not in (QuantFormat.MXFP8, QuantFormat.MXFP6):
         raise ValueError(
-            "quantized_fused_qkv_index_matmul only supports MXFP8, got"
+            "quantized_fused_qkv_index_matmul supports MXFP8 and MXFP6, got"
             f" {quant_config.format}"
+        )
+    if quant_config.format == QuantFormat.MXFP6:
+        if not _is_amd_gpu():
+            raise NotImplementedError(
+                "the fused MXFP6 QKV+IndexQK matmul is CDNA4-only"
+            )
+        if prequantized is not None:
+            x_fp6, x_scales = prequantized
+        else:
+            x_fp6, x_scales = quantize_dynamic_block_scaled_mxfp6(
+                x,
+                fp6_format=quant_config.mxfp6_format,
+                scales_type=DType.float8_e8m0fnu,
+                out_type=DType.uint8,
+            )
+        return _fused_qkv_index_ragged_matmul_scaled_mxfp6(
+            kv_params=kv_params,
+            index_kv_params=index_kv_params,
+            input=x_fp6,
+            input_row_offsets=input_row_offsets,
+            wqkv=wqkv,
+            kv_collection=kv_collection,
+            index_kv_collection=index_kv_collection,
+            layer_idx=layer_idx,
+            n_heads=n_heads,
+            num_index_heads=num_index_heads,
+            idx_head_dim=idx_head_dim,
+            input_scale=x_scales.to(x.device),
+            weight_scale=weight_scale.to(x.device),
+            fp6_format=quant_config.mxfp6_format,
         )
     if prequantized is not None:
         x_fp8, x_scales = prequantized

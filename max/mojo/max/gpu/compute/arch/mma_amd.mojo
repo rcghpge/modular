@@ -52,7 +52,7 @@ struct _AMD_F8F6F4_MATRIX_FORMAT(TrivialRegisterPassable):
         self._value = Int32(value)
 
 
-@always_inline
+@inline(.always)
 def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
     comptime if _is_amd_rdna():
         # Use WMMA instructions for RDNA3+ consumer GPUs.
@@ -68,8 +68,7 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
     comptime fp8_dtype = get_amd_fp8_dtype().value()
     comptime bf8_dtype = get_amd_bf8_dtype().value()
 
-    @__parameter
-    def _f8f6f4_intrinsic() -> SIMD[d.dtype, d.length]:
+    def _f8f6f4_intrinsic() {imm} -> SIMD[d.dtype, d.length]:
         comptime assert _cdna_4_or_newer(), "MMA shape requires CDNA4 or newer"
 
         comptime intrinsic_name = "llvm.amdgcn.mfma.scale.f32.16x16x128.f8f6f4" if _has_shape[
@@ -78,7 +77,6 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
             a.length, b.length, c.length, d.length
         ) else "llvm.amdgcn.mfma.scale.f32.32x32x64.f8f6f4"
 
-        @__parameter
         def _matrix_format[dtype: DType]() -> _AMD_F8F6F4_MATRIX_FORMAT:
             return (
                 _AMD_F8F6F4_MATRIX_FORMAT.float8_e4m3 if dtype
@@ -86,8 +84,8 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
             )
 
         return llvm_intrinsic[intrinsic_name, SIMD[d.dtype, d.length]](
-            bitcast[DType.int32, 8](a),
-            bitcast[DType.int32, 8](b),
+            bitcast[.int32, 8](a),
+            bitcast[.int32, 8](b),
             c,
             _matrix_format[a.dtype](),
             _matrix_format[b.dtype](),
@@ -161,8 +159,8 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
             d = llvm_intrinsic[
                 "llvm.amdgcn.mfma.f32.4x4x4bf16.1k", SIMD[d.dtype, d.length]
             ](
-                bitcast[DType.int16, 4](a),
-                bitcast[DType.int16, 4](b),
+                bitcast[.int16, 4](a),
+                bitcast[.int16, 4](b),
                 c,
                 zero,
                 zero,
@@ -172,8 +170,8 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
             d = llvm_intrinsic[
                 "llvm.amdgcn.mfma.f32.16x16x16bf16.1k", SIMD[d.dtype, d.length]
             ](
-                bitcast[DType.int16, 4](a),
-                bitcast[DType.int16, 4](b),
+                bitcast[.int16, 4](a),
+                bitcast[.int16, 4](b),
                 c,
                 zero,
                 zero,
@@ -187,8 +185,8 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
         d = llvm_intrinsic[
             "llvm.amdgcn.mfma.f32.32x32x8bf16.1k", SIMD[d.dtype, d.length]
         ](
-            bitcast[DType.int16, 4](a),
-            bitcast[DType.int16, 4](b),
+            bitcast[.int16, 4](a),
+            bitcast[.int16, 4](b),
             c,
             zero,
             zero,
@@ -232,8 +230,8 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
         d = llvm_intrinsic[
             "llvm.amdgcn.mfma.f32.16x16x32.fp8.fp8", SIMD[d.dtype, d.length]
         ](
-            bitcast[DType.int64, 1](a),
-            bitcast[DType.int64, 1](b),
+            bitcast[.int64, 1](a),
+            bitcast[.int64, 1](b),
             c,
             zero,
             zero,
@@ -257,8 +255,8 @@ def _mma_amd[block_size: Int = 1](mut d: SIMD, a: SIMD, b: SIMD, c: SIMD):
         d = llvm_intrinsic[
             "llvm.amdgcn.mfma.f32.16x16x32.bf8.bf8", SIMD[d.dtype, d.length]
         ](
-            bitcast[DType.int64, 1](a),
-            bitcast[DType.int64, 1](b),
+            bitcast[.int64, 1](a),
+            bitcast[.int64, 1](b),
             c,
             zero,
             zero,

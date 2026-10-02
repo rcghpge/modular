@@ -137,10 +137,8 @@ def matmul_dispatch_sm90[
         K_multiple_of_4B and (is_AB_bf16 or is_AB_fp32)
     )
 
-    @always_inline
-    @__parameter
-    @__copy_capture(c, a, b)
-    def _dispatch() raises -> Int:
+    @inline(.always)
+    def _dispatch() raises {var c, var a, var b, imm} -> Int:
         # General constraints for H100 matmul
         # fmt: off
         comptime if not (
@@ -637,9 +635,8 @@ def matmul_dispatch_sm90_fp8[
         ](c, a, b, ctx)
         return DISPATCH_HIT
 
-    @__parameter
-    @always_inline("nodebug")
-    def _dispatch[entry: TuningConfigSM90]() raises:
+    @inline(.nodebug)
+    def _dispatch[entry: TuningConfigSM90]() raises {imm}:
         comptime config = MatmulConfig[a_type, b_type, c_type, transpose_b](
             block_tile_shape=entry.block_tile_shape,
             mma_shape=entry.mma_shape,
@@ -658,11 +655,10 @@ def matmul_dispatch_sm90_fp8[
             grid_shape=entry.grid_shape,
         ](c, a, b, ctx)
 
-    @__parameter
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def _search[
         T: Table[TuningConfigSM90], domain: List[Int] = List[Int]()
-    ]() raises -> Int:
+    ]() raises {imm} -> Int:
         comptime m_values = T.query_values[Int, domain=domain](
             rule=lambda (x: TuningConfigSM90) -> Int: x.M
         )
@@ -988,9 +984,8 @@ def matmul_dispatch_sm90_bf16_fp32[
     comptime tuning_list = _get_tuning_list_bf16[size_factor, mma_k, BK]()
     comptime tuning_table = Table(tuning_list, "tuning_table_bf16")
 
-    @__parameter
-    @always_inline("nodebug")
-    def _dispatch[entry: TuningConfigSM90]() raises:
+    @inline(.nodebug)
+    def _dispatch[entry: TuningConfigSM90]() raises {imm}:
         comptime config = MatmulConfig[a_type, b_type, c_type, transpose_b](
             block_tile_shape=entry.block_tile_shape,
             mma_shape=entry.mma_shape,
@@ -1022,12 +1017,11 @@ def matmul_dispatch_sm90_bf16_fp32[
                 raster_order=entry.raster_order.value(),
             ](c, a, b, ctx)
 
-    @__parameter
-    @always_inline("nodebug")
+    @inline(.nodebug)
     def _search[
         T: Table[TuningConfigSM90],
         domain: List[Int] = List[Int](),
-    ]() raises -> Int:
+    ]() raises {imm} -> Int:
         comptime m_values = T.query_values[Int, domain=domain](
             rule=lambda (x: TuningConfigSM90) -> Int: x.M
         )
@@ -1048,11 +1042,11 @@ def matmul_dispatch_sm90_bf16_fp32[
 
         return DISPATCH_MISS
 
-    @always_inline
+    @inline(.always)
     def rule_eq_nk(x: TuningConfigSM90) {} -> Bool:
         return x.K == static_K and x.N == static_N
 
-    @always_inline
+    @inline(.always)
     def rule_eq_nk_group[
         group: TuningGroup
     ](x: TuningConfigSM90,) {} -> Bool:
@@ -1755,7 +1749,7 @@ def matmul_dispatch_sm90_bf16_fp32[
     # we enable float32 here.
     # Fallback path with vectorized output and cp.async.ca load if K
     # is not multiple of 16B.
-    comptime if a_type == DType.bfloat16 and BN != -1:
+    comptime if a_type == .bfloat16 and BN != -1:
         comptime cond = static_N == 4096 and static_K == 1536
 
         comptime if not cond:
@@ -1892,14 +1886,12 @@ def matmul_dispatch_sm90_bf16_fp32[
                         ](c, a, b, ctx)
                         return DISPATCH_HIT
 
-        @__parameter
         def get_k_groups[N: Int]() -> Optional[Int]:
             comptime if N == 1536:
                 return None
             else:
                 return 1
 
-        @__parameter
         def get_consumer_groups[N: Int]() -> Optional[Int]:
             comptime if N == 1536:
                 return 1
@@ -1953,7 +1945,7 @@ def matmul_dispatch_sm90_bf16_fp32[
                 return DISPATCH_HIT
 
     # Fallback path, will use scalar 2B output and lots of OOB check.
-    comptime if a_type == DType.bfloat16:
+    comptime if a_type == .bfloat16:
         comptime BN = 256
         comptime default_bf16_config = MatmulConfig[
             a_type, b_type, c_type, transpose_b

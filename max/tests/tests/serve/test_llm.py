@@ -29,6 +29,7 @@ from async_asgi_testclient import TestClient
 from fastapi import FastAPI
 from max.pipelines.context import (
     GenerationStatus,
+    LogProbabilities,
     TextContext,
     TextGenerationOutput,
 )
@@ -52,6 +53,7 @@ from max.serve.pipelines.echo_gen import EchoTokenGenerator
 from max.serve.pipelines.llm import (
     TokenGeneratorOutput,
     TokenGeneratorPipeline,
+    _merge_outputs,
 )
 from max.serve.telemetry.stopwatch import StopWatch
 
@@ -256,10 +258,12 @@ async def test_ttft_recorded_once_per_chunk() -> None:
 
     async def mock_stream(
         request_id: str, context: Any
-    ) -> AsyncGenerator[list[TextGenerationOutput], None]:
-        async def _gen() -> AsyncGenerator[list[TextGenerationOutput], None]:
+    ) -> AsyncGenerator[tuple[list[TextGenerationOutput], int | None], None]:
+        async def _gen() -> AsyncGenerator[
+            tuple[list[TextGenerationOutput], int | None], None
+        ]:
             for response in scheduler_responses:
-                yield [response]
+                yield [response], None
 
         return _gen()
 
@@ -334,15 +338,20 @@ async def _recorded_ttft_ms(timestamp_ns: int) -> float:
 
     async def mock_stream(
         request_id: str, context: Any
-    ) -> AsyncGenerator[list[TextGenerationOutput], None]:
-        async def _gen() -> AsyncGenerator[list[TextGenerationOutput], None]:
-            yield [
-                TextGenerationOutput(
-                    request_id=test_request_id,
-                    tokens=[101],
-                    final_status=GenerationStatus.END_OF_SEQUENCE,
-                )
-            ]
+    ) -> AsyncGenerator[tuple[list[TextGenerationOutput], int | None], None]:
+        async def _gen() -> AsyncGenerator[
+            tuple[list[TextGenerationOutput], int | None], None
+        ]:
+            yield (
+                [
+                    TextGenerationOutput(
+                        request_id=test_request_id,
+                        tokens=[101],
+                        final_status=GenerationStatus.END_OF_SEQUENCE,
+                    )
+                ],
+                0,
+            )
 
         return _gen()
 
@@ -372,6 +381,84 @@ async def _recorded_ttft_ms(timestamp_ns: int) -> float:
     (ttft_value,) = mock_metrics.ttft.call_args.args
     assert isinstance(ttft_value, float)
     return ttft_value
+
+
+async def _recorded_preprocess_cache_media(
+    *, images: list[bytes], videos: list[bytes]
+) -> bool:
+    """The ``carried_media`` flag ``next_token_chunk`` passes the recorder."""
+    request_id = RequestID(value="test-request")
+
+    async def mock_stream(
+        streamed_id: str, context: Any
+    ) -> AsyncGenerator[tuple[list[TextGenerationOutput], int | None], None]:
+        async def _gen() -> AsyncGenerator[
+            tuple[list[TextGenerationOutput], int | None], None
+        ]:
+            yield (
+                [
+                    TextGenerationOutput(
+                        request_id=request_id,
+                        tokens=[101],
+                        final_status=GenerationStatus.END_OF_SEQUENCE,
+                    )
+                ],
+                None,
+            )
+
+        return _gen()
+
+    mock_tokens = Mock()
+    mock_tokens.prompt_length = 10
+    mock_context = Mock(request_id=request_id, tokens=mock_tokens)
+
+    mock_request = Mock(request_id=request_id, tools=None, timestamp_ns=0)
+    mock_request.sampling_params.stop = []
+    mock_request.images = images
+    mock_request.videos = videos
+
+    pipeline = Mock()
+    pipeline.tokenizer.new_context = AsyncMock(return_value=mock_context)
+    pipeline.tokenizer.decode = AsyncMock(return_value="chunk_text")
+    pipeline.model_worker.stream = mock_stream
+    pipeline.debug_logging = False
+    pipeline._min_chunk_tokens = 1
+    pipeline._reasoning_parser = AsyncMock(return_value=None)
+    pipeline._preprocess_cache_stats = Mock()
+
+    # The seam's load-bearing invariant: the snapshot has to be read *after*
+    # tokenization, which is what moved the cache's counters. Moving the
+    # call three lines up still satisfies every value assertion below while
+    # publishing the previous request's deltas on every request, and never
+    # publishing the last request of a burst at all.
+    order = Mock()
+    order.attach_mock(pipeline.tokenizer.new_context, "new_context")
+    order.attach_mock(pipeline._preprocess_cache_stats.record, "record")
+
+    with patch("max.serve.pipelines.llm.METRICS", MagicMock()):
+        bound = TokenGeneratorPipeline.next_token_chunk.__get__(
+            pipeline, type(pipeline)
+        )
+        [chunk async for chunk in await bound(mock_request)]
+
+    assert [call[0] for call in order.mock_calls] == ["new_context", "record"]
+    pipeline._preprocess_cache_stats.record.assert_called_once()
+    return pipeline._preprocess_cache_stats.record.call_args.kwargs[
+        "carried_media"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_preprocess_cache_stats_read_for_a_media_request() -> None:
+    """The cache seam is read after tokenization, which is what moved it."""
+    assert await _recorded_preprocess_cache_media(images=[b"png"], videos=[])
+    assert await _recorded_preprocess_cache_media(images=[], videos=[b"mp4"])
+
+
+@pytest.mark.asyncio
+async def test_preprocess_cache_stats_inert_for_a_text_only_request() -> None:
+    """``new_context`` runs for every request, so the gate is explicit."""
+    assert not await _recorded_preprocess_cache_media(images=[], videos=[])
 
 
 @pytest.mark.asyncio
@@ -420,10 +507,12 @@ async def test_tpot_not_recorded_for_single_token() -> None:
 
     async def mock_stream(
         request_id: str, context: Any
-    ) -> AsyncGenerator[list[TextGenerationOutput], None]:
-        async def _gen() -> AsyncGenerator[list[TextGenerationOutput], None]:
+    ) -> AsyncGenerator[tuple[list[TextGenerationOutput], int | None], None]:
+        async def _gen() -> AsyncGenerator[
+            tuple[list[TextGenerationOutput], int | None], None
+        ]:
             for response in scheduler_responses:
-                yield [response]
+                yield [response], None
 
         return _gen()
 
@@ -465,6 +554,7 @@ async def _run_reasoning_pipeline(
     decode: Any = None,
     stop: list[str] | None = None,
     top_log_probs: AsyncMock | None = None,
+    parse_reasoning: bool = True,
 ) -> list[TokenGeneratorOutput]:
     """Build a mock TokenGeneratorPipeline with reasoning and collect all chunks."""
     from max.pipelines.architectures.kimik2_5.reasoning import (
@@ -475,10 +565,12 @@ async def _run_reasoning_pipeline(
 
     async def mock_stream(
         request_id: str, context: Any
-    ) -> AsyncGenerator[list[TextGenerationOutput], None]:
-        async def _gen() -> AsyncGenerator[list[TextGenerationOutput], None]:
+    ) -> AsyncGenerator[tuple[list[TextGenerationOutput], int | None], None]:
+        async def _gen() -> AsyncGenerator[
+            tuple[list[TextGenerationOutput], int | None], None
+        ]:
             for response in scheduler_responses:
-                yield [response]
+                yield [response], None
 
         return _gen()
 
@@ -516,7 +608,12 @@ async def _run_reasoning_pipeline(
         bound = TokenGeneratorPipeline.next_token_chunk.__get__(
             pipeline, type(pipeline)
         )
-        return [chunk async for chunk in await bound(mock_request)]
+        return [
+            chunk
+            async for chunk in await bound(
+                mock_request, parse_reasoning=parse_reasoning
+            )
+        ]
 
 
 def _make_responses(
@@ -648,6 +745,7 @@ async def test_next_token_chunk_reasoning_partitions_logprobs() -> None:
     """Test that logprobs are correctly partitioned between reasoning and content."""
     logprob_content = Mock()
     logprob_content.token_log_probabilities = [-0.4]
+    logprob_content.sampled_token_ids = [30]
 
     responses = [
         TextGenerationOutput(
@@ -669,6 +767,77 @@ async def test_next_token_chunk_reasoning_partitions_logprobs() -> None:
     assert chunks[0].reasoning_token_count == 1
     assert chunks[0].token_log_probabilities == [-0.4]
     assert chunks[0].top_log_probabilities == [{"tok": -0.5}]
+    assert chunks[0].sampled_tokens == ["text"]
+
+
+@pytest.mark.asyncio
+async def test_next_token_chunk_without_reasoning_parser_keeps_all_tokens() -> (
+    None
+):
+    """``/v1/completions`` has no reasoning field, so it opts out of the
+    parser: every generated token, delimiters and reasoning span included,
+    must come back as content with its logprob."""
+    tokens = [THINK_START_TOKEN_ID, 10, THINK_END_TOKEN_ID, 30]
+    values = [-0.1, -0.2, -0.3, -0.4]
+    log_probs = [
+        LogProbabilities(
+            token_log_probabilities=[value],
+            top_log_probabilities=[],
+            sampled_token_ids=[token],
+        )
+        for value, token in zip(values, tokens, strict=True)
+    ]
+    responses = [
+        TextGenerationOutput(
+            request_id=RequestID(value="test-request"),
+            tokens=tokens,
+            log_probabilities=log_probs,
+            final_status=GenerationStatus.END_OF_SEQUENCE,
+        ),
+    ]
+
+    chunks = await _run_reasoning_pipeline(
+        responses,
+        decode=AsyncMock(return_value="text"),
+        top_log_probs=AsyncMock(return_value=[{"tok": -0.5}]),
+        parse_reasoning=False,
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].token_count == 4
+    assert chunks[0].reasoning_token_count == 0
+    assert chunks[0].decoded_reasoning_tokens is None
+    assert chunks[0].decoded_tokens == "text"
+    assert chunks[0].token_log_probabilities == values
+    assert chunks[0].top_log_probabilities == [{"tok": -0.5}] * 4
+    assert chunks[0].token_ids == tokens
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kwargs", "expected"), [({}, True), ({"parse_reasoning": False}, False)]
+)
+async def test_all_tokens_forwards_parse_reasoning(
+    kwargs: dict[str, bool], expected: bool
+) -> None:
+    """Non-streaming ``/v1/completions`` reaches the parser switch only
+    through ``all_tokens``."""
+    chunk = TokenGeneratorOutput(
+        status=GenerationStatus.END_OF_SEQUENCE, token_count=1
+    )
+
+    async def _gen() -> AsyncGenerator[TokenGeneratorOutput, None]:
+        yield chunk
+
+    pipeline = Mock()
+    pipeline.next_token_chunk = AsyncMock(return_value=_gen())
+    request = Mock()
+    bound = TokenGeneratorPipeline.all_tokens.__get__(pipeline, type(pipeline))
+
+    assert await bound(request, **kwargs) == [chunk]
+    pipeline.next_token_chunk.assert_awaited_once_with(
+        request, parse_reasoning=expected
+    )
 
 
 @pytest.mark.asyncio
@@ -747,15 +916,20 @@ async def test_next_token_chunk_stop_sequence_sets_eos_status() -> None:
 
     async def mock_stream(
         request_id: str, context: Any
-    ) -> AsyncGenerator[list[TextGenerationOutput], None]:
-        async def _gen() -> AsyncGenerator[list[TextGenerationOutput], None]:
-            yield [
-                TextGenerationOutput(
-                    request_id=test_request_id,
-                    tokens=[10],
-                    final_status=GenerationStatus.ACTIVE,
-                )
-            ]
+    ) -> AsyncGenerator[tuple[list[TextGenerationOutput], int | None], None]:
+        async def _gen() -> AsyncGenerator[
+            tuple[list[TextGenerationOutput], int | None], None
+        ]:
+            yield (
+                [
+                    TextGenerationOutput(
+                        request_id=test_request_id,
+                        tokens=[10],
+                        final_status=GenerationStatus.ACTIVE,
+                    )
+                ],
+                None,
+            )
 
         return _gen()
 
@@ -790,3 +964,156 @@ async def test_next_token_chunk_stop_sequence_sets_eos_status() -> None:
 
     assert len(chunks) == 1
     assert chunks[0].status == GenerationStatus.END_OF_SEQUENCE
+
+
+# ============================================================================
+# Tests for token_ids / prompt_token_ids on TokenGeneratorOutput
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "token_lists",
+    [
+        pytest.param(
+            [[THINK_START_TOKEN_ID, 10, 20, THINK_END_TOKEN_ID], [30]],
+            id="reasoning_then_content",
+        ),
+        pytest.param(
+            [[THINK_START_TOKEN_ID, 10], [20, THINK_END_TOKEN_ID], [30]],
+            id="multi_chunk_reasoning",
+        ),
+    ],
+)
+async def test_token_ids_are_the_raw_generated_ids(
+    token_lists: list[list[int]],
+) -> None:
+    """``token_ids`` reports what the sampler committed, not what survived.
+
+    The reasoning parser strips delimiters out of the decoded text, but the
+    ids are the record of what the model actually generated, so the
+    delimiters must still be there -- otherwise a caller cannot replay the
+    turn or reconcile the ids against a token budget. Each emitted chunk's
+    ids are therefore the scheduler's token list for that chunk, verbatim.
+    """
+    chunks = await _run_reasoning_pipeline(_make_responses(token_lists))
+
+    assert [chunk.token_ids for chunk in chunks] == token_lists
+
+
+@pytest.mark.asyncio
+async def test_prompt_token_ids_ride_the_first_chunk_only() -> None:
+    """The prompt is a one-time report, like prompt_token_count."""
+    prompt = [99, 98, 97]
+    chunks = await _run_reasoning_pipeline(
+        _make_responses([[THINK_START_TOKEN_ID, 10, THINK_END_TOKEN_ID], [30]]),
+        prompt_tokens=prompt,
+    )
+
+    assert len(chunks) > 1
+    assert chunks[0].prompt_token_ids is not None
+    assert list(chunks[0].prompt_token_ids) == prompt
+    assert [chunk.prompt_token_ids for chunk in chunks[1:]] == [None] * (
+        len(chunks) - 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_token_ids_survive_a_fully_stripped_chunk() -> None:
+    """A chunk stripped to nothing still contributes its ids.
+
+    The parser can consume every token in a chunk as a delimiter, and that
+    chunk is never yielded -- there is no visible text to send. Its ids were
+    still generated, so they have to ride the next emitted chunk or the id
+    stream silently loses tokens.
+    """
+    chunks = await _run_reasoning_pipeline(
+        _make_responses(
+            [[THINK_START_TOKEN_ID], [10], [THINK_END_TOKEN_ID, 30]]
+        )
+    )
+
+    # The bare think-start chunk is not emitted...
+    assert len(chunks) == 2
+    # ...but its id reappears at the head of the next one.
+    assert chunks[0].token_ids == [THINK_START_TOKEN_ID, 10]
+    assert chunks[1].token_ids == [THINK_END_TOKEN_ID, 30]
+    assert [t for chunk in chunks for t in chunk.token_ids or []] == [
+        THINK_START_TOKEN_ID,
+        10,
+        THINK_END_TOKEN_ID,
+        30,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_token_ids_on_a_terminal_stripped_chunk() -> None:
+    """CENG-932's shape: the only generated token is a stripped delimiter.
+
+    With max_tokens=1 a reasoning model often spends its whole budget on the
+    think-start delimiter. That terminal chunk is the only one the route ever
+    sees, so it must carry the id rather than defer it to a chunk that never
+    comes.
+    """
+    chunks = await _run_reasoning_pipeline(
+        _make_responses([[THINK_START_TOKEN_ID]])
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].token_ids == [THINK_START_TOKEN_ID]
+
+
+def test_merge_outputs_concatenates_token_ids() -> None:
+    """``all_tokens`` folds chunks into one output; ids must concatenate.
+
+    The prompt is taken from whichever chunk carried it rather than the first
+    chunk blindly, because the first chunk of a stripped turn can be absent.
+    """
+    merged = _merge_outputs(
+        [
+            TokenGeneratorOutput(
+                status=GenerationStatus.ACTIVE,
+                decoded_tokens="a",
+                token_count=1,
+                token_ids=[11],
+                prompt_token_ids=[101, 102],
+            ),
+            TokenGeneratorOutput(
+                status=GenerationStatus.ACTIVE,
+                decoded_tokens="b",
+                token_count=1,
+                token_ids=[12, 13],
+            ),
+            TokenGeneratorOutput(
+                status=GenerationStatus.END_OF_SEQUENCE,
+                decoded_tokens="c",
+                token_count=1,
+                token_ids=[14],
+            ),
+        ]
+    )
+
+    assert merged.token_ids == [11, 12, 13, 14]
+    assert merged.prompt_token_ids is not None
+    assert list(merged.prompt_token_ids) == [101, 102]
+
+
+def test_merge_outputs_leaves_token_ids_unset_when_absent() -> None:
+    """Merging chunks that carry no ids must not invent an empty list.
+
+    ``None`` is what makes the route drop the fields from the payload, so a
+    ``[]`` here would put empty arrays on the wire for every client that
+    never asked for ids.
+    """
+    merged = _merge_outputs(
+        [
+            TokenGeneratorOutput(
+                status=GenerationStatus.END_OF_SEQUENCE,
+                decoded_tokens="a",
+                token_count=1,
+            ),
+        ]
+    )
+
+    assert merged.token_ids is None
+    assert merged.prompt_token_ids is None

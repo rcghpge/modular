@@ -13,7 +13,7 @@
 
 from std.math import ceildiv
 
-from std.gpu import global_idx
+from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from layout import Layout, LayoutTensor
 from extensibility import InputTensor, OutputTensor, StaticTensorSpec
@@ -85,7 +85,7 @@ def test_color_to_grayscale() raises:
             var rgb_tensor = InputTensor[static_spec=rgb_spec](
                 host_buffer.unsafe_ptr(),
                 IndexList[3](HEIGHT, WIDTH, NUM_CHANNELS),
-            ).to_layout_tensor()
+            ).to_tile_tensor()
             # Fill the image with initial colors.
             for row in range(HEIGHT):
                 for col in range(WIDTH):

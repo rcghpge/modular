@@ -14,7 +14,7 @@
 # Meant to be run on an AVX512 system
 
 from std.math import align_up
-from std.memory import dealloc
+from std.memory import Layout as AllocLayout, dealloc
 from std.sys import align_of, simd_width_of
 
 import std.benchmark
@@ -31,8 +31,8 @@ comptime alignment = align_of[SIMD[dtype, simd_size]]()
 def gemm_naive[
     layout_b: Layout, origin: Origin
 ](
-    c: TileTensor[mut=True, dtype=dtype, ...],  # M x N
-    a: TileTensor[dtype=dtype, ...],  # M x K
+    c: TileTensor[mut=True, dtype, ...],  # M x N
+    a: TileTensor[dtype, ...],  # M x K
     b: LayoutTensor[dtype, layout_b, MutAnyOrigin],  # N x K
 ):
     var M = Int(c.dim[0]())
@@ -110,8 +110,8 @@ def gemm[
     K: Int,
     layout_b: Layout,
 ](
-    c: TileTensor[mut=True, dtype=dtype, ...],  # M x N
-    a: TileTensor[dtype=dtype, ...],  # M x K
+    c: TileTensor[mut=True, dtype, ...],  # M x N
+    a: TileTensor[dtype, ...],  # M x K
     b_packed: LayoutTensor[layout_b, dtype],  # (N // NR) x (K * NR)
 ):
     var M = Int(c.dim[0]())
@@ -134,9 +134,9 @@ def gemm[
 # kgen --emit=asm max/kernels/benchmarks/demos/SimpleFastGEMM/gemm_layout.mojo >out.S
 @export
 def gemm_export_dynamic(
-    a_ptr: UnsafePointer[Scalar[dtype], _],
-    b_packed_ptr: UnsafePointer[Scalar[dtype], _],
-    c_ptr: UnsafePointer[mut=True, Scalar[dtype], _],
+    a_ptr: ImmPointer[Scalar[dtype], _],
+    b_packed_ptr: ImmPointer[Scalar[dtype], _],
+    c_ptr: MutPointer[Scalar[dtype], _],
     M: Int,
 ) abi("C"):
     comptime N = 1024
@@ -168,13 +168,21 @@ def main():
     print(K)
 
     # FIXME: Something causes sporadic crashes on intel with TensorBuilder.Build()
-    var a_alloc = alloc[Float32].aligned[alignment](count=M * K).into_managed()
-    var b_alloc = alloc[Float32].aligned[alignment](count=K * N).into_managed()
-    var b_packed_alloc = (
-        alloc[Float32].aligned[alignment](count=K * N).into_managed()
-    )
-    var c_alloc = alloc[Float32].aligned[alignment](count=M * N).into_managed()
-    var c2_alloc = alloc[Float32].aligned[alignment](count=M * N).into_managed()
+    var a_alloc = alloc(
+        AllocLayout[Float32, alignment=.of_bytes[alignment]()](count=M * K)
+    ).into_managed()
+    var b_alloc = alloc(
+        AllocLayout[Float32, alignment=.of_bytes[alignment]()](count=K * N)
+    ).into_managed()
+    var b_packed_alloc = alloc(
+        AllocLayout[Float32, alignment=.of_bytes[alignment]()](count=K * N)
+    ).into_managed()
+    var c_alloc = alloc(
+        AllocLayout[Float32, alignment=.of_bytes[alignment]()](count=M * N)
+    ).into_managed()
+    var c2_alloc = alloc(
+        AllocLayout[Float32, alignment=.of_bytes[alignment]()](count=M * N)
+    ).into_managed()
 
     var a = TileTensor(a_alloc.unsafe_ptr(), row_major[M, K]())
 

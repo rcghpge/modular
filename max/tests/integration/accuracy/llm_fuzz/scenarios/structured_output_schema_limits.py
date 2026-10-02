@@ -21,7 +21,7 @@ a failure), this groups probes by feature class and reports a per-feature
 breakdown, so a failure pinpoints the exact construct. It also encodes the
 honest-rejection contract for constructs no grammar can enforce (see
 ``array_unique_unenforceable`` below, where a 400 is the PASS, not a failure).
-The classes target the known fail-open gaps of the default llguidance JSON path
+The classes target schema features that are easy to under-enforce
 (``$ref``/``$defs``, ``anyOf``, ``type``-lists) plus the constraints a complete
 compiler must hold (``pattern``, numeric bounds, array cardinality, nested
 ``additionalProperties``, ``uniqueItems``). Each feature sends several
@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any
 from jsonschema import Draft7Validator
 
 from scenarios import BaseScenario, ScenarioResult, Verdict, register_scenario
+from scenarios._constrained_stream import enforcement_overrun
 
 if TYPE_CHECKING:
     from client import FuzzClient, RunConfig
@@ -180,7 +181,7 @@ CASES: list[tuple[str, dict[str, Any], list[str]]] = [
     (
         # `uniqueItems` on an unbounded-domain array is a cross-element global
         # constraint no regular/CFG grammar can express, so no constrained-
-        # decoding backend (llguidance, xgrammar) can enforce it. The honest
+        # decoding backend can enforce it. The honest
         # contract is to reject the request up front with a 400 naming the
         # construct (the orchestrator schema gate), not best-effort a 200 that
         # violates the schema: a clean 400 is the PASS, a 200 is the FAIL.
@@ -342,12 +343,19 @@ class StructuredOutputSchemaLimits(BaseScenario):
                     try:
                         parsed = json.loads(content)
                     except (json.JSONDecodeError, TypeError):
-                        if truncated_resp:
+                        # "Extra data" here means the grammar stopped, not
+                        # that the budget ran out.
+                        overrun = enforcement_overrun(content or "")
+                        if truncated_resp and not overrun:
                             truncated += 1
                         else:
                             nonjson += 1
                             if len(examples) < 3:
-                                examples.append(f"NON-JSON: {content[:60]!r}")
+                                examples.append(
+                                    f"OVERRUN: {overrun}"
+                                    if overrun
+                                    else f"NON-JSON: {content[:60]!r}"
+                                )
                         continue
                     valid += 1
                     viol = _schema_violations(parsed, schema)

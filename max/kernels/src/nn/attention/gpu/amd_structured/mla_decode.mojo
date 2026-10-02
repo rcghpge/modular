@@ -41,8 +41,8 @@ re-converged behind a shared helper.
 from std.sys import get_defined_bool
 from std.math import align_up, ceildiv
 from std.math.uutils import umod, ufloordiv
-from std.gpu import block_idx
-from std.gpu import warp_id as get_warp_id
+from max.gpu import block_idx
+from max.gpu import warp_id as get_warp_id
 from max.gpu.sync import s_waitcnt
 from std.utils.numerics import get_accum_type, min_or_neg_inf
 
@@ -57,7 +57,7 @@ from .kv_buffer import KVBuffer, _get_k_swizzle
 
 
 __extension Attention:
-    @always_inline
+    @inline(.always)
     def mla_decode(
         mut self,
         exp_sum_ptr: UnsafePointer[
@@ -240,7 +240,7 @@ __extension Attention:
             transpose_b=True,
         ]
 
-        @always_inline
+        @inline(.always)
         @__parameter
         def mma_qk():
             self.zero_p_buffer[0]()
@@ -258,7 +258,7 @@ __extension Attention:
                         self.p_reg_buffer.stage_tile[0](),
                     )
 
-        @always_inline
+        @inline(.always)
         @__parameter
         def mma_pv():
             # Each warp's v_buffer holds only depth_per_warp tiles
@@ -280,7 +280,7 @@ __extension Attention:
             Self.mask_t.check_mask_during_decoding
         )
 
-        @always_inline
+        @inline(.always)
         @__parameter
         def prefetch_next():
             """Prefetch next K after current LDS reads have drained.
@@ -293,7 +293,7 @@ __extension Attention:
             barrier()
             _ = k_buffer.load_from_dram[0]()
 
-        @always_inline
+        @inline(.always)
         @__parameter
         def process_tile[has_next: Bool]():
             """Process one KV tile.
@@ -376,8 +376,8 @@ __extension Attention:
         if num_tiles > 0:
             process_tile[False]()
 
-        self.out_reg_buffer.apply_softmax_denominator(
-            self.softmax.rowsum_tensor
-        )
+        self.out_reg_buffer.apply_softmax_denominator[
+            p_scale_log2=type_of(self.p_reg_buffer).p_scale_log2
+        ](self.softmax.rowsum_tensor)
         self.store_partition_info(num_partitions, exp_sum_ptr, qk_max_ptr)
         self.store_output()

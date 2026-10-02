@@ -37,6 +37,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
+from max import tree
 from max.driver import Accelerator, Buffer, accelerator_api, accelerator_count
 from max.dtype import DType
 from max.engine import InferenceSession
@@ -66,9 +67,8 @@ from max.nn.quant_config import (
     WeightScaleSpec,
 )
 from max.nn.quant_ops import quantized_fused_qkv_index_matmul
-from max.pipelines.kv_cache import PagedKVCacheManager
-from test_common.context_utils import create_text_context
 from test_common.graph_utils import is_b100_b200
+from test_common.simple_kv_cache import paged_kv_cache_inputs
 
 
 def _skip_if_not_supported() -> None:
@@ -131,42 +131,17 @@ def _cosine_and_rel_l2(out: np.ndarray, ref: np.ndarray) -> tuple[float, float]:
 
 
 def _make_cache(
-    kv_params: KVCacheParams,
-    session: InferenceSession,
-    seq_len: int,
+    kv_params: KVCacheParams, seq_len: int
 ) -> KVCacheInputsPerDevice[Buffer, Buffer]:
     """Allocate a single request's KV cache and return its runtime inputs."""
-    manager = PagedKVCacheManager(
-        params=kv_params,
-        total_num_pages=8,
-        session=session,
-        max_batch_size=8,
-    )
-    context = create_text_context(np.empty(seq_len))
-    manager.claim(context)
-    manager.alloc(context)
-    return manager.runtime_inputs_for_leaf([[context]]).inputs[0]
+    return paged_kv_cache_inputs(kv_params, [seq_len], total_num_pages=8)
 
 
 def _make_cache_batch(
-    kv_params: KVCacheParams,
-    session: InferenceSession,
-    prompt_lens: list[int],
+    kv_params: KVCacheParams, prompt_lens: list[int]
 ) -> KVCacheInputsPerDevice[Buffer, Buffer]:
     """Allocate one request per prompt length and return the runtime inputs."""
-    manager = PagedKVCacheManager(
-        params=kv_params,
-        total_num_pages=32,
-        session=session,
-        max_batch_size=8,
-    )
-    contexts = []
-    for n in prompt_lens:
-        context = create_text_context(np.empty(n))
-        manager.claim(context)
-        manager.alloc(context)
-        contexts.append(context)
-    return manager.runtime_inputs_for_leaf([contexts]).inputs[0]
+    return paged_kv_cache_inputs(kv_params, prompt_lens, total_num_pages=32)
 
 
 def _build_qkv_value(
@@ -232,7 +207,7 @@ def _run_path(
     """Build, run one QKV path; return (Q output, KV cache blocks)."""
     hidden = a_np.shape[1]
     qkv_dim = wqkv_np.shape[0]
-    kv_symbolic = kv_params.get_symbolic_inputs().inputs[0]
+    kv_symbolic = kv_params.get_symbolic_inputs()[0]
 
     with Graph(
         f"qkv_{'mxfp8' if is_mxfp8 else 'bf16'}",
@@ -244,28 +219,12 @@ def _run_path(
             TensorType(
                 DType.bfloat16, shape=(qkv_dim, hidden), device=device_ref
             ),
-            *kv_symbolic.flatten(),
+            *tree.leaves(kv_symbolic),
         ],
     ) as graph:
         layer_idx = ops.constant(0, DType.uint32, DeviceRef.CPU())
-        (
-            a,
-            input_row_offsets,
-            wqkv,
-            blocks,
-            cache_lengths,
-            lookup_table,
-            max_prompt_length,
-            max_cache_length,
-            *_rest,
-        ) = graph.inputs
-        kv_collection = PagedCacheValues(
-            blocks.buffer,
-            cache_lengths.tensor,
-            lookup_table.tensor,
-            max_prompt_length.tensor,
-            max_cache_length.tensor,
-        )
+        a, input_row_offsets, wqkv, *kv_inputs = graph.inputs
+        kv_collection = kv_params.unflatten_kv_inputs(iter(kv_inputs))[0]
         q_out = _build_qkv_value(
             is_mxfp8=is_mxfp8,
             a=a.tensor,
@@ -279,7 +238,7 @@ def _run_path(
         graph.output(q_out)
 
     model = session.load(graph)
-    kv_runtime = _make_cache(kv_params, session, seq_len)
+    kv_runtime = _make_cache(kv_params, seq_len)
 
     a_buf = Buffer.from_dlpack(torch.from_numpy(a_np).to(torch.bfloat16)).to(
         device
@@ -292,7 +251,10 @@ def _run_path(
     ).to(device)
 
     (out_buf,) = model.execute(
-        a_buf, row_offsets_buf, wqkv_buf, *kv_runtime.flatten()
+        a_buf,
+        row_offsets_buf,
+        wqkv_buf,
+        *tree.leaves(kv_runtime),
     )
     q_out_np = torch.from_dlpack(out_buf).to(torch.float32).cpu().numpy()
     # The cache is bf16, which numpy can't represent, so read it through torch.
@@ -483,9 +445,9 @@ def test_fused_qkv_index_mxfp8_matmul_fp8_main_cache() -> None:
             num_q_heads=num_index_heads,
         )
 
-        main_sym = main_params.get_symbolic_inputs().inputs[0]
-        index_sym = index_params.get_symbolic_inputs().inputs[0]
-        n_main = len(main_sym.flatten())
+        main_sym = main_params.get_symbolic_inputs()[0]
+        index_sym = index_params.get_symbolic_inputs()[0]
+        n_main = len(tree.leaves(main_sym))
 
         with Graph(
             f"qkv_index_mxfp8_{main_dtype}_main_cache",
@@ -497,8 +459,8 @@ def test_fused_qkv_index_mxfp8_matmul_fp8_main_cache() -> None:
                 TensorType(
                     DType.bfloat16, (n_total, hidden), device=device_ref
                 ),
-                *main_sym.flatten(),
-                *index_sym.flatten(),
+                *tree.leaves(main_sym),
+                *tree.leaves(index_sym),
             ],
         ) as graph:
             a, iro, wqkv, *rest = graph.inputs
@@ -516,20 +478,8 @@ def test_fused_qkv_index_mxfp8_matmul_fp8_main_cache() -> None:
                 scales_type=DType.float8_e8m0fnu,
                 out_type=DType.float8_e4m3fn,
             )
-            main_kv = PagedCacheValues(
-                main_in[0].buffer,
-                main_in[1].tensor,
-                main_in[2].tensor,
-                main_in[3].tensor,
-                main_in[4].tensor,
-            )
-            index_kv = PagedCacheValues(
-                index_in[0].buffer,
-                index_in[1].tensor,
-                index_in[2].tensor,
-                index_in[3].tensor,
-                index_in[4].tensor,
-            )
+            main_kv = main_params.unflatten_kv_inputs(iter(main_in))[0]
+            index_kv = index_params.unflatten_kv_inputs(iter(index_in))[0]
             q, index_q = _fused_qkv_index_ragged_matmul_scaled_mxfp8(
                 main_params,
                 index_params,
@@ -548,8 +498,8 @@ def test_fused_qkv_index_mxfp8_matmul_fp8_main_cache() -> None:
             graph.output(q, index_q)
 
         model = session.load(graph)
-        main_rt = _make_cache(main_params, session, seq_len)
-        index_rt = _make_cache(index_params, session, seq_len)
+        main_rt = _make_cache(main_params, seq_len)
+        index_rt = _make_cache(index_params, seq_len)
 
         a_buf = Buffer.from_dlpack(
             torch.from_numpy(a_np).to(torch.bfloat16)
@@ -562,7 +512,11 @@ def test_fused_qkv_index_mxfp8_matmul_fp8_main_cache() -> None:
         ).to(device)
 
         q_buf, iq_buf = model.execute(
-            a_buf, iro_buf, wqkv_buf, *main_rt.flatten(), *index_rt.flatten()
+            a_buf,
+            iro_buf,
+            wqkv_buf,
+            *tree.leaves(main_rt),
+            *tree.leaves(index_rt),
         )
         q_np = torch.from_dlpack(q_buf).to(torch.float32).cpu().numpy()
         iq_np = torch.from_dlpack(iq_buf).to(torch.float32).cpu().numpy()
@@ -659,9 +613,9 @@ def test_fused_qkv_index_mxfp8_matmul_amd_stacked(
         `pre` is the `(fp8, e8m0)` pair a producer epilogue would hand the op:
         "same" is what the op would compute itself, "foreign" unrelated rows.
         """
-        main_sym = main_params.get_symbolic_inputs().inputs[0]
-        index_sym = index_params.get_symbolic_inputs().inputs[0]
-        n_main = len(main_sym.flatten())
+        main_sym = main_params.get_symbolic_inputs()[0]
+        index_sym = index_params.get_symbolic_inputs()[0]
+        n_main = len(tree.leaves(main_sym))
 
         name = "stacked" if stacked else "separate"
         if pre is not None:
@@ -680,27 +634,15 @@ def test_fused_qkv_index_mxfp8_matmul_amd_stacked(
                 TensorType(
                     DType.bfloat16, (n_total, hidden), device=device_ref
                 ),
-                *main_sym.flatten(),
-                *index_sym.flatten(),
+                *tree.leaves(main_sym),
+                *tree.leaves(index_sym),
             ],
         ) as graph:
             a, iro, wqkv, *rest = graph.inputs
             main_in, index_in = rest[:n_main], rest[n_main:]
             layer_idx = ops.constant(0, DType.uint32, DeviceRef.CPU())
-            main_kv = PagedCacheValues(
-                main_in[0].buffer,
-                main_in[1].tensor,
-                main_in[2].tensor,
-                main_in[3].tensor,
-                main_in[4].tensor,
-            )
-            index_kv = PagedCacheValues(
-                index_in[0].buffer,
-                index_in[1].tensor,
-                index_in[2].tensor,
-                index_in[3].tensor,
-                index_in[4].tensor,
-            )
+            main_kv = main_params.unflatten_kv_inputs(iter(main_in))[0]
+            index_kv = index_params.unflatten_kv_inputs(iter(index_in))[0]
             # On AMD this returns rank-2 [N, K // 32] E8M0 scales -- the
             # checkpoint layout, which the CDNA4 matmul consumes uninterleaved.
             w_q, w_scales = quantize_dynamic_block_scaled(
@@ -782,8 +724,8 @@ def test_fused_qkv_index_mxfp8_matmul_amd_stacked(
             graph.output(q, index_q)
 
         model = session.load(graph)
-        main_rt = _make_cache_batch(main_params, session, prompt_lens)
-        index_rt = _make_cache_batch(index_params, session, prompt_lens)
+        main_rt = _make_cache_batch(main_params, prompt_lens)
+        index_rt = _make_cache_batch(index_params, prompt_lens)
 
         a_buf = Buffer.from_dlpack(
             torch.from_numpy(a_np).to(torch.bfloat16)
@@ -796,7 +738,11 @@ def test_fused_qkv_index_mxfp8_matmul_amd_stacked(
         ).to(device)
 
         q_buf, iq_buf = model.execute(
-            a_buf, iro_buf, wqkv_buf, *main_rt.flatten(), *index_rt.flatten()
+            a_buf,
+            iro_buf,
+            wqkv_buf,
+            *tree.leaves(main_rt),
+            *tree.leaves(index_rt),
         )
 
         # The caches are bf16, which numpy can't represent, so read through torch.
