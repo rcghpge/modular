@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Kernels/WeightsRegistry.h"
+#include "Kernels/mcl/WeightsRegistry.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/bit.h"

@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "max/c/weights.h"
-#include "Kernels/WeightsRegistry.h"
+#include "Kernels/mcl/WeightsRegistry.h"
 #include "Support/ErrorOr.h"
 #include "max/API/c/detail/helpers.h"
 #include "max/API/c/detail/types.h"

@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Kernels/Tracing.h"
+#include "Kernels/mcl/Tracing.h"
 #include "llvm/ADT/StringRef.h"
 
 using namespace M;

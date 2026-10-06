@@ -10,7 +10,7 @@
 #include "GraphCompiler/Driver/Device/DeviceExecution.h"
 #include "GraphCompiler/Support/Telemetry.h"
 #include "Init/DevelopmentSignalHandler.h"
-#include "Kernels/WeightsRegistry.h"
+#include "Kernels/mcl/WeightsRegistry.h"
 #include "Support/Filesystem/Paths.h"
 #include "Support/Profiling/Ranges.h"
 #include "Support/mcl/Tracy/Tracy.h"
