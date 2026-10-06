@@ -905,7 +905,7 @@ struct DeviceContext(
             block_dim, location=call_location()
         )
         var gpu_kernel = self.compile_function[func](
-            func_attribute=self._infer_func_attribute(
+            func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             )
         )
@@ -1001,7 +1001,7 @@ struct DeviceContext(
             block_dim, location=call_location()
         )
         var gpu_kernel = self.compile_function[func](
-            func_attribute=self._infer_func_attribute(
+            func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             )
         )
@@ -1102,7 +1102,7 @@ struct DeviceContext(
             block_dim, location=call_location()
         )
         var gpu_kernel = self.compile_function[func](
-            func_attribute=self._infer_func_attribute(
+            func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             )
         )
@@ -1208,7 +1208,7 @@ struct DeviceContext(
             block_dim, location=call_location()
         )
         var gpu_kernel = self.compile_function[func](
-            func_attribute=self._infer_func_attribute(
+            func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             )
         )
@@ -1319,7 +1319,7 @@ struct DeviceContext(
             block_dim, location=call_location()
         )
         var gpu_kernel = self.compile_function[func](
-            func_attribute=self._infer_func_attribute(
+            func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             )
         )
@@ -1404,7 +1404,7 @@ struct DeviceContext(
         )
         var gpu_kernel = DeviceFunction[func, declared_arg_types](
             self,
-            func_attribute=self._infer_func_attribute(
+            func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             ),
         )
@@ -1471,7 +1471,7 @@ struct DeviceContext(
             FuncType.__call__, TypeList.of[Trait=AnyType]()
         ](
             self,
-            func_attribute=self._infer_func_attribute(
+            func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             ),
         )
@@ -2083,87 +2083,22 @@ struct DeviceContext(
         return String(self._driver[].get_name()).lower()
 
     @inline(.always)
-    def _infer_func_attribute(
+    def _func_attribute_for_launch(
         self,
         func_attribute: OptionalReg[FuncAttribute],
         shared_mem_bytes: OptionalReg[Int],
     ) -> OptionalReg[FuncAttribute]:
-        """Resolves the function attribute a kernel launch should compile with.
+        """Returns the function attribute to compile a launch with.
 
-        An explicit `func_attribute` always wins. Otherwise a `shared_mem_bytes`
-        request past the default dynamic shared-memory limit infers an attribute
-        that raises the cap, so the kernel is not launched against a limit it
-        cannot fit in.
-
-        Args:
-            func_attribute: The attribute the caller passed, if any.
-            shared_mem_bytes: The requested per-block dynamic shared memory.
-
-        Returns:
-            The attribute to compile the kernel with, if any.
+        CUDA's default cap is 48KB minus the kernel's static shared memory, so
+        the cap is set for every request, not only past a threshold.
         """
-        if func_attribute or not shared_mem_bytes:
+        var requested_bytes = shared_mem_bytes.or_else(0)
+        if func_attribute or requested_bytes <= 0:
             return func_attribute
-        var max_shared = self._get_max_dynamic_shared_memory_bytes(
-            shared_mem_bytes.value()
+        return FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
+            UInt32(requested_bytes)
         )
-        if max_shared > 0:
-            return FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(max_shared)
-        return func_attribute
-
-    def _get_max_dynamic_shared_memory_bytes(
-        self, requested_bytes: Int
-    ) -> UInt32:
-        """Gets the maximum dynamic shared memory bytes for this device.
-
-        For NVIDIA GPUs, dynamic shared memory defaults to 48KB max. For larger
-        allocations, we set MAX_DYNAMIC_SHARED_SIZE_BYTES to the minimum of:
-        - The device's maximum opt-in shared memory per block
-        - The requested size rounded up to nearest 1KB boundary
-
-        For smaller allocations (<= 48KB), we return 0 to skip setting the
-        attribute (avoiding unnecessary API calls and potential errors).
-
-        For AMD GPUs, the MAX_SHARED_MEMORY_PER_BLOCK_OPTIN attribute doesn't
-        exist, so we return 0 (no automatic inference) and rely on explicit
-        func_attribute settings when needed.
-
-        Args:
-            requested_bytes: The amount of shared memory requested by the kernel.
-
-        Returns:
-            Maximum dynamic shared memory bytes to set, or 0 if not needed.
-        """
-        # NVIDIA GPUs have a 48KB default limit for dynamic shared memory
-        comptime NVIDIA_DEFAULT_DYNAMIC_SHARED_LIMIT = 48 * 1024
-
-        # Only set the attribute if we need more than the default limit
-        if requested_bytes <= NVIDIA_DEFAULT_DYNAMIC_SHARED_LIMIT:
-            return 0
-
-        # Try to query the maximum opt-in shared memory limit from the device.
-        # This attribute is NVIDIA-specific (via cudaFuncSetAttribute) and may
-        # not be available on AMD GPUs or other vendors.
-        try:
-            var capacity = self.get_attribute(
-                DeviceAttribute.MAX_SHARED_MEMORY_PER_BLOCK_OPTIN
-            )
-
-            # Sanity check: capacity should be reasonable (at least 48KB)
-            if capacity < NVIDIA_DEFAULT_DYNAMIC_SHARED_LIMIT:
-                # If the opt-in capacity is less than the default, something is wrong.
-                # Fall back to not setting the attribute.
-                return 0
-
-            # Round requested_bytes up to nearest 1KB and use the minimum of
-            # that and the device capacity minus 1KB system reservation
-            var rounded_request = ((requested_bytes + 1023) // 1024) * 1024
-            return UInt32(min(rounded_request, capacity - 1024))
-        except:
-            # Attribute not available (e.g., on AMD GPUs). Return 0 to skip
-            # automatic inference. Code that needs >48KB on AMD should explicitly
-            # set func_attribute.
-            return 0
 
     def enqueue_copy_no_cross_stream_sync[
         dtype: DType
@@ -2757,10 +2692,13 @@ struct DeviceFunction[
                 func_attribute.value().attribute
                 == Attribute.MAX_DYNAMIC_SHARED_SIZE_BYTES
             ):
-                attr_code = OptionalReg[Int32](
-                    func_attribute.value().attribute.code
-                )
-                attr_value = Int32(func_attribute.value().value)
+                # Metal and HIP have no per-function cap; their plugins
+                # reject it.
+                if ctx.api() == "cuda":
+                    attr_code = OptionalReg[Int32](
+                        func_attribute.value().attribute.code
+                    )
+                    attr_value = Int32(func_attribute.value().value)
             else:
                 raise Error(
                     "the function attribute '",
