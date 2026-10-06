@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Target/mcl/lib/Support/StandardStatus.h"
-#include "Target/mcl/lib/Support/Utils.h"
+#include "Target/lib/mcl/Support/StandardStatus.h"
+#include "Target/lib/mcl/Support/Utils.h"
 
 #include "HAL/M_driver_common.h"
 #include "llvm/ADT/StringRef.h"

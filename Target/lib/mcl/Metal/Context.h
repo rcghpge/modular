@@ -10,7 +10,7 @@
 #include "Device.h"
 #include "Driver.h"
 #include "MetalCpp.h"
-#include "Target/mcl/lib/Metal/Common.h"
+#include "Target/lib/mcl/Metal/Common.h"
 
 #include <map>
 #include <mutex>

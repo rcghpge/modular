@@ -11,7 +11,7 @@
 #ifndef TARGET_LIB_CUDA_NVML_H
 #define TARGET_LIB_CUDA_NVML_H
 
-#include "Target/mcl/lib/CUDA/Error.h"
+#include "Target/lib/mcl/CUDA/Error.h"
 
 #include <nvml.h>
 

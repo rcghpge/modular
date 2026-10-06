@@ -45,7 +45,7 @@ def CUDA(stream: DeviceStream) raises -> CUstream:
 
     The HAL queue reports its backend stream through the `"native_handle"`
     property, which the CUDA plugin answers with the raw `CUstream`
-    (`Target/mcl/lib/CUDA/M_driver_queue.cpp`).
+    (`Target/lib/mcl/CUDA/M_driver_queue.cpp`).
 
     Args:
         stream: The HAL-backed stream to read the native handle from.

@@ -10,7 +10,7 @@
 #include "Error.h"
 #include "Loader/CUDALoader.h"
 #include "Loader/NVML.h"
-#include "Target/mcl/lib/Support/Utils.h"
+#include "Target/lib/mcl/Support/Utils.h"
 
 using M::Target::CustomStatus;
 using M::Target::CUDA::CUDALoader;

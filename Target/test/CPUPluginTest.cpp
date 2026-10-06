@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../mcl/lib/CPU/Common.h"
+#include "../lib/mcl/CPU/Common.h"
 #include "Fixture.h"
 #include "HAL/M_driver_api.h"
 
