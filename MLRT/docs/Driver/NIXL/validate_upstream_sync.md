@@ -45,36 +45,32 @@ What each subtree covers:
   (`TransferTests`). This is the most exercise of UCX-backed
   read/write/notif.
 
-## Disaggregated inference quick-tests
+## Disaggregated inference benchmarks
 
-Trigger the
-[`benchmarkMammoth`](../../../../.github/workflows/benchmarkMammoth.yaml)
-workflow with the three `quick-test-*` combos below. Each runs at `mc=1,2` and
-takes about 30 minutes, so a full sweep is ~90 minutes of wall-clock if you fan
-them out in parallel. These exercise the full MAX Serve stack end-to-end and are
-the most reliable signal that an upstream NIXL bump didn't break disaggregated
-inference.
+The shared-pool tests run the `nixl-validation-1p1d-b200` and
+`nixl-validation-1p1d-mi355` jobs of
+[`benchmarkMammothNightly`](../../../../.github/workflows/benchmarkMammothNightly.yaml);
+the nightly decides which jobs carry those ids. Today they are the P0 model's
+1p1d benchmark, with the nightly's concurrency sweep. Each takes about an hour,
+exercises the full MAX Serve stack end to end, and is the most reliable signal
+that an upstream NIXL bump didn't break disaggregated inference.
 
-| Cluster config                                         | Benchmark config                               | Runtime |
-|--------------------------------------------------------|------------------------------------------------|---------|
-| `1p1d_tp_prefill_dp_decode_kimi_k27_nvfp4_b200_aws`    | `quick-test-synthetic75k300-kimi-k27-nvfp4`    | ~30 min |
-| `1p1d_tp_prefill_dp_decode_kimi_k27_nvfp4_b200_aws`    | `quick-test-multiturn-kimi-k27-nvfp4`          | ~30 min |
-| `1p1d_dp_prefill_dp_decode_deepseekv31_nvfp4_b200_aws` | `quick-test-synthetic75k300-deepseekv31-nvfp4` | ~30 min |
-
-Trigger from the GitHub UI ("Run workflow" on `benchmarkMammoth`), or
-via `gh`. Use `--ref main` to test against `main`, or `--ref <branch>` for a
-feature branch — both auto-build the MAX Serve image from the target ref:
+To run one alone, copy `cluster_config` and `benchmark_config` from its job
+and trigger
+[`benchmarkMammoth`](../../../../.github/workflows/benchmarkMammoth.yaml).
+Use `--ref main` to test against `main`, or `--ref <branch>` for a feature
+branch; both auto-build the MAX Serve image from the target ref:
 
 ```bash
 gh workflow run benchmarkMammoth.yaml \
   --repo modularml/modular \
   --ref <branch-or-main> \
-  -f cluster_config=1p1d_tp_prefill_dp_decode_kimi_k27_nvfp4_b200_aws \
-  -f benchmark_config=quick-test-synthetic75k300-kimi-k27-nvfp4
+  -f cluster_config=<the job's cluster_config> \
+  -f benchmark_config=<the job's benchmark_config>
 ```
 
 To run the full validation (correctness gate, which also dispatches the
-shared-pool tests — EFA KV smoke + all three quick-test combos — as an
+shared-pool tests — KV smoke + the nixl-validation benchmarks — as an
 informational companion run):
 
 ```bash
@@ -84,14 +80,13 @@ gh workflow run validateNIXLSync.yaml \
 ```
 
 Pass `-f run_shared_pool_tests=false` to validate correctness only
-without consuming the shared B200 pod pool, or dispatch
-`nixlSharedPoolTests.yaml` directly (it takes a `docker_image` input)
-to run only the pod-pool tests.
+without consuming the shared pod pools, or dispatch
+`nixlSharedPoolTests.yaml` directly (it takes `docker_image` and
+`amd_docker_image` inputs) to run only the pod-pool tests.
 
-Nightly CI runs the corresponding `synthetic-75k300-*` and
-`multiturn-*` variants (without the `quick-test-` prefix) for deeper
-coverage. If a `quick-test-*` is green but the diff is risky, also
-trigger the matching full-size variant.
+Nightly CI runs the P0 model's other configs (multi-turn, aggregated) for deeper
+coverage. If the nixl-validation runs are green but the diff is risky, also
+trigger those.
 
 ## Local manual DI smoke
 
@@ -144,8 +139,8 @@ Subscribe to
 [`#mammoth-benchmark-notifications`](https://modular-ai.slack.com/archives/C0B2GH9BL01)
 to get the daily nightly CI feed (aggregated + disaggregated, with diagnosis
 results). After an upstream sync lands, watch this channel for a few days —
-regressions that the `quick-test-*` combos miss often show up in the larger
-nightly variants or as accumulated flakiness.
+regressions that the nixl-validation runs miss often show up in the other
+nightly configs or as accumulated flakiness.
 
 ## Coverage gaps to track
 

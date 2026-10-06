@@ -1,0 +1,56 @@
+load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library")
+
+package(default_visibility = ["//max:consumers"])
+
+modular_cc_library(
+    name = "MOFDriver",
+    srcs = glob(["lib/MOF/Driver/**/*.cpp"]),
+    hdrs = [
+        "include/max/MOF/InitAllDialects.h",
+    ] + glob(["include/max/MOF/Driver/**/*.h"]),
+    deps = [
+        "//GraphCompiler",
+        "//Support:Base",
+        "//Support:Buffer",
+        "//max:CAPI.headers",
+    ],
+)
+
+modular_shared_library(
+    name = "max",
+    srcs = glob(
+        [
+            "lib/API/c/**/*.cpp",
+            "lib/MOF/API/**/*.cpp",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "include/max/API/**/*.h",
+            "include/max/MOF/API/**/*.h",
+        ],
+    ),
+    visibility = [
+        "//mach:__subpackages__",
+        "//max:consumers",
+    ],
+    deps = [
+        ":MOFDriver",
+        # Profiler host glue: attaches the dlopen loader for
+        # libMAXProfilerPlugin.so to this DSO's //Support:ProfilingRanges copy, so
+        # MLRT's activatePendingTrace() (device init) and AsyncRT's thread
+        # registration inside libmax reach the profiler.
+        "//Support:ProfilerHostGlue",
+        "//GraphCompiler:FrameworkFrontend",
+        "//GraphCompiler:MEFModel",
+        "//GraphCompiler:SafeTensor",
+        "//Init",
+        "//Kernels:WeightsRegistry",
+        "//Support:Context",
+        "//Support:Globals",
+        "//Support:SpanGuard",
+        "//max:CAPI.headers",
+        "@llvm-project//mlir:MLIRBindingsPythonCAPIObjects",
+        "@nixl_upstream//:nixl_runtime",
+    ],
+)

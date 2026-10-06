@@ -15,8 +15,8 @@ from std.testing import assert_equal
 
 
 def vec_add(
-    a: Pointer[Float32, MutAnyOrigin],
-    b: Pointer[Float32, MutAnyOrigin],
+    a: Pointer[Float32, ImmutAnyOrigin],
+    b: Pointer[Float32, ImmutAnyOrigin],
     result: Pointer[Float32, MutAnyOrigin],
     n: Int,
 ):

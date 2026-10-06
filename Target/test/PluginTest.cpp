@@ -140,6 +140,7 @@ TEST_F(DriverPluginTest, DeviceContext) {
   int64_t deviceCount = 0;
   EXPECT_SUCCESS(device_count(driver, &deviceCount));
   ASSERT_GT(deviceCount, 0);
+  deviceCount = testDeviceCount(deviceCount);
   std::vector<M_driver_context_t> contexts;
   for (int64_t i = 0; i < deviceCount; i++) {
     M_driver_device_t device = nullptr;

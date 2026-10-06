@@ -17,7 +17,7 @@
 #include "MetalDriver.h"
 #include "Support/AlignedAlloc.h"
 #include "Support/ErrorOr.h"
-#include "Support/internal/Tracy/Tracy.h"
+#include "Support/mcl/Tracy/Tracy.h"
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/LineIterator.h"

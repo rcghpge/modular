@@ -1,0 +1,28 @@
+//===----------------------------------------------------------------------===//
+//
+// This file is Modular Inc proprietary.
+//
+//===----------------------------------------------------------------------===//
+//
+// MetalVerifier pass - Verify LLVM IR is compatible with Metal GPU compilation
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef KGEN_COMPILER_LLVMIR_TRANSFORMS_METALVERIFIER_H
+#define KGEN_COMPILER_LLVMIR_TRANSFORMS_METALVERIFIER_H
+
+#include "llvm/IR/PassManager.h"
+
+namespace M::KGEN {
+
+/// Rejects Metal IR containing floating-point types wider than 32 bits
+/// (f64, f80, f128); Metal only supports f32 and f16.
+class MetalVerifierPass
+    : public llvm::RequiredPassInfoMixin<MetalVerifierPass> {
+public:
+  llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &AM);
+};
+
+} // namespace M::KGEN
+
+#endif // KGEN_COMPILER_LLVMIR_TRANSFORMS_METALVERIFIER_H

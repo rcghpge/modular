@@ -29,7 +29,7 @@
 #include "Support/ML/SizeUtils.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/Threading/SpinWaiter.h"
-#include "Support/internal/Tracy/Tracy.h"
+#include "Support/mcl/Tracy/Tracy.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"

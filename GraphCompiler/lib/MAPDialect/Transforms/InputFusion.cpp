@@ -205,7 +205,8 @@ void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
       mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
   dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
   dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
-  dst.setIsAsync(src.getIsAsync() || dst.getIsAsync());
+  // `dst` keeps its own launch policy, as on the old path: a sync-launch
+  // consumer such as a transpose (GEX-2569) must not turn async.
 }
 
 // Splices `src`'s body into `dst`'s existing prologue behind the captures
@@ -264,7 +265,8 @@ void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
         mlir::FusedLoc::get(src->getContext(), {src->getLoc(), dst->getLoc()}));
   }
 
-  dst.setIsAsync(src.getIsAsync() || dst.getIsAsync());
+  // `dst` keeps its own launch policy, as on the old path: a sync-launch
+  // consumer such as a transpose (GEX-2569) must not turn async.
 }
 
 // Whether `dstOp` has a site to read `src`'s result through AND `shouldFuse`

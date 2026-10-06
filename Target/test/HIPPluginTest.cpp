@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../lib/HIP/Error.h"
+#include "../mcl/lib/HIP/Error.h"
 #include "Fixture.h"
 #include "HAL/M_driver_bundle.h"
 #include "HAL/M_driver_common.h"

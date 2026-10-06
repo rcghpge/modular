@@ -197,7 +197,8 @@ TEST_F(MEFCacheKeyTest, KernelLibraryPathInvalidatesKey) {
     std::ofstream out(tmpPath.c_str(), std::ios::binary);
     out << "synthetic kernel library bytes for MEFCacheKeyTest";
   }
-  llvm::sys::fs::closeFile(tmpFd);
+  llvm::sys::fs::file_t tmpFile = llvm::sys::fs::convertFDToNativeFile(tmpFd);
+  llvm::sys::fs::closeFile(tmpFile);
   llvm::scope_exit cleanup{[&] { llvm::sys::fs::remove(tmpPath); }};
 
   auto plain = tryBuild();
@@ -231,7 +232,8 @@ TEST_F(MEFCacheKeyTest, KernelLibraryPathIsRelocatable) {
       // Identical bytes in both libraries — only the path differs.
       out << "identical synthetic kernel library bytes";
     }
-    llvm::sys::fs::closeFile(fd);
+    llvm::sys::fs::file_t file = llvm::sys::fs::convertFDToNativeFile(fd);
+    llvm::sys::fs::closeFile(file);
   };
 
   llvm::SmallString<128> pathA, pathB;

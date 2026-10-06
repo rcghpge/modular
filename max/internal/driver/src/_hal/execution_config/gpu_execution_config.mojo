@@ -1,0 +1,111 @@
+# ===----------------------------------------------------------------------=== #
+#
+# This file is Modular Inc proprietary.
+#
+# ===----------------------------------------------------------------------=== #
+"""Placeholder configuration to start to prototype the API with."""
+
+from max.gpu.host import ConstantMemoryMapping, Dim, LaunchAttribute
+from . import (
+    ExecutionConfig,
+    BlockExecutionConfig,
+    GridBlockExecutionConfig,
+    ClusterExecutionConfig,
+    AsmDumpableExecutionConfig,
+    LlvmDumpableExecutionConfig,
+    VendorIRDumpableExecutionConfig,
+    NearComputeGeneralPurposeScratchpadExecutionConfig,
+    ConstantMemoryMappingExecutionConfig,
+)
+from max.gpu.host.device_context import _DumpPath
+
+
+struct GPUExecutionConfiguration(
+    BlockExecutionConfig,
+    Copyable,
+    ExecutionConfig,
+    GridBlockExecutionConfig,
+    Movable,
+    NearComputeGeneralPurposeScratchpadExecutionConfig,
+):
+    """Describes the execution configuration of a GPU kernel launch."""
+
+    var grid_dim: Dim
+    var block_dim: Dim
+    var shared_mem_bytes: Int
+
+    def __init__(
+        out self,
+        var grid_dim: Dim,
+        var block_dim: Dim,
+        var shared_mem_bytes: Int = 0,
+    ):
+        """The 'all members' constructor with reasonable defaults set."""
+        self.grid_dim = grid_dim
+        self.block_dim = block_dim
+        self.shared_mem_bytes = shared_mem_bytes
+
+    def __init__(out self, *, block_dim: Dim):
+        """Initializes the execution config with the given block dimensions.
+
+        Args:
+            block_dim: The block dimensions as a `Dim` value.
+        """
+        self = Self(grid_dim=Dim(1, 1, 1), block_dim=block_dim)
+
+    def get_block_dim(self) -> Dim:
+        """Gets the block dimensions for the kernel launch.
+
+        Returns:
+            The block dimensions as a `Dim` value.
+        """
+        return self.block_dim
+
+    def set_block_dim(mut self, var block_dim: Dim):
+        """Sets the block dimensions for the kernel launch.
+
+        Args:
+            block_dim: The block dimensions as a `Dim` value.
+        """
+        self.block_dim = block_dim
+
+    def __init__(out self, *, grid_dim: Dim, block_dim: Dim):
+        """Initializes the execution config with the given grid and block dimensions.
+
+        Args:
+            grid_dim: The grid dimensions as a `Dim` value.
+            block_dim: The block dimensions as a `Dim` value.
+        """
+        self = Self(grid_dim=grid_dim, block_dim=block_dim, shared_mem_bytes=0)
+
+    def get_grid_dim(self) -> Dim:
+        """Gets the grid dimensions for the kernel launch.
+
+        Returns:
+            The grid dimensions as a `Dim` value.
+        """
+        return self.grid_dim
+
+    def set_grid_dim(mut self, var grid_dim: Dim):
+        """Sets the grid dimensions for the kernel launch.
+
+        Args:
+            grid_dim: The grid dimensions as a `Dim` value.
+        """
+        self.grid_dim = grid_dim
+
+    def get_near_compute_scratchpad_usage(self) -> Int:
+        """Gets the near-compute scratchpad usage configuration.
+
+        Returns:
+            The amount of scratchpad used in bytes.
+        """
+        return self.shared_mem_bytes
+
+    def set_near_compute_scratchpad_usage(mut self, var usage: Int):
+        """Sets the near-compute scratchpad usage configuration.
+
+        Args:
+            usage: The amount of scratchpad to use in bytes.
+        """
+        self.shared_mem_bytes = usage

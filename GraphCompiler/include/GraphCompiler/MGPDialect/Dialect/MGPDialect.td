@@ -14,6 +14,9 @@ include "mlir/IR/DialectBase.td"
 //===----------------------------------------------------------------------===//
 
 def MGPDialect : Dialect {
+  // TODO(GEX-4321): Migrate assembly formats to strict properties before
+  // upstream removes this opt-out.
+  let useStrictPropertiesInAssemblyFormat = 0;
   let name = "mgp";
 
   let summary = "Buffers, contexts and other framework/kernel independent "

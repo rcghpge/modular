@@ -1334,15 +1334,15 @@ def _matmul[
         for j in range(n):
             var c_val = Scalar[c.dtype](0)
             for l in range(k):
-                var a_val = a.load[1](IndexList[2](i, l)).cast[c.dtype]()
-                var b_val = b.load[1](IndexList[2](l, j)).cast[c.dtype]()
+                var a_val = a.load[1]((i, l)).cast[c.dtype]()
+                var b_val = b.load[1]((l, j)).cast[c.dtype]()
                 c_val += a_val * b_val
 
             comptime if elementwise_lambda_fn:
                 comptime func = elementwise_lambda_fn.value()
-                func(IndexList[2](i, j), c_val)
+                func((i, j), c_val)
             else:
-                c.store[1](IndexList[2](i, j), c_val)
+                c.store[1]((i, j), c_val)
 
 
 # c = a @ b, should support CPU and GPU
@@ -2468,12 +2468,10 @@ struct MySquareComputeOutFusion:
         print("has_store_lambda =", has_store_lambda)
 
         comptime if has_compute_lambda:
-            outp[0] = outp._fused_compute_output_lambda[width=1](
-                IndexList[1](0), res
-            )
+            outp[0] = outp._fused_compute_output_lambda[width=1]((0,), res)
         else:
             # We still need to support normal fusion in case the kernel is fused with a cast.
-            outp._fused_store[width=1](IndexList[1](0), res)
+            outp._fused_store[width=1]((0,), res)
 
 
 @extensibility.register("inplace_no_out_func")
@@ -2517,8 +2515,8 @@ struct ParameterizedOpaqueType:
         output: OutputTensor[dtype=.int32, rank=1, ...],
         x: SIMDPair[P0, _],
     ) capturing:
-        output.store(IndexList[1](0), x.x)
-        output.store(IndexList[1](P0), x.y)
+        output.store((0,), x.x)
+        output.store((P0,), x.y)
 
 
 @extensibility.register_shape_function("kernel_with_parameterized_opaque")
@@ -2541,7 +2539,7 @@ struct KernelWithDefaultParameter:
         print("rank_defaulted =", rank_defaulted)
         print("rank_derived_from_other =", rank_derived_from_other)
         print("rank_derived_from_derived =", rank_derived_from_derived)
-        x.store(IndexList[1](0), Int32(0))
+        x.store((0,), Int32(0))
 
 
 @extensibility.register("unique-parameters")

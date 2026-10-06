@@ -21,7 +21,7 @@ too.
 | GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv                          | `validateNIXLSync`                                   | nightly                | Yes                |
 | Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                                                      | `nightlyMultiGPUTest` on B200 and MI355              | nightly                | Yes                |
 | Single-node perf smoke              | NVIDIA UCX + EFA loopback, NVIDIA UCX rc (IB loopback) and AMD UCCL bandwidth floors — catches transport-selection regressions     | `modrunner-b200-efa-2x` + `-b200-2x` + `-mi355-2x`   | nightly                | Yes                |
-| Shared-pool                         | 4-row cross-node EFA KV smoke + three Mammoth 1p1d quick-tests (kimi-k27, deepseekv3.1)                                            | shared `mammoth-benchmark` B200 pod pool             | dispatched by the gate | No (informational) |
+| Shared-pool                         | 4-row cross-node EFA KV smoke + the nightly's `nixl-validation-1p1d-*` Mammoth benchmarks                                          | shared B200 and MI355 pod pools                      | dispatched by the gate | No (informational) |
 | Shared-pool (AMD)                   | 4-row cross-node RoCE KV smoke on AMD, UCCL backend                                                                                | shared AMD (MI355) pod pool                          | dispatched by the gate | No (informational) |
 | Client-driven                       | Same DI bring-up + benchmark as the shared-pool lane, via `run_dist_from_local.py`; substitute when the shared pool is unavailable | personal Coder workspace(s), cross-node or intranode | on demand              | No (informational) |
 
@@ -53,7 +53,7 @@ alone.
 
 ## Why the shared-pool lane is informational
 
-The cross-node EFA smoke and the Mammoth quick-tests schedule pods onto a
+The cross-node EFA smoke and the Mammoth benchmarks schedule pods onto a
 small shared machine pool. When the pool is full, pods sit `Pending` past
 the deployment deadline and the job fails — indistinguishable, at a
 glance, from a code regression. The drivers classify that signature as

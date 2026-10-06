@@ -20,7 +20,9 @@
 #include "Support/ML/DebugPrint.h"
 #include "Support/ML/SizeUtils.h"
 #include "Support/Process.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 #include <filesystem>
@@ -37,11 +39,11 @@ namespace {
 class GenericDriverOptions : public DriverCommandOptions, public DriverOptions {
 public:
   //===--------------------------------------------------------------------===//
-  // Sink for all unparsed options.
+  // Arguments forwarded to the framework.
   //===--------------------------------------------------------------------===//
 
   llvm::SmallVector<std::string> forceUnparsed{};
-  llvm::SmallVector<std::string> unparsed{};
+  llvm::SmallVector<std::string> frameworkArgs{};
 };
 
 class GenericDriverCLOptions : public DriverCommandCLOptions,
@@ -58,19 +60,13 @@ private:
   llvm::cl::OptionCategory GenericDriverCLOptionsCategory{
       "Generic driver options"};
   //===--------------------------------------------------------------------===//
-  // Sink for all unparsed options.
+  // Arguments forwarded to the framework.
   //===--------------------------------------------------------------------===//
 
   M::cl::MListOpt<std::string, llvm::SmallVector<std::string>> forceUnparsed{
       "X", cl::desc("Arguments to be passed to the framework."),
       llvm::cl::cat(GenericDriverCLOptionsCategory),
       llvm::cl::location(options.forceUnparsed)};
-
-  M::cl::MListOpt<std::string, llvm::SmallVector<std::string>> unparsed{
-      llvm::cl::Sink,
-      cl::desc("Arguments to be passed directly to the framework."),
-      llvm::cl::cat(GenericDriverCLOptionsCategory),
-      llvm::cl::location(options.unparsed)};
 };
 } // namespace
 
@@ -121,11 +117,42 @@ static int runBinaryFile(ContextRef maxCtx, MOFContext &ctx,
                          std::move(aliasedBuffer), runModels);
 }
 
+namespace {
+/// Collect the options this binary does not own, and write the rest to \p kept.
+/// The framework registers its own options when its dylib loads, which happens
+/// well after ParseCommandLineOptions would have rejected them as unknown.
+/// argv itself is left alone: MOFContext parses the full command line too.
+llvm::SmallVector<std::string>
+extractFrameworkArgs(int argc, char **argv,
+                     llvm::SmallVectorImpl<const char *> &kept) {
+  const llvm::DenseMap<llvm::StringRef, llvm::cl::Option *> &known =
+      llvm::cl::getRegisteredOptions();
+  llvm::SmallVector<std::string> extracted;
+  kept.push_back(argv[0]);
+  for (int i = 1; i < argc; ++i) {
+    llvm::StringRef arg(argv[i]);
+    llvm::StringRef name = arg;
+    // A bare "-" is stdin and "--" ends option parsing; neither is an option.
+    if (arg.size() > 1 && arg != "--" &&
+        (name.consume_front("--") || name.consume_front("-")) &&
+        !known.contains(name.split('=').first)) {
+      extracted.push_back(arg.str());
+      continue;
+    }
+    kept.push_back(argv[i]);
+  }
+  return extracted;
+}
+} // namespace
+
 int main(int argc, char **argv) {
   // Skip InitLLVM's signal handler; Init::Init registers ours.
   GenericDriverOptions options;
   GenericDriverCLOptions parser(argc, argv, options, /*skipInitLLVM=*/true);
-  llvm::cl::ParseCommandLineOptions(argc, argv, "Modular Tool (mt)\n");
+  llvm::SmallVector<const char *> parseArgv;
+  options.frameworkArgs = extractFrameworkArgs(argc, argv, parseArgv);
+  llvm::cl::ParseCommandLineOptions(parseArgv.size(), parseArgv.data(),
+                                    "Modular Tool (mt)\n");
 
   struct InputInfo {
     M::BufferRef file;
@@ -204,7 +231,8 @@ int main(int argc, char **argv) {
 
   dylibOptions.append(options.forceUnparsed.begin(),
                       options.forceUnparsed.end());
-  dylibOptions.append(options.unparsed.begin(), options.unparsed.end());
+  dylibOptions.append(options.frameworkArgs.begin(),
+                      options.frameworkArgs.end());
 
   if (options.saveTemps) {
     dylibOptions.push_back("--save-temps");

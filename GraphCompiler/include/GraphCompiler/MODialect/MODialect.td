@@ -16,6 +16,9 @@ include "Support/MDialect/MDialect.td"
 //===----------------------------------------------------------------------===//
 
 def MODialect : Dialect {
+  // TODO(GEX-4321): Migrate assembly formats to strict properties before
+  // upstream removes this opt-out.
+  let useStrictPropertiesInAssemblyFormat = 0;
   let name = "mo";
 
   let summary = "MAX Graph operations.";

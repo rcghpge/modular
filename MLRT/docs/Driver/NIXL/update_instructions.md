@@ -115,8 +115,8 @@ disaggregated-inference stack, and EFA. See
 pin-bump procedure and test list.
 
 The quickest path is the one-click GitHub Actions workflow, which runs the
-NIXL unit tests (Core/UCX on a B200) and the disaggregated `benchmarkMammoth`
-quick-tests:
+NIXL unit tests (Core/UCX on a B200) and dispatches the shared-pool tests,
+including the nightly's `nixl-validation-1p1d-*` Mammoth benchmarks:
 
 ```bash
 gh workflow run validateNIXLSync.yaml \
@@ -124,8 +124,8 @@ gh workflow run validateNIXLSync.yaml \
   --ref <branch-or-main>
 ```
 
-Running from any branch — including `main` — auto-builds the MAX Serve image
-from that commit and passes it to all three Mammoth quick-tests — no manual
-image build step needed.
+Running from any branch — including `main` — auto-builds the MAX Serve images
+from that commit and passes them to the shared-pool tests — no manual image
+build step needed.
 
 As a final sanity check, also run `br //:install`.

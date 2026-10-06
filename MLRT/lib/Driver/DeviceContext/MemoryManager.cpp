@@ -11,7 +11,7 @@
 #include "MemoryManager.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/StringExtras.h"
-#include "Support/internal/Tracy/Tracy.h"
+#include "Support/mcl/Tracy/Tracy.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Alignment.h"

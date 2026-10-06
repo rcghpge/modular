@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstdlib>
 #include <dlfcn.h>
 #include <iostream>
 #include <string>
@@ -110,6 +112,23 @@ struct DriverPluginTest : ::testing::Test {
     return std::string(errorMessage);
   }
 
+  // Some plugins take seconds to create a context per device, which adds up
+  // on a host with dozens of cards. Set `MODULAR_DRIVER_TEST_MAX_DEVICES` to
+  // test only the first N. A missing or malformed value tests every device,
+  // so a typo never quietly turns the per-device tests off.
+  static int64_t testDeviceCount(int64_t deviceCount) {
+    static const int64_t cap = [] {
+      const char *env = std::getenv("MODULAR_DRIVER_TEST_MAX_DEVICES");
+      if (env == nullptr)
+        return int64_t{0};
+      char *end = nullptr;
+      long long value = std::strtoll(env, &end, 10);
+      return end != env && *end == '\0' ? static_cast<int64_t>(value)
+                                        : int64_t{0};
+    }();
+    return cap > 0 ? std::min(deviceCount, cap) : deviceCount;
+  }
+
   void *soHandle = nullptr;
 #define M_DRIVER_HAL_SYMBOL(name) M_driver_##name##_func_ptr_t name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"
@@ -127,6 +146,7 @@ struct DriverPluginDeviceTest : DriverPluginTest {
 
     int64_t deviceCount = 0;
     ASSERT_SUCCESS(device_count(driver, &deviceCount));
+    deviceCount = testDeviceCount(deviceCount);
     for (int64_t i = 0; i < deviceCount; i++) {
       M_driver_device_t device = nullptr;
       EXPECT_SUCCESS(device_get(driver, i, &device));

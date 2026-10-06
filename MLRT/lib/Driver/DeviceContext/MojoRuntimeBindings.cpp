@@ -17,7 +17,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "Support/RCRef.h"
 #include "Support/SymbolExport.h"
-#include "Support/internal/Tracy/Tracy.h"
+#include "Support/mcl/Tracy/Tracy.h"
 
 using namespace M;
 

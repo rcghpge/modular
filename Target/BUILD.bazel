@@ -9,13 +9,13 @@ package(default_visibility = ["//MLRT:__subpackages__"])
 modular_cc_library(
     name = "DriverPlugin",
     srcs = [
-        "lib/DriverPlugin/DriverPlugin.cpp",
-        "lib/DriverPlugin/setup_driver_functions.inc",
+        "mcl/lib/DriverPlugin/DriverPlugin.cpp",
+        "mcl/lib/DriverPlugin/setup_driver_functions.inc",
     ],
     hdrs = [
-        "include/Target/DriverPlugin.h",
+        "mcl/include/Target/DriverPlugin.h",
     ],
-    includes = ["include"],
+    includes = ["mcl/include"],
     visibility = ["//visibility:public"],
     deps = [
         "//MLRT:Driver/DeviceContextAPI",
@@ -32,11 +32,11 @@ modular_cc_binary(
     # avoids the `lib` prefix; plugins are not traditional libs
     name = "CUDAPlugin.so",
     srcs = glob([
-        "lib/CUDA/*.cpp",
-        "lib/CUDA/*.h",
-        "lib/CUDA/Loader/*.cpp",
-        "lib/CUDA/Loader/*.h",
-        "lib/CUDA/Loader/*.inc",
+        "mcl/lib/CUDA/*.cpp",
+        "mcl/lib/CUDA/*.h",
+        "mcl/lib/CUDA/Loader/*.cpp",
+        "mcl/lib/CUDA/Loader/*.h",
+        "mcl/lib/CUDA/Loader/*.inc",
     ]),
     linkshared = True,
     linkstatic = False,
@@ -58,6 +58,10 @@ modular_cc_library(
     srcs = ["test/PluginTest.cpp"],
     hdrs = ["test/Fixture.h"],
     copts = ["-Wno-global-constructors"],
+    visibility = [
+        "//MLRT:__subpackages__",
+        "//plugins/internal-skye/Target:__pkg__",
+    ],
     deps = [
         "//SDK:HAL",
         "@llvm-project//third-party/unittest:gtest",
@@ -69,7 +73,7 @@ modular_cc_test(
     name = "CUDAPluginTest",
     size = "large",
     srcs = [
-        "lib/CUDA/Error.h",
+        "mcl/lib/CUDA/Error.h",
         "test/CUDAPluginTest.cpp",
         "test/Fixture.h",
     ],
@@ -121,8 +125,8 @@ modular_cc_binary(
     name = "HIPPlugin.so",
     srcs = glob(
         [
-            "lib/HIP/*.cpp",
-            "lib/HIP/*.h",
+            "mcl/lib/HIP/*.cpp",
+            "mcl/lib/HIP/*.h",
         ],
         allow_empty = False,
     ),
@@ -144,7 +148,7 @@ modular_cc_test(
     name = "HIPPluginTest",
     size = "small",
     srcs = [
-        "lib/HIP/Error.h",
+        "mcl/lib/HIP/Error.h",
         "test/Fixture.h",
         "test/HIPPluginTest.cpp",
     ],
@@ -190,8 +194,8 @@ modular_cc_test(
 modular_cc_binary(
     name = "MetalPlugin.so",
     srcs = glob([
-        "lib/Metal/*.cpp",
-        "lib/Metal/*.h",
+        "mcl/lib/Metal/*.cpp",
+        "mcl/lib/Metal/*.h",
     ]),
     # IOKit + CoreFoundation are used to read the AGXAccelerator
     # `gpu-core-count` for the MULTIPROCESSOR_COUNT device attribute.
@@ -219,7 +223,7 @@ modular_cc_test(
     name = "MetalPluginTest",
     size = "small",
     srcs = [
-        "lib/Metal/Common.h",
+        "mcl/lib/Metal/Common.h",
         "test/Fixture.h",
         "test/MetalPluginTest.cpp",
     ],
@@ -240,8 +244,8 @@ modular_cc_binary(
     # avoids the `lib` prefix; plugins are not traditional libs
     name = "CPUPlugin.so",
     srcs = glob([
-        "lib/CPU/*.cpp",
-        "lib/CPU/*.h",
+        "mcl/lib/CPU/*.cpp",
+        "mcl/lib/CPU/*.h",
     ]),
     linkshared = True,
     linkstatic = False,
@@ -261,7 +265,7 @@ modular_cc_test(
     name = "CPUPluginTest",
     size = "small",
     srcs = [
-        "lib/CPU/Common.h",
+        "mcl/lib/CPU/Common.h",
         "test/CPUPluginTest.cpp",
         "test/Fixture.h",
     ],
@@ -279,8 +283,8 @@ modular_cc_test(
 
 modular_cc_library(
     name = "Support",
-    srcs = glob(["lib/Support/*.cpp"]),
-    hdrs = glob(["lib/Support/*.h"]),
+    srcs = glob(["mcl/lib/Support/*.cpp"]),
+    hdrs = glob(["mcl/lib/Support/*.h"]),
     visibility = ["//visibility:public"],
     deps = [
         "//SDK:HAL",
