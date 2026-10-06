@@ -19,18 +19,19 @@ func.func @collective_bad_builder_type() {
 // -----
 
 //
-// mgp.device_graph.collective: trailing block arguments must be stable
-//   addresses.
+// mgp.device_graph.collective: every declared slot must be a stable address.
+//   The slot list's attribute type admits nothing else, so this is a parse
+//   error rather than a verifier diagnostic.
 //
 
 func.func @collective_bad_stable_type() {
-  // expected-error@+1 {{'mgp.device_graph.collective' op region #0 block argument #1 has type '!mgp.tensor<4xf32>'; expected `!mgp.stable_addr<...>`}}
   %0 = mgp.device_graph.collective builder(
       %b
   ) stable(
-      %s0: !mgp.tensor<4xf32>
+      // expected-error@+1 {{invalid kind of type specified: expected mgp.stable_addr, but found '!mgp.tensor<4xf32>'}}
+      !mgp.tensor<4xf32>
   ) <"gpu", 0> {
-    mgp.device_graph.collective.yield %s0 : !mgp.tensor<4xf32>
+    mgp.device_graph.collective.yield
   } : !mgp.tensor<4xf32>
 
   return
@@ -44,14 +45,14 @@ func.func @collective_bad_stable_type() {
 //
 
 func.func @collective_bad_yield_type() {
-  // expected-error@+1 {{'mgp.device_graph.collective' op region #0 yield operand type '!mgp.tensor<4xf32, <"gpu", 0>, stable>' does not match output #0 type '!mgp.tensor<4xf32>'}}
+  // expected-error@+1 {{'mgp.device_graph.collective' op region #0 yield operand type '!mgp.stable_addr<<4xf32, <"gpu", 0>>>' does not match output #0 type '!mgp.tensor<4xf32>'}}
   %0 = mgp.device_graph.collective builder(
       %b
   ) stable(
-      %s0: !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+      !mgp.stable_addr<<4xf32, <"gpu", 0>>>
   ) <"gpu", 0> {
-    %t0 = mgp.device_graph.stable.get %s0 : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
-    mgp.device_graph.collective.yield %t0 : !mgp.tensor<4xf32, <"gpu", 0>, stable>
+    %a0 = mgp.device_graph.stable.get %b[0] : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+    mgp.device_graph.collective.yield %a0 : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
   } : !mgp.tensor<4xf32>
 
   return
@@ -77,6 +78,63 @@ func.func @collective_too_many_yields() {
 // -----
 
 //
+// mgp.device_graph.stable.get: the slot index must exist in the enclosing
+//   collective.
+//
+
+func.func @stable_get_index_out_of_range() {
+  mgp.device_graph.collective builder(%b) stable(
+      !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+  ) <"gpu", 0> {
+    // expected-error@+1 {{'mgp.device_graph.stable.get' op stable slot index 1 is out of range; the enclosing collective declares 1 slot(s)}}
+    %a = mgp.device_graph.stable.get %b[1] : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+    mgp.device_graph.collective.yield
+  }
+
+  return
+}
+
+// -----
+
+//
+// mgp.device_graph.stable.get: the result type must be the declared slot type.
+//
+
+func.func @stable_get_type_mismatch() {
+  mgp.device_graph.collective builder(%b) stable(
+      !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+  ) <"gpu", 0> {
+    // expected-error@+1 {{'mgp.device_graph.stable.get' op stable slot #0 is declared as '!mgp.stable_addr<<4xf32, <"gpu", 0>>>', but the op uses '!mgp.stable_addr<<4xf32, <"gpu", 1>>>'}}
+    %a = mgp.device_graph.stable.get %b[0] : !mgp.stable_addr<<4xf32, <"gpu", 1>>>
+    mgp.device_graph.collective.yield
+  }
+
+  return
+}
+
+// -----
+
+//
+// mgp.device_graph.stable.place: the tensor's slot type must be the declared
+//   slot type.
+//
+
+func.func @stable_place_type_mismatch() {
+  %val = "test.op"() : () -> !mgp.tensor<4xf32, <"gpu", 1>>
+  mgp.device_graph.collective builder(%b) stable(
+      !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+  ) <"gpu", 0> {
+    // expected-error@+1 {{'mgp.device_graph.stable.place' op stable slot #0 is declared as '!mgp.stable_addr<<4xf32, <"gpu", 0>>>', but the op uses '!mgp.stable_addr<<4xf32, <"gpu", 1>>>'}}
+    %p = mgp.device_graph.stable.place %b[0], %val : !mgp.tensor<4xf32, <"gpu", 1>>
+    mgp.device_graph.collective.yield
+  }
+
+  return
+}
+
+// -----
+
+//
 // mgp.device_graph.stable.create: input tensor must not already be `stable`.
 //
 
@@ -84,4 +142,20 @@ func.func @stable_create_already_stable(%t: !mgp.tensor<4xf32, stable>) -> !mgp.
   // expected-error@+1 {{'mgp.device_graph.stable.create' op input tensor is already marked `stable`}}
   %s = mgp.device_graph.stable.create %t : !mgp.tensor<4xf32, stable>
   return %s : !mgp.tensor<4xf32, stable>
+}
+
+// -----
+
+//
+// mgp.device_graph.stable.tensor: the spec must be the slot element type's.
+// The spec's type is derived from the slot, so a mismatch is a type error at
+// the use rather than a verifier diagnostic.
+//
+
+func.func @stable_tensor_spec_mismatch(%a: !mgp.stable_addr<<4xf32, <"gpu", 0>>>) {
+  // expected-note@+1 {{prior use here}}
+  %spec = mgp.tensor_spec.create : !mgp.tensor_spec<8xf32>
+  // expected-error@+1 {{use of value '%spec' expects different type than prior uses: '!mgp.tensor_spec<4xf32>' vs '!mgp.tensor_spec<8xf32>'}}
+  %t = mgp.device_graph.stable.tensor %a, %spec : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+  return
 }

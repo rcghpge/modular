@@ -335,28 +335,38 @@ public:
 
   static MojoValue mlirTensorTypeToMojoType(MO::TensorType tensorType) {
     MO::IOKindAttr ioKind = tensorType.getIOKindAttr();
-    auto tensorTypeName = [&]() {
-      if (!ioKind)
-        return kStructManagedTensorSlice;
-      else if (ioKind.getValue() == MO::IOKind::Input) {
-        BoolAttr isMutable = tensorType.getIsMutableAttr();
-        if (isMutable && isMutable.getValue()) {
-          return kComptimeMutableInputTensor;
-        } else {
-          return kComptimeInputTensor;
-        }
-      } else if (ioKind.getValue() == MO::IOKind::Output)
-        return kComptimeOutputTensor;
-      else {
-        ASSERT_STREAM(false, << "Unsupported ioKind " << ioKind);
-        return kStructManagedTensorSlice;
-      }
-    }();
     auto rank = tensorType.getRank();
     // Always use rank 1 for scalar tensors.
     if (rank == 0)
       rank = 1;
     auto dtype = mlirDTypeToMojoType(tensorType.getDtype()).text;
+
+    // Whether the tensor is a mutable input; the io-kind branches below fold
+    // it into the alias they pick.
+    BoolAttr isMutable = tensorType.getIsMutableAttr();
+    bool mutableInput = ioKind && ioKind.getValue() == MO::IOKind::Input &&
+                        isMutable && isMutable.getValue();
+
+    // A stable tensor is a `StableTensor`; its aliases mirror the
+    // `ManagedTensorSlice` ones, minus an output form, since the kernel
+    // verifier rejects stable outputs.
+    bool stable = tensorType.isStable();
+    auto tensorTypeName = [&]() {
+      if (!ioKind)
+        return stable ? kStructStableTensor : kStructManagedTensorSlice;
+      if (ioKind.getValue() == MO::IOKind::Input) {
+        if (stable)
+          return mutableInput ? kComptimeStableMutableInputTensor
+                              : kComptimeStableInputTensor;
+        return mutableInput ? kComptimeMutableInputTensor
+                            : kComptimeInputTensor;
+      }
+      if (ioKind.getValue() == MO::IOKind::Output && !stable)
+        return kComptimeOutputTensor;
+      ASSERT_STREAM(false, << "Unsupported ioKind " << ioKind
+                           << (stable ? " on a stable tensor" : ""));
+      return stable ? kStructStableTensor : kStructManagedTensorSlice;
+    }();
     return llvm::formatv("{}[dtype = {}, rank = {}, ...]", tensorTypeName,
                          dtype, rank)
         .str();

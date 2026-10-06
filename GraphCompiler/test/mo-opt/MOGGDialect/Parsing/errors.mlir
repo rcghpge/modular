@@ -11,3 +11,4 @@ func.func @build_graph_missing_decl(
       builder(%b) {moOpName = "mo.matmul"}
   return
 }
+

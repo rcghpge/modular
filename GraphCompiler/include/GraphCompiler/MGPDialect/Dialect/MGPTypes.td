@@ -576,16 +576,17 @@ def MGP_DeviceTensorType : MGP_DeviceType<"DeviceTensor", "tensor", [
 def MGP_StableAddressType : MGP_Type<"StableAddress", "stable_addr"> {
   let summary = "Handle to a stable address slot for cross-device coordination.";
   let description = [{
-    Inside a device-graph body, `mgp.device_graph.stable.get` materializes a
-    tensor view from the contents of the slot; `mgp.device_graph.stable.place`
-    publishes a value into it.
+    Inside a device-graph body, `mgp.device_graph.stable.place` publishes a
+    value into the slot and `mgp.device_graph.stable.get` reads it; both return
+    the slot. `mgp.device_graph.stable.tensor` views the slot as the
+    `!mgp.tensor<..., stable>` it holds, and a kernel handed that tensor reads
+    through the slot via a `stable`-marked `!mo.tensor`.
 
     This type is the MGP-level handle into the low-level allocation and
     pointer-patching mechanism.
 
-    The `elementType` parameter records the tensor element type held by the
-    slot, restricted to `!mgp.tensor` so that `mgp.device_graph.stable.get` can
-    return a `!mgp.tensor` (with shape/device resolved from the slot).
+    The `elementType` parameter records the `!mgp.tensor` type held by the
+    slot, so a view built over the slot knows its shape and device.
   }];
   let parameters = (ins MGP_DeviceTensorType:$elementType);
   let assemblyFormat = "`<` $elementType `>`";

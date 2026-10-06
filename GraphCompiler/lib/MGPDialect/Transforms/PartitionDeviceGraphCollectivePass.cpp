@@ -30,43 +30,63 @@ using StableInfos = llvm::MapVector<DeviceGraphStableCreateOp, unsigned>;
 
 /// Stable create ops and their assigned stable addresses.
 struct StableAddrState {
-  StableAddrState(const StableInfos &infos,
-                  ArrayRef<BlockArgument> stableAddrs) {
-    for (auto &[op, index] : infos)
-      assignment[op] = stableAddrs[index];
+  StableAddrState(const StableInfos &infos, Value builderArg)
+      : indices(infos), builderArg(builderArg) {}
+
+  /// The slot index assigned to `create`.
+  unsigned index(DeviceGraphStableCreateOp create) {
+    return indices.find(create)->second;
   }
 
-  Value addr(DeviceGraphStableCreateOp create) { return assignment.at(create); }
-
-  /// Returns the stable get/place result for `operand` if it is a stable
-  /// value.
-  Value get(OpBuilder &builder, Location loc, Value builderArg, Value operand) {
+  /// The stable tensor standing in for `operand` in this region, or null when
+  /// `operand` is not a `stable.create` result. A region that did not publish
+  /// the slot reads it with `stable.get`. Fails if the tensor has dynamic
+  /// dimensions: the slot holds only a data pointer, and the source tensor
+  /// that knows the runtime shape lives in another region.
+  FailureOr<Value> get(OpBuilder &builder, Location loc, Value operand) {
     auto stable = operand.getDefiningOp<DeviceGraphStableCreateOp>();
     if (!stable)
-      return {};
+      return Value();
 
-    Value &get = stableToGet[stable];
-    if (!get)
-      get = DeviceGraphStableGetOp::create(builder, loc, addr(stable),
-                                           builderArg);
+    Value &tensor = stableTensors[stable];
+    if (tensor)
+      return tensor;
 
-    return get;
+    TensorSpecType specType = stable.getTensor().getType().getTensorSpec();
+    if (specType.getNumDynamicDims() != 0)
+      return stable.emitOpError(
+          "stable tensor with dynamic dimensions is consumed on another "
+          "device; only its data pointer crosses devices, so its shape cannot "
+          "be recovered there");
+
+    Value slot = DeviceGraphStableGetOp::create(
+        builder, loc, stable.getStableType(), builderArg, index(stable));
+    Value spec = TensorSpecCreateOp::create(builder, loc, specType);
+    tensor = DeviceGraphStableTensorOp::create(builder, loc, slot, spec);
+    return tensor;
   }
 
-  void place(OpBuilder &builder, Location loc, Value builderArg,
-             DeviceGraphStableCreateOp stable, Value source) {
-    Value address = addr(stable);
-    Value placed = DeviceGraphStablePlaceOp::create(builder, loc, address,
-                                                    source, builderArg);
-
-    // On the source device, reuse the place's view instead of a stable.get.
-    stableToGet[stable] = placed;
+  /// Publishes `source`, this region's copy of `stable`'s operand, into the
+  /// slot. The place returns the slot sequenced after the publish, so the
+  /// region's consumers read through it rather than a redundant `stable.get`.
+  void place(OpBuilder &builder, Location loc, DeviceGraphStableCreateOp stable,
+             Value source) {
+    Value placed = DeviceGraphStablePlaceOp::create(builder, loc, builderArg,
+                                                    source, index(stable));
+    Value spec = TensorExtractTensorSpecOp::create(builder, loc, source);
+    stableTensors[stable] =
+        DeviceGraphStableTensorOp::create(builder, loc, placed, spec);
   }
 
 private:
-  llvm::SmallDenseMap<DeviceGraphStableCreateOp, Value> assignment;
+  /// Slot index of each DeviceGraphStableCreateOp, shared by every region.
+  const StableInfos &indices;
 
-  llvm::SmallDenseMap<DeviceGraphStableCreateOp, Value> stableToGet;
+  /// This region's `!mgp.device_graph.builder` block argument.
+  Value builderArg;
+
+  /// The stable tensor each `stable.create` resolves to in this region.
+  llvm::SmallDenseMap<DeviceGraphStableCreateOp, Value> stableTensors;
 };
 
 M::DeviceRefAttr getDevice(GenericCompiledRegionOp op) {
@@ -151,23 +171,20 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
 
   LogicalResult bodyStatus = success();
 
-  // Each per-device callback replays that device's staged ops, adding
-  // stable.get / stable.place as needed.
+  // Build the collective with a per-device body callback.  The callback replays
+  // the staged ops for its device, lowers each stable.create to its slot ops,
+  // and produces the region terminator.
   rewriter.setInsertionPoint(stagingOp);
   auto collective = DeviceGraphCollectiveOp::create(
       rewriter, loc, deviceOrder, stableSlotTypes,
-      [&](OpBuilder &builder, M::DeviceRefAttr device, BlockArgument builderArg,
-          ArrayRef<BlockArgument> stableAddrs) {
+      [&](OpBuilder &builder, M::DeviceRefAttr device,
+          BlockArgument builderArg) {
         if (failed(bodyStatus))
           return;
 
         IRMapping mapper = baseMapper;
 
-        StableAddrState stableState(stableIndices, stableAddrs);
-
-        auto resolveOperand = [&](Value operand) -> Value {
-          return stableState.get(builder, loc, builderArg, operand);
-        };
+        StableAddrState stableState(stableIndices, builderArg);
 
         for (Operation &op : stagingOp.getBodyBlock().without_terminator()) {
           if (auto stable = dyn_cast<DeviceGraphStableCreateOp>(&op)) {
@@ -181,7 +198,7 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
               return;
             }
 
-            stableState.place(builder, loc, builderArg, stable, source);
+            stableState.place(builder, loc, stable, source);
             continue;
           }
 
@@ -200,9 +217,16 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
           if (opDev != device && !isHostOp)
             continue;
 
+          // Resolve the stable values this region consumes to their
+          // per-region stable tensors before cloning against them.
           for (Value operand : compiledRegion.getOperands()) {
-            if (auto resolved = resolveOperand(operand))
-              mapper.map(operand, resolved);
+            FailureOr<Value> resolved = stableState.get(builder, loc, operand);
+            if (failed(resolved)) {
+              bodyStatus = failure();
+              return;
+            }
+            if (*resolved)
+              mapper.map(operand, *resolved);
           }
 
           auto cloned = cast<GenericCompiledRegionOp>(

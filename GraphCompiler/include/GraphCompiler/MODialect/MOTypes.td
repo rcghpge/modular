@@ -170,6 +170,11 @@ def MO_Tensor : MO_Type<"Tensor", "tensor", [MO_HasDeviceTypeInterface, MO_Shape
     TensorType cloneWithMut(BoolAttr isMutable) const;
 
     TensorType cloneWithNewDim(uint64_t dim, uint64_t size);
+
+    /// Returns true if the tensor is stable: its data pointer is a stable
+    /// address slot rather than the data itself, so a kernel must read
+    /// through it at run time (see `!mgp.stable_addr`).
+    bool isStable() const;
   }];
 }
 

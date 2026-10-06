@@ -1054,7 +1054,10 @@ def MOGG_TensorCreateOp : MOGG_Op<"tensor.create", [
     StrAttr:$device,
     TypeAttr:$elementType,
     BoolAttr:$mut,
-    MO_IOKind:$io
+    MO_IOKind:$io,
+    // The source `!mo.tensor` was a stable address slot: emit builds a
+    // `StableTensor` over the slot instead of a pointer-backed slice.
+    DefaultValuedAttr<BoolAttr, "false">:$stable
   );
   // `!mo.buffer` reconstructs as `!mogg.buffer`, so `getKernelOperandKind()`
   // resolves `Buffer` vs `Tensor` from the type alone.

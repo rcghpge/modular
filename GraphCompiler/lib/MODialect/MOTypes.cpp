@@ -196,6 +196,10 @@ static constexpr StringRef kLayoutMetadataName = "layout";
 static constexpr StringRef kIOKindMetadataName = "io";
 static constexpr StringRef kIsMutableMetadataName = "mut";
 
+/// A stable tensor carries a `UnitAttr` under this key in the metadata
+/// `DictionaryAttr` of `MO::TensorType`.
+static constexpr StringRef kIsStableMetadataName = "stable";
+
 Type TensorType::parse(AsmParser &parser) {
   TensorLikeTypeParser tensorParser(parser);
 
@@ -514,6 +518,10 @@ TensorType TensorType::cloneWithMut(BoolAttr isMutable) const {
   namedAttrs.set(kIsMutableMetadataName, isMutable);
   DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
   return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
+}
+
+bool TensorType::isStable() const {
+  return getMetadata().contains(kIsStableMetadataName);
 }
 
 TensorType TensorType::cloneWith(DictionaryAttr metadataAttr) const {

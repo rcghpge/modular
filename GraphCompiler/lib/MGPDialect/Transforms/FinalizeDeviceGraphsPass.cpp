@@ -139,8 +139,9 @@ static FailureOr<MOGG::GenericCompiledRegionOp> wrapDeviceGraphBuildRegion(
 }
 
 /// Collect the values used inside a collective graph `region` that are defined
-/// outside of it. Chain values (dead pass-throughs) and stable-address slots
-/// are left to later work.
+/// outside of it. Chain values (dead pass-throughs) are left to later work.
+/// Stable address slots are not values: the regions name them by index
+/// through the builder, so nothing here has to carry them.
 static LogicalResult collectRegionInputs(Region &region,
                                          SmallVectorImpl<Value> &inputs) {
   llvm::SetVector<Value> captured;
@@ -289,6 +290,13 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
 
               DeviceGraphYieldOp::create(innerBuilder, innerLoc, newOutputs);
             });
+
+        // The slot table the regions index into is declared on the collective;
+        // emission reads it off the create op to allocate the slots.
+        if (StableAddressArrayAttr stableTypes =
+                collectiveOp.getStableTypesAttr();
+            !stableTypes.getValue().empty())
+          createOp.setStableTypesAttr(stableTypes);
 
         for (Region &createRegion : createOp.getGraphs())
           if (failed(resolveBuilderCasts(createRegion)))

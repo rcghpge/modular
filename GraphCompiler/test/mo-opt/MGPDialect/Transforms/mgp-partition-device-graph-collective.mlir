@@ -5,18 +5,41 @@
 // `mgp.device_graph.stable.create` ops, and the per-device consumers. This is
 // the input shape expected by `mgp-partition-device-graph-collective`.
 //
+// Each `stable.create` is lowered per region: the producing region publishes
+// its tensor with `stable.place` and takes the spec from that tensor, every
+// other region reads the slot with `stable.get` and builds the spec from the
+// static type, and `stable.tensor` rebuilds the `!mgp.tensor<..., stable>` the
+// consumers were lowered against. The consumer regions themselves are cloned
+// unchanged.
+//
 // CHECK-LABEL: mgp.model @multi_device_stable
 // CHECK-NOT:   mgp.device_graph.staging
-// CHECK:       mgp.device_graph.collective builder(%{{.*}}) stable(
-// CHECK-SAME:      %{{.*}}: !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>,
-// CHECK-SAME:      %{{.*}}: !mgp.stable_addr<<2x3xf32, <"gpu", 1>>>)
+// CHECK:       mgp.device_graph.collective builder(%[[B:[a-z0-9_]+]]) stable(
+// CHECK-SAME:      !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>,
+// CHECK-SAME:      !mgp.stable_addr<<2x3xf32, <"gpu", 1>>>)
 // CHECK:       <"gpu", 0> {
-// CHECK:         mgp.device_graph.stable.place
-// CHECK:         mogg.generic.compiled.region
+// CHECK:         %[[PROD0:[a-z0-9_]+]] = mogg.generic.compiled.region
+// CHECK:         %[[P0:[a-z0-9_]+]] = mgp.device_graph.stable.place %[[B]][0], %[[PROD0]] : !mgp.tensor<2x3xf32, <"gpu", 0>>
+// CHECK:         %[[S0:[a-z0-9_]+]] = mgp.tensor.extract.tensor_spec %[[PROD0]] : <2x3xf32, <"gpu", 0>>
+// CHECK:         %[[T0:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[P0]], %[[S0]] : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+// CHECK:         %[[G1:[a-z0-9_]+]] = mgp.device_graph.stable.get %[[B]][1] : !mgp.stable_addr<<2x3xf32, <"gpu", 1>>>
+// CHECK:         %[[S1:[a-z0-9_]+]] = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
+// CHECK:         %[[T1:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[G1]], %[[S1]] : !mgp.stable_addr<<2x3xf32, <"gpu", 1>>>
+// CHECK:         mogg.generic.compiled.region (%[[T0]], %[[T1]], %{{[a-z0-9_]+}})
+// CHECK-SAME:      (%[[A0:[a-z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>,
+// CHECK-SAME:       %[[A1:[a-z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 1>, stable>,
+// CHECK:           mogg.async.unpack(%[[A0]]) : !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
+// CHECK:           mogg.async.unpack(%[[A1]]) : !mgp.tensor<2x3xf32, <"gpu", 1>, stable>
 // CHECK:         mgp.device_graph.collective.yield
 // CHECK:       }, <"gpu", 1> {
-// CHECK:         mgp.device_graph.stable.place
-// CHECK:         mogg.generic.compiled.region
+// CHECK:         %[[PROD1:[a-z0-9_]+]] = mogg.generic.compiled.region
+// CHECK:         %[[P1:[a-z0-9_]+]] = mgp.device_graph.stable.place %[[B]][1], %[[PROD1]]
+// CHECK:         %[[S1B:[a-z0-9_]+]] = mgp.tensor.extract.tensor_spec %[[PROD1]]
+// CHECK:         %[[T1B:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[P1]], %[[S1B]]
+// CHECK:         %[[G0:[a-z0-9_]+]] = mgp.device_graph.stable.get %[[B]][0]
+// CHECK:         %[[S0B:[a-z0-9_]+]] = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
+// CHECK:         %[[T0B:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[G0]], %[[S0B]]
+// CHECK:         mogg.generic.compiled.region (%[[T0B]], %[[T1B]], %{{[a-z0-9_]+}})
 // CHECK:         mgp.device_graph.collective.yield
 // CHECK:       }
 
@@ -126,15 +149,19 @@ mgp.model @multi_device_stable : mof devices [#M.device_ref<"gpu", 0>, #M.device
 //
 // CHECK-LABEL: mgp.model @consumer_only_device
 // CHECK-NOT:   mgp.device_graph.staging
-// CHECK:       mgp.device_graph.collective builder(%{{.*}}) stable(
-// CHECK-SAME:      %{{.*}}: !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>)
+// CHECK:       mgp.device_graph.collective builder(%[[B:[a-z0-9_]+]]) stable(
+// CHECK-SAME:      !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>)
 // CHECK:       <"gpu", 0> {
 // CHECK:         mogg.generic.compiled.region
 // CHECK:         mgp.device_graph.stable.place
 // CHECK:         mgp.device_graph.collective.yield
 // CHECK:       }, <"gpu", 1> {
-// CHECK:         mgp.device_graph.stable.get
-// CHECK:         mogg.generic.compiled.region
+// CHECK:         %[[G0:[a-z0-9_]+]] = mgp.device_graph.stable.get %[[B]][0]
+// CHECK:         %[[S0:[a-z0-9_]+]] = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
+// CHECK:         %[[T0:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[G0]], %[[S0]]
+// CHECK:         mogg.generic.compiled.region (%[[T0]], %{{[a-z0-9_]+}})
+// CHECK-SAME:      (%[[A0:[a-z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>,
+// CHECK:           mogg.async.unpack(%[[A0]]) : !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
 // CHECK:         mgp.device_graph.collective.yield %{{.*}} : !mgp.tensor<2x3xf32, <"gpu", 1>>
 // CHECK:       } : !mgp.tensor<2x3xf32, <"gpu", 1>>
 

@@ -44,6 +44,16 @@ trait DeviceGraphInput:
 
 
 @fieldwise_init
+struct StableAddr(TrivialRegisterPassable):
+    """Identifies a stable address slot; same layout as the real type so the
+    graph-compiler primitives that pass one through compile. No slot is ever
+    created on the HAL backend."""
+
+    var ptr: Pointer[Pointer[NoneType, MutUntrackedOrigin], MutUntrackedOrigin]
+    """Device address of the slot; the slot holds the device data pointer."""
+
+
+@fieldwise_init
 struct DeviceGraphCache:
     """Unsupported: the HAL DeviceContext has no device-graph support."""
 
@@ -77,6 +87,19 @@ struct DeviceGraphBuilder(Movable):
             The `DeviceContext` the builder was created from.
         """
         return self._ctx
+
+    def recording_context(self) raises -> DeviceContext:
+        """Unsupported: returns a `DeviceContext` that records into this builder.
+
+        Returns:
+            Never returns; the HAL `DeviceContext` cannot record device graphs.
+
+        Raises:
+            Always, since the HAL backend has no recording context.
+        """
+        raise Error(
+            "device-graph recording is unsupported by the HAL DeviceContext"
+        )
 
     def create_buffer[
         dtype: DType
@@ -133,6 +156,43 @@ struct DeviceGraphBuilder(Movable):
         so no marker is ever consulted.
         """
         pass
+
+    def get_stable(mut self, index: Int) raises -> StableAddr:
+        """Unsupported: returns stable address slot `index` of the collective.
+
+        Args:
+            index: Position of the slot in the collective's slot table.
+
+        Returns:
+            Never returns; the HAL `DeviceContext` installs no slot table.
+
+        Raises:
+            Always, since the HAL backend has no stable address slots.
+        """
+        raise Error(
+            "stable address slots are unsupported by the HAL DeviceContext"
+        )
+
+    def place_stable(
+        mut self,
+        index: Int,
+        source: Pointer[mut=True, NoneType, _],
+    ) raises -> StableAddr:
+        """Unsupported: publishes `source` into stable address slot `index`.
+
+        Args:
+            index: Position of the slot in the collective's slot table.
+            source: The device data pointer to publish.
+
+        Returns:
+            Never returns; the HAL `DeviceContext` installs no slot table.
+
+        Raises:
+            Always, since the HAL backend has no stable address slots.
+        """
+        raise Error(
+            "stable address slots are unsupported by the HAL DeviceContext"
+        )
 
 
 struct DeviceGraphNode:

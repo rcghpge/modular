@@ -115,6 +115,7 @@ using KGEN::kPackageExtensibility;
 using KGEN::kPackageStd;
 constexpr llvm::StringLiteral kPackageManagedTensorSlice =
     "managed_tensor_slice";
+constexpr llvm::StringLiteral kPackageStableTensor = "stable_tensor";
 
 /// Last segments of `SymbolRefAttr` paths, for symbol-tree matching.
 using KGEN::kLeafDeviceContext;
@@ -124,6 +125,9 @@ constexpr llvm::StringLiteral kLeafFusedInputVariadicTensors =
     "_FusedInputVariadicTensors";
 constexpr llvm::StringLiteral kLeafFusedOutputVariadicTensors =
     "_FusedOutputVariadicTensors";
+constexpr llvm::StringLiteral kLeafStableTensor = "StableTensor";
+constexpr llvm::StringLiteral kLeafStableVariadicTensors =
+    "StableVariadicTensors";
 constexpr llvm::StringLiteral kLeafSIMD = "SIMD";
 constexpr llvm::StringLiteral kLeafIndexList = "IndexList";
 constexpr llvm::StringLiteral kLeafTileTensor = "TileTensor";
@@ -139,6 +143,12 @@ constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "builtin_primitives";
 /// from `getOperationName()`.
 constexpr llvm::StringLiteral kMoggPrimitiveFormatRegionError =
     "mogg.format_region_error";
+
+/// `@register_internal` name of the primitive that builds a `StableTensor`
+/// for a stable tensor init. Not an op name: `mogg.tensor.__init__` selects
+/// it by its result type, `mogg.tensor.create` by its `$stable` attr.
+constexpr llvm::StringLiteral kMoggPrimitiveStableTensorInit =
+    "mogg.tensor.__init__.stable";
 
 //===----------------------------------------------------------------------===//
 // Mojo type symbol names (as stored in MLIR by the Mojo compiler)
@@ -213,8 +223,12 @@ constexpr llvm::StringLiteral kStructDeviceGraphNode =
     "max.gpu.host.device_graph.DeviceGraphNode";
 constexpr llvm::StringLiteral kStructDeviceGraphCache =
     "max.gpu.host.device_graph.DeviceGraphCache";
+constexpr llvm::StringLiteral kStructStableAddr =
+    "max.gpu.host.device_graph.StableAddr";
 constexpr llvm::StringLiteral kStructManagedTensorSlice =
     "extensibility.ManagedTensorSlice";
+constexpr llvm::StringLiteral kStructStableTensor =
+    "extensibility.StableTensor";
 constexpr llvm::StringLiteral kStructInt = "Int";
 constexpr llvm::StringLiteral kStructSIMDLength = "SIMDLength";
 constexpr llvm::StringLiteral kStructUInt = "UInt";
@@ -249,6 +263,8 @@ constexpr llvm::StringLiteral kStructStaticTensorSpecList =
     "extensibility.StaticTensorSpecList";
 constexpr llvm::StringLiteral kStructVariadicTensors =
     "extensibility.VariadicTensors";
+constexpr llvm::StringLiteral kStructStableVariadicTensors =
+    "extensibility.StableVariadicTensors";
 constexpr llvm::StringLiteral kStructStaticString = "StaticString";
 constexpr llvm::StringLiteral kStructMsFusionPack =
     "managed_tensor_slice._FusionPack";
@@ -404,6 +420,10 @@ constexpr llvm::StringLiteral kComptimeOutputTensor =
     "extensibility.OutputTensor";
 constexpr llvm::StringLiteral kComptimeMutableInputTensor =
     "managed_tensor_slice._MutableInputTensor";
+constexpr llvm::StringLiteral kComptimeStableInputTensor =
+    "extensibility.StableInputTensor";
+constexpr llvm::StringLiteral kComptimeStableMutableInputTensor =
+    "stable_tensor._StableMutableInputTensor";
 constexpr llvm::StringLiteral kComptimeUInt8 = "UInt8";
 constexpr llvm::StringLiteral kComptimeMutAnyOrigin = "MutAnyOrigin";
 constexpr llvm::StringLiteral kComptimeMutUntrackedOrigin =
@@ -487,6 +507,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"builtin_kernels", "builtin_kernels"},
         {"extensibility", ""},
         {"extensibility.managed_tensor_slice", "managed_tensor_slice"},
+        {"extensibility.stable_tensor", "stable_tensor"},
         {"max.gpu.host.device_context", ""},
         {"max.gpu.host.device_graph", ""},
         {"std.utils", ""},
@@ -627,6 +648,34 @@ public:
   MojoValue value;
 };
 
+/// Wrapper around a Mojo `StableTensor` value: a tensor view whose data
+/// pointer lives in a stable address slot.
+class StableTensorRef {
+public:
+  explicit StableTensorRef(MojoValue v) : value(std::move(v)) {}
+
+  /// Mojo field / method symbol names on `StableTensor`.
+  static constexpr llvm::StringLiteral kAddr = "_addr";
+  static constexpr llvm::StringLiteral kRuntimeLayout = "_runtime_layout";
+  static constexpr llvm::StringLiteral kShape = "shape";
+  static constexpr llvm::StringLiteral kStaticSpec = "static_spec";
+  static constexpr llvm::StringLiteral kIoSpec = "io_spec";
+  /// `StableAddr.ptr`: the slot address itself, a pointer to the data pointer.
+  static constexpr llvm::StringLiteral kSlotPtr = "ptr";
+
+  /// Field accessors (return the raw field value, not a call).
+  MojoValue addr() const { return value.get(kAddr); }
+  MojoValue slotPtr() const { return addr().get(kSlotPtr); }
+  MojoValue runtimeLayout() const { return value.get(kRuntimeLayout); }
+  MojoValue staticSpec() const { return value.get(kStaticSpec); }
+  MojoValue ioSpec() const { return value.get(kIoSpec); }
+
+  /// Method calls (parens included).
+  MojoValue shape() const { return value.get(kShape)(); }
+
+  MojoValue value;
+};
+
 class StaticTensorSpecRef {
 public:
   explicit StaticTensorSpecRef(MojoValue v) : value(std::move(v)) {}
@@ -693,6 +742,8 @@ public:
   static constexpr llvm::StringLiteral kContext = "context";
   static constexpr llvm::StringLiteral kRecordingContext = "recording_context";
   static constexpr llvm::StringLiteral kDependencies = "dependencies";
+  static constexpr llvm::StringLiteral kGetStable = "get_stable";
+  static constexpr llvm::StringLiteral kPlaceStable = "place_stable";
 
   /// A graph-owned stable location recorded in place of the caller's buffer,
   /// so replay does not depend on the caller's address.
@@ -700,7 +751,18 @@ public:
     return value.get(kAddInput)(/*parameters=*/{}, {std::move(input)});
   }
 
-  /// Returns the uncalled method handle.
+  /// `builder.get_stable(index)`.
+  MojoValue getStable(MojoValue index) const {
+    return value.get(kGetStable)(/*parameters=*/{}, {std::move(index)});
+  }
+
+  /// `builder.place_stable(index, ptr)`.
+  MojoValue placeStable(MojoValue index, MojoValue ptr) const {
+    return value.get(kPlaceStable)(/*parameters=*/{},
+                                   {std::move(index), std::move(ptr)});
+  }
+
+  /// `builder.add_output`.
   MojoValue addOutput() const { return value.get(kAddOutput); }
 
   /// Chains every node `work` records and returns the last as a single
@@ -728,6 +790,7 @@ public:
   static constexpr llvm::StringLiteral kCreate = "create";
   static constexpr llvm::StringLiteral kCreateCollective = "create_collective";
   static constexpr llvm::StringLiteral kCache = "cache";
+  static constexpr llvm::StringLiteral kStableDevices = "stable_devices";
 
   /// `args`: device context, build closure, then cache key inputs.
   static MojoValue create(llvm::ArrayRef<MojoValue> args) {
@@ -745,6 +808,13 @@ public:
   /// Selects the caching overload of `create`.
   static MojoValue cacheArg(MojoValue cache) {
     return MojoValue(kCache).equal(std::move(cache));
+  }
+
+  /// `stable_devices = [<ordinal>, ...]` — for each stable address slot of a
+  /// collective, the index into the contexts array of the device whose memory
+  /// holds it.
+  static MojoValue stableDevicesArg(MojoValue devices) {
+    return MojoValue(kStableDevices).equal(std::move(devices));
   }
 
   MojoValue value;

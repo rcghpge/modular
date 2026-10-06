@@ -286,3 +286,54 @@ mgp.model @dg_host_input : mof devices [#M.device_ref<"gpu", 0>]
   } : !mgp.tensor<2x3xf32, <"gpu", 0>>
   mef.output %ch0, %out : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 } {isDeviceGraph}
+
+// -----
+
+// Stable address slots are declared on the collective rather than passed as
+// values, so finalization needs no capture plumbing for them: the regions
+// reach slots by index through the builder, the one block argument
+// finalization already remaps. The declaration is copied onto the create op
+// so emission can allocate the slots.
+
+// CHECK-LABEL: mgp.model @dg_stable_slots
+// CHECK: mgp.device_graph.collective.create
+// CHECK-SAME: builder(%[[B0:[a-zA-Z0-9_]+]])
+// CHECK: %[[P0:[a-zA-Z0-9_]+]] = mgp.device_graph.stable.place %[[B0]][0], %[[IN0:[a-zA-Z0-9_]+]] : !mgp.tensor<2x3xf32, <"gpu", 0>>
+// CHECK: %[[S0:[a-zA-Z0-9_]+]] = mgp.tensor.extract.tensor_spec %[[IN0]]
+// CHECK: mgp.device_graph.stable.tensor %[[P0]], %[[S0]] : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+// CHECK: builder(%[[B1:[a-zA-Z0-9_]+]])
+// CHECK: %[[A0:[a-zA-Z0-9_]+]] = mgp.device_graph.stable.get %[[B1]][0] : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+// CHECK: %[[S1:[a-zA-Z0-9_]+]] = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
+// CHECK: mgp.device_graph.stable.tensor %[[A0]], %[[S1]] : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+// CHECK: {stableTypes = #mgp<stable_addr_array[<<2x3xf32, <"gpu", 0>>>]>}
+// CHECK: mgp.device_graph.collective.execute
+// CHECK-NOT: mgp.device_graph.collective builder
+
+mgp.model @dg_stable_slots : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
+  init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu0, %gpu1
+      : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">,
+        !mgp.device_context<<"gpu", 0>>, !mgp.device_context<<"gpu", 1>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">,
+           %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>,
+           %in0: !mgp.tensor<2x3xf32, <"gpu", 0>>, %in1: !mgp.tensor<2x3xf32, <"gpu", 1>>)
+    -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>) {
+  %c0, %c1 = mgp.device_graph.collective builder(%b) stable(
+      !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+  ) <"gpu", 0> {
+    %p0 = mgp.device_graph.stable.place %b[0], %in0 : !mgp.tensor<2x3xf32, <"gpu", 0>>
+    %s0 = mgp.tensor.extract.tensor_spec %in0 : <2x3xf32, <"gpu", 0>>
+    %t0 = mgp.device_graph.stable.tensor %p0, %s0 : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+    mgp.device_graph.collective.yield %in0 : !mgp.tensor<2x3xf32, <"gpu", 0>>
+  }, <"gpu", 1> {
+    %a0 = mgp.device_graph.stable.get %b[0] : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+    %s1 = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
+    %t1 = mgp.device_graph.stable.tensor %a0, %s1 : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
+    mgp.device_graph.collective.yield %in1 : !mgp.tensor<2x3xf32, <"gpu", 1>>
+  } : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+
+  mef.output %ch0, %c0, %c1
+      : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+} {isDeviceGraph}

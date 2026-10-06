@@ -20,6 +20,19 @@ class MGP_Attr<string attrName, string attrMnemonic, list<Trait> traits = []>
   let mnemonic = attrMnemonic;
 }
 
+//===----------------------------------------------------------------------===//
+// StableAddressArrayAttr
+//===----------------------------------------------------------------------===//
+
+def MGP_StableAddressArrayAttr
+    : ArrayOfAttr<MGPDialect, "StableAddressArray", "stable_addr_array",
+                  "::M::MGP::StableAddressType"> {
+  let summary = "The stable address slots a device graph collective declares.";
+  let description = [{
+    An ordered list of `!mgp.stable_addr` types.
+  }];
+}
+
 // Currently no attributes.
 
 #endif  // GENERICML_MGPDIALECT_MGPATTRS_TD

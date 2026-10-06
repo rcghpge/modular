@@ -943,6 +943,18 @@ MojoValue generateMutableTensorInit(Value input, EmitMojoState &state) {
   auto tensorType = cast<MO::TensorType>(input.getType());
   MojoValue inputValue = state.getMojoValueFor(input);
 
+  // A slot-backed view re-inits as an immutable `StableTensor` over the same
+  // slot and layout; there is no data pointer to hand to the init primitive.
+  if (tensorType.isStable()) {
+    StableTensorRef stable(inputValue);
+    MojoValue ctor = MojoValue(kComptimeStableInputTensor)[{
+        MojoValue(kParameterStaticSpec)
+            .equal(MojoValue("type_of")({}, {inputValue})
+                       .get(StableTensorRef::kStaticSpec))}];
+    return state.builder.var(ctor({}, {stable.addr(), stable.runtimeLayout()}));
+  }
+
+  // Extract dtype
   ErrorOr<DType> dTypeOr = M::MO::fromMLIRType(tensorType.getElementType());
   ASSERT_STREAM(!dTypeOr.isError(),
                 "Failed to extract dtype from mutable input tensor");
@@ -1426,12 +1438,15 @@ LogicalResult TensorCreateOp::emitMojo(EmitMojoState &state) {
   auto layoutVar = state.builder.var(
       MojoValue(kFnRowMajor)({}, {state.getMojoValueFor(getShape())}));
 
-  // Reuse `mogg.tensor.__init__`: both build the same `ManagedTensorSlice`,
-  // but here the pointer arrives as a raw `!mogg.pointer`.
-  auto tensorInitPrimDecl =
-      state.registry.lookupPrimitive(TensorInitOp::getOperationName());
+  // Reuse the legacy `mogg.tensor.__init__` primitives: the two ops build the
+  // same `ManagedTensorSlice` (or, for a slot-backed operand, the same
+  // `StableTensor` over the slot address).
+  StringRef primitiveName = getStable()
+                                ? StringRef(kMoggPrimitiveStableTensorInit)
+                                : TensorInitOp::getOperationName();
+  auto tensorInitPrimDecl = state.registry.lookupPrimitive(primitiveName);
   ASSERT_STREAM(tensorInitPrimDecl,
-                "Primitive not found for " << TensorInitOp::getOperationName());
+                "Primitive not found for " << primitiveName.str());
   MojoValue moggTensorInit(primitiveMojoName(tensorInitPrimDecl));
   state.setMojoValueFor(
       getTensor(),
@@ -3233,11 +3248,23 @@ OpFoldResult AsyncPackOp::fold(FoldAdaptor adaptor) {
 // TensorInitOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
-  auto tensorTy = MO::dynCastFromTensorLike(getType());
+/// The data pointer of an `!mgp.buffer` value as an untyped Mojo pointer.
+static MojoValue bufferDataPointer(EmitMojoState &state, Value buffer) {
+  return OpaquePointerRef(
+             ManagedTensorSliceRef(state.getMojoValueFor(buffer)).unsafePtr())
+      .bitcast(MojoValue(kComptimeDTypeNoneType))();
+}
+
+/// Emits the call to the `mogg_tensor_init`-family primitive `primitiveName`,
+/// binding `op`'s single result.
+static void emitTensorInitPrimitiveCall(EmitMojoState &state, Operation *op,
+                                        StringRef primitiveName,
+                                        Type resultType, bool mut,
+                                        MO::IOKind io, ValueRange dims,
+                                        MojoValue storage) {
+  auto tensorTy = MO::dynCastFromTensorLike(resultType);
   MojoValue dTypeParam = state.mlirDTypeToMojoType(tensorTy.getDtype());
-  auto mutParam = getMut();
-  auto ioParam = MojoValue(kStructIO).get(MO::stringifyIOKind(getIo()));
+  auto ioParam = MojoValue(kStructIO).get(MO::stringifyIOKind(io));
   MojoValue rankParam =
       MojoValue(static_cast<uint64_t>(tensorTy.getRankNonZero()));
   MojoValue alignmentParam(
@@ -3247,23 +3274,28 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
   // `Scalar[DType.int](<dim>)`) and build a row-major `Layout`, whose Coord
   // element types convey the static/dynamic structure to `mogg_tensor_init`.
   auto shapeVar = state.builder.var(
-      state.getShapeAsCoordMojoValue(tensorTy.getShape(), getDims()));
+      state.getShapeAsCoordMojoValue(tensorTy.getShape(), dims));
   auto layoutVar = state.builder.var(MojoValue(kFnRowMajor)({}, {shapeVar}));
-  auto tensorInitPrimDecl2 =
-      state.registry.lookupPrimitive(this->getOperationName());
-  ASSERT_STREAM(tensorInitPrimDecl2,
-                "Primitive not found for " << getOperationName().str());
-  MojoValue moggTensorInit(primitiveMojoName(tensorInitPrimDecl2));
+  auto primDecl = state.registry.lookupPrimitive(primitiveName);
+  ASSERT_STREAM(primDecl, "Primitive not found for " << primitiveName.str());
+  MojoValue primitive(primitiveMojoName(primDecl));
   state.setMojoValueFor(
-      getResult(),
-      state.builder.var(moggTensorInit(
-          {dTypeParam, rankParam, mutParam, ioParam, alignmentParam},
-          {OpaquePointerRef(
-               ManagedTensorSliceRef(state.getMojoValueFor(getBuffer()))
-                   .unsafePtr())
-               .bitcast(MojoValue(kComptimeDTypeNoneType))(),
-           layoutVar})));
+      op->getResult(0),
+      state.builder.var(primitive(
+          {dTypeParam, rankParam, MojoValue(mut), ioParam, alignmentParam},
+          {std::move(storage), layoutVar})));
+}
 
+LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
+  // The result type, not the op, decides the kernel-facing tensor: a stable
+  // `!mo.tensor` is a `StableTensor` that reads the slot the buffer points at.
+  auto tensorTy = MO::dynCastFromTensorLike(getType());
+  StringRef primitiveName = tensorTy.isStable()
+                                ? StringRef(kMoggPrimitiveStableTensorInit)
+                                : getOperationName();
+  emitTensorInitPrimitiveCall(state, *this, primitiveName, getType(), getMut(),
+                              getIo(), getDims(),
+                              bufferDataPointer(state, getBuffer()));
   return success();
 }
 

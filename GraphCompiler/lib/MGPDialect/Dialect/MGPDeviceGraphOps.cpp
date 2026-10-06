@@ -878,51 +878,93 @@ bool DeviceGraphStableCreateOp::mayAlias(size_t operandIndex,
 // DeviceGraphStableGetOp
 //===----------------------------------------------------------------------===//
 
-bool DeviceGraphStableGetOp::isThrows() { return true; }
+/// The `stableTypes` of the nearest collective enclosing `op`, or null when
+/// there is none (dialect-level tests write the ops standalone). Lowering
+/// wraps the op in compiled regions and dependency units on its way to
+/// emission, so this walks rather than checking the immediate parent.
+///
+/// TODO(spenser): carry the slot types on `!mgp.device_graph.builder` itself,
+/// so `stable.get`/`stable.place` verify against their operand's type and the
+/// walk (and the collective-side annotation) go away.
+static StableAddressArrayAttr enclosingStableTypes(Operation *op) {
+  for (Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    if (auto collective = dyn_cast<DeviceGraphCollectiveOp>(parent))
+      return collective.getStableTypesAttr();
+    if (auto create = dyn_cast<DeviceGraphCollectiveCreateOp>(parent))
+      return create.getStableTypesAttr();
+  }
+  return {};
+}
 
-LogicalResult DeviceGraphStableGetOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto slotType = cast<StableAddressType>(adaptor.getAddr().getType());
-  auto elementType = slotType.getElementType();
+/// Checks that slot `index` exists in the enclosing collective and is declared
+/// with `slotType`. Slots are named by index rather than by SSA value, so this
+/// is the only place the two agree.
+static LogicalResult verifyStableSlot(Operation *op, int64_t index,
+                                      Type slotType) {
+  if (index < 0)
+    return op->emitOpError("stable slot index must not be negative");
 
-  auto resultType = DeviceTensorType::get(
-      elementType.getDevice(), elementType.getTensorSpec(),
-      elementType.getMut(), /*stable=*/true);
+  StableAddressArrayAttr stableTypes = enclosingStableTypes(op);
+  if (!stableTypes)
+    return success();
 
-  inferredReturnTypes.push_back(resultType);
+  ArrayRef<StableAddressType> slots = stableTypes.getValue();
+  if (static_cast<uint64_t>(index) >= slots.size())
+    return op->emitOpError("stable slot index ")
+           << index << " is out of range; the enclosing collective declares "
+           << slots.size() << " slot(s)";
+  if (slots[index] != slotType)
+    return op->emitOpError("stable slot #")
+           << index << " is declared as " << slots[index]
+           << ", but the op uses " << slotType;
   return success();
 }
 
-LogicalResult DeviceGraphStableGetOp::emitMojo(MOGG::EmitMojoState &) {
-  return emitError(
-      "`mgp.device_graph.stable.get` Mojo emission is not yet implemented");
+bool DeviceGraphStableGetOp::isThrows() { return true; }
+
+LogicalResult DeviceGraphStableGetOp::verify() {
+  return verifyStableSlot(*this, getIndex(), getResult().getType());
+}
+
+LogicalResult DeviceGraphStableGetOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  DeviceGraphBuilderRef builder(state.getMojoValueFor(getGraphBuilder()));
+  state.setMojoValueFor(
+      getResult(), state.builder.var(builder.getStable(MojoValue(getIndex()))));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
 // DeviceGraphStablePlaceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult DeviceGraphStablePlaceOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  auto slotType = cast<StableAddressType>(adaptor.getAddr().getType());
-  auto elementType = slotType.getElementType();
-
-  auto resultType =
-      DeviceTensorType::get(elementType.getDevice(),
-                            elementType.getTensorSpec(), elementType.getMut(),
-                            /*stable=*/true);
-
-  inferredReturnTypes.push_back(resultType);
-  return success();
-}
-
 bool DeviceGraphStablePlaceOp::isThrows() { return true; }
 
-LogicalResult DeviceGraphStablePlaceOp::emitMojo(MOGG::EmitMojoState &) {
-  return emitError(
-      "`mgp.device_graph.stable.place` Mojo emission is not yet implemented");
+LogicalResult DeviceGraphStablePlaceOp::verify() {
+  return verifyStableSlot(*this, getIndex(), getPlacedAddr().getType());
+}
+
+LogicalResult DeviceGraphStablePlaceOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  // The slot holds the tensor's data pointer. An `!mgp.tensor` value has no
+  // pointer accessor of its own, so take it from the extracted buffer, as
+  // `mogg.tensor.__init__` does.
+  auto extractDecl =
+      state.registry.lookupPrimitive(TensorExtractBufferOp::getOperationName());
+  MojoValue extractBuffer(extractDecl.getSymNameAttr().strref());
+  MojoValue buffer = state.builder.var(extractBuffer(
+      /*parameters=*/{}, {state.getMojoValueFor(getTensor())}));
+  MojoValue dataPtr =
+      OpaquePointerRef(ManagedTensorSliceRef(buffer).unsafePtr())
+          .bitcast(MojoValue(kComptimeDTypeNoneType))();
+
+  DeviceGraphBuilderRef builder(state.getMojoValueFor(getGraphBuilder()));
+  state.setMojoValueFor(getPlacedAddr(), state.builder.var(builder.placeStable(
+                                             MojoValue(getIndex()), dataPtr)));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -931,14 +973,13 @@ LogicalResult DeviceGraphStablePlaceOp::emitMojo(MOGG::EmitMojoState &) {
 
 // Verifies:
 //   1. `$devices.size() == #regions`.
-//   2. Every region has the same block-arg count (the per-device collective
-//      bodies see the same shape of the stable-address map).
-//   3. Block argument #0 of every region is a `!mgp.device_graph.builder`.
-//   4. Remaining block arguments are `!mgp.stable_addr<...>` slots and match
-//      across regions.
-//   5. Every region terminates with `DeviceGraphCollectiveYieldOp`.
-//   6. The total yielded operand count across regions equals `$outputs.size()`
+//   2. Every region has exactly one block argument, a
+//      `!mgp.device_graph.builder`.
+//   3. Every region terminates with `DeviceGraphCollectiveYieldOp`.
+//   4. The total yielded operand count across regions equals `$outputs.size()`
 //      (yields append in region order).
+// `$stableTypes` needs no check here: its attribute type only admits
+// `!mgp.stable_addr` elements.
 LogicalResult DeviceGraphCollectiveOp::verify() {
   if (getGraphs().size() != getDevices().size())
     return emitOpError("`devices` attribute has ")
@@ -948,22 +989,14 @@ LogicalResult DeviceGraphCollectiveOp::verify() {
   if (getDevices().empty())
     return success();
 
-  const unsigned firstNumArgs = getRegionBlock(0).getNumArguments();
-  TypeRange firstArgTypes = getRegionBlock(0).getArgumentTypes();
   unsigned outputIdx = 0;
   for (auto [idx, region] : llvm::enumerate(getGraphs())) {
     Block &block = region.front();
 
-    if (block.getNumArguments() != firstNumArgs)
+    if (block.getNumArguments() != 1)
       return emitOpError("region #")
              << idx << " has " << block.getNumArguments()
-             << " block argument(s), but region 0 has " << firstNumArgs
-             << "; all regions must agree on the block argument shape";
-
-    if (block.getNumArguments() == 0)
-      return emitOpError("region #")
-             << idx
-             << " has no block arguments; expected at least a "
+             << " block argument(s); expected exactly one, the "
                 "`!mgp.device_graph.builder`";
 
     if (!isa<DeviceGraphBuilderType>(block.getArgument(0).getType()))
@@ -971,22 +1004,6 @@ LogicalResult DeviceGraphCollectiveOp::verify() {
              << idx << " block argument #0 has type "
              << block.getArgument(0).getType()
              << "; expected `!mgp.device_graph.builder`";
-
-    for (auto [argIdx, blockArg] : llvm::enumerate(block.getArguments())) {
-      if (argIdx == 0)
-        continue;
-
-      if (!isa<StableAddressType>(blockArg.getType()))
-        return emitOpError("region #")
-               << idx << " block argument #" << argIdx << " has type "
-               << blockArg.getType() << "; expected `!mgp.stable_addr<...>`";
-
-      if (blockArg.getType() != firstArgTypes[argIdx])
-        return emitOpError("region #")
-               << idx << " block argument #" << argIdx << " has type "
-               << blockArg.getType() << "; expected the same type as region 0 ("
-               << firstArgTypes[argIdx] << ")";
-    }
 
     if (!block.mightHaveTerminator() ||
         !isa<DeviceGraphCollectiveYieldOp>(block.getTerminator()))
@@ -1046,14 +1063,15 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
   if (parser.parseKeyword("stable"))
     return failure();
 
-  SmallVector<OpAsmParser::Argument> stableArgs;
-  if (parser.parseArgumentList(stableArgs, OpAsmParser::Delimiter::Paren,
-                               /*allowType=*/true))
+  SmallVector<StableAddressType> stableTypes;
+  if (parser.parseCommaSeparatedList(
+          OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+            return parser.parseType(stableTypes.emplace_back());
+          }))
     return failure();
 
-  SmallVector<OpAsmParser::Argument> regionArgs;
-  regionArgs.push_back(builderArg);
-  llvm::append_range(regionArgs, stableArgs);
+  // Every region's entry block takes just the builder.
+  SmallVector<OpAsmParser::Argument> regionArgs = {builderArg};
 
   // Each region is a `DeviceRefAttr` label then its body; label order defines
   // `$devices`.
@@ -1081,9 +1099,13 @@ ParseResult DeviceGraphCollectiveOp::parse(OpAsmParser &parser,
   if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
   result.attributes.erase(getDevicesAttrName(result.name));
+  result.attributes.erase(getStableTypesAttrName(result.name));
 
   auto devices = DeviceRefsAttr::get(parser.getContext(), deviceRefs);
   result.addAttribute(getDevicesAttrName(result.name), devices);
+  result.addAttribute(
+      getStableTypesAttrName(result.name),
+      StableAddressArrayAttr::get(parser.getContext(), stableTypes));
 
   SmallVector<Type> resultTypes;
   if (parser.parseOptionalColonTypeList(resultTypes))
@@ -1102,14 +1124,8 @@ void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
                           /*argAttrs=*/{}, /*omitType=*/true);
   }
   p << ") stable(";
-  if (!getGraphs().empty()) {
-    Block &firstBlock = getRegionBlock(0);
-    auto stableArgs = firstBlock.getArguments().drop_front(1);
-    llvm::interleaveComma(stableArgs, p, [&](BlockArgument arg) {
-      p.printRegionArgument(arg, /*argAttrs=*/{},
-                            /*omitType=*/false);
-    });
-  }
+  llvm::interleaveComma(getStableTypes(), p,
+                        [&](StableAddressType type) { p.printType(type); });
   p << ')';
 
   if (!getDevices().empty())
@@ -1122,9 +1138,10 @@ void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
     p.printRegion(getGraphs()[idx], /*printEntryBlockArgs=*/false);
   });
 
-  // `devices` is printed as the region labels; an empty `constantResources`
-  // is omitted, as in `mgp.device_graph.staging`.
-  SmallVector<StringRef> elide = {getDevicesAttrName()};
+  // `devices` and `stableTypes` are represented by the per-region labels and
+  // the `stable(...)` clause above.
+  SmallVector<StringRef> elide = {getDevicesAttrName(),
+                                  getStableTypesAttrName()};
   if (getConstantResources().empty())
     elide.push_back(getConstantResourcesAttrName());
   p.printOptionalAttrDict(getOperation()->getAttrs(), elide);
@@ -1138,29 +1155,22 @@ void DeviceGraphCollectiveOp::print(OpAsmPrinter &p) {
 
 void DeviceGraphCollectiveOp::getAsmBlockArgumentNames(
     Region &region, llvm::function_ref<void(Value, StringRef)> setNameFn) {
-  // The builder is `b`; stable-address slots are `s0`, `s1`, ...
-  for (auto [idx, arg] : llvm::enumerate(region.getArguments())) {
-    if (idx == 0)
-      setNameFn(arg, "b");
-    else
-      setNameFn(arg, "s" + std::to_string(idx - 1));
-  }
+  // The only entry block argument is the builder, `b`.
+  for (BlockArgument arg : region.getArguments())
+    setNameFn(arg, "b");
 }
 
 void DeviceGraphCollectiveOp::build(
     OpBuilder &builder, OperationState &state,
     ArrayRef<M::DeviceRefAttr> devices, ArrayRef<StableAddressType> stableTypes,
-    function_ref<void(OpBuilder &, M::DeviceRefAttr, BlockArgument,
-                      ArrayRef<BlockArgument>)>
+    function_ref<void(OpBuilder &, M::DeviceRefAttr, BlockArgument)>
         bodyBuilder) {
   OpBuilder::InsertionGuard guard(builder);
 
   MLIRContext *ctx = builder.getContext();
 
-  SmallVector<Location> argLocs(stableTypes.size(), state.location);
-  auto argTypes = llvm::to_vector_of<Type>(stableTypes);
-
-  // Each per-device region takes the builder, then one arg per stable slot.
+  // Build one region per device, each with the builder as its only block
+  // argument.
   SmallVector<Type> resultTypes;
   for (auto dev : devices) {
     Region *region = state.addRegion();
@@ -1168,21 +1178,65 @@ void DeviceGraphCollectiveOp::build(
 
     auto builderArg =
         block->addArgument(DeviceGraphBuilderType::get(ctx), state.location);
-    auto args = block->addArguments(argTypes, argLocs);
-
-    SmallVector<BlockArgument> stableArgs = llvm::to_vector(args);
 
     builder.setInsertionPointToEnd(block);
-    bodyBuilder(builder, dev, builderArg, stableArgs);
+    bodyBuilder(builder, dev, builderArg);
     ensureTerminator(*region, builder, state.location);
 
     llvm::append_range(resultTypes, block->getTerminator()->getOperandTypes());
   }
 
-  // `graphsCount=0`: the regions were already added to `state`.
+  auto stableTypesAttr = StableAddressArrayAttr::get(ctx, stableTypes);
+
+  // Call into the tablegen builder with `graphsCount=0`. We've already added
+  // the child regions to `state`.
   DeviceGraphCollectiveOp::build(builder, state, resultTypes, devices,
+                                 stableTypesAttr,
                                  /*constantResources=*/ArrayAttr(),
                                  /*graphsCount=*/0);
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStableTensorOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DeviceGraphStableTensorOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  DeviceTensorType tensorType =
+      cast<StableAddressType>(adaptor.getAddr().getType()).getElementType();
+  inferredReturnTypes.push_back(DeviceTensorType::get(
+      tensorType.getDevice(), tensorType.getTensorSpec(), tensorType.getMut(),
+      /*stable=*/true));
+  return success();
+}
+
+LogicalResult DeviceGraphStableTensorOp::emitMojo(MOGG::EmitMojoState &state) {
+  using namespace MOGG;
+
+  auto primDecl = state.registry.lookupPrimitive(getOperationName());
+  MojoValue function(primDecl.getSymNameAttr().strref());
+
+  // Parameterized like `mgp.tensor.create`: the result is an ordinary
+  // `OwnedTensor` whose data pointer happens to be the slot.
+  DeviceTensorType tensorType = getResult().getType();
+  MojoValue tensorRankParam = tensorType.getRank();
+  MojoValue bufferRankParam =
+      tensorType.getRank() == 0 ? MojoValue{1} : tensorRankParam;
+  MojoValue dtypeParam = state.mlirDTypeToMojoType(
+      tensorType.getTensorSpec().getOptDType().value());
+
+  SmallVector<MojoValue> params = {tensorRankParam, bufferRankParam,
+                                   dtypeParam};
+  if (tensorType.getMut())
+    params.push_back(MojoValue(kParameterMut).equal(MojoValue(true)));
+  if (M::isHostPlaced(tensorType.getDevice()))
+    params.push_back(MojoValue(kParameterHost).equal(MojoValue(true)));
+
+  state.setMojoValueFor(getResult(),
+                        state.builder.var(function(
+                            params, state.getMojoValuesFor(getOperands()))));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1517,7 +1571,7 @@ void DeviceGraphCollectiveCreateOp::build(
   }
 
   build(builder, result, graphTypes, theContext, deviceContexts, cache, inputs,
-        /*graphsCount=*/0);
+        /*stableTypes=*/StableAddressArrayAttr(), /*graphsCount=*/0);
 }
 
 /// Emits the build closure, shared by the cached and uncached paths, that
@@ -1683,10 +1737,39 @@ DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &state) {
     SmallVector<MojoValue> collectiveArgs = {
         contextsArray, *buildFor, keyFor,
         DeviceGraphRef::cacheArg(state.getMojoValueFor(cache))};
+
+    // Each stable address slot is allocated on the device its type names;
+    // the Mojo side takes that as an ordinal into the contexts array.
+    if (StableAddressArrayAttr stableTypes = getStableTypesAttr();
+        stableTypes && !stableTypes.getValue().empty()) {
+      SmallVector<MojoValue> stableDevices;
+      for (auto [slot, type] : llvm::enumerate(stableTypes.getValue())) {
+        DeviceRefAttr device = type.getElementType().getDevice();
+        auto contexts = getDeviceContexts();
+        auto it = llvm::find_if(contexts, [&](Value ctx) {
+          return cast<DeviceContextType>(ctx.getType()).getDevice() == device;
+        });
+        if (!device || it == contexts.end())
+          return emitOpError("stable slot #")
+                 << slot << " lives on device " << device
+                 << ", which is not one of the collective's device contexts";
+        stableDevices.push_back(
+            MojoValue(static_cast<uint64_t>(it - contexts.begin())));
+      }
+      collectiveArgs.push_back(DeviceGraphRef::stableDevicesArg(
+          state.builder.listLiteral(stableDevices)));
+    }
+
     graphsArray =
         state.builder.var(DeviceGraphRef::createCollective(collectiveArgs));
   } else {
-    // Uncached: build each graph individually, without a shared cache.
+    if (StableAddressArrayAttr stableTypes = getStableTypesAttr();
+        stableTypes && !stableTypes.getValue().empty())
+      return emitOpError("stable address slots require a device graph cache "
+                         "to own them; the op has no `cache` operand");
+
+    // Uncached path: build each graph individually so the op does not require
+    // a shared cache.
     NamedMojoDef builderParam = NamedMojoDef::asVerbatim(
         "builder", MojoValue(kStructDeviceGraphBuilder));
     builderParam.argConvention = "mut";

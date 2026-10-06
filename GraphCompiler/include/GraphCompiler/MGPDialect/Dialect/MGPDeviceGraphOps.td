@@ -509,33 +509,45 @@ def DeviceGraphStableCreateOp : MGP_DeviceGraphOp<"stable.create", [
 
 def DeviceGraphStableGetOp : MGP_DeviceGraphOp<"stable.get", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  InferTypeOpAdaptor,
 ]> {
-  let summary = "Reads a tensor view from a stable address; optional builder.";
+  let summary = "Reads a stable address slot in a device graph region.";
   let description = [{
-    Records a node that, at replay, reads the value currently published at
-    `$addr`. When `$graphBuilder` is present, the node is recorded against that
-    builder; when absent, the operation is recorded against an implicit
-    device-graph context (used while the per-region builder plumbing is being
-    worked out).
+    Returns stable address slot `$index` of the enclosing collective for the
+    region's consumers, reading it through `$graphBuilder`, which holds the
+    collective's slot table. `$index` names an entry of the collective's
+    `stableTypes`, and the result type must equal that entry. The op is
+    verified against the nearest enclosing `mgp.device_graph.collective` or,
+    after finalization, `mgp.device_graph.collective.create`; lowering may
+    wrap it in intermediate regions on the way there.
 
-    At construction time the stable-address mapping is recorded on the device
-    graph itself, so that the patched pointer resolves at launch time.
+    The result is the slot itself, not a tensor. The slot holds a data pointer
+    that `mgp.device_graph.stable.place` rewrites before every replay, so a
+    tensor built over the data pointer would bake a stale address into the
+    graph. `mgp.device_graph.stable.tensor` turns the slot back into the
+    `!mgp.tensor<..., stable>` consumers were lowered against, whose data
+    pointer is the slot address; the kernel then reads through it via a
+    `stable`-marked `!mo.tensor` built by `mogg.tensor.__init__`.
 
     The result is a `stable` `!mgp.device_tensor` whose shape/device come from
     the slot's element type `T`, since the slot provides its backing address.
+
+    Example:
+    ```mlir
+      %a1 = mgp.device_graph.stable.get %b[1]
+          : !mgp.stable_addr<<4xf32, <"gpu", 1>>>
+    ```
   }];
 
   let arguments = (ins
-    MGP_StableAddressType:$addr,
-    Optional<MGP_DeviceGraphBuilderType>:$graphBuilder
+    MGP_DeviceGraphBuilderType:$graphBuilder,
+    I64Attr:$index
   );
-  let results = (outs MGP_DeviceTensorType:$result);
+  let results = (outs MGP_StableAddressType:$result);
   let assemblyFormat = [{
-    $addr `:` qualified(type($addr))
-     (`,` $graphBuilder^ `:` qualified(type($graphBuilder)))?
-     attr-dict
+    $graphBuilder `[` $index `]` attr-dict `:` qualified(type($result))
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -544,39 +556,95 @@ def DeviceGraphStableGetOp : MGP_DeviceGraphOp<"stable.get", [
 
 def DeviceGraphStablePlaceOp : MGP_DeviceGraphOp<"stable.place", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
-  InferTypeOpAdaptor,
+  // Relating the result to `$tensor` also lets ODS infer the result type.
   TypesMatchWith<"stable address type wraps the tensor type",
-                 "tensor", "addr",
+                 "tensor", "placedAddr",
                  "::M::MGP::StableAddressType::get($_self)">,
 ]> {
-  let summary = "Publishes a value into a stable address; optional builder.";
+  let summary = "Publishes a value into a stable address slot.";
   let description = [{
-    Records a node that, at replay, publishes `$tensor` at `$addr`. When
-    `$graphBuilder` is present, the node is recorded against that builder; when
-    absent, the operation publishes against an implicit device-graph context
-    (used while the per-region builder plumbing is being worked out).
+    Records that the enclosing region publishes `$tensor` into stable address
+    slot `$index` of the enclosing collective, through `$graphBuilder`, which
+    holds the collective's slot table. At replay the slot is rewritten to hold
+    `$tensor`'s data pointer before the graphs that read it run. `$index`
+    names an entry of the collective's `stableTypes`; that entry must be the
+    stable address type of `$tensor`, checked against the nearest enclosing
+    collective as for `mgp.device_graph.stable.get`.
 
-    At construction time the stable-address mapping is recorded on the device
-    graph itself, so that the patched pointer resolves at launch time. A
-    subsequent `mgp.device_graph.stable.get` in the same region that reads the
-    same `$addr` sees this value at replay when enqueued after the place.
+    The result is the slot, sequenced after the publish. MGP conveys ordering
+    through dataflow, so consumers on the source device take the placed slot
+    and need no separate `mgp.device_graph.stable.get`. Like that op's result,
+    it is the slot rather than a tensor view; see `mgp.device_graph.stable.get`
+    for why.
 
-    The operation also returns a `!mgp.device_tensor` view backed by the stable
-    address, identical to the value produced by `mgp.device_graph.stable.get`
-    on the same `$addr`. This lets consumers on the source device reuse the
-    placed value directly instead of emitting a separate `stable.get`.
+    Example:
+    ```mlir
+      %p0 = mgp.device_graph.stable.place %b[0], %t
+          : !mgp.tensor<4xf32, <"gpu", 0>>
+    ```
+  }];
+
+  let arguments = (ins
+    MGP_DeviceGraphBuilderType:$graphBuilder,
+    MGP_DeviceTensorType:$tensor,
+    I64Attr:$index
+  );
+  let results = (outs MGP_StableAddressType:$placedAddr);
+  let assemblyFormat = [{
+    $graphBuilder `[` $index `]` `,` $tensor attr-dict `:` qualified(type($tensor))
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// DeviceGraphStableTensorOp
+//===----------------------------------------------------------------------===//
+
+def DeviceGraphStableTensorOp : MGP_DeviceGraphOp<"stable.tensor", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  InferTypeOpAdaptor,
+  Pure,
+  // Also lets the declarative format omit the spec's type.
+  TypesMatchWith<"spec matches the slot's tensor spec", "addr", "spec",
+                 "::llvm::cast<::M::MGP::StableAddressType>($_self)"
+                 ".getElementType().getTensorSpec()">,
+]> {
+  let summary = "Views a stable address slot as the stable tensor it holds.";
+  let description = [{
+    Builds the `!mgp.tensor<..., stable>` a slot stands for: `$addr`'s element
+    type with its `stable` flag set, shaped by `$spec`. The tensor's data
+    pointer is the slot's address rather than the pointer the slot holds, so a
+    kernel recorded against it extracts the buffer as for any other tensor and
+    dereferences the slot when it runs, through a `stable`-marked `!mo.tensor`
+    built by `mogg.tensor.__init__`, instead of baking in whatever the slot
+    pointed at during recording.
+
+    `mgp-partition-device-graph-collective` uses this to reproduce a
+    `mgp.device_graph.stable.create` result inside each collective region:
+    `stable.place` or `stable.get` yields the slot and this op turns it back
+    into the tensor the region's consumers were lowered against. The slot
+    carries only the data pointer, so `$spec` supplies the shape; it must be
+    the slot element type's spec.
+
+    Example:
+    ```mlir
+      %a0 = mgp.device_graph.stable.get %b[0]
+          : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+      %spec = mgp.tensor_spec.create : !mgp.tensor_spec<4xf32>
+      %t = mgp.device_graph.stable.tensor %a0, %spec
+          : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
+      // %t : !mgp.tensor<4xf32, <"gpu", 0>, stable>
+    ```
   }];
 
   let arguments = (ins
     MGP_StableAddressType:$addr,
-    MGP_DeviceTensorType:$tensor,
-    Optional<MGP_DeviceGraphBuilderType>:$graphBuilder
+    MGP_TensorSpecType:$spec
   );
-  let results = (outs MGP_DeviceTensorType:$placedTensor);
+  let results = (outs MGP_DeviceTensorType:$result);
   let assemblyFormat = [{
-    $addr `,` $tensor `:` qualified(type($tensor))
-    (`,` $graphBuilder^ `:` qualified(type($graphBuilder)))?
-    attr-dict
+    $addr `,` $spec attr-dict `:` qualified(type($addr))
   }];
 }
 
@@ -625,23 +693,28 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
     region order, recording which device each region's body represents.
 
     Each region's body records a single device-graph on its respective device.
-    Each region receives the same entry-block arguments: a
-    `!mgp.device_graph.builder` followed by the shared stable-address slots.
-    Each region terminates with `mgp.device_graph.collective.yield`, whose
-    operands append to the parent op's `$outputs` in region order.
+    Each region has one entry-block argument, the `!mgp.device_graph.builder`
+    the body records into, and terminates with
+    `mgp.device_graph.collective.yield`, whose operands append to the parent
+    op's `$outputs` in region order.
 
-    The printed form hoists the shared entry-block arguments into
-    `builder(...)` and `stable(...)` clauses, and introduces each region by the
-    `DeviceRefAttr` of its device.
+    The stable address slots the regions exchange values through are not
+    values in the IR. `$stableTypes` declares them, one `!mgp.stable_addr<T>`
+    per slot, where `T`'s device is the device whose memory holds the slot;
+    `mgp.device_graph.stable.get` and `mgp.device_graph.stable.place` name a
+    slot by its index into this list and reach it through the builder, which
+    carries the collective's slot table at runtime.
 
     Example:
     ```mlir
     %0:2 = mgp.device_graph.collective builder(%b) stable(
-      %s0: !mgp.stable_addr<<4xf32, <"gpu", 0>>>,
-      %s1: !mgp.stable_addr<<4xf32, <"gpu", 1>>>
+      !mgp.stable_addr<<4xf32, <"gpu", 0>>>,
+      !mgp.stable_addr<<4xf32, <"gpu", 1>>>
     ) <"gpu", 0> {
+      %p0 = mgp.device_graph.stable.place %b[0], %val : !mgp.tensor<4xf32, <"gpu", 0>>
       mgp.device_graph.collective.yield %val : !mgp.tensor<4xf32>
     }, <"gpu", 1> {
+      %a0 = mgp.device_graph.stable.get %b[0] : !mgp.stable_addr<<4xf32, <"gpu", 0>>>
       mgp.device_graph.collective.yield %val : !mgp.tensor<4xf32>
     } : !mgp.tensor<4xf32>, !mgp.tensor<4xf32>
     ```
@@ -649,8 +722,9 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
 
   let arguments = (ins
     M_DeviceRefsAttr:$devices,
-    // Constant resources of the inlined mogg.generic.compiled.region ops; this
-    // op is later synthesized back into one.
+    MGP_StableAddressArrayAttr:$stableTypes,
+    // As mogg.generic.compiled.region ops are inlined away, we need to
+    // preserve the constant resource attributes.
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources
   );
 
@@ -667,7 +741,6 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
     struct CollectiveRegion {
       Block *bodyBlock;
       BlockArgument builder;
-      ArrayRef<BlockArgument> stableAddrs;
       DeviceRefAttr device;
 
       template <typename T=void>
@@ -681,7 +754,6 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
         Block *block = &region.front();
         result.bodyBlock = block;
         result.builder = block->getArgument(0);
-        result.stableAddrs = block->getArguments().drop_front();
         result.device = getDevices()[region.getRegionNumber()];
         return result;
       });
@@ -700,10 +772,6 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
       return getRegionBlock(idx).getArgument(0);
     }
 
-    /// Returns the stable-address block arguments for region `idx`.
-    MutableArrayRef<BlockArgument> getRegionStableAddresses(unsigned idx) {
-      return getRegionBlock(idx).getArguments().drop_front(1);
-    }
 
     auto getGraphBlocks() {
       return llvm::map_range(getGraphs(), [](Region &region) {
@@ -716,7 +784,7 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
     OpBuilder<(ins
       "llvm::ArrayRef<M::DeviceRefAttr>":$devices,
       "llvm::ArrayRef<StableAddressType>":$stableTypes,
-      CArg<"llvm::function_ref<void(::mlir::OpBuilder &, M::DeviceRefAttr, BlockArgument, llvm::ArrayRef<::mlir::BlockArgument>)>", "nullptr">:$bodyBuilder
+      CArg<"llvm::function_ref<void(::mlir::OpBuilder &, M::DeviceRefAttr, BlockArgument)>", "nullptr">:$bodyBuilder
     )>
   ];
 
@@ -776,7 +844,11 @@ def DeviceGraphCollectiveCreateOp : MGP_DeviceGraphOp<"collective.create", [
     MGP_ContextType:$theContext,
     Variadic<MGP_DeviceContextType>:$deviceContexts,
     Optional<MGP_DeviceGraphCacheType>:$cache,
-    Variadic<AnyType>:$inputs
+    Variadic<AnyType>:$inputs,
+    // The stable address slots the regions index into, copied from the
+    // `mgp.device_graph.collective` this op was finalized from. Emission
+    // allocates one slot per entry on the device its type names.
+    OptionalAttr<MGP_StableAddressArrayAttr>:$stableTypes
   );
 
   let results = (outs Variadic<MGP_DeviceGraphType>:$outGraphs);

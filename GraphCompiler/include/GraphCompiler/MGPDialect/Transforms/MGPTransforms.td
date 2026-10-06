@@ -673,8 +673,20 @@ def PartitionDeviceGraphCollectivePass :
     each `mgp.model` marked `isDeviceGraph`, converts the single
     `mgp.device_graph.staging` op in the execute block into a
     `mgp.device_graph.collective` op with one region per device. Cross-device
-    values are exchanged through stable address slots using
-    `mgp.device_graph.stable.place` and `mgp.device_graph.stable.get`.
+    values are exchanged through stable address slots, declared on the
+    collective's `stableTypes` and reached by index through the region's
+    builder with `mgp.device_graph.stable.place` and
+    `mgp.device_graph.stable.get`.
+
+    Each `mgp.device_graph.stable.create` is lowered locally: the producing
+    region publishes its tensor with `stable.place`, every other region that
+    consumes it reads the slot with `stable.get`, and in both cases
+    `mgp.device_graph.stable.tensor` rebuilds the `!mgp.tensor<..., stable>`
+    the consumers were lowered against, so the compiled regions are cloned
+    unchanged. The producing region takes the tensor's spec from the tensor
+    itself; a remote region has only the slot, so its spec comes from the
+    static type, and a stable tensor with dynamic dimensions cannot cross
+    devices yet.
 
     For models without `isDeviceGraph` or without a staging op, the pass is a
     no-op.
