@@ -4,4 +4,4 @@ lit_config.load_config(
     config, "./bazel/internal/llvm-lit/lit.common.configured"
 )
 
-lit_config.load_config(config, "./Mojo/test/internal/mojo-debug-gpu/lit.cfg.py")
+lit_config.load_config(config, "./Mojo/test/mcl/mojo-debug-gpu/lit.cfg.py")

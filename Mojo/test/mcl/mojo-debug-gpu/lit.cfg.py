@@ -21,7 +21,7 @@ config.suffixes = [".mojo"]
 config.test_source_root = os.path.dirname(__file__)
 
 # test_exec_root: The root path where tests should be run.
-config.test_exec_root = os.path.join("Mojo", "test", "internal", "mojo-debug-gpu")
+config.test_exec_root = os.path.join("Mojo", "test", "mcl", "mojo-debug-gpu")
 
 
 # The following enables cuda-gdb tests. It doesn't affect tests that don't use
