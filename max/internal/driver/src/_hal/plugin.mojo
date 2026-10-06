@@ -1069,7 +1069,7 @@ struct RawDriver(Movable):
         return String(
             CStringSpan(
                 unsafe_from_ptr=value.unsafe_assume_init().unsafe_bitcast[
-                    Int8
+                    c_char
                 ]()
             )
         )
@@ -1092,7 +1092,11 @@ struct RawDriver(Movable):
             try:
                 return HALError(
                     status,
-                    message=CStringSpan(unsafe_from_ptr=Pointer(to=buf[0])),
+                    message=CStringSpan(
+                        unsafe_from_ptr=Pointer(to=buf[0]).unsafe_bitcast[
+                            c_char
+                        ]()
+                    ),
                 )
             except:
                 return HALError(
