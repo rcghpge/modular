@@ -103,6 +103,40 @@ static Value getCachedIntValue(OpBuilder &builder, Location loc,
   return intValue;
 }
 
+/// Caches the integer and dimension results of a lifted op that 'execute'
+/// still uses, and replaces those uses with values read back from the cache.
+/// A compiled region that also returns a chain takes the chain path, so this
+/// runs there too: otherwise its dims would move to 'init' with nothing in
+/// 'execute' to read them back.
+static void
+cacheLiftedIndexResults(InitState &initState, ExecuteState &executeState,
+                        Operation *liftedOp,
+                        TypedValue<MEF::ChainType> cacheInputChain,
+                        SmallVectorImpl<Value> &finalOutChains,
+                        function_ref<bool(const OpOperand &)> isUnliftable) {
+  for (Value oldIndexOut : getLiftableIndexOutputs(liftedOp)) {
+    if (!llvm::any_of(oldIndexOut.getUses(), isUnliftable))
+      continue;
+
+    auto [cacheOutChain, currIndexSlot] =
+        cacheIntValue(initState.builder, liftedOp->getLoc(), cacheInputChain,
+                      initState.contextCreateOp, oldIndexOut);
+
+    finalOutChains.push_back(cacheOutChain);
+
+    auto newIndex = getCachedIntValue(
+        executeState.builder, liftedOp->getLoc(), executeState.getContext(),
+        executeState.getRootChain(), currIndexSlot, oldIndexOut.getType());
+
+    oldIndexOut.replaceUsesWithIf(newIndex, isUnliftable);
+    LLVM_DEBUG(llvm::dbgs()
+               << "will lift shape function output and replace old index:\n"
+               << oldIndexOut << "\nwith:\n"
+               << newIndex << "\nvia cached:\n"
+               << cacheOutChain << "\n");
+  }
+}
+
 /// Returns true if op is liftable but trivial to compute. Such an op is not
 /// worth lifting unless another 'init' op needs it: caching and retrieving
 /// its result costs more than recomputing it on every 'execute'.
@@ -121,6 +155,23 @@ static bool isLiftableTrivialOp(Operation *op) {
 static Value getLiftableChainOp(Operation *op) {
   if (auto createChainOp = dyn_cast<GRT::ChainCreateOp>(op))
     return createChainOp.getResult();
+  if (auto regionOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
+    // TODO(GEX-4344): The 'liftable' interfaces assume an op returns at most
+    // one value, which forces this special case for multi-result regions.
+    // A chain plus dimension results can move to 'init': the chain is ordered
+    // there, and each dimension is cached. Any other extra result has no cache
+    // slot, so the region stays in 'execute'. The cache round-trip stores an
+    // index and restores a dimension, so a plain integer result would change
+    // type on the way back.
+    if (regionOp->getNumResults() > 1) {
+      if (!isa<MEF::ChainType>(regionOp->getResult(0).getType()))
+        return nullptr;
+      for (Value result : llvm::drop_begin(regionOp->getResults()))
+        if (!MOSH::ShapeAttr::isDimType(result.getType()))
+          return nullptr;
+      return regionOp->getResult(0);
+    }
+  }
   if (auto createChainOp = dyn_cast<MGPLiftableChainCreateOpInterface>(op))
     return createChainOp.getOutChain();
   return nullptr;
@@ -757,6 +808,9 @@ class ExecInvariantCodeMotionPass
         LLVM_DEBUG(llvm::dbgs() << "will lift chain op and replace old chain:\n"
                                 << oldChain << "\nwith:\n"
                                 << newChain << "\n");
+        cacheLiftedIndexResults(*initState, *executeState, op,
+                                placeholderBufferCacheInputChain,
+                                finalOutChains, isOpOperandUnliftable);
 
       } else if (Value oldBuffer = getLiftableBufferOp(op)) {
         // Uses staying in 'execute' read the buffer back from the cache.
@@ -804,33 +858,10 @@ class ExecInvariantCodeMotionPass
           LLVM_DEBUG(llvm::dbgs() << "will lift buffer op without caching\n");
         }
 
-      } else if (SmallVector<Value> indicesOutputs =
-                     getLiftableIndexOutputs(op);
-                 !indicesOutputs.empty()) {
-        for (Value oldIndexOut : indicesOutputs) {
-          if (!llvm::any_of(oldIndexOut.getUses(), isOpOperandUnliftable))
-            continue;
-
-          auto [cacheOutChain, currIndexSlot] =
-              cacheIntValue(initState->builder, op->getLoc(),
-                            placeholderBufferCacheInputChain,
-                            initState->contextCreateOp, oldIndexOut);
-
-          finalOutChains.push_back(cacheOutChain);
-
-          auto newIndex = getCachedIntValue(
-              executeState->builder, op->getLoc(), executeState->getContext(),
-              executeState->getRootChain(), currIndexSlot,
-              oldIndexOut.getType());
-
-          oldIndexOut.replaceUsesWithIf(newIndex, isOpOperandUnliftable);
-          LLVM_DEBUG(
-              llvm::dbgs()
-              << "will lift shape function output and replace old index:\n"
-              << oldIndexOut << "\nwith:\n"
-              << newIndex << "\nvia cached:\n"
-              << cacheOutChain << "\n");
-        }
+      } else if (!getLiftableIndexOutputs(op).empty()) {
+        cacheLiftedIndexResults(*initState, *executeState, op,
+                                placeholderBufferCacheInputChain,
+                                finalOutChains, isOpOperandUnliftable);
 
       } else {
         ASSERT_STREAM(isRecomputableOp(op),

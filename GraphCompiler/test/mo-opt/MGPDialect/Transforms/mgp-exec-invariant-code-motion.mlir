@@ -200,3 +200,59 @@ mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref
   %7 = grt.chain.create(%5, %6: !mgp.tensor<4xf32, <"gpu", 0>>)
   mef.output %7 : !mef.chain
 }
+
+// -----
+
+// A compiled region whose only extra results are dimensions moves to init.
+// The step keeps the root chain and reads the dimension back.
+
+// CHECK-LABEL: mgp.model @compiled_region_chain_and_dim : mof
+// CHECK-DAG: mogg.generic.compiled.region
+// CHECK-DAG: mgp.int.cache
+// CHECK: } execute (%[[CH:.*]]: !mef.chain
+// CHECK-NOT: mogg.generic.compiled.region
+// CHECK: mgp.int.get_cached %[[CH]]
+// CHECK: mef.output %[[CH]], {{%.*}} : !mef.chain, !kgen.scalar<si64>
+
+mgp.model @compiled_region_chain_and_dim : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !kgen.scalar<si64>) {
+  %ch, %dim = mogg.generic.compiled.region (%ch0) : (%in: !mef.chain) -> (!mef.chain, !kgen.scalar<si64>) {
+    %ready = mogg.async.ready : !mef.chain
+    %c4 = index.constant 4
+    %si = index.casts %c4 : index to si64
+    %dim = pop.cast_from_builtin %si : si64 to !kgen.scalar<si64>
+    %packed = mogg.async.pack(%dim) : !kgen.scalar<si64>
+    mogg.output %ready, %packed : !mef.chain, !mogg.async<!kgen.scalar<si64>>
+  } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"i">, isAsync = false}
+  mef.output %ch, %dim : !mef.chain, !kgen.scalar<si64>
+}
+
+// -----
+
+// A tensor result has no cache slot, so the region stays in the step.
+
+// CHECK-LABEL: mgp.model @compiled_region_uncacheable_result : mof
+// CHECK: } execute
+// CHECK: mogg.generic.compiled.region
+
+mgp.model @compiled_region_uncacheable_result : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 2
+  %ch2 = mgp.runtime.create %ch0, %ctx[1]
+  mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.tensor<2x2xf32>) {
+  %buf = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
+  %ch, %tensor = mogg.generic.compiled.region (%ch0, %buf) : (%in: !mef.chain, %arg: !mgp.buffer) -> (!mef.chain, !mgp.tensor<2x2xf32>) {
+    %ready = mogg.async.ready : !mef.chain
+    %unpacked = mogg.async.unpack(%arg) : !mgp.buffer
+    %spec = mgp.tensor_spec.create : !mgp.tensor_spec<2x2xf32>
+    %created = mgp.tensor.create %ready, %unpacked, %spec : !mgp.tensor<2x2xf32>
+    %packed = mogg.async.pack(%created) : !mgp.tensor<2x2xf32>
+    mogg.output %ready, %packed : !mef.chain, !mogg.async<!mgp.tensor<2x2xf32>>
+  } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"ii">, isAsync = false}
+  mef.output %ch, %tensor : !mef.chain, !mgp.tensor<2x2xf32>
+}
