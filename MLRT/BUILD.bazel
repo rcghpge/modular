@@ -648,7 +648,7 @@ mojo_shared_library(
     # under the HAL branch. No single configuration closes that loop, yet it is
     # a cycle in the unconfigured graph that `bazel query` reports.
     deps = [
-        "//max/internal/driver/src:max",
+        "//max/driver/src/mcl:max",
         "@mojo//:std",
     ],
 )

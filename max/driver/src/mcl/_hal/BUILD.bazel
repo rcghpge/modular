@@ -15,7 +15,7 @@ filegroup(
 )
 
 # Staged into the MAX overlay under --config=hal-device-context (see
-# //max/internal/driver/src:max_srcs_hal).
+# //max/driver/src/mcl:max_srcs_hal).
 mojo_overlay_layer(
     name = "_hal_staged_layer",
     file_map = {src: "max/gpu/host/_hal/" + src for src in _HAL_SRCS},
@@ -28,7 +28,7 @@ mojo_library(
     visibility = ["//visibility:public"],
     deps = [
         "//max:max_mojo",
-        "//max/internal/driver/src/machine",
+        "//max/driver/src/mcl/machine",
         "@mojo//:std",
     ],
 )

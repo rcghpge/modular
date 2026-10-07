@@ -22,15 +22,15 @@ mojo_overlay_layer(
 mojo_overlay_layer(
     name = "hal_compat",
     file_map = {
-        "//max/internal/driver/src/_device_context_hal:__init__.mojo": "max/gpu/host/device_context.mojo",
-        "//max/internal/driver/src/_device_context_hal:_nvidia_cuda.mojo": "max/gpu/host/_nvidia_cuda.mojo",
-        "//max/internal/driver/src/_device_context_hal:_device_graph.mojo": "max/gpu/host/device_graph.mojo",
+        "//max/driver/src/mcl/_device_context_hal:__init__.mojo": "max/gpu/host/device_context.mojo",
+        "//max/driver/src/mcl/_device_context_hal:_nvidia_cuda.mojo": "max/gpu/host/_nvidia_cuda.mojo",
+        "//max/driver/src/mcl/_device_context_hal:_device_graph.mojo": "max/gpu/host/device_graph.mojo",
         # `_hal/_machine.mojo` is shadowed by the staged-tree variant (the
         # `machine` package is nested inside `_hal` here, not a sibling).
-        "//max/internal/driver/src/_device_context_hal:_machine.mojo": "max/gpu/host/_hal/_machine.mojo",
-        "//max/internal/driver/src/machine:__init__.mojo": "max/gpu/host/_hal/machine/__init__.mojo",
-        "//max/internal/driver/src/machine:device.mojo": "max/gpu/host/_hal/machine/device.mojo",
-        "//max/internal/driver/src/machine:machine.mojo": "max/gpu/host/_hal/machine/machine.mojo",
+        "//max/driver/src/mcl/_device_context_hal:_machine.mojo": "max/gpu/host/_hal/_machine.mojo",
+        "//max/driver/src/mcl/machine:__init__.mojo": "max/gpu/host/_hal/machine/__init__.mojo",
+        "//max/driver/src/mcl/machine:device.mojo": "max/gpu/host/_hal/machine/device.mojo",
+        "//max/driver/src/mcl/machine:machine.mojo": "max/gpu/host/_hal/machine/machine.mojo",
     },
     visibility = ["//visibility:public"],
 )
@@ -46,7 +46,7 @@ mojo_overlay_srcs(
     ],
     layers = [
         ":max_base_layer",
-        "//max/internal/driver/src/_hal:_hal_staged_layer",
+        "//max/driver/src/mcl/_hal:_hal_staged_layer",
         ":hal_compat",
     ],
 )
