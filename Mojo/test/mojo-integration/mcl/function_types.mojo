@@ -71,18 +71,18 @@ struct ZPointer[T: ZRPTrait](GPUPassable, ZRPTrait):
         print("i am a pointer")
 
 
-trait ConvertibleToZLayoutTensor:
-    def to_tensor(self) -> ZLayoutTensor:
+trait ConvertibleToZTileTensor:
+    def to_tensor(self) -> ZTileTensor:
         ...
 
 
-struct ZLayoutTensor(GPUPassable, ZRPTrait):
+struct ZTileTensor(GPUPassable, ZRPTrait):
     def __init__(out self):
         pass
 
     @implicit
-    def __init__[C: ConvertibleToZLayoutTensor](out self, c: C):
-        var z: ZLayoutTensor = c.to_tensor()
+    def __init__[C: ConvertibleToZTileTensor](out self, c: C):
+        var z: ZTileTensor = c.to_tensor()
         _ = z
 
     def print(self):
@@ -111,9 +111,9 @@ struct DeviceBuffer[T: ZRPTrait](ConvertibleToZPointer):
 
 
 @fieldwise_init
-struct ManagedTileTensor(ConvertibleToZLayoutTensor, ImplicitlyCopyable):
-    def to_tensor(self) -> ZLayoutTensor:
-        return ZLayoutTensor()
+struct ManagedTileTensor(ConvertibleToZTileTensor, ImplicitlyCopyable):
+    def to_tensor(self) -> ZTileTensor:
+        return ZTileTensor()
 
 
 # Never converted, the GPU just uses this one directly
@@ -139,7 +139,7 @@ def compile[
 def test_call():
     @__parameter
     def kernel(
-        t: ZLayoutTensor, p: ZPointer[ZInt], n: NDBuffer, mb: MemBuffer
+        t: ZTileTensor, p: ZPointer[ZInt], n: NDBuffer, mb: MemBuffer
     ) -> Int:
         return Int()
 

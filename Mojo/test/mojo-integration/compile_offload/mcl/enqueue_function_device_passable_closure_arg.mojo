@@ -11,9 +11,9 @@ from std.sys import align_of, size_of
 from max.gpu.host import DeviceContext
 
 
-# Host/device pair modeled on ManagedTensorSlice -> LayoutTensor: a data
-# pointer plus a runtime layout, with a distinct device_type that keeps the
-# same canonical type.
+# Host/device pair modeled on a DevicePassable buffer pair: a data pointer
+# plus a runtime layout, with a distinct device_type that keeps the same
+# canonical type.
 @fieldwise_init
 struct RuntimeLayout(ImplicitlyCopyable, TrivialRegisterPassable):
     var length: Int
