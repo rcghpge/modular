@@ -243,9 +243,17 @@ struct StreamPriorityRange(TrivialRegisterPassable, Writable):
         )
 
 
-struct DeviceContext(
-    ImplicitlyCopyable, RegisterPassable, _HALFunctionEnqueuer
-):
+comptime DeviceContext = DeviceContextBase[]
+"""Temporary type alias as DeviceContext transitions to being
+parameterized by compilation target.
+
+See `DeviceContextBase` for additional documentation.
+"""
+
+
+struct DeviceContextBase[
+    target: CompilationTarget = CompilationTarget.default_accelerator()
+](ImplicitlyCopyable, RegisterPassable, _HALFunctionEnqueuer):
     """Represents a single stream of execution on a particular accelerator
     (GPU).
 
@@ -254,6 +262,9 @@ struct DeviceContext(
     methods for allocating buffers on the device, copying data between host and
     device, and for compiling and running functions (also known as kernels) on
     the device.
+
+    Parameters:
+        target: The accelerator targeted by this device context.
 
     The device context can be used as a
     [context manager](/docs/manual/errors/#use-a-context-manager). For example:
@@ -286,8 +297,12 @@ struct DeviceContext(
     ```
     """
 
-    comptime target = TargetAccelerator.default_accelerator.target
-    """`CompilationTarget` for the accelerator targeted by this device context."""
+    comptime Generic = DeviceContextBase[_]
+    """DeviceContext type with unbound compilation target parameter.
+
+    This is a tempoary type alias as DeviceContext transitions to being
+    parameterized by compilation target.
+    """
 
     comptime device_spec = get_device_spec[0]()
     """`DeviceSpec` describing the device this context targets."""
@@ -386,6 +401,30 @@ struct DeviceContext(
             The `DeviceContext` instance to be used within the context manager block.
         """
         return self^
+
+    # TODO(MSTDL-3258): Remove once all APIs fully support generic DeviceContext
+    @inline(.always)
+    def assert_default_target(self) -> DeviceContext:
+        """Temporary function to assert and cast this DeviceContext to the
+        default target.
+
+        This method will be removed once all APIs fully support generic target
+        parameters.
+
+        Constraints:
+            This DeviceContext must be using the default target, else a compile
+            time assertion will fail.
+
+        Returns:
+            This device context cast to the default target.
+        """
+        comptime assert Self.target._eq_triple_and_arch[
+            CompilationTarget.default_accelerator()
+        ](), String(
+            t"using DeviceContext with non-default target is not supported fro"
+            t"m: {call_location()}"
+        )
+        return rebind[DeviceContext](self)
 
     def synchronize(self) raises:
         """Blocks until all asynchronous calls on the stream associated with
@@ -543,11 +582,11 @@ struct DeviceContext(
         # Previous context is automatically restored
         ```
         """
-        return _DeviceContextScopeHAL(self)
+        return _DeviceContextScopeHAL(self.assert_default_target())
 
     @doc_hidden
     def stream(self) -> DeviceStream:
-        return DeviceStream(self)
+        return DeviceStream(self.assert_default_target())
 
     @doc_hidden
     def _hal_stream(
@@ -570,7 +609,7 @@ struct DeviceContext(
             If stream creation fails.
         """
         var hal_stream = self._context[].create_stream()
-        return DeviceStream(self, hal_stream^)
+        return DeviceStream(self.assert_default_target(), hal_stream^)
 
     def create_event(self) -> DeviceEvent:
         """Creates a new event for synchronization between streams.
@@ -603,7 +642,7 @@ struct DeviceContext(
         # The HAL uses logical events where creation and recording happen in
         # one step. To work around this, initially create a DeviceEvent without
         # a backing HAL event.
-        return DeviceEvent._create_unrecorded(self)
+        return DeviceEvent._create_unrecorded(self.assert_default_target())
 
     @inline(.always)
     def compile_function[
@@ -651,7 +690,7 @@ struct DeviceContext(
             If the operation fails.
         """
         return DeviceFunction[func, declared_arg_types](
-            self, func_attribute=func_attribute
+            self.assert_default_target(), func_attribute=func_attribute
         )
 
     @inline(.always)
@@ -759,7 +798,7 @@ struct DeviceContext(
 
         var gpu_kernel = DeviceFunction[
             FuncType.__call__, TypeList.of[Trait=AnyType]()
-        ](self)
+        ](self.assert_default_target())
 
         gpu_kernel._call_with_pack(
             self,
@@ -1403,7 +1442,7 @@ struct DeviceContext(
             block_dim, location=call_location()
         )
         var gpu_kernel = DeviceFunction[func, declared_arg_types](
-            self,
+            self.assert_default_target(),
             func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             ),
@@ -1470,7 +1509,7 @@ struct DeviceContext(
         var gpu_kernel = DeviceFunction[
             FuncType.__call__, TypeList.of[Trait=AnyType]()
         ](
-            self,
+            self.assert_default_target(),
             func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             ),
@@ -1590,7 +1629,9 @@ struct DeviceContext(
         Raises:
             If loading the function fails or the assembly code is invalid.
         """
-        return DeviceExternalFunction(self, function_name^, asm)
+        return DeviceExternalFunction(
+            self.assert_default_target(), function_name^, asm
+        )
 
     @inline(.always)
     def enqueue_function[
@@ -1670,7 +1711,7 @@ struct DeviceContext(
 
         # NOTE: The HAL supports doing this asynchronously, but to match
         # existing DeviceContext semantics we create a buffer immediately.
-        return DeviceBuffer[dtype](self, size)
+        return DeviceBuffer[dtype](self.assert_default_target(), size)
 
     def create_buffer_sync[
         dtype: DType
@@ -1689,7 +1730,7 @@ struct DeviceContext(
         Raises:
             If the operation fails.
         """
-        return DeviceBuffer[dtype](self, size)
+        return DeviceBuffer[dtype](self.assert_default_target(), size)
 
     def enqueue_create_host_buffer[
         dtype: DType
@@ -1737,7 +1778,7 @@ struct DeviceContext(
             # ...
         ```
         """
-        return HostBuffer[dtype](self, size)
+        return HostBuffer[dtype](self.assert_default_target(), size)
 
     def enqueue_copy[
         dtype: DType
@@ -1762,8 +1803,12 @@ struct DeviceContext(
             If the operation fails.
         """
         self.enqueue_copy(
-            DeviceBuffer[dtype](self, dst_ptr, size, owning=False),
-            DeviceBuffer[dtype](self, src_ptr, size, owning=False),
+            DeviceBuffer[dtype](
+                self.assert_default_target(), dst_ptr, size, owning=False
+            ),
+            DeviceBuffer[dtype](
+                self.assert_default_target(), src_ptr, size, owning=False
+            ),
         )
 
     def enqueue_copy[
@@ -2420,8 +2465,11 @@ struct DeviceContext(
     def __init__(out self, ctx_ptr: _DeviceContextPtr[mut=True]):
         """Create a Mojo DeviceContext from the opaque device-context handle
         carried by the runtime."""
-        self = Self._from_unsafe_cpp_handle(
-            ctx_ptr.unsafe_value().unsafe_bitcast[NoneType]()
+        # FIXME(MSTDL-3258): Remove default target assumption rebind/erasure.
+        self = rebind[Self](
+            Self._from_unsafe_cpp_handle(
+                ctx_ptr.unsafe_value().unsafe_bitcast[NoneType]()
+            )
         )
 
     @inline(.always)
@@ -2434,7 +2482,8 @@ struct DeviceContext(
         Args:
             handle: The opaque device-context handle carried by the runtime.
         """
-        self = Self._from_unsafe_cpp_handle(handle)
+        # FIXME(MSTDL-3258): Remove default target assumption rebind/erasure.
+        self = rebind[Self](Self._from_unsafe_cpp_handle(handle))
 
     @staticmethod
     def _from_unsafe_cpp_handle(

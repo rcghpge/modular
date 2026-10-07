@@ -38,6 +38,9 @@ static constexpr std::array<llvm::StringLiteral, 3>
                                       kPackageManagedTensorSlice,
                                       kLeafFusedOutputVariadicTensors};
 
+static constexpr llvm::StringLiteral kLeafDeviceContextBase =
+    "DeviceContextBase";
+
 // Dict keys shared by `tensorArgContractToDict` (writer) and
 // `dictToTensorArgContract` (reader).
 static constexpr llvm::StringLiteral kRoleKey = "role";
@@ -311,7 +314,10 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
   // --- Device context ---
   // Use root+leaf matching because DeviceContext lives under max::gpu::host
   // (depth varies across package exports).
-  if (symbolMatchesRootAndLeaf(sym, kPackageMax, kLeafDeviceContext))
+  // `DeviceContext` is an alias of the target-parameterized
+  // `DeviceContextBase`, which is the name the struct type carries.
+  if (symbolMatchesRootAndLeaf(sym, kPackageMax, kLeafDeviceContext) ||
+      symbolMatchesRootAndLeaf(sym, kPackageMax, kLeafDeviceContextBase))
     return KernelDeclContextPtrAdaptor{};
 
   if (symbolMatchesRootAndLeaf(sym, kPackageMax, kLeafDeviceContextArray))
