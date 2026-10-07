@@ -11,10 +11,12 @@
 #include "_core/Driver/ChunkedStagingRegion.h"
 #include "_core/Driver/CompletionFlag.h"
 #include "_core/Driver/Device.h"
+#include "_core/Driver/SymmetricPool.h"
 #include "_core/Graph/Bindings.h"
 #include "_core/Profiler/Trace.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/operators.h"
+#include "nanobind/stl/optional.h"   // IWYU pragma: keep (type caster)
 #include "nanobind/stl/shared_ptr.h" // IWYU pragma: keep (type casters)
 #include "nanobind/stl/string.h"     // IWYU pragma: keep (type casters)
 #include "nanobind/stl/vector.h"     // IWYU pragma: keep (type casters)
@@ -1617,6 +1619,92 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         "buffers"_a,
         "Convert owning buffers into borrowed wrappers over the same storage.");
 
+  nb::class_<Python::SymmetricPool>(m, "SymmetricPool", R"nbdoc(
+        A driver-owned symmetric multicast pool shared by a set of devices.
+
+        The pool is a single fixed-capacity allocation, created once per device
+        set and registered in the driver. It outlives this handle: dropping the
+        Python object does not free device memory, and two handles for the same
+        devices refer to the same allocation.
+
+        Not constructible directly. Use :meth:`allocate()` once during session
+        setup, and :meth:`lookup()` afterwards.
+        )nbdoc")
+      .def_static("allocate", &Python::SymmetricPool::allocate, "devices"_a,
+                  "byte_size"_a, R"nbdoc(
+            Allocates the pool over ``devices`` and registers it in the driver.
+
+            Args:
+                devices (Sequence[Device]): The devices to span, at least two,
+                    in any order.
+                byte_size (int): Usable bytes per device. The driver rounds
+                    the real allocation up to the multicast granularity.
+
+            Returns:
+                SymmetricPool: The newly registered pool.
+
+            Raises:
+                RuntimeError: If a pool is already registered for these
+                    devices, fewer than two devices are given, a device lacks
+                    multicast support, or the allocation fails.
+            )nbdoc")
+      .def_static("lookup", &Python::SymmetricPool::lookup, "devices"_a,
+                  R"nbdoc(
+            Returns the pool registered for ``devices``, or ``None``.
+
+            A registry read, never an allocation.
+
+            Args:
+                devices (Sequence[Device]): The devices the pool spans.
+
+            Returns:
+                SymmetricPool | None: The registered pool, if any.
+            )nbdoc")
+      .def_static("is_supported", &Python::SymmetricPool::isSupported,
+                  "devices"_a,
+                  R"nbdoc(
+            Returns whether ``devices`` can back a multicast pool.
+
+            Answers before any memory is committed. A device that cannot
+            report its capability counts as unsupported.
+
+            Args:
+                devices (Sequence[Device]): The devices a pool would span.
+
+            Returns:
+                bool: True when every device supports multicast.
+            )nbdoc")
+      .def_prop_ro("byte_size", &Python::SymmetricPool::getByteSize,
+                   "Usable bytes per device; the views are exactly this long.")
+      .def("unicast_view", &Python::SymmetricPool::unicastView, "device"_a,
+           R"nbdoc(
+            Returns the device's own view of the pool as a flat ``uint8`` buffer.
+
+            The buffer is non-owning; the driver owns the memory. Retype a
+            sub-region with :meth:`Buffer.view()`.
+
+            Args:
+                device (Device): One of the devices the pool spans.
+
+            Returns:
+                Buffer: A flat ``uint8`` view, ``byte_size`` bytes long.
+
+            Raises:
+                RuntimeError: If ``device`` is not one the pool spans.
+            )nbdoc")
+      .def("multicast_view", &Python::SymmetricPool::multicastView, "device"_a,
+           R"nbdoc(
+            Returns the multicast alias the switch reduces through.
+
+            Only meaningful to a kernel issuing multimem instructions; host
+            loads and stores through it are undefined.
+
+            Args:
+                device (Device): One of the devices the pool spans.
+
+            Returns:
+                Buffer: A flat ``uint8`` view, ``byte_size`` bytes long.
+            )nbdoc");
   M::Profiler::Python::addTracingToNanobindModuleClassMethods(
       m, "max._core.driver.");
 }
