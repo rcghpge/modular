@@ -30,7 +30,7 @@ modular_nanobind_library(
         "//Support:Profiling",
         "//Support:ProfilingRanges",
         "//Support:RequestContext",
-        "//max/internal:max",
+        "//max/lib/mcl:max",
         "//max/python/max/_core/internal:AsyncRTPython",
         "//max/python/max/_core/internal:DriverPython",
         "//max/python/max/_core/internal:EnginePython",

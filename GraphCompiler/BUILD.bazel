@@ -60,7 +60,7 @@ modular_cc_library(
         "//Support:Configuration",
         "//Support:Context",
         "//Support:ML",
-        "//max/internal:MOFDriver",
+        "//max/lib/mcl:MOFDriver",
     ],
 )
 

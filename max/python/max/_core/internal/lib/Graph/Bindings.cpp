@@ -8,7 +8,7 @@
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "Support/Nanobind/TypeCasters.h" // IWYU pragma: keep (type casters)
-#include "max/MOF/API/c/detail/mojo_analysis.h"
+#include "max/mcl/MOF/API/c/detail/mojo_analysis.h"
 #include "mlir/CAPI/IR.h"
 #include "llvm/Support/FormatVariadic.h"
 

@@ -38,7 +38,7 @@
 #include "Support/Filesystem/Paths.h"
 #include "Support/MDialect/MAttrs.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
-#include "max/MOF/Driver/DriverImpl.h"
+#include "max/mcl/MOF/Driver/DriverImpl.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OwningOpRef.h"

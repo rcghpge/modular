@@ -75,7 +75,7 @@ modular_nanobind_library(
         # caches) and the extension would get its own copy, split from the one
         # inside libmax that device creation actually reads.
         "//MLRT:Driver/DeviceContextAPI",
-        "//max/internal:max",
+        "//max/lib/mcl:max",
     ],
 )
 
@@ -91,7 +91,7 @@ modular_nanobind_library(
         "//Support:ProfilerHostGlue",
         "//Support:Profiling",
         "//Support:ProfilingRanges",
-        "//max/internal:max",
+        "//max/lib/mcl:max",
     ],
 )
 
@@ -101,7 +101,7 @@ modular_nanobind_library(
     hdrs = glob(["include/_core/Graph/*.h"]),
     deps = [
         "//Support:NanobindUtils",
-        "//max/internal:max",
+        "//max/lib/mcl:max",
     ],
 )
 
