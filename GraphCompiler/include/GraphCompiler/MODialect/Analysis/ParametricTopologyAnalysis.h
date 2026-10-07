@@ -79,8 +79,9 @@ public:
   void computeTopologicalSorting(mlir::MutableArrayRef<mlir::Operation *> ops);
 
   // Topologically sort operations within `region` in place, accounting for
-  // parametric dependencies and ops within nested regions.
-  void topologicallySortAllOpsWithin(mlir::Region *region);
+  // parametric dependencies and ops within nested regions. Fails, emitting an
+  // error, if the dependencies form a cycle.
+  mlir::LogicalResult topologicallySortAllOpsWithin(mlir::Region *region);
 
 private:
   void
@@ -88,7 +89,7 @@ private:
 
   // Topologically sort operations within `block` in place (excluding ones in
   // nested region), accounting for parametric dependencies.
-  void topologicallySortFirstLevelOpsWithin(mlir::Block *block);
+  mlir::LogicalResult topologicallySortFirstLevelOpsWithin(mlir::Block *block);
 
   bool isOpReady(mlir::Operation *op,
                  mlir::DenseSet<mlir::Operation *> &unscheduledOps);

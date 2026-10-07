@@ -519,9 +519,9 @@ shapeInferOpImpl(ShapeMaterialization op, ArrayRef<TypedAttr> inputAttrs) {
 struct PropagateShapes {
   /// For each op inside `graphOp` (including nested blocks within), make sure
   /// any depended ops (SSA or parameter dependencies) appear before the op.
-  void topoSortWithParameters(GraphOp graphOp) {
+  LogicalResult topoSortWithParameters(GraphOp graphOp) {
     ParametricTopologyAnalysis analysis(graphOp);
-    analysis.topologicallySortAllOpsWithin(&graphOp.getRegion());
+    return analysis.topologicallySortAllOpsWithin(&graphOp.getRegion());
   }
 
   /// Return the depth of a KGEN param operator, where
@@ -983,7 +983,8 @@ struct PropagateShapes {
   }
 
   LogicalResult propagateShape(GraphOp graphOp) {
-    topoSortWithParameters(graphOp);
+    if (failed(topoSortWithParameters(graphOp)))
+      return failure();
 
     // These parameters map to themselves so the evaluator can look them up:
     // 1. Graph input parameters, e.g. `mo.graph<D0, Sh1 -> ...>`.

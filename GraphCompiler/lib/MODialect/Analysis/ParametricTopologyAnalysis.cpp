@@ -165,10 +165,10 @@ void ParametricTopologyAnalysis::computeTopologicalSorting(
 }
 
 // Not shared with the impl above: a common helper would over-abstract.
-void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
+LogicalResult ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
     mlir::Block *block) {
   if (block->empty())
-    return;
+    return success();
 
   DenseSet<Operation *> unscheduledOps;
 
@@ -179,7 +179,7 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
   Block::iterator end = block->end();
 
   while (!unscheduledOps.empty()) {
-    [[maybe_unused]] bool scheduledAtLeastOnce = false;
+    bool scheduledAtLeastOnce = false;
 
     // Schedule each ready op by moving it before `nextScheduledOp`.
     for (Operation &op :
@@ -200,29 +200,46 @@ void ParametricTopologyAnalysis::topologicallySortFirstLevelOpsWithin(
       op.moveBefore(block, nextScheduledOp);
     }
 
-    ASSERT_STREAM(scheduledAtLeastOnce,
-                  << "No op was scheduled, potential cycle in the graph");
+    if (!scheduledAtLeastOnce) {
+      // Scheduled ops are moved before `nextScheduledOp`, so every stuck op is
+      // in the remaining range. Walk it rather than the DenseSet so the report
+      // order is deterministic.
+      auto stuckOps = llvm::make_filter_range(
+          llvm::make_range(nextScheduledOp, end),
+          [&](Operation &op) { return unscheduledOps.contains(&op); });
+      InFlightDiagnostic diag =
+          stuckOps.begin()->emitError()
+          << "cannot schedule operation: dependency cycle in the graph";
+      for (Operation &op : llvm::drop_begin(stuckOps))
+        diag.attachNote(op.getLoc()) << "also unschedulable";
+      return diag;
+    }
   }
+  return success();
 }
 
-void ParametricTopologyAnalysis::topologicallySortAllOpsWithin(Region *region) {
+LogicalResult
+ParametricTopologyAnalysis::topologicallySortAllOpsWithin(Region *region) {
   auto regionKindInterface =
       dyn_cast<mlir::RegionKindInterface>(region->getParentOp());
 
   // Only graph regions can be reordered safely.
   if (!regionKindInterface)
-    return;
+    return success();
 
   if (regionKindInterface.getRegionKind(region->getRegionNumber()) !=
       RegionKind::Graph)
-    return;
+    return success();
 
   for (Block &block : *region) {
-    topologicallySortFirstLevelOpsWithin(&block);
+    if (failed(topologicallySortFirstLevelOpsWithin(&block)))
+      return failure();
     for (Operation &op : block)
       for (Region &nestedRegion : op.getRegions())
-        topologicallySortAllOpsWithin(&nestedRegion);
+        if (failed(topologicallySortAllOpsWithin(&nestedRegion)))
+          return failure();
   }
+  return success();
 }
 
 // Returns op and its transitive users, in topological order.

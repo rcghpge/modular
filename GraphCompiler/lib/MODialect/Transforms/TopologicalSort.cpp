@@ -22,7 +22,8 @@ struct TopologicalSort : public impl::TopologicalSortBase<TopologicalSort> {
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
     ParametricTopologyAnalysis analysis(moduleOp);
-    analysis.topologicallySortAllOpsWithin(&moduleOp.getRegion());
+    if (failed(analysis.topologicallySortAllOpsWithin(&moduleOp.getRegion())))
+      return signalPassFailure();
   }
 };
 
