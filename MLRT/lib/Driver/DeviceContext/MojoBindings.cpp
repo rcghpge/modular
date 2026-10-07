@@ -13,6 +13,7 @@
 #include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
+#include "MLRT/Driver/DeviceContext/KernelLoadGate.h"
 
 // See the static_assert in DeviceContext.cpp.
 static_assert(
@@ -33,8 +34,11 @@ static_assert(
 #include "Support/mcl/Tracy/Tracy.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/ErrorHandling.h"
 
+#include <cassert>
 #include <chrono>
+#include <new>
 
 using namespace M;
 using namespace M::Driver;
@@ -520,6 +524,74 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
                               moduleName, functionName,
                               StringRef(data, dataLen), maxDynamicSharedBytes,
                               debugLevel, optimizationLevel, debugName));
+}
+
+// Exposes KernelLoadGate to a Mojo collective. The gate comes from the
+// context's own driver, so there is no global to look up and no ambiguity
+// about which backend's gate applies.
+//
+// `tryAcquireCollective` runs on the thread orchestrating the fan-out, which
+// dispatches the per-device enqueues once it owns the gate; the last of them
+// calls `releaseCollective`. `beginEnqueue` runs on each affinity worker the
+// fan-out dispatches to, so that worker's loads bypass the gate their own
+// collective holds.
+//
+// Returns true if the collective owns the gate now, which is always the case
+// on a backend without one. Otherwise constructs the grant to continue from
+// into `grantOut`, which the caller owns and destroys.
+//
+// This is the one place that resolves a CPUDevice, because it is the only
+// caller with no way to be handed one: the collective reaches here from Mojo.
+// It always runs under AsyncRT, since the fan-out it brackets is a TaskGroup.
+MODULAR_EXPORT bool AsyncRT_KernelLoadGate_tryAcquireCollective(
+    DeviceContext *ctx, AsyncRT::AsyncValueRef<AsyncRT::Chain> *grantOut) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_KernelLoadGate_tryAcquireCollective",
+                       TRACY_COLOR_GRAY);
+  KernelLoadGate *gate = ctx->kernelLoadGate();
+  if (gate == nullptr)
+    return true;
+
+  // Reporting success here without a claim would let the matching release
+  // end some other collective's claim.
+  AsyncRT::CPUDevice *cpuDevice =
+      AsyncRT::CPUDevice::getCurrentCPUDeviceOrNull();
+  if (cpuDevice == nullptr)
+    llvm::report_fatal_error(
+        "a collective launch must run under an AsyncRT runtime");
+
+  AsyncRT::AsyncValueRef<AsyncRT::Chain> grant;
+  if (gate->tryAcquireCollective(*cpuDevice, grant))
+    return true;
+  new (grantOut) AsyncRT::AsyncValueRef<AsyncRT::Chain>(std::move(grant));
+  return false;
+}
+
+MODULAR_EXPORT void
+AsyncRT_KernelLoadGate_releaseCollective(DeviceContext *ctx) {
+  if (KernelLoadGate *gate = ctx->kernelLoadGate())
+    gate->releaseCollective();
+}
+
+// For Mojo callers into vendor libraries, whose calls can block on a busy
+// device just as a module load does but never reach `loadFunction`.
+MODULAR_EXPORT void AsyncRT_KernelLoadGate_beginLoad(DeviceContext *ctx) {
+  if (KernelLoadGate *gate = ctx->kernelLoadGate())
+    gate->openLoad();
+}
+
+MODULAR_EXPORT void AsyncRT_KernelLoadGate_endLoad(DeviceContext *ctx) {
+  if (KernelLoadGate *gate = ctx->kernelLoadGate())
+    gate->closeLoad();
+}
+
+MODULAR_EXPORT void AsyncRT_KernelLoadGate_beginEnqueue(DeviceContext *ctx) {
+  if (KernelLoadGate *gate = ctx->kernelLoadGate())
+    gate->beginEnqueue();
+}
+
+MODULAR_EXPORT void AsyncRT_KernelLoadGate_endEnqueue(DeviceContext *ctx) {
+  if (KernelLoadGate *gate = ctx->kernelLoadGate())
+    gate->endEnqueue();
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceFunction_retain(DeviceFunction *func) {

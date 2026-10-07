@@ -11,6 +11,7 @@
 #ifndef MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADRIVER_H
 #define MLRT_LIB_DRIVER_DEVICECONTEXT_CUDA_CUDADRIVER_H
 
+#include "MLRT/Driver/DeviceContext/KernelLoadGate.h"
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
 #include "Support/mcl/Tracy/Tracy.h"
@@ -506,6 +507,13 @@ public:
 
   static ErrorOr<const CUDADriver &> get();
 
+  /// Keeps kernel loads from interleaving with a multi-device collective's
+  /// enqueues. It belongs to the driver rather than to a context: the
+  /// driver's locks are per context, but the deadlock it prevents runs
+  /// through a thread that spans contexts, which a per-context gate would
+  /// miss. Mutable because the driver is handed out by const reference.
+  KernelLoadGate &kernelLoadGate() const { return kernelLoadGate_; }
+
   /// Returns true when cuMemcpyBatchAsync (CUDA 12.8+) was successfully
   /// loaded from the driver library at initialization time. Callers should
   /// check this before invoking cuMemcpyBatchAsync directly.
@@ -518,6 +526,8 @@ public:
 private:
   // Shared library name for the CUDA driver.
   static const char lib_name[];
+
+  mutable KernelLoadGate kernelLoadGate_;
 
   // Driver is only initialized from internal code.
   Result Init(unsigned int flags) const { return cuInit_(flags); }

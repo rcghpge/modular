@@ -84,6 +84,7 @@ class MemoryManager;
 class MemoryManagerFreeList;
 class CompletionFlag;
 class Device;
+class KernelLoadGate;
 class DeviceBuffer;
 class DeviceContext;
 class DeviceEvent;
@@ -1076,6 +1077,12 @@ public:
 
   ErrorOr<Driver::DeviceBufferRef>
   memmapFile(const std::filesystem::path &filename);
+
+  /// The gate that keeps first-time kernel loads from interleaving with a
+  /// multi-device collective's enqueues, or null on a backend whose loads do
+  /// not contend with device execution. Owned by the backend's driver rather
+  /// than by one context, since the deadlock it prevents spans contexts.
+  virtual KernelLoadGate *kernelLoadGate() { return nullptr; }
 
   // DeviceFunction loading and execution.
   virtual ErrorOr<DeviceFunctionRef>

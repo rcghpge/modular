@@ -449,6 +449,18 @@ modular_cc_library(
 
 # Driver targets
 
+# A leaf with no device-context dependency, so it can be taken from both the
+# legacy and the HAL device-context builds. MEFModel needs it under
+# --config=hal-device-context, where the legacy declarations are compiled out.
+modular_cc_library(
+    name = "Driver/KernelLoadGate",
+    srcs = ["lib/Driver/DeviceContext/KernelLoadGate.cpp"],
+    hdrs = ["include/MLRT/Driver/DeviceContext/KernelLoadGate.h"],
+    includes = ["include"],
+    visibility = ["//MLRT:consumers"],
+    deps = ["//AsyncRT:Runtime"],
+)
+
 # Shared device-to-worker affinity logic used by both the graph compiler
 # (MGPPrimitives) and the Mojo cpuDevice (via CompilerRT). Lives in the Driver
 # layer (rather than AsyncRT) because it depends on Driver/DeviceContextAPI, so
@@ -521,6 +533,7 @@ modular_cc_library(
     copts = ["-UMODULAR_HAL_DEVICE_CONTEXT"],
     deps = [
         ":Driver/DeviceContextImplCpp",
+        ":Driver/KernelLoadGate",
         "//AsyncRT:Runtime",
         "//Support:Base",
         "//Support:BinaryID",
@@ -806,6 +819,7 @@ modular_cc_library(
         ":Driver/CompilationDeviceImpl",
         ":Driver/DeviceAffinity",
         ":Driver/DeviceContextAPI",
+        ":Driver/KernelLoadGate",
         ":Driver/LaunchTraceRegistry",
         "//AsyncRT:Runtime",
         "//AsyncRT:RuntimeGlobals",

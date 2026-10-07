@@ -446,6 +446,10 @@ public:
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t val,
                                   size_t valSize) override;
 
+  KernelLoadGate *kernelLoadGate() override {
+    return &driver_.kernelLoadGate();
+  }
+
   // DeviceFunction loading.
   ErrorOr<DeviceFunctionRef>
   loadFunction(StringRef moduleName, StringRef functionName, StringRef code,

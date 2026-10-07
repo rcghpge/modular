@@ -19,6 +19,7 @@
 #include "MLRT/Core/MojoValue.h"
 #include "MLRT/Core/Tensor/Tensor.h"
 #include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
+#include "MLRT/Driver/DeviceContext/KernelLoadGate.h"
 #include "MLRT/GraphRT/MEF/MEFAttr.h"
 #include "MLRT/GraphRT/MEF/MEFTypes.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFInvokable.h"
@@ -659,6 +660,56 @@ ErrorOrSuccess ExecutableModel::validateCapturedPerDeviceEntries(
   return success();
 }
 
+// The gate for the backend this model runs on, or null if it has none. A model
+// can list a host context alongside its accelerators, and that one has no gate,
+// so take the first context that does rather than the first context. The
+// accelerators share one driver, so any of them is representative. extraArgs
+// are already resolved by the time replay reaches us.
+static Driver::KernelLoadGate *
+kernelLoadGateFor(ArrayRef<AsyncRT::AnyAsyncValueRef> extraArgs) {
+  for (const AsyncRT::AnyAsyncValueRef &arg : extraArgs) {
+    auto *ctxRef = dyn_cast<Driver::DeviceContextRef>(arg);
+    if (ctxRef == nullptr || ctxRef->getPointer() == nullptr)
+      continue;
+    if (Driver::KernelLoadGate *gate = (*ctxRef)->kernelLoadGate())
+      return gate;
+  }
+  return nullptr;
+}
+
+// Like MLRT::launchDeviceCollective, but dispatches only once the collective
+// owns `gate`, and releases it when the last element has run. The caller only
+// awaits the result, and holds nothing while it does: a task its wait runs may
+// need the gate, and a caller holding the gate across that wait could only
+// release it after that task returned.
+template <typename ElementFn>
+static AsyncRT::AsyncValueRef<AsyncRT::Chain>
+launchGatedDeviceCollective(AsyncRT::CPUDevice &cpuDevice,
+                            Driver::KernelLoadGate *gate, size_t count,
+                            ElementFn elementFn) {
+  auto dispatch = [&cpuDevice, gate, count,
+                   elementFn = std::move(elementFn)]() mutable {
+    AsyncRT::AsyncValueRef<AsyncRT::Chain> fanout =
+        MLRT::launchDeviceCollective(cpuDevice, count, std::move(elementFn));
+    if (gate != nullptr)
+      fanout.andThenSync([gate] { gate->releaseCollective(); });
+    return fanout;
+  };
+
+  AsyncRT::AsyncValueRef<AsyncRT::Chain> grant;
+  if (gate == nullptr || gate->tryAcquireCollective(cpuDevice, grant))
+    return dispatch();
+
+  auto done = AsyncRT::AsyncValueRef<AsyncRT::Chain>::allocate(cpuDevice);
+  grant.andThenAsync(
+      [dispatch = std::move(dispatch), done = done.copy()]() mutable {
+        AsyncRT::AsyncValueRef<AsyncRT::Chain> fanout = dispatch();
+        fanout.andThenSync(
+            [done = std::move(done)]() mutable { std::move(done).emplace(); });
+      });
+  return done;
+}
+
 ErrorOrSuccess
 ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
   if (normalizedKeys.empty())
@@ -666,29 +717,43 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
 
   SmallVector<ErrorOrSuccess, 8> errors(normalizedKeys.size());
 
-  auto launchGraph = [&](size_t deviceIdx) {
+  SmallVector<const CapturedPerDeviceGraphEntry *, 8> entries(
+      normalizedKeys.size());
+  for (size_t deviceIdx = 0; deviceIdx < normalizedKeys.size(); ++deviceIdx) {
     const auto &deviceMap = perDeviceGraphs[deviceIdx];
     auto it = deviceMap.find(normalizedKeys[deviceIdx]);
     ASSERT_STREAM(it != deviceMap.end(), "expected captured graph entry");
+    entries[deviceIdx] = &it->second;
+  }
 
-    const CapturedPerDeviceGraphEntry &entry = it->second;
+  // Await every graph before any of them replays, so the replays themselves
+  // never wait: a graph that never materializes would otherwise leave the
+  // peers that did replay spinning at a barrier it will never reach.
+  for (size_t deviceIdx = 0; deviceIdx < entries.size(); ++deviceIdx) {
+    if (ErrorOrSuccess err = AsyncRT::awaitOrError(entries[deviceIdx]->graph))
+      return err.takeError();
+  }
 
-    if (ErrorOrSuccess err = AsyncRT::awaitOrError(entry.graph)) {
-      errors[deviceIdx] = err.takeError();
-      return;
-    }
-
-    if (ErrorOrSuccess err = (*entry.graph)->replay())
+  auto launchGraph = [&](size_t deviceIdx) {
+    if (ErrorOrSuccess err = (*entries[deviceIdx]->graph)->replay())
       errors[deviceIdx] = err.takeError();
   };
 
-  // Several graphs launch in parallel via launchDeviceCollective.
+  // A captured graph can contain collective kernels that spin at a device-side
+  // barrier until every peer replays, and each replay is a task pinned to its
+  // device's worker. A first-time kernel load blocks until its device
+  // quiesces, so one that lands on a worker a pending replay is pinned to
+  // strands the replays that would release it. The gate keeps loads out until
+  // every replay has been launched; see MXSERV-441 and Driver::KernelLoadGate.
+  // One device cannot strand a peer, so the single-graph case needs no gate.
   if (normalizedKeys.size() == 1) {
     launchGraph(0);
   } else {
-    auto readyChain = MLRT::launchDeviceCollective(
-        cpuDevice, normalizedKeys.size(), std::move(launchGraph));
-    AsyncRT::await(readyChain);
+    // launchGraph captures this frame by reference, which is sound because
+    // this frame outlives the await even when a task the await runs buries it.
+    AsyncRT::await(launchGatedDeviceCollective(
+        cpuDevice, kernelLoadGateFor(extraArgs), normalizedKeys.size(),
+        std::move(launchGraph)));
   }
 
   for (ErrorOrSuccess &err : errors) {

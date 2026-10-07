@@ -1267,6 +1267,7 @@ modular_cc_library(
         "//Kernels:WeightsRegistry",
         "//MLRT:Core",
         "//MLRT:Core/Tensor",
+        "//MLRT:Driver/KernelLoadGate",
         "//MLRT:GraphRT/MEFExecutor",
         "//MLRT:GraphRT/Primitives",
         "//Support:Profiling",

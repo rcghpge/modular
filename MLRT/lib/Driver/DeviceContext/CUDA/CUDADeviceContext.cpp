@@ -12,6 +12,7 @@
 #include "CUDADeviceGraphBuilder.h"
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
+#include "MLRT/Driver/DeviceContext/KernelLoadGate.h"
 
 #include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
@@ -2222,6 +2223,10 @@ CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
         CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release()));
     return CUDADeviceFunctionRef::create(*this, std::move(moduleFunc));
   }
+
+  // Only the miss path takes the gate: a hit issues no driver calls, and
+  // gating it would put process-wide state on every kernel enqueue.
+  KernelLoadGate::LoadScope loadGate(driver_.kernelLoadGate());
 
   // Under the bypass a cached kernel reloads on every launch; logging only
   // first loads keeps the log to one line per kernel and device.

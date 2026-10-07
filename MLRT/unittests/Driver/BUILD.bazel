@@ -542,6 +542,17 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "KernelLoadGateTest",
+    size = "small",
+    srcs = ["KernelLoadGateTest.cpp"],
+    deps = [
+        "//AsyncRT:Runtime",
+        "//AsyncRT:Support",
+        "//MLRT:Driver/KernelLoadGate",
+    ],
+)
+
+modular_cc_test(
     name = "DeviceContextTest",
     size = "small",
     srcs = [
