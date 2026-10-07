@@ -1059,6 +1059,20 @@ MODULAR_EXPORT const char *AsyncRT_DeviceGraphBuilder_recordingContext(
                   builder->recordingContext(DeviceGraphNode{seedNodeId}));
 }
 
+// Reseats the chain root of a memoized recording context before the Mojo
+// builder hands it out again; see `DeviceGraphBuilder.recording_context` in
+// device_graph.mojo.
+MODULAR_EXPORT const char *
+AsyncRT_DeviceContext_reseedRecording(DeviceContext *ctx, int32_t seedNodeId) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_reseedRecording",
+                       TRACY_COLOR_GRAY);
+  RecordingDeviceContext *rc = RecordingDeviceContext::verified_cast(ctx);
+  if (!rc)
+    return raiseError("reseed target is not a recording device context");
+  rc->reseed(DeviceGraphNode{seedNodeId});
+  return nullptr;
+}
+
 MODULAR_EXPORT void
 AsyncRT_DeviceGraphBuilder_retain(DeviceGraphBuilder *builder) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_retain", TRACY_COLOR_GRAY);

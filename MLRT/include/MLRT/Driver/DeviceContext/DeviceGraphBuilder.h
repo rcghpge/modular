@@ -342,6 +342,18 @@ public:
                          DeviceGraphNode initialDep);
   ~RecordingDeviceContext() override;
 
+  /// Reseeds the recording chain root: the next recorded operation depends on
+  /// `node` instead of the last recorded one. This is what lets the Mojo
+  /// builder memoize a single recording context and reuse it across region
+  /// scopes, whose nodes must chain after their own region's predecessors
+  /// rather than after another region's last node.
+  void reseed(DeviceGraphNode node) { lastNode_ = node; }
+
+  /// Returns `ctx` as a recording context, or nullptr when it is not one.
+  static RecordingDeviceContext *verified_cast(DeviceContext *ctx) {
+    return DeviceContext::cast<RecordingDeviceContext>(ctx);
+  }
+
   // ----- Buffer creation: owned by the underlying context ----- //
 
   // A buffer created through the recording view must belong to the backing
