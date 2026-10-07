@@ -14,7 +14,7 @@ from max.gpu.host.info import is_cpu
 from std.sys.info import simd_width_of
 from max.algorithm.functional import elementwise
 import extensibility
-from layout import IntTuple, TensorLayout
+from layout import TensorLayout
 from layout import TileTensor, CoordLike, Coord, DefaultEngine
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
@@ -31,10 +31,7 @@ from extensibility import (
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
 )
-from builtin_primitives.primitives import (
-    foreach_out_func,
-    view_copy_impl,
-)
+from builtin_primitives.primitives import foreach_out_func
 from extensibility import (
     _FusedInputTensor as FusedInputTensor,
 )
@@ -69,7 +66,7 @@ from extensibility import (
     unsafe_fused_view,
 )
 
-from std.utils import IndexList, StaticTuple
+from std.utils import IndexList
 from std.utils.coord import Coord, coord_to_index_list
 
 
@@ -1410,40 +1407,6 @@ struct PrintTensor:
         foreach[func](outp, ctx)
 
 
-@extensibility.register("print_tensor_spec_view")
-@extensibility.view_kernel
-struct PrintTensorSpecViewOp:
-    @staticmethod
-    def print_spec(x: InputTensor):
-        print("x.shape =", x._static_shape_tuple)
-        print("x.strides =", x._static_strides_tuple)
-        print("x.alignment =", x.alignment)
-        print("x.address_space =", x.address_space)
-
-    @staticmethod
-    def update_input_view(input: InputTensor) -> type_of(input):
-        Self.print_spec(input)
-        return input
-
-    @staticmethod
-    def execute[
-        target: StaticString,
-    ](outp: OutputTensor, x: InputTensor, ctx: DeviceContext) raises:
-        Self.print_spec(x)
-
-        @__parameter
-        @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
-            return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
-
-        foreach[func](outp, ctx)
-
-
-@extensibility.register_shape_function("print_tensor_spec_view")
-def print_tensor_spec_view_shape(x: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
-
-
 @extensibility.register("print_tensor_spec_fused")
 struct PrintTensorSpecFusedOp:
     @staticmethod
@@ -1760,64 +1723,6 @@ struct VariadicAdd:
             return acc
 
         foreach[func](output, ctx)
-
-
-@extensibility.register("transpose_2d")
-@extensibility.view_kernel
-struct Transpose2DOp:
-    @staticmethod
-    def build_view[
-        dtype: DType,
-    ](x: InputTensor[dtype=dtype, rank=2, ...]) -> StaticTuple[IndexList[2], 2]:
-        var new_stride = IndexList[2]()
-        var new_shape = IndexList[2]()
-        var x_strides = x.strides()
-        var x_shape = x.shape()
-        new_stride[0] = x_strides[1]
-        new_stride[1] = x_strides[0]
-        new_shape[0] = x_shape[1]
-        new_shape[1] = x_shape[0]
-
-        return StaticTuple[IndexList[2], 2](new_shape, new_stride)
-
-    @staticmethod
-    def get_view_strides(
-        input_strides: IntTuple,
-    ) -> IndexList[2]:
-        # transpose the strides of the input
-        return IndexList[2](Int(input_strides[1]), Int(input_strides[0]))
-
-    @staticmethod
-    def update_input_view[
-        dtype: DType, //, output_static_shape: IntTuple
-    ](
-        input: InputTensor[dtype=dtype, rank=2, ...],
-        out result: InputTensor[
-            static_spec=input.static_spec.with_int_tuple_layout[
-                2,
-                output_static_shape,
-                Self.get_view_strides(input._static_strides_tuple),
-            ]()
-        ],
-    ):
-        var shape_and_strides = Self.build_view(input)
-
-        return type_of(result)(
-            input.unsafe_ptr(), shape_and_strides[0], shape_and_strides[1]
-        )
-
-    @staticmethod
-    def execute[
-        target: StaticString,
-        dtype: DType,
-    ](
-        z: OutputTensor[dtype=dtype, rank=2, ...],
-        x: InputTensor[dtype=dtype, rank=2, ...],
-        ctx: DeviceContext,
-    ) raises:
-        var x_view = Self.update_input_view[z._static_shape_tuple](x)
-
-        view_copy_impl[target=target](z, x_view, ctx)
 
 
 @extensibility.register("print_shape_fused")

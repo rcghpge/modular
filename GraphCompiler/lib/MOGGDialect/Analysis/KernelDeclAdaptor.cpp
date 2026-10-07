@@ -733,7 +733,6 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
   };
 
   executeFunction = buildFn(decl.getExecute(), kMoggExecuteFuncName);
-  updateViewFunction = buildFn(decl.getUpdateView(), kMoggUpdateViewFuncName);
   buildGraphFunction = buildFn(decl.getBuildGraph(), kMoggBuildGraphFuncName);
   elementwiseFunction =
       buildFn(decl.getElementwise(), kMoggElementwiseFuncName);
@@ -755,8 +754,6 @@ const KernelDeclFunctionAdaptor *
 KernelDeclAdaptor::getFunctionByLabel(llvm::StringRef label) const {
   if (label == kMoggExecuteFunctionLabel)
     return executeFunction ? &*executeFunction : nullptr;
-  if (label == kMoggUpdateViewFunctionLabel)
-    return updateViewFunction ? &*updateViewFunction : nullptr;
   if (label == kMoggElementwiseFunctionLabel)
     return elementwiseFunction ? &*elementwiseFunction : nullptr;
   if (label == "tile_elementwise")

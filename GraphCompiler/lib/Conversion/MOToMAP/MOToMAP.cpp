@@ -675,9 +675,6 @@ FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
     foreachResult = lowerReshapeToForeach(reshapeOp);
   } else if (auto transposeOp = dyn_cast<MO::TransposeOp>(op)) {
     foreachResult = lowerTransposeToForeach(transposeOp);
-  } else if (adaptor->isViewKernel()) {
-    op->emitOpError("MOToMAP: view kernels are not yet supported");
-    return failure();
   } else {
     return lowerToOpaque(op, *adaptor, *mapping);
   }

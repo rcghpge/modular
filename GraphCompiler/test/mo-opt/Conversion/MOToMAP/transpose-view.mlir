@@ -2,10 +2,9 @@
 
 // Verify that mo.transpose lowers to a standalone (unfused) map.iter.foreach
 // over the output shape, with a map.index.transpose op computing the input
-// index -- not map.iter.opaque, and not the "view kernels are not yet
-// supported" error. The perm rides in as an operand (like slice's bounds): a
-// mo.constant perm is also baked into the spec as literals, and a graph-argument
-// perm shows up as `?` (ShapedType::kDynamic) there instead.
+// index -- not map.iter.opaque. The perm rides in as an operand (like slice's
+// bounds): a mo.constant perm is also baked into the spec as literals, and a
+// graph-argument perm shows up as `?` (ShapedType::kDynamic) there instead.
 
 // 2D swap: out.dim[0] = in.dim[1], out.dim[1] = in.dim[0].
 
@@ -66,8 +65,7 @@ mo.graph @transposeSymbolicDim<N>(%input: !mo.tensor<[N, 64], f32>) -> !mo.tenso
 // mo.constant, so shape inference gives fully symbolic output dims and the
 // spec's perm is all `?` -- the runtime perm operand supplies it. This is the
 // eager interpreter's one-graph-per-op transpose. It still lowers to a view
-// (map.index.transpose over the output shape), never to map.iter.opaque or the
-// old "view kernels are not yet supported" error.
+// (map.index.transpose over the output shape), never to map.iter.opaque.
 
 // CHECK-LABEL: mo.graph @transposeDynamicPerm
 // CHECK-NOT:     map.iter.opaque

@@ -458,7 +458,6 @@ static ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
   if (registry.containsShapeFunction(declOp.getRegistration()))
     appendFn(
         registry.lookupShapeFunction(declOp.getRegistration()).getFunction());
-  appendFn(declOp.getUpdateView());
   ArrayRef<KGEN::ParamDeclAttr> inputParams = inputParamsVec;
 
   struct MojoParameterAdaptor {

@@ -55,7 +55,7 @@ void inferOpaqueParameters(
     mlir::ArrayAttr inputParams);
 
 /// Fill and return the list of inferred parameters for a struct kernel
-/// function (execute, shape, elementwise, or update_view). Uses the stored
+/// function (execute, shape, elementwise, or build_graph). Uses the stored
 /// struct-level and fn-level ParamDeclAttrs from the KernelDeclAdaptor.
 /// Non-const because `FnTypeGeneratorType`'s pog list metadata accessor is.
 ErrorOr<InferredParameters> inferKernelParameters(

@@ -450,7 +450,6 @@ struct KernelDeclAdaptor {
   std::optional<KernelDeclFunctionAdaptor> executeFunction;
   std::optional<KernelDeclFunctionAdaptor> elementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> tileElementwiseFunction;
-  std::optional<KernelDeclFunctionAdaptor> updateViewFunction;
   std::optional<KernelDeclFunctionAdaptor> buildGraphFunction;
   /// Struct-level ParamDeclAttrs shared by all functions (e.g. `dtype`).
   mlir::ArrayAttr structParams;
@@ -459,7 +458,6 @@ struct KernelDeclAdaptor {
 
   bool isElementwise() const { return elementwiseFunction.has_value(); }
   bool isTileElementwise() const { return tileElementwiseFunction.has_value(); }
-  bool isViewKernel() const { return updateViewFunction.has_value(); }
 
   /// `label` is e.g. `kMoggExecuteFunctionLabel`. Returns nullptr if the label
   /// is unrecognised or the function is absent.
@@ -528,11 +526,6 @@ StreamType &operator<<(StreamType &os, const KernelDeclAdaptor &adaptor) {
   if (adaptor.executeFunction.has_value()) {
     os << "execute";
     adaptor.executeFunction->printNested(os, "  ");
-    os << "\n";
-  }
-  if (adaptor.updateViewFunction.has_value()) {
-    os << "update_view";
-    adaptor.updateViewFunction->printNested(os, "  ");
     os << "\n";
   }
   return os;

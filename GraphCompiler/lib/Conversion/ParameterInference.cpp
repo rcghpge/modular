@@ -408,7 +408,7 @@ ErrorOr<InferredParameters> inferKernelParameters(
   ASSERT_STREAM(fnAdaptor,
                 "Function label '" << funcLabel << "' not found in adaptor");
 
-  // Each variant (execute / elementwise / shape / update_view) has its own
+  // Each variant (execute / elementwise / shape / build_graph) has its own
   // param list, since signatures differ (e.g. elementwise omits
   // `target`/`_trace_name`).
   ArrayRef<mlir::Attribute> fnParams;

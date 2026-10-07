@@ -2,10 +2,9 @@
 
 // Verify that mo.slice lowers to a standalone (unfused) map.iter.foreach over
 // the output shape, with a map.index.slice op computing the input index --
-// not map.iter.opaque, and not the "view kernels are not yet supported"
-// error. Each of starts/stops/steps independently shows up as a literal in
-// the map.index.slice.spec when it's a compile-time constant (a mo.constant
-// operand), and as `?` (ShapedType::kDynamic) when it isn't.
+// not map.iter.opaque. Each of starts/stops/steps independently shows up as a
+// literal in the map.index.slice.spec when it's a compile-time constant (a
+// mo.constant operand), and as `?` (ShapedType::kDynamic) when it isn't.
 
 // All of starts/stops/steps are mo.constant: every bound is a literal.
 

@@ -16,9 +16,6 @@
 // Kernel with elementwise only (struct AddElementwise).
 // CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.AddElementwise registration = "imposter_add_elementwise"
 
-// View kernel carries update_view signature (struct PrintTensorSpecViewOp).
-// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.PrintTensorSpecViewOp registration = "print_tensor_spec_view" {{.*}} update_view
-
 // Primitive singleton function; sym_name is the fully-qualified Mojo source
 // function name, registration is the @register_internal string.
 // CHECK-DAG: mogg.primitive.decl @builtin_primitives.primitives.foreach registration = "mogg.elemwise_for_each"

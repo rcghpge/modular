@@ -314,7 +314,6 @@ struct Struct_paged_kv_cache_collection_h8_d128_bshd:
         )
 
 @extensibility.register("returning_transpose")
-@extensibility.view_kernel
 struct ReturningTranspose:
     @inline(.always)
     @staticmethod
@@ -342,10 +341,9 @@ this will come later if needed.
 
 ### Special Decorators
 
-There are some special decorators like `@extensibility.view_kernel` and
-`@compiler.elementwise` which are used to control optimizations by the graph
-compiler. These are undocumented for now, though if you think you need one of
-these, let us know.
+There are some special decorators like `@compiler.elementwise` which are used to
+control optimizations by the graph compiler. These are undocumented for now,
+though if you think you need one of these, let us know.
 
 ### Fusion
 

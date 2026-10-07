@@ -114,7 +114,7 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
                 "parameter declarations and cached slot-name mappings";
   let description = [{
     Holds, for one function variant of a Mojo kernel
-    (`execute` / `shape` / `elementwise` / `update_view`):
+    (`execute` / `shape` / `elementwise` / `build_graph`):
 
       - `signature`     : the LIT `FnTypeGeneratorType`.
       - `params`        : the def-level `ParamDeclAttr`s. Kept because the

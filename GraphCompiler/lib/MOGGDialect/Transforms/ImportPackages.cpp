@@ -51,7 +51,7 @@ namespace {
 
 // Mojo-source method names of extensibility kernels live in MojoIdentifiers.h
 // (`kMoggExecuteFuncName`, `kMoggShapeFuncName`, `kMoggElementwiseFuncName`,
-// `kMoggUpdateViewFuncName`, `kMoggBuildGraphFuncName`).
+// `kMoggBuildGraphFuncName`).
 
 /// Return the slot names of a well-known stdlib parameterised struct whose
 /// decl lives in a dependency package the fast loader skips. A non-empty list
@@ -301,8 +301,7 @@ struct ScannedKernel {
   KGEN::LIT::FnOp executeFn;
   KGEN::LIT::FnOp elementwiseFn;     // SIMD overload, may be null
   KGEN::LIT::FnOp tileElementwiseFn; // TileTensor overload, may be null
-  KGEN::LIT::FnOp updateViewFn; // may be null; only present on view kernels
-  KGEN::LIT::FnOp buildGraphFn; // may be null
+  KGEN::LIT::FnOp buildGraphFn;      // may be null
 };
 
 /// One primitive (non-struct) function found while scanning.
@@ -393,9 +392,7 @@ static mlir::LogicalResult scanForKernelDecls(
           kernel.tileElementwiseFn = func;
         else
           kernel.elementwiseFn = func;
-      } else if (srcName == kMoggUpdateViewFuncName)
-        kernel.updateViewFn = func;
-      else if (srcName == kMoggBuildGraphFuncName)
+      } else if (srcName == kMoggBuildGraphFuncName)
         kernel.buildGraphFn = func;
       else
         recognized = false;
@@ -730,15 +727,13 @@ struct ImportPackagesPass
         fnLocs.push_back(kernel.elementwiseFn.getLoc());
       if (kernel.tileElementwiseFn)
         fnLocs.push_back(kernel.tileElementwiseFn.getLoc());
-      if (kernel.updateViewFn)
-        fnLocs.push_back(kernel.updateViewFn.getLoc());
       if (kernel.buildGraphFn)
         fnLocs.push_back(kernel.buildGraphFn.getLoc());
 
-      // execute / update_view / build_graph may return user-defined
-      // parameterised opaque structs (e.g. `SIMDPair[P0, P1]`) that
-      // `inferOpaqueParameters` needs, so compute soft. elementwise returns
-      // stdlib `SIMD`; strict catches misuse.
+      // execute / build_graph may return user-defined parameterised opaque
+      // structs (e.g. `SIMDPair[P0, P1]`) that `inferOpaqueParameters` needs,
+      // so compute soft. elementwise returns stdlib `SIMD`; strict catches
+      // misuse.
       auto executeAttr = buildFunctionAttr(
           kernel.executeFn, /*computeResultParams=*/true,
           /*strictResultParams=*/false, /*distillTraitArgs=*/true);
@@ -748,15 +743,11 @@ struct ImportPackagesPass
       auto tileElementwiseAttr = buildFunctionAttr(
           kernel.tileElementwiseFn, /*computeResultParams=*/true,
           /*strictResultParams=*/true, /*distillTraitArgs=*/true);
-      auto updateViewAttr = buildFunctionAttr(
-          kernel.updateViewFn, /*computeResultParams=*/true,
-          /*strictResultParams=*/false, /*distillTraitArgs=*/true);
       auto buildGraphAttr = buildFunctionAttr(
           kernel.buildGraphFn, /*computeResultParams=*/true,
           /*strictResultParams=*/false, /*distillTraitArgs=*/true);
       if (failed(executeAttr) || failed(elementwiseAttr) ||
-          failed(tileElementwiseAttr) || failed(updateViewAttr) ||
-          failed(buildGraphAttr)) {
+          failed(tileElementwiseAttr) || failed(buildGraphAttr)) {
         // Diagnostics already emitted; keep going so every kernel is reported
         // rather than aborting on the first invalid one.
         sawFailure = true;
@@ -769,8 +760,7 @@ struct ImportPackagesPass
         KGEN::LIT::FnOp paramSrcFn =
             kernel.executeFn ? kernel.executeFn : kernel.elementwiseFn;
         if (!paramSrcFn)
-          paramSrcFn =
-              kernel.updateViewFn ? kernel.updateViewFn : kernel.buildGraphFn;
+          paramSrcFn = kernel.buildGraphFn;
         if (paramSrcFn) {
           if (auto structDecl = mlir::dyn_cast<KGEN::LIT::StructDeclOp>(
                   paramSrcFn->getParentOp())) {
@@ -785,8 +775,7 @@ struct ImportPackagesPass
       auto declOp = KernelDeclOp::create(
           builder, mlir::FusedLoc::get(ctx, fnLocs), kernel.mojoName,
           kernel.registration, kernel.deviceInfo, *executeAttr,
-          *elementwiseAttr, *tileElementwiseAttr, *updateViewAttr,
-          *buildGraphAttr, structParams,
+          *elementwiseAttr, *tileElementwiseAttr, *buildGraphAttr, structParams,
           mlir::BoolAttr::get(ctx, isUserDefined),
           /*sym_visibility=*/nullptr);
       symbolTable.insert(declOp);

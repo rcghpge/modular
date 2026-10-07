@@ -874,10 +874,9 @@ def MOGG_KernelDeclOp
   let description = [{
     Holds the signatures of a Mojo kernel struct registered under an MO op
     name. Several decls may share a `registration` (e.g. per-device
-    implementations). A kernel with `update_view` is a view kernel. A
-    user-defined decl (`is_user_defined`) overrides built-ins with the same
-    registration. The shape function lives in a separate
-    `mogg.shape_func.decl`.
+    implementations). A user-defined decl (`is_user_defined`) overrides
+    built-ins with the same registration. The shape function lives in a
+    separate `mogg.shape_func.decl`.
 
     `build_graph` has the same tensor signature as `execute` but takes a
     `DeviceGraphBuilder` in place of the `DeviceContext`.
@@ -890,7 +889,6 @@ def MOGG_KernelDeclOp
     OptionalAttr<MOGG_KernelFunctionAttr>:$execute,
     OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$tile_elementwise,
-    OptionalAttr<MOGG_KernelFunctionAttr>:$update_view,
     OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
     ArrayAttr:$struct_params,
     BoolAttr:$is_user_defined,
@@ -903,7 +901,6 @@ def MOGG_KernelDeclOp
     (`execute` `=` $execute^)?
     (`elementwise` `=` $elementwise^)?
     (`tile_elementwise` `=` $tile_elementwise^)?
-    (`update_view` `=` $update_view^)?
     (`build_graph` `=` $build_graph^)?
     `struct_params` `=` $struct_params
     `is_user_defined` `=` $is_user_defined

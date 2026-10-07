@@ -375,7 +375,6 @@ LogicalResult declVerifyTensorArgsAreBorrowed(
 
   if (borrowed(adaptor.executeFunction).failed() ||
       borrowed(shapeFunction).failed() ||
-      borrowed(adaptor.updateViewFunction).failed() ||
       borrowed(adaptor.buildGraphFunction).failed())
     return failure();
   return success();
@@ -405,8 +404,6 @@ LogicalResult declVerifyTraitArgFunctionKinds(KernelDeclOp decl,
   };
 
   bool ok = true;
-  if (rejectTraitArgs(adaptor.updateViewFunction, "update_input_view").failed())
-    ok = false;
   if (rejectTraitArgs(adaptor.buildGraphFunction, "build_graph").failed())
     ok = false;
   if (rejectTraitArgs(adaptor.elementwiseFunction, "elementwise").failed())
@@ -566,11 +563,9 @@ declVerifyTileElementwiseFunction(KernelDeclOp decl,
 // same op name)
 //===----------------------------------------------------------------------===//
 
-enum class KernelTypeTag { Execute, Elementwise, View };
+enum class KernelTypeTag { Execute, Elementwise };
 
 static KernelTypeTag getKernelType(const KernelDeclAdaptor &adaptor) {
-  if (adaptor.isViewKernel())
-    return KernelTypeTag::View;
   if (adaptor.isElementwise() || adaptor.isTileElementwise())
     return KernelTypeTag::Elementwise;
   if (adaptor.executeFunction.has_value())
@@ -585,8 +580,6 @@ static llvm::StringRef kernelTypeName(KernelTypeTag t) {
     return "execute";
   case KernelTypeTag::Elementwise:
     return "elementwise";
-  case KernelTypeTag::View:
-    return "view";
   }
   llvm_unreachable("unknown KernelTypeTag");
 }

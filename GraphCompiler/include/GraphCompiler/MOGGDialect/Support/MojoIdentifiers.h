@@ -56,7 +56,6 @@ constexpr llvm::StringLiteral kOpaqueTypeMappingAttrName =
 
 constexpr llvm::StringLiteral kMoggExecuteFunctionLabel = "mogg.execute";
 constexpr llvm::StringLiteral kMoggShapeFunctionLabel = "mogg.shape";
-constexpr llvm::StringLiteral kMoggUpdateViewFunctionLabel = "mogg.update_view";
 constexpr llvm::StringLiteral kMoggElementwiseFunctionLabel =
     "mogg.elementwise";
 constexpr llvm::StringLiteral kMoggTileElementwiseFunctionLabel =
@@ -70,7 +69,6 @@ using KGEN::kFnRegisterInternal;
 using KGEN::kMoggExecuteFuncName;
 constexpr llvm::StringLiteral kMoggShapeFuncName = "shape";
 constexpr llvm::StringLiteral kMoggElementwiseFuncName = "elementwise";
-constexpr llvm::StringLiteral kMoggUpdateViewFuncName = "update_input_view";
 constexpr llvm::StringLiteral kMoggBuildGraphFuncName = "build_graph";
 
 /// Indices into `getDecoratorLambdaArgument` for `@extensibility.register`.

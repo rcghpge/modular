@@ -114,28 +114,6 @@ struct TraitLegacyBadConvention:
         pass
 
 
-# Negative fixture: a trait-bound arg on `update_input_view`. Trait args are
-# `execute`-only for now, so VerifyKernels rejects this even though the
-# composition is well-formed and imports fine. (The `execute` here is a valid
-# trait kernel; only `update_input_view` is rejected.)
-@extensibility.register("trait_update_view")
-@extensibility.view_kernel
-struct TraitUpdateView:
-    @staticmethod
-    def update_input_view(input: Some[Input & DenseTensor]) -> Int:
-        return 0
-
-    @staticmethod
-    def execute[
-        target: StaticString,
-    ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor],
-        ctx: DeviceContext,
-    ) raises:
-        pass
-
-
 # Two dense trait outputs followed by a dense trait input -- exercises the
 # multi-output DPS split: both leading outputs must be classified as DPS
 # outputs (not folded into the inputs).
