@@ -1,5 +1,5 @@
 // UNSUPPORTED: asan
-// RUN: mo-opt --mo-constant-fold --mlir-print-ir-before=cse %s 2>&1 | FileCheck %s
+// RUN: mo-opt --mo-constant-fold --mlir-print-ir-before=cse --mlir-print-assume-verified %s 2>&1 | FileCheck %s
 
 // CHECK: mo.graph @large_const_constant_subgraphs{{.*}}(%arg0: !mo.tensor<[10], ui32>)
 // CHECK-NEXT: mo.add(%arg0, %arg0)
