@@ -2,6 +2,11 @@
 // RUN: FileCheck %s < %t
 // RUN: FileCheck %s --check-prefix=NONAME < %t
 
+// The region's block arguments print their location after their type, where
+// the parser reads it.
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg --mogg-conform-call-operands --mogg-outline-kernels-into-functions --mogg-to-mgp --mlir-print-debuginfo | mo-opt --mlir-print-debuginfo | FileCheck %s --check-prefix=LOC
+// LOC: mogg.generic.compiled.region (%{{.*}}) : (%{{[^ ]*}}: !mef.chain loc(
+
 // MOGGToMGP lowers a new-path mogg.kernel into a mogg.generic.compiled.region:
 // its !mo.tensor inputs become !mgp.buffer operands, outputs are freshly
 // allocated, and inside the body each async block arg is unpacked + rebound to

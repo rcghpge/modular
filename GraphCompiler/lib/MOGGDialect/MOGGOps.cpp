@@ -4642,12 +4642,15 @@ static void printKernel(OpAsmPrinter &p, Operation *kernel, ValueRange operands,
   // type `T` so the signature reads in terms of the operand types.
   p << '(';
   llvm::interleaveComma(region.getArguments(), p, [&](BlockArgument arg) {
-    p.printRegionArgument(arg, /*argAttrs=*/{}, /*omitType=*/true);
+    p.printOperand(arg);
     p << ": ";
     Type type = arg.getType();
     if (auto asyncType = dyn_cast<AsyncType>(type))
       type = asyncType.getElementType();
     p.printType(type);
+    // `parseArgument` reads the location after the type, but
+    // `printRegionArgument` with `omitType` prints it before.
+    p.printOptionalLocationSpecifier(arg.getLoc());
   });
   p << ')';
   if (!resultTypes.empty()) {
