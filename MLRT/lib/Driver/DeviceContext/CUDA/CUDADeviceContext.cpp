@@ -1696,6 +1696,8 @@ CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
       stream_(stream) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
   logVerbose_ = DeviceContext::configAsBool("log_verbose", false);
+  bypassFunctionCache_ =
+      DeviceContext::configAsBool("bypass-function-cache", false);
 
   // Initialize Tracy CUDA profiling context if not already initialized.
   M::initTracyCuda();
@@ -1715,6 +1717,8 @@ CUDADeviceContext::CUDADeviceContext(CUDADevice &device, CUcontext context,
       stream_(streamPool_->get(activeStreamId)) {
   logLoadFunction_ = DeviceContext::configAsBool("log_load_function", false);
   logVerbose_ = DeviceContext::configAsBool("log_verbose", false);
+  bypassFunctionCache_ =
+      DeviceContext::configAsBool("bypass-function-cache", false);
   M::initTracyCuda();
 }
 
@@ -2181,13 +2185,15 @@ CUDADeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
       /*maxDynamicSharedBytes=*/maxDynamicSharedBytes,
       /*optimizationLevel=*/optimizationLevel};
   DeviceFunctionCacheEntryRef entry = device().findInFunctionCache(key);
-  if (entry.getPointer() != nullptr) {
+  if (entry.getPointer() != nullptr && !bypassFunctionCache_) {
     CUDAModuleFunctionRef moduleFunc =
         CUDAModuleFunctionRef::take(CUDAModuleFunction::cast(entry.release()));
     return CUDADeviceFunctionRef::create(*this, std::move(moduleFunc));
   }
 
-  if (logLoadFunction_) {
+  // Under the bypass a cached kernel reloads on every launch; logging only
+  // first loads keeps the log to one line per kernel and device.
+  if (logLoadFunction_ && entry.getPointer() == nullptr) {
     // Assemble first, then write once. `errs()` is unbuffered and every `<<`
     // is its own write, so concurrent loaders otherwise interleave mid-record
     // and a reader cannot tell which name belongs to which load.

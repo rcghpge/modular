@@ -545,6 +545,9 @@ private:
 
   bool logLoadFunction_ = false;
   bool logVerbose_ = false;
+  // Stress knob for tests: skips function-cache hits, so every launch is a
+  // cold kernel load.
+  bool bypassFunctionCache_ = false;
 
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) override;
