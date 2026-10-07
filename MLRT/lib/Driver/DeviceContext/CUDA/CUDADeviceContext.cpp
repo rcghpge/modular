@@ -21,6 +21,7 @@
 #include "Support/mcl/Tracy/Tracy.h"
 #include "Support/mcl/Tracy/TracyCuda.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Process.h"
@@ -1098,15 +1099,32 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
   memProp.location.id = dev0.cudaDevice();
 
   granularity = 0;
-  driver.cuMemGetAllocationGranularity(
+  CUDA_CHECK_ERR(driver.cuMemGetAllocationGranularity(
       &granularity, &memProp,
-      CUmemAllocationGranularity_flags::GRANULARITY_MINIMUM);
+      CUmemAllocationGranularity_flags::GRANULARITY_MINIMUM));
   paddedByteSize = llvm::alignTo(paddedByteSize, granularity);
   multiProp.size = paddedByteSize;
 
   // Allocate the multicast memory handle.
   CUmemGenericAllocationHandle multiHandle;
   CUDA_CHECK_ERR(driver.cuMulticastCreate(&multiHandle, &multiProp));
+
+  // Until the buffer object takes ownership, every early return must undo
+  // what has been reserved so far, in the destructor's order. The scope exits
+  // below nest innermost-first; each is released once its resource is handed
+  // to `unicastBuffers` or the buffer object. Cleanup results are ignored: the
+  // original failure is what gets reported.
+  std::vector<DeviceToBuffer> unicastBuffers;
+  auto releaseMulticast = llvm::scope_exit([&] {
+    for (const auto &it : unicastBuffers) {
+      (void)driver.cuMulticastUnbind(multiHandle, it.device_, 0,
+                                     paddedByteSize);
+      (void)driver.cuMemUnmap(it.ptr_, paddedByteSize);
+      (void)driver.cuMemAddressFree(it.ptr_, paddedByteSize);
+      (void)driver.cuMemRelease(it.handle_);
+    }
+    (void)driver.cuMemRelease(multiHandle);
+  });
 
   // First add all the devices to the multicast handle to avoid blocking when
   // adding physical memory for each participating device.
@@ -1119,8 +1137,6 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
   // Only after all devices have been added we can allocate and map virtual
   // address space on the individual devices. Then bind the physical memory to
   // the multicast memory handle.
-  std::vector<DeviceToBuffer> unicastBuffers;
-
   CUmemAccessDesc memDesc = {};
   memDesc.location.type = CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
   memDesc.flags = CUmemAccess_flags::CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
@@ -1131,16 +1147,25 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
     memDesc.location.id = device.cudaDevice();
 
     CUmemGenericAllocationHandle memHandle;
-    CUdeviceptr memPtr;
     CUDA_CHECK_ERR(driver.cuMemCreate(&memHandle, paddedByteSize, &memProp, 0));
+    auto releaseMem =
+        llvm::scope_exit([&] { (void)driver.cuMemRelease(memHandle); });
+    CUdeviceptr memPtr;
     CUDA_CHECK_ERR(
         driver.cuMemAddressReserve(&memPtr, paddedByteSize, 0, nullptr, 0));
+    auto freeVA = llvm::scope_exit(
+        [&] { (void)driver.cuMemAddressFree(memPtr, paddedByteSize); });
     CUDA_CHECK_ERR(driver.cuMemMap(memPtr, paddedByteSize, 0, memHandle, 0));
+    auto unmap = llvm::scope_exit(
+        [&] { (void)driver.cuMemUnmap(memPtr, paddedByteSize); });
     CUDA_CHECK_ERR(driver.cuMemSetAccess(memPtr, paddedByteSize, &memDesc, 1));
     CUDA_CHECK_ERR(driver.cuMulticastBindMem(multiHandle, 0, memHandle, 0,
                                              paddedByteSize, 0));
     unicastBuffers.push_back(
         DeviceToBuffer{device.cudaDevice(), memHandle, memPtr});
+    unmap.release();
+    freeVA.release();
+    releaseMem.release();
   }
 
   // Map the multicast memory handle to a virtual address range and allow access
@@ -1148,7 +1173,11 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
   CUdeviceptr multiPtr = nullptr;
   CUDA_CHECK_ERR(
       driver.cuMemAddressReserve(&multiPtr, paddedByteSize, 0, nullptr, 0));
+  auto freeMultiVA = llvm::scope_exit(
+      [&] { (void)driver.cuMemAddressFree(multiPtr, paddedByteSize); });
   CUDA_CHECK_ERR(driver.cuMemMap(multiPtr, paddedByteSize, 0, multiHandle, 0));
+  auto unmapMulti = llvm::scope_exit(
+      [&] { (void)driver.cuMemUnmap(multiPtr, paddedByteSize); });
   for (const auto &it : devices) {
     const CUDADevice &device = CUDADevice::cast(*it);
     memDesc.location.id = device.cudaDevice();
@@ -1156,6 +1185,9 @@ CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
         driver.cuMemSetAccess(multiPtr, paddedByteSize, &memDesc, 1));
   }
 
+  unmapMulti.release();
+  freeMultiVA.release();
+  releaseMulticast.release();
   return CUDADeviceMulticastBufferRef::create(byteSize, paddedByteSize, driver,
                                               multiHandle, multiPtr,
                                               std::move(unicastBuffers));

@@ -797,6 +797,7 @@ modular_cc_test(
         "CUDADeviceContextTest.cpp",
         "ScopedEnvVar.h",
     ],
+    args = ["--gtest_filter=-*SymmetricPool*"],
     gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
     deps = [
@@ -807,6 +808,38 @@ modular_cc_test(
         "@llvm-project//llvm:Support",
     ],
 )
+
+# The symmetric pool tests need two GPUs and allocate multi-device multicast
+# memory, which alone takes longer than the small-test budget. One binary per
+# test: the pool registry is process-wide and create-once, so a test can only
+# start from an empty registry in a fresh process.
+[
+    modular_cc_test(
+        name = "CUDADeviceContextSymmetricPool{}Test".format(test),
+        size = "medium",
+        srcs = [
+            "CUDADeviceContextTest.cpp",
+            "ScopedEnvVar.h",
+        ],
+        args = ["--gtest_filter=CUDADeviceContextTest.SymmetricPool{}".format(test)],
+        gpu_constraints = [
+            "//:nvidia_gpu",
+            "//:has_multi_gpu",
+        ],
+        tags = ["gpu"],
+        deps = [
+            ":TestUtils",
+            "//MLRT:Driver/CompilationDeviceImpl",
+            "//MLRT:Driver/DeviceContextImpl",
+            "//Support:Base",
+            "@llvm-project//llvm:Support",
+        ],
+    )
+    for test in [
+        "CreateOnceAndLookup",
+        "FailedCreateLeavesNothingBehind",
+    ]
+]
 
 # Its own binary on purpose: the invariant it checks is that a process which
 # has only counted devices has not called cuInit, which no test sharing a
@@ -900,6 +933,7 @@ modular_cc_test(
         "CUDADeviceContextTest.cpp",
         "ScopedEnvVar.h",
     ],
+    args = ["--gtest_filter=-*SymmetricPool*"],
     gpu_constraints = [
         "//:nvidia_gpu",
         "//:has_multi_gpu",

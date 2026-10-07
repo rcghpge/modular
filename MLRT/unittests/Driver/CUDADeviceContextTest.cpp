@@ -896,6 +896,120 @@ $L__BB0_2:
   }
 }
 
+// A context per CUDA device when the node can back a symmetric pool, else
+// empty so the caller skips. The pool registry is process-wide and create-once,
+// so each SymmetricPool test is its own binary (see BUILD.bazel) and starts
+// with the registry empty.
+static std::vector<DeviceContextRef> symmetricPoolContexts() {
+  int numDevices = Device::numberOfDevices(Device::cudaAPI);
+  std::vector<DeviceContextRef> contexts;
+  if (numDevices < 2)
+    return contexts;
+  for (int i = 0; i < numDevices; ++i) {
+    ErrorOr<DeviceContextRef> errCtx =
+        DeviceContext::create(Device::cudaAPI, i);
+    if (errCtx.isError())
+      return {};
+    contexts.push_back(errCtx.takeValue());
+  }
+  ErrorOr<bool> multicastSupported = contexts[0]->device().supportsMulticast();
+  if (multicastSupported.isError() || !multicastSupported.get())
+    return {};
+  return contexts;
+}
+
+TEST_F(CUDADeviceContextTest, SymmetricPoolCreateOnceAndLookup) {
+  std::vector<DeviceContextRef> contexts = symmetricPoolContexts();
+  if (contexts.empty())
+    GTEST_SKIP() << "symmetric pool needs >= 2 multicast-capable devices";
+  const int numDevices = static_cast<int>(contexts.size());
+
+  // Lookup never creates.
+  EXPECT_FALSE(SymmetricPool::lookup(contexts));
+
+  const size_t requestedBytes = 4 * 1024;
+  ASSIGN_NO_ERR(DeviceMulticastBufferRef, pool,
+                SymmetricPool::create(contexts, requestedBytes));
+  ASSERT_TRUE(pool);
+  EXPECT_EQ(pool->byteSize(), requestedBytes);
+
+  // A replaced pool would leave stale pointers in captured device graphs.
+  ErrorOr<DeviceMulticastBufferRef> second =
+      SymmetricPool::create(contexts, requestedBytes);
+  EXPECT_TRUE(second.isError());
+
+  // Lookup is stable, and independent of the order contexts are listed in.
+  DeviceMulticastBufferRef found = SymmetricPool::lookup(contexts);
+  ASSERT_TRUE(found);
+  EXPECT_EQ(found.getPointer(), pool.getPointer());
+
+  std::vector<DeviceContextRef> reordered;
+  for (auto it = contexts.rbegin(); it != contexts.rend(); ++it)
+    reordered.push_back(it->copy());
+  DeviceMulticastBufferRef foundReordered = SymmetricPool::lookup(reordered);
+  ASSERT_TRUE(foundReordered);
+  EXPECT_EQ(foundReordered.getPointer(), pool.getPointer());
+
+  // A subset of the device set is a different key, not a partial match.
+  if (numDevices > 2) {
+    std::vector<DeviceContextRef> subset;
+    subset.push_back(contexts[0].copy());
+    subset.push_back(contexts[1].copy());
+    EXPECT_FALSE(SymmetricPool::lookup(subset));
+  }
+
+  // Each device's unicast view is writable memory holding its own data.
+  const size_t numElems = requestedBytes / sizeof(float);
+  for (int i = 0; i < numDevices; ++i) {
+    DeviceContext &ctx = *contexts[i];
+    ASSIGN_NO_ERR(DeviceBufferRef, hostBuf,
+                  ctx.createHostBuffer(requestedBytes));
+    float *hostPtr = static_cast<float *>(hostBuf->ptr());
+    for (size_t j = 0; j < numElems; ++j)
+      hostPtr[j] = static_cast<float>(j + 3 * (ctx.device().id() + 1));
+
+    ASSIGN_NO_ERR(DeviceBufferRef, uniBuf, pool->unicastBufferFor(ctx));
+    EXPECT_NO_ERR(hostBuf->copyTo(*uniBuf));
+    bzero(hostPtr, requestedBytes);
+    EXPECT_NO_ERR(uniBuf->copyTo(*hostBuf));
+    EXPECT_NO_ERR(ctx.synchronize());
+    for (size_t j = 0; j < numElems; ++j) {
+      ASSERT_EQ(hostPtr[j],
+                static_cast<float>(j + 3 * (ctx.device().id() + 1)));
+    }
+  }
+}
+
+// Free-memory comparisons tolerate the driver's own lazy allocations.
+static constexpr size_t kFreeMemoryTolerance = 128 * 1024 * 1024;
+
+// A failed create is a fallback in serving, so it must leave the registry
+// empty and give back everything it reserved, including whatever a later
+// create needs.
+TEST_F(CUDADeviceContextTest, SymmetricPoolFailedCreateLeavesNothingBehind) {
+  std::vector<DeviceContextRef> contexts = symmetricPoolContexts();
+  if (contexts.empty())
+    GTEST_SKIP() << "symmetric pool needs >= 2 multicast-capable devices";
+  const Device &dev0 = contexts[0]->device();
+
+  ASSIGN_NO_ERR(Device::MemInfo, before, dev0.getMemoryInfo());
+  // More than the device holds, so the per-device physical allocation cannot
+  // succeed whatever else does.
+  ErrorOr<DeviceMulticastBufferRef> failed =
+      SymmetricPool::create(contexts, before.total);
+  ASSERT_TRUE(failed.isError());
+  EXPECT_FALSE(SymmetricPool::lookup(contexts));
+
+  ASSIGN_NO_ERR(Device::MemInfo, after, dev0.getMemoryInfo());
+  EXPECT_GE(after.free + kFreeMemoryTolerance, before.free)
+      << "failed create leaked " << (before.free - after.free) << " bytes";
+
+  ASSIGN_NO_ERR(DeviceMulticastBufferRef, pool,
+                SymmetricPool::create(contexts, 4 * 1024));
+  ASSERT_TRUE(pool);
+  EXPECT_TRUE(SymmetricPool::lookup(contexts));
+}
+
 TEST_F(CUDADeviceContextTest, NVMLGetPciInfo) {
   // Get NVML instance
   ErrorOr<const NVML &> nvmlOr = NVML::get();

@@ -38,6 +38,7 @@
 #include "Support/LogicalResult.h"
 #include "Support/RCRef.h"
 #include "Support/ReferenceCounted.h"
+#include "Support/SymbolExport.h"
 #include "Support/TypeID.h"
 #include <dlpack/dlpack.h>
 
@@ -495,6 +496,9 @@ private:
                Device::FreeKind kind);
 };
 
+// Only the non-virtual members the Python extension calls are exported;
+// exporting the class would duplicate its vtable across every library that
+// links DeviceContext.cpp (an ODR violation).
 class DeviceMulticastBuffer : public ReferenceCounted<DeviceMulticastBuffer> {
 public:
   virtual ~DeviceMulticastBuffer();
@@ -504,7 +508,7 @@ public:
   virtual ErrorOr<DeviceBufferRef>
   unicastBufferFor(DeviceContext &ctx) const = 0;
 
-  size_t byteSize() const;
+  MODULAR_CXX_EXPORT size_t byteSize() const;
 
   virtual size_t numberOfDevices() const = 0;
 
@@ -516,6 +520,21 @@ protected:
 
 private:
   size_t byteSize_;
+};
+
+/// Process-wide registry of multicast pools, one per device set. Pools are
+/// created once at session init; lookups never allocate, so no multicast
+/// allocation can happen on the execution path.
+class MODULAR_CXX_EXPORT SymmetricPool {
+public:
+  /// Allocates a pool of at least `byteSize` usable bytes over `contexts` and
+  /// registers it. Fails if a pool already exists for this device set.
+  static ErrorOr<DeviceMulticastBufferRef>
+  create(const std::vector<DeviceContextRef> &contexts, size_t byteSize);
+
+  /// Returns the pool registered for `contexts` (in any order), or a null ref.
+  static DeviceMulticastBufferRef
+  lookup(const std::vector<DeviceContextRef> &contexts);
 };
 
 class DeviceEvent : public ReferenceCounted<DeviceEvent> {

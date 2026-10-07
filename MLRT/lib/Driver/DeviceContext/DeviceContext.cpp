@@ -746,6 +746,62 @@ DeviceMulticastBuffer::allocate(const std::vector<DeviceContextRef> &contexts,
 }
 
 //
+// ===== SymmetricPool ===== //
+//
+namespace {
+/// Sorted device ids, so any ordering of the same devices finds one pool.
+/// Plain ids suffice because allocate() only accepts all-CUDA context lists.
+using PoolKey = std::vector<int>;
+
+PoolKey makePoolKey(const std::vector<DeviceContextRef> &contexts) {
+  PoolKey key;
+  key.reserve(contexts.size());
+  for (const auto &ctx : contexts)
+    key.push_back(ctx->device().id());
+  llvm::sort(key);
+  return key;
+}
+
+std::mutex &poolRegistryMutex() {
+  static std::mutex mu;
+  return mu;
+}
+
+std::map<PoolKey, DeviceMulticastBufferRef> &poolRegistry() {
+  static std::map<PoolKey, DeviceMulticastBufferRef> registry;
+  return registry;
+}
+} // namespace
+
+ErrorOr<DeviceMulticastBufferRef>
+SymmetricPool::create(const std::vector<DeviceContextRef> &contexts,
+                      size_t byteSize) {
+  if (byteSize == 0)
+    RETURN_ERROR("Symmetric pool capacity must be non-zero.");
+
+  PoolKey key = makePoolKey(contexts);
+  std::lock_guard<std::mutex> lock(poolRegistryMutex());
+  if (poolRegistry().find(key) != poolRegistry().end())
+    RETURN_ERROR("Symmetric pool already created for this device set.");
+
+  DEFINE_OR_RETURN_ERROR(DeviceMulticastBufferRef, pool,
+                         DeviceMulticastBuffer::allocate(contexts, byteSize));
+
+  poolRegistry().emplace(std::move(key), pool);
+  return pool;
+}
+
+DeviceMulticastBufferRef
+SymmetricPool::lookup(const std::vector<DeviceContextRef> &contexts) {
+  PoolKey key = makePoolKey(contexts);
+  std::lock_guard<std::mutex> lock(poolRegistryMutex());
+  auto it = poolRegistry().find(key);
+  if (it == poolRegistry().end())
+    return {};
+  return it->second;
+}
+
+//
 // ===== DeviceEvent ===== //
 //
 DeviceEvent::DeviceEvent(Device &device) : device_(DeviceRef::copy(&device)) {}
