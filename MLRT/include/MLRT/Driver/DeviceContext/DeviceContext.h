@@ -629,7 +629,12 @@ private:
 class DeviceGraph : public ReferenceCounted<DeviceGraph> {
 public:
   virtual ~DeviceGraph() = default;
-  Device &device() const { return *device_; }
+  Device &device() const;
+
+  /// The context this graph was recorded against. Replay-time work that is
+  /// not part of the recorded graph (see `patchStableAddresses`) is enqueued
+  /// here.
+  DeviceContext &context() const;
 
   /// Capture a graph and baseline launch trace by executing a callback.
   /// Stream capture is ended synchronously for all streams, then graph
@@ -702,13 +707,46 @@ public:
     memoryPool = std::move(pool);
   }
 
+  /// A stable address slot this graph publishes into, and the value it
+  /// publishes. A slot is a graph-lifetime device location holding one device
+  /// data pointer; graphs on other devices bake the slot's address in and read
+  /// the pointer through it at run time.
+  struct StableAssignment {
+    /// Device address of the slot. Opaque on the host: written with a device
+    /// copy, never dereferenced.
+    void **stableAddress;
+
+    /// The device data pointer the slot holds while this graph runs. Graph
+    /// stable (an input twin or a pool allocation), so fixed once recorded.
+    void *ptr;
+  };
+
+  /// Take ownership of the slot assignments recorded on the builder.
+  /// Transferred in by `DeviceGraphBuilder::instantiate()`.
+  void setStableAssignments(SmallVector<StableAssignment> assignments) {
+    stableAssignments_ = std::move(assignments);
+  }
+
+  ArrayRef<StableAssignment> getStableAssignments() const {
+    return stableAssignments_;
+  }
+
+  /// Enqueues, on this graph's context, a write of each assignment's value into
+  /// its slot. The writes are asynchronous: the caller must synchronize the
+  /// context before launching any graph that reads the slots, on this device
+  /// or another. The writes are deliberately not recorded nodes of the graph,
+  /// so that whoever launches a collective can complete every slot write
+  /// before any of its graphs starts (see
+  /// `mgp.device_graph.collective.execute`).
+  ErrorOrSuccess patchStableAddresses() const;
+
 protected:
-  explicit DeviceGraph(Device &device, DeviceStreamRef captureStream)
-      : device_(DeviceRef::copy(&device)),
-        captureStream_(std::move(captureStream)) {}
+  explicit DeviceGraph(DeviceContextRef context, DeviceStreamRef captureStream)
+      : context_(std::move(context)), captureStream_(std::move(captureStream)) {
+  }
 
 private:
-  DeviceRef device_;
+  DeviceContextRef context_;
   DeviceStreamRef captureStream_;
   bool hasBaselineLaunchTrace_ = false;
   std::vector<KernelLaunchMetadata> baselineLaunchTrace_;
@@ -720,6 +758,11 @@ private:
   /// Stable input buffers the recorded nodes read from, in graph-signature
   /// input order; transferred in by `DeviceGraphBuilder::instantiate()`.
   SmallVector<DeviceBufferRef> inputs_;
+
+  /// The slots this graph publishes into and the values it publishes;
+  /// transferred in by `DeviceGraphBuilder::instantiate()`. The values point
+  /// at memory `inputs_` or `memoryPool` keeps alive.
+  SmallVector<StableAssignment> stableAssignments_;
 
   /// Keeps the graph's pool allocations alive for as long as the graph itself.
   DeviceGraphMemoryPoolRef memoryPool;

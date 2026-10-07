@@ -614,6 +614,45 @@ TEST(DeviceGraphBuilderTest, AddInPlaceInputInterleavesWithStableInputs) {
   EXPECT_EQ(inputs[2]->ptr(), stable2->ptr());
 }
 
+// Slot assignments recorded on the builder move to the graph at
+// `instantiate()`, and `patchStableAddresses` writes each value into its slot
+// on the graph's context. The write is asynchronous, so the read-back waits on
+// the context first, as `mgp.device_graph.collective.execute` does before
+// launching any graph.
+TEST(DeviceGraphBuilderTest, StableAssignmentsPatchIntoSlots) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx,
+                DeviceContext::create(Device::gpuAPI, /*id=*/0));
+
+  ASSIGN_NO_ERR(DeviceBufferRef, slot,
+                ctx->enqueueCreateBuffer(sizeof(void *)));
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(*slot, /*val=*/0, /*valSize=*/1));
+
+  ASSIGN_NO_ERR(DeviceGraphBuilderRef, builder, ctx->createGraphBuilder());
+  ASSIGN_NO_ERR(DeviceBufferRef, value,
+                builder->createBuffer(1024, /*isHost=*/false));
+  builder->addStableAssignment(static_cast<void **>(slot->ptr()), value->ptr());
+  EXPECT_EQ(builder->numStableAssignments(), 1u);
+
+  EXPECT_NO_ERR(builder->addEmpty(/*dependencies=*/{}));
+  ASSIGN_NO_ERR(DeviceGraphRef, graph, builder->instantiate());
+  EXPECT_EQ(builder->numStableAssignments(), 0u);
+  EXPECT_EQ(&graph->context(), ctx.getPointer());
+
+  llvm::ArrayRef<DeviceGraph::StableAssignment> assignments =
+      graph->getStableAssignments();
+  ASSERT_EQ(assignments.size(), 1u);
+  EXPECT_EQ(assignments[0].stableAddress, slot->ptr());
+  EXPECT_EQ(assignments[0].ptr, value->ptr());
+
+  EXPECT_NO_ERR(graph->patchStableAddresses());
+  EXPECT_NO_ERR(ctx->synchronize());
+
+  void *hostSlot = nullptr;
+  EXPECT_NO_ERR(slot->copyTo(&hostSlot));
+  EXPECT_NO_ERR(ctx->synchronize());
+  EXPECT_EQ(hostSlot, value->ptr());
+}
+
 // A builder can allocate from an externally owned pool instead of a private
 // one. The graph still takes the builder's pool reference at `instantiate()`,
 // but the external owner's reference keeps the pool usable for further

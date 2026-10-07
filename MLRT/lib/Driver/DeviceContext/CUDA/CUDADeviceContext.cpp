@@ -1472,7 +1472,7 @@ ErrorOr<DeviceGraphRef> CUDADeviceStream::endCapture() {
 
   // Store the stream for replay/verification.
   return CUDADeviceGraphRef::create(
-      cudaDevice, graph,
+      DeviceContextRef::copy(&context_()), graph,
       DeviceStreamRef::copy(static_cast<DeviceStream *>(this)));
 }
 

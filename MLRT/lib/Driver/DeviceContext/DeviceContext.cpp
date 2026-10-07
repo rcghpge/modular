@@ -1140,6 +1140,19 @@ void DeviceGraph::setLaunchTrace(
   hasBaselineLaunchTrace_ = true;
 }
 
+Device &DeviceGraph::device() const { return context_->device(); }
+
+DeviceContext &DeviceGraph::context() const { return *context_; }
+
+ErrorOrSuccess DeviceGraph::patchStableAddresses() const {
+  for (const StableAssignment &assignment : stableAssignments_) {
+    // The source is this graph's own storage, so it outlives the copy.
+    RETURN_IF_ERROR(context_->enqueueCopyToDevice(
+        assignment.stableAddress, &assignment.ptr, sizeof(assignment.ptr)));
+  }
+  return success();
+}
+
 //
 // ===== DeviceStream ===== //
 //

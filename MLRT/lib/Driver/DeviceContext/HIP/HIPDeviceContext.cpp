@@ -1300,7 +1300,7 @@ ErrorOr<DeviceGraphRef> HIPDeviceStream::endCapture() {
   // replay(). Keeping endCapture() cheap ensures the stream is released for
   // the next capture session before the expensive instantiation begins.
   return HIPDeviceGraphRef::create(
-      hipDevice, graph,
+      DeviceContextRef::copy(&context_()), graph,
       DeviceStreamRef::copy(static_cast<DeviceStream *>(this)));
 }
 

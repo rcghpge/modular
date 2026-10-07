@@ -544,9 +544,30 @@ public:
     return outputs_;
   }
 
+  /// Mirrors the legacy `DeviceGraph::StableAssignment`; see that declaration.
+  struct StableAssignment {
+    void **stableAddress;
+    void *ptr;
+  };
+
+  void setStableAssignments(llvm::SmallVector<StableAssignment> assignments) {
+    stableAssignments_ = std::move(assignments);
+  }
+
+  llvm::ArrayRef<StableAssignment> getStableAssignments() const {
+    return stableAssignments_;
+  }
+
+  /// Always fails on the HAL backend, like `replay`.
+  ErrorOrSuccess patchStableAddresses() const;
+
+  /// The HAL backend never creates instances, so this is unreachable.
+  DeviceContext &context() const;
+
 private:
   llvm::SmallVector<DeviceBufferRef> inputs_;
   llvm::SmallVector<AsyncRT::AnyAsyncValueRef> outputs_;
+  llvm::SmallVector<StableAssignment> stableAssignments_;
 };
 
 /// A single stream of execution on one device, backed by a heap-boxed Mojo

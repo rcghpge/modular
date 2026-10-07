@@ -253,8 +253,10 @@ class CUDADeviceGraph : public DeviceGraph {
 public:
   /// Construct an uninstantiated graph from a raw CUgraph returned by
   /// cuStreamEndCapture. Call instantiate() before replay().
-  CUDADeviceGraph(CUDADevice &device, CUgraph rawGraph, DeviceStreamRef stream)
-      : DeviceGraph(device, std::move(stream)), rawGraph_(rawGraph) {}
+  CUDADeviceGraph(DeviceContextRef context, CUgraph rawGraph,
+                  DeviceStreamRef stream)
+      : DeviceGraph(std::move(context), std::move(stream)),
+        rawGraph_(rawGraph) {}
 
   ~CUDADeviceGraph() override;
 

@@ -268,6 +268,15 @@ public:
   /// including in-place (null) entries.
   size_t numInputs() const { return inputs.size(); }
 
+  /// Records that the graph publishes `ptr` into the stable address slot at
+  /// `stableAddress`. Both are device addresses. `ptr` must be graph stable (an
+  /// `addInput` twin or a `createBuffer` allocation): the value is fixed once
+  /// recorded, and the graph writes it into the slot before each replay via
+  /// `DeviceGraph::patchStableAddresses`.
+  void addStableAssignment(void **stableAddress, void *ptr);
+
+  size_t numStableAssignments() const { return stableAssignments.size(); }
+
 protected:
   /// Hands the recorded outputs to a subclass `instantiate()` so it can
   /// transfer their ownership to the instantiated `DeviceGraph`, whose stable
@@ -278,6 +287,11 @@ protected:
 
   /// Counterpart of `takeOutputs` for the graph's stable inputs.
   llvm::SmallVector<DeviceBufferRef> takeInputs() { return std::move(inputs); }
+
+  /// Counterpart of `takeOutputs` for the graph's slot assignments.
+  llvm::SmallVector<DeviceGraph::StableAssignment> takeStableAssignments() {
+    return std::move(stableAssignments);
+  }
 
   DeviceGraphMemoryPoolRef takeMemoryPool() { return std::move(memoryPool); }
 
@@ -292,6 +306,10 @@ private:
   /// null entry marks an in-place input: the graph records the caller's live
   /// address and replay must not copy into that position.
   llvm::SmallVector<DeviceBufferRef> inputs;
+
+  /// The slots the graph publishes into and the values it publishes, in
+  /// `addStableAssignment` order. Handed to the graph by `instantiate()`.
+  llvm::SmallVector<DeviceGraph::StableAssignment> stableAssignments;
 
   /// Memory pool for all allocations created during the recording process.
   /// Because memory addresses are recorded as part of a device graph, all

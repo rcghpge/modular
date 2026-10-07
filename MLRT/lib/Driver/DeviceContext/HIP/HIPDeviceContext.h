@@ -176,8 +176,10 @@ class HIPDeviceGraph : public DeviceGraph {
 public:
   /// Construct an uninstantiated graph from a raw hipGraph_t returned by
   /// hipStreamEndCapture. Call instantiate() before replay().
-  HIPDeviceGraph(HIPDevice &device, hipGraph_t rawGraph, DeviceStreamRef stream)
-      : DeviceGraph(device, std::move(stream)), rawGraph_(rawGraph) {}
+  HIPDeviceGraph(DeviceContextRef context, hipGraph_t rawGraph,
+                 DeviceStreamRef stream)
+      : DeviceGraph(std::move(context), std::move(stream)),
+        rawGraph_(rawGraph) {}
 
   ~HIPDeviceGraph() override;
 

@@ -1260,6 +1260,16 @@ AsyncRT_DeviceGraphBuilder_numInputs(DeviceGraphBuilder *builder) {
   return static_cast<int64_t>(builder->numInputs());
 }
 
+// Records that the graph publishes `ptr` into the stable address slot at
+// `stableAddress`; both are device addresses. See
+// `DeviceGraphBuilder::addStableAssignment`. Cannot fail.
+MODULAR_EXPORT void AsyncRT_DeviceGraphBuilder_addStableAssignment(
+    DeviceGraphBuilder *builder, void **stableAddress, void *ptr) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_addStableAssignment",
+                       TRACY_COLOR_GRAY);
+  builder->addStableAssignment(stableAddress, ptr);
+}
+
 // Returns the id of the most recently added node, or -1 if no nodes have
 // been added yet. Cannot fail. The -1 sentinel mirrors the lower bound of
 // the Mojo-side scope helper which uses (start_id, end_id] to enumerate
@@ -1295,6 +1305,16 @@ MODULAR_EXPORT void AsyncRT_DeviceGraph_release(DeviceGraph *graph) {
 MODULAR_EXPORT const char *AsyncRT_DeviceGraph_replay(DeviceGraph *graph) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_replay", TRACY_COLOR_GRAY);
   return checkSuccess(graph->replay());
+}
+
+// Enqueues the graph's stable address slot writes on its context; the caller
+// synchronizes before launching any graph that reads the slots. See
+// `DeviceGraph::patchStableAddresses`.
+MODULAR_EXPORT const char *
+AsyncRT_DeviceGraph_patchStableAddresses(DeviceGraph *graph) {
+  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraph_patchStableAddresses",
+                       TRACY_COLOR_GRAY);
+  return checkSuccess(graph->patchStableAddresses());
 }
 
 MODULAR_EXPORT const char *

@@ -344,6 +344,30 @@ copyDeviceGraphInputs(M::Driver::DeviceGraph &graph,
 // mgp.device_graph.collective.execute
 //===----------------------------------------------------------------------===//
 
+/// Writes every stable address slot the `graphs` publish into, and waits for
+/// the writes to land. A slot published by one device's graph is read by
+/// another device's graph as soon as that graph launches, and nothing orders
+/// the two streams, so every slot write must complete before any graph in the
+/// collective starts.
+static M::ErrorOrSuccess
+patchCollectiveStableAddresses(ArrayRef<M::Driver::DeviceGraph *> graphs) {
+  llvm::SmallVector<M::Driver::DeviceContext *, 8> patchedContexts;
+  patchedContexts.reserve(graphs.size());
+
+  for (M::Driver::DeviceGraph *graph : graphs) {
+    if (graph->getStableAssignments().empty())
+      continue;
+    if (M::ErrorOrSuccess err = graph->patchStableAddresses())
+      return err;
+    patchedContexts.push_back(&graph->context());
+  }
+
+  for (M::Driver::DeviceContext *ctx : patchedContexts)
+    if (M::ErrorOrSuccess err = ctx->synchronize())
+      return err;
+  return M::success();
+}
+
 // Replays the graphs built by `mgp.device_graph.collective.create`. Operands
 // are the per-device `DeviceGraphRef`s, then every graph's live inputs in graph
 // order; each graph's recorded signature sets how many it consumes.
@@ -369,42 +393,39 @@ static void mgp_device_graph_collective_execute(RemainingArguments operands,
 
   outputs.allocateIndirectResults();
 
+  auto fail = [&](Error msg) {
+    std::move(outChain).setToError(msg.copy());
+    std::move(outputs).setAllToError(std::move(msg), loc);
+  };
+
+  // Slots first, so the writes have landed before any graph launches.
+  if (M::ErrorOrSuccess err = patchCollectiveStableAddresses(graphs))
+    return fail(err.takeError());
+
   size_t inputOffset = 0;
   size_t outputIdx = 0;
 
   for (M::Driver::DeviceGraph *graph : graphs) {
     size_t numGraphInputs = graph->getInputs().size();
-    if (inputOffset + numGraphInputs > remainingInputs.size()) {
-      Error msg = "device graph collective execute: input operand count does "
-                  "not match graph signatures";
-      std::move(outChain).setToError(msg.copy());
-      return std::move(outputs).setAllToError(std::move(msg), loc);
-    }
+    if (inputOffset + numGraphInputs > remainingInputs.size())
+      return fail("device graph collective execute: input operand count does "
+                  "not match graph signatures");
 
     ArrayRef<AnyAsyncValueRef> graphInputs =
         remainingInputs.slice(inputOffset, numGraphInputs);
 
-    if (M::ErrorOrSuccess err = copyDeviceGraphInputs(*graph, graphInputs)) {
-      Error msg = err.takeError();
-      std::move(outChain).setToError(msg.copy());
-      return std::move(outputs).setAllToError(std::move(msg), loc);
-    }
+    if (M::ErrorOrSuccess err = copyDeviceGraphInputs(*graph, graphInputs))
+      return fail(err.takeError());
 
     inputOffset += numGraphInputs;
 
-    if (ErrorOrSuccess err = graph->replay()) {
-      Error msg = err.takeError();
-      std::move(outChain).setToError(msg.copy());
-      return std::move(outputs).setAllToError(std::move(msg), loc);
-    }
+    if (ErrorOrSuccess err = graph->replay())
+      return fail(err.takeError());
 
     ArrayRef<AnyAsyncValueRef> graphOutputs = graph->getOutputs();
-    if (outputIdx + graphOutputs.size() > outputs.size()) {
-      Error msg = "device graph collective execute: output count does not "
-                  "match graph signatures";
-      std::move(outChain).setToError(msg.copy());
-      return std::move(outputs).setAllToError(std::move(msg), loc);
-    }
+    if (outputIdx + graphOutputs.size() > outputs.size())
+      return fail("device graph collective execute: output count does not "
+                  "match graph signatures");
 
     for (const AnyAsyncValueRef &graphOutput : graphOutputs) {
       AnyAsyncValueRef &out = outputs[outputIdx++];
@@ -412,12 +433,9 @@ static void mgp_device_graph_collective_execute(RemainingArguments operands,
     }
   }
 
-  if (outputIdx != outputs.size()) {
-    Error msg = "device graph collective execute: output count does not "
-                "match graph signatures";
-    std::move(outChain).setToError(msg.copy());
-    return std::move(outputs).setAllToError(std::move(msg), loc);
-  }
+  if (outputIdx != outputs.size())
+    return fail("device graph collective execute: output count does not "
+                "match graph signatures");
 
   std::move(outChain).emplace();
 }

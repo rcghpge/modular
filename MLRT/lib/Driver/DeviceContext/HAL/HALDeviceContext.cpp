@@ -1064,6 +1064,14 @@ DeviceGraph::capture(M::AsyncRT::CPUDevice &cpuDevice,
 
 ErrorOrSuccess DeviceGraph::replay() const { return Error(kNoDeviceGraphs); }
 
+ErrorOrSuccess DeviceGraph::patchStableAddresses() const {
+  return Error(kNoDeviceGraphs);
+}
+
+DeviceContext &DeviceGraph::context() const {
+  llvm::report_fatal_error(kNoDeviceGraphs);
+}
+
 ErrorOrSuccess DeviceGraphCollection::replay() const {
   return Error(kNoDeviceGraphs);
 }

@@ -261,16 +261,16 @@ ErrorOr<DeviceGraphRef> HIPDeviceGraphBuilder::instantiate() {
   hipGraph_t rawGraph = graph_;
   graph_ = nullptr;
 
-  HIPDevice &hipDevice = HIPDevice::cast(ctx_->device());
   DEFINE_OR_RETURN_ERROR(DeviceStreamRef, stream, ctx_->stream());
 
-  auto graph =
-      HIPDeviceGraphRef::create(hipDevice, rawGraph, std::move(stream));
+  auto graph = HIPDeviceGraphRef::create(DeviceContextRef(ctx_.copy()),
+                                         rawGraph, std::move(stream));
   RETURN_IF_ERROR(graph->instantiate());
   // Transfer the recorded inputs and outputs to the graph so their backing
   // memory outlives this builder.
   graph->setInputs(takeInputs());
   graph->setOutputs(takeOutputs());
+  graph->setStableAssignments(takeStableAssignments());
   graph->setMemoryPool(takeMemoryPool());
   return DeviceGraphRef(std::move(graph));
 }

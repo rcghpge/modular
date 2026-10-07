@@ -33,6 +33,10 @@ void DeviceGraphBuilder::addInput(DeviceBufferRef input) {
   inputs.push_back(std::move(input));
 }
 
+void DeviceGraphBuilder::addStableAssignment(void **stableAddress, void *ptr) {
+  stableAssignments.push_back({stableAddress, ptr});
+}
+
 ErrorOr<DeviceContextRef>
 DeviceGraphBuilder::recordingContext(DeviceGraphNode initialDep) {
   return DeviceContextRef(
