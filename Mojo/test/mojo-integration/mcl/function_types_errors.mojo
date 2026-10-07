@@ -118,7 +118,7 @@ struct DeviceBuffer[T: ZRPTrait](ConvertibleToZPointer):
 
 
 @fieldwise_init
-struct ManagedLayoutTensor(ConvertibleToZLayoutTensor, ImplicitlyCopyable):
+struct ManagedTileTensor(ConvertibleToZLayoutTensor, ImplicitlyCopyable):
     def to_tensor(self) -> ZLayoutTensor:
         return ZLayoutTensor()
 
@@ -144,7 +144,7 @@ def foo():
         return Int()
 
     var thing = compile[kernel]()
-    var mlt = ManagedLayoutTensor()
+    var mtt = ManagedTileTensor()
     var wrong_db = DeviceBuffer[ZFloat](ZFloat(73.0))
     var ndb = NDBuffer()
     # Using wrong_db (DeviceBuffer[ZFloat]) here is incorrect, doesn't match the
@@ -152,4 +152,4 @@ def foo():
     # The elaborator should catch this.
     # TODO(MOCO-1106): Make the parser catch this instead.
     # expected-note @below {{call expansion failed}}
-    var `_`: Int = thing.call(mlt, wrong_db, ndb)
+    var `_`: Int = thing.call(mtt, wrong_db, ndb)

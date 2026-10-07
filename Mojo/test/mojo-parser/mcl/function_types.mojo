@@ -631,7 +631,7 @@ struct DeviceBuffer[T: AnyType](ConvertibleToZPointer, Movable where False):
 
 
 @fieldwise_init
-struct ManagedLayoutTensor(ConvertibleToZLayoutTensor, Movable where False):
+struct ManagedTileTensor(ConvertibleToZLayoutTensor, Movable where False):
     def to_tensor(self) -> ZLayoutTensor:
         return ZLayoutTensor()
 
@@ -656,10 +656,10 @@ def compile[
 
 def main():
     var thing = compile[kernel]()
-    var mlt = ManagedLayoutTensor()
+    var mtt = ManagedTileTensor()
     var db = DeviceBuffer[Int]()
     var ndb = NDBuffer()
-    var result1 = thing.call(mlt, db, ndb)
+    var result1 = thing.call(mtt, db, ndb)
 
 
 # // -----

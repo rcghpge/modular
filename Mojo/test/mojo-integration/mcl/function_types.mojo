@@ -111,7 +111,7 @@ struct DeviceBuffer[T: ZRPTrait](ConvertibleToZPointer):
 
 
 @fieldwise_init
-struct ManagedLayoutTensor(ConvertibleToZLayoutTensor, ImplicitlyCopyable):
+struct ManagedTileTensor(ConvertibleToZLayoutTensor, ImplicitlyCopyable):
     def to_tensor(self) -> ZLayoutTensor:
         return ZLayoutTensor()
 
@@ -144,13 +144,13 @@ def test_call():
         return Int()
 
     var thing = compile[kernel]()
-    var mlt = ManagedLayoutTensor()
+    var mtt = ManagedTileTensor()
     var db = DeviceBuffer[ZInt](ZInt(42))
     var ndb = NDBuffer()
     var mb = MemBuffer()
     # All the argument types line up nicely.
     # CHECK: im an int: 42
-    _ = thing.call(mlt, db, ndb, mb)
+    _ = thing.call(mtt, db, ndb, mb)
 
 
 # ===----------------------------------------------------------------------=== #
