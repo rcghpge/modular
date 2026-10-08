@@ -53,8 +53,9 @@ static bool containsMatmulOrConvOrConcat(IterOpaqueOp op) {
 
 // The outer tensor the kernel's own output slice aliases. Any tensor the
 // epilogue stores directly at its index works: the epilogue overwrites every
-// element the kernel writes there. A tensor of the value's dtype is preferred,
-// since any other one needs an accumulation buffer.
+// element the kernel writes there. A store nested in a select writes only part
+// of a smaller tensor, so it can't be the target. A tensor of the value's dtype
+// is preferred, since any other one needs an accumulation buffer.
 static Value findStoreTarget(IterEpilogueOp epi) {
   Block &body = epi.getBody().front();
   Type valueType = body.getArgument(0).getType();

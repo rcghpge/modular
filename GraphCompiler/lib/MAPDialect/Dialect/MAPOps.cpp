@@ -1012,6 +1012,144 @@ Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 }
 
 //===----------------------------------------------------------------------===//
+// map.index.slice.select
+//===----------------------------------------------------------------------===//
+
+// The shape `index` addresses, where that is known locally: at an epilogue's
+// own index, the tensor the kernel hands the epilogue; at a select body's
+// argument, that select's out-shape. Null elsewhere.
+static MOSH::ShapeAttr getIndexedShape(Value index) {
+  auto arg = llvm::dyn_cast<BlockArgument>(index);
+  if (!arg)
+    return {};
+  Operation *owner = arg.getOwner()->getParentOp();
+  if (auto select = llvm::dyn_cast<SliceSelectOp>(owner))
+    return select.getSpec().getSignature().getOut();
+  auto epilogue = llvm::dyn_cast<IterEpilogueOp>(owner);
+  if (!epilogue || arg.getArgNumber() != 1)
+    return {};
+  auto handedTy =
+      llvm::dyn_cast<M::MO::TensorType>(epilogue.getResult().getType());
+  return handedTy ? handedTy.getShape() : MOSH::ShapeAttr();
+}
+
+LogicalResult
+SliceSelectOp::verifySpecAt(SliceSpecAttr spec, Value index,
+                            function_ref<InFlightDiagnostic()> emitError) {
+  auto reject = [&](const auto &...message) {
+    if (emitError)
+      (emitError() << ... << message);
+    return failure();
+  };
+  MAP::ViewSignatureAttr signature = spec.getSignature();
+  unsigned rank = signature.getIn().getRank();
+  if (llvm::cast<IndexType>(index.getType()).getRank() != rank)
+    return reject("index rank does not match spec's rank ", rank);
+  if (rank == 0)
+    return reject("cannot select from a slice of a rank-0 tensor");
+
+  // There are no bounds operands to read a runtime start or step from.
+  ArrayRef<int64_t> starts = spec.getStarts().asArrayRef();
+  ArrayRef<int64_t> steps = spec.getSteps().asArrayRef();
+  for (auto [d, start, step] : llvm::enumerate(starts, steps)) {
+    if (ShapedType::isDynamic(start) || ShapedType::isDynamic(step))
+      return reject("dim ", d, ": start and step must be static");
+    if (step <= 0)
+      return reject("dim ", d, ": step must be positive, got ", step);
+  }
+  // The body runs once per stored vector, which spans the innermost dim, so
+  // selecting within that dim would split the vector.
+  unsigned inner = rank - 1;
+  if (starts[inner] != 0 || steps[inner] != 1 ||
+      signature.getIn().getValues()[inner] !=
+          signature.getOut().getValues()[inner])
+    return reject("the innermost dim must not be sliced");
+
+  // The body runs at the stored vector's first index, so the index must run
+  // along the in-shape's innermost dim with the vector. A transformed index,
+  // such as a reshape's, can carry one vector across rows of the in-shape.
+  MOSH::ShapeAttr indexed = getIndexedShape(index);
+  if (!indexed)
+    return reject("index must be its epilogue's index or an enclosing "
+                  "select's argument");
+  if (indexed != signature.getIn())
+    return reject("spec's in-shape ", signature.getIn(),
+                  " does not match the shape ", indexed,
+                  " its index addresses");
+  return success();
+}
+
+// The body's one argument is the output index, of the input index's type, so
+// it is named after an arrow instead of in a `^bb0` header.
+ParseResult SliceSelectOp::parse(OpAsmParser &parser, OperationState &result) {
+  SliceSpecAttr spec;
+  OpAsmParser::UnresolvedOperand index;
+  OpAsmParser::Argument outIndex;
+  Type indexType;
+  if (parser.parseLess() || parser.parseAttribute(spec) ||
+      parser.parseGreater() || parser.parseLParen() ||
+      parser.parseOperand(index) || parser.parseRParen() ||
+      parser.parseArrow() || parser.parseLParen() ||
+      parser.parseArgument(outIndex) || parser.parseRParen() ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(indexType) ||
+      parser.resolveOperand(index, indexType, result.operands))
+    return failure();
+  result.addAttribute(getSpecAttrName(result.name), spec);
+  outIndex.type = indexType;
+  return parser.parseRegion(*result.addRegion(), outIndex);
+}
+
+void SliceSelectOp::print(OpAsmPrinter &p) {
+  Block &body = getBody().front();
+  p << "<" << getSpec() << "> (" << getIndex() << ") -> (";
+  if (body.getNumArguments() == 1)
+    p << body.getArgument(0);
+  p << ")";
+  p.printOptionalAttrDict((*this)->getAttrs(), {getSpecAttrName()});
+  p << " : " << getIndex().getType() << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+SmallVector<MOSH::ShapeAttr> SliceSelectOp::getDynamicShapes() {
+  MAP::ViewSignatureAttr sig = getSpec().getSignature();
+  if (sig.getIn().isStatic() && sig.getOut().isStatic())
+    return {};
+  return {sig.getIn(), sig.getOut()};
+}
+
+LogicalResult SliceSelectOp::verify() {
+  if (failed(
+          verifySpecAt(getSpec(), getIndex(), [&] { return emitOpError(); })))
+    return failure();
+  MAP::ViewSignatureAttr signature = getSpec().getSignature();
+  BlockArgument outIdx = getBody().front().getNumArguments() == 1
+                             ? getBody().front().getArgument(0)
+                             : BlockArgument();
+  if (!outIdx || outIdx.getType() != getIndex().getType())
+    return emitOpError() << "body must take one index of the spec's rank";
+
+  // A load or store at the body's argument addresses the slice's output.
+  // Nested ops are not verified yet, hence the checked cast.
+  for (Operation *user : outIdx.getUsers()) {
+    Value tensor;
+    if (auto load = llvm::dyn_cast<LoadOp>(user))
+      tensor = load.getTensor();
+    else if (auto store = llvm::dyn_cast<StoreOp>(user))
+      tensor = store.getTensor();
+    M::MO::TensorType tensorTy =
+        tensor ? M::MO::dynCastFromTensorLike(tensor.getType())
+               : M::MO::TensorType();
+    if (tensorTy && tensorTy.getShape() != signature.getOut())
+      return emitOpError() << "tensor shape " << tensorTy.getShape()
+                           << " at the body's index does not match the "
+                              "slice's out-shape "
+                           << signature.getOut();
+  }
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // map.index.slice.stride
 //===----------------------------------------------------------------------===//
 
@@ -1099,6 +1237,14 @@ LogicalResult BroadcastStrideOp::verify() {
 //===----------------------------------------------------------------------===//
 // map.index.reshape
 //===----------------------------------------------------------------------===//
+
+SmallVector<MOSH::ShapeAttr> ReshapeIndexOp::getDynamicShapes() {
+  MAP::ViewSignatureAttr sig = getSpec().getSignature();
+  if (sig.getIn().isStatic() && sig.getOut().isStatic())
+    return {};
+  // The lowered op names its index's space first: the out-shape.
+  return {sig.getOut(), sig.getIn()};
+}
 
 LogicalResult ReshapeIndexOp::verify() {
   MAP::ViewSignatureAttr signature = getSpec().getSignature();
@@ -1225,14 +1371,17 @@ StoreOp M::MAP::getUniqueStore(Block &body) {
   SmallVector<StoreOp> stores = getOutputStores(body);
   ASSERT_STREAM(stores.size() == 1,
                 << "expected exactly one map.store in the body");
+  // A store nested in a region runs only for some elements.
+  ASSERT_STREAM(stores.front()->getBlock() == &body,
+                << "expected the map.store directly in the body");
   return stores.front();
 }
 
 SmallVector<StoreOp> M::MAP::getOutputStores(Block &body) {
   SmallVector<StoreOp> stores;
   for (Operation &op : body)
-    if (auto store = dyn_cast<StoreOp>(&op))
-      stores.push_back(store);
+    op.walk<WalkOrder::PreOrder>(
+        [&](StoreOp store) { stores.push_back(store); });
   ASSERT_STREAM(!stores.empty(), << "expected a map.store in the body");
   return stores;
 }

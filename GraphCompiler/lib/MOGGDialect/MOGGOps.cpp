@@ -1582,6 +1582,68 @@ LogicalResult IndexReshapeOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+LogicalResult IndexSliceSelectOp::emitMojo(EmitMojoState &state) {
+  // Store-side and per index, like `IndexReshapeOp` above, whose conventions
+  // this follows: statements go through the functor's own builder, and the
+  // static bounds and shapes ride as comptime `IntTuple`s so the primitive
+  // folds every unsliced dim. Runtime shapes, when either shape is dynamic,
+  // are the functor's shape-capture fields. The body is emitted where the
+  // primitive's in-slice bit is set, with its argument bound to the output
+  // index.
+  auto primDecl =
+      state.registry.lookupPrimitive(IndexSliceSelectOp::getOperationName());
+  ASSERT_STREAM(primDecl, "Primitive not found for "
+                              << IndexSliceSelectOp::getOperationName());
+  MojoValue primitive(primitiveMojoName(primDecl));
+
+  const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
+  ASSERT_STREAM(
+      lambdaInfo.lambdaBuilder,
+      "IndexSliceSelectOp::emitMojo reached without currentLambdaInfo set");
+  MojoBuilder &builder = *lambdaInfo.lambdaBuilder;
+
+  // The index carries the store method's abstract rank, which would not unify
+  // with the concrete-rank runtime shapes; the two are equal at every
+  // instantiation.
+  MojoValue rank(uint64_t(getInShape().getRankNonZero()));
+  MojoValue idxList = builder.var(
+      MojoValue(kFnCoordToIndexList)({}, {state.getMojoValueFor(getIndex())})
+          .rebind(MojoValue(kStructIndexList)[rank]));
+  SmallVector<MojoValue> args = {idxList};
+  for (Value shape : getDynamicShapes())
+    args.push_back(state.getMojoValueFor(shape));
+
+  auto comptimeTuple = [&](ArrayRef<int64_t> values) {
+    return builder.comptime(EmitMojoState::getAsIntTupleMojoValue(values));
+  };
+  MojoValue inverse = builder.var(primitive(
+      {MojoValue(kParameterStaticStarts).equal(comptimeTuple(getStaticStart())),
+       MojoValue(kParameterStaticSteps).equal(comptimeTuple(getStaticStep())),
+       MojoValue("in_static_shape")
+           .equal(comptimeTuple(getInShape().getIntDims())),
+       MojoValue("out_static_shape")
+           .equal(comptimeTuple(getOutShape().getIntDims()))},
+      args));
+  Block &body = getBody().front();
+  state.setMojoValueFor(body.getArgument(0),
+                        builder.var(MojoValue(kStructCoord)(
+                            {}, {inverse[MojoValue(uint64_t(0))]})));
+  MojoValue inSlice = builder.var(inverse[MojoValue(uint64_t(1))]);
+
+  // The body runs on the false edge of `not in_slice`, the branch sense of an
+  // early-return guard. LLVM keeps that sense into the PTX, and with the body
+  // on the true edge instead, ptxas spent an extra register and extra moves on
+  // the KV-cache window store.
+  bool failed = false;
+  builder.if_(MojoValue("not " + inSlice.text), [&] { builder.pass(); })
+      .else_([&] {
+        failed = llvm::any_of(body, [&](Operation &op) {
+          return state.lowerOpToMojo(&op).failed();
+        });
+      });
+  return failure(failed);
+}
+
 LogicalResult TensorCreateTransposeOp::emitMojo(EmitMojoState &state) {
   // Mojo infers dtype/rank/perm_type from $input/$perm.
   // output_static_shape/static_permutations carry the compile-time-known parts

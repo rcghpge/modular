@@ -1578,4 +1578,45 @@ def MOGG_IndexReshapeOp : MOGG_Op<"index.reshape", [
   }];
 }
 
+def MOGG_IndexSliceSelectOp : MOGG_Op<"index.slice.select", [
+  SingleBlock,
+  NoTerminator,
+  RecursiveMemoryEffects,
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Run a body at a slice's output index, where the slice selects an index.";
+  let description = [{
+    Lowering of `map.index.slice.select`, in place inside an epilogue functor
+    body like a store-side `mogg.index.reshape`: the body runs only where the
+    slice selects `$index`, with its one block argument bound to the matching
+    index in the slice's output. `$inShape`/`$outShape` are the slice's static
+    shapes (`dyn` where unknown) and `$staticStart`/`$staticStep` its bounds.
+    `$dynamicShapes` is the runtime [in-shape, out-shape] pair when either
+    shape has a dynamic dim, and empty otherwise.
+
+    Evaluated once per stored vector at the vector's first index, so the
+    innermost dim, which the vector runs along, must be unsliced.
+
+    Example:
+    ```mlir
+    mogg.index.slice.select(%i) {inShape = #mosh.shape<[2, 9, 16]>, outShape = #mosh.shape<[2, 8, 16]>, staticStart = array<i64: 0, 1, 0>, staticStep = array<i64: 1, 1, 1>} : !map.index<3> {
+    ^bb0(%j: !map.index<3>):
+      mogg.tensor.store %window[%j] = %val : !mogg.tensor, !map.index<3>, f32
+    }
+    ```
+  }];
+  let arguments = (ins
+    AnyType:$index,
+    MOSH_ShapeAttr:$inShape,
+    MOSH_ShapeAttr:$outShape,
+    DenseI64ArrayAttr:$staticStart,
+    DenseI64ArrayAttr:$staticStep,
+    Variadic<MOGG_Shape>:$dynamicShapes
+  );
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` type(operands) $body
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGOPS_TD

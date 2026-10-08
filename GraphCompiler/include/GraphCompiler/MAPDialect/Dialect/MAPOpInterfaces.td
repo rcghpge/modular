@@ -129,6 +129,27 @@ def MAP_IndexTransformOpInterface : OpInterface<"IndexTransformOpInterface"> {
   ];
 }
 
+def MAP_DynamicShapeIndexOpInterface
+    : OpInterface<"DynamicShapeIndexOpInterface"> {
+  let description = [{
+    Common interface for the index ops in a functor body (a
+    `map.iter.prologue` or `map.iter.epilogue`) that read shapes at runtime
+    when their spec is dynamic -- today `map.index.reshape` and
+    `map.index.slice.select`. The functor's lowering builds those shapes in
+    kernel scope and threads them in as shape captures, without knowing the
+    concrete op kind.
+  }];
+  let cppNamespace = "::M::MAP";
+
+  let methods = [
+    InterfaceMethod<
+      "Returns the shapes this op reads at runtime, in the order its lowering "
+      "takes them as `$dynamicShapes`, or none when every shape is static.",
+      "::llvm::SmallVector<::M::MOSH::ShapeAttr>", "getDynamicShapes", (ins)
+    >,
+  ];
+}
+
 def MAP_StrideViewOpInterface : OpInterface<"StrideViewOpInterface"> {
   let description = [{
     Common interface for the hoisted stride views -- `map.index.slice.stride`,

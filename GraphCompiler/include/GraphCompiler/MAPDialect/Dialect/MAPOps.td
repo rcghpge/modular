@@ -586,6 +586,76 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
 }
 
 //===----------------------------------------------------------------------===//
+// map.index.slice.select
+//===----------------------------------------------------------------------===//
+
+def MAP_SliceSelectOp : MAP_Op<"index.slice.select", [
+  ParentOneOf<["IterEpilogueOp", "SliceSelectOp"]>,
+  SingleBlock,
+  NoTerminator,
+  RecursiveMemoryEffects,
+  DeclareOpInterfaceMethods<MAP_DynamicShapeIndexOpInterface>,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
+]> {
+  let summary = "Run a body at a slice's output index, where the slice selects an index";
+  let description = [{
+    The store-side inverse of `map.index.slice`: `index` addresses the
+    slice's *input* space (the spec's in-shape), and the body runs only where
+    the slice selects `index`, with its one block argument bound to the
+    matching index in the slice's *output* space (the spec's out-shape). A
+    slice is not a bijection, so where it does not select `index` there is no
+    output index, and the body does not run. Nothing in the body needs to
+    know about the slice: it may load and store at its argument like any loop
+    body at its own index.
+
+    For each dimension `d`, with the start resolved the numpy way,
+    `s = starts[d] < 0 ? max(starts[d] + dim(in, d), 0) : starts[d]`, and
+    `off = index[d] - s`, the slice selects `index` iff every
+    `off % steps[d] == 0` and `0 <= off / steps[d] < dim(out, d)`, and then
+    the output index is `off / steps[d]`. `stops` is not read: the out-shape
+    already bounds the slice.
+
+    Starts and steps must be static and steps positive. The innermost
+    dimension must be unsliced: the body runs once per stored vector, which
+    spans that dimension. For the same reason `index` must be one the vector
+    runs along, the epilogue's own index or an enclosing select's argument,
+    never a transformed one. The spec's in-shape is the shape that index
+    addresses (the epilogue's, or the enclosing select's out-shape), and a
+    load or store at the body's argument addresses a tensor of the
+    out-shape. A slice of a slice is two nested selects.
+
+    Only valid in a `map.iter.epilogue` for now.
+
+    Example:
+    ```mlir
+    map.index.slice.select<#map.index.slice.spec<[2, 9, 16] -> [2, 8, 16], starts = [0, 1, 0], stops = [2, 9, 16], steps = [1, 1, 1]>> (%idx) -> (%iout) : !map.index<3> {
+      map.store %window[%iout] = %val : !mo.tensor<[2, 8, 16], f32>
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    MAP_SliceSpecAttr:$spec,
+    MAP_AnyIndex:$index
+  );
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+
+  let extraClassDeclaration = [{
+    /// Checks the rules a select of `spec` at `index` must meet, all but its
+    /// body's: the ones above on the steps, starts, innermost dim and index.
+    /// Reports the first broken rule through `emitError` when given; the
+    /// escaping-reader merge asks without one before building a select.
+    static ::mlir::LogicalResult verifySpecAt(
+        SliceSpecAttr spec, ::mlir::Value index,
+        ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError = {});
+  }];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // map.index.slice.stride
 //===----------------------------------------------------------------------===//
 
@@ -806,6 +876,7 @@ def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
                "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
+  DeclareOpInterfaceMethods<MAP_DynamicShapeIndexOpInterface>,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "Project an output-shape index to the input-shape index for a reshape view";

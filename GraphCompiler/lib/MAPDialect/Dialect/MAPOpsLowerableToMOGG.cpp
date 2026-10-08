@@ -228,6 +228,36 @@ LogicalResult StoreOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+// map.index.slice.select -> mogg.index.slice.select, lowered in place inside
+// the epilogue like a store-side `map.index.reshape`, and wired the same way to
+// the runtime shapes the epilogue threaded in when either shape is dynamic.
+// Starts stay as written, negative ones included. The body lowers into the new
+// op's own, its index argument mapped across.
+LogicalResult SliceSelectOp::lowerToMOGG(MAPToMOGGState &state) {
+  SliceSpecAttr spec = getSpec();
+  MAP::ViewSignatureAttr signature = spec.getSignature();
+  ValueRange dynamicShapes;
+  if (!signature.getIn().isStatic() || !signature.getOut().isStatic()) {
+    auto it = state.indexShapeArgs.find(getOperation());
+    if (it == state.indexShapeArgs.end())
+      return emitOpError("MAPToMOGG: a dynamic slice select has no shape "
+                         "captures; its epilogue did not thread them in");
+    dynamicShapes = ValueRange(it->second);
+  }
+  auto select = MOGG::IndexSliceSelectOp::create(
+      state.builder, getLoc(), state.mapping.lookup(getIndex()),
+      signature.getIn(), signature.getOut(), spec.getStarts(), spec.getSteps(),
+      dynamicShapes);
+
+  OpBuilder::InsertionGuard guard(state.builder);
+  BlockArgument outIdx = getBody().getArgument(0);
+  Block *body =
+      state.builder.createBlock(&select.getBody(), select.getBody().end(),
+                                {outIdx.getType()}, {outIdx.getLoc()});
+  state.mapping.map(outIdx, body->getArgument(0));
+  return state.lowerRegionBody(getBody().front());
+}
+
 // map.call.elementwise -> mogg.call.elementwise. `$moOpName` comes from the
 // kernel decl, which `verifySymbolUses` guarantees has an `elementwise`
 // function.
@@ -356,6 +386,49 @@ consumingFusedContract(Value mapResult, bool isOutput, MAPToMOGGState &state) {
   return MOGG::tensorArgContractToAttr(state.builder.getContext(), *contract);
 }
 
+namespace {
+// The runtime shapes a functor threads in as shape captures, for the dynamic
+// index ops in its body.
+struct IndexShapeCaptures {
+  SmallVector<Value> shapes;
+  // Each op with the run of `shapes` it reads.
+  struct Use {
+    Operation *op;
+    unsigned start;
+    unsigned count;
+  };
+  SmallVector<Use> uses;
+
+  // Builds the shapes in kernel scope, where the dim args are live.
+  static IndexShapeCaptures build(Region &body, Location loc,
+                                  MAPToMOGGState &state) {
+    IndexShapeCaptures captures;
+    body.walk<WalkOrder::PreOrder>([&](DynamicShapeIndexOpInterface op) {
+      SmallVector<MOSH::ShapeAttr> shapes = op.getDynamicShapes();
+      if (shapes.empty())
+        return;
+      captures.uses.push_back({op.getOperation(),
+                               static_cast<unsigned>(captures.shapes.size()),
+                               static_cast<unsigned>(shapes.size())});
+      for (MOSH::ShapeAttr shape : shapes)
+        captures.shapes.push_back(buildShape(loc, shape, state));
+    });
+    return captures;
+  }
+
+  // Adds the shapes as trailing args of the lowered functor's `body` and
+  // records each op's for its own lowering to take as `$dynamicShapes`.
+  void bind(Block *body, Location loc, MAPToMOGGState &state) const {
+    SmallVector<Value> args;
+    for (Value shape : shapes)
+      args.push_back(body->addArgument(shape.getType(), loc));
+    for (const Use &use : uses)
+      state.indexShapeArgs[use.op] =
+          SmallVector<Value>(ArrayRef(args).slice(use.start, use.count));
+  }
+};
+} // namespace
+
 // map.iter.epilogue -> mogg.tensor.create.epilogue, mapped under the
 // epilogue's result so `CallOpaqueOp` resolves it like a plain kernel output.
 LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
@@ -379,20 +452,10 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
     moggCaptures.push_back(state.mapping.lookup(cap));
   }
 
-  // A dynamic reshape needs its runtime from/to `!mogg.shape`s, threaded in as
-  // shape captures. Build them in kernel scope, where the dim args are live,
-  // and record where each reshape's pair lands for
-  // `ReshapeIndexOp::lowerToMOGG`.
-  SmallVector<Value> shapeCaptures;
-  SmallVector<std::pair<ReshapeIndexOp, unsigned>> reshapeShapeCaptureStart;
-  for (ReshapeIndexOp reshape : epiBody.getOps<ReshapeIndexOp>()) {
-    MAP::ViewSignatureAttr sig = reshape.getSpec().getSignature();
-    if (sig.getOut().isStatic() && sig.getIn().isStatic())
-      continue;
-    reshapeShapeCaptureStart.emplace_back(reshape, shapeCaptures.size());
-    shapeCaptures.push_back(buildShape(loc, sig.getOut(), state));
-    shapeCaptures.push_back(buildShape(loc, sig.getIn(), state));
-  }
+  // A dynamic index op (a store-index reshape, a select) needs its runtime
+  // shapes, threaded in as shape captures; the block args are added below.
+  IndexShapeCaptures shapeCaptures =
+      IndexShapeCaptures::build(getBody(), loc, state);
 
   auto resultTy = cast<MO::TensorType>(getResult().getType());
   Value outShape = buildShape(loc, resultTy.getShape(), state);
@@ -429,7 +492,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   auto epilogueOp = MOGG::TensorCreateEpilogueOp::create(
       state.builder, loc, MOGG::TensorType::get(ctx), outShape, moggCaptures,
-      /*shapeCaptures=*/shapeCaptures,
+      /*shapeCaptures=*/shapeCaptures.shapes,
       /*outputPtr=*/outputPtr,
       state.builder.getStringAttr(state.device.getLabel()),
       TypeAttr::get(outElemType), state.builder.getBoolAttr(true),
@@ -450,12 +513,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
                                              epiArgs[numParams + j].getLoc());
     state.mapping.map(epiArgs[numParams + j], capArg);
   }
-  SmallVector<BlockArgument> shapeCaptureArgs;
-  for (Value shapeCap : shapeCaptures)
-    shapeCaptureArgs.push_back(body->addArgument(shapeCap.getType(), loc));
-  for (auto [reshape, start] : reshapeShapeCaptureStart)
-    state.reshapeShapeArgs[reshape] = {shapeCaptureArgs[start],
-                                       shapeCaptureArgs[start + 1]};
+  shapeCaptures.bind(body, loc, state);
 
   state.builder.setInsertionPointToEnd(body);
   // A compute lambda yields the value and the kernel stores it, so skip the
@@ -505,17 +563,9 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
     moggCaptures.push_back(state.mapping.lookup(cap));
   }
 
-  // Dynamic reshape shapes, as in `IterEpilogueOp::lowerToMOGG`.
-  SmallVector<Value> shapeCaptures;
-  SmallVector<std::pair<ReshapeIndexOp, unsigned>> reshapeShapeCaptureStart;
-  for (ReshapeIndexOp reshape : proBody.getOps<ReshapeIndexOp>()) {
-    MAP::ViewSignatureAttr sig = reshape.getSpec().getSignature();
-    if (sig.getOut().isStatic() && sig.getIn().isStatic())
-      continue;
-    reshapeShapeCaptureStart.emplace_back(reshape, shapeCaptures.size());
-    shapeCaptures.push_back(buildShape(loc, sig.getOut(), state));
-    shapeCaptures.push_back(buildShape(loc, sig.getIn(), state));
-  }
+  // Dynamic index shapes, as in `IterEpilogueOp::lowerToMOGG`.
+  IndexShapeCaptures shapeCaptures =
+      IndexShapeCaptures::build(getBody(), loc, state);
 
   // From the RESULT, not a capture: after fusion the captures are the
   // producer's operands.
@@ -523,7 +573,7 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   auto prologueOp = MOGG::TensorCreatePrologueOp::create(
       state.builder, loc, /*tensor=*/MOGG::TensorType::get(ctx),
       /*shape=*/buildShape(loc, resultTy.getShape(), state),
-      /*captures=*/moggCaptures, /*shapeCaptures=*/shapeCaptures,
+      /*captures=*/moggCaptures, /*shapeCaptures=*/shapeCaptures.shapes,
       /*device=*/state.builder.getStringAttr(state.device.getLabel()),
       /*elementType=*/TypeAttr::get(resultTy.getElementType()),
       /*mut=*/state.builder.getBoolAttr(false),
@@ -537,12 +587,7 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
     Type argTy = i == 0 ? arg.getType() : moggCaptures[i - 1].getType();
     state.mapping.map(arg, body->addArgument(argTy, arg.getLoc()));
   }
-  SmallVector<BlockArgument> shapeCaptureArgs;
-  for (Value shapeCap : shapeCaptures)
-    shapeCaptureArgs.push_back(body->addArgument(shapeCap.getType(), loc));
-  for (auto [reshape, start] : reshapeShapeCaptureStart)
-    state.reshapeShapeArgs[reshape] = {shapeCaptureArgs[start],
-                                       shapeCaptureArgs[start + 1]};
+  shapeCaptures.bind(body, loc, state);
 
   state.builder.setInsertionPointToEnd(body);
   for (Operation &op : proBody.without_terminator())
@@ -564,8 +609,8 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
 /// what `has_epilogue_fusion` asks. Presence is not enough: `MOToMAP` gives
 /// every output a store epilogue, so an unfused one is a single store of the
 /// untouched value at the kernel's index, or the yield of it a compute lambda
-/// leaves. Anything else is work the kernel would skip, so the pass-through is
-/// matched exactly.
+/// leaves. Anything else (a derived value, a second store, a select) is work
+/// the kernel would skip, so the pass-through is matched exactly.
 static bool epilogueRecomputesValue(MOGG::TensorCreateEpilogueOp epilogue) {
   mlir::Block &body = epilogue.getBody().front();
   // Epilogue body args: the kernel's value, its index, then the captures,
@@ -721,9 +766,9 @@ LogicalResult ReshapeIndexOp::lowerToMOGG(MAPToMOGGState &state) {
   // The owning epilogue or prologue threads in the runtime from/to shapes.
   ValueRange dynamicShapes;
   if (!signature.getOut().isStatic() || !signature.getIn().isStatic()) {
-    auto it = state.reshapeShapeArgs.find(getOperation());
+    auto it = state.indexShapeArgs.find(getOperation());
     // Emit would silently use the static defaults, so fail here.
-    if (it == state.reshapeShapeArgs.end())
+    if (it == state.indexShapeArgs.end())
       return emitOpError("MAPToMOGG: a dynamic index reshape has no shape "
                          "captures; its parent functor did not thread them in");
     dynamicShapes = ValueRange(it->second);

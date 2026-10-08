@@ -49,11 +49,11 @@ struct MAPToMOGGState {
   // `DeviceContextArray`, which `ConformCallOperands` packs into a tuple.
   llvm::SmallVector<mlir::Value> contextArgs;
 
-  // Each dynamic `map.index.reshape` fused into an epilogue, to its
-  // (from-shape, to-shape) `!mogg.shape` captures for evaluating the
-  // store-index transform at runtime.
+  // Each dynamic index op in a functor body (a `map.index.reshape` or a
+  // `map.index.slice.select`), to the `!mogg.shape` captures it evaluates
+  // against at runtime.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Value>>
-      reshapeShapeArgs;
+      indexShapeArgs;
 
   mlir::LogicalResult lowerOp(mlir::Operation *op);
   // Lowers `block`'s ops in order, skipping those `shouldLower` rejects; a
