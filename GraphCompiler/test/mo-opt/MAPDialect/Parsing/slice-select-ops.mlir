@@ -28,7 +28,7 @@ func.func @slice_select_step(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
@@ -46,7 +46,7 @@ func.func @slice_select_window(%X: !mo.tensor<[N, 16], f32>) -> (!mo.tensor<[N, 
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
       }
     } : !mo.tensor<[N, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[N, 16], f32>) -> (!mo.tensor<[N, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[N, 16], f32>) -> (!mo.tensor<[N, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[N, 16], f32>, !mo.tensor<[4, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[N, 16], f32>, !mo.tensor<[4, 16], f32>
@@ -72,7 +72,7 @@ func.func @slice_select_nested(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 
         }
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[2, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[2, 16], f32>

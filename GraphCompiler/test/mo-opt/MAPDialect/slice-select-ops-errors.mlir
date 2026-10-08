@@ -17,7 +17,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
@@ -36,7 +36,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
@@ -56,7 +56,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
         map.store %caps[%iout] = %val : !mo.tensor<[8, 8], f32>
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[8, 8], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[8, 8], f32>
@@ -76,7 +76,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
@@ -98,7 +98,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[32, 4], f32>, !mo.ten
         map.store %caps[%iout] = %val : !mo.tensor<[16, 4], f32>
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[32, 4], f32>, !mo.tensor<[16, 4], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[32, 4], f32>, !mo.tensor<[16, 4], f32>
@@ -119,7 +119,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
         }
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[2, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[2, 16], f32>
@@ -138,7 +138,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
       }
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
@@ -156,7 +156,7 @@ func.func @f(%X: !mo.tensor<[2, 8, 16], f32>) -> !mo.tensor<[2, 8, 16], f32> {
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<3> {
       }
     } : !mo.tensor<[2, 8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 8, 16], f32>) -> (!mo.tensor<[2, 8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[2, 8, 16], f32>) -> (!mo.tensor<[2, 8, 16], f32>)
     map.yield %full : !mo.tensor<[2, 8, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y : !mo.tensor<[2, 8, 16], f32>
@@ -175,7 +175,7 @@ func.func @f(%X: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>, !mo.tensor<[], f3
         map.store %caps[%iout] = %val : !mo.tensor<[], f32>
       }
     } : !mo.tensor<[], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[], f32>) -> (!mo.tensor<[], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[], f32>) -> (!mo.tensor<[], f32>)
     map.yield %full, %slice : !mo.tensor<[], f32>, !mo.tensor<[], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[], f32>, !mo.tensor<[], f32>
@@ -196,7 +196,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
       }) : (!map.index<2>) -> ()
     } : !mo.tensor<[8, 16], f32>
-    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %full, %slice : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
   return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
