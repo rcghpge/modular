@@ -33,9 +33,9 @@ void MOGGDialect::registerAttributes() {
 LogicalResult
 FusionInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        Attribute root) {
-  if (!isa<FusionLeafAttr, FusionSequenceAttr, FusionElementwiseAttr,
-           FusionEpilogueAttr, FusionPrologueAttr, FusionViewAttr,
-           FusionMutableLoadAttr>(root))
+  if (!isa<FusionLeafAttr, FusionSequenceAttr, FusionHorizontalAttr,
+           FusionElementwiseAttr, FusionEpilogueAttr, FusionPrologueAttr,
+           FusionViewAttr, FusionMutableLoadAttr>(root))
     return emitError() << "root must be a valid fusion info attribute";
   return success();
 }
@@ -73,8 +73,8 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
             if (fileLoc.getLine() > 0)
               os << ':' << fileLoc.getLine();
       })
-      .Case<FusionSequenceAttr, FusionElementwiseAttr, FusionViewAttr,
-            FusionMutableLoadAttr>([&](auto attr) {
+      .Case<FusionSequenceAttr, FusionHorizontalAttr, FusionElementwiseAttr,
+            FusionViewAttr, FusionMutableLoadAttr>([&](auto attr) {
         os << decltype(attr)::getFusionName() << '(';
         llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
           nodeToString(child, os, includeLineNumbers, quote,
@@ -148,8 +148,8 @@ void nodeToPrettyTree(Attribute node, llvm::raw_string_ostream &os,
           os << "  <-- error";
         os << '\n';
       })
-      .Case<FusionSequenceAttr, FusionElementwiseAttr, FusionViewAttr,
-            FusionMutableLoadAttr>(
+      .Case<FusionSequenceAttr, FusionHorizontalAttr, FusionElementwiseAttr,
+            FusionViewAttr, FusionMutableLoadAttr>(
           [&](auto attr) { emitChildren(attr, attr.getChildren()); })
       .Case<FusionEpilogueAttr, FusionPrologueAttr>([&](auto attr) {
         emitChildren(attr, attr.getChildren(), attr.getOperandIndices());
@@ -201,6 +201,7 @@ Attribute parseNode(AsmParser &p) {
   if (succeeded(p.parseOptionalKeyword(
           &keyword,
           {FusionSequenceAttr::getFusionName(),
+           FusionHorizontalAttr::getFusionName(),
            FusionElementwiseAttr::getFusionName(),
            FusionEpilogueAttr::getFusionName(),
            FusionPrologueAttr::getFusionName(), FusionViewAttr::getFusionName(),
@@ -213,6 +214,8 @@ Attribute parseNode(AsmParser &p) {
 
     if (keyword == FusionSequenceAttr::getFusionName())
       return FusionSequenceAttr::get(ctx, children);
+    if (keyword == FusionHorizontalAttr::getFusionName())
+      return FusionHorizontalAttr::get(ctx, children);
     if (keyword == FusionElementwiseAttr::getFusionName())
       return FusionElementwiseAttr::get(ctx, children);
     if (keyword == FusionEpilogueAttr::getFusionName())

@@ -192,6 +192,18 @@ def MOGG_FusionSequenceAttr : MOGGFusionGroupAttr<"FusionSequence", "fusion_sequ
   let assemblyFormat = "`<` `[` $children `]` `>`";
 }
 
+def MOGG_FusionHorizontalAttr : MOGGFusionGroupAttr<"FusionHorizontal", "fusion_horizontal", "Horizontal"> {
+  let summary = "An attribute that represents horizontal fusion info.";
+  let description = [{
+    This attribute holds information for horizontal fusion: sibling kernels
+    over one index space merged into one kernel, so an operand they share is
+    loaded once.
+  }];
+
+  let parameters = (ins ArrayRefParameter<"mlir::Attribute">:$children);
+  let assemblyFormat = "`<` `[` $children `]` `>`";
+}
+
 def MOGG_FusionElementwiseAttr : MOGGFusionGroupAttr<"FusionElementwise", "fusion_elementwise", "Elementwise"> {
   let summary = "Elementwise fusion info.";
 
@@ -251,6 +263,7 @@ def MOGG_FusionInfoAttr : MOGGAttr<"FusionInfo", "fusion"> {
     The `root` parameter can be any of:
     - FusionLeafAttr: single operation
     - FusionSequenceAttr: soft fusion (multiple kernels)
+    - FusionHorizontalAttr: horizontal fusion of sibling kernels
     - FusionElementwiseAttr: hard elementwise fusion
     - FusionEpilogueAttr: epilogue fusion (with optional operand index)
     - FusionPrologueAttr: prologue fusion (with optional operand index)

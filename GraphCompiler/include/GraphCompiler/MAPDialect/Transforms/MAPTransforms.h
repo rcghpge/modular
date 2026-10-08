@@ -20,6 +20,12 @@ namespace M::MAP {
 #define GEN_PASS_REGISTRATION
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
+class IterForeachOp;
+
+/// Whether `RaiseBackContiguousViews` turns `op` into zero-copy views, so it
+/// never runs as a kernel.
+bool isRaisableViewChain(IterForeachOp op);
+
 } // namespace M::MAP
 
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPTRANSFORMS_H

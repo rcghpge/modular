@@ -109,6 +109,14 @@ inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Operation *target) {
       start.getDefiningOp(), [&](mlir::Operation *op) { return op == target; });
 }
 
+/// Checks if `start` depends on `target` transitively, through any of its
+/// operands, in one walk. Also returns true if `start == target`.
+inline bool dataflowGraphDependsOn(mlir::Operation *start,
+                                   mlir::Operation *target) {
+  return dataflowGraphContains<WalkDirection::Producers>(
+      start, [&](mlir::Operation *op) { return op == target; });
+}
+
 /// True iff every operand-less source op in `op`'s producer cone is one of
 /// `ConstantTypes` and no op in it has a block-arg operand.
 template <typename... ConstantTypes>

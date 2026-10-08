@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views | FileCheck %s
 
 // A residual stream h1 = h0 + reshape(m1), consumed by both the next residual
 // add and an exp. Once the reshape fuses into the add, the add reads through

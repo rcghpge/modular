@@ -47,6 +47,21 @@ def FuseEpilogue : Pass<"map-fuse-epilogue", "MO::GraphOp"> {
   ];
 }
 
+def FuseHorizontal : Pass<"map-fuse-horizontal", "MO::GraphOp"> {
+  let summary = "Fuse sibling MAP kernels that share an input.";
+  let description = [{
+    Merges two `map.iter.foreach` ops over the same index space that share an
+    input into one multi-output kernel, so the shared operand is loaded once
+    rather than by each kernel. Pairs siblings, where the other fusers pair a
+    producer with its consumer.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+}
+
 def FuseReshapeEpilogue : Pass<"map-fuse-reshape-epilogue", "MO::GraphOp"> {
   let summary =
       "Fuse MAP kernels via ReshapeEpilogueFuser only. For testing only.";

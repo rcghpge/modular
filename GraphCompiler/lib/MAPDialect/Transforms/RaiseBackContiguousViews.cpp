@@ -196,4 +196,8 @@ struct RaiseBackContiguousViewsPass
 
 } // namespace
 
+bool isRaisableViewChain(IterForeachOp op) {
+  return !matchViewChain(op).empty();
+}
+
 } // namespace M::MAP

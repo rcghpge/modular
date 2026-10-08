@@ -42,6 +42,9 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
     fusePm.addPass(createFusePrologue());
     fusePm.addPass(createFuseEpilogue());
     fusePm.addPass(createFuseReshapeEpilogue());
+    // Last, so siblings merge only once the producer-consumer fusers have
+    // collapsed what they can this round.
+    fusePm.addPass(createFuseHorizontal());
 
     // Between rounds, only CSE: the fusers dedup the kernels they fused into
     // and erase consumed producers, so a full canonicalization would be wasted
