@@ -1420,7 +1420,7 @@ def MO_AtanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"atanh"> {
 
 def MO_CumSumOp : MO_TensorOp<"cumsum", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  MO_HostOnly,
+  MO_SingleDevice,
 ]> {
   let summary = "Cumulative summation operation";
   let description = [{
