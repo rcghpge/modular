@@ -13,12 +13,7 @@ mo.graph @conv_transpose(
   // CHECK-DAG: %[[OUT_PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK: %[[CONV:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[C1]], dilations = %[[C1]], paddings = %[[PADDINGS]], output_paddings = %[[OUT_PADDINGS]]] : (!mo.tensor<[1, 2, 2, 1], si64>, !mo.tensor<[2, 2, 1, 1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[1, 3, 3, 1], si64>
 
-  %output = rmo.conv_transpose(%input, %filter) {
-    dilations = #mosh<ape[1, 1]> : !mosh.ape,
-    strides = #mosh<ape[1, 1]> : !mosh.ape,
-    paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
-    output_paddings = #mosh<ape[0, 0]> : !mosh.ape
-  } : (
+  %output = rmo.conv_transpose(%input, %filter) [strides = #mosh<ape[1, 1]> : !mosh.ape, dilations = #mosh<ape[1, 1]> : !mosh.ape, paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape, output_paddings = #mosh<ape[0, 0]> : !mosh.ape] : (
     !mo.tensor<[1, 2, 2, 1], si64>,
     !mo.tensor<[2, 2, 1, 1], si64>
   ) -> !mo.tensor<[1, 3, 3, 1], si64>
@@ -42,12 +37,7 @@ mo.graph @conv_transpose_symbolic<height, width, channels>(
   // CHECK-DAG: %[[OUT_PADDINGS:.*]] = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
   // CHECK: %[[CONV:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[C1]], dilations = %[[C1]], paddings = %[[PADDINGS]], output_paddings = %[[OUT_PADDINGS]]] : (!mo.tensor<[1, height, width, channels], si64>, !mo.tensor<[2, 2, 1, 1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[1, add(height, 1), add(width, 1), 1], si64>
 
-  %output = rmo.conv_transpose(%input, %filter) {
-    dilations = #mosh<ape[1, 1]> : !mosh.ape,
-    strides = #mosh<ape[1, 1]> : !mosh.ape,
-    paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
-    output_paddings = #mosh<ape[0, 0]> : !mosh.ape
-  } : (
+  %output = rmo.conv_transpose(%input, %filter) [strides = #mosh<ape[1, 1]> : !mosh.ape, dilations = #mosh<ape[1, 1]> : !mosh.ape, paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape, output_paddings = #mosh<ape[0, 0]> : !mosh.ape] : (
     !mo.tensor<[1, height, width, channels], si64>,
     !mo.tensor<[2, 2, 1, 1], si64>
   ) -> !mo.tensor<[1, add(height, 1), add(width, 1), 1], si64>

@@ -283,6 +283,12 @@ class RMO_MOSoftmaxLikeOp<string name, list<Trait> traits = []> :
   );
   let results = (outs MO_Tensor:$result);
 
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
+
   let extraClassDefinition = [{
     void $cppClass::inferMOTypesImpl(
         MLIRContext *context, MO::GraphOp graphOp, Adaptor operands,
@@ -672,6 +678,12 @@ class RMO_MOAnaloguePureReductionOp<
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"reduce.mean"> {
@@ -684,7 +696,7 @@ def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"reduce.mean"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.reduce.mean(%arg) {axis = 1 : index} : (
+      %res = rmo.mo.reduce.mean(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -700,7 +712,7 @@ def RMO_MOReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.reduce.mul(%arg) {axis = 1 : index} : (
+      %res = rmo.mo.reduce.mul(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -716,7 +728,7 @@ def RMO_MOReduceAddOp : RMO_MOAnaloguePureReductionOp<"reduce.add"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.reduce.add(%arg) {axis = 1 : index} : (
+      %res = rmo.mo.reduce.add(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -732,7 +744,7 @@ def MO_MOReduceMinOp : RMO_MOAnaloguePureReductionOp<"reduce.min"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.reduce.min(%arg) {axis = 1 : index} : (
+      %res = rmo.mo.reduce.min(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -748,7 +760,7 @@ def MO_MOReduceMaxOp : RMO_MOAnaloguePureReductionOp<"reduce.max"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.reduce.max(%arg) {axis = 1 : index} : (
+      %res = rmo.mo.reduce.max(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -771,7 +783,7 @@ def MO_MOArgMaxOp : RMO_MOAnalogueArgMinMaxOp<"reduce.arg_max"> {
       %0 = mo.constant {
         value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>
       } : !mo.tensor<[2, 2], si32>
-      %1 = rmo.mo.reduce.arg_max(%0) {axis = 1 : index} : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = rmo.mo.reduce.arg_max(%0) [axis = 1] : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -845,7 +857,7 @@ def RMO_MOScatterOp : RMO_MOAnaloguePureTensorOp<"scatter",
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = rmo.mo.scatter(%inputs, %updates, %indices) {axis = 0 : index} : (
+      %res = rmo.mo.scatter(%inputs, %updates, %indices) [axis = 0] : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
@@ -856,6 +868,12 @@ def RMO_MOScatterOp : RMO_MOAnaloguePureTensorOp<"scatter",
                        IndexAttr:$axis,
                        MO_ParamDecls:$outputParamDecls);
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 
   let extraClassDefinition = [{
     void $cppClass::inferMOTypesImpl(
@@ -1036,7 +1054,9 @@ def RMO_MOConvOp : RMO_MOAnaloguePureTensorOp<"conv"> {
     `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)` attr-dict
     ` ` `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
                     `paddings` `=` $paddings `,`
-                    `num_groups` `=` $num_groups `]` `:`
+                    `num_groups` `=` $num_groups `,`
+                    `filter_layout` `=` $filter_layout
+                    (`,` `input_layout` `=` $input_layout^)? `]` `:`
     functional-type(operands, results)
   }];
 }
@@ -1115,7 +1135,9 @@ def RMO_MOConvTransposeOp : RMO_MOAnaloguePureTensorOp<"conv_transpose"> {
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)` attr-dict
     `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
-        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` `:`
+        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings `,`
+        `filter_layout` `=` $filter_layout
+        (`,` `input_layout` `=` $input_layout^)? `]` `:`
     functional-type(operands, results)
   }];
 }
@@ -1182,6 +1204,14 @@ def RMO_MOAvgPoolOp : RMO_MOAnaloguePurePoolOp<"avg_pool"> {
     BoolAttr:$count_boundary,
     MO_ParamDecls:$outputParamDecls
   );
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
+    `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `,`
+        `count_boundary` `=` $count_boundary `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true"> {
@@ -1226,6 +1256,14 @@ def RMO_MOAvgPoolCeilOp : RMO_MOAnaloguePurePoolOp<"avg_pool_ceil_mode_true"> {
     BoolAttr:$count_boundary,
     MO_ParamDecls:$outputParamDecls
   );
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
+    `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `,`
+        `count_boundary` `=` $count_boundary `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MOMaxPoolOp : RMO_MOAnaloguePurePoolOp<"max_pool"> {
@@ -1465,6 +1503,14 @@ def RMO_MOResizeLinearOp : RMO_MOAnaloguePureTensorOp<"resize.linear"> {
   );
 
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `coordinate_transform_mode` `=`
+            qualified($coordinate_transform_mode) `,`
+        `antialias` `=` $antialias `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 
@@ -1504,6 +1550,14 @@ def RMO_MOResizeNearestOp : RMO_MOAnaloguePureTensorOp<"resize.nearest"> {
   );
 
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `coordinate_transform_mode` `=`
+            qualified($coordinate_transform_mode)
+        (`,` `round_mode` `=` $round_mode^)? `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 
@@ -1696,7 +1750,7 @@ def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather", [
     ```mlir
       %input : !mo.tensor<[2, 2], f32>
       %indices: !mo.tensor<[2], si64>
-      %res = rmo.mo.gather(%input, %indices) {axis = 0 : index} : (
+      %res = rmo.mo.gather(%input, %indices) [axis = 0] : (
         !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>
       ) -> !mo.tensor<[2, 2], f32>
     ```
@@ -1708,6 +1762,12 @@ def RMO_MOGatherOp : RMO_MOAnaloguePureTensorOp<"gather", [
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd", [
@@ -1738,7 +1798,7 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd", [
       %indices = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} :
         !mo.tensor<[3], si64>
 
-      %result = rmo.mo.gather_nd(%input, %indices) {batchDims = 0} :
+      %result = rmo.mo.gather_nd(%input, %indices) [batchDims = 0] :
         (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[3], si64>) ->
         !mo.tensor<[], si64>
     ```
@@ -1753,6 +1813,12 @@ def RMO_MOGatherNdOp : RMO_MOAnaloguePureTensorOp<"gather_nd", [
   );
 
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `batchDims` `=` $batchDims `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MOSoftmaxOp : RMO_MOSoftmaxLikeOp<"reduce.softmax"> {
@@ -2101,8 +2167,7 @@ def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
       %spatial_scale = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
       %sampling_ratio = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
 
-      %res = rmo.mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
-        {aligned = false,  mode = "AVG"}
+      %res = rmo.mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio) [aligned = false, mode = "AVG"]
         : (!mo.tensor<[1, 10, 10, 1], f32>,
           !mo.tensor<[1, 5], f32>,
           !mo.tensor<[], si64>,
@@ -2125,6 +2190,12 @@ def RMO_MORoiAlignOp : RMO_MOAnaloguePureTensorOp<"roi_align"> {
   );
 
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `aligned` `=` $aligned `,` `mode` `=` $mode `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MORandomNormalOp : RMO_MOAnaloguePureTensorOp<"random.normal", [
@@ -2394,7 +2465,7 @@ def RMO_MOCumSumOp : RMO_MOAnaloguePureTensorOp<"cumsum", [
 
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
-    %res = rmo.mo.cumsum(%arg) {axis = 0 : index, exclusive = 1 : index, reverse = 0 : index} : (
+    %res = rmo.mo.cumsum(%arg) [axis = 0, exclusive = 1, reverse = 0] : (
       !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
@@ -2407,6 +2478,13 @@ def RMO_MOCumSumOp : RMO_MOAnaloguePureTensorOp<"cumsum", [
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `,` `exclusive` `=` $exclusive `,`
+        `reverse` `=` $reverse `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MOMutableLoadOp : RMO_MOAnalogueOp<"mutable.load", [
@@ -2480,6 +2558,7 @@ def RMO_MOTransferOp : RMO_MOAnalogueOp<"transfer"> {
   let results = (outs MO_Tensor:$result, MO_Chain:$outChain);
 
   let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls)
     `[` $inChain `]` $input `:` qualified(type($input)) `to`
     custom<TransferResult>(ref(type($input)), type($result)) attr-dict
   }];

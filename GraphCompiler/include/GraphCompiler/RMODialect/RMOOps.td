@@ -51,6 +51,12 @@ def RMO_RebindTensorShapeOp : RMO_Op<"rebind_tensor_shape", [RMO_TensorSameDType
   );
   let results = (outs MO_Tensor:$output);
 
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    (`[` `message` `=` $message^ `]`)? attr-dict `:`
+    functional-type(operands, results)
+  }];
+
   let builders = [
     /// Inferred return type builders
     OpBuilder<(ins
@@ -83,10 +89,6 @@ class RMO_PureBinaryElementWiseOp<string name, list<Trait> traits = []> :
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
 
   let extraClassDefinition = [{
     LogicalResult
@@ -173,10 +175,6 @@ class RMO_PureBinaryComparisonOp<string name, list<Trait> traits = []> :
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_BooleanMask:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
 
   let extraClassDefinition = [{
     LogicalResult
@@ -281,10 +279,6 @@ class RMO_PureBinaryLogicalOp<string name, list<Trait> traits = []> :
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_BooleanMask:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
-  }];
 
   let extraClassDefinition = [{
     LogicalResult
@@ -401,7 +395,7 @@ def RMO_ConcatOp : RMO_Op<"concat", [
     ```mlir
       %arg0: !mo.tensor<[2, 3], f32>
       %arg1: !mo.tensor<[2, 5], f32>
-      %res = rmo.concat(%arg0, %arg1) {axis = 1}  : (
+      %res = rmo.concat(%arg0, %arg1) [axis = 1]  : (
         !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>
       ) -> !mo.tensor<[2, 8], f32>
     ```
@@ -416,8 +410,9 @@ def RMO_ConcatOp : RMO_Op<"concat", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls)
-    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` $inputs `)`
+    `[` `axis` `=` $axis (`,` `out_dim` `=` $out_dim^)? `]` attr-dict `:`
+    functional-type($inputs, results)
   }];
 }
 
@@ -439,7 +434,9 @@ def RMO_ReshapeOp : RMO_Op<"reshape", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `newShape` `=` qualified($newShape) `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -461,7 +458,9 @@ def RMO_BroadcastToOp : RMO_Op<"broadcast_to", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `newShape` `=` qualified($newShape) `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -477,7 +476,9 @@ def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
   let results = (outs MO_ShapeLike:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `shape` `=` qualified($shape) `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -559,12 +560,12 @@ def RMO_ConvOp : RMO_Op<"conv", [
     %input: !mo.tensor<[10, 5, 5, 32], f32>,
     %filter: !mo.tensor<[64, 32, 2, 2], f32>
 
-    %result = rmo.conv(%input, %filter) {
+    %result = rmo.conv(%input, %filter) [
       strides = #mosh<ape[2, 2]> : !mosh.ape,
-      paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
       dilations = #mosh<ape[1, 1]> : !mosh.ape,
-      num_groups = 1 : si64
-    } : (
+      paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
+      num_groups = 1
+    ] : (
       !mo.tensor<[10, 5, 5, 32], f32>, !mo.tensor<[64, 32, 2, 2], f32>
     ) -> !mo.tensor<[10, 4, 4, 64], f32>
     ```
@@ -583,7 +584,13 @@ def RMO_ConvOp : RMO_Op<"conv", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `strides` `=` qualified($strides) `,`
+        `dilations` `=` qualified($dilations) `,`
+        `paddings` `=` qualified($paddings) `,`
+        `num_groups` `=` $num_groups
+        (`,` `input_layout` `=` $input_layout^)? `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -631,12 +638,12 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
     Example:
 
     ```mlir
-    %res = rmo.conv_transpose(%input, %filter) {
-      strides = #mosh<ape<1, 1>> : !mosh.ape
-      dilations = #mosh<ape<1, 1>> : !mosh.ape
-      paddings = #mosh<ape<0, 0, 0, 0>> : !mosh.ape
-      output_paddings = #mosh<ape<0, 0>> : !mosh.ape
-    } : (
+    %res = rmo.conv_transpose(%input, %filter) [
+      strides = #mosh<ape[1, 1]> : !mosh.ape,
+      dilations = #mosh<ape[1, 1]> : !mosh.ape,
+      paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
+      output_paddings = #mosh<ape[0, 0]> : !mosh.ape
+    ] : (
       !mo.tensor<[10, 4, 4, 64], f32>, !mo.tensor<[2, 2, 32, 64], f32>,
     ) -> !mo.tensor<[10, 5, 5, 32], f32>
     ```
@@ -655,7 +662,13 @@ def RMO_ConvTransposeOp : RMO_Op<"conv_transpose", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `strides` `=` qualified($strides) `,`
+        `dilations` `=` qualified($dilations) `,`
+        `paddings` `=` qualified($paddings) `,`
+        `output_paddings` `=` qualified($output_paddings)
+        (`,` `input_layout` `=` $input_layout^)? `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -674,7 +687,13 @@ class RMO_PoolOp<string name> : RMO_Op<name, [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `filter_shape` `=` qualified($filter_shape) `,`
+        `strides` `=` qualified($strides) `,`
+        `dilations` `=` qualified($dilations) `,`
+        `paddings` `=` qualified($paddings) `,`
+        `ceil_mode` `=` $ceil_mode `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -692,14 +711,14 @@ def RMO_AvgPoolOp : RMO_PoolOp<"avg_pool"> {
     Example:
 
     ```mlir
-    %res = rmo.avg_pool(%input) {
-      filter_shape = #mosh<ape<2, 3>> : !mosh.ape
-      strides = #mosh<ape<2, 3>> : !mosh.ape
-      dilations = #mosh<ape<1, 1>> : !mosh.ape
-      paddings = #mosh<ape<0, 0, 0, 0>> : !mosh.ape
-      ceil_mode = false
+    %res = rmo.avg_pool(%input) [
+      filter_shape = #mosh<ape[2, 3]> : !mosh.ape,
+      strides = #mosh<ape[2, 3]> : !mosh.ape,
+      dilations = #mosh<ape[1, 1]> : !mosh.ape,
+      paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
+      ceil_mode = false,
       count_boundary = true
-    } : (
+    ] : (
       !mo.tensor<[1, 6, 15, 1], f32>,
     ) -> !mo.tensor<[1, 3, 5, 1], f32>
     ```
@@ -714,6 +733,17 @@ def RMO_AvgPoolOp : RMO_PoolOp<"avg_pool"> {
     BoolAttr:$ceil_mode,
     BoolAttr:$count_boundary
   );
+
+  let assemblyFormat = [{
+    `(` operands `)`
+    `[` `filter_shape` `=` qualified($filter_shape) `,`
+        `strides` `=` qualified($strides) `,`
+        `dilations` `=` qualified($dilations) `,`
+        `paddings` `=` qualified($paddings) `,`
+        `ceil_mode` `=` $ceil_mode `,`
+        `count_boundary` `=` $count_boundary `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def RMO_MaxPoolOp : RMO_PoolOp<"max_pool"> {
@@ -730,13 +760,13 @@ def RMO_MaxPoolOp : RMO_PoolOp<"max_pool"> {
     Example:
 
     ```mlir
-    %res = rmo.max_pool(%input) {
-      filter_shape = #mosh<ape<2, 3>> : !mosh.ape
-      strides = #mosh<ape<2, 3>> : !mosh.ape
-      dilations = #mosh<ape<1, 1>> : !mosh.ape
-      paddings = #mosh<ape<0, 0, 0, 0>> : !mosh.ape
+    %res = rmo.max_pool(%input) [
+      filter_shape = #mosh<ape[2, 3]> : !mosh.ape,
+      strides = #mosh<ape[2, 3]> : !mosh.ape,
+      dilations = #mosh<ape[1, 1]> : !mosh.ape,
+      paddings = #mosh<ape[0, 0, 0, 0]> : !mosh.ape,
       ceil_mode = false
-    } : (
+    ] : (
       !mo.tensor<[1, 6, 15, 1], f32>,
     ) -> !mo.tensor<[1, 3, 5, 1], f32>
     ```
@@ -790,7 +820,7 @@ def RMO_TopKOp : RMO_Op<"top_k", [
     Example:
     ```mlir
       %input: !mo.tensor<[2, 6], si64>
-      %values, %indices = rmo.top_k(%input) {k = 3, axis = 1} :
+      %values, %indices = rmo.top_k(%input) [k = 3, axis = 1] :
         (!mo.tensor<[2, 6], si64>) ->
         (!mo.tensor<[2, 3], si64>, !mo.tensor<[2, 3], si64>)
     ```
@@ -806,7 +836,9 @@ def RMO_TopKOp : RMO_Op<"top_k", [
     MO_I64Tensor:$indices
   );
   let assemblyFormat = [{
-    `(` $input `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
+    `[` `k` `=` $k `,` `axis` `=` $axis `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -831,7 +863,7 @@ def RMO_SliceOp : RMO_Op<"slice", [
       %input: !mo.tensor<[10, 10], f32>
 
       // equivalent to this in numpy: `input[1:-3:5, -6:6:1]`
-      %res = rmo.slice(%input) {starts = #mosh<ape[1, -6]> : !mosh.ape, steps = #mosh<ape[5, 1]> : !mosh.ape, stops = #mosh<ape[-3, 6]> : !mosh.ape} : (
+      %res = rmo.slice(%input) [starts = #mosh<ape[1, -6]> : !mosh.ape, stops = #mosh<ape[-3, 6]> : !mosh.ape, steps = #mosh<ape[5, 1]> : !mosh.ape] : (
         !mo.tensor<[10, 10], f32>,
       ) -> !mo.tensor<[2, 2], f32>
     ```
@@ -844,6 +876,14 @@ def RMO_SliceOp : RMO_Op<"slice", [
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `starts` `=` qualified($starts) `,`
+        `stops` `=` qualified($stops) `,`
+        `steps` `=` qualified($steps) `]` attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 #endif // GENERICML_GRAPHCOMPILER_RMODIALECT_RMOOPS_TD

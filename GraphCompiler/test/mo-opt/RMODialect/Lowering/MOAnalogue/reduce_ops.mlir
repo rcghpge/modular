@@ -1,7 +1,7 @@
 // RUN: mo-opt --split-input-file --mo-legalize-rmo-operators="skip-rmo-rebinds" %s | FileCheck %s --enable-var-scope
 
 mo.graph @mean_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32> {
-  %1 = rmo.mo.reduce.mean<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
+  %1 = rmo.mo.reduce.mean<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -12,7 +12,7 @@ mo.graph @mean_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0,
 // -----
 
 mo.graph @mean_dyn_const_axis<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32> {
-  %1 = rmo.mo.reduce.mean<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
+  %1 = rmo.mo.reduce.mean<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -26,7 +26,7 @@ mo.graph @mean_dyn_const_axis<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 // Testing all reduce ops
 
 mo.graph @reduce_mul_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32> {
-  %1 = rmo.mo.reduce.mul<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
+  %1 = rmo.mo.reduce.mul<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -37,7 +37,7 @@ mo.graph @reduce_mul_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 // -----
 
 mo.graph @reduce_add_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32> {
-  %1 = rmo.mo.reduce.add<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
+  %1 = rmo.mo.reduce.add<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -48,7 +48,7 @@ mo.graph @reduce_add_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 // -----
 
 mo.graph @reduce_min_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32> {
-  %1 = rmo.mo.reduce.min<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
+  %1 = rmo.mo.reduce.min<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -59,7 +59,7 @@ mo.graph @reduce_min_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 // -----
 
 mo.graph @reduce_max_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32> {
-  %1 = rmo.mo.reduce.max<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
+  %1 = rmo.mo.reduce.max<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], f32>
 }
 // CHECK-LABEL: mo.graph
@@ -70,7 +70,7 @@ mo.graph @reduce_max_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tenso
 // -----
 
 mo.graph @argmin_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], si32> {
-  %1 = rmo.mo.reduce.arg_min<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], si32>
+  %1 = rmo.mo.reduce.arg_min<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], si32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], si32>
 }
 // CHECK-LABEL: mo.graph
@@ -81,7 +81,7 @@ mo.graph @argmin_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D
 // -----
 
 mo.graph @argmax_dyn_dims<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D4, D5, D6, D7], si32> {
-  %1 = rmo.mo.reduce.arg_max<() -> D8, D9, D10, D11>(%arg0) {axis = 1 : index} : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], si32>
+  %1 = rmo.mo.reduce.arg_max<() -> D8, D9, D10, D11>(%arg0) [axis = 1] : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[D8, D9, D10, D11], si32>
   mo.output<D8, D9, D10, D11> %1 : !mo.tensor<[D8, D9, D10, D11], si32>
 }
 // CHECK-LABEL: mo.graph

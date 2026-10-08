@@ -31,7 +31,7 @@ mo.graph @max_pool_ceil_ok<N, C, H, W -> O0, O1, O2, O3>(%arg0: !mo.tensor<[N, C
 // -----
 
 mo.graph @avg_pool_ok<N, C, H, W -> O0, O1, O2, O3>(%arg0: !mo.tensor<[N, C, H, W], f32>, %fs: !mo.tensor<[2], si64>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>) -> !mo.tensor<[O0, O1, O2, O3], f32> {
-  %0 = rmo.mo.avg_pool<() -> P0, P1, P2, P3>(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (!mo.tensor<[N, C, H, W], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[P0, P1, P2, P3], f32>
+  %0 = rmo.mo.avg_pool<() -> P0, P1, P2, P3>(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa, count_boundary = false] : (!mo.tensor<[N, C, H, W], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[P0, P1, P2, P3], f32>
   mo.output<P0, P1, P2, P3> %0 : !mo.tensor<[P0, P1, P2, P3], f32>
 }
 
@@ -39,6 +39,6 @@ mo.graph @avg_pool_ok<N, C, H, W -> O0, O1, O2, O3>(%arg0: !mo.tensor<[N, C, H, 
 // -----
 
 mo.graph @avg_pool_ceil_ok<N, C, H, W -> O0, O1, O2, O3>(%arg0: !mo.tensor<[N, C, H, W], f32>, %fs: !mo.tensor<[2], si64>, %st: !mo.tensor<[2], si64>, %di: !mo.tensor<[2], si64>, %pa: !mo.tensor<[4], si64>) -> !mo.tensor<[O0, O1, O2, O3], f32> {
-  %0 = rmo.mo.avg_pool_ceil_mode_true<() -> P0, P1, P2, P3>(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (!mo.tensor<[N, C, H, W], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[P0, P1, P2, P3], f32>
+  %0 = rmo.mo.avg_pool_ceil_mode_true<() -> P0, P1, P2, P3>(%arg0) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa, count_boundary = false] : (!mo.tensor<[N, C, H, W], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[P0, P1, P2, P3], f32>
   mo.output<P0, P1, P2, P3> %0 : !mo.tensor<[P0, P1, P2, P3], f32>
 }

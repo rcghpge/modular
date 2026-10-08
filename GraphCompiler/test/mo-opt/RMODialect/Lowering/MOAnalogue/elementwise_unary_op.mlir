@@ -25,7 +25,7 @@ mo.graph @log_params_static<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.ten
 // -----
 
 mo.graph @logsoftmax_mixed_params<D0 -> D1, D2>(%arg0: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[D1, D2], f32> {
-  %1 = rmo.mo.reduce.logsoftmax<() -> D3, D4>(%arg0) {axis = 1 : index} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[D3, D4], f32>
+  %1 = rmo.mo.reduce.logsoftmax<() -> D3, D4>(%arg0) [axis = 1] : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[D3, D4], f32>
   mo.output<D3, D4> %1 : !mo.tensor<[D3, D4], f32>
 }
 // CHECK-LABEL: mo.graph
