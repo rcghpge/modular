@@ -52,6 +52,14 @@ struct OutputFusionConfig {
 /// fused edge is stamped `FusionEpilogue`. Returns how many kernels it fused.
 unsigned fuseOutput(MO::GraphOp graphOp, const OutputFusionConfig &config);
 
+/// Grows `dst` with one destination-passing result per type in `extraTypes`,
+/// each with a matching trailing output block argument. Results are fixed at
+/// construction so this rebuilds the op; the body region moves across, leaving
+/// the ops inside it (the epilogue) valid. New results go after the existing
+/// destination-passing ones, which `IterOpaqueOp::verify` requires.
+IterOpaqueOp growOutputs(IterOpaqueOp dst, mlir::TypeRange extraTypes,
+                         mlir::RewriterBase &rewriter);
+
 } // namespace M::MAP
 
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_SUPPORT_OUTPUTFUSION_H

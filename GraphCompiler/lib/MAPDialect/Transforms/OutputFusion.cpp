@@ -49,9 +49,11 @@ bool consumerIsPureReshape(LoadOp load) {
   if (!consumerReadsThroughReshape(load))
     return false;
   auto foreachOp = load->getParentOfType<IterForeachOp>();
-  auto store = getUniqueStore(foreachOp.getBody().front());
-  auto storedLoad = store.getValue().getDefiningOp<LoadOp>();
-  return storedLoad && storedLoad.getTensor() == load.getTensor();
+  return llvm::all_of(
+      getOutputStores(foreachOp.getBody().front()), [&](StoreOp store) {
+        auto storedLoad = store.getValue().getDefiningOp<LoadOp>();
+        return storedLoad && storedLoad.getTensor() == load.getTensor();
+      });
 }
 
 namespace {
@@ -66,15 +68,6 @@ struct OutputFusionEdge {
   IterForeachOp src;
   ReshapeIndexOp reshape;
 };
-
-// The `map.iter.epilogue` for `resultIdx`, or null (e.g. a chain result).
-IterEpilogueOp getEpilogueForResult(IterOpaqueOp op, unsigned resultIdx) {
-  Value outArg = op.getOutputBlockArgs()[resultIdx];
-  for (auto epilogueOp : op.getBody().front().getOps<IterEpilogueOp>())
-    if (llvm::is_contained(epilogueOp.getCaptures(), outArg))
-      return epilogueOp;
-  return nullptr;
-}
 
 // Whether every use of `fusionArg` reads at the loop index.
 bool readsAtLoopIndex(BlockArgument fusionArg, Value loopIdx) {
@@ -128,7 +121,7 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
     Value res = dst->getResult(resultIdx);
     if (!res.hasOneUse())
       continue;
-    IterEpilogueOp epilogueOp = getEpilogueForResult(dst, resultIdx);
+    IterEpilogueOp epilogueOp = dst.getEpilogueForResult(resultIdx);
     if (!epilogueOp)
       continue;
     Operation *user = res.getUses().begin()->getOwner();
@@ -136,8 +129,30 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
     if (user->getBlock() != dst->getBlock())
       continue;
     auto src = dyn_cast<IterForeachOp>(user);
-    if (!src || src.getNumResults() != 1)
+    if (!src)
       continue;
+    // An epilogue already storing more than once serves several destinations
+    // from one producer -- a consumer pair `FuseHorizontal` merged in, or a
+    // result it kept for a reader of its own. Fusing rebuilds a single store,
+    // so it cannot express that, whatever shape the consumer itself has.
+    // TODO(GEX-4223): fuse into a multi-store epilogue by rebuilding only the
+    // store the consumer reads.
+    if (getOutputStores(epilogueOp.getBody().front()).size() != 1)
+      continue;
+    // A multi-output consumer needs a destination per output, which means
+    // growing `dst`. Only all-destination-passing kernels qualify: a by-value
+    // or chain result on either side carries ordering and yield constraints
+    // this path does not model (`IterOpaqueOp::verify`).
+    // TODO(GEX-4223): support multi-output consumers with by-value or chain
+    // results.
+    if (src.getNumResults() != 1) {
+      if (llvm::any_of(src->getResultTypes(),
+                       [](Type t) { return !isa<MO::TensorType>(t); }) ||
+          llvm::any_of(dst->getResultTypes(),
+                       [](Type t) { return !isa<MO::TensorType>(t); }) ||
+          getOutputStores(src.getBody().front()).size() != src.getNumResults())
+        continue;
+    }
     if (llvm::count(src.getInputs(), res) != 1)
       continue;
 
@@ -185,15 +200,56 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
   return std::nullopt;
 }
 
+} // namespace
+
+IterOpaqueOp growOutputs(IterOpaqueOp dst, TypeRange extraTypes,
+                         mlir::RewriterBase &rewriter) {
+  if (extraTypes.empty())
+    return dst;
+
+  unsigned numDps = dst.getNumNonChainResults();
+  SmallVector<Type> resultTypes(dst->getResultTypes());
+  resultTypes.insert(resultTypes.begin() + numDps, extraTypes.begin(),
+                     extraTypes.end());
+
+  rewriter.setInsertionPoint(dst);
+  auto newDst = IterOpaqueOp::create(
+      rewriter, dst.getLoc(), resultTypes, dst.getInputs(), dst.getInputChain(),
+      dst.getFusionInfoAttr(), dst.getHasReadEffect(), dst.getHasWriteEffect(),
+      dst.getIsAsync());
+  // `device` and friends are discardable, so `create` does not carry them.
+  newDst->setDiscardableAttrs(dst->getDiscardableAttrDictionary());
+  newDst.getBody().takeBody(dst.getBody());
+
+  Block &body = newDst.getBody().front();
+  for (Type ty : extraTypes)
+    body.addArgument(ty, dst.getLoc());
+
+  for (auto [i, res] : llvm::enumerate(dst.getResults()))
+    res.replaceAllUsesWith(
+        newDst->getResult(i < numDps ? i : i + extraTypes.size()));
+  rewriter.eraseOp(dst);
+  return newDst;
+}
+
+namespace {
+
 // Splices `src`'s per-element compute into `epilogueOp`. For a reshape read,
 // the reshape is relocated onto the store index with in/out swapped, since the
 // store direction is the inverse of the load.
-void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
+IterOpaqueOp fuseOutputOnce(const OutputFusionEdge &edge,
+                            PatternRewriter &rewriter) {
   IterOpaqueOp dst = edge.dst;
   IterEpilogueOp epilogueOp = edge.epilogueOp;
   IterForeachOp src = edge.src;
   ReshapeIndexOp reshape = edge.reshape;
   MLIRContext *ctx = dst.getContext();
+
+  // `src`'s first output reuses the result `dst` already produces; the rest
+  // need destinations of their own.
+  SmallVector<Type> extraTypes(llvm::drop_begin(src->getResultTypes()));
+  unsigned numDpsBefore = dst.getNumNonChainResults();
+  dst = growOutputs(dst, extraTypes, rewriter);
   Value dstResult = dst->getResult(edge.resultIdx);
   Block &srcBody = src.getBody().front();
   Block &epilogueBody = epilogueOp.getBody().front();
@@ -244,16 +300,32 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
     srcBody.getArgument(i).replaceAllUsesWith(capArg);
   }
 
+  // The grown output block args are the extra stores' destinations. Read them
+  // through the accessor: threading `src`'s inputs above shifted the args.
+  SmallVector<Value> extraCaps;
+  Block::BlockArgListType outArgs = dst.getOutputBlockArgs();
+  for (unsigned i = 0; i < extraTypes.size(); ++i) {
+    BlockArgument outArg = outArgs[numDpsBefore + i];
+    epilogueOp.getCapturesMutable().append(outArg);
+    extraCaps.push_back(
+        epilogueBody.addArgument(outArg.getType(), outArg.getLoc()));
+  }
+
   // The loop index is the body's last argument for both pointwise and
   // `mo.mutable.store` consumers; rewire it to the store index.
-  auto srcStore = getUniqueStore(srcBody);
+  SmallVector<StoreOp> srcStores = getOutputStores(srcBody);
+  StoreOp srcStore = srcStores.front();
   Value finalVal = srcStore.getValue();
+  SmallVector<Value> extraVals;
+  for (StoreOp store : ArrayRef(srcStores).drop_front())
+    extraVals.push_back(store.getValue());
   // A `mo.mutable.store` consumer's buffer input is already an epilogue
   // capture; the store is rebuilt on it.
   Value storeTargetBuffer;
   if (isa<MO::ChainType>(src.getResult(0).getType()))
     storeTargetBuffer = srcStore.getTensor();
-  srcStore.erase();
+  for (StoreOp store : srcStores)
+    store.erase();
   srcBody.getArguments().back().replaceAllUsesWith(storeTransform);
   srcBody.eraseArguments(0, srcBody.getNumArguments());
 
@@ -278,10 +350,17 @@ void fuseOutputOnce(const OutputFusionEdge &edge, PatternRewriter &rewriter) {
   rewriter.inlineBlockBefore(&srcBody, &epilogueBody, epilogueBody.end());
   rewriter.setInsertionPointToEnd(&epilogueBody);
   StoreOp::create(rewriter, storeLoc, cap, storeTransform, finalVal);
+  for (auto [extraCap, extraVal] : llvm::zip_equal(extraCaps, extraVals))
+    StoreOp::create(rewriter, storeLoc, extraCap, storeTransform, extraVal);
 
   // A `mo.mutable.store` consumer yields only an unused chain.
-  if (!storeTargetBuffer)
-    src->replaceAllUsesWith(ValueRange{dstResult});
+  if (!storeTargetBuffer) {
+    SmallVector<Value> replacements{dstResult};
+    for (unsigned i = 0; i < extraTypes.size(); ++i)
+      replacements.push_back(dst->getResult(numDpsBefore + i));
+    src->replaceAllUsesWith(replacements);
+  }
+  return dst;
 }
 
 } // namespace
@@ -295,17 +374,21 @@ unsigned fuseOutput(MO::GraphOp graphOp, const OutputFusionConfig &config) {
   graphOp.getBody().walk(
       [&](IterOpaqueOp op) { blocks.insert(op->getBlock()); });
 
-  // Producers before consumers. Fusion erases only the consumer and mutates
-  // the producer in place.
+  // Producers before consumers. Every block is sorted before anything fuses:
+  // fusion erases the consumer and can rebuild the producer (`growOutputs`),
+  // while the analysis holds a raw pointer to any op a nested block reads.
   MO::ParametricTopologyAnalysis topo(graphOp);
-  DenseSet<Operation *> erased;
-  unsigned numFused = 0;
+  SmallVector<SmallVector<Operation *>> sortedBlocks;
   for (Block *block : blocks) {
-    SmallVector<Operation *> ops;
+    SmallVector<Operation *> &ops = sortedBlocks.emplace_back();
     for (Operation &op : *block)
       ops.push_back(&op);
     topo.computeTopologicalSorting(ops);
+  }
 
+  DenseSet<Operation *> erased;
+  unsigned numFused = 0;
+  for (ArrayRef<Operation *> ops : sortedBlocks) {
     for (Operation *op : ops) {
       if (erased.contains(op))
         continue;
@@ -314,7 +397,7 @@ unsigned fuseOutput(MO::GraphOp graphOp, const OutputFusionConfig &config) {
         continue;
       while (std::optional<OutputFusionEdge> edge =
                  findFusibleEdge(dst, config)) {
-        fuseOutputOnce(*edge, rewriter);
+        dst = fuseOutputOnce(*edge, rewriter);
         dst.setFusionInfoAttr(MOGG::createFusionInfo<MOGG::FusionEpilogueAttr>(
             dst.getContext(), {dst.getOperation(), edge->src.getOperation()},
             {static_cast<uint32_t>(edge->resultIdx)}));

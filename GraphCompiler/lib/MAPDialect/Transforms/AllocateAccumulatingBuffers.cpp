@@ -51,17 +51,27 @@ static bool containsMatmulOrConvOrConcat(IterOpaqueOp op) {
   return false;
 }
 
-// The outer tensor the epilogue's terminal `map.store` writes through. At MAP
-// level the body always ends with the store.
-static Value getStoreTarget(IterEpilogueOp epi) {
-  auto storeOp = dyn_cast<StoreOp>(epi.getBody().front().back());
-  if (!storeOp)
-    return {};
-  auto targetArg = dyn_cast<BlockArgument>(storeOp.getTensor());
-  if (!targetArg)
-    return {};
-  return cast<CapturingFusionClosure>(epi.getOperation())
-      .getCaptureFor(targetArg);
+// The outer tensor the kernel's own output slice aliases. Any tensor the
+// epilogue stores directly at its index works: the epilogue overwrites every
+// element the kernel writes there. A tensor of the value's dtype is preferred,
+// since any other one needs an accumulation buffer.
+static Value findStoreTarget(IterEpilogueOp epi) {
+  Block &body = epi.getBody().front();
+  Type valueType = body.getArgument(0).getType();
+  auto closure = cast<CapturingFusionClosure>(epi.getOperation());
+  Value fallback;
+  for (StoreOp store : body.getOps<StoreOp>()) {
+    auto targetArg = dyn_cast<BlockArgument>(store.getTensor());
+    Value target = targetArg ? closure.getCaptureFor(targetArg) : Value();
+    if (!target)
+      continue;
+    auto targetType = dyn_cast<MO::TensorType>(target.getType());
+    if (targetType && targetType.getElementType() == valueType)
+      return target;
+    if (!fallback)
+      fallback = target;
+  }
+  return fallback;
 }
 
 // Replaces `op` with a copy that has one extra non-chain result of
@@ -117,12 +127,12 @@ struct AllocateAccumulatingBuffersPass
          kernel.getBody().front().getOps<IterEpilogueOp>()) {
       if (epi.getIntermediateTensor())
         continue;
-      Value storeTarget = getStoreTarget(epi);
+      Value storeTarget = findStoreTarget(epi);
       if (!storeTarget)
         continue;
 
       Type inElemType = epi.getBody().front().getArgument(0).getType();
-      auto resultTy = dyn_cast<MO::TensorType>(epi.getResult().getType());
+      auto resultTy = dyn_cast<MO::TensorType>(storeTarget.getType());
       bool dtypeChanges = resultTy && inElemType != resultTy.getElementType();
 
       if (dtypeChanges && containsMatmulOrConvOrConcat(kernel)) {

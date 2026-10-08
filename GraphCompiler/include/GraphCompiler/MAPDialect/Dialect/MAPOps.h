@@ -36,11 +36,16 @@
 
 namespace M::MAP {
 
-/// The single `map.store` in a kernel or closure `body`, asserting there is
-/// exactly one (every MAP kernel is single-output today -- see the multi-output
-/// TODO in input fusion). Prefer this over assuming the store is the body's
-/// terminator.
+/// The single `map.store` in a single-output kernel or closure `body`,
+/// asserting there is exactly one. A multi-output kernel, which horizontal
+/// fusion builds, takes `getOutputStores`. Prefer this over assuming the store
+/// is the body's terminator.
 StoreOp getUniqueStore(mlir::Block &body);
+
+/// Every `map.store` in a kernel or closure `body`, in program order -- one
+/// per output, so a multi-output kernel yields several. Asserts there is at
+/// least one.
+llvm::SmallVector<StoreOp> getOutputStores(mlir::Block &body);
 
 /// Merges a MAP kernel's duplicate input operands (a `map.iter.foreach` or
 /// `map.iter.opaque`) onto the first occurrence's shadowed block argument and

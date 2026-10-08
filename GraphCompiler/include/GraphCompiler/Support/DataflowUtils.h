@@ -7,9 +7,11 @@
 #ifndef GENERICML_DATALOW_UTILS_H
 #define GENERICML_DATALOW_UTILS_H
 
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -25,11 +27,22 @@ enum class WalkDirection { Producers, Consumers };
 ///   - `advance()`   expand this op's neighbors,
 ///   - `skip()`      do not expand this op's neighbors (prune this branch),
 ///   - `interrupt()` stop the whole walk.
-/// Block-argument operands (null producers) are skipped.
-template <WalkDirection Dir>
+/// Block-argument operands (null producers) are skipped. With
+/// `ThroughRegionCaptures`, a `Producers` walk also follows the outer values a
+/// non-isolated region (an `mo.if` branch) reads:
+/// ```
+/// %mm = mo.matmul(%x, %y)
+/// %r = mo.if (%c) { mo.yield mo.mul(%mm, %z) } else { ... }
+/// %a = mo.add(%mm, %r)
+/// ```
+/// `%r`'s only operand is `%c`, but its branch reads `%mm`. Missing that edge,
+/// fusing `%a` into the matmul's epilogue would create a cycle.
+template <WalkDirection Dir, bool ThroughRegionCaptures = false>
 inline mlir::WalkResult walkDataflowGraph(
     mlir::Operation *op,
     llvm::function_ref<mlir::WalkResult(mlir::Operation *)> functor) {
+  static_assert(!ThroughRegionCaptures || Dir == WalkDirection::Producers,
+                "a region capture is a producer edge");
   if (!op)
     return mlir::WalkResult::advance();
 
@@ -52,6 +65,13 @@ inline mlir::WalkResult walkDataflowGraph(
       for (mlir::Value operand : current->getOperands())
         if (mlir::Operation *def = operand.getDefiningOp())
           worklist.push_back(def);
+      if constexpr (ThroughRegionCaptures)
+        if (!current->hasTrait<mlir::OpTrait::IsIsolatedFromAbove>())
+          mlir::visitUsedValuesDefinedAbove(
+              current->getRegions(), [&](mlir::OpOperand *use) {
+                if (mlir::Operation *def = use->get().getDefiningOp())
+                  worklist.push_back(def);
+              });
     } else {
       for (mlir::Operation *user : current->getUsers())
         worklist.push_back(user);
@@ -63,16 +83,17 @@ inline mlir::WalkResult walkDataflowGraph(
 
 /// Returns true iff some op reachable from `op` in `Dir` (inclusive) matches
 /// `matcher`.
-template <WalkDirection Dir = WalkDirection::Consumers>
+template <WalkDirection Dir = WalkDirection::Consumers,
+          bool ThroughRegionCaptures = false>
 inline bool
 dataflowGraphContains(mlir::Operation *op,
                       llvm::function_ref<bool(mlir::Operation *)> matcher) {
-  return walkDataflowGraph<Dir>(op,
-                                [&](mlir::Operation *o) {
-                                  return matcher(o)
-                                             ? mlir::WalkResult::interrupt()
-                                             : mlir::WalkResult::advance();
-                                })
+  return walkDataflowGraph<Dir, ThroughRegionCaptures>(
+             op,
+             [&](mlir::Operation *o) {
+               return matcher(o) ? mlir::WalkResult::interrupt()
+                                 : mlir::WalkResult::advance();
+             })
       .wasInterrupted();
 }
 
@@ -104,16 +125,21 @@ inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Value target) {
 /// %2 = bar(%1)
 /// ```
 /// `dataflowGraphDependsOn(%2, foo) == true`.
+/// Also follows outer values a non-isolated region (an `mo.if` branch) reads,
+/// since fusers ask this to rule out a cycle.
 inline bool dataflowGraphDependsOn(mlir::Value start, mlir::Operation *target) {
-  return dataflowGraphContains<WalkDirection::Producers>(
+  return dataflowGraphContains<WalkDirection::Producers,
+                               /*ThroughRegionCaptures=*/true>(
       start.getDefiningOp(), [&](mlir::Operation *op) { return op == target; });
 }
 
 /// Checks if `start` depends on `target` transitively, through any of its
-/// operands, in one walk. Also returns true if `start == target`.
+/// operands, in one walk. Follows region captures as the overload above does.
+/// Also returns true if `start == target`.
 inline bool dataflowGraphDependsOn(mlir::Operation *start,
                                    mlir::Operation *target) {
-  return dataflowGraphContains<WalkDirection::Producers>(
+  return dataflowGraphContains<WalkDirection::Producers,
+                               /*ThroughRegionCaptures=*/true>(
       start, [&](mlir::Operation *op) { return op == target; });
 }
 

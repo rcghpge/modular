@@ -122,6 +122,10 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     /// none (e.g. an output block arg). The inverse of `getInputBlockArgs()`.
     ::mlir::Value getInputFor(::mlir::BlockArgument arg);
 
+    /// The `map.iter.epilogue` wrapping DPS result `resultIdx` -- the one that
+    /// captures its output block arg -- or null when that result has none.
+    IterEpilogueOp getEpilogueForResult(unsigned resultIdx);
+
     /// Inserts `vals` as new (non-chain) inputs starting at `idx`, updating
     /// both operands and the corresponding shadowed body block arguments.
     void insertInputsAt(unsigned idx, ::mlir::ValueRange vals);

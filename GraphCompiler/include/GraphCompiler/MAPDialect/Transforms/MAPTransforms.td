@@ -53,7 +53,9 @@ def FuseHorizontal : Pass<"map-fuse-horizontal", "MO::GraphOp"> {
     Merges two `map.iter.foreach` ops over the same index space that share an
     input into one multi-output kernel, so the shared operand is loaded once
     rather than by each kernel. Pairs siblings, where the other fusers pair a
-    producer with its consumer.
+    producer with its consumer. Also moves a consumer into its producer's
+    epilogue when the producer's result has other readers, which output
+    fusion leaves alone.
   }];
 
   let dependentDialects = [

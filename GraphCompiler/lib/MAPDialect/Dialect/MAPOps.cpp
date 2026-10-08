@@ -303,6 +303,14 @@ Value IterOpaqueOp::getInputFor(BlockArgument arg) {
   return {};
 }
 
+IterEpilogueOp IterOpaqueOp::getEpilogueForResult(unsigned resultIdx) {
+  Value outArg = getOutputBlockArgs()[resultIdx];
+  for (auto epilogueOp : getBody().front().getOps<IterEpilogueOp>())
+    if (llvm::is_contained(epilogueOp.getCaptures(), outArg))
+      return epilogueOp;
+  return nullptr;
+}
+
 void IterOpaqueOp::insertInputsAt(unsigned idx, ValueRange vals) {
   ASSERT_STREAM(idx <= getInputs().size(),
                 << "idx (" << idx << ") must stay within the inputs ("
@@ -1208,3 +1216,23 @@ LogicalResult TransposeStrideOp::verify() {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ConstantOp::fold(FoldAdaptor) { return getValueAttr(); }
+
+//===----------------------------------------------------------------------===//
+// map.store queries
+//===----------------------------------------------------------------------===//
+
+StoreOp M::MAP::getUniqueStore(Block &body) {
+  SmallVector<StoreOp> stores = getOutputStores(body);
+  ASSERT_STREAM(stores.size() == 1,
+                << "expected exactly one map.store in the body");
+  return stores.front();
+}
+
+SmallVector<StoreOp> M::MAP::getOutputStores(Block &body) {
+  SmallVector<StoreOp> stores;
+  for (Operation &op : body)
+    if (auto store = dyn_cast<StoreOp>(&op))
+      stores.push_back(store);
+  ASSERT_STREAM(!stores.empty(), << "expected a map.store in the body");
+  return stores;
+}

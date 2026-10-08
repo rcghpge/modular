@@ -2191,7 +2191,7 @@ LogicalResult TensorCreateEpilogueOp::verify() {
   if (getCaptures().empty())
     return emitOpError("requires at least one (store-target) capture");
   if (body.getNumArguments() <
-      1 + getCaptures().size() + getShapeCaptures().size())
+      2 + getCaptures().size() + getShapeCaptures().size())
     return emitOpError("body takes a value, an index, one arg per capture, and "
                        "one arg per shape capture");
 

@@ -34,9 +34,9 @@ func.func @codegen_ops(%ptr: !mogg.pointer, %dim: !mogg.dim,
   // CHECK: mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor) ptr %{{.*}} : !mogg.pointer : !mogg.shape -> !mogg.tensor
   %epi = mogg.tensor.create.epilogue %s0 capturing (%t1 : !mogg.tensor) ptr %cp : !mogg.pointer : !mogg.shape -> !mogg.tensor
       attributes {device = "gpu", elementType = f32, io = 1 : i32, mut = true} {
-  ^bb0(%val: f32, %i: !mogg.dim):
+  ^bb0(%val: f32, %i: !mogg.dim, %cap: !mogg.tensor):
     // CHECK: mogg.tensor.store %{{.*}}[%{{.*}}] = %{{.*}} : !mogg.tensor, !mogg.dim, f32
-    mogg.tensor.store %t1[%i] = %val : !mogg.tensor, !mogg.dim, f32
+    mogg.tensor.store %cap[%i] = %val : !mogg.tensor, !mogg.dim, f32
   }
   // CHECK: mogg.call.opaque @kernel inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%{{.*}} : !mogg.context)
   mogg.call.opaque @kernel inputs(%t0 : !mogg.tensor) outputs(%epi : !mogg.tensor) context(%ctx : !mogg.context)

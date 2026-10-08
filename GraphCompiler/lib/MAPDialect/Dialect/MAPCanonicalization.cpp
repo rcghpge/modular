@@ -292,17 +292,6 @@ struct InlineConstantScalarLoad : OpRewritePattern<LoadOp> {
 
 } // namespace
 
-StoreOp M::MAP::getUniqueStore(Block &body) {
-  StoreOp store;
-  for (Operation &op : body)
-    if (auto candidate = dyn_cast<StoreOp>(&op)) {
-      ASSERT_STREAM(!store, << "expected exactly one map.store in the body");
-      store = candidate;
-    }
-  ASSERT_STREAM(store, << "expected a map.store in the body");
-  return store;
-}
-
 // Fusion can bind the same value several times in `inputs`, which becomes the
 // lowered kernel's parameter list. Uniquing also lets CSE collapse redundant
 // loads and re-exposes a shared producer as single-use.

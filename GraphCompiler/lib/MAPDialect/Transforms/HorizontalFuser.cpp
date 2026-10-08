@@ -7,10 +7,13 @@
 // Merges two sibling foreaches over the same index space that share an input
 // into one multi-output kernel, so the shared operand is loaded once. Unlike
 // the other fusers this pairs siblings rather than a producer with a consumer.
+// It also moves a consumer into its producer's epilogue when the producer's
+// result has other readers, which output fusion leaves alone.
 //
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MAPDialect/Support/OutputFusion.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOOps.h"
@@ -18,6 +21,7 @@
 #include "GraphCompiler/Support/DataflowUtils.h"
 
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/DenseMap.h"
 
 #include <tuple>
@@ -122,6 +126,146 @@ bool fusible(IterForeachOp a, IterForeachOp b) {
   return !dataflowGraphDependsOn(b, a) && !dataflowGraphDependsOn(a, b);
 }
 
+// The producer's own output store and each consumer of that result write one
+// element of the same index space, so they are siblings -- but one of them
+// sits inside the producer, where `fuse` cannot reach it. So the merge goes
+// the other way: the consumer moves into the producer's epilogue and stores
+// beside the store already there, which is the one the producer still owes the
+// readers fusion cannot absorb. Output fusion will not do this, since it takes
+// a result with a single reader.
+bool fuseEscapingReader(IterOpaqueOp &dst) {
+  for (unsigned idx = 0, e = dst.getNumNonChainResults(); idx < e; ++idx) {
+    Value res = dst->getResult(idx);
+    if (!isa<MO::TensorType>(res.getType()))
+      continue;
+
+    IterForeachOp src;
+    unsigned numConsumers = 0;
+    bool escapes = false;
+    for (OpOperand &use : res.getUses()) {
+      auto consumer = dyn_cast<IterForeachOp>(use.getOwner());
+      if (consumer && use.getOwner()->getBlock() == dst->getBlock()) {
+        ++numConsumers;
+        src = consumer;
+        continue;
+      }
+      escapes = true;
+    }
+    // Without an escaping reader this is a plain producer/consumer edge that
+    // output fusion already takes. More than one consumer waits for `fuse` to
+    // merge them with each other first, since moving one in would strand the
+    // other behind a producer it can no longer reach.
+    if (!escapes || numConsumers != 1)
+      continue;
+    if (src.getChain() || src.getHasReadEffect() || src.getHasWriteEffect())
+      continue;
+    if (llvm::count(src.getInputs(), res) != 1)
+      continue;
+    if (llvm::any_of(src->getResultTypes(),
+                     [](Type t) { return !isa<MO::TensorType>(t); }) ||
+        llvm::any_of(dst->getResultTypes(),
+                     [](Type t) { return !isa<MO::TensorType>(t); }))
+      continue;
+
+    IterEpilogueOp epilogueOp = dst.getEpilogueForResult(idx);
+    if (!epilogueOp)
+      continue;
+    Block &epilogueBody = epilogueOp.getBody().front();
+    SmallVector<StoreOp> epilogueStores = getOutputStores(epilogueBody);
+    Block &srcBody = src.getBody().front();
+    SmallVector<StoreOp> srcStores = getOutputStores(srcBody);
+    if (epilogueStores.size() != 1 || srcStores.size() != src.getNumResults())
+      continue;
+
+    // The consumer must read the fused operand at its own loop index: the
+    // epilogue hands over one element, with no way to honor a transform.
+    unsigned fusionArgIdx =
+        llvm::find(src.getInputs(), res) - src.getInputs().begin();
+    BlockArgument fusionArg = srcBody.getArgument(fusionArgIdx);
+    BlockArgument srcLoopIdx = srcBody.getArguments().back();
+    if (llvm::any_of(fusionArg.getUsers(), [&](Operation *user) {
+          auto load = dyn_cast<LoadOp>(user);
+          return !load || load.getIndex() != srcLoopIdx;
+        }))
+      continue;
+    // Another operand reaching back through `dst` would make the merge a cycle.
+    if (llvm::any_of(src->getOperands(), [&](Value other) {
+          return other != res && dataflowGraphDependsOn(other, dst);
+        }))
+      continue;
+
+    IRRewriter rewriter(dst.getContext());
+    unsigned numDpsBefore = dst.getNumNonChainResults();
+    dst = growOutputs(dst, src->getResultTypes(), rewriter);
+    epilogueOp = dst.getEpilogueForResult(idx);
+    Block &body = epilogueOp.getBody().front();
+
+    StoreOp epilogueStore = getOutputStores(body).front();
+    Value val = epilogueStore.getValue();
+    Value storeIdx = epilogueStore.getIndex();
+    Location loc = epilogueStore.getLoc();
+
+    // The fused operand's block arg is a tensor; `val` is already the scalar
+    // `dst` produced for this element, so every load of it becomes `val`.
+    for (Operation *user : llvm::to_vector(fusionArg.getUsers())) {
+      auto load = cast<LoadOp>(user);
+      load.getResult().replaceAllUsesWith(val);
+      load.erase();
+    }
+
+    // Every other input becomes a capture, threaded through a new input of
+    // `dst` -- the epilogue is isolated from above.
+    for (auto [i, input] : llvm::enumerate(src.getInputs())) {
+      if (i == fusionArgIdx)
+        continue;
+      unsigned dstInputIdx = dst.getInputs().size();
+      dst.insertInputsAt(dstInputIdx, input);
+      epilogueOp.getCapturesMutable().append(
+          dst.getInputBlockArgs()[dstInputIdx]);
+      srcBody.getArgument(i).replaceAllUsesWith(
+          body.addArgument(input.getType(), input.getLoc()));
+    }
+
+    // The grown output block args are the consumer's destinations.
+    SmallVector<Value> caps;
+    Block::BlockArgListType outArgs = dst.getOutputBlockArgs();
+    for (unsigned i = 0, n = src->getNumResults(); i < n; ++i) {
+      BlockArgument outArg = outArgs[numDpsBefore + i];
+      epilogueOp.getCapturesMutable().append(outArg);
+      caps.push_back(body.addArgument(outArg.getType(), outArg.getLoc()));
+    }
+
+    SmallVector<Value> storedVals;
+    for (StoreOp store : getOutputStores(srcBody))
+      storedVals.push_back(store.getValue());
+    for (StoreOp store : getOutputStores(srcBody))
+      store.erase();
+    srcLoopIdx.replaceAllUsesWith(storeIdx);
+    srcBody.eraseArguments(0, srcBody.getNumArguments());
+
+    // The producer's own store stays: it is what the escaping reader is owed.
+    rewriter.inlineBlockBefore(&srcBody, &body, body.end());
+    rewriter.setInsertionPointToEnd(&body);
+    for (auto [cap, storedVal] : llvm::zip_equal(caps, storedVals))
+      StoreOp::create(rewriter, loc, cap, storeIdx, storedVal);
+
+    SmallVector<Value> replacements;
+    for (unsigned i = 0, n = src->getNumResults(); i < n; ++i)
+      replacements.push_back(dst->getResult(numDpsBefore + i));
+    src->replaceAllUsesWith(replacements);
+
+    dst.setFusionInfoAttr(MOGG::createFusionInfo<MOGG::FusionEpilogueAttr>(
+        dst.getContext(), {dst.getOperation(), src.getOperation()},
+        {static_cast<uint32_t>(idx)}));
+    dst->setLoc(
+        mlir::FusedLoc::get(dst.getContext(), {src->getLoc(), dst->getLoc()}));
+    src->erase();
+    dedupeKernelInputs(dst, rewriter);
+    return true;
+  }
+  return false;
+}
+
 void fuse(IterForeachOp a, IterForeachOp b) {
   // Merged inputs: `a`'s, then the ones only `b` carries. A shared operand
   // keeps `a`'s slot, which is what collapses the duplicate load.
@@ -207,7 +351,18 @@ struct FuseHorizontalPass
     // what another can fuse, so each block runs to its own fixpoint, as in
     // `fuseOutput`. Unlike there, a block is not sorted first: the greedy
     // choices follow block order.
-    getOperation().getBody().walk([&](Block *block) { fuseSiblings(*block); });
+    getOperation().getBody().walk([&](Block *block) { fuseBlock(*block); });
+  }
+
+  void fuseBlock(Block &block) {
+    // Pairing can leave a producer one consumer for the merge, and a merge can
+    // expose a new pair, so alternate until neither fuses anything.
+    while (true) {
+      bool pairedSiblings = fuseSiblings(block);
+      bool mergedReaders = fuseEscapingReaders(block);
+      if (!pairedSiblings && !mergedReaders)
+        break;
+    }
   }
 
   // Returns whether any pair was fused.
@@ -253,6 +408,27 @@ struct FuseHorizontalPass
       }
     }
     return fusedAny;
+  }
+
+  // Returns whether any consumer was merged.
+  bool fuseEscapingReaders(Block &block) {
+    bool mergedAny = false;
+    // Merging a consumer into a producer's epilogue rebuilds the producer, so
+    // the scan restarts after each one.
+    bool merged = true;
+    while (merged) {
+      merged = false;
+      auto opaques = llvm::to_vector(block.getOps<IterOpaqueOp>());
+      for (IterOpaqueOp dst : opaques) {
+        if (fuseEscapingReader(dst)) {
+          ++numKernelsFused;
+          merged = true;
+          mergedAny = true;
+          break;
+        }
+      }
+    }
+    return mergedAny;
   }
 
   Statistic numKernelsFused{this, "num-kernels-fused",
