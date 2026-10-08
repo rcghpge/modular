@@ -261,36 +261,6 @@ def MOComposite_RMSNormResidualAddOp : MO_CompositeOp<"rms_norm_residual_add", [
 }
 
 //===----------------------------------------------------------------------===//
-// FusedConcatSliceOp
-//===----------------------------------------------------------------------===//
-
-def MOComposite_FusedConcatSliceOp : MO_CompositeOp<"concat_slice", [
-  DeclareOpInterfaceMethods<MO_ParamDeclaration>,
-  MO_SingleDevice
-]> {
-  let summary = "Fused Concatenation + slice operation";
-  let description = [{
-    Returns both results of:
-    %concat = mo.concat[axis](inputs)
-    %slice = mo.slice(%concat)
-  }];
-
-  let arguments = (ins
-    IndexAttr:$axis,
-    Variadic<MO_Tensor>:$inputs,
-    ArrayAttr:$static_starts,
-    ArrayAttr:$static_steps,
-    MO_ParamDecls:$outputParamDecls);
-  let results = (outs MO_Tensor:$concatResult, MO_Tensor: $sliceResult);
-
-  let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls)
-    `[` $axis `]`
-    `(` $inputs `)` attr-dict `:` functional-type($inputs, results)
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // FusedMatmulAddOp
 //===----------------------------------------------------------------------===//
 
