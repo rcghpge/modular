@@ -3416,7 +3416,7 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
 
 def MO_ScatterOp : MO_TensorOp<"scatter", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly,
+  MO_SingleDevice,
 ]> {
   let summary = "`scatter` operation";
   let description = [{
@@ -3459,7 +3459,7 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [
 
 class MO_ScatterReductionOp<string name, list<Trait> traits = []> :
   MO_TensorOp<"scatter." # name, traits # [
-    MO_HostOnly,
+    MO_SingleDeviceWithHostOperands<["axis"]>,
     MO_ScatterLikeTraits,
   ]> {
   let arguments = (ins
