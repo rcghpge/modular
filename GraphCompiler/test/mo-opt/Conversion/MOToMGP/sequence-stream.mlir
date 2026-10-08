@@ -21,7 +21,7 @@
 // body's result, and the join waits for the add's other input first. The host
 // thus enqueues the main-stream relu before the wait.
 // CHECK: %[[JOININ:[0-9]+]] = grt.chain.create ({{.*}}%[[MAIN]],
-// CHECK-NEXT: %[[JOIN:[0-9]+]] = mgp.device_wait(%[[JOININ]], %{{[a-z0-9]+}}, %[[BASE]], %[[VIEW]]) {bDevice = #M.device_ref<"gpu", 0>, isSideStreamJoin}
+// CHECK-NEXT: %[[JOIN:[0-9]+]] = mgp.device_wait(%[[JOININ]], %{{[a-z0-9]+}}, %[[BASE]], %[[VIEW]]) device <"gpu", 0> isSideStreamJoin
 // The input stays alive until the join, so the base stream cannot reuse it
 // while the side stream still reads it.
 // CHECK-NEXT: mgp.extend.lifetime %[[JOIN]], %[[A]] :

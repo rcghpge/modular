@@ -4,7 +4,7 @@
 // stable tensor's spec from the tensor itself, but a consumer on another
 // device has no tensor to ask, so a dynamic shape cannot cross devices yet.
 
-mgp.model @dynamic_stable_crosses_devices : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
+mgp.model @dynamic_stable_crosses_devices device_graph : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
   init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -59,4 +59,4 @@ mgp.model @dynamic_stable_crosses_devices : mof devices [#M.device_ref<"gpu", 0>
   } -> !mgp.tensor<2x3xf32, <"gpu", 1>>
 
   mef.output %ch0, %c0 : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 1>>
-} {isDeviceGraph}
+}

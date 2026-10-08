@@ -18,9 +18,6 @@ include "mlir/IR/DialectBase.td"
 //===----------------------------------------------------------------------===//
 
 def MAPDialect : Dialect {
-  // TODO(GEX-4321): Migrate assembly formats to strict properties before
-  // upstream removes this opt-out.
-  let useStrictPropertiesInAssemblyFormat = 0;
   let name = "map";
 
   let summary = "Modular Access Primitives dialect.";

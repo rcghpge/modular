@@ -20,7 +20,7 @@ mo.graph @folds_constant_into_opaque_call(
 ) -> !mo.tensor<[2, 2], f32> {
   %weights = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
   %y = map.iter.opaque inputs (%x : !mo.tensor<[2, 2], f32>, %weights as %w : !mo.tensor<[2, 2], f32>) outputs (%out : !mo.tensor<[2, 2], f32>) {
-    map.call.opaque @my_matmul[] inputs (%x, %w) outputs (%out) {kernelName = "my_matmul"} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>)
+    map.call.opaque @my_matmul[] inputs (%x, %w) outputs (%out) kernelName = "my_matmul" : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %y : !mo.tensor<[2, 2], f32>
 }

@@ -69,8 +69,8 @@ mgp.model @mgp_device_profile : mof devices [#M.device_ref<"cpu", 0>, #M.device_
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
-  %ch1 = mgp.device.context.profile.start %arg0, %gpu, { cTag="", dFilePath="" } : !mgp.device_context<<"gpu", 0>>
-  %ch2 = mgp.device.context.profile.start %ch1, %gpu, { cTag="", dFilePath="" } : !mgp.device_context<<"gpu", 0>>
+  %ch1 = mgp.device.context.profile.start %arg0, %gpu, cTag = "", dFilePath = "" : !mgp.device_context<<"gpu", 0>>
+  %ch2 = mgp.device.context.profile.start %ch1, %gpu, cTag = "", dFilePath = "" : !mgp.device_context<<"gpu", 0>>
   mef.output %ch2 : !mef.chain
 }
 
@@ -175,6 +175,6 @@ mgp.model @mgp_sync : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu",
   %ch2 = mgp.runtime.create %ch0, %ctx[1]
   mef.output %ch2, %ctx, %weights, %cpu, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
 } execute(%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %gpu: !mgp.device_context<<"gpu", 0>>) -> !mef.chain {
-  %out_ch = mgp.sync(%ch0, %ctx, %gpu) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %out_ch = mgp.sync(%ch0, %ctx, %gpu) device <"gpu", 0> {aRuntimeSlot = 1 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   mef.output %out_ch : !mef.chain
 }

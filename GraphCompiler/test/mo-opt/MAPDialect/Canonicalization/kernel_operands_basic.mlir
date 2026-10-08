@@ -12,7 +12,7 @@ mo.graph @drops_unused_input(
   %unused: !mo.tensor<[2, 3, 4], f32>
 ) -> !mo.tensor<[2, 3, 4], f32> {
   %y = map.iter.opaque inputs (%used : !mo.tensor<[2, 3, 4], f32>, %unused : !mo.tensor<[2, 3, 4], f32>) outputs (%out : !mo.tensor<[2, 3, 4], f32>) {
-    map.call.opaque @kernels.relu[] inputs (%used) outputs (%out) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
+    map.call.opaque @kernels.relu[] inputs (%used) outputs (%out) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %y : !mo.tensor<[2, 3, 4], f32>
 }
@@ -25,7 +25,7 @@ mo.graph @dedupes_repeated_input(
   %x: !mo.tensor<[2, 3, 4], f32>
 ) -> !mo.tensor<[2, 3, 4], f32> {
   %y = map.iter.opaque inputs (%x as %a : !mo.tensor<[2, 3, 4], f32>, %x as %b : !mo.tensor<[2, 3, 4], f32>) outputs (%out : !mo.tensor<[2, 3, 4], f32>) {
-    map.call.opaque @kernels.add[] inputs (%a, %b) outputs (%out) {kernelName = "kernels.add"} : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
+    map.call.opaque @kernels.add[] inputs (%a, %b) outputs (%out) kernelName = "kernels.add" : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %y : !mo.tensor<[2, 3, 4], f32>
 }
@@ -41,7 +41,7 @@ mo.graph @keeps_prologue_captured_input(
       %pval = map.load %pcap[%pidx] : !mo.tensor<[2, 3, 4], f32>
       map.yield %pval : f32
     } : !mo.tensor<[2, 3, 4], f32>
-    map.call.opaque @kernels.relu[] inputs (%pro) outputs (%out) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
+    map.call.opaque @kernels.relu[] inputs (%pro) outputs (%out) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %y : !mo.tensor<[2, 3, 4], f32>
 }
@@ -63,7 +63,7 @@ mo.graph @dedupes_prologue_captures(
       %pval1 = map.load %pcap1[%pidx] : !mo.tensor<[2, 3, 4], f32>
       map.yield %pval1 : f32
     } : !mo.tensor<[2, 3, 4], f32>
-    map.call.opaque @kernels.relu[] inputs (%pro) outputs (%out) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
+    map.call.opaque @kernels.relu[] inputs (%pro) outputs (%out) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %y : !mo.tensor<[2, 3, 4], f32>
 }
@@ -88,7 +88,7 @@ mo.graph @dedupes_epilogue_captures(
       %bias1 = map.load %ecap1[%eidx] : !mo.tensor<[2, 3, 4], f32>
       map.store %ecap[%eidx] = %eval : !mo.tensor<[2, 3, 4], f32>
     } : !mo.tensor<[2, 3, 4], f32>
-    map.call.opaque @kernels.relu[] inputs (%a) outputs (%epi) {kernelName = "kernels.relu"} : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
+    map.call.opaque @kernels.relu[] inputs (%a) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %y : !mo.tensor<[2, 3, 4], f32>
 }

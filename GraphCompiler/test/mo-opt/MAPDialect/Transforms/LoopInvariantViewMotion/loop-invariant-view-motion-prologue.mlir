@@ -40,7 +40,7 @@ mo.graph @prologueSliceHoist(%input: !mo.tensor<[10, 64], f32>,
       %v = map.load %input0[%idx_] : !mo.tensor<[10, 64], f32>
       map.yield %v : f32
     } : !mo.tensor<[3, 32], f32>
-    map.call.opaque @kernels.relu[] inputs (%pro) outputs (%out) {kernelName = "kernels.relu"} : (!mo.tensor<[3, 32], f32>) -> (!mo.tensor<[3, 32], f32>)
+    map.call.opaque @kernels.relu[] inputs (%pro) outputs (%out) kernelName = "kernels.relu" : (!mo.tensor<[3, 32], f32>) -> (!mo.tensor<[3, 32], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[3, 32], f32>
 }

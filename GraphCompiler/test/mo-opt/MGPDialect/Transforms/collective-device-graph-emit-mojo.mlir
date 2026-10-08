@@ -44,7 +44,7 @@
 // CHECK: {{[a-zA-Z_0-9]+}} = builtin_primitives.primitives.mogg_async_pack_value([[G0]]^)
 // CHECK: {{[a-zA-Z_0-9]+}} = builtin_primitives.primitives.mogg_async_pack_value([[G1]]^)
 
-mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
+mgp.model @dg_collective device_graph : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
   init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -63,7 +63,7 @@ mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"
 
   mef.output %ch0, %c0, %c1
       : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -83,7 +83,7 @@ mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"
 // CHECK: builtin_primitives.primitives.mgp_device_graph_stable_tensor[2, 2, DType.float32]([[SLOT]], [[SPEC]])
 // CHECK: max.gpu.host.device_graph.DeviceGraph.create_collective({{[a-zA-Z_0-9]+}}, [[BUILD]], {{[a-zA-Z_0-9]+}}, cache = {{var[_0-9]+}}, stable_devices = [0])
 
-mgp.model @dg_collective_stable : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
+mgp.model @dg_collective_stable device_graph : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
   init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -108,4 +108,4 @@ mgp.model @dg_collective_stable : mof devices [#M.device_ref<"gpu", 0>, #M.devic
 
   mef.output %ch0, %c0, %c1
       : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
-} {isDeviceGraph}
+}

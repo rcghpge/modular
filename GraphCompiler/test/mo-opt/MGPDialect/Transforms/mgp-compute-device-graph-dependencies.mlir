@@ -34,7 +34,7 @@
 // CHECK: mgp.device_graph.collective.yield %[[B0]] : !mgp.tensor<2x3xf32, <"gpu", 0>>
 // CHECK-NOT: mogg.generic.compiled.region
 
-mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>]
+mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>]
   init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -58,7 +58,7 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>]
     mgp.device_graph.collective.yield %b_ : !mgp.tensor<2x3xf32, <"gpu", 0>>
   } : !mgp.tensor<2x3xf32, <"gpu", 0>>
   mef.output %ch0, %staging : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -84,7 +84,7 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>]
 // CHECK: mgp.device_graph.dependencies.yield %{{.*}} : !mgp.tensor<2x3xf32, <"gpu", 0>>
 // CHECK-NOT: mogg.generic.compiled.region
 
-mgp.model @dg_ctx : mof devices [#M.device_ref<"gpu", 0>]
+mgp.model @dg_ctx device_graph : mof devices [#M.device_ref<"gpu", 0>]
   init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -105,7 +105,7 @@ mgp.model @dg_ctx : mof devices [#M.device_ref<"gpu", 0>]
     mgp.device_graph.collective.yield %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
   } : !mgp.tensor<2x3xf32, <"gpu", 0>>
   mef.output %ch0, %staging : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -125,7 +125,7 @@ mgp.model @dg_ctx : mof devices [#M.device_ref<"gpu", 0>]
 // CHECK-NOT: builtin.unrealized_conversion_cast %{{.*}} : !mgp.device_graph.builder to !mgp.device_context<<"cpu", 0>>
 // CHECK: mogg.async.pack(%[[CPU:[a-zA-Z0-9_]+]]) : !mgp.device_context<<"cpu", 0>>
 
-mgp.model @dg_host_ctx : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>]
+mgp.model @dg_host_ctx device_graph : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>]
   init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -146,7 +146,7 @@ mgp.model @dg_host_ctx : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gp
     mgp.device_graph.collective.yield %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
   } : !mgp.tensor<2x3xf32, <"gpu", 0>>
   mef.output %ch0, %staging : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -213,7 +213,7 @@ mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>]
 // CHECK: } : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.buffer<<"gpu", 1>>
 // CHECK-NOT: mogg.generic.compiled.region
 
-mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
+mgp.model @dg_collective device_graph : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
   init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
@@ -251,4 +251,4 @@ mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"
     mgp.device_graph.collective.yield %c : !mgp.buffer<<"gpu", 1>>
   } : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.buffer<<"gpu", 1>>
   mef.output %ch0, %outs#0, %outs#1 : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.buffer<<"gpu", 1>>
-} {isDeviceGraph}
+}

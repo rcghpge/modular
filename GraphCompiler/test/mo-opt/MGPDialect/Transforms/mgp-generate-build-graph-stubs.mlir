@@ -53,7 +53,7 @@ mogg.kernel.stub @stub_1 (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.con
 // CHECK-NOT: unrealized_conversion_cast
 // CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %[[DEPB]] : {{.*}}, !mgp.device_graph.builder
 // CHECK-NOT: -> !mgp.device_graph.node
-mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -73,7 +73,7 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -142,7 +142,7 @@ mogg.kernel.stub @stub_1 (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.con
 // enclosing dependencies builder block arg as the launch operand.
 // CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
 // CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %{{.*}} : {{.*}}, !mgp.device_graph.builder
-mgp.model @dg_execute_only : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg_execute_only device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -160,7 +160,7 @@ mgp.model @dg_execute_only : mof devices [#M.device_ref<"gpu", 0>] init (%weight
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -181,7 +181,7 @@ mgp.model @dg_execute_only : mof devices [#M.device_ref<"gpu", 0>] init (%weight
 // CHECK-NOT: mgp.buffer.alloc
 // CHECK: %[[DEV:[a-zA-Z0-9_]+]] = mgp.device_graph.alloc %{{.*}}, %{{.*}}, %[[B]], align 16 : !mgp.buffer<<"gpu", 0>>
 // CHECK: "test.sink"(%[[HOST]], %[[DEV]])
-mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg_host_alloc device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -198,7 +198,7 @@ mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights:
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -211,7 +211,7 @@ mgp.model @dg_host_alloc : mof devices [#M.device_ref<"gpu", 0>] init (%weights:
 // CHECK-NEXT: ^bb0(%[[DB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK: %[[BUF:[a-zA-Z0-9_]+]] = mgp.device_graph.alloc %{{.*}}, %{{.*}}, %[[DB]], align 16 : !mgp.buffer{{$}}
 // CHECK: "test.sink"(%[[BUF]])
-mgp.model @dg_alloc_in_dependencies : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg_alloc_in_dependencies device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -229,7 +229,7 @@ mgp.model @dg_alloc_in_dependencies : mof devices [#M.device_ref<"gpu", 0>] init
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -255,7 +255,7 @@ mogg.kernel.stub @stub_1 (%in: !mogg.tensor, %ctx: !mogg.context, %out: !mogg.te
 // CHECK-NEXT: ^bb0(%[[DEPB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK-NOT: unrealized_conversion_cast
 // CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %[[DEPB]], %{{.*}} : !mogg.tensor, !mgp.device_graph.builder, !mogg.tensor
-mgp.model @dg_ctx_mid : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg_ctx_mid device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -273,7 +273,7 @@ mgp.model @dg_ctx_mid : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -299,7 +299,7 @@ mogg.kernel.stub @stub_1 (%aux: !mogg.context, %in: !mogg.tensor, %out: !mogg.te
 // CHECK: mgp.device_graph.collective builder(%{{.*}}) stable() <"gpu", 0> {
 // CHECK: %[[AUX:[a-zA-Z0-9_]+]] = "test.aux_ctx"()
 // CHECK: mogg.call.stub @stub_1_build_graph %[[AUX]], %{{.*}}, %{{.*}}, %{{.*}} : !mgp.device_context<<"gpu", 0>>, !mogg.tensor, !mogg.tensor, !mgp.device_graph.builder
-mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg_two_ctx device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -318,7 +318,7 @@ mgp.model @dg_two_ctx : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !m
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -348,7 +348,7 @@ mogg.kernel.stub @stub_1 (%p: !mogg.pointer, %ctx: !mogg.context) fusionInfo = "
 // CHECK-NEXT: ^bb0(%[[DB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK-NEXT: mogg.call.stub @stub_1_build_graph %{{.*}}, %[[DB]] : !mogg.pointer, !mgp.device_graph.builder
 // CHECK-NOT: mogg.rebind
-mgp.model @dg_map_foreach : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg_map_foreach device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -365,7 +365,7 @@ mgp.model @dg_map_foreach : mof devices [#M.device_ref<"gpu", 0>] init (%weights
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -389,7 +389,7 @@ mogg.kernel.stub @stub_1 (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.con
 // CHECK: mgp.device_graph.dependencies builder(%{{.*}}) dependencies() {
 // CHECK-NEXT: ^bb0(%[[DB:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder):
 // CHECK-NEXT: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %[[DB]] : {{.*}}!mgp.device_graph.builder
-mgp.model @dg_map_opaque : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg_map_opaque device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -407,7 +407,7 @@ mgp.model @dg_map_opaque : mof devices [#M.device_ref<"gpu", 0>] init (%weights:
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}
 
 // -----
 
@@ -446,7 +446,7 @@ mogg.kernel.stub @stub_1 (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.con
 // CHECK: mogg.call.stub @stub_1_build_graph %{{.*}}, %{{.*}}, %[[DEPB1]] : {{.*}}, !mgp.device_graph.builder
 // CHECK: mgp.device_graph.collective.yield
 // CHECK: }
-mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>] init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
+mgp.model @dg_collective device_graph : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>] init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
   mef.output %ch0, %ctx, %weights, %gpu0, %gpu1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>, !mgp.device_context<<"gpu", 1>>
@@ -475,4 +475,4 @@ mgp.model @dg_collective : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}

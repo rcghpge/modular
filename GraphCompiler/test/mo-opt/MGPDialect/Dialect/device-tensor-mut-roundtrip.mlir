@@ -58,8 +58,8 @@ func.func @tensor_create_mut(
     %ch: !mef.chain,
     %buf: !mgp.buffer<<"gpu", 0>>,
     %spec: !mgp.tensor_spec<3x5xf32>) -> !mgp.tensor<3x5xf32, <"gpu", 0>, mut> {
-  // CHECK: mgp.tensor.create %{{.*}}, %{{.*}}, %{{.*}} {mut} : !mgp.tensor<3x5xf32, <"gpu", 0>, mut>
-  %0 = mgp.tensor.create %ch, %buf, %spec {mut} : !mgp.tensor<3x5xf32, <"gpu", 0>, mut>
+  // CHECK: mgp.tensor.create %{{.*}}, %{{.*}}, %{{.*}} mut : !mgp.tensor<3x5xf32, <"gpu", 0>, mut>
+  %0 = mgp.tensor.create %ch, %buf, %spec mut : !mgp.tensor<3x5xf32, <"gpu", 0>, mut>
   mef.output %0 : !mgp.tensor<3x5xf32, <"gpu", 0>, mut>
 }
 
@@ -81,8 +81,8 @@ func.func @tensor_create_stable(
     %ch: !mef.chain,
     %buf: !mgp.buffer<<"gpu", 0>>,
     %spec: !mgp.tensor_spec<3x5xf32>) -> !mgp.tensor<3x5xf32, <"gpu", 0>, stable> {
-  // CHECK: mgp.tensor.create %{{.*}}, %{{.*}}, %{{.*}} {stable} : !mgp.tensor<3x5xf32, <"gpu", 0>, stable>
-  %0 = mgp.tensor.create %ch, %buf, %spec {stable} : !mgp.tensor<3x5xf32, <"gpu", 0>, stable>
+  // CHECK: mgp.tensor.create %{{.*}}, %{{.*}}, %{{.*}} stable : !mgp.tensor<3x5xf32, <"gpu", 0>, stable>
+  %0 = mgp.tensor.create %ch, %buf, %spec stable : !mgp.tensor<3x5xf32, <"gpu", 0>, stable>
   mef.output %0 : !mgp.tensor<3x5xf32, <"gpu", 0>, stable>
 }
 
@@ -104,7 +104,7 @@ func.func @tensor_create_mut_stable(
     %ch: !mef.chain,
     %buf: !mgp.buffer<<"gpu", 0>>,
     %spec: !mgp.tensor_spec<3x5xf32>) -> !mgp.tensor<3x5xf32, <"gpu", 0>, mut, stable> {
-  // CHECK: mgp.tensor.create %{{.*}}, %{{.*}}, %{{.*}} {mut, stable} : !mgp.tensor<3x5xf32, <"gpu", 0>, mut, stable>
-  %0 = mgp.tensor.create %ch, %buf, %spec {mut, stable} : !mgp.tensor<3x5xf32, <"gpu", 0>, mut, stable>
+  // CHECK: mgp.tensor.create %{{.*}}, %{{.*}}, %{{.*}} mut stable : !mgp.tensor<3x5xf32, <"gpu", 0>, mut, stable>
+  %0 = mgp.tensor.create %ch, %buf, %spec mut stable : !mgp.tensor<3x5xf32, <"gpu", 0>, mut, stable>
   mef.output %0 : !mgp.tensor<3x5xf32, <"gpu", 0>, mut, stable>
 }

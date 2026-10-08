@@ -407,6 +407,7 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
 
   let assemblyFormat = [{
     `inputs` `(` ($inputs^ `:` qualified(type($inputs)))? `)`
+    (`constantResources` `=` $constantResources^)?
     $body attr-dict (`->` qualified(type($stagedResults))^)?
   }];
 

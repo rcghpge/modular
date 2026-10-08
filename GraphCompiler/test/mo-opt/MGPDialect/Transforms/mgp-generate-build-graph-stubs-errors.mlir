@@ -17,7 +17,7 @@ mogg.kernel.stub @stub_1 (%p: !mogg.pointer) fusionInfo = "test.k":1 attributes 
   mogg.output
 }
 
-mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 1
   mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
@@ -32,4 +32,4 @@ mgp.model @dg : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaqu
     mgp.device_graph.collective.yield
   }
   mef.output %ch0 : !mef.chain
-} {isDeviceGraph}
+}

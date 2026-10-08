@@ -48,7 +48,7 @@ mo.graph @sliceBoundViewIntoPrologue_noFuse(
       %v = map.load %cdata[%si] : !mo.tensor<[8], si64>
       map.yield %v : si64
     } : !mo.tensor<[1], si64>
-    map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) {kernelName = "kernels.consumer"} : (!mo.tensor<[1], si64>) -> (!mo.tensor<[1], si64>)
+    map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) kernelName = "kernels.consumer" : (!mo.tensor<[1], si64>) -> (!mo.tensor<[1], si64>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[1], si64>
 }

@@ -57,7 +57,8 @@ def MGP_ResourceConstantOp : MGP_Op<"resource.constant", [
   }];
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` `resourceSlot` `=` $resourceSlot attr-dict
+        `:` functional-type(operands, results)
   }];
 }
 
@@ -180,7 +181,8 @@ def TensorCreateOp : MGP_Op<"tensor.create", [
   );
   let results = (outs MGP_DeviceTensorType:$outTensor);
   let assemblyFormat = [{
-    $inChain `,` $buffer `,` $tensorSpec attr-dict
+    $inChain `,` $buffer `,` $tensorSpec
+    (`mut` $mut^)? (`stable` $stable^)? attr-dict
     `:` custom<TensorTypeToDeviceBufferSpec>(type($outTensor),
           type($buffer), type($tensorSpec), type($inChain))
   }];
@@ -661,7 +663,9 @@ def ModelOp : MGP_Op<"model", [
   ];
 
   let assemblyFormat = [{
-    $sym_name (`subgraph` $isSubgraph^)?`:` custom<ClassName>($frameworkName)
+    custom<SymbolVisibility>($sym_visibility) `` $sym_name
+      (`subgraph` $isSubgraph^)? (`device_graph` $isDeviceGraph^)?
+      `:` custom<ClassName>($frameworkName)
       ($theExtraAttrs^)?
       `devices` $devices
       `init` custom<InitRegion>($init)
@@ -982,7 +986,12 @@ def MGP_CallOp : MGP_Op<"call", [
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
+    $callee `(` $operands `)`
+    (`arg_attrs` `=` $arg_attrs^)?
+    (`isGlobalizedIndex` `=` $isGlobalizedIndex^)?
+    (`prefix` `=` $prefix^)?
+    (`res_attrs` `=` $res_attrs^)?
+    attr-dict `:` functional-type($operands, results)
   }];
 
   let extraClassDeclaration = [{
@@ -1106,7 +1115,9 @@ def DeviceContextProfileStartOp : MGP_DeviceOp<"device.context.profile.start"> {
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
+    $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?
+      `cTag` `=` $cTag `,` `dFilePath` `=` $dFilePath
+      attr-dict `:` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
   let extraClassDefinition = [{
@@ -1130,7 +1141,9 @@ def DeviceContextProfileEndOp : MGP_DeviceOp<"device.context.profile.end"> {
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?  attr-dict `:` qualified(type($deviceContext))
+    $inChain `,` $deviceContext `,` ( `device` $bDevice^ )?
+      `cTag` `=` $cTag `,` `dFilePath` `=` $dFilePath
+      attr-dict `:` qualified(type($deviceContext))
   }];
   let hasVerifier = 1;
   let extraClassDefinition = [{
@@ -1508,7 +1521,7 @@ def BufferMemsetOp : MGP_DeviceOp<"buffer.memset", [
 
     Example:
     ```mlir
-      %ch1 = mgp.buffer.memset(%ch0, %buf, %ctx) { valueBits = 0, elemSize = 4 }
+      %ch1 = mgp.buffer.memset(%ch0, %buf, %ctx) elemSize = 4, valueBits = 0
                : (!mef.chain, !mgp.buffer<<"gpu", 3>>, !mgp.device_context<<"gpu", 3>>) -> !mef.chain
     ```
   }];
@@ -1522,7 +1535,8 @@ def BufferMemsetOp : MGP_DeviceOp<"buffer.memset", [
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` `elemSize` `=` $elemSize `,` `valueBits` `=` $valueBits
+        attr-dict `:` functional-type(operands, results)
   }];
   let hasVerifier = 1;
 
@@ -1683,7 +1697,7 @@ def BufferConcatOp : MGP_DeviceOp<"buffer.concat", [
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
+    `(` operands `)` (`device` $bDevice^)? attr-dict `:`
         functional-type(operands, results)
   }];
   let hasVerifier = 1;
@@ -1726,7 +1740,11 @@ def BufferPlanOp : MGP_Op<"buffer.plan", [
   );
 
   let assemblyFormat = [{
-    `(` $runtimeSizes `)` attr-dict `:` functional-type($runtimeSizes, results)
+    `(` $runtimeSizes `)`
+      `<` `alignments` `=` qualified($alignments) `,`
+      `canShare` `=` qualified($canShare)
+      (`,` `staticSizes` `=` qualified($staticSizes)^)? `>`
+      attr-dict `:` functional-type($runtimeSizes, results)
   }];
 
   let hasVerifier = 1;
@@ -2023,7 +2041,7 @@ def MGP_SyncOp : MGP_DeviceOp<"sync", [
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
+    `(` operands `)` (`device` $bDevice^)? attr-dict `:`
         functional-type(operands, results)
   }];
 
@@ -2076,8 +2094,8 @@ def MGP_DeviceWaitOp : MGP_DeviceOp<"device_wait", [
   );
   let results = (outs ChainType:$outChain);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:`
-        functional-type(operands, results)
+    `(` operands `)` `device` $bDevice (`isSideStreamJoin` $isSideStreamJoin^)?
+        attr-dict `:` functional-type(operands, results)
   }];
 
   let extraClassDefinition = [{

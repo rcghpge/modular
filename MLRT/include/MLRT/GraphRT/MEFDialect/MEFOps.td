@@ -141,7 +141,8 @@ def ModelOp
   }];
 
   let assemblyFormat = [{
-    $sym_name `:` custom<FrameworkName>($bFrameworkName)
+    custom<SymbolVisibility>($sym_visibility)
+      `` $sym_name `:` custom<FrameworkName>($bFrameworkName)
       $eModelSignature
       `devices` $aDevices
       `inputDeviceIndices` $fInputDeviceIndices

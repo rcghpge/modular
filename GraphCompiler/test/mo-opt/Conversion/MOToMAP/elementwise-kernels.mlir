@@ -103,7 +103,7 @@ mo.graph @cast_unary(%x: !mo.tensor<[8], f32>) -> !mo.tensor<[8], si32> {
 // CHECK-NEXT:  inputs  (%[[X8]]: !mo.tensor<[4, 3], f32>)
 // CHECK:       index   (%[[IDX8:.*]]: !map.index<2>) -> !mo.tensor<[4, 3], f32> {
 // CHECK-NEXT:  %[[X8V:.*]] = map.load %[[X8]][%[[IDX8]]] : !mo.tensor<[4, 3], f32>
-// CHECK-NEXT:  map.call.elementwise @{{.*}}ElemwiseAddWithParam(%[[IDX8]], %[[X8V]]) {params = {bias = 1 : i64}} : !map.index<2>, f32 -> f32
+// CHECK-NEXT:  map.call.elementwise @{{.*}}ElemwiseAddWithParam[bias = 1 : i64](%[[IDX8]], %[[X8V]]) : !map.index<2>, f32 -> f32
 // CHECK-NEXT:  map.store
 mo.graph @custom_kernel_with_param(%x: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32> {
   %output = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "elemwise_add_with_param", parameters = {"bias" = 1}}(%x) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>

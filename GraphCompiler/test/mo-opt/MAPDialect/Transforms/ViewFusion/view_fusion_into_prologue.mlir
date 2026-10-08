@@ -57,7 +57,7 @@ mo.graph @sliceIntoExistingPrologue(
       %pv = map.load %pc[%pi] : !mo.tensor<[3, 32], f32>
       map.yield %pv : f32
     } : !mo.tensor<[3, 32], f32>
-    map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) {kernelName = "kernels.consumer"} : (!mo.tensor<[3, 32], f32>) -> (!mo.tensor<[3, 32], f32>)
+    map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) kernelName = "kernels.consumer" : (!mo.tensor<[3, 32], f32>) -> (!mo.tensor<[3, 32], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[3, 32], f32>
 }
@@ -96,7 +96,7 @@ mo.graph @elementwiseIntoExistingPrologue_noFuse(
       %pv = map.load %pc[%pi] : !mo.tensor<[4], f32>
       map.yield %pv : f32
     } : !mo.tensor<[4], f32>
-    map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) {kernelName = "kernels.consumer"} : (!mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>)
+    map.call.opaque @kernels.consumer[] inputs (%pro) outputs (%o) kernelName = "kernels.consumer" : (!mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>)
   } {device = #M.device_ref<"cpu", 0>}
   mo.output %res : !mo.tensor<[4], f32>
 }

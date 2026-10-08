@@ -26,10 +26,10 @@ mgp.model @tensor_create_extract : mof devices [#M.device_ref<"cpu", 0>, #M.devi
   %cpu_buf0 = mgp.buffer.constant dense_resource<resource> : !M.aligned_bytes<4, align 128>
   %const0 = mgp.buffer.alloc %ch0, %size, %gpu: !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %dev_chain0 = mgp.buffer.host_to_device %ch0, %cpu_buf0, %const0, %gpu : !mgp.buffer -> !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
-  %sync0 = mgp.sync(%dev_chain0, %ctx, %gpu) {aRuntimeSlot = 2 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %sync0 = mgp.sync(%dev_chain0, %ctx, %gpu) device <"gpu", 0> {aRuntimeSlot = 2 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   %sizeless_const0 = mgp.buffer.alloc %ch0, %size, %gpu: !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %dev_chain1 = mgp.buffer.host_to_device %ch0, %cpu_buf0, %sizeless_const0, %gpu : !mgp.buffer -> !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
-  %sync1 = mgp.sync(%dev_chain1, %ctx, %gpu) {aRuntimeSlot = 2 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %sync1 = mgp.sync(%dev_chain1, %ctx, %gpu) device <"gpu", 0> {aRuntimeSlot = 2 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   %sync = grt.chain.create (%sync0, %sync1)
   %spec0 = mgp.tensor_spec.create %size : !mgp.tensor_spec<1x?xui8>
   %tensor0 = mgp.tensor.create %sync, %sizeless_const0, %spec0 : !mgp.tensor<1x?xui8, <"gpu", 0>>
@@ -37,7 +37,7 @@ mgp.model @tensor_create_extract : mof devices [#M.device_ref<"cpu", 0>, #M.devi
   %spec1 = mgp.tensor.extract.tensor_spec %tensor0 : !mgp.tensor<1x?xui8, <"gpu", 0>>
   %buf_print = mgp.buffer.alloc %ch0, %size, %cpu, align 64 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %ch_buf_d2h = mgp.buffer.device_to_host %sync, %buf1, %buf_print, %gpu : !mgp.buffer<<"gpu", 0>> -> !mgp.buffer, !mgp.device_context<<"gpu", 0>>
-  %ch_d2h_sync = mgp.sync(%ch_buf_d2h, %ctx, %gpu) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %ch_d2h_sync = mgp.sync(%ch_buf_d2h, %ctx, %gpu) device <"gpu", 0> {aRuntimeSlot = 1 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   %ch_extend = mgp.extend.lifetime %ch_d2h_sync, %buf1 : (!mef.chain, !mgp.buffer<<"gpu", 0>>) -> !mef.chain
   %ch2 = mgp.debug.tensor.print %ch_extend, %buf_print, %spec1, "tensor" : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<1x?xui8>) -> !mef.chain
   %ch3 = mgp.debug.print %ch2, %ctx, "debug string", "mgp_test"

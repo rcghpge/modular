@@ -92,8 +92,8 @@ mo.graph @add_with_params_fused(%x: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3
 // CHECK-NEXT:  %[[OUT4:.*]] = map.iter.foreach<[4, 3]>
 // CHECK-NEXT:  inputs (%[[X4]]: !mo.tensor<[4, 3], f32>)
 // CHECK:       %[[X4V:.*]] = map.load %[[X4]][%{{.*}}] : !mo.tensor<[4, 3], f32>
-// CHECK-NEXT:  %[[ADD1:.*]] = map.call.elementwise @{{.*}}ElemwiseAddWithParam(%{{.*}}, %[[X4V]]) {params = {bias = 1 : i64}}
-// CHECK-NEXT:  map.call.elementwise @{{.*}}ElemwiseAddWithParam(%{{.*}}, %[[ADD1]]) {params = {bias = 2 : i64}}
+// CHECK-NEXT:  %[[ADD1:.*]] = map.call.elementwise @{{.*}}ElemwiseAddWithParam[bias = 1 : i64](%{{.*}}, %[[X4V]])
+// CHECK-NEXT:  map.call.elementwise @{{.*}}ElemwiseAddWithParam[bias = 2 : i64](%{{.*}}, %[[ADD1]])
 // CHECK-NEXT:  map.store
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"custom__elemwise_add_with_param"{{.*}}, #mogg.fusion_leaf<"custom__elemwise_add_with_param"{{.*}}]>>
 // CHECK-NOT:   map.iter.foreach

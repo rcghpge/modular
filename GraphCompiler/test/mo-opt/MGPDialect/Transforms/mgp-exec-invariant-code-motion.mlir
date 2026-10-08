@@ -169,7 +169,7 @@ mgp.model @while : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>
 
   %i, %j, %k = grt.while (%ch: !mef.chain, %ctx: !mgp.context, %gpu: !mgp.device_context<<"gpu", 0>>) {
     // Sync is a liftable op
-    %ch2 = mgp.sync(%ch, %ctx, %gpu) {aRuntimeSlot = 2 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+    %ch2 = mgp.sync(%ch, %ctx, %gpu) device <"gpu", 0> {aRuntimeSlot = 2 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
 
     %cond = "some.op"() : () -> i1
     mef.output %ch2, %ctx, %gpu, %cond : !mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>, i1
@@ -194,7 +194,7 @@ mgp.model @extend_lifetime : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref
   %1 = mgp.buffer.constant #M.aligned_bytes<"0x000000000000803F0000004000004040", align 64> : !M.array<16xui8>
   %2 = mgp.buffer.alloc %arg0, %idx16, %arg4, align 256 : !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
   %3 = mgp.buffer.host_to_device %arg0, %1, %2, %arg4 : !mgp.buffer -> !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>
-  %4 = mgp.sync(%3, %arg1, %arg4) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %4 = mgp.sync(%3, %arg1, %arg4) device <"gpu", 0> {aRuntimeSlot = 1 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   %5 = mgp.extend.lifetime  %4, %1 : (!mef.chain, !mgp.buffer) -> !mef.chain
   %6 = mgp.tensor.create %4, %2, %0 : !mgp.tensor<4xf32,<"gpu", 0>>
   %7 = grt.chain.create(%5, %6: !mgp.tensor<4xf32, <"gpu", 0>>)

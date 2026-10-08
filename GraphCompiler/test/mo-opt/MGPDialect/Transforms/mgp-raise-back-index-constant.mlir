@@ -14,7 +14,7 @@
 // CHECK:         mogg.output %[[C]] : index
 mogg.kernel.stub @raise_single(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_single
   attributes {abi = 1 : i32, constantResources = [], device = "cpu", isAsync = false} {
-  %buf = mgp.resource.constant() {resourceSlot = 0 : index} : () -> !mgp.buffer<<"cpu", 0>>
+  %buf = mgp.resource.constant() resourceSlot = 0 : () -> !mgp.buffer<<"cpu", 0>>
   %idx = mgp.buffer.to_index %chain, %buf : !mgp.buffer<<"cpu", 0>>
   mogg.output %idx : index
 }
@@ -27,7 +27,7 @@ mogg.kernel.stub @raise_single(%chain: !mef.chain, %ctx: !mgp.context) -> (index
 // CHECK:         mgp.buffer.to_index
 mogg.kernel.stub @raise_multi(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_multi
   attributes {abi = 1 : i32, constantResources = [], device = "cpu", isAsync = false} {
-  %buf = mgp.resource.constant() {resourceSlot = 0 : index} : () -> !mgp.buffer<<"cpu", 0>>
+  %buf = mgp.resource.constant() resourceSlot = 0 : () -> !mgp.buffer<<"cpu", 0>>
   %idx = mgp.buffer.to_index %chain, %buf : !mgp.buffer<<"cpu", 0>>
   mogg.output %idx : index
 }

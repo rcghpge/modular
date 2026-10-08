@@ -986,6 +986,24 @@ static bool checkAndRemovePrefix(ArrayRef<Type> requiredTypes,
   return true;
 }
 
+/// Parse an optional symbol visibility keyword, mirroring
+/// `function_interface_impl::parseFunctionOp`.
+static ParseResult parseSymbolVisibility(OpAsmParser &p,
+                                         StringAttr &visibility) {
+  StringRef keyword;
+  if (succeeded(
+          p.parseOptionalKeyword(&keyword, {"public", "private", "nested"})))
+    visibility = p.getBuilder().getStringAttr(keyword);
+  return success();
+}
+
+/// Prints the symbol visibility keyword, if present.
+static void printSymbolVisibility(OpAsmPrinter &p, Operation *op,
+                                  StringAttr visibility) {
+  if (visibility)
+    p << visibility.getValue() << ' ';
+}
+
 /// Parse the frameworkName attribute as a keyword.
 static ParseResult parseClassName(OpAsmParser &p, StringAttr &frameworkName) {
   StringRef keyword;

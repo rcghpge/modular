@@ -91,14 +91,14 @@ mgp.model @buffer_plan_cse_after_canonicalize : mof devices [#M.device_ref<"gpu"
   mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index) -> !mef.chain {
   // Both ops have the same canShare matrix and operands — CSE deduplicates.
-  %hwm0, %off0a, %off0b = mgp.buffer.plan(%arg4, %arg5) {
+  %hwm0, %off0a, %off0b = mgp.buffer.plan(%arg4, %arg5) <
     alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
     canShare = #M.dense_array<0, 0, 0, 0> : !M.array<4xui8>
-  } : (index, index) -> (index, index, index)
-  %hwm1, %off1a, %off1b = mgp.buffer.plan(%arg4, %arg5) {
+  > : (index, index) -> (index, index, index)
+  %hwm1, %off1a, %off1b = mgp.buffer.plan(%arg4, %arg5) <
     alignments = #M.dense_array<16, 16> : !M.array<2xui64>,
     canShare = #M.dense_array<0, 0, 0, 0> : !M.array<4xui8>
-  } : (index, index) -> (index, index, index)
+  > : (index, index) -> (index, index, index)
   %ch = "use"(%arg0, %off0a, %off0b, %off1a, %off1b) : (!mef.chain, index, index, index, index) -> !mef.chain
   mef.output %ch : !mef.chain
 }
@@ -118,14 +118,14 @@ mgp.model @buffer_plan_cse_identical_sharing : mof devices [#M.device_ref<"gpu",
   %1 = mgp.context.create 2
   mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %arg4: index, %arg5: index, %arg6: index) -> !mef.chain {
-  %hwm0, %off0a, %off0b, %off0c = mgp.buffer.plan(%arg4, %arg5, %arg6) {
+  %hwm0, %off0a, %off0b, %off0c = mgp.buffer.plan(%arg4, %arg5, %arg6) <
     alignments = #M.dense_array<16, 16, 16> : !M.array<3xui64>,
     canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui8>
-  } : (index, index, index) -> (index, index, index, index)
-  %hwm1, %off1a, %off1b, %off1c = mgp.buffer.plan(%arg4, %arg5, %arg6) {
+  > : (index, index, index) -> (index, index, index, index)
+  %hwm1, %off1a, %off1b, %off1c = mgp.buffer.plan(%arg4, %arg5, %arg6) <
     alignments = #M.dense_array<16, 16, 16> : !M.array<3xui64>,
     canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui8>
-  } : (index, index, index) -> (index, index, index, index)
+  > : (index, index, index) -> (index, index, index, index)
   %ch = "use"(%arg0, %off0a, %off0b, %off0c, %off1a, %off1b, %off1c) : (!mef.chain, index, index, index, index, index, index) -> !mef.chain
   mef.output %ch : !mef.chain
 }

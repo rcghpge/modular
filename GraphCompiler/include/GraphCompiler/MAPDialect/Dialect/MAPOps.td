@@ -289,6 +289,8 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
     $callee `[` custom<KernelParamsBody>($params) `]`
     `inputs` `(` $inputs `)` `outputs` `(` $outputs `)`
     (`returns` type($opaqueResult)^)?
+    `kernelName` `=` $kernelName
+    (`hasSameVariadicOperandSize` `=` $hasSameVariadicOperandSize^)?
     attr-dict `:` functional-type($inputs, $outputs)
   }];
 }
@@ -429,14 +431,14 @@ def MAP_ConstantScalarOp : MAP_Op<"constant.scalar", [
 
     Example:
     ```mlir
-    %cst = map.constant.scalar {value = 2.000000e+00 : f32} : f32
+    %cst = map.constant.scalar 2.000000e+00 : f32 : f32
     ```
   }];
 
   let arguments = (ins TypedAttrInterface:$value);
   let results = (outs AnyTypeOf<[AnyFloat, AnyInteger]>:$result);
 
-  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+  let assemblyFormat = "$value attr-dict `:` qualified(type($result))";
   // `ConstantLike` requires a folder for `m_Constant` to recover the value.
   let hasFolder = 1;
   let hasVerifier = 1;
@@ -537,7 +539,9 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
   let results = (outs AnyType:$result);
 
   let assemblyFormat = [{
-    $callee `(` $index `,` $args `)` attr-dict `:` type($index) `,` type($args) `->` type($result)
+    $callee (`[` custom<KernelParamsBody>($params)^ `]`)?
+    `` `(` $index `,` $args `)` attr-dict
+    `:` type($index) `,` type($args) `->` type($result)
   }];
 }
 

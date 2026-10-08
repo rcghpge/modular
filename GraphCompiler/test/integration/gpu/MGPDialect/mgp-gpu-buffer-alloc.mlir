@@ -35,7 +35,7 @@ mgp.model @alloc : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>
   // Now validate that we can print the data from the GPU buffer. To do that, we need to copy the data back to the host.
   %cpubuf0 = mgp.buffer.alloc %ch0, %size, %cpu, align 64 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %ch_buf0_d2h = mgp.buffer.device_to_host %ch0_expected_h2d, %buf0, %cpubuf0, %gpu : !mgp.buffer<<"gpu", 0>> -> !mgp.buffer, !mgp.device_context<<"gpu", 0>>
-  %ch_d2h_sync0 = mgp.sync(%ch_buf0_d2h, %ctx, %gpu) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %ch_d2h_sync0 = mgp.sync(%ch_buf0_d2h, %ctx, %gpu) device <"gpu", 0> {aRuntimeSlot = 1 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   %ch_extend0 = mgp.extend.lifetime %ch_d2h_sync0 : (!mef.chain) -> !mef.chain
   %ch2 = mgp.debug.tensor.print %ch_d2h_sync0, %cpubuf0, %spec0, "tensor0" : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<1x4xui8>) -> !mef.chain
 
@@ -53,7 +53,7 @@ mgp.model @alloc : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>
   // Now validate that we can print the data from the GPU buffer. To do that, we need to copy the data back to the host.
   %cpubuf1 = mgp.buffer.alloc %ch0, %size, %cpu, align 64 : !mgp.buffer, !mgp.device_context<<"cpu", 0>>
   %ch_buf1_d2h = mgp.buffer.device_to_host %ch1_expected_h2d, %buf1, %cpubuf1, %gpu : !mgp.buffer<<"gpu", 0>> -> !mgp.buffer, !mgp.device_context<<"gpu", 0>>
-  %ch_d2h_sync1 = mgp.sync(%ch_buf1_d2h, %ctx, %gpu) {aRuntimeSlot = 1 : ui64, bDevice = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %ch_d2h_sync1 = mgp.sync(%ch_buf1_d2h, %ctx, %gpu) device <"gpu", 0> {aRuntimeSlot = 1 : ui64} : (!mef.chain, !mgp.context, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   %ch_extend1 = mgp.extend.lifetime %ch_d2h_sync1 : (!mef.chain) -> !mef.chain
   %ch4 = mgp.debug.tensor.print %ch_d2h_sync1, %cpubuf1, %spec1, "tensor1" : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<1x?xui8>) -> !mef.chain
 

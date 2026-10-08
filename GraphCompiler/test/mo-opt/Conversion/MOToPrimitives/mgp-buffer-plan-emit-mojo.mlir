@@ -20,10 +20,10 @@ mgp.model @buffer_plan_basic : mof devices [#M.device_ref<"cpu", 0>] init (%weig
   // CHECK: mogg.async.pack
   // CHECK: mogg.async.pack
   // CHECK: mogg.output
-  %high_watermark, %offset0, %offset1, %offset2 = mgp.buffer.plan(%size0, %size1, %size2) {
+  %high_watermark, %offset0, %offset1, %offset2 = mgp.buffer.plan(%size0, %size1, %size2) <
     alignments = #M.dense_array<64, 128, 64> : !M.array<3xui64>,
     canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui8>
-  } : (index, index, index) -> (index, index, index, index)
+  > : (index, index, index) -> (index, index, index, index)
 
   mef.output %ch0, %high_watermark, %offset0, %offset1, %offset2 : !mef.chain, index, index, index, index
 }
@@ -52,11 +52,11 @@ mgp.model @buffer_plan_existing_static_with_constant : mof devices [#M.device_re
   // CHECK: mogg.async.pack
   // CHECK: mogg.output
   %c512 = index.constant 512
-  %high_watermark, %offset0, %offset1, %offset2 = mgp.buffer.plan(%c512, %dynamic_size) {
+  %high_watermark, %offset0, %offset1, %offset2 = mgp.buffer.plan(%c512, %dynamic_size) <
     alignments = #M.dense_array<64, 64, 64> : !M.array<3xui64>,
     canShare = #M.dense_array<0, 0, 0, 0, 0, 0, 0, 0, 0> : !M.array<9xui8>,
     staticSizes = #M.dense_array<256> : !M.array<1xsi64>
-  } : (index, index) -> (index, index, index, index)
+  > : (index, index) -> (index, index, index, index)
 
   mef.output %ch0, %high_watermark, %offset0, %offset1, %offset2 : !mef.chain, index, index, index, index
 }

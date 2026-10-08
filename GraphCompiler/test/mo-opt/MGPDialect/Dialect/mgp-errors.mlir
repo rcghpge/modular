@@ -302,6 +302,6 @@ func.func @tensor_create_missing_mut_attr(%ch: !mef.chain, %buf: !mgp.buffer<<"g
 
 func.func @tensor_create_spurious_mut_attr(%ch: !mef.chain, %buf: !mgp.buffer<<"gpu", 0>>, %spec: !mgp.tensor_spec<3x5xf32>) -> !mgp.tensor<3x5xf32, <"gpu", 0>> {
   // expected-error@+1 {{expected output tensor type does not match actual output tensor type}}
-  %0 = mgp.tensor.create %ch, %buf, %spec {mut} : !mgp.tensor<3x5xf32, <"gpu", 0>>
+  %0 = mgp.tensor.create %ch, %buf, %spec mut : !mgp.tensor<3x5xf32, <"gpu", 0>>
   mef.output %0 : !mgp.tensor<3x5xf32, <"gpu", 0>>
 }
