@@ -513,7 +513,6 @@ def MAP_StoreOp : MAP_Op<"store", [
 //===----------------------------------------------------------------------===//
 
 def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterEpilogueOp", "IterPrologueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,

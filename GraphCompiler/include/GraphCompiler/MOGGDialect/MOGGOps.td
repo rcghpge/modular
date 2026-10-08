@@ -1402,7 +1402,6 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  ParentOneOf<["MOGG::CallForeachOp", "MOGG::TensorCreateEpilogueOp", "MOGG::TensorCreatePrologueOp"]>,
   Pure,
 ]> {
   let summary = "Call the registered `::elementwise` function for a particular kernel";

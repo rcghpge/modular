@@ -55,7 +55,8 @@ def FuseHorizontal : Pass<"map-fuse-horizontal", "MO::GraphOp"> {
     rather than by each kernel. Pairs siblings, where the other fusers pair a
     producer with its consumer. Also moves a consumer into its producer's
     epilogue when the producer's result has other readers, which output
-    fusion leaves alone.
+    fusion leaves alone; a consumer that reads a strided window of the result
+    runs there under a `map.index.slice.select`.
   }];
 
   let dependentDialects = [

@@ -8,7 +8,8 @@
 // into one multi-output kernel, so the shared operand is loaded once. Unlike
 // the other fusers this pairs siblings rather than a producer with a consumer.
 // It also moves a consumer into its producer's epilogue when the producer's
-// result has other readers, which output fusion leaves alone.
+// result has other readers, which output fusion leaves alone; one that reads a
+// strided window of the result runs there under a `map.index.slice.select`.
 //
 //===----------------------------------------------------------------------===//
 
@@ -126,6 +127,55 @@ bool fusible(IterForeachOp a, IterForeachOp b) {
   return !dataflowGraphDependsOn(b, a) && !dataflowGraphDependsOn(a, b);
 }
 
+// Whether a slice leaves a strided window of its input that no view can
+// express -- the only kind worth a select in the producer's epilogue. A
+// contiguous slice (every step 1, and at most one sliced dim ahead of the
+// first non-unit one) is an offset view, better left to view fusion than paid
+// for with a second store.
+bool isStridedWindow(SliceSpecAttr spec) {
+  MOSH::ShapeAttr in = spec.getSignature().getIn();
+  MOSH::ShapeAttr out = spec.getSignature().getOut();
+  ArrayRef<int64_t> steps = spec.getSteps().asArrayRef();
+  if (llvm::any_of(steps, [](int64_t step) { return step != 1; }))
+    return true;
+  bool nonUnitDimSeen = false;
+  for (unsigned d = 0, e = in.getRank(); d < e; ++d) {
+    if (in.getValues()[d] != out.getValues()[d] && nonUnitDimSeen)
+      return true;
+    if (in.getIntDims()[d] != 1)
+      nonUnitDimSeen = true;
+  }
+  return false;
+}
+
+// The slice through which a consumer reads the fused operand, if that is how
+// it reads it: one load, through one `map.index.slice` of the loop index, in a
+// body with one store at the loop index. The body then moves into a select,
+// where the loop index is the slice's output index -- the consumer's own -- so
+// elementwise work between the load and the store keeps its meaning there.
+// Null when the read is not such a slice.
+// TODO(slariau): also take loads of the consumer's other inputs at the loop
+// index, which the select keeps in bounds; today they decline the merge.
+SliceIndexOp matchSliceRead(BlockArgument fusionArg, BlockArgument loopIdx,
+                            StoreOp store) {
+  if (!fusionArg.hasOneUse())
+    return nullptr;
+  auto load = dyn_cast<LoadOp>(*fusionArg.getUsers().begin());
+  if (!load)
+    return nullptr;
+  auto slice = load.getIndex().getDefiningOp<SliceIndexOp>();
+  if (!slice || slice.getIndex() != loopIdx || !slice->hasOneUse())
+    return nullptr;
+  if (store.getIndex() != loopIdx)
+    return nullptr;
+  if (llvm::any_of(loopIdx.getUsers(), [&](Operation *user) {
+        return user != slice.getOperation() && user != store.getOperation() &&
+               !isa<CallElementwiseOp>(user);
+      }))
+    return nullptr;
+  return slice;
+}
+
 // The producer's own output store and each consumer of that result write one
 // element of the same index space, so they are siblings -- but one of them
 // sits inside the producer, where `fuse` cannot reach it. So the merge goes
@@ -177,17 +227,37 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
     if (epilogueStores.size() != 1 || srcStores.size() != src.getNumResults())
       continue;
 
-    // The consumer must read the fused operand at its own loop index: the
-    // epilogue hands over one element, with no way to honor a transform.
+    // The consumer must read the fused operand at its own loop index -- the
+    // epilogue hands over one element, with no way to honor a transform --
+    // or through a strided slice of it, which a select inverts: the consumer
+    // then runs only where the slice selects the element, at its own index.
     unsigned fusionArgIdx =
         llvm::find(src.getInputs(), res) - src.getInputs().begin();
     BlockArgument fusionArg = srcBody.getArgument(fusionArgIdx);
     BlockArgument srcLoopIdx = srcBody.getArguments().back();
+    SliceIndexOp slice;
+    SliceSpecAttr sliceSpec;
     if (llvm::any_of(fusionArg.getUsers(), [&](Operation *user) {
           auto load = dyn_cast<LoadOp>(user);
           return !load || load.getIndex() != srcLoopIdx;
-        }))
-      continue;
+        })) {
+      StoreOp epilogueStore = epilogueStores.front();
+      if (srcStores.size() != 1 ||
+          !isa<MO::TensorType>(epilogueStore.getTensor().getType()))
+        continue;
+      // The select would sit at the epilogue store's index, so the merge
+      // checks the select's rules there. They reject a transformed index,
+      // such as a fused reshape's, which can carry one stored vector across
+      // rows of the slice's input.
+      slice = matchSliceRead(fusionArg, srcLoopIdx, srcStores.front());
+      if (!slice)
+        continue;
+      sliceSpec = slice.getSpec();
+      if (failed(SliceSelectOp::verifySpecAt(sliceSpec,
+                                             epilogueStore.getIndex())) ||
+          !isStridedWindow(sliceSpec))
+        continue;
+    }
     // Another operand reaching back through `dst` would make the merge a cycle.
     if (llvm::any_of(src->getOperands(), [&](Value other) {
           return other != res && dataflowGraphDependsOn(other, dst);
@@ -212,11 +282,16 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
       load.getResult().replaceAllUsesWith(val);
       load.erase();
     }
+    // The select takes over the slice, spec and all.
+    if (slice)
+      slice.erase();
 
-    // Every other input becomes a capture, threaded through a new input of
-    // `dst` -- the epilogue is isolated from above.
+    // Every other input the body still reads becomes a capture, threaded
+    // through a new input of `dst` -- the epilogue is isolated from above. A
+    // slice's bounds tensors are no longer read, since the select carries them
+    // statically.
     for (auto [i, input] : llvm::enumerate(src.getInputs())) {
-      if (i == fusionArgIdx)
+      if (i == fusionArgIdx || srcBody.getArgument(i).use_empty())
         continue;
       unsigned dstInputIdx = dst.getInputs().size();
       dst.insertInputsAt(dstInputIdx, input);
@@ -240,14 +315,26 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
       storedVals.push_back(store.getValue());
     for (StoreOp store : getOutputStores(srcBody))
       store.erase();
-    srcLoopIdx.replaceAllUsesWith(storeIdx);
-    srcBody.eraseArguments(0, srcBody.getNumArguments());
 
     // The producer's own store stays: it is what the escaping reader is owed.
-    rewriter.inlineBlockBefore(&srcBody, &body, body.end());
-    rewriter.setInsertionPointToEnd(&body);
+    // Through a slice, the consumer's body moves into a select, which runs it
+    // at the slice's index and only where the slice selects the element.
+    Block *consumerBody = &body;
+    Value consumerIdx = storeIdx;
+    if (sliceSpec) {
+      rewriter.setInsertionPointToEnd(&body);
+      auto select = SliceSelectOp::create(rewriter, loc, sliceSpec, storeIdx);
+      consumerBody =
+          rewriter.createBlock(&select.getBody(), select.getBody().end(),
+                               {storeIdx.getType()}, {loc});
+      consumerIdx = consumerBody->getArgument(0);
+    }
+    srcLoopIdx.replaceAllUsesWith(consumerIdx);
+    srcBody.eraseArguments(0, srcBody.getNumArguments());
+    rewriter.inlineBlockBefore(&srcBody, consumerBody, consumerBody->end());
+    rewriter.setInsertionPointToEnd(consumerBody);
     for (auto [cap, storedVal] : llvm::zip_equal(caps, storedVals))
-      StoreOp::create(rewriter, loc, cap, storeIdx, storedVal);
+      StoreOp::create(rewriter, loc, cap, consumerIdx, storedVal);
 
     SmallVector<Value> replacements;
     for (unsigned i = 0, n = src->getNumResults(); i < n; ++i)
@@ -347,10 +434,13 @@ struct FuseHorizontalPass
   FuseHorizontalPass(const FuseHorizontalPass &other) : Base(other) {}
 
   void runOnOperation() override {
-    // Fusion stays within a block, and a fusion in one block never changes
-    // what another can fuse, so each block runs to its own fixpoint, as in
-    // `fuseOutput`. Unlike there, a block is not sorted first: the greedy
-    // choices follow block order.
+    // Fusion stays within a block, so each block runs to its own fixpoint, as
+    // in `fuseOutput`. Blocks are not fully independent: a select merge in a
+    // branch drops the slice's bounds operands, which can remove the capture
+    // an outer pair's cycle check went through, so what fuses can depend on
+    // the order blocks are visited in. Every order gives valid IR. Unlike in
+    // `fuseOutput`, a block is not sorted first: the greedy choices follow
+    // block order.
     getOperation().getBody().walk([&](Block *block) { fuseBlock(*block); });
   }
 
