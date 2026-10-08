@@ -11,7 +11,7 @@ exports_files(
         "//GraphCompiler:__pkg__",
         "//Mojo:__pkg__",
         "//Support:__pkg__",
-        "//max/python/max/_core/internal:__pkg__",
+        "//max/python/max/_core/mcl:__pkg__",
     ],
 )
 
@@ -19,14 +19,14 @@ modular_nanobind_library(
     name = "Builtin",
     srcs = [
         "builtin.cpp",
-        "//max/python/max/_core/internal:BuiltinDialectNanobindInc",
+        "//max/python/max/_core/mcl:BuiltinDialectNanobindInc",
     ],
     # Most of the code is generated
     tags = ["no-clang-tidy"],
     deps = [
         "//Support:NanobindUtils",
         "//max/lib/mcl:max",
-        "//max/python/max/_core/internal:GraphPython",
+        "//max/python/max/_core/mcl:GraphPython",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -43,7 +43,7 @@ modular_nanobind_library(
         "//Mojo:KGENDialect",
         "//Support:NanobindUtils",
         "//max/lib/mcl:max",
-        "//max/python/max/_core/internal:GraphPython",
+        "//max/python/max/_core/mcl:GraphPython",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -58,7 +58,7 @@ modular_nanobind_library(
     deps = [
         "//Support:NanobindUtils",
         "//max/lib/mcl:max",
-        "//max/python/max/_core/internal:GraphPython",
+        "//max/python/max/_core/mcl:GraphPython",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -75,7 +75,7 @@ modular_nanobind_library(
     deps = [
         "//Support:NanobindUtils",
         "//max/lib/mcl:max",
-        "//max/python/max/_core/internal:GraphPython",
+        "//max/python/max/_core/mcl:GraphPython",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -84,14 +84,14 @@ modular_nanobind_library(
     name = "MOSH",
     srcs = [
         "mosh.cpp",
-        "//max/python/max/_core/internal:MOSHDialectNanobindInc",
+        "//max/python/max/_core/mcl:MOSHDialectNanobindInc",
     ],
     # Most of the code is generated
     tags = ["no-clang-tidy"],
     deps = [
         "//Support:NanobindUtils",
         "//max/lib/mcl:max",
-        "//max/python/max/_core/internal:GraphPython",
+        "//max/python/max/_core/mcl:GraphPython",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -107,7 +107,7 @@ modular_nanobind_library(
     deps = [
         "//Support:NanobindUtils",
         "//max/lib/mcl:max",
-        "//max/python/max/_core/internal:GraphPython",
+        "//max/python/max/_core/mcl:GraphPython",
         "@llvm-project//mlir:IR",
     ],
 )

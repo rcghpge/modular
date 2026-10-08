@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 //
 // DLPack interop for max.sys._hal, backed by the shared _core DLPack leaf
-// (`//max/python/max/_core/internal:DLPackPython`). This is an interop skin on
+// (`//max/python/max/_core/mcl:DLPackPython`). This is an interop skin on
 // top of the Python Array: it works in DLPack terms (dlpack.h structs, via the
 // leaf) plus `M::DType`, never touching the HAL/driver. The struct layout and
 // the dtype<->DLPack mapping come from the leaf, so nothing is hand-mirrored.

@@ -17,9 +17,9 @@ modular_py_library(
 # want `python -m` to work, with relative imports.
 modular_py_binary(
     name = "tblgen",
-    srcs = ["//max/python/max/_core/internal/mlir_nanobind:tblgen_main.py"],
+    srcs = ["//max/python/max/_core/mcl/mlir_nanobind:tblgen_main.py"],
     imports = [".."],
-    main = "//max/python/max/_core/internal/mlir_nanobind:tblgen_main.py",
+    main = "//max/python/max/_core/mcl/mlir_nanobind:tblgen_main.py",
     visibility = ["//visibility:public"],  # Used by rules in multiple packages
     deps = [
         ":lib",

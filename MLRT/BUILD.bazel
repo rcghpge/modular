@@ -634,7 +634,7 @@ alias(
         "//AsyncRT:__subpackages__",
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
-        "//max/python/max/_core/internal:__subpackages__",
+        "//max/python/max/_core/mcl:__subpackages__",
         "//plugins:__subpackages__",
     ],
 )
@@ -813,7 +813,7 @@ modular_cc_library(
         "//Kernels:__subpackages__",
         "//MLRT:__subpackages__",
         "//Mojo:__subpackages__",
-        "//max/python/max/_core/internal:__subpackages__",
+        "//max/python/max/_core/mcl:__subpackages__",
     ],
     deps = [
         ":Driver/CompilationDeviceImpl",

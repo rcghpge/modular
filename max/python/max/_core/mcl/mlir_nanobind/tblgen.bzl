@@ -33,7 +33,7 @@ tblgen_nanobind = rule(
         "tblgen": attr.label(
             cfg = "exec",
             executable = True,
-            default = "//max/python/max/_core/internal/mlir_nanobind/tblgen",
+            default = "//max/python/max/_core/mcl/mlir_nanobind/tblgen",
         ),
         "src": attr.label(allow_single_file = [".json"]),
         "output": attr.output(),

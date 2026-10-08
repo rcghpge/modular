@@ -1,6 +1,6 @@
 load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "modular_cc_library", "modular_shared_library", "pkg_files", "td_library")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES", "KERNEL_PROFILING_LOCAL_DEFINES")
-load("//max/python/max/_core/internal/mlir_nanobind:tblgen.bzl", "mlir_nanobind")  # buildifier: disable=bzl-visibility
+load("//max/python/max/_core/mcl/mlir_nanobind:tblgen.bzl", "mlir_nanobind")  # buildifier: disable=bzl-visibility
 
 # gazelle:default_visibility //GraphCompiler:consumers
 
@@ -353,7 +353,7 @@ mlir_nanobind(
         "include/GraphCompiler/MODialect/Transforms/**/*.td",
         "include/GraphCompiler/Conversion/**/*.td",
     ]),
-    allowlist = "//max/python/max/_core/internal/modules/dialects:allowlist.txt",
+    allowlist = "//max/python/max/_core/mcl/modules/dialects:allowlist.txt",
     output_dir = "include/GraphCompiler/MODialect/Nanobind",
     deps = [
         ":MODialectTdFiles",
@@ -368,7 +368,7 @@ mlir_nanobind(
         "include/GraphCompiler/RMODialect/*.td",
         "include/GraphCompiler/RMODialect/Transforms/**/*.td",
     ]),
-    allowlist = "//max/python/max/_core/internal/modules/dialects:allowlist.txt",
+    allowlist = "//max/python/max/_core/mcl/modules/dialects:allowlist.txt",
     output_dir = "include/GraphCompiler/RMODialect/Nanobind",
     deps = [
         ":MODialectTdFiles",

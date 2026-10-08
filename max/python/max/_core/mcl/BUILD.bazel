@@ -1,13 +1,13 @@
 load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library")
 load("//bazel:config.bzl", "KERNEL_PROFILING_LOCAL_DEFINES")
-load("//max/python/max/_core/internal/mlir_nanobind:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")  # buildifier: disable=bzl-visibility
+load("//max/python/max/_core/mcl/mlir_nanobind:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")  # buildifier: disable=bzl-visibility
 
 package(default_visibility = ["//max:consumers"])
 
 tblgen_nanobind(
     name = "MOSHDialectNanobindInc",
     src = "//GraphCompiler:mosh_json",
-    allowlist = "//max/python/max/_core/internal/modules/dialects:allowlist.txt",
+    allowlist = "//max/python/max/_core/mcl/modules/dialects:allowlist.txt",
     dialect = "MOSHDialect",
     output = "include/_core/Graph/mosh_dialect_nanobind.cpp.inc",
 )
@@ -24,7 +24,7 @@ mlir_nanobind(
         "@llvm-project//mlir:include/mlir/IR/BuiltinTypes.td",
         "@llvm-project//mlir:include/mlir/Transforms/Passes.td",
     ],
-    allowlist = "//max/python/max/_core/internal/modules/dialects:allowlist.txt",
+    allowlist = "//max/python/max/_core/mcl/modules/dialects:allowlist.txt",
     output_dir = "include/_core/Graph",
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
