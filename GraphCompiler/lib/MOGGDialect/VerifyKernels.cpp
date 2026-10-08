@@ -321,9 +321,7 @@ LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
       // their mutability is in the IOSpec type, not the calling convention.
       // Trait-bound tensors are left to `declVerifyTensorArgsAreBorrowed` and
       // its trait-specific diagnostic.
-      if (arg.isTensorType() &&
-          !getTensorArgTraitType(
-              sig.getArgument(arg.sourceDescriptor->position)) &&
+      if (arg.isTensorType() && !arg.isTraitTensorType() &&
           convention != KGEN::ArgConvention::ImmMem &&
           convention != KGEN::ArgConvention::ImmReg) {
         decl->emitError()
@@ -347,6 +345,10 @@ LogicalResult declVerifyOpaqueArgumentsArePassedByReference(
 // Trait-bound tensor arguments carry their role and mutability in the distilled
 // contract, not the calling convention, so they must be borrowed
 // (`read`/`read_mem`).
+static bool isTraitBoundTensorArg(Type argType) {
+  return !getTensorArgTraitSymbols(argType).empty();
+}
+
 LogicalResult declVerifyTensorArgsAreBorrowed(
     KernelDeclOp decl, KernelDeclAdaptor &adaptor,
     std::optional<KernelDeclFunctionAdaptor> shapeFunction) {
@@ -357,7 +359,7 @@ LogicalResult declVerifyTensorArgsAreBorrowed(
     // Copy sig to call the non-const getArgConvention.
     auto sig = func->attr.getSignature();
     for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i) {
-      if (!getTensorArgTraitType(sig.getArgument(i)))
+      if (!isTraitBoundTensorArg(sig.getArgument(i)))
         continue;
       auto convention = sig.getArgConvention(i);
       if (convention != KGEN::ArgConvention::ImmMem &&
@@ -393,7 +395,7 @@ LogicalResult declVerifyTraitArgFunctionKinds(KernelDeclOp decl,
     auto sig = func->attr.getSignature();
     bool ok = true;
     for (size_t i = 0, n = sig.getNumArguments(); i < n; ++i) {
-      if (getTensorArgTraitType(sig.getArgument(i))) {
+      if (isTraitBoundTensorArg(sig.getArgument(i))) {
         decl->emitError()
             << "trait-bound tensor arguments are not supported on " << kind
             << " functions yet (only `execute`)";

@@ -30,6 +30,7 @@ from extensibility import (
     StoreAccess,
     Storable,
     Tensor,
+    TensorTuple,
     TileTensorable,
     TransformAccess,
     Transformable,
@@ -142,6 +143,45 @@ struct TraitMutableInput:
     ](
         z: Some[Output & DenseTensor],
         x: Some[MutableInput & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# Negative fixture: two `TensorTuple`s on the input side. Each distills its own
+# contract from its `TypeList` bound, so import bakes all three; only
+# `mogg-verify-kernels` flags it, because a graph op's flat operand list cannot
+# carry two runs.
+@extensibility.register("trait_tensor_tuple")
+struct TraitTensorTuple:
+    @staticmethod
+    def execute[
+        Outs: TypeList[Trait=Output & DenseTensor, ...],
+        As: TypeList[Trait=Input & DenseTensor, ...],
+        Bs: TypeList[Trait=Input & DenseTensor, ...],
+        //,
+        target: StaticString,
+    ](
+        outputs: TensorTuple[*Outs],
+        a: TensorTuple[*As],
+        b: TensorTuple[*Bs],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# A fused `TensorTuple`: the tuple argument distills one fused contract from its
+# list's bound.
+@extensibility.register("trait_tensor_tuple_fused")
+struct TraitTensorTupleFused:
+    @staticmethod
+    def execute[
+        Ins: TypeList[Trait=Input & Fused & LoadAccess, ...],
+        //,
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        inputs: TensorTuple[*Ins],
         ctx: DeviceContext,
     ) raises:
         pass

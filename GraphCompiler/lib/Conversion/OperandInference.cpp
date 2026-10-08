@@ -156,10 +156,12 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
   uint64_t variadicSize = 0;
   if (mojoVariadicsCount > 0) {
     if (mojoVariadicsCount > 1 && !hasSameVariadicOperandSize) {
-      return Error(
-          llvm::formatv("Op with multiple variadic operands must implement the "
-                        "SameVariadicOperandSize interface. Custom ops are not "
-                        "supported yet."));
+      return Error(llvm::formatv(
+          "Op '{}' binds {} variadic {} tensor arguments, but an op's flat "
+          "operand list carries no group boundaries, so it can bind at most "
+          "one per operand list. Several equal-sized groups require a "
+          "dedicated op that implements SameVariadicOperandSize",
+          opName, mojoVariadicsCount, argumentKind));
     }
     uint64_t totalVariadicOperands =
         moOperandsCount < mojoNonVariadicsCount

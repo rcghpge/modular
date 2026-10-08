@@ -27,6 +27,7 @@ from extensibility import (
     Output,
     StoreAccess,
     Storable,
+    TensorTuple,
     Transformable,
 )
 
@@ -71,6 +72,34 @@ struct TraitForeign:
         target: StaticString,
         Z: Output & DenseTensor & Copyable,
     ](z: Z, ctx: DeviceContext) raises:
+        pass
+
+
+# A `TensorTuple` whose list bound carries `Movable`. Nothing requires it of the
+# tuple's elements, so it is a foreign trait.
+@extensibility.register("trait_tensor_tuple_movable")
+struct TraitTensorTupleMovable:
+    @staticmethod
+    def execute[
+        Ts: TypeList[Trait=Input & DenseTensor & Movable, ...],
+        //,
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        xs: TensorTuple[*Ts],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# A variadic pack of tensor arguments, which `TensorTuple` replaces.
+@extensibility.register("trait_variadic_pack")
+struct TraitVariadicPack:
+    @staticmethod
+    def execute[
+        target: StaticString,
+        *Ts: Input & DenseTensor,
+    ](z: Some[Output & DenseTensor], *xs: *Ts, ctx: DeviceContext) raises:
         pass
 
 

@@ -149,6 +149,26 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
 /// trait-bound generic type parameter, else null.
 KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType);
 
+/// If `argType` is a variadic pack of trait-bound tensor arguments -- the
+/// `VariadicPack` behind `*xs: *Ts` with `*Ts` bound by tensor-argument traits
+/// -- return the `TraitType` every element is bound by. Otherwise return null.
+/// Not a supported spelling: import uses this to reject it in favor of
+/// `TensorTuple`.
+KGEN::LIT::TraitType getTensorArgPackTraitType(mlir::Type argType);
+
+/// If `argType` is a `TensorTuple` of trait-bound tensor arguments --
+/// `xs: TensorTuple[*Ts]` with `Ts: TypeList[Trait=..., ...]` bound by
+/// tensor-argument traits -- return the `TraitType` every element is bound by.
+/// Otherwise return null. The tuple distills to one contract shared by its
+/// elements.
+KGEN::LIT::TraitType getTensorArgTensorTupleTraitType(mlir::Type argType);
+
+/// The trait symbols a trait-bound tensor argument distills from, in either
+/// spelling: a single argument or a `TensorTuple`. Empty if `argType` is not a
+/// trait-bound tensor argument.
+llvm::SmallVector<M::KGEN::TraitSymbolAttr>
+getTensorArgTraitSymbols(mlir::Type argType);
+
 llvm::StringRef toString(TensorArgRole role);
 llvm::StringRef toString(TensorArgAccess access);
 llvm::StringRef toString(TensorArgBound bound);
@@ -222,6 +242,10 @@ struct KernelDeclVariadicTensorAdaptor {
   bool mut = false;
   bool fused = false;
   IOSpec ioSpec = {};
+  /// Present only for a trait-lane variadic (`xs: TensorTuple[*Ts]`): the
+  /// contract shared by every element. Empty for the legacy `VariadicTensors`
+  /// lane.
+  std::optional<TensorArgContract> traitContract;
   KernelDeclVariadicTensorAdaptor() = default;
   explicit KernelDeclVariadicTensorAdaptor(IOSpec ioSpec)
       : mut(isMutableIOSpec(ioSpec)), fused(isFusableIOSpec(ioSpec)),
@@ -328,10 +352,19 @@ struct KernelDeclOperandAdaptor {
   std::optional<TensorArgContract> getTraitContract() const {
     if (const auto *t = std::get_if<KernelDeclTensorAdaptor>(&underlyingType))
       return t->traitContract;
+    if (const auto *t =
+            std::get_if<KernelDeclVariadicTensorAdaptor>(&underlyingType))
+      return t->traitContract;
     return std::nullopt;
   }
 
   bool isTraitTensorType() const { return getTraitContract().has_value(); }
+
+  /// A trait-lane `TensorTuple` (`xs: TensorTuple[*Ts]`), whose elements are
+  /// gathered into one argument.
+  bool isTraitTensorTupleType() const {
+    return isVariadicTensorType() && isTraitTensorType();
+  }
 
   bool isScalarType() const {
     return std::holds_alternative<KernelDeclScalarAdaptor>(underlyingType);

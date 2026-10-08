@@ -5,7 +5,7 @@
 # ===----------------------------------------------------------------------=== #
 from std.builtin.device_passable import DevicePassable
 from std.builtin.rebind import downcast
-from std.collections import Optional
+from std.collections import Array, Optional
 from std.collections.string import StaticString
 from std.math import ceildiv, iota
 from std.ffi import external_call
@@ -16,6 +16,7 @@ from max.algorithm.functional import elementwise
 import extensibility
 from layout import TensorLayout
 from layout import TileTensor, CoordLike, Coord, DefaultEngine
+from layout.coord import DynamicCoord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
 from max.gpu.host import DeviceContext, DeviceContextArray
@@ -58,6 +59,8 @@ from extensibility import (
     StoreAccess,
     Storable,
     Tensor,
+    TensorTuple,
+    TileProjection,
     TileTensorable,
     TransformAccess,
     Transformable,
@@ -66,7 +69,7 @@ from extensibility import (
     unsafe_fused_view,
 )
 
-from std.utils import IndexList
+from std.utils import IndexList, StaticTuple
 from std.utils.coord import Coord, coord_to_index_list
 
 
@@ -847,6 +850,222 @@ struct TraitFusedLoadNegate:
             ](
                 z,
                 x,
+                Int32(n),
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
+# Device entry for `trait_tensor_tuple_add`: one thread per element of the
+# concatenated pairs, which finds the pair `k` that owns it. Both tuples are
+# spelled as the host tuples' `device_type`, and element `k` is typed only by
+# `AnyType` in the body, so it is rebound to its `TileProjection`, mutable for
+# an output and immutable for an input. The element types are `TypeList`
+# parameters because a signature takes one list per tuple.
+def _gpu_tensor_tuple_add_kernel[
+    Outs: TypeList[Trait=Output & DenseTensor, ...],
+    Ins: TypeList[Trait=Input & DenseTensor, ...],
+    bias_dtype: DType,
+    BiasLayoutType: TensorLayout,
+](
+    outputs: TensorTuple[*Outs].device_type,
+    bias: TileTensor[bias_dtype, BiasLayoutType, ImmutAnyOrigin],
+    inputs: TensorTuple[*Ins].device_type,
+    offsets: StaticTuple[Int32, len(Ins) + 1],
+    n_dev: Int32,
+):
+    var i = Int32(global_idx.x)
+    if i >= n_dev:
+        return
+    var b = rebind[Scalar[bias_dtype]](bias.raw_load(0))
+    comptime for k in range(len(Ins)):
+        if i >= offsets[k] and i < offsets[k + 1]:
+            comptime out_dtype = Outs[k].dtype
+            var z = rebind[TileProjection[True, Outs[k]]](outputs[k])
+            var x = rebind[TileProjection[False, Ins[k]]](inputs[k])
+            var j = Int(i - offsets[k])
+            var v = rebind[Scalar[Ins[k].dtype]](x.raw_load(j))
+            z.raw_store(j, v.cast[out_dtype]() + b.cast[out_dtype]())
+
+
+# `TensorTuple` kernel with a variadic on each side:
+# `outputs[i] = inputs[i] + bias[0]`, cast to the output dtype. Each element is
+# its own emitted `_MoggDenseTensorArg`, so the elements may differ in dtype and
+# length. `bias` sits between the two tuples. On the GPU both tuples cross the
+# launch as `DevicePassable`s, so the output tuple's elements arrive as mutable
+# device `TileTensor`s.
+@extensibility.register("trait_tensor_tuple_add")
+struct TraitTensorTupleAdd:
+    @staticmethod
+    def execute[
+        Outs: TypeList[Trait=Output & DenseTensor, ...],
+        Ins: TypeList[Trait=Input & DenseTensor, ...],
+        //,
+        target: StaticString,
+    ](
+        outputs: TensorTuple[*Outs],
+        bias: Some[Input & DenseTensor],
+        inputs: TensorTuple[*Ins],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert len(Outs) == len(Ins)
+            comptime assert conforms_to(type_of(bias), TileTensorable)
+            var bt = to_tile_tensor(bias)
+            comptime for i in range(len(Ins)):
+                comptime assert conforms_to(type_of(outputs[i]), TileTensorable)
+                comptime assert conforms_to(type_of(inputs[i]), TileTensorable)
+                var zt = to_tile_tensor(outputs[i])
+                var xt = to_tile_tensor(inputs[i])
+                comptime OutT = SIMD[type_of(zt).dtype, 1]
+                var b = rebind[SIMD[type_of(bt).dtype, 1]](bt.raw_load(0)).cast[
+                    type_of(zt).dtype
+                ]()
+                for j in range(Int(inputs[i].shape().product())):
+                    var v = rebind[SIMD[type_of(xt).dtype, 1]](xt.raw_load(j))
+                    zt.raw_store(
+                        j, rebind[OutT](v.cast[type_of(zt).dtype]() + b)
+                    )
+        else:
+            comptime assert len(Outs) == len(Ins)
+            comptime assert conforms_to(type_of(outputs), DevicePassable)
+            comptime assert conforms_to(type_of(inputs), DevicePassable)
+            comptime assert conforms_to(type_of(bias), DevicePassable)
+            var offsets = StaticTuple[Int32, len(Ins) + 1](fill=0)
+            comptime for k in range(len(Ins)):
+                offsets[k + 1] = offsets[k] + Int32(
+                    Int(inputs[k].shape().product())
+                )
+            var n = Int(offsets[len(Ins)])
+            comptime block_size = 64
+            ctx.enqueue_function[
+                _gpu_tensor_tuple_add_kernel[
+                    Outs, Ins, type_of(bias).dtype, type_of(bias).LayoutType
+                ]
+            ](
+                outputs,
+                bias,
+                inputs,
+                offsets,
+                Int32(n),
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
+# Device entry for `trait_tensor_tuple_add_array`: one thread per element of the
+# concatenated pairs, which finds the pair `k` that owns it. Both tuples arrive
+# as `Array`s of `TileTensor`s built on the host.
+def _gpu_array_tuple_add_kernel[
+    out_dtype: DType,
+    OutputLayoutType: TensorLayout,
+    bias_dtype: DType,
+    BiasLayoutType: TensorLayout,
+    in_dtype: DType,
+    InputLayoutType: TensorLayout,
+    size: Int,
+](
+    outputs: Array[TileTensor[out_dtype, OutputLayoutType, MutAnyOrigin], size],
+    bias: TileTensor[bias_dtype, BiasLayoutType, ImmutAnyOrigin],
+    inputs: Array[TileTensor[in_dtype, InputLayoutType, ImmutAnyOrigin], size],
+    n_dev: Int32,
+):
+    var i = Int(global_idx.x)
+    if i >= Int(n_dev):
+        return
+    var b = rebind[Scalar[bias_dtype]](bias.raw_load(0)).cast[out_dtype]()
+    var offset = 0
+    comptime for k in range(size):
+        var n = inputs[k].num_elements()
+        if i < offset + n:
+            var j = i - offset
+            var v = rebind[Scalar[in_dtype]](inputs[k].raw_load(j))
+            outputs[k].raw_store(j, v.cast[out_dtype]() + b)
+            return
+        offset += n
+
+
+# `trait_tensor_tuple_add` with each tuple converted to an `Array` of
+# `TileTensor`s on the host, as `mo.split` does. Each side's elements share one
+# type, so they must share one dtype, and their layouts become dynamic. GPU
+# only.
+@extensibility.register("trait_tensor_tuple_add_array")
+struct TraitTensorTupleAddArray:
+    @staticmethod
+    def execute[
+        Outs: TypeList[Trait=Output & DenseTensor, ...],
+        Ins: TypeList[Trait=Input & DenseTensor, ...],
+        //,
+        target: StaticString,
+    ](
+        outputs: TensorTuple[*Outs],
+        bias: Some[Input & DenseTensor],
+        inputs: TensorTuple[*Ins],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert len(Outs) == len(Ins)
+        comptime assert conforms_to(type_of(bias), TileTensorable)
+        var bt = to_tile_tensor(bias)
+        comptime if is_cpu[target]():
+            raise Error("trait_tensor_tuple_add_array only runs on the GPU")
+        else:
+            comptime out_dtype = Outs[0].dtype
+            comptime in_dtype = Ins[0].dtype
+            comptime DynamicLayout1D = TileLayout[
+                shape_types=DynamicCoord[.int64, 1].element_types,
+                stride_types=DynamicCoord[.int64, 1].element_types,
+            ]
+            comptime OutputTile = TileTensor[
+                out_dtype, DynamicLayout1D, MutAnyOrigin
+            ]
+            comptime InputTile = TileTensor[
+                in_dtype, DynamicLayout1D, ImmutAnyOrigin
+            ]
+
+            def output_tile[k: Int]() {imm outputs} -> OutputTile:
+                comptime assert (
+                    Outs[k].dtype == out_dtype
+                ), "trait_tensor_tuple_add_array's outputs must share one dtype"
+                comptime assert conforms_to(type_of(outputs[k]), TileTensorable)
+                var zt = to_tile_tensor(outputs[k])
+                return rebind[OutputTile](
+                    TileTensor(zt.ptr, zt.layout.make_dynamic[.int64]())
+                )
+
+            def input_tile[k: Int]() {imm inputs} -> InputTile:
+                comptime assert (
+                    Ins[k].dtype == in_dtype
+                ), "trait_tensor_tuple_add_array's inputs must share one dtype"
+                comptime assert conforms_to(type_of(inputs[k]), TileTensorable)
+                var xt = to_tile_tensor(inputs[k])
+                return rebind[InputTile](
+                    TileTensor(xt.ptr, xt.layout.make_dynamic[.int64]())
+                )
+
+            var output_tiles = Array[OutputTile, len(Outs)](
+                fill_with_unrolled=output_tile
+            )
+            var input_tiles = Array[InputTile, len(Ins)](
+                fill_with_unrolled=input_tile
+            )
+            var n = 0
+            comptime for k in range(len(Ins)):
+                n += input_tiles[k].num_elements()
+            comptime block_size = 64
+            ctx.enqueue_function[
+                _gpu_array_tuple_add_kernel[
+                    out_dtype,
+                    DynamicLayout1D,
+                    type_of(bt).dtype,
+                    type_of(bt).LayoutType,
+                    in_dtype,
+                    DynamicLayout1D,
+                    len(Ins),
+                ]
+            ](
+                output_tiles,
+                bt,
+                input_tiles,
                 Int32(n),
                 grid_dim=(ceildiv(n, block_size),),
                 block_dim=(block_size,),

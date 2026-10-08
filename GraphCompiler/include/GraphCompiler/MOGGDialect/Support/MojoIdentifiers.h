@@ -119,6 +119,8 @@ constexpr llvm::StringLiteral kPackageStableTensor = "stable_tensor";
 using KGEN::kLeafDeviceContext;
 using KGEN::kLeafManagedTensorSlice;
 constexpr llvm::StringLiteral kLeafVariadicTensors = "VariadicTensors";
+constexpr llvm::StringLiteral kLeafVariadicPack = "VariadicPack";
+constexpr llvm::StringLiteral kLeafTensorTuple = "TensorTuple";
 constexpr llvm::StringLiteral kLeafFusedInputVariadicTensors =
     "_FusedInputVariadicTensors";
 constexpr llvm::StringLiteral kLeafFusedOutputVariadicTensors =
@@ -263,6 +265,7 @@ constexpr llvm::StringLiteral kStructVariadicTensors =
     "extensibility.VariadicTensors";
 constexpr llvm::StringLiteral kStructStableVariadicTensors =
     "extensibility.StableVariadicTensors";
+constexpr llvm::StringLiteral kStructTensorTuple = "extensibility.TensorTuple";
 constexpr llvm::StringLiteral kStructStaticString = "StaticString";
 constexpr llvm::StringLiteral kStructMsFusionPack =
     "managed_tensor_slice._FusionPack";

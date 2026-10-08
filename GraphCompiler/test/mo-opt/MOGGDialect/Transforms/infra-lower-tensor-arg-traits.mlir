@@ -7,6 +7,12 @@
 // an option to --mogg-import-packages which skips builtin defs we pulled in transitively (TODO: GEX-4142).
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" 2>&1 | grep 'registration = "trait_' | FileCheck %s --check-prefix=IMPORT
 
+// Verify rejects two input-side tuples (`trait_tensor_tuple`), which the import
+// run above accepts, and the `mut` convention of `trait_bad_convention`.
+// RUN: not mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg" --mogg-verify-kernels 2>&1 | FileCheck %s --check-prefix=VERIFY
+// VERIFY-DAG: Kernel function can have at most one variadic input tensors
+// VERIFY-DAG: Only the borrowed argument (read) convention is supported for trait-bound tensor arguments
+
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg --mogg-pipeline --mogg-to-mgp 2>&1 | FileCheck %s
 
 // === Baked tensor-arg contracts (distill matrix) ========================== //
@@ -40,6 +46,15 @@
 
 // MutableInput + DenseTensor -> mutable_input/none (alongside a dense output).
 // IMPORT-DAG: registration = "trait_mutable_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "mutable_input"}, unit, unit, unit]
+
+// `TensorTuple`s `xs: TensorTuple[*Ts]`, one per variadic, each bake one
+// contract distilled from its `TypeList` bound. Import accepts two input-side
+// tuples; the VERIFY run rejects them.
+// IMPORT-DAG: registration = "trait_tensor_tuple"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, unit, unit, unit]
+
+// A fused `TensorTuple` bound, `Ts: TypeList[Trait=Input & Fused & LoadAccess]`,
+// distills the same input/load/fused contract a single fused argument does.
+// IMPORT-DAG: registration = "trait_tensor_tuple_fused"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 1 : i32, capabilities = 0 : i32, fused = true, role = "input"}, unit, unit, unit]
 
 // Plain `Tensor` metadata (no `DenseTensor`): Input + Tensor -> input/none --
 // the dense-vs-plain distinction is invisible to the distilled contract.

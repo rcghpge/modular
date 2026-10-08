@@ -203,11 +203,12 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
 /// (primitives, synthesized adaptors); see `resolveTraitContract`.
 static std::optional<TensorArgContract>
 recoverTraitArgContract(mlir::Type argType) {
-  KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
-  if (!traitType)
+  llvm::SmallVector<TraitSymbolAttr> symbols =
+      getTensorArgTraitSymbols(argType);
+  if (symbols.empty())
     return std::nullopt;
-  mlir::FailureOr<TensorArgContract> contract = distillTensorArgContract(
-      traitType.getSymbols(), [](const llvm::Twine &) {});
+  mlir::FailureOr<TensorArgContract> contract =
+      distillTensorArgContract(symbols, [](const llvm::Twine &) {});
   if (mlir::failed(contract))
     return std::nullopt;
   return *contract;
@@ -237,6 +238,16 @@ traitContractToTensorAdaptor(const TensorArgContract &contract) {
   }
   // Lets lowering route this arg to `mogg.tensor_arg.__init__`, unlike a
   // `ManagedTensorSlice` arg with the same `ioSpec`.
+  adaptor.traitContract = contract;
+  return adaptor;
+}
+
+/// The variadic counterpart of `traitContractToTensorAdaptor`, for a
+/// `TensorTuple`.
+static KernelDeclVariadicTensorAdaptor
+traitContractToVariadicAdaptor(const TensorArgContract &contract) {
+  KernelDeclTensorAdaptor scalar = traitContractToTensorAdaptor(contract);
+  KernelDeclVariadicTensorAdaptor adaptor{scalar.ioSpec};
   adaptor.traitContract = contract;
   return adaptor;
 }
@@ -272,6 +283,15 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
     if (std::optional<TensorArgContract> contract =
             resolveTraitContract(argType, bakedEntry, hasBakedArray))
       return traitContractToTensorAdaptor(*contract);
+    return KernelDeclUnsupportedAdaptor{};
+  }
+
+  // Trait lane, variadic: `xs: TensorTuple[*Ts]` is a `TensorTuple` struct. It
+  // carries one contract for all its elements.
+  if (getTensorArgTensorTupleTraitType(argType)) {
+    if (std::optional<TensorArgContract> contract =
+            resolveTraitContract(argType, bakedEntry, hasBakedArray))
+      return traitContractToVariadicAdaptor(*contract);
     return KernelDeclUnsupportedAdaptor{};
   }
 
@@ -346,10 +366,10 @@ static size_t countDPSOutputs(KGEN::LIT::FnTypeGeneratorType sig,
       break;
     mlir::Type argType = sig.getArgument(i);
     KGEN::LIT::StructType structType = getAsStructType(argType);
-    if (!structType) {
-      // A trait-bound tensor arg is non-struct: an `output` contract role
-      // continues the count; any other role, or a non-trait non-struct arg,
-      // stops it.
+    if (!structType || getTensorArgTensorTupleTraitType(argType)) {
+      // A trait-bound tensor arg is non-struct and a trait variadic is a
+      // `TensorTuple`: an `output` contract role continues the count; any other
+      // role, or a non-trait non-struct arg, stops it.
       mlir::Attribute bakedEntry =
           (hasBakedArray && i < tensorArgContracts.size())
               ? tensorArgContracts[i]
@@ -1057,6 +1077,66 @@ KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType) {
     if (classifyVocabTrait(sym))
       return traitType;
   return {};
+}
+
+KGEN::LIT::TraitType getTensorArgPackTraitType(mlir::Type argType) {
+  KGEN::LIT::StructType pack = getAsStructType(argType);
+  if (!pack || !symbolMatchesRootAndLeaf(pack.getSymbol(), kPackageStd,
+                                         kLeafVariadicPack))
+    return {};
+  // The pack's `element_trait` parameter is the `*Ts` bound, carried as a
+  // type-valued parameter. Take the first one that is a tensor-argument bound.
+  for (mlir::Attribute param : pack.getParamValues()) {
+    auto typeParam = mlir::dyn_cast<KGEN::TypeParamAttr>(
+        KGEN::getCanonicalAttr(mlir::cast<mlir::TypedAttr>(param)));
+    if (!typeParam)
+      continue;
+    auto traitType = mlir::dyn_cast_if_present<KGEN::LIT::TraitType>(
+        KGEN::getCanonicalType(typeParam.getTypeValue()));
+    if (!traitType)
+      continue;
+    for (TraitSymbolAttr sym : traitType.getSymbols())
+      if (classifyVocabTrait(sym))
+        return traitType;
+  }
+  return {};
+}
+
+KGEN::LIT::TraitType getTensorArgTensorTupleTraitType(mlir::Type argType) {
+  KGEN::LIT::StructType tuple = getAsStructType(argType);
+  if (!tuple || !symbolMatchesRootAndLeaf(
+                    tuple.getSymbol(), kPackageExtensibility, kLeafTensorTuple))
+    return {};
+  // `TensorTuple[*Ts]` carries the kernel's `Ts` list upcast to the tuple's own
+  // `AnyType` element bound. Under the upcast, the list is typed by the
+  // kernel's bound.
+  for (mlir::Attribute param : tuple.getParamValues()) {
+    auto value = mlir::dyn_cast<mlir::TypedAttr>(param);
+    if (!value)
+      continue;
+    auto list = mlir::dyn_cast<KGEN::ParamListType>(
+        KGEN::UpcastAttr::strip(KGEN::getCanonicalAttr(value)).getType());
+    if (!list)
+      continue;
+    auto traitType = mlir::dyn_cast_if_present<KGEN::LIT::TraitType>(
+        KGEN::getCanonicalType(list.getElementType()));
+    if (!traitType)
+      continue;
+    for (TraitSymbolAttr sym : traitType.getSymbols())
+      if (classifyVocabTrait(sym))
+        return traitType;
+  }
+  return {};
+}
+
+llvm::SmallVector<TraitSymbolAttr>
+getTensorArgTraitSymbols(mlir::Type argType) {
+  KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
+  if (!traitType)
+    traitType = getTensorArgTensorTupleTraitType(argType);
+  if (!traitType)
+    return {};
+  return llvm::to_vector(traitType.getSymbols());
 }
 
 StringRef toString(TensorArgRole role) {

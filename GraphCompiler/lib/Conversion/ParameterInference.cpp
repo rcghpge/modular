@@ -318,6 +318,16 @@ inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
 
   removeResultOnlyParams(sig, inferByInputs);
 
+  // Infer-only parameters (declared before `//`) are left for Mojo to infer
+  // at the call. The walk above can miss one: a `TypeList` that a
+  // `xs: TensorTuple[*Ts]` argument unpacks is referenced only through its
+  // values.
+  llvm::DenseSet<StringRef> inferOnly;
+  if (KGEN::PogListAttr pogs = sig.getParamListAttrs())
+    for (size_t i = 0, n = pogs.size(); i < n; ++i)
+      if (pogs.getPassingKind(i) == KGEN::PassingKind::Inferred)
+        inferOnly.insert(pogs.getName(i).getValue());
+
   auto isIOSpecType = [](Type ty) {
     auto structType = dyn_cast<KGEN::LIT::StructType>(ty);
     return structType &&
@@ -338,7 +348,9 @@ inferParameters(ArrayRef<mlir::Attribute> fnLevelParams,
         continue;
 
       ErrorOr<MojoValue> maybeVal = inferCallback(paramName);
-      if (inferByInputs.contains(paramName) && maybeVal.isError())
+      if ((inferByInputs.contains(paramName) ||
+           inferOnly.contains(paramName)) &&
+          maybeVal.isError())
         continue;
 
       if (maybeVal.isError()) {

@@ -1787,9 +1787,22 @@ LogicalResult ScalarCreateOp::emitMojo(EmitMojoState &state) {
 
 LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
   // `$variadic_abi` (set by `ConformCallOperands`) selects `VariadicTensors`,
-  // `_FusedInputVariadicTensors`, or `_FusedOutputVariadicTensors`, so this
-  // never inspects the producing ops.
+  // `_FusedInputVariadicTensors`, `_FusedOutputVariadicTensors`, or a
+  // `TensorTuple` of trait arguments, so this never inspects the producing
+  // ops.
   SmallVector<MojoValue> inputValues = state.getMojoValuesFor(getElements());
+
+  // A `TensorTuple`'s elements are already trait arguments; the tuple holds
+  // them by value.
+  if (getVariadicAbi() == VariadicABI::TensorTuple) {
+    SmallVector<MojoValue> params;
+    for (const MojoValue &val : inputValues)
+      params.push_back(MojoValue("type_of")({}, {val}));
+    state.setMojoValueFor(getTuple(),
+                          state.builder.var(MojoValue(
+                              kStructTensorTuple)[params]({}, inputValues)));
+    return success();
+  }
 
   // Contexts pack into a `DeviceContextArray[N]` instead, via its variadic
   // constructor -- the per-device contexts of a distributed kernel. Mirrors the
@@ -3449,10 +3462,14 @@ struct _MoggDenseTensorArg[
     _is_device_passable: Bool,
     _can_project_tile_tensor: Bool,
 ](
+    # A pointer and a layout, so copies alias the same buffer, as `TileTensor`
+    # copies do. `TensorTuple` holds its elements by value.
+    Copyable,
     DenseTensor,
     DevicePassable where _is_device_passable,
     Input where _io == _MoggTensorIO.INPUT,
     MutableInput where _io == _MoggTensorIO.MUTABLE_INPUT,
+    Movable,
     Output where _io == _MoggTensorIO.OUTPUT,
     # Top-level `TileTensorable` projection is allowed only for CPU/GPU kernels,
     # where the dense arg's pointer-backed storage can be directly viewed as a

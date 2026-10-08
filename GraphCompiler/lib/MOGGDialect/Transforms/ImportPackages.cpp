@@ -671,15 +671,24 @@ struct ImportPackagesPass
       bool contractFailed = false;
       if (distillTraitArgs) {
         for (mlir::Type argType : fn.getArgumentTypes()) {
-          KGEN::LIT::TraitType traitType = getTensorArgTraitType(argType);
-          if (!traitType) {
+          if (getTensorArgPackTraitType(argType)) {
+            mlir::emitError(fn.getLoc())
+                << "variadic packs of tensor-trait arguments are not "
+                   "supported; take a `TensorTuple` instead";
+            contractFailed = true;
+            contractAttrs.push_back(mlir::UnitAttr::get(ctx));
+            continue;
+          }
+          llvm::SmallVector<KGEN::TraitSymbolAttr> traitSymbols =
+              getTensorArgTraitSymbols(argType);
+          if (traitSymbols.empty()) {
             contractAttrs.push_back(mlir::UnitAttr::get(ctx));
             continue;
           }
           anyTraitArg = true;
           mlir::FailureOr<TensorArgContract> contract =
               distillTensorArgContract(
-                  traitType.getSymbols(),
+                  traitSymbols,
                   [&](const llvm::Twine &msg) {
                     mlir::emitError(fn.getLoc()) << msg;
                   },

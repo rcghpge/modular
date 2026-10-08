@@ -1312,9 +1312,13 @@ def MOGG_TupleCreateOp : MOGG_Op<"tuple.create", [
 ]> {
   let summary = "Pack a run of variadic tensor operands into a tuple operand.";
   let description = [{
-    Inserted by `ConformCallOperands` to pack the operands of one variadic
-    kernel argument, or a distributed kernel's per-device contexts (emitted as
-    a `DeviceContextArray`).
+    New-path counterpart of `mogg.as_tuple`: `ConformCallOperands`
+    inserts this to pack the consecutive `!mogg.tensor` operands that satisfy a
+    single variadic kernel argument into one `!mogg.tuple`. For a `TensorTuple`
+    (`$variadic_abi = tensor_tuple`) the operands are the elements' trait
+    arguments. It also packs the per-device `!mogg.context` operands of a
+    distributed kernel into a tuple-of-contexts, which emit renders as a
+    `DeviceContextArray`.
   }];
   let arguments = (ins
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Context]>>:$elements,

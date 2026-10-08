@@ -70,6 +70,15 @@
 // (stdlib) trait in the bound.
 // CHECK-DAG: references 'Copyable', which is not a tensor-argument trait
 
+// `TensorTuple[*Ts]` with `Ts: TypeList[Trait=Input & DenseTensor & Movable, ...]`
+// (kernel `trait_tensor_tuple_movable`). The tuple puts no bound on its
+// elements, so `Movable` is as foreign in its list bound as anywhere else.
+// CHECK-DAG: references 'Movable', which is not a tensor-argument trait
+
+// `*Ts: Input & DenseTensor` (kernel `trait_variadic_pack`). A variadic pack of
+// tensor arguments is not a trait-lane spelling; `TensorTuple` is.
+// CHECK-DAG: error: variadic packs of tensor-trait arguments are not supported; take a `TensorTuple` instead
+
 // === Shape-function lane disallows ======================================== //
 //
 // A shape-function tensor argument may conform to `Tensor`, `DenseTensor`,

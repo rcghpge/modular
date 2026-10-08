@@ -31,15 +31,38 @@ namespace M::MOGG {
 
 namespace {
 
-// Packs one operand list (inputs or outputs) per `mapping`: a scalar kernel
-// argument's `!mogg.tensor` is wrapped in `mogg.scalar.create`; a variadic
-// argument's consecutive `!mogg.tensor` operands go into one
-// `mogg.tuple.create`. Sets `changed` on any rewrite.
+// Packs one operand list (a call's inputs or outputs) per `mapping`: a scalar
+// kernel argument's `!mogg.tensor` is wrapped in `mogg.scalar.create`; a legacy
+// variadic argument's consecutive `!mogg.tensor` operands go into one
+// `mogg.tuple.create`; a trait argument, including each element of a
+// `TensorTuple`, gets a `mogg.trait.create`, and a `TensorTuple`'s run is then
+// packed as well. Sets `changed` on any rewrite.
 SmallVector<Value>
 packOperands(OpBuilder &builder, Location loc, ValueRange operands,
              const KernelDeclIndexToOperandAdaptorMapping &mapping,
              M::DeviceRefAttr device, bool &changed) {
   MLIRContext *ctx = builder.getContext();
+
+  // A NON-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
+  // `TileTensorable`) has its raw `!mogg.tensor` re-presented as the
+  // conforming trait argument by `mogg.trait.create`, which carries the
+  // distilled contract and the execution device (for the emit-side layout /
+  // alignment). A FUSED trait argument is handled at its producer instead: its
+  // fusion functor is a local of the prologue/epilogue emit, so the contract is
+  // stamped onto the `mogg.tensor.create.prologue`/`.epilogue` at MAP lowering
+  // (see `consumingFusedContract`), and this pass leaves the operand alone.
+  auto asTraitArg = [&](Value operand,
+                        const TensorArgContract &contract) -> Value {
+    if (contract.fused)
+      return operand;
+    changed = true;
+    // Keep the operand's own kind: a mutable-input trait argument comes in as
+    // a `!mogg.buffer`, everything else as a `!mogg.tensor`.
+    return TraitCreateOp::create(builder, loc, operand.getType(), operand,
+                                 builder.getStringAttr(device.getLabel()),
+                                 tensorArgContractToAttr(ctx, contract));
+  };
+
   SmallVector<Value> packed;
   for (size_t i = 0, e = operands.size(); i < e;) {
     auto it = mapping.find(i);
@@ -59,18 +82,6 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
     }
 
     if (arg.isVariadicTensorType()) {
-      // Record the ABI the callee's variadic parameter wants, so emit picks the
-      // aggregate without inspecting the run's producing ops. The variant's
-      // own IOSpec (not store mutability -- a fused output is not a
-      // `MutableInputTensor`) distinguishes the three cases.
-      VariadicABI abi = VariadicABI::Plain;
-      if (const auto *v = std::get_if<KernelDeclVariadicTensorAdaptor>(
-              &arg.underlyingType)) {
-        if (v->ioSpec == IOSpec::FusedInputTensor)
-          abi = VariadicABI::FusedInput;
-        else if (v->ioSpec == IOSpec::FusedOutputTensor)
-          abi = VariadicABI::FusedOutput;
-      }
       unsigned pos = arg.sourceDescriptor->position;
       SmallVector<Value> run;
       while (i < e) {
@@ -81,26 +92,30 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
         run.push_back(operands[i]);
         ++i;
       }
+      // Record the ABI the callee's variadic parameter wants, so emit picks the
+      // aggregate without inspecting the run's producing ops. For the legacy
+      // lane, the variant's own IOSpec (not store mutability -- a fused output
+      // is not a `MutableInputTensor`) distinguishes the three cases.
+      VariadicABI abi = VariadicABI::Plain;
+      if (arg.isTraitTensorTupleType()) {
+        abi = VariadicABI::TensorTuple;
+        for (Value &element : run)
+          element = asTraitArg(element, *arg.getTraitContract());
+      } else if (const auto *v = std::get_if<KernelDeclVariadicTensorAdaptor>(
+                     &arg.underlyingType)) {
+        if (v->ioSpec == IOSpec::FusedInputTensor)
+          abi = VariadicABI::FusedInput;
+        else if (v->ioSpec == IOSpec::FusedOutputTensor)
+          abi = VariadicABI::FusedOutput;
+      }
       packed.push_back(
           TupleCreateOp::create(builder, loc, TupleType::get(ctx), run, abi));
       changed = true;
       continue;
     }
 
-    // A non-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
-    // `TileTensorable`) is re-presented by `mogg.trait.create`, carrying the
-    // distilled contract and execution device. A fused one is handled at its
-    // producer: MAP lowering stamps the contract onto
-    // `mogg.tensor.create.prologue`/`.epilogue` (see `consumingFusedContract`).
-    if (std::optional<TensorArgContract> contract = arg.getTraitContract();
-        contract && !contract->fused) {
-      // Keep the operand's own kind: a mutable-input trait argument comes in as
-      // a `!mogg.buffer`, everything else as a `!mogg.tensor`.
-      packed.push_back(TraitCreateOp::create(
-          builder, loc, operands[i].getType(), operands[i],
-          builder.getStringAttr(device.getLabel()),
-          tensorArgContractToAttr(ctx, *contract)));
-      changed = true;
+    if (std::optional<TensorArgContract> contract = arg.getTraitContract()) {
+      packed.push_back(asTraitArg(operands[i], *contract));
       ++i;
       continue;
     }
