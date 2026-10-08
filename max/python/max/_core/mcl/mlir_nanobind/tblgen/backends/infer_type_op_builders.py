@@ -61,7 +61,7 @@ def _can_unwrap(attr: Attr) -> bool:
 
 def _unwrapped_return_type(attr: Attr) -> str:
     """The raw scalar/enum return type used in the unwrapped variant
-    (e.g. ``bool`` for ``BoolAttr``, ``int64_t`` for ``I64Attr``)."""
+    (such as ``bool`` for ``BoolAttr``, ``int64_t`` for ``I64Attr``)."""
     return attr.data["returnType"]
 
 
@@ -122,7 +122,7 @@ class Variant:
 
 class _UnwrappedVariant(Variant):
     """Unwrapped-attr flavour: attributes with an unwrapped representation
-    arrive as their ``returnType`` (e.g. ``bool``, ``int64_t``) and are
+    arrive as their ``returnType`` (such as ``bool``, ``int64_t``) and are
     wrapped to the storage ``Attribute`` via the attr's
     ``constBuilderCall``.
 
