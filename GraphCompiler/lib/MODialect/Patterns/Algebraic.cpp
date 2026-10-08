@@ -1798,6 +1798,29 @@ struct MathematicalSimplificationDivOfDivToDivByMul
   }
 };
 
+static std::optional<int64_t> getMinBroadcastFactor(TensorType inputType,
+                                                    TensorType bcastType) {
+  if (!inputType.hasRank() || !bcastType.hasRank())
+    return std::nullopt;
+
+  ArrayRef<TypedAttr> inDims = inputType.getDims();
+  ArrayRef<TypedAttr> outDims = bcastType.getDims();
+  if (inDims.size() > outDims.size())
+    return std::nullopt;
+
+  size_t rankDiff = outDims.size() - inDims.size();
+  int64_t factor = 1;
+  for (auto [i, outDim] : llvm::enumerate(outDims)) {
+    bool isBroadcastDim =
+        i < rankDiff || tryGetConstantInt(inDims[i - rankDiff]) == 1;
+    if (!isBroadcastDim)
+      continue;
+    if (auto outDimValue = tryGetConstantInt(outDim))
+      factor *= *outDimValue;
+  }
+  return factor;
+}
+
 // div(x, bcast(CST_or_small)) = mul(x, bcast(div(bcast(1), CST_or_small)))
 struct MathematicalSimplificationDivBySmallTensorToMul
     : public DeviceAwareRewritePattern<OpRewritePattern, MO::DivOp> {
@@ -1807,9 +1830,6 @@ struct MathematicalSimplificationDivBySmallTensorToMul
   deviceAwareMatchAndRewrite(MO::DivOp divOp,
                              DeviceAwareRewriter &rewriter) const override {
     auto tensorType = divOp.getType();
-    if (!tensorType.hasStaticShape())
-      return failure();
-
     Location loc = divOp->getLoc();
     if (!tensorType.getDtype().isFloat())
       return rewriter.notifyMatchFailure(loc, "input type isn't float");
@@ -1830,8 +1850,6 @@ struct MathematicalSimplificationDivBySmallTensorToMul
       origY = bcast.getInput();
 
     auto origYType = llvm::cast<TensorType>(origY.getType());
-    if (!origYType.hasStaticShape())
-      return failure();
 
     static constexpr int64_t kMulByDivReciprocalThroughputEstimate = 8;
     // Add 1 because it still takes time to do a multiplication.
@@ -1842,11 +1860,11 @@ struct MathematicalSimplificationDivBySmallTensorToMul
     bool yConstantFoldable =
         dataflowGraphFoldsToConstants<MO::ConstantOp, ChainCreateOp>(
             y.getDefiningOp());
-    // Avoid division by 0.
-    if (!yConstantFoldable && (*origYType.getNumElements() == 0 ||
-                               (*tensorType.getNumElements() /
-                                *origYType.getNumElements()) < kThreshold)) {
-      return failure();
+    if (!yConstantFoldable) {
+      std::optional<int64_t> factor =
+          getMinBroadcastFactor(origYType, tensorType);
+      if (!factor || *factor < kThreshold)
+        return failure();
     }
 
     auto bcast1ErrOr =

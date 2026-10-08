@@ -92,3 +92,32 @@ mo.graph @pt_layer_norm(%arg0 : !mo.tensor<[4, 3, 2], f32>) -> (!mo.tensor<[4, 3
   %14 = mo.add(%12, %13) : !mo.tensor<[4, 3, 2], f32>
   mo.output %14 : !mo.tensor<[4, 3, 2], f32>
 }
+
+// A wide last dim lets fast-math rewrite the division by sqrt into a
+// multiplication by rsqrt before fusion; the pattern must still fuse.
+// CHECK-IR: mo.graph @pt_layer_norm_wide<[[B:.*]]>(%[[ARG0:.*]]: !mo.tensor<[[[B]], 3, 16], f32>) -> !mo.tensor<[[[B]], 3, 16], f32>
+mo.graph @pt_layer_norm_wide<B>(%arg0 : !mo.tensor<[B, 3, 16], f32>) -> (!mo.tensor<[B, 3, 16], f32>) {
+  // CHECK-IR: %[[EPS:.*]] = mo.constant {{{.*}}} : !mo.tensor<[], f32>
+  // CHECK-IR: %[[GAM:.*]] = mo.constant {value = #M.dense_array<1.100{{.*}}} : !mo.tensor<[16], f32>
+  // CHECK-IR: %[[BET:.*]] = mo.constant {value = #M.dense_array<-1.000{{.*}}} : !mo.tensor<[16], f32>
+  // CHECK-IR: %[[VAL1:.*]] = mo.reduce.layer_norm(%[[ARG0]], %[[GAM]], %[[BET]], %[[EPS]])
+  // CHECK-IR: mo.output %[[VAL1]]
+  %eps = "mo.constant"() {value = #M.dense_array<0.00001> : tensor<f32>} : () -> !mo.tensor<[], f32>
+  %gamma = "mo.constant"() {value = #M.dense_array<1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1> : tensor<16xf32>} : () -> !mo.tensor<[16], f32>
+  %beta = "mo.constant"() {value = #M.dense_array<-1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0> : tensor<16xf32>} : () -> !mo.tensor<[16], f32>
+  %1 = mo.reduce.mean(%arg0) {axis = 2 : index} : (!mo.tensor<[B, 3, 16], f32>) -> !mo.tensor<[B, 3, 1], f32>
+  %2 = mo.static.broadcast_to(%1) : !mo.tensor<[B, 3, 1], f32> -> !mo.tensor<[B, 3, 16], f32>
+  %3 = mo.sub(%arg0, %2) : !mo.tensor<[B, 3, 16], f32>
+  %4 = mo.mul(%3, %3) : !mo.tensor<[B, 3, 16], f32>
+  %5 = mo.reduce.mean(%4) {axis = 2 : index} : (!mo.tensor<[B, 3, 16], f32>) -> !mo.tensor<[B, 3, 1], f32>
+  %6 = mo.static.broadcast_to(%eps) : !mo.tensor<[], f32> -> !mo.tensor<[B, 3, 1], f32>
+  %7 = mo.add(%5, %6) : !mo.tensor<[B, 3, 1], f32>
+  %8 = mo.sqrt(%7) : !mo.tensor<[B, 3, 1], f32>
+  %9 = mo.static.broadcast_to(%8) : !mo.tensor<[B, 3, 1], f32> -> !mo.tensor<[B, 3, 16], f32>
+  %10 = mo.div(%3, %9) : !mo.tensor<[B, 3, 16], f32>
+  %11 = mo.static.broadcast_to(%gamma) : !mo.tensor<[16], f32> -> !mo.tensor<[B, 3, 16], f32>
+  %12 = mo.mul(%10, %11) : !mo.tensor<[B, 3, 16], f32>
+  %13 = mo.static.broadcast_to(%beta) : !mo.tensor<[16], f32> -> !mo.tensor<[B, 3, 16], f32>
+  %14 = mo.add(%12, %13) : !mo.tensor<[B, 3, 16], f32>
+  mo.output %14 : !mo.tensor<[B, 3, 16], f32>
+}

@@ -1000,11 +1000,17 @@ struct LayerNormPattern
                 2)));
     auto var = m_Op<MO::MeanOp>(&varOp, square);
     // pytorch specific pattern
-    auto pRatio = m_Op<MO::DivOp>(
+    auto pRatioDiv = m_Op<MO::DivOp>(
         po(), diff,
         m_Op<MO::Static::BroadcastToOp>(
             po(), m_Op<MO::SqrtOp>(
                       po(), m_BinaryCommutativeOp<MO::AddOp>(po(), var, ep))));
+    auto pRatioMul = m_BinaryCommutativeOp<MO::MulOp>(
+        po(), diff,
+        m_Op<MO::Static::BroadcastToOp>(
+            po(), m_Op<MO::RsqrtOp>(
+                      po(), m_BinaryCommutativeOp<MO::AddOp>(po(), var, ep))));
+    auto pRatio = m_Optional(pRatioDiv, pRatioMul);
     auto pLayernorm = m_BinaryCommutativeOp<MO::AddOp>(
         po(), m_BinaryCommutativeOp<MO::MulOp>(po(), gam, pRatio), bet);
 

@@ -424,6 +424,44 @@ mo.graph @div_by_cst_to_mul_of_reciprocal(%input: !mo.tensor<[1, 2, 3], f32>) ->
 // CHECK-NEXT:    %[[MUL:.*]] = mo.mul({{.*}}, %[[DIV]]) : !mo.tensor<[1, 2, 3], f32>
 // CHECK-NEXT:    mo.output %[[MUL]] : !mo.tensor<[1, 2, 3], f32>
 
+// x / bcast(y) -> x * bcast(1 / y) when each element of y feeds enough outputs.
+// The fan-out counts only static broadcast dims, so a symbolic row count on
+// a per-row scale still qualifies.
+mo.graph @div_by_bcast_small_symbolic_rows<N>(%input: !mo.tensor<[N, 16], f32>, %scale: !mo.tensor<[N, 1], f32>) -> !mo.tensor<[N, 16], f32> {
+  %bcast = mo.static.broadcast_to(%scale) : !mo.tensor<[N, 1], f32> -> !mo.tensor<[N, 16], f32>
+  %0 = mo.div(%input, %bcast) : !mo.tensor<[N, 16], f32>
+  mo.output %0 : !mo.tensor<[N, 16], f32>
+}
+// CHECK-LABEL:  @div_by_bcast_small_symbolic_rows
+// CHECK-SAME:     <[[N:.*]]>(%[[INPUT:.*]]: !mo.tensor<[[[N]], 16], f32>, %[[SCALE:.*]]: !mo.tensor<[[[N]], 1], f32>
+// CHECK:         %[[ONE:.*]] = mo.static.broadcast_to({{.*}}) : !mo.tensor<[], f32> -> !mo.tensor<[[[N]], 1], f32>
+// CHECK-NEXT:    %[[RECIP:.*]] = mo.div(%[[ONE]], %[[SCALE]]) : !mo.tensor<[[[N]], 1], f32>
+// CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[RECIP]]) : !mo.tensor<[[[N]], 1], f32> -> !mo.tensor<[[[N]], 16], f32>
+// CHECK-NEXT:    %[[MUL:.*]] = mo.mul(%[[INPUT]], %[[BCAST]]) : !mo.tensor<[[[N]], 16], f32>
+// CHECK-NEXT:    mo.output %[[MUL]] : !mo.tensor<[[[N]], 16], f32>
+
+// A static fan-out below the threshold keeps the division.
+mo.graph @div_by_bcast_small_fan_out<N>(%input: !mo.tensor<[N, 4], f32>, %scale: !mo.tensor<[N, 1], f32>) -> !mo.tensor<[N, 4], f32> {
+  %bcast = mo.static.broadcast_to(%scale) : !mo.tensor<[N, 1], f32> -> !mo.tensor<[N, 4], f32>
+  %0 = mo.div(%input, %bcast) : !mo.tensor<[N, 4], f32>
+  mo.output %0 : !mo.tensor<[N, 4], f32>
+}
+// CHECK-LABEL:  @div_by_bcast_small_fan_out
+// CHECK-NOT:     mo.mul
+// CHECK:         mo.div
+// CHECK-NOT:     mo.mul
+
+// A fan-out along only a symbolic dim is unknown, so the division stays.
+mo.graph @div_by_bcast_symbolic_fan_out<N>(%input: !mo.tensor<[N, 16], f32>, %scale: !mo.tensor<[1, 16], f32>) -> !mo.tensor<[N, 16], f32> {
+  %bcast = mo.static.broadcast_to(%scale) : !mo.tensor<[1, 16], f32> -> !mo.tensor<[N, 16], f32>
+  %0 = mo.div(%input, %bcast) : !mo.tensor<[N, 16], f32>
+  mo.output %0 : !mo.tensor<[N, 16], f32>
+}
+// CHECK-LABEL:  @div_by_bcast_symbolic_fan_out
+// CHECK-NOT:     mo.mul
+// CHECK:         mo.div
+// CHECK-NOT:     mo.mul
+
 mo.graph @pow_float_to_pow_int(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], f32> {
   %cst = mo.constant {value = #M.dense_array<5.> : tensor<1xf32>} : !mo.tensor<[], f32>
   %cst_bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, 3], f32>
