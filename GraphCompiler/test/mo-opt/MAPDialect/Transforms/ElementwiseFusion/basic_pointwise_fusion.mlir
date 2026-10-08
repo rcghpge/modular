@@ -68,17 +68,12 @@ mo.graph @fusion_diamond(
 // CHECK-NEXT:  %[[OUT3:.*]] = map.iter.foreach<[8]>
 // Duplicate (%x, %y) operand slots are uniqued after fusion: one input each.
 // CHECK-NEXT:  inputs (%[[X]]: !mo.tensor<[8], f32>, %[[Y]]: !mo.tensor<[8], f32>)
-// CHECK:       %[[X1V:.*]] = map.load %[[X]][%{{.*}}] : !mo.tensor<[8], f32>
-// CHECK-NEXT:  %[[Y1V:.*]] = map.load %[[Y]][%{{.*}}] : !mo.tensor<[8], f32>
-// CHECK-NEXT:  %[[T0A:.*]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[X1V]], %[[Y1V]])
-// CHECK-NEXT:  %[[X2V:.*]] = map.load %[[X]][%{{.*}}] : !mo.tensor<[8], f32>
-// CHECK-NEXT:  %[[Y2V:.*]] = map.load %[[Y]][%{{.*}}] : !mo.tensor<[8], f32>
-// CHECK-NEXT:  %[[T0B:.*]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[X2V]], %[[Y2V]])
-// CHECK-NEXT:  %[[MUL:.*]] = map.call.elementwise @{{.*}}.Mul(%{{.*}}, %[[T0A]], %[[T0B]])
-// CHECK-NEXT:  %[[X3V:.*]] = map.load %[[X]][%{{.*}}] : !mo.tensor<[8], f32>
-// CHECK-NEXT:  %[[Y3V:.*]] = map.load %[[Y]][%{{.*}}] : !mo.tensor<[8], f32>
-// CHECK-NEXT:  %[[T0C:.*]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[X3V]], %[[Y3V]])
-// CHECK-NEXT:  %[[RELU:.*]] = map.call.elementwise @{{.*}}.ReLU(%{{.*}}, %[[T0C]])
+// `%t0` is read three times at one index, so it is computed once.
+// CHECK:       %[[XV:.*]] = map.load %[[X]][%{{.*}}] : !mo.tensor<[8], f32>
+// CHECK-NEXT:  %[[YV:.*]] = map.load %[[Y]][%{{.*}}] : !mo.tensor<[8], f32>
+// CHECK-NEXT:  %[[T0:.*]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[XV]], %[[YV]])
+// CHECK-NEXT:  %[[MUL:.*]] = map.call.elementwise @{{.*}}.Mul(%{{.*}}, %[[T0]], %[[T0]])
+// CHECK-NEXT:  %[[RELU:.*]] = map.call.elementwise @{{.*}}.ReLU(%{{.*}}, %[[T0]])
 // CHECK-NEXT:  map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[MUL]], %[[RELU]])
 // CHECK-NEXT:  map.store
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.relu"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>

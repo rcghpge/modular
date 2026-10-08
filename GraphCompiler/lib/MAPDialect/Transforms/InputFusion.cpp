@@ -151,6 +151,25 @@ LoadOp firstConsumerLoad(IterForeachOp dst, IterForeachOp src) {
   return nullptr;
 }
 
+// Folds the loads of `tensor` that read the same index in the same block into
+// the first of them, as CSE would.
+void mergeRedundantLoads(BlockArgument tensor, PatternRewriter &rewriter) {
+  DenseMap<std::pair<Block *, Value>, LoadOp> first;
+  for (Operation *user : llvm::to_vector(tensor.getUsers())) {
+    auto load = cast<LoadOp>(user);
+    auto [it, inserted] =
+        first.try_emplace({load->getBlock(), load.getIndex()}, load);
+    if (inserted)
+      continue;
+    LoadOp kept = it->second;
+    if (load->isBeforeInBlock(kept))
+      std::swap(load, kept);
+    rewriter.replaceAllUsesWith(load.getResult(), kept.getResult());
+    rewriter.eraseOp(load);
+    it->second = kept;
+  }
+}
+
 // Splices `src`'s body into `dst` at each load site, at the load's own
 // (possibly transformed) index.
 void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
@@ -170,6 +189,9 @@ void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
     ValueRange newDstArgs = dstBody.getArguments().slice(argIdx, numSrcInputs);
     BlockArgument oldTensorArg = dstBody.getArgument(argIdx + numSrcInputs);
 
+    // One load per index, so `src` is cloned once per value it computes; a
+    // clone per load doubles the body at every fan-out level.
+    mergeRedundantLoads(oldTensorArg, rewriter);
     for (Operation *user : llvm::to_vector(oldTensorArg.getUsers())) {
       auto load = cast<LoadOp>(user);
       Value loadIndex = load.getIndex();
@@ -324,6 +346,11 @@ IterForeachOp findEligibleProducer(Operation *dstOp,
   if (auto dst = dyn_cast<IterForeachOp>(dstOp)) {
     Block &body = dst.getBody().front();
     DenseSet<Operation *> tried;
+    // Fusing a producer moves it when `dst` is its only reader and copies it
+    // otherwise. Take the single-use ones first: once `d = tanh(r)` is in,
+    // `dst` is `r`'s only reader and `r` moves too. Taking `r` first copies it,
+    // then copies it again inside `d`, doubling per level of such a chain.
+    IterForeachOp duplicable;
     for (Value input : dst.getInputs()) {
       auto src = input.getDefiningOp<IterForeachOp>();
       if (!src || src.getNumResults() != 1 || !tried.insert(src).second)
@@ -353,10 +380,14 @@ IterForeachOp findEligibleProducer(Operation *dstOp,
       if (blocked)
         continue;
       LoadOp load = firstConsumerLoad(dst, src);
-      if (load && config.shouldFuse(producerStoreOf(src), load))
+      if (!load || !config.shouldFuse(producerStoreOf(src), load))
+        continue;
+      if (src.getResult(0).hasOneUse())
         return src;
+      if (!duplicable)
+        duplicable = src;
     }
-    return nullptr;
+    return duplicable;
   }
 
   auto dst = cast<IterOpaqueOp>(dstOp);
@@ -425,7 +456,9 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
         continue;
       uint64_t fusedIntoConsumer = 0;
       while (IterForeachOp src = findEligibleProducer(op, config)) {
-        if (fusedIntoConsumer >= config.maxFusionSetSize)
+        // The cap bounds duplication; moving a sole-use producer adds no work.
+        bool duplicates = !src.getResult(0).hasOneUse();
+        if (duplicates && fusedIntoConsumer >= config.maxFusionSetSize)
           break;
         if (isa<IterForeachOp>(op))
           spliceIntoForeach(cast<IterForeachOp>(op), src, rewriter);
@@ -438,7 +471,7 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
         // Uniquing inputs re-exposes a shared producer as single-use, so this
         // drain fuses it once instead of duplicating or dropping it.
         dedupeKernelInputs(op, rewriter);
-        ++fusedIntoConsumer;
+        fusedIntoConsumer += duplicates;
         ++numFused;
       }
     }
