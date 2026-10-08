@@ -15,6 +15,7 @@
 #include "MLRT/Driver/DeviceContext/KernelLoadGate.h"
 
 #include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
+#include "MLRT/lib/Driver/DeviceContext/HostMemoryInfo.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "NVML.h"
 #include "Support/HashUtils.h"
@@ -772,6 +773,11 @@ ErrorOr<Device::MemInfo> CUDADevice::getMemoryInfo() const {
   Device::MemInfo memInfo;
   CUDA_WITH_DEV_ERR(*this);
   CUDA_CHECK_ERR(driver_.cuMemGetInfo_v2(&memInfo.free, &memInfo.total));
+#if MODULAR_LINUX
+  DEFINE_OR_RETURN_ERROR(bool, unified, isHostUnified());
+  if (unified)
+    return getHostUnifiedMemoryInfo(memInfo);
+#endif
   return memInfo;
 }
 
@@ -848,42 +854,14 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
     nvmlMemory_t nvmlMemInfo;
     auto nvmlMemResult = nvml.nvmlDeviceGetMemoryInfo(nvmlDevice, &nvmlMemInfo);
 
-    // NVML answers for the parent device, which a container granted only a MIG
-    // compute instance is not permitted to query. CUDA reports the instance's
-    // own memory, so a rejected NVML query defers to the CUDA query below.
-    bool memInfoFromCUDA = false;
+    // NVML cannot report memory on some integrated GPUs or when only a MIG
+    // instance is accessible. CUDA still reports the device's physical limit.
+    bool memInfoFromCUDA = nvmlMemResult != NVML::SUCCESS;
 
     Device::MemInfo memInfo;
     if (nvmlMemResult == NVML::SUCCESS) {
       memInfo.free = nvmlMemInfo.free;
       memInfo.total = nvmlMemInfo.total;
-    } else if (nvmlMemResult == NVML::NOT_SUPPORTED) {
-#ifdef _WIN32
-      // CUDA devices never initialize on Windows (see CUDADriver::lib_name),
-      // and mingw has no sysconf, so the unified-memory fallback below cannot
-      // be compiled or reached here.
-      RETURN_ERROR("NVML: Unable to get memory info");
-#else
-      // On unified memory systems (e.g. NVIDIA Grace Blackwell GB10), NVML
-      // cannot report discrete GPU memory. Fall back to system memory info
-      // since CPU and GPU share the same physical memory.
-      long pages = sysconf(_SC_PHYS_PAGES);
-      long pageSize = sysconf(_SC_PAGE_SIZE);
-#if MODULAR_LINUX
-      long availPages = sysconf(_SC_AVPHYS_PAGES);
-#else
-      long availPages = pages;
-#endif
-      if (pages < 0 || pageSize < 0 || availPages < 0)
-        RETURN_ERROR("NVML: Unable to get memory info on unified memory "
-                     "system: sysconf failed");
-      memInfo.total =
-          static_cast<size_t>(pages) * static_cast<size_t>(pageSize);
-      memInfo.free =
-          static_cast<size_t>(availPages) * static_cast<size_t>(pageSize);
-#endif // _WIN32
-    } else {
-      memInfoFromCUDA = true;
     }
 
     int alignment;
@@ -922,6 +900,17 @@ ErrorOr<CUDADevice &> CUDADevice::get(int id) {
               std::to_string(id) + " with error " +
               nvml.nvmlErrorString(nvmlMemResult));
     }
+
+#if MODULAR_LINUX
+    int integrated = 0;
+    CUDA_CHECK_ERR(driver.cuDeviceGetAttribute(
+        &integrated, CUdevice_attribute::INTEGRATED, cuDevice));
+    if (integrated) {
+      DEFINE_OR_RETURN_ERROR(Device::MemInfo, hostInfo,
+                             getHostUnifiedMemoryInfo(memInfo));
+      memInfo = hostInfo;
+    }
+#endif
 
     int computeCapabilityMajor, computeCapabilityMinor;
     NVML_CHECK_ERR(nvml.nvmlDeviceGetCudaComputeCapability(

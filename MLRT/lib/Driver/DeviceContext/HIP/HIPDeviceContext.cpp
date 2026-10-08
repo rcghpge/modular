@@ -15,6 +15,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 #include "MLRT/Driver/DeviceContext/LaunchTraceRegistry.h"
+#include "MLRT/lib/Driver/DeviceContext/HostMemoryInfo.h"
 #include "MLRT/lib/Driver/DeviceContext/MemoryManager.h"
 #include "Support/ErrorOr.h"
 #include "Support/HashUtils.h"
@@ -792,6 +793,11 @@ ErrorOr<Device::MemInfo> HIPDevice::getMemoryInfo() const {
   Device::MemInfo memInfo;
   HIP_WITH_DEV_ERR(*this);
   HIP_CHECK_ERR(driver_.hipMemGetInfo(&memInfo.free, &memInfo.total));
+#if MODULAR_LINUX
+  DEFINE_OR_RETURN_ERROR(bool, unified, isHostUnified());
+  if (unified)
+    return getHostUnifiedMemoryInfo(memInfo);
+#endif
   return memInfo;
 }
 
@@ -862,6 +868,18 @@ ErrorOr<HIPDevice &> HIPDevice::get(int id) {
     HIPDeviceScope withDev(hipDevice, driver);
     Device::MemInfo memInfo;
     HIP_CHECK_ERR(driver.hipMemGetInfo(&memInfo.free, &memInfo.total));
+
+#if MODULAR_LINUX
+    int integrated = 0;
+    HIP_CHECK_ERR(driver.hipDeviceGetAttribute(
+        &integrated, hipDeviceAttribute_t::hipDeviceAttributeIntegrated,
+        hipDevice));
+    if (integrated) {
+      DEFINE_OR_RETURN_ERROR(Device::MemInfo, hostInfo,
+                             getHostUnifiedMemoryInfo(memInfo));
+      memInfo = hostInfo;
+    }
+#endif
 
     ErrorOr<std::string> errArch = getArchName(hipDevice);
     if (errArch)

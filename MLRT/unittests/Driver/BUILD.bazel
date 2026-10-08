@@ -720,6 +720,51 @@ modular_cc_test(
 )
 
 modular_cc_test(
+    name = "HostMemoryInfoTest",
+    srcs = ["HostMemoryInfoTest.cpp"],
+    target_compatible_with = select({
+        # Links the legacy :Driver/DeviceContextImplCpp directly, which is
+        # compiled without MODULAR_HAL_DEVICE_CONTEXT; under
+        # --config=hal-device-context consumers compile DeviceContext.h
+        # against the HAL declarations, so this legacy-only target is
+        # skipped in that lane (VirtualDeviceContextTest pattern above).
+        "//:hal_device_context_enabled": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImplCpp",
+        "//Support:Base",
+    ],
+)
+
+modular_cc_test(
+    name = "HostUnifiedMemoryTest",
+    srcs = ["HostUnifiedMemoryTest.cpp"],
+    env = {
+        # Exercise percentage-based planning instead of the test runner's
+        # small fixed allocator budget.
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE": "",
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_SIZE_PERCENT": "90",
+    },
+    gpu_constraints = ["//:has_gpu"],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }) + select({
+        # Legacy-only target, skipped in the HAL lane; see HostMemoryInfoTest
+        # above.
+        "//:hal_device_context_enabled": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImplCpp",
+    ],
+)
+
+modular_cc_test(
     name = "GPUDeviceContextTest",
     size = "small",
     srcs = [
