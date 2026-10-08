@@ -13,9 +13,30 @@
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Interfaces/FoldInterfaces.h"
 
 using namespace M;
 using namespace MGP;
+
+namespace {
+
+//===----------------------------------------------------------------------===//
+// MGPDialectFoldInterface
+//===----------------------------------------------------------------------===//
+
+struct MGPDialectFoldInterface : public mlir::DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
+
+  /// Keep constants inside a `mgp.device_graph.collective` body. Each region
+  /// records a separate per-device graph, so a constant hoisted above the op
+  /// would turn into a value captured from the enclosing scope and shared by
+  /// every device's recording instead of staying local to the graph using it.
+  bool shouldMaterializeInto(Region *region) const override {
+    return isa<DeviceGraphCollectiveOp>(region->getParentOp());
+  }
+};
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // MGPDialect
@@ -25,7 +46,7 @@ void MGPDialect::initialize() {
   registerTypes();
   registerAttributes();
   registerOperations();
-  addInterface<MGPTensorBufferDialectInterface>();
+  addInterfaces<MGPTensorBufferDialectInterface, MGPDialectFoldInterface>();
 
   // PrepareDevicePrimitivesPass appends the device label to device-generic op
   // names for GraphRT primitive dispatch; those ops are not registered.
