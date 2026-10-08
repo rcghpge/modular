@@ -458,7 +458,11 @@ struct FuseHorizontalPass
   // Returns whether any pair was fused.
   bool fuseSiblings(Block &block) {
     bool fusedAny = false;
-    // Fusing rebuilds both kernels, so the scan restarts after each pair.
+    // Fusing rebuilds both kernels, so the kernel list and groups are rebuilt
+    // after each pair. The scan resumes at the merged pair's first kernel, not
+    // at the top: a merged kernel reads everything both members read, so
+    // every pair rejected before it is still rejected.
+    unsigned start = 0;
     bool changed = true;
     while (changed) {
       changed = false;
@@ -476,7 +480,7 @@ struct FuseHorizontalPass
           members[group.key()].push_back(idx);
       }
 
-      for (unsigned i = 0, e = kernels.size(); i < e && !changed; ++i) {
+      for (unsigned i = start, e = kernels.size(); i < e && !changed; ++i) {
         SmallVector<unsigned> candidates;
         for (const FusionCandidateGroup &group : groupsOf[i])
           for (unsigned j : members.at(group.key()))
@@ -491,6 +495,8 @@ struct FuseHorizontalPass
             continue;
           fuse(a, b);
           ++numKernelsFused;
+          // `a` is gone, so the next kernel in block order now sits at `i`.
+          start = i;
           changed = true;
           fusedAny = true;
           break;
