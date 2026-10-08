@@ -281,6 +281,24 @@ LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
 // Parameter printing/parsing support in form: <P1, P2, P3>
 //===----------------------------------------------------------------------===//
 
+/// Parse an optional symbol visibility keyword, mirroring
+/// `function_interface_impl::parseFunctionOp`.
+static ParseResult parseSymbolVisibility(OpAsmParser &p,
+                                         StringAttr &visibility) {
+  StringRef keyword;
+  if (succeeded(
+          p.parseOptionalKeyword(&keyword, {"public", "private", "nested"})))
+    visibility = p.getBuilder().getStringAttr(keyword);
+  return success();
+}
+
+/// Prints the symbol visibility keyword, if present.
+static void printSymbolVisibility(OpAsmPrinter &p, Operation *op,
+                                  StringAttr visibility) {
+  if (visibility)
+    p << visibility.getValue() << ' ';
+}
+
 static ParseResult parseParamDecls(OpAsmParser &p,
                                    KGEN::ParamDeclArrayAttr &paramDecls) {
   auto defaultType = MOSH::ShapeAttr::getDimType(p.getContext());
@@ -318,6 +336,19 @@ static void printParamDecls(OpAsmPrinter &p, Operation *,
     printParamDecls(p, paramDecls, printElt);
     p << '>';
   }
+}
+
+/// `custom<OutputParamDecls>`; named apart from `parseParamDecls` because
+/// `M::MO` declares a same-signature `printParamDecls` that would make the
+/// generated call ambiguous.
+static ParseResult parseOutputParamDecls(OpAsmParser &p,
+                                         KGEN::ParamDeclArrayAttr &paramDecls) {
+  return parseParamDecls(p, paramDecls);
+}
+
+static void printOutputParamDecls(OpAsmPrinter &p, Operation *op,
+                                  KGEN::ParamDeclArrayAttr paramDecls) {
+  printParamDecls(p, op, paramDecls);
 }
 
 static ParseResult

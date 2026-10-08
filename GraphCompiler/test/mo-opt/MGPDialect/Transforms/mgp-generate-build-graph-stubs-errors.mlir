@@ -11,7 +11,7 @@ mogg.kernel.stub @stub_1 (%p: !mogg.pointer) fusionInfo = "test.k":1 attributes 
   %ctx = "test.make_ctx"() : () -> !mogg.context
   %shape = "test.shape"() : () -> !mogg.shape
   %t = "test.tensor"() : () -> !mogg.tensor
-  mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor) attributes {device = "gpu"} {
+  mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor) device = "gpu" {
   ^bb0(%a: !mogg.tensor, %i: !map.index<2>):
   }
   mogg.output

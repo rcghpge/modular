@@ -35,8 +35,7 @@ mgp.model @dynamic_stable_crosses_devices device_graph : mof devices [#M.device_
       "test.use_ctx"(%c) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %p = mogg.async.pack(%u) : !mgp.tensor<?x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<?x3xf32, <"gpu", 0>>>
-    } fusionInfo = "test.producer0"
-      {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+    } fusionInfo = "test.producer0" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
 
     // expected-error@+1 {{'mgp.device_graph.stable.create' op stable tensor with dynamic dimensions is consumed on another device; only its data pointer crosses devices, so its shape cannot be recovered there}}
     %s0 = mgp.device_graph.stable.create %a : !mgp.tensor<?x3xf32, <"gpu", 0>>
@@ -52,8 +51,7 @@ mgp.model @dynamic_stable_crosses_devices device_graph : mof devices [#M.device_
              !mgp.device_context<<"gpu", 1>>) -> !mgp.tensor<2x3xf32, <"gpu", 1>>
       %p = mogg.async.pack(%r) : !mgp.tensor<2x3xf32, <"gpu", 1>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 1>>>
-    } fusionInfo = "test.consumer1"
-      {device = #M.device_ref<"gpu", 1>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+    } fusionInfo = "test.consumer1" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
 
     mgp.device_graph.staging.yield %c0 : !mgp.tensor<2x3xf32, <"gpu", 1>>
   } -> !mgp.tensor<2x3xf32, <"gpu", 1>>

@@ -33,7 +33,7 @@ mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %b = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%b) : !mgp.buffer<<"gpu", 0>>
     mogg.output %p : !mogg.async<!mgp.buffer<<"gpu", 0>>>
-  } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.a" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   %b = mogg.generic.compiled.region (%a) : (%arg: !mgp.buffer<<"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
     %u = mogg.async.unpack(%arg) : !mgp.buffer<<"gpu", 0>>
     %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
@@ -41,7 +41,7 @@ mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %t = mgp.tensor.create %ch, %u, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-  } fusionInfo = "test.b" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.b" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   mef.output %ch0, %b : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 }
 
@@ -85,7 +85,7 @@ mgp.model @dg_guard device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %r = mogg.async.ready : !mef.chain
     mogg.output %r : !mef.chain
-  } fusionInfo = "test.assert" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.assert" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   // Guard: gates the model input on region A's chain. Not a compiled region, so
   // the current pass leaves it behind and forms the cycle.
   %g = mgp.guard %ca, %in : !mgp.tensor<2x3xf32, <"gpu", 0>>
@@ -98,7 +98,7 @@ mgp.model @dg_guard device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %t = mgp.tensor.create %ch, %bf, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-  } fusionInfo = "test.b" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.b" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   mef.output %ch0, %b : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 }
 
@@ -122,7 +122,7 @@ mgp.model @not_dg : mof devices [#M.device_ref<"gpu", 0>]
     %b = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%b) : !mgp.buffer<<"gpu", 0>>
     mogg.output %p : !mogg.async<!mgp.buffer<<"gpu", 0>>>
-  } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.a" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   mef.output %ch0, %a : !mef.chain, !mgp.buffer<<"gpu", 0>>
 }
 
@@ -151,7 +151,7 @@ mgp.model @dg_mut_input device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>, mut>
     %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>, mut>
     mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>, mut>>
-  } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.a" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   mef.output %ch0, %a : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>, mut>
 }
 
@@ -179,7 +179,7 @@ mgp.model @dg_host_input device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %m = mogg.async.unpack(%meta) : !mgp.tensor<4xsi64, <"cpu", 0>>
     %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-  } fusionInfo = "test.a" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.a" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   mef.output %ch0, %a : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>
 }
 
@@ -209,12 +209,12 @@ mgp.model @dg_stable_create device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-  } fusionInfo = "test.producer" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.producer" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   %s = mgp.device_graph.stable.create %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
   %b = mogg.generic.compiled.region (%s) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>) -> !mgp.tensor<2x3xf32, <"gpu", 0>, stable> {
     %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
     %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
     mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>, stable>>
-  } fusionInfo = "test.consumer" {device = #M.device_ref<"gpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = "test.consumer" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   mef.output %ch0, %b : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
 }

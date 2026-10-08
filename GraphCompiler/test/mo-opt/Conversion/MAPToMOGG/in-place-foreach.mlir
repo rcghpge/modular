@@ -5,9 +5,9 @@
 // rather than `!mogg.tensor`.
 
 // CHECK-LABEL: mo.graph @in_place_add
-// CHECK: [[IN:%[^ ]+]] = mogg.tensor.create({{.*}}) {{{.*}}mut = true{{.*}}} : (!mogg.pointer, !mogg.shape) -> !mogg.buffer
-// CHECK: [[RHS:%[^ ]+]] = mogg.tensor.create({{.*}}) {{{.*}}mut = false{{.*}}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK: [[OUT:%[^ ]+]] = mogg.tensor.create({{.*}}) {{{.*}}mut = true{{.*}}} : (!mogg.pointer, !mogg.shape) -> !mogg.buffer
+// CHECK: [[IN:%[^ ]+]] = mogg.tensor.create({{.*}}) <{{.*}}mut = true{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.buffer
+// CHECK: [[RHS:%[^ ]+]] = mogg.tensor.create({{.*}}) <{{.*}}mut = false{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK: [[OUT:%[^ ]+]] = mogg.tensor.create({{.*}}) <{{.*}}mut = true{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.buffer
 // CHECK: mogg.call.foreach {{.*}} capturing([[IN]], [[RHS]], [[OUT]] : !mogg.buffer, !mogg.tensor, !mogg.buffer)
 // CHECK-NEXT: ^bb0([[BIN:%[^ :,]+]]: !mogg.buffer, [[BRHS:%[^ :,]+]]: !mogg.tensor, [[BOUT:%[^ :,]+]]: !mogg.buffer, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:   mogg.tensor.load [[BIN]][[[IDX]]] : !mogg.buffer, !map.index<2> -> f32

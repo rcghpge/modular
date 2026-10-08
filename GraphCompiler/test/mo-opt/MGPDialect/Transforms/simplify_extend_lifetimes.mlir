@@ -4,7 +4,7 @@
 // CHECK: execute (%[[CH:.*]]: !mef.chain, %[[CTX:.*]]: !mgp.context{{.*}}, %[[T1:.*]]: !mgp.tensor<2x4xf32>, %[[T2:.*]]: !mgp.tensor<2x4xf32>
 
 // CHECK: %[[OUT_CH:.*]] = mogg.generic.compiled.region (%[[CTX]], %[[T1]], %[[T2]]
-// CHECK: inOutSignature = #M.inout_sig<"...">
+// CHECK: inOutSignature = <"...">
 // CHECK: mef.output %[[OUT_CH]]
 
 mgp.model @extend_lifetimes : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
@@ -17,7 +17,7 @@ mgp.model @extend_lifetimes : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
   %3 = mogg.generic.compiled.region () : ()  -> !mef.chain{
     %ch = mogg.async.ready : !mef.chain
     mogg.output %ch : !mef.chain
-  } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>}
 
   %5 = mgp.extend.lifetime %3, %arg1, %arg2, %arg3 : (!mef.chain, !mgp.context, !mgp.tensor<2x4xf32>, !mgp.tensor<2x4xf32>) -> !mef.chain
 

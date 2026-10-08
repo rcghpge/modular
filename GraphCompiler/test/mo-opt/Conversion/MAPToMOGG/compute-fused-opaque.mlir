@@ -54,9 +54,10 @@ mo.graph @mixed_dtype(
 
 // A store-only kernel argument is untouched: store lambda, and the attribute
 // stays at its `false` default, which the printer elides. `computeOutputArg`
-// sorts before `device`, so matching `attributes {device` proves it is absent.
+// sorts before `device`, so `device` following the result type immediately
+// proves it is absent.
 // CHECK-LABEL: mo.graph @plain_store
-// CHECK:       mogg.tensor.create.epilogue {{.*}}attributes {device =
+// CHECK:       mogg.tensor.create.epilogue {{.*}}-> !mogg.tensor device =
 // CHECK-NEXT:  ^bb0(%[[PV:.*]]: f32, %[[PI:.*]]: !map.index<1>, %[[PO:.*]]: !mogg.tensor, %{{.*}}: !mogg.tensor):
 // CHECK:         mogg.tensor.store %[[PO]][%[[PI]]]
 mo.graph @plain_store(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {

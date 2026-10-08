@@ -337,7 +337,7 @@ mogg.primitive.decl @foreach_impl registration = "mogg.call.foreach" function = 
 mogg.kernel.stub @stub_1 (%p: !mogg.pointer, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
   %shape = "test.shape"() : () -> !mogg.shape
   %t = "test.tensor"() : () -> !mogg.tensor
-  mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor) attributes {device = "gpu"} {
+  mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor) device = "gpu" {
   ^bb0(%a: !mogg.tensor, %i: !map.index<2>):
   }
   mogg.output

@@ -8,7 +8,7 @@
 // and the store is lost between executions.
 // CHECK-LABEL: mgp.model @mutable_store
 // CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
-// CHECK: inOutSignature = #M.inout_sig<"iim.">
+// CHECK: inOutSignature = <"iim.">
 mo.graph @mutable_store(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[1], si32> {
   %0 = mo.chain.create()
   %1 = mo.buffer.create {initValue = #M.dense_array<0> : tensor<1xsi32>} : !mo.buffer<[1], si32>

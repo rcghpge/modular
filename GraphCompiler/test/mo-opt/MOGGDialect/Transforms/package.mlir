@@ -29,8 +29,8 @@ func.func @variadic(%a: !mogg.tensor, %b: !mogg.tensor, %out: !mogg.tensor, %ctx
 // reads them instead of inspecting an output's producer, and packing is what
 // replaces that producer -- dropping them silently disables the epilogue.
 // CHECK-LABEL: func.func @variadicKeepsFusionFlags
-// CHECK: mogg.call.opaque @{{.*}}MapLowerVariadic inputs(%{{.*}} : !mogg.tuple) outputs(%{{.*}} : !mogg.tensor) context(%{{.*}} : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
+// CHECK: mogg.call.opaque @{{.*}}MapLowerVariadic inputs(%{{.*}} : !mogg.tuple) outputs(%{{.*}} : !mogg.tensor) context(%{{.*}} : !mogg.context) hasEpilogueFusion = true hasPrologueFusion = true
 func.func @variadicKeepsFusionFlags(%a: !mogg.tensor, %b: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) {
-  mogg.call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor, !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context) {hasEpilogueFusion = true, hasPrologueFusion = true}
+  mogg.call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor, !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context) hasEpilogueFusion = true hasPrologueFusion = true
   return
 }

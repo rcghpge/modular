@@ -15,18 +15,18 @@
 // CHECK:       dims (%[[B:[a-z0-9]+]]: !mogg.dim<B>, %{{[a-z0-9]+}}: !mogg.dim<S>, %[[T:[a-z0-9]+]]: !mogg.dim<T>)
 // CHECK:       %[[CONCAT:.*]] = mogg.tensor.create(%{{.*}}) {{.*}}shapeAttr = #mosh<ape[B, T, 16]>
 // CHECK:       %[[WINDOW:.*]] = mogg.tensor.create(%{{.*}}) {{.*}}shapeAttr = #mosh<ape[B, 8, 16]>
-// CHECK:       %[[IN_SHAPE:[0-9]+]] = mogg.shape.create(%[[B]], %[[T]]) {shape = #mosh<ape[dyn, dyn, 16]> : !mosh.ape}
-// CHECK-NEXT:  %[[OUT_SHAPE:[0-9]+]] = mogg.shape.create(%[[B]]) {shape = #mosh<ape[dyn, 8, 16]> : !mosh.ape}
+// CHECK:       %[[IN_SHAPE:[0-9]+]] = mogg.shape.create(%[[B]], %[[T]]) <shape = #mosh<ape[dyn, dyn, 16]> : !mosh.ape>
+// CHECK-NEXT:  %[[OUT_SHAPE:[0-9]+]] = mogg.shape.create(%[[B]]) <shape = #mosh<ape[dyn, 8, 16]> : !mosh.ape>
 // CHECK:       %[[PTR:.*]] = mogg.tensor.get_ptr(%[[CONCAT]])
 // CHECK:       %[[EPI:.*]] = mogg.tensor.create.epilogue %{{.*}} capturing(%[[CONCAT]], %[[WINDOW]] : !mogg.tensor, !mogg.tensor) shapes(%[[IN_SHAPE]], %[[OUT_SHAPE]]) ptr %[[PTR]]
 // CHECK-NEXT:  ^bb0(%[[VAL:[a-z0-9]+]]: f32, %[[IDX:[a-z0-9]+]]: !map.index<3>, %[[CAP0:[a-z0-9]+]]: !mogg.tensor, %[[CAP1:[a-z0-9]+]]: !mogg.tensor, %[[IN:[a-z0-9]+]]: !mogg.shape, %[[OUT:[a-z0-9]+]]: !mogg.shape):
 // CHECK-NEXT:    mogg.tensor.store %[[CAP0]][%[[IDX]]] = %[[VAL]]
-// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) {inShape = #mosh<ape[B, T, 16]> : !mosh.ape, outShape = #mosh<ape[B, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>} : !map.index<3>, !mogg.shape, !mogg.shape {
+// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[B, T, 16]> : !mosh.ape, outShape = #mosh<ape[B, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>> : !map.index<3>, !mogg.shape, !mogg.shape {
 // CHECK-NEXT:    ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<3>):
 // CHECK-NEXT:      mogg.tensor.store %[[CAP1]][%[[IOUT]]] = %[[VAL]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  mogg.call.opaque @{{.*}}.Concat inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) context({{.*}}) {hasEpilogueFusion = true
+// CHECK-NEXT:  mogg.call.opaque @{{.*}}.Concat inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) context({{.*}}) hasEpilogueFusion = true
 // CHECK-NOT:   mogg.kernel
 mo.graph @concat_slice_window<B, S, T -> OB, OT>(
   %cache: !mo.tensor<[B, 8, 16], f32>,
@@ -47,7 +47,7 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
 
 // CHECK-LABEL: mo.graph @matmul_slice_step
 // CHECK:       %[[EPI:.*]] = mogg.tensor.create.epilogue
-// CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) {inShape = #mosh<ape[8, 8]> : !mosh.ape, outShape = #mosh<ape[4, 8]> : !mosh.ape, staticStart = array<i64: 1, 0>, staticStep = array<i64: 2, 1>} : !map.index<2> {
+// CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) <inShape = #mosh<ape[8, 8]> : !mosh.ape, outShape = #mosh<ape[4, 8]> : !mosh.ape, staticStart = array<i64: 1, 0>, staticStep = array<i64: 2, 1>> : !map.index<2> {
 // CHECK-NEXT:  ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<2>):
 // CHECK-NEXT:    mogg.tensor.store %{{[a-z0-9]+}}[%[[IOUT]]]
 // CHECK:       mogg.call.opaque @{{.*}}.Matmul inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
@@ -65,7 +65,7 @@ mo.graph @matmul_slice_step(
 
 // CHECK-LABEL: mo.graph @bmm_window
 // CHECK:       %[[EPI:.*]] = mogg.tensor.create.epilogue
-// CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) {inShape = #mosh<ape[2, 16, 16]> : !mosh.ape, outShape = #mosh<ape[2, 4, 16]> : !mosh.ape, staticStart = array<i64: 0, 12, 0>, staticStep = array<i64: 1, 1, 1>} : !map.index<3> {
+// CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) <inShape = #mosh<ape[2, 16, 16]> : !mosh.ape, outShape = #mosh<ape[2, 4, 16]> : !mosh.ape, staticStart = array<i64: 0, 12, 0>, staticStep = array<i64: 1, 1, 1>> : !map.index<3> {
 // CHECK-NEXT:  ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<3>):
 // CHECK-NEXT:    mogg.tensor.store %{{[a-z0-9]+}}[%[[IOUT]]]
 // CHECK:       mogg.call.opaque @{{.*}}.BatchMatmul inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
@@ -85,7 +85,7 @@ mo.graph @bmm_window(
 
 // CHECK-LABEL: mo.graph @conv_window
 // CHECK:       %[[EPI:.*]] = mogg.tensor.create.epilogue
-// CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) {inShape = #mosh<ape[2, 3, 3, 4]> : !mosh.ape, outShape = #mosh<ape[2, 2, 3, 4]> : !mosh.ape, staticStart = array<i64: 0, 1, 0, 0>, staticStep = array<i64: 1, 1, 1, 1>} : !map.index<4> {
+// CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) <inShape = #mosh<ape[2, 3, 3, 4]> : !mosh.ape, outShape = #mosh<ape[2, 2, 3, 4]> : !mosh.ape, staticStart = array<i64: 0, 1, 0, 0>, staticStep = array<i64: 1, 1, 1, 1>> : !map.index<4> {
 // CHECK-NEXT:  ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<4>):
 // CHECK-NEXT:    mogg.tensor.store %{{[a-z0-9]+}}[%[[IOUT]]]
 // CHECK:       mogg.call.opaque @{{.*}}.Conv inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
@@ -114,7 +114,7 @@ mo.graph @conv_window(
 // CHECK:       mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}}, %{{.*}} : !mogg.tensor, !mogg.tensor) shapes(%{{[0-9]+}}, %{{[0-9]+}})
 // CHECK-NEXT:  ^bb0(%[[VAL:[a-z0-9]+]]: f32, %[[IDX:[a-z0-9]+]]: !map.index<3>, %{{[a-z0-9]+}}: !mogg.tensor, %[[CAP1:[a-z0-9]+]]: !mogg.tensor, %[[IN:[a-z0-9]+]]: !mogg.shape, %[[OUT:[a-z0-9]+]]: !mogg.shape):
 // CHECK-NEXT:    mogg.tensor.store
-// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) {inShape = #mosh<ape[2, T, 16]> : !mosh.ape, outShape = #mosh<ape[2, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>}
+// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[2, T, 16]> : !mosh.ape, outShape = #mosh<ape[2, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>>
 // CHECK-NEXT:    ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<3>):
 // CHECK-NEXT:      mogg.tensor.store %[[CAP1]][%[[IOUT]]] = %[[VAL]]
 mo.graph @concat_window_dynamic_in<S, T>(
@@ -136,7 +136,7 @@ mo.graph @concat_window_dynamic_in<S, T>(
 // CHECK:       mogg.tensor.create.epilogue %{{.*}} shapes(%{{[0-9]+}}, %{{[0-9]+}})
 // CHECK-NEXT:  ^bb0(%{{.*}}, %[[IDX:[a-z0-9]+]]: !map.index<2>, %{{.*}}, %{{.*}}, %[[IN:[a-z0-9]+]]: !mogg.shape, %[[OUT:[a-z0-9]+]]: !mogg.shape):
 // CHECK-NEXT:    mogg.tensor.store
-// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) {inShape = #mosh<ape[M, 8]> : !mosh.ape, outShape = #mosh<ape[H, 8]> : !mosh.ape, staticStart = array<i64: 1, 0>, staticStep = array<i64: 2, 1>}
+// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[M, 8]> : !mosh.ape, outShape = #mosh<ape[H, 8]> : !mosh.ape, staticStart = array<i64: 1, 0>, staticStep = array<i64: 2, 1>>
 // CHECK:       mogg.call.opaque @{{.*}}.Matmul inputs({{.*}}) outputs({{.*}}) {{.*}}hasEpilogueFusion = true
 mo.graph @matmul_slice_step_dynamic<M, H>(
   %a: !mo.tensor<[M, 4], f32>,

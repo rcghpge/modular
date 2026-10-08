@@ -162,9 +162,9 @@
 // the `input` contract would be satisfied by just one of the two inputs, so we
 // count the two input contracts explicitly.
 // CHECK-LABEL: mgp.model @trait_dense_add
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_dense_add(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_add_some", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
@@ -178,8 +178,8 @@ mo.graph @trait_dense_add(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f3
 // (output vs mutable_input), so a swapped operand-position lookup would be
 // caught.
 // CHECK-LABEL: mgp.model @trait_mutable
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: #mogg.tensor_arg<{role = mutable_input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: <{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: <{role = mutable_input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_mutable(%x: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.chain.create()
   %0, %outch = mo.custom {symbol = "trait_mutable_input", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %c) : (!mo.buffer<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain)
@@ -192,9 +192,9 @@ mo.graph @trait_mutable(%x: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
 // must each lower, plus one `role = input`. A single output would not catch a
 // >1-output position mixup.
 // CHECK-LABEL: mgp.model @trait_multi
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_multi(%x: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>) {
   %a, %b = mo.custom {symbol = "trait_multi_output", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x) : (!mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>)
   mo.output %a, %b : !mo.tensor<[5], f32>, !mo.tensor<[5], f32>
@@ -206,7 +206,7 @@ mo.graph @trait_multi(%x: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.te
 // lower to `mogg.tensor.__init__`. Both lanes coexist in the same kernel.
 // CHECK-LABEL: mgp.model @mixed_legacy_trait
 // CHECK-DAG: mogg.trait.create
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: <{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.tensor.create
 mo.graph @mixed_legacy_trait(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_mixed_legacy", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
@@ -220,9 +220,9 @@ mo.graph @mixed_legacy_trait(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3],
 // direction (the mirror of `mixed_legacy_trait`).
 // CHECK-LABEL: mgp.model @mixed_legacy_out
 // CHECK-DAG: mogg.tensor.create
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
-// CHECK-NOT: #mogg.tensor_arg<{role = output
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-NOT: <{role = output
 mo.graph @mixed_legacy_out(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_mixed_legacy_out", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
@@ -235,7 +235,7 @@ mo.graph @mixed_legacy_out(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f
 // lowers to `mogg.tensor_arg.__init__` with `role = output`.
 // CHECK-LABEL: mgp.model @mixed_legacy_mut
 // CHECK-DAG: mogg.trait.create
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: <{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.tensor.create
 mo.graph @mixed_legacy_mut(%x: !mo.buffer<[6], f32>) -> !mo.tensor<[6], f32> {
   %c = mo.chain.create()
@@ -250,8 +250,8 @@ mo.graph @mixed_legacy_mut(%x: !mo.buffer<[6], f32>) -> !mo.tensor<[6], f32> {
 // the dense `fused = false, access = none` cases and catching any dropped/
 // swapped boolean or mis-mapped access enum in `tensorArgContractToAttr`.
 // CHECK-LABEL: mgp.model @mixed_legacy_fused
-// CHECK-DAG: #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: #mogg.tensor_arg<{role = input, fused = true, access = load, capabilities = load}>
+// CHECK-DAG: <{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: <{role = input, fused = true, access = load, capabilities = load}>
 // CHECK-DAG: mogg.tensor.create
 mo.graph @mixed_legacy_fused(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
   %0 = mo.custom {symbol = "trait_mixed_legacy_fused", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
@@ -267,9 +267,9 @@ mo.graph @trait_fused_store(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 
 // Mixed static/dynamic shapes exercise layout inference for three captures.
 // CHECK-LABEL: mgp.model @trait_dense_dyn
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
-// CHECK-DAG: mogg.trait.create{{.*}}#mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = output, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
+// CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_dense_dyn<D0>(%x: !mo.tensor<[2, D0], f32>, %y: !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32> {
   %0 = mo.custom {symbol = "trait_add_some", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, D0], f32>, !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
   mo.output %0 : !mo.tensor<[2, D0], f32>

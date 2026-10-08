@@ -6,11 +6,11 @@
 
 // CHECK-LABEL: func.func @tensor_init_stable
 func.func @tensor_init_stable(%buf: !mgp.buffer<<"gpu", 0>>) {
-  // CHECK: mogg.tensor.__init__(%{{.*}}) {io = 1 : i32, mut = false} : (!mgp.buffer<<"gpu", 0>>) -> !mo.tensor<[4, 8], f32, {io = 1 : i32, mut = false, stable}>
-  %t = mogg.tensor.__init__(%buf) {io = 1 : i32, mut = false}
+  // CHECK: mogg.tensor.__init__(%{{.*}}) io = Input, mut = false : (!mgp.buffer<<"gpu", 0>>) -> !mo.tensor<[4, 8], f32, {io = 1 : i32, mut = false, stable}>
+  %t = mogg.tensor.__init__(%buf) io = Input, mut = false
       : (!mgp.buffer<<"gpu", 0>>) -> !mo.tensor<[4, 8], f32, {io = 1 : i32, mut = false, stable}>
-  // CHECK: mogg.tensor.__init__(%{{.*}}) {io = 0 : i32, mut = true} : (!mgp.buffer<<"gpu", 0>>) -> !mo.buffer<[4, 8], f32, {io = 0 : i32, mut = true, stable}>
-  %b = mogg.tensor.__init__(%buf) {io = 0 : i32, mut = true}
+  // CHECK: mogg.tensor.__init__(%{{.*}}) io = Output, mut = true : (!mgp.buffer<<"gpu", 0>>) -> !mo.buffer<[4, 8], f32, {io = 0 : i32, mut = true, stable}>
+  %b = mogg.tensor.__init__(%buf) io = Output, mut = true
       : (!mgp.buffer<<"gpu", 0>>) -> !mo.buffer<[4, 8], f32, {io = 0 : i32, mut = true, stable}>
   return
 }

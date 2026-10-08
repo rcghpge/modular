@@ -74,13 +74,9 @@ init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"cpu",
     %2 = mgp.runtime.create %0, %1[1]
     mef.output %0, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %arg4: !mgp.device_context<<"gpu", 0>>, %idx: index) -> (!mef.chain) {
-    %a = mogg.execute_kernel @lift_a(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:1
-        {constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = false,
-         outputParamDecls = #kgen<param.decls[]>, usedParams = []}
+    %a = mogg.execute_kernel @lift_a(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:1 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>}
         : (!mef.chain, !mgp.context) -> (!mgp.buffer<<"gpu", 0>>)
-    %b = mogg.execute_kernel @lift_b(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:2
-        {constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = false,
-         outputParamDecls = #kgen<param.decls[]>, usedParams = []}
+    %b = mogg.execute_kernel @lift_b(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:2 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>}
         : (!mef.chain, !mgp.context) -> (!mgp.buffer<<"gpu", 0>>)
     mef.output %arg0 : !mef.chain
 }

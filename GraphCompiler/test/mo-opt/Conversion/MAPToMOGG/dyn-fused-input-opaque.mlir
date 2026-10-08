@@ -5,13 +5,13 @@
 // CHECK: mogg.kernel
 // CHECK: dims (%[[D:.*]]: !mogg.dim<batch>)
 // CHECK: mogg.shape.create(%[[D]])
-// CHECK-SAME: {shape = #mosh<ape[dyn, 4]> : !mosh.ape}
+// CHECK-SAME: <shape = #mosh<ape[dyn, 4]> : !mosh.ape>
 // CHECK-SAME: (!mogg.dim<batch>) -> !mogg.shape
 // CHECK: %[[PRO:.*]] = mogg.tensor.create.prologue %{{.*}} capturing(
 // CHECK-SAME: %[[C0:.*]], %[[C1:.*]] : !mogg.tensor, !mogg.tensor)
-// CHECK-SAME: !mogg.shape -> !mogg.tensor attributes
-// CHECK-SAME: {device = "cpu", elementType = f32,
-// CHECK-SAME: io = 1 : i32, mut = false} {
+// CHECK-SAME: !mogg.shape -> !mogg.tensor
+// CHECK-SAME: device = "cpu", elementType = f32,
+// CHECK-SAME: io = Input, mut = false {
 // CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[A0:.*]]: !mogg.tensor,
 // CHECK-SAME: %[[A1:.*]]: !mogg.tensor):
 // CHECK: %[[L0:.*]] = mogg.tensor.load %[[A0]][%[[I]]]

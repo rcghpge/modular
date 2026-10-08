@@ -42,8 +42,7 @@ mgp.model @single_async_call : mof devices [#M.device_ref<"cpu", 0>] init (%weig
     %ready = mogg.async.ready : !mef.chain
 
     mogg.output %ready : !mef.chain
-  } {device = #M.device_ref<"cpu", 0>, canBeFusedInto = false, canFuseIntoOther = false,
-     inOutSignature = #M.inout_sig<"i">, summary = "single_async_call", isAsync = false}
+  } canBeFusedInto = false canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>, summary = "single_async_call"}
 
   mef.output %out_chain : !mef.chain
 }
@@ -70,8 +69,7 @@ mgp.model @two_parallel_async_calls : mof devices [#M.device_ref<"cpu", 0>] init
     %ready = mogg.async.ready : !mef.chain
 
     mogg.output %ready : !mef.chain
-  } {device = #M.device_ref<"cpu", 0>, canBeFusedInto = false, canFuseIntoOther = false,
-     inOutSignature = #M.inout_sig<"i">, summary = "two_parallel_async_calls", isAsync = false}
+  } canBeFusedInto = false canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>, summary = "two_parallel_async_calls"}
 
   mef.output %out_chain : !mef.chain
 }
@@ -100,8 +98,7 @@ mgp.model @four_parallel_async_calls : mof devices [#M.device_ref<"cpu", 0>] ini
     %ready = mogg.async.ready : !mef.chain
 
     mogg.output %ready : !mef.chain
-  } {device = #M.device_ref<"cpu", 0>, canBeFusedInto = false, canFuseIntoOther = false,
-     inOutSignature = #M.inout_sig<"i">, summary = "four_parallel_async_calls", isAsync = false}
+  } canBeFusedInto = false canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>, summary = "four_parallel_async_calls"}
 
   mef.output %out_chain : !mef.chain
 }

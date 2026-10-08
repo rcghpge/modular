@@ -5,7 +5,7 @@ mo.graph @genericRegionChainCreate(%arg0: index, %arg1: index) {
 
   mogg.generic.compiled.region (%ch) : (%in : !mef.chain) {
     mogg.output
-  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
+  } inOutSignature = <"."> {device = #M.device_ref<"cpu", 0>}
 
   mo.output
 }
@@ -13,7 +13,7 @@ mo.graph @genericRegionChainCreate(%arg0: index, %arg1: index) {
 // CHECK-LABEL: mo.graph @genericRegionChainCreate
 // CHECK:       (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
 // CHECK:       mogg.generic.compiled.region (%[[ARG0]], %[[ARG1]])
-// CHECK:       inOutSignature = #M.inout_sig<"..">
+// CHECK:       inOutSignature = <"..">
 
 // -----
 
@@ -22,11 +22,11 @@ mo.graph @genericRegionChainCreateNoInline(%arg0: index, %arg1: index) {
 
   mogg.generic.compiled.region (%ch) : (%in : !mef.chain) {
     mogg.output
-  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
+  } inOutSignature = <"."> {device = #M.device_ref<"cpu", 0>}
 
   mogg.generic.compiled.region (%ch) : (%in : !mef.chain) {
     mogg.output
-  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
+  } inOutSignature = <"."> {device = #M.device_ref<"cpu", 0>}
 
   mo.output
 }
@@ -35,9 +35,9 @@ mo.graph @genericRegionChainCreateNoInline(%arg0: index, %arg1: index) {
 // CHECK:       (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index)
 // CHECK:       %[[CH:.*]] = grt.chain.create (%[[ARG0]]: index, %[[ARG1]]: index)
 // CHECK:       mogg.generic.compiled.region (%[[CH]])
-// CHECK:       inOutSignature = #M.inout_sig<".">
+// CHECK:       inOutSignature = <".">
 // CHECK:       mogg.generic.compiled.region (%[[CH]])
-// CHECK:       inOutSignature = #M.inout_sig<".">
+// CHECK:       inOutSignature = <".">
 
 // -----
 
@@ -46,14 +46,14 @@ mo.graph @genericRegionEmptyChain() {
 
    mogg.generic.compiled.region (%ch) : (%in : !mef.chain) {
     mogg.output
-  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
+  } inOutSignature = <"."> {device = #M.device_ref<"cpu", 0>}
 
   mo.output
 }
 
 // CHECK-LABEL: mo.graph @genericRegionEmptyChain
 // CHECK:       mogg.generic.compiled.region ()
-// CHECK:       inOutSignature = #M.inout_sig<"">
+// CHECK:       inOutSignature = <"">
 
 // -----
 
@@ -67,7 +67,7 @@ mo.graph @genericRegionDedupOperands(%arg0: index, %arg1: index) {
     %u = mogg.async.unpack(%c) : index
     %p = mogg.async.pack(%u) : index
     mogg.output %p : !mogg.async<index>
-  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"..."> }
+  } inOutSignature = <"..."> {device = #M.device_ref<"cpu", 0>}
 
   mo.output
 }
@@ -77,7 +77,7 @@ mo.graph @genericRegionDedupOperands(%arg0: index, %arg1: index) {
 // CHECK:       mogg.generic.compiled.region (%[[ARG0]], %[[ARG1]]) :
 // CHECK-SAME:  (%[[A:[^,]*]]: index, %[[B:[^,]*]]: index)
 // CHECK:         mogg.output %[[A]] : !mogg.async<index>
-// CHECK:       inOutSignature = #M.inout_sig<"..">
+// CHECK:       inOutSignature = <"..">
 
 // -----
 
@@ -90,7 +90,7 @@ mo.graph @fold_pack_unpack_round_trip(%arg0: index) {
     %u = mogg.async.unpack(%a) : index
     %p = mogg.async.pack(%u) : index
     mogg.output %p : !mogg.async<index>
-  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"."> }
+  } inOutSignature = <"."> {device = #M.device_ref<"cpu", 0>}
 
   mo.output
 }
@@ -100,7 +100,7 @@ mo.graph @fold_pack_unpack_round_trip(%arg0: index) {
 // CHECK:       mogg.generic.compiled.region (%[[ARG0]]) :
 // CHECK-SAME:  (%[[A:[^,)]*]]: index)
 // CHECK:         mogg.output %[[A]] : !mogg.async<index>
-// CHECK:       inOutSignature = #M.inout_sig<".">
+// CHECK:       inOutSignature = <".">
 
 // -----
 
@@ -109,7 +109,7 @@ mo.graph @fold_pack_unpack_round_trip(%arg0: index) {
 mo.graph @genericRegionDedupUnionSemantics(%arg0: index) {
   mogg.generic.compiled.region (%arg0, %arg0) : (%a: index, %b: index) {
     mogg.output
-  } { device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"im"> }
+  } inOutSignature = <"im"> {device = #M.device_ref<"cpu", 0>}
 
   mo.output
 }
@@ -117,7 +117,7 @@ mo.graph @genericRegionDedupUnionSemantics(%arg0: index) {
 // CHECK-LABEL: mo.graph @genericRegionDedupUnionSemantics
 // CHECK:       mogg.generic.compiled.region (%[[ARG0:[^,)]*]]) :
 // CHECK-SAME:  (%{{[^,]*}}: index)
-// CHECK:       inOutSignature = #M.inout_sig<"m">
+// CHECK:       inOutSignature = <"m">
 
 // -----
 
@@ -164,7 +164,7 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
     %1 = mogg.async.ready : !mef.chain
     %2 = mogg.async.ready : !mef.chain
     mogg.output %1, %2 : !mef.chain, !mef.chain
-  } fusionInfo = Sequence(mgp.assert, mgp.assert) {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, emitsMojo = false, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = Sequence(mgp.assert, mgp.assert) canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>, emitsMojo = false}
   %res = "test.sink"(%0#0, %0#1) : (!mef.chain, !mef.chain) -> !mef.chain
   mef.output %res : !mef.chain
 }
@@ -187,7 +187,7 @@ mgp.model @preserve_kernel_attributes : mof devices [#M.device_ref<"cpu", 0>] in
   %true_0 = index.bool.constant true
   mogg.generic.compiled.region (%true, %true_0) : (%arg4: i1, %arg5: i1)  -> () {
     mogg.output
-  } fusionInfo = Sequence(mgp.assert, mgp.assert) {canBeFusedInto = true, canFuseIntoOther = true, device = #M.device_ref<"cpu", 0>, emitsMojo = true, inOutSignature = #M.inout_sig<"">, isAsync = false}
+  } fusionInfo = Sequence(mgp.assert, mgp.assert) canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>, emitsMojo = true}
   mef.output %arg0 : !mef.chain
 }
 

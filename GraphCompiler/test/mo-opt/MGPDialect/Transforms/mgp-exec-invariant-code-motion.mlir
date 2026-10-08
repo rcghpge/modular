@@ -227,7 +227,7 @@ mgp.model @compiled_region_chain_and_dim : mof devices [#M.device_ref<"cpu", 0>]
     %dim = pop.cast_from_builtin %si : si64 to !kgen.scalar<si64>
     %packed = mogg.async.pack(%dim) : !kgen.scalar<si64>
     mogg.output %ready, %packed : !mef.chain, !mogg.async<!kgen.scalar<si64>>
-  } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"i">, isAsync = false}
+  } inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>}
   mef.output %ch, %dim : !mef.chain, !kgen.scalar<si64>
 }
 
@@ -253,6 +253,6 @@ mgp.model @compiled_region_uncacheable_result : mof devices [#M.device_ref<"cpu"
     %created = mgp.tensor.create %ready, %unpacked, %spec : !mgp.tensor<2x2xf32>
     %packed = mogg.async.pack(%created) : !mgp.tensor<2x2xf32>
     mogg.output %ready, %packed : !mef.chain, !mogg.async<!mgp.tensor<2x2xf32>>
-  } {device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"ii">, isAsync = false}
+  } inOutSignature = <"ii"> isAsync = false {device = #M.device_ref<"cpu", 0>}
   mef.output %ch, %tensor : !mef.chain, !mgp.tensor<2x2xf32>
 }

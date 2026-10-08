@@ -5,9 +5,9 @@
 // yield a bare load. Only @fused_producer and @two_fused_producers do.
 
 // CHECK-LABEL: mo.graph @partial_fused
-// CHECK: %[[A:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {device = "cpu",{{.*}}mut = false{{.*}}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK: %[[B:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {device = "cpu",{{.*}}mut = false{{.*}}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK: %[[PRO:.*]] = mogg.tensor.create.prologue %{{.*}} capturing(%[[A]] : !mogg.tensor) : !mogg.shape -> !mogg.tensor attributes {device = "cpu", elementType = f32, io = 1 : i32, mut = false} {
+// CHECK: %[[A:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = false{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK: %[[B:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = false{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK: %[[PRO:.*]] = mogg.tensor.create.prologue %{{.*}} capturing(%[[A]] : !mogg.tensor) : !mogg.shape -> !mogg.tensor device = "cpu", elementType = f32, io = Input, mut = false {
 // CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[CAP:.*]]: !mogg.tensor):
 // CHECK:   %[[V:.*]] = mogg.tensor.load %[[CAP]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK:   mogg.yield %[[V]] : f32
@@ -34,7 +34,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) ->
 // CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[A0:.*]]: !mogg.tensor, %[[A1:.*]]: !mogg.tensor):
 // CHECK:   %[[L0:.*]] = mogg.tensor.load %[[A0]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK:   %[[L1:.*]] = mogg.tensor.load %[[A1]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
-// CHECK:   %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add(%[[L0]], %[[L1]]) {moOpName = "mo.add"} : f32, f32 -> f32
+// CHECK:   %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add(%[[L0]], %[[L1]]) moOpName = "mo.add" : f32, f32 -> f32
 // CHECK:   mogg.yield %[[ADD]] : f32
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs inputs(%[[PRO]], %{{.*}} : !mogg.tensor, !mogg.tensor) {{.*}}hasPrologueFusion = true
 // CHECK-NOT: map.iter.prologue

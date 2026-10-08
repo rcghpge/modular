@@ -15,10 +15,10 @@
 // CHECK: inputs (%[[IP:.*]]: !mogg.pointer)
 // CHECK: outputs (%[[OP:.*]]: !mogg.pointer)
 // CHECK: context (%[[CTX:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK:   %[[ISH:.*]] = mogg.shape.create() {shape = #mosh<ape[2, 2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK:   %[[IT:.*]] = mogg.tensor.create(%[[IP]], %[[ISH]]) {device = "cpu",{{.*}}mut = false{{.*}}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK:   %[[OSH:.*]] = mogg.shape.create() {shape = #mosh<ape[2, 2]> : !mosh.ape} : () -> !mogg.shape
-// CHECK:   %[[OT:.*]] = mogg.tensor.create(%[[OP]], %[[OSH]]) {device = "cpu",{{.*}}mut = true{{.*}}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK:   %[[ISH:.*]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape> : () -> !mogg.shape
+// CHECK:   %[[IT:.*]] = mogg.tensor.create(%[[IP]], %[[ISH]]) <device = "cpu",{{.*}}mut = false{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK:   %[[OSH:.*]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape> : () -> !mogg.shape
+// CHECK:   %[[OT:.*]] = mogg.tensor.create(%[[OP]], %[[OSH]]) <device = "cpu",{{.*}}mut = true{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
 // CHECK:   mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%[[IT]] : !mogg.tensor) outputs(%[[OT]] : !mogg.tensor) context(%[[CTX]] : !mogg.context)
 // Nothing is fused here, so both flags keep their `false` default, which the
 // printer elides -- their absence is the assertion.

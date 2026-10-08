@@ -19,8 +19,8 @@ mogg.kernel.stub @region_stable (%arg0: !mogg.async<!mef.chain>, %arg1: !mogg.as
   %0 = mogg.async.unpack(%arg1) : !mgp.buffer<<"gpu", 0>>
   %1 = mogg.async.unpack(%arg2) : !mgp.buffer<<"gpu", 0>>
   %2 = mogg.async.unpack(%arg3) : !mgp.device_context<<"gpu", 0>>
-  %3 = mogg.tensor.__init__(%0) {io = 1 : i32, mut = false} : (!mgp.buffer<<"gpu", 0>>) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false, stable}>
-  %4 = mogg.tensor.__init__(%1) {io = 0 : i32, mut = true} : (!mgp.buffer<<"gpu", 0>>) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
+  %3 = mogg.tensor.__init__(%0) io = Input, mut = false : (!mgp.buffer<<"gpu", 0>>) -> !mo.tensor<[10], f32, {io = 1 : i32, mut = false, stable}>
+  %4 = mogg.tensor.__init__(%1) io = Output, mut = true : (!mgp.buffer<<"gpu", 0>>) -> !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>
   mogg.call.stub @consume %3, %4, %2 : !mo.tensor<[10], f32, {io = 1 : i32, mut = false, stable}>, !mo.tensor<[10], f32, {io = 0 : i32, mut = true}>, !mgp.device_context<<"gpu", 0>>
   %5 = mogg.async.ready : !mef.chain
   mogg.output %5 : !mef.chain
@@ -37,6 +37,6 @@ mgp.model @top_level : mof devices [#M.device_ref<"gpu", 0>] init (%arg0: !mgp.o
   mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"gpu", 0>>, %input: !mgp.tensor<10xf32, <"gpu", 0>>) -> (!mef.chain) {
   %buf = mgp.tensor.extract.buffer %input : <10xf32, <"gpu", 0>>
-  %ch = mogg.execute_kernel @region_stable(%arg0, %buf, %buf, %arg3) fusionInfo = "test.kernel" {constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = false, outputParamDecls = #kgen<param.decls[]>, usedParams = []} : (!mef.chain, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
+  %ch = mogg.execute_kernel @region_stable(%arg0, %buf, %buf, %arg3) fusionInfo = "test.kernel" constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>} : (!mef.chain, !mgp.buffer<<"gpu", 0>>, !mgp.buffer<<"gpu", 0>>, !mgp.device_context<<"gpu", 0>>) -> !mef.chain
   mef.output %ch : !mef.chain
 }

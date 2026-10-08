@@ -15,8 +15,8 @@
 // CHECK-LABEL: mo.graph @trait_negate_graph
 // CHECK: %[[INTENSOR:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}}mut = false{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
 // CHECK: %[[OUTTENSOR:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}}mut = true{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK: %[[INARG:.*]] = mogg.trait.create(%[[INTENSOR]]) {contract = #mogg.tensor_arg<{role = input, fused = false, access = none, capabilities = none}>, device = {{.*}}} : (!mogg.tensor) -> !mogg.tensor
-// CHECK: %[[OUTARG:.*]] = mogg.trait.create(%[[OUTTENSOR]]) {contract = #mogg.tensor_arg<{role = output, fused = false, access = none, capabilities = none}>, device = {{.*}}} : (!mogg.tensor) -> !mogg.tensor
+// CHECK: %[[INARG:.*]] = mogg.trait.create(%[[INTENSOR]]) contract = <{role = input, fused = false, access = none, capabilities = none}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
+// CHECK: %[[OUTARG:.*]] = mogg.trait.create(%[[OUTTENSOR]]) contract = <{role = output, fused = false, access = none, capabilities = none}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
 // CHECK: mogg.call.opaque @{{.*}}TraitNegate inputs(%[[INARG]] : !mogg.tensor) outputs(%[[OUTARG]] : !mogg.tensor) context(
 mo.graph @trait_negate_graph(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %z = mo.custom {symbol = "trait_negate", device = #M.device_ref<"cpu", 0>} (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>

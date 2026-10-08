@@ -16,8 +16,8 @@
 // CHECK: outputs (%{{.*}}: !mogg.pointer)
 // CHECK: context (%[[CTX:.*]]: !mogg.context)
 // CHECK: dims (%[[D:.*]]: !mogg.dim<batch>) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK: mogg.shape.create(%[[D]]) {shape = #mosh<ape[dyn, 4]> : !mosh.ape} : (!mogg.dim<batch>) -> !mogg.shape
-// CHECK: mogg.shape.create(%[[D]]) {shape = #mosh<ape[dyn, 4]> : !mosh.ape} : (!mogg.dim<batch>) -> !mogg.shape
+// CHECK: mogg.shape.create(%[[D]]) <shape = #mosh<ape[dyn, 4]> : !mosh.ape> : (!mogg.dim<batch>) -> !mogg.shape
+// CHECK: mogg.shape.create(%[[D]]) <shape = #mosh<ape[dyn, 4]> : !mosh.ape> : (!mogg.dim<batch>) -> !mogg.shape
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%[[CTX]] : !mogg.context)
 mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_plain_output"}(%a) : (!mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>

@@ -38,17 +38,11 @@ init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"cpu",
     %1 = mgp.context.create 1
     mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %idx: index) -> (!mef.chain) {
-    %s = mogg.execute_kernel @raise_single(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:1
-        {constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], device = #M.device_ref<"cpu", 0>, isAsync = false,
-         outputParamDecls = #kgen<param.decls[]>, usedParams = []}
+    %s = mogg.execute_kernel @raise_single(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:1 constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
         : (!mef.chain, !mgp.context) -> (index)
-    %m0 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:2
-        {constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], device = #M.device_ref<"cpu", 0>, isAsync = false,
-         outputParamDecls = #kgen<param.decls[]>, usedParams = []}
+    %m0 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:2 constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
         : (!mef.chain, !mgp.context) -> (index)
-    %m1 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:3
-        {constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], device = #M.device_ref<"cpu", 0>, isAsync = false,
-         outputParamDecls = #kgen<param.decls[]>, usedParams = []}
+    %m1 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:3 constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
         : (!mef.chain, !mgp.context) -> (index)
     mef.output %arg0 : !mef.chain
 }

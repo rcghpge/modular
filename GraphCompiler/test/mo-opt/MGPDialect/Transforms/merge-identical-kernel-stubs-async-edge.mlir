@@ -50,7 +50,7 @@ mgp.model @top_level subgraph : mof devices [#M.device_ref<"cpu", 0>, #M.device_
     %2 = mgp.runtime.create %0, %1[1]
     mef.output %0, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %arg4: !mgp.device_context<<"gpu", 0>>, %input : !mgp.tensor<4x16xf32>, %idx: index) -> (!mef.chain) {
-    mogg.execute_kernel @region_a() fusionInfo = mogg.generic.compiled.region:14 {constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = false, outputParamDecls = #kgen<param.decls[]>, usedParams = []} : () -> ()
-    mogg.execute_kernel @region_b() fusionInfo = mogg.generic.compiled.region:14 {constantResources = [], device = #M.device_ref<"gpu", 0>, isAsync = false, outputParamDecls = #kgen<param.decls[]>, usedParams = []} : () -> ()
+    mogg.execute_kernel @region_a() fusionInfo = mogg.generic.compiled.region:14 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>} : () -> ()
+    mogg.execute_kernel @region_b() fusionInfo = mogg.generic.compiled.region:14 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>} : () -> ()
     mef.output %arg0 : !mef.chain
 }

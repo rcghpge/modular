@@ -14,15 +14,15 @@ func.func @codegen_ops(%ptr: !mogg.pointer, %dim: !mogg.dim,
                        %ta: !mo.tensor<[2, 2], f32>) {
   // shape.create: static-only and with a dynamic dim.
   // CHECK: mogg.shape.create() {{.*}} : () -> !mogg.shape
-  %s0 = mogg.shape.create() {shape = #mosh<ape[2, 2]> : !mosh.ape} : () -> !mogg.shape
+  %s0 = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape> : () -> !mogg.shape
   // CHECK: mogg.shape.create(%{{.*}}) {{.*}} : (!mogg.dim<D0>) -> !mogg.shape
-  %s1 = mogg.shape.create(%d0) {shape = #mosh<ape[D0, 2]> : !mosh.ape} : (!mogg.dim<D0>) -> !mogg.shape
+  %s1 = mogg.shape.create(%d0) <shape = #mosh<ape[D0, 2]> : !mosh.ape> : (!mogg.dim<D0>) -> !mogg.shape
 
   // tensor.create: immutable input vs mutable output. The `device` records the
   // device kind (cpu vs gpu) locally.
   // CHECK: mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-  %t0 = mogg.tensor.create(%ptr, %s0) {device = "cpu", elementType = f32, io = 0 : i32, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-  %t1 = mogg.tensor.create(%ptr, %s0) {device = "gpu", elementType = f32, io = 1 : i32, mut = true, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+  %t0 = mogg.tensor.create(%ptr, %s0) <device = "cpu", elementType = f32, io = Output, mut = false, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+  %t1 = mogg.tensor.create(%ptr, %s0) <device = "gpu", elementType = f32, io = Input, mut = true, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
 
   // rebind: a no-op handle conversion (async buffer -> pointer).
   // CHECK: mogg.rebind %{{.*}} : !mogg.async<!mgp.buffer> to !mogg.pointer
@@ -33,7 +33,7 @@ func.func @codegen_ops(%ptr: !mogg.pointer, %dim: !mogg.dim,
   // it (with an explicit device context).
   // CHECK: mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor) ptr %{{.*}} : !mogg.pointer : !mogg.shape -> !mogg.tensor
   %epi = mogg.tensor.create.epilogue %s0 capturing (%t1 : !mogg.tensor) ptr %cp : !mogg.pointer : !mogg.shape -> !mogg.tensor
-      attributes {device = "gpu", elementType = f32, io = 1 : i32, mut = true} {
+      device = "gpu", elementType = f32, io = Input, mut = true {
   ^bb0(%val: f32, %i: !mogg.dim, %cap: !mogg.tensor):
     // CHECK: mogg.tensor.store %{{.*}}[%{{.*}}] = %{{.*}} : !mogg.tensor, !mogg.dim, f32
     mogg.tensor.store %cap[%i] = %val : !mogg.tensor, !mogg.dim, f32

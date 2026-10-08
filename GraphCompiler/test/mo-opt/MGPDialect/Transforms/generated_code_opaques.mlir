@@ -23,7 +23,7 @@ module {
       mogg.create_async_mojo_value(%6, %7) : (!mgp.opaque<"">, !kgen.pointer<none>) -> ()
       %8 = mogg.async_ref_to_mgp(%7) : (!kgen.pointer<none>) -> !mgp.opaque<"">
       mogg.output %8 : !mgp.opaque<"">
-    } fusionInfo = custom__test_make_custom_int:5 {canFuseIntoOther = false, device = #M.device_ref<"cpu", 0>, inOutSignature = #M.inout_sig<"i">, isAsync = false}
+    } fusionInfo = custom__test_make_custom_int:5 canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>}
     mef.output %arg0, %0#1 : !mef.chain, !mgp.opaque<"">
   }
 }

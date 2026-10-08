@@ -38,7 +38,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK:   context (%[[C:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK:     mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_mogg[0-9_]*]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer, !mogg.pointer, !mogg.context
 // CHECK: mogg.kernel.stub @[[STUB1]] {{.*}} attributes {abi = 2 : i32,
-// CHECK:   %{{.*}} = mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor) ptr %{{.*}} : !mogg.pointer : !mogg.shape -> !mogg.tensor attributes {{.*}} {
+// CHECK:   %{{.*}} = mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor) ptr %{{.*}} : !mogg.pointer : !mogg.shape -> !mogg.tensor {{.*}} {
 // CHECK:   ^bb0(%{{.*}}: f32, %{{.*}}: !map.index<2>, %[[CAP:.*]]: !mogg.tensor):
 // CHECK:     mogg.tensor.store %[[CAP]][%{{.*}}] = %{{.*}}
 // CHECK:   }
