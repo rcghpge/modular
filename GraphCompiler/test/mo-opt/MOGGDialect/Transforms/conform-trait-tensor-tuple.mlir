@@ -19,13 +19,13 @@
 // each run into a `mogg.tuple.create` with the `tensor_tuple` ABI.
 
 // CHECK-LABEL: mo.graph @trait_tensor_tuple_add_graph
-// CHECK: %[[BIAS:.*]] = mogg.trait.create(%{{.*}}) {contract = #mogg.tensor_arg<{role = input, {{.*}}}>, {{.*}}} : (!mogg.tensor) -> !mogg.tensor
-// CHECK: %[[IN0:.*]] = mogg.trait.create(%{{.*}}) {contract = #mogg.tensor_arg<{role = input, {{.*}}}>, {{.*}}} : (!mogg.tensor) -> !mogg.tensor
-// CHECK: %[[IN1:.*]] = mogg.trait.create(%{{.*}}) {contract = #mogg.tensor_arg<{role = input, {{.*}}}>, {{.*}}} : (!mogg.tensor) -> !mogg.tensor
-// CHECK: %[[INS:.*]] = mogg.tuple.create(%[[IN0]], %[[IN1]]) {variadic_abi = #mogg.variadic_abi<tensor_tuple>} : (!mogg.tensor, !mogg.tensor) -> !mogg.tuple
-// CHECK: %[[OUT0:.*]] = mogg.trait.create(%{{.*}}) {contract = #mogg.tensor_arg<{role = output, {{.*}}}>, {{.*}}} : (!mogg.tensor) -> !mogg.tensor
-// CHECK: %[[OUT1:.*]] = mogg.trait.create(%{{.*}}) {contract = #mogg.tensor_arg<{role = output, {{.*}}}>, {{.*}}} : (!mogg.tensor) -> !mogg.tensor
-// CHECK: %[[OUTS:.*]] = mogg.tuple.create(%[[OUT0]], %[[OUT1]]) {variadic_abi = #mogg.variadic_abi<tensor_tuple>} : (!mogg.tensor, !mogg.tensor) -> !mogg.tuple
+// CHECK: %[[BIAS:.*]] = mogg.trait.create(%{{.*}}) contract = <{role = input, {{.*}}}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
+// CHECK: %[[IN0:.*]] = mogg.trait.create(%{{.*}}) contract = <{role = input, {{.*}}}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
+// CHECK: %[[IN1:.*]] = mogg.trait.create(%{{.*}}) contract = <{role = input, {{.*}}}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
+// CHECK: %[[INS:.*]] = mogg.tuple.create(%[[IN0]], %[[IN1]]) variadic_abi = <tensor_tuple> : (!mogg.tensor, !mogg.tensor) -> !mogg.tuple
+// CHECK: %[[OUT0:.*]] = mogg.trait.create(%{{.*}}) contract = <{role = output, {{.*}}}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
+// CHECK: %[[OUT1:.*]] = mogg.trait.create(%{{.*}}) contract = <{role = output, {{.*}}}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
+// CHECK: %[[OUTS:.*]] = mogg.tuple.create(%[[OUT0]], %[[OUT1]]) variadic_abi = <tensor_tuple> : (!mogg.tensor, !mogg.tensor) -> !mogg.tuple
 // CHECK: mogg.call.opaque @{{.*}}TraitTensorTupleAdd inputs(%[[BIAS]], %[[INS]] : !mogg.tensor, !mogg.tuple) outputs(%[[OUTS]] : !mogg.tuple)
 
 // Emit builds a `TensorTuple` holding each run's trait arguments and passes
