@@ -442,8 +442,8 @@ struct LocalToSharedTileCopier[
 ](ImplicitlyCopyable, Movable, TileCopier):
     """A `TileCopier` that moves a tile from registers into shared memory.
 
-    The AMD `row_major` prefetch pattern and fp32 -> half precision
-    downcast are not supported.
+    Supports numeric FP32 to FP16 or BF16 conversion. The AMD `row_major`
+    prefetch pattern is not supported.
 
     Parameters:
         thread_layout: Layout describing how threads are organized over
@@ -473,7 +473,10 @@ struct LocalToSharedTileCopier[
             dst: Destination tile in shared memory.
             src: Source tile in local memory.
         """
-        comptime assert src.dtype == dst.dtype, "src and dst dtype must match."
+        comptime assert src.dtype == dst.dtype or (
+            src.dtype == .float32
+            and (dst.dtype == .float16 or dst.dtype == .bfloat16)
+        ), "Only matching dtypes or FP32 to FP16/BF16 are supported."
         comptime assert src.element_size == dst.element_size
 
         comptime num_busy_threads = Self.thread_layout.size()
@@ -485,8 +488,19 @@ struct LocalToSharedTileCopier[
 
         var dst_fragments = dst.distribute[Self.thread_layout](worker_idx)
 
+        comptime if src.dtype != dst.dtype:
+            comptime assert src.LayoutType.all_dims_known
+            comptime assert dst_fragments.LayoutType.all_dims_known
+            comptime assert (
+                src.LayoutType.static_product
+                == dst_fragments.LayoutType.static_product
+            )
+
         comptime if not Self.swizzle:
-            dst_fragments.copy_from(src.bitcast[dst_fragments.dtype]())
+            comptime if src.dtype == dst.dtype:
+                dst_fragments.copy_from(src.bitcast[dst_fragments.dtype]())
+            else:
+                dst_fragments.copy_from(src)
         else:
             comptime simd_size = src.element_size
             comptime src_align = align_of[SIMD[src.dtype, simd_size]]()
@@ -844,9 +858,9 @@ def copy_local_to_shared[
 ):
     """Synchronously copies a tile from registers (LOCAL) to SRAM (shared).
 
-    Delegates to `LocalToSharedTileCopier`. The AMD `row_major` prefetch
-    pattern and fp32 -> half-precision downcast of the legacy free function
-    are not supported here.
+    Delegates to `LocalToSharedTileCopier`, including numeric FP32 to FP16
+    or BF16 conversion. The legacy AMD `row_major` prefetch pattern is not
+    supported here.
 
     Parameters:
         thread_layout: Layout describing how threads are organized over the
