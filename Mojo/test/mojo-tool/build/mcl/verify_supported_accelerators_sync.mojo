@@ -8,7 +8,7 @@
 # are in sync and don't drift apart:
 #
 # 1. C++ implementation of `--print-supported-accelerators`
-# 2. Mojo `_all_target_accelerator_values` list in `std._gpu.host.info`
+# 2. Mojo `_all_target_accelerators()` list in `std._gpu.host.info`
 #
 # Both should produce a list of the same target accelerator values.
 #
@@ -23,7 +23,7 @@
 # RUN:   | awk '{print $1}' \
 # RUN:   | sort -u > %t.cpp_targets.txt
 
-# Step 2: Get architecture IDs from Mojo _all_target_accelerator_values.
+# Step 2: Get architecture IDs from Mojo _all_target_accelerators().
 # RUN: %mojo %S/inputs/print_all_targets_helper.mojo 2>&1 \
 # RUN:   | sort -u > %t.mojo_targets.txt
 
