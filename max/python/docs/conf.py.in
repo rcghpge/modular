@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(_HERE, "sphinx_doc_inputs"))
 sys.path.insert(0, _HERE)
 
 from sphinx_ext import setup as sphinx_ext_setup
-from sphinx_ext.source_files import _resolve_via_ast
+from sphinx_ext.source_files import find_definition
 
 # -- Project information -----------------------------------------------------
 
@@ -254,9 +254,11 @@ def linkcode_resolve(domain, info):
             exc_info=True,
         )
 
-    ast_result = _resolve_via_ast(module_name, fullname)
-    if ast_result:
-        url = _source_url(*ast_result)
+    definition = find_definition(module_name, fullname)
+    if definition:
+        url = _source_url(
+            definition.path, definition.lineno, definition.end_lineno
+        )
         if url:
             return url
 

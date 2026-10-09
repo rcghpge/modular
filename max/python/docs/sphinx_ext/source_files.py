@@ -16,13 +16,15 @@
 :mod:`docstring_sources` both need to answer "where is this object
 defined?" for objects whose runtime form carries no usable source
 location: C-extension symbols, type aliases, constants, and names
-re-exported through ``__init__.py`` chains. The helpers here walk
+re-exported through ``__init__.py`` chains. :func:`find_definition` walks
 imports and ``.pyi`` stubs to find the defining module and line range.
 """
 
 import ast
+import functools
 import importlib
 import os
+from typing import NamedTuple
 
 
 def _resolve_relative_import(
@@ -63,8 +65,10 @@ def _search_ast_nodes(
     """Recursively search a list of AST statement nodes for a symbol definition.
 
     Args:
-        body: A list of AST nodes (e.g. ``tree.body`` or ``class_node.body``).
-        parts: Dotted name split into components (e.g. ``['Class', 'attr']``).
+        body: A list of AST nodes, for example ``tree.body`` or
+            ``class_node.body``.
+        parts: Dotted name split into components, for example
+            ``['Class', 'attr']``.
 
     Returns:
         ``(lineno, end_lineno)`` or ``None``.
@@ -78,18 +82,37 @@ def _search_ast_nodes(
                 if rest:
                     return _search_ast_nodes(node.body, rest)
                 return node.lineno, node.end_lineno or node.lineno
+        elif isinstance(node, (ast.If, ast.Try, ast.With)):
+            # Sphinx records attribute docstrings for assignments under
+            # these blocks too, so alias lookups must find them here.
+            for block in (
+                node.body,
+                getattr(node, "orelse", []),
+                getattr(node, "finalbody", []),
+            ):
+                result = _search_ast_nodes(block, parts)
+                if result:
+                    return result
         elif not rest:
+            targets: list[ast.expr] = []
             if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == name:
-                        return node.lineno, node.end_lineno or node.lineno
+                targets = node.targets
             elif isinstance(node, ast.AnnAssign):
-                if isinstance(node.target, ast.Name) and node.target.id == name:
+                targets = [node.target]
+            for target in targets:
+                elements = (
+                    target.elts
+                    if isinstance(target, (ast.Tuple, ast.List))
+                    else [target]
+                )
+                if any(
+                    isinstance(e, ast.Name) and e.id == name for e in elements
+                ):
                     return node.lineno, node.end_lineno or node.lineno
     return None
 
 
-def _find_pyi_stub(module_name: str) -> str | None:
+def find_pyi_stub(module_name: str) -> str | None:
     """Find a ``.pyi`` stub file for a C-extension module.
 
     Derives the expected stub path from the root package's ``__path__``
@@ -166,19 +189,56 @@ def _find_pyi_stub(module_name: str) -> str | None:
     return None
 
 
-def _resolve_via_ast(
-    module_name: str, fullname: str, _depth: int = 0
-) -> tuple[str, int, int] | None:
-    """Locate a symbol's source via AST when inspect-based resolution fails.
+@functools.cache
+def _parse_module(path: str) -> ast.Module | None:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return ast.parse(f.read())
+    except (OSError, SyntaxError, ValueError):
+        # ValueError covers UnicodeDecodeError and, before Python 3.12,
+        # null bytes in the source.
+        return None
 
-    Handles type aliases, constants, class attributes, and symbols
-    re-exported through chains of ``__init__.py`` files.
+
+class Definition(NamedTuple):
+    """Where a symbol is defined, as found by :func:`find_definition`."""
+
+    module: str
+    name: str
+    """Dotted name of the symbol inside the defining module, which differs
+    from the requested name for ``from ... import x as y`` re-exports."""
+    path: str
+    """The ``.py`` source or ``.pyi`` stub holding the definition."""
+    lineno: int
+    end_lineno: int
+
+
+@functools.cache
+def find_definition(module_name: str, fullname: str) -> Definition | None:
+    """Locate where *fullname*, as seen from *module_name*, is defined.
+
+    Follows ``from ... import`` re-exports to the defining module and reads
+    the ``.pyi`` stub for C-extension modules.
+
+    Args:
+        module_name: Fully-qualified name of the module to start from.
+        fullname: Dotted name of the symbol inside that module, for example
+            ``'DimLike'`` or ``'Class.attr'``.
 
     Returns:
-        ``(file_path, lineno, end_lineno)`` or ``None``.
+        The definition, or ``None`` if no source or stub declares it.
     """
-    if _depth > 5:
+    return _find_definition(module_name, fullname, set())
+
+
+def _find_definition(
+    module_name: str, fullname: str, visited: set[tuple[str, str]]
+) -> Definition | None:
+    # Re-exports can cycle: ``from . import x`` in a package resolves to
+    # the package itself.
+    if (module_name, fullname) in visited:
         return None
+    visited.add((module_name, fullname))
 
     try:
         mod = importlib.import_module(module_name)
@@ -187,7 +247,7 @@ def _resolve_via_ast(
 
     mod_file = getattr(mod, "__file__", None)
     if not mod_file or not mod_file.endswith((".py", ".pyi")):
-        mod_file = _find_pyi_stub(module_name)
+        mod_file = find_pyi_stub(module_name)
     if not mod_file:
         return None
 
@@ -196,16 +256,13 @@ def _resolve_via_ast(
         is_package = True
     parts = fullname.split(".")
 
-    try:
-        with open(mod_file) as f:
-            tree = ast.parse(f.read())
-    except Exception:
+    tree = _parse_module(mod_file)
+    if tree is None:
         return None
 
-    # Try finding the symbol directly in the module's source
     result = _search_ast_nodes(tree.body, parts)
     if result:
-        return mod_file, result[0], result[1]
+        return Definition(module_name, fullname, mod_file, *result)
 
     # For re-exports, follow the import chain to the defining module
     top_name = parts[0]
@@ -220,10 +277,9 @@ def _resolve_via_ast(
             )
             if not resolved:
                 continue
-            # Recurse into the resolved module to handle multi-level re-exports
             new_fullname = ".".join([alias.name] + parts[1:])
-            result = _resolve_via_ast(resolved, new_fullname, _depth + 1)
-            if result:
-                return result
+            definition = _find_definition(resolved, new_fullname, visited)
+            if definition:
+                return definition
 
     return None

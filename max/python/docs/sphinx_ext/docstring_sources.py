@@ -24,7 +24,6 @@ attribute form.
 
 import ast
 import functools
-import importlib
 import inspect
 import logging
 import re
@@ -42,70 +41,28 @@ from sphinx.ext.napoleon import GoogleDocstring
 from sphinx.pycode import ModuleAnalyzer
 from sphinx.util.docstrings import prepare_docstring
 
-from sphinx_ext.source_files import _find_pyi_stub, _resolve_relative_import
+from sphinx_ext.source_files import find_definition, find_pyi_stub
 
 logger = logging.getLogger(__name__)
 
-_module_ast_cache = {}
 _stub_doc_cache = {}
 
 
-def _module_tree(module_name: str) -> ast.Module | None:
-    """Return the parsed AST of *module_name*'s source file, or None."""
-    if module_name in _module_ast_cache:
-        return _module_ast_cache[module_name]
-    tree = None
-    try:
-        mod = importlib.import_module(module_name)
-        mod_file = getattr(mod, "__file__", None)
-        if mod_file and mod_file.endswith(".py"):
-            with open(mod_file, encoding="utf-8") as f:
-                tree = ast.parse(f.read())
-    except Exception:
-        tree = None
-    _module_ast_cache[module_name] = tree
-    return tree
-
-
-def _attr_doc_via_reexports(
-    modname: str, attrname: str, visited: set[str]
-) -> list[str] | None:
-    """Return the attribute docstring for *attrname* following the
-    ``from ... import`` chain starting at *modname*, or ``None``.
+def _attr_doc_from_definition(modname: str, attrname: str) -> list[str] | None:
+    """Return the attribute docstring of *attrname* from its defining
+    module, or ``None`` when *modname* defines it itself.
     """
-    if modname in visited:
+    definition = find_definition(modname, attrname)
+    if definition is None or definition.module == modname:
         return None
-    visited.add(modname)
-    tree = _module_tree(modname)
-    if tree is None:
+    try:
+        analyzer = ModuleAnalyzer.for_module(definition.module)
+        analyzer.analyze()
+    except PycodeError:
         return None
-    is_package = getattr(
-        importlib.import_module(modname), "__file__", ""
-    ).endswith("__init__.py")
-    for node in tree.body:
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        for alias in node.names:
-            if (alias.asname or alias.name) != attrname:
-                continue
-            target = _resolve_relative_import(
-                modname, node.module, node.level, is_package
-            )
-            if not target or target == modname:
-                continue
-            # The target module records the docstring under the name it
-            # defines, which differs from *attrname* for ``import x as y``.
-            try:
-                analyzer = ModuleAnalyzer.for_module(target)
-                analyzer.analyze()
-                key = ("", alias.name)
-                if key in analyzer.attr_docs:
-                    return list(analyzer.attr_docs[key])
-            except Exception:
-                pass
-            result = _attr_doc_via_reexports(target, alias.name, visited)
-            if result is not None:
-                return result
+    key = ("", definition.name)
+    if key in analyzer.attr_docs:
+        return list(analyzer.attr_docs[key])
     return None
 
 
@@ -118,7 +75,7 @@ def _stub_docstring(module_name: str, qualname: str) -> str | None:
         return _stub_doc_cache[cache_key]
 
     result = None
-    stub_path = _find_pyi_stub(module_name) if module_name else None
+    stub_path = find_pyi_stub(module_name) if module_name else None
     if stub_path:
         try:
             with open(stub_path, encoding="utf-8") as f:
@@ -207,16 +164,11 @@ def _make_get_doc_with_stub_fallback(
         # the defining module, so the alias page renders a bare
         # ``alias of ...`` line with no description. Supply the
         # attribute docstring recorded next to the assignment in the
-        # defining module, reusing the re-export walk below.
+        # defining module.
         if getattr(self, "doc_as_attr", False) and self.objpath:
-            try:
-                reexport = _attr_doc_via_reexports(
-                    self.modname, self.objpath[-1], set()
-                )
-            except Exception:
-                reexport = None
-            if reexport:
-                return [reexport]
+            attr_doc = _attr_doc_from_definition(self.modname, self.objpath[-1])
+            if attr_doc:
+                return [attr_doc]
         obj_module = getattr(self.object, "__module__", None)
         if not obj_module or not obj_module.startswith("max."):
             return docstrings
@@ -276,7 +228,7 @@ def _pyi_analyzer(module_name: str) -> ModuleAnalyzer | None:
     """Return a ``ModuleAnalyzer`` built from the ``.pyi`` stub for
     *module_name*, or ``None`` if no stub exists.
     """
-    pyi_path = _find_pyi_stub(module_name)
+    pyi_path = find_pyi_stub(module_name)
     if not pyi_path:
         return None
     try:
@@ -345,10 +297,7 @@ def setup(app: Sphinx) -> None:
         result = _original_get_module_comment(self, attrname)
         if result is not None:
             return result
-        try:
-            return _attr_doc_via_reexports(self.modname, attrname, set())
-        except Exception:
-            return None
+        return _attr_doc_from_definition(self.modname, attrname)
 
     DataDocumenter.get_module_comment = _get_module_comment_with_reexports
 
