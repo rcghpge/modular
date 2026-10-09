@@ -2864,14 +2864,6 @@ struct DeviceEvent(ImplicitlyCopyable):
         )
 
 
-def _is_nvidia_gpu[target: CompilationTarget]() -> Bool:
-    return target.is_triple["nvptx64-nvidia-cuda"]()
-
-
-def _is_apple_gpu[target: CompilationTarget]() -> Bool:
-    return target.is_triple["air64-apple-macosx"]()
-
-
 def _max_dynamic_shared_bytes_for_load[
     target: CompilationTarget
 ](func_attribute: OptionalReg[FuncAttribute]) raises -> Int32:
@@ -2889,7 +2881,7 @@ def _max_dynamic_shared_bytes_for_load[
         )
     # Only CUDA has a per-function cap; elsewhere the value would only split
     # the function cache.
-    comptime if _is_nvidia_gpu[target]():
+    comptime if target.is_nvidia_gpu():
         return func_attribute.value().value
     else:
         return -1
@@ -2994,7 +2986,7 @@ struct DeviceFunction[
 
     # emit asm if cross compiling for nvidia gpus.
     comptime _emission_kind = "asm" if (
-        _cross_compilation() and _is_nvidia_gpu[Self.target]()
+        _cross_compilation() and Self.target.is_nvidia_gpu()
     ) else "object"
     var _handle: _DeviceFunctionPtr[mut=True]
     """Internal handle to the compiled device function."""
@@ -3380,7 +3372,7 @@ struct DeviceFunction[
                 ]().as_unsafe_any_origin()
             )
 
-        comptime if _is_apple_gpu[Self.target]():
+        comptime if Self.target.is_apple_gpu():
             # Drop zero-sized captures so the packed slots (and their sizes)
             # match the device kernel's declared parameter order; see
             # `_compact_zero_sized_capture_slots` for why.
@@ -3640,7 +3632,7 @@ struct DeviceFunction[
                 ]().as_unsafe_any_origin()
             )
 
-        comptime if _is_apple_gpu[Self.target]():
+        comptime if Self.target.is_apple_gpu():
             # `num_passed_args` sizes the offsets array, which covers encoded
             # args only, so it stays `num_encoded`; `extra_host_count` sizes
             # the extra per-slot entries the host arguments occupy.

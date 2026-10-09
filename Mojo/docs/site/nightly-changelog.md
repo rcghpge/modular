@@ -365,6 +365,28 @@ This version is still a work in progress.
 
 ## Removed
 
+- Removed `has_nvidia_gpu_accelerator()`, `has_amd_gpu_accelerator()` and
+  `has_apple_gpu_accelerator()` from `std.sys`, including the sub-architecture
+  overloads of the NVIDIA variant. Ask the target itself instead, using the
+  new `CompilationTarget` predicate methods:
+
+  ```mojo
+  # Before
+  from std.sys import has_nvidia_gpu_accelerator
+
+  comptime if has_nvidia_gpu_accelerator():
+      ...
+
+  # After
+  from std.sys import default_accelerator
+
+  comptime if default_accelerator().is_nvidia_gpu():
+      ...
+  ```
+
+  Code that already holds a device context can check its target directly,
+  for example `ctx.target.is_nvidia_gpu()`.
+
 - Removed `sum()` from the `CoordLike` trait and from its implementations
   (`Coord`, `ComptimeInt` and the `All` marker). Nothing called it: a
   coordinate's elements are extents and indices, so adding them together

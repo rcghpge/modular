@@ -20,7 +20,7 @@ from std.memory import unsafe_stack_allocation
 
 from std.atomic import Atomic, Ordering
 from shmem.ep_comm import BLOCK_SCOPE
-from std.sys import has_apple_gpu_accelerator, simd_width_of
+from std.sys import simd_width_of
 from std.sys.info import align_of, is_amd_gpu, is_nvidia_gpu, size_of
 
 import max.gpu.primitives.warp as warp
@@ -1570,7 +1570,7 @@ def sigmoid_gemv_single_group_router[
     ](), "Sigmoid GEMV single group router is only supported on GPU"
     # TODO(GEX-3342): the warp bitonic top-k is wrong on Metal.
     comptime assert (
-        not has_apple_gpu_accelerator()
+        not context.target.is_apple_gpu()
     ), "Sigmoid GEMV single group router is not supported on Apple GPUs"
     comptime assert gate_weight.static_shape[0] == n_routed_experts
     comptime hidden_size = gate_weight.static_shape[1]

@@ -881,7 +881,7 @@ def _is_nvidia_gpu_any[archs: List[StaticString]]() -> Bool:
 
 @inline(.nodebug)
 def _has_nvidia_gpu_any[archs: List[StaticString]]() -> Bool:
-    comptime if not has_nvidia_gpu_accelerator():
+    comptime if not _has_nvidia_gpu_accelerator():
         return False
 
     comptime for arch in archs:
@@ -1847,16 +1847,6 @@ def has_accelerator() -> Bool:
 
 
 @inline(.nodebug)
-def has_amd_gpu_accelerator() -> Bool:
-    """Returns True if the host system has an AMD GPU and False otherwise.
-
-    Returns:
-        True if the host system has an AMD GPU.
-    """
-    return is_amd_gpu() or CompilationTarget.default_accelerator().is_amd_gpu()
-
-
-@inline(.nodebug)
 def has_amd_rdna_gpu_accelerator() -> Bool:
     """Returns True if the host system has an AMD RDNA GPU and False otherwise.
 
@@ -1870,7 +1860,7 @@ def has_amd_rdna_gpu_accelerator() -> Bool:
 
 
 @inline(.nodebug)
-def has_nvidia_gpu_accelerator() -> Bool:
+def _has_nvidia_gpu_accelerator() -> Bool:
     """Returns True if the host system has an NVIDIA GPU and False otherwise.
 
     Returns:
@@ -1879,46 +1869,4 @@ def has_nvidia_gpu_accelerator() -> Bool:
     return (
         is_nvidia_gpu()
         or CompilationTarget.default_accelerator().is_nvidia_gpu()
-    )
-
-
-@inline(.nodebug)
-def has_nvidia_gpu_accelerator[subarch: String]() -> Bool:
-    """Returns True if the host system has an NVIDIA GPU of the specified
-    sub-architecture and False otherwise.
-
-    Parameters:
-        subarch: The NVIDIA GPU sub-architecture to check for (e.g., "sm_80").
-
-    Returns:
-        True if the host system has an NVIDIA GPU of the specified
-        sub-architecture and False otherwise.
-    """
-    return is_nvidia_gpu[subarch]() or subarch in _accelerator_arch()
-
-
-@inline(.nodebug)
-def has_nvidia_gpu_accelerator[subarchs: List[StaticString]]() -> Bool:
-    """Returns True if the host system has an NVIDIA GPU of the specified
-    sub-architecture and False otherwise.
-
-    Parameters:
-        subarchs: The NVIDIA GPU sub-architectures to check for (e.g., ["sm_80", "sm_86"]).
-
-    Returns:
-        True if the host system has an NVIDIA GPU of the specified
-        sub-architecture and False otherwise.
-    """
-    return _is_nvidia_gpu_any[subarchs]() or _has_nvidia_gpu_any[subarchs]()
-
-
-@inline(.nodebug)
-def has_apple_gpu_accelerator() -> Bool:
-    """Returns True if the host system has a Metal GPU and False otherwise.
-
-    Returns:
-        True if the host system has a Metal GPU.
-    """
-    return (
-        is_apple_gpu() or CompilationTarget.default_accelerator().is_apple_gpu()
     )

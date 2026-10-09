@@ -13,7 +13,6 @@
 
 """Checks ragged matmul epilogues with dynamic rows and padded outputs."""
 
-from std.sys import has_amd_gpu_accelerator
 from std.testing import assert_equal
 from std.utils.index import IndexList
 
@@ -130,6 +129,6 @@ def main() raises:
         _check_projection[DType.float32, "gpu"](ctx)
         _check_projection[DType.bfloat16, "gpu"](ctx)
         # Some legacy dispatches require dense input rows; AMD also covers padding.
-        comptime if has_amd_gpu_accelerator():
+        comptime if ctx.target.is_amd_gpu():
             _check_projection[DType.float32, "gpu", 16](ctx)
             _check_projection[DType.bfloat16, "gpu", 16](ctx)
