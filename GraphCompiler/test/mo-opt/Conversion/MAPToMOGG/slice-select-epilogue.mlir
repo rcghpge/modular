@@ -100,7 +100,7 @@ mo.graph @conv_window(
   %starts = mo.constant <#M.dense_array<0, -2, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %stops = mo.constant <#M.dense_array<2, 3, 3, 4> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %steps = mo.constant <#M.dense_array<1, 1, 1, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
-  %conv = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %groups] : (
+  %conv = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %groups, filter_layout = ""] : (
     !mo.tensor<[2, 5, 5, 3], f32>, !mo.tensor<[3, 3, 3, 4], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[2, 3, 3, 4], f32>
   %slice = mo.slice(%conv, %starts, %stops, %steps) : (!mo.tensor<[2, 3, 3, 4], f32>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[2, 2, 3, 4], f32>

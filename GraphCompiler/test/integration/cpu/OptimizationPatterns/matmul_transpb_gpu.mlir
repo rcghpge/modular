@@ -3,7 +3,7 @@
 
 // Check the existing transposes are absorbed by pattern for gpu
 // CHECK-LABEL: mo.graph @matmul_existing_transb
-// CHECK: mo.matmul({{.*}}) {transpose_b = true} :
+// CHECK: mo.matmul({{.*}}) [transpose_b = true] :
 // CHECK-SAME: (!mo.tensor<[4, 2], f32, gpu:0>, !mo.tensor<[4, 2], f32, gpu:0, {layout = #mo.layout<NK>}>)
 // CHECK-SAME: -> !mo.tensor<[4, 4], f32, gpu:0>
 mo.graph @matmul_existing_transb(
@@ -23,8 +23,8 @@ mo.graph @matmul_existing_transb(
 
 // Note: constant is transposed from what it was before
 // CHECK: mo.constant <#M.dense_array<1.000000e+00, 4.000000e+00, 2.000000e+00, 5.000000e+00, 3.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>
-// CHECK: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
-// CHECK: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
+// CHECK: mo.matmul({{.*}}) [transpose_b = true] : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
+// CHECK: mo.matmul({{.*}}) [transpose_b = true] : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
 // CHECK-NOT: mo.matmul
 mo.graph @gpu_matmul_prefers_transpose(%arg0: !mo.tensor<[2, 2], f32, gpu:0>, %arg1: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> {
   %0 = mo.constant <#M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[2, 3], f32, gpu:0>
@@ -72,8 +72,8 @@ mo.graph @gpu_matmul_no_transform_non_gpu_uses(%arg0: !mo.tensor<[2, 2], f32>, %
 //
 // CHECK-LABEL: mo.graph @cuda_matmul_prefers_transpose_constant_like
 //
-// CHECK: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
-// CHECK: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
+// CHECK: mo.matmul({{.*}}) [transpose_b = true] : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
+// CHECK: mo.matmul({{.*}}) [transpose_b = true] : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
 // CHECK-NOT: mo.matmul
 mo.graph @cuda_matmul_prefers_transpose_constant_like(%arg0: !mo.tensor<[2, 2], f32, gpu:0>, %arg1: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> {
   %0 = mo.constant.external [name = "weight", align = 32, device = #M.device_ref<"gpu", 0>] : !mo.tensor<[1, 1], f32, gpu:0>

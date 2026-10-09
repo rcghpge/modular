@@ -14,7 +14,7 @@ mo.graph @conv_transpose2d_constant_filter(%input: !mo.tensor<[1, 4, 4, 2], f32>
   // CHECK-SAME: {layout = #mo.layout<RSFC>}
   // CHECK-SAME: {layout = #mo.layout<FRSCf>}
 
-  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa, filter_layout = ""] : (
     !mo.tensor<[1, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 6, 6, 2], f32>
@@ -36,7 +36,7 @@ mo.graph @conv_transpose3d_constant_filter(%input: !mo.tensor<[1, 4, 4, 4, 2], f
   // CHECK-SAME: {layout = #mo.layout<QRSFC>}
   // CHECK-SAME: {layout = #mo.layout<FQRSCf>}
 
-  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa, filter_layout = ""] : (
     !mo.tensor<[1, 4, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2, 2], f32>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 6, 6, 6, 2], f32>
@@ -55,7 +55,7 @@ mo.graph @conv_transpose2d_dynamic_filter(%input: !mo.tensor<[1, 4, 4, 2], f32>,
 
   // CHECK-NOT: mo.layout.transform(%[[FILTER]])
 
-  %res = mo.conv_transpose(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa] : (
+  %res = mo.conv_transpose(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, output_paddings = %opa, filter_layout = ""] : (
     !mo.tensor<[1, 4, 4, 2], f32>, !mo.tensor<[2, 2, 2, 2], f32>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 6, 6, 2], f32>

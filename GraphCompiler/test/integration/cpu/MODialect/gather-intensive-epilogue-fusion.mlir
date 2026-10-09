@@ -21,7 +21,7 @@ mo.graph @gather_inshape_12x2_indices_128_axis_0_test(%zero : !mo.tensor<[12, 2]
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<12x2xf32>> : !mo.tensor<[12, 2], f32>
   %indices = mo.constant <#M.dense_array<4,2,4,1,0,3,3,6,10,7,10,7,9,11,11,9,0,2,0,1,5,3,5,4,10,11,5,8,5,6,2,4,10,7,7,6,7,11,11,4,5,9,6,6,4,6,2,6,0,10,7,3,11,8,0,8,6,6,2,6,0,6,11,1,2,10,2,6,5,3,1,4,10,1,6,11,10,8,7,7,3,3,3,2,11,2,6,5,8,0,4,1,3,5,8,2,8,2,9,11,1,6,7,0,6,8,4,11,7,4,6,11,10,4,0,0,7,4,3,8,10,3,11,3,2,7,3,7> : tensor<128xui32>> : !mo.tensor<[128], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[12, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 0 : index} : (!mo.tensor<[12, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[128, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 0] : (!mo.tensor<[12, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[128, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[128, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[128, 2], f32>
@@ -39,7 +39,7 @@ mo.graph @gather_inshape_12x2_indices_128_axis_1_test(%zero : !mo.tensor<[12, 2]
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<12x2xf32>> : !mo.tensor<[12, 2], f32>
   %indices = mo.constant <#M.dense_array<0,1,1,0,1,0,1,1,0,0,0,1,1,0,1,0,0,1,1,1,1,1,0,1,0,1,0,1,1,0,1,1,1,0,1,1,0,0,1,0,0,0,0,1,0,0,1,0,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,1,1,0,1,1,0,1,0,1,0,0,1,1,0,0,1,1,0,1,0,0,0,0,1,1,1,1,1,0,0,0,1,0,0,1,1,0,1,1,1,1,0,0,0,1,1> : tensor<128xui32>> : !mo.tensor<[128], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[12, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 1 : index} : (!mo.tensor<[12, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[12, 128], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 1] : (!mo.tensor<[12, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[12, 128], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[12, 128], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[12, 128], f32>
@@ -57,7 +57,7 @@ mo.graph @gather_inshape_12x2_indices_2x5x4_axis_0_test(%zero : !mo.tensor<[12, 
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<12x2xf32>> : !mo.tensor<[12, 2], f32>
   %indices = mo.constant <#M.dense_array<8,11,6,9,0,9,0,0,0,0,8,1,1,4,11,1,1,8,6,11,0,2,9,3,4,0,0,3,3,0,3,5,2,8,4,3,11,0,10,7> : tensor<2x5x4xui32>> : !mo.tensor<[2, 5, 4], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[12, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 0 : index} : (!mo.tensor<[12, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[2, 5, 4, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 0] : (!mo.tensor<[12, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[2, 5, 4, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[2, 5, 4, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[2, 5, 4, 2], f32>
@@ -75,7 +75,7 @@ mo.graph @gather_inshape_12x2_indices_2x5x4_axis_1_test(%zero : !mo.tensor<[12, 
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<12x2xf32>> : !mo.tensor<[12, 2], f32>
   %indices = mo.constant <#M.dense_array<0,0,0,1,1,1,0,0,0,0,1,0,0,1,1,1,1,0,1,1,1,1,0,0,0,0,0,1,1,1,1,1,0,1,1,0,1,1,0,0> : tensor<2x5x4xui32>> : !mo.tensor<[2, 5, 4], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[12, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 1 : index} : (!mo.tensor<[12, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[12, 2, 5, 4], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 1] : (!mo.tensor<[12, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[12, 2, 5, 4], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[12, 2, 5, 4], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[12, 2, 5, 4], f32>
@@ -93,7 +93,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_128_axis_0_test(%zero : !mo.tensor<[3, 
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<2,0,0,1,0,2,2,2,0,1,1,0,1,0,1,1,0,0,2,1,0,0,0,0,0,1,2,0,0,1,0,2,0,1,0,2,0,2,1,1,1,1,0,0,1,1,0,2,2,1,2,1,0,1,0,0,1,2,1,2,0,2,0,2,0,2,0,1,2,2,0,0,1,0,0,0,0,1,1,1,1,2,1,1,0,1,0,2,1,1,0,0,2,2,1,2,2,0,2,1,0,2,2,1,2,1,2,0,0,0,2,2,2,2,2,0,0,2,2,2,1,2,2,1,1,0,0,1> : tensor<128xui32>> : !mo.tensor<[128], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 0 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[128, 4, 1, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 0] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[128, 4, 1, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[128, 4, 1, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[128, 4, 1, 2], f32>
@@ -111,7 +111,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_128_axis_1_test(%zero : !mo.tensor<[3, 
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<1,1,1,1,0,3,1,2,0,0,2,3,3,3,1,3,0,0,2,2,0,1,0,0,0,1,1,3,0,3,1,3,3,3,0,1,2,1,1,1,3,1,1,3,3,1,1,2,0,2,1,3,1,0,2,2,1,1,2,2,2,1,3,2,1,0,2,3,3,1,2,1,2,2,3,0,2,1,2,3,1,2,1,3,2,3,3,0,1,2,2,1,0,0,3,3,3,1,1,1,0,3,2,0,2,2,2,3,3,2,3,1,1,0,3,3,3,3,3,3,3,0,2,0,1,0,3,1> : tensor<128xui32>> : !mo.tensor<[128], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 1 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[3, 128, 1, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 1] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[3, 128, 1, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[3, 128, 1, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[3, 128, 1, 2], f32>
@@ -129,7 +129,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_128_axis_2_test(%zero : !mo.tensor<[3, 
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0> : tensor<128xui32>> : !mo.tensor<[128], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 2 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[3, 4, 128, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 2] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[3, 4, 128, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[3, 4, 128, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[3, 4, 128, 2], f32>
@@ -147,7 +147,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_128_axis_3_test(%zero : !mo.tensor<[3, 
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<0,0,0,0,0,1,0,1,0,0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0,1,0,1,1,0,1,0,0,1,0,0,0,1,0,0,1,1,1,1,0,1,1,1,1,1,1,0,0,1,0,0,1,1,0,0,0,1,1,1,0,1,0,1,1,1,1,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,0,1,1,1,1,0,0,1,1,0,1,1,0,0,1,0,0,1,0,0,0,1,0,1,0,0,1,1,0,0,0,1> : tensor<128xui32>> : !mo.tensor<[128], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 3 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[3, 4, 1, 128], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 3] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[128], ui32>) -> !mo.tensor<[3, 4, 1, 128], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[3, 4, 1, 128], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[3, 4, 1, 128], f32>
@@ -165,7 +165,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_2x5x4_axis_0_test(%zero : !mo.tensor<[3
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<2,1,0,2,0,0,0,1,2,1,0,0,1,2,1,1,1,1,2,2,0,2,2,0,0,2,0,1,2,0,1,2,1,2,0,1,0,1,1,1> : tensor<2x5x4xui32>> : !mo.tensor<[2, 5, 4], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 0 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[2, 5, 4, 4, 1, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 0] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[2, 5, 4, 4, 1, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[2, 5, 4, 4, 1, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[2, 5, 4, 4, 1, 2], f32>
@@ -183,7 +183,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_2x5x4_axis_1_test(%zero : !mo.tensor<[3
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<0,2,3,1,1,3,2,0,1,1,0,0,3,2,2,1,3,3,2,2,1,0,3,1,2,0,3,0,1,3,2,0,3,3,1,0,3,0,0,0> : tensor<2x5x4xui32>> : !mo.tensor<[2, 5, 4], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 1 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[3, 2, 5, 4, 1, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 1] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[3, 2, 5, 4, 1, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[3, 2, 5, 4, 1, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[3, 2, 5, 4, 1, 2], f32>
@@ -201,7 +201,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_2x5x4_axis_2_test(%zero : !mo.tensor<[3
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0> : tensor<2x5x4xui32>> : !mo.tensor<[2, 5, 4], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 2 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[3, 4, 2, 5, 4, 2], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 2] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[3, 4, 2, 5, 4, 2], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[3, 4, 2, 5, 4, 2], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[3, 4, 2, 5, 4, 2], f32>
@@ -219,7 +219,7 @@ mo.graph @gather_inshape_3x4x1x2_indices_2x5x4_axis_3_test(%zero : !mo.tensor<[3
   %data = mo.constant <#M.dense_array<0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0> : tensor<3x4x1x2xf32>> : !mo.tensor<[3, 4, 1, 2], f32>
   %indices = mo.constant <#M.dense_array<1,1,0,0,0,0,1,1,1,1,1,0,1,1,1,1,0,1,0,0,0,0,1,1,0,1,0,0,1,0,1,0,0,1,0,1,1,1,0,0> : tensor<2x5x4xui32>> : !mo.tensor<[2, 5, 4], ui32>
   %data_add_zero = mo.add(%zero, %data) : !mo.tensor<[3, 4, 1, 2], f32>
-  %gather = mo.gather(%data_add_zero, %indices) {axis = 3 : index} : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[3, 4, 1, 2, 5, 4], f32>
+  %gather = mo.gather(%data_add_zero, %indices) [axis = 3] : (!mo.tensor<[3, 4, 1, 2], f32>, !mo.tensor<[2, 5, 4], ui32>) -> !mo.tensor<[3, 4, 1, 2, 5, 4], f32>
 %cst0 = mo.constant <#M.dense_array<0.25> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %bcast = mo.static.broadcast_to(%cst0) : !mo.tensor<[1], f32> -> !mo.tensor<[3, 4, 1, 2, 5, 4], f32>
   %mul = mo.mul(%gather, %bcast) : !mo.tensor<[3, 4, 1, 2, 5, 4], f32>

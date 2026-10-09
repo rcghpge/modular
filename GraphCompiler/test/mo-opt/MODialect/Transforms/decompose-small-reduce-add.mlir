@@ -23,7 +23,7 @@ mo.graph @decompose_reduce_add_into_rms_norm(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %n : !mo.tensor<[2, 1, 3], f32>
 }
@@ -40,7 +40,7 @@ mo.graph @decompose_reduce_add_roundtrip_rms_norm(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %b = mo.cast(%r) : (!mo.tensor<[2, 1, 3], f32>) -> !mo.tensor<[2, 1, 3], bf16>
   %f = mo.cast(%b) : (!mo.tensor<[2, 1, 3], bf16>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%f, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
@@ -58,7 +58,7 @@ mo.graph @decompose_reduce_add_extent8_boundary(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 8, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 8, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %n : !mo.tensor<[2, 1, 3], f32>
 }
@@ -75,7 +75,7 @@ mo.graph @decompose_reduce_add_axis0(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[1, 4, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 0 : index} : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[1, 4, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 0] : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[1, 4, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[1, 4, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 4, 3], f32>
   mo.output %n : !mo.tensor<[1, 4, 3], f32>
 }
@@ -93,7 +93,7 @@ mo.graph @decompose_reduce_add_negative_axis(
     %gamma: !mo.tensor<[1], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 3, 1], f32> {
-  %r = mo.reduce.add(%arg0) {axis = -1 : index} : (!mo.tensor<[2, 3, 2], f32>) -> !mo.tensor<[2, 3, 1], f32>
+  %r = mo.reduce.add(%arg0) [axis = -1] : (!mo.tensor<[2, 3, 2], f32>) -> !mo.tensor<[2, 3, 1], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 3, 1], f32>, !mo.tensor<[1], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 3, 1], f32>
   mo.output %n : !mo.tensor<[2, 3, 1], f32>
 }
@@ -110,7 +110,7 @@ mo.graph @decompose_dynamic_outer_static_axis(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[batch, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[batch, 2, 3], f32>) -> !mo.tensor<[batch, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[batch, 2, 3], f32>) -> !mo.tensor<[batch, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[batch, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[batch, 1, 3], f32>
   mo.output %n : !mo.tensor<[batch, 1, 3], f32>
 }
@@ -125,7 +125,7 @@ mo.graph @decompose_dynamic_outer_static_axis(
 // CHECK: mo.reduce.add
 // CHECK-NOT: mo.slice
 mo.graph @no_decompose_no_rms_norm_consumer(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %r : !mo.tensor<[2, 1, 3], f32>
 }
 
@@ -135,7 +135,7 @@ mo.graph @no_decompose_no_rms_norm_consumer(%arg0: !mo.tensor<[2, 2, 3], f32>) -
 // CHECK: mo.reduce.add
 // CHECK-NOT: mo.slice
 mo.graph @no_decompose_non_rms_norm_consumer(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %s = mo.add(%r, %r) : !mo.tensor<[2, 1, 3], f32>
   mo.output %s : !mo.tensor<[2, 1, 3], f32>
 }
@@ -150,7 +150,7 @@ mo.graph @no_decompose_multi_use(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[2, 1, 3], f32>) {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %n, %r : !mo.tensor<[2, 1, 3], f32>, !mo.tensor<[2, 1, 3], f32>
 }
@@ -165,7 +165,7 @@ mo.graph @no_decompose_large_extent(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 64, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 64, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %n : !mo.tensor<[2, 1, 3], f32>
 }
@@ -181,7 +181,7 @@ mo.graph @no_decompose_dynamic_reduced_axis(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[4, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[4, kb, 3], f32>) -> !mo.tensor<[4, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[4, kb, 3], f32>) -> !mo.tensor<[4, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[4, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[4, 1, 3], f32>
   mo.output %n : !mo.tensor<[4, 1, 3], f32>
 }
@@ -197,7 +197,7 @@ mo.graph @no_decompose_extent9_boundary(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %r = mo.reduce.add(%arg0) {axis = 1 : index} : (!mo.tensor<[2, 9, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %r = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[2, 9, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %n : !mo.tensor<[2, 1, 3], f32>
 }
@@ -218,8 +218,8 @@ mo.graph @no_decompose_gather_input(
     %gamma: !mo.tensor<[3], f32>,
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
-  %g = mo.gather(%table, %indices) {axis = 0 : index} : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 4, 3], f32>
-  %r = mo.reduce.add(%g) {axis = 1 : index} : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %g = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 4, 3], f32>
+  %r = mo.reduce.add(%g) [axis = 1] : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %n : !mo.tensor<[2, 1, 3], f32>
 }

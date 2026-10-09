@@ -16,7 +16,7 @@
 // CHECK:   } : !mo.tensor<[2, 2, 3], f32>
 // CHECK:   map.call.opaque @{{.*}}Gather[axis = 0 : index] inputs(%[[PD]], %[[PI]]) outputs(%[[EPI]]) kernelName = "mo.gather" : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
 mo.graph @gather(%data: !mo.tensor<[3, 3], f32>, %indices: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32> {
-  %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+  %out = mo.gather(%data, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
   mo.output %out : !mo.tensor<[2, 2, 3], f32>
 }
 

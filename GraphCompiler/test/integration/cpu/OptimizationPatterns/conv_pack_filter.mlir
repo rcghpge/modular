@@ -23,7 +23,7 @@ mo.graph @conv_const_filter(
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"
-  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter) [strides = %ones, dilations = %ones, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, 2, 2, 1], f32>
@@ -54,7 +54,7 @@ mo.graph @conv_transp_filter(
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"
-  %res = mo.conv(%input, %filter_t) {filter_layout = ""} [strides = %ones, dilations = %ones, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter_t) [strides = %ones, dilations = %ones, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, 2, 2, 1], f32>
@@ -82,7 +82,7 @@ mo.graph @conv_const_filter_dyn_output<() -> D0, D1>(
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"
-  %res = mo.conv<() -> D2, D3>(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv<() -> D2, D3>(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, D2, D3, 1], f32>

@@ -275,7 +275,7 @@ def MOComposite_FusedMatmulAddOp : MO_DotBase<"composite.matmul_add", [MO_Compos
     Example (2-D residual):
 
     ```mlir
-      %res = mo.composite.matmul_add(%a, %b, %residual) {transpose_b = true} : (
+      %res = mo.composite.matmul_add(%a, %b, %residual) [transpose_b = true] : (
         !mo.tensor<[4, 512], bf16>,
         !mo.tensor<[1536, 512], bf16>,
         !mo.tensor<[4, 1536], bf16>
@@ -285,7 +285,7 @@ def MOComposite_FusedMatmulAddOp : MO_DotBase<"composite.matmul_add", [MO_Compos
     Example (1-D bias broadcast):
 
     ```mlir
-      %res = mo.composite.matmul_add(%a, %b, %bias) {transpose_b = true} : (
+      %res = mo.composite.matmul_add(%a, %b, %bias) [transpose_b = true] : (
         !mo.tensor<[4, 512], bf16>,
         !mo.tensor<[1536, 512], bf16>,
         !mo.tensor<[1536], bf16>
@@ -302,7 +302,8 @@ def MOComposite_FusedMatmulAddOp : MO_DotBase<"composite.matmul_add", [MO_Compos
   let results = (outs MO_Rank2Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` (` ` `[` `transpose_b` `=` $transpose_b^ `]`)? attr-dict
+    `:` functional-type(operands, results)
   }];
 }
 
@@ -560,7 +561,9 @@ def MOComposite_DistributedMatmulReduceScatterSumOp : MO_DistributedOp<"composit
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `` custom<MatmulReduceScatterSumAttrs>($has_residual, $residual_peer)
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -611,7 +614,9 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `` custom<ReduceScatterRMSNormAttrs>($group_size, $has_residual)
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -651,7 +656,8 @@ def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.dist
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -687,7 +693,8 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP8Op : MO_DistributedOp<"comp
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -725,7 +732,9 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"comp
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `` custom<AllGatherRMSNormQuantMXFP6Attrs>($group_size, $fp6_format)
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -781,7 +790,10 @@ def MOComposite_GroupedMatmulSwigluNvfp4Op
   );
   let results = (outs MO_Tensor:$c_packed, MO_Tensor:$c_swiglu_scales);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `` custom<GroupedMatmulSwigluNvfp4Attrs>($activation, $swiglu_alpha,
+                                             $swiglu_limit, $has_a_row_scales)
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -816,7 +828,9 @@ def MOComposite_GroupedMatmulBlockScaledOp
   );
   let results = (outs MO_Tensor:$output);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    (` ` `[` `has_a_row_scales` `=` $has_a_row_scales^ `]`)? attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -882,7 +896,9 @@ def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
   );
   let results = (outs MO_Tensor:$output, MO_Chain:$outChain);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    (` ` `[` `has_gate_up_a_row_scales` `=` $has_gate_up_a_row_scales^ `]`)?
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 

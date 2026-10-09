@@ -25,7 +25,7 @@ mo.graph @add_gather(
   %indices: !mo.tensor<[2, 2], si32>
 ) -> !mo.tensor<[2, 2, 3], f32> {
   %data = mo.add(%a, %b) : !mo.tensor<[3, 3], f32>
-  %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+  %out = mo.gather(%data, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
   mo.output %out : !mo.tensor<[2, 2, 3], f32>
 }
 
@@ -46,7 +46,7 @@ mo.graph @add_gather_indices(
   %i1: !mo.tensor<[2, 2], si32>
 ) -> !mo.tensor<[2, 2, 3], f32> {
   %indices = mo.add(%i0, %i1) : !mo.tensor<[2, 2], si32>
-  %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+  %out = mo.gather(%data, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
   mo.output %out : !mo.tensor<[2, 2, 3], f32>
 }
 
@@ -69,7 +69,7 @@ mo.graph @add_gather_indices(
 mo.graph @chain(%a: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64> {
   %add = mo.add(%a, %a) : !mo.tensor<[2, 3], f32>
   %cast = mo.cast(%add) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64>
-  %out = mo.reduce.softmax(%cast) {axis = 1 : index} : (!mo.tensor<[2, 3], f64>) -> !mo.tensor<[2, 3], f64>
+  %out = mo.reduce.softmax(%cast) [axis = 1] : (!mo.tensor<[2, 3], f64>) -> !mo.tensor<[2, 3], f64>
   mo.output %out : !mo.tensor<[2, 3], f64>
 }
 
@@ -140,11 +140,11 @@ mo.graph @fuse_in_if(
 ) -> !mo.tensor<[2, 2, 3], f32> {
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, 2, 3], f32> {
     %data = mo.add(%a, %b) : !mo.tensor<[3, 3], f32>
-    %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+    %out = mo.gather(%data, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
     mo.yield %out : !mo.tensor<[2, 2, 3], f32>
   } else {
     %data = mo.mul(%a, %b) : !mo.tensor<[3, 3], f32>
-    %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+    %out = mo.gather(%data, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
     mo.yield %out : !mo.tensor<[2, 2, 3], f32>
   }
   mo.output %res : !mo.tensor<[2, 2, 3], f32>
@@ -166,10 +166,10 @@ mo.graph @no_fuse_across_blocks(
 ) -> !mo.tensor<[2, 2, 3], f32> {
   %data = mo.add(%a, %b) : !mo.tensor<[3, 3], f32>
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, 2, 3], f32> {
-    %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+    %out = mo.gather(%data, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
     mo.yield %out : !mo.tensor<[2, 2, 3], f32>
   } else {
-    %z = mo.gather(%a, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+    %z = mo.gather(%a, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
     mo.yield %z : !mo.tensor<[2, 2, 3], f32>
   }
   mo.output %res : !mo.tensor<[2, 2, 3], f32>
@@ -189,7 +189,7 @@ mo.graph @no_fuse_multi_use(
   %indices: !mo.tensor<[2, 2], si32>
 ) -> (!mo.tensor<[2, 2, 3], f32>, !mo.tensor<[3, 3], f32>) {
   %data = mo.add(%a, %b) : !mo.tensor<[3, 3], f32>
-  %out = mo.gather(%data, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+  %out = mo.gather(%data, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
   mo.output %out, %data : !mo.tensor<[2, 2, 3], f32>, !mo.tensor<[3, 3], f32>
 }
 

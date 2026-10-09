@@ -22,7 +22,7 @@ mo.graph @strided_pool(%input : !mo.tensor<[1, 5, 5, 1], f32>) -> (!mo.tensor<[1
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %v = "mo.add"(%input, %d) : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5, 5, 1], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
-  %output = mo.avg_pool(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (
+  %output = mo.avg_pool(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa, count_boundary = false] : (
     !mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
   ) -> !mo.tensor<[1, 2, 2, 1], f32>
   mo.output %output : !mo.tensor<[1, 2, 2, 1], f32>
@@ -36,7 +36,7 @@ mo.graph @avg_pool_count_boundary_false(%input : !mo.tensor<[1, 5, 5, 1], f32>) 
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
   %pa = "mo.constant"() {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %v = "mo.add"(%input, %d) : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5, 5, 1], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
-  %output = mo.avg_pool(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (
+  %output = mo.avg_pool(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa, count_boundary = false] : (
     !mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
   ) -> !mo.tensor<[1, 3, 3, 1], f32>
   mo.output %output : !mo.tensor<[1, 3, 3, 1], f32>
@@ -50,7 +50,7 @@ mo.graph @avg_pool_count_boundary_true(%input : !mo.tensor<[1, 5, 5, 1], f32>) -
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
   %pa = "mo.constant"() {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %v = "mo.add"(%input, %d) : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5, 5, 1], f32>) -> !mo.tensor<[1, 5, 5, 1], f32>
-  %output = mo.avg_pool(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = true} : (
+  %output = mo.avg_pool(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa, count_boundary = true] : (
     !mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
   ) -> !mo.tensor<[1, 3, 3, 1], f32>
   mo.output %output : !mo.tensor<[1, 3, 3, 1], f32>
@@ -184,7 +184,7 @@ mo.graph @avg_pool_count_boundary_false_ceil_mode_true(%input : !mo.tensor<[1, 4
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %v = "mo.add"(%input, %d) : (!mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[1, 4, 4, 1], f32>) -> !mo.tensor<[1, 4, 4, 1], f32>
-  %output = mo.avg_pool_ceil_mode_true(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = false} : (
+  %output = mo.avg_pool_ceil_mode_true(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa, count_boundary = false] : (
     !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
   ) -> !mo.tensor<[1, 2, 2, 1], f32>
   mo.output %output : !mo.tensor<[1, 2, 2, 1], f32>
@@ -198,7 +198,7 @@ mo.graph @avg_pool_count_boundary_true_ceil_mode_true(%input : !mo.tensor<[1, 4,
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %v = "mo.add"(%input, %d) : (!mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[1, 4, 4, 1], f32>) -> !mo.tensor<[1, 4, 4, 1], f32>
-  %output = mo.avg_pool_ceil_mode_true(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa] {count_boundary = true} : (
+  %output = mo.avg_pool_ceil_mode_true(%v) [filter_shape = %fs, strides = %st, dilations = %di, paddings = %pa, count_boundary = true] : (
     !mo.tensor<[1, 4, 4, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>
   ) -> !mo.tensor<[1, 2, 2, 1], f32>
   mo.output %output : !mo.tensor<[1, 2, 2, 1], f32>

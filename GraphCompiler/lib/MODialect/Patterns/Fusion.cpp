@@ -4241,7 +4241,7 @@ struct RopeRaggedSplitConcatPattern
 //===----------------------------------------------------------------------===//
 //
 // Fuses:
-//   %mm  = mo.matmul(%a, %b) {transpose_b = ...}
+//   %mm  = mo.matmul(%a, %b) [transpose_b = ...]
 //   %out = mo.add(%mm, %residual)   (or mo.add(%residual, %mm))
 //
 // Into:
@@ -4621,7 +4621,7 @@ public:
 //          with the remaining columns passing through unchanged.
 //
 // Graph pattern detected:
-//   %gemv = mo.matmul(%x, %W) {transpose_b = true} : [1, K] x [N, K] -> [1, N]
+//   %gemv = mo.matmul(%x, %W) [transpose_b = true] : [1, K] x [N, K] -> [1, N]
 //   %normed_slice = mo.slice(%gemv) : [1, N] -> [1, N_normed]
 //   %normed = mo.reduce.rms_norm(%normed_slice, %gamma, ...) : [1, N_normed]
 //   %unnormed_slice = mo.slice(%gemv) : [1, N] -> [1, N - N_normed]

@@ -10,6 +10,6 @@
 // CHECK: map.index.reshape
 mo.graph @reshape_into_reduce_prologue(%a: !mo.tensor<[1, 4], f32>) -> (!mo.tensor<[1], f32>) {
   %r = mo.static.reshape(%a) : !mo.tensor<[1, 4], f32> -> !mo.tensor<[4], f32>
-  %m = mo.reduce.mean(%r) {axis = 0 : index} : (!mo.tensor<[4], f32>) -> !mo.tensor<[1], f32>
+  %m = mo.reduce.mean(%r) [axis = 0] : (!mo.tensor<[4], f32>) -> !mo.tensor<[1], f32>
   mo.output %m : !mo.tensor<[1], f32>
 }

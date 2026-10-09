@@ -40,6 +40,6 @@ mo.graph @diamond_gather(
   %t1 = mo.mul(%t0, %t0) : !mo.tensor<[3, 3], f32>
   %t2 = mo.relu(%t0) : !mo.tensor<[3, 3], f32>
   %d = mo.add(%t1, %t2) : !mo.tensor<[3, 3], f32>
-  %out = mo.gather(%d, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+  %out = mo.gather(%d, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
   mo.output %out : !mo.tensor<[2, 2, 3], f32>
 }

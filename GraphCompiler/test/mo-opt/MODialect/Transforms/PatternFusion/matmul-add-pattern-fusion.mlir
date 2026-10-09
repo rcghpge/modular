@@ -34,7 +34,7 @@ mo.graph @matmul_reshape_add_2d(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>, %
 // CHECK: mo.output %[[OUT]]
 mo.graph @matmul_add_1d(%arg0: !mo.tensor<[256, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[8192, 1536], bf16, gpu:0>, %arg2: !mo.tensor<[8192], bf16, gpu:0>) -> !mo.tensor<[256, 8192], bf16, gpu:0> {
   %0 = mo.rebind(%arg1) : !mo.tensor<[8192, 1536], bf16, gpu:0> -> !mo.tensor<[8192, 1536], bf16, gpu:0, {layout = #mo.layout<NK>}>
-  %1 = mo.matmul(%arg0, %0) {transpose_b = true} : (!mo.tensor<[256, 1536], bf16, gpu:0>, !mo.tensor<[8192, 1536], bf16, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[256, 8192], bf16, gpu:0>
+  %1 = mo.matmul(%arg0, %0) [transpose_b = true] : (!mo.tensor<[256, 1536], bf16, gpu:0>, !mo.tensor<[8192, 1536], bf16, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[256, 8192], bf16, gpu:0>
   %2 = mo.static.broadcast_to(%arg2) : !mo.tensor<[8192], bf16, gpu:0> -> !mo.tensor<[256, 8192], bf16, gpu:0>
   %3 = mo.add(%1, %2) : !mo.tensor<[256, 8192], bf16, gpu:0>
   mo.output %3 : !mo.tensor<[256, 8192], bf16, gpu:0>

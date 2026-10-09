@@ -17,7 +17,7 @@ mo.graph @convStaticStrides(%input: !mo.tensor<[1, 5, 5, 3], f32>, %filter: !mo.
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
-  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 3], f32>, !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 2, 2, 1], f32>
   mo.output %res : !mo.tensor<[1, 2, 2, 1], f32>
@@ -33,7 +33,7 @@ mo.graph @convDynamicStrides(%input: !mo.tensor<[1, 5, 5, 3], f32>, %filter: !mo
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
-  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 3], f32>, !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 2, 2, 1], f32>
   mo.output %res : !mo.tensor<[1, 2, 2, 1], f32>
@@ -47,6 +47,6 @@ mo.graph @convDynamicStrides(%input: !mo.tensor<[1, 5, 5, 3], f32>, %filter: !mo
 // CHECK-SAME: coordinate_transform_mode = 0 : index
 mo.graph @resizeCoordTransformMode(%input: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> {
   %size = mo.constant <#M.dense_array<1, 1, 7, 8> : tensor<4xsi64>> : !mo.tensor<[4], si64>
-  %res = mo.resize.nearest(%input, %size) {coordinate_transform_mode = #mo.coord_trans_mode<half_pixel>, round_mode = 0} : (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
+  %res = mo.resize.nearest(%input, %size) [coordinate_transform_mode = #mo.coord_trans_mode<half_pixel>] : (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
   mo.output %res : !mo.tensor<[1, 1, 7, 8], f32>
 }

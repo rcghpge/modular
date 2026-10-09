@@ -20,7 +20,7 @@ mo.graph @reduce_add_rms_norm_decompose() -> !mo.tensor<[2, 1, 3], f32> {
   %eps    = mo.constant <#M.dense_array<0.00001> : tensor<f32>> : !mo.tensor<[], f32>
   %weight_offset = mo.constant <#M.dense_array<0.0> : tensor<f32>> : !mo.tensor<[], f32>
 
-  %reduced = mo.reduce.add(%input) {axis = 1 : index} : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %reduced = mo.reduce.add(%input) [axis = 1] : (!mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %reduced_bf16 = mo.cast(%reduced) : (!mo.tensor<[2, 1, 3], f32>) -> !mo.tensor<[2, 1, 3], bf16>
   %reduced_f32 = mo.cast(%reduced_bf16) : (!mo.tensor<[2, 1, 3], bf16>) -> !mo.tensor<[2, 1, 3], f32>
   %normed = mo.reduce.rms_norm(%reduced_f32, %gamma, %eps, %weight_offset) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
@@ -40,7 +40,7 @@ mo.graph @reduce_add_extent8_boundary() -> !mo.tensor<[1, 1, 3], f32> {
   %eps    = mo.constant <#M.dense_array<0.00001> : tensor<f32>> : !mo.tensor<[], f32>
   %weight_offset = mo.constant <#M.dense_array<0.0> : tensor<f32>> : !mo.tensor<[], f32>
 
-  %reduced = mo.reduce.add(%input) {axis = 1 : index} : (!mo.tensor<[1, 8, 3], f32>) -> !mo.tensor<[1, 1, 3], f32>
+  %reduced = mo.reduce.add(%input) [axis = 1] : (!mo.tensor<[1, 8, 3], f32>) -> !mo.tensor<[1, 1, 3], f32>
   %reduced_bf16 = mo.cast(%reduced) : (!mo.tensor<[1, 1, 3], f32>) -> !mo.tensor<[1, 1, 3], bf16>
   %reduced_f32 = mo.cast(%reduced_bf16) : (!mo.tensor<[1, 1, 3], bf16>) -> !mo.tensor<[1, 1, 3], f32>
   %normed = mo.reduce.rms_norm(%reduced_f32, %gamma, %eps, %weight_offset) {multiply_before_cast = false} : (!mo.tensor<[1, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 1, 3], f32>
@@ -61,7 +61,7 @@ mo.graph @reduce_add_extent9_fallback() -> !mo.tensor<[1, 1, 3], f32> {
   %eps    = mo.constant <#M.dense_array<0.00001> : tensor<f32>> : !mo.tensor<[], f32>
   %weight_offset = mo.constant <#M.dense_array<0.0> : tensor<f32>> : !mo.tensor<[], f32>
 
-  %reduced = mo.reduce.add(%input) {axis = 1 : index} : (!mo.tensor<[1, 9, 3], f32>) -> !mo.tensor<[1, 1, 3], f32>
+  %reduced = mo.reduce.add(%input) [axis = 1] : (!mo.tensor<[1, 9, 3], f32>) -> !mo.tensor<[1, 1, 3], f32>
   %reduced_bf16 = mo.cast(%reduced) : (!mo.tensor<[1, 1, 3], f32>) -> !mo.tensor<[1, 1, 3], bf16>
   %reduced_f32 = mo.cast(%reduced_bf16) : (!mo.tensor<[1, 1, 3], bf16>) -> !mo.tensor<[1, 1, 3], f32>
   %normed = mo.reduce.rms_norm(%reduced_f32, %gamma, %eps, %weight_offset) {multiply_before_cast = false} : (!mo.tensor<[1, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 1, 3], f32>

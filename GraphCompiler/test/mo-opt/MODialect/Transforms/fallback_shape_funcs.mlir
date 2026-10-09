@@ -10,7 +10,7 @@ mo.graph @avg_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
   %paddings: !mo.tensor<[4], si64>
 ) -> !mo.tensor<[D0, D1, D2, D3], f32> {
 
-  %res = mo.avg_pool<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations, paddings = %paddings] {count_boundary = false} :
+  %res = mo.avg_pool<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations, paddings = %paddings, count_boundary = false] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
     -> !mo.tensor<[D4, D5, D6, D7], f32>
 
@@ -24,7 +24,7 @@ mo.graph @avg_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-SAME:   [dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]] :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.avg_pool(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]]]
+// CHECK-NEXT: %[[RES:.*]] = mo.avg_pool(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], count_boundary = false]
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 // CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 //
@@ -39,7 +39,7 @@ mo.graph @avg_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
   %paddings: !mo.tensor<[4], si64>
 ) -> !mo.tensor<[D0, D1, D2, D3], f32> {
 
-  %res = mo.avg_pool_ceil_mode_true<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations, paddings = %paddings] {count_boundary = false} :
+  %res = mo.avg_pool_ceil_mode_true<() -> D4, D5, D6, D7>(%input) [filter_shape = %filter_shape, strides = %strides, dilations = %dilations, paddings = %paddings, count_boundary = false] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
     -> !mo.tensor<[D4, D5, D6, D7], f32>
 
@@ -53,7 +53,7 @@ mo.graph @avg_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-SAME:   [dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]] :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.avg_pool_ceil_mode_true(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]]]
+// CHECK-NEXT: %[[RES:.*]] = mo.avg_pool_ceil_mode_true(%[[INPUT]]) [filter_shape = %[[FILTER_SHAPE]], strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], count_boundary = false]
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>)
 // CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 //
@@ -266,7 +266,7 @@ mo.graph @conv_fallback_shape_func<() -> D0, D1, D2, D3>(
   %num_groups: !mo.tensor<[], si64>
 ) -> !mo.tensor<[D0, D1, D2, D3], f32> {
 
-  %res = mo.conv<() -> D4, D5, D6, D7>(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups] :
+  %res = mo.conv<() -> D4, D5, D6, D7>(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %num_groups, filter_layout = ""] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>)
     -> !mo.tensor<[D4, D5, D6, D7], f32>
 
@@ -280,7 +280,7 @@ mo.graph @conv_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-SAME:   [dataDeptTensors = [2 : i32, 3 : i32, 4 : i32, 5 : i32]] :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]]]
+// CHECK-NEXT: %[[RES:.*]] = mo.conv(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], num_groups = %[[NUM_GROUPS]], filter_layout = ""]
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>)
 // CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 //
@@ -296,8 +296,8 @@ mo.graph @conv_transpose_fallback_shape_func<() -> D0, D1, D2, D3>(
   %out_paddings: !mo.tensor<[2], si64>
 ) -> !mo.tensor<[D0, D1, D2, D3], f32> {
 
-  %res = mo.conv_transpose<() -> D4, D5, D6, D7>(%input, %filter) {filter_layout = ""}
-    [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %out_paddings] :
+  %res = mo.conv_transpose<() -> D4, D5, D6, D7>(%input, %filter)
+    [strides = %strides, dilations = %dilations, paddings = %paddings, output_paddings = %out_paddings, filter_layout = ""] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[D4, D5, D6, D7], f32>
 
@@ -311,7 +311,7 @@ mo.graph @conv_transpose_fallback_shape_func<() -> D0, D1, D2, D3>(
 // CHECK-SAME:   [dataDeptTensors = [2 : i32, 3 : i32, 4 : i32, 5 : i32]] :
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) {filter_layout = ""} [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]]]
+// CHECK-NEXT: %[[RES:.*]] = mo.conv_transpose(%[[INPUT]], %[[FILTER]]) [strides = %[[STRIDES]], dilations = %[[DILATIONS]], paddings = %[[PADDINGS]], output_paddings = %[[OUTPUT_PADDINGS]], filter_layout = ""]
 // CHECK-SAME:   (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>)
 // CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32>
 //
@@ -323,7 +323,7 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
   %indices : !mo.tensor<[D1, 20], si32>
 ) -> !mo.tensor<[D2, D3, D4], f32> {
 
-  %res = mo.gather<() -> D5, D6, D7>(%input, %indices) {axis = 0 : index} :
+  %res = mo.gather<() -> D5, D6, D7>(%input, %indices) [axis = 0] :
     (!mo.tensor<[10, D0], f32>, !mo.tensor<[D1, 20], si32>) -> !mo.tensor<[D5, D6, D7], f32>
 
   mo.output<D5, D6, D7> %res : !mo.tensor<[D5, D6, D7], f32>
@@ -338,7 +338,7 @@ mo.graph @gather_fallback_shape_func<D0, D1 -> D2, D3, D4>(
 // CHECK-SAME:   [kgenParams = {axis = 0 : index}, dataDeptTensors = []] :
 // CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>)
 //
-// CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]]) {axis = 0 : index} :
+// CHECK-NEXT: %[[RES:.*]] = mo.gather(%[[INPUT]], %[[INDICES]]) [axis = 0] :
 // CHECK-SAME:   (!mo.tensor<[10, [[D0]]], f32>, !mo.tensor<[[[D1]], 20], si32>)
 // CHECK-SAME:   -> !mo.tensor<[[[D5]], [[D6]], [[D7]]], f32>
 //
@@ -351,7 +351,7 @@ mo.graph @gather_nd_fallback_shape_func<D0, D1 -> D2, D3>(
 ) -> !mo.tensor<[D2, D3], f32> {
 
   %res = mo.gather_nd<() -> D4, D5>(%input, %indices)
-    { batchDims = 1 : index } :
+    [batchDims = 1] :
     (!mo.tensor<[D0, D1, 20], f32>, !mo.tensor<[D0, 1], si32>) -> !mo.tensor<[D4, D5], f32>
 
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
@@ -367,7 +367,7 @@ mo.graph @gather_nd_fallback_shape_func<D0, D1 -> D2, D3>(
 // CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]], 20], f32>, !mo.tensor<[[[D0]], 1], si32>)
 //
 // CHECK-NEXT: %[[RES:.*]] = mo.gather_nd(%[[INPUT]], %[[INDICES]])
-// CHECK-SAME:   {batchDims = 1 : index} :
+// CHECK-SAME:   [batchDims = 1] :
 // CHECK-SAME:   (!mo.tensor<[[[D0]], [[D1]], 20], f32>, !mo.tensor<[[[D0]], 1], si32>)
 // CHECK-SAME:   -> !mo.tensor<[[[D4]], [[D5]]], f32>
 //
@@ -496,7 +496,7 @@ mo.graph @scatter_fallback_shape_func<D0, D1, D2, D3, D4, D5 -> D6, D7>(
   %indices: !mo.tensor<[D4, D5], si32>
 ) -> !mo.tensor<[D6, D7], f32> {
 
-  %res = mo.scatter<() -> D8, D9>(%input, %updates, %indices) {axis = 0 : index} : (
+  %res = mo.scatter<() -> D8, D9>(%input, %updates, %indices) [axis = 0] : (
     !mo.tensor<[D0, D1], f32>, !mo.tensor<[D2, D3], f32>, !mo.tensor<[D4, D5], si32>
   ) -> !mo.tensor<[D8, D9], f32>
 
@@ -513,7 +513,7 @@ mo.graph @scatter_fallback_shape_func<D0, D1, D2, D3, D4, D5 -> D6, D7>(
 // CHECK-SAME:     [kgenParams = {axis = 0 : index}, dataDeptTensors = []] :
 // CHECK-SAME:     (!mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>)
 //
-// CHECK-NEXT:   %[[RES:.*]] = mo.scatter(%[[INPUT]], %[[UPDATES]], %[[INDICES]]) {axis = 0 : index} : (
+// CHECK-NEXT:   %[[RES:.*]] = mo.scatter(%[[INPUT]], %[[UPDATES]], %[[INDICES]]) [axis = 0] : (
 // CHECK-SAME:     !mo.tensor<[[[D0]], [[D1]]], f32>, !mo.tensor<[[[D2]], [[D3]]], f32>, !mo.tensor<[[[D4]], [[D5]]], si32>
 // CHECK-SAME:   ) -> !mo.tensor<[[[D8]], [[D9]]], f32>
 //
@@ -707,7 +707,7 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
   %rois = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 
   %output = mo.roi_align<() -> D8, D9, D10, D11>(%input, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
-    {aligned = false,  mode = "AVG"}
+    [aligned = false, mode = "AVG"]
     : (!mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
 
   mo.output<D8, D9, D10, D11> %output : !mo.tensor<[D8, D9, D10, D11], f32>
@@ -729,7 +729,7 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
 // CHECK-SAME:    : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
 //
 // CHECK-NEXT:  %[[OUTPUT:.*]] = mo.roi_align(%[[INPUT]], %[[ROIS]], %[[OUTPUT_HEIGHT]], %[[OUTPUT_HEIGHT]], %[[SPATIAL_SCALE]], %[[SAMPLING_RATIO]])
-// CHECK-SAME:    {aligned = false,  mode = "AVG"}
+// CHECK-SAME:    [aligned = false, mode = "AVG"]
 // CHECK-SAME:    : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 //
 // CHECK-NEXT:  mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> %[[OUTPUT]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
@@ -751,7 +751,7 @@ mo.graph @roi_align_dynamic_output_size_fallback_shape_func<D0, D1, D2, D3 -> D4
   %rois = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 
   %output = mo.roi_align<() -> D8, D9, D10, D11>(%input, %rois, %output_height, %output_width, %spatial_scale, %sampling_ratio)
-    {aligned = false,  mode = "AVG"}
+    [aligned = false, mode = "AVG"]
     : (!mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
 
   mo.output<D8, D9, D10, D11> %output : !mo.tensor<[D8, D9, D10, D11], f32>
@@ -774,7 +774,7 @@ mo.graph @roi_align_dynamic_output_size_fallback_shape_func<D0, D1, D2, D3 -> D4
 // CHECK-SAME:    : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
 //
 // CHECK-NEXT:  %[[OUTPUT:.*]] = mo.roi_align(%[[INPUT]], %[[ROIS]], %[[OUTPUT_HEIGHT]], %[[OUTPUT_WIDTH]], %[[SPATIAL_SCALE]], %[[SAMPLING_RATIO]])
-// CHECK-SAME:    {aligned = false,  mode = "AVG"}
+// CHECK-SAME:    [aligned = false, mode = "AVG"]
 // CHECK-SAME:    : (!mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>
 //
 // CHECK-NEXT:  mo.output<[[D8]], [[D9]], [[D10]], [[D11]]> %[[OUTPUT]] : !mo.tensor<[[[D8]], [[D9]], [[D10]], [[D11]]], f32>

@@ -24,6 +24,6 @@
 mo.graph @gather_chainless(%buf: !mo.buffer<[8, 4], f32>, %idx: !mo.tensor<[2, 1], si32>) -> !mo.tensor<[2, 4], f32> {
   %0 = mo.chain.create()
   %t, %oc = mo.mutable.load(%buf, %0) : (!mo.buffer<[8, 4], f32>, !mo.chain) -> (!mo.tensor<[8, 4], f32>, !mo.chain)
-  %g = mo.gather_nd(%t, %idx) {batchDims = 0 : index} : (!mo.tensor<[8, 4], f32>, !mo.tensor<[2, 1], si32>) -> !mo.tensor<[2, 4], f32>
+  %g = mo.gather_nd(%t, %idx) [batchDims = 0] : (!mo.tensor<[8, 4], f32>, !mo.tensor<[2, 1], si32>) -> !mo.tensor<[2, 4], f32>
   mo.output %g : !mo.tensor<[2, 4], f32>
 }

@@ -9,7 +9,7 @@ mo.graph @split_outer_axis() -> (!mo.tensor<[1, 5], si32>, !mo.tensor<[2, 5], si
   %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19> : tensor<20xsi32>> : !mo.tensor<[4, 5], si32, gpu:0>
   %split_shapes = mo.constant <#M.dense_array<1, 2, 1> : tensor<3xsi32>> : !mo.tensor<[3], si32>
 
-  %res:3 = mo.split(%input, %split_shapes) {axis = 0 : index} :
+  %res:3 = mo.split(%input, %split_shapes) [axis = 0] :
     (!mo.tensor<[4, 5], si32, gpu:0>, !mo.tensor<[3], si32>)
     -> (!mo.tensor<[1, 5], si32, gpu:0>, !mo.tensor<[2, 5], si32, gpu:0>, !mo.tensor<[1, 5], si32, gpu:0>)
   %ch0 = mo.chain.create()
@@ -28,7 +28,7 @@ mo.graph @split_inner_axis() -> (!mo.tensor<[4, 2], si32>, !mo.tensor<[4, 2], si
   %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19> : tensor<20xsi32>> : !mo.tensor<[4, 5], si32, gpu:0>
   %split_shapes = mo.constant <#M.dense_array<2, 2, 1> : tensor<3xsi32>> : !mo.tensor<[3], si32>
 
-  %res:3 = mo.split(%input, %split_shapes) {axis = 1 : index} :
+  %res:3 = mo.split(%input, %split_shapes) [axis = 1] :
     (!mo.tensor<[4, 5], si32, gpu:0>, !mo.tensor<[3], si32>)
     -> (!mo.tensor<[4, 2], si32, gpu:0>, !mo.tensor<[4, 2], si32, gpu:0>, !mo.tensor<[4, 1], si32, gpu:0>)
   %ch0 = mo.chain.create()

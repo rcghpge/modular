@@ -170,7 +170,7 @@ mo.graph @concat_incorrect_element_type(%arg0: !mo.tensor<[1], si64>, %arg1: !mo
 
 mo.graph @split_non_shapelike_splits(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
   // expected-error @below {{'mo.split' op operand #1 must be rank 1 or unranked with integer or index elements, but got '!mo.tensor<[2], f32>}}
-  %0, %1 = mo.split(%arg0, %arg1) {axis = 0 : index} : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  %0, %1 = mo.split(%arg0, %arg1) [axis = 0] : (!mo.tensor<[7], f32>, !mo.tensor<[2], f32>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
 }
 
@@ -178,7 +178,7 @@ mo.graph @split_non_shapelike_splits(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.ten
 
 mo.graph @split_axis_out_of_range(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
   // expected-error @below {{split axis must be in range [-rank, rank)}}
-  %0, %1 = mo.split(%arg0, %arg1) {axis = 7 : index} : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  %0, %1 = mo.split(%arg0, %arg1) [axis = 7] : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
 }
 
@@ -186,7 +186,7 @@ mo.graph @split_axis_out_of_range(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor
 
 mo.graph @split_non_matching_output_rank(%arg0: !mo.tensor<[6, 7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>) {
   // expected-error @below {{input and output ranks must be all dynamic, or all static and match}}
-  %0, %1 = mo.split(%arg0, %arg1) {axis = 0 : index} : (!mo.tensor<[6, 7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
+  %0, %1 = mo.split(%arg0, %arg1) [axis = 0] : (!mo.tensor<[6, 7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], f32>, !mo.tensor<[?], f32>)
   mo.output %0, %1 : !mo.tensor<[?], f32>, !mo.tensor<[?], f32>
 }
 
@@ -194,7 +194,7 @@ mo.graph @split_non_matching_output_rank(%arg0: !mo.tensor<[6, 7], f32>, %arg1: 
 
 mo.graph @split_no_matching_elem_types(%arg0: !mo.tensor<[7], f32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>) {
   // expected-error @below {{input and output element types must match}}
-  %0, %1 = mo.split(%arg0, %arg1) {axis = 0 : index} : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>)
+  %0, %1 = mo.split(%arg0, %arg1) [axis = 0] : (!mo.tensor<[7], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[?], si32>, !mo.tensor<[?], si32>)
   mo.output %0, %1 : !mo.tensor<[?], si32>, !mo.tensor<[?], si32>
 }
 
@@ -206,7 +206,7 @@ mo.graph @split_no_matching_static_shapes() -> (!mo.tensor<[1, 1], si32>, !mo.te
   %input = mo.reshape(%array, %shape) : (!mo.tensor<[4], si32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], si32>
   %splitSizes = mo.constant <#M.dense_array<1, 3> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   // expected-error @below {{input and output static shapes must match except split axis}}
-  %0, %1 = mo.split(%input, %splitSizes) {axis = 1 : index} : (
+  %0, %1 = mo.split(%input, %splitSizes) [axis = 1] : (
     !mo.tensor<[2, 2], si32>, !mo.tensor<[2], si64>
   ) -> (!mo.tensor<[1, 1], si32>, !mo.tensor<[3, 3], si32>)
   mo.output %0, %1 : !mo.tensor<[1, 1], si32>, !mo.tensor<[3, 3], si32>
@@ -218,7 +218,7 @@ mo.graph @split_wrong_split_dim_sum() -> (!mo.tensor<[1], si32>, !mo.tensor<[2],
   %input = mo.constant <#M.dense_array<2, 3> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %splitSizes = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   // expected-error @below {{sum of output shapes along split axis must match input shape}}
-  %0, %1 = mo.split(%input, %splitSizes) {axis = 0 : index} : (
+  %0, %1 = mo.split(%input, %splitSizes) [axis = 0] : (
     !mo.tensor<[2], si32>, !mo.tensor<[2], si64>
   ) -> (!mo.tensor<[1], si32>, !mo.tensor<[2], si32>)
   mo.output %0, %1 : !mo.tensor<[1], si32>, !mo.tensor<[2], si32>
@@ -232,7 +232,7 @@ mo.graph @split_wrong_split_dim_sum() -> (!mo.tensor<[1], si32>, !mo.tensor<[2],
 
 mo.graph @gather_mixed_input_output_types(%input: !mo.tensor<[4], si32>, %indices: !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], f32> {
   // expected-error @below {{input and output must have the same element type}}
-  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
@@ -240,7 +240,7 @@ mo.graph @gather_mixed_input_output_types(%input: !mo.tensor<[4], si32>, %indice
 
 mo.graph @gather_scalar_param(%input: !mo.tensor<[], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
   // expected-error@+1 {{'mo.gather' op operand #0 must be unranked or non-scalar tensor, but got '!mo.tensor<[], f32>'}}
-  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
@@ -248,7 +248,7 @@ mo.graph @gather_scalar_param(%input: !mo.tensor<[], f32>, %indices: !mo.tensor<
 
 mo.graph @gather_float_indices(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32> {
   // expected-error@+1 {{'mo.gather' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[2], f32>'}}
-  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
@@ -256,7 +256,7 @@ mo.graph @gather_float_indices(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.te
 
 mo.graph @gather_non_int_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32> {
   // expected-error @below {{'mo.gather' op operand #1 must be tensor with integer or index elements, but got '!mo.tensor<[2], f32>'}}
-  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
@@ -264,7 +264,7 @@ mo.graph @gather_non_int_axis(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.ten
 
 mo.graph @gather_result_rank_too_big(%input: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?], f32> {
   // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
-  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?], f32>
+  %0 = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?, ?, ?], f32>
   mo.output %0 : !mo.tensor<[?, ?, ?], f32>
 }
 
@@ -272,7 +272,7 @@ mo.graph @gather_result_rank_too_big(%input: !mo.tensor<[?, ?], f32>, %indices: 
 
 mo.graph @gather_result_rank_too_small(%input: !mo.tensor<[?, ?], f32>, %indices: !mo.tensor<[?], si64>) -> !mo.tensor<[?], f32> {
   // expected-error @below {{result rank must be 1 less than the sum of param and indices ranks if they are all static}}
-  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], f32>
+  %0 = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[?, ?], f32>, !mo.tensor<[?], si64>) -> !mo.tensor<[?], f32>
   mo.output %0 : !mo.tensor<[?], f32>
 }
 
@@ -578,7 +578,7 @@ mo.graph @arg_nonzero_fp_result_type(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tenso
 
 mo.graph @arg_max_bad_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 1, 1], si64> {
   // expected-error@+1 {{'mo.reduce.arg_max' op input and output must either both have dynamic ranks or both have the same size static ranks}}
-  %res = mo.reduce.arg_max(%arg) {axis = 0 : index} : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 1, 1], si64>
+  %res = mo.reduce.arg_max(%arg) [axis = 0] : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 1, 1], si64>
   mo.output %res : !mo.tensor<[7, 1, 1], si64>
 }
 
@@ -586,7 +586,7 @@ mo.graph @arg_max_bad_rank(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 1, 1
 
 mo.graph @arg_max_bad_dimensions(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[6, 1], si64> {
   // expected-error@+1 {{output dimensions must match input dimensions}}
-  %res = mo.reduce.arg_max(%arg) {axis = 1 : index} : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[6, 1], si64>
+  %res = mo.reduce.arg_max(%arg) [axis = 1] : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[6, 1], si64>
   mo.output %res : !mo.tensor<[6, 1], si64>
 }
 
@@ -594,7 +594,7 @@ mo.graph @arg_max_bad_dimensions(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[6
 
 mo.graph @arg_max_bad_reduction_dim(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 2], si64> {
   // expected-error@+1 {{output dimensions must be 1 at the reduction axis}}
-  %res = mo.reduce.arg_max(%arg) {axis = 1 : index} : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 2], si64>
+  %res = mo.reduce.arg_max(%arg) [axis = 1] : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[7, 2], si64>
   mo.output %res : !mo.tensor<[7, 2], si64>
 }
 
@@ -602,7 +602,7 @@ mo.graph @arg_max_bad_reduction_dim(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor
 
 mo.graph @arg_max_too_many_reductions(%arg: !mo.tensor<[7, 7], f32>) -> !mo.tensor<[1, 1], si64> {
   // expected-error@+1 {{output dimensions must match input dimensions}}
-  %res = mo.reduce.arg_max(%arg) {axis = 1 : index} : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[1, 1], si64>
+  %res = mo.reduce.arg_max(%arg) [axis = 1] : (!mo.tensor<[7, 7], f32>) -> !mo.tensor<[1, 1], si64>
   mo.output %res : !mo.tensor<[1, 1], si64>
 }
 

@@ -35,7 +35,7 @@ mo.graph @gather_shape_func_success() -> !mo.tensor<[D0, D1], f32> {
   %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<8xf32>> : !mo.tensor<[4, 2], f32>
   %indices = mo.constant <#M.dense_array<0, 2> : tensor<2xsi32>> : !mo.tensor<[2], si32>
 
-  %result = mo.gather<() -> D0, D1>(%input, %indices) {axis = 0 : index} :
+  %result = mo.gather<() -> D0, D1>(%input, %indices) [axis = 0] :
     (!mo.tensor<[4, 2], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[D0, D1], f32>
 
   mo.output %result : !mo.tensor<[D0, D1], f32>
@@ -118,7 +118,7 @@ mo.graph @unsqueeze_shape_func_success() -> !mo.tensor<[D0], si64> {
 // CHECK-NEXT: 'reduce_add_shape_func_success' returned tensor<2x1xf32>
 mo.graph @reduce_add_shape_func_success() -> !mo.tensor<[D0, D1], f32> {
   %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<6xf32>> : !mo.tensor<[2, 3], f32>
-  %result = mo.reduce.add<() -> D0, D1>(%input) {axis = 1 : index} :
+  %result = mo.reduce.add<() -> D0, D1>(%input) [axis = 1] :
     (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[D0, D1], f32>
 
   mo.output %result : !mo.tensor<[D0, D1], f32>

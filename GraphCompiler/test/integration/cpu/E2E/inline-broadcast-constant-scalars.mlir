@@ -45,7 +45,7 @@ mo.graph @softmax_mul_const_prologue(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.ten
   %s = mo.constant <#M.dense_array<5.000000e-01> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%s) : !mo.tensor<[], f32> -> !mo.tensor<[2, 3], f32>
   %mul = mo.mul(%arg0, %b) : !mo.tensor<[2, 3], f32>
-  %sm = mo.reduce.softmax(%mul) {axis = 1 : index} : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  %sm = mo.reduce.softmax(%mul) [axis = 1] : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %sm : !mo.tensor<[2, 3], f32>
 }
 // CHECK{LITERAL}: 'softmax_mul_const_prologue' returned tensor<2x3xf32> [3.333333e-01, 3.333333e-01, 3.333333e-01, 3.333333e-01, 3.333333e-01, 3.333333e-01]

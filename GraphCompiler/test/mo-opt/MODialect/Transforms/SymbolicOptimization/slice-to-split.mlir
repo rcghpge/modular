@@ -2,7 +2,7 @@
 
 // CHECK-LABEL:  mo.graph @usual_case
 // CHECK-NEXT:    %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
-// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split(%{{.*}}, %[[SIZES]]) {axis = 1 : index} : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split(%{{.*}}, %[[SIZES]]) [axis = 1] : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 // CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 // CHECK-NEXT:  }
 
@@ -24,7 +24,7 @@ mo.graph @usual_case(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, 
 
 // CHECK-LABEL:  mo.graph @negative_bounds
 // CHECK-NEXT:    %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
-// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split(%{{.*}}, %[[SIZES]]) {axis = 1 : index} : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split(%{{.*}}, %[[SIZES]]) [axis = 1] : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 // CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 
 mo.graph @negative_bounds(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
@@ -129,7 +129,7 @@ mo.graph @no_conversion_clamped_starts_overlap(%in: !mo.tensor<[2, 4], f32>) -> 
 
 // CHECK-LABEL:  mo.graph @clamped_negative_start_folds
 // CHECK-NEXT:    %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
-// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split(%{{.*}}, %[[SIZES]]) {axis = 1 : index} : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK-NEXT:    %[[SPLIT:.*]]:2 = mo.split(%{{.*}}, %[[SIZES]]) [axis = 1] : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 // CHECK-NEXT:    mo.output %[[SPLIT]]#0, %[[SPLIT]]#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 
 mo.graph @clamped_negative_start_folds(%in: !mo.tensor<[2, 4], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {

@@ -12,7 +12,7 @@ mo.graph @gather_1d_i32_input_2d_indices_axis0() -> (!mo.tensor<[2, 2], si32>) {
   //    [3, 2]]
   %input   = mo.constant <#M.dense_array<1, 2, 3, 4> : tensor<4xsi32>> : !mo.tensor<[4], si32>
   %indices = mo.constant <#M.dense_array<1, 0, 2, 1> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
-  %res     = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], si32>
+  %res     = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[4], si32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], si32>
   mo.output %res : !mo.tensor<[2, 2], si32>
 }
 // CHECK{LITERAL}: 'gather_1d_i32_input_2d_indices_axis0' returned tensor<2x2xsi32> [2, 1, 3, 2]
@@ -30,7 +30,7 @@ mo.graph @gather_2d_input_2d_indices_axis0() -> (!mo.tensor<[2, 2, 3], f32>) {
   //    [[7, 8, 9], [4, 5, 6]]]
   %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0> : tensor<3x3xf32>> : !mo.tensor<[3, 3], f32>
   %indices = mo.constant <#M.dense_array<1, 0, 2, 1> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
-  %res     = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
+  %res     = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2, 3], f32>
   mo.output %res : !mo.tensor<[2, 2, 3], f32>
 }
 // CHECK{LITERAL}: 'gather_2d_input_2d_indices_axis0' returned tensor<2x2x3xf32> [4.000000e+00, 5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 7.000000e+00, 8.000000e+00, 9.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00]
@@ -49,7 +49,7 @@ mo.graph @gather_2d_input_2d_indices_axis1() -> (!mo.tensor<[3, 2, 2], f32>) {
   //    [[8, 7], [9, 8]]]]
   %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0> : tensor<3x3xf32>> : !mo.tensor<[3, 3], f32>
   %indices = mo.constant <#M.dense_array<1, 0, 2, 1> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
-  %res     = mo.gather(%input, %indices) {axis = 1 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[3, 2, 2], f32>
+  %res     = mo.gather(%input, %indices) [axis = 1] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[3, 2, 2], f32>
   mo.output %res : !mo.tensor<[3, 2, 2], f32>
 }
 // CHECK{LITERAL}: 'gather_2d_input_2d_indices_axis1' returned tensor<3x2x2xf32> [2.000000e+00, 1.000000e+00, 3.000000e+00, 2.000000e+00, 5.000000e+00, 4.000000e+00, 6.000000e+00, 5.000000e+00, 8.000000e+00, 7.000000e+00, 9.000000e+00, 8.000000e+00]
@@ -68,7 +68,7 @@ mo.graph @gather_2d_input_1d_indices_axis0() -> (!mo.tensor<[4, 3], f32>) {
   //    [4, 5, 6]]
   %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0> : tensor<3x3xf32>> : !mo.tensor<[3, 3], f32>
   %indices = mo.constant <#M.dense_array<1, 0, 2, 1> : tensor<4xsi32>> : !mo.tensor<[4], si32>
-  %res     = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[4, 3], f32>
+  %res     = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[4, 3], f32>
   mo.output %res : !mo.tensor<[4, 3], f32>
 }
 // CHECK{LITERAL}: 'gather_2d_input_1d_indices_axis0' returned tensor<4x3xf32> [4.000000e+00, 5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 7.000000e+00, 8.000000e+00, 9.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00]
@@ -86,7 +86,7 @@ mo.graph @gather_2d_input_1d_indices_axis1() -> (!mo.tensor<[3, 4], f32>) {
   //    [8, 7, 9, 8]]
   %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0> : tensor<3x3xf32>> : !mo.tensor<[3, 3], f32>
   %indices = mo.constant <#M.dense_array<1, 0, 2, 1> : tensor<4xsi32>> : !mo.tensor<[4], si32>
-  %res     = mo.gather(%input, %indices) {axis = 1 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[3, 4], f32>
+  %res     = mo.gather(%input, %indices) [axis = 1] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[3, 4], f32>
   mo.output %res : !mo.tensor<[3, 4], f32>
 }
 // CHECK{LITERAL}: 'gather_2d_input_1d_indices_axis1' returned tensor<3x4xf32> [2.000000e+00, 1.000000e+00, 3.000000e+00, 2.000000e+00, 5.000000e+00, 4.000000e+00, 6.000000e+00, 5.000000e+00, 8.000000e+00, 7.000000e+00, 9.000000e+00, 8.000000e+00]
@@ -104,7 +104,7 @@ mo.graph @gather_2d_input_1d_i64_indices_axis1() -> (!mo.tensor<[3, 4], f32>) {
   //    [8, 7, 9, 8]]
   %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0> : tensor<3x3xf32>> : !mo.tensor<[3, 3], f32>
   %indices = mo.constant <#M.dense_array<1, 0, 2, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
-  %res     = mo.gather(%input, %indices) {axis = 1 : index} : (!mo.tensor<[3, 3], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[3, 4], f32>
+  %res     = mo.gather(%input, %indices) [axis = 1] : (!mo.tensor<[3, 3], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[3, 4], f32>
   mo.output %res : !mo.tensor<[3, 4], f32>
 }
 // CHECK{LITERAL}: 'gather_2d_input_1d_i64_indices_axis1' returned tensor<3x4xf32> [2.000000e+00, 1.000000e+00, 3.000000e+00, 2.000000e+00, 5.000000e+00, 4.000000e+00, 6.000000e+00, 5.000000e+00, 8.000000e+00, 7.000000e+00, 9.000000e+00, 8.000000e+00]

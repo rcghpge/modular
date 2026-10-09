@@ -22,7 +22,7 @@ mo.graph @load_add_mean(%buf: !mo.buffer<[2, 3], f32>, %add_input: !mo.tensor<[2
   %added_tensor = mo.add(%loaded_tensor, %add_input) : !mo.tensor<[2, 3], f32>
 
   // Take mean along axis 0 (reduce the first dimension)
-  %mean_result = mo.reduce.mean(%added_tensor) {axis = 0 : index} : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[1, 3], f32>
+  %mean_result = mo.reduce.mean(%added_tensor) [axis = 0] : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[1, 3], f32>
 
   mo.output %mean_result : !mo.tensor<[1, 3], f32>
 }

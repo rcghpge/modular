@@ -18,7 +18,7 @@ mo.graph @fusion_info_simple(
 
     %bias_res = mo.add(%matmul_res, %arg2): !mo.tensor<[20, 40], f32>
 
-    %final_res = mo.cumsum(%bias_res) {axis = 1 : index, exclusive = 1 : index, reverse = 0 : index}: (
+    %final_res = mo.cumsum(%bias_res) [axis = 1, exclusive = 1, reverse = 0]: (
         !mo.tensor<[20, 40], f32>
     ) -> !mo.tensor<[20, 40], f32>
     mo.output %final_res: !mo.tensor<[20, 40], f32>

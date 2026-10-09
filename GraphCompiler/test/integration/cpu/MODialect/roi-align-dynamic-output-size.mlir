@@ -17,7 +17,7 @@ mo.graph @roi_align_dynamic_output_size<() -> D0, D1, D2, D3>(
     %inp = mo.mul(%inp_ones, %inp_vals) : !mo.tensor<[1, 5, 5, 1], f32>
     %rois = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 
-    %output = mo.roi_align<() -> D4, D5, D6, D7>(%inp, %rois, %output_height, %output_width, %spatial_scale, %sampling_ratio) {aligned = false,  mode = "AVG"} : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32>
+    %output = mo.roi_align<() -> D4, D5, D6, D7>(%inp, %rois, %output_height, %output_width, %spatial_scale, %sampling_ratio) [aligned = false, mode = "AVG"] : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D4, D5, D6, D7], f32>
     mo.output<D4, D5, D6, D7> %output : !mo.tensor<[D4, D5, D6, D7], f32>
 }
 

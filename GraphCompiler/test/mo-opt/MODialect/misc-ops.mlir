@@ -169,8 +169,8 @@ mo.graph @concat_do_not_canonicalize_param_decls<A -> B>(
 
 // CHECK: mo.graph @split_static<[[D0:[^,>]*]], [[D1:[^,>]*]]>(%[[ARG0:.*]]: !mo.tensor<[6], si32>, %[[ARG1:.*]]: !mo.tensor<[2], si64>) -> (!mo.tensor<{{\[}}[[D0]]{{\]}}, si32>, !mo.tensor<{{\[}}[[D1]]{{\]}}, si32>) {
 mo.graph @split_static<D0, D1>(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[D0], si32>, !mo.tensor<[D1], si32>) {
-  // CHECK: %{{.*}} = mo.split(%[[ARG0]], %[[ARG1]]) {axis = 0 : index} : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (!mo.tensor<{{\[}}[[D0]]{{\]}}, si32>, !mo.tensor<{{\[}}[[D1]]{{\]}}, si32>)
-  %out1, %out2 = mo.split(%arg0, %arg1) {axis = 0 : index} : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (
+  // CHECK: %{{.*}} = mo.split(%[[ARG0]], %[[ARG1]]) [axis = 0] : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (!mo.tensor<{{\[}}[[D0]]{{\]}}, si32>, !mo.tensor<{{\[}}[[D1]]{{\]}}, si32>)
+  %out1, %out2 = mo.split(%arg0, %arg1) [axis = 0] : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (
     !mo.tensor<[D0], si32>, !mo.tensor<[D1], si32>
   )
   mo.output %out1, %out2 : !mo.tensor<[D0], si32>, !mo.tensor<[D1], si32>
@@ -178,8 +178,8 @@ mo.graph @split_static<D0, D1>(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[
 
 // CHECK: mo.graph @split_negative_axis<[[D0:[^,>]*]], [[D1:[^,>]*]]>(%[[ARG0:.*]]: !mo.tensor<[6], si32>, %[[ARG1:.*]]: !mo.tensor<[2], si64>) -> (!mo.tensor<{{\[}}[[D0]]{{\]}}, si32>, !mo.tensor<{{\[}}[[D1]]{{\]}}, si32>) {
 mo.graph @split_negative_axis<D0, D1>(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.tensor<[2], si64>) -> (!mo.tensor<[D0], si32>, !mo.tensor<[D1], si32>) {
-  // CHECK: %{{.*}} = mo.split(%[[ARG0]], %[[ARG1]]) {axis = -1 : index} : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (!mo.tensor<{{\[}}[[D0]]{{\]}}, si32>, !mo.tensor<{{\[}}[[D1]]{{\]}}, si32>)
-  %out1, %out2 = mo.split(%arg0, %arg1) {axis = -1 : index} : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (
+  // CHECK: %{{.*}} = mo.split(%[[ARG0]], %[[ARG1]]) [axis = -1] : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (!mo.tensor<{{\[}}[[D0]]{{\]}}, si32>, !mo.tensor<{{\[}}[[D1]]{{\]}}, si32>)
+  %out1, %out2 = mo.split(%arg0, %arg1) [axis = -1] : (!mo.tensor<[6], si32>, !mo.tensor<[2], si64>) -> (
     !mo.tensor<[D0], si32>, !mo.tensor<[D1], si32>
   )
   mo.output %out1, %out2 : !mo.tensor<[D0], si32>, !mo.tensor<[D1], si32>
@@ -191,8 +191,8 @@ mo.graph @split_negative_axis<D0, D1>(%arg0: !mo.tensor<[6], si32>, %arg1: !mo.t
 
 // CHECK: mo.graph @gather(%[[INPUT:.*]]: !mo.tensor<[2, 2], f32>, %[[INDICES:.*]]: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
 mo.graph @gather(%input: !mo.tensor<[2, 2], f32>, %indices: !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32> {
-  // CHECK: mo.gather(%[[INPUT]], %[[INDICES]]) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
-  %0 = mo.gather(%input, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  // CHECK: mo.gather(%[[INPUT]], %[[INDICES]]) [axis = 0] : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
+  %0 = mo.gather(%input, %indices) [axis = 0] : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %0 : !mo.tensor<[2, 2], f32>
 }
 
@@ -742,32 +742,32 @@ mo.graph @arg_nonzero_2d_dynamic_shape<D0, D1, D2>(%arg: !mo.tensor<[D0, D1], f3
 
 // CHECK: mo.graph @arg_max_2d_inner_axis(%[[ARG:.*]]: !mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
 mo.graph @arg_max_2d_inner_axis(%arg: !mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) {axis = 1 : index} : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
-  %res = mo.reduce.arg_max(%arg) {axis = 1 : index} : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) [axis = 1] : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
+  %res = mo.reduce.arg_max(%arg) [axis = 1] : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[7, 1], si64>
   mo.output %res : !mo.tensor<[7, 1], si64>
 }
 
 // CHECK: mo.graph @arg_max_2d_inner_axis_dynamic_shape<[[D0:[^,>]*]], [[D1:[^,>]*]], [[D2:[^,>]*]]>(%[[ARG:.*]]: !mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
 mo.graph @arg_max_2d_inner_axis_dynamic_shape<D0, D1, D2>(%arg: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, 1], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) {axis = 1 : index} : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
-  %res = mo.reduce.arg_max(%arg) {axis = 1 : index} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, 1], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) [axis = 1] : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
+  %res = mo.reduce.arg_max(%arg) [axis = 1] : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, 1], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
   mo.output %res : !mo.tensor<[D2, 1], si64>
 }
 
 // CHECK: mo.graph @arg_max_2d_inner_axis_dynamic_reduced_dim<[[D0:[^,>]*]], [[D1:[^,>]*]], [[D2:[^,>]*]], [[D3:[^,>]*]]>(%[[ARG:.*]]: !mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
 mo.graph @arg_max_2d_inner_axis_dynamic_reduced_dim<D0, D1, D2, D3>(%arg: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) {axis = 1 : index} : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
-  %res = mo.reduce.arg_max(%arg) {axis = 1 : index} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) [axis = 1] : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
+  %res = mo.reduce.arg_max(%arg) [axis = 1] : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
   mo.output %res : !mo.tensor<[D2, D3], si64>
 }
 
 // CHECK: mo.graph @arg_max_2d_inner_axis_int32(%[[ARG:.*]]: !mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32>
 mo.graph @arg_max_2d_inner_axis_int32(%arg: !mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) {axis = 1 : index} : (!mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32>
-  %res = mo.reduce.arg_max(%arg) {axis = 1 : index} : (!mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32>
+  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_max(%[[ARG]]) [axis = 1] : (!mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32>
+  %res = mo.reduce.arg_max(%arg) [axis = 1] : (!mo.tensor<[7, 3], si32>) -> !mo.tensor<[7, 1], si32>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[7, 1], si32>
   mo.output %res : !mo.tensor<[7, 1], si32>
 }
@@ -778,24 +778,24 @@ mo.graph @arg_max_2d_inner_axis_int32(%arg: !mo.tensor<[7, 3], si32>) -> !mo.ten
 
 // CHECK: mo.graph @arg_min_2d_inner_axis(%[[ARG:.*]]: !mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
 mo.graph @arg_min_2d_inner_axis(%arg: !mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_min(%[[ARG]]) {axis = 1 : index} : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
-  %res = mo.reduce.arg_min(%arg) {axis = 1 : index} : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_min(%[[ARG]]) [axis = 1] : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
+  %res = mo.reduce.arg_min(%arg) [axis = 1] : (!mo.tensor<[7, 3], f32>) -> !mo.tensor<[7, 1], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[7, 1], si64>
   mo.output %res : !mo.tensor<[7, 1], si64>
 }
 
 // CHECK: mo.graph @arg_min_2d_inner_axis_dynamic_shape<[[D0:[^,>]*]], [[D1:[^,>]*]], [[D2:[^,>]*]]>(%[[ARG:.*]]: !mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
 mo.graph @arg_min_2d_inner_axis_dynamic_shape<D0, D1, D2>(%arg: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, 1], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_min(%[[ARG]]) {axis = 1 : index} : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
-  %res = mo.reduce.arg_min(%arg) {axis = 1 : index} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, 1], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_min(%[[ARG]]) [axis = 1] : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
+  %res = mo.reduce.arg_min(%arg) [axis = 1] : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, 1], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<{{\[}}[[D2]], 1{{\]}}, si64>
   mo.output %res : !mo.tensor<[D2, 1], si64>
 }
 
 // CHECK: mo.graph @arg_min_2d_inner_axis_dynamic_reduced_dim<[[D0:[^,>]*]], [[D1:[^,>]*]], [[D2:[^,>]*]], [[D3:[^,>]*]]>(%[[ARG:.*]]: !mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
 mo.graph @arg_min_2d_inner_axis_dynamic_reduced_dim<D0, D1, D2, D3>(%arg: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], si64> {
-  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_min(%[[ARG]]) {axis = 1 : index} : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
-  %res = mo.reduce.arg_min(%arg) {axis = 1 : index} : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.reduce.arg_min(%[[ARG]]) [axis = 1] : (!mo.tensor<{{\[}}[[D0]], [[D1]]{{\]}}, f32>) -> !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
+  %res = mo.reduce.arg_min(%arg) [axis = 1] : (!mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D2, D3], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<{{\[}}[[D2]], [[D3]]{{\]}}, si64>
   mo.output %res : !mo.tensor<[D2, D3], si64>
 }

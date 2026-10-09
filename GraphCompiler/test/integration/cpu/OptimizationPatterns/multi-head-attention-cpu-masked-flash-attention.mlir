@@ -34,7 +34,7 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2>(
     %maskedNormAttnMatrix = mo.add(%normAttnMatrix, %attn_mask) : !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 
     // This is BHsS
-    %softmax = mo.reduce.softmax(%maskedNormAttnMatrix) {axis = 3 : index} : (!mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>) -> !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
+    %softmax = mo.reduce.softmax(%maskedNormAttnMatrix) [axis = 3] : (!mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>) -> !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 
     // This output is BHsS @ BHSD --> BHsD, reprojected
     %V = mo.transpose(%V_raw, %54) : (!mo.tensor<[1, SUM_C1_S2, 6, 64], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, SUM_C1_S2, 64], f32>

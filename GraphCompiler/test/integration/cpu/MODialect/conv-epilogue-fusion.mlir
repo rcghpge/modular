@@ -6,7 +6,7 @@ mo.graph @conv_test0(%input : !mo.tensor<[1, 5, 5, 2], f32>, %filter : !mo.tenso
   %di = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %ng = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
-  %output = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 2], f32>, !mo.tensor<[3, 3, 2, 19], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 3, 3, 19], f32>
   %cst0 = mo.constant <#M.dense_array<-19.0,-18.0,-17.0,-16.0,-15.0,-14.0,-13.0,-12.0,-11.0,-10.0,-9.0,-8.0,-7.0,-6.0,-5.0,-4.0,-3.0,-2.0,-1.0> : tensor<19xf32>> : !mo.tensor<[19], f32>
@@ -23,7 +23,7 @@ mo.graph @conv_test1(%input : !mo.tensor<[1, 8, 7, 2], f32>, %filter : !mo.tenso
   %di = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %ng = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
-  %output = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 8, 7, 2], f32>, !mo.tensor<[4, 3, 2, 5], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 3, 2, 5], f32>
   %cst0 = mo.constant <#M.dense_array<0.5> : tensor<1xf32>> : !mo.tensor<[1], f32>
@@ -43,7 +43,7 @@ mo.graph @conv_test2(%input : !mo.tensor<[3, 5, 8, 2], f32>, %filter : !mo.tenso
   %di = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %ng = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
-  %output = mo.conv(%input, %filter) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %filter) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[3, 5, 8, 2], f32>, !mo.tensor<[2, 5, 2, 3], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[3, 2, 2, 3], f32>
   %cst0 = mo.constant <#M.dense_array<0.5> : tensor<1xf32>> : !mo.tensor<[1], f32>

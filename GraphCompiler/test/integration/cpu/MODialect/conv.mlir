@@ -7,7 +7,7 @@ mo.graph @conv(%input : !mo.tensor<[1, 5, 5, 3], f32>, %filter : !mo.tensor<[3, 
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %0 = mo.add(%filter, %filter) : !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>
-  %output = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %0) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 3], f32>, !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 3, 3, 1], f32>
   mo.output %output : !mo.tensor<[1, 3, 3, 1], f32>
@@ -21,7 +21,7 @@ mo.graph @strided_conv(%input : !mo.tensor<[1, 5, 5, 3], f32>, %filter : !mo.ten
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %0 = mo.add(%filter, %filter) : !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>
-  %output = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %0) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 3], f32>, !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 2, 2, 1], f32>
   mo.output %output : !mo.tensor<[1, 2, 2, 1], f32>
@@ -35,7 +35,7 @@ mo.graph @padded_conv(%input : !mo.tensor<[1, 5, 5, 3], f32>, %filter : !mo.tens
   %pa = "mo.constant"() {value = #M.dense_array<1, 1, 0, 0> : tensor<4xsi64>} : () -> !mo.tensor<[4], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %0 = mo.add(%filter, %filter) : !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>
-  %output = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %0) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 3], f32>, !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 5, 3, 1], f32>
   mo.output %output : !mo.tensor<[1, 5, 3, 1], f32>
@@ -50,7 +50,7 @@ mo.graph @grouped_conv(%input : !mo.tensor<[1, 2, 2, 3], f32>) -> (!mo.tensor<[1
   %ng = "mo.constant"() {value = #M.dense_array<3> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %filter = "mo.constant"() {value = #M.dense_array<1.0, 1.0, 1.0> : tensor<1x1x1x3xf32>} : () -> !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>
   %0 = mo.add(%filter, %filter) : !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>
-  %output = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %0) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 2, 2, 3], f32>, !mo.tensor<[1, 1, 1, 3], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 2, 2, 3], f32>
   mo.output %output : !mo.tensor<[1, 2, 2, 3], f32>
@@ -64,7 +64,7 @@ mo.graph @conv3d(%input : !mo.tensor<[1, 5, 5, 5, 2], f32>, %filter : !mo.tensor
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>} : () -> !mo.tensor<[6], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %0 = mo.add(%filter, %filter) : !mo.tensor<[3, 3, 3, 2, 1], f32, {layout = #mo.layout<QRSCF>}>
-  %output = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %0) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 5, 2], f32>, !mo.tensor<[3, 3, 3, 2, 1], f32, {layout = #mo.layout<QRSCF>}>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 3, 3, 3, 1], f32>
   mo.output %output : !mo.tensor<[1, 3, 3, 3, 1], f32>
@@ -78,7 +78,7 @@ mo.graph @strided_conv3d(%input : !mo.tensor<[1, 5, 5, 5, 2], f32>, %filter : !m
   %pa = "mo.constant"() {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>} : () -> !mo.tensor<[6], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %0 = mo.add(%filter, %filter) : !mo.tensor<[3, 3, 3, 2, 1], f32, {layout = #mo.layout<QRSCF>}>
-  %output = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %0) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 5, 5, 5, 2], f32>, !mo.tensor<[3, 3, 3, 2, 1], f32, {layout = #mo.layout<QRSCF>}>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 2, 2, 2, 1], f32>
   mo.output %output : !mo.tensor<[1, 2, 2, 2, 1], f32>
@@ -92,7 +92,7 @@ mo.graph @padded_conv3d(%input : !mo.tensor<[1, 3, 3, 3, 2], f32>, %filter : !mo
   %pa = "mo.constant"() {value = #M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>} : () -> !mo.tensor<[6], si64>
   %ng = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
   %0 = mo.add(%filter, %filter) : !mo.tensor<[3, 3, 3, 2, 1], f32, {layout = #mo.layout<QRSCF>}>
-  %output = mo.conv(%input, %0) {filter_layout = ""} [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng] : (
+  %output = mo.conv(%input, %0) [strides = %st, dilations = %di, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 3, 3, 3, 2], f32>, !mo.tensor<[3, 3, 3, 2, 1], f32, {layout = #mo.layout<QRSCF>}>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 3, 3, 3, 1], f32>
   mo.output %output : !mo.tensor<[1, 3, 3, 3, 1], f32>

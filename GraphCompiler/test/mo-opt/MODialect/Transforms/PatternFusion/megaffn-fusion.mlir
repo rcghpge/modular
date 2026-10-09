@@ -106,9 +106,7 @@ mo.graph @mega_ffn_fuses_clamp(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) {
-      activation = "swigluoai", swiglu_alpha = "1.5", swiglu_limit = "5.0"
-    } : (
+      %gate_up_nae) [activation = "swigluoai", swiglu_alpha = "1.5", swiglu_limit = "5.0"] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -325,7 +323,7 @@ mo.graph @mega_ffn_fuses_row_scales(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %row_scales, %c_in_scales, %est_m,
       %gate_up_nae)
-      {has_a_row_scales = true} : (
+      [has_a_row_scales = true] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -339,7 +337,7 @@ mo.graph @mega_ffn_fuses_row_scales(
   %out = mo.composite.grouped_matmul_block_scaled(
       %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
       %scale_off, %down_es, %down_es, %est_m, %down_nae)
-      {has_a_row_scales = false} : (
+ : (
       !mo.tensor<[66560, 1024], ui8, gpu:0>,
       !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
       !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -382,7 +380,7 @@ mo.graph @neg_down_row_scales(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
       %gate_up_nae)
-      {has_a_row_scales = false} : (
+ : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -396,7 +394,7 @@ mo.graph @neg_down_row_scales(
   %out = mo.composite.grouped_matmul_block_scaled(
       %down_in, %down_w, %silu_scales, %down_bs, %row_off, %expert_ids,
       %scale_off, %down_es, %down_row_scales, %est_m, %down_nae)
-      {has_a_row_scales = true} : (
+      [has_a_row_scales = true] : (
       !mo.tensor<[66560, 1024], ui8, gpu:0>,
       !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
       !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>,

@@ -179,6 +179,132 @@ ParseResult parseAttrGroup(AsmParser &p, ArrayRef<AttrGroupParser> elements) {
   return success();
 }
 
+/// `[name = value]` element for a default-valued attribute, dropped when the
+/// attribute still holds its default.
+static AttrGroupElement nonDefault(StringRef name, BoolAttr attr, bool dflt) {
+  bool set = attr && attr.getValue() != dflt;
+  return {name, set ? Attribute(attr) : Attribute()};
+}
+
+static AttrGroupElement nonDefault(StringRef name, IntegerAttr attr,
+                                   int64_t dflt) {
+  bool set = attr && attr.getInt() != dflt;
+  return {name, set ? Attribute(attr) : Attribute()};
+}
+
+static AttrGroupElement nonDefault(StringRef name, StringAttr attr,
+                                   StringRef dflt) {
+  bool set = attr && attr.getValue() != dflt;
+  return {name, set ? Attribute(attr) : Attribute()};
+}
+
+ParseResult parseMatmulAttrs(OpAsmParser &p, BoolAttr &transposeB,
+                             BoolAttr &packedB) {
+  Type i1 = p.getBuilder().getIntegerType(1);
+  return parseAttrGroup(
+      p, {{"transpose_b", [&] { return p.parseAttribute(transposeB, i1); }},
+          {"packed_b", [&] { return p.parseAttribute(packedB, i1); }}});
+}
+
+void printMatmulAttrs(OpAsmPrinter &p, Operation *, BoolAttr transposeB,
+                      BoolAttr packedB) {
+  printAttrGroup(p, {nonDefault("transpose_b", transposeB, false),
+                     nonDefault("packed_b", packedB, false)});
+}
+
+ParseResult parseReduceScatterSumAttrs(OpAsmParser &p, IntegerAttr &axis,
+                                       IntegerAttr &groupSize) {
+  Type i64 = p.getBuilder().getIntegerType(64);
+  return parseAttrGroup(
+      p, {{"axis", [&] { return p.parseAttribute(axis, i64); }},
+          {"group_size", [&] { return p.parseAttribute(groupSize, i64); }}});
+}
+
+void printReduceScatterSumAttrs(OpAsmPrinter &p, Operation *, IntegerAttr axis,
+                                IntegerAttr groupSize) {
+  printAttrGroup(p, {nonDefault("axis", axis, -1),
+                     nonDefault("group_size", groupSize, 0)});
+}
+
+ParseResult parseMatmulReduceScatterSumAttrs(OpAsmParser &p,
+                                             BoolAttr &hasResidual,
+                                             IntegerAttr &residualPeer) {
+  Builder &b = p.getBuilder();
+  return parseAttrGroup(
+      p, {{"has_residual",
+           [&] { return p.parseAttribute(hasResidual, b.getIntegerType(1)); }},
+          {"residual_peer", [&] {
+             return p.parseAttribute(residualPeer, b.getIntegerType(64));
+           }}});
+}
+
+void printMatmulReduceScatterSumAttrs(OpAsmPrinter &p, Operation *,
+                                      BoolAttr hasResidual,
+                                      IntegerAttr residualPeer) {
+  printAttrGroup(p, {nonDefault("has_residual", hasResidual, false),
+                     nonDefault("residual_peer", residualPeer, 0)});
+}
+
+ParseResult parseReduceScatterRMSNormAttrs(OpAsmParser &p,
+                                           IntegerAttr &groupSize,
+                                           BoolAttr &hasResidual) {
+  Builder &b = p.getBuilder();
+  return parseAttrGroup(
+      p, {{"group_size",
+           [&] { return p.parseAttribute(groupSize, b.getIntegerType(64)); }},
+          {"has_residual", [&] {
+             return p.parseAttribute(hasResidual, b.getIntegerType(1));
+           }}});
+}
+
+void printReduceScatterRMSNormAttrs(OpAsmPrinter &p, Operation *,
+                                    IntegerAttr groupSize,
+                                    BoolAttr hasResidual) {
+  printAttrGroup(p, {nonDefault("group_size", groupSize, 0),
+                     nonDefault("has_residual", hasResidual, false)});
+}
+
+ParseResult parseAllGatherRMSNormQuantMXFP6Attrs(OpAsmParser &p,
+                                                 IntegerAttr &groupSize,
+                                                 IntegerAttr &fp6Format) {
+  Type i64 = p.getBuilder().getIntegerType(64);
+  return parseAttrGroup(
+      p, {{"group_size", [&] { return p.parseAttribute(groupSize, i64); }},
+          {"fp6_format", [&] { return p.parseAttribute(fp6Format, i64); }}});
+}
+
+void printAllGatherRMSNormQuantMXFP6Attrs(OpAsmPrinter &p, Operation *,
+                                          IntegerAttr groupSize,
+                                          IntegerAttr fp6Format) {
+  printAttrGroup(p, {nonDefault("group_size", groupSize, 0),
+                     nonDefault("fp6_format", fp6Format, 0)});
+}
+
+ParseResult parseGroupedMatmulSwigluNvfp4Attrs(OpAsmParser &p,
+                                               StringAttr &activation,
+                                               StringAttr &swigluAlpha,
+                                               StringAttr &swigluLimit,
+                                               BoolAttr &hasARowScales) {
+  Type i1 = p.getBuilder().getIntegerType(1);
+  return parseAttrGroup(
+      p, {{"activation", [&] { return p.parseAttribute(activation); }},
+          {"swiglu_alpha", [&] { return p.parseAttribute(swigluAlpha); }},
+          {"swiglu_limit", [&] { return p.parseAttribute(swigluLimit); }},
+          {"has_a_row_scales",
+           [&] { return p.parseAttribute(hasARowScales, i1); }}});
+}
+
+void printGroupedMatmulSwigluNvfp4Attrs(OpAsmPrinter &p, Operation *,
+                                        StringAttr activation,
+                                        StringAttr swigluAlpha,
+                                        StringAttr swigluLimit,
+                                        BoolAttr hasARowScales) {
+  printAttrGroup(p, {nonDefault("activation", activation, "silu"),
+                     nonDefault("swiglu_alpha", swigluAlpha, "0.0"),
+                     nonDefault("swiglu_limit", swigluLimit, "0.0"),
+                     nonDefault("has_a_row_scales", hasARowScales, false)});
+}
+
 ParseResult parseCustomAttrs(OpAsmParser &p, StringAttr &symbol,
                              DeviceRefAttr &device,
                              DictionaryAttr &parameters) {

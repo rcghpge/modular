@@ -249,7 +249,7 @@ mo.graph @collective_then_custom(%off: !gt1, %s0: !sb0, %s1: !sb1, %kv0: !kv0)
   // The custom writes only %kv0 and the broadcast only the signal buffers, so
   // the aliasing check alone would allow the reorder.
   // CHECK: [[OUT:%.*]]:2, [[BCH:%.*]] = mo.distributed.broadcast({{.*}}, [[CH0]])
-  %o:2, %bch = mo.distributed.broadcast(%off, %s0, %s1, %ch0) {root = 1 : i64}
+  %o:2, %bch = mo.distributed.broadcast(%off, %s0, %s1, %ch0) [root = 1]
       : (!gt1, !sb0, !sb1, !ct) -> (!gt0, !gt1, !ct)
 
   // CHECK: mo.custom{{.*}}matmul{{.*}}({{.*}}, [[BCH]])
@@ -275,7 +275,7 @@ mo.graph @collective_through_merge(%off: !gt1, %s0: !sb0, %s1: !sb1,
   %merged = mo.chain.create(%ch0, %pre) : !ct, !ct
 
   // CHECK: [[OUT:%.*]]:2, [[BCH:%.*]] = mo.distributed.broadcast({{.*}}, [[PRE]])
-  %o:2, %bch = mo.distributed.broadcast(%off, %s0, %s1, %merged) {root = 1 : i64}
+  %o:2, %bch = mo.distributed.broadcast(%off, %s0, %s1, %merged) [root = 1]
       : (!gt1, !sb0, !sb1, !ct) -> (!gt0, !gt1, !ct)
 
   // CHECK: mo.custom{{.*}}matmul{{.*}}({{.*}}, [[BCH]])

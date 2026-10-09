@@ -10,7 +10,7 @@ mo.graph @roi_align(%inp_ones: !mo.tensor<[1, 5, 5, 1], f32>) -> !mo.tensor<[1, 
     // Change this
     %rois = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 
-    %output = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio) {aligned = false,  mode = "AVG"} : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 2, 2, 1], f32>
+    %output = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio) [aligned = false, mode = "AVG"] : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 2, 2, 1], f32>
     mo.output %output : !mo.tensor<[1, 2, 2, 1], f32>
 }
 

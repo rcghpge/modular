@@ -8,7 +8,7 @@
 mo.graph @fold_scatter_empty_indices(%input: !mo.tensor<[4, 5], f32>, %updates: !mo.tensor<[0, 5], f32>, %indices: !mo.tensor<[0, 5], si32>) -> !mo.tensor<[4, 5], f32> {
   // CHECK-NOT: mo.scatter
   // CHECK: mo.output %[[INPUT]]
-  %result = mo.scatter(%input, %updates, %indices) {axis = 0 : index} : (!mo.tensor<[4, 5], f32>, !mo.tensor<[0, 5], f32>, !mo.tensor<[0, 5], si32>) -> !mo.tensor<[4, 5], f32>
+  %result = mo.scatter(%input, %updates, %indices) [axis = 0] : (!mo.tensor<[4, 5], f32>, !mo.tensor<[0, 5], f32>, !mo.tensor<[0, 5], si32>) -> !mo.tensor<[4, 5], f32>
   mo.output %result : !mo.tensor<[4, 5], f32>
 }
 
@@ -53,7 +53,7 @@ mo.graph @fold_scatter_mul_empty_indices(%input: !mo.tensor<[2, 2], f64>, %updat
 // Test that the pattern doesn't fold when indices are non-empty
 mo.graph @no_fold_scatter_non_empty_indices(%input: !mo.tensor<[4, 5], f32>, %updates: !mo.tensor<[2, 5], f32>, %indices: !mo.tensor<[2, 5], si32>) -> !mo.tensor<[4, 5], f32> {
   // CHECK: %[[RESULT:.+]] = mo.scatter
-  %result = mo.scatter(%input, %updates, %indices) {axis = 0 : index} : (!mo.tensor<[4, 5], f32>, !mo.tensor<[2, 5], f32>, !mo.tensor<[2, 5], si32>) -> !mo.tensor<[4, 5], f32>
+  %result = mo.scatter(%input, %updates, %indices) [axis = 0] : (!mo.tensor<[4, 5], f32>, !mo.tensor<[2, 5], f32>, !mo.tensor<[2, 5], si32>) -> !mo.tensor<[4, 5], f32>
   // CHECK: mo.output %[[RESULT]]
   mo.output %result : !mo.tensor<[4, 5], f32>
 }
@@ -64,7 +64,7 @@ mo.graph @no_fold_scatter_non_empty_indices(%input: !mo.tensor<[4, 5], f32>, %up
 mo.graph @fold_dynamic_shape_scatter_empty_indices<D0, D1>(%input: !mo.tensor<[D0, D1], f32>, %updates: !mo.tensor<[0, D1], f32>, %indices: !mo.tensor<[0, D1], si32>) -> !mo.tensor<[D0, D1], f32> {
   // CHECK-NOT: mo.scatter
   // CHECK: mo.output %[[INPUT]]
-  %result = mo.scatter(%input, %updates, %indices) {axis = 0 : index} : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[0, D1], f32>, !mo.tensor<[0, D1], si32>) -> !mo.tensor<[D0, D1], f32>
+  %result = mo.scatter(%input, %updates, %indices) [axis = 0] : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[0, D1], f32>, !mo.tensor<[0, D1], si32>) -> !mo.tensor<[D0, D1], f32>
   mo.output %result : !mo.tensor<[D0, D1], f32>
 }
 

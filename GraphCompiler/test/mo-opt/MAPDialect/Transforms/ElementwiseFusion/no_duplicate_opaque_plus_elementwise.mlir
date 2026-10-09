@@ -14,7 +14,7 @@ mo.graph @no_dup_opaque_plus_elementwise(
   %indices: !mo.tensor<[2, 2], si32, gpu:0>
 ) -> (!mo.tensor<[2, 2, 2], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>) {
   %0 = mo.exp(%a) : !mo.tensor<[4096, 2], f32, gpu:0>
-  %1 = mo.gather(%0, %indices) {axis = 0 : index} : (!mo.tensor<[4096, 2], f32, gpu:0>, !mo.tensor<[2, 2], si32, gpu:0>) -> !mo.tensor<[2, 2, 2], f32, gpu:0>
+  %1 = mo.gather(%0, %indices) [axis = 0] : (!mo.tensor<[4096, 2], f32, gpu:0>, !mo.tensor<[2, 2], si32, gpu:0>) -> !mo.tensor<[2, 2, 2], f32, gpu:0>
   %2 = mo.tanh(%0) : !mo.tensor<[4096, 2], f32, gpu:0>
   mo.output %1, %2 : !mo.tensor<[2, 2, 2], f32, gpu:0>, !mo.tensor<[4096, 2], f32, gpu:0>
 }

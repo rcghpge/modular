@@ -30,7 +30,7 @@ mo.graph @logsoftmax_mixed_params<D0 -> D1, D2>(%arg0: !mo.tensor<[20, D0], f32>
 }
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @logsoftmax_mixed_params<D0 -> D1, D2>(%[[ARG0:.*]]: !mo.tensor<[20, D0], f32>) -> !mo.tensor<[D1, D2], f32> {
-// CHECK-NEXT: %[[V0:.*]] = mo.reduce.logsoftmax(%[[ARG0]]) {axis = 1 : index} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, D0], f32>
+// CHECK-NEXT: %[[V0:.*]] = mo.reduce.logsoftmax(%[[ARG0]]) [axis = 1] : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[20, D0], f32>
 // CHECK-NEXT: %[[V1:.*]] = rmo.rebind_tensor_shape<() -> [[D3:.*]], [[D4:.*]]>(%[[V0]]) {{.*}} : (!mo.tensor<[20, D0], f32>) -> !mo.tensor<[[[D3]], [[D4]]], f32>
 // CHECK-NEXT: mo.output<[[D3]], [[D4]]> %[[V1]] : !mo.tensor<[[[D3]], [[D4]]], f32>
 

@@ -1454,7 +1454,7 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
 
     ```mlir
     %arg: !mo.tensor<[2, 3], f32>
-    %res = mo.cumsum(%arg) {axis = 0 : index, exclusive = 1 : index, reverse = 0 : index} : (
+    %res = mo.cumsum(%arg) [axis = 0, exclusive = 1, reverse = 0] : (
       !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
     ```
   }];
@@ -1467,7 +1467,9 @@ def MO_CumSumOp : MO_TensorOp<"cumsum", [
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` $input `)` attr-dict
+    `(` $input `)`
+    `[` `axis` `=` $axis `,` `exclusive` `=` $exclusive `,`
+        `reverse` `=` $reverse `]` attr-dict
     `:` functional-type(operands, results)
   }];
 
@@ -1979,7 +1981,8 @@ class MO_SoftmaxLikeOp<string name, list<Trait> traits = []> :
   let arguments = (ins MO_Tensor:$input, IndexAttr:$axis);
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `(` $input `)` attr-dict `:` functional-type($input, results)
+    `(` $input `)` `[` `axis` `=` $axis `]` attr-dict `:`
+    functional-type($input, results)
   }];
 }
 
@@ -2030,7 +2033,8 @@ class MO_ReductionOp<string name, list<Trait> traits = []> :
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -2060,7 +2064,7 @@ def MO_MeanOp : MO_MonotypeReductionOp<"reduce.mean"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.mean(%arg) {axis = 1 : index} : (
+      %res = mo.mean(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -2078,7 +2082,7 @@ def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.reduce.mul(%arg) {axis = 1 : index} : (
+      %res = mo.reduce.mul(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -2094,7 +2098,7 @@ def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.reduce.add(%arg) {axis = 1 : index} : (
+      %res = mo.reduce.add(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -2111,7 +2115,7 @@ def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.reduce.min(%arg) {axis = 1 : index} : (
+      %res = mo.reduce.min(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -2127,7 +2131,7 @@ def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.reduce.max(%arg) {axis = 1 : index} : (
+      %res = mo.reduce.max(%arg) [axis = 1] : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
@@ -2225,7 +2229,7 @@ def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
     Example:
 
     ```mlir
-      %res = mo.reduce.reduce_min_and_max(%input) {axis = 1 : index} :
+      %res = mo.reduce.reduce_min_and_max(%input) [axis = 1] :
         (!mo.tensor<[2, 10], f32>) -> !mo.tensor<[2, 2], f32>
     ```
   }];
@@ -2237,7 +2241,8 @@ def MO_ReduceMinAndMaxOp : MO_TensorOp<"reduce.reduce_min_and_max", [
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` $input `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
     functional-type($input, results)
   }];
 }
@@ -2294,7 +2299,8 @@ def MO_AvgPoolOp : MO_TensorOp<"avg_pool", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
     `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
-        `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `,`
+        `count_boundary` `=` $count_boundary `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -2349,7 +2355,8 @@ def MO_AvgPoolCeilOp : MO_TensorOp<"avg_pool_ceil_mode_true", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` $input `)`
     `[` `filter_shape` `=` $filter_shape `,` `strides` `=` $strides `,`
-        `dilations` `=` $dilations `,` `paddings` `=` $paddings `]` attr-dict `:`
+        `dilations` `=` $dilations `,` `paddings` `=` $paddings `,`
+        `count_boundary` `=` $count_boundary `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -2541,7 +2548,9 @@ def MO_ConvOp : MO_TensorOp<"conv", [
     `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)` attr-dict
     ` ` `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
                     `paddings` `=` $paddings `,`
-                    `num_groups` `=` $num_groups `]` `:`
+                    `num_groups` `=` $num_groups `,`
+                    `filter_layout` `=` $filter_layout
+                    (`,` `input_layout` `=` $input_layout^)? `]` `:`
     functional-type(operands, results)
   }];
 
@@ -2627,7 +2636,9 @@ def MO_ConvTransposeOp : MO_TensorOp<"conv_transpose", [
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` $input `,` $filter `)` attr-dict
     ` ` `[` `strides` `=` $strides `,` `dilations` `=` $dilations `,`
-        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings`]` `:`
+        `paddings` `=` $paddings `,` `output_paddings` `=` $output_paddings `,`
+        `filter_layout` `=` $filter_layout
+        (`,` `input_layout` `=` $input_layout^)? `]` `:`
     functional-type(operands, results)
   }];
 
@@ -3079,7 +3090,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
     ```mlir
       %input: !mo.tensor<[2, 8], f32>
       %splitSizes = mo.constant <#M.dense_array<3, 5> : tensor<2xsi64>> : !mo.tensor<[2], si64>
-      %res:2 = mo.split(%input, %splitSizes) {axis = 1 : index} : (
+      %res:2 = mo.split(%input, %splitSizes) [axis = 1] : (
         !mo.tensor<[2, 8], f32>, !mo.tensor<[2], si64>
       ) -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 5], f32>)
     ```
@@ -3095,7 +3106,7 @@ def MO_SplitOp : MO_TensorOp<"split", [
 
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls)
-    `(` $input `,` $splitSizes `)` attr-dict `:` `(`
+    `(` $input `,` $splitSizes `)` `[` `axis` `=` $axis `]` attr-dict `:` `(`
       qualified(type($input)) `,` qualified(type($splitSizes))
     `)` `->` `(` type($results) `)`
   }];
@@ -3305,7 +3316,7 @@ def MO_GatherOp : MO_TensorOp<"gather", [
     ```mlir
       %input : !mo.tensor<[2, 2], f32>
       %indices: !mo.tensor<[2], si64>
-      %res = mo.gather(%input, %indices) {axis = 0 : index} : (
+      %res = mo.gather(%input, %indices) [axis = 0] : (
         !mo.tensor<[2, 2], f32>, !mo.tensor<[2], si64>
       ) -> !mo.tensor<[2, 2], f32>
     ```
@@ -3319,7 +3330,8 @@ def MO_GatherOp : MO_TensorOp<"gather", [
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -3364,7 +3376,7 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
       %indices = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> {device = #M.device_ref<"cpu", 0>} :
         !mo.tensor<[3], si64>
 
-      %result = mo.gather_nd(%input, %indices) {batchDims = 0} :
+      %result = mo.gather_nd(%input, %indices) [batchDims = 0] :
         (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[3], si64>) ->
         !mo.tensor<[], si64>
     ```
@@ -3381,7 +3393,8 @@ def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `batchDims` `=` $batchDims `]` attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -3411,7 +3424,7 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [
       %input:   !mo.tensor<[4, 4], f32>
       %updates: !mo.tensor<[2, 3], f32>
       %indices: !mo.tensor<[2, 3], si64>
-      %res = mo.scatter(%inputs, %updates, %indices) {axis = 0 : index} : (
+      %res = mo.scatter(%inputs, %updates, %indices) [axis = 0] : (
         !mo.tensor<[4, 4], f32>, !mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], si64>
       ) -> !mo.tensor<[4, 4], f32>
     ```
@@ -3426,7 +3439,8 @@ def MO_ScatterOp : MO_TensorOp<"scatter", [
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -3774,7 +3788,8 @@ class MO_ArgMinMaxOp<string mnemonic, list<Trait> traits = []> :
 
   let results = (outs MO_IndicesTensor:$result);
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `axis` `=` $axis `]` attr-dict `:`
     functional-type(operands, results)
   }];
   let hasVerifier = 1;
@@ -3790,7 +3805,7 @@ def MO_ArgMaxOp : MO_ArgMinMaxOp<"reduce.arg_max"> {
 
     ```mlir
       %0 = mo.constant <#M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
-      %1 = mo.arg_max(%0) {axis = 1 : index} : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = mo.arg_max(%0) [axis = 1] : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -3805,7 +3820,7 @@ def MO_ArgMinOp : MO_ArgMinMaxOp<"reduce.arg_min"> {
 
     ```mlir
       %0 = mo.constant <#M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
-      %1 = mo.arg_min(%0) {axis = 1 : index} : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
+      %1 = mo.arg_min(%0) [axis = 1] : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 1], si64>
     ```
     }];
 }
@@ -3972,7 +3987,11 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `coordinate_transform_mode` `=`
+            qualified($coordinate_transform_mode) `,`
+        `antialias` `=` $antialias `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -3990,9 +4009,9 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest", [
     ```mlir
       %input : !mo.tensor<[1, 1, 2, 2], f32>
       %size = mo.constant <#M.dense_array<1, 1, 7, 8> : tensor<4xsi64>> : !mo.tensor<[4], si64>
-      %res = mo.resize.nearest(%input, %size) {
-        coordinate_transform_mode = 0,
-        round_mode = 2}:
+      %res = mo.resize.nearest(%input, %size)
+        [coordinate_transform_mode = #mo.coord_trans_mode<half_pixel>,
+         round_mode = 2] :
         (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) ->
           !mo.tensor<[1, 1, 7, 8], f32>
     ```
@@ -4008,7 +4027,11 @@ def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest", [
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `coordinate_transform_mode` `=`
+            qualified($coordinate_transform_mode)
+        (`,` `round_mode` `=` $round_mode^)? `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -4066,7 +4089,7 @@ def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
       %sampling_ratio = mo.constant <#M.dense_array<2.0> : tensor<1xf32>> {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[], f32>
 
       %res = mo.roi_align(%inp, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
-        {aligned = false,  mode = "AVG"}
+        [aligned = false, mode = "AVG"]
         : (!mo.tensor<[1, 10, 10, 1], f32>,
           !mo.tensor<[1, 5], f32>,
           !mo.tensor<[], si64>,
@@ -4091,7 +4114,9 @@ def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
   let results = (outs MO_Rank4Tensor:$result);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    `[` `aligned` `=` $aligned `,` `mode` `=` $mode `]` attr-dict `:`
+    functional-type(operands, results)
   }];
   // TODO: add verifier that checks that 2nd rois dimension is 4
 }
@@ -4137,7 +4162,8 @@ def MO_MatmulOp : MO_DotBase<"matmul"> {
   let results = (outs MO_Rank2Tensor:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` `` custom<MatmulAttrs>($transpose_b, $packed_b) attr-dict
+    `:` functional-type(operands, results)
   }];
 
   let hasCanonicalizeMethod = 1;
@@ -4185,7 +4211,8 @@ def MO_BatchMatmulOp : MO_TensorOp<"batch_matmul", [
   ];
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
+    (` ` `[` `transpose_b` `=` $transpose_b^ `]`)? attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -4456,7 +4483,7 @@ def MO_TopKOp : MO_SelectKLikeOp<"top_k"> {
     Example:
     ```mlir
       %in = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11> : tensor<2x6xsi64>> : !mo.tensor<[2, 6], si64>
-      %k = mo.constant() { value = #M.dense_array<3> : tensor<si64> } : !mo.tensor<[], si64>
+      %k = mo.constant <#M.dense_array<3> : tensor<si64>> : !mo.tensor<[], si64>
       %axis = mo.constant <#M.dense_array<1> : tensor<si64>> {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[], si64>
       %sorted = mo.constant <#M.dense_array<1> : tensor<1xi1>> {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[], bool>
       %values, %indices = mo.top_k(%in, %k, %axis, %sorted) : (
@@ -4907,7 +4934,8 @@ def MO_AllReduceSumOp : MO_DistributedOp<"distributed.allreduce.sum", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -5011,7 +5039,8 @@ def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` `` custom<ReduceScatterSumAttrs>($axis, $group_size)
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -5037,7 +5066,8 @@ def MO_DistributedScatterOp : MO_DistributedOp<"distributed.scatter", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` `[` `root` `=` $root `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -5063,6 +5093,11 @@ def MO_AllGatherOp : MO_DistributedOp<"distributed.allgather", [
     Variadic<MO_Tensor>:$outputs,
     MO_Chain:$outChain
   );
+
+  let assemblyFormat = [{
+    `(` operands `)` (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
+    functional-type(operands, results)
+  }];
 }
 
 def MO_EPDispatchOp : MO_DistributedOp<"distributed.ep.dispatch", [
@@ -5098,7 +5133,13 @@ def MO_EPDispatchOp : MO_DistributedOp<"distributed.ep.dispatch", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `hidden_size` `=` $hidden_size `,` `top_k` `=` $top_k `,`
+        `n_experts` `=` $n_experts `,`
+        `max_token_per_rank` `=` $max_token_per_rank `,`
+        `n_gpus_per_node` `=` $n_gpus_per_node `,` `n_nodes` `=` $n_nodes `,`
+        `fused_shared_expert` `=` $fused_shared_expert `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -5136,7 +5177,14 @@ def MO_EPDispatchFP8Op : MO_DistributedOp<"distributed.ep.dispatch.fp8", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `hidden_size` `=` $hidden_size `,` `top_k` `=` $top_k `,`
+        `n_experts` `=` $n_experts `,`
+        `max_token_per_rank` `=` $max_token_per_rank `,`
+        `n_gpus_per_node` `=` $n_gpus_per_node `,` `n_nodes` `=` $n_nodes `,`
+        `fused_shared_expert` `=` $fused_shared_expert `,`
+        `dispatch_scale_granularity` `=` $dispatch_scale_granularity `]`
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -5180,7 +5228,13 @@ def MO_EPDispatchBlockScaledNVOp : MO_DistributedOp<"distributed.ep.dispatch.blo
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `hidden_size` `=` $hidden_size `,` `top_k` `=` $top_k `,`
+        `n_experts` `=` $n_experts `,`
+        `max_token_per_rank` `=` $max_token_per_rank `,`
+        `n_gpus_per_node` `=` $n_gpus_per_node `,` `n_nodes` `=` $n_nodes `,`
+        `fused_shared_expert` `=` $fused_shared_expert `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -5227,7 +5281,13 @@ def MO_EPDispatchBlockScaledNVDynGlobalScalesOp : MO_DistributedOp<
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `hidden_size` `=` $hidden_size `,` `top_k` `=` $top_k `,`
+        `n_experts` `=` $n_experts `,`
+        `max_token_per_rank` `=` $max_token_per_rank `,`
+        `n_gpus_per_node` `=` $n_gpus_per_node `,` `n_nodes` `=` $n_nodes `,`
+        `fused_shared_expert` `=` $fused_shared_expert `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -5268,7 +5328,16 @@ def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `hidden_size` `=` $hidden_size `,` `top_k` `=` $top_k `,`
+        `n_experts` `=` $n_experts `,`
+        `max_token_per_rank` `=` $max_token_per_rank `,`
+        `n_gpus_per_node` `=` $n_gpus_per_node `,` `n_nodes` `=` $n_nodes `,`
+        `fused_shared_expert` `=` $fused_shared_expert `,`
+        `fuse_a_scale_preshuffle` `=` $fuse_a_scale_preshuffle `,`
+        `max_padded_m` `=` $max_padded_m
+        (`,` `mx_format` `=` $mx_format^)? `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -5304,7 +5373,13 @@ def MO_EPCombineOp : MO_DistributedOp<"distributed.ep.combine", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `[` `hidden_size` `=` $hidden_size `,` `top_k` `=` $top_k `,`
+        `n_experts` `=` $n_experts `,`
+        `max_token_per_rank` `=` $max_token_per_rank `,`
+        `n_gpus_per_node` `=` $n_gpus_per_node `,` `n_nodes` `=` $n_nodes `,`
+        `fused_shared_expert` `=` $fused_shared_expert `]` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -5335,7 +5410,8 @@ def MO_DistributedBroadcastOp : MO_Op<"distributed.broadcast", [
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)` (` ` `[` `root` `=` $root^ `]`)? attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 

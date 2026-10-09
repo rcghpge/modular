@@ -17,7 +17,7 @@ mo.graph @conv2d_constant_filter(
   // CHECK-SAME: {layout = #mo.layout<RSCF>}
   // CHECK-SAME: {layout = #mo.layout<FRSCf>}
 
-  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, 2, 2, 1], f32>
@@ -38,7 +38,7 @@ mo.graph @conv3d_constant_filter(%input: !mo.tensor<[1, 8, 8, 8, 3], f32>) -> !m
   // CHECK-SAME: {layout = #mo.layout<QRSCF>}
   // CHECK-SAME: {layout = #mo.layout<FQRSCf>}
 
-  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[1, 8, 8, 8, 3], f32>, !mo.tensor<[2, 2, 2, 3, 4], f32, {layout = #mo.layout<QRSCF>}>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[1, 9, 9, 9, 4], f32>
@@ -61,7 +61,7 @@ mo.graph @conv2d_dynamic_filter(
 
   // CHECK-NOT: mo.layout.transform(%[[FILTER]])
 
-  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[4, 3, 3, 1], f32>, !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, 2, 2, 1], f32>
@@ -87,7 +87,7 @@ mo.graph @conv2d_dynamic_filter_grouped(
   // CHECK-SAME: {layout = #mo.layout<RSCF>}
   // CHECK-SAME: {layout = #mo.layout<FRSCf>}
 
-  %res = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng] : (
+  %res = mo.conv(%input, %filter) [strides = %strides, dilations = %dilations, paddings = %pa, num_groups = %ng, filter_layout = ""] : (
     !mo.tensor<[4, 3, 3, 2], f32>, !mo.tensor<[2, 2, 1, 2], f32, {layout = #mo.layout<RSCF>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[4, 2, 2, 2], f32>

@@ -237,44 +237,44 @@ mo.graph @sink_rebind_through_unary_elemwise<D0, D1>(%in: !mo.tensor<[D0, 2, 4],
 
 mo.graph @sink_reshape_through_softmax<D0>(%in: !mo.tensor<[D0, 2, 3, 4], f32>) -> !mo.tensor<[D0, 6, 4], f32> {
   %0 = mo.static.reshape(%in) : !mo.tensor<[D0, 2, 3, 4], f32> -> !mo.tensor<[D0, 6, 4], f32>
-  %1 = mo.reduce.softmax(%0) {axis = 2 : index} : (!mo.tensor<[D0, 6, 4], f32>) -> !mo.tensor<[D0, 6, 4], f32>
+  %1 = mo.reduce.softmax(%0) [axis = 2] : (!mo.tensor<[D0, 6, 4], f32>) -> !mo.tensor<[D0, 6, 4], f32>
   mo.output %1 : !mo.tensor<[D0, 6, 4], f32>
 }
 
 // CHECK:       mo.graph @sink_reshape_through_softmax<[[D0:.*]]>(%[[IN:.*]]: !mo.tensor<[[[D0]], 2, 3, 4], f32>) -> !mo.tensor<[[[D0]], 6, 4], f32>
-// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[IN]]) {axis = 3 : index} : (!mo.tensor<[[[D0]], 2, 3, 4], f32>) -> !mo.tensor<[[[D0]], 2, 3, 4], f32>
+// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[IN]]) [axis = 3] : (!mo.tensor<[[[D0]], 2, 3, 4], f32>) -> !mo.tensor<[[[D0]], 2, 3, 4], f32>
 // CHECK-NEXT:    %[[RESHAPE:.*]] = mo.static.reshape(%[[SOFTMAX]]) : !mo.tensor<[[[D0]], 2, 3, 4], f32> -> !mo.tensor<[[[D0]], 6, 4], f32>
 // CHECK-NEXT:    mo.output %[[RESHAPE]] : !mo.tensor<[[[D0]], 6, 4], f32>
 
 mo.graph @dont_sink_reshape_through_softmax<D0>(%in: !mo.tensor<[D0, 2, 3, 4], f32>) -> !mo.tensor<[D0, 2, 12], f32> {
   %0 = mo.static.reshape(%in) : !mo.tensor<[D0, 2, 3, 4], f32> -> !mo.tensor<[D0, 2, 12], f32>
-  %1 = mo.reduce.softmax(%0) {axis = 2 : index} : (!mo.tensor<[D0, 2, 12], f32>) -> !mo.tensor<[D0, 2, 12], f32>
+  %1 = mo.reduce.softmax(%0) [axis = 2] : (!mo.tensor<[D0, 2, 12], f32>) -> !mo.tensor<[D0, 2, 12], f32>
   mo.output %1 : !mo.tensor<[D0, 2, 12], f32>
 }
 
 // CHECK:       mo.graph @dont_sink_reshape_through_softmax<[[D0:.*]]>(%[[IN:.*]]: !mo.tensor<[[[D0]], 2, 3, 4], f32>) -> !mo.tensor<[[[D0]], 2, 12], f32>
 // CHECK-NEXT:    %[[RESHAPE:.*]] = mo.static.reshape(%[[IN]]) : !mo.tensor<[[[D0]], 2, 3, 4], f32> -> !mo.tensor<[[[D0]], 2, 12], f32>
-// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[RESHAPE]]) {axis = 2 : index} : (!mo.tensor<[[[D0]], 2, 12], f32>) -> !mo.tensor<[[[D0]], 2, 12], f32>
+// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[RESHAPE]]) [axis = 2] : (!mo.tensor<[[[D0]], 2, 12], f32>) -> !mo.tensor<[[[D0]], 2, 12], f32>
 // CHECK-NEXT:    mo.output %[[SOFTMAX]] : !mo.tensor<[[[D0]], 2, 12], f32>
 
 mo.graph @sink_reshape_through_softmax_bad_axis<D0>(%in: !mo.tensor<[D0, 2, 3, 4], f32>) -> !mo.tensor<[D0, 6, 4], f32> {
   %0 = mo.static.reshape(%in) : !mo.tensor<[D0, 2, 3, 4], f32> -> !mo.tensor<[D0, 6, 4], f32>
-  %1 = mo.reduce.softmax(%0) {axis = 1 : index} : (!mo.tensor<[D0, 6, 4], f32>) -> !mo.tensor<[D0, 6, 4], f32>
+  %1 = mo.reduce.softmax(%0) [axis = 1] : (!mo.tensor<[D0, 6, 4], f32>) -> !mo.tensor<[D0, 6, 4], f32>
   mo.output %1 : !mo.tensor<[D0, 6, 4], f32>
 }
 
 // CHECK:       mo.graph @sink_reshape_through_softmax_bad_axis<[[D0:.*]]>(%[[IN:.*]]: !mo.tensor<[[[D0]], 2, 3, 4], f32>) -> !mo.tensor<[[[D0]], 6, 4], f32>
 // CHECK-NEXT:    %[[RESHAPE:.*]] = mo.static.reshape(%[[IN]]) : !mo.tensor<[D0, 2, 3, 4], f32> -> !mo.tensor<[D0, 6, 4], f32>
-// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[RESHAPE]]) {axis = 1 : index} : (!mo.tensor<[[[D0]], 6, 4], f32>) -> !mo.tensor<[[[D0]], 6, 4], f32>
+// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[RESHAPE]]) [axis = 1] : (!mo.tensor<[[[D0]], 6, 4], f32>) -> !mo.tensor<[[[D0]], 6, 4], f32>
 // CHECK-NEXT:    mo.output %[[SOFTMAX]] : !mo.tensor<[[[D0]], 6, 4], f32>
 
 mo.graph @sink_reshape_through_softmax_scalar(%in: !mo.tensor<[], f32>) -> !mo.tensor<[1], f32> {
   %0 = mo.static.reshape(%in) : !mo.tensor<[], f32> -> !mo.tensor<[1], f32>
-  %1 = mo.reduce.softmax(%0) {axis = 0 : index} : (!mo.tensor<[1], f32>) -> !mo.tensor<[1], f32>
+  %1 = mo.reduce.softmax(%0) [axis = 0] : (!mo.tensor<[1], f32>) -> !mo.tensor<[1], f32>
   mo.output %1 : !mo.tensor<[1], f32>
 }
 
 // CHECK:       mo.graph @sink_reshape_through_softmax_scalar(%[[IN:.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[1], f32>
-// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[IN]]) {axis = 0 : index} : (!mo.tensor<[], f32>) -> !mo.tensor<[], f32>
+// CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[IN]]) [axis = 0] : (!mo.tensor<[], f32>) -> !mo.tensor<[], f32>
 // CHECK-NEXT:    %[[RESHAPE:.*]] = mo.static.reshape(%[[SOFTMAX]]) : !mo.tensor<[], f32> -> !mo.tensor<[1], f32>
 // CHECK-NEXT:    mo.output %[[RESHAPE]] : !mo.tensor<[1], f32>

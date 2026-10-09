@@ -15,7 +15,7 @@ mo.graph @gather_nd_scalar() -> !mo.tensor<[], si64> {
   %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> : tensor<2x2x4xsi64>> : !mo.tensor<[2, 2, 4], si64>
   %indices = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
 
-  %result = mo.gather_nd(%input, %indices) {batchDims = 0 : index} :
+  %result = mo.gather_nd(%input, %indices) [batchDims = 0] :
     (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[], si64>
 
   mo.output %result : !mo.tensor<[], si64>
@@ -35,7 +35,7 @@ mo.graph @gather_nd_scalars() -> !mo.tensor<[4], si64> {
   %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> : tensor<2x2x4xsi64>> : !mo.tensor<[2, 2, 4], si64>
   %indices = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 1, 0, 1, 2, 1, 1, 3> : tensor<4x3xsi64>> : !mo.tensor<[4, 3], si64>
 
-  %result = mo.gather_nd(%input, %indices) {batchDims = 0 : index} :
+  %result = mo.gather_nd(%input, %indices) [batchDims = 0] :
     (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[4, 3], si64>) -> !mo.tensor<[4], si64>
 
   mo.output %result : !mo.tensor<[4], si64>
@@ -55,7 +55,7 @@ mo.graph @gather_nd_batch() -> !mo.tensor<[2], si64> {
   %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> : tensor<2x2x4xsi64>> : !mo.tensor<[2, 2, 4], si64>
   %indices = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<2x2xsi64>> : !mo.tensor<[2, 2], si64>
 
-  %result = mo.gather_nd(%input, %indices) {batchDims = 1 : index} :
+  %result = mo.gather_nd(%input, %indices) [batchDims = 1] :
     (!mo.tensor<[2, 2, 4], si64>, !mo.tensor<[2, 2], si64>) -> !mo.tensor<[2], si64>
 
   mo.output %result : !mo.tensor<[2], si64>
@@ -75,7 +75,7 @@ mo.graph @gather_nd_batch_row() -> !mo.tensor<[2, 2], si64> {
   %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7> : tensor<2x2x2xsi64>> : !mo.tensor<[2, 2, 2], si64>
   %indices = mo.constant <#M.dense_array<1, 0> : tensor<2x1xsi64>> : !mo.tensor<[2, 1], si64>
 
-  %result = mo.gather_nd(%input, %indices) {batchDims = 1 : index} :
+  %result = mo.gather_nd(%input, %indices) [batchDims = 1] :
     (!mo.tensor<[2, 2, 2], si64>, !mo.tensor<[2, 1], si64>) -> !mo.tensor<[2, 2], si64>
 
   mo.output %result : !mo.tensor<[2, 2], si64>

@@ -12,11 +12,11 @@ mo.graph @tf_layer_norm(%arg0 : !mo.tensor<[4, 3, 2], f32>) -> (!mo.tensor<[4, 3
   %eps = "mo.constant"() {value = #M.dense_array<0.00001> : tensor<f32>} : () -> !mo.tensor<[], f32>
   %gamma = "mo.constant"() {value = #M.dense_array<1.1, 2.1> : tensor<2xf32>} : () -> !mo.tensor<[2], f32>
   %beta = "mo.constant"() {value = #M.dense_array<-1.0, -2.0> : tensor<2xf32>} : () -> !mo.tensor<[2], f32>
-  %1 = mo.reduce.mean(%arg0) {axis = 2 : index} : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
+  %1 = mo.reduce.mean(%arg0) [axis = 2] : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
   %2 = mo.broadcast_to(%1, %sh) : (!mo.tensor<[4, 3, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
   %3 = mo.sub(%arg0, %2) : !mo.tensor<[4, 3, 2], f32>
   %4 = mo.mul(%3, %3) : !mo.tensor<[4, 3, 2], f32>
-  %5 = mo.reduce.mean(%4) {axis = 2 : index} : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
+  %5 = mo.reduce.mean(%4) [axis = 2] : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
   %6 = mo.broadcast_to(%eps, %sh2) : (!mo.tensor<[], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 1], f32>
   %7 = mo.add(%5, %6) : !mo.tensor<[4, 3, 1], f32>
   %8 = mo.rsqrt(%7) : !mo.tensor<[4, 3, 1], f32>
@@ -45,11 +45,11 @@ mo.graph @tf_layer_norm_skip(%arg0 : !mo.tensor<[4, 3, 2], f32>, %arg1 : !mo.ten
   %gamma = "mo.constant"() {value = #M.dense_array<1.1, 2.1> : tensor<2xf32>} : () -> !mo.tensor<[2], f32>
   %beta = "mo.constant"() {value = #M.dense_array<-1.0, -2.0> : tensor<2xf32>} : () -> !mo.tensor<[2], f32>
   %0 = mo.add(%arg0, %arg1) : !mo.tensor<[4, 3, 2], f32>
-  %1 = mo.reduce.mean(%0) {axis = 2 : index} : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
+  %1 = mo.reduce.mean(%0) [axis = 2] : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
   %2 = mo.broadcast_to(%1, %sh) : (!mo.tensor<[4, 3, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
   %3 = mo.sub(%0, %2) : !mo.tensor<[4, 3, 2], f32>
   %4 = mo.mul(%3, %3) : !mo.tensor<[4, 3, 2], f32>
-  %5 = mo.reduce.mean(%4) {axis = 2 : index} : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
+  %5 = mo.reduce.mean(%4) [axis = 2] : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
   %6 = mo.broadcast_to(%eps, %sh2) : (!mo.tensor<[], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 1], f32>
   %7 = mo.add(%5, %6) : !mo.tensor<[4, 3, 1], f32>
   %8 = mo.rsqrt(%7) : !mo.tensor<[4, 3, 1], f32>
@@ -76,11 +76,11 @@ mo.graph @pt_layer_norm(%arg0 : !mo.tensor<[4, 3, 2], f32>) -> (!mo.tensor<[4, 3
   %eps = "mo.constant"() {value = #M.dense_array<0.00001> : tensor<f32>} : () -> !mo.tensor<[], f32>
   %gamma = "mo.constant"() {value = #M.dense_array<1.1, 2.1> : tensor<2xf32>} : () -> !mo.tensor<[2], f32>
   %beta = "mo.constant"() {value = #M.dense_array<-1.0, -2.0> : tensor<2xf32>} : () -> !mo.tensor<[2], f32>
-  %1 = mo.reduce.mean(%arg0) {axis = 2 : index} : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
+  %1 = mo.reduce.mean(%arg0) [axis = 2] : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
   %2 = mo.broadcast_to(%1, %sh) : (!mo.tensor<[4, 3, 1], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 2], f32>
   %3 = mo.sub(%arg0, %2) : !mo.tensor<[4, 3, 2], f32>
   %4 = mo.mul(%3, %3) : !mo.tensor<[4, 3, 2], f32>
-  %5 = mo.reduce.mean(%4) {axis = 2 : index} : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
+  %5 = mo.reduce.mean(%4) [axis = 2] : (!mo.tensor<[4, 3, 2], f32>) -> !mo.tensor<[4, 3, 1], f32>
   %6 = mo.broadcast_to(%eps, %sh2) : (!mo.tensor<[], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 3, 1], f32>
   %7 = mo.add(%5, %6) : !mo.tensor<[4, 3, 1], f32>
   %8 = mo.sqrt(%7) : !mo.tensor<[4, 3, 1], f32>
@@ -105,11 +105,11 @@ mo.graph @pt_layer_norm_wide<B>(%arg0 : !mo.tensor<[B, 3, 16], f32>) -> (!mo.ten
   %eps = "mo.constant"() {value = #M.dense_array<0.00001> : tensor<f32>} : () -> !mo.tensor<[], f32>
   %gamma = "mo.constant"() {value = #M.dense_array<1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1, 1.1, 2.1> : tensor<16xf32>} : () -> !mo.tensor<[16], f32>
   %beta = "mo.constant"() {value = #M.dense_array<-1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0, -1.0, -2.0> : tensor<16xf32>} : () -> !mo.tensor<[16], f32>
-  %1 = mo.reduce.mean(%arg0) {axis = 2 : index} : (!mo.tensor<[B, 3, 16], f32>) -> !mo.tensor<[B, 3, 1], f32>
+  %1 = mo.reduce.mean(%arg0) [axis = 2] : (!mo.tensor<[B, 3, 16], f32>) -> !mo.tensor<[B, 3, 1], f32>
   %2 = mo.static.broadcast_to(%1) : !mo.tensor<[B, 3, 1], f32> -> !mo.tensor<[B, 3, 16], f32>
   %3 = mo.sub(%arg0, %2) : !mo.tensor<[B, 3, 16], f32>
   %4 = mo.mul(%3, %3) : !mo.tensor<[B, 3, 16], f32>
-  %5 = mo.reduce.mean(%4) {axis = 2 : index} : (!mo.tensor<[B, 3, 16], f32>) -> !mo.tensor<[B, 3, 1], f32>
+  %5 = mo.reduce.mean(%4) [axis = 2] : (!mo.tensor<[B, 3, 16], f32>) -> !mo.tensor<[B, 3, 1], f32>
   %6 = mo.static.broadcast_to(%eps) : !mo.tensor<[], f32> -> !mo.tensor<[B, 3, 1], f32>
   %7 = mo.add(%5, %6) : !mo.tensor<[B, 3, 1], f32>
   %8 = mo.sqrt(%7) : !mo.tensor<[B, 3, 1], f32>

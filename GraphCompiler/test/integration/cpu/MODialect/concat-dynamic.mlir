@@ -15,7 +15,7 @@ mo.graph @concat_empty_dynamic<D0 -> D1>(%arg: !mo.tensor<[D0], si32>) -> !mo.te
 // CHECK-NEXT: 'concat_empty_from_upstream' returned tensor<0xsi64> []
 mo.graph @concat_empty_from_upstream<D0 -> D1>(%arg: !mo.tensor<[D0], si32>) -> !mo.tensor<[D1], si64> {
   %arr = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
-  %empty = mo.gather<() -> D2>(%arr, %arg) {axis = 0 : index} : (
+  %empty = mo.gather<() -> D2>(%arr, %arg) [axis = 0] : (
     !mo.tensor<[1], si64>, !mo.tensor<[D0], si32>
   ) -> !mo.tensor<[D2], si64>
   %out = mo.concat<() -> D3>[0](%empty, %empty) : (

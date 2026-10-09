@@ -8,8 +8,8 @@ mo.graph @conv_transpose_default_hyperparameters() -> (!mo.tensor<[1, 3, 3, 1], 
   %di = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %op = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
-  %output = mo.conv_transpose(%input, %filter) {filter_layout = ""}
-    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %output = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op, filter_layout = ""] : (
     !mo.tensor<[1, 2, 2, 1], si64>, !mo.tensor<[2, 2, 1, 1], si64, {layout = #mo.layout<RSFC>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 3, 3, 1], si64>
@@ -25,8 +25,8 @@ mo.graph @conv_transpose_non_default_hyperparameters() -> (!mo.tensor<[1, 2, 4, 
   %di = mo.constant <#M.dense_array<1, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %pa = mo.constant <#M.dense_array<1, 0, 0, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %op = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
-  %output = mo.conv_transpose(%input, %filter) {filter_layout = ""}
-    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %output = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op, filter_layout = ""] : (
     !mo.tensor<[1, 2, 2, 1], si64>, !mo.tensor<[2, 2, 1, 1], si64, {layout = #mo.layout<RSFC>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 2, 4, 1], si64>
@@ -42,8 +42,8 @@ mo.graph @conv_transpose_non_one_channel() -> (!mo.tensor<[1, 1, 3, 3], si64>) {
   %di = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %op = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
-  %output = mo.conv_transpose(%input, %filter) {filter_layout = ""}
-    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %output = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op, filter_layout = ""] : (
     !mo.tensor<[1, 1, 2, 2], si64>, !mo.tensor<[1, 2, 3, 2], si64, {layout = #mo.layout<RSFC>}>,
     !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[1, 1, 3, 3], si64>
@@ -80,8 +80,8 @@ mo.graph @conv3d_transpose(%input: !mo.tensor<[1, 2, 2, 2, 1],si64>, %filter: !m
   %di = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>> : !mo.tensor<[6], si64>
   %op = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %output = mo.conv_transpose(%input, %filter) {filter_layout = ""}
-    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %output = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op, filter_layout = ""] : (
     !mo.tensor<[1, 2, 2, 2, 1], si64>, !mo.tensor<[2, 2, 2, 1, 1], si64, {layout = #mo.layout<QRSFC>}>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 3, 3, 3, 1], si64>
@@ -95,8 +95,8 @@ mo.graph @conv3d_transpose_const_filter(%input: !mo.tensor<[1, 2, 2, 2, 1],si64>
   %di = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>> : !mo.tensor<[6], si64>
   %op = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %output = mo.conv_transpose(%input, %filter) {filter_layout = ""}
-    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %output = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op, filter_layout = ""] : (
     !mo.tensor<[1, 2, 2, 2, 1], si64>, !mo.tensor<[2, 2, 2, 1, 1], si64, {layout = #mo.layout<QRSFC>}>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 3, 3, 3, 1], si64>
@@ -109,8 +109,8 @@ mo.graph @conv3d_transpose_stride(%input: !mo.tensor<[1, 2, 2, 2, 1],si64>, %fil
   %di = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %pa = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>> : !mo.tensor<[6], si64>
   %op = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %output = mo.conv_transpose(%input, %filter) {filter_layout = ""}
-    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %output = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op, filter_layout = ""] : (
     !mo.tensor<[1, 2, 2, 2, 1], si64>, !mo.tensor<[3, 2, 1, 1, 1], si64, {layout = #mo.layout<QRSFC>}>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 4, 4, 4, 1], si64>
@@ -123,8 +123,8 @@ mo.graph @conv3d_transpose_pad(%input: !mo.tensor<[1, 2, 2, 2, 1],si64>, %filter
   %di = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %pa = mo.constant <#M.dense_array<1, 1, 0, 1, 0, 1> : tensor<6xsi64>> : !mo.tensor<[6], si64>
   %op = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %output = mo.conv_transpose(%input, %filter) {filter_layout = ""}
-    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op] : (
+  %output = mo.conv_transpose(%input, %filter)
+    [strides = %st, dilations = %di, paddings = %pa, output_paddings = %op, filter_layout = ""] : (
     !mo.tensor<[1, 2, 2, 2, 1], si64>, !mo.tensor<[2, 2, 2, 1, 1], si64, {layout = #mo.layout<QRSFC>}>,
     !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[6], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 1, 3, 4, 1], si64>

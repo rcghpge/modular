@@ -78,7 +78,7 @@ mo.graph @success_const_lhs(
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
 // CHECK-NEXT: [[V2:[^ ]*]] = mo.constant <#M.dense_array<3, 3, 3, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V3:[^ ]*]] = mo.constant <#M.dense_array<0, 3, 1, 2> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
-// CHECK-NEXT: [[V4:[^ ]*]] = mo.conv([[VARG0]], [[VARG1]]) {filter_layout = ""} [strides = [[V1]], dilations = [[V1]], paddings = [[V2]], num_groups = [[V0]]] : (!mo.tensor<[16, 128, 128, 8], f32>, !mo.tensor<[7, 7, 8, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[16, 128, 128, 64], f32>
+// CHECK-NEXT: [[V4:[^ ]*]] = mo.conv([[VARG0]], [[VARG1]]) [strides = [[V1]], dilations = [[V1]], paddings = [[V2]], num_groups = [[V0]], filter_layout = ""] : (!mo.tensor<[16, 128, 128, 8], f32>, !mo.tensor<[7, 7, 8, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[16, 128, 128, 64], f32>
 // CHECK-NEXT: [[V5:[^ ]*]] = mo.transpose([[V4]], [[V3]]) : (!mo.tensor<[16, 128, 128, 64], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[16, 64, 128, 128], f32>
 // CHECK-NEXT: [[V6:[^ ]*]] = mo.static.reshape([[V5]]) : !mo.tensor<[16, 64, 128, 128], f32> -> !mo.tensor<[1, 1024, 128, 128], f32>
 // CHECK-NEXT: [[V7:[^ ]*]] = mo.static.broadcast_to([[VARG3]]) : !mo.tensor<[1, 1024, 1, 1], f32> -> !mo.tensor<[1, 1024, 128, 128], f32>
@@ -96,7 +96,7 @@ mo.graph @failure_non_const_subtree(
   %28 = mo.constant <#M.dense_array<3, 3, 3, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
   %29 = mo.constant <#M.dense_array<0, 3, 1, 2> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
 
-  %36 = mo.conv(%35, %23) {filter_layout = ""} [strides = %27, dilations = %27, paddings = %28, num_groups = %25] : (!mo.tensor<[16, 128, 128, 8], f32>, !mo.tensor<[7, 7, 8, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[16, 128, 128, 64], f32>
+  %36 = mo.conv(%35, %23) [strides = %27, dilations = %27, paddings = %28, num_groups = %25, filter_layout = ""] : (!mo.tensor<[16, 128, 128, 8], f32>, !mo.tensor<[7, 7, 8, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[16, 128, 128, 64], f32>
   %37 = mo.transpose(%36, %29) : (!mo.tensor<[16, 128, 128, 64], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[16, 64, 128, 128], f32>
 
   %38 = mo.static.reshape(%37) : !mo.tensor<[16, 64, 128, 128], f32> -> !mo.tensor<[1, 1024, 128, 128], f32>

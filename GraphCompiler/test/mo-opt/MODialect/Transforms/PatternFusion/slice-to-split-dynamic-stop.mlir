@@ -15,7 +15,7 @@
 
 // CHECK-LABEL: mo.graph @slice_to_split_dynamic_stop
 // CHECK:       %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2>
-// CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) {axis = 1 : index}
+// CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) [axis = 1]
 // CHECK:       mo.output %[[SPLIT]]#0, %[[SPLIT]]#1
 
 mo.graph @slice_to_split_dynamic_stop(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
@@ -56,7 +56,7 @@ mo.graph @no_conversion_dynamic_stop_step_not_one(%arg0: !mo.tensor<[2, 4], f32>
 
 // CHECK-LABEL: mo.graph @slice_to_split_negative_start
 // CHECK:       %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2>
-// CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) {axis = 1 : index}
+// CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) [axis = 1]
 // CHECK:       mo.output %[[SPLIT]]#0, %[[SPLIT]]#1
 
 mo.graph @slice_to_split_negative_start(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
@@ -113,7 +113,7 @@ mo.graph @no_conversion_clamped_starts_overlap(%arg0: !mo.tensor<[2, 4], f32>, %
 
 // CHECK-LABEL: mo.graph @clamped_negative_start_folds
 // CHECK:       %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2>
-// CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) {axis = 1 : index}
+// CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) [axis = 1]
 // CHECK:       mo.output %[[SPLIT]]#0, %[[SPLIT]]#1
 
 mo.graph @clamped_negative_start_folds(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {

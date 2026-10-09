@@ -19,7 +19,7 @@ mo.graph @gemv_partial_rms_norm_basic(
   %weight_offset: !mo.tensor<[], bf16>
 ) -> (!mo.tensor<[1, 1536], bf16, gpu:0>, !mo.tensor<[1, 576], bf16, gpu:0>) {
   // GEMV: [1, 7168] x [7168, 2112] (transposed) -> [1, 2112]
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 7168], bf16, gpu:0>, !mo.tensor<[7168, 2112], bf16, gpu:0>)
     -> !mo.tensor<[1, 2112], bf16, gpu:0>
 
@@ -62,7 +62,7 @@ mo.graph @cpu_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[1, 256], f32, cpu:0>, !mo.tensor<[1, 256], f32, cpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 1024], f32, cpu:0>, !mo.tensor<[1024, 512], f32, cpu:0>)
     -> !mo.tensor<[1, 512], f32, cpu:0>
 
@@ -98,7 +98,7 @@ mo.graph @m_not_one_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[4, 256], f32, gpu:0>, !mo.tensor<[4, 256], f32, gpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[4, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[4, 512], f32, gpu:0>
 
@@ -134,7 +134,7 @@ mo.graph @transpose_b_false_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[1, 256], f32, gpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = false} :
+  %gemv = mo.matmul(%x, %W) :
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
@@ -170,7 +170,7 @@ mo.graph @non_unit_step_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[1, 128], f32, gpu:0>, !mo.tensor<[1, 256], f32, gpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
@@ -208,7 +208,7 @@ mo.graph @missing_unnormed_slice_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> !mo.tensor<[1, 512], f32, gpu:0> {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
@@ -232,7 +232,7 @@ mo.graph @matmul_has_other_user_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[1, 512], f32, gpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
@@ -271,7 +271,7 @@ mo.graph @normed_slice_has_other_user_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[1, 256], f32, gpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
@@ -311,7 +311,7 @@ mo.graph @non_constant_slice_not_fused(
   %weight_offset: !mo.tensor<[], f32>,
   %dynamic_stop: !mo.tensor<[2], si64>
 ) -> (!mo.tensor<[1, ?], f32, gpu:0>, !mo.tensor<[1, 256], f32, gpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
@@ -347,7 +347,7 @@ mo.graph @multiply_before_cast_false_not_fused(
   %epsilon: !mo.tensor<[], f32>,
   %weight_offset: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[1, 256], f32, gpu:0>) {
-  %gemv = mo.matmul(%x, %W) {transpose_b = true} :
+  %gemv = mo.matmul(%x, %W) [transpose_b = true] :
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 

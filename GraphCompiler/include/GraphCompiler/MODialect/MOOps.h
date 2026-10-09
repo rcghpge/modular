@@ -87,6 +87,54 @@ struct AttrGroupParser {
 /// appear in any order; a repeated or unknown name is an error.
 ParseResult parseAttrGroup(AsmParser &p, ArrayRef<AttrGroupParser> elements);
 
+ParseResult parseMatmulAttrs(OpAsmParser &p, BoolAttr &transposeB,
+                             BoolAttr &packedB);
+
+void printMatmulAttrs(OpAsmPrinter &p, Operation *, BoolAttr transposeB,
+                      BoolAttr packedB);
+
+ParseResult parseReduceScatterSumAttrs(OpAsmParser &p, IntegerAttr &axis,
+                                       IntegerAttr &groupSize);
+
+void printReduceScatterSumAttrs(OpAsmPrinter &p, Operation *, IntegerAttr axis,
+                                IntegerAttr groupSize);
+
+ParseResult parseMatmulReduceScatterSumAttrs(OpAsmParser &p,
+                                             BoolAttr &hasResidual,
+                                             IntegerAttr &residualPeer);
+
+void printMatmulReduceScatterSumAttrs(OpAsmPrinter &p, Operation *,
+                                      BoolAttr hasResidual,
+                                      IntegerAttr residualPeer);
+
+ParseResult parseReduceScatterRMSNormAttrs(OpAsmParser &p,
+                                           IntegerAttr &groupSize,
+                                           BoolAttr &hasResidual);
+
+void printReduceScatterRMSNormAttrs(OpAsmPrinter &p, Operation *,
+                                    IntegerAttr groupSize,
+                                    BoolAttr hasResidual);
+
+ParseResult parseAllGatherRMSNormQuantMXFP6Attrs(OpAsmParser &p,
+                                                 IntegerAttr &groupSize,
+                                                 IntegerAttr &fp6Format);
+
+void printAllGatherRMSNormQuantMXFP6Attrs(OpAsmPrinter &p, Operation *,
+                                          IntegerAttr groupSize,
+                                          IntegerAttr fp6Format);
+
+ParseResult parseGroupedMatmulSwigluNvfp4Attrs(OpAsmParser &p,
+                                               StringAttr &activation,
+                                               StringAttr &swigluAlpha,
+                                               StringAttr &swigluLimit,
+                                               BoolAttr &hasARowScales);
+
+void printGroupedMatmulSwigluNvfp4Attrs(OpAsmPrinter &p, Operation *,
+                                        StringAttr activation,
+                                        StringAttr swigluAlpha,
+                                        StringAttr swigluLimit,
+                                        BoolAttr hasARowScales);
+
 ParseResult parseCustomAttrs(OpAsmParser &p, StringAttr &symbol,
                              DeviceRefAttr &device, DictionaryAttr &parameters);
 
