@@ -110,7 +110,7 @@ def main() raises:
         # CHECK-INVALID-default_accelerator: GPU architecture 'wombat42' is not supported.
         # CHECK-INVALID-default_accelerator: Supported GPU architectures:
         # CHECK-INVALID-default_accelerator: NVIDIA: sm_52 (Maxwell)
-        # CHECK-INVALID-default_accelerator: Apple: metal:1 (M1)
+        # CHECK-INVALID-default_accelerator: Apple: apple-m1 (M1), apple-m1-metal4 (M1 Metal4)
         # Force resolution of `.default_accelerator` to trigger error.
         comptime assert (
             TargetAccelerator.default_accelerator.gpu_info.name != ""

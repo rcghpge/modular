@@ -273,6 +273,9 @@ def _supported_archs_line[C: TargetAcceleratorCollection]() -> String:
 # AcceleratorArchitectureFamily
 # ===-----------------------------------------------------------------------===#
 
+comptime _KB = 1024
+comptime _K = 1024
+
 
 @fieldwise_init
 struct AcceleratorArchitectureFamily(TrivialRegisterPassable):
