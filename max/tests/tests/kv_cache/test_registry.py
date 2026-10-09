@@ -35,7 +35,10 @@ from max.pipelines.kv_cache import (
     kv_cache_memory_size,
     load_kv_manager,
 )
-from max.pipelines.kv_cache.registry import _use_jenga_kv_cache
+from max.pipelines.kv_cache.registry import (
+    _use_jenga_kv_cache,
+    jenga_supports_di,
+)
 
 
 def create_kv_params(
@@ -93,17 +96,34 @@ class TestUseJengaKvCache:
             model_name=model_name,
         )
 
-    @pytest.mark.parametrize(
-        "model_name", ["openai/gpt-oss-20b", "Qwen/Qwen3-8B"]
-    )
-    def test_disaggregated_inference_disables_jenga(
-        self, model_name: str, monkeypatch: pytest.MonkeyPatch
+    def test_disaggregated_inference_keeps_jenga_for_full_attention(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("MODULAR_USE_LEGACY_KV_CACHE", raising=False)
-        assert not _use_jenga_kv_cache(
+        assert _use_jenga_kv_cache(
             create_kv_params(),
             is_di_enabled=True,
-            model_name=model_name,
+            model_name="meta-llama/Llama-3.1-8B-Instruct",
+        )
+
+    def test_disaggregated_inference_disables_jenga_for_sliding_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MODULAR_USE_LEGACY_KV_CACHE", raising=False)
+        sliding = MHAKVCacheParams(
+            dtype=DType.bfloat16,
+            n_kv_heads=8,
+            head_dim=128,
+            num_layers=2,
+            devices=[DeviceRef.GPU()],
+            page_size=128,
+            window_size=4096,
+        )
+        assert not jenga_supports_di(sliding)
+        assert not _use_jenga_kv_cache(
+            sliding,
+            is_di_enabled=True,
+            model_name="openai/gpt-oss-20b",
         )
 
     def test_a_state_selects_jenga_whatever_else_says(

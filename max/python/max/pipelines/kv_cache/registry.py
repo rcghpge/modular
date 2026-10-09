@@ -36,6 +36,15 @@ from .paged_kv_cache.jenga_cache_manager import JengaKVCacheManager
 logger = logging.getLogger("max.pipelines")
 
 
+def jenga_supports_di(params: KVCacheParamInterface) -> bool:
+    """Whether disaggregated serving can transfer this cache under Jenga.
+
+    A sliding window leaf nulls the pages its window slid past, so its block
+    ids are not the contiguous prefix a transfer moves.
+    """
+    return all(leaf.group_id.is_full() for leaf in params.leaves().values())
+
+
 def _use_jenga_kv_cache(
     params: KVCacheParamInterface, is_di_enabled: bool, model_name: str
 ) -> bool:
@@ -57,8 +66,7 @@ def _use_jenga_kv_cache(
     )
     if prefer_legacy:
         return False
-    # TODO(SERVOPT-1590): Jenga is incompatible with Disaggregated Inference.
-    return not is_di_enabled
+    return not is_di_enabled or jenga_supports_di(params)
 
 
 def max_seq_len_fitting_in_cache(

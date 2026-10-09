@@ -75,7 +75,7 @@ def _round_trip(
         id=context.request_id,
         context=context,
         transfer_engine_name="test_engine",
-        dst_block_ids=[0, 1],
+        dst_block_ids={"full": [0, 1]},
         dst_replica_idx=0,
     )
     deadline = time.monotonic() + _TIMEOUT

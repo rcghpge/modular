@@ -24,6 +24,7 @@ from max.graph import DeviceRef
 from max.nn.kv_cache import (
     KVCacheParamInterface,
     KVCacheParams,
+    KVCacheQuantizationConfig,
     MHAKVCacheParams,
     MLAKVCacheParams,
     MultiKVCacheParams,
@@ -35,6 +36,7 @@ from max.pipelines.context import (
     TokenBuffer,
 )
 from max.pipelines.kv_cache import (
+    JengaKVCacheManager,
     PagedKVCacheManager,
     PagedKVCacheManagerInterface,
 )
@@ -186,6 +188,41 @@ def create_kv_cache(
         for replica_idx in range(dp)
     )
     return kv_manager
+
+
+def create_jenga_fp8_kv_cache(
+    num_huge_blocks: int,
+    max_batch_size: int,
+    max_seq_len: int,
+    page_size: int,
+    enable_prefix_caching: bool = False,
+) -> JengaKVCacheManager:
+    """Builds a Jenga manager for an fp8 cache on CPU.
+
+    Values and scales are separate leaves that Jenga tiles at different
+    ratios, so a request holds different block ids in each.
+    """
+    params = MHAKVCacheParams(
+        dtype=DType.float8_e4m3fn,
+        num_layers=1,
+        n_kv_heads=1,
+        head_dim=128,
+        page_size=page_size,
+        enable_prefix_caching=enable_prefix_caching,
+        devices=[DeviceRef.CPU()],
+        kvcache_quant_config=KVCacheQuantizationConfig(
+            scale_dtype=DType.float32
+        ),
+    )
+    huge_page_bytes = max(
+        leaf.bytes_per_page for leaf in params.leaves().values()
+    )
+    return JengaKVCacheManager.create(
+        params=params,
+        available_bytes=num_huge_blocks * huge_page_bytes,
+        max_batch_size=max_batch_size,
+        max_seq_len=max_seq_len,
+    )
 
 
 def create_paged_scheduler(

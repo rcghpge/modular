@@ -790,10 +790,14 @@ class KVTransferEngineMetadata(TransferEngineMetadata):
     """Total number of pages in each group, including the null block.
     Parallel to ``bytes_per_group``."""
 
+    bytes_per_page: int
+    """Bytes per page for each tensor."""
+
     bytes_per_group: list[int]
     """Bytes per page for each tensor group, one entry per NIXL group. The
     first entry is the main group; subsequent entries correspond to extra
-    groups, such as draft KV in speculative decoding."""
+    groups, such as draft KV in speculative decoding. ``bytes_per_page``
+    equals ``sum(bytes_per_group)``."""
 
     replicated_per_group: list[bool] = []
     """Per-group TP replication, parallel to ``bytes_per_group``. ``True``
@@ -879,6 +883,11 @@ class TransferEngine:
     num_pages_per_group: list[int]
     """Total number of pages in each group, including the null block."""
 
+    bytes_per_page: int
+    """Total bytes per page across all groups. For single-group engines this
+    equals the main group's bytes per page; for multi-group engines it is
+    ``sum(bytes_per_group)``."""
+
     bytes_per_group: list[int]
     """Bytes per page for each group. ``bytes_per_group[0]`` is the main
     group; subsequent entries are extra groups (such as draft KV in
@@ -916,6 +925,7 @@ class TransferEngine:
         *,
         leaf_ids: list[str],
         num_pages_per_group: list[int],
+        bytes_per_page: int,
         bytes_per_group: list[int],
         memory_type: nixl.MemoryType,
         dp: int,
@@ -935,6 +945,7 @@ class TransferEngine:
             )
         self.leaf_ids = leaf_ids
         self.num_pages_per_group = num_pages_per_group
+        self.bytes_per_page = bytes_per_page
         self.bytes_per_group = bytes_per_group
         self.memory_type = memory_type
         self.dp = dp
@@ -988,6 +999,7 @@ class TransferEngine:
             name=self.name,
             leaf_ids=self.leaf_ids,
             num_pages_per_group=self.num_pages_per_group,
+            bytes_per_page=self.bytes_per_page,
             memory_type=self.memory_type,
             agents_meta=agents_meta,
             hostname=socket.gethostname(),
@@ -1082,6 +1094,11 @@ class TransferEngine:
         # Fail fast on a plan the transport cannot execute yet (sharded
         # reshard); the per-group plan is valid, the reshard strategy is not.
         _assert_no_gather_scatter(strategy)
+
+        if self.bytes_per_page != remote.bytes_per_page:
+            raise ValueError(
+                f"Bytes per page mismatch: {self.bytes_per_page} != {remote.bytes_per_page}"
+            )
 
         if self.bytes_per_group != remote.bytes_per_group:
             raise ValueError(
@@ -2030,6 +2047,7 @@ class KVTransferEngine(TransferEngine):
                 f"Found: {set(memory_types)}"
             )
 
+        bytes_per_page = sum(bytes_per_group)
         memory_type = memory_types[0]
 
         # Create one agent per (replica, shard), registering every group's
@@ -2057,6 +2075,7 @@ class KVTransferEngine(TransferEngine):
             tensor_agents=tensor_agents,
             leaf_ids=list(leaf_ids),
             num_pages_per_group=num_pages_per_group,
+            bytes_per_page=bytes_per_page,
             bytes_per_group=bytes_per_group,
             memory_type=memory_type,
             dp=dp,

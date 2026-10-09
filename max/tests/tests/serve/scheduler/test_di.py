@@ -81,6 +81,8 @@ from tests.serve.scheduler.common import (
     FakeOverlapPipeline,
     FakeTokenGeneratorPipeline,
     PagedKVCacheManager,
+    PagedKVCacheManagerInterface,
+    create_jenga_fp8_kv_cache,
     create_kv_cache,
 )
 
@@ -239,6 +241,7 @@ def create_di_scheduler(
     prefill_tp_per_replica: int = 1,
     prefill_dp: int | None = None,
     decode_dp: int | None = None,
+    jenga_fp8: bool = False,
 ) -> tuple[DecodeScheduler, PrefillScheduler, str, DIQueues]:
     """Creates a DecodeScheduler and PrefillScheduler pair for testing.
 
@@ -262,6 +265,8 @@ def create_di_scheduler(
             topologies while keeping the same total device count.
         decode_dp: Override ``dp`` for the decode worker only (defaults to
             ``dp``).
+        jenga_fp8: Give both workers a Jenga manager for an fp8 cache, whose
+            values and scales leaves hold independent block ids.
     """
 
     effective_prefill_dp = prefill_dp if prefill_dp is not None else dp
@@ -337,8 +342,18 @@ def create_di_scheduler(
     ] = queue.Queue()
     cancel_queue: queue.Queue[list[RequestID]] = queue.Queue()
 
-    kv_cache_prefill = _create_prefill_kv_cache()
-    kv_cache_decode = _create_decode_kv_cache()
+    kv_cache_prefill: PagedKVCacheManagerInterface
+    kv_cache_decode: PagedKVCacheManagerInterface
+    if jenga_fp8:
+        kv_cache_prefill = create_jenga_fp8_kv_cache(
+            64, max_batch_size, max_seq_len, page_size, enable_prefix_caching
+        )
+        kv_cache_decode = create_jenga_fp8_kv_cache(
+            64, max_batch_size, max_seq_len, page_size, enable_prefix_caching
+        )
+    else:
+        kv_cache_prefill = _create_prefill_kv_cache()
+        kv_cache_decode = _create_decode_kv_cache()
     server_addr = generate_zmq_ipc_path()
     client_addr = generate_zmq_ipc_path()
     dispatcher_server = BasicDispatcherServer(bind_addr=server_addr)
@@ -478,6 +493,32 @@ def test_one_req_end_to_end() -> None:
         single_token = sch_output.result
         assert isinstance(single_token, TextGenerationOutput)
         assert single_token.tokens == [tok]
+
+
+def test_jenga_fp8_end_to_end_moves_each_leaf_by_its_own_ids() -> None:
+    decode, prefill, server_addr, q = create_di_scheduler(jenga_fp8=True)
+    ctx = create_text_context(
+        target_endpoint=server_addr,
+        prompt_len=300,
+        output_len=5,
+    )
+    q.request_queue.put(ctx)
+
+    decode.run_iteration()
+    prefill.run_iteration()
+
+    (active,) = prefill.active_transfers.values()
+    src_idxs = active.transfer.src_idxs
+    dst_idxs = active.transfer.dst_idxs
+    leaf_ids = set(prefill.kv_cache.params.leaves())
+    assert len(leaf_ids) == 2
+    assert src_idxs.keys() == dst_idxs.keys() == leaf_ids
+    values_src, scales_src = src_idxs.values()
+    assert len(values_src) == len(scales_src) == 3
+    assert values_src != scales_src
+
+    run_until(lambda: ctx.request_id in done_request_ids(q), decode, prefill)
+    assert prefill.kv_cache.block_count(replica_idx=0).used == 0
 
 
 def test_ttft_join_hops_ride_first_token(
@@ -647,19 +688,25 @@ def test_di_with_dp2_requests_distributed_to_different_replicas() -> None:
     prefill_request1, _ = prefill.dispatcher.recv_request_nowait()
     assert isinstance(prefill_request1, PrefillRequest)
     assert prefill_request1.dst_replica_idx == 0
-    assert prefill_request1.dst_block_ids == [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    assert list(prefill_request1.dst_block_ids.values()) == [
+        [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    ]
 
     # Check that second request was assigned to replica 1
     prefill_request2, _ = prefill.dispatcher.recv_request_nowait()
     assert isinstance(prefill_request2, PrefillRequest)
     assert prefill_request2.dst_replica_idx == 1
-    assert prefill_request2.dst_block_ids == [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    assert list(prefill_request2.dst_block_ids.values()) == [
+        [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    ]
 
     # Check that third request was assigned to replica 0
     prefill_request3, _ = prefill.dispatcher.recv_request_nowait()
     assert isinstance(prefill_request3, PrefillRequest)
     assert prefill_request3.dst_replica_idx == 0
-    assert prefill_request3.dst_block_ids == [9, 10, 11, 12, 13, 14, 15, 16, 17]
+    assert list(prefill_request3.dst_block_ids.values()) == [
+        [9, 10, 11, 12, 13, 14, 15, 16, 17]
+    ]
 
 
 def test_di_with_dp2_end_to_end() -> None:
@@ -1300,7 +1347,7 @@ def test_prefix_caching_marks_cached_blocks_in_prefill_request() -> None:
             break
 
     # The leading pages should be marked -1 (prefix-cached on decode)
-    dst_ids = msg.dst_block_ids
+    (dst_ids,) = msg.dst_block_ids.values()
     num_cached = dst_ids.count(-1)
 
     assert num_cached > 0, "Expected some blocks to be prefix-cached"
@@ -1355,7 +1402,8 @@ def test_prefix_caching_marks_cached_blocks_independent_of_decode_dp() -> None:
             if isinstance(msg, PrefillRequest):
                 break
 
-        return msg.dst_block_ids.count(-1)
+        (dst_ids,) = msg.dst_block_ids.values()
+        return dst_ids.count(-1)
 
     baseline = num_cached_blocks(decode_dp=1)
     assert baseline > 0, "Expected some blocks to be prefix-cached"
@@ -2248,6 +2296,7 @@ def test_spec_decode_fixture_builds_multi_kv_topology() -> None:
     bytes_per_group = prefill.transfer_engine.bytes_per_group
     assert len(bytes_per_group) == 2
     assert bytes_per_group[0] != bytes_per_group[1]
+    assert prefill.transfer_engine.bytes_per_page == sum(bytes_per_group)
 
 
 def test_non_spec_decode_fixture_stays_single_kv() -> None:
