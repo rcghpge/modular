@@ -249,13 +249,18 @@ private:
   void moveChainsToTheEnd(GraphOp subgraphGraphOp, ArrayRef<CallOp> callsites) {
     SmallVector<uint64_t> argumentsToErase;
     auto block = subgraphGraphOp.getBodyBlock();
-    for (auto &&arg : llvm::make_early_inc_range(block->getArguments())) {
-      if (isa<ChainType>(arg.getType())) {
-        auto newArg = block->insertArgument(block->getNumArguments(),
-                                            arg.getType(), arg.getLoc());
-        arg.replaceAllUsesWith(newArg);
-        argumentsToErase.push_back(arg.getArgNumber());
-      }
+    // Collect first: inserting an argument can reallocate the block's argument
+    // list, which would leave an iterator over it dangling.
+    SmallVector<BlockArgument> chainArgs;
+    for (BlockArgument arg : block->getArguments())
+      if (isa<ChainType>(arg.getType()))
+        chainArgs.push_back(arg);
+
+    for (BlockArgument arg : chainArgs) {
+      auto newArg = block->insertArgument(block->getNumArguments(),
+                                          arg.getType(), arg.getLoc());
+      arg.replaceAllUsesWith(newArg);
+      argumentsToErase.push_back(arg.getArgNumber());
     }
 
     for (uint64_t idx : llvm::reverse(argumentsToErase))
