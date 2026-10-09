@@ -12841,112 +12841,60 @@ def targets():
 
     _tilelang_0_1_8_deps = [
         ":apache-tvm-ffi@multiple",
+        ":cloudpickle@3.1.2",
+        ":ml-dtypes@0.5.4",
         ":numpy@multiple",
+        ":psutil@7.0.0",
         ":torch@multiple",
+        ":tqdm@4.66.5",
+        ":typing-extensions@4.16.0",
+        ":z3-solver@4.15.4.0",
     ] + select({
-        ":_env_python_3.10_x86_64-unknown-linux-gnu_amd_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.10_aarch64-apple-darwin": [
+            ":setuptools@80.9.0",
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.10_x86_64-unknown-linux-gnu_nvidia_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.10_aarch64-unknown-linux-gnu": [
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.11_x86_64-unknown-linux-gnu_amd_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.10_x86_64-unknown-linux-gnu": [
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.11_x86_64-unknown-linux-gnu_nvidia_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.11_aarch64-apple-darwin": [
+            ":setuptools@80.9.0",
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.12_x86_64-unknown-linux-gnu_amd_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.11_aarch64-unknown-linux-gnu": [
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.12_x86_64-unknown-linux-gnu_nvidia_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.11_x86_64-unknown-linux-gnu": [
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.13_x86_64-unknown-linux-gnu_amd_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.12_aarch64-apple-darwin": [
+            ":setuptools@80.9.0",
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.13_x86_64-unknown-linux-gnu_nvidia_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
+        ":_env_python_3.12_aarch64-unknown-linux-gnu": [
             ":torch-c-dlpack-ext@0.1.5",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
         ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu-freethreaded_amd_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
+        ":_env_python_3.12_x86_64-unknown-linux-gnu": [
+            ":torch-c-dlpack-ext@0.1.5",
         ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu-freethreaded_nvidia_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
+        ":_env_python_3.13_aarch64-apple-darwin": [
+            ":setuptools@80.9.0",
+            ":torch-c-dlpack-ext@0.1.5",
         ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu_amd_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
+        ":_env_python_3.13_aarch64-unknown-linux-gnu": [
+            ":torch-c-dlpack-ext@0.1.5",
         ],
-        ":_env_python_3.14_x86_64-unknown-linux-gnu_nvidia_gpu": [
-            ":cloudpickle@3.1.2",
-            ":ml-dtypes@0.5.4",
-            ":psutil@7.0.0",
-            ":tqdm@4.66.5",
-            ":typing-extensions@4.16.0",
-            ":z3-solver@4.15.4.0",
+        ":_env_python_3.13_x86_64-unknown-linux-gnu": [
+            ":torch-c-dlpack-ext@0.1.5",
+        ],
+        ":_env_python_3.14_aarch64-apple-darwin": [
+            ":setuptools@80.9.0",
+        ],
+        ":_env_python_3.14_aarch64-apple-darwin-freethreaded": [
+            ":setuptools@80.9.0",
         ],
         "//conditions:default": [],
     })

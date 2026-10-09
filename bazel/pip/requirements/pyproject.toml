@@ -220,6 +220,9 @@ cpu = [
   "torchvision==0.25.0+cpu; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "torchvision==0.25.0; platform_machine != 'x86_64'",
   "triton==3.6.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  # Precompile-MEF record actions import GPU tests' torch references (which
+  # use tilelang) in the CPU exec configuration.
+  "tilelang==0.1.8",
 ]
 
 nvidia = [

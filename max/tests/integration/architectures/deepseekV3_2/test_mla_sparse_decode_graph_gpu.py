@@ -742,13 +742,6 @@ def test_mla_decode_graph_sparse_multi_step_smoke() -> None:
         index_topk=topk,
     )
 
-    kv_manager = PagedKVCacheManager(
-        params=multi_kv,
-        total_num_pages=total_num_pages,
-        session=session,
-        max_batch_size=32,
-    )
-
     len_mla_kv = len(tree.leaves(mla_kv_params.get_symbolic_inputs()[0]))
     len_indexer_kv = len(
         tree.leaves(indexer_kv_params.get_symbolic_inputs()[0])
@@ -802,6 +795,13 @@ def test_mla_decode_graph_sparse_multi_step_smoke() -> None:
     graph = construct()
     weights = random_weights(sparse_attn)
     model = session.load(graph, weights_registry=weights)
+
+    kv_manager = PagedKVCacheManager(
+        params=multi_kv,
+        total_num_pages=total_num_pages,
+        session=session,
+        max_batch_size=32,
+    )
 
     def _run_check(out_buf: Buffer, num_tokens: int) -> None:
         out_t = from_dlpack(out_buf).cpu()
