@@ -6,6 +6,7 @@ package(default_visibility = ["//max:consumers"])
 [
     mojo_test(
         name = src + ".test",
+        size = "large" if src == "test_stable_addr_tile_kernel.mojo" else None,
         srcs = [src],
         copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
         # The invalid-index test needs the index asserts compiled out to reach
@@ -16,6 +17,7 @@ package(default_visibility = ["//max:consumers"])
         deps = [
             "//max:builtin_kernels",
             "//max:extensibility",
+            "//max:layout",
             "//max:max_mojo",
             "@mojo//:std",
         ],

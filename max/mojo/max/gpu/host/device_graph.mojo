@@ -251,7 +251,7 @@ struct StableAddr(TrivialRegisterPassable):
     pointer. Neither layer may be dereferenced on the host.
     """
 
-    var ptr: Pointer[Pointer[NoneType, MutUntrackedOrigin], MutUntrackedOrigin]
+    var ptr: Pointer[Pointer[NoneType, MutUntrackedOrigin], ImmUntrackedOrigin]
     """Device address of the slot; the slot holds the device data pointer."""
 
 

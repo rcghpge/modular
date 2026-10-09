@@ -15,7 +15,6 @@
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.sys.info import is_gpu
 from max.gpu.host import StableAddr
-from layout import TileTensor
 from layout.tile_layout import Layout as TileLayout
 
 from .managed_tensor_slice import (
@@ -24,6 +23,7 @@ from .managed_tensor_slice import (
     ManagedTensorSlice,
     StaticTensorSpec,
 )
+from .stable_addr_engine import StableTileTensor, stable_tile_tensor
 
 
 @fieldwise_init
@@ -122,19 +122,16 @@ struct StableTensor[
     @inline(.always)
     def to_tile_tensor(
         self,
-        out result: TileTensor[
-            Self.dtype,
-            origin=MutUntrackedOrigin,
-            LayoutType=Self.RuntimeLayout,
-        ],
+        out result: StableTileTensor[Self.dtype, Self.RuntimeLayout],
     ):
-        """Builds a `TileTensor` over the pointer the slot holds now.
+        """Builds a `TileTensor` that keeps reading through the stable address.
 
-        Device only. Like `to_managed_tensor_slice()`, the result no longer
-        goes through the slot.
+        The result stores the stable address rather than resolving it at
+        conversion time, so the conversion may run on the host while the slot
+        is still dereferenced only on the device. The cost is one additional
+        pointer dereference per load or store.
 
         Returns:
-            A tile tensor over the current data pointer with this view's
-            layout.
+            A slot-backed tile tensor with this view's layout.
         """
-        return {self.unsafe_ptr(), self._runtime_layout}
+        return stable_tile_tensor[Self.dtype](self._addr, self._runtime_layout)

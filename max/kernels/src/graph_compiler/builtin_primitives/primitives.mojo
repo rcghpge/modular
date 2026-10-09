@@ -611,9 +611,11 @@ def mgp_device_graph_stable_tensor[
     replay. The slot belongs to the `DeviceGraphCache` for the model's
     lifetime, so the tensor carries no storage handle.
     """
-    var ptr = addr.ptr.unsafe_bitcast[Scalar[dtype]]().unsafe_origin_cast[
-        MutAnyOrigin
-    ]()
+    var ptr = (
+        addr.ptr.unsafe_bitcast[Scalar[dtype]]()
+        .unsafe_origin_cast[MutAnyOrigin]()
+        .unsafe_mut_cast[target_mut=True]()
+    )
     comptime if spec_rank == 0:
         # We promote scalar tensor to tensor<[1]>
         comptime assert buffer_rank == 1

@@ -16,7 +16,14 @@
 from std.collections import Array
 from std.collections.optional import Optional
 
-from layout import Coord, Idx, TensorLayout, TileTensor, row_major
+from layout import (
+    Coord,
+    Idx,
+    TensorEngine,
+    TensorLayout,
+    TileTensor,
+    row_major,
+)
 from layout.tile_layout import Layout
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -77,6 +84,7 @@ comptime elementwise_epilogue_type = def[
 def _load_reduce[
     dtype: DType,
     in_tile_layout: TensorLayout,
+    in_engine: TensorEngine,
     //,
     ngpus: Int,
     simd_width: Int,
@@ -87,7 +95,7 @@ def _load_reduce[
 ](
     elem_idx: Int,
     in_tiles: Array[
-        TileTensor[dtype, in_tile_layout, ImmutAnyOrigin],
+        TileTensor[dtype, in_tile_layout, ImmutAnyOrigin, Engine=in_engine],
         1 if use_multimem else ngpus,
     ],
 ) -> SIMD[dtype, simd_width]:
@@ -300,6 +308,7 @@ struct ReduceScatterConfig[
 def _reduce_scatter_impl[
     dtype: DType,
     in_tile_layout: TensorLayout,
+    in_engine: TensorEngine,
     //,
     ngpus: Int,
     *,
@@ -310,7 +319,7 @@ def _reduce_scatter_impl[
     use_multimem: Bool = False,
 ](
     in_tiles: Array[
-        TileTensor[dtype, in_tile_layout, ImmutAnyOrigin],
+        TileTensor[dtype, in_tile_layout, ImmutAnyOrigin, Engine=in_engine],
         1 if use_multimem else ngpus,
     ],
     out_buf: TileTensor[mut=True, dtype, ...],
