@@ -25,9 +25,9 @@ Load waits suspend on an AsyncRT value rather than parking the thread, so a
 worker waiting on the gate still runs the collective sub-task pinned to it.
 The collective side never waits at all; see `CollectiveGate`.
 
-Every type here is a no-op on a backend whose driver has no gate, and every
-scope releases on the raising path as well as through `__exit__`: leaking the
-gate wedges every later load.
+Every type here is a no-op on a backend whose driver has no gate. The scopes
+release in `__exit__`, which Mojo runs when the `with` body raises as well as
+when it returns; leaking the gate would wedge every later load.
 """
 
 from std.atomic import Atomic
@@ -97,27 +97,16 @@ struct CollectiveEnqueueScope:
     """
 
     var _ctx: DeviceContext
-    var _held: Bool
 
     def __init__(out self, ctx: DeviceContext):
         self._ctx = ctx
-        self._held = False
 
-    def __deinit__(deinit self):
-        if self._held:
-            self._close()
-
-    def __enter__(mut self):
+    def __enter__(self):
         external_call["AsyncRT_KernelLoadGate_beginEnqueue", NoneType](
             self._ctx._handle
         )
-        self._held = True
 
-    def __exit__(mut self):
-        self._close()
-        self._held = False
-
-    def _close(self):
+    def __exit__(self):
         external_call["AsyncRT_KernelLoadGate_endEnqueue", NoneType](
             self._ctx._handle
         )
@@ -137,27 +126,16 @@ struct KernelLoadScope:
     """
 
     var _ctx: DeviceContext
-    var _held: Bool
 
     def __init__(out self, ctx: DeviceContext):
         self._ctx = ctx
-        self._held = False
 
-    def __deinit__(deinit self):
-        if self._held:
-            self._close()
-
-    def __enter__(mut self):
+    def __enter__(self):
         external_call["AsyncRT_KernelLoadGate_beginLoad", NoneType](
             self._ctx._handle
         )
-        self._held = True
 
-    def __exit__(mut self):
-        self._close()
-        self._held = False
-
-    def _close(self):
+    def __exit__(self):
         external_call["AsyncRT_KernelLoadGate_endLoad", NoneType](
             self._ctx._handle
         )
