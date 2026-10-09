@@ -329,6 +329,7 @@ class SparseLatentAttentionWithRopeFp8(LatentAttentionWithRopeFp8):
         mla_prefill_metadata: MLAPrefillMetadata | None = None,
         prev_topk_indices: TensorValue | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: TensorValue | None = None,
     ) -> tuple[TensorValue, TensorValue]:
         wqkv, wqkv_scale = self.wqkv
         qkv = quantized_matmul(
@@ -365,7 +366,7 @@ class SparseLatentAttentionWithRopeFp8(LatentAttentionWithRopeFp8):
                 freqs_cis,
                 input_row_offsets,
                 indexer_kv_collection,
-                layer_idx,
+                layer_idx if indexer_layer_idx is None else indexer_layer_idx,
                 mask_variant=MHAMaskVariant.CAUSAL_MASK,
             )
         else:
@@ -567,6 +568,7 @@ class DataParallelSparseLatentAttentionWithRopeFp8(
         mla_prefill_metadata: list[MLAPrefillMetadata] | None = None,
         prev_topk_indices: Sequence[TensorValue] | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: TensorValue | None = None,
     ) -> tuple[list[TensorValue], list[TensorValue]]:
         if not self.devices:
             raise ValueError("devices cannot be None or empty")
@@ -628,6 +630,7 @@ class DataParallelSparseLatentAttentionWithRopeFp8(
                 mla_prefill_metadata=mla_prefill_metadata_i,
                 prev_topk_indices=prev_topk_i,
                 reuse_prev_topk=reuse_prev_topk,
+                indexer_layer_idx=indexer_layer_idx,
             )
             outs.append(out_i)
             topk_indices.append(topk_i)
@@ -681,6 +684,7 @@ class TensorParallelSparseLatentAttentionWithRopeFp8(
         mla_prefill_metadata: list[MLAPrefillMetadata] | None = None,
         prev_topk_indices: Sequence[TensorValue] | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: TensorValue | None = None,
     ) -> tuple[list[TensorValue], list[TensorValue]]:
         if not self.devices:
             raise ValueError("devices cannot be None or empty")
@@ -726,6 +730,7 @@ class TensorParallelSparseLatentAttentionWithRopeFp8(
                     prev_topk_indices[i] if prev_topk_indices else None
                 ),
                 reuse_prev_topk=reuse_prev_topk,
+                indexer_layer_idx=indexer_layer_idx,
             )
             outs.append(out_i)
             topk_indices.append(topk_i)
@@ -968,6 +973,7 @@ class SparseLatentAttentionWithRope(LatentAttentionWithRope):
         mla_prefill_metadata: MLAPrefillMetadata | None = None,
         prev_topk_indices: TensorValue | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: TensorValue | None = None,
     ) -> tuple[TensorValue, TensorValue]:
         q_lora_rank = self.q_lora_rank
         if q_lora_rank is None:
@@ -991,7 +997,7 @@ class SparseLatentAttentionWithRope(LatentAttentionWithRope):
                 freqs_cis,
                 input_row_offsets,
                 indexer_kv_collection,
-                layer_idx,
+                layer_idx if indexer_layer_idx is None else indexer_layer_idx,
                 mask_variant=MHAMaskVariant.CAUSAL_MASK,
             )
         else:
@@ -1166,6 +1172,7 @@ class DataParallelSparseLatentAttentionWithRope(SparseLatentAttentionWithRope):
         mla_prefill_metadata: list[MLAPrefillMetadata] | None = None,
         prev_topk_indices: list[TensorValue] | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: TensorValue | None = None,
     ) -> tuple[list[TensorValue], list[TensorValue]]:
         del signal_buffers
         if not self.devices:
@@ -1225,6 +1232,7 @@ class DataParallelSparseLatentAttentionWithRope(SparseLatentAttentionWithRope):
                 mla_prefill_metadata=mla_prefill_metadata_i,
                 prev_topk_indices=prev_topk_i,
                 reuse_prev_topk=reuse_prev_topk,
+                indexer_layer_idx=indexer_layer_idx,
             )
             outs.append(attn_out)
             topk_outs.append(topk_indices)
@@ -1277,6 +1285,7 @@ class TensorParallelSparseLatentAttentionWithRope(
         mla_prefill_metadata: list[MLAPrefillMetadata] | None = None,
         prev_topk_indices: list[TensorValue] | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: TensorValue | None = None,
     ) -> tuple[list[TensorValue], list[TensorValue]]:
         if not self.devices:
             raise ValueError("devices cannot be None or empty")
@@ -1319,6 +1328,7 @@ class TensorParallelSparseLatentAttentionWithRope(
                 mla_prefill_metadata=mla_prefill_metadata_i,
                 prev_topk_indices=prev_topk_i,
                 reuse_prev_topk=reuse_prev_topk,
+                indexer_layer_idx=indexer_layer_idx,
             )
             outs.append(attn_out)
             topk_outs.append(topk_indices)

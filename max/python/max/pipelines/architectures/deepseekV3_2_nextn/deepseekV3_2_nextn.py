@@ -327,6 +327,7 @@ class DeepseekV3_2NextN(Module):
 
         layer_outs = self.decoder_layer(
             ops.constant(0, DType.uint32, device=DeviceRef.CPU()),
+            ops.constant(0, DType.uint32, device=DeviceRef.CPU()),
             h,
             h_norm,
             signal_buffers,
