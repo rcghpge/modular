@@ -49,7 +49,7 @@ struct StableAddr(TrivialRegisterPassable):
     graph-compiler primitives that pass one through compile. No slot is ever
     created on the HAL backend."""
 
-    var ptr: Pointer[Pointer[NoneType, MutUntrackedOrigin], MutUntrackedOrigin]
+    var ptr: Pointer[Pointer[NoneType, MutUntrackedOrigin], ImmUntrackedOrigin]
     """Device address of the slot; the slot holds the device data pointer."""
 
 
