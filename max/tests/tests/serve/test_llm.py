@@ -616,12 +616,20 @@ async def _run_reasoning_pipeline(
         bound = TokenGeneratorPipeline.next_token_chunk.__get__(
             pipeline, type(pipeline)
         )
-        return [
+        chunks = [
             chunk
             async for chunk in await bound(
                 mock_request, parse_reasoning=parse_reasoning
             )
         ]
+
+    # Every generated token is billed exactly once, stripped delimiters
+    # included.
+    assert sum(
+        chunk.token_count + (chunk.reasoning_token_count or 0)
+        for chunk in chunks
+    ) == sum(len(response.tokens) for response in scheduler_responses)
+    return chunks
 
 
 def _make_responses(
@@ -662,7 +670,7 @@ async def _input_sensitive_decode(token_array: Any, **kwargs: Any) -> str:
             [[THINK_START_TOKEN_ID, 10, 20, THINK_END_TOKEN_ID], [30]],
             None,
             _input_sensitive_decode,
-            [(2, 0, "reasoning_text", None), (0, 1, None, "content_text")],
+            [(4, 0, "reasoning_text", None), (0, 1, None, "content_text")],
             id="reasoning_then_content",
         ),
         pytest.param(
@@ -681,8 +689,8 @@ async def _input_sensitive_decode(token_array: Any, **kwargs: Any) -> str:
             None,
             None,
             [
-                (1, 0, "decoded_text", None),
-                (1, 0, "decoded_text", None),
+                (2, 0, "decoded_text", None),
+                (2, 0, "decoded_text", None),
                 (0, 1, None, "decoded_text"),
             ],
             id="multi_chunk_reasoning",
@@ -691,7 +699,7 @@ async def _input_sensitive_decode(token_array: Any, **kwargs: Any) -> str:
             [[THINK_START_TOKEN_ID, 10, 20], [30]],
             None,
             None,
-            [(2, 0, "decoded_text", None), (1, 0, "decoded_text", None)],
+            [(3, 0, "decoded_text", None), (1, 0, "decoded_text", None)],
             id="all_reasoning_no_content",
         ),
     ],
@@ -772,7 +780,7 @@ async def test_next_token_chunk_reasoning_partitions_logprobs() -> None:
 
     assert len(chunks) == 1
     assert chunks[0].token_count == 1
-    assert chunks[0].reasoning_token_count == 1
+    assert chunks[0].reasoning_token_count == 3
     assert chunks[0].token_log_probabilities == [-0.4]
     assert chunks[0].top_log_probabilities == [{"tok": -0.5}]
     assert chunks[0].sampled_tokens == ["text"]
@@ -1069,6 +1077,43 @@ async def test_token_ids_on_a_terminal_stripped_chunk() -> None:
 
     assert len(chunks) == 1
     assert chunks[0].token_ids == [THINK_START_TOKEN_ID]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "token_lists",
+    [
+        pytest.param(
+            [[THINK_START_TOKEN_ID], [10], [THINK_END_TOKEN_ID], [30]],
+            id="stripped_then_text",
+        ),
+        pytest.param(
+            [[THINK_START_TOKEN_ID], [10], [THINK_END_TOKEN_ID]],
+            id="stripped_terminal_after_stripped",
+        ),
+    ],
+)
+async def test_fully_stripped_chunks_are_billed_once(
+    token_lists: list[list[int]],
+) -> None:
+    """Tokens of a chunk stripped to nothing still count toward usage.
+
+    Like a terminal chunk stripped to nothing, a non-terminal chunk the parser
+    reduces to nothing was genuinely generated, so the next emitted chunk
+    bills it as reasoning -- otherwise a parser that drops a long header
+    reports a completion_tokens far below what was generated.
+    """
+    chunks = await _run_reasoning_pipeline(_make_responses(token_lists))
+
+    generated = [t for tokens in token_lists for t in tokens]
+    assert [t for chunk in chunks for t in chunk.token_ids or []] == generated
+    assert sum(
+        chunk.token_count + (chunk.reasoning_token_count or 0)
+        for chunk in chunks
+    ) == len(generated)
+    assert sum(chunk.token_count for chunk in chunks) == sum(
+        1 for t in generated if t == 30
+    )
 
 
 def test_merge_outputs_concatenates_token_ids() -> None:

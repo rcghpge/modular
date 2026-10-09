@@ -355,7 +355,8 @@ class TokenGeneratorPipeline(
         # Track whether we've yielded the first chunk (for TTFT metric)
         first_chunk_yielded = False
         # Ids of chunks the reasoning parser reduced to nothing visible,
-        # carried onto the next emitted chunk so token_ids stays complete.
+        # carried onto the next emitted chunk so token_ids and usage stay
+        # complete.
         skipped_token_ids: list[int] = []
         # Prefill often stamps hops on a delimiter-only first output that
         # this loop skips. Keep the last stamp until METRICS.ttft.
@@ -558,9 +559,8 @@ class TokenGeneratorPipeline(
                                 yield TokenGeneratorOutput(
                                     status=response.final_status,
                                     token_count=0,
-                                    reasoning_token_count=len(response.tokens)
-                                    if response.tokens
-                                    else 0,
+                                    reasoning_token_count=len(skipped_token_ids)
+                                    + len(response.tokens),
                                     prompt_token_count=context.tokens.prompt_length,
                                     cached_token_count=response.num_cached_tokens
                                     if not first_chunk_yielded
@@ -699,7 +699,12 @@ class TokenGeneratorPipeline(
                             cached_token_count=response.num_cached_tokens
                             if is_first_chunk
                             else None,
-                            reasoning_token_count=reasoning_token_count,
+                            # Delimiters stripped from this chunk and earlier
+                            # fully stripped chunks are billed here, by the
+                            # same rule as the terminal case above.
+                            reasoning_token_count=len(skipped_token_ids)
+                            + len(response.tokens)
+                            - token_count,
                             stop_sequence=stop_sequence_match,
                             batch_id=batch_id,
                             token_ids=skipped_token_ids + list(response.tokens),
