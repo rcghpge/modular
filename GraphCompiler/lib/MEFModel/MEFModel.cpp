@@ -660,11 +660,9 @@ ErrorOrSuccess ExecutableModel::validateCapturedPerDeviceEntries(
   return success();
 }
 
-// The gate for the backend this model runs on, or null if it has none. A model
-// can list a host context alongside its accelerators, and that one has no gate,
-// so take the first context that does rather than the first context. The
-// accelerators share one driver, so any of them is representative. extraArgs
-// are already resolved by the time replay reaches us.
+// The gate for the backend this model runs on, or null if it has none. A host
+// context has no gate, so take the first context that does; the accelerators
+// share one driver.
 static Driver::KernelLoadGate *
 kernelLoadGateFor(ArrayRef<AsyncRT::AnyAsyncValueRef> extraArgs) {
   for (const AsyncRT::AnyAsyncValueRef &arg : extraArgs) {
@@ -678,10 +676,9 @@ kernelLoadGateFor(ArrayRef<AsyncRT::AnyAsyncValueRef> extraArgs) {
 }
 
 // Like MLRT::launchDeviceCollective, but dispatches only once the collective
-// owns `gate`, and releases it when the last element has run. The caller only
-// awaits the result, and holds nothing while it does: a task its wait runs may
-// need the gate, and a caller holding the gate across that wait could only
-// release it after that task returned.
+// owns `gate`, and releases it when the last element has run. The caller holds
+// nothing while it awaits the result, since a task the wait runs may need the
+// gate.
 template <typename ElementFn>
 static AsyncRT::AsyncValueRef<AsyncRT::Chain>
 launchGatedDeviceCollective(AsyncRT::CPUDevice &cpuDevice,
@@ -739,13 +736,9 @@ ExecutableModel::launchDeviceGraphs(ArrayRef<uint64_t> normalizedKeys) const {
       errors[deviceIdx] = err.takeError();
   };
 
-  // A captured graph can contain collective kernels that spin at a device-side
-  // barrier until every peer replays, and each replay is a task pinned to its
-  // device's worker. A first-time kernel load blocks until its device
-  // quiesces, so one that lands on a worker a pending replay is pinned to
-  // strands the replays that would release it. The gate keeps loads out until
-  // every replay has been launched; see MXSERV-441 and Driver::KernelLoadGate.
-  // One device cannot strand a peer, so the single-graph case needs no gate.
+  // A captured graph can contain collective kernels, so the gate keeps kernel
+  // loads out until every replay has launched; see Driver::KernelLoadGate. A
+  // single graph has no peers to strand, so it skips the gate.
   if (normalizedKeys.size() == 1) {
     launchGraph(0);
   } else {

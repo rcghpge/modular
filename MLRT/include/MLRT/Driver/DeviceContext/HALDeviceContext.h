@@ -584,9 +584,7 @@ public:
   static int64_t configAsInt(StringRef key, int64_t defaultValue,
                              bool *isDefault = nullptr);
 
-  /// Always null: the HAL shim does not route kernel loads through a driver
-  /// lock this layer can see, so there is nothing to gate against a
-  /// collective launch. See the legacy declaration for what this is for.
+  /// Always null: the HAL shim has no kernel-load gate.
   KernelLoadGate *kernelLoadGate() { return nullptr; }
 
   /// Returns the device this context executes on.

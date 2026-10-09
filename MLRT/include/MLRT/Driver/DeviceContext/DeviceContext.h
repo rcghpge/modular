@@ -1079,9 +1079,7 @@ public:
   memmapFile(const std::filesystem::path &filename);
 
   /// The gate that keeps first-time kernel loads from interleaving with a
-  /// multi-device collective's enqueues, or null on a backend whose loads do
-  /// not contend with device execution. Owned by the backend's driver rather
-  /// than by one context, since the deadlock it prevents spans contexts.
+  /// multi-device collective's enqueues, or null on a backend without one.
   virtual KernelLoadGate *kernelLoadGate() { return nullptr; }
 
   // DeviceFunction loading and execution.

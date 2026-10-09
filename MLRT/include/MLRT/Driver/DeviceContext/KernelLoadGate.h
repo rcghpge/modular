@@ -5,10 +5,8 @@
 //===----------------------------------------------------------------------===//
 //
 // Keeps first-time kernel loads from interleaving with a multi-device
-// collective's per-device enqueues. The mechanism only: an instance is owned
-// by the CUDA driver (see CUDADriver) rather than by one context, because the
-// deadlock it prevents spans contexts. HIP loads do not wait for a busy
-// device, so HIP has none.
+// collective's per-device enqueues. The CUDA driver owns the only instance;
+// HIP loads do not wait for a busy device, so HIP has none.
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,55 +27,26 @@ namespace M::Driver {
 /// Keeps first-time kernel loads from interleaving with a multi-device
 /// collective's per-device enqueues.
 ///
-/// `loadFunction`'s driver calls block until their device quiesces, and hold
-/// that device's context lock while they do. A collective kernel spins at a
-/// device-side barrier until every peer arrives, so a load that begins while a
-/// collective is only partway through its enqueues waits on a device that may
-/// never go idle. The driver's locks are per context, so the cycle closes
-/// through a third party that ties a peer's enqueue to the loading context: a
-/// thread that holds another context's lock while it waits for the loading
-/// one's, such as a cross-device copy or a deferred free recording an event on
-/// the other device, or the worker a peer's enqueue is pinned to, parked in the
-/// load itself. Keeping loads out of the enqueues removes the interleaving
-/// every such cycle needs. See MXSERV-441.
+/// A first-time load blocks until its device is idle, holding that context's
+/// driver lock. A collective kernel spins at a device-side barrier until every
+/// peer arrives, so a load that lands partway through a collective's enqueues
+/// can wait on a device that never goes idle while it holds up a peer's
+/// enqueue. See MXSERV-441.
 ///
-/// Four properties are load-bearing and were all learned the hard way.
+/// Loads are readers and run concurrently. A collective is exclusive: it waits
+/// for in-flight loads to drain, and new loads wait until it, and any
+/// collectives queued behind it, have finished enqueueing.
 ///
-/// No state is static. Every field below lives in this object, which is a
-/// member of the driver, so the reference each `DeviceContext` hands out
-/// reaches the same bytes from every caller. That matters because a served
-/// process links this code statically into five shared objects and the two
-/// sides of the gate land in different ones: the FFI entry points in
-/// `libAsyncRTMojoBindings.so`, `CUDADeviceContext::loadFunction` in
-/// `_core.so`. File scope here, and an internal-linkage `thread_local`
-/// especially, is five variables no linker will coalesce.
+/// No wait blocks a worker. Loads wait on an `AsyncValueRef<Chain>` through
+/// `AsyncRT::await`, which lets the worker run other tasks, including a
+/// collective's per-device enqueue pinned to it. The collective side never
+/// waits: `tryAcquireCollective` grants the gate or returns a grant to dispatch
+/// from, and whichever thread finishes the last per-device enqueue calls
+/// `releaseCollective`. A frame that held the gate across a donating wait
+/// could be buried beneath a task that needs the gate.
 ///
-/// Loads do not exclude each other. They are readers. An exclusive gate
-/// serializes a cold load on one device behind a cold load on another, which
-/// strands a peer that would otherwise have launched and let the first load's
-/// device drain.
-///
-/// Waiting donates rather than parks. A worker blocked on a plain mutex cannot
-/// run the collective sub-task pinned to it, so the gate would deadlock on the
-/// very thread it is waiting for. Load waiters suspend on an
-/// `AsyncValueRef<Chain>` through `AsyncRT::await`, which on a worker donates
-/// the thread to the queue instead of blocking it.
-///
-/// No frame holds the gate across a wait. A donating wait runs other tasks as
-/// nested calls on the waiter's stack, so a frame that held the gate while
-/// waiting for its fan-out could end up beneath a task that needs the gate,
-/// and only that buried frame could release it. So the collective side never
-/// blocks: `tryAcquireCollective` either grants the gate or hands back a grant
-/// to continue from, and whichever thread finishes the last per-device enqueue
-/// calls `releaseCollective`. Loads may still wait, because a load waits before
-/// it is counted and so holds nothing while it does. The failure this rules out
-/// is reproduced by test_kernel_load_gate_nested.
-///
-/// Only `tryAcquireCollective` allocates, and only it needs a `CPUDevice`. A
-/// load either finds the gate idle, which costs a counter under the mutex, or
-/// waits on the chain the busy gate already allocated. So the load path never
-/// reaches for a runtime, and a collective cannot claim the gate without a
-/// caller that holds one.
+/// All state lives in this object, never at file scope: the two sides of the
+/// gate are linked into different shared objects of a served process.
 class KernelLoadGate {
 public:
   KernelLoadGate() = default;
@@ -128,17 +97,13 @@ public:
   /// work for the collective holding the gate, so its loads proceed instead of
   /// waiting on a gate their own collective owns.
   ///
-  /// Keyed on thread identity because that is the only channel available: the
-  /// sub-tasks run on the affinity workers rather than the thread that claimed
-  /// the gate, and their loads reach `loadFunction` from arbitrary depth
-  /// inside kernel code with no parameter to carry the fact down. Sound only
-  /// because a sub-task body never suspends, so the registration cannot follow
-  /// a migrating task onto another worker, and no other task runs on the
-  /// thread while it is registered. Registering a thread twice would mean a
-  /// body did wait, so it asserts.
+  /// Keyed on thread identity, since loads reach `loadFunction` from deep
+  /// inside kernel code with no parameter to carry the fact. Sound because a
+  /// per-device launch body never suspends, so no other task runs on the
+  /// thread while it is registered.
   ///
-  /// Paired calls rather than a scope object because the only caller is
-  /// across the FFI, which cannot hold one.
+  /// Paired calls rather than a scope object because the only caller is the
+  /// FFI.
   void beginEnqueue();
   void endEnqueue();
 
@@ -160,11 +125,8 @@ private:
   std::mutex mu_;
   State state_ = State::Idle;
   size_t inFlightLoads_ = 0;
-  /// Threads running the open collective's per-device enqueues, keyed by
-  /// `llvm::get_threadid()`, the identity AsyncRT itself checks its workers
-  /// against. Holds one entry per participating device, so a scan is cheaper
-  /// than a map, and the inline capacity covers a node's devices without
-  /// allocating.
+  /// Threads running the open collective's per-device enqueues, by
+  /// `llvm::get_threadid()`. One entry per device, so a scan is enough.
   llvm::SmallVector<uint64_t, 8> enqueueThreads_;
   /// Fulfilled when the gate returns to Idle; waited on by loads. Survives a
   /// hand-off between queued collectives, so loads wait out the whole run of

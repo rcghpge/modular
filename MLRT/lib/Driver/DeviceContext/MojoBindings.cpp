@@ -526,23 +526,12 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
                               debugLevel, optimizationLevel, debugName));
 }
 
-// Exposes KernelLoadGate to a Mojo collective. The gate comes from the
-// context's own driver, so there is no global to look up and no ambiguity
-// about which backend's gate applies.
-//
-// `tryAcquireCollective` runs on the thread orchestrating the fan-out, which
-// dispatches the per-device enqueues once it owns the gate; the last of them
-// calls `releaseCollective`. `beginEnqueue` runs on each affinity worker the
-// fan-out dispatches to, so that worker's loads bypass the gate their own
-// collective holds.
+// Exposes KernelLoadGate to a Mojo collective, through the context's driver.
 //
 // Returns true if the collective owns the gate now, which is always the case
-// on a backend without one. Otherwise constructs the grant to continue from
-// into `grantOut`, which the caller owns and destroys.
-//
-// This is the one place that resolves a CPUDevice, because it is the only
-// caller with no way to be handed one: the collective reaches here from Mojo.
-// It always runs under AsyncRT, since the fan-out it brackets is a TaskGroup.
+// on a backend without one. Otherwise constructs the grant to dispatch from
+// into `grantOut`, which the caller owns and destroys. Takes the CPUDevice
+// from the current thread, since the collective's fan-out is a TaskGroup.
 MODULAR_EXPORT bool AsyncRT_KernelLoadGate_tryAcquireCollective(
     DeviceContext *ctx, AsyncRT::AsyncValueRef<AsyncRT::Chain> *grantOut) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_KernelLoadGate_tryAcquireCollective",
@@ -572,8 +561,8 @@ AsyncRT_KernelLoadGate_releaseCollective(DeviceContext *ctx) {
     gate->releaseCollective();
 }
 
-// For Mojo callers into vendor libraries, whose calls can block on a busy
-// device just as a module load does but never reach `loadFunction`.
+// For vendor library calls, which can block on a busy device but never reach
+// `loadFunction`.
 MODULAR_EXPORT void AsyncRT_KernelLoadGate_beginLoad(DeviceContext *ctx) {
   if (KernelLoadGate *gate = ctx->kernelLoadGate())
     gate->openLoad();

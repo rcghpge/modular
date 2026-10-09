@@ -508,10 +508,8 @@ public:
   static ErrorOr<const CUDADriver &> get();
 
   /// Keeps kernel loads from interleaving with a multi-device collective's
-  /// enqueues. It belongs to the driver rather than to a context: the
-  /// driver's locks are per context, but the deadlock it prevents runs
-  /// through a thread that spans contexts, which a per-context gate would
-  /// miss. Mutable because the driver is handed out by const reference.
+  /// enqueues. Owned by the driver because the deadlock it prevents spans
+  /// contexts. Mutable because the driver is handed out by const reference.
   KernelLoadGate &kernelLoadGate() const { return kernelLoadGate_; }
 
   /// Returns true when cuMemcpyBatchAsync (CUDA 12.8+) was successfully
