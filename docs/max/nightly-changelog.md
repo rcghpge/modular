@@ -752,6 +752,12 @@ This version is still a work in progress.
 
 ## Breaking changes
 
+- DSpark speculative decoding now has its own method: serve a DSpark draft
+  with `--speculative-method dspark` instead of `dflash`. DSpark drafts a
+  block at a time like DFlash but runs a different draft step, so a DSpark
+  draft under any other method now fails at startup with a message naming
+  the method to use.
+
 - `max.gpu.primitives.warp.reduce()` and `lane_group_reduce()` now take the
   reduction function as a runtime closure argument instead of a compile-time
   `capturing` parameter. The shuffle function stays a compile-time parameter:

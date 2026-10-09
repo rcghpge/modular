@@ -1339,7 +1339,7 @@ class BlockManager:
             num_draft_tokens_per_step: Number of draft KV positions written
                 per draft forward. Zero when speculative decoding is
                 disabled; one for autoregressive drafts (``eagle``, ``mtp``);
-                equal to ``num_draft_tokens`` for block drafts (``dflash``).
+                equal to ``num_draft_tokens`` for block drafts (``dflash``, ``dspark``).
                 Used by ``_compute_seq_len`` to size the cache for block
                 drafts, whose ``forward_block`` writes one extra position
                 past the bonus token.
@@ -1421,7 +1421,7 @@ class BlockManager:
             num_draft_tokens_per_step: Number of draft KV positions written
                 per draft forward. Zero when speculative decoding is
                 disabled; one for autoregressive drafts (``eagle``, ``mtp``);
-                equal to ``num_draft_tokens`` for block drafts (``dflash``).
+                equal to ``num_draft_tokens`` for block drafts (``dflash``, ``dspark``).
                 Used by ``_compute_seq_len`` to size the cache for block
                 drafts, whose ``forward_block`` writes one extra position
                 past the bonus token.

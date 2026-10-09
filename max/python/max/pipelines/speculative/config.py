@@ -53,7 +53,7 @@ draft slots before any real draft exists. Defined here so the graph side
 (``architectures``) and the runtime side (``lib``) agree on a single value.
 """
 
-SpeculativeMethod = Literal["eagle", "mtp", "dflash", "dflash2"]
+SpeculativeMethod = Literal["eagle", "mtp", "dflash", "dflash2", "dspark"]
 """The supported methods for speculative decoding."""
 
 _ONE_TOKEN_PER_STEP: tuple[SpeculativeMethod, ...] = ("eagle", "mtp")
@@ -144,8 +144,8 @@ class SpeculativeConfig(ConfigFileModel):
     )
     """The speculative decoding method to use.
 
-    One of ``"eagle"``, ``"mtp"``, ``"dflash"``, or ``"dflash2"``. When
-    ``None``, speculative decoding is disabled.
+    One of ``"eagle"``, ``"mtp"``, ``"dflash"``, ``"dflash2"``, or
+    ``"dspark"``. When ``None``, speculative decoding is disabled.
     """
 
     num_speculative_tokens: int | None = Field(
@@ -155,7 +155,7 @@ class SpeculativeConfig(ConfigFileModel):
         description=(
             "The number of speculative tokens. Unset selects a per-method "
             "default: 2 for ``eagle``/``mtp``, and the draft checkpoint's "
-            "trained width for ``dflash``."
+            "trained width for ``dflash`` and ``dspark``."
         ),
     )
     """The number of tokens the draft proposes per verification pass.
@@ -203,7 +203,7 @@ class SpeculativeConfig(ConfigFileModel):
     it carries. ``None`` verifies every drafted token, which is the behavior
     when the field is unset.
 
-    Applies to every speculative method. A block drafter (``dflash``) still
+    Applies to every speculative method. A block drafter (``dflash``, ``dspark``) still
     drafts its whole checkpoint-fixed block, and narrowing changes only how
     much of that block the target verifies. The exception is a count of
     ``0``, where a draft that declares ``supports_zero_draft_rows`` skips the
@@ -287,7 +287,7 @@ class SpeculativeConfig(ConfigFileModel):
                 "num_speculative_tokens_per_batch_size both choose the verify "
                 "width; set only one."
             )
-        # dflash reads its ceiling from the checkpoint later, so only the
+        # A block draft reads its ceiling from the checkpoint later, so only the
         # syntax is checked for it here; the pipeline checks the ceiling.
         parse_adaptive_widths(
             self.adaptive_speculative_widths, self.num_speculative_tokens
@@ -312,8 +312,9 @@ class SpeculativeConfig(ConfigFileModel):
     critical path of a prompt's time to first token.
 
     Capped at :attr:`num_speculative_tokens` where it is read, not here:
-    ``dflash`` leaves that width for the architecture to resolve from the draft
-    checkpoint, so the ceiling is not yet known at config-validation time.
+    a block draft leaves that width for the architecture to resolve from the
+    draft checkpoint, so the ceiling is not yet known at config-validation
+    time.
 
     ``None`` leaves mixed batches on the batch-size schedule, which is the
     behavior when the field is unset. Reachable only alongside
@@ -499,18 +500,39 @@ class SpeculativeConfig(ConfigFileModel):
         """Returns whether the configured method is a DFlash block draft.
 
         True for both ``"dflash"`` and ``"dflash2"``: v2 keeps v1's fused
-        graph shape and block-drafting contract, so consumers that only
-        need "the draft arrives a block at a time" -- pipeline-class
-        selection, KV cache sizing -- want both. Architecture selection is
-        the exception: each fused graph is built for one drafter, so the
-        v1 and Eagle arms in ``lib.config`` exclude v2 and a v2 target
-        gets its own arm. Use :meth:`is_dflash2` where they differ.
+        graph shape and block-drafting contract. Each fused graph is built
+        for one drafter, though, so the v1 and Eagle arms in ``lib.config``
+        exclude v2 and a v2 target gets its own arm. Use :meth:`is_dflash2`
+        where they differ, and :meth:`is_block_draft` where only "the draft
+        arrives a block at a time" matters.
         """
         return self.speculative_method in ("dflash", "dflash2")
 
     def is_dflash2(self) -> bool:
         """Returns whether the configured method is DFlash2 specifically."""
         return self.speculative_method == "dflash2"
+
+    def is_dspark(self) -> bool:
+        """Returns whether the configured method is a DSpark block draft.
+
+        DSpark drafts a block at a time like DFlash, but its drafts run a
+        different step, so it is a method of its own rather than a DFlash
+        variant.
+        """
+        return self.speculative_method == "dspark"
+
+    def is_block_draft(self) -> bool:
+        """Returns whether the draft proposes a block of tokens per step.
+
+        True for every method outside the one-token-per-step methods
+        (``"eagle"``, ``"mtp"``): ``"dflash"``, ``"dflash2"`` and
+        ``"dspark"``. Pipeline-class selection and KV cache sizing branch on
+        this; selecting a fused graph branches on the method itself.
+        """
+        return (
+            self.speculative_method is not None
+            and self.speculative_method not in _ONE_TOKEN_PER_STEP
+        )
 
     def uses_greedy_rejection(self) -> bool:
         """Returns whether the ``"greedy"`` rejection sampling strategy is selected."""
