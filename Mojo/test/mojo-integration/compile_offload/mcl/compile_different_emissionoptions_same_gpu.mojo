@@ -85,6 +85,14 @@ def main() raises:
     ]()
     print(t2.kernel)
 
+    var t3 = _compile_info[
+        hello_nvptx,
+        compile_options="disable-machine-cse=true",
+        emission_kind=0,
+    ]()
+    print(t3.kernel)
+
 
 # CHECK: Emit offloads with options:
+# CHECK: Emit offloads with options: disable-machine-cse=true
 # CHECK: Emit offloads with options: greedy-reverse-local-assignment=true

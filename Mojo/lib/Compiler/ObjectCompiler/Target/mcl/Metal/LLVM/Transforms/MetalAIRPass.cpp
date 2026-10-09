@@ -783,7 +783,7 @@ private:
         // Create a load instruction to get the scalar value from the constant
         // buffer
         BasicBlock &entryBB = newFunc.getEntryBlock();
-        IRBuilder<> builder(&entryBB, entryBB.begin());
+        IRBuilder<> builder(entryBB.begin());
 
         // Load the scalar value from the constant buffer
         LoadInst *loadedValue = builder.CreateLoad(
@@ -2256,7 +2256,7 @@ public:
 
     BasicBlock &entryBB = func.getEntryBlock();
     IRBuilder<> irBuilder(ctx);
-    irBuilder.SetInsertPoint(&entryBB, entryBB.getFirstNonPHIIt());
+    irBuilder.SetInsertPoint(entryBB.getFirstNonPHIIt());
 
     // RAUW without the type-equality assertion; needed when old and new types
     // differ (e.g., ptr → ptr addrspace(1)). Mismatches are resolved by

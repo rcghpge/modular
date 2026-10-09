@@ -372,7 +372,7 @@ InstructionRewrite::visitIntrinsicInst(llvm::IntrinsicInst &intrin) {
           llvm::BasicBlock::Create(func.getContext(), "store." + llvm::Twine(i),
                                    &func, contBB->getNextNode());
 
-      builder.SetInsertPoint(origBB, origBB->end());
+      builder.SetInsertPoint(origBB->end());
       (void)builder.CreateCondBr(mask, storeBB, contBB);
 
       builder.SetInsertPoint(storeBB);
@@ -384,7 +384,7 @@ InstructionRewrite::visitIntrinsicInst(llvm::IntrinsicInst &intrin) {
       (void)builder.CreateBr(contBB);
       // Repeat sequence above of splitting BB, moving and adding instructions
       origBB = contBB;
-      builder.SetInsertPoint(origBB, origBB->begin());
+      builder.SetInsertPoint(origBB->begin());
     }
     return eraseInstruction(intrin);
   }

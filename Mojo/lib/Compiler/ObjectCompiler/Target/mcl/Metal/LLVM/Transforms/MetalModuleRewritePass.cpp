@@ -168,8 +168,7 @@ private:
       if (uses.empty())
         continue;
 
-      llvm::IRBuilder<> entryB(&func.getEntryBlock(),
-                               func.getEntryBlock().getFirstInsertionPt());
+      llvm::IRBuilder<> entryB(func.getEntryBlock().getFirstInsertionPt());
       AllocaMap allocas;
       for (llvm::GlobalVariable *gv : globals) {
         llvm::Constant *init = gv->getInitializer();
@@ -279,8 +278,7 @@ private:
       llvm::IRBuilder<> builder(ci);
 
       // Alloca in entry block for proper stack management.
-      llvm::IRBuilder<> entryB(&func->getEntryBlock(),
-                               func->getEntryBlock().getFirstInsertionPt());
+      llvm::IRBuilder<> entryB(func->getEntryBlock().getFirstInsertionPt());
       llvm::AllocaInst *vaBuf =
           entryB.CreateAlloca(vaBufTy, nullptr, "mojo.log.va");
       vaBuf->setAlignment(llvm::Align(4));
