@@ -1297,19 +1297,37 @@ setEmissionOptions(llvm::DenseMap<llvm::StringRef, llvm::cl::Option *> &options,
   }
 
   auto [key, value] = emissionOpt.split("=");
+  // Bool spellings are lowercased since the bool parsers only accept
+  // lowercase.
+  bool isBoolSpelling =
+      value.equals_insensitive("true") || value.equals_insensitive("false");
+  std::string normalizedValue = isBoolSpelling ? value.lower() : value.str();
+
   llvm::cl::Option *opt = options.lookup(key);
-  if (!opt)
-    return Error("emission option \"" + Twine(key) + "\" is not found");
+  if (!opt) {
+    // Only `ParseCommandLineOptions` reaches options LLVM declares in TableGen.
+    // TODO: Reset them once LLVM can reset a single such option.
+    if (reset)
+      return success();
+    std::string arg = ("-" + key + "=" + normalizedValue).str();
+    const char *argv[] = {"mojo", arg.c_str()};
+    std::string parseErrors;
+    llvm::raw_string_ostream errs(parseErrors);
+    if (llvm::cl::ParseCommandLineOptions(2, argv, "", &errs))
+      return success();
+    if (StringRef(parseErrors).contains("Unknown command line argument"))
+      return Error("emission option \"" + Twine(key) + "\" is not found");
+    return Error("invalid value \"" + Twine(value) +
+                 "\" for emission option \"" + key +
+                 "\": " + StringRef(parseErrors).trim());
+  }
   if (reset) {
     opt->reset();
     return success();
   }
   // `addOccurrence` dispatches to the option's own value parser, so any
-  // registered option type (bool, int, enum, string) is supported. Bool
-  // spellings are lowercased since the bool parser only accepts lowercase.
-  bool isBoolSpelling =
-      value.equals_insensitive("true") || value.equals_insensitive("false");
-  if (opt->addOccurrence(0, key, isBoolSpelling ? value.lower() : value.str()))
+  // registered option type (bool, int, enum, string) is supported.
+  if (opt->addOccurrence(0, key, normalizedValue))
     return Error("invalid value \"" + Twine(value) +
                  "\" for emission option \"" + key + "\"");
   return success();
