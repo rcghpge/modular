@@ -394,6 +394,9 @@ def _validate_is_2d_uint8_buffer(buffer: Buffer) -> None:
 # the `create_index_scale_tma_tile` assert in `kv_cache/types.mojo`.
 _SCALE_TMA_ALIGN_BYTES = 16
 
+# Recurrent-state kernels take pool row ids as int32.
+_MAX_INT32_ROW_ID = 2**31 - 1
+
 PACKED_PAGE_STRIDE = -1
 """``page_stride`` sentinel meaning the pages are packed."""
 
@@ -2964,6 +2967,18 @@ class RecurrentStateParams(CacheLeafParamInterface):
                     f"leaf {region.leaf_id!r} has {row_bytes} B rows, which"
                     f" do not tile a {slab.num_elements} B slab"
                 )
+                # The pool itself is indexed at 64 bits, but the row ids the
+                # kernels take are int32 (see the KDA ops in
+                # max.nn.state_space.kimi_delta), so a slab with more rows
+                # than that would silently alias deep rows onto the front.
+                if num_rows > _MAX_INT32_ROW_ID:
+                    raise ValueError(
+                        f"leaf {region.leaf_id!r} would have {num_rows} rows"
+                        f" of {row_bytes} B in a {slab.num_elements} B slab,"
+                        f" but kernels address rows with int32 ids, so at most"
+                        f" {_MAX_INT32_ROW_ID} fit; reduce the KV cache memory"
+                        " budget or use a larger row"
+                    )
                 views[region.leaf_id].append(
                     slab.view(region.dtype, [num_rows, *region.row_shape])
                 )
