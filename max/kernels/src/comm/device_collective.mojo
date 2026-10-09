@@ -84,17 +84,21 @@ def _launch_device_collective[
 
     # Dispatch to the worker threads that have affinity for each device.
     @inline(.always)
-    __async def dispatch_when_granted() {imm} -> None:
+    def dispatch() {imm}:
         comptime for i in range(num_devices):
             group[]._create_task(wrapper[i](), desired_worker_id=worker_ids[i])
 
+    @inline(.always)
+    __async def dispatch_when_granted() {imm} -> None:
+        __await gate
+        dispatch()
+
     if gate.try_acquire():
-        comptime for i in range(num_devices):
-            tg._create_task(wrapper[i](), desired_worker_id=worker_ids[i])
+        dispatch()
     else:
-        # A copy of the reference; `gate` keeps the grant itself alive.
-        var grant = gate.grant
-        tg._create_task_after(dispatch_when_granted(), grant)
+        # Counted by the group from now, so the wait below also covers the
+        # tasks it adds once granted.
+        tg.create_task(dispatch_when_granted())
 
     # Holds nothing while it waits, so a task this wait runs may take the gate.
     tg.wait()

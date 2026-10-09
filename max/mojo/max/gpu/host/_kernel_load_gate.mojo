@@ -31,8 +31,9 @@ when it returns; leaking the gate would wedge every later load.
 """
 
 from std.atomic import Atomic
+from std.builtin._coroutine import AnyCoroutine, _suspend_async
 from std.ffi import external_call
-from std.runtime._asyncrt import _Chain, _del_asyncrt_chain
+from std.runtime._asyncrt import _Chain, _async_and_then, _del_asyncrt_chain
 
 from .device_context import DeviceContext
 
@@ -41,7 +42,7 @@ struct CollectiveGate:
     """Claims the gate for one collective's enqueues, without blocking.
 
     `try_acquire` either grants the gate now or leaves a pending grant in
-    `grant` for the caller to dispatch from once it becomes available. Each
+    `grant`, which a task awaits on the gate before dispatching. Each
     per-device enqueue then calls `enqueue_done`, and the last of them releases
     the gate, from whichever worker that is.
 
@@ -74,11 +75,31 @@ struct CollectiveGate:
 
         Returns:
             True if this collective owns the gate now. False if it must
-            dispatch from `grant` once that becomes available.
+            await the gate before dispatching.
         """
         return external_call[
             "AsyncRT_KernelLoadGate_tryAcquireCollective", Bool
         ](self._ctx._handle, Pointer(to=self.grant))
+
+    @inline(.always)
+    def __await__(self):
+        """Suspends the calling task until the pending grant is available.
+
+        Only valid after `try_acquire` returned False. Suspending frees the
+        worker instead of donating it, so nothing can bury the dispatch beneath
+        a task that needs the gate. The task resumes on any worker, which is
+        fine for a dispatch that only creates pinned tasks. This function must
+        be force inlined into the calling async function.
+        """
+        # Registration only reads the chain's value; `self.grant` keeps it
+        # alive.
+        var grant = self.grant
+
+        @inline(.always)
+        def await_body(hdl: AnyCoroutine) {var grant}:
+            _async_and_then(hdl, Pointer(to=grant))
+
+        _suspend_async(await_body)
 
     def enqueue_done(mut self):
         """Records one per-device enqueue as finished; the last releases."""
