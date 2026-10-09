@@ -26,6 +26,7 @@ RUNNERS = {
     "MI355": "modrunner-mi355",
     "2xB200": "modrunner-b200-efa-2x",
     "2xMI355": "modrunner-mi355-2x",
+    "4xB200": "modrunner-b200-4x",
     "4xMI355": "modrunner-mi355-4x",
     "8xB200": "modrunner-b200-efa-8x",
     "8xMI355": "modrunner-mi355-8x",
@@ -35,6 +36,7 @@ _1xB200 = {"B200"}
 _1xMI355 = {"MI355"}
 _2xB200 = {"2xB200"}
 _2xMI355 = {"2xMI355"}
+_4xB200 = {"4xB200"}
 _4xMI355 = {"4xMI355"}
 _8xB200 = {"8xB200"}
 _8xMI355 = {"8xMI355"}
@@ -204,6 +206,7 @@ def parse_override(raw: str | None) -> list[str]:
 @click.option("--run-on-mi355", is_flag=True)
 @click.option("--run-on-2xb200", is_flag=True)
 @click.option("--run-on-2xmi355", is_flag=True)
+@click.option("--run-on-4xb200", is_flag=True)
 @click.option("--run-on-4xmi355", is_flag=True)
 @click.option("--run-on-8xb200", is_flag=True)
 @click.option("--run-on-8xmi355", is_flag=True)
@@ -215,6 +218,7 @@ def main(
     run_on_mi355: bool,
     run_on_2xb200: bool,
     run_on_2xmi355: bool,
+    run_on_4xb200: bool,
     run_on_4xmi355: bool,
     run_on_8xb200: bool,
     run_on_8xmi355: bool,
@@ -224,6 +228,7 @@ def main(
         "MI355": run_on_mi355,
         "2xB200": run_on_2xb200,
         "2xMI355": run_on_2xmi355,
+        "4xB200": run_on_4xb200,
         "4xMI355": run_on_4xmi355,
         "8xB200": run_on_8xb200,
         "8xMI355": run_on_8xmi355,
