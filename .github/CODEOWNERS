@@ -10,6 +10,7 @@
 /.bazel* @modular/sdlc
 /bazel* @modular/sdlc
 /BUILD.bazel @modular/sdlc
+/bazel/internal/rules_rust_extra_exec_triple.patch @modular/sdlc
 /bazel/public-patches/llvm-elf-extractor-local-copy.patch @modular/sdlc
 /bazel/public-patches/llvm-machinefunction-sti-ref-to-ptr.patch @modular/sdlc
 /bazel/public-patches/llvm-revert-lldb-elf-section-name-string.patch @modular/sdlc

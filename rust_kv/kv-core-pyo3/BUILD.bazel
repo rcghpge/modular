@@ -1,10 +1,15 @@
 package(default_visibility = ["//rust_kv:consumers"])
 
 # The binding source of max._kv_core. The extension itself is declared in
-# //max/python/max (`_kv_core.bindings`), the way max._core's closed C++ source
-# is built from a public BUILD file: the OSS export drops //rust_kv and swaps
-# that target for the prebuilt module in the max wheel.
+# //max/python/max (`_kv_core.bindings`). This package is also the Cargo
+# workspace root for the open-sourced kv-core crates (MXSERV-665), so the OSS
+# crate universe reads its manifests.
 filegroup(
     name = "srcs",
     srcs = glob(["src/**/*.rs"]),
 )
+
+exports_files([
+    "Cargo.lock",
+    "Cargo.toml",
+])

@@ -19,6 +19,7 @@ load("//bazel/internal:modular_py_binary.bzl", _modular_py_binary = "modular_py_
 load("//bazel/internal:modular_py_library.bzl", _modular_py_library = "modular_py_library")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_py_test.bzl", _modular_py_test = "modular_py_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_py_venv.bzl", _modular_py_venv = "modular_py_venv")  # buildifier: disable=bzl-visibility
+load("//bazel/internal:modular_pyo3_extension.bzl", _modular_pyo3_extension = "modular_pyo3_extension")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_run_binary_test.bzl", _modular_run_binary_test = "modular_run_binary_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_shared_library.bzl", _modular_shared_library = "modular_shared_library")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:modular_sphinx_docs.bzl", _modular_sphinx_docs = "modular_sphinx_docs")  # buildifier: disable=bzl-visibility
@@ -237,11 +238,7 @@ def modular_nanobind_extension(name, **_kwargs):
         actual = "@modular_wheel//:wheel",
     )
 
-def modular_pyo3_extension(name, **_kwargs):
-    native.alias(
-        name = name,
-        actual = "@modular_wheel//:wheel",
-    )
+modular_pyo3_extension = _modular_pyo3_extension
 
 def modular_generate_stubfiles(**kwargs):
     _modular_generate_stubfiles(is_external = True, **kwargs)
