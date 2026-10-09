@@ -9,7 +9,7 @@
 
 // CHECK: 'trait_epilogue_extra_graph' returned tensor<4xf32> [3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00]
 mo.graph @trait_epilogue_extra_graph(%x: !mo.tensor<[4], f32>, %y: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-    %z = mo.custom {symbol = "trait_fused_store_double", device = #M.device_ref<"cpu", 0>} (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %z = mo.custom [symbol = "trait_fused_store_double", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     %w = mo.add(%z, %y) : !mo.tensor<[4], f32>
     mo.output %w : !mo.tensor<[4], f32>
 }

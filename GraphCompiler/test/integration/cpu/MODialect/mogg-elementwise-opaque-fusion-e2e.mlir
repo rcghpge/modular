@@ -20,12 +20,12 @@ mo.graph @elementwise_opaque_fusion(%input: !tt1, %add_input1: !tt2, %add_input2
 
   %ch0 = mo.chain.create()
 
-  %result = mo.custom {symbol = "to_tensor_wrapper", device = #M.device_ref<"cpu", 0>} (%input) : (!tt1) -> !ot
+  %result = mo.custom [symbol = "to_tensor_wrapper", device = #M.device_ref<"cpu", 0>] (%input) : (!tt1) -> !ot
 
   %add_result = mo.add(%add_input1, %add_input2) : !tt2
-  %ch1 = mo.custom {symbol = "fused_write_to_tensor_wrapper", device = #M.device_ref<"cpu", 0>} (%result, %add_result, %ch0) : (!ot, !tt2, !ct) -> !ct
+  %ch1 = mo.custom [symbol = "fused_write_to_tensor_wrapper", device = #M.device_ref<"cpu", 0>] (%result, %add_result, %ch0) : (!ot, !tt2, !ct) -> !ct
 
-  %ch2 = mo.custom {symbol = "print_tensor_wrapper", device = #M.device_ref<"cpu", 0>} (%result, %ch1) : (!ot, !ct) -> !ct
+  %ch2 = mo.custom [symbol = "print_tensor_wrapper", device = #M.device_ref<"cpu", 0>] (%result, %ch1) : (!ot, !ct) -> !ct
 
   mo.output
 }

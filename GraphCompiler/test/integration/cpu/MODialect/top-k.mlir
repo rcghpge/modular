@@ -35,7 +35,7 @@ mo.graph @top_k_fallback_shape_func<() -> D0, D1, D2, D3>(
   %axis = "mo.constant"() {value = #M.dense_array<1> : tensor<si64>} : () -> !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.top_k"]<() -> D4, D5, D6, D7>(%input, %K, %axis, %sorted)
-    {dataDeptTensors = [1 : i32, 2 : i32]} :
+    [dataDeptTensors = [1 : i32, 2 : i32]] :
     (!mo.tensor<[32, 10, 20, 3], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

@@ -13,8 +13,8 @@
 mo.graph @external_weights_cpu_to_gpu() -> (!mo.tensor<[128], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>) attributes {
     argument_names = [], result_names = ["output0"], target_info = #M.target<triple = "nvptx64-nvidia-cuda", arch = "sm_86", index_bit_width = 0>
 } {
-  %0 = mo.constant.external {align = 4 : ui64, device = #M.device_ref<"cpu", 0>, name = "foo"} : !mo.tensor<[128], f32, gpu:0>
-  %1 = mo.constant.external {align = 4 : ui64, device = #M.device_ref<"cpu", 0>, name = "bar", hasAlias = true} : !mo.tensor<[256], f32, gpu:0>
+  %0 = mo.constant.external [name = "foo", align = 4, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[128], f32, gpu:0>
+  %1 = mo.constant.external [name = "bar", align = 4, device = #M.device_ref<"cpu", 0>, hasAlias = true] : !mo.tensor<[256], f32, gpu:0>
   mo.output %0, %1 : !mo.tensor<[128], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>
 }
 
@@ -29,7 +29,7 @@ mo.graph @external_weights_cpu_to_gpu() -> (!mo.tensor<[128], f32, gpu:0>, !mo.t
 mo.graph @external_weights_gpu_resident() -> (!mo.tensor<[128], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>) attributes {
     argument_names = [], result_names = ["output0"], target_info = #M.target<triple = "nvptx64-nvidia-cuda", arch = "sm_86", index_bit_width = 0>
 } {
-  %0 = mo.constant.external {align = 4 : ui64, device = #M.device_ref<"gpu", 0>, name = "foo"} : !mo.tensor<[128], f32, gpu:0>
-  %1 = mo.constant.external {align = 4 : ui64, device = #M.device_ref<"gpu", 0>, name = "bar", hasAlias = true} : !mo.tensor<[256], f32, gpu:0>
+  %0 = mo.constant.external [name = "foo", align = 4, device = #M.device_ref<"gpu", 0>] : !mo.tensor<[128], f32, gpu:0>
+  %1 = mo.constant.external [name = "bar", align = 4, device = #M.device_ref<"gpu", 0>, hasAlias = true] : !mo.tensor<[256], f32, gpu:0>
   mo.output %0, %1 : !mo.tensor<[128], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>
 }

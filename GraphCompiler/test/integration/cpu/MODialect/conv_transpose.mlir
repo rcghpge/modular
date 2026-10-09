@@ -63,7 +63,7 @@ mo.graph @conv_transpose_fallback_padded_shape_func<() -> D0, D1, D2, D3>(
   %op = mo.constant <#M.dense_array<0, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
 
   mo.invoke_shape_func["mo.conv_transpose"]<() -> D4, D5, D6, D7>(%input, %filter, %st, %di, %pa, %op)
-    {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
+    [dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]] :
     (!mo.tensor<[32, 10, 20, 9], f32>, !mo.tensor<[2, 2, 3, 9], f32, {layout = #mo.layout<RSFC>}>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>, !mo.tensor<[2], si32>)
 
@@ -143,7 +143,7 @@ mo.graph @conv3d_transpose_fallback_padded_shape_func<() -> D0, D1, D2, D3, D4>(
   %op = mo.constant <#M.dense_array<1, 2, 1> : tensor<3xsi32>> : !mo.tensor<[3], si32>
 
   mo.invoke_shape_func["mo.conv_transpose"]<() -> D5, D6, D7, D8, D9>(%input, %filter, %st, %di, %pa, %op)
-    {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
+    [dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]] :
     (!mo.tensor<[2, 5, 10, 7, 9], si32>, !mo.tensor<[3, 2, 2, 3, 9], si32, {layout = #mo.layout<QRSFC>}>,
      !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[6], si32>, !mo.tensor<[3], si32>)
 

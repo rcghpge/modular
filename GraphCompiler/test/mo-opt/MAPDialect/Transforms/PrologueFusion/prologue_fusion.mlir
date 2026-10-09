@@ -93,7 +93,7 @@ mo.graph @two_fused_inputs(
 ) -> !mo.tensor<[2, 2], f32> {
   %p0 = mo.add(%a, %b) : !mo.tensor<[2, 2], f32>
   %p1 = mo.mul(%c, %d) : !mo.tensor<[2, 2], f32>
-  %out = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_inputs"}(%p0, %p1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %out = mo.custom [symbol = "map_lower_two_fused_inputs", device = #M.device_ref<"cpu", 0>](%p0, %p1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %out : !mo.tensor<[2, 2], f32>
 }
 
@@ -116,7 +116,7 @@ mo.graph @partial_fused_inputs(
 ) -> !mo.tensor<[2, 2], f32> {
   %p0 = mo.add(%a, %b) : !mo.tensor<[2, 2], f32>
   %p1 = mo.mul(%c, %d) : !mo.tensor<[2, 2], f32>
-  %out = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_inputs"}(%p0, %p1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %out = mo.custom [symbol = "map_lower_partial_fused_inputs", device = #M.device_ref<"cpu", 0>](%p0, %p1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %out : !mo.tensor<[2, 2], f32>
 }
 
@@ -206,7 +206,7 @@ mo.graph @no_fuse_same_producer_twice(
   %b: !mo.tensor<[2, 2], f32>
 ) -> !mo.tensor<[2, 2], f32> {
   %p = mo.add(%a, %b) : !mo.tensor<[2, 2], f32>
-  %out = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_inputs"}(%p, %p) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %out = mo.custom [symbol = "map_lower_two_fused_inputs", device = #M.device_ref<"cpu", 0>](%p, %p) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %out : !mo.tensor<[2, 2], f32>
 }
 

@@ -1,12 +1,12 @@
 // RUN: mo-opt %s --gc-pipeline=constant-fold=false -o %t.mlir
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
-mo.graph @add(%arg0: !mo.tensor<[5], f32>, %arg1: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) attributes {isSubgraph} {
+mo.graph @add(%arg0: !mo.tensor<[5], f32>, %arg1: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) isSubgraph {
   %add = mo.add(%arg0, %arg1) : !mo.tensor<[5], f32>
   mo.output %add : !mo.tensor<[5], f32>
 }
 
-mo.graph @relu(%arg0: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) attributes {isSubgraph} {
+mo.graph @relu(%arg0: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) isSubgraph {
   %relu = mo.relu(%arg0) : !mo.tensor<[5], f32>
   mo.output %relu : !mo.tensor<[5], f32>
 }

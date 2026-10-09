@@ -21,7 +21,7 @@ mo.graph @non_maximum_suppression_fallback_shape_func<() -> D0, D1>(%one : !mo.t
     %maxOutputBoxesPerClass = mo.mul(%one, %two) : !mo.tensor<[], si64>
     %iouThreshold = mo.constant <#M.dense_array<0.5> : tensor<1xf32>> : !mo.tensor<[], f32>
     %scoreThreshold = mo.constant <#M.dense_array<0.0> : tensor<1xf32>> : !mo.tensor<[], f32>
-    mo.invoke_shape_func["mo.non_maximum_suppression"]<() -> D2, D3>(%boxes, %scores, %maxOutputBoxesPerClass, %iouThreshold, %scoreThreshold) {dataDeptTensors = [0 : i32, 1 : i32, 2 : i32, 3 : i32, 4 : i32]} : (!mo.tensor<[1, 6, 4], f32>, !mo.tensor<[1, 1, 6], f32>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
+    mo.invoke_shape_func["mo.non_maximum_suppression"]<() -> D2, D3>(%boxes, %scores, %maxOutputBoxesPerClass, %iouThreshold, %scoreThreshold) [dataDeptTensors = [0 : i32, 1 : i32, 2 : i32, 3 : i32, 4 : i32]] : (!mo.tensor<[1, 6, 4], f32>, !mo.tensor<[1, 1, 6], f32>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
     %val = mo.static.broadcast_to(%one) : !mo.tensor<[], si64> -> !mo.tensor<[D2, D3], si64>
     mo.output<D2, D3> %val : !mo.tensor<[D2, D3], si64>
 }

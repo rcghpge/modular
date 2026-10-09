@@ -27,6 +27,6 @@ mo.graph @dyn_fused_producer(
   %c: !mo.tensor<[batch, 4], f32>
 ) -> !mo.tensor<[batch, 4], f32> {
   %p = mo.add(%a, %b) : !mo.tensor<[batch, 4], f32>
-  %out = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_inputs"}(%p, %c) : (!mo.tensor<[batch, 4], f32>, !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>
+  %out = mo.custom [symbol = "map_lower_partial_fused_inputs", device = #M.device_ref<"cpu", 0>](%p, %c) : (!mo.tensor<[batch, 4], f32>, !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>
   mo.output %out : !mo.tensor<[batch, 4], f32>
 }

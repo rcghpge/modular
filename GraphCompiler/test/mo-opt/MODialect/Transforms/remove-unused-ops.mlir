@@ -44,7 +44,7 @@ mo.graph @unused_scatter(%arg0: !mo.tensor<[2, 3], f32, gpu:0>, %arg1: !mo.tenso
 
 mo.graph @unused_print(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch0 = mo.chain.create()
-  mo.debug.tensor.print(%ch0, %arg0) {label = "label"} : !mo.tensor<[4, 5], f32>
+  mo.debug.tensor.print(%ch0, %arg0) [label = "label"] : !mo.tensor<[4, 5], f32>
   mo.output
 }
 // COM: TODO: Removing any mutable ops without uses isn't supported yet.

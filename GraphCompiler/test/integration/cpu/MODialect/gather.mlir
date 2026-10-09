@@ -116,7 +116,7 @@ mo.graph @gather_fallback_shape_func<() -> D0, D1, D2, D3>(
 ) -> !mo.tensor<[D0, D1, D2, D3], si32> {
 
   mo.invoke_shape_func["mo.gather"]<() -> D4, D5, D6, D7>(%input, %indices)
-    {dataDeptTensors = [], kgenParams = {axis = -2 : index}} :
+    [kgenParams = {axis = -2 : index}, dataDeptTensors = []] :
     (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[4, 5], f32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

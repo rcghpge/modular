@@ -130,6 +130,148 @@ void printTransferResult(AsmPrinter &p, Operation *op, TensorType inputType,
   deviceRef.print(p);
 }
 
+void printAttrGroup(AsmPrinter &p, ArrayRef<AttrGroupElement> elements) {
+  SmallVector<const AttrGroupElement *> present;
+  for (const AttrGroupElement &element : elements)
+    if (element.value)
+      present.push_back(&element);
+  if (present.empty())
+    return;
+
+  p << " [";
+  llvm::interleaveComma(present, p, [&](const AttrGroupElement *element) {
+    p << element->name << " = ";
+    p.printAttributeWithoutType(element->value);
+  });
+  p << ']';
+}
+
+ParseResult parseAttrGroup(AsmParser &p, ArrayRef<AttrGroupParser> elements) {
+  SmallVector<StringRef> seen;
+  llvm::SMLoc groupLoc = p.getCurrentLocation();
+  auto parseElement = [&]() -> ParseResult {
+    llvm::SMLoc loc = p.getCurrentLocation();
+    StringRef name;
+    if (p.parseKeyword(&name))
+      return failure();
+    const auto *element = llvm::find_if(
+        elements, [&](const AttrGroupParser &e) { return e.name == name; });
+    if (element == elements.end())
+      return p.emitError(loc) << "unexpected attribute name '" << name << "'";
+    if (llvm::is_contained(seen, name))
+      return p.emitError(loc) << "duplicate attribute name '" << name << "'";
+    seen.push_back(name);
+    return failure(p.parseEqual() || element->parse());
+  };
+
+  if (succeeded(p.parseOptionalLSquare())) {
+    do {
+      if (parseElement())
+        return failure();
+    } while (succeeded(p.parseOptionalComma()));
+    if (p.parseRSquare())
+      return failure();
+  }
+
+  for (const AttrGroupParser &element : elements)
+    if (element.required && !llvm::is_contained(seen, element.name))
+      return p.emitError(groupLoc) << "expected '" << element.name << "'";
+  return success();
+}
+
+ParseResult parseCustomAttrs(OpAsmParser &p, StringAttr &symbol,
+                             DeviceRefAttr &device,
+                             DictionaryAttr &parameters) {
+  return parseAttrGroup(
+      p, {{"symbol", [&] { return p.parseAttribute(symbol); }, true},
+          {"device", [&] { return p.parseAttribute(device); }},
+          {"parameters", [&] { return p.parseAttribute(parameters); }}});
+}
+
+void printCustomAttrs(OpAsmPrinter &p, Operation *op, StringAttr symbol,
+                      DeviceRefAttr device, DictionaryAttr parameters) {
+  MLIRContext *context = op->getContext();
+  Attribute setDevice;
+  if (device && device != DeviceRefAttr::get(context, "cpu", 0))
+    setDevice = device;
+  Attribute setParameters;
+  if (parameters && !parameters.empty())
+    setParameters = parameters;
+  printAttrGroup(p, {{"symbol", symbol},
+                     {"device", setDevice},
+                     {"parameters", setParameters}});
+}
+
+ParseResult parseConstantExternalAttrs(OpAsmParser &p, StringAttr &name,
+                                       IntegerAttr &align,
+                                       DeviceRefAttr &device,
+                                       BoolAttr &hasAlias,
+                                       BoolAttr &isPlaceholder) {
+  Builder &b = p.getBuilder();
+  return parseAttrGroup(
+      p, {{"name", [&] { return p.parseAttribute(name); }, true},
+          {"align",
+           [&] {
+             return p.parseAttribute(align,
+                                     b.getIntegerType(64, /*isSigned=*/false));
+           },
+           true},
+          {"device", [&] { return p.parseAttribute(device); }, true},
+          {"hasAlias",
+           [&] { return p.parseAttribute(hasAlias, b.getIntegerType(1)); }},
+          {"isPlaceholder", [&] {
+             return p.parseAttribute(isPlaceholder, b.getIntegerType(1));
+           }}});
+}
+
+void printConstantExternalAttrs(OpAsmPrinter &p, Operation *, StringAttr name,
+                                IntegerAttr align, DeviceRefAttr device,
+                                BoolAttr hasAlias, BoolAttr isPlaceholder) {
+  Attribute setHasAlias;
+  if (hasAlias && hasAlias.getValue())
+    setHasAlias = hasAlias;
+  Attribute setIsPlaceholder;
+  if (isPlaceholder && isPlaceholder.getValue())
+    setIsPlaceholder = isPlaceholder;
+  printAttrGroup(p, {{"name", name},
+                     {"align", align},
+                     {"device", device},
+                     {"hasAlias", setHasAlias},
+                     {"isPlaceholder", setIsPlaceholder}});
+}
+
+ParseResult parseCallAttrs(OpAsmParser &p, StringAttr &prefix,
+                           ArrayAttr &argAttrs, ArrayAttr &resAttrs) {
+  return parseAttrGroup(
+      p, {{"prefix", [&] { return p.parseAttribute(prefix); }},
+          {"arg_attrs", [&] { return p.parseAttribute(argAttrs); }},
+          {"res_attrs", [&] { return p.parseAttribute(resAttrs); }}});
+}
+
+void printCallAttrs(OpAsmPrinter &p, Operation *, StringAttr prefix,
+                    ArrayAttr argAttrs, ArrayAttr resAttrs) {
+  Attribute setPrefix;
+  if (prefix && !prefix.getValue().empty())
+    setPrefix = prefix;
+  printAttrGroup(p, {{"prefix", setPrefix},
+                     {"arg_attrs", argAttrs},
+                     {"res_attrs", resAttrs}});
+}
+
+ParseResult parseShapeFuncAttrs(OpAsmParser &p, DictionaryAttr &kgenParams,
+                                ArrayAttr &dataDeptTensors) {
+  return parseAttrGroup(
+      p,
+      {{"kgenParams", [&] { return p.parseAttribute(kgenParams); }},
+       {"dataDeptTensors", [&] { return p.parseAttribute(dataDeptTensors); }}});
+}
+
+void printShapeFuncAttrs(OpAsmPrinter &p, Operation *,
+                         DictionaryAttr kgenParams, ArrayAttr dataDeptTensors) {
+  printAttrGroup(
+      p, {{"kgenParams", kgenParams}, {"dataDeptTensors", dataDeptTensors}});
+}
+
 /// Parse the body region of `mo.sequence`: `(%arg0, %arg1) -> (t0, t1) {...}`.
 /// Block-argument types are omitted in the syntax; they are 1:1 with, and
 /// identically typed to, the operands, whose types arrive via `inputTypes`.
@@ -561,11 +703,19 @@ void GraphOp::build(OpBuilder &builder, OperationState &state, StringRef name,
 // GraphOp's `counter` property generates unique symbolic dimension names. It
 // round-trips as a trailing extra attribute on the graph.
 static constexpr StringLiteral GRAPH_OP_COUNTER_NAME = "counter";
-static ParseResult
-parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
-             TypeAttr &functionTypeAttr, KGEN::ParamDeclArrayAttr &inputParams,
-             KGEN::ParamDeclArrayAttr &resultParams, NamedAttrList &attrs,
-             Region &body, int64_t &counter) {
+static ParseResult parseGraphOp(OpAsmParser &p, StringAttr &visibility,
+                                StringAttr &name, TypeAttr &signatureAttr,
+                                TypeAttr &functionTypeAttr,
+                                KGEN::ParamDeclArrayAttr &inputParams,
+                                KGEN::ParamDeclArrayAttr &resultParams,
+                                UnitAttr &isSubgraph, UnitAttr &isDeviceGraph,
+                                NamedAttrList &attrs, Region &body,
+                                int64_t &counter) {
+  StringRef visibilityKeyword;
+  if (succeeded(p.parseOptionalKeyword(&visibilityKeyword,
+                                       {"public", "private", "nested"})))
+    visibility = p.getBuilder().getStringAttr(visibilityKeyword);
+
   if (p.parseSymbolName(name))
     return failure();
 
@@ -582,6 +732,11 @@ parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
     return failure();
   signatureAttr = TypeAttr::get(signature);
   functionTypeAttr = TypeAttr::get(functionType);
+
+  if (succeeded(p.parseOptionalKeyword("isSubgraph")))
+    isSubgraph = p.getBuilder().getUnitAttr();
+  if (succeeded(p.parseOptionalKeyword("isDeviceGraph")))
+    isDeviceGraph = p.getBuilder().getUnitAttr();
 
   if (p.parseOptionalAttrDictWithKeyword(attrs) ||
       p.parseRegion(body, args, /*enableNameShadowing=*/true))
@@ -604,15 +759,19 @@ parseGraphOp(OpAsmParser &p, StringAttr &name, TypeAttr &signatureAttr,
   return success();
 }
 
-static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
-                         TypeAttr signature, TypeAttr functionType,
+static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr visibility,
+                         StringAttr name, TypeAttr signature,
+                         TypeAttr functionType,
                          KGEN::ParamDeclArrayAttr inputParams,
                          KGEN::ParamDeclArrayAttr resultParams,
+                         UnitAttr isSubgraph, UnitAttr isDeviceGraph,
                          DictionaryAttr attrs, Region &body, int64_t counter) {
   auto printerHook = [&](KGEN::ParamDeclAttr decl) {
     printParamDeclElement(p, decl);
   };
 
+  if (visibility)
+    p << visibility.getValue() << ' ';
   p.printSymbolName(name);
   KGEN::printFunctionFuncTypeGenerator(
       p, &body, inputParams, resultParams,
@@ -621,11 +780,17 @@ static void printGraphOp(OpAsmPrinter &p, Operation *op, StringAttr name,
       /*printInputElt=*/printerHook,
       /*printResultElt=*/printerHook);
 
+  if (isSubgraph)
+    p << " isSubgraph";
+  if (isDeviceGraph)
+    p << " isDeviceGraph";
+
   auto graph = cast<GraphOp>(op);
-  SmallVector<StringRef, 6> elidedAttrs{
-      graph.getSymNameAttrName(), graph.getSignatureAttrName(),
-      graph.getFunctionTypeAttrName(), graph.getInputParametersAttrName(),
-      graph.getResultParametersAttrName()};
+  SmallVector<StringRef, 8> elidedAttrs{
+      graph.getSymNameAttrName(),         graph.getSymVisibilityAttrName(),
+      graph.getSignatureAttrName(),       graph.getFunctionTypeAttrName(),
+      graph.getInputParametersAttrName(), graph.getResultParametersAttrName(),
+      graph.getIsSubgraphAttrName(),      graph.getIsDeviceGraphAttrName()};
   p.printOptionalAttrDictWithKeyword(attrs.getValue(), elidedAttrs);
   p << ' ';
   p.printRegion(body, /*printEntryBlockArgs=*/false);

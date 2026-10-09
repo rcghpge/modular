@@ -8,7 +8,7 @@ module {
 // Graph should remain unchanged because there's only one callsite
 // CHECK-LABEL: mo.graph @single_callsite
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[ARG1:.+]]: !mo.tensor<[4], f32>, %[[ARG2:.+]]: !mo.tensor<[4], f32>)
-mo.graph @single_callsite(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>, %arg2: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
+mo.graph @single_callsite(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>, %arg2: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) isSubgraph {
   // These ops would be hoistable if there were multiple callsites with same invariant args
   // CHECK: %[[MUL_OUT:.+]] = mo.mul(%[[ARG1]], %[[ARG2]])
   %0 = mo.mul(%arg1, %arg2) : !mo.tensor<[4], f32>
@@ -26,10 +26,10 @@ mo.graph @single_callsite(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f3
 // CHECK-LABEL: mo.graph @caller_single_callsite
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_single_callsite(%arg0: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"}
-  %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[4], f32>
-  // CHECK: %[[CONST2:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"}
-  %cst2 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST1:.+]] = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst1 = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST2:.+]] = mo.constant.external [name = "cst2", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst2 = mo.constant.external [name = "cst2", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
 
   // CHECK: %[[CALL_RESULT:.+]] = mo.call @single_callsite(%[[CALLER_ARG0]], %[[CONST1]], %[[CONST2]])
   %res = mo.call @single_callsite(%arg0, %cst1, %cst2) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
@@ -47,7 +47,7 @@ module {
 
 // CHECK-LABEL: mo.graph @callsite_invariant
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[HOISTED_ARG:.+]]: !mo.tensor<[4], f32>)
-mo.graph @callsite_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
+mo.graph @callsite_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) isSubgraph {
   // This op depends only on callsite-invariant arg1 and should be hoisted
   %0 = mo.relu(%arg1_invariant) : !mo.tensor<[4], f32>
 
@@ -62,8 +62,8 @@ mo.graph @callsite_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.t
 // CHECK-LABEL: mo.graph @caller_callsite_invariant
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_callsite_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"}
-  %cst = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST:.+]] = mo.constant.external [name = "cst", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst = mo.constant.external [name = "cst", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
 
   // Hoisted ops for both calls (same invariant argument %cst)
   // CHECK: %[[HOISTED_RELU1:.+]] = mo.relu(%[[CONST]])
@@ -90,7 +90,7 @@ module {
 
 // CHECK-LABEL: mo.graph @multi_boundary_invariant
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[HOISTED_ARG1:.+]]: !mo.tensor<[4], f32>, %[[HOISTED_ARG2:.+]]: !mo.tensor<[4], f32>)
-mo.graph @multi_boundary_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
+mo.graph @multi_boundary_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) isSubgraph {
   // Hoistable ops from callsite-invariant argument
   %0 = mo.relu(%arg1_invariant) : !mo.tensor<[4], f32>
   %1 = mo.relu(%arg1_invariant) : !mo.tensor<[4], f32>
@@ -108,8 +108,8 @@ mo.graph @multi_boundary_invariant(%arg0: !mo.tensor<[4], f32>, %arg1_invariant:
 // CHECK-LABEL: mo.graph @caller_multi_boundary_invariant
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_multi_boundary_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"}
-  %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST1:.+]] = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst1 = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
 
   // Hoisted ops for call 1
   // CHECK: %[[HOISTED_RELU1_1:.+]] = mo.relu(%[[CONST1]])
@@ -140,7 +140,7 @@ module {
 // Graph should remain unchanged because arg1 is not callsite-invariant across callsites
 // CHECK-LABEL: mo.graph @mixed_callsites
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[ARG1:.+]]: !mo.tensor<[4], f32>)
-mo.graph @mixed_callsites(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
+mo.graph @mixed_callsites(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) isSubgraph {
   // CHECK: %[[RELU_OUT:.+]] = mo.relu(%[[ARG1]])
   %0 = mo.relu(%arg1) : !mo.tensor<[4], f32>
   // CHECK: %[[ADD_OUT:.+]] = mo.add(%[[ARG0]], %[[RELU_OUT]])
@@ -153,8 +153,8 @@ mo.graph @mixed_callsites(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f3
 // CHECK-LABEL: mo.graph @caller_mixed_callsites
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_mixed_callsites(%arg0: !mo.tensor<[4], f32>, %arg1_variable: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"}
-  %cst = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST:.+]] = mo.constant.external [name = "cst", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst = mo.constant.external [name = "cst", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
 
   // Call 1: Uses constant
   // CHECK: %[[CALL1_RES:.+]] = mo.call @mixed_callsites(%[[CALLER_ARG0]], %[[CONST]])
@@ -180,7 +180,7 @@ module {
 
 // CHECK-LABEL: mo.graph @complex_invariant_pattern
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[HOISTED_ARG:.+]]: !mo.tensor<[4], f32>)
-mo.graph @complex_invariant_pattern(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>, %arg2_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) attributes {isSubgraph} {
+mo.graph @complex_invariant_pattern(%arg0: !mo.tensor<[4], f32>, %arg1_invariant: !mo.tensor<[4], f32>, %arg2_invariant: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) isSubgraph {
   // These ops depend only on callsite-invariant args %arg1_invariant, %arg2_invariant
   %0 = mo.mul(%arg1_invariant, %arg2_invariant) : !mo.tensor<[4], f32>
   %1 = mo.relu(%0) : !mo.tensor<[4], f32>
@@ -196,10 +196,10 @@ mo.graph @complex_invariant_pattern(%arg0: !mo.tensor<[4], f32>, %arg1_invariant
 // CHECK-LABEL: mo.graph @caller_complex_invariant
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>)
 mo.graph @caller_complex_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"}
-  %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[4], f32>
-  // CHECK: %[[CONST2:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"}
-  %cst2 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"} : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST1:.+]] = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst1 = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
+  // CHECK: %[[CONST2:.+]] = mo.constant.external [name = "cst2", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst2 = mo.constant.external [name = "cst2", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
 
   // Hoisted ops for call 1
   // CHECK: %[[HOISTED_MUL1:.+]] = mo.mul(%[[CONST1]], %[[CONST2]])
@@ -227,7 +227,7 @@ mo.graph @caller_complex_invariant(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tenso
 
 // CHECK-LABEL: mo.graph @param_declare_op
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[seq_len], f32>, %[[HOISTED_ARG:.+]]: !mo.tensor<[seq_len], f32>)
-mo.graph @param_declare_op<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1_invariant: !mo.tensor<[seq_len], f32>, %arg2_invariant: !mo.tensor<[seq_len], f32>) -> (!mo.tensor<[seq_len], f32>) attributes {isSubgraph} {
+mo.graph @param_declare_op<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1_invariant: !mo.tensor<[seq_len], f32>, %arg2_invariant: !mo.tensor<[seq_len], f32>) -> (!mo.tensor<[seq_len], f32>) isSubgraph {
 
   // This assert can be hoisted as it only depends on seq_len
   kgen.param.declare ASSERT: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, identical(:scalar<si64> seq_len, 1))>
@@ -253,10 +253,10 @@ mo.graph @param_declare_op<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1_inv
 // CHECK-LABEL: mo.graph @caller
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[seq_len], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[seq_len], f32>)
 mo.graph @caller<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1: !mo.tensor<[seq_len], f32>) -> (!mo.tensor<[seq_len], f32>) {
-  // CHECK: %[[CONST1:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"}
-  %cst1 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst1"} : !mo.tensor<[seq_len], f32>
-  // CHECK: %[[CONST2:.+]] = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"}
-  %cst2 = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst2"} : !mo.tensor<[seq_len], f32>
+  // CHECK: %[[CONST1:.+]] = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst1 = mo.constant.external [name = "cst1", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[seq_len], f32>
+  // CHECK: %[[CONST2:.+]] = mo.constant.external [name = "cst2", align = 1, device = #M.device_ref<"cpu", 0>]
+  %cst2 = mo.constant.external [name = "cst2", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[seq_len], f32>
 
   // Hoisted ops for call 1
   // CHECK: kgen.param.declare {{.*}}: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, identical(:scalar<si64> seq_len, 1))>
@@ -289,7 +289,7 @@ module {
 // ch_mid, trailing_chain) - two chains at end (unused mid chain removed).
 // CHECK-LABEL: mo.graph @chains_non_trailing
 // CHECK-SAME: (%[[ARG0:.+]]: !mo.tensor<[4], f32>, %[[ARG1:.+]]: !mo.tensor<[4], f32>, %[[CH0:.+]]: !mo.chain, %[[CH1:.+]]: !mo.chain)
-mo.graph @chains_non_trailing(%arg0_invariant: !mo.tensor<[4], f32>, %ch_mid_unused: !mo.chain, %ch_mid: !mo.chain, %arg1: !mo.tensor<[4], f32>, %ch_trailing: !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain) attributes {isSubgraph} {
+mo.graph @chains_non_trailing(%arg0_invariant: !mo.tensor<[4], f32>, %ch_mid_unused: !mo.chain, %ch_mid: !mo.chain, %arg1: !mo.tensor<[4], f32>, %ch_trailing: !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain, !mo.chain) isSubgraph {
   %0 = mo.relu(%arg0_invariant) : !mo.tensor<[4], f32>
   %1 = mo.add(%0, %arg1) : !mo.tensor<[4], f32>
   mo.output %1, %ch_mid, %ch_trailing : !mo.tensor<[4], f32>, !mo.chain, !mo.chain
@@ -301,7 +301,7 @@ mo.graph @chains_non_trailing(%arg0_invariant: !mo.tensor<[4], f32>, %ch_mid_unu
 // CHECK-SAME: (%[[CALLER_ARG0:.+]]: !mo.tensor<[4], f32>, %[[CALLER_ARG1:.+]]: !mo.tensor<[4], f32>, %[[CH_UNUSED:.+]]: !mo.chain, %[[CH1:.+]]: !mo.chain, %[[CH2:.+]]: !mo.chain)
 mo.graph @caller_chains_non_trailing(%arg0: !mo.tensor<[4], f32>, %arg1: !mo.tensor<[4], f32>, %ch_unused: !mo.chain, %ch1: !mo.chain, %ch2: !mo.chain) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>, !mo.chain, !mo.chain) {
   // CHECK: %[[CST:.+]] = mo.constant.external
-  %cst = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "cst"} : !mo.tensor<[4], f32>
+  %cst = mo.constant.external [name = "cst", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4], f32>
 
   // Unused mid chain (ch_unused) removed from call; operands are
   // (tensors, two chains) - 4 operands total.

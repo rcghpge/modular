@@ -29,13 +29,13 @@ mo.graph @fused_input(%a: !mo.tensor<[2], si32>, %b: !mo.tensor<[3], si32>, %c: 
 // pack into a `_FusedOutputVariadicTensors`.
 // CHECK: managed_tensor_slice._FusedOutputVariadicTensors[
 mo.graph @fused_output(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_variadic_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %c:2 = mo.custom [symbol = "map_lower_variadic_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
 // PLAIN: an unfused variadic input packs into a plain `VariadicTensors`.
 // CHECK: extensibility.VariadicTensors[
 mo.graph @plain(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_variadic"}(%a, %b) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_variadic", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   mo.output %c : !mo.tensor<[4], f32>
 }

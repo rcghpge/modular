@@ -13,7 +13,7 @@ mo.graph @trait_tensor_tuple_add_mixed_dtypes() -> (!mo.tensor<[2], f32>, !mo.te
   %in2 = mo.constant <#M.dense_array<3.0, 4.0, 10.0> : tensor<3xf64>> : !mo.tensor<[3], f64>
   %bias = mo.constant <#M.dense_array<2.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
 
-  %out1, %out2 = mo.custom {symbol = "trait_tensor_tuple_add", device = #M.device_ref<"cpu", 0>} (%bias, %in1, %in2) : (
+  %out1, %out2 = mo.custom [symbol = "trait_tensor_tuple_add", device = #M.device_ref<"cpu", 0>] (%bias, %in1, %in2) : (
     !mo.tensor<[1], f32>,
     !mo.tensor<[2], si32>,
     !mo.tensor<[3], f64>
@@ -30,7 +30,7 @@ mo.graph @trait_tensor_tuple_add_size3_si32() -> (!mo.tensor<[2], si32>, !mo.ten
   %in3 = mo.constant <#M.dense_array<100> : tensor<1xsi32>> : !mo.tensor<[1], si32>
   %bias = mo.constant <#M.dense_array<1000> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 
-  %out1, %out2, %out3 = mo.custom {symbol = "trait_tensor_tuple_add", device = #M.device_ref<"cpu", 0>} (%bias, %in1, %in2, %in3) : (
+  %out1, %out2, %out3 = mo.custom [symbol = "trait_tensor_tuple_add", device = #M.device_ref<"cpu", 0>] (%bias, %in1, %in2, %in3) : (
     !mo.tensor<[1], si32>,
     !mo.tensor<[2], si32>,
     !mo.tensor<[3], si32>,
@@ -45,7 +45,7 @@ mo.graph @trait_tensor_tuple_add_size1_f32() -> !mo.tensor<[2], f32> {
   %in1 = mo.constant <#M.dense_array<7.0, 8.0> : tensor<2xf32>> : !mo.tensor<[2], f32>
   %bias = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
 
-  %res = mo.custom {symbol = "trait_tensor_tuple_add", device = #M.device_ref<"cpu", 0>} (%bias, %in1) : (
+  %res = mo.custom [symbol = "trait_tensor_tuple_add", device = #M.device_ref<"cpu", 0>] (%bias, %in1) : (
     !mo.tensor<[1], f32>,
     !mo.tensor<[2], f32>
   ) -> !mo.tensor<[2], f32>

@@ -12,6 +12,6 @@
 // CHECK: 'trait_fused_load_two_operands_graph' returned tensor<4xf32> [-2.000000e+00, -2.000000e+00, -2.000000e+00, -2.000000e+00]
 mo.graph @trait_fused_load_two_operands_graph(%x: !mo.tensor<[4], f32>, %y: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
     %p = mo.add(%x, %y) : !mo.tensor<[4], f32>
-    %z = mo.custom {symbol = "trait_fused_load_negate", device = #M.device_ref<"cpu", 0>} (%p) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %z = mo.custom [symbol = "trait_fused_load_negate", device = #M.device_ref<"cpu", 0>] (%p) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     mo.output %z : !mo.tensor<[4], f32>
 }

@@ -14,17 +14,7 @@
 mo.graph @matmul_packb_dynamic(%arg0: !mo.tensor<[?, ?], f32>) attributes { target = #AVX2 } {
 
   // expected-remark@below {{unable to infer shapes for operation}}
-  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh1, MMPackSh2>(%arg0) {
-    kgenParams = {
-      a_shape = dense<-9223372036854775808> : vector<2xi64>,
-      a_type = f32,
-      b_shape = dense<-9223372036854775808> : vector<2xi64>,
-      b_type = f32,
-      c_shape = dense<-9223372036854775808> : vector<2xi64>,
-      c_type = f32,
-      transpose_in_0 = false
-    }
-  } : (!mo.tensor<[?, ?], f32>)
+  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh1, MMPackSh2>(%arg0) [kgenParams = { a_shape = dense<-9223372036854775808> : vector<2xi64>, a_type = f32, b_shape = dense<-9223372036854775808> : vector<2xi64>, b_type = f32, c_shape = dense<-9223372036854775808> : vector<2xi64>, c_type = f32, transpose_in_0 = false }] : (!mo.tensor<[?, ?], f32>)
   mo.output
 }
 

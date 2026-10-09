@@ -8,6 +8,6 @@
 mo.graph @trait_constant_fused_negate_graph(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
     %cst = mo.constant <#M.dense_array<1., 2., 3., 4.> : tensor<4xf32>> : !mo.tensor<[4], f32>
     %sum = mo.add(%x, %cst) : !mo.tensor<[4], f32>
-    %z = mo.custom {symbol = "trait_fused_load_negate", device = #M.device_ref<"cpu", 0>} (%sum) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %z = mo.custom [symbol = "trait_fused_load_negate", device = #M.device_ref<"cpu", 0>] (%sum) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     mo.output %z : !mo.tensor<[4], f32>
 }

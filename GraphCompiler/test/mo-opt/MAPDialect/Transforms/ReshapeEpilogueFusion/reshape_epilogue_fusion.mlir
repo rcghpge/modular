@@ -25,7 +25,7 @@ mo.graph @custom_reshape_add(
   %x: !mo.tensor<[8, 8], f32>,
   %z: !mo.tensor<[64], f32>
 ) -> !mo.tensor<[64], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%x) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
   %r = mo.static.reshape(%c) : !mo.tensor<[8, 8], f32> -> !mo.tensor<[64], f32>
   %out = mo.add(%r, %z) : !mo.tensor<[64], f32>
   mo.output %out : !mo.tensor<[64], f32>
@@ -41,7 +41,7 @@ mo.graph @custom_reshape_add(
 mo.graph @custom_reshape_only(
   %x: !mo.tensor<[8, 8], f32>
 ) -> !mo.tensor<[64], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%x) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
   %r = mo.static.reshape(%c) : !mo.tensor<[8, 8], f32> -> !mo.tensor<[64], f32>
   mo.output %r : !mo.tensor<[64], f32>
 }

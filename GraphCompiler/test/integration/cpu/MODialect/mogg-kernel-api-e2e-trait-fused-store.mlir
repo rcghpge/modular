@@ -13,6 +13,6 @@
 
 // CHECK: 'trait_fused_store_double_graph' returned tensor<4xf32> [2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00]
 mo.graph @trait_fused_store_double_graph(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-    %z = mo.custom {symbol = "trait_fused_store_double", device = #M.device_ref<"cpu", 0>} (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %z = mo.custom [symbol = "trait_fused_store_double", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     mo.output %z : !mo.tensor<[4], f32>
 }

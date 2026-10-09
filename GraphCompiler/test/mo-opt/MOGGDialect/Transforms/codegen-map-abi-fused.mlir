@@ -44,7 +44,7 @@
 // CHECK: {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = False]([[W0]], {{.*}})
 
 mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
 }
 
@@ -54,14 +54,14 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK-DAG: {{.*}}.MapLowerPartialFusedOutputs.execute[target = "cpu", has_epilogue_fusion = False]
 
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %c:2 = mo.custom [symbol = "map_lower_two_fused_outputs", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
 // Partial: res0 fused (store epilogue), res1 plain output. The plain output is a
 // bare `mogg_tensor_init`; only res0 is bound.
 mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %c:2 = mo.custom [symbol = "map_lower_partial_fused_outputs", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
@@ -80,7 +80,7 @@ mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>
 // CHECK:   {{.*}}.MapLowerOneFusedOutput.execute[target = "cpu", has_epilogue_fusion = False]([[WD]], {{.*}})
 
 mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32>
   mo.output %c : !mo.tensor<[batch, 2], f32>
 }
 
@@ -110,8 +110,8 @@ mo.graph @one_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batc
 // CHECK:   {{.*}}.AddFuseOutput.execute[target = "cpu"]([[WR]], {{.*}})
 
 mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.tensor<[batch, 2], f32>, %bias: !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32> {
-  %sum = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "imposter_add_fuse_output"}(%a, %b) : (!mo.tensor<[batch, 2], f32>, !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32>
-  %out = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "imposter_add_elementwise"}(%sum, %bias) : (!mo.tensor<[batch, 2], f32>, !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32>
+  %sum = mo.custom [symbol = "imposter_add_fuse_output", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[batch, 2], f32>, !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32>
+  %out = mo.custom [symbol = "imposter_add_elementwise", device = #M.device_ref<"cpu", 0>](%sum, %bias) : (!mo.tensor<[batch, 2], f32>, !mo.tensor<[batch, 2], f32>) -> !mo.tensor<[batch, 2], f32>
   mo.output %out : !mo.tensor<[batch, 2], f32>
 }
 
@@ -186,7 +186,7 @@ mo.graph @real_kernel_fused_dynamic(%a: !mo.tensor<[batch, 2], f32>, %b: !mo.ten
 // COMPUTE-DAG: def compute[{{.*}}](self, idx: {{.*}}, value: SIMD[dtype, simd_width]) -> SIMD[dtype, simd_width]:
 
 mo.graph @compute_lambda(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>, %bias: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %sum = mo.custom {symbol = "imposter_add_compute_fusion", device = #M.device_ref<"cpu", 0>}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %sum = mo.custom [symbol = "imposter_add_compute_fusion", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %out = mo.add(%sum, %bias) : !mo.tensor<[2, 2], f32>
   mo.output %out : !mo.tensor<[2, 2], f32>
 }

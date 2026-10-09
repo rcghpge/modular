@@ -19,6 +19,6 @@
 // CHECK-SAME: contract = <{role = input, fused = true, access = load
 mo.graph @fused_load(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %p = mo.add(%x, %x) : !mo.tensor<[4], f32>
-  %z = mo.custom {symbol = "trait_fused_load_negate", device = #M.device_ref<"cpu", 0>} (%p) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %z = mo.custom [symbol = "trait_fused_load_negate", device = #M.device_ref<"cpu", 0>] (%p) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   mo.output %z : !mo.tensor<[4], f32>
 }

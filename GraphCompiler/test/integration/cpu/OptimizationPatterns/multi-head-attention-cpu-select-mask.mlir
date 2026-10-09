@@ -169,7 +169,7 @@ mo.graph @select_mask_no_trigger<SEQ, FIN_SEQ, DIM>(
     %softmax = mo.reduce.softmax(%maskedNormAttnMatrix) {axis = 3 : index} : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This breaks pattern matching
-    %softmax_copy = mo.custom {symbol = "copy", device = #M.device_ref<"cpu", 0>} (%softmax): (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
+    %softmax_copy = mo.custom [symbol = "copy", device = #M.device_ref<"cpu", 0>] (%softmax): (!mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     // This output is BHsS @ BHSD --> BHsD, reprojected
     %V = mo.transpose(%V_raw, %perm2) : (!mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, FIN_SEQ, DIM], f32>

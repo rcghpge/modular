@@ -370,14 +370,14 @@ struct MyOp:
  pass
 ```
 
-Can be called via `mo.custom {symbol = "MyOp"}` .
+Can be called via `mo.custom [symbol = "MyOp"]` .
 
 The remaining useful knowledge is how to properly invoke this custom op to
 match with the registered kernel. Here an example is prudent:
 
 ```llvm
 # 3 SSA outputs, 3 SSA Inputs
-%dps0, %dps1, %out_value = mo.custom {symbol = "MyOp"}(%in1, %in2, %in3)
+%dps0, %dps1, %out_value = mo.custom [symbol = "MyOp"](%in1, %in2, %in3)
  : (!mo.tensor, !mo.tensor, !mo.opaque<"OutputTy">)
    -> (!mo.tensor, !mo.tensor, !mo.tensor)
 ```
@@ -437,7 +437,7 @@ however.
 %chain_in: !mo.chain
 %chain_out: !mo.chain
 %dps0, %dps1, %out_value, **%chain_out** =
- mo.custom {symbol = "MyOp"}(%in1, %in2, %in3, **%chain_in**)
+ mo.custom [symbol = "MyOp"](%in1, %in2, %in3, **%chain_in**)
  : (!mo.tensor, !mo.tensor, !mo.opaque<"OutputTy">, !mo.chain)
    -> (!mo.tensor, !mo.buffer, !mo.tensor, !mo.chain)
 ```

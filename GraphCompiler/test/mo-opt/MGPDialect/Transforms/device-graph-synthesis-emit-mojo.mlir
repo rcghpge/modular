@@ -80,9 +80,8 @@
 // CHECK: def [[STUB]]({{.*}}: {{.*}}OpaquePointer[{{.*}}], {{.*}}: {{.*}}OpaquePointer[{{.*}}], {{.*}}: {{.*}}DeviceGraphBuilder) raises:
 // CHECK: BuildGraphCapable.build_graph(
 
-mo.graph @dg(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
-    attributes {isDeviceGraph} {
-  %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+mo.graph @dg(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> isDeviceGraph {
+  %0 = mo.custom [symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>]
       (%x) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   mo.output %0 : !mo.tensor<[2, 3], f32, gpu:0>
 }
@@ -99,9 +98,8 @@ mo.graph @dg(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:
 // CHECK-NOT: ExecuteOnly.build_graph(
 // CHECK: ExecuteOnly.execute({{.*}}, [[CTX]])
 
-mo.graph @dg_execute_only(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
-    attributes {isDeviceGraph} {
-  %0 = mo.custom {symbol = "imposter_execute_only", device = #M.device_ref<"gpu", 0>}
+mo.graph @dg_execute_only(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> isDeviceGraph {
+  %0 = mo.custom [symbol = "imposter_execute_only", device = #M.device_ref<"gpu", 0>]
       (%x) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   mo.output %0 : !mo.tensor<[2, 3], f32, gpu:0>
 }
@@ -119,10 +117,9 @@ mo.graph @dg_execute_only(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 
 // CHECK-DAG: builder.add_input({{var[_0-9]+}})
 // CHECK-DAG: DeviceGraph.create_collective(
 
-mo.graph @dg_mut_input(%buf: !mo.buffer<[2, 3], f32, gpu:0>, %x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.chain
-    attributes {isDeviceGraph} {
+mo.graph @dg_mut_input(%buf: !mo.buffer<[2, 3], f32, gpu:0>, %x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.chain isDeviceGraph {
   %ch0 = mo.chain.create()
-  %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+  %0 = mo.custom [symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>]
       (%x) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   %ch1 = mo.mutable.store(%buf, %0, %ch0) : (!mo.buffer<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>, !mo.chain) -> (!mo.chain)
   mo.output %ch1 : !mo.chain
@@ -141,9 +138,8 @@ mo.graph @dg_mut_input(%buf: !mo.buffer<[2, 3], f32, gpu:0>, %x: !mo.tensor<[2, 
 // CHECK-DAG: builder.add_input({{var[_0-9]+}})
 // CHECK-DAG: DeviceGraph.create_collective(
 
-mo.graph @dg_host_input(%h: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:0>
-    attributes {isDeviceGraph} {
-  %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+mo.graph @dg_host_input(%h: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:0> isDeviceGraph {
+  %0 = mo.custom [symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>]
       (%h) : (!mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:0>
   mo.output %0 : !mo.tensor<[4], si64, gpu:0>
 }
@@ -162,11 +158,10 @@ mo.graph @dg_host_input(%h: !mo.tensor<[4], si64>) -> !mo.tensor<[4], si64, gpu:
 // CHECK: [[STUB]]({{.*}}, builder)
 // CHECK: builder.region([[WORK]], dependencies =
 
-mo.graph @dg_chain(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
-    attributes {isDeviceGraph} {
-  %0 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+mo.graph @dg_chain(%x: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> isDeviceGraph {
+  %0 = mo.custom [symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>]
       (%x) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
-  %1 = mo.custom {symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>}
+  %1 = mo.custom [symbol = "imposter_build_graph_capable", device = #M.device_ref<"gpu", 0>]
       (%0) : (!mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   mo.output %1 : !mo.tensor<[2, 3], f32, gpu:0>
 }

@@ -12,6 +12,6 @@ mo.graph @dims_must_match_same_tensor<D0>(%arg0: !mo.tensor<[D0, D0, D0], f32>) 
 
 // CHECK-LABEL: mgp.model @dims_must_match_same_tensor_subgraph
 // CHECK-NOT: mgp.assert
-mo.graph @dims_must_match_same_tensor_subgraph<D0>(%arg0: !mo.tensor<[D0, D0, D0], f32>) -> !mo.tensor<[D0, D0, D0], f32> attributes {isSubgraph} {
+mo.graph @dims_must_match_same_tensor_subgraph<D0>(%arg0: !mo.tensor<[D0, D0, D0], f32>) -> !mo.tensor<[D0, D0, D0], f32> isSubgraph {
   mo.output %arg0 : !mo.tensor<[D0, D0, D0], f32>
 }

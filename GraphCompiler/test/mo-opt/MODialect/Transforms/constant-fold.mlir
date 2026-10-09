@@ -8,8 +8,8 @@
 mo.graph @incomplete_shape_func() -> (!mo.tensor<[?, ?], f32>) {
   %1 = mo.constant <#M.dense_array<1.> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %2 = mo.static.broadcast_to(%1):!mo.tensor<[1], f32> -> !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>
-  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%2) {kgenParams = {a_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, a_type = f32, b_shape = dense<[768, 768]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, c_type = f32, transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
-  %3 = mo.layout.transform(%2) {kgenParams = {a_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, a_type = f32, b_shape = dense<[768, 768]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, c_type = f32}} : !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
+  mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%2) [kgenParams = {a_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, a_type = f32, b_shape = dense<[768, 768]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, c_type = f32, transpose_in_0 = false}] : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
+  %3 = mo.layout.transform(%2) [kgenParams = {a_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, a_type = f32, b_shape = dense<[768, 768]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, c_type = f32}] : !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
   %4 = mo.rebind(%3): !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}> -> !mo.tensor<[?, ?], f32>
   mo.output %4: !mo.tensor<[?, ?], f32>
 }
@@ -188,7 +188,7 @@ mo.graph @scalar_to_scalar_ndbuff_reg() -> (!mo.opaque<"MyCustomScalarReg">) {
   %0 = mo.constant <#M.dense_array<42> : tensor<si32>> : !mo.tensor<[1], si32>
   %ch0 = mo.chain.create()
 
-  %1 = mo.custom {symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], si32>) -> (!mo.opaque<"MyCustomScalarReg">)
+  %1 = mo.custom [symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>](%0) : (!mo.tensor<[1], si32>) -> (!mo.opaque<"MyCustomScalarReg">)
 
   mo.output %1 : !mo.opaque<"MyCustomScalarReg">
 }

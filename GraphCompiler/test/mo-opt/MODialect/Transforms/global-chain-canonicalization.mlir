@@ -53,14 +53,14 @@ mo.graph @interleaved_sequence(%buf0: !bt, %buf1: !bt, %lhs: !tt) -> (!bt, !bt)
 // CHECK-LABEL: mo.graph @custom_ops
 // CHECK-SAME: [[buf0:%.*]]:{{.*}}[[buf1:%.*]]:
 // CHECK-DAG: [[ch0:%.*]] = mo.chain.create
-// CHECK-DAG: [[ch1:%.*]] = mo.custom {symbol = "foo"}([[buf0]], [[ch0]])
-// CHECK-DAG: [[ch2:%.*]] = mo.custom {symbol = "foo"}([[buf1]], [[ch0]])
+// CHECK-DAG: [[ch1:%.*]] = mo.custom [symbol = "foo"]([[buf0]], [[ch0]])
+// CHECK-DAG: [[ch2:%.*]] = mo.custom [symbol = "foo"]([[buf1]], [[ch0]])
 mo.graph @custom_ops(%buf0: !bt, %buf1: !bt)
 {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom {symbol = "foo", device = #M.device_ref<"cpu", 0>}(%buf0, %ch0) : (!bt, !ct) -> (!ct)
-  %ch2 = mo.custom {symbol = "foo", device = #M.device_ref<"cpu", 0>}(%buf1, %ch1) : (!bt, !ct) -> (!ct)
+  %ch1 = mo.custom [symbol = "foo", device = #M.device_ref<"cpu", 0>](%buf0, %ch0) : (!bt, !ct) -> (!ct)
+  %ch2 = mo.custom [symbol = "foo", device = #M.device_ref<"cpu", 0>](%buf1, %ch1) : (!bt, !ct) -> (!ct)
 
   mo.output
 }
@@ -75,12 +75,12 @@ mo.graph @custom_ops_opaque(%buf: !bt, %opaque: !ot)
   // Pair of custom ops whose linear chains should get decomposed.
   // CHECK-DAG: [[CH1:%.*]] = mo.custom{{.*}}foo{{.*}}([[BUF]], [[CH0]])
   // CHECK-DAG: [[CH2:%.*]] = mo.custom{{.*}}bar{{.*}}([[OPAQUE]], [[CH0]])
-  %ch1 = mo.custom {symbol = "foo", device = #M.device_ref<"cpu", 0>}(%buf, %ch0) : (!bt, !ct) -> (!ct)
-  %ch2 = mo.custom {symbol = "bar", device = #M.device_ref<"cpu", 0>} (%opaque, %ch1) : (!ot, !ct) -> (!ct)
+  %ch1 = mo.custom [symbol = "foo", device = #M.device_ref<"cpu", 0>](%buf, %ch0) : (!bt, !ct) -> (!ct)
+  %ch2 = mo.custom [symbol = "bar", device = #M.device_ref<"cpu", 0>] (%opaque, %ch1) : (!ot, !ct) -> (!ct)
 
   // Check that this true linear dependency on %opaque remains.
   // CHECK-DAG: [[CH3:%.*]] = mo.custom{{.*}}baz{{.*}}([[OPAQUE]], [[CH2]])
-  %ch3 = mo.custom {symbol = "baz", device = #M.device_ref<"cpu", 0>} (%opaque, %ch2) : (!ot, !ct) -> (!ct)
+  %ch3 = mo.custom [symbol = "baz", device = #M.device_ref<"cpu", 0>] (%opaque, %ch2) : (!ot, !ct) -> (!ct)
 
   mo.output
 }
@@ -97,8 +97,8 @@ mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)
 
   // CHECK-DAG: [[CH1:%.*]] = mo.custom{{.*}}bar{{.*}}([[OPAQUE1]], [[CH0]])
   // CHECK-DAG: [[CH2:%.*]] = mo.custom{{.*}}baz{{.*}}([[OPAQUE2]], [[CH1]])
-  %ch1 = mo.custom {symbol = "bar", device = #M.device_ref<"cpu", 0>} (%opaque1, %ch0) : (!ot, !ct) -> (!ct)
-  %ch2 = mo.custom {symbol = "baz", device = #M.device_ref<"cpu", 0>} (%opaque2, %ch1) : (!ot, !ct) -> (!ct)
+  %ch1 = mo.custom [symbol = "bar", device = #M.device_ref<"cpu", 0>] (%opaque1, %ch0) : (!ot, !ct) -> (!ct)
+  %ch2 = mo.custom [symbol = "baz", device = #M.device_ref<"cpu", 0>] (%opaque2, %ch1) : (!ot, !ct) -> (!ct)
 
   mo.output
 }
@@ -106,7 +106,7 @@ mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)
 // CHECK-LABEL: @everything
 // CHECK-SAME: ([[arg0:%.*]]: !mo.buffer<[3, 3], f32>, [[arg1:%.*]]: !mo.buffer<[3, 3], f32>, [[arg2:%.*]]: !mo.tensor<[3, 3], f32>) {
 // CHECK-DAG:  [[a0:%.*]] = mo.chain.create()
-// CHECK-DAG:  [[a1:%.*]] = mo.custom {symbol = "foo"}([[arg0]], [[a0]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
+// CHECK-DAG:  [[a1:%.*]] = mo.custom [symbol = "foo"]([[arg0]], [[a0]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
 
 // CHECK-DAG:  [[outTensor_1:%.*]], [[outChain_0:%.*]] = mo.mutable.load([[arg0]], [[a1]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> (!mo.tensor<[3, 3], f32>, !mo.chain)
 // CHECK-DAG:  [[a3:%.*]] = mo.add([[outTensor_1]], [[arg2]]) : !mo.tensor<[3, 3], f32>
@@ -118,14 +118,14 @@ mo.graph @different_opaque_vals_same_type(%opaque1: !ot, %opaque2: !ot)
 // CHECK-DAG:  [[a4:%.*]] = mo.mutable.store([[arg1]], [[a2]], [[outChain]]) : (!mo.buffer<[3, 3], f32>, !mo.tensor<[3, 3], f32>, !mo.chain) -> !mo.chain
 
 // CHECK-DAG:  [[ch2:%.*]] = mo.chain.create([[a4]], [[outChain]])
-// CHECK-DAG:  [[a6:%.*]] = mo.custom {symbol = "foo"}([[arg1]], [[ch2]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
+// CHECK-DAG:  [[a6:%.*]] = mo.custom [symbol = "foo"]([[arg1]], [[ch2]]) : (!mo.buffer<[3, 3], f32>, !mo.chain) -> !mo.chain
 
 // CHECK: mo.output
 mo.graph @everything(%buf0: !bt, %buf1: !bt, %tensor: !tt)
 {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom {symbol = "foo", device = #M.device_ref<"cpu", 0>}(%buf0, %ch0) : (!bt, !ct) -> (!ct)
+  %ch1 = mo.custom [symbol = "foo", device = #M.device_ref<"cpu", 0>](%buf0, %ch0) : (!bt, !ct) -> (!ct)
 
   %vbuf, %ch2 = mo.mutable.load(%buf1, %ch1) : (!bt, !ct) -> (!tt, !ct)
   %vbuf2, %ch3 = mo.mutable.load(%buf0, %ch2) : (!bt, !ct) -> (!tt, !ct)
@@ -136,7 +136,7 @@ mo.graph @everything(%buf0: !bt, %buf1: !bt, %tensor: !tt)
   %ch4 = mo.mutable.store(%buf1, %res1, %ch3) : (!bt, !tt, !ct) -> (!ct)
   %ch5 = mo.mutable.store(%buf0, %res2, %ch4) : (!bt, !tt, !ct) -> (!ct)
 
-  %ch6 = mo.custom {symbol = "foo", device = #M.device_ref<"cpu", 0>}(%buf1, %ch5) : (!bt, !ct) -> (!ct)
+  %ch6 = mo.custom [symbol = "foo", device = #M.device_ref<"cpu", 0>](%buf1, %ch5) : (!bt, !ct) -> (!ct)
 
   mo.output
 }
@@ -176,7 +176,7 @@ mo.graph @call_multi_chain(%buf: !bt, %tensor: !tt, %main: !ct, %dev: !ct)
 }
 
 mo.graph @store_buffer(%buf: !bt, %tensor: !tt, %ch_in: !ct)
-    -> (!bt, !ct) attributes {isSubgraph}
+    -> (!bt, !ct) isSubgraph
 {
   %loaded, %ch1 = mo.mutable.load(%buf, %ch_in)
       : (!bt, !ct) -> (!tt, !ct)
@@ -187,7 +187,7 @@ mo.graph @store_buffer(%buf: !bt, %tensor: !tt, %ch_in: !ct)
 }
 
 mo.graph @multi_chain_callee(%buf: !bt, %tensor: !tt, %main: !ct, %dev: !ct)
-    -> (!bt, !ct, !ct) attributes {isSubgraph}
+    -> (!bt, !ct, !ct) isSubgraph
 {
   mo.output %buf, %main, %dev : !bt, !ct, !ct
 }
@@ -253,7 +253,7 @@ mo.graph @collective_then_custom(%off: !gt1, %s0: !sb0, %s1: !sb1, %kv0: !kv0)
       : (!gt1, !sb0, !sb1, !ct) -> (!gt0, !gt1, !ct)
 
   // CHECK: mo.custom{{.*}}matmul{{.*}}({{.*}}, [[BCH]])
-  %mch = mo.custom {symbol = "matmul", device = #M.device_ref<"gpu", 0>}(%kv0, %bch)
+  %mch = mo.custom [symbol = "matmul", device = #M.device_ref<"gpu", 0>](%kv0, %bch)
       : (!kv0, !ct) -> (!ct)
 
   mo.output %mch : !ct
@@ -270,7 +270,7 @@ mo.graph @collective_through_merge(%off: !gt1, %s0: !sb0, %s1: !sb1,
   %ch0 = mo.chain.create()
 
   // CHECK: [[PRE:%.*]] = mo.custom{{.*}}prev{{.*}}({{.*}}, [[CH0]])
-  %pre = mo.custom {symbol = "prev", device = #M.device_ref<"gpu", 1>}(%kv1, %ch0)
+  %pre = mo.custom [symbol = "prev", device = #M.device_ref<"gpu", 1>](%kv1, %ch0)
       : (!kv1, !ct) -> (!ct)
   %merged = mo.chain.create(%ch0, %pre) : !ct, !ct
 
@@ -279,7 +279,7 @@ mo.graph @collective_through_merge(%off: !gt1, %s0: !sb0, %s1: !sb1,
       : (!gt1, !sb0, !sb1, !ct) -> (!gt0, !gt1, !ct)
 
   // CHECK: mo.custom{{.*}}matmul{{.*}}({{.*}}, [[BCH]])
-  %mch = mo.custom {symbol = "matmul", device = #M.device_ref<"gpu", 0>}(%kv0, %bch)
+  %mch = mo.custom [symbol = "matmul", device = #M.device_ref<"gpu", 0>](%kv0, %bch)
       : (!kv0, !ct) -> (!ct)
 
   mo.output %mch : !ct
@@ -292,11 +292,11 @@ mo.graph @no_collective_still_relaxes(%kv0: !kv0, %kv1: !kv1) -> !ct {
   %ch0 = mo.chain.create()
 
   // CHECK-DAG: [[A:%.*]] = mo.custom{{.*}}a{{.*}}({{.*}}, [[CH0]])
-  %c1 = mo.custom {symbol = "a", device = #M.device_ref<"gpu", 0>}(%kv0, %ch0)
+  %c1 = mo.custom [symbol = "a", device = #M.device_ref<"gpu", 0>](%kv0, %ch0)
       : (!kv0, !ct) -> (!ct)
 
   // CHECK-DAG: [[B:%.*]] = mo.custom{{.*}}b{{.*}}({{.*}}, [[CH0]])
-  %c2 = mo.custom {symbol = "b", device = #M.device_ref<"gpu", 1>}(%kv1, %c1)
+  %c2 = mo.custom [symbol = "b", device = #M.device_ref<"gpu", 1>](%kv1, %c1)
       : (!kv1, !ct) -> (!ct)
 
   // CHECK: mo.chain.create([[B]], [[A]])

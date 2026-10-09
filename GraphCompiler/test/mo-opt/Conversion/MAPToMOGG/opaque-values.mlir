@@ -23,11 +23,7 @@
 // CHECK: %[[CALL:.*]] = mogg.call.opaque @{{.*}}MakeSimdPair kernel_param = {P0 = 4 : i64, P1 = 8 : i64} -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 // CHECK: mogg.output %[[CALL]] : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 mo.graph @opaque_result() -> !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> {
-  %pair = mo.custom {
-    symbol = "make_simd_pair",
-    device = #M.device_ref<"cpu", 0>,
-    parameters = {}
-  } () : () -> (!mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>)
+  %pair = mo.custom [symbol = "make_simd_pair", device = #M.device_ref<"cpu", 0>, parameters = {}] () : () -> (!mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>)
   mo.output %pair : !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>
 }
 
@@ -45,9 +41,6 @@ mo.graph @opaque_result() -> !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> {
 mo.graph @opaque_input(
     %pair: !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>
 ) -> !mo.tensor<[12], si32> {
-  %out = mo.custom {
-    symbol = "kernel_with_parameterized_opaque",
-    device = #M.device_ref<"cpu", 0>
-  } (%pair) : (!mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>) -> (!mo.tensor<[12], si32>)
+  %out = mo.custom [symbol = "kernel_with_parameterized_opaque", device = #M.device_ref<"cpu", 0>] (%pair) : (!mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>) -> (!mo.tensor<[12], si32>)
   mo.output %out : !mo.tensor<[12], si32>
 }

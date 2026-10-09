@@ -81,7 +81,7 @@ mo.graph @avg_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
   %paddings = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
 
   mo.invoke_shape_func["mo.avg_pool"]<() -> D4, D5, D6, D7>(%input, %filter_size, %strides, %dilations, %paddings)
-    {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32], kgenParams = {ceil_mode = false}} :
+    [kgenParams = {ceil_mode = false}, dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si32>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>)
 
@@ -102,7 +102,7 @@ mo.graph @avg_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
   %paddings = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
 
   mo.invoke_shape_func["mo.avg_pool_ceil_mode_true"]<() -> D4, D5, D6, D7>(%input, %filter_size, %strides, %dilations, %paddings)
-    {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]} :
+    [dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si32>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>)
 
@@ -123,7 +123,7 @@ mo.graph @max_pool_fallback_shape_func<() -> D0, D1, D2, D3>(
   %paddings = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
 
   mo.invoke_shape_func["mo.max_pool"]<() -> D4, D5, D6, D7>(%input, %filter_size, %strides, %dilations, %paddings)
-    {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4: i32], kgenParams = {ceil_mode = false}} :
+    [kgenParams = {ceil_mode = false}, dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4: i32]] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si32>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>)
 
@@ -144,7 +144,7 @@ mo.graph @max_pool_ceil_mode_true_fallback_shape_func<() -> D0, D1, D2, D3>(
   %paddings = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
 
   mo.invoke_shape_func["mo.max_pool_ceil_mode_true"]<() -> D4, D5, D6, D7>(%input, %filter_size, %strides, %dilations, %paddings)
-    {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4: i32]} :
+    [dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4: i32]] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si32>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>)
 
@@ -165,7 +165,7 @@ mo.graph @max_pool_fallback_shape_func_non_zero_padding<() -> D0, D1, D2, D3>(
   %paddings = mo.constant <#M.dense_array<1, 1, 0, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
 
   mo.invoke_shape_func["mo.max_pool"]<() -> D4, D5, D6, D7>(%input, %filter_size, %strides, %dilations, %paddings)
-    {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32], kgenParams = {ceil_mode = false}} :
+    [kgenParams = {ceil_mode = false}, dataDeptTensors = [1 : i32, 2 : i32, 3 : i32, 4 : i32]] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2], si32>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>)
 

@@ -14,7 +14,7 @@
 // CHECK-NEXT: mo.matmul(%{{.*}}, %[[C]])
 // CHECK-NEXT: mo.yield
 mo.graph @hoist_weight_prep(%x: !mo.tensor<[4, 8], f32, gpu:0>) -> !mo.tensor<[4, 8], f32, gpu:0> {
-  %w = mo.constant.external {align = 4 : ui64, device = #M.device_ref<"cpu", 0>, name = "w"} : !mo.tensor<[4, 8], f32>
+  %w = mo.constant.external [name = "w", align = 4, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[4, 8], f32>
   %root = mo.chain.create()
   %s = mo.sequence[1] (%x : !mo.tensor<[4, 8], f32, gpu:0>) (%arg) -> (!mo.tensor<[4, 8], f32, gpu:0>) {
     %wd, %ch = mo.transfer[%root] %w : !mo.tensor<[4, 8], f32> to <"gpu", 0>
@@ -53,7 +53,7 @@ mo.graph @keep_captured_activation(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.t
 // SYMOPT-NOT: mo.slice
 // SYMOPT: mo.output
 mo.graph @sharded_weight(%x0: !mo.tensor<[4, 8], f32, gpu:0>, %x1: !mo.tensor<[4, 8], f32, gpu:1>) -> (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[4, 4], f32, gpu:1>) {
-  %w = mo.constant.external {align = 4 : ui64, device = #M.device_ref<"cpu", 0>, name = "w"} : !mo.tensor<[8, 8], f32>
+  %w = mo.constant.external [name = "w", align = 4, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[8, 8], f32>
   %root = mo.chain.create()
   %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %start0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>

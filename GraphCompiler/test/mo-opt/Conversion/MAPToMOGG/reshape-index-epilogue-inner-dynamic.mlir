@@ -20,7 +20,7 @@ mo.graph @custom_reshape_inner_dynamic<D>(
   %x: !mo.tensor<[D, 2], f32>,
   %z: !mo.tensor<[2, D], f32>
 ) -> !mo.tensor<[2, D], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%x) : (!mo.tensor<[D, 2], f32>) -> !mo.tensor<[D, 2], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[D, 2], f32>) -> !mo.tensor<[D, 2], f32>
   %r = mo.static.reshape(%c) : !mo.tensor<[D, 2], f32> -> !mo.tensor<[2, D], f32>
   %out = mo.add(%r, %z) : !mo.tensor<[2, D], f32>
   mo.output %out : !mo.tensor<[2, D], f32>

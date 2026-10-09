@@ -16,7 +16,7 @@ mo.graph @tile_fallback_shape_func<() -> D0, D1, D2, D3>(
   %repeats = mo.constant <#M.dense_array<2, 3, 2, 4> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
   mo.invoke_shape_func["mo.tile"]<() -> D4, D5, D6, D7>(%input, %repeats)
-    {dataDeptTensors = [1 : i32]} :
+    [dataDeptTensors = [1 : i32]] :
     (!mo.tensor<[2, 3, 7, 11], f32>, !mo.tensor<[4], si64>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

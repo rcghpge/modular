@@ -76,7 +76,7 @@ mo.graph @gpu_matmul_no_transform_non_gpu_uses(%arg0: !mo.tensor<[2, 2], f32>, %
 // CHECK: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
 // CHECK-NOT: mo.matmul
 mo.graph @cuda_matmul_prefers_transpose_constant_like(%arg0: !mo.tensor<[2, 2], f32, gpu:0>, %arg1: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> {
-  %0 = mo.constant.external {align = 32 : ui64, device = #M.device_ref<"gpu", 0>, name = "weight"} : !mo.tensor<[1, 1], f32, gpu:0>
+  %0 = mo.constant.external [name = "weight", align = 32, device = #M.device_ref<"gpu", 0>] : !mo.tensor<[1, 1], f32, gpu:0>
 
   // This is still constant-like since it is a pure op derived with %0 as operand
   // and %0 is constant.

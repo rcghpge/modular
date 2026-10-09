@@ -45,7 +45,7 @@ mo.graph @resize_linear_half_pixel_1D(%input : !mo.tensor<[1, 1, 2, 2], f32>) ->
 // CHECK-NEXT: 'resize_linear_half_pixel_1D' returned tensor<1x1x4x4xf32> [1.000000e+00, 1.250000e+00, 1.750000e+00, 2.000000e+00, 1.500000e+00, 1.750000e+00, 2.250000e+00, 2.500000e+00, 2.500000e+00, 2.750000e+00, 3.250000e+00, 3.500000e+00, 3.000000e+00, 3.250000e+00, 3.750000e+00, 4.000000e+00]
 
 mo.graph @resize_fallback_shape_func<() -> D0, D1, D2, D3>(%one : !mo.tensor<[], si64>, %input : !mo.tensor<[1, 1, 2, 2], f32>, %size : !mo.tensor<[4], si64>) -> !mo.tensor<[D0, D1, D2, D3], si64> {
-    mo.invoke_shape_func["mo.resize.linear"]<() -> D4, D5, D6, D7>(%input, %size) {dataDeptTensors = [1 : i32]} : (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>)
+    mo.invoke_shape_func["mo.resize.linear"]<() -> D4, D5, D6, D7>(%input, %size) [dataDeptTensors = [1 : i32]] : (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>)
     %val = mo.static.broadcast_to(%one) : !mo.tensor<[], si64> -> !mo.tensor<[D4, D5, D6, D7], si64>
     mo.output<D4, D5, D6, D7> %val : !mo.tensor<[D4, D5, D6, D7], si64>
 }

@@ -10,7 +10,7 @@
 // verification error.
 mo.graph @dist_transformer_block_0<input_split_0>(
   %x: !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
-) -> !mo.tensor<[input_split_0, 7168], bf16, gpu:0> attributes {isSubgraph} {
+) -> !mo.tensor<[input_split_0, 7168], bf16, gpu:0> isSubgraph {
   // Identity body to keep the signature simple and close to the real case.
   mo.output %x : !mo.tensor<[input_split_0, 7168], bf16, gpu:0>
 }

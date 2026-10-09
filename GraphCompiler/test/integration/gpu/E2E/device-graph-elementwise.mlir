@@ -14,8 +14,7 @@ mo.graph @main(%x: !mo.tensor<[2, 3], ui8>) -> !mo.tensor<[2, 3], ui8> {
   mo.output %h : !mo.tensor<[2, 3], ui8>
 }
 
-mo.graph @device_graph_add(%x: !mo.tensor<[2, 3], ui8, gpu:0>) -> !mo.tensor<[2, 3], ui8, gpu:0>
-    attributes {isSubgraph, isDeviceGraph} {
+mo.graph @device_graph_add(%x: !mo.tensor<[2, 3], ui8, gpu:0>) -> !mo.tensor<[2, 3], ui8, gpu:0> isSubgraph isDeviceGraph {
   %0 = mo.add(%x, %x) : !mo.tensor<[2, 3], ui8, gpu:0>
   mo.output %0 : !mo.tensor<[2, 3], ui8, gpu:0>
 }

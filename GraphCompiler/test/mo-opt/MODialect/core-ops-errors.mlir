@@ -52,12 +52,12 @@ mo.graph @cycle<D0 -> O0, O1, O2, O3>(
   %temp1 = mo.static.broadcast_to(%input1) : !mo.tensor<[D0, 3], f32> -> !mo.tensor<[D5, D6], f32>
   // expected-note @below {{parameter "D3" is defined here, which references the expression:}}
   mo.invoke_shape_func["arg_nonzero_shape"]<() -> D3, D4>(%temp1)
-    {dataDeptTensors = [0 : i32]} : (!mo.tensor<[D5, D6], f32>)
+    [dataDeptTensors = [0 : i32]] : (!mo.tensor<[D5, D6], f32>)
 
   %temp2 = mo.static.broadcast_to(%input2) : !mo.tensor<[], f32> -> !mo.tensor<[D3, D4], f32>
   // expected-note @below {{parameter "D5" is defined here, which references the first expression}}
   mo.invoke_shape_func["arg_nonzero_shape"]<() -> D5, D6>(%temp2)
-    {dataDeptTensors = [0 : i32]} : (!mo.tensor<[D3, D4], f32>)
+    [dataDeptTensors = [0 : i32]] : (!mo.tensor<[D3, D4], f32>)
 
   mo.output<D5, D6, D3, D4> %temp1, %temp2 : !mo.tensor<[D5, D6], f32>, !mo.tensor<[D3, D4], f32>
 }

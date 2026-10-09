@@ -17,7 +17,7 @@
 // CHECK: mo.graph @ffn_block
 // CHECK: mo.graph @transformer_stack
 
-mo.graph @ffn_block(%x: !mo.tensor<[128, 256], bf16, gpu:0>, %gamma: !mo.tensor<[256], bf16, gpu:0>, %w_gate: !mo.tensor<[256, 1024], bf16, gpu:0>, %w_up: !mo.tensor<[256, 1024], bf16, gpu:0>, %w_down: !mo.tensor<[1024, 256], bf16, gpu:0>) -> !mo.tensor<[128, 256], bf16, gpu:0> attributes {isSubgraph} {
+mo.graph @ffn_block(%x: !mo.tensor<[128, 256], bf16, gpu:0>, %gamma: !mo.tensor<[256], bf16, gpu:0>, %w_gate: !mo.tensor<[256, 1024], bf16, gpu:0>, %w_up: !mo.tensor<[256, 1024], bf16, gpu:0>, %w_down: !mo.tensor<[1024, 256], bf16, gpu:0>) -> !mo.tensor<[128, 256], bf16, gpu:0> isSubgraph {
   %eps = mo.constant <#M.dense_array<9.99999974E-6> : tensor<f32>> : !mo.tensor<[], f32>
   %weight_offset = mo.constant <#M.dense_array<0.000000e+00> : tensor<bf16>> : !mo.tensor<[], bf16>
   %n = mo.reduce.rms_norm(%x, %gamma, %eps, %weight_offset) {multiply_before_cast = false} : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256], bf16, gpu:0>, !mo.tensor<[], f32>, !mo.tensor<[], bf16>) -> !mo.tensor<[128, 256], bf16, gpu:0>

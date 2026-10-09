@@ -40,10 +40,10 @@ mo.graph @parallel_matmuls_static(%A: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2,
 // CHECK-NEXT:    %[[ADD2:.*]] = mo.add({{.*}}) : !mo.tensor<[2, 2], f32>
 // CHECK-NEXT:    mo.output %[[ADD2]]
 mo.graph @parallel_matmuls_static_external_constants(%A: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %W0 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, name = "blob0"} : !mo.tensor<[2, 2], f32>
-  %W1 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, name = "blob1"} : !mo.tensor<[2, 2], f32>
-  %W2 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, name = "blob2"} : !mo.tensor<[2, 2], f32>
-  %W3 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, name = "blob3"} : !mo.tensor<[2, 2], f32>
+  %W0 = mo.constant.external [name = "blob0", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[2, 2], f32>
+  %W1 = mo.constant.external [name = "blob1", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[2, 2], f32>
+  %W2 = mo.constant.external [name = "blob2", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[2, 2], f32>
+  %W3 = mo.constant.external [name = "blob3", align = 1, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[2, 2], f32>
   %1 = mo.matmul(%A, %W0) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %2 = mo.matmul(%A, %W1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %3 = mo.matmul(%A, %W2) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
@@ -58,10 +58,10 @@ mo.graph @parallel_matmuls_static_external_constants(%A: !mo.tensor<[2, 2], f32>
 // CHECK:         @parallel_matmuls_static_external_constants_aliased(%[[ACT:.*]]:{{.*}})
 // CHECK-NOT:     mo.concat
 mo.graph @parallel_matmuls_static_external_constants_aliased(%A: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %W0 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, hasAlias = true, name = "blob0"} : !mo.tensor<[2, 2], f32>
-  %W1 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, hasAlias = true, name = "blob1"} : !mo.tensor<[2, 2], f32>
-  %W2 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, hasAlias = true, name = "blob2"} : !mo.tensor<[2, 2], f32>
-  %W3 = mo.constant.external {device = #M.device_ref<"cpu", 0>, align = 1 : ui64, hasAlias = true, name = "blob3"} : !mo.tensor<[2, 2], f32>
+  %W0 = mo.constant.external [name = "blob0", align = 1, device = #M.device_ref<"cpu", 0>, hasAlias = true] : !mo.tensor<[2, 2], f32>
+  %W1 = mo.constant.external [name = "blob1", align = 1, device = #M.device_ref<"cpu", 0>, hasAlias = true] : !mo.tensor<[2, 2], f32>
+  %W2 = mo.constant.external [name = "blob2", align = 1, device = #M.device_ref<"cpu", 0>, hasAlias = true] : !mo.tensor<[2, 2], f32>
+  %W3 = mo.constant.external [name = "blob3", align = 1, device = #M.device_ref<"cpu", 0>, hasAlias = true] : !mo.tensor<[2, 2], f32>
   %1 = mo.matmul(%A, %W0) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %2 = mo.matmul(%A, %W1) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %3 = mo.matmul(%A, %W2) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>

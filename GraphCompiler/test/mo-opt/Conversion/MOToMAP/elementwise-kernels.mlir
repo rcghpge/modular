@@ -38,7 +38,7 @@ mo.graph @symbolic<D0, D1>(%x: !mo.tensor<[D0, D1], f32>, %y: !mo.tensor<[D0, D1
 // CHECK-NEXT:  map.call.elementwise @{{.*}}AddElementwise(%[[IDX3]], %[[X3V]], %[[Y3V]]) : !map.index<2>, f32, f32 -> f32
 // CHECK-NEXT:  map.store
 mo.graph @custom_kernel(%x: !mo.tensor<[8, 8], f32>, %y: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32> {
-  %output = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "imposter_add_elementwise"}(%x, %y) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
+  %output = mo.custom [symbol = "imposter_add_elementwise", device = #M.device_ref<"cpu", 0>](%x, %y) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
   mo.output %output : !mo.tensor<[8, 8], f32>
 }
 
@@ -106,7 +106,7 @@ mo.graph @cast_unary(%x: !mo.tensor<[8], f32>) -> !mo.tensor<[8], si32> {
 // CHECK-NEXT:  map.call.elementwise @{{.*}}ElemwiseAddWithParam[bias = 1 : i64](%[[IDX8]], %[[X8V]]) : !map.index<2>, f32 -> f32
 // CHECK-NEXT:  map.store
 mo.graph @custom_kernel_with_param(%x: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32> {
-  %output = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "elemwise_add_with_param", parameters = {"bias" = 1}}(%x) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  %output = mo.custom [symbol = "elemwise_add_with_param", device = #M.device_ref<"cpu", 0>, parameters = {"bias" = 1}](%x) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
   mo.output %output : !mo.tensor<[4, 3], f32>
 }
 

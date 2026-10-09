@@ -6,6 +6,6 @@
 
 // CHECK: 'trait_negate_dynamic' returned tensor<2x3xf32> [-1.000000e+00, -1.000000e+00, -1.000000e+00, -1.000000e+00, -1.000000e+00, -1.000000e+00]
 mo.graph @trait_negate_dynamic<D0>(%x: !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32> {
-    %z = mo.custom {symbol = "trait_negate", device = #M.device_ref<"cpu", 0>} (%x) : (!mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
+    %z = mo.custom [symbol = "trait_negate", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
     mo.output %z : !mo.tensor<[2, D0], f32>
 }

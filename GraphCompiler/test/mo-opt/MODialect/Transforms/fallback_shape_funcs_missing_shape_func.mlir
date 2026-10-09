@@ -5,6 +5,6 @@
 
 mo.graph @missing_shape_func<D0 -> O0>(%input: !mo.tensor<[D0], f32>) -> !mo.tensor<[O0], f32> {
   // expected-error @+1 {{custom op 'print_tensor' with data-dependent output dimensions requires a registered shape function}}
-  %res = mo.custom<() -> D1> {device = #M.device_ref<"cpu", 0>, symbol = "print_tensor"}(%input) : (!mo.tensor<[D0], f32>) -> !mo.tensor<[D1], f32>
+  %res = mo.custom<() -> D1> [symbol = "print_tensor", device = #M.device_ref<"cpu", 0>](%input) : (!mo.tensor<[D0], f32>) -> !mo.tensor<[D1], f32>
   mo.output<D1> %res : !mo.tensor<[D1], f32>
 }

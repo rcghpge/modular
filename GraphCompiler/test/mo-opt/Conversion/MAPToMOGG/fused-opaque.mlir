@@ -25,7 +25,7 @@
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOneFusedOutput inputs(%{{.*}} : !mogg.tensor) outputs(%[[EPI]] : !mogg.tensor) context(%[[CTX]] : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
 }
 
@@ -40,7 +40,7 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK: mogg.call.opaque @{{.*}}MapLowerTwoFusedOutputs inputs(%{{.*}} : !mogg.tensor) outputs(%[[E0]], %[[E1]] : !mogg.tensor, !mogg.tensor) context(%{{.*}} : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %c:2 = mo.custom [symbol = "map_lower_two_fused_outputs", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
@@ -55,7 +55,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 // CHECK: mogg.call.opaque @{{.*}}MapLowerTwoInputsOneFusedOutput inputs(%{{.*}}, %{{.*}} : !mogg.tensor, !mogg.tensor) outputs(%[[EPI]] : !mogg.tensor) context(%{{.*}} : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @two_inputs_one_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_inputs_one_fused_output"}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %c = mo.custom [symbol = "map_lower_two_inputs_one_fused_output", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>
 }
 
@@ -65,7 +65,7 @@ mo.graph @two_inputs_one_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedOutputs inputs(%{{.*}} : !mogg.tensor) outputs(%[[EPI]], %{{.*}} : !mogg.tensor, !mogg.tensor) context(%{{.*}} : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @two_partial(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %c:2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_outputs"}(%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+  %c:2 = mo.custom [symbol = "map_lower_partial_fused_outputs", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
   mo.output %c#0, %c#1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
 }
 
@@ -76,7 +76,7 @@ mo.graph @two_partial(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, 
 // CHECK: mogg.call.elementwise @
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOneFusedOutput {{.*}}hasEpilogueFusion = true
 mo.graph @fused_consumer(%a: !mo.tensor<[2, 2], f32>, %z: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %d = mo.add(%c, %z) : !mo.tensor<[2, 2], f32>
   mo.output %d : !mo.tensor<[2, 2], f32>
 }
@@ -87,7 +87,7 @@ mo.graph @fused_consumer(%a: !mo.tensor<[2, 2], f32>, %z: !mo.tensor<[2, 2], f32
 // CHECK-LABEL: mo.graph @reshape_only
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @reshape_only(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %r = mo.static.reshape(%c) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[4], f32>
   mo.output %r : !mo.tensor<[4], f32>
 }
@@ -101,7 +101,7 @@ mo.graph @reshape_only(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[4], f32> {
 // CHECK: mogg.call.elementwise @
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOneFusedOutput {{.*}}hasEpilogueFusion = true
 mo.graph @reshape_and_add(%a: !mo.tensor<[2, 2], f32>, %z: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %r = mo.static.reshape(%c) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[4], f32>
   %d = mo.add(%r, %z) : !mo.tensor<[4], f32>
   mo.output %d : !mo.tensor<[4], f32>

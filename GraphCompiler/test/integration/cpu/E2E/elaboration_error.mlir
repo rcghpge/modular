@@ -6,6 +6,6 @@
 // CHECK: error: The graph compiler could not elaborate the generated KGEN
 
 mo.graph @elaboration_error_in_kernel() -> !mo.tensor<[1], si32> {
-  %0 = mo.custom {symbol = "fails_to_elaborate", device = #M.device_ref<"cpu", 0>}() : () -> (!mo.tensor<[1], si32>)
+  %0 = mo.custom [symbol = "fails_to_elaborate", device = #M.device_ref<"cpu", 0>]() : () -> (!mo.tensor<[1], si32>)
   mo.output %0 : !mo.tensor<[1], si32>
 }

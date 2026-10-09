@@ -6,6 +6,6 @@
 // False`, so `to_tile_tensor()` must not compile.
 // CHECK: constraint failed: to_tile_tensor requires a TileTensorable dense argument
 mo.graph @trait_tile_tensor_projection_npu_negative(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-    %z = mo.custom {symbol = "trait_tile_tensor_projection_negative", device = #M.device_ref<"npu", 0>} (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %z = mo.custom [symbol = "trait_tile_tensor_projection_negative", device = #M.device_ref<"npu", 0>] (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     mo.output %z : !mo.tensor<[4], f32>
 }

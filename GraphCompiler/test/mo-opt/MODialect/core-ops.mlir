@@ -347,16 +347,16 @@ mo.graph @two_constants() -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>) {
 // CHECK-LABEL: mo.graph @external_constant_control_flow
 // CHECK:       (%[[ARG0:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[5, 10], si64>
 mo.graph @external_constant_control_flow(%arg0: !mo.tensor<[], bool>) -> !mo.tensor<[5, 10], si64> {
-  // CHECK-NEXT: %[[C1:.*]] = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64>
-  // CHECK-NEXT: %[[C0:.*]] = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64>
+  // CHECK-NEXT: %[[C1:.*]] = mo.constant.external [name = "random_weight", align = 8, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[5, 10], si64>
+  // CHECK-NEXT: %[[C0:.*]] = mo.constant.external [name = "random_weight", align = 8, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[5, 10], si64>
 
   %0 = mo.if(%arg0 : !mo.tensor<[], bool>) -> !mo.tensor<[5, 10], si64> {
-    %4 = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64>
+    %4 = mo.constant.external [name = "random_weight", align = 8, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[5, 10], si64>
 
     // CHECK: mo.yield %[[C0]]
     mo.yield %4 : !mo.tensor<[5, 10], si64>
   } else {
-    %4 = mo.constant.external {align = 8 : ui64, device = #M.device_ref<"cpu", 0>, name = "random_weight"} : !mo.tensor<[5, 10], si64>
+    %4 = mo.constant.external [name = "random_weight", align = 8, device = #M.device_ref<"cpu", 0>] : !mo.tensor<[5, 10], si64>
 
     // CHECK: mo.yield %[[C1]]
     mo.yield %4 : !mo.tensor<[5, 10], si64>
@@ -405,7 +405,7 @@ mo.graph @transfer_fold_multi_uses(%arg0 : !mo.tensor<[7], f32, gpu:3>) -> (!mo.
 mo.graph @transfer_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, gpu:3> {
   // CHECK-NEXT: mo.output
   %ch0 = mo.chain.create()
-  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = true}
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> [alwaysElideSameDeviceCopy = true]
   mo.output %t0 : !mo.tensor<[4, 5], f32, gpu:3>
 }
 
@@ -413,7 +413,7 @@ mo.graph @transfer_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.ten
 mo.graph @transfer_no_elide_with_flag(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32> {
   // CHECK: %[[T:.*]], %[[C:.*]] = mo.transfer[%[[IN:.*]]] %{{.*}} : !mo.tensor<[4, 5], f32, gpu:3> to <"cpu", 0>
   %ch0 = mo.chain.create()
-  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"cpu", 0> {alwaysElideSameDeviceCopy = true}
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"cpu", 0> [alwaysElideSameDeviceCopy = true]
   // CHECK-NEXT: mo.output %[[T]]
   mo.output %t0 : !mo.tensor<[4, 5], f32>
 }
@@ -422,7 +422,7 @@ mo.graph @transfer_no_elide_with_flag(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) ->
 mo.graph @transfer_no_elide_copy(%arg0 : !mo.tensor<[4, 5], f32, gpu:3>) -> !mo.tensor<[4, 5], f32, gpu:3> {
   // CHECK: %[[T:.*]], %[[C:.*]] = mo.transfer[%[[IN:.*]]] %{{.*}} : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3>
   %ch0 = mo.chain.create()
-  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> {alwaysElideSameDeviceCopy = false}
+  %t0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4, 5], f32, gpu:3> to <"gpu", 3> [alwaysElideSameDeviceCopy = false]
   mo.output %t0 : !mo.tensor<[4, 5], f32, gpu:3>
 }
 

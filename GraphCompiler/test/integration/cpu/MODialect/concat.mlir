@@ -48,7 +48,7 @@ mo.graph @concat_fallback_shape_func<() -> D0, D1>(
 ) -> !mo.tensor<[D0, D1], si32> {
 
   mo.invoke_shape_func["mo.concat"]<() -> D2, D3>(%input1, %input2)
-    {dataDeptTensors = [0 : i32], kgenParams = {input_type = f32, input_rank = 2, axis = 1}}
+    [kgenParams = {input_type = f32, input_rank = 2, axis = 1}, dataDeptTensors = [0 : i32]]
     : (!mo.tensor<[10, 20], f32>, !mo.tensor<[10, 30], f32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

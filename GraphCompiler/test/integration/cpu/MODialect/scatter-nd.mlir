@@ -37,7 +37,7 @@ mo.graph @scatter_nd_fallback_shape_func<() -> D0, D1, D2>() -> !mo.tensor<[D0, 
   %indices = mo.constant <#M.dense_array<0, 2> : tensor<2x1x1xsi32>> : !mo.tensor<[2, 1, 1], si32>
 
   mo.invoke_shape_func["mo.scatter_nd"]<() -> D3, D4, D5>(%input, %updates, %indices)
-    {dataDeptTensors = []} : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[2, 1, 1, 2], f64>, !mo.tensor<[2, 1, 1], si32>)
+    [dataDeptTensors = []] : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[2, 1, 1, 2], f64>, !mo.tensor<[2, 1, 1], si32>)
 
   %val = mo.static.broadcast_to(%one) : !mo.tensor<[], si64> -> !mo.tensor<[D3, D4, D5], si64>
   mo.output<D3, D4, D5> %val : !mo.tensor<[D3, D4, D5], si64>

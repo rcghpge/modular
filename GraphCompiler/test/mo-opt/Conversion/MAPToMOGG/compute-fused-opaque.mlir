@@ -46,7 +46,7 @@ mo.graph @mixed_dtype(
   %b: !mo.tensor<[2, 2], f32>,
   %bias: !mo.tensor<[2, 2], f32>
 ) -> !mo.tensor<[2, 2], si32> {
-  %sum = mo.custom {symbol = "imposter_add_compute_fusion", device = #M.device_ref<"cpu", 0>}(%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %sum = mo.custom [symbol = "imposter_add_compute_fusion", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   %added = mo.add(%sum, %bias) : !mo.tensor<[2, 2], f32>
   %out = mo.cast(%added) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], si32>
   mo.output %out : !mo.tensor<[2, 2], si32>
@@ -61,7 +61,7 @@ mo.graph @mixed_dtype(
 // CHECK-NEXT:  ^bb0(%[[PV:.*]]: f32, %[[PI:.*]]: !map.index<1>, %[[PO:.*]]: !mogg.tensor, %{{.*}}: !mogg.tensor):
 // CHECK:         mogg.tensor.store %[[PO]][%[[PI]]]
 mo.graph @plain_store(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%c, %b) : !mo.tensor<[4], f32>
   mo.output %out : !mo.tensor<[4], f32>
 }

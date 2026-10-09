@@ -18,6 +18,6 @@
 // CHECK:         return [[OUT]]
 
 mo.graph @raising_shape<D0 -> D1>(%a: !mo.tensor<[D0], f32>, %b: !mo.tensor<[D0], f32>) -> !mo.tensor<[D1], f32> {
-  %r = mo.custom<() -> D2> {device = #M.device_ref<"cpu", 0>, symbol = "imposter_add_raising_shape"}(%a, %b) : (!mo.tensor<[D0], f32>, !mo.tensor<[D0], f32>) -> !mo.tensor<[D2], f32>
+  %r = mo.custom<() -> D2> [symbol = "imposter_add_raising_shape", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[D0], f32>, !mo.tensor<[D0], f32>) -> !mo.tensor<[D2], f32>
   mo.output<D2> %r : !mo.tensor<[D2], f32>
 }

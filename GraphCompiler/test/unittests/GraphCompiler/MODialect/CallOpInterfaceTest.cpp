@@ -34,7 +34,7 @@ TEST(CallOpInterfaceTest, SingleChainCallProvidesSingleton) {
   constexpr StringLiteral kIR = R"mlir(
 module {
   mo.graph @store_buffer(%buf: !mo.buffer<[1], f32>, %tensor: !mo.tensor<[1], f32>, %chain: !mo.chain)
-      -> !mo.chain attributes {isSubgraph} {
+      -> !mo.chain isSubgraph {
     %loaded, %ch1 = mo.mutable.load(%buf, %chain)
         : (!mo.buffer<[1], f32>, !mo.chain) -> (!mo.tensor<[1], f32>, !mo.chain)
     %sum = mo.add(%loaded, %tensor) : !mo.tensor<[1], f32>
@@ -79,7 +79,7 @@ TEST(CallOpInterfaceTest, MultipleChainsExposedThroughMultiInterface) {
   constexpr StringLiteral kIR = R"mlir(
 module {
   mo.graph @callee_multi(%buf: !mo.buffer<[1], f32>, %chain_main: !mo.chain, %chain_dev: !mo.chain)
-      -> (!mo.chain, !mo.chain) attributes {isSubgraph} {
+      -> (!mo.chain, !mo.chain) isSubgraph {
     mo.output %chain_main, %chain_dev : !mo.chain, !mo.chain
   }
 

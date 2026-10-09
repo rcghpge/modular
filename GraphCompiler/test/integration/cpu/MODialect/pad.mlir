@@ -54,7 +54,7 @@ mo.graph @pad_fallback_shape_func<() -> D0, D1, D2>(
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   mo.invoke_shape_func["mo.pad.constant"]<() -> D3, D4, D5>(%input, %paddings, %one)
-    {dataDeptTensors = [1 : i32]} :
+    [dataDeptTensors = [1 : i32]] :
     (!mo.tensor<[1, 2, 3], si32>, !mo.tensor<[6], si32>, !mo.tensor<[], si32>)
 
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D3, D4, D5], si32>

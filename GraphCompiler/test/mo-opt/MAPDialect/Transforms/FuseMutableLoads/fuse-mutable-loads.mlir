@@ -279,7 +279,7 @@ mo.graph @no_parallelize_with_opaque_buffer_writer(%buf: !mo.buffer<[3, 2], si32
   %ch0 = mo.chain.create()
   %t, %oc = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.chain) -> (!mo.tensor<[3, 2], si32>, !mo.chain)
   %neg = mo.negative(%t) : !mo.tensor<[3, 2], si32>
-  %c = mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "sampler.apply_penalties"}(%buf, %t, %offsets, %penalty, %penalty, %penalty, %oc) : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
+  %c = mo.custom [symbol = "sampler.apply_penalties", device = #M.device_ref<"gpu", 0>](%buf, %t, %offsets, %penalty, %penalty, %penalty, %oc) : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
   mo.output %neg, %c : !mo.tensor<[3, 2], si32>, !mo.chain
 }
 
@@ -395,7 +395,7 @@ mo.graph @fusion_with_slice(%arg0: !mo.buffer<[10, 10], f32>) -> !mo.tensor<[3, 
 mo.graph @fuse_into_opaque(%buf: !mo.buffer<[3, 2], si32>, %target: !mo.buffer<[3, 2], si32>, %offsets: !mo.tensor<[11], ui32>, %penalty: !mo.tensor<[7], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()
   %t, %oc = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.chain) -> (!mo.tensor<[3, 2], si32>, !mo.chain)
-  %c = mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "sampler.apply_penalties"}(%target, %t, %offsets, %penalty, %penalty, %penalty, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
+  %c = mo.custom [symbol = "sampler.apply_penalties", device = #M.device_ref<"gpu", 0>](%target, %t, %offsets, %penalty, %penalty, %penalty, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
   mo.output %c : !mo.chain
 }
 
@@ -412,7 +412,7 @@ mo.graph @fuse_into_opaque(%buf: !mo.buffer<[3, 2], si32>, %target: !mo.buffer<[
 mo.graph @no_fuse_into_in_place_opaque(%buf: !mo.buffer<[3, 2], si32>, %offsets: !mo.tensor<[11], ui32>, %penalty: !mo.tensor<[7], f32>) -> !mo.chain {
   %ch0 = mo.chain.create()
   %t, %oc = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.chain) -> (!mo.tensor<[3, 2], si32>, !mo.chain)
-  %c = mo.custom {device = #M.device_ref<"gpu", 0>, symbol = "sampler.apply_penalties"}(%buf, %t, %offsets, %penalty, %penalty, %penalty, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
+  %c = mo.custom [symbol = "sampler.apply_penalties", device = #M.device_ref<"gpu", 0>](%buf, %t, %offsets, %penalty, %penalty, %penalty, %ch0) : (!mo.buffer<[3, 2], si32>, !mo.tensor<[3, 2], si32>, !mo.tensor<[11], ui32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.tensor<[7], f32>, !mo.chain) -> !mo.chain
   mo.output %c : !mo.chain
 }
 

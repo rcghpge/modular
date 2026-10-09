@@ -17,7 +17,7 @@
 mo.graph @add_one_gpu(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %ch0 = mo.chain.create()
   %x_gpu, %ch1 = mo.transfer[%ch0] %x : !mo.tensor<[4], f32> to <"gpu", 0>
-  %r_gpu = mo.custom {symbol = "map_lower_add_one", device = #M.device_ref<"gpu", 0>}(%x_gpu) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
+  %r_gpu = mo.custom [symbol = "map_lower_add_one", device = #M.device_ref<"gpu", 0>](%x_gpu) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
   %r, %ch2 = mo.transfer[%ch1] %r_gpu : !mo.tensor<[4], f32, gpu:0> to <"cpu", 0>
   mo.output %r : !mo.tensor<[4], f32>
 }
@@ -30,7 +30,7 @@ mo.graph @add3_gpu(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>, %c: !mo.t
   %a_gpu, %ch1 = mo.transfer[%ch0] %a : !mo.tensor<[4], f32> to <"gpu", 0>
   %b_gpu, %ch2 = mo.transfer[%ch1] %b : !mo.tensor<[4], f32> to <"gpu", 0>
   %c_gpu, %ch3 = mo.transfer[%ch2] %c : !mo.tensor<[4], f32> to <"gpu", 0>
-  %r_gpu = mo.custom {symbol = "map_lower_add3", device = #M.device_ref<"gpu", 0>}(%a_gpu, %b_gpu, %c_gpu) : (!mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
+  %r_gpu = mo.custom [symbol = "map_lower_add3", device = #M.device_ref<"gpu", 0>](%a_gpu, %b_gpu, %c_gpu) : (!mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
   %r, %ch4 = mo.transfer[%ch3] %r_gpu : !mo.tensor<[4], f32, gpu:0> to <"cpu", 0>
   mo.output %r : !mo.tensor<[4], f32>
 }
@@ -47,7 +47,7 @@ mo.graph @add_sub_gpu(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> (!m
   %ch0 = mo.chain.create()
   %a_gpu, %ch1 = mo.transfer[%ch0] %a : !mo.tensor<[4], f32> to <"gpu", 0>
   %b_gpu, %ch2 = mo.transfer[%ch1] %b : !mo.tensor<[4], f32> to <"gpu", 0>
-  %r0_gpu, %r1_gpu = mo.custom {symbol = "map_lower_add_sub", device = #M.device_ref<"gpu", 0>}(%a_gpu, %b_gpu) : (!mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>) -> (!mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>)
+  %r0_gpu, %r1_gpu = mo.custom [symbol = "map_lower_add_sub", device = #M.device_ref<"gpu", 0>](%a_gpu, %b_gpu) : (!mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>) -> (!mo.tensor<[4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>)
   %r0, %ch3 = mo.transfer[%ch2] %r0_gpu : !mo.tensor<[4], f32, gpu:0> to <"cpu", 0>
   %r1, %ch4 = mo.transfer[%ch3] %r1_gpu : !mo.tensor<[4], f32, gpu:0> to <"cpu", 0>
   mo.output %r0, %r1 : !mo.tensor<[4], f32>, !mo.tensor<[4], f32>

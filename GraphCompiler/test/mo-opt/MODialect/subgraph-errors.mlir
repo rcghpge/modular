@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --split-input-file --verify-diagnostics
 
 
-mo.graph @exp(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) attributes {isSubgraph} {
+mo.graph @exp(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) isSubgraph {
   %0 = mo.exp(%arg0) : !mo.tensor<[4, 5], f32>
   mo.output %0 : !mo.tensor<[4, 5], f32>
 }
@@ -28,7 +28,7 @@ mo.graph @main(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], f32>) {
 // -----
 
 // expected-note@+1 {{graph op here}}
-mo.graph @exp(%arg0: !mo.tensor<[6, 5], f32>) -> (!mo.tensor<[6, 5], f32>) attributes {isSubgraph} {
+mo.graph @exp(%arg0: !mo.tensor<[6, 5], f32>) -> (!mo.tensor<[6, 5], f32>) isSubgraph {
   %0 = mo.exp(%arg0) : !mo.tensor<[6, 5], f32>
   mo.output %0 : !mo.tensor<[6, 5], f32>
 }

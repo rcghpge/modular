@@ -31,7 +31,7 @@ mo.graph @matmul_add(
 // CHECK:      fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"{{.*}}, #mogg.fusion_leaf<"mo.add"
 // CHECK-NOT:  map.iter.foreach
 mo.graph @custom_add(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%c, %b) : !mo.tensor<[4], f32>
   mo.output %out : !mo.tensor<[4], f32>
 }
@@ -76,11 +76,11 @@ mo.graph @fuse_in_if(
   %cond: !mo.tensor<[], bool>
 ) -> !mo.tensor<[4], f32> {
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[4], f32> {
-    %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     %out = mo.add(%c, %b) : !mo.tensor<[4], f32>
     mo.yield %out : !mo.tensor<[4], f32>
   } else {
-    %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     %out = mo.mul(%c, %b) : !mo.tensor<[4], f32>
     mo.yield %out : !mo.tensor<[4], f32>
   }
@@ -98,7 +98,7 @@ mo.graph @no_fuse_across_blocks(
   %b: !mo.tensor<[4], f32>,
   %cond: !mo.tensor<[], bool>
 ) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[4], f32> {
     %out = mo.add(%c, %b) : !mo.tensor<[4], f32>
     mo.yield %out : !mo.tensor<[4], f32>
@@ -119,7 +119,7 @@ mo.graph @no_fuse_across_blocks(
 // CHECK-NOT:  map.iter.foreach
 // CHECK:      mo.output %[[DST]] : !mo.tensor<[4], si32>
 mo.graph @cast_fused(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], si32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.cast(%c) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], si32>
   mo.output %out : !mo.tensor<[4], si32>
 }
@@ -154,7 +154,7 @@ mo.graph @fuse_matmul_cast(
 // CHECK:      map.iter.foreach
 mo.graph @no_fuse_multi_use(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>)
     -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %r0 = mo.add(%c, %b) : !mo.tensor<[4], f32>
   %r1 = mo.mul(%c, %b) : !mo.tensor<[4], f32>
   mo.output %r0, %r1 : !mo.tensor<[4], f32>, !mo.tensor<[4], f32>
@@ -167,7 +167,7 @@ mo.graph @no_fuse_multi_use(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>)
 // CHECK:      map.iter.foreach
 // CHECK:      map.call.elementwise @{{.*}}.Add
 mo.graph @no_fuse_plain_output(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_plain_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_plain_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%c, %b) : !mo.tensor<[4], f32>
   mo.output %out : !mo.tensor<[4], f32>
 }
@@ -177,7 +177,7 @@ mo.graph @no_fuse_plain_output(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32
 // CHECK:      map.iter.foreach
 // CHECK:      map.call.elementwise @{{.*}}.Add
 mo.graph @no_fuse_same_result_twice(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%c, %c) : !mo.tensor<[4], f32>
   mo.output %out : !mo.tensor<[4], f32>
 }
@@ -188,8 +188,8 @@ mo.graph @no_fuse_same_result_twice(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4],
 // CHECK-NOT:  map.iter.foreach
 // CHECK:      mo.output
 mo.graph @two_producers_one_fuses(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %c0 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
-  %c1 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%b) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c0 = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c1 = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%b) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%c0, %c1) : !mo.tensor<[4], f32>
   mo.output %out : !mo.tensor<[4], f32>
 }
@@ -206,8 +206,8 @@ mo.graph @two_producers_one_fuses(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], 
 // CHECK:      map.call.opaque @{{.*}}MapLowerOneFusedOutput{{.*}}
 // CHECK:      } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"{{.*}}, #mogg.fusion_leaf<"mo.add"
 mo.graph @cycle_fuses_other_producer(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %r0, %r1 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_two_fused_outputs"}(%a) : (!mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>)
-  %bar = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%r1) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %r0, %r1 = mo.custom [symbol = "map_lower_two_fused_outputs", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>)
+  %bar = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%r1) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%bar, %r0) : !mo.tensor<[4], f32>
   mo.output %out : !mo.tensor<[4], f32>
 }

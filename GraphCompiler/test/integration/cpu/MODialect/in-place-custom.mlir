@@ -22,8 +22,8 @@
 mo.graph @custom_separate_buffers(%b: !bt, %c: !bt) -> (!bt, !bt, !c) {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom {symbol = "mutable_test_op", device = #M.device_ref<"cpu", 0>}(%b, %ch0) : (!bt, !c) -> (!c)
-  %ch2 = mo.custom {symbol = "mutable_test_op", device = #M.device_ref<"cpu", 0>}(%c, %ch1) : (!bt, !c) -> (!c)
+  %ch1 = mo.custom [symbol = "mutable_test_op", device = #M.device_ref<"cpu", 0>](%b, %ch0) : (!bt, !c) -> (!c)
+  %ch2 = mo.custom [symbol = "mutable_test_op", device = #M.device_ref<"cpu", 0>](%c, %ch1) : (!bt, !c) -> (!c)
 
   mo.output %b, %c, %ch2 : !bt, !bt, !c
 }
@@ -42,7 +42,7 @@ mo.graph @custom_with_standard(%buf: !bt, %rhs: !tt) -> (!bt, !c)
   %res2 = mo.negative(%res1) : !tt
   %ch4 = mo.mutable.store(%buf, %res2, %ch2) : (!bt, !tt, !c) -> (!c)
 
-  %ch5 = mo.custom {symbol = "mutable_test_op", device = #M.device_ref<"cpu", 0>}(%buf, %ch4) : (!bt, !c) -> (!c)
+  %ch5 = mo.custom [symbol = "mutable_test_op", device = #M.device_ref<"cpu", 0>](%buf, %ch4) : (!bt, !c) -> (!c)
 
   mo.output %buf, %ch5 : !bt, !c
 }
@@ -54,9 +54,9 @@ mo.graph @custom_new_api(%buf: !bt) -> (!bt, !c)
 {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom {symbol = "inplace_increment_elem", device = #M.device_ref<"cpu", 0>}(%buf, %ch0) : (!bt, !c) -> (!c)
-  %ch2 = mo.custom {symbol = "inplace_increment_elem", device = #M.device_ref<"cpu", 0>}(%buf, %ch1) : (!bt, !c) -> (!c)
-  %ch3 = mo.custom {symbol = "inplace_increment_elem", device = #M.device_ref<"cpu", 0>}(%buf, %ch2) : (!bt, !c) -> (!c)
+  %ch1 = mo.custom [symbol = "inplace_increment_elem", device = #M.device_ref<"cpu", 0>](%buf, %ch0) : (!bt, !c) -> (!c)
+  %ch2 = mo.custom [symbol = "inplace_increment_elem", device = #M.device_ref<"cpu", 0>](%buf, %ch1) : (!bt, !c) -> (!c)
+  %ch3 = mo.custom [symbol = "inplace_increment_elem", device = #M.device_ref<"cpu", 0>](%buf, %ch2) : (!bt, !c) -> (!c)
 
   mo.output %buf, %ch3 : !bt, !c
 }
@@ -68,9 +68,9 @@ mo.graph @custom_new_api_raises(%buf: !bt) -> (!bt, !c)
 {
   %ch0 = mo.chain.create()
 
-  %ch1 = mo.custom {symbol = "inplace_increment_elem_raises", device = #M.device_ref<"cpu", 0>}(%buf, %ch0) : (!bt, !c) -> (!c)
-  %ch2 = mo.custom {symbol = "inplace_increment_elem_raises", device = #M.device_ref<"cpu", 0>}(%buf, %ch1) : (!bt, !c) -> (!c)
-  %ch3 = mo.custom {symbol = "inplace_increment_elem_raises", device = #M.device_ref<"cpu", 0>}(%buf, %ch2) : (!bt, !c) -> (!c)
+  %ch1 = mo.custom [symbol = "inplace_increment_elem_raises", device = #M.device_ref<"cpu", 0>](%buf, %ch0) : (!bt, !c) -> (!c)
+  %ch2 = mo.custom [symbol = "inplace_increment_elem_raises", device = #M.device_ref<"cpu", 0>](%buf, %ch1) : (!bt, !c) -> (!c)
+  %ch3 = mo.custom [symbol = "inplace_increment_elem_raises", device = #M.device_ref<"cpu", 0>](%buf, %ch2) : (!bt, !c) -> (!c)
 
   mo.output %buf, %ch3 : !bt, !c
 }

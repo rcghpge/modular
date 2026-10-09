@@ -28,6 +28,6 @@
 mo.graph @fused_mutable_load_into_immutable_input(%dst: !mo.buffer<[2, 2], f32>, %srcbuf: !mo.buffer<[2, 2], f32>) -> !mo.chain {
   %chain = mo.chain.create()
   %src, %loadchain = mo.mutable.load(%srcbuf, %chain) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)
-  %outchain = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_inplace_copy"}(%dst, %src, %chain) : (!mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.chain) -> !mo.chain
+  %outchain = mo.custom [symbol = "map_lower_inplace_copy", device = #M.device_ref<"cpu", 0>](%dst, %src, %chain) : (!mo.buffer<[2, 2], f32>, !mo.tensor<[2, 2], f32>, !mo.chain) -> !mo.chain
   mo.output %outchain : !mo.chain
 }

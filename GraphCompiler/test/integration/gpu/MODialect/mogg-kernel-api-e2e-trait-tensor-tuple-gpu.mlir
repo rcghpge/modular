@@ -19,7 +19,7 @@ mo.graph @trait_tensor_tuple_add_mixed_dtypes_gpu() -> (!mo.tensor<[2], f32>, !m
   %in2_gpu, %ch2 = mo.transfer[%ch1] %in2 : !mo.tensor<[3], f64> to <"gpu", 0>
   %bias_gpu, %ch3 = mo.transfer[%ch2] %bias : !mo.tensor<[1], f32> to <"gpu", 0>
 
-  %out1_gpu, %out2_gpu = mo.custom {symbol = "trait_tensor_tuple_add", device = #M.device_ref<"gpu", 0>} (%bias_gpu, %in1_gpu, %in2_gpu) : (
+  %out1_gpu, %out2_gpu = mo.custom [symbol = "trait_tensor_tuple_add", device = #M.device_ref<"gpu", 0>] (%bias_gpu, %in1_gpu, %in2_gpu) : (
     !mo.tensor<[1], f32, gpu:0>,
     !mo.tensor<[2], si32, gpu:0>,
     !mo.tensor<[3], f64, gpu:0>
@@ -43,7 +43,7 @@ mo.graph @trait_tensor_tuple_add_size3_si32_gpu() -> (!mo.tensor<[2], si32>, !mo
   %in3_gpu, %ch3 = mo.transfer[%ch2] %in3 : !mo.tensor<[1], si32> to <"gpu", 0>
   %bias_gpu, %ch4 = mo.transfer[%ch3] %bias : !mo.tensor<[1], si32> to <"gpu", 0>
 
-  %out1_gpu, %out2_gpu, %out3_gpu = mo.custom {symbol = "trait_tensor_tuple_add", device = #M.device_ref<"gpu", 0>} (%bias_gpu, %in1_gpu, %in2_gpu, %in3_gpu) : (
+  %out1_gpu, %out2_gpu, %out3_gpu = mo.custom [symbol = "trait_tensor_tuple_add", device = #M.device_ref<"gpu", 0>] (%bias_gpu, %in1_gpu, %in2_gpu, %in3_gpu) : (
     !mo.tensor<[1], si32, gpu:0>,
     !mo.tensor<[2], si32, gpu:0>,
     !mo.tensor<[3], si32, gpu:0>,
@@ -64,7 +64,7 @@ mo.graph @trait_tensor_tuple_add_size1_f32_gpu() -> !mo.tensor<[2], f32> {
   %in1_gpu, %ch1 = mo.transfer[%ch0] %in1 : !mo.tensor<[2], f32> to <"gpu", 0>
   %bias_gpu, %ch2 = mo.transfer[%ch1] %bias : !mo.tensor<[1], f32> to <"gpu", 0>
 
-  %res_gpu = mo.custom {symbol = "trait_tensor_tuple_add", device = #M.device_ref<"gpu", 0>} (%bias_gpu, %in1_gpu) : (
+  %res_gpu = mo.custom [symbol = "trait_tensor_tuple_add", device = #M.device_ref<"gpu", 0>] (%bias_gpu, %in1_gpu) : (
     !mo.tensor<[1], f32, gpu:0>,
     !mo.tensor<[2], f32, gpu:0>
   ) -> !mo.tensor<[2], f32, gpu:0>

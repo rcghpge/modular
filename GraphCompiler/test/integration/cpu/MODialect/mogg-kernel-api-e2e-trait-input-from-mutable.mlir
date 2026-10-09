@@ -8,6 +8,6 @@
 mo.graph @trait_negate_from_mutable(%buf: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
     %ch0 = mo.chain.create(%buf) : !mo.buffer<[4], f32>
     %x, %ch1 = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain)
-    %z = mo.custom {symbol = "trait_negate", device = #M.device_ref<"cpu", 0>} (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+    %z = mo.custom [symbol = "trait_negate", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
     mo.output %z : !mo.tensor<[4], f32>
 }

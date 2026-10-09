@@ -99,12 +99,12 @@ mo.graph @dont_rebind_opaque<D0>(%arg0: !mo.tensor<[D0], f32>, %arg1: !mo.opaque
   %0 = mo.rebind<() -> D1>(%arg0) : !mo.tensor<[D0], f32> -> !mo.tensor<[D1], f32>
 
   // CHECK-NEXT: mo.custom
-  %1 = mo.custom {symbol = "custom0", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_no_wrap(D1, 2)], f32>
+  %1 = mo.custom [symbol = "custom0", device = #M.device_ref<"cpu", 0>](%0) : (!mo.tensor<[D1], f32>) -> !mo.tensor<[mul_no_wrap(D1, 2)], f32>
 
   // CHECK-NEXT: kgen.param.declare [[MUL:.*]]: scalar<si64> = <mul_no_wrap
 
   // CHECK-NEXT: (!mo.tensor<[[[MUL]]], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
-  %2 = mo.custom {symbol = "custom", device = #M.device_ref<"cpu", 0>}(%1, %arg1) : (!mo.tensor<[mul_no_wrap(D1, 2)], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
+  %2 = mo.custom [symbol = "custom", device = #M.device_ref<"cpu", 0>](%1, %arg1) : (!mo.tensor<[mul_no_wrap(D1, 2)], f32>, !mo.opaque<"Opaque">) -> !mo.opaque<"Opaque">
 
   // CHECK-NEXT: mo.output
   mo.output %2 : !mo.opaque<"Opaque">
@@ -145,7 +145,7 @@ mo.graph @dont_outline_unknown_dims<N, M>(%arg0: !mo.tensor<[N, ?], f32>, %arg1:
 // handled elsewhere in this pass).
 
 // CHECK-LABEL: mo.graph @callee_subgraph
-mo.graph @callee_subgraph<Aliased>(%arg0: !mo.tensor<[Aliased], f32>) -> !mo.tensor<[Aliased], f32> attributes {isSubgraph} {
+mo.graph @callee_subgraph<Aliased>(%arg0: !mo.tensor<[Aliased], f32>) -> !mo.tensor<[Aliased], f32> isSubgraph {
   mo.output %arg0 : !mo.tensor<[Aliased], f32>
 }
 

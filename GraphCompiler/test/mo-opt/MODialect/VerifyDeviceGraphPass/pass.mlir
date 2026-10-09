@@ -5,7 +5,7 @@
 // Graph without the isDeviceGraph attribute is a no-op for the verifier,
 // regardless of whether its body uses kernels that lack `build_graph`.
 mo.graph @no_attr(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-  %0 = mo.custom {symbol = "imposter_add_elementwise", device = #M.device_ref<"cpu", 0>}
+  %0 = mo.custom [symbol = "imposter_add_elementwise", device = #M.device_ref<"cpu", 0>]
     (%arg0, %arg0) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>)
                   -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
@@ -30,8 +30,7 @@ mo.graph @control_flow_no_attr(%cond: !mo.tensor<[], bool>) -> !mo.tensor<[2, 3]
 // Graph flagged for device-graph synthesis whose body contains only intrinsic
 // MO ops (mo.constant, mo.output). Intrinsic ops have no kernel registration
 // and are silently skipped.
-mo.graph @intrinsic_only(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
-    attributes {isDeviceGraph} {
+mo.graph @intrinsic_only(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> isDeviceGraph {
   mo.output %arg0 : !mo.tensor<[2, 3], f32>
 }
 
@@ -39,10 +38,8 @@ mo.graph @intrinsic_only(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f
 
 // Graph flagged for device-graph synthesis whose body uses a kernel that
 // exposes a `build_graph` entry point. Should pass cleanly.
-mo.graph @with_build_graph(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
-    attributes {isDeviceGraph} {
-  %0 = mo.custom {symbol = "imposter_build_graph_capable",
-                  device = #M.device_ref<"cpu", 0>}
+mo.graph @with_build_graph(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> isDeviceGraph {
+  %0 = mo.custom [symbol = "imposter_build_graph_capable", device = #M.device_ref<"cpu", 0>]
     (%arg0) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }

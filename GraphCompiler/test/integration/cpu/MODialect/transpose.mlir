@@ -69,7 +69,7 @@ mo.graph @transpose_2d_dyn_output<() -> D0, D1>() -> !mo.tensor<[D0, D1], f32> {
 
 mo.graph @transpose_shape(%arg0: !mo.tensor<[1, 2, 3, 4], f32>) -> !mo.tensor<[D1, D2, D3, D4], f32> {
   %perm = mo.constant <#M.dense_array<0, 3, 2, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
-  mo.invoke_shape_func["mo.transpose"]<() -> D1, D2, D3, D4>(%arg0, %perm) {dataDeptTensors = [1 : i32]} : (!mo.tensor<[1, 2, 3, 4], f32>, !mo.tensor<[4], si64>)
+  mo.invoke_shape_func["mo.transpose"]<() -> D1, D2, D3, D4>(%arg0, %perm) [dataDeptTensors = [1 : i32]] : (!mo.tensor<[1, 2, 3, 4], f32>, !mo.tensor<[4], si64>)
 
   %dummy = mo.constant <#M.dense_array<0.1> : tensor<f32>> : !mo.tensor<[], f32>
   %bcast = mo.static.broadcast_to(%dummy): !mo.tensor<[], f32> -> !mo.tensor<[D1, D2, D3, D4], f32>
@@ -81,7 +81,7 @@ mo.graph @transpose_shape(%arg0: !mo.tensor<[1, 2, 3, 4], f32>) -> !mo.tensor<[D
 
 mo.graph @transpose_shape_2(%arg0: !mo.tensor<[1, 2, 3, 4], f32>) -> !mo.tensor<[D1, D2, D3, D4], f32> {
   %perm = mo.constant <#M.dense_array<3, 2, 1, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
-  mo.invoke_shape_func["mo.transpose"]<() -> D1, D2, D3, D4>(%arg0, %perm) {dataDeptTensors = [1 : i32]} : (!mo.tensor<[1, 2, 3, 4], f32>, !mo.tensor<[4], si64>)
+  mo.invoke_shape_func["mo.transpose"]<() -> D1, D2, D3, D4>(%arg0, %perm) [dataDeptTensors = [1 : i32]] : (!mo.tensor<[1, 2, 3, 4], f32>, !mo.tensor<[4], si64>)
 
   %dummy = mo.constant <#M.dense_array<0.1> : tensor<f32>> : !mo.tensor<[], f32>
   %bcast = mo.static.broadcast_to(%dummy): !mo.tensor<[], f32> -> !mo.tensor<[D1, D2, D3, D4], f32>

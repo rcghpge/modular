@@ -6,15 +6,7 @@
 // CHECK-NEXT: custom_str = hello
 // CHECK-NEXT: custom_dtype = int32
 mo.graph @test_op_with_custom_params(%arg0: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  %res = mo.custom {
-    symbol = "op_with_custom_params",
-    parameters = {
-      "custom_int" = 42,
-      "custom_str" = "hello",
-      "custom_dtype" = si32
-    },
-    device = #M.device_ref<"cpu", 0>
-  } (%arg0) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %res = mo.custom [symbol = "op_with_custom_params", device = #M.device_ref<"cpu", 0>, parameters = { "custom_int" = 42, "custom_str" = "hello", "custom_dtype" = si32 }] (%arg0) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
   mo.output %res: !mo.tensor<[4], f32>
 }
@@ -25,13 +17,7 @@ mo.graph @test_op_with_custom_params(%arg0: !mo.tensor<[4], f32>) -> (!mo.tensor
 // CHECK-NEXT: rank_derived_from_other = 11
 // CHECK-NEXT: rank_derived_from_derived = 12
 mo.graph @test_op_with_default_params(%arg: !mo.tensor<[1], si32>) -> (!mo.tensor<[1], si32>) {
-  %res = mo.custom {
-    symbol = "kernel_with_default_parameter",
-    parameters = {
-      "rank" = 10
-    },
-    device = #M.device_ref<"cpu", 0>
-  } (%arg) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1], si32>
+  %res = mo.custom [symbol = "kernel_with_default_parameter", device = #M.device_ref<"cpu", 0>, parameters = { "rank" = 10 }] (%arg) : (!mo.tensor<[1], si32>) -> !mo.tensor<[1], si32>
 
   mo.output %res: !mo.tensor<[1], si32>
 }

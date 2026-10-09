@@ -11,7 +11,7 @@ mo.graph @multi_variadic_device_context(
   %ch0 = mo.chain.create()
   %0, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[4], f32> to <"gpu", 0>
   %1, %ch2 = mo.transfer[%ch1] %arg0 : !mo.tensor<[4], f32> to <"gpu", 1>
-  %2 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "variadic_device_context"}(
+  %2 = mo.custom [symbol = "variadic_device_context", device = #M.device_ref<"cpu", 0>](
     %0, %1
   ) : (
     !mo.tensor<[4], f32, gpu:0>,

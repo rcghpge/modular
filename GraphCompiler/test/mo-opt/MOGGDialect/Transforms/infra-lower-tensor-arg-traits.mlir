@@ -181,7 +181,7 @@
 // CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_dense_add(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-  %0 = mo.custom {symbol = "trait_add_some", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  %0 = mo.custom [symbol = "trait_add_some", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
@@ -197,7 +197,7 @@ mo.graph @trait_dense_add(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f3
 // CHECK-DAG: <{role = mutable_input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_mutable(%x: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.chain.create()
-  %0, %outch = mo.custom {symbol = "trait_mutable_input", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %c) : (!mo.buffer<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain)
+  %0, %outch = mo.custom [symbol = "trait_mutable_input", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %c) : (!mo.buffer<[4], f32>, !mo.chain) -> (!mo.tensor<[4], f32>, !mo.chain)
   mo.output %0 : !mo.tensor<[4], f32>
 }
 
@@ -211,7 +211,7 @@ mo.graph @trait_mutable(%x: !mo.buffer<[4], f32>) -> !mo.tensor<[4], f32> {
 // CHECK-DAG: mogg.trait.create{{.*}}<{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_multi(%x: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>) {
-  %a, %b = mo.custom {symbol = "trait_multi_output", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x) : (!mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>)
+  %a, %b = mo.custom [symbol = "trait_multi_output", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x) : (!mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>)
   mo.output %a, %b : !mo.tensor<[5], f32>, !mo.tensor<[5], f32>
 }
 
@@ -224,7 +224,7 @@ mo.graph @trait_multi(%x: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>, !mo.te
 // CHECK-DAG: <{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.tensor.create
 mo.graph @mixed_legacy_trait(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-  %0 = mo.custom {symbol = "trait_mixed_legacy", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  %0 = mo.custom [symbol = "trait_mixed_legacy", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
@@ -239,7 +239,7 @@ mo.graph @mixed_legacy_trait(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3],
 // CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 // CHECK-NOT: <{role = output
 mo.graph @mixed_legacy_out(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-  %0 = mo.custom {symbol = "trait_mixed_legacy_out", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  %0 = mo.custom [symbol = "trait_mixed_legacy_out", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
@@ -254,7 +254,7 @@ mo.graph @mixed_legacy_out(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f
 // CHECK-DAG: mogg.tensor.create
 mo.graph @mixed_legacy_mut(%x: !mo.buffer<[6], f32>) -> !mo.tensor<[6], f32> {
   %c = mo.chain.create()
-  %0, %outch = mo.custom {symbol = "trait_mixed_legacy_mut", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %c) : (!mo.buffer<[6], f32>, !mo.chain) -> (!mo.tensor<[6], f32>, !mo.chain)
+  %0, %outch = mo.custom [symbol = "trait_mixed_legacy_mut", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %c) : (!mo.buffer<[6], f32>, !mo.chain) -> (!mo.tensor<[6], f32>, !mo.chain)
   mo.output %0 : !mo.tensor<[6], f32>
 }
 
@@ -269,14 +269,14 @@ mo.graph @mixed_legacy_mut(%x: !mo.buffer<[6], f32>) -> !mo.tensor<[6], f32> {
 // CHECK-DAG: <{role = input, fused = true, access = load, capabilities = load}>
 // CHECK-DAG: mogg.tensor.create
 mo.graph @mixed_legacy_fused(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-  %0 = mo.custom {symbol = "trait_mixed_legacy_fused", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
+  %0 = mo.custom [symbol = "trait_mixed_legacy_fused", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %y) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
 // Fused-store trait arg (`trait_fused_store_double`): validated on the EMIT run
 // (full gc pipeline) below.
 mo.graph @trait_fused_store(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %0 = mo.custom {symbol = "trait_fused_store_double", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %0 = mo.custom [symbol = "trait_fused_store_double", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   mo.output %0 : !mo.tensor<[4], f32>
 }
 
@@ -286,7 +286,7 @@ mo.graph @trait_fused_store(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 // CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.trait.create{{.*}}<{role = input, fused = false, access = none, capabilities = none}>
 mo.graph @trait_dense_dyn<D0>(%x: !mo.tensor<[2, D0], f32>, %y: !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32> {
-  %0 = mo.custom {symbol = "trait_add_some", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %y) : (!mo.tensor<[2, D0], f32>, !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
+  %0 = mo.custom [symbol = "trait_add_some", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %y) : (!mo.tensor<[2, D0], f32>, !mo.tensor<[2, D0], f32>) -> !mo.tensor<[2, D0], f32>
   mo.output %0 : !mo.tensor<[2, D0], f32>
 }
 
@@ -302,6 +302,6 @@ mo.graph @trait_dense_dyn<D0>(%x: !mo.tensor<[2, D0], f32>, %y: !mo.tensor<[2, D
 // CHECK-NOT: #mogg.tensor_arg
 mo.graph @legacy_only(%x: !mo.tensor<[8], f32>, %w: !mo.buffer<[8], f32>) -> !mo.tensor<[8], f32> {
   %c = mo.chain.create()
-  %0, %outch = mo.custom {symbol = "legacy_only_control", target = "cpu", device = #M.device_ref<"cpu", 0>}(%x, %w, %c) : (!mo.tensor<[8], f32>, !mo.buffer<[8], f32>, !mo.chain) -> (!mo.tensor<[8], f32>, !mo.chain)
+  %0, %outch = mo.custom [symbol = "legacy_only_control", device = #M.device_ref<"cpu", 0>] {target = "cpu"}(%x, %w, %c) : (!mo.tensor<[8], f32>, !mo.buffer<[8], f32>, !mo.chain) -> (!mo.tensor<[8], f32>, !mo.chain)
   mo.output %0 : !mo.tensor<[8], f32>
 }

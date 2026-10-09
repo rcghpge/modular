@@ -34,7 +34,7 @@ mo.graph @unsqueeze_shape_fallback_shape_func<() -> D0>(
   %input = mo.constant <#M.dense_array<1, 2, 3, 4, 5> : tensor<5xsi32>> : !mo.tensor<[5], si32>
 
   mo.invoke_shape_func["mo.unsqueeze_shape"]<() -> D1>(%input, %indices)
-    {dataDeptTensors = []} :
+    [dataDeptTensors = []] :
     (!mo.tensor<[5], si32>, !mo.tensor<[1], si32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

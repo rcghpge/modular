@@ -90,7 +90,7 @@ mo.graph @gather_nd_fallback_shape_func<() -> D0, D1>(
   %axis = mo.constant <#M.dense_array<-2> : tensor<si32>> : !mo.tensor<[], si32>
 
   mo.invoke_shape_func["mo.gather_nd"]<() -> D2, D3>(%input, %indices)
-    {dataDeptTensors = [], kgenParams = {batch_dims = 1 : index}} :
+    [kgenParams = {batch_dims = 1 : index}, dataDeptTensors = []] :
     (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[2, 1], f32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

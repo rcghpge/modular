@@ -18,6 +18,6 @@ mo.graph @ndbuffer_matmul<D0, D1, D2>(%x: !mo.tensor<[D0, D1], f32>, %y: !mo.ten
 // CHECK-SAME: [[RESULT]]
 // CHECK-SAME: ]
 mo.graph @extensibility_matmul<D0, D1, D2>(%x: !mo.tensor<[D0, D1], f32>, %y: !mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D0, D2], f32> {
-    %z = mo.custom {symbol = "imposter_matmul", device = #M.device_ref<"cpu", 0>} (%x, %y) : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D0, D2], f32>
+    %z = mo.custom [symbol = "imposter_matmul", device = #M.device_ref<"cpu", 0>] (%x, %y) : (!mo.tensor<[D0, D1], f32>, !mo.tensor<[D1, D2], f32>) -> !mo.tensor<[D0, D2], f32>
     mo.output %z : !mo.tensor<[D0, D2], f32>
 }

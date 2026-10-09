@@ -231,23 +231,23 @@ mo.graph @out_of_order_ops<() -> D0, D1, D2, D3>(
   %b2 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D6, D7], f32>
 
   mo.invoke_shape_func["mo.broadcast_to"]<() -> D4, D5>(%input, %shape1)
-    {dataDeptTensors = [1]} :
+    [dataDeptTensors = [1]] :
     (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
   %b1 = mo.static.broadcast_to(%input): !mo.tensor<[], f32> -> !mo.tensor<[D4, D5], f32>
 
   mo.invoke_shape_func["mo.broadcast_to"]<() -> D6, D7>(%b1, %shape2)
-    {dataDeptTensors = [1]} :
+    [dataDeptTensors = [1]] :
     (!mo.tensor<[D4, D5], f32>, !mo.tensor<[2], si32>)
 
   // NOTE that these got sorted based on SSA _and_ parameter dependencies.
   // CHECK-NEXT: mo.invoke_shape_func["mo.broadcast_to"]<() -> [[D4:.*]], [[D5:.*]]>(%[[INPUT]], %[[SHAPE1]])
-  // CHECK-SAME:   {dataDeptTensors = [1]} :
+  // CHECK-SAME:   [dataDeptTensors = [1]] :
   // CHECK-SAME:   (!mo.tensor<[], f32>, !mo.tensor<[2], si32>)
   //
   // CHECK-NEXT: %[[B1:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D4]], [[D5]]], f32>
 
   // CHECK-NEXT: mo.invoke_shape_func["mo.broadcast_to"]<() -> [[D6:.*]], [[D7:.*]]>(%[[B1]], %[[SHAPE2]])
-  // CHECK-SAME:   {dataDeptTensors = [1]} :
+  // CHECK-SAME:   [dataDeptTensors = [1]] :
   // CHECK-SAME:   (!mo.tensor<[[[D4]], [[D5]]], f32>, !mo.tensor<[2], si32>)
   //
   // CHECK-NEXT: %[[B2:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[], f32> -> !mo.tensor<[[[D6]], [[D7]]], f32>

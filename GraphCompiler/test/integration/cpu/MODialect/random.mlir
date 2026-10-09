@@ -26,7 +26,7 @@ mo.graph @random_normal_f32_mean_var() -> !mo.tensor<[1, 1, 7, 8], f32> {
 // CHECK-NEXT: 'random_normal_f32_mean_var' returned tensor<1x1x7x8xf32> [{{((-?[[:digit:]]\.[[:digit:]]+e[+-][[:digit:]]+(, )?){56})}}
 
 mo.graph @random_fallback_shape_func<() -> D0, D1, D2, D3>(%one : !mo.tensor<[], si64>, %size : !mo.tensor<[4], si64>, %scalar : !mo.tensor<[], si64>, %seed : !mo.tensor<[1], ui64>) -> !mo.tensor<[D0, D1, D2, D3], si64> {
-    mo.invoke_shape_func["mo.random.normal"]<() -> D4, D5, D6, D7>(%size, %scalar, %scalar, %seed) {dataDeptTensors = [0 : i32]} : (!mo.tensor<[4], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[1], ui64>)
+    mo.invoke_shape_func["mo.random.normal"]<() -> D4, D5, D6, D7>(%size, %scalar, %scalar, %seed) [dataDeptTensors = [0 : i32]] : (!mo.tensor<[4], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[1], ui64>)
     %val = mo.static.broadcast_to(%one) : !mo.tensor<[], si64> -> !mo.tensor<[D4, D5, D6, D7], si64>
     mo.output<D4, D5, D6, D7> %val : !mo.tensor<[D4, D5, D6, D7], si64>
 }

@@ -11,7 +11,7 @@
 // CHECK: inOutSignature = <"iim.">
 mo.graph @mutable_store(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[1], si32> {
   %0 = mo.chain.create()
-  %1 = mo.buffer.create {initValue = #M.dense_array<0> : tensor<1xsi32>} : !mo.buffer<[1], si32>
+  %1 = mo.buffer.create [initValue = #M.dense_array<0> : tensor<1xsi32>] : !mo.buffer<[1], si32>
   %outTensor, %outChain = mo.mutable.load(%1, %0) : (!mo.buffer<[1], si32>, !mo.chain) -> (!mo.tensor<[1], si32>, !mo.chain)
   %2 = mo.mutable.store(%1, %arg0, %outChain) : (!mo.buffer<[1], si32>, !mo.tensor<[1], si32>, !mo.chain) -> !mo.chain
   mo.output %outTensor : !mo.tensor<[1], si32>

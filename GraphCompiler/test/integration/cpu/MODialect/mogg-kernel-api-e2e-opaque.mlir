@@ -12,10 +12,10 @@ mo.graph @test_kernel_with_0_dps_outputs_reg_types() -> (!mo.tensor<[1], si32>) 
   %const2 = mo.constant <#M.dense_array<42> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 
   // Returns a view of the input tensor of the same size, but all elements are the first element
-  %opaque1 = mo.custom{symbol = "tensor_to_custom_scalar_si32_reg", device = #M.device_ref<"cpu", 0>} (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarRegSI32">
-  %opaque2 = mo.custom{symbol = "tensor_to_custom_scalar_si32_reg", device = #M.device_ref<"cpu", 0>} (%const2) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarRegSI32">
+  %opaque1 = mo.custom [symbol = "tensor_to_custom_scalar_si32_reg", device = #M.device_ref<"cpu", 0>] (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarRegSI32">
+  %opaque2 = mo.custom [symbol = "tensor_to_custom_scalar_si32_reg", device = #M.device_ref<"cpu", 0>] (%const2) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarRegSI32">
 
-  %res = mo.custom{symbol = "opaque_add_to_tensor_si32_reg", device = #M.device_ref<"cpu", 0>} (%opaque1, %opaque2) : (!mo.opaque<"MyCustomScalarRegSI32">, !mo.opaque<"MyCustomScalarRegSI32">) -> !mo.tensor<[1], si32>
+  %res = mo.custom [symbol = "opaque_add_to_tensor_si32_reg", device = #M.device_ref<"cpu", 0>] (%opaque1, %opaque2) : (!mo.opaque<"MyCustomScalarRegSI32">, !mo.opaque<"MyCustomScalarRegSI32">) -> !mo.tensor<[1], si32>
   mo.output %res: !mo.tensor<[1], si32>
 }
 
@@ -30,10 +30,10 @@ mo.graph @test_kernel_with_0_dps_outputs_mem_types() -> (!mo.tensor<[1], si32>) 
   %const2 = mo.constant <#M.dense_array<42> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 
   // Returns a view of the input tensor of the same size, but all elements are the first element
-  %opaque1 = mo.custom{symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>} (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
-  %opaque2 = mo.custom{symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>} (%const2) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
+  %opaque1 = mo.custom [symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>] (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
+  %opaque2 = mo.custom [symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>] (%const2) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
 
-  %res = mo.custom{symbol = "opaque_add_to_tensor_si32", device = #M.device_ref<"cpu", 0>} (%opaque1, %opaque2) : (!mo.opaque<"MyCustomScalarSI32">, !mo.opaque<"MyCustomScalarSI32">) -> !mo.tensor<[1], si32>
+  %res = mo.custom [symbol = "opaque_add_to_tensor_si32", device = #M.device_ref<"cpu", 0>] (%opaque1, %opaque2) : (!mo.opaque<"MyCustomScalarSI32">, !mo.opaque<"MyCustomScalarSI32">) -> !mo.tensor<[1], si32>
   mo.output %res: !mo.tensor<[1], si32>
 }
 
@@ -52,11 +52,11 @@ mo.graph @test_throwing_kernel_with_mem_types() -> (!mo.tensor<[1], si32>) {
   %const1 = mo.constant <#M.dense_array<200> : tensor<1xsi32>> : !mo.tensor<[1], si32>
   %const2 = mo.constant <#M.dense_array<58> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 
-  %opaque1 = mo.custom{symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>} (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
-  %opaque2 = mo.custom{symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>} (%const2) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
+  %opaque1 = mo.custom [symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>] (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
+  %opaque2 = mo.custom [symbol = "tensor_to_custom_scalar_si32", device = #M.device_ref<"cpu", 0>] (%const2) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarSI32">
 
   // This kernel is marked as `raises` in testing_kernels.mojo
-  %res = mo.custom{symbol = "opaque_add_to_tensor_si32_raises", device = #M.device_ref<"cpu", 0>} (%opaque1, %opaque2) : (!mo.opaque<"MyCustomScalarSI32">, !mo.opaque<"MyCustomScalarSI32">) -> !mo.tensor<[1], si32>
+  %res = mo.custom [symbol = "opaque_add_to_tensor_si32_raises", device = #M.device_ref<"cpu", 0>] (%opaque1, %opaque2) : (!mo.opaque<"MyCustomScalarSI32">, !mo.opaque<"MyCustomScalarSI32">) -> !mo.tensor<[1], si32>
   mo.output %res: !mo.tensor<[1], si32>
 }
 
@@ -65,6 +65,6 @@ mo.graph @test_throwing_kernel_with_mem_types() -> (!mo.tensor<[1], si32>) {
 // CHECK: 'test_kernel_with_dps_outputs_reg_trivial_types' returned <unknown>
 mo.graph @test_kernel_with_dps_outputs_reg_trivial_types() -> (!mo.opaque<"MyCustomScalarRegTrivialSI32">) {
   %const1 = mo.constant <#M.dense_array<100> : tensor<1xsi32>> : !mo.tensor<[1], si32>
-  %opaque1 = mo.custom{symbol = "tensor_to_custom_scalar_si32_reg_trivial", device = #M.device_ref<"cpu", 0>} (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarRegTrivialSI32">
+  %opaque1 = mo.custom [symbol = "tensor_to_custom_scalar_si32_reg_trivial", device = #M.device_ref<"cpu", 0>] (%const1) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarRegTrivialSI32">
   mo.output %opaque1: !mo.opaque<"MyCustomScalarRegTrivialSI32">
 }

@@ -24,11 +24,10 @@ mo.graph @main(%h: !mo.tensor<[], ui8>) -> !mo.tensor<[2, 3], ui8> {
   mo.output %out : !mo.tensor<[2, 3], ui8>
 }
 
-mo.graph @device_graph_host_fill(%h: !mo.tensor<[], ui8>) -> !mo.tensor<[2, 3], ui8, gpu:0>
-    attributes {isSubgraph, isDeviceGraph} {
-  %0 = mo.custom {symbol = "device_graph_fill_from_host", device = #M.device_ref<"gpu", 0>}
+mo.graph @device_graph_host_fill(%h: !mo.tensor<[], ui8>) -> !mo.tensor<[2, 3], ui8, gpu:0> isSubgraph isDeviceGraph {
+  %0 = mo.custom [symbol = "device_graph_fill_from_host", device = #M.device_ref<"gpu", 0>]
       (%h) : (!mo.tensor<[], ui8>) -> !mo.tensor<[2, 3], ui8, gpu:0>
-  %1 = mo.custom {symbol = "device_graph_increment", device = #M.device_ref<"gpu", 0>}
+  %1 = mo.custom [symbol = "device_graph_increment", device = #M.device_ref<"gpu", 0>]
       (%0) : (!mo.tensor<[2, 3], ui8, gpu:0>) -> !mo.tensor<[2, 3], ui8, gpu:0>
   mo.output %1 : !mo.tensor<[2, 3], ui8, gpu:0>
 }

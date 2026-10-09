@@ -124,7 +124,7 @@ mo.graph @slice_fallback_shape_func<() -> D0, D1, D2>(
   %step = mo.constant <#M.dense_array<2, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32>
 
   mo.invoke_shape_func["mo.slice"]<() -> D3, D4, D5>(%input, %start, %stop, %step)
-    {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]} :
+    [dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]] :
     (!mo.tensor<[10, 20, 30], f32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[3], si32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

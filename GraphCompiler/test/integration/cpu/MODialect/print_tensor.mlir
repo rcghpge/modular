@@ -10,6 +10,6 @@
 // CHECK-SAME: alignment = [[ALIGNMENT:[0-9]+]], address_space = AddressSpace.GENERIC}
 mo.graph @print() -> !mo.tensor<[2, 4], f32> {
   %range = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<8xf32>> : !mo.tensor<[2, 4], f32>
-  %out = mo.custom {symbol = "print_tensor", device = #M.device_ref<"cpu", 0>} (%range) : (!mo.tensor<[2, 4], f32>) -> !mo.tensor<[2, 4], f32>
+  %out = mo.custom [symbol = "print_tensor", device = #M.device_ref<"cpu", 0>] (%range) : (!mo.tensor<[2, 4], f32>) -> !mo.tensor<[2, 4], f32>
   mo.output %out : !mo.tensor<[2, 4], f32>
 }

@@ -103,7 +103,7 @@ mo.graph @cpu_flash_attn_not_pattern<B, H, S, D> (
     %attn_mat_softmax = mo.reduce.softmax(%attn_mat_norm) {axis = 2 : index} : (!mo.tensor<[mul_no_wrap(B, H), S, S], f32>) -> !mo.tensor<[mul_no_wrap(B, H), S, S], f32>
 
     // This breaks pattern matching
-    %attn_mat_softmax_copy = mo.custom {symbol = "copy", device = #M.device_ref<"cpu", 0>} (%attn_mat_softmax): (!mo.tensor<[mul_no_wrap(B, H), S, S], f32>) -> !mo.tensor<[mul_no_wrap(B, H), S, S], f32>
+    %attn_mat_softmax_copy = mo.custom [symbol = "copy", device = #M.device_ref<"cpu", 0>] (%attn_mat_softmax): (!mo.tensor<[mul_no_wrap(B, H), S, S], f32>) -> !mo.tensor<[mul_no_wrap(B, H), S, S], f32>
 
     %reproj = mo.batch_matmul(%attn_mat_softmax_copy, %value_reshaped) : (!mo.tensor<[mul_no_wrap(B, H), S, S], f32>, !mo.tensor<[mul_no_wrap(B, H), S, D], f32>) -> !mo.tensor<[mul_no_wrap(B, H), S, D], f32>
 

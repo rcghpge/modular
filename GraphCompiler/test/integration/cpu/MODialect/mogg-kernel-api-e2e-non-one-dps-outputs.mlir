@@ -11,7 +11,7 @@ mo.graph @test_kernel_with_2_dps_outputs() -> (!mo.tensor<[6], si32>, !mo.tensor
 
   // %out1[0] = %const1[0] + %bias[0]
   // %out2[0] = %const2[0] + %bias[0]
-  %out1, %out2 = mo.custom{symbol = "add_bias_to_two_tensors", device = #M.device_ref<"cpu", 0>} (%const1, %const2, %bias) : (
+  %out1, %out2 = mo.custom [symbol = "add_bias_to_two_tensors", device = #M.device_ref<"cpu", 0>] (%const1, %const2, %bias) : (
     !mo.tensor<[6], si32>,
     !mo.tensor<[6], si32>,
     !mo.tensor<[6], si32>

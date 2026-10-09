@@ -27,7 +27,7 @@ mo.graph @mutable_store_consumer_fused(
   %a: !mo.tensor<[4], f32>
 ) {
   %chain = mo.chain.create()
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.mutable.store(%buf, %c, %chain) : (!mo.buffer<[4], f32>, !mo.tensor<[4], f32>, !mo.chain) -> !mo.chain
   mo.output
 }
@@ -48,7 +48,7 @@ mo.graph @chain_consumed_not_fused(
   %a: !mo.tensor<[4], f32>
 ) -> !mo.chain {
   %chain = mo.chain.create()
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.mutable.store(%buf, %c, %chain) : (!mo.buffer<[4], f32>, !mo.tensor<[4], f32>, !mo.chain) -> !mo.chain
   mo.output %out : !mo.chain
 }

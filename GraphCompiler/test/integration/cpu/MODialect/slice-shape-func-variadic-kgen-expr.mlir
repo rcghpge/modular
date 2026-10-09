@@ -15,7 +15,7 @@ mo.graph @slice_shape_func_variadic_kgen_expr<D0 -> D1>(
   %step = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[1], si32>
 
   mo.invoke_shape_func["mo.slice"]<() -> D2>(%input, %start, %stop, %step)
-    {dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]} :
+    [dataDeptTensors = [1 : i32, 2 : i32, 3 : i32]] :
     (!mo.tensor<[100], f32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

@@ -52,12 +52,12 @@ mo.graph @split_fallback_shape_func<() -> D0, D1, D2, D3>(
 
   %idx0 = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
   mo.invoke_shape_func["split_ith_output_shape"]<() -> D4, D5>(%input, %split_sizes, %axis, %idx0)
-    {dataDeptTensors = [1 : i32, 2 : i32]}
+    [dataDeptTensors = [1 : i32, 2 : i32]]
     : (!mo.tensor<[10, 20], si32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>, !mo.tensor<[], si32>)
 
   %idx1 = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
   mo.invoke_shape_func["split_ith_output_shape"]<() -> D6, D7>(%input, %split_sizes, %axis, %idx1)
-    {dataDeptTensors = [1 : i32, 2 : i32]}
+    [dataDeptTensors = [1 : i32, 2 : i32]]
     : (!mo.tensor<[10, 20], si32>, !mo.tensor<[2], si64>, !mo.tensor<[], si32>, !mo.tensor<[], si64>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

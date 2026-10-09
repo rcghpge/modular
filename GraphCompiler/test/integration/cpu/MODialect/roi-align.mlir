@@ -21,7 +21,7 @@ mo.graph @roi_align_fallback_shape_func<() -> D0, D1, D2, D3>(%one: !mo.tensor<[
     %output_height = mo.constant <#M.dense_array<2> : tensor<1xsi64>> : !mo.tensor<[], si64>
     %spatial_scale = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
     %sampling_ratio = mo.constant <#M.dense_array<2.0> : tensor<1xf32>> : !mo.tensor<[], f32>
-    mo.invoke_shape_func["mo.roi_align"]<() -> D4, D5, D6, D7>(%inp_ones, %roi_ones, %output_height, %output_height, %spatial_scale, %sampling_ratio) {dataDeptTensors = [2 : i32, 3 : i32]} : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
+    mo.invoke_shape_func["mo.roi_align"]<() -> D4, D5, D6, D7>(%inp_ones, %roi_ones, %output_height, %output_height, %spatial_scale, %sampling_ratio) [dataDeptTensors = [2 : i32, 3 : i32]] : (!mo.tensor<[1, 5, 5, 1], f32>, !mo.tensor<[1, 5], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
     %val = mo.static.broadcast_to(%one) : !mo.tensor<[], si64> -> !mo.tensor<[D4, D5, D6, D7], si64>
     mo.output<D4, D5, D6, D7> %val : !mo.tensor<[D4, D5, D6, D7], si64>
 }

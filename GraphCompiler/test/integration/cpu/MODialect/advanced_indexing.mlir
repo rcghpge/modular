@@ -19,11 +19,7 @@ mo.graph @advanced_indexing_getitem() -> !mo.tensor<[2, 3, 3, 3], si32> {
 
   %index_tensor = mo.constant <#M.dense_array<0, 1, 1, 2, 2, 1, 0, 1, 2> : tensor<9xsi32>> : !mo.tensor<[3, 3], si32>
 
-  %out = mo.custom {
-    symbol = "advanced_indexing_getitem",
-    device = #M.device_ref<"cpu", 0>,
-    parameters = { start_axis = 2 }
-  } (%input_reshape, %index_tensor, %index_tensor) : (
+  %out = mo.custom [symbol = "advanced_indexing_getitem", device = #M.device_ref<"cpu", 0>, parameters = { start_axis = 2 }] (%input_reshape, %index_tensor, %index_tensor) : (
     !mo.tensor<[2, 3, 4, 5], si32>, !mo.tensor<[3, 3], si32>, !mo.tensor<[3, 3], si32>
   ) -> !mo.tensor<[2, 3, 3, 3], si32>
   mo.output %out : !mo.tensor<[2, 3, 3, 3], si32>
@@ -61,11 +57,7 @@ mo.graph @advanced_indexing_setitem() -> (!mo.buffer<[2, 3, 4, 5], si32>, !mo.ch
   %index_tensor1 = mo.constant <#M.dense_array<0, 1, 2, 0, 1, 2, 0, 1, 2> : tensor<9xsi32>> : !mo.tensor<[3, 3], si32>
   %index_tensor2 = mo.constant <#M.dense_array<0, 0, 0, 1, 1, 1, 2, 2, 2> : tensor<9xsi32>> : !mo.tensor<[3, 3], si32>
 
-  %ch2 = mo.custom {
-    symbol = "advanced_indexing_setitem_inplace",
-    device = #M.device_ref<"cpu", 0>,
-    parameters = { start_axis = 2 }
-  } (%buffer_input, %data_bcast, %index_tensor1, %index_tensor2, %ch1) : (
+  %ch2 = mo.custom [symbol = "advanced_indexing_setitem_inplace", device = #M.device_ref<"cpu", 0>, parameters = { start_axis = 2 }] (%buffer_input, %data_bcast, %index_tensor1, %index_tensor2, %ch1) : (
     !mo.buffer<[2, 3, 4, 5], si32>, !mo.tensor<[2, 3, 3, 3], si32>, !mo.tensor<[3, 3], si32>, !mo.tensor<[3, 3], si32>, !mo.chain
   ) -> !mo.chain
 
@@ -92,11 +84,7 @@ mo.graph @advanced_indexing_setitem_copy() -> !mo.tensor<[2, 3, 4, 5], si32> {
   %index_tensor1 = mo.constant <#M.dense_array<0, 1, 2, 0, 1, 2, 0, 1, 2> : tensor<9xsi32>> : !mo.tensor<[3, 3], si32>
   %index_tensor2 = mo.constant <#M.dense_array<0, 0, 0, 1, 1, 1, 2, 2, 2> : tensor<9xsi32>> : !mo.tensor<[3, 3], si32>
 
-  %out = mo.custom {
-    symbol = "advanced_indexing_setitem",
-    device = #M.device_ref<"cpu", 0>,
-    parameters = { start_axis = 2 }
-  } (%input_reshape, %data_bcast, %index_tensor1, %index_tensor2) : (
+  %out = mo.custom [symbol = "advanced_indexing_setitem", device = #M.device_ref<"cpu", 0>, parameters = { start_axis = 2 }] (%input_reshape, %data_bcast, %index_tensor1, %index_tensor2) : (
     !mo.tensor<[2, 3, 4, 5], si32>, !mo.tensor<[2, 3, 3, 3], si32>, !mo.tensor<[3, 3], si32>, !mo.tensor<[3, 3], si32>
   ) -> !mo.tensor<[2, 3, 4, 5], si32>
 

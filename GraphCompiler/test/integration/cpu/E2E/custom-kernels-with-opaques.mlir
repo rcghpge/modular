@@ -12,8 +12,8 @@
 
 // mo.graph @scalar_to_scalar() -> (!mo.tensor<[1], si32>) {
 //   %0 = mo.constant <#M.dense_array<42> : tensor<si32>> : !mo.tensor<[1], si32>
-//   %1 = mo.custom {symbol = "tensor_to_my_custom_scalar"}(%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalar">
-//   %2 = mo.custom {symbol = "my_custom_scalar_to_tensor"}(%1) : (!mo.opaque<"MyCustomScalar">) -> !mo.tensor<[1], si32>
+//   %1 = mo.custom [symbol = "tensor_to_my_custom_scalar"](%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalar">
+//   %2 = mo.custom [symbol = "my_custom_scalar_to_tensor"](%1) : (!mo.opaque<"MyCustomScalar">) -> !mo.tensor<[1], si32>
 //   mo.output %2 : !mo.tensor<[1], si32>
 // }
 
@@ -26,9 +26,9 @@
 
 // mo.graph @tensor_scaled_with_custom_scalar() -> (!mo.tensor<[1, 2, 2], si32>) {
 //   %0 = mo.constant <#M.dense_array<2> : tensor<si32>> : !mo.tensor<[1], si32>
-//   %1 = mo.custom {symbol = "tensor_to_my_custom_scalar"}(%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalar">
+//   %1 = mo.custom [symbol = "tensor_to_my_custom_scalar"](%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalar">
 //   %2 = mo.constant <#M.dense_array<1, 2, 3, 4> : tensor<4xsi32>> : !mo.tensor<[1, 2, 2], si32>
-//   %3 = mo.custom {symbol = "scale_with_my_custom_scalar"}(%2, %1) : (!mo.tensor<[1, 2, 2], si32>, !mo.opaque<"MyCustomScalar">) -> !mo.tensor<[1, 2, 2], si32>
+//   %3 = mo.custom [symbol = "scale_with_my_custom_scalar"](%2, %1) : (!mo.tensor<[1, 2, 2], si32>, !mo.opaque<"MyCustomScalar">) -> !mo.tensor<[1, 2, 2], si32>
 //   mo.output %3 : !mo.tensor<[1, 2, 2], si32>
 // }
 
@@ -40,9 +40,9 @@
 
 // mo.graph @tensor_scaled_with_custom_scalar_ndbuff() -> (!mo.tensor<[?, ?, ?], si32>) {
 //   %0 = mo.constant <#M.dense_array<2> : tensor<si32>> : !mo.tensor<[1], si32>
-//   %1 = mo.custom {symbol = "tensor_to_my_custom_scalar_ndbuff"}(%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalar">
+//   %1 = mo.custom [symbol = "tensor_to_my_custom_scalar_ndbuff"](%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalar">
 //   %2 = mo.constant <#M.dense_array<1, 2, 3, 4> : tensor<4xsi32>> : !mo.tensor<[1, 2, 2], si32>
-//   %3 = mo.custom {symbol = "scale_with_my_custom_scalar_ndbuff"}(%2, %1) : (!mo.tensor<[1, 2, 2], si32>, !mo.opaque<"MyCustomScalar">) -> !mo.tensor<[?, ?, ?], si32>
+//   %3 = mo.custom [symbol = "scale_with_my_custom_scalar_ndbuff"](%2, %1) : (!mo.tensor<[1, 2, 2], si32>, !mo.opaque<"MyCustomScalar">) -> !mo.tensor<[?, ?, ?], si32>
 //   mo.output %3 : !mo.tensor<[?, ?, ?], si32>
 // }
 
@@ -53,7 +53,7 @@
 
 mo.graph @scalar_to_scalar_ndbuff_reg() -> (!mo.tensor<[1], si32>) {
   %0 = mo.constant <#M.dense_array<42> : tensor<si32>> : !mo.tensor<[1], si32>
-  %1 = mo.custom {symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarReg">
-  %2 = mo.custom {symbol = "my_custom_scalar_reg_to_buff", device = #M.device_ref<"cpu", 0>}(%1) : (!mo.opaque<"MyCustomScalarReg">) -> !mo.tensor<[1], si32>
+  %1 = mo.custom [symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>](%0) : (!mo.tensor<[1], si32>) -> !mo.opaque<"MyCustomScalarReg">
+  %2 = mo.custom [symbol = "my_custom_scalar_reg_to_buff", device = #M.device_ref<"cpu", 0>](%1) : (!mo.opaque<"MyCustomScalarReg">) -> !mo.tensor<[1], si32>
   mo.output %2 : !mo.tensor<[1], si32>
 }

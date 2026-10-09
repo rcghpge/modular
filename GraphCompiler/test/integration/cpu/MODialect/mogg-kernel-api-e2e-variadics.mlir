@@ -14,7 +14,7 @@ mo.graph @variadic_input_to_output_size3_f32() -> (!mo.tensor<[6], f32>, !mo.ten
   %in3 = mo.constant <#M.dense_array<100.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<6xf32>> : !mo.tensor<[6], f32>
   %bias = mo.constant <#M.dense_array<10000.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
 
-  %res1, %res2, %res3 = mo.custom {symbol = "variadic_input_to_output", device = #M.device_ref<"cpu", 0>} (%bias, %in1, %in2, %in3) : (
+  %res1, %res2, %res3 = mo.custom [symbol = "variadic_input_to_output", device = #M.device_ref<"cpu", 0>] (%bias, %in1, %in2, %in3) : (
     !mo.tensor<[1], f32>,
     !mo.tensor<[6], f32>,
     !mo.tensor<[6], f32>,
@@ -35,7 +35,7 @@ mo.graph @variadic_input_to_output_size4_si32() -> (!mo.tensor<[6], si32>, !mo.t
   %in4 = mo.constant <#M.dense_array<1000, 2, 3, 4, 5, 6> : tensor<6xsi32>> : !mo.tensor<[6], si32>
   %bias = mo.constant <#M.dense_array<10000> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 
-  %res1, %res2, %res3, %res4 = mo.custom {symbol = "variadic_input_to_output", device = #M.device_ref<"cpu", 0>} (%bias, %in1, %in2, %in3, %in4) : (
+  %res1, %res2, %res3, %res4 = mo.custom [symbol = "variadic_input_to_output", device = #M.device_ref<"cpu", 0>] (%bias, %in1, %in2, %in3, %in4) : (
     !mo.tensor<[1], si32>,
     !mo.tensor<[6], si32>,
     !mo.tensor<[6], si32>,

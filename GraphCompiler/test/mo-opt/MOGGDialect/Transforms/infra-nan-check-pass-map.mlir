@@ -58,7 +58,7 @@ mo.graph @fused_elementwise() -> !mo.tensor<[4], f32> {
 mo.graph @two_regions(%arg0: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %0 = mo.constant <#M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<4xf32>> {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[4], f32>
   %1 = mo.add(%arg0, %0) : !mo.tensor<[4], f32>
-  %2 = mo.custom {symbol = "test_custom_op", device = #M.device_ref<"cpu", 0>}(%1) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %2 = mo.custom [symbol = "test_custom_op", device = #M.device_ref<"cpu", 0>](%1) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %3 = mo.relu(%2) : !mo.tensor<[4], f32>
   mo.output %3 : !mo.tensor<[4], f32>
 }

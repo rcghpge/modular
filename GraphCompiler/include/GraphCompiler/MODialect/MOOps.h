@@ -64,6 +64,57 @@ ParseResult parseTransferResult(AsmParser &p, Type inputType, Type &resultType);
 void printTransferResult(AsmPrinter &p, Operation *, TensorType inputType,
                          TensorType resultType);
 
+/// An element of a bracketed `[name = value, ...]` attribute group. A null
+/// `value` means the attribute is absent and is not printed.
+struct AttrGroupElement {
+  StringRef name;
+  Attribute value;
+};
+
+/// Print `[name = value, ...]` for the elements with a value, or nothing when
+/// none of them has one.
+void printAttrGroup(AsmPrinter &p, ArrayRef<AttrGroupElement> elements);
+
+/// An element of a bracketed attribute group on the parsing side: the
+/// attribute's name and a hook that parses its value.
+struct AttrGroupParser {
+  StringRef name;
+  llvm::function_ref<ParseResult()> parse;
+  bool required = false;
+};
+
+/// Parse an optional `[name = value, ...]` attribute group. The names may
+/// appear in any order; a repeated or unknown name is an error.
+ParseResult parseAttrGroup(AsmParser &p, ArrayRef<AttrGroupParser> elements);
+
+ParseResult parseCustomAttrs(OpAsmParser &p, StringAttr &symbol,
+                             DeviceRefAttr &device, DictionaryAttr &parameters);
+
+void printCustomAttrs(OpAsmPrinter &p, Operation *, StringAttr symbol,
+                      DeviceRefAttr device, DictionaryAttr parameters);
+
+ParseResult parseConstantExternalAttrs(OpAsmParser &p, StringAttr &name,
+                                       IntegerAttr &align,
+                                       DeviceRefAttr &device,
+                                       BoolAttr &hasAlias,
+                                       BoolAttr &isPlaceholder);
+
+void printConstantExternalAttrs(OpAsmPrinter &p, Operation *, StringAttr name,
+                                IntegerAttr align, DeviceRefAttr device,
+                                BoolAttr hasAlias, BoolAttr isPlaceholder);
+
+ParseResult parseCallAttrs(OpAsmParser &p, StringAttr &prefix,
+                           ArrayAttr &argAttrs, ArrayAttr &resAttrs);
+
+void printCallAttrs(OpAsmPrinter &p, Operation *, StringAttr prefix,
+                    ArrayAttr argAttrs, ArrayAttr resAttrs);
+
+ParseResult parseShapeFuncAttrs(OpAsmParser &p, DictionaryAttr &kgenParams,
+                                ArrayAttr &dataDeptTensors);
+
+void printShapeFuncAttrs(OpAsmPrinter &p, Operation *,
+                         DictionaryAttr kgenParams, ArrayAttr dataDeptTensors);
+
 /// If `val` comes from constant tensors (defined by a ConstantOp or
 /// concatenation or identity chain of ConstantOps), return the defining ops.
 SmallVector<MO::ConstantOp> tryGetConstantOpsOfRank(TensorValue val,

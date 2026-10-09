@@ -8,7 +8,7 @@
 // CHECK: x.address_space = AddressSpace.GENERIC
 // CHECK: 'print_static_shape_strides' returned tensor<1x2x3x4xf32> [1.000000e+00, 1.000000e+00
 mo.graph @print_static_shape_strides(%x: !mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f32> {
-    %out = mo.custom {symbol = "print_tensor_spec", device = #M.device_ref<"cpu", 0>} (%x) : (!mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f32>
+    %out = mo.custom [symbol = "print_tensor_spec", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[1,2,3,4], f32>) -> !mo.tensor<[1,2,3,4], f32>
     mo.output %out : !mo.tensor<[1,2,3,4], f32>
 }
 
@@ -19,6 +19,6 @@ mo.graph @print_static_shape_strides(%x: !mo.tensor<[1,2,3,4], f32>) -> !mo.tens
 // CHECK: x.address_space = AddressSpace.GENERIC
 // CHECK: 'print_dyn_shape_strides' returned tensor<1x2x3x4xf32> [1.000000e+00, 1.000000e+00
 mo.graph @print_dyn_shape_strides<D0>(%x: !mo.tensor<[1,2,D0,4], f32>) -> !mo.tensor<[1,2,D0,4], f32> {
-    %out = mo.custom {symbol = "print_tensor_spec", device = #M.device_ref<"cpu", 0>} (%x) : (!mo.tensor<[1,2,D0,4], f32>) -> !mo.tensor<[1,2,D0,4], f32>
+    %out = mo.custom [symbol = "print_tensor_spec", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[1,2,D0,4], f32>) -> !mo.tensor<[1,2,D0,4], f32>
     mo.output %out : !mo.tensor<[1,2,D0,4], f32>
 }

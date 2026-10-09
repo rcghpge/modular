@@ -3,6 +3,6 @@
 
 // CHECK: MGP_RT_TEST
 mo.graph @test() -> (!mo.tensor<[1], f32>) {
-  %0 = mo.custom {symbol = "mgprt_test_func", device = #M.device_ref<"cpu", 0>}() : () -> !mo.tensor<[1], f32>
+  %0 = mo.custom [symbol = "mgprt_test_func", device = #M.device_ref<"cpu", 0>]() : () -> !mo.tensor<[1], f32>
   mo.output %0 : !mo.tensor<[1], f32>
 }

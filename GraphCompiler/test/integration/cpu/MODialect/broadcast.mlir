@@ -62,7 +62,7 @@ mo.graph @broadcast_to_fallback_shape_func<() -> D0, D1, D2, D3>(
   %target_shape = mo.constant <#M.dense_array<10, 20, 2, 30> : tensor<4xsi32>> : !mo.tensor<[4], si32>
 
   mo.invoke_shape_func["mo.broadcast_to"]<() -> D4, D5, D6, D7>(%input, %target_shape)
-    {dataDeptTensors = [1 : i32]} :
+    [dataDeptTensors = [1 : i32]] :
     (!mo.tensor<[1, 2, 1], f32>, !mo.tensor<[4], si32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

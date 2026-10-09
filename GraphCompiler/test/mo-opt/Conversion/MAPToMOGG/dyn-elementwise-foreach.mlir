@@ -22,6 +22,6 @@
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 mo.graph @add<M, N>(%a: !mo.tensor<[M, N], f32>, %b: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32> {
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "imposter_add_elementwise"}(%a, %b) : (!mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>
+  %c = mo.custom [symbol = "imposter_add_elementwise", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[M, N], f32>, !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32>
   mo.output %c : !mo.tensor<[M, N], f32>
 }

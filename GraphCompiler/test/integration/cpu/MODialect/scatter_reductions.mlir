@@ -139,7 +139,7 @@ mo.graph @scatter_fallback_shape_func<() -> D0, D1, D2>(
   %axis = mo.constant <#M.dense_array<-1> : tensor<si32>> : !mo.tensor<[], si32>
 
   mo.invoke_shape_func["mo.scatter.min"]<() -> D3, D4, D5>(%input, %updates, %indices, %axis)
-    {dataDeptTensors = [3 : i32]} :
+    [dataDeptTensors = [3 : i32]] :
     (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 1, 2], f32>, !mo.tensor<[1, 1, 2], si32>, !mo.tensor<[], si32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

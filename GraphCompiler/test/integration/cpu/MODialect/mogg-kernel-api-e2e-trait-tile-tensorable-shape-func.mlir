@@ -24,7 +24,7 @@ mo.graph @trait_reshape_shape<D0, D1 -> D2, D3>(
   %data: !mo.tensor<[D0, D1], f32>,
   %sizes: !mo.tensor<[2], si64>
 ) -> !mo.tensor<[D2, D3], f32> {
-  %res = mo.custom<() -> D4, D5> {device = #M.device_ref<"cpu", 0>, symbol = "trait_reshape_shape_op"}(%data, %sizes) :
+  %res = mo.custom<() -> D4, D5> [symbol = "trait_reshape_shape_op", device = #M.device_ref<"cpu", 0>](%data, %sizes) :
     (!mo.tensor<[D0, D1], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D4, D5], f32>
   mo.output<D4, D5> %res : !mo.tensor<[D4, D5], f32>
 }

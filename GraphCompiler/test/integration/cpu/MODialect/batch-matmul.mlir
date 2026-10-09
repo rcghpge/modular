@@ -25,7 +25,7 @@ mo.graph @batch_matmul_fallback_shape_func<() -> D0, D1, D2>(
 ) -> !mo.tensor<[D0, D1, D2], si32> {
 
   mo.invoke_shape_func["mo.batch_matmul"]<() -> D3, D4, D5>(%lhs, %rhs)
-    {dataDeptTensors = []} :
+    [dataDeptTensors = []] :
     (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[2, 4, 5], f32>)
 
   %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>

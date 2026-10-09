@@ -24,6 +24,6 @@ mo.graph @dyn_reshape_into_prologue<D>(
 ) -> !mo.tensor<[2, D], f32> {
   %r = mo.static.reshape(%x) : !mo.tensor<[D, 2], f32> -> !mo.tensor<[2, D], f32>
   %s = mo.add(%r, %y) : !mo.tensor<[2, D], f32>
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_partial_fused_inputs"}(%s, %y) : (!mo.tensor<[2, D], f32>, !mo.tensor<[2, D], f32>) -> !mo.tensor<[2, D], f32>
+  %c = mo.custom [symbol = "map_lower_partial_fused_inputs", device = #M.device_ref<"cpu", 0>](%s, %y) : (!mo.tensor<[2, D], f32>, !mo.tensor<[2, D], f32>) -> !mo.tensor<[2, D], f32>
   mo.output %c : !mo.tensor<[2, D], f32>
 }

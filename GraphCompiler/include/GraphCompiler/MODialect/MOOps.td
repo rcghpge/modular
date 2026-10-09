@@ -129,7 +129,9 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
 
   let assemblyFormat = [{
     `[` $inChain `]` $input `:` qualified(type($input)) `to`
-    custom<TransferResult>(ref(type($input)), type($result)) attr-dict
+    custom<TransferResult>(ref(type($input)), type($result))
+    (` ` `[` `alwaysElideSameDeviceCopy` `=` $alwaysElideSameDeviceCopy^ `]`)?
+    attr-dict
   }];
 
   let hasVerifier = 1;
@@ -192,8 +194,9 @@ def MO_GraphOp : MO_DeviceAgnosticTensorOp<"graph", [
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    custom<GraphOp>($sym_name, $signature, $functionType, $inputParameters,
-                    $resultParameters, attr-dict, $body, $counter)
+    custom<GraphOp>($sym_visibility, $sym_name, $signature, $functionType,
+                    $inputParameters, $resultParameters, $isSubgraph,
+                    $isDeviceGraph, attr-dict, $body, $counter)
   }];
 
   let extraClassDeclaration = [{
@@ -275,7 +278,8 @@ def MO_CallOp : MO_ControlOp<"call", [
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) $callee `(` operands `)` attr-dict `:`
+    `` custom<ParamDecls>($outputParamDecls) $callee `(` operands `)`
+       `` custom<CallAttrs>($prefix, $arg_attrs, $res_attrs) attr-dict `:`
        functional-type(operands, results)
   }];
 
@@ -902,9 +906,9 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
     Example:
 
     ```mlir
-    %weight = mo.constant.external {
-      align = 16 : ui64, device = #M.device_ref<"gpu", 0>, name = "foo"
-    } : !mo.tensor<[4096, 4096], bf16>
+    %weight = mo.constant.external
+      [name = "foo", align = 16, device = #M.device_ref<"gpu", 0>]
+      : !mo.tensor<[4096, 4096], bf16>
   }];
 
   let arguments = (ins
@@ -917,7 +921,11 @@ def MO_ConstantExternalOp : MO_TensorOp<"constant.external", [
   let results = (outs MO_Tensor:$result);
 
   let hasCanonicalizeMethod = 1;
-  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+  let assemblyFormat = [{
+    `` custom<ConstantExternalAttrs>($name, $align, $device, $hasAlias,
+                                     $isPlaceholder)
+    attr-dict `:` qualified(type($result))
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -4282,7 +4290,8 @@ def MO_InvokeShapeFuncOp : MO_TensorOp<"invoke_shape_func", [
 
   let assemblyFormat = [{
     `[` $shapeFuncName `]` `` custom<ParamDecls>($outputParamDecls)
-    `(` $inputs `)` attr-dict `:` `(` type($inputs) `)`
+    `(` $inputs `)` `` custom<ShapeFuncAttrs>($kgenParams, $dataDeptTensors)
+    attr-dict `:` `(` type($inputs) `)`
   }];
 
   let hasVerifier = 1;
@@ -4307,7 +4316,8 @@ def MO_LayoutTransformOp : MO_TensorOp<"layout.transform", [MO_HostOnly]> {
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{
-    `(` $input `)` attr-dict `:` qualified(type($input)) `->` qualified(type($result))
+    `(` $input `)` (`[` `kgenParams` `=` $kgenParams^ `]`)? attr-dict `:`
+    qualified(type($input)) `->` qualified(type($result))
   }];
 
   let hasCanonicalizeMethod = 1;
@@ -4362,7 +4372,7 @@ def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
     Example:
     ```mlir
       %ch0: !mo.chain
-      %ch1 = mo.debug.print(%ch0) {value = "message", label = "label"}
+      %ch1 = mo.debug.print(%ch0) [value = "message", label = "label"]
     ```
   }];
 
@@ -4373,7 +4383,8 @@ def MO_DebugPrintOp : MO_TensorOp<"debug.print", [
   );
   let results = (outs MO_Chain:$outChain);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict
+    `(` operands `)` `[` `value` `=` $value (`,` `label` `=` $label^)? `]`
+    attr-dict
   }];
 }
 
@@ -4395,7 +4406,7 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
     ```mlir
       %arg: !mo.tensor<[5], f32>
       %ch0: !mo.chain
-      %ch1 = mo.debug.tensor.print(%ch0, %arg) {label = "label"} : !mo.tensor<[5], f32>
+      %ch1 = mo.debug.tensor.print(%ch0, %arg) [label = "label"] : !mo.tensor<[5], f32>
     ```
   }];
 
@@ -4406,7 +4417,8 @@ def MO_DebugTensorPrintOp : MO_TensorOp<"debug.tensor.print", [
   );
   let results = (outs MO_Chain:$outChain);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` qualified(type($input))
+    `(` operands `)` (`[` `label` `=` $label^ `]`)? attr-dict `:`
+    qualified(type($input))
   }];
 }
 
@@ -4496,7 +4508,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     Example:
 
     ```mlir
-      %0 = mo.custom {symbol = "test_custom_op"}(%arg0)
+      %0 = mo.custom [symbol = "test_custom_op"](%arg0)
         (!mo.tensor<[?], f32>) -> !mo.tensor<[?], f32>
     ```
 
@@ -4515,7 +4527,7 @@ def MO_CustomOp : MO_TensorOp<"custom", [
     Example:
 
     ```mlir
-    %ch1 = mo.custom {symbol = "test_mutable_op"}(%arg0, %ch0) :
+    %ch1 = mo.custom [symbol = "test_mutable_op"](%arg0, %ch0) :
       (!mo.buffer<[D1, D2], f32>, !mo.chain) -> !mo.chain
     ```
     ```mojo
@@ -4535,7 +4547,9 @@ def MO_CustomOp : MO_TensorOp<"custom", [
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    `` custom<ParamDecls>($outputParamDecls) attr-dict `(` operands `)` `:`
+    `` custom<ParamDecls>($outputParamDecls)
+       `` custom<CustomAttrs>($symbol, $device, $parameters)
+       attr-dict `(` operands `)` `:`
        functional-type(operands, results)
   }];
 
@@ -4731,7 +4745,7 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [
     Example:
     ```mlir
     %buf = mo.buffer.create : !mo.buffer<[20, 20], f32, gpu:0>
-    %zeroed = mo.buffer.create { initValue = 0.0 : f32 } : !mo.buffer<[20, 20], f32, gpu:0>
+    %zeroed = mo.buffer.create [initValue = 0.0 : f32] : !mo.buffer<[20, 20], f32, gpu:0>
     ```
   }];
 
@@ -4741,7 +4755,10 @@ def MO_BufferCreateOp : MO_Op<"buffer.create", [
   );
   let results = (outs MO_Buffer:$result);
 
-  let assemblyFormat = "attr-dict `:` qualified(type($result))";
+  let assemblyFormat = [{
+    (` ` `[` `initValue` `=` $initValue^ `]`)? attr-dict `:`
+    qualified(type($result))
+  }];
   let hasVerifier = 1;
 
   // The `{}` default lets Python bindings omit `initValue`; MLIR attribute

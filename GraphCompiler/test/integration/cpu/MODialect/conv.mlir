@@ -111,7 +111,7 @@ mo.graph @conv_fallback_shape_func<() -> D0, D1, D2, D3>(
   %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D4, D5, D6, D7>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
-    {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
+    [dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32, {layout = #mo.layout<RSCF>}>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>, !mo.tensor<[], si64>)
 
@@ -133,7 +133,7 @@ mo.graph @conv_fallback_padded_shape_func<() -> D0, D1, D2, D3>(
   %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D4, D5, D6, D7>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
-    {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
+    [dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]] :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32, {layout = #mo.layout<RSCF>}>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>, !mo.tensor<[], si64>)
 
@@ -155,7 +155,7 @@ mo.graph @conv3d_fallback_shape_func<() -> D0, D1, D2, D3, D4>(
   %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D5, D6, D7, D8, D9>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
-    {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
+    [dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]] :
     (!mo.tensor<[2, 10, 20, 7, 3], f32>, !mo.tensor<[2, 2, 3, 3, 1], f32, {layout = #mo.layout<QRSCF>}>,
      !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[6], si32>, !mo.tensor<[], si64>)
 
@@ -177,7 +177,7 @@ mo.graph @conv3d_fallback_padded_shape_func<() -> D0, D1, D2, D3, D4>(
   %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D5, D6, D7, D8, D9>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
-    {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
+    [dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]] :
     (!mo.tensor<[2, 10, 20, 7, 3], f32>, !mo.tensor<[2, 2, 3, 3, 1], f32, {layout = #mo.layout<QRSCF>}>,
      !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[6], si32>, !mo.tensor<[], si64>)
 

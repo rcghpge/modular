@@ -10,8 +10,8 @@ mo.graph @constant_fold_unsupported_result_types() -> (!mo.opaque<"MyCustomScala
   %0 = mo.constant <#M.dense_array<42> : tensor<si32>> : !mo.tensor<[1], si32>
   %ch0 = mo.chain.create()
 
-  // CHECK: mo.custom {symbol = "buff_to_my_custom_scalar_reg"}
-  %1 = mo.custom {symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], si32>) -> (!mo.opaque<"MyCustomScalarReg">)
+  // CHECK: mo.custom [symbol = "buff_to_my_custom_scalar_reg"]
+  %1 = mo.custom [symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>](%0) : (!mo.tensor<[1], si32>) -> (!mo.opaque<"MyCustomScalarReg">)
 
   mo.output %1 : !mo.opaque<"MyCustomScalarReg">
 }

@@ -12,6 +12,6 @@ mo.graph @trait_supports_constant_scalar(
   %input : !mo.tensor<[], f32>
 ) -> !mo.tensor<[], f32> {
   %scalar = mo.constant <#M.dense_array<2.0> : tensor<f32>> : !mo.tensor<[], f32>
-  %output = mo.custom {symbol = "trait_supports_scalar_kernel", device = #M.device_ref<"cpu", 0>}(%input, %scalar) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], f32>
+  %output = mo.custom [symbol = "trait_supports_scalar_kernel", device = #M.device_ref<"cpu", 0>](%input, %scalar) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], f32>
   mo.output %output : !mo.tensor<[], f32>
 }

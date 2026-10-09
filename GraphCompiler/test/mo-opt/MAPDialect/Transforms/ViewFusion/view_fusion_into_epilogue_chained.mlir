@@ -17,7 +17,7 @@ mo.graph @broadcastOfSliceIntoExistingEpilogue(
   %start = mo.constant <#M.dense_array<4> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %stop = mo.constant <#M.dense_array<12> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %step = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
-  %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%main) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%main) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
   %sliced = mo.slice(%bias_wide, %start, %stop, %step) : (
     !mo.tensor<[16], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>
   ) -> !mo.tensor<[8], f32>

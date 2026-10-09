@@ -18,6 +18,6 @@
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 mo.graph @add_with_index(%0: !mo.tensor<[8], si32>) -> !mo.tensor<[8], si32> {
-  %1 = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "elemwise_add_with_index"}(%0) : (!mo.tensor<[8], si32>) -> !mo.tensor<[8], si32>
+  %1 = mo.custom [symbol = "elemwise_add_with_index", device = #M.device_ref<"cpu", 0>](%0) : (!mo.tensor<[8], si32>) -> !mo.tensor<[8], si32>
   mo.output %1 : !mo.tensor<[8], si32>
 }

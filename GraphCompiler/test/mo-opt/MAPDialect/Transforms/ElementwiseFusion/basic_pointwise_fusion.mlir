@@ -82,8 +82,8 @@ mo.graph @fusion_diamond(
 
 
 mo.graph @add_with_params_fused(%x: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32> {
-  %0 = mo.custom {symbol = "elemwise_add_with_param", device = #M.device_ref<"cpu", 0>, parameters = {"bias" = 1}}(%x) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
-  %1 = mo.custom {symbol = "elemwise_add_with_param", device = #M.device_ref<"cpu", 0>, parameters = {"bias" = 2}}(%0) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  %0 = mo.custom [symbol = "elemwise_add_with_param", device = #M.device_ref<"cpu", 0>, parameters = {"bias" = 1}](%x) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
+  %1 = mo.custom [symbol = "elemwise_add_with_param", device = #M.device_ref<"cpu", 0>, parameters = {"bias" = 2}](%0) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 3], f32>
   mo.output %1 : !mo.tensor<[4, 3], f32>
 }
 

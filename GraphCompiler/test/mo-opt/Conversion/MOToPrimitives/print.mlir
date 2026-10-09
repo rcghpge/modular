@@ -6,7 +6,7 @@
 
 mo.graph @print_string() {
   %ch0 = mo.chain.create()
-  mo.debug.print(%ch0) {value = "debug string", label = "label"}
+  mo.debug.print(%ch0) [value = "debug string", label = "label"]
   mo.output
 }
 
@@ -20,7 +20,7 @@ mo.graph @print_string() {
 
 mo.graph @print(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch0 = mo.chain.create()
-  mo.debug.tensor.print(%ch0, %arg0) {label = "label"} : !mo.tensor<[4, 5], f32>
+  mo.debug.tensor.print(%ch0, %arg0) [label = "label"] : !mo.tensor<[4, 5], f32>
   mo.output
 }
 
@@ -33,7 +33,7 @@ mo.graph @print(%arg0: !mo.tensor<[4, 5], f32>) {
 mo.graph @print_chained(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch0 = mo.chain.create()
   %0 = mo.relu(%arg0): !mo.tensor<[4, 5], f32>
-  mo.debug.tensor.print(%ch0, %0) {label = "label"} : !mo.tensor<[4, 5], f32>
+  mo.debug.tensor.print(%ch0, %0) [label = "label"] : !mo.tensor<[4, 5], f32>
   mo.output
 }
 
@@ -44,8 +44,8 @@ mo.graph @print_chained(%arg0: !mo.tensor<[4, 5], f32>) {
 // CHECK: [[ch2:%.*]] = mgp.debug.print [[ch1]]
 mo.graph @sequenced_print_string() {
   %ch0 = mo.chain.create()
-  %ch1 = mo.debug.print(%ch0) {value = "first debug string", label = "label"}
-  %ch2 = mo.debug.print(%ch1) {value = "second debug string", label = "label"}
+  %ch1 = mo.debug.print(%ch0) [value = "first debug string", label = "label"]
+  %ch2 = mo.debug.print(%ch1) [value = "second debug string", label = "label"]
   mo.output
 }
 
@@ -56,7 +56,7 @@ mo.graph @sequenced_print_string() {
 // CHECK: [[ch2:%.*]] = mgp.debug.tensor.print [[ch1]]
 mo.graph @sequenced_print(%arg0: !mo.tensor<[4, 5], f32>) {
   %ch0 = mo.chain.create()
-  %ch1 = mo.debug.tensor.print(%ch0, %arg0) {label = "label1"} : !mo.tensor<[4, 5], f32>
-  %ch2 = mo.debug.tensor.print(%ch1, %arg0) {label = "label2"} : !mo.tensor<[4, 5], f32>
+  %ch1 = mo.debug.tensor.print(%ch0, %arg0) [label = "label1"] : !mo.tensor<[4, 5], f32>
+  %ch2 = mo.debug.tensor.print(%ch1, %arg0) [label = "label2"] : !mo.tensor<[4, 5], f32>
   mo.output
 }

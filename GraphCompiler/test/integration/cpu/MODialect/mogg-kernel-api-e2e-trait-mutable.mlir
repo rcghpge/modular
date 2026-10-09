@@ -17,6 +17,6 @@
 // CHECK{LITERAL}: [2.0000, 2.0000]], dtype=f32, shape=[2,2])
 mo.graph @trait_inplace_increment_graph(%buf: !bt) -> (!bt, !c) {
   %ch0 = mo.chain.create()
-  %ch1 = mo.custom {symbol = "trait_inplace_increment", device = #M.device_ref<"cpu", 0>}(%buf, %ch0) : (!bt, !c) -> (!c)
+  %ch1 = mo.custom [symbol = "trait_inplace_increment", device = #M.device_ref<"cpu", 0>](%buf, %ch0) : (!bt, !c) -> (!c)
   mo.output %buf, %ch1 : !bt, !c
 }
