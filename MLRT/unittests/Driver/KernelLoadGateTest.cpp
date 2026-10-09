@@ -178,23 +178,4 @@ TEST_F(KernelLoadGateTest, EnqueueThreadLoadsPassTheirOwnCollective) {
   gate_.releaseCollective();
 }
 
-TEST_F(KernelLoadGateTest, HandOffDrainsLoadsStillOpen) {
-  AsyncValueRef<Chain> owner, next;
-  ASSERT_TRUE(gate_.tryAcquireCollective(cpu(), owner));
-
-  // The owner's enqueue thread loads, and that load is still open when the
-  // owner releases. The next collective must wait it out.
-  gate_.beginEnqueue();
-  gate_.openLoad();
-  gate_.endEnqueue();
-  ASSERT_FALSE(gate_.tryAcquireCollective(cpu(), next));
-
-  gate_.releaseCollective();
-  EXPECT_FALSE(next.isReady());
-
-  gate_.closeLoad();
-  EXPECT_TRUE(next.isReady());
-  gate_.releaseCollective();
-}
-
 } // namespace

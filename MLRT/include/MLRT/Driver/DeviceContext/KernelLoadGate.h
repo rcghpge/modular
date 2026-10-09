@@ -134,7 +134,9 @@ public:
   /// the gate, and their loads reach `loadFunction` from arbitrary depth
   /// inside kernel code with no parameter to carry the fact down. Sound only
   /// because a sub-task body never suspends, so the registration cannot follow
-  /// a migrating task onto another worker.
+  /// a migrating task onto another worker, and no other task runs on the
+  /// thread while it is registered. Registering a thread twice would mean a
+  /// body did wait, so it asserts.
   ///
   /// Paired calls rather than a scope object because the only caller is
   /// across the FFI, which cannot hold one.
@@ -159,11 +161,10 @@ private:
   std::mutex mu_;
   State state_ = State::Idle;
   size_t activeLoads_ = 0;
-  /// Threads running the open collective's per-device enqueues, with the
-  /// nesting depth of each registration. Holds one entry per participating
-  /// device, so a scan is cheaper than a map, and it reaches its steady-state
-  /// capacity on the first collective.
-  std::vector<std::pair<std::thread::id, size_t>> enqueueThreads_;
+  /// Threads running the open collective's per-device enqueues. Holds one
+  /// entry per participating device, so a scan is cheaper than a map, and it
+  /// reaches its steady-state capacity on the first collective.
+  std::vector<std::thread::id> enqueueThreads_;
   /// Fulfilled when the gate returns to Idle; waited on by loads. Survives a
   /// hand-off between queued collectives, so loads wait out the whole run of
   /// them. Null while Idle.

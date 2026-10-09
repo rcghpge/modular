@@ -55,15 +55,10 @@ void KernelLoadGate::releaseCollective() {
       AsyncValueRef<Chain> next = std::move(pending_.front());
       pending_.pop_front();
       // The owner's own loads close before its enqueues finish, and every other
-      // load has waited since the claim, so this is the normal case. Drain
-      // rather than trust it.
-      // TODO: assert (activeLoads_ == 0)?
-      if (activeLoads_ == 0) {
-        wake = std::move(next);
-      } else {
-        state_ = State::Draining;
-        drainGrant_ = std::move(next);
-      }
+      // load has waited since the claim, so none can be in flight here.
+      assert(activeLoads_ == 0 &&
+             "handing off a kernel-load gate with loads still open");
+      wake = std::move(next);
     }
   }
   // Wake up the next loader outside the critical section.
@@ -112,8 +107,8 @@ void KernelLoadGate::closeLoad() {
 
 bool KernelLoadGate::isEnqueueThread() const {
   std::thread::id self = std::this_thread::get_id();
-  for (const auto &entry : enqueueThreads_)
-    if (entry.first == self)
+  for (std::thread::id entry : enqueueThreads_)
+    if (entry == self)
       return true;
   return false;
 }
@@ -121,27 +116,23 @@ bool KernelLoadGate::isEnqueueThread() const {
 void KernelLoadGate::beginEnqueue() {
   std::thread::id self = std::this_thread::get_id();
   std::lock_guard<std::mutex> lock(mu_);
-  for (auto &entry : enqueueThreads_) {
-    // Depth rather than a flag: a collective's per-device work can nest.
-    if (entry.first == self) {
-      ++entry.second;
-      return;
-    }
-  }
-  enqueueThreads_.emplace_back(self, 1);
+  // A second registration would mean a launch body waited and this thread ran
+  // another device's share inside it, which keying on thread identity rules
+  // out.
+  assert(!isEnqueueThread() &&
+         "thread already registered as a collective enqueuer");
+  enqueueThreads_.push_back(self);
 }
 
 void KernelLoadGate::endEnqueue() {
   std::thread::id self = std::this_thread::get_id();
   std::lock_guard<std::mutex> lock(mu_);
-  for (auto &entry : enqueueThreads_) {
-    if (entry.first != self)
+  for (std::thread::id &entry : enqueueThreads_) {
+    if (entry != self)
       continue;
-    if (--entry.second == 0) {
-      // Order does not matter, so swap with the back rather than shift.
-      entry = enqueueThreads_.back();
-      enqueueThreads_.pop_back();
-    }
+    // Order does not matter, so swap with the back rather than shift.
+    entry = enqueueThreads_.back();
+    enqueueThreads_.pop_back();
     return;
   }
   assert(false && "unbalanced kernel-load gate enqueue scope");
