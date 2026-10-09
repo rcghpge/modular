@@ -235,7 +235,9 @@ def _allreduce_lamport_rmsnorm_kernel[
     if tid == 0:
         var arrived = Atomic.fetch_add(state + Lamport.STATE_ARRIVAL, UInt32(1))
         if Int(arrived) == grid_dim.x - 1:
-            (state + Lamport.STATE_FLAG).store[volatile=True](UInt32(flag + 1))
+            (state + Lamport.STATE_FLAG).store[volatile=True](
+                UInt32(LamportGeneration.advance(flag))
+            )
             (state + Lamport.STATE_PREV_PACKS).store[volatile=True](
                 UInt32(cur_packs)
             )

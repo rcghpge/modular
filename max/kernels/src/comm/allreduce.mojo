@@ -1302,7 +1302,10 @@ def _allreduce_lamport_kernel[
                 state + Lamport.STATE_ARRIVAL, UInt32(1)
             )
             if Int(arrived) == grid_dim.x - 1:
-                state.store[volatile=True](Lamport.STATE_FLAG, UInt32(flag + 1))
+                state.store[volatile=True](
+                    Lamport.STATE_FLAG,
+                    UInt32(LamportGeneration.advance(flag)),
+                )
                 state.store[volatile=True](
                     Lamport.STATE_PREV_PACKS, UInt32(num_packs)
                 )
