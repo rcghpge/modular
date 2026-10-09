@@ -49,6 +49,7 @@ from max.pipelines.kv_cache._nixl_plugin_deps import preload_nixl_plugin_deps
 from max.pipelines.kv_cache.kv_connector import (
     KVConnector,
     KVConnectorTransfer,
+    KVLoadFailed,
     KVLoadRefused,
     KVTransfer,
 )
@@ -190,10 +191,9 @@ def _to_dkv_u64(h: bytes) -> int:
     The dkv proto stays ``uint64 seq_hash``. Accepts the canonical bytes
     forms the block hasher produces:
 
-    * 8 bytes (``ahash64`` / ``sha256_64``): used as-is, big-endian unsigned.
+    * 8 bytes (``ahash64``): used as-is, big-endian unsigned.
     * 32 bytes (full ``sha256``): truncated to the first 8 bytes (big-endian
-      unsigned). Byte-identical to ``sha256_64`` of the same digest, so the
-      same logical block collapses to the same dkv key under either algo.
+      unsigned), because the dkv wire key is 64 bits wide.
 
     Args:
         h: Canonical block-hash bytes, length 8 or 32.
@@ -803,6 +803,22 @@ def _drain(transfers: Sequence[KVTransfer]) -> None:
         raise first
 
 
+def _as_load_failure(err: BaseException) -> BaseException:
+    """Types a transport error from the client as :class:`KVLoadFailed`.
+
+    The binding raises a plain ``RuntimeError`` for a transport or transfer
+    condition and ``ValueError`` for a caller bug. Anything else comes back
+    unchanged, a ``RuntimeError`` subclass included, so a bug in the shim or
+    the binding still crashes rather than reading as a copy the manager can
+    recompute.
+    """
+    if type(err) is not RuntimeError:
+        return err
+    failure = KVLoadFailed(str(err))
+    failure.__cause__ = err
+    return failure
+
+
 class _DkvBatchTransfer:
     """One :class:`DKVConnector` call's transfers, polled as one.
 
@@ -828,9 +844,9 @@ class _DkvBatchTransfer:
         )
         # A terminal failure, kept so every later poll reports it too. The
         # scheduler's cordon sweep and the block manager poll the SAME object,
-        # and the cordon runs first: if the failure were consumed there, the
-        # manager's next poll would read complete and commit blocks the copy
-        # never filled into the device prefix cache.
+        # in either order: if the failure were consumed by the first, the
+        # second would read complete and commit blocks the copy never filled
+        # into the device prefix cache.
         self._failure: BaseException | None = None
 
     @property
@@ -843,10 +859,10 @@ class _DkvBatchTransfer:
 
         Polls every outstanding leaf rather than stopping at the first one
         still in flight, since settling is what releases a read's reader pin
-        and marks a write readable. A read whose transfer failed raises rather
-        than reading complete, because its destination blocks hold garbage; a
-        write's failure is kept local, since the engine cannot remediate a
-        batch that was not cached.
+        and marks a write readable. A read whose transfer failed raises
+        :class:`KVLoadFailed` rather than reading complete, because its
+        destination blocks hold garbage; a write's failure is kept local,
+        since the engine cannot remediate a batch that was not cached.
 
         A failure is sticky: it is re-raised to every later caller, so a
         transfer cannot report failure to one poller and completion to the
@@ -872,7 +888,7 @@ class _DkvBatchTransfer:
             # The caller unpins this transfer's blocks on the failure, so a
             # leaf still in flight has to be waited out first or its copy
             # lands in a page that has been freed and reused.
-            self._failure = first
+            self._failure = _as_load_failure(first)
             still_flying = self._pending
             self._pending = []
             try:
@@ -881,7 +897,7 @@ class _DkvBatchTransfer:
                 _logger.exception(
                     "draining the surviving leaves of a failed dkv load failed"
                 )
-            raise first
+            raise self._failure
         return not self._pending
 
     def synchronize(self) -> None:
@@ -897,8 +913,7 @@ class _DkvBatchTransfer:
             _drain(pending)
         except BaseException as err:
             if self._failure is None:
-                self._failure = err
-            raise
+                self._failure = _as_load_failure(err)
         if self._failure is not None:
             raise self._failure
 
@@ -1345,8 +1360,8 @@ class DKVConnector(KVConnector):
         # off. That is what the leased path needs -- a leaf spanning none
         # would take a lease and hand it straight back on every request
         # without ever posting a block, because
-        # :func:`longest_sliding_window_hit` would return the whole candidate
-        # unread and :func:`blocks_held_of_hit` would then make its share 0.
+        # the sliding-window rule would return the whole candidate unread and
+        # :func:`max._kv_core.blocks_held_of_hit` would then make its share 0.
         # Recency is a property of the leaf's attention group, so it is fixed
         # here rather than rebuilt inside the per-replica admission loop.
         self._group_recencies = [
@@ -1511,6 +1526,9 @@ class DKVConnector(KVConnector):
                 disagree about where they end.
             KVLoadRefused: If a leaf delivered less than its own lease
                 promised.
+            KVLoadFailed: If posting a leaf's copy failed, or a copy that a
+                short delivery drained did. Every leaf that posted has been
+                drained by then.
         """
         clients = self._clients[replica_idx]
         leaf_ids = list(self._leaves)
@@ -1574,8 +1592,11 @@ class DKVConnector(KVConnector):
                 # What is left is a fault -- degraded mid-request, an expired
                 # lease, or a hinted peer leaving the table. Drain the
                 # leaves that posted, and only those: each transfer covers one
-                # request's own reads, so this waits on nothing else.
-                _drain(posted_transfers)
+                # request's own reads, so this waits on nothing else. They
+                # come off the list first so the unwind does not drain them
+                # again, since a failed transfer re-raises on every drain.
+                drained, posted_transfers = posted_transfers, []
+                _drain(drained)
                 raise KVLoadRefused(
                     "dkv load_prepared fell short of its own lease: leaves "
                     f"{short_leaves} delivered "
@@ -1585,14 +1606,13 @@ class DKVConnector(KVConnector):
                     "hinted peer left the table."
                 )
             return _DkvBatchTransfer(posted_transfers)
-        except BaseException:
+        except BaseException as err:
             # Every leaf leased before anything was decided, so any raise
             # above has to hand those pins back rather than wait for the TTL.
             self._abandon_leases(replica_idx)
             # A leaf that posted has reads landing into rows the caller frees
             # as soon as this raises. Swallowing: the original exception is
-            # the one worth propagating. A drain that already ran above is a
-            # no-op here, since a synchronized transfer holds nothing.
+            # the one worth propagating.
             try:
                 _drain(posted_transfers)
             except BaseException:
@@ -1600,19 +1620,22 @@ class DKVConnector(KVConnector):
                     "dkv transfer drain failed while unwinding a load; its "
                     "reads may still be landing"
                 )
-            raise
+            failure = _as_load_failure(err)
+            if failure is err:
+                raise
+            raise failure from err
 
     def offload(
         self,
         block_ids: Mapping[str, Sequence[int]],
-        block_hashes: Sequence[bytes],
+        block_hashes: Mapping[str, Sequence[bytes]],
         replica_idx: int = 0,
     ) -> KVConnectorTransfer:
         """Offloads ``replica_idx``'s device blocks to the dkv service by hash.
 
-        Each ``block_hashes`` element follows the same 8-or-32 byte
-        contract as :meth:`load` (truncated to its first 8 bytes at the
-        dkv boundary; see :func:`_to_dkv_u64`).
+        Each hash follows the same 8-or-32 byte contract as :meth:`load`
+        (truncated to its first 8 bytes at the dkv boundary; see
+        :func:`_to_dkv_u64`).
 
         The dKV store dedups by composite key ``(tp_shard_id, group,
         seq_hash)`` and does not chain blocks under a parent, so the Rust
@@ -1628,23 +1651,25 @@ class DKVConnector(KVConnector):
             source out of the eviction path until this reads complete rather
             than letting a D2H drain into a page that has been reused.
         """
-        if set(block_ids) != set(self._leaves):
+        if set(block_ids) != set(self._leaves) or set(block_hashes) != set(
+            self._leaves
+        ):
             raise ValueError(
-                "DKVConnector.offload block IDs must match its leaf mapping. "
-                f"Expected {self._leaves}, got {block_ids}"
+                "DKVConnector.offload block IDs and hashes must match its leaf "
+                f"mapping. Expected {self._leaves}, got {block_ids} and "
+                f"{block_hashes}"
             )
-        dkv_hashes = [_to_dkv_u64(h) for h in block_hashes]
-        # Every leaf commits the same run in lockstep, so a leaf whose row is
-        # not one block per hash would pair ids with the wrong hashes.
+        # Ids and hashes pair positionally within a leaf, so a leaf given a
+        # different number of each would write blocks under the wrong keys.
         ragged = {
-            leaf_id: len(ids)
+            leaf_id: (len(ids), len(block_hashes[leaf_id]))
             for leaf_id, ids in block_ids.items()
-            if len(ids) != len(dkv_hashes)
+            if len(ids) != len(block_hashes[leaf_id])
         }
         if ragged:
             raise ValueError(
                 "DKVConnector.offload needs one block per hash on every leaf; "
-                f"got {ragged} for {len(dkv_hashes)} hashes"
+                f"got (blocks, hashes) of {ragged}"
             )
         clients = self._clients[replica_idx]
         # Offload every block in the run for every leaf, sliding ones included.
@@ -1659,7 +1684,7 @@ class DKVConnector(KVConnector):
             clients[leaf_id].offload(
                 group_id=self._wire_ids[leaf_id],
                 block_ids=list(block_ids[leaf_id]),
-                block_hashes=dkv_hashes,
+                block_hashes=[_to_dkv_u64(h) for h in block_hashes[leaf_id]],
             )
             for leaf_id in self._leaves
         ]

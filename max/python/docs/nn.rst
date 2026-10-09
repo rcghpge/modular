@@ -20,6 +20,7 @@ Submodules
    nn.attention
    nn.kernels
    nn.kv_cache
+   nn.moe
    nn.sampling
    nn.state_space
 
@@ -96,6 +97,7 @@ Transformer
 
    DistributedTransformer
    DistributedTransformerBlock
+   HyperConnection
    ReturnHiddenStates
    ReturnLogits
    Transformer

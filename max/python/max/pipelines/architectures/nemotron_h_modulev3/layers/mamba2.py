@@ -17,7 +17,9 @@ from __future__ import annotations
 from max import tree
 from max.dtype import DType
 from max.experimental import functional as F
-from max.experimental.nn import Linear, Module
+from max.experimental.nn import Module
+from max.experimental.nn.common_layers.mesh_axis import TP
+from max.experimental.sharding import NamedMapping
 from max.experimental.tensor import Tensor
 from max.graph import BufferValue, TensorValue
 from max.nn.state_space import (
@@ -27,6 +29,19 @@ from max.nn.state_space import (
 )
 
 from ..model_config import NemotronHConfig
+from .quantized import quantized_linear
+from .sharding import shard_axis
+
+
+def _layer_rows(rows: Tensor, layer: Tensor) -> TensorValue:
+    """Row ``layer`` of a ``[num_layers, batch_size]`` table, as
+    ``[1, batch_size]``.
+
+    The row keeps its leading dim so the slice fuses into the kernels' slot
+    input and is read in place rather than copied.
+    """
+    index = TensorValue(layer)
+    return TensorValue(rows)[(slice(index, index + 1), 1), :]
 
 
 def _causal_conv1d(
@@ -35,6 +50,7 @@ def _causal_conv1d(
     bias: Tensor,
     pool: Tensor,
     rows: Tensor,
+    layer: Tensor,
     query_start_loc: Tensor,
     has_initial_state: Tensor,
 ) -> TensorValue:
@@ -44,7 +60,7 @@ def _causal_conv1d(
         bias=TensorValue(bias),
         conv_states=BufferValue(pool),
         query_start_loc=TensorValue(query_start_loc),
-        cache_indices=TensorValue(rows),
+        cache_indices=_layer_rows(rows, layer),
         has_initial_state=TensorValue(has_initial_state),
         activation="silu",
         channels_last=True,
@@ -61,6 +77,7 @@ def _ssd_scan(
     dt_bias: Tensor,
     pool: Tensor,
     rows: Tensor,
+    layer: Tensor,
     query_start_loc: Tensor,
     has_initial_state: Tensor,
 ) -> TensorValue:
@@ -75,7 +92,7 @@ def _ssd_scan(
         ssm_pool=BufferValue(pool),
         query_start_loc=TensorValue(query_start_loc),
         has_initial_state=TensorValue(has_initial_state),
-        cache_indices=TensorValue(rows),
+        cache_indices=_layer_rows(rows, layer),
     )
 
 
@@ -87,17 +104,23 @@ ssd_scan = F.functional(_ssd_scan)
 class MambaStateAccess:
     """One Mamba layer's view of the state pools.
 
-    Each pool travels with the ``[batch_size]`` pool rows this layer reads
-    and writes, one per request.
+    Each pool travels with the ``[num_layers, batch_size]`` pool rows of
+    every layer, and the layer reads and writes the rows of ``layer``, one
+    per request. A row sliced out before the shared subgraph would be copied
+    to cross into it.
     """
 
     conv_pool: Tensor
     conv_rows: Tensor
     ssm_pool: Tensor
     ssm_rows: Tensor
+    layer: Tensor
+    """The int64 CPU scalar selecting this layer's rows."""
 
 
-class CausalConv1d(Module[[Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]):
+class CausalConv1d(
+    Module[[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]
+):
     """A depthwise causal conv with SiLU whose window lives in a state pool."""
 
     def __init__(self, dim: int, kernel_size: int) -> None:
@@ -109,6 +132,7 @@ class CausalConv1d(Module[[Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]):
         x: Tensor,
         pool: Tensor,
         rows: Tensor,
+        layer: Tensor,
         query_start_loc: Tensor,
         has_initial_state: Tensor,
     ) -> Tensor:
@@ -118,6 +142,7 @@ class CausalConv1d(Module[[Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]):
             self.bias,
             pool,
             rows,
+            layer,
             query_start_loc,
             has_initial_state,
         )
@@ -154,7 +179,14 @@ class NemotronHMamba2Mixer(
     graph.
     """
 
-    def __init__(self, config: NemotronHConfig) -> None:
+    def __init__(self, config: NemotronHConfig, name: str) -> None:
+        """Initializes the mixer.
+
+        Args:
+            config: The model config.
+            name: The mixer's checkpoint path, which names the format of
+                its projections.
+        """
         self.num_heads = config.mamba_num_heads
         self.head_dim = config.mamba_head_dim
         self.n_groups = config.n_groups
@@ -162,23 +194,23 @@ class NemotronHMamba2Mixer(
         self.intermediate = config.mamba_intermediate_size
         self.conv_dim = config.conv_dim
 
-        self.in_proj = Linear(
-            config.hidden_size,
-            self.intermediate + self.conv_dim + self.num_heads,
-            bias=False,
-        )
+        # Each device runs its own heads and their groups.
+        # permute_mamba_for_tp lays out the fused in_proj and conv rows so
+        # that each device's share is one contiguous block.
+        self.in_proj = quantized_linear(config, f"{name}.in_proj")
         self.conv1d = CausalConv1d(self.conv_dim, config.conv_kernel)
-        self.A_log = Tensor.zeros([self.num_heads])
-        self.D = Tensor.zeros([self.num_heads])
-        self.dt_bias = Tensor.zeros([self.num_heads])
+        self.conv1d.weight = shard_axis(self.conv1d.weight)
+        self.conv1d.bias = shard_axis(self.conv1d.bias)
+        self.A_log = shard_axis(Tensor.zeros([self.num_heads]))
+        self.D = shard_axis(Tensor.zeros([self.num_heads]))
+        self.dt_bias = shard_axis(Tensor.zeros([self.num_heads]))
         self.norm = GatedGroupRMSNorm(
             self.intermediate,
             self.intermediate // self.n_groups,
             config.layer_norm_epsilon,
         )
-        self.out_proj = Linear(
-            self.intermediate, config.hidden_size, bias=False
-        )
+        self.norm.weight = shard_axis(self.norm.weight)
+        self.out_proj = quantized_linear(config, f"{name}.out_proj")
 
     def forward(
         self,
@@ -196,9 +228,14 @@ class NemotronHMamba2Mixer(
             xbc,
             state.conv_pool,
             state.conv_rows,
+            state.layer,
             query_start_loc,
             has_initial_state,
         )
+        # The conv, scan and norm kernels have no sharding rules. Each
+        # device runs them on its own heads, so their outputs stay split on
+        # the channel axis like their inputs.
+        xbc = xbc.rebind_mapping(NamedMapping(xbc.mesh, (None, TP)))
         group_dim = self.n_groups * self.state_size
         hidden, B, C = F.split(
             xbc, [self.intermediate, group_dim, group_dim], axis=1
@@ -215,8 +252,11 @@ class NemotronHMamba2Mixer(
             self.dt_bias,
             state.ssm_pool,
             state.ssm_rows,
+            state.layer,
             query_start_loc,
             has_initial_state,
         )
+        y = y.rebind_mapping(NamedMapping(y.mesh, (None, TP, None)))
         y = self.norm(y.reshape([-1, self.intermediate]), gate)
+        y = y.rebind_mapping(NamedMapping(y.mesh, (None, TP)))
         return self.out_proj(y)

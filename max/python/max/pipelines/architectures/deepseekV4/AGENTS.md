@@ -35,8 +35,8 @@ numbers below refer to `ISSUES.md` / `DECISIONS.md` there).
   captured (it also closed a 2-GPU collective deadlock, DRIV-462). The one
   size a ragged batch derives from its lengths, the per-ratio window count,
   arrives as the length of a host input (`layers/ragged.py`
-  `window_count`). Ops without a GPU kernel (`ops.cumsum`, `ops.scatter`,
-  `ops.tile`) round-trip through the host implicitly; keep them out.
+  `window_count`). Ops without a GPU kernel (`ops.scatter`, `ops.tile`)
+  round-trip through the host implicitly; keep them out.
 - **A compressed zone is a `slots_per_page = page_size // ratio` leaf written
   by the stock ragged store with `cache_lengths // ratio`** (the kernel takes
   the page size from the buffer's static slot dim). Each chunk stores
@@ -56,10 +56,12 @@ numbers below refer to `ISSUES.md` / `DECISIONS.md` there).
   `cache_lengths`, zone by the entry numbers `CompressedStream.entries`
   resolves, both leaves already holding the chunk's rows. Window-only layers
   pass the window leaf as the compressed operand with a `[rows, 0]` entry list.
-  The compressor state and indexer candidate reads are still `buffer_load` +
-  `gather_nd` per layer -- a copy of the leaf per read; do not size a real
-  deployment on them. The cache-less path (`cache=None`) keeps the
-  gathered-table attention as the gates' reference.
+  The indexer scores its zone leaf in place through
+  `mo.indexer_score.ragged.paged` (`max.nn.kernels.indexer_score_ragged`), so
+  no per-token candidate table exists on the cached path. The compressor state
+  reads are still `buffer_load` + `gather_nd` per layer -- a copy of the leaf
+  per read; do not size a real deployment on them. The cache-less path
+  (`cache=None`) keeps the gathered-table attention as the gates' reference.
 - **Routed experts: grouped W4A8 for native weights, dense otherwise.**
   Native fp4 experts run `DeepseekV4RoutedExperts` (tokens sorted by expert);
   wide-dtype (dequantized) weights still take the dense every-expert path,

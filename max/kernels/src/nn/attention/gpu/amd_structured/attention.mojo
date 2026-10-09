@@ -46,7 +46,7 @@ from layout.tensor_core import num_matrix_reg
 from nn.attention.mha_mask import CausalMask, MHAMask, TileMaskStatus
 from nn.attention.mha_operand import MHAOperand
 from nn.attention.mha_utils import MHAConfig
-from std.utils import Index, IndexList
+from std.utils import Index
 from std.utils.numerics import get_accum_type, min_or_neg_inf
 
 from .softmax import Softmax
@@ -1254,7 +1254,7 @@ struct Attention[
             var lane = Int(lane_id())
             var lane_row = lane % Self.mma_shape[0]
             var live_rows = Int(Self.heads_inner) * Int(self.seq_len)
-            var head_base = Int(block_idx.y) * Self._fold_head_base_stride
+            var head_base = block_idx.y * Self._fold_head_base_stride
             comptime for m_mma in range(Self.num_m_mmas):
                 var r = (
                     self.warp_row * Self.WM

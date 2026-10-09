@@ -100,14 +100,14 @@ class UnifiedDSparkGemma4_31BInputs(UnifiedSpecDecodeInputs):
             ),
         )
         return buffers + self._spec_decode_tail_buffers(
-            include_in_thinking_phase=True
+            include_in_thinking_phase=True,
         )
 
 
 class UnifiedDSparkGemma4_31BModel(
     _UnifiedSpecDecodeModelMixin,
     AlwaysSignalBuffersMixin,
-    GraphPipelineModelWithKVCache[TextContext],
+    GraphPipelineModelWithKVCache[TextContext, UnifiedDSparkGemma4_31BConfig],
 ):
     """Unified speculators-DSpark Gemma4: target + draft in one compiled
     graph."""
@@ -253,10 +253,9 @@ class UnifiedDSparkGemma4_31BModel(
         self,
         session: InferenceSession,
         state_dict: dict[str, Any],
-        model_config: Any,
+        model_config: UnifiedDSparkGemma4_31BConfig,
     ) -> tuple[Graph, dict[str, Any]]:
         del session
-        assert isinstance(model_config, UnifiedDSparkGemma4_31BConfig)
 
         nn_model = UnifiedDSparkGemma4_31BModule(
             model_config,
@@ -315,6 +314,7 @@ class UnifiedDSparkGemma4_31BModel(
                 max_k=graph_inputs.max_k,
                 top_p=graph_inputs.top_p,
                 min_top_p=graph_inputs.min_top_p,
+                draft_probs_full=graph_inputs.draft_probs_full,
                 in_thinking_phase=graph_inputs.thinking_phase,
                 pinned_bitmask=graph_inputs.pinned_bitmask,
                 wait_payload=graph_inputs.wait_payload,

@@ -62,7 +62,6 @@ from max.gpu import WARP_SIZE, global_idx, lane_id
 from max.gpu.host import DeviceContext
 from std.math import ceildiv
 import max.gpu.primitives.warp as warp
-from std.utils import IndexList
 
 from layout import Coord, TensorEngine, TileTensor, TensorLayout
 from layout.tile_layout import row_major
@@ -172,7 +171,7 @@ def fp4_gemv_kernel[
 
         comptime if elementwise_lambda_fn:
             comptime epilogue = elementwise_lambda_fn.value()
-            epilogue[c_type, 1](IndexList[2](0, n_idx), y)
+            epilogue[c_type, 1]((0, n_idx), y)
         else:
             c.store[width=1](Coord(0, n_idx), y)
 

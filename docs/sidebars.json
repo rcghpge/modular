@@ -29,6 +29,7 @@
         "serve/video-generation",
         "serve/audio-generation",
         "serve/embeddings",
+        "serve/decisions",
         "serve/function-calling",
         "serve/chat-templates",
         "serve/reasoning",
@@ -417,6 +418,17 @@
             },
             {
               "type": "category",
+              "label": "moe",
+              "link": {
+                "type": "doc",
+                "id": "api/python/nn.moe"
+              },
+              "items": [
+                "__AUTOGEN:max.nn.moe__"
+              ]
+            },
+            {
+              "type": "category",
               "label": "sampling",
               "link": {
                 "type": "doc",
@@ -485,6 +497,7 @@
                 "api/python/pipelines.architectures.gemma4",
                 "api/python/pipelines.architectures.gemma4_assistant",
                 "api/python/pipelines.architectures.glm5_1",
+                "api/python/pipelines.architectures.glm5_next",
                 "api/python/pipelines.architectures.gpt_oss",
                 "api/python/pipelines.architectures.granite",
                 "api/python/pipelines.architectures.hy_v3",
@@ -504,6 +517,7 @@
                 "api/python/pipelines.architectures.mistral",
                 "api/python/pipelines.architectures.mistral3",
                 "api/python/pipelines.architectures.mpnet",
+                "api/python/pipelines.architectures.muse_glimmer",
                 "api/python/pipelines.architectures.nemotron_h",
                 "api/python/pipelines.architectures.olmo",
                 "api/python/pipelines.architectures.olmo2",
@@ -814,6 +828,28 @@
                 "id": "api/python/pipelines.speculative"
               },
               "items": [
+                {
+                  "type": "category",
+                  "label": "adaptive_width",
+                  "link": {
+                    "type": "doc",
+                    "id": "api/python/pipelines.speculative.adaptive_width"
+                  },
+                  "items": [
+                    "__AUTOGEN:max.pipelines.speculative.adaptive_width__"
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "block_driver",
+                  "link": {
+                    "type": "doc",
+                    "id": "api/python/pipelines.speculative.block_driver"
+                  },
+                  "items": [
+                    "__AUTOGEN:max.pipelines.speculative.block_driver__"
+                  ]
+                },
                 {
                   "type": "category",
                   "label": "depth_schedule",

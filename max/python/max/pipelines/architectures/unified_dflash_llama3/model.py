@@ -87,13 +87,14 @@ class UnifiedDflashLlama3Inputs(UnifiedSpecDecodeInputs):
             ),
         )
         return buffers + self._spec_decode_tail_buffers(
-            include_in_thinking_phase=False, supports_structured_output=False
+            include_in_thinking_phase=False,
+            supports_structured_output=False,
         )
 
 
 class UnifiedDflashLlama3Model(
     _UnifiedSpecDecodeModelMixin,
-    GraphPipelineModelWithKVCache[TextContext],
+    GraphPipelineModelWithKVCache[TextContext, UnifiedDflashLlama3Config],
 ):
     """Unified DFlash Llama3: target + draft in one compiled graph."""
 
@@ -260,10 +261,9 @@ class UnifiedDflashLlama3Model(
         self,
         session: InferenceSession,
         state_dict: dict[str, Any],
-        model_config: Any,
+        model_config: UnifiedDflashLlama3Config,
     ) -> tuple[Graph, dict[str, Any]]:
         del session
-        assert isinstance(model_config, UnifiedDflashLlama3Config)
 
         nn_model = UnifiedDflashLlama3Module(model_config)
 
@@ -304,6 +304,7 @@ class UnifiedDflashLlama3Model(
                 max_k=graph_inputs.max_k,
                 top_p=graph_inputs.top_p,
                 min_top_p=graph_inputs.min_top_p,
+                draft_probs_full=graph_inputs.draft_probs_full,
             )
             graph.output(*outputs)
 

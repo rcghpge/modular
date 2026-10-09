@@ -45,7 +45,8 @@ from max.gpu.compute.arch.tcgen05 import (
 )
 from max.gpu.primitives.warp import _vote_nvidia_helper
 from max.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
-from layout import TileTensor, row_major, Idx, stack_allocation
+from layout import TileTensor, row_major, Idx, stack_allocation, coord
+from std.utils.coord import coord_to_index_list
 from layout.tile_layout import row_major as tt_row_major
 from layout.swizzle import make_ldmatrix_swizzle
 from layout.tensor_core_async import (
@@ -60,9 +61,11 @@ from layout.tma_async import (
 )
 from std.memory import bitcast
 from nn.attention.gpu.nvidia.common import (
+    NullPointer,
     OptionalPointer,
 )
 from nn.attention.mha_mask import MHAMask, MASK_VALUE
+from nn.attention.mha_utils import null_pointer, unread_pointer
 from nn.attention.mha_operand import MHAOperand
 from std.utils.index import Index, IndexList
 from std.utils.numerics import get_accum_type, min_or_neg_inf
@@ -97,9 +100,8 @@ comptime QOTMATile[
     dtype: DType, BM: Int, BK: Int, swizzle_mode: TensorMapSwizzle
 ] = TMATensorTile[
     dtype,
-    2,
-    IndexList[2](BM, BK),
-    _default_desc_shape[2, dtype, IndexList[2](BM, BK), swizzle_mode](),
+    coord[BM, BK],
+    _default_desc_shape[dtype, coord[BM, BK], swizzle_mode](),
     is_k_major=True,
 ]
 
@@ -138,7 +140,7 @@ def tma_tile_qo[
 
     res = rebind[QOTMATile[dtype, BM, BK, swizzle_mode]](
         create_tensor_tile[
-            IndexList[2](BM, BK),
+            coord[BM, BK],
             swizzle_mode=swizzle_mode,
         ](ctx, tensor)
     )
@@ -155,9 +157,8 @@ comptime ORaggedTMATile[
     dtype: DType, BM: Int, BK: Int, swizzle_mode: TensorMapSwizzle
 ] = TMATensorTile[
     dtype,
-    3,
-    IndexList[3](1, BM, BK),
-    _default_desc_shape[3, dtype, IndexList[3](1, BM, BK), swizzle_mode](),
+    coord[1, BM, BK],
+    _default_desc_shape[dtype, coord[1, BM, BK], swizzle_mode](),
     is_k_major=True,
 ]
 
@@ -205,7 +206,9 @@ def tma_tile_o[
         DeviceBuffer(ctx, ptr.unsafe_offset(-depth * BM), 1, owning=False),
         IndexList[3](rows + 1, BM, depth),
         IndexList[3](depth, depth, 1),
-        _default_desc_shape[3, dtype, IndexList[3](1, BM, BK), swizzle_mode](),
+        coord_to_index_list(
+            _default_desc_shape[dtype, coord[1, BM, BK], swizzle_mode]()
+        ),
     )
 
 
@@ -237,9 +240,7 @@ def store_row_coords[
 # not triggered. With BN_QK=64, tile_bytes = 256 which is already 128-aligned.
 comptime ScalesTMATile[BN_QK: Int] = TMATensorTile[
     DType.float32,
-    2,
-    IndexList[2](1, BN_QK),
-    IndexList[2](1, BN_QK),
+    coord[1, BN_QK],
     is_k_major=True,
 ]
 
@@ -276,9 +277,9 @@ def tma_tile_scales[
     var tensor = TileTensor(ptr, rt_layout)
     res = rebind[ScalesTMATile[BN_QK]](
         create_tensor_tile[
-            IndexList[2](1, BN_QK),
+            coord[1, BN_QK],
             swizzle_mode=TensorMapSwizzle.SWIZZLE_NONE,
-            __desc_shape=IndexList[2](1, BN_QK),
+            __desc_shape=coord[1, BN_QK],
         ](ctx, tensor)
     )
 
@@ -899,7 +900,7 @@ struct OffsetPosition[
     decoding_warp_split_k: Bool = False,
     sparse: Bool = False,
     has_extra_kv: Bool = False,
-    has_variable_topk: Bool = False,
+    TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
 ](TrivialRegisterPassable):
     """Computes and stores per-CTA row offsets and KV key ranges for the decode kernel.
 
@@ -922,10 +923,13 @@ struct OffsetPosition[
             (defaults to `False`).
         has_extra_kv: When `True`, sparse attention additionally attends
             to a separate extra-KV cache (defaults to `False`).
-        has_variable_topk: When `True`, the sparse top-k length is read
-            per batch from `sparse_topk_lengths` instead of using the
-            fixed stride (defaults to `False`).
+        TopkLengthsPtrType: `OptionalPointer` type of the per-batch sparse
+            top-k lengths. When non-null, the top-k length is read per batch
+            from `sparse_topk_lengths` instead of using the fixed stride
+            (defaults to `NullPointer`).
     """
+
+    comptime has_variable_topk = not Self.TopkLengthsPtrType.is_null
 
     var seq_len: Int
     var max_seq_len: Int  # q_max_seq_len (padded seq dimension for all batches)
@@ -942,6 +946,11 @@ struct OffsetPosition[
     # which only equals the logical count when topk >= actual_tokens; sparse
     # causal masking uses `cache_len_logical()` off this field instead.
     var actual_num_keys: Int
+    # Valid main-cache sparse slots (clamped topk). With `has_extra_kv` the
+    # main segment is padded to a whole `BN_QK` tile so every tile belongs to
+    # one cache; the padding slots `[sparse_topk, align_up(sparse_topk,
+    # BN_QK))` are masked and never gathered.
+    var sparse_topk: Int
 
     @inline(.always)
     def __init__(
@@ -955,13 +964,13 @@ struct OffsetPosition[
         batch_size: Int,
         # Sparse attention parameters — only used when sparse=True (comptime).
         sparse_indices_stride: Int = 0,
-        sparse_topk_lengths: OptionalReg[
-            UnsafePointer[Int32, MutAnyOrigin]
-        ] = None,
+        sparse_topk_lengths: Self.TopkLengthsPtrType = null_pointer[
+            Self.TopkLengthsPtrType
+        ](),
         sparse_extra_indices_stride: Int = 0,
-        sparse_extra_topk_lengths: OptionalReg[
-            UnsafePointer[Int32, MutAnyOrigin]
-        ] = None,
+        sparse_extra_topk_lengths: Self.TopkLengthsPtrType = unread_pointer[
+            Self.TopkLengthsPtrType
+        ](),
     ):
         self.seq_len = 0
         self.max_seq_len = max_seq_len
@@ -974,6 +983,7 @@ struct OffsetPosition[
         self.num_keys_this_split = 0
         self.q_token_idx = 0
         self.actual_num_keys = 0
+        self.sparse_topk = 0
 
         # Decode block_idx.z into split_idx and batch_idx
         # Grid layout: block_z = batch_size * num_partitions
@@ -1098,32 +1108,31 @@ struct OffsetPosition[
 
             var topk: Int
             comptime if Self.has_variable_topk:
-                topk = Int(
-                    sparse_topk_lengths.unsafe_value()[Int(self.batch_idx)]
-                )
+                topk = Int(sparse_topk_lengths.value()[Int(self.batch_idx)])
             else:
                 topk = sparse_indices_stride
 
             # Clamp topk to actual available tokens.
             topk = min(topk, actual_tokens)
+            self.sparse_topk = topk
 
             # Extra KV: always-attend tokens from a separate cache.
             var extra_topk: Int = 0
+            var main_slots = topk
             comptime if Self.has_extra_kv:
                 comptime if Self.has_variable_topk:
                     extra_topk = Int(
-                        sparse_extra_topk_lengths.unsafe_value()[
-                            Int(self.batch_idx)
-                        ]
+                        sparse_extra_topk_lengths.value()[Int(self.batch_idx)]
                     )
                 else:
                     extra_topk = sparse_extra_indices_stride
+                main_slots = align_up(topk, Self.config.BN_QK)
 
-            # Override num_keys with the sparse token count.
-            self.num_keys = topk + extra_topk
+            # Override num_keys with the sparse slot count.
+            self.num_keys = main_slots + extra_topk
 
-            # Recompute split-K boundaries for the sparse token count.
-            var total_topk = topk + extra_topk
+            # Recompute split-K boundaries for the sparse slot count.
+            var total_topk = main_slots + extra_topk
             comptime if Self.decoding_warp_split_k:
                 comptime page_size = Self.config.split_page_size
                 var total_pages_s = ceildiv(total_topk, page_size)
@@ -1167,7 +1176,7 @@ struct OffsetPosition[
         # both ragged and fixed modes, so we swap block_idx.y for q_local.
         return (
             self.q_row_offset
-            + (q_local - Int(block_idx.y)) * Self.config.num_q_heads
+            + (q_local - block_idx.y) * Self.config.num_q_heads
         )
 
     @inline(.always)
@@ -1178,7 +1187,7 @@ struct OffsetPosition[
         # ragged/fixed x split/no-split mode.
         return (
             self.out_row_offset
-            + (q_local - Int(block_idx.y)) * Self.config.num_q_heads
+            + (q_local - block_idx.y) * Self.config.num_q_heads
         )
 
     @inline(.always)
@@ -1186,7 +1195,7 @@ struct OffsetPosition[
         # Global Q-token index for the q_local-th q_token in this CTA's
         # batch. Stored q_token_idx bakes in block_idx.y; swaps
         # block_idx.y for q_local in both ragged and fixed modes.
-        return self.q_token_idx + (q_local - Int(block_idx.y))
+        return self.q_token_idx + (q_local - block_idx.y)
 
 
 # ------------------------------------------------------------------------------
@@ -3611,6 +3620,11 @@ struct MLA_SM100_Decode_Common[
         # so slots >= this bound must be masked without a read or they run off
         # the end of the q_token's row.
         logical_indices_len: Int = 0,
+        # Slots `[gap_lo, gap_hi)` are masked: the padding between the main
+        # sparse segment and the extra-KV segment (see
+        # `OffsetPosition.sparse_topk`).
+        gap_lo: Int = 0,
+        gap_hi: Int = 0,
     ) -> Scalar[Self.AccumType]:
         # Tile / column base this thread covers in num_keys in global KV cache
         # For split-K: kv_start_row + tiles_done * BN_QK gives global position
@@ -3636,7 +3650,20 @@ struct MLA_SM100_Decode_Common[
                 causal_limit = cache_len + Int(score_row) + 1
         else:
             causal_limit = num_keys
-        var keys_remaining = causal_limit - col_base
+        # The causal horizon counts keys, not slots: past the padding gap,
+        # the slot sits `gap_hi - gap_lo` slots after the key it holds, so
+        # extra-KV keys keep the position they had before the main segment
+        # was padded. A half-tile never straddles the 64-aligned `gap_hi`.
+        # A sparse horizon can also pass the last slot, whose index is a
+        # clamped repeat, so the slot count bounds it as well.
+        var key_base = col_base
+        var keys_remaining: Int
+        comptime if CausalMask:
+            if gap_hi > gap_lo and col_base >= gap_hi:
+                key_base = col_base - (gap_hi - gap_lo)
+            keys_remaining = min(causal_limit - key_base, num_keys - col_base)
+        else:
+            keys_remaining = causal_limit - col_base
         var n_valid = max(min(keys_remaining, half_load), 0)
         # Build mask_bits with lowest n_valid bits = 1
         var mask_bits_64: UInt64 = (UInt64(1) << UInt64(n_valid)) - UInt64(1)
@@ -3651,7 +3678,7 @@ struct MLA_SM100_Decode_Common[
         # [0, half_load].
         comptime if SlidingWindowSize > 0:
             var per_row_lo: Int = causal_limit - SlidingWindowSize
-            var n_invalid_low: Int = max(per_row_lo - col_base, 0)
+            var n_invalid_low: Int = max(per_row_lo - key_base, 0)
             n_invalid_low = min(n_invalid_low, half_load)
             var low_mask_64: UInt64 = (
                 UInt64(1) << UInt64(n_invalid_low)
@@ -3727,6 +3754,14 @@ struct MLA_SM100_Decode_Common[
                     slot += 1
                 mask_bits = logical_bits
 
+        if gap_hi > gap_lo:
+            var g0 = min(max(gap_lo - col_base, 0), half_load)
+            var g1 = min(max(gap_hi - col_base, 0), half_load)
+            var gap_64: UInt64 = ((UInt64(1) << UInt64(g1)) - UInt64(1)) ^ (
+                (UInt64(1) << UInt64(g0)) - UInt64(1)
+            )
+            mask_bits &= ~UInt32(gap_64 & UInt64(0xFFFF_FFFF))
+
         comptime for i in range(0, half_load):
             # rank1-style mask_r2p: turn bit into predicate and use it to select
             var bit: UInt32 = (mask_bits >> UInt32(i)) & UInt32(1)
@@ -3768,7 +3803,7 @@ struct MLA_SM100_Decode_Common[
         has_attn_sink: Bool = False,
         _op_sparse: Bool = False,
         _op_has_extra_kv: Bool = False,
-        _op_has_variable_topk: Bool = False,
+        _OpTopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
         # When True, per-row score_row decomposes via integer
         # division by num_q_heads to select the causal horizon per q_token.
         fold_q: Bool = False,
@@ -3820,7 +3855,7 @@ struct MLA_SM100_Decode_Common[
             Self.config.decoding_warp_split_k,
             _op_sparse,
             _op_has_extra_kv,
-            _op_has_variable_topk,
+            _OpTopkLengthsPtrType,
         ],
         scale: Float32,
         mask: Self.MaskType,
@@ -3901,6 +3936,11 @@ struct MLA_SM100_Decode_Common[
         # positions. See cache_len_logical() docstring.
         var cache_len: Int = offset_position.cache_len_logical()
         var start_pos: UInt32 = offset_position.start_pos(cache_start_pos)
+        var gap_lo: Int = 0
+        var gap_hi: Int = 0
+        comptime if _op_sparse and _op_has_extra_kv:
+            gap_lo = offset_position.sparse_topk
+            gap_hi = align_up(gap_lo, Self.config.BN_QK)
 
         # S consumer / P producer (N-stage wrappers, works for any num_sp_stages)
         var s_cons = DecodeSConsumerN[num_sp_stages](s_bars.consumer())
@@ -4102,6 +4142,8 @@ struct MLA_SM100_Decode_Common[
                     logical_indices_stride=logical_indices_stride,
                     q_token_idx=offset_position.q_token_idx,
                     logical_indices_len=logical_indices_len,
+                    gap_lo=gap_lo,
+                    gap_hi=gap_hi,
                 )
             else:
                 current_max = Self.apply_mask[
@@ -4493,7 +4535,7 @@ struct MLA_SM100_Decode_Common[
     def Correction[
         _op_sparse: Bool = False,
         _op_has_extra_kv: Bool = False,
-        _op_has_variable_topk: Bool = False,
+        _OpTopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
     ](
         tmem_addr: UInt32,
         o_bars: DecodeSM100MiscMBars[
@@ -4518,7 +4560,7 @@ struct MLA_SM100_Decode_Common[
             Self.config.decoding_warp_split_k,
             _op_sparse,
             _op_has_extra_kv,
-            _op_has_variable_topk,
+            _OpTopkLengthsPtrType,
         ],
     ):
         var o_tmem = tmem_addr + UInt32(Self.config.TMEM_O)
@@ -4648,7 +4690,7 @@ struct MLA_SM100_Decode_Common[
     def store[
         _op_sparse: Bool = False,
         _op_has_extra_kv: Bool = False,
-        _op_has_variable_topk: Bool = False,
+        _OpTopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
         # When True, the fold caller strides the output-store
         # TMA per-q_token via a dedicated out_row_offset_at(q_local) accessor.
         fold_q: Bool = False,
@@ -4681,7 +4723,7 @@ struct MLA_SM100_Decode_Common[
             Self.config.decoding_warp_split_k,
             _op_sparse,
             _op_has_extra_kv,
-            _op_has_variable_topk,
+            _OpTopkLengthsPtrType,
         ],
     ):
         comptime DecodeOutConsumerType = DecodeOutConsumer[
@@ -4698,7 +4740,7 @@ struct MLA_SM100_Decode_Common[
         var elect_mask = elect()
         var is_leader = elect_mask != 0
         var row: Int = offset_position.out_row_offset
-        var rows_to_store = rows_owned[Self.config](Int(block_idx.x))
+        var rows_to_store = rows_owned[Self.config](block_idx.x)
 
         #   0       64     128     192      256      320      384     448     512
         #   |-------|-------|-------|--------|--------|--------|-------|-------|

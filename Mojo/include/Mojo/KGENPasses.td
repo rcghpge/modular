@@ -193,6 +193,13 @@ def LowerAsyncFunctions : Pass<"lower-async-functions", "ModuleOp"> {
      All CO ops except for suspension points are lowered in this pass.
   }];
 
+  let options = [
+    Option<"useLivenessFrameEvaluation", "use-liveness-frame-evaluation",
+           "bool", "false",
+           "If true, compute the coroutine frame from liveness at suspension "
+           "points instead of from state numbering.">,
+  ];
+
   let dependentDialects = [
     "POPDialect",
     "KGENDialect",
@@ -921,6 +928,25 @@ def ArgPromotion : Pass<"arg-promotion", "ModuleOp"> {
   ];
 
   let dependentDialects = ["POP::POPDialect"];
+}
+
+//===----------------------------------------------------------------------===//
+// DecomposeFunctionArguments
+//===----------------------------------------------------------------------===//
+
+def DecomposeFunctionArguments
+    : Pass<"decompose-function-arguments", "ModuleOp"> {
+  let summary = "Flatten struct arguments into their leaf fields";
+  let description = [{
+    The `decompose-function-arguments` pass flattens `kgen.struct` arguments
+    of every `kgen.func` into leaf fields and rewrites the body and the
+    surviving `kgen.call` sites to match. Which arguments to flatten, and
+    each leaf's attributes and convention, come from a
+    `FunctionArgumentDecompositionPolicy`; the pipeline-registered form uses
+    the default policy, which flattens every struct argument.
+  }];
+
+  let dependentDialects = ["KGENDialect", "POP::POPDialect"];
 }
 
 //===----------------------------------------------------------------------===//

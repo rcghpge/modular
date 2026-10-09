@@ -16,13 +16,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from max.graph import BufferType, TensorType, TensorValue, ops
+from max.graph import BufferType, TensorType, TensorValue
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer.transformer import (
     captures_by_device,
     fuse_captured_hidden_states,
 )
-from max.pipelines.speculative.block_driver import Accepted, BlockBatch
+from max.pipelines.speculative.block_driver import (
+    Accepted,
+    BlockBatch,
+    DraftSampler,
+)
 from max.pipelines.speculative.spec_target import Verified
 
 from ..dflash_llama3 import DFlashLlama3
@@ -58,6 +62,7 @@ class DFlashLlama3Proposer:
     """The DFlash block draft, reusing the target's embedding and head."""
 
     samples_from_anchor = False
+    supports_zero_draft_rows = True
 
     def __init__(
         self,
@@ -109,10 +114,16 @@ class DFlashLlama3Proposer:
         )
 
     def head(
-        self, batch: BlockBatch, block_hs: TensorValue, accepted: Accepted
+        self,
+        batch: BlockBatch,
+        block_hs: TensorValue,
+        accepted: Accepted,
+        sampler: DraftSampler,
     ) -> TensorValue:
         del accepted
         k = self.block_size
-        block_hs_2d = block_hs.reshape(("batch_size", k, self.hidden_size))
+        seqs = batch.num_draft_seqs
+        block_hs = block_hs.rebind([seqs * k, self.hidden_size])
+        block_hs_2d = block_hs.reshape((seqs, k, self.hidden_size))
         draft_logits = self.target.lm_head(block_hs_2d[:, 1:, :])
-        return ops.argmax(draft_logits, axis=-1).reshape(("batch_size", k - 1))
+        return sampler.sample_all(draft_logits)

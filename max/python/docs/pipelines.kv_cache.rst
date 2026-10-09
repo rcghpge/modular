@@ -78,6 +78,7 @@ Factory functions
    :template: autosummary/function.rst
 
    available_port
+   kv_cache_memory_size
    load_kv_manager
    max_seq_len_fitting_in_cache
 
@@ -90,3 +91,4 @@ Utilities
    :template: autosummary/function.rst
 
    cache_dtype_for_encoding
+   is_fp4_kv_cache_format

@@ -38,6 +38,7 @@ from max.gpu.host import (
     DeviceGraphBuilder,
     DeviceGraphCache,
     DeviceGraphInput,
+    StableAddr,
 )
 from max.gpu.host.device_context import _DeviceBufferPtr, _DeviceContextPtr
 from max.gpu.host.info import is_accelerator, is_cpu, is_gpu
@@ -72,6 +73,7 @@ from extensibility import register_internal
 from extensibility import (
     IOSpec,
     ManagedTensorSlice,
+    StableTensor,
 )
 from extensibility import IO
 from extensibility import (
@@ -588,6 +590,45 @@ def mgp_tensor_create[
         return {view, storage^}
 
 
+@register_internal("mgp.device_graph.stable.tensor")
+@inline(.never)
+def mgp_device_graph_stable_tensor[
+    spec_rank: Int,
+    buffer_rank: Int,
+    dtype: DType,
+    mut: Bool = False,
+    host: Bool = False,
+](
+    addr: StableAddr,
+    spec: IndexList[spec_rank],
+) -> OwnedTensor[
+    dtype, buffer_rank, mut, host
+]:
+    """Views a stable address slot as the tensor it stands for.
+
+    The view's data pointer is the slot's address, not the pointer the slot
+    holds, so a kernel recorded against the tensor dereferences the slot at
+    replay. The slot belongs to the `DeviceGraphCache` for the model's
+    lifetime, so the tensor carries no storage handle.
+    """
+    var ptr = addr.ptr.unsafe_bitcast[Scalar[dtype]]().unsafe_origin_cast[
+        MutAnyOrigin
+    ]()
+    comptime if spec_rank == 0:
+        # We promote scalar tensor to tensor<[1]>
+        comptime assert buffer_rank == 1
+        var view = DynamicTensor[dtype, buffer_rank](
+            ptr, rebind[IndexList[buffer_rank]](IndexList[1](1))
+        )
+        return {view, AnyAsyncValueRef()}
+    else:
+        comptime assert spec_rank == buffer_rank
+        var view = DynamicTensor[dtype, buffer_rank](
+            ptr, rebind[IndexList[buffer_rank]](spec)
+        )
+        return {view, AnyAsyncValueRef()}
+
+
 @register_internal("mgp.tensor.extract.tensor_spec")
 @inline(.never)
 def mgp_tensor_extract_tensor_spec[
@@ -719,7 +760,7 @@ def mgp_buffer_constant(
     # Constant memory is owned by the resource system, not refcounted, so the
     # storage handle is the empty (non-tracked) reference.
     var view = MutByteBuffer(
-        resource_ptr.unsafe_bitcast[Int8](), IndexList[1](resource_bytecount)
+        resource_ptr.unsafe_bitcast[Int8](), (resource_bytecount,)
     )
     return OwnedByteBuffer(view, AnyAsyncValueRef())
 
@@ -945,18 +986,16 @@ def mgp_buffer_concat[
 ) raises:
     var output_lt = TileTensor(
         output.unsafe_ptr(),
-        row_major(Coord(output.size())),
+        row_major(output.size()),
     )
     var input_tensors = StaticTuple[_, inputs.length](
-        TileTensor(inputs[0].unsafe_ptr(), row_major(Coord(inputs[0].size())))
+        TileTensor(inputs[0].unsafe_ptr(), row_major(inputs[0].size()))
         .as_unsafe_any_origin()
         .as_imm()
     )
     for i in range(1, len(inputs)):
         input_tensors[i] = (
-            TileTensor(
-                inputs[i].unsafe_ptr(), row_major(Coord(inputs[i].size()))
-            )
+            TileTensor(inputs[i].unsafe_ptr(), row_major(inputs[i].size()))
             .as_unsafe_any_origin()
             .as_imm()
         )
@@ -1090,22 +1129,24 @@ def mgp_buffer_memset[
     # `cast` to the matching-width unsigned int truncates to the low N bits,
     # which is exactly the little-endian low-byte pattern.
     __match elem_size:
-    case 1:
-        _memset_buffer[.uint8, bDevice](
-            buffer, value_bits.cast[.uint8](), dev_context
-        )
-    case 2:
-        _memset_buffer[.uint16, bDevice](
-            buffer, value_bits.cast[.uint16](), dev_context
-        )
-    case 4:
-        _memset_buffer[.uint32, bDevice](
-            buffer, value_bits.cast[.uint32](), dev_context
-        )
-    case 8:
-        _memset_buffer[.uint64, bDevice](buffer, value_bits, dev_context)
-    case _:
-        raise Error("mgp.buffer.memset: elem_size must be one of {1, 2, 4, 8}")
+        case 1:
+            _memset_buffer[.uint8, bDevice](
+                buffer, value_bits.cast[.uint8](), dev_context
+            )
+        case 2:
+            _memset_buffer[.uint16, bDevice](
+                buffer, value_bits.cast[.uint16](), dev_context
+            )
+        case 4:
+            _memset_buffer[.uint32, bDevice](
+                buffer, value_bits.cast[.uint32](), dev_context
+            )
+        case 8:
+            _memset_buffer[.uint64, bDevice](buffer, value_bits, dev_context)
+        case _:
+            raise Error(
+                "mgp.buffer.memset: elem_size must be one of {1, 2, 4, 8}"
+            )
 
 
 @register_internal("mgp.buffer.host_to_device")
@@ -1314,7 +1355,7 @@ def _get_scalar_from_managed_tensor_slice[
     # Assumes that tensor is on the host!
     # This is used instead of [0] since __getitem__ for `ManagedTesnorSlice`
     # does not work with `register_internal` out of the box.
-    return tensor.load[width=1](IndexList[1](0))
+    return tensor.load[width=1]((0,))
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1750,6 +1791,46 @@ def mogg_tensor_init[
         ptr.unsafe_bitcast[Scalar[dtype]](),
         layout.shape_coord(),
         layout.stride_coord(),
+    }
+
+
+@register_internal("mogg.tensor.__init__.stable")
+@inline(.always)
+def mogg_stable_tensor_init[
+    LayoutType: TensorLayout,
+    //,
+    dtype: DType,
+    rank: Int,
+    mut: Bool,
+    input: IO,
+    alignment: Int,
+](
+    ptr: Pointer[mut=True, NoneType, _],
+    layout: LayoutType,
+    out result: StableTensor[
+        io_spec=IOSpec[mut, input](),
+        static_spec=StaticTensorSpec[
+            dtype,
+            rank,
+            static_layout=LayoutType,
+        ](alignment, .GENERIC),
+    ],
+):
+    """
+    Helper for constructing a StableTensor from a layout and the data pointer
+    of a stable `mgp.tensor`, which is the address of its slot. Selected by
+    `mogg.tensor.__init__` when its result `!mo.tensor` is marked `stable`.
+    """
+    var addr = StableAddr(
+        ptr.unsafe_bitcast[
+            Pointer[NoneType, MutUntrackedOrigin]
+        ]().unsafe_origin_cast[MutUntrackedOrigin]()
+    )
+    result = {
+        addr,
+        type_of(result).RuntimeLayout(
+            layout.shape_coord(), layout.stride_coord()
+        ),
     }
 
 
@@ -2531,7 +2612,7 @@ def mogg_tensor_create_broadcast[
     doesn't have, or an aligned dimension where `input`'s size is 1, gets
     stride 0. Preserves whatever static shape/stride information is known
     at compile time, mirroring
-    `StaticBroadcastTo.update_input_view`/`get_view_strides_list`.
+    `StaticBroadcastTo.input_view`/`get_view_strides_list`.
 
     Parameters:
         dtype: The element type of `input`.
@@ -2582,7 +2663,7 @@ def mogg_tensor_create_reshape[
     shared flat index produces row-major strides for the new shape.
     `output_static_shape` still types the return value's static layout with
     whatever dims ARE known at compile time (mirroring
-    `StaticReshape.update_input_view`), but `output_shape` -- not a cast of
+    `StaticReshape.input_view`), but `output_shape` -- not a cast of
     `output_static_shape` -- is what this op actually reshapes into: unlike
     broadcast/transpose, this op's own stride is a row-major
     de-linearization of the *output* shape's own values, with no input
@@ -2676,7 +2757,7 @@ def mogg_tensor_create_transpose[
     or, where that entry is `UNKNOWN_VALUE`, at runtime (the matching entry
     of the `permutations` operand). Preserves whatever static shape/stride
     information is known at compile time, mirroring
-    `Transpose.update_input_view`/`_TransposeStrideTypes`.
+    `Transpose.input_view`/`_TransposeStrideTypes`.
 
     Parameters:
         dtype: The element type of `input`.
@@ -2780,9 +2861,7 @@ struct _ElementwiseFusionTileAdapter[
         # column. Carried into the kernel as a closure (the adapter is not
         # `DevicePassable`, so its captures cross via the same mechanism
         # `functional.elementwise` uses for its body closure).
-        var tile_coords = IndexList[Self.rank](
-            Int(block_idx.y), Int(block_idx.x)
-        )
+        var tile_coords = IndexList[Self.rank](block_idx.y, block_idx.x)
         # NOTE(GEX-3913): we likely want to replace the adapter defining the
         # load copier here with a `functional.tile_elementwise` primitive, so
         # the load / tiling policy is reusable.
@@ -2943,7 +3022,7 @@ def foreach_out_func[
     ](out_func_shim, tensor.shape_coord(), ctx)
 
 
-# TensorCopy intrinsic used by view kernels.
+# TensorCopy intrinsic used by the view ops (slice, reshape, transpose, ...).
 # z is a kernel output, and x a view of the input.
 @register_internal("mogg.call.materialize")
 @doc_hidden

@@ -23,34 +23,24 @@ import math
 from max.driver import CPU
 from max.dtype import DType
 from max.experimental import functional as F
-from max.experimental.nn import Linear, Module
+from max.experimental.nn import Module
 from max.experimental.nn.common_layers.functional_kernels import (
     flash_attention_ragged,
 )
-from max.experimental.nn.common_layers.linear import QKVLinear
+from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
+from max.experimental.nn.common_layers.linear import (
+    QKVLinear,
+    RowParallelLinear,
+    col_parallel,
+)
+from max.experimental.nn.common_layers.mesh_axis import TP
+from max.experimental.sharding import NamedMapping
 from max.experimental.tensor import Tensor
-from max.graph import TensorValue
 from max.nn.attention import MHAMaskVariant
-from max.nn.kernels import store_k_cache_ragged, store_v_cache_ragged
-from max.nn.kv_cache import KVCacheParams, PagedCacheValues
+from max.nn.kernels import fused_qkv_ragged_matmul
+from max.nn.kv_cache import KVCacheParams
 
 from ..model_config import NemotronHConfig
-
-
-def _store_kv_cache(
-    kv_collection: PagedCacheValues,
-    k: Tensor,
-    v: Tensor,
-    input_row_offsets: Tensor,
-    layer_idx: Tensor,
-) -> None:
-    offsets = TensorValue(input_row_offsets)
-    index = TensorValue(layer_idx)
-    store_k_cache_ragged(kv_collection, TensorValue(k), offsets, index)
-    store_v_cache_ragged(kv_collection, TensorValue(v), offsets, index)
-
-
-store_kv_cache = F.functional(_store_kv_cache)
 
 
 class NemotronHAttention(Module[[Tensor, PagedCacheValues, Tensor], Tensor]):
@@ -73,14 +63,22 @@ class NemotronHAttention(Module[[Tensor, PagedCacheValues, Tensor], Tensor]):
         self.kv_params = kv_params
         self.layer_idx = layer_idx
         self.n_heads = config.num_attention_heads
-        self.n_kv_heads = config.num_key_value_heads
         self.head_dim = config.head_dim
         self.q_dim = self.n_heads * self.head_dim
-        self.kv_dim = self.n_kv_heads * self.head_dim
+        # repeat_kv_heads_for_tp repeats each KV head once per device in its
+        # group, so that column parallelism gives every device a whole head.
+        kv_dim = config.sharded_kv_heads * self.head_dim
         self.qkv_proj = QKVLinear(
-            config.hidden_size, q_dim=self.q_dim, kv_dim=self.kv_dim
+            config.hidden_size, q_dim=self.q_dim, kv_dim=kv_dim
         )
-        self.o_proj = Linear(self.q_dim, config.hidden_size, bias=False)
+        # Shard Q, K, and V on their own output dims. Half of the fused
+        # rows is not one device's heads: Q is much wider than K or V.
+        col_parallel(self.qkv_proj.q_proj)
+        col_parallel(self.qkv_proj.k_proj)
+        col_parallel(self.qkv_proj.v_proj)
+        self.o_proj = RowParallelLinear(
+            self.q_dim, config.hidden_size, bias=False
+        )
 
     def forward(
         self,
@@ -88,19 +86,26 @@ class NemotronHAttention(Module[[Tensor, PagedCacheValues, Tensor], Tensor]):
         kv_collection: PagedCacheValues,
         input_row_offsets: Tensor,
     ) -> Tensor:
-        q, k, v = F.split(
-            self.qkv_proj(x), [self.q_dim, self.kv_dim, self.kv_dim], axis=1
-        )
-        q = q.reshape([-1, self.n_heads, self.head_dim])
-        k = k.reshape([-1, self.n_kv_heads, self.head_dim])
-        v = v.reshape([-1, self.n_kv_heads, self.head_dim])
-        if self.kv_params.is_fp8_kv_dtype:
-            # An FP8 cache takes FP8 keys and values, and the FP8 attention
-            # kernel an FP8 query.
-            q, k, v = (F.cast(t, self.kv_params.dtype) for t in (q, k, v))
-
         layer_idx = F.constant(self.layer_idx, DType.uint32, device=CPU())
-        store_kv_cache(kv_collection, k, v, input_row_offsets, layer_idx)
+        n_devices = kv_collection.n_devices
+        q = F.functional(fused_qkv_ragged_matmul)(
+            self.kv_params,
+            input=x,
+            input_row_offsets=input_row_offsets,
+            wqkv=self.qkv_proj.fused_weight,
+            kv_collection=kv_collection,
+            layer_idx=layer_idx,
+            n_heads=self.n_heads // n_devices,
+        )
+        # The epilogue returns Q with an unknown placement. Claim the
+        # column-parallel output placement so reshape divides the heads.
+        q = q.rebind_mapping(NamedMapping(q.mesh, (None, TP)))
+        q = q.reshape([-1, self.n_heads, self.head_dim])
+        q_mapping = q.mapping
+        if self.kv_params.is_fp8_kv_dtype:
+            # The epilogue saturates K and V into an FP8 cache. The FP8
+            # attention kernel also takes an FP8 query.
+            q = q.cast(self.kv_params.dtype).rebind_mapping(q_mapping)
         out = flash_attention_ragged(
             self.kv_params,
             input=q,
@@ -110,5 +115,5 @@ class NemotronHAttention(Module[[Tensor, PagedCacheValues, Tensor], Tensor]):
             mask_variant=MHAMaskVariant.CAUSAL_MASK,
             scale=1.0 / math.sqrt(self.head_dim),
             output_dtype=x.dtype,
-        )
+        ).rebind_mapping(q_mapping)
         return self.o_proj(out.reshape([-1, self.q_dim]))

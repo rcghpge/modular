@@ -27,7 +27,9 @@ Pipeline base
    :toctree: generated
    :template: autosummary/class.rst
 
+   ChatEncoderOutcomesProbe
    InputModality
+   LabelScoringTokenizer
    Pipeline
    PipelineInputs
    PipelineInputsType
@@ -37,6 +39,7 @@ Pipeline base
    PipelinesFactory
    PipelineTask
    PipelineTokenizer
+   TokenIds
    TokenizerEncoded
    UnboundContextType
 

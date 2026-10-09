@@ -94,9 +94,9 @@ def _find_batch_for_row(
 
 @__name(t"paged_sparse_kv_index_remap_row_offs_kernel")
 def _paged_sparse_kv_index_remap_row_offs_kernel(
-    logical: UnsafePointer[Int32, MutAnyOrigin],
+    logical: UnsafePointer[Int32, ImmutAnyOrigin],
     row_offsets: UnsafePointer[UInt32, ImmutAnyOrigin],
-    lut: UnsafePointer[UInt32, MutAnyOrigin],
+    lut: UnsafePointer[UInt32, ImmutAnyOrigin],
     physical_out: UnsafePointer[Int32, MutAnyOrigin],
     num_indices: Int32,
     lut_cols: Int32,
@@ -139,9 +139,9 @@ def paged_sparse_kv_logical_to_physical_indices_from_row_offsets_dispatch[
     page_size: Int,
 ](
     physical_out: UnsafePointer[mut=True, Int32, _],
-    logical: UnsafePointer[mut=True, Int32, _],
-    input_row_offsets: UnsafePointer[mut=True, UInt32, _],
-    lut: UnsafePointer[mut=True, UInt32, _],
+    logical: UnsafePointer[mut=False, Int32, _],
+    input_row_offsets: UnsafePointer[mut=False, UInt32, _],
+    lut: UnsafePointer[mut=False, UInt32, _],
     num_indices: Int,
     lut_cols: Int,
     lut_rows: Int,
@@ -258,21 +258,21 @@ def paged_sparse_kv_index_remap[
             block id sentinel.
         ctx: Device context used to enqueue the GPU kernel.
     """
-    var si_lt = sparse_indices.to_layout_tensor()
+    var si_tt = sparse_indices.to_tile_tensor()
     var num_batches = input_row_offsets.dim_size(0) - 1
     var invalid_block_id = UInt32(kv_blocks.dim_size(0))
-    var log_stride0 = Int(si_lt.runtime_layout.stride.value[0])
-    var log_stride1 = Int(si_lt.runtime_layout.stride.value[1])
+    var log_stride0 = Int(si_tt.layout.stride[0]().value())
+    var log_stride1 = Int(si_tt.layout.stride[1]().value())
     paged_sparse_kv_logical_to_physical_indices_from_row_offsets_dispatch[
         target, page_size
     ](
         physical_out,
-        rebind[UnsafePointer[Int32, MutAnyOrigin]](si_lt.ptr),
+        rebind[UnsafePointer[Int32, MutAnyOrigin]](si_tt.ptr),
         rebind[UnsafePointer[UInt32, MutAnyOrigin]](
-            input_row_offsets.to_layout_tensor().ptr,
+            input_row_offsets.to_tile_tensor().ptr,
         ),
         rebind[UnsafePointer[UInt32, MutAnyOrigin]](
-            kv_lookup_table.to_layout_tensor().ptr,
+            kv_lookup_table.to_tile_tensor().ptr,
         ),
         sparse_indices.size(),
         kv_lookup_table.dim_size(1),

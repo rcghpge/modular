@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 __all__ = [
+    "ChatEncoderOutcomesProbe",
+    "LabelScoringTokenizer",
     "PipelineTokenizer",
     "PreprocessCacheStatsProbe",
     "PreprocessedImageProbe",
@@ -43,6 +45,7 @@ from max.pipelines.request import RequestType
 if TYPE_CHECKING:
     from .pipeline_variants.text_generation import (
         TextGenerationRequestMessage,
+        TextGenerationRequestTool,
     )
 
 # TODO: Bound this to TextContext, after we've audited the class.
@@ -124,6 +127,29 @@ class VisionPreprocessCacheStats:
 
 
 @runtime_checkable
+class ChatEncoderOutcomesProbe(Protocol):
+    """Optional tokenizer capability: report how its chat prompts encoded.
+
+    A tokenizer that can encode chats with a ``--tokenizer-impl`` encoder
+    implements this so the server can count the chats that encoder served
+    and the ones that fell back to HuggingFace. A separate protocol for the
+    reasons given on :class:`PreprocessCacheStatsProbe`.
+    """
+
+    def take_chat_encoder_outcomes(self) -> Mapping[str, int]:
+        """Returns the chats encoded since the last call, and forgets them.
+
+        Must be cheap: the server calls it per request on the event loop.
+
+        Returns:
+            A count per outcome: ``custom`` for a chat the encoder served, or
+            ``fallback`` for one it failed on, which HuggingFace encoded
+            instead.
+        """
+        ...
+
+
+@runtime_checkable
 class PreprocessCacheStatsProbe(Protocol):
     """Optional tokenizer capability: report its media preprocess caches.
 
@@ -155,6 +181,36 @@ class PreprocessCacheStatsProbe(Protocol):
             ``video``. An architecture with no video cache simply omits that
             key rather than reporting an empty one.
         """
+        ...
+
+
+@runtime_checkable
+class LabelScoringTokenizer(Protocol):
+    """Tokenizer capabilities that label scoring (``/v1/decisions``) needs.
+
+    Declared as a protocol, checked once when a scoring request is admitted,
+    so a tokenizer that lacks a member is refused instead of having its
+    context-length check skipped.
+    """
+
+    @property
+    def max_length(self) -> int | None:
+        """The context length, in tokens; ``None`` when unbounded."""
+        ...
+
+    def apply_chat_template(
+        self,
+        messages: list[TextGenerationRequestMessage],
+        tools: list[TextGenerationRequestTool] | None,
+        **chat_template_options: Any,
+    ) -> str:
+        """Renders ``messages`` with the model's chat template."""
+        ...
+
+    async def encode(
+        self, prompt: str, add_special_tokens: bool = True
+    ) -> npt.NDArray[np.integer[Any]]:
+        """Encodes text to token ids."""
         ...
 
 

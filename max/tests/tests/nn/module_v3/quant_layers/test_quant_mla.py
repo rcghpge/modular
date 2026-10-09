@@ -32,7 +32,7 @@ from max.experimental.sharding import (
     Replicated,
     Sharded,
 )
-from max.experimental.tensor import Tensor, default_dtype
+from max.experimental.tensor import Tensor, default_device, default_dtype
 from max.graph import (
     BufferType,
     BufferValue,
@@ -107,7 +107,7 @@ def _build_kv_collection(
     kv_params: KVCacheParams,
     batch_size: int | str,
     n_pages: int,
-    devices: Sequence[Device],
+    mesh: DeviceMesh,
 ) -> PagedCacheValues:
     kv_inputs = kv_params.get_symbolic_inputs()
 
@@ -142,9 +142,7 @@ def _build_kv_collection(
                 graph_values.append(TensorValue(t))
 
     kv_concrete = kv_params.unflatten_kv_inputs(iter(graph_values))
-    mapping = DeviceMapping(
-        DeviceMesh(tuple(devices), (len(devices),), ("axis",)), (Replicated(),)
-    )
+    mapping = DeviceMapping(mesh, (Replicated(),))
     return PagedCacheValues.from_upstream(kv_concrete, mapping)
 
 
@@ -351,7 +349,10 @@ def test_mla_bf16_forward(
         input_row_offsets = Tensor.zeros([batch_size + 1], dtype=DType.uint32)
         layer_idx = F.constant(0, DType.uint32, device=CPU())
         kv_collection = _build_kv_collection(
-            kv_params, batch_size, n_pages, [device]
+            kv_params,
+            batch_size,
+            n_pages,
+            DeviceMesh((device,), (1,), ("axis",)),
         )
         layer_idx = F.constant(0, DType.uint32, device=CPU())
 
@@ -391,7 +392,10 @@ def test_mla_fp8_forward(
         input_row_offsets = Tensor.zeros([batch_size + 1], dtype=DType.uint32)
         layer_idx = F.constant(0, DType.uint32, device=CPU())
         kv_collection = _build_kv_collection(
-            kv_params, batch_size, n_pages, [device]
+            kv_params,
+            batch_size,
+            n_pages,
+            DeviceMesh((device,), (1,), ("axis",)),
         )
 
         out = layer(x, kv_collection, freqs_cis, layer_idx, input_row_offsets)
@@ -428,13 +432,14 @@ def test_mla_fp8_tensor_parallel(
         mesh = DeviceMesh(tuple(devices), (len(devices),), (TP,))
         replicated_mapping = DeviceMapping(mesh, (Replicated(),))
 
-        layer = tensor_parallel_latent_attention_with_rope(
-            _make_layer(
-                kv_params,
-                q_lora_rank=q_lora_rank,
-                quant_config=fp8_quant_config,
+        with default_device(mesh):
+            layer = tensor_parallel_latent_attention_with_rope(
+                _make_layer(
+                    kv_params,
+                    q_lora_rank=q_lora_rank,
+                    quant_config=fp8_quant_config,
+                )
             )
-        ).to(mesh)
 
         # Rowwise weights co-shard data and scales on axis 0.
         assert isinstance(layer.kv_b_proj, FP8BlockTensor)
@@ -462,7 +467,7 @@ def test_mla_fp8_tensor_parallel(
         )
         layer_idx = F.constant(0, DType.uint32, device=CPU())
         kv_collection = _build_kv_collection(
-            kv_params, batch_size, n_pages, devices
+            kv_params, batch_size, n_pages, mesh
         )
 
         out = layer(x, kv_collection, freqs_cis, layer_idx, input_row_offsets)
@@ -577,7 +582,10 @@ def test_mla_nvfp4_forward(
         input_row_offsets = Tensor.zeros([batch_size + 1], dtype=DType.uint32)
         layer_idx = F.constant(0, DType.uint32, device=CPU())
         kv_collection = _build_kv_collection(
-            kv_params, batch_size, n_pages, [device]
+            kv_params,
+            batch_size,
+            n_pages,
+            DeviceMesh((device,), (1,), ("axis",)),
         )
 
         out = layer(x, kv_collection, freqs_cis, layer_idx, input_row_offsets)
@@ -602,13 +610,14 @@ def test_mla_nvfp4_tensor_parallel(
         mesh = DeviceMesh(tuple(devices), (len(devices),), (TP,))
         replicated_mapping = DeviceMapping(mesh, (Replicated(),))
 
-        layer = tensor_parallel_latent_attention_with_rope(
-            _make_layer(
-                kv_params,
-                q_lora_rank=None,
-                quant_config=nvfp4_quant_config,
+        with default_device(mesh):
+            layer = tensor_parallel_latent_attention_with_rope(
+                _make_layer(
+                    kv_params,
+                    q_lora_rank=None,
+                    quant_config=nvfp4_quant_config,
+                )
             )
-        ).to(mesh)
 
         weight = layer.o_proj.weight
         assert isinstance(weight, NVFP4Tensor)
@@ -634,7 +643,7 @@ def test_mla_nvfp4_tensor_parallel(
         )
         layer_idx = F.constant(0, DType.uint32, device=CPU())
         kv_collection = _build_kv_collection(
-            kv_params, batch_size, n_pages, devices
+            kv_params, batch_size, n_pages, mesh
         )
 
         out = layer(x, kv_collection, freqs_cis, layer_idx, input_row_offsets)

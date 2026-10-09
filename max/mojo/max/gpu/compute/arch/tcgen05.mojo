@@ -18,12 +18,12 @@ from std.os import abort
 from std.sys import _RegisterPackType, size_of
 from std.sys._assembly import inlined_assembly
 from std.sys.info import _has_blackwell_tcgen05
-from std._gpu.intrinsics import _get_nvtx_register_constraint
 from std.memory import bitcast
 
 from max.gpu import external_memory
 from max.gpu.compute.mma import _str_iota  # TODO: move to a string module
 from max.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptor
+from max.gpu.intrinsics import _get_nvtx_register_constraint
 
 
 @inline(.nodebug)
@@ -64,7 +64,7 @@ struct TensorMemory(TrivialRegisterPassable):
 def tcgen05_alloc[
     cta_group: Int32
 ](
-    ptr_tmem_addr: Pointer[mut=True, UInt32, _, address_space=.SHARED],
+    ptr_tmem_addr: Pointer[mut=False, UInt32, _, address_space=.SHARED],
     num_cols: UInt32,
 ):
     """Allocates tensor memory for use with tcgen05 instructions.

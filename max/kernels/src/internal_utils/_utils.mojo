@@ -67,18 +67,18 @@ struct InitializationType(DevicePassable, Equatable, TrivialRegisterPassable):
     @staticmethod
     def from_str(str: String) raises -> Self:
         __match str:
-        case "zero":
-            return InitializationType.zero
-        case "one":
-            return InitializationType.one
-        case "uniform_distribution":
-            return InitializationType.uniform_distribution
-        case "arange":
-            return InitializationType.arange
-        case "fill":
-            return InitializationType.fill
-        case _:
-            raise Error("Invalid initialization type")
+            case "zero":
+                return InitializationType.zero
+            case "one":
+                return InitializationType.one
+            case "uniform_distribution":
+                return InitializationType.uniform_distribution
+            case "arange":
+                return InitializationType.arange
+            case "fill":
+                return InitializationType.fill
+            case _:
+                raise Error("Invalid initialization type")
 
 
 # TODO: refactor the following to run exactly once.
@@ -88,7 +88,7 @@ def bench_compile_time[
     func: func_type,
     emission_kind: StaticString = "asm",
 ](mut m: Bench, name: String) raises:
-    comptime assert emission_kind in ("asm", "llvm", "ptx")
+    comptime assert emission_kind in ["asm", "llvm", "ptx"]
 
     # TODO: add docstring, this function should be used on its own or at the end of measured benchmarks.
     @inline(.always)

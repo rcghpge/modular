@@ -36,11 +36,7 @@ from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
 from max.gpu.host import DeviceContext, DeviceBuffer
 from max.gpu.host.info import is_cpu
 from max.gpu.memory import external_memory
-from std.sys.info import (
-    has_amd_gpu_accelerator,
-    has_apple_gpu_accelerator,
-    is_apple_gpu,
-)
+from std.sys.info import current_accelerator, is_apple_gpu
 from std.random import Random
 from layout import (
     Coord,
@@ -467,7 +463,9 @@ def fused_token_sampling_cpu[
         SeedEngine: Engine policy of the seed buffer.
 
     Args:
-        max_k: Largest number of top elements.
+        max_k: Largest `k` across the batch, or -1 if any row has no top-k
+            limit. Rows whose `k` is -1 then sample from the top 255
+            elements, and explicit rows keep their own `k`.
         input: TileTensor[dtype] (Any shape)- The input tensor.
         out_idxs: TileTensor[out_idx_type] (shape of [input_shape[:-1]] + [1]) - The output indices.
         k: Optional device buffer of top elements to keep for each batch element.
@@ -500,6 +498,19 @@ def fused_token_sampling_cpu[
     ):
         var bound_max_k = 255 if max_k == -1 else max_k
 
+        # A `max_k` of -1 means some row has no top-k limit, not that all do.
+        # `_top_k_sampling` resolves a row's -1 to the output width, which an
+        # explicit k above the cap widens, so resolve those rows to the cap.
+        var resolved_k = List[Int64]()
+        if max_k == -1 and k:
+            var k_in = k.value()
+            var cap = bound_max_k
+            for i in range(k_in.num_elements()):
+                var k_raw = Int(k_in[i])
+                var row_k = cap if k_raw == -1 else k_raw
+                resolved_k.append(Int64(row_k))
+                bound_max_k = max(bound_max_k, row_k)
+
         # materialize the out_vals which is of shape [input[:-1]] + [k]
         var out_vals_shape = coord_to_index_list(input.layout.shape_coord())
         out_vals_shape[input.rank - 1] = bound_max_k
@@ -514,17 +525,34 @@ def fused_token_sampling_cpu[
             row_major(Coord(out_vals_shape)),
         )
 
-        _top_k_sampling(
-            bound_max_k,
-            input,
-            out_vals,
-            out_idxs.bitcast[.int64](),
-            k,
-            temperature,
-            top_p,
-            seed,
-        )
+        if resolved_k:
+            _top_k_sampling(
+                bound_max_k,
+                input,
+                out_vals,
+                out_idxs.bitcast[.int64](),
+                Optional(
+                    TileTensor(resolved_k, row_major(Int64(len(resolved_k))))
+                    .as_unsafe_any_origin()
+                    .as_imm()
+                ),
+                temperature,
+                top_p,
+                seed,
+            )
+        else:
+            _top_k_sampling(
+                bound_max_k,
+                input,
+                out_vals,
+                out_idxs.bitcast[.int64](),
+                k,
+                temperature,
+                top_p,
+                seed,
+            )
 
+        _ = resolved_k^
         dealloc(out_vals_alloc^)
 
 
@@ -1530,8 +1558,8 @@ def _topk_warp[
     """
     var _max_k = Int(max_k)
     var _num_elements = Int(num_elements)
-    var lane = Int(thread_idx.x)
-    var batch_id = Int(block_idx.x)
+    var lane = thread_idx.x
+    var batch_id = block_idx.x
 
     var row = in_buffer + batch_id * _num_elements
     var row_vals = out_vals + batch_id * _max_k
@@ -1724,7 +1752,7 @@ def _topk_gpu[
     # top-k kernels stay within Apple's static shared-memory budget, then
     # recompute blocks.
     var effective_block_size = block_size
-    comptime if has_apple_gpu_accelerator():
+    comptime if ctx.target.is_apple_gpu():
         effective_block_size = WARP_SIZE
 
     # Define the number of blocks per grid
@@ -1774,7 +1802,7 @@ def _topk_gpu[
     )
     # align to warp size
     shared_mem_bytes_2 = align_up(shared_mem_bytes_2, WARP_SIZE)
-    comptime if has_apple_gpu_accelerator():
+    comptime if ctx.target.is_apple_gpu():
         if shared_mem_bytes_2 > _APPLE_STATIC_SHMEM_MAX_BYTES:
             raise Error(
                 t"shared memory of {shared_mem_bytes_2} exceeds static"
@@ -1974,7 +2002,7 @@ def topk_gpu[
 
         # On Apple GPUs, clamp block_size to a single warp so the shared-memory
         # top-k kernels stay within Apple's static shared-memory budget.
-        comptime if has_apple_gpu_accelerator():
+        comptime if ctx.target.is_apple_gpu():
             block_size_ = min(block_size_, WARP_SIZE)
 
         # This section handles different input ranks by reshaping to a 2D tensor
@@ -2582,7 +2610,9 @@ def _gumbel_argmax_fused_kernel[
         not from_probs or not is_apple_gpu()
     ), "from_probs is not supported on Apple GPUs"
     comptime assert not multi_block or (
-        has_amd_gpu_accelerator() and from_probs and dtype == DType.float32
+        current_accelerator().is_amd_gpu()
+        and from_probs
+        and dtype == DType.float32
     ), "multi-block Gumbel requires AMD FP32 from-probs"
 
     comptime EPS = Float32(1e-20)
@@ -2598,11 +2628,11 @@ def _gumbel_argmax_fused_kernel[
     var tid = thread_idx.x
     var block_size = block_dim.x
     var blocks_per_row_int = Int(blocks_per_row)
-    var batch_id = Int(block_idx.x)
+    var batch_id = block_idx.x
     var block_in_row = 0
     comptime if multi_block:
-        batch_id = Int(block_idx.x) // blocks_per_row_int
-        block_in_row = Int(block_idx.x) % blocks_per_row_int
+        batch_id = block_idx.x // blocks_per_row_int
+        block_in_row = block_idx.x % blocks_per_row_int
 
     var temp_val = Float32(1.0)
     if temperature:
@@ -2811,7 +2841,7 @@ def gumbel_sampling_fused_gpu[
             seed_ptr = seed.value().ptr
 
         comptime split_capable = (
-            has_amd_gpu_accelerator() and from_probs and dtype == DType.float32
+            ctx.target.is_amd_gpu() and from_probs and dtype == DType.float32
         )
         comptime if split_capable:
             var vocab = Int(input.dim(1))

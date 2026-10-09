@@ -50,6 +50,20 @@ class KVLoadRefused(Exception):
         """The hash that went missing, when one is to blame."""
 
 
+class KVLoadFailed(Exception):
+    """A :meth:`KVConnector.load` copy failed, so its blocks hold no valid KV.
+
+    Raised by ``load`` when posting the copy fails, and by the
+    :class:`KVTransfer` it returned once a posted copy fails. Either way
+    nothing is still writing into the destination blocks by the time it is
+    raised, so the caller may free them. The cache manager frees them without
+    committing and recomputes the request's prefix without the connector.
+
+    A transport fault, where :class:`KVLoadRefused` is the connector declining
+    before it moves anything.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class BlockCount:
     """A point-in-time snapshot of a block pool's occupancy.
@@ -156,11 +170,11 @@ class KVTransfer(Protocol):
     def is_complete(self) -> bool:
         """Returns whether the transfer has completed. Never blocks.
 
-        Raising is how a connector reports a transfer that failed terminally
-        rather than completed: for a load the destination blocks then hold no
-        valid KV, so reading ``True`` would publish garbage. The manager unpins
-        that transfer's blocks without committing them and lets the error
-        reach the scheduler.
+        Raising :class:`KVLoadFailed` is how a connector reports a load that
+        failed terminally rather than completed: the destination blocks then
+        hold no valid KV, so reading ``True`` would publish garbage. The
+        manager unpins that transfer's blocks without committing them and
+        rolls the request's prefix back at its next ``alloc``.
         """
         ...
 
@@ -226,7 +240,7 @@ class KVConnector(Protocol):
     via load/offload methods.
 
     All block hashes crossing this Protocol are in canonical bytes form:
-    8 big-endian bytes for ahash64-family algos (including ``sha256_64``),
+    8 big-endian bytes for ``ahash64``,
     32 bytes for full SHA-256 digests. The block hasher produces this
     canonical form directly, so callers pass the hashes through unchanged;
     a connector that needs a narrower wire encoding (e.g. dKV's 64-bit key)
@@ -265,7 +279,7 @@ class KVConnector(Protocol):
 
         What that presence is worth is the manager's to decide, since it
         depends on how far each leaf's attention reads back. The manager
-        reconciles the masks with :mod:`~max.pipelines.kv_cache.prefix_hit`,
+        reconciles the masks with :mod:`max._kv_core`'s prefix-hit rules,
         the same rules it runs over the device pools, so a connector needs no
         notion of attention shape, window widths or null blocks.
 
@@ -341,25 +355,27 @@ class KVConnector(Protocol):
         Raises:
             KVLoadRefused: If it cannot move every block it was asked for.
                 Loading less is not an option -- see :class:`KVLoadRefused`.
+            KVLoadFailed: If posting the copy failed. A copy that fails after
+                it was posted raises from the returned transfer instead.
         """
         ...
 
     def offload(
         self,
         block_ids: Mapping[str, Sequence[int]],
-        block_hashes: Sequence[bytes],
+        block_hashes: Mapping[str, Sequence[bytes]],
         replica_idx: int = 0,
     ) -> KVConnectorTransfer:
-        """Offload the device blocks to the external cache.
+        """Offloads each leaf's blocks under that leaf's hashes.
 
-        The blocks form one ordered sequence. Every connector keys blocks
-        purely by hash, so the order carries no parentage.
+        ``block_ids[leaf_id][i]`` is written under the hash
+        ``block_hashes[leaf_id][i]``. Leaves may differ in length, since a
+        recurrent leaf publishes only at its checkpoint boundaries.
 
         Args:
-            block_ids: Device block IDs to offload per leaf.
-            block_hashes: Hashes for the blocks being offloaded, in prefix
-                order. Canonical bytes form (8 big-endian bytes for
-                ahash64-family, 32 bytes for SHA-256).
+            block_ids: Device block IDs to offload, per leaf.
+            block_hashes: Hashes per leaf, in prefix order. Canonical bytes
+                form (8 big-endian bytes for ahash64-family, 32 for SHA-256).
             replica_idx: DP replica whose device buffers source the offloaded
                 blocks. The external tier itself is replica-agnostic.
 

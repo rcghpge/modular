@@ -253,8 +253,8 @@ struct Task[type: Deinitable, origins: OriginSet](not Movable):
         result becomes available. This function must be force inlined into the
         calling async function.
 
-        This method enables the use of the 'await' keyword with Task objects in
-        async functions.
+        This method enables the use of the '__await' keyword with Task objects
+        in async functions.
 
         Returns:
             A reference to the result value produced by the task.
@@ -415,7 +415,7 @@ struct RaisingTask[type: Movable, origins: OriginSet](
         Consumes the task. On success, moves the result out. On failure,
         raises the error from the coroutine.
 
-        This enables `await task^` syntax in async functions.
+        This enables `__await task^` syntax in async functions.
 
         Returns:
             The `result` output parameter receives the task's result value.
@@ -568,6 +568,38 @@ struct TaskGroup(Defaultable):
         _async_execute[NoneType](task._handle, desired_worker_id)
         self.tasks.append(_TaskGroupBox(task^))
 
+    def _create_task_after(
+        mut self,
+        # FIXME(MSTDL-722): Avoid accessing ._mlir_type here, use `NoneType`.
+        var task: Coroutine[NoneType._mlir_type, ...],
+        chain: _Chain,
+    ):
+        """Adds a task to the group that starts once `chain` is available.
+
+        The group counts the task immediately, so `wait()` cannot return before
+        the task has run, nor before any tasks it adds to the group. The task
+        starts on a worker, not on the thread that makes `chain` available.
+
+        Args:
+            task: The coroutine to execute once `chain` is available.
+            chain: The chain to start after. The caller keeps its value alive
+                until it becomes available: destroying one that never did is
+                fatal.
+        """
+        self.counter += 1
+        task._get_ctx[TaskGroupContext]()[] = TaskGroupContext(
+            Self._task_complete_callback,
+            Pointer(to=self).unsafe_origin_cast[MutUntrackedOrigin](),
+        )
+        # Box the task before registering it: once `chain` is available the
+        # task may run on another worker and add tasks of its own.
+        var handle = task._handle
+        self.tasks.append(_TaskGroupBox(task^))
+        # Registration only reads the chain's value; the copy need not outlive
+        # this call.
+        var registered = chain
+        _async_and_then(handle, Pointer(to=registered))
+
     @staticmethod
     def await_body_impl(hdl: AnyCoroutine, mut task_group: Self):
         """Implementation of the await functionality for TaskGroup.
@@ -583,7 +615,7 @@ struct TaskGroup(Defaultable):
     def __await__(mut self):
         """Make TaskGroup awaitable in async contexts.
 
-        This allows using 'await task_group' syntax in async functions.
+        This allows using '__await task_group' syntax in async functions.
         """
 
         @inline(.always)

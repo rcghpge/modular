@@ -30,7 +30,7 @@ from max.experimental.nn.common_layers.functional_kernels import (
 )
 from max.experimental.nn.common_layers.mesh_axis import TP
 from max.experimental.nn.norm import RMSNorm
-from max.experimental.sharding import DeviceMapping, NamedMapping
+from max.experimental.sharding import DeviceMesh, NamedMapping
 from max.experimental.tensor import Tensor
 from max.nn.attention import MHAMaskVariant
 from max.nn.kv_cache import KVCacheParams, PagedCacheValues
@@ -156,10 +156,8 @@ class LatentAttentionWithRope(Module[..., Tensor]):
             offsets, cache offsets, and buffer lengths for the prefill step.
         """
         layer_idx = F.constant(0, DType.uint32, device=CPU())
-        replicated = DeviceMapping.replicated(input_row_offsets.mesh)
         buffer_row_offsets, cache_offsets, buffer_lengths = (
-            value.rebind_mapping(replicated)
-            for value in flare_mla_prefill_plan(
+            flare_mla_prefill_plan(
                 self.kv_params,
                 input_row_offsets,
                 kv_collection,
@@ -250,8 +248,18 @@ class LatentAttentionWithRope(Module[..., Tensor]):
                 mla_prefill_metadata.buffer_row_offsets
             )
             attn_kwargs["cache_offsets"] = mla_prefill_metadata.cache_offsets
+            # Each device planned its own buffer length, and the kernel reads
+            # it on the host. One host mesh device per device keeps each
+            # length; ``.to(CPU())`` would give every device the first one's.
+            mesh = mla_prefill_metadata.buffer_lengths.mesh
             attn_kwargs["buffer_length"] = (
-                mla_prefill_metadata.buffer_lengths.to(CPU())
+                mla_prefill_metadata.buffer_lengths.to(
+                    DeviceMesh(
+                        (CPU(),) * mesh.num_devices,
+                        mesh.mesh_shape,
+                        mesh.axis_names,
+                    )
+                )
             )
             attn_kwargs["w_k"] = self.w_k
             attn_kwargs["w_uv"] = self.w_uv
@@ -316,39 +324,26 @@ class LatentAttentionWithRope(Module[..., Tensor]):
         return self.o_proj(attn_out)
 
 
-def assign_replicated_mapping(weight: Tensor) -> None:
-    """Assigns a replicated mapping to the weight."""
-    replicated = (None,) * len(weight.shape)
-    weight._mapping = NamedMapping(weight.mesh, replicated)
-
-
-def assign_rowwise_mapping(weight: Tensor) -> None:
-    """Assigns a rowwise mapping to the weight."""
-    rowwise = (TP,) + (None,) * (len(weight.shape) - 1)
-    weight._mapping = NamedMapping(weight.mesh, rowwise)
-
-
-def assign_columnwise_mapping(weight: Tensor) -> None:
-    """Assigns a columnwise mapping to the weight."""
-    columnwise = (None, TP) + (None,) * (len(weight.shape) - 2)
-    weight._mapping = NamedMapping(weight.mesh, columnwise)
-
-
 def tensor_parallel_latent_attention_with_rope(
     layer: LatentAttentionWithRope,
 ) -> LatentAttentionWithRope:
-    """Modifies latent attention layer to be tensor parallel along the TP axis."""
-    # Replicated weights: q_a_proj, q_a_layernorm
-    if layer.q_lora_rank is not None:
-        assign_replicated_mapping(layer.q_a_proj)
-        assign_replicated_mapping(layer.q_a_layernorm.weight)
-        assign_rowwise_mapping(layer.q_b_proj)
-    else:
-        assign_rowwise_mapping(layer.q_proj)
+    """Modifies latent attention layer to be tensor parallel along the TP axis.
 
-    assign_replicated_mapping(layer.kv_a_proj_layernorm)
-    assign_replicated_mapping(layer.kv_a_proj_with_mqa)
-    assign_rowwise_mapping(layer.kv_b_proj)
-    assign_columnwise_mapping(layer.o_proj.weight)
+    The weights not sharded here stay replicated.
+    """
+    if layer.q_lora_rank is not None:
+        layer.q_b_proj = layer.q_b_proj.to(
+            NamedMapping(layer.q_b_proj.mesh, (TP, None))
+        )
+    else:
+        layer.q_proj = layer.q_proj.to(
+            NamedMapping(layer.q_proj.mesh, (TP, None))
+        )
+    layer.kv_b_proj = layer.kv_b_proj.to(
+        NamedMapping(layer.kv_b_proj.mesh, (TP, None))
+    )
+    layer.o_proj.weight = layer.o_proj.weight.to(
+        NamedMapping(layer.o_proj.weight.mesh, (None, TP))
+    )
 
     return layer

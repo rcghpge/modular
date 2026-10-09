@@ -53,7 +53,8 @@ same path (``DeepseekV4.__call__``).
 With a cache, the fused ``latent_sparse_attention_ragged`` kernel reads a
 query's window straight out of the window leaf and its compressed entries out
 of the zone leaf by entry index, once this batch's latents and candidate
-entries have been stored into them. Without a cache (a fresh batch, the
+entries have been stored into them; the indexer scores its own zone leaf the
+same way (``indexer_score_ragged``). Without a cache (a fresh batch, the
 reference for the cache gates) attention is order-invariant over its selected
 rows, so they are laid out in one table -- ``[every token's latent, every
 window's candidate entry]`` -- addressed by absolute row, or ``-1``.
@@ -61,6 +62,7 @@ window's candidate entry]`` -- addressed by absolute row, or ``-1``.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -85,6 +87,22 @@ from .quantization import fp8_qat_quantize, linear_for
 from .ragged import RaggedRows, WindowRows
 from .rope import apply_rope_tail, rope_for_layer
 from .sparse_attention import sparse_attention
+
+# `MAX_DSV4_LATENT_ATTN_SPLIT_K=0` runs the SM100 latent attention route with
+# one CTA per row, so no split-K partial is rounded before the combine. Read
+# once, when the graph is built.
+# TODO(dsv4-attn-core): drop once the split-K vs single-CTA A/B is ruled.
+_LATENT_ATTN_SPLIT_K = (
+    os.environ.get("MAX_DSV4_LATENT_ATTN_SPLIT_K", "1") != "0"
+)
+# `MAX_DSV4_LATENT_ATTN_PORTABLE_P_BF16=1` runs the portable latent attention
+# kernel with the attention weights rounded to bf16 before the value product,
+# isolating that one SM100 rounding. Diagnostic; read at graph build.
+# TODO(dsv4-attn-core): drop with split_k once the numerics ruling tooling is
+# no longer needed.
+_LATENT_ATTN_PORTABLE_P_BF16 = (
+    os.environ.get("MAX_DSV4_LATENT_ATTN_PORTABLE_P_BF16", "0") == "1"
+)
 
 
 def weightless_rms_normalize(x: TensorValue, eps: float) -> TensorValue:
@@ -370,12 +388,16 @@ class DeepseekV4Attention(Module):
                     cache.idx_comp if cache is not None else None,
                     self.zone_layer,
                 )
-                index_score = self.indexer.score(
-                    ops.reshape(x, [t, x.shape[2]]),
-                    ops.reshape(qr, [t, qr.shape[2]]),
-                    freqs_cis,
-                    idx_stream.table,
-                )
+                x2 = ops.reshape(x, [t, x.shape[2]])
+                qr2 = ops.reshape(qr, [t, qr.shape[2]])
+                if cache is not None:
+                    index_score = self.indexer.score_cached(
+                        x2, qr2, freqs_cis, idx_stream, cutoff
+                    )
+                else:
+                    index_score = self.indexer.score(
+                        x2, qr2, freqs_cis, idx_stream.table
+                    )
             else:
                 n_cand = stream.n_cand
                 candidates = ops.where(
@@ -452,6 +474,8 @@ class DeepseekV4Attention(Module):
             ops.constant(layer_comp, DType.uint32, DeviceRef.CPU()),
             scale=self.softmax_scale,
             window=self.window,
+            split_k=_LATENT_ATTN_SPLIT_K,
+            portable_p_bf16=_LATENT_ATTN_PORTABLE_P_BF16,
         )
         return ops.reshape(o, [1, t, h, d])
 

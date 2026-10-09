@@ -73,8 +73,6 @@ from layout import (
     row_major,
     stack_allocation as tt_stack_allocation,
 )
-from std.utils import IndexList
-from std.utils.index import Index
 from std.utils.numerics import get_accum_type
 from std.utils.static_tuple import StaticTuple
 
@@ -248,7 +246,7 @@ def gemv_partial_norm_kernel[
     comptime if enable_trace:
         if tid == 0:
             trace_buf.store(
-                Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 0,
+                block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 0,
                 UInt64(global_perf_counter_ns()),
             )
 
@@ -270,7 +268,7 @@ def gemv_partial_norm_kernel[
     comptime if enable_trace:
         if tid == 0:
             trace_buf.store(
-                Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 1,
+                block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 1,
                 UInt64(global_perf_counter_ns()),
             )
 
@@ -317,7 +315,7 @@ def gemv_partial_norm_kernel[
     comptime if enable_trace:
         if tid == 0:
             trace_buf.store(
-                Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 2,
+                block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 2,
                 UInt64(global_perf_counter_ns()),
             )
 
@@ -356,7 +354,7 @@ def gemv_partial_norm_kernel[
 
             comptime if enable_trace:
                 trace_buf.store(
-                    Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 3,
+                    block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 3,
                     UInt64(global_perf_counter_ns()),
                 )
 
@@ -370,7 +368,7 @@ def gemv_partial_norm_kernel[
             ](finish_counter, Int32(1))
             comptime if enable_trace:
                 trace_buf.store(
-                    Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 4,
+                    block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 4,
                     UInt64(global_perf_counter_ns()),
                 )
             is_last_block = prev_global == num_normed_blocks - Int32(1)
@@ -405,7 +403,7 @@ def gemv_partial_norm_kernel[
             comptime if enable_trace:
                 if tid == 0:
                     trace_buf.store(
-                        Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 5,
+                        block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 5,
                         UInt64(global_perf_counter_ns()),
                     )
 
@@ -427,7 +425,7 @@ def gemv_partial_norm_kernel[
             comptime if enable_trace:
                 if tid == 0:
                     trace_buf.store(
-                        Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 6,
+                        block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 6,
                         UInt64(global_perf_counter_ns()),
                     )
 
@@ -437,7 +435,7 @@ def gemv_partial_norm_kernel[
             comptime if enable_trace:
                 if tid == 0:
                     trace_buf.store(
-                        Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 7,
+                        block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 7,
                         UInt64(global_perf_counter_ns()),
                     )
 
@@ -453,7 +451,7 @@ def gemv_partial_norm_kernel[
             comptime if enable_trace:
                 if tid == 0:
                     trace_buf.store(
-                        Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 8,
+                        block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 8,
                         UInt64(global_perf_counter_ns()),
                     )
 
@@ -469,7 +467,7 @@ def gemv_partial_norm_kernel[
     comptime if enable_trace:
         if tid == 0:
             trace_buf.store(
-                Int(block_idx.y) * GEMV_TRACE_EVENTS_PER_BLOCK + 9,
+                block_idx.y * GEMV_TRACE_EVENTS_PER_BLOCK + 9,
                 UInt64(global_perf_counter_ns()),
             )
 
@@ -623,7 +621,7 @@ def _gemv_partial_norm_unfused_with_scratch[
     var n_normed = Int(gamma.dim[0]())
     var n = Int(weight.dim[0]())
 
-    var y_layout = row_major(Coord(m, n))
+    var y_layout = row_major(m, n)
     var y = TileTensor[c_type, type_of(y_layout)](y_scratch, y_layout)
 
     _matmul_gpu[transpose_b=transpose_b](y, act, weight, ctx)

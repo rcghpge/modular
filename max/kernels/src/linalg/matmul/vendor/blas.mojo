@@ -18,7 +18,7 @@ types that abstract over the NVIDIA and AMD vendor libraries so callers can
 dispatch GEMM operations without binding to a specific vendor API.
 """
 
-from std.sys import has_amd_gpu_accelerator, size_of
+from std.sys import default_accelerator, size_of
 from std.math import ceildiv
 from std.ffi import _get_global_or_null, external_call
 
@@ -130,7 +130,7 @@ from linalg.fp4_utils import (
 # ===----------------------------------------------------------------------===#
 
 
-struct Backend(Equatable, TrivialRegisterPassable, Writable):
+struct Backend(EnumLike, Equatable, TrivialRegisterPassable, Writable):
     """Identifies which vendor BLAS library backs a matmul operation.
 
     Acts as a comptime-selectable tag (`AUTOMATIC`, `CUBLAS`, `CUBLASLT`,
@@ -145,6 +145,30 @@ struct Backend(Equatable, TrivialRegisterPassable, Writable):
     comptime CUBLASLT = Self(2)
     comptime ROCBLAS = Self(3)
     comptime HIPBLASLT = Self(4)
+
+    comptime _enum_case_names = ParameterList.of[
+        "AUTOMATIC".value,
+        "CUBLAS".value,
+        "CUBLASLT".value,
+        "ROCBLAS".value,
+        "HIPBLASLT".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        return Int(self._value)
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        comptime assert False, "Backend has no payload"
 
     def __init__(out self, value: Int):
         self._value = Int32(value)
@@ -182,9 +206,9 @@ def _resolve_backend[
     comptime if backend is not Backend.AUTOMATIC:
         return backend
     # TODO: Remove this once we have a proper hipBLASLt backend for float32.
-    elif dtype == DType.float32 and has_amd_gpu_accelerator():
+    elif dtype == DType.float32 and default_accelerator().is_amd_gpu():
         return Backend.ROCBLAS
-    elif has_amd_gpu_accelerator():
+    elif default_accelerator().is_amd_gpu():
         return Backend.HIPBLASLT
     # TODO (KERN-2238): uint8 is a proxy data type for two Float4-E2M1 values for now.
     # Replace this with float4-e2m1fn when GENAI-337 is fixed.
@@ -387,7 +411,7 @@ def _get_global_handle[
 
 # A disengaged `_ComptimeConditionalTileTensor` stores nothing, so the layout
 # of an absent scale-factor argument only has to name a concrete type.
-comptime _NoScaleFactorsLayout = type_of(row_major(Coord(Idx[0], Idx[0])))
+comptime _NoScaleFactorsLayout = type_of(row_major(Idx[0], Idx[0]))
 
 
 def matmul[

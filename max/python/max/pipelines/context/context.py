@@ -522,6 +522,15 @@ class TextContext:
 
     target_endpoint: str | None = field(default=None)
 
+    label_token_ids: list[int] | None = field(default=None)
+    """Candidate label token ids for a label-scoring request.
+
+    When set, the pipeline returns the full-vocabulary log-probability of each
+    of these tokens at the last prompt position (see
+    :attr:`TextGenerationOutput.label_log_probabilities`). ``None`` for ordinary
+    generation requests.
+    """
+
     dkv_cache_hint: bytes | None = field(default=None)
     """The Orchestrator's ``dkv_cache_hint`` for this request, as JSON bytes.
 
@@ -536,8 +545,9 @@ class TextContext:
 
     Combined with ``kv_cache_hash_seed`` via XOR to seed the block hash.
     Works under any ``kv_cache_hash_algo``: a cryptographic guarantee
-    under ``sha256``/``sha256_64``, best-effort under ``ahash64``. Capped
-    at 512 chars at the OpenAI schema layer.
+    under ``sha256`` (64-bit key separation on the dKV external tier),
+    best-effort under ``ahash64``. Capped at 512 chars at the OpenAI
+    schema layer.
     """
 
     cached_prefix_length: int | None = field(default=None)
@@ -569,10 +579,11 @@ class TextContext:
 
     trace_carrier: dict[str, str] | None = field(default=None)
     """Serialized W3C trace context (via ``opentelemetry.propagate.inject``)
-    captured from the inbound request's OTel context. Threaded onto this
-    context because it crosses into the model-worker process by value, so the
-    scheduler can re-``extract`` it and parent its phase spans under the
-    caller's trace instead of starting new root spans."""
+    captured from the request's ``max.request`` span, or its HTTP server span
+    where no handler set one. Threaded onto this context because it crosses
+    into the model-worker process by value, so the scheduler can re-``extract``
+    it and parent its phase spans instead of starting new root spans. May also
+    hold the request's ``x-max-trace-level`` level, which propagators ignore."""
 
     def __post_init__(self) -> None:
         """Initialize context state after deserialization.

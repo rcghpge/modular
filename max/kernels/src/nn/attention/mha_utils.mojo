@@ -19,14 +19,14 @@ types used by both prefill and decode attention kernels.
 
 from std.math import align_up, ceildiv
 from std.math.uutils import ufloordiv, ualign_up
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.collections import OptionalReg
 from std.sys import (
     CompilationTarget,
     align_of,
     get_defined_bool,
     get_defined_int,
-    has_amd_gpu_accelerator,
-    has_nvidia_gpu_accelerator,
+    default_accelerator,
     is_amd_gpu,
     is_nvidia_gpu,
     simd_width_of,
@@ -38,7 +38,19 @@ from std.bit import prev_power_of_two
 from max.gpu import WARP_SIZE, lane_id
 from max.gpu.host import DeviceBuffer
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
-from layout import Layout, LayoutTensor, RuntimeLayout, UNKNOWN_VALUE
+from layout import (
+    Coord,
+    DefaultEngine,
+    ImmTileTensor,
+    Layout,
+    LayoutTensor,
+    RuntimeLayout,
+    TensorLayout,
+    TileTensor,
+    lt_to_tt_idx,
+    row_major,
+    UNKNOWN_VALUE,
+)
 from layout.layout_tensor import LayoutTensorIter
 from layout.swizzle import make_ldmatrix_swizzle
 from nn.attention.mha_mask import (
@@ -46,7 +58,6 @@ from nn.attention.mha_mask import (
     ChunkedCausalMask,
     ChunkedMask,
     MaskName,
-    MaterializedMask,
     MHAMask,
     NullMask,
     RelativeLogitsMask,
@@ -78,37 +89,9 @@ comptime MHA_PDL_LEVEL = PDLLevel.OVERLAP_AT_END if get_defined_bool[
 ]() else PDLLevel.OFF
 
 
-@inline(.always)
-def as_dynamic_row_major_1d[
-    dtype: DType
-](
-    tensor: LayoutTensor[mut=False, dtype, address_space=.GENERIC, ...],
-) -> LayoutTensor[dtype, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]:
-    """Reinterprets a generic-address `LayoutTensor` as a 1-D dynamic row-major tensor.
-
-    The pointer and total element count are preserved; the result has an
-    unknown-value row-major layout so it can be passed to routines that
-    require a 1-D runtime-layout tensor without copying data.
-
-    Parameters:
-        dtype: The element data type of the input tensor.
-
-    Args:
-        tensor: The immutable generic-address tensor to reinterpret.
-
-    Returns:
-        A 1-D `LayoutTensor` with a `row_major(UNKNOWN_VALUE)` layout backed
-        by the same storage as `tensor`.
-    """
-    return {
-        tensor.ptr.as_imm().as_unsafe_any_origin(),
-        RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(
-            tensor.get_shape()
-        ),
-    }
-
-
-struct FlashAttentionAlgorithm(Defaultable, TrivialRegisterPassable, Writable):
+struct FlashAttentionAlgorithm(
+    Defaultable, EnumLike, TrivialRegisterPassable, Writable
+):
     """Identifies which flash-attention algorithm variant to use for a kernel launch.
 
     The four variants range from a naive reference implementation to the
@@ -123,6 +106,33 @@ struct FlashAttentionAlgorithm(Defaultable, TrivialRegisterPassable, Writable):
     comptime FLASH_ATTENTION_1 = Self(1)
     comptime FLASH_ATTENTION_2 = Self(2)
     comptime FLASH_ATTENTION_3 = Self(3)
+
+    # `-1` ("unspecified") is a runtime-resolved state outside the named
+    # cases, so the enum is not exhaustive.
+    comptime _enum_is_exhaustive = False
+
+    comptime _enum_case_names = ParameterList.of[
+        "NAIVE".value,
+        "FLASH_ATTENTION_1".value,
+        "FLASH_ATTENTION_2".value,
+        "FLASH_ATTENTION_3".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        return Int(self._value)
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        comptime assert False, "FlashAttentionAlgorithm has no payload"
 
     def __init__(out self):
         self._value = 3
@@ -161,16 +171,16 @@ struct FlashAttentionAlgorithm(Defaultable, TrivialRegisterPassable, Writable):
     @inline(.always)
     def write_to(self, mut writer: Some[Writer]):
         __match self._value:
-        case 0:
-            writer.write("naive-attention")
-        case 1:
-            writer.write("flash-attention-1")
-        case 2:
-            writer.write("flash-attention-2")
-        case 3:
-            writer.write("flash-attention-3")
-        case _:
-            writer.write("invalid algorithm")
+            case 0:
+                writer.write("naive-attention")
+            case 1:
+                writer.write("flash-attention-1")
+            case 2:
+                writer.write("flash-attention-2")
+            case 3:
+                writer.write("flash-attention-3")
+            case _:
+                writer.write("invalid algorithm")
 
 
 struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
@@ -272,7 +282,7 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
     def shared_mem_bytes[
         shared_kv: Bool = False, sm_90: Bool = False
     ](self) -> Int:
-        if not has_nvidia_gpu_accelerator():
+        if not default_accelerator().is_nvidia_gpu():
             return 0
 
         comptime persistent = (
@@ -295,7 +305,7 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
                 + self.warp_scratch_smem_size()
             )
 
-        if self.num_warps_n() > 1 or has_amd_gpu_accelerator():
+        if self.num_warps_n() > 1 or default_accelerator().is_amd_gpu():
             num_smem_elements += self.p_smem_size()
 
         var num_smem_bytes = size_of[self.dtype]() * num_smem_elements
@@ -397,25 +407,27 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
             # Warp count is unchanged here; only the tile grows.
             self.num_keys_per_block = num_keys_per_block.or_else(
                 128 if (
-                    has_amd_gpu_accelerator()
+                    default_accelerator().is_amd_gpu()
                     and Self.dtype.is_float8()
                     and depth == 128
                 ) else (
                     (
                         32 if depth == 512 else 64
-                    ) if has_amd_gpu_accelerator() else depth
+                    ) if default_accelerator().is_amd_gpu() else depth
                 )
             )
             # BM
             self.num_queries_per_block = num_queries_per_block.or_else(
                 32 if Self.dtype
-                == .float32 else (128 if has_amd_gpu_accelerator() else 64)
+                == .float32 else (
+                    128 if default_accelerator().is_amd_gpu() else 64
+                )
             )
             var bk_arch_factor = 2 if num_pipeline_stages <= 2 else 1
             var bk_type_factor = 1 if Self.dtype == DType.float32 else 2
             self.BK = BK.or_else(
                 16 * bk_arch_factor * bk_type_factor
-            ) if has_nvidia_gpu_accelerator() else BK.or_else(
+            ) if default_accelerator().is_nvidia_gpu() else BK.or_else(
                 64 if Self.dtype.is_float8() else 32
             )
             self.WN = WN.or_else(
@@ -423,7 +435,7 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
             )
         self.WM = WM.or_else(
             32 if Self.dtype
-            == .float32 else (32 if has_amd_gpu_accelerator() else 16)
+            == .float32 else (32 if default_accelerator().is_amd_gpu() else 16)
         )
 
     def write_to(self, mut writer: Some[Writer]):
@@ -507,12 +519,12 @@ def _copy_frag_to_smem_nvidia[
     type0: DType,
     layout0: Layout,
     type1: DType,
-    layout1: Layout,
+    layout1: TensorLayout,
 ](
     p_smem_iter: LayoutTensorIter[
         mut=True, type0, layout0, address_space=.SHARED, ...
     ],
-    p_reg_tile: LayoutTensor[type1, layout1, _, address_space=.LOCAL],
+    p_reg_tile: TileTensor[type1, layout1, address_space=.LOCAL, ...],
     warp_x: UInt32,
     warp_y: UInt32,
 ):
@@ -530,14 +542,19 @@ def _copy_frag_to_smem_nvidia[
 
     # This tile is used for offset computation because 1st mma output is organized
     # for BM x BN output tile. The layout for 2nd mma is in p_smem_iter.
-    # Use ImmutAnyOrigin so distance() call below does not see aliased writable args.
-    var p_smem_tile = LayoutTensor[
-        mut=False,
-        p_smem_iter.dtype,
-        Layout.row_major(BM, BN),
-        address_space=.SHARED,
-    ](p_smem_iter.ptr)
-    var p_smem_warp_tile = p_smem_tile.tile[WM, WN](Int(warp_y), Int(warp_x))
+    var p_smem_tile = TileTensor[address_space=.SHARED, linear_idx_type=.int32](
+        p_smem_iter.ptr, row_major[BM, BN]()
+    ).as_imm()
+    var p_smem_warp_tile = p_smem_tile.tile[WM, WN](
+        Coord(Int(warp_y), Int(warp_x))
+    )
+    comptime assert p_reg_tile.rank == p_reg_tile.flat_rank == 2
+    comptime assert p_reg_tile.Engine == DefaultEngine[element_width=1]
+    comptime assert p_reg_tile.element_size == 1
+    comptime assert p_reg_tile.static_shape[0] > 0
+    comptime assert p_reg_tile.static_shape[1] > 0
+    comptime assert frag_simd_width > 0
+    comptime assert p_reg_tile.static_shape[1] % frag_simd_width == 0
     var p_reg_vecs = p_reg_tile.vectorize[1, frag_simd_width]()
 
     comptime swizzle_fn = make_ldmatrix_swizzle[p_smem_tile.dtype, BK]()
@@ -545,15 +562,24 @@ def _copy_frag_to_smem_nvidia[
     comptime for n_mma in range(num_n_mmas):
         comptime for m_mma in range(num_m_mmas):
             var p_smem_mma_tile = p_smem_warp_tile.tile[MMA_M, MMA_N](
-                m_mma, n_mma
+                Coord(m_mma, n_mma)
             ).vectorize[1, frag_simd_width]()
-            var p_smem_frag = p_smem_mma_tile.distribute[
-                Layout.row_major(8, 4)
-            ](lane_id())
-            var frag_offset = p_smem_frag.distance(p_smem_tile)
+            var p_smem_frag = p_smem_mma_tile.distribute[row_major[8, 4]()](
+                lane_id()
+            )
+            var frag_offset = UInt32(
+                p_smem_frag.unsafe_ptr() - p_smem_tile.unsafe_ptr()
+            )
 
-            comptime for i in range(p_reg_vecs.shape[1]()):
-                comptime offset_in_frag = type_of(p_smem_frag).layout(i)
+            comptime for i in range(p_reg_vecs.static_shape[1]):
+                comptime offset_in_frag = (
+                    i % p_smem_frag.static_shape[0]
+                ) * p_smem_frag.static_stride[0] + (
+                    (i // p_smem_frag.static_shape[0])
+                    % p_smem_frag.static_shape[1]
+                ) * p_smem_frag.static_stride[
+                    1
+                ]
 
                 # Translate offset in BM x BN matrix to the right BM x BK tile.
                 comptime OffsetType = type_of(frag_offset)
@@ -602,12 +628,12 @@ def _copy_frag_to_smem_amd[
     type0: DType,
     layout0: Layout,
     type1: DType,
-    layout1: Layout,
+    layout1: TensorLayout,
 ](
     p_smem_iter: LayoutTensorIter[
         mut=True, type0, layout0, address_space=.SHARED, ...
     ],
-    p_reg_tile: LayoutTensor[type1, layout1, _, address_space=.LOCAL],
+    p_reg_tile: TileTensor[type1, layout1, address_space=.LOCAL, ...],
     warp_x: UInt32,
     warp_y: UInt32,
 ):
@@ -622,26 +648,33 @@ def _copy_frag_to_smem_amd[
 
     # This tile is used for offset computation because 1st mma output is organized
     # for BM x BN output tile. The layout for 2nd mma is in p_smem_iter.
-    # Use ImmutAnyOrigin so distance() call below does not see aliased writable args.
-    var p_smem_tile = LayoutTensor[
-        mut=False,
-        p_smem_iter.dtype,
-        Layout.row_major(BM, BN),
-        address_space=.SHARED,
-    ](p_smem_iter.ptr)
+    var p_smem_tile = TileTensor[address_space=.SHARED, linear_idx_type=.int32](
+        p_smem_iter.ptr, row_major[BM, BN]()
+    ).as_imm()
 
-    var p_smem_warp_tile = p_smem_tile.tile[WM, WN](Int(warp_y), Int(warp_x))
+    var p_smem_warp_tile = p_smem_tile.tile[WM, WN](
+        Coord(Int(warp_y), Int(warp_x))
+    )
+    comptime assert p_reg_tile.rank == p_reg_tile.flat_rank == 2
+    comptime assert p_reg_tile.Engine == DefaultEngine[element_width=1]
+    comptime assert p_reg_tile.element_size == 1
+    comptime assert p_reg_tile.static_shape[0] > 0
+    comptime assert p_reg_tile.static_shape[1] > 0
+    comptime assert frag_simd_width > 0
+    comptime assert p_reg_tile.static_shape[1] % frag_simd_width == 0
     var p_reg_vecs = p_reg_tile.vectorize[1, frag_simd_width]()
 
     comptime for n_mma in range(num_n_mmas):
         comptime for m_mma in range(num_m_mmas):
             var p_smem_mma_tile = p_smem_warp_tile.tile[MMA_M, MMA_N](
-                m_mma, n_mma
+                Coord(m_mma, n_mma)
             ).vectorize[frag_simd_width, 1]()
-            var p_smem_frag = p_smem_mma_tile.distribute[
-                Layout.row_major(4, 16)
-            ](lane_id())
-            var frag_offset = p_smem_frag.distance(p_smem_tile)
+            var p_smem_frag = p_smem_mma_tile.distribute[row_major[4, 16]()](
+                lane_id()
+            )
+            var frag_offset = UInt32(
+                p_smem_frag.unsafe_ptr() - p_smem_tile.unsafe_ptr()
+            )
 
             comptime for i in range(frag_simd_width):
                 comptime offset_in_frag = BN * i
@@ -678,8 +711,60 @@ def _copy_frag_to_smem[
     type0: DType,
     layout0: Layout,
     type1: DType,
+    layout1: TensorLayout,
+](
+    p_smem_iter: LayoutTensorIter[
+        mut=True, type0, layout0, address_space=.SHARED, ...
+    ],
+    p_reg_tile: TileTensor[type1, layout1, address_space=.LOCAL, ...],
+    warp_x: UInt32,
+    warp_y: UInt32,
+):
+    comptime if is_nvidia_gpu():
+        _copy_frag_to_smem_nvidia[
+            BM, BN, BK, WM, WN, MMA_M, MMA_N, frag_simd_width
+        ](
+            p_smem_iter,
+            p_reg_tile,
+            warp_x,
+            warp_y,
+        )
+    elif is_amd_gpu():
+        _copy_frag_to_smem_amd[
+            BM, BN, BK, WM, WN, MMA_M, MMA_N, frag_simd_width
+        ](
+            p_smem_iter,
+            p_reg_tile,
+            warp_x,
+            warp_y,
+        )
+    else:
+        CompilationTarget.unsupported_target_error[
+            operation=__get_current_function_name()
+        ]()
+
+
+# Legacy LayoutTensor-overload retained: its callers (mha.mojo, mla.mojo,
+# p-fragment scatter tests) still pass LayoutTensor register views, and the
+# shared-memory operand has no TileTensor iterator equivalent yet.
+@inline(.always)
+def _copy_frag_to_smem[
+    BM: Int,
+    BN: Int,
+    BK: Int,
+    WM: Int,
+    WN: Int,
+    MMA_M: Int,
+    MMA_N: Int,
+    frag_simd_width: Int,
+    *,
+    type0: DType,
+    layout0: Layout,
+    type1: DType,
     layout1: Layout,
 ](
+    # Shared-memory iterator params stay legacy: there is no TileTensor
+    # iterator equivalent yet (repo-wide migration tracking).
     p_smem_iter: LayoutTensorIter[
         mut=True, type0, layout0, address_space=.SHARED, ...
     ],
@@ -690,11 +775,25 @@ def _copy_frag_to_smem[
     comptime if is_nvidia_gpu():
         _copy_frag_to_smem_nvidia[
             BM, BN, BK, WM, WN, MMA_M, MMA_N, frag_simd_width
-        ](p_smem_iter, p_reg_tile, warp_x, warp_y)
+        ](
+            p_smem_iter,
+            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
+                p_reg_tile
+            ),
+            warp_x,
+            warp_y,
+        )
     elif is_amd_gpu():
         _copy_frag_to_smem_amd[
             BM, BN, BK, WM, WN, MMA_M, MMA_N, frag_simd_width
-        ](p_smem_iter, p_reg_tile, warp_x, warp_y)
+        ](
+            p_smem_iter,
+            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
+                p_reg_tile
+            ),
+            warp_x,
+            warp_y,
+        )
     else:
         CompilationTarget.unsupported_target_error[
             operation=__get_current_function_name()
@@ -800,61 +899,30 @@ def dispatch_mask[
 
 
 @inline(.always)
-def dispatch_materialized_mask[
-    dtype: DType,
-    layout: Layout,
-    //,
-](
-    mask_nd: LayoutTensor[mut=False, dtype, layout, _],
-    callback_fn: Some[callback_fn_type],
-    start_pos_nd: OptionalReg[
-        LayoutTensor[.uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin]
-    ] = None,
-) raises -> None:
-    """Wrap a dense mask tensor in a `MaterializedMask` and invoke a callback.
-
-    Constructs a `MaterializedMask` from the provided tensor and optional
-    per-sequence start-position tensor, then calls `callback_fn` with the
-    resulting mask. Use this when the mask is provided as an explicit tensor
-    (e.g. an ALiBi or relative-positional-encoding bias) rather than a
-    compute-on-the-fly strategy.
-
-    Parameters:
-        dtype: Element type of the mask tensor.
-        layout: Layout of the mask tensor.
-
-    Args:
-        mask_nd: The mask values tensor with shape `(batch, heads, q, k)` or
-            compatible broadcast shape.
-        callback_fn: Parametric callback invoked with the `MaterializedMask`.
-        start_pos_nd: Optional per-sequence start positions used to offset the
-            key dimension.
-    """
-
-    var mask = MaterializedMask(mask_nd, start_pos_nd)
-    return callback_fn(mask)
-
-
-@inline(.always)
 def dispatch_relative_logits_mask[
     dtype: DType,
-    layout: Layout,
+    BiasLayout: TensorLayout,
+    bias_origin: ImmOrigin,
+    CacheLengthsLayout: TensorLayout,
+    cache_lengths_origin: ImmOrigin,
+    RowOffsetsLayout: TensorLayout,
+    row_offsets_origin: ImmOrigin,
     //,
     local_window_size: Int = -1,
 ](
-    bias_nd: LayoutTensor[mut=False, dtype, layout, _],
-    cache_lengths: LayoutTensor[
-        .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+    bias_nd: ImmTileTensor[dtype, BiasLayout, bias_origin],
+    cache_lengths: ImmTileTensor[
+        .uint32, CacheLengthsLayout, cache_lengths_origin
     ],
-    input_row_offsets: LayoutTensor[
-        .uint32, Layout.row_major(UNKNOWN_VALUE), ImmutAnyOrigin
+    input_row_offsets: ImmTileTensor[
+        .uint32, RowOffsetsLayout, row_offsets_origin
     ],
     callback_fn: Some[callback_fn_type],
 ) raises -> None:
     """Wrap `bias_nd` in a `RelativeLogitsMask` and invoke `callback_fn`.
 
-    Like `dispatch_materialized_mask`, this carries runtime state (the bias
-    table plus the tensors that recover its ragged-flat row), so it lives
+    This carries runtime state (the bias table plus the tensors that recover
+    its ragged-flat row), so it lives
     outside `dispatch_mask`'s zero-arg string dispatch. `local_window_size`
     picks the visibility mask: `<= 0` (canonically `-1`, the graph-level
     "no window" value) -> `CausalMask`, else
@@ -955,8 +1023,11 @@ def _is_decoding[int_t: OptionallyStaticInt]() -> Bool:
     return int_t.static_value.or_else(0) == 1
 
 
-trait OptionalPointer(Copyable, TrivialRegisterPassable):
+trait OptionalPointer(Copyable, DevicePassable, TrivialRegisterPassable):
     """Abstracts over nullable pointers, providing a uniform interface for `NonNullPointer` and `NullPointer`.
+
+    Implementors are `DevicePassable`, so a generic `OptionalPointer` can be
+    passed straight to a kernel; a `NullPointer` adds no kernel argument.
     """
 
     comptime dtype: DType
@@ -992,6 +1063,21 @@ struct NonNullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
 
     @__allow_legacy_any_origin_fields
     var ptr: Self.PtrType
+
+    comptime device_type: AnyType = Self
+
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode_fields[Self](self, target)
+
+    @staticmethod
+    def get_type_name() -> String:
+        return "NonNullPointer"
+
+    @staticmethod
+    def get_device_type_name() -> String:
+        return Self.get_type_name()
 
     @inline(.always)
     def __init__(out self, ptr: Self.PtrType):
@@ -1029,6 +1115,21 @@ struct NullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
         Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
     ]
 
+    comptime device_type: AnyType = Self
+
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode_fields[Self](self, target)
+
+    @staticmethod
+    def get_type_name() -> String:
+        return "NullPointer"
+
+    @staticmethod
+    def get_device_type_name() -> String:
+        return Self.get_type_name()
+
     @inline(.always)
     def __init__(out self):
         pass
@@ -1038,6 +1139,111 @@ struct NullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
         # NullPointer.value() should never be called at runtime — it exists
         # only for trait conformance. Return dangling as a safe sentinel.
         return Self.PtrType.unsafe_dangling()
+
+
+comptime MaybeNullPointer[dtype: DType, present: Bool] = NonNullPointer[
+    dtype
+] if present else NullPointer[dtype]
+"""`NonNullPointer[dtype]` when `present`, else `NullPointer[dtype]`."""
+
+
+@inline(.always)
+def maybe_null_pointer[
+    dtype: DType, //, present: Bool
+](ptr: UnsafePointer[Scalar[dtype], _]) -> MaybeNullPointer[dtype, present]:
+    """Wraps `ptr` as a `NonNullPointer` when `present`, else drops it.
+
+    Lets a caller that knows at compile time whether an optional operand is
+    supplied turn it into an `OptionalPointer`, so the kernels it reaches are
+    specialized on the operand's presence rather than branching on null.
+
+    Parameters:
+        dtype: Element type of the pointed-to values (inferred).
+        present: Whether `ptr` is a live operand.
+
+    Args:
+        ptr: The operand's pointer; ignored when `present` is False.
+
+    Returns:
+        The `OptionalPointer` for `ptr`.
+    """
+    comptime if present:
+        return rebind[MaybeNullPointer[dtype, present]](
+            NonNullPointer[dtype](ptr.as_imm().as_unsafe_any_origin())
+        )
+    else:
+        return rebind[MaybeNullPointer[dtype, present]](NullPointer[dtype]())
+
+
+@inline(.always)
+def null_pointer[T: OptionalPointer]() -> T:
+    """Returns the null value of `T`, for defaulting an `OptionalPointer` argument.
+
+    Parameters:
+        T: The `OptionalPointer` type; must be a `NullPointer`.
+
+    Returns:
+        A `NullPointer` typed as `T`.
+    """
+    comptime assert T.is_null, "a defaulted OptionalPointer must be null"
+    return rebind[T](NullPointer[T.dtype, T.address_space]())
+
+
+@inline(.always)
+def unread_pointer[T: OptionalPointer]() -> T:
+    """Returns a placeholder `T` for an operand that will never be dereferenced.
+
+    For defaulting an argument whose pointer type is shared with another
+    operand but which the comptime configuration never reads, e.g.
+    `extra_topk_lengths` without an extra KV cache. A non-null `T` gets a
+    dangling pointer.
+
+    Parameters:
+        T: The `OptionalPointer` type.
+
+    Returns:
+        A null or dangling value typed as `T`.
+    """
+    comptime if T.is_null:
+        return null_pointer[T]()
+    else:
+        return rebind[T](
+            NonNullPointer[T.dtype, T.address_space](
+                NonNullPointer[
+                    T.dtype, T.address_space
+                ].PtrType.unsafe_dangling()
+            )
+        )
+
+
+@inline(.always)
+def as_optional_reg[
+    T: OptionalPointer
+](ptr: T) -> OptionalReg[
+    UnsafePointer[Scalar[T.dtype], MutAnyOrigin, address_space=T.address_space]
+]:
+    """Converts an `OptionalPointer` to the runtime-nullable `OptionalReg` form.
+
+    For handing a typed optional operand to code that still branches on null
+    at runtime.
+
+    Parameters:
+        T: The `OptionalPointer` type (inferred).
+
+    Args:
+        ptr: The pointer to convert.
+
+    Returns:
+        `None` when `T` is null, else the wrapped pointer.
+    """
+    comptime if T.is_null:
+        return None
+    else:
+        return rebind[
+            UnsafePointer[
+                Scalar[T.dtype], MutAnyOrigin, address_space=T.address_space
+            ]
+        ](ptr.value())
 
 
 trait MHAPartitionScheme(Copyable, TrivialRegisterPassable):

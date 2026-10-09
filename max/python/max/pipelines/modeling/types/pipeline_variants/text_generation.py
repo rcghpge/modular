@@ -68,13 +68,12 @@ class TextGenerationRequestFunction(TypedDict):
     parameters: dict[str, Any]
     """A dictionary describing the function's parameters, typically following a JSON schema."""
 
-    strict: NotRequired[bool]
+    strict: NotRequired[bool | None]
     """Whether constrained decoding enforces ``parameters`` for this tool.
 
-    Absent or ``True`` enforces the schema; ``False`` constrains only the
-    tool-call envelope and leaves the arguments free-form. Present when the
-    client sent it or the tool parser declares a default, and rendered into
-    the chat template either way.
+    ``False`` constrains only the tool-call envelope and leaves the arguments
+    free-form; ``True`` enforces the full argument schema. The default value,
+    and any potential override, depends on the server's tool-call policy.
     """
 
 
@@ -446,8 +445,9 @@ class TextGenerationRequest:
 
     Combined with ``kv_cache_hash_seed`` via XOR to seed the block hash.
     Works under any ``kv_cache_hash_algo``: a cryptographic guarantee
-    under ``sha256``/``sha256_64``, best-effort under ``ahash64``. Capped
-    at 512 chars at the OpenAI schema layer.
+    under ``sha256`` (64-bit key separation on the dKV external tier),
+    best-effort under ``ahash64``. Capped at 512 chars at the OpenAI
+    schema layer.
     """
 
     def __str__(self) -> str:

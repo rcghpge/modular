@@ -27,9 +27,7 @@ from layout import Layout, LayoutTensor, print_layout
 from std.memory import Pointer
 from std.sys import has_accelerator
 from std.sys.info import (
-    has_apple_gpu_accelerator,
-    has_nvidia_gpu_accelerator,
-    is_apple_gpu,
+    default_accelerator,
     is_nvidia_gpu,
     simd_width_of,
 )
@@ -287,7 +285,7 @@ def simple_copy_example():
 # TODO: improve thread layout example and explanations
 # start-copy-from-async-example
 def copy_from_async_example():
-    comptime if not has_apple_gpu_accelerator():
+    comptime if not default_accelerator().is_apple_gpu():
         comptime dtype = DType.float32
         comptime rows = 128
         comptime cols = 128

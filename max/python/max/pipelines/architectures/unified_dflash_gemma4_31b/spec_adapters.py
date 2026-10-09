@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from max.graph import TensorValue, ops
 from max.nn.kv_cache import PagedCacheValues
-from max.pipelines.speculative.block_driver import Accepted, BlockBatch
+from max.pipelines.speculative.block_driver import (
+    Accepted,
+    BlockBatch,
+    DraftSampler,
+)
 
 from ..dflash_llama3 import DFlashLlama3
 from ..gemma4.block_spec_adapters import block_kv_with_dispatch
@@ -29,6 +33,7 @@ class DFlashGemma4_31BProposer:
     """The DFlash block draft on Gemma4, reusing the target's embed and head."""
 
     samples_from_anchor = False
+    supports_zero_draft_rows = True
 
     def __init__(
         self,
@@ -77,12 +82,21 @@ class DFlashGemma4_31BProposer:
         )
 
     def head(
-        self, batch: BlockBatch, block_hs: TensorValue, accepted: Accepted
+        self,
+        batch: BlockBatch,
+        block_hs: TensorValue,
+        accepted: Accepted,
+        sampler: DraftSampler,
     ) -> TensorValue:
         del accepted
         k = self.block_size
-        block_hs_2d = block_hs.reshape(("batch_size", k, self.hidden_size))
+        seqs = batch.num_draft_seqs
+        block_hs = block_hs.rebind([seqs * k, self.hidden_size])
+        block_hs_2d = block_hs.reshape((seqs, k, self.hidden_size))
         draft_logits = self.target.lm_head(
             [block_hs_2d[:, 1:, :]], batch.signal_buffers
         )[0]
-        return ops.argmax(draft_logits, axis=-1).reshape(("batch_size", k - 1))
+        softcap = self.target.logit_softcapping
+        if softcap is not None:
+            draft_logits = ops.tanh(draft_logits / softcap) * softcap
+        return sampler.sample_all(draft_logits)

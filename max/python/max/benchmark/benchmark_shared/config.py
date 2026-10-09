@@ -542,6 +542,19 @@ class ServingBenchmarkConfig(BaseServingBenchmarkConfig):
         json_schema_extra={"group": "Output Control"},
     )
 
+    disable_ignore_eos: bool = Field(
+        default=False,
+        description=(
+            "Let requests stop at EOS. By default requests ignore EOS and "
+            "generate their full target length, so every backend generates "
+            "the same number of tokens. With this flag the target length only "
+            "caps generation, which speculative decoding needs: a drafter "
+            "cannot predict tokens past a forced EOS. Matches SGLang's "
+            "--disable-ignore-eos."
+        ),
+        json_schema_extra={"group": "Output Control"},
+    )
+
     temperature: float | None = Field(
         default=None,
         description="Temperature for sampling.",
@@ -881,6 +894,16 @@ class ServingBenchmarkConfig(BaseServingBenchmarkConfig):
         ),
         json_schema_extra={"group": "Multimodal"},
     )
+    image_num_turns: DistributionParameter | None = Field(
+        default=None,
+        description=(
+            "Distribution for the number of user turns in a chat session "
+            "selected for images (used with --image-fraction). A longer "
+            "session is cut to the drawn length; a shorter one is kept. "
+            "Unset leaves image sessions as sampled."
+        ),
+        json_schema_extra={"group": "Multimodal"},
+    )
     random_input_len: DistributionParameter = Field(
         default=1024,
         description="Number of input tokens per request, used by the random and artificial-analysis datasets. Use ';' to separate first-turn and remaining-turn distributions for multiturn.",
@@ -1157,7 +1180,8 @@ class ServingBenchmarkConfig(BaseServingBenchmarkConfig):
         default=None,
         description=(
             "When set, num_prompts is computed as num_prompts_multiplier * max_concurrency "
-            "for each concurrency level, replacing the default 300s duration timeout."
+            "for each concurrency level. Mutually exclusive with --num-prompts. Each level "
+            "still stops at --max-benchmark-duration-s, which defaults to 300s."
         ),
         json_schema_extra={"group": "Sweep Configuration"},
     )

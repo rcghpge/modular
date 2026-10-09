@@ -22,6 +22,7 @@ multidimensional data.
   high-performance tensor with explicit memory layout via a `Layout`.
 """
 from .coord import (
+    _CoordReplaceAt,
     Coord,
     CoordLike,
     ComptimeInt,
@@ -61,4 +62,11 @@ from .tile_tensor import (
 from .tensor_engine import (
     TensorEngine,
     DefaultEngine,
+)
+from .tmem_engine import (
+    TMemEngine,
+    TMemStorage,
+    TMEM_NUM_COLS,
+    TMEM_NUM_LANES,
+    tmem_copy_async,
 )

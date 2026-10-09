@@ -14,9 +14,11 @@
 
 from std.math import ceildiv
 from std.sys import size_of
-from max.gpu.memory import CacheEviction
-from layout.tma_async import SharedMemBarrier
-from layout import TileTensor
+from max.gpu import thread_idx
+from max.gpu.memory import CacheEviction, fence_async_view_proxy
+from max.gpu.sync import syncwarp
+from layout.tma_async import SharedMemBarrier, TMATensorTile
+from layout import Coord, TileTensor
 from layout.tile_layout import row_major as tt_row_major
 from nn.attention.gpu.nvidia.sm100.attention import (
     FA4Config,
@@ -41,7 +43,6 @@ from nn.attention.gpu.nvidia.common import (
     KVTMATile,
     MHAPosition,
     OptionalPointer,
-    QTMATile,
 )
 from nn.attention.mha_mask import MHAMask, TileMaskStatus
 from nn.attention.mha_operand import MHAOperand
@@ -54,6 +55,8 @@ from .smem import SM100AttentionSMem
 
 @inline(.always)
 def fa4_load[
+    q_tile_shape: Coord,
+    q_desc_shape: Coord,
     KVLUTType: MHAOperand,
     MaxSeqLenType: OptionallyStaticInt,
     MaskType: MHAMask,
@@ -80,16 +83,7 @@ def fa4_load[
     seq_info: SeqInfo,
     max_seq_len: MaxSeqLenType,
     mask: MaskType,
-    q_tma_op: QTMATile[
-        KVLUTType.dtype,
-        config.swizzle_mode,
-        BM=config.BM // config.num_q,
-        depth=config.qk_depth,
-        group=config.group,
-        decoding=False,
-        fuse_gqa=config.fuse_gqa,
-        num_qk_stages=config.num_qk_stages,
-    ],
+    q_tma_op: TMATensorTile[KVLUTType.dtype, q_tile_shape, q_desc_shape],
     k_tma_op: KVTMATile[
         KVLUTType.dtype,
         config.swizzle_mode,
@@ -269,7 +263,12 @@ def fa4_load[
     var q_smem = rebind[SharedMemPointer[Scalar[KVLUTType.dtype]]](
         smem.q_smem()
     )
-    comptime q_bytes = size_of[qkv_type]() * q_elements
+    # A packed GQA tile (group does not divide BM) loads only the real rows;
+    # the pad rows are zero-filled by `q_async_copy` and carry no TMA bytes.
+    comptime q_pad_rows = config.gqa_pad_rows()
+    comptime q_bytes = size_of[qkv_type]() * (
+        q_elements - q_pad_rows * config.BK0
+    )
 
     var q_gmem_row: UInt32 = PositionType.get_q_gmem_row[ragged=ragged](
         seq_info, max_seq_len
@@ -304,7 +303,39 @@ def fa4_load[
         """Issue Q TMA elect-predicated on `e`. Caller no longer needs
         `if e != 0:` around the call; the TMA fires only on the elected
         lane via the PTX predicate inside `_elect`."""
-        comptime if fuse_gqa:
+        comptime if fuse_gqa and q_pad_rows > 0:
+            comptime gran = config.swizzle_mode.bytes() // size_of[qkv_type]()
+            comptime nblk = config.BK0 // gran
+            comptime chunk = 16 // size_of[qkv_type]()
+            comptime chunks_per_blk = q_pad_rows * gran // chunk
+            var lane = Int(thread_idx.x) % 32
+            for c in range(lane, nblk * chunks_per_blk, 32):
+                var off = (
+                    (c // chunks_per_blk) * BM * gran
+                    + (BM - q_pad_rows) * gran
+                    + (c % chunks_per_blk) * chunk
+                )
+                (smem_dst.ptr + off).store(SIMD[qkv_type, chunk](0))
+            fence_async_view_proxy()
+            syncwarp()
+            comptime for blk in range(nblk):
+                q_tma_op.async_copy_elect[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    QType(
+                        smem_dst.ptr + blk * BM * gran,
+                        tt_row_major[q_elements](),
+                    ),
+                    mbar,
+                    StaticTuple[UInt32, 4](
+                        depth_idx + UInt32(blk * gran),
+                        0,
+                        kv_head_idx,
+                        q_gmem_row,
+                    ),
+                    e,
+                )
+        elif fuse_gqa:
             q_tma_op.async_copy_elect[
                 cta_group=cta_group, eviction_policy=eviction_policy
             ](

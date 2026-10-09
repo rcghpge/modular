@@ -32,11 +32,11 @@ from pydantic import (
 )
 from typing_extensions import Self
 
+from .adaptive_width import parse_adaptive_widths
 from .depth_schedule import DepthScheduleEntry, normalize_depth_schedule
 
 __all__ = [
     "MAGIC_DRAFT_TOKEN_ID",
-    "RecurrentStateRollback",
     "RejectionSamplingStrategy",
     "SpeculativeConfig",
     "SpeculativeMethod",
@@ -55,17 +55,6 @@ draft slots before any real draft exists. Defined here so the graph side
 
 SpeculativeMethod = Literal["eagle", "mtp", "dflash", "dflash2"]
 """The supported methods for speculative decoding."""
-
-RecurrentStateRollback = Literal["snapshot", "ring"]
-"""How a target with recurrent state rolls it back after a verify.
-
-- ``snapshot``: verify on a shadow copy of the state, then replay the
-  accepted tokens into the live pool.
-- ``ring``: verify from the live pool without writing it, recording each
-  token's update, then apply the accepted records in one launch.
-
-Both produce the same state. Targets without recurrent state ignore this.
-"""
 
 _ONE_TOKEN_PER_STEP: tuple[SpeculativeMethod, ...] = ("eagle", "mtp")
 """Methods that draft one token per step, and so default to a width of 2."""
@@ -129,6 +118,8 @@ class SpeculativeConfig(ConfigFileModel):
     The CLI surfaces these fields as ``--speculative-method``,
     ``--num-speculative-tokens``,
     ``--num-speculative-tokens-per-batch-size``,
+    ``--adaptive-speculative-widths``,
+    ``--adaptive-speculative-min-batch-size``,
     ``--num-speculative-tokens-mixed-batch``,
     ``--rejection-sampling-strategy``, and ``--synthetic-acceptance-rate``.
     Construct the config directly when configuring a pipeline
@@ -212,9 +203,11 @@ class SpeculativeConfig(ConfigFileModel):
     it carries. ``None`` verifies every drafted token, which is the behavior
     when the field is unset.
 
-    Applies to every speculative method. Block drafters (``dflash``) still
-    draft their whole checkpoint-fixed block every step; only how much of that
-    block the target verifies narrows.
+    Applies to every speculative method. A block drafter (``dflash``) still
+    drafts its whole checkpoint-fixed block, and narrowing changes only how
+    much of that block the target verifies. The exception is a count of
+    ``0``, where a draft that declares ``supports_zero_draft_rows`` skips the
+    draft forward too.
     """
 
     @property
@@ -245,6 +238,61 @@ class SpeculativeConfig(ConfigFileModel):
             VerifyWidthRange(batch_start=start, batch_end=end, num_tokens=count)
             for start, end, count in normalized
         ]
+
+    adaptive_speculative_widths: str | None = Field(
+        default=None,
+        description=(
+            "Verify widths to choose among at runtime by measured decode "
+            "tokens per second, as a comma-separated list such as "
+            '"1,3,5", or "all" for every width from 1 to '
+            "num_speculative_tokens. Unset keeps the width static. Cannot be "
+            "combined with num_speculative_tokens_per_batch_size."
+        ),
+    )
+    """The verify widths a throughput-driven controller chooses among.
+
+    ``None`` keeps the width static. Cannot be combined with
+    :attr:`num_speculative_tokens_per_batch_size`. Startup cost scales with
+    how many widths are named.
+    """
+
+    adaptive_speculative_min_batch_size: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Smallest decode batch size that captures every adaptive verify "
+            "width. Smaller batches capture only the widest and round a "
+            "narrower request up to it. Requires adaptive_speculative_widths."
+        ),
+    )
+    """Decode batch size below which only the widest adaptive width is captured.
+
+    Small batches are memory-bound, so narrowing barely changes their step cost
+    while each extra width multiplies the captured graphs. Verifying more
+    drafts than asked is always correct, since every step drafts them all.
+    """
+
+    @model_validator(mode="after")
+    def _validate_adaptive_speculative_widths(self) -> Self:
+        if self.adaptive_speculative_widths is None:
+            if self.adaptive_speculative_min_batch_size > 1:
+                raise ValueError(
+                    "adaptive_speculative_min_batch_size requires "
+                    "adaptive_speculative_widths."
+                )
+            return self
+        if self.num_speculative_tokens_per_batch_size is not None:
+            raise ValueError(
+                "adaptive_speculative_widths and "
+                "num_speculative_tokens_per_batch_size both choose the verify "
+                "width; set only one."
+            )
+        # dflash reads its ceiling from the checkpoint later, so only the
+        # syntax is checked for it here; the pipeline checks the ceiling.
+        parse_adaptive_widths(
+            self.adaptive_speculative_widths, self.num_speculative_tokens
+        )
+        return self
 
     num_speculative_tokens_mixed_batch: int | None = Field(
         default=None,
@@ -366,17 +414,6 @@ class SpeculativeConfig(ConfigFileModel):
         ),
     )
 
-    recurrent_state_rollback: RecurrentStateRollback = Field(
-        default="snapshot",
-        description=(
-            "How a target with recurrent state rolls it back after a "
-            "verify. 'snapshot' (default) verifies on a shadow copy and "
-            "replays the accepted tokens. 'ring' verifies from the live "
-            "state, records each token's update, and applies the accepted "
-            "records afterwards."
-        ),
-    )
-
     draft_proposal: Literal["argmax", "sampled"] = Field(
         default="argmax",
         description=(
@@ -385,8 +422,19 @@ class SpeculativeConfig(ConfigFileModel):
             "its own proposal and keep the distribution it drew from, so "
             "verification runs true speculative sampling instead of "
             "typical acceptance. Incompatible with "
-            "``use_relaxed_acceptance_for_thinking``. Inert unless the "
-            "serving architecture supports it."
+            "``use_relaxed_acceptance_for_thinking``. An architecture that "
+            "cannot sample its draft refuses 'sampled' at startup."
+        ),
+    )
+
+    logit_penalties: bool = Field(
+        default=False,
+        description=(
+            "Declares presence/frequency penalty inputs on the fused "
+            "speculative graph and applies them to the verified logits "
+            "before acceptance. For engines that feed those inputs (Mach); "
+            "MAX Serve's speculative pipeline does not, and only the "
+            "Qwen3.5 MTP graph declares them."
         ),
     )
 

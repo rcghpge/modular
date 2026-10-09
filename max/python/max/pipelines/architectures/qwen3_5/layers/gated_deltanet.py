@@ -32,9 +32,10 @@ pool pair per layer.
 Both prefill (seq_len > 1) and decode (seq_len == 1) are handled by the
 same two slot-indexed fused GPU kernels:
 
-- Pass 1 (``gated_delta_conv1d_fwd``): one GPU thread per (batch_item,
-  conv_channel). Each thread reads/writes its slot's window in place;
-  no gather/scatter, no working buffers.
+- Pass 1 (``gated_delta_conv1d_fwd``): parallel over (token,
+  conv_channel); one thread per small token tile per channel. Each
+  sequence's head thread reads/writes its slot's window in place; no
+  gather/scatter, no working buffers.
 
 - Pass 2 (``gated_delta_recurrence_fwd``): one GPU thread per (batch_item,
   value_head, value_dim_element). Each thread owns a KD-element state
@@ -54,7 +55,7 @@ from collections.abc import Callable, Iterable
 from typing import NamedTuple
 
 import numpy as np
-from max.driver import accelerator_api
+from max.driver import accelerator_api, accelerator_architecture_name
 from max.dtype import DType
 from max.graph import (
     BufferValue,
@@ -75,13 +76,26 @@ from max.nn.state_space import (
     gated_delta_conv1d_fwd,
     gated_delta_conv1d_verify_fwd,
     gated_delta_recurrence_fwd,
-    gated_delta_recurrence_shadow_fwd,
     gated_delta_recurrence_verify_ring_fwd,
     kda_chunk,
     kda_chunk_supports_head_dims,
 )
 
-from ..state_cache import GatedDeltaVerifyAccess
+from ..state_cache import GatedDeltaRingAccess
+
+_CHUNK_MIN_COMPUTE_CAPABILITY = 100
+"""Lowest NVIDIA compute capability (``sm_100`` -> 100) the fused chunk kernel supports."""
+
+
+def _nvidia_compute_capability() -> int:
+    """Returns the current accelerator's compute capability, e.g. 86 for ``sm_86``.
+
+    Returns 0 when the architecture name is not of the form ``sm_<digits>[a-z]``
+    (non-NVIDIA or no accelerator), which keeps callers on the portable path.
+    """
+    name = accelerator_architecture_name()
+    digits = name.removeprefix("sm_").rstrip("abcdefghijklmnopqrstuvwxyz")
+    return int(digits) if name.startswith("sm_") and digits.isdigit() else 0
 
 
 class GatedDeltaReplayInputs(NamedTuple):
@@ -453,8 +467,7 @@ class GatedDeltaNet(Module, Shardable):
         recurrent_row_id: TensorValue,
         input_row_offsets: TensorValue,
         replay_capture: list[GatedDeltaReplayInputs] | None = None,
-        ring: GatedDeltaVerifyAccess | None = None,
-        shadow: GatedDeltaVerifyAccess | None = None,
+        ring: GatedDeltaRingAccess | None = None,
         verify_width: TensorValue | None = None,
     ) -> TensorValue:
         """Forward pass through the Gated DeltaNet layer.
@@ -473,18 +486,16 @@ class GatedDeltaNet(Module, Shardable):
             input_row_offsets: Row offsets ``[batch_size + 1]`` (uint32).
             replay_capture: When given, this call's
                 :class:`GatedDeltaReplayInputs` are appended to it so a
-                speculative rollback can re-run the two state kernels over a
+                speculative rollback can re-run the state kernels over a
                 shorter prefix.
-            ring: When given, the recurrence writes per-token records to
-                this ring instead of writing ``recurrent_pool``. The caller
-                must fold them before the pool is read again.
-            shadow: When given, a speculative window's recurrence runs on
-                this copy of ``recurrent_pool`` instead.
+            ring: The speculative verify's ring, set with ``verify_width``.
+                A verify's recurrence writes per-token records to it instead
+                of writing ``recurrent_pool``, and the caller must fold them
+                before the pool is read again.
             verify_width: The speculative graph's
-                :func:`~max.nn.state_space.verify_width_operand`, set with
-                ``ring`` or ``shadow``. A launch at width zero lands both
-                leaves on the live pools, and a wider one leaves them for the
-                rollback.
+                :func:`~max.nn.state_space.verify_width_operand`. A launch at
+                width zero lands both leaves on the live pools, and a wider
+                one leaves them for the rollback.
 
         Returns:
             Output hidden states ``[total_seq_len, hidden_size]``.
@@ -531,7 +542,7 @@ class GatedDeltaNet(Module, Shardable):
         )  # [conv_dim, K]
 
         # ---- Two-pass fused kernel path (handles both prefill and decode) ----
-        # Pass 1: causal conv1d — one GPU thread per (batch_item, conv_channel)
+        # Pass 1: causal conv1d — parallel over (token, conv_channel)
         # Pass 2: gated delta recurrence — one GPU thread per
         #         (batch_item, value_head, vd_element); state column lives in
         #         registers. For decode (seqlen=1) both loops execute once.
@@ -663,9 +674,17 @@ class GatedDeltaNet(Module, Shardable):
         # thing.
         # The chunk op's kernels are written for NVIDIA GPUs: on any other
         # accelerator even the scan fallback fails to instantiate, so the
-        # decision has to happen here rather than inside the launcher.
-        chunk_servable = accelerator_api() == "cuda" and (
-            kda_chunk_supports_head_dims(self.key_head_dim, self.value_head_dim)
+        # decision has to happen here rather than inside the launcher. The
+        # fused prefill kernel also issues tcgen05 MMAs and 1D TMA copies, so
+        # it only instantiates on SM100+; older NVIDIA GPUs (e.g. A10G, sm_86)
+        # take the sequential recurrence for prefill.
+        # TODO(KERN-3635): drop this gate once kda_chunk compiles below SM100.
+        chunk_servable = (
+            accelerator_api() == "cuda"
+            and _nvidia_compute_capability() >= _CHUNK_MIN_COMPUTE_CAPABILITY
+            and kda_chunk_supports_head_dims(
+                self.key_head_dim, self.value_head_dim
+            )
         )
         output_types = [
             TensorType(DType.float32, [x.shape[0], self.value_dim], device)
@@ -676,27 +695,15 @@ class GatedDeltaNet(Module, Shardable):
 
         def _verify_recurrence() -> TensorValue:
             assert verify_width is not None
-            if ring is not None:
-                return gated_delta_recurrence_verify_ring_fwd(
-                    qkv_conv_output=conv_output_ragged,
-                    decay_per_token=decay,
-                    beta_per_token=beta,
-                    recurrent_state=recurrent_pool,
-                    ring=ring.pool,
-                    slot_idx=rec_slot_uint32,
-                    ring_slot_idx=ring.row_id,
-                    input_row_offsets=offsets_uint32,
-                    verify_width=verify_width,
-                )
-            assert shadow is not None, "a verify needs a ring or a shadow"
-            return gated_delta_recurrence_shadow_fwd(
+            assert ring is not None, "a verify needs a ring"
+            return gated_delta_recurrence_verify_ring_fwd(
                 qkv_conv_output=conv_output_ragged,
                 decay_per_token=decay,
                 beta_per_token=beta,
                 recurrent_state=recurrent_pool,
-                shadow_state=shadow.pool,
+                ring=ring.pool,
                 slot_idx=rec_slot_uint32,
-                shadow_slot_idx=shadow.row_id,
+                ring_slot_idx=ring.row_id,
                 input_row_offsets=offsets_uint32,
                 verify_width=verify_width,
             )
@@ -704,8 +711,8 @@ class GatedDeltaNet(Module, Shardable):
         if verify_width is not None and chunk_servable:
             # A draft-free prefill has nothing to roll back, so it runs the
             # forward's own prefill kernel and lands on the forward. A verify
-            # stays on the sequential recurrence, since its rollback replays
-            # and folds against that kernel's arithmetic.
+            # stays on the sequential recurrence, since its ring records and
+            # the fold follow that kernel's arithmetic.
             no_drafts = ops.equal(ops.shape_to_tensor(verify_width.shape)[0], 0)
             recurrence_output_flat = ops.cond(
                 ops.logical_and(no_drafts, is_prefill),

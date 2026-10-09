@@ -338,12 +338,19 @@ public:
   /// failure.
   CValue emitIndirectCall(CValue callee, CallOperands &&operands);
 
-  /// Emit an indirect call to a resolved value in a try block, invoking a
-  /// callback to generate logic in the 'catch' block that is wrapped around the
-  /// call. This ensures that the ExprDest is updated and live after the try
-  /// block, which only works if the "catch" logic doesn't fall through.
+  /// Emit a call to `callee` in a try block, invoking a callback to generate
+  /// logic in the 'catch' block that is wrapped around the call. This ensures
+  /// that the ExprDest is updated and live after the try block, which only
+  /// works if the "catch" logic doesn't fall through.
   ///
   /// This emits an error and returns null on failure.
+  CValue
+  emitCallInTryBlock(CValue callee, CallOperands &&operands,
+                     function_ref<CValue(CallOperands &&)> emitCall,
+                     std::function<void(VarDeclOp errDecl)> emitCatchLogic);
+
+  /// Emit an indirect call to a resolved value in a try block. See
+  /// `emitCallInTryBlock`.
   CValue emitIndirectCallInTryBlock(
       CValue callee, CallOperands &&operands,
       std::function<void(VarDeclOp errDecl)> emitCatchLogic);
@@ -527,13 +534,18 @@ public:
   /// parameter context.  When the result is computed, evaluate the specified
   /// callback on the result and then discard the result.
   ///
+  /// The callback gets the block the expression was emitted into, which is
+  /// erased once the callback returns: anything declared in it goes away with
+  /// the expression.
+  ///
   /// On failure, an error is emitted and the callback is not invoked.
   ///
   /// This is used for evaluating expressions like `origin_of(x)` and
   /// `type_of(x)` and `ref [x] T`.
   void emitExpressionWithoutEvaluatingIt(
       const ExprNode *expr, ExprContext exprContext,
-      std::function<void(CValue, IREmitter &emitter)> callback);
+      std::function<void(CValue, IREmitter &emitter, Block &exprBlock)>
+          callback);
 
   //===--------------------------------------------------------------------===//
   // Emission helpers for specific value types.
@@ -592,6 +604,11 @@ public:
 
   /// Verify inferred error types for escaping origins.
   void checkInferredErrorType(ASTType rvalueType, SMLoc loc);
+
+  /// Check that the declarations `origin` is rooted at outlive `block`,
+  /// emitting an error at `expr` and returning failure when one does not.
+  LogicalResult checkRootOriginsOutliveBlock(TypedAttr origin, Block &block,
+                                             const ExprNode *expr);
 
   /// Emit a normal return (not a 'raise' return) out of the function, along
   /// with any special logic that goes with it.  `funcDecl` indicates the

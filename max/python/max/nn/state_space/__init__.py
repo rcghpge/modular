@@ -23,8 +23,6 @@ from .gated_delta import (
     gated_delta_conv1d_fwd,
     gated_delta_conv1d_verify_fwd,
     gated_delta_recurrence_fwd,
-    gated_delta_recurrence_rollback,
-    gated_delta_recurrence_shadow_fwd,
     gated_delta_recurrence_verify_ring_fwd,
     gated_delta_state_fold,
     verify_width_operand,
@@ -35,10 +33,7 @@ from .kimi_delta import (
     kda_chunk_supports_head_dims,
     kda_decode,
 )
-from .mamba2_ssd_scan import (
-    mamba2_ssd_chunk_scan_varlen_fwd,
-    mamba2_ssd_chunk_scan_varlen_fwd_inplace,
-)
+from .mamba2_ssd_scan import mamba2_ssd_chunk_scan_varlen_fwd_inplace
 from .short_conv_ring import short_conv_ring_commit, short_conv_ring_fwd
 from .varlen_causal_conv1d import causal_conv1d_varlen_fwd
 
@@ -47,15 +42,12 @@ __all__ = [
     "gated_delta_conv1d_fwd",
     "gated_delta_conv1d_verify_fwd",
     "gated_delta_recurrence_fwd",
-    "gated_delta_recurrence_rollback",
-    "gated_delta_recurrence_shadow_fwd",
     "gated_delta_recurrence_verify_ring_fwd",
     "gated_delta_state_fold",
     "gated_group_rmsnorm",
     "kda_chunk",
     "kda_chunk_supports_head_dims",
     "kda_decode",
-    "mamba2_ssd_chunk_scan_varlen_fwd",
     "mamba2_ssd_chunk_scan_varlen_fwd_inplace",
     "short_conv_ring_commit",
     "short_conv_ring_fwd",

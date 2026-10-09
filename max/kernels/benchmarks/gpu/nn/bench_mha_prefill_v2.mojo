@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""TFLOPS bench for `MhaPrefillV2` against contiguous (LayoutTensor) K/V.
+"""TFLOPS bench for `MhaPrefillV2` against contiguous TileTensor K/V.
 
 Measures `mha_prefill_v2` at canonical BF16 causal shapes. Q/K/V/O are
 oversized via `CacheBustingBuffer` and offset per iteration to defeat
@@ -41,12 +41,10 @@ from std.utils.numerics import min_or_neg_inf
 
 from internal_utils import CacheBustingBuffer, arg_parse
 from internal_utils._utils import InitializationType
-from layout import Idx, LayoutTensor, TileTensor, row_major
-from layout.coord import Coord
-from layout.runtime_layout import RuntimeLayout
+from layout import Idx, TileTensor, row_major
 
 from nn.attention.mha_mask import CausalMask
-from nn.attention.mha_operand import LayoutTensorMHAOperand
+from nn.attention.mha_operand import TileTensorMHAOperand
 
 from nn.attention.gpu.amd_structured.mha_prefill_v2 import (
     MhaConfigV2,
@@ -165,51 +163,43 @@ def run_mha_prefill_v2[
                 var q_tt = TileTensor(
                     q_ptr,
                     row_major(
-                        Coord(
-                            Int32(batch_size),
-                            Int32(seq_len),
-                            Idx[num_heads],
-                            Idx[depth],
-                        )
+                        Int32(batch_size),
+                        Int32(seq_len),
+                        Idx[num_heads],
+                        Idx[depth],
                     ),
                 )
                 var k_tt = TileTensor(
                     k_ptr,
                     row_major(
-                        Coord(
-                            Int32(batch_size),
-                            Int32(num_keys),
-                            Idx[kv_num_heads],
-                            Idx[depth],
-                        )
+                        Int32(batch_size),
+                        Int32(num_keys),
+                        Idx[kv_num_heads],
+                        Idx[depth],
                     ),
                 )
                 var v_tt = TileTensor(
                     v_ptr,
                     row_major(
-                        Coord(
-                            Int32(batch_size),
-                            Int32(num_keys),
-                            Idx[kv_num_heads],
-                            Idx[depth],
-                        )
+                        Int32(batch_size),
+                        Int32(num_keys),
+                        Idx[kv_num_heads],
+                        Idx[depth],
                     ),
                 )
                 var o_tt = TileTensor(
                     cb_o.offset_ptr(iteration).bitcast[Float32](),
                     row_major(
-                        Coord(
-                            Int32(batch_size),
-                            Int32(seq_len),
-                            Idx[num_heads],
-                            Idx[depth],
-                        )
+                        Int32(batch_size),
+                        Int32(seq_len),
+                        Idx[num_heads],
+                        Idx[depth],
                     ),
                 )
-                var k_op = LayoutTensorMHAOperand(
+                var k_op = TileTensorMHAOperand(
                     k_tt.as_imm().as_unsafe_any_origin()
                 )
-                var v_op = LayoutTensorMHAOperand(
+                var v_op = TileTensorMHAOperand(
                     v_tt.as_imm().as_unsafe_any_origin()
                 )
                 comptime if sink:

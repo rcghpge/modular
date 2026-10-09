@@ -12,6 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 import pickle
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -42,6 +43,7 @@ from max.pipelines.lib.config.config import (
     _resolve_default_tool_parser,
     _resolve_overlap_and_device_graph_capture,
     _resolve_spec_decode_mixed_batches,
+    _validate_kv_cache_format,
 )
 from max.pipelines.lib.config.model_config import (
     _build_model_config,
@@ -52,6 +54,7 @@ from max.pipelines.lib.config.model_config import (
 from max.pipelines.lib.model_manifest import ModelManifest
 from max.pipelines.modeling.config_enums import SupportedEncoding
 from max.pipelines.modeling.types.task import PipelineTask
+from max.pipelines.sampling import ToolCallPolicy
 from max.pipelines.speculative.config import SpeculativeConfig
 from test_common.mocks import (
     mock_hf_repo_access,
@@ -346,31 +349,51 @@ class TestNeedsBitmaskConstraints:
 
     @mock_pipeline_config_resolve
     @pytest.mark.parametrize(
-        "enable_structured_output,tool_parser,enable_tool_call_constrained_decode,expected",
+        "enable_structured_output,tool_parser,tool_call_policy,expected",
         [
             # No structured output, no parser: never needs the bitmask path.
-            (False, None, True, False),
-            (False, None, False, False),
+            (False, None, ToolCallPolicy.FORCE_UNCONSTRAINED, False),
+            (
+                False,
+                None,
+                ToolCallPolicy.DEFAULT_STRICT_TRUE_AND_BEST_EFFORT,
+                False,
+            ),
             # User structured output on: always needs it, regardless of the
-            # tool-call flag.
-            (True, None, True, True),
-            (True, None, False, True),
-            # Parser configured + tool-call constrained decode on (default):
-            # bitmask path wires in for server-generated tool grammars.
-            (False, "kimik2_5", True, True),
-            (True, "kimik2_5", True, True),
-            # Parser configured but tool-call constrained decode disabled: the
-            # parser still parses output, but no grammar/bitmask on its account.
-            (False, "kimik2_5", False, False),
+            # tool-call policy.
+            (True, None, ToolCallPolicy.FORCE_UNCONSTRAINED, True),
+            (
+                True,
+                None,
+                ToolCallPolicy.DEFAULT_STRICT_TRUE_AND_BEST_EFFORT,
+                True,
+            ),
+            # Parser configured + any constrained policy (default): bitmask
+            # path wires in for server-generated tool grammars.
+            (
+                False,
+                "kimik2_5",
+                ToolCallPolicy.DEFAULT_STRICT_TRUE_AND_BEST_EFFORT,
+                True,
+            ),
+            (
+                True,
+                "kimik2_5",
+                ToolCallPolicy.DEFAULT_STRICT_TRUE_AND_BEST_EFFORT,
+                True,
+            ),
+            # Parser configured but force_unconstrained: the parser still
+            # parses output, but no grammar or bitmask on its account.
+            (False, "kimik2_5", ToolCallPolicy.FORCE_UNCONSTRAINED, False),
             # ...unless user structured output independently requires it.
-            (True, "kimik2_5", False, True),
+            (True, "kimik2_5", ToolCallPolicy.FORCE_UNCONSTRAINED, True),
         ],
     )
     def test_truth_table(
         self,
         enable_structured_output: bool,
         tool_parser: str | None,
-        enable_tool_call_constrained_decode: bool,
+        tool_call_policy: ToolCallPolicy,
         expected: bool,
     ) -> None:
         config = PipelineConfig(
@@ -379,11 +402,21 @@ class TestNeedsBitmaskConstraints:
             ),
             sampling=SamplingConfig(
                 enable_structured_output=enable_structured_output,
-                enable_tool_call_constrained_decode=enable_tool_call_constrained_decode,
+                tool_call_policy=tool_call_policy,
             ),
             runtime=PipelineRuntimeConfig(tool_parser=tool_parser),
         )
         assert config.needs_bitmask_constraints is expected
+
+
+class TestToolCallPolicy:
+    """Tests for ``ToolCallPolicy.reject_unsupported``."""
+
+    @pytest.mark.parametrize("policy", list(ToolCallPolicy))
+    def test_reject_unsupported(self, policy: ToolCallPolicy) -> None:
+        assert policy.reject_unsupported is policy.value.endswith(
+            "_and_reject_unsupported"
+        )
 
 
 class TestSpeculativeArchitectureOverride:
@@ -2242,3 +2275,28 @@ def test_from_args__explicit_backend_is_preserved() -> None:
         )
         == "xgrammar"
     )
+
+
+def test_config__fp4_kv_cache_needs_an_opted_in_architecture() -> None:
+    """``float4_e2m1fn`` and its alias are refused for an architecture that
+    has not opted in, and every other format passes through."""
+    assert not DUMMY_LLAMA_ARCH.supports_nvfp4_kv_cache
+    opted_in = replace(DUMMY_LLAMA_ARCH, supports_nvfp4_kv_cache=True)
+    for fp4 in ("float4_e2m1fn", "float4_e2m1"):
+        with pytest.raises(ValueError, match=f"'{fp4}' is not supported"):
+            _validate_kv_cache_format(
+                KVCacheConfig(kv_cache_format=fp4), DUMMY_LLAMA_ARCH
+            )
+        _validate_kv_cache_format(KVCacheConfig(kv_cache_format=fp4), opted_in)
+    for fmt in (None, "bfloat16", "float8_e4m3fn"):
+        _validate_kv_cache_format(
+            KVCacheConfig(kv_cache_format=fmt), DUMMY_LLAMA_ARCH
+        )
+
+
+def test_config__fp4_kv_cache_format_maps_to_packed_uint8() -> None:
+    """Both FP4 spellings store packed uint8, and ``nvfp4`` is not a format."""
+    assert cache_dtype_for_encoding(None, "float4_e2m1fn") == DType.uint8
+    assert cache_dtype_for_encoding(None, "FLOAT4_E2M1") == DType.uint8
+    with pytest.raises(ValueError, match="Unrecognized kv_cache_format"):
+        cache_dtype_for_encoding(None, "nvfp4")

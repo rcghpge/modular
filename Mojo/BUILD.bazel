@@ -1013,7 +1013,7 @@ modular_shared_library(
     visibility = [
         "//Mojo:consumers",
         "//Mojo/stdlib/std:__pkg__",
-        "//Mojo/test/internal/profiling:__pkg__",
+        "//Mojo/test/mcl/profiling:__pkg__",
         "//Mojo/test/tracy:__pkg__",
         "//mojo/stdlib/std:__pkg__",
     ],
@@ -1200,7 +1200,10 @@ modular_cc_library(
 
 modular_cc_library(
     name = "Transforms",
-    srcs = glob(["lib/Transforms/*.cpp"]),
+    srcs = glob([
+        "lib/Transforms/*.cpp",
+        "lib/Transforms/*.h",
+    ]),
     deps = [
         ":CODialect",
         ":HLCFDialect",

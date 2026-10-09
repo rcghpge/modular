@@ -55,7 +55,6 @@ from layout.tma_async import TMATensorTile
 from std.utils.index import Index, IndexList
 from linalg.utils import (
     ElementwiseComputeFn,
-    elementwise_compute_lambda_type,
     elementwise_epilogue_type,
 )
 from std.utils.fast_div import FastDiv
@@ -74,11 +73,10 @@ from structured_kernels.tile_types import SMemTileArray2DRowMajor
 @inline(.always)
 def tma_wait_pipelined[
     c_type: DType,
-    tma_rank: Int,
-    tile_shape: IndexList[tma_rank],
-    desc_shape: IndexList[tma_rank],
+    tile_shape: Coord,
+    desc_shape: Coord,
     is_last_stage: Bool,
-](c_tma_op: TMATensorTile[c_type, tma_rank, tile_shape, desc_shape]):
+](c_tma_op: TMATensorTile[c_type, tile_shape, desc_shape]):
     """Wait for TMA stores with pipelining.
 
     For SM100 output pipeline:
@@ -528,9 +526,8 @@ struct TMAStoreExecutor[
     @staticmethod
     @inline(.always)
     def _store_non_transpose[
-        tma_rank: Int,
-        tile_shape: IndexList[tma_rank],
-        desc_shape: IndexList[tma_rank],
+        tile_shape: Coord,
+        desc_shape: Coord,
         //,
     ](
         c_smem_tile: TileTensor[Self.c_type, address_space=.SHARED, ...],
@@ -540,7 +537,7 @@ struct TMAStoreExecutor[
             _,
             Self.batched,
         ],
-        c_tma_op: TMATensorTile[Self.c_type, tma_rank, tile_shape, desc_shape],
+        c_tma_op: TMATensorTile[Self.c_type, tile_shape, desc_shape],
     ):
         """Handle non-transpose TMA store path."""
         # Path C: Simple tile selection by TMA_BM
@@ -567,9 +564,8 @@ struct TMAStoreExecutor[
     @staticmethod
     @inline(.always)
     def execute[
-        tma_rank: Int,
-        tile_shape: IndexList[tma_rank],
-        desc_shape: IndexList[tma_rank],
+        tile_shape: Coord,
+        desc_shape: Coord,
     ](
         c_smem_tile: TileTensor[Self.c_type, address_space=.SHARED, ...],
         store_coords: TMAStoreCoords[
@@ -578,7 +574,7 @@ struct TMAStoreExecutor[
             _,
             Self.batched,
         ],
-        c_tma_op: TMATensorTile[Self.c_type, tma_rank, tile_shape, desc_shape],
+        c_tma_op: TMATensorTile[Self.c_type, tile_shape, desc_shape],
         warp_id: UInt32,
         lane: UInt32,
     ):
@@ -587,7 +583,7 @@ struct TMAStoreExecutor[
             fence_async_view_proxy()
 
             comptime if Self.transpose_c:
-                Self._store_transpose[tma_rank, tile_shape, desc_shape](
+                Self._store_transpose[tile_shape, desc_shape](
                     c_smem_tile, store_coords, c_tma_op, warp_id
                 )
             else:
@@ -598,9 +594,8 @@ struct TMAStoreExecutor[
     @staticmethod
     @inline(.always)
     def _store_transpose[
-        tma_rank: Int,
-        tile_shape: IndexList[tma_rank],
-        desc_shape: IndexList[tma_rank],
+        tile_shape: Coord,
+        desc_shape: Coord,
     ](
         c_smem_tile: TileTensor[Self.c_type, address_space=.SHARED, ...],
         store_coords: TMAStoreCoords[
@@ -609,7 +604,7 @@ struct TMAStoreExecutor[
             _,
             Self.batched,
         ],
-        c_tma_op: TMATensorTile[Self.c_type, tma_rank, tile_shape, desc_shape],
+        c_tma_op: TMATensorTile[Self.c_type, tile_shape, desc_shape],
         warp_id: UInt32,
     ):
         """Transpose TMA store using reshape."""
@@ -719,9 +714,8 @@ struct TMAReduceExecutor[
     @staticmethod
     @inline(.always)
     def execute[
-        tma_rank: Int,
-        tile_shape: IndexList[tma_rank],
-        desc_shape: IndexList[tma_rank],
+        tile_shape: Coord,
+        desc_shape: Coord,
     ](
         c_smem_tile: TileTensor[
             Self.c_type,
@@ -735,7 +729,7 @@ struct TMAReduceExecutor[
             _,
             Self.batched,
         ],
-        c_tma_op: TMATensorTile[Self.c_type, tma_rank, tile_shape, desc_shape],
+        c_tma_op: TMATensorTile[Self.c_type, tile_shape, desc_shape],
         warp_id: UInt32,
         lane: UInt32,
     ):
@@ -862,32 +856,6 @@ struct EpilogueApplier[
             )
 
         return (staged_row, staged_col)
-
-    @inline(.always)
-    def apply_to_fragment[
-        epilogue_dtype: DType,
-        frag_size: Int,
-        compute_lambda_fn: elementwise_compute_lambda_type,
-        is_in_bounds: Bool = False,
-    ](
-        self,
-        mut frag: Array[Scalar[epilogue_dtype], frag_size],
-        staged_row: UInt32,
-        staged_col: UInt32,
-        is_upper: Bool,
-    ):
-        """Apply a comptime epilogue lambda; see the `compute_fn` overload."""
-
-        def forward[
-            dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-            return compute_lambda_fn[dtype, width, alignment=alignment](
-                idx, val
-            )
-
-        self.apply_to_fragment[
-            epilogue_dtype, frag_size, is_in_bounds=is_in_bounds
-        ](frag, staged_row, staged_col, is_upper, forward)
 
     @inline(.always)
     def apply_to_fragment[
@@ -1018,40 +986,6 @@ struct EpilogueApplier[
                         )
                         frag[offset + 2] = elem23[0]
                         frag[offset + 3] = elem23[1]
-
-    @inline(.always)
-    def apply_to_both_fragments[
-        epilogue_dtype: DType,
-        frag_size: Int,
-        compute_lambda_fn: elementwise_compute_lambda_type,
-        is_lower_frag_required: Bool,
-        is_in_bounds: Bool = False,
-    ](
-        self,
-        mut upper_frag: Array[Scalar[epilogue_dtype], frag_size],
-        mut lower_frag: Array[Scalar[epilogue_dtype], frag_size],
-        stage: UInt32,
-        c_row: UInt32,
-        c_col: UInt32,
-    ) -> Tuple[
-        Array[Scalar[epilogue_dtype], frag_size],
-        Array[Scalar[epilogue_dtype], frag_size],
-    ]:
-        """Apply a comptime epilogue lambda; see the `compute_fn` overload."""
-
-        def forward[
-            dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-            return compute_lambda_fn[dtype, width, alignment=alignment](
-                idx, val
-            )
-
-        return self.apply_to_both_fragments[
-            epilogue_dtype,
-            frag_size,
-            is_lower_frag_required,
-            is_in_bounds=is_in_bounds,
-        ](upper_frag, lower_frag, stage, c_row, c_col, forward)
 
     @inline(.always)
     def apply_to_both_fragments[
@@ -1695,13 +1629,8 @@ struct SMemEpilogueWriter[
     simd_size: Int,
     stage: Int,
     rep_frag_size: Int,
-    compute_lambda_fn: Optional[elementwise_compute_lambda_type] = None,
 ](TrivialRegisterPassable):
-    """SMEM-based epilogue: write accumulators and apply lambda in SMEM.
-
-    `compute_lambda_fn` is only read by the `write_tile` overload that takes
-    no `compute_fn`; leave it unset when passing the epilogue as a value.
-    """
+    """SMEM-based epilogue: write accumulators and apply lambda in SMEM."""
 
     # Local aliases from EpilogueConfig
     comptime BM = Self.epc.BM
@@ -1763,22 +1692,6 @@ struct SMemEpilogueWriter[
         self.N = c_shape[1]
         self.c_row = c_coord[0] * UInt32(Self.BM)
         self.c_col = c_coord[1] * UInt32(Self.MMA_N)
-
-    @inline(.always)
-    def write_tile(self, tile: Self.Tile):
-        """Apply the `compute_lambda_fn` parameter; see the `compute_fn`
-        overload."""
-        comptime assert Self.compute_lambda_fn, "compute_lambda_fn is unset"
-        comptime compute_lambda_fn = Self.compute_lambda_fn.value()
-
-        def forward[
-            dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-            return compute_lambda_fn[dtype, width, alignment=alignment](
-                idx, val
-            )
-
-        self.write_tile(tile, forward)
 
     @inline(.always)
     def write_tile[

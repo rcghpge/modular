@@ -176,6 +176,9 @@ def register_all_models() -> None:
             ".gemma4_modulev3",
             "gemma4_unified_modulev3_arch",
         ),
+        _LazyArch(
+            "Glm5NextForConditionalGeneration", ".glm5_next", "glm5_next_arch"
+        ),
         _LazyArch("GlmMoeDsaForCausalLM", ".glm5_1", "glm5_1_arch"),
         _LazyArch("GptOssForCausalLM", ".gpt_oss", "gpt_oss_arch"),
         _LazyArch(
@@ -273,6 +276,11 @@ def register_all_models() -> None:
             ".mpnet_modulev3",
             "mpnet_modulev3_arch",
         ),
+        _LazyArch(
+            "MuseGlimmerForConditionalGeneration_ModuleV3",
+            ".muse_glimmer",
+            "muse_glimmer_arch",
+        ),
         _LazyArch("OlmoForCausalLM", ".olmo", "olmo_arch"),
         _LazyArch("Olmo2ForCausalLM", ".olmo2", "olmo2_arch"),
         _LazyArch(
@@ -305,6 +313,7 @@ def register_all_models() -> None:
         _LazyArch(
             "Qwen3_5ForConditionalGeneration", ".qwen3_5", "qwen3_5_arch"
         ),
+        _LazyArch("Qwen3_5ForCausalLM", ".qwen3_5", "qwen3_5_text_arch"),
         _LazyArch(
             "Qwen3ForCausalLM", ".qwen3_embedding", "qwen3_embedding_arch"
         ),

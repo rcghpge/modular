@@ -36,6 +36,7 @@ family.
    pipelines.architectures.gemma4
    pipelines.architectures.gemma4_assistant
    pipelines.architectures.glm5_1
+   pipelines.architectures.glm5_next
    pipelines.architectures.gpt_oss
    pipelines.architectures.granite
    pipelines.architectures.hy_v3
@@ -55,6 +56,7 @@ family.
    pipelines.architectures.mistral
    pipelines.architectures.mistral3
    pipelines.architectures.mpnet
+   pipelines.architectures.muse_glimmer
    pipelines.architectures.nemotron_h
    pipelines.architectures.olmo
    pipelines.architectures.olmo2
@@ -108,6 +110,7 @@ Text generation
    ~max.pipelines.architectures.gemma4
    ~max.pipelines.architectures.gemma4_assistant
    ~max.pipelines.architectures.glm5_1
+   ~max.pipelines.architectures.glm5_next
    ~max.pipelines.architectures.gpt_oss
    ~max.pipelines.architectures.granite
    ~max.pipelines.architectures.hy_v3
@@ -124,6 +127,7 @@ Text generation
    ~max.pipelines.architectures.minimax_m2
    ~max.pipelines.architectures.mistral
    ~max.pipelines.architectures.mistral3
+   ~max.pipelines.architectures.muse_glimmer
    ~max.pipelines.architectures.nemotron_h
    ~max.pipelines.architectures.olmo
    ~max.pipelines.architectures.olmo2

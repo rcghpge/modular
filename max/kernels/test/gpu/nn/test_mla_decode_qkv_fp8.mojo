@@ -35,21 +35,13 @@ The test:
 """
 
 from std.random import randn
-from std.sys import (
-    argv,
-    has_amd_gpu_accelerator,
-    has_nvidia_gpu_accelerator,
-)
+from std.sys import argv
 
 from max.gpu import *
 from max.gpu.host import DeviceContext
 from layout import (
     Idx,
-    Layout,
-    LayoutTensor,
-    RuntimeLayout,
     TileTensor,
-    UNKNOWN_VALUE,
     row_major,
 )
 from nn.attention.gpu.mha import mha_gpu_naive
@@ -59,7 +51,7 @@ from nn.attention.mha_mask import (
     NullMask,
     SlidingWindowCausalMask,
 )
-from nn.attention.mha_operand import LayoutTensorMHAOperand
+from nn.attention.mha_operand import TileTensorMHAOperand
 from nn.attention.gpu.nvidia.sm100.mla_decode_dispatch import (
     MLADispatchScalarArgs,
 )
@@ -242,49 +234,23 @@ def test[
         row_major((batch_size, seq_len, Idx[num_heads], Idx[v_depth])),
     )
 
-    # LayoutTensors for FP8 K (needed by LayoutTensorMHAOperand)
-    comptime k_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, kv_num_heads, depth)
-    )
-
+    # BF16 tensors for the naive reference.
     # BF16 K reference device tensor (for mha_gpu_naive)
-    var k_bf16_device = LayoutTensor[output_type, k_layout](
-        k_bf16_device_ptr.unsafe_ptr(),
-        RuntimeLayout[k_layout].row_major(
-            Index(batch_size, num_keys, kv_num_heads, depth)
-        ),
+    var k_bf16_device = TileTensor(
+        k_bf16_device_ptr,
+        row_major((batch_size, num_keys, Idx[kv_num_heads], Idx[depth])),
     )
 
     # BF16 dequantized Q device tensor for reference (for mha_gpu_naive)
-    comptime q_fp8_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, depth)
-    )
-    var q_bf16_dequant_device = LayoutTensor[output_type, q_fp8_layout](
-        q_bf16_dequant_device_ptr.unsafe_ptr(),
-        RuntimeLayout[q_fp8_layout].row_major(
-            Index(batch_size, seq_len, num_heads, depth)
-        ),
+    var q_bf16_dequant_device = TileTensor(
+        q_bf16_dequant_device_ptr,
+        row_major((batch_size, seq_len, Idx[num_heads], Idx[depth])),
     )
 
-    # Output ref layout (for mha_gpu_naive)
-    comptime output_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, v_depth)
-    )
-    var output_ref_device = LayoutTensor[output_type, output_layout](
-        output_ref_device_ptr.unsafe_ptr(),
-        RuntimeLayout[output_layout].row_major(
-            Index(batch_size, seq_len, num_heads, v_depth)
-        ),
-    )
-
-    # Valid length (empty -- not using ragged) for mha_gpu_naive
-    var null_valid_length = LayoutTensor[
-        .uint32,
-        Layout.row_major(UNKNOWN_VALUE),
-        MutAnyOrigin,
-    ](
-        None,
-        RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(Index(0)),
+    # Output ref device tensor (for mha_gpu_naive)
+    var output_ref_device = TileTensor(
+        output_ref_device_ptr,
+        row_major((batch_size, seq_len, Idx[num_heads], Idx[v_depth])),
     )
 
     # ---- Launch the native FP8 kernel via mla_decode_sm100_dispatch ----
@@ -340,33 +306,17 @@ def test[
     # v_depth (512) elements per head since MLA only outputs V's portion.
     print("  Computing GPU naive reference...")
 
-    # Reference output needs full-depth layout for the naive kernel
-    comptime ref_output_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, depth)
-    )
     var ref_full_o_size = batch_size * num_heads * seq_len * depth
     var output_ref_full_device_ptr = ctx.enqueue_create_buffer[output_type](
         ref_full_o_size
     )
-    var output_ref_full_device = LayoutTensor[output_type, ref_output_layout](
-        output_ref_full_device_ptr.unsafe_ptr(),
-        RuntimeLayout[ref_output_layout].row_major(
-            Index(batch_size, seq_len, num_heads, depth)
-        ),
+    var output_ref_full_device = TileTensor(
+        output_ref_full_device_ptr,
+        row_major((batch_size, seq_len, Idx[num_heads], Idx[depth])),
     )
 
     # Create BF16 K operand for reference
-    var k_bf16_operand = LayoutTensorMHAOperand(
-        TileTensor(
-            k_bf16_device.ptr.as_unsafe_any_origin(),
-            row_major(
-                Int(batch_size),
-                Int(num_keys),
-                Idx[kv_num_heads],
-                Idx[depth],
-            ),
-        )
-    )
+    var k_bf16_operand = TileTensorMHAOperand(k_bf16_device)
 
     comptime if mla_mask_type == MLAMaskType.CAUSAL:
         mha_gpu_naive[_is_cache_length_accurate=True](
@@ -375,7 +325,7 @@ def test[
             k_bf16_operand,
             CausalMask(),
             output_ref_full_device,
-            null_valid_length,
+            None,
             scale,
             batch_size,
             seq_len,
@@ -392,7 +342,7 @@ def test[
             k_bf16_operand,
             NullMask(),
             output_ref_full_device,
-            null_valid_length,
+            None,
             scale,
             batch_size,
             seq_len,
@@ -777,43 +727,19 @@ def test_sw[
         row_major((batch_size, seq_len, Idx[num_heads], Idx[v_depth])),
     )
 
-    comptime k_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, kv_num_heads, depth)
-    )
-    var k_bf16_device = LayoutTensor[output_type, k_layout](
-        k_bf16_device_ptr.unsafe_ptr(),
-        RuntimeLayout[k_layout].row_major(
-            Index(batch_size, num_keys, kv_num_heads, depth)
-        ),
+    var k_bf16_device = TileTensor(
+        k_bf16_device_ptr,
+        row_major((batch_size, num_keys, Idx[kv_num_heads], Idx[depth])),
     )
 
-    comptime q_fp8_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, depth)
-    )
-    var q_bf16_dequant_device = LayoutTensor[output_type, q_fp8_layout](
-        q_bf16_dequant_device_ptr.unsafe_ptr(),
-        RuntimeLayout[q_fp8_layout].row_major(
-            Index(batch_size, seq_len, num_heads, depth)
-        ),
+    var q_bf16_dequant_device = TileTensor(
+        q_bf16_dequant_device_ptr,
+        row_major((batch_size, seq_len, Idx[num_heads], Idx[depth])),
     )
 
-    comptime output_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, v_depth)
-    )
-    var output_ref_device = LayoutTensor[output_type, output_layout](
-        output_ref_device_ptr.unsafe_ptr(),
-        RuntimeLayout[output_layout].row_major(
-            Index(batch_size, seq_len, num_heads, v_depth)
-        ),
-    )
-
-    var null_valid_length = LayoutTensor[
-        .uint32,
-        Layout.row_major(UNKNOWN_VALUE),
-        MutAnyOrigin,
-    ](
-        None,
-        RuntimeLayout[Layout.row_major(UNKNOWN_VALUE)].row_major(Index(0)),
+    var output_ref_device = TileTensor(
+        output_ref_device_ptr,
+        row_major((batch_size, seq_len, Idx[num_heads], Idx[v_depth])),
     )
 
     print("  Launching native FP8 kernel (SlidingWindow)...")
@@ -853,31 +779,16 @@ def test_sw[
 
     print("  Computing GPU naive reference (SlidingWindow)...")
 
-    comptime ref_output_layout = Layout.row_major(
-        Index(UNKNOWN_VALUE, UNKNOWN_VALUE, num_heads, depth)
-    )
     var ref_full_o_size = batch_size * num_heads * seq_len * depth
     var output_ref_full_device_ptr = ctx.enqueue_create_buffer[output_type](
         ref_full_o_size
     )
-    var output_ref_full_device = LayoutTensor[output_type, ref_output_layout](
-        output_ref_full_device_ptr.unsafe_ptr(),
-        RuntimeLayout[ref_output_layout].row_major(
-            Index(batch_size, seq_len, num_heads, depth)
-        ),
+    var output_ref_full_device = TileTensor(
+        output_ref_full_device_ptr,
+        row_major((batch_size, seq_len, Idx[num_heads], Idx[depth])),
     )
 
-    var k_bf16_operand = LayoutTensorMHAOperand(
-        TileTensor(
-            k_bf16_device.ptr.as_unsafe_any_origin(),
-            row_major(
-                Int(batch_size),
-                Int(num_keys),
-                Idx[kv_num_heads],
-                Idx[depth],
-            ),
-        )
-    )
+    var k_bf16_operand = TileTensorMHAOperand(k_bf16_device)
 
     mha_gpu_naive[_is_cache_length_accurate=True](
         q_bf16_dequant_device,
@@ -885,7 +796,7 @@ def test_sw[
         k_bf16_operand,
         SlidingWindowCausalMask[window_size](),
         output_ref_full_device,
-        null_valid_length,
+        None,
         scale,
         batch_size,
         seq_len,
@@ -978,8 +889,8 @@ def test_decoding_sw[
 def main() raises:
     print("Starting test_mla_decode_qkv_fp8...")
     with DeviceContext() as ctx:
-        comptime if has_amd_gpu_accelerator() or (
-            has_nvidia_gpu_accelerator()
+        comptime if ctx.target.is_amd_gpu() or (
+            ctx.target.is_nvidia_gpu()
             and _is_sm10x_gpu(ctx.default_device_info)
         ):
             # Basic functionality tests
@@ -1050,7 +961,7 @@ def main() raises:
             # struct fold_q comptime branch).  AMD backend does not yet support
             # the fold path — gate this block to NVIDIA SM10x at comptime so AMD
             # skips it cleanly.
-            comptime if has_nvidia_gpu_accelerator() and _is_sm10x_gpu(
+            comptime if ctx.target.is_nvidia_gpu() and _is_sm10x_gpu(
                 ctx.default_device_info
             ):
                 print(
@@ -1286,7 +1197,7 @@ def main() raises:
             # row-keyed split-K) is unreachable from the NVIDIA configs. Hence the
             # shared helpers, arch-specific config lists.
             # ===-------------------------------------------------=== #
-            comptime if has_amd_gpu_accelerator():
+            comptime if ctx.target.is_amd_gpu():
                 print("=== AMD MTP token-fold (M = H*S <= 128) ===")
 
                 # --- H=8/S=2 → M=16 (legacy (1,4)) ---

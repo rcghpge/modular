@@ -19,13 +19,13 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, ClassVar
 
-from max.driver import is_virtual_device_mode
 from max.engine import InferenceSession, Model
 from max.graph import Graph, TensorValue
 from max.nn.kv_cache import (
     MultiKVCacheParams,
     recurrent_leaf,
 )
+from max.nn.sampling.penalties import LogitPenalties
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.lib.interfaces.pipeline_model import (
     GraphPipelineModelWithKVCache,
@@ -37,11 +37,7 @@ from typing_extensions import override
 
 from ..qwen3_5.model import _SCALE_SUFFIXES, Qwen3_5Model
 from ..qwen3_5.model_config import Qwen3_5Config
-from ..qwen3_5.state_cache import (
-    STATE_CACHE_KEY,
-    Qwen3_5SpecShadowPools,
-    attn_cache,
-)
+from ..qwen3_5.state_cache import STATE_CACHE_KEY, attn_cache
 from .batch_processor import UnifiedMTPQwen3_5BatchProcessor
 from .model_config import UnifiedMTPQwen3_5Config
 from .spec_state import POSITION_IDS, graph_kv_params, state_tail
@@ -85,27 +81,15 @@ class UnifiedMTPQwen3_5Model(_UnifiedSpecDecodeModelMixin, Qwen3_5Model):
 
     @override
     def _wire_batch_processor(
-        self, model: Any = None, model_config: Any = None
+        self, model: Model, model_config: Qwen3_5Config
     ) -> None:
-        """Allocates the verify's shadow pools after compilation."""
+        """Tells the batch processor whether the graph declares positions."""
         super()._wire_batch_processor(model, model_config)
-        if is_virtual_device_mode():
-            return
-        max_batch_size = self.max_batch_size
-        assert max_batch_size is not None, (
-            "max_batch_size must be resolved before the shadow pools are sized"
-        )
         assert isinstance(
             self._batch_processor, UnifiedMTPQwen3_5BatchProcessor
         )
-        self._batch_processor.bind_runtime_state(
-            Qwen3_5SpecShadowPools(
-                self._fused_nn_model.state_regions,
-                self._fused_nn_model.ring_len,
-                max_batch_size,
-                self.devices,
-            ),
-            self._fused_nn_model.target.mrope_enabled,
+        self._batch_processor.mrope_enabled = (
+            self._fused_nn_model.target.mrope_enabled
         )
 
     @override
@@ -232,18 +216,19 @@ class UnifiedMTPQwen3_5Model(_UnifiedSpecDecodeModelMixin, Qwen3_5Model):
             trailing = iter(graph_inputs.trailing)
 
             # The state tail, in the order ``input_types`` declares it.
-            state = state_tail(
-                trailing,
-                nn_model.state_regions,
-                nn_model.ring_len,
-                num_devices,
-            )
+            state = state_tail(trailing, nn_model.state_regions, num_devices)
 
             # Declared last by ``input_types`` and only when the target runs
             # M-RoPE, so it is consumed after the whole state tail.
             position_ids: TensorValue | None = None
             if nn_model.target.mrope_enabled:
                 position_ids = next(trailing).tensor
+
+            penalties: LogitPenalties | None = None
+            if nn_model.logit_penalties:
+                penalties = LogitPenalties.from_inputs(
+                    [next(trailing).tensor for _ in range(4)]
+                )
 
             outputs = nn_model(
                 graph_inputs.tokens,
@@ -266,6 +251,7 @@ class UnifiedMTPQwen3_5Model(_UnifiedSpecDecodeModelMixin, Qwen3_5Model):
                 wait_payload=graph_inputs.wait_payload,
                 device_bitmask_scratch=graph_inputs.device_bitmask_scratch,
                 extra={**state, POSITION_IDS: position_ids},
+                penalties=penalties,
             )
             graph.output(*outputs)
 

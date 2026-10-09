@@ -379,9 +379,8 @@ struct TileWriter[
     # Inferred from constructor arg
     tma_origin: ImmOrigin,
     c_type: DType,
-    c_rank: Int,
-    c_tile_shape: IndexList[c_rank],
-    c_desc_shape: IndexList[c_rank],
+    c_tile_shape: Coord,
+    c_desc_shape: Coord,
     //,
     # Explicit config parameters (works with any config type)
     a_type: DType,
@@ -431,7 +430,6 @@ struct TileWriter[
         tma_origin: Memory origin of the TMA descriptor pointer
             (inferred).
         c_type: Element dtype of the C output tensor (inferred).
-        c_rank: Rank of the C output tensor (inferred).
         c_tile_shape: Per-tile shape of the C output (inferred).
         c_desc_shape: TMA descriptor shape for C (inferred).
         a_type: Element dtype of the A input matrix.
@@ -485,7 +483,7 @@ struct TileWriter[
 
     # Type aliases
     comptime TmaOp = TMATensorTile[
-        Self.c_type, Self.c_rank, Self.c_tile_shape, Self.c_desc_shape
+        Self.c_type, Self.c_tile_shape, Self.c_desc_shape
     ]
     comptime TmaOpPtr = Pointer[Self.TmaOp, Self.tma_origin]
     # Whole-array pointer accepted by the `TileWriterLike` ctor (one descriptor
@@ -1177,9 +1175,7 @@ struct TileWriter[
             (c_coord[0], c_coord[1], batch_idx if Self.batched else 0),
             warp_id,
         )
-        StoreExecutor.execute[
-            Self.c_rank, Self.c_tile_shape, Self.c_desc_shape
-        ](
+        StoreExecutor.execute[Self.c_tile_shape, Self.c_desc_shape](
             c_smem_tile,
             store_coords,
             self.c_tma_op[],
@@ -1189,7 +1185,6 @@ struct TileWriter[
 
         tma_wait_pipelined[
             Self.c_type,
-            Self.c_rank,
             Self.c_tile_shape,
             Self.c_desc_shape,
             stage == Self.num_stages - 1,
@@ -1857,7 +1852,7 @@ struct TileWriter[
                                 sep="",
                             )
                     if p3_valid_rows > 0:
-                        var p3_tid = Int(thread_idx.x)
+                        var p3_tid = thread_idx.x
                         if p3_tid < p3_valid_rows:
                             # See `p3_n_inbound` above: this thread's
                             # absolute row is THIS STAGE's start
@@ -2061,7 +2056,7 @@ struct TileWriter[
                     p3_expert_id,
                     p3_cfg,
                     p3_control,
-                    Int(thread_idx.x),
+                    thread_idx.x,
                 )
 
             # Phase 4: TMA Store with bounds checking
@@ -2196,7 +2191,7 @@ struct TileWriter[
                     store_coords.coord_n = Int(n_abs) + loop_stage * Self.stageN
 
                 StoreExecutorLocal.execute[
-                    Self.c_rank, Self.c_tile_shape, Self.c_desc_shape
+                    Self.c_tile_shape, Self.c_desc_shape
                 ](
                     c_smem_tile,
                     store_coords,
@@ -2213,7 +2208,6 @@ struct TileWriter[
             if not (p5_c_store_dead and p5_elide_dead_tma):
                 tma_wait_pipelined[
                     Self.c_type,
-                    Self.c_rank,
                     Self.c_tile_shape,
                     Self.c_desc_shape,
                     loop_stage == Self.num_stages - 1,
@@ -2462,7 +2456,7 @@ struct TileWriter[
         shape: Tuple[UInt32, UInt32],
         elect_one_warp: Bool,
     ):
-        """Write with residual: D = lambda(accum) + beta * C.
+        """Write with residual: D = accum + beta * C.
 
         Matches the CUTLASS `sm100_epilogue_tma_warpspecialized` lockstep
         pattern: the epilogue load warp pre-fetches one source sub-tile per
@@ -2475,11 +2469,10 @@ struct TileWriter[
 
         Pipeline per inner stage:
         1. Load accum from TMEM to registers (epilogue dtype).
-        2. Apply `elementwise_compute_lambda_fn` (pre-residual fusion).
-        3. Wait for source[k] via `src_pipeline.consume()`; compute
+        2. Wait for source[k] via `src_pipeline.consume()`; compute
            `D = accum + beta * C` reading from the SMEM buffer at the
            pipeline's current stage index; release source[k] on context exit.
-        4. Apply `elementwise_lambda_fn` (post-residual, owns the GMEM store)
+        3. Apply `elementwise_lambda_fn` (post-residual, owns the GMEM store)
            OR stage to output SMEM and TMA-store to GMEM.
 
         Parameters:
@@ -2498,6 +2491,9 @@ struct TileWriter[
             shape: (M, N) problem dimensions.
             elect_one_warp: Whether this warp is elected for coordination.
         """
+        comptime assert (
+            not Self.elementwise_compute_lambda_fn
+        ), "write_with_residual does not support a compute epilogue"
         self._copy_to_gmem_with_residual[num_src_stages](
             out_tiles,
             stage,
@@ -2581,22 +2577,6 @@ struct TileWriter[
         var c_row = c_coord[0] * UInt32(Self.BM)
         var c_col = c_coord[1] * UInt32(Self.MMA_N)
 
-        # Warp-uniform: lets apply_to_both_fragments skip per-position
-        # bounds checks for fully-in-bounds tiles. transpose_c swaps the
-        # row/col → user-M/user-N mapping.
-        var tile_in_bounds: Bool
-
-        comptime if Self.transpose_c:
-            tile_in_bounds = (
-                c_row + UInt32(Self.BM) <= c_shape[1]
-                and c_col + UInt32(Self.MMA_N) <= c_shape[0]
-            )
-        else:
-            tile_in_bounds = (
-                c_row + UInt32(Self.BM) <= c_shape[0]
-                and c_col + UInt32(Self.MMA_N) <= c_shape[1]
-            )
-
         comptime for stage in range(Self.num_stages):
             # 1. Load fragments from TMEM tile
             var frags = accum_tiles[stage].load_fragments[Self.rep]()
@@ -2619,43 +2599,7 @@ struct TileWriter[
                     output_stage.pipeline, output_stage.index
                 )
 
-            # 2. Apply epilogue lambda (if present)
-            comptime if Self.elementwise_compute_lambda_fn:
-                comptime if Self.register_based_epilogue:
-                    if tile_in_bounds:
-                        var _result = epilogue_applier.apply_to_both_fragments[
-                            Self.epilogue_dtype,
-                            Self.rep_frag_size,
-                            Self.elementwise_compute_lambda_fn.value(),
-                            Self.is_lower_frag_required,
-                            is_in_bounds=True,
-                        ](
-                            upper_frag_casted,
-                            lower_frag_casted,
-                            UInt32(stage),
-                            c_row,
-                            c_col,
-                        )
-                        upper_frag_casted = _result[0].copy()
-                        lower_frag_casted = _result[1].copy()
-                    else:
-                        var _result = epilogue_applier.apply_to_both_fragments[
-                            Self.epilogue_dtype,
-                            Self.rep_frag_size,
-                            Self.elementwise_compute_lambda_fn.value(),
-                            Self.is_lower_frag_required,
-                            is_in_bounds=False,
-                        ](
-                            upper_frag_casted,
-                            lower_frag_casted,
-                            UInt32(stage),
-                            c_row,
-                            c_col,
-                        )
-                        upper_frag_casted = _result[0].copy()
-                        lower_frag_casted = _result[1].copy()
-
-            # 3. Apply residual: D = accum + beta * C in registers.
+            # 2. Apply residual: D = accum + beta * C in registers.
             # CUTLASS-style lockstep: wait, read SMEM at the buffer the
             # producer just filled, do the add, release the stage, advance.
             # Each per-stage SMEM buffer holds exactly one inner stage's
@@ -2691,7 +2635,7 @@ struct TileWriter[
             _ = src_pipeline[].consumer_mbar(_src_idx)[0].arrive()
             src_pipeline[].consumer_step()
 
-            # 4. Final store. When a void `elementwise_lambda_fn` is set the
+            # 3. Final store. When a void `elementwise_lambda_fn` is set the
             # lambda owns the GMEM write (post-residual contract — see
             # `nn/conv/gpu/amd/amd_4wave_conv_residual.mojo` for the matching
             # AMD path); otherwise stage to SMEM and TMA-store.
@@ -2732,35 +2676,13 @@ struct TileWriter[
             else:
                 # Write to output SMEM
                 var c_smem_tile = out_tiles[stage % 2]
-
-                comptime if (
-                    Self.register_based_epilogue
-                    or not Self.elementwise_compute_lambda_fn
-                ):
-                    self._cast_frags_and_write_to_smem(
-                        upper_frag_casted,
-                        lower_frag_casted,
-                        c_smem_tile,
-                        UInt32(warp_id),
-                        UInt32(lane),
-                    )
-                else:
-                    var writer = SMemEpilogueWriter[
-                        Self.c_smem_dim0,
-                        Self.c_smem_dim1,
-                        Self.epilogue_dtype,
-                        Self.epc,
-                        Self.num_output_warps,
-                        Self.c_swizzle,
-                        simd_size,
-                        stage,
-                        Self.rep_frag_size,
-                        Self.elementwise_compute_lambda_fn.value(),
-                    ](UInt32(warp_id), out_tiles, c_shape, c_coord)
-                    writer.write_tile(
-                        AccumTile(upper_frag_casted, lower_frag_casted)
-                    )
-
+                self._cast_frags_and_write_to_smem(
+                    upper_frag_casted,
+                    lower_frag_casted,
+                    c_smem_tile,
+                    UInt32(warp_id),
+                    UInt32(lane),
+                )
                 self._tma_store_to_gmem[stage](
                     c_smem_tile,
                     c_coord,
@@ -3463,11 +3385,12 @@ struct StandardOutputWriter(OutputWriter):
     @staticmethod
     @inline(.always)
     def write_batched[
+        ComputeFnType: ElementwiseComputeFn,
+        //,
         tma_origin: ImmOrigin,
         c_type: DType,
-        c_rank: Int,
-        c_tile_shape: IndexList[c_rank],
-        c_desc_shape: IndexList[c_rank],
+        c_tile_shape: Coord,
+        c_desc_shape: Coord,
         a_type: DType,
         accum_type: DType,
         block_tile_shape: IndexList[3],
@@ -3480,14 +3403,12 @@ struct StandardOutputWriter(OutputWriter):
         num_output_stages: Int,
         num_output_warps: Int,
         elementwise_lambda_fn: Optional[elementwise_epilogue_type],
-        elementwise_compute_lambda_fn: Optional[
-            elementwise_compute_lambda_type
-        ],
+        has_compute_fn: Bool,
         register_based_epilogue: Bool,
     ](
         c_tma_ops: Pointer[
             Array[
-                TMATensorTile[c_type, c_rank, c_tile_shape, c_desc_shape],
+                TMATensorTile[c_type, c_tile_shape, c_desc_shape],
                 Self.num_peers,
             ],
             tma_origin,
@@ -3498,15 +3419,16 @@ struct StandardOutputWriter(OutputWriter):
         stage: OutputStage[opc],
         tile_coord: Tuple[UInt32, UInt32, UInt32],
         shape: Tuple[UInt32, UInt32],
+        compute_fn: ComputeFnType,
         alpha: Float32 = Float32(1.0),
     ):
         """Local TMA store of one batched output tile (uses descriptor [0]).
 
         Parameters:
+            ComputeFnType: Type of the compute epilogue closure.
             tma_origin: Memory origin of the TMA descriptor pointer
                 (inferred).
             c_type: Element dtype of the C output tensor (inferred).
-            c_rank: Rank of the C output tensor (inferred).
             c_tile_shape: Per-tile shape of the C output (inferred).
             c_desc_shape: TMA descriptor shape for C (inferred).
             a_type: Element dtype of the A input matrix.
@@ -3524,8 +3446,8 @@ struct StandardOutputWriter(OutputWriter):
                 pipeline.
             elementwise_lambda_fn: Optional elementwise epilogue applied
                 to fragments before the store.
-            elementwise_compute_lambda_fn: Optional compute epilogue
-                fused into the register path.
+            has_compute_fn: Whether `compute_fn` is applied before the
+                store.
             register_based_epilogue: Whether the compute epilogue runs
                 in registers (true) or SMEM (false).
 
@@ -3536,10 +3458,12 @@ struct StandardOutputWriter(OutputWriter):
             stage: OutputStage with pipeline, index, and TMEM handle.
             tile_coord: (m_tile, n_tile, batch) tile coordinates.
             shape: (M, N) problem dimensions.
+            compute_fn: Element-wise epilogue applied to each output
+                value; ignored unless `has_compute_fn` is True.
             alpha: Scalar applied to fragments before the store
                 (defaults to 1.0).
         """
-        # The descriptor params (tma_origin, c_type, c_rank, c_tile_shape,
+        # The descriptor params (tma_origin, c_type, c_tile_shape,
         # c_desc_shape) are inferred from the `c_tma_ops` ctor arg.
         var writer = TileWriter[
             a_type=a_type,
@@ -3554,9 +3478,13 @@ struct StandardOutputWriter(OutputWriter):
             num_output_stages=num_output_stages,
             num_output_warps=num_output_warps,
             elementwise_lambda_fn=elementwise_lambda_fn,
-            elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
             register_based_epilogue=register_based_epilogue,
             batched=True,
             num_peers=1,
         ](c_tma_ops)
-        writer.write_batched(c_tiles, stage, tile_coord, shape, alpha)
+        comptime if has_compute_fn:
+            writer.write_batched(
+                c_tiles, stage, tile_coord, shape, compute_fn, alpha
+            )
+        else:
+            writer.write_batched(c_tiles, stage, tile_coord, shape, alpha)

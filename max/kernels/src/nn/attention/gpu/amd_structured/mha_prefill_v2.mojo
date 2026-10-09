@@ -623,7 +623,7 @@ struct MhaPrefillV2[config: MhaConfigV2]:
     ]:
         """Builds the per-tile K gmem TileTensor at `(batch, t*KV_BLOCK,
         kv_head, 0)` via `MHAOperand.block_paged_tile`. For
-        LayoutTensorMHAOperand this resolves to a pointer-arithmetic
+        TileTensorMHAOperand this resolves to a pointer-arithmetic
         offset into a contiguous buffer; for KVCacheMHAOperand it
         resolves through the page table."""
         comptime assert (
@@ -1374,7 +1374,7 @@ struct MhaPrefillV2[config: MhaConfigV2]:
           accumulator.
         - `k`, `v`: any `MHAOperand` whose `block_paged_tile[KV_BLOCK]`
           returns `(KV_BLOCK, DEPTH)` tiles per `(batch, t*KV_BLOCK,
-          kv_head, 0)`. `LayoutTensorMHAOperand` for contiguous test /
+          kv_head, 0)`. `TileTensorMHAOperand` for contiguous test /
           bench buffers; `KVCacheMHAOperand` for paged production
           caches (`page_size >= KV_BLOCK = 64`).
 
@@ -1645,7 +1645,7 @@ struct MhaPrefillV2[config: MhaConfigV2]:
         # Per-(batch, kv_head) is captured via the MHAOperand interface.
         # `_dma_k` / `_dma_v` call `k.block_paged_tile[KV_BLOCK](...)` per
         # tile, returning a TileTensor anchored at `(batch_idx,
-        # t*KV_BLOCK, kv_head_idx, 0)`. For LayoutTensorMHAOperand this
+        # t*KV_BLOCK, kv_head_idx, 0)`. For TileTensorMHAOperand this
         # resolves to a pointer-arithmetic offset (contiguous K/V);
         # for KVCacheMHAOperand it resolves through the page table.
         # Cast indices to UInt32 once so the trait calls don't repeat
@@ -2348,7 +2348,7 @@ struct MhaPrefillV2[config: MhaConfigV2]:
         # Out-of-range block guard: grid is sized by max_prompt_len;
         # if this sequence is shorter, the trailing q-blocks have
         # nothing to do.
-        if Int(block_idx.y) * Self.BM >= seq_len:
+        if block_idx.y * Self.BM >= seq_len:
             return
 
         var start_pos = Int(k.cache_length(batch_idx))
@@ -2371,12 +2371,7 @@ struct MhaPrefillV2[config: MhaConfigV2]:
         # the runtime seq_len field lives once. Halves the per-block
         # live state introduced by the layout construction.
         var ragged_layout = row_major(
-            Coord(
-                1,
-                seq_len,
-                Self.config.num_heads,
-                Self.config.depth,
-            )
+            1, seq_len, Self.config.num_heads, Self.config.depth
         )
         var q_tt = TileTensor(q_ptr + q_batch_offset, ragged_layout)
         var o_tt = TileTensor(output_ptr + q_batch_offset, ragged_layout)
@@ -2565,7 +2560,7 @@ def mha_prefill_v2[
       `o`'s dtype matches `config.output_dtype`: BF16 for production
       inference (which the dispatcher uses) or FP32 if the caller wants
       the unnormalized accumulator.
-    - `k`, `v`: any `MHAOperand` (`LayoutTensorMHAOperand` for tests/
+    - `k`, `v`: any `MHAOperand` (`TileTensorMHAOperand` for tests/
       bench, `KVCacheMHAOperand` for paged production caches at
       `page_size >= KV_BLOCK = 64`).
 

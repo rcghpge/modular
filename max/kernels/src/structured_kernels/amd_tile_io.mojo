@@ -109,6 +109,26 @@ is interchangeable with the canonical one at every call site that
 hands a lambda across the package boundary.
 """
 
+comptime _elementwise_epilogue_fn_signature = def[
+    dtype: DType, width: SIMDLength, *, alignment: Int
+](IndexList[2], SIMD[dtype, width]) -> None
+
+comptime ElementwiseEpilogueFn = (
+    ImplicitlyCopyable & RegisterPassable & _elementwise_epilogue_fn_signature
+)
+"""Local re-declaration of `linalg.utils.ElementwiseEpilogueFn`, for the
+same cyclic-dependency reason as `elementwise_epilogue_type`."""
+
+comptime _elementwise_compute_fn_signature = def[
+    dtype: DType, width: SIMDLength, *, alignment: Int
+](IndexList[2], SIMD[dtype, width]) -> SIMD[dtype, width]
+
+comptime ElementwiseComputeFn = (
+    ImplicitlyCopyable & RegisterPassable & _elementwise_compute_fn_signature
+)
+"""Local re-declaration of `linalg.utils.ElementwiseComputeFn`, for the
+same cyclic-dependency reason as `elementwise_epilogue_type`."""
+
 
 comptime _alias_scope_attr = __mlir_attr.`[#llvm.alias_scope<id= "amdgpu.AsyncCopies", domain=#llvm.alias_scope_domain<id = "amdgpu.AsyncOps">>]`
 comptime _no_alias_scope_attr = __mlir_attr.`[#llvm.alias_scope<id= "amdgpu.LocalLoads", domain=#llvm.alias_scope_domain<id = "amdgpu.AsyncOps">>]`
@@ -2670,7 +2690,7 @@ struct RegTileEpilogue[
                 comptime epilogue_fn = Self.elementwise_lambda_fn.value()
                 epilogue_fn[
                     alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
-                ](IndexList[2](m, n), v)
+                ]((m, n), v)
             else:
                 self._ptr().store[
                     alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
@@ -2687,6 +2707,101 @@ struct RegTileEpilogue[
                         )
                     else:
                         self._ptr()[m * self.row_stride + col] = v[e]
+
+    @inline(.always)
+    def store_with_epilogue_fn[
+        EpilogueFnType: ElementwiseEpilogueFn
+    ](
+        self,
+        epilogue_fn: EpilogueFnType,
+        v: SIMD[Self.c_type, Self.chunk_width],
+        *,
+        m: Int,
+        n: Int,
+    ):
+        """Hand a SIMD chunk at `(m, n)` to `epilogue_fn` instead of dst.
+
+        Same bound handling as `store`. `m` must be the logical output
+        row, and `elementwise_lambda_fn` must be unset.
+
+        Parameters:
+            EpilogueFnType: Type of `epilogue_fn`.
+
+        Args:
+            epilogue_fn: Stores each output chunk.
+            v: SIMD value to write (already cast to `Self.c_type`).
+            m: Logical output row.
+            n: Starting output column.
+        """
+        comptime assert not Self.elementwise_lambda_fn, (
+            "store_with_epilogue_fn takes the epilogue as a value; leave"
+            " elementwise_lambda_fn unset"
+        )
+        if n + Self.chunk_width <= self.n_total:
+            epilogue_fn[
+                Self.c_type,
+                Self.chunk_width,
+                alignment=align_of[SIMD[Self.c_type, Self.chunk_width]](),
+            ](IndexList[2](m, n), v)
+        elif n < self.n_total:
+            for e in range(Self.chunk_width):
+                var col = n + e
+                if col < self.n_total:
+                    epilogue_fn[
+                        Self.c_type,
+                        1,
+                        alignment=align_of[Scalar[Self.c_type]](),
+                    ](IndexList[2](m, col), SIMD[Self.c_type, 1](v[e]))
+
+    @inline(.always)
+    def store_with_compute_fn[
+        ComputeFnType: ElementwiseComputeFn
+    ](
+        self,
+        compute_fn: ComputeFnType,
+        v: SIMD[Self.c_type, Self.chunk_width],
+        *,
+        m: Int,
+        n: Int,
+    ):
+        """Write `compute_fn((m, n), v)` at `(m, n)` of dst.
+
+        Same bound handling as `store`. `m` must be the logical output
+        row, and `elementwise_lambda_fn` must be unset.
+
+        Parameters:
+            ComputeFnType: Type of `compute_fn`.
+
+        Args:
+            compute_fn: Maps each output index and chunk to the value to
+                store.
+            v: SIMD value to transform (already cast to `Self.c_type`).
+            m: Logical output row.
+            n: Starting output column.
+        """
+        comptime assert not Self.elementwise_lambda_fn, (
+            "store_with_compute_fn takes the epilogue as a value; leave"
+            " elementwise_lambda_fn unset"
+        )
+        if n + Self.chunk_width <= self.n_total:
+            comptime chunk_alignment = align_of[
+                SIMD[Self.c_type, Self.chunk_width]
+            ]()
+            self._ptr().store[alignment=chunk_alignment](
+                m * self.row_stride + n,
+                compute_fn[
+                    Self.c_type,
+                    Self.chunk_width,
+                    alignment=Self.chunk_width,
+                ](IndexList[2](m, n), v),
+            )
+        elif n < self.n_total:
+            for e in range(Self.chunk_width):
+                var col = n + e
+                if col < self.n_total:
+                    self._ptr()[m * self.row_stride + col] = compute_fn[
+                        Self.c_type, 1, alignment=1
+                    ](IndexList[2](m, col), SIMD[Self.c_type, 1](v[e]))[0]
 
 
 @inline(.always)
@@ -2735,7 +2850,7 @@ def _buffer_load_impl[
         dst_layout: Layout controlling register storage order. Shape must
             match the per-thread fragment dimensions (M, N).
     """
-    var worker_idx = Int(lane_id()) if warp_scope else Int(thread_idx.x)
+    var worker_idx = Int(lane_id()) if warp_scope else thread_idx.x
 
     comptime if num_threads > thread_layout.size():
         if worker_idx >= thread_layout.size():
@@ -2816,7 +2931,7 @@ struct RegTileWriterLDS[
         comptime num_busy_threads = Self.thread_layout.size()
         comptime elem_size = type_of(dst).element_size
 
-        var worker_idx = Int(thread_idx.x)
+        var worker_idx = thread_idx.x
 
         comptime if Self.num_threads > num_busy_threads:
             if worker_idx >= num_busy_threads:
@@ -2902,7 +3017,7 @@ struct RegTileWriterLDS[
         comptime data_cols = type_of(dst).static_shape[1]
         comptime simd_width = simd_width_of[dst.dtype]()
 
-        var worker_idx = Int(thread_idx.x)
+        var worker_idx = thread_idx.x
 
         comptime if Self.num_threads > Self.thread_layout.size():
             if worker_idx >= Self.thread_layout.size():

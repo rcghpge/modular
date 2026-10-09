@@ -25,6 +25,7 @@ from max.driver import accelerator_api
 from max.engine import InferenceSession
 from max.nn.comm import Signals
 from max.pipelines.diffusion.config import resolve_denoising_cache
+from max.pipelines.kv_cache.config import KVCacheConfig, is_fp4_kv_cache_format
 from max.pipelines.lib._model_components import (
     architecture_name_for,
     updated_component,
@@ -51,6 +52,7 @@ from max.pipelines.sampling import (
     DEFAULT_STRUCTURED_OUTPUT_ANY_WHITESPACE,
     DEFAULT_STRUCTURED_OUTPUT_BACKEND,
     SamplingConfig,
+    ToolCallPolicy,
 )
 from max.pipelines.speculative.config import SpeculativeConfig
 from max.support.host_memory import host_memory_limit
@@ -304,6 +306,24 @@ def _is_eligible_for_overlap_serve_optimizations(
         and not lora
         and model.default_device_spec.device_type != "cpu"
     )
+
+
+def _validate_kv_cache_format(kv_cache: KVCacheConfig, arch: Any) -> None:
+    """Raises when ``arch`` does not implement the requested KV cache format.
+
+    Args:
+        kv_cache: The main model's KV cache config.
+        arch: The main model's resolved architecture.
+
+    Raises:
+        ValueError: If ``kv_cache_format`` is ``float4_e2m1fn`` and ``arch``
+            has not opted in with ``supports_nvfp4_kv_cache``.
+    """
+    fmt = kv_cache.kv_cache_format
+    if is_fp4_kv_cache_format(fmt) and not arch.supports_nvfp4_kv_cache:
+        raise ValueError(
+            f"kv_cache_format '{fmt}' is not supported by {arch.name}."
+        )
 
 
 def _resolve_overlap_and_device_graph_capture(
@@ -968,6 +988,18 @@ class PipelineConfig(ConfigFileModel):
     )
     """Whether to run eager verification before device graph replay."""
 
+    tokenizer_impl: str | None = Field(
+        default=None,
+        description=(
+            "Import path of an alternative tokenizer implementation, as "
+            "``'module.path:ClassName'``, that encodes rendered chat prompts "
+            "for a checkpoint whose ``tokenizer.json`` it reproduces. Left "
+            "unset, or when it cannot be imported or does not match the "
+            "checkpoint, uses the HuggingFace tokenizer."
+        ),
+    )
+    """Import path of an alternative tokenizer implementation, if any."""
+
     models: _ModelsType = Field(
         default_factory=ModelManifest,
         description="The model manifest containing all model configs keyed by role.",
@@ -1190,11 +1222,10 @@ class PipelineConfig(ConfigFileModel):
         server-generated and gated on having a parser that can both produce
         the grammar and parse the resulting output).
 
-        Tool-call constrained decoding can be turned off independently via
-        ``sampling.enable_tool_call_constrained_decode``: when that is
-        ``False`` the tool parser still parses tool calls out of generated
-        text, but no grammar is generated and the bitmask path is not needed
-        on its account.
+        Tool-call constrained decoding is off when ``sampling.tool_call_policy``
+        is ``FORCE_UNCONSTRAINED``: the tool parser still parses tool calls out
+        of generated text, but no grammar is generated and the bitmask path is
+        not needed on its account.
 
         Always ``False`` on a ``prefill_only`` worker. Under disaggregated
         inference the decode worker discards prefill's token for a
@@ -1212,7 +1243,8 @@ class PipelineConfig(ConfigFileModel):
             return False
         return self.sampling.enable_structured_output or (
             self.runtime.tool_parser is not None
-            and self.sampling.enable_tool_call_constrained_decode
+            and self.sampling.tool_call_policy
+            is not ToolCallPolicy.FORCE_UNCONSTRAINED
         )
 
     _config_file_section_name: str = PrivateAttr(default="pipeline_config")
@@ -1245,7 +1277,8 @@ class PipelineConfig(ConfigFileModel):
         ``_matmul_gpu`` reads ``MODULAR_DISABLE_VENDOR_FALLBACK`` through
         ``get_defined_bool``, so it is a kernel-compile define and an
         environment variable alone never reaches the kernels serve compiles.
-        Forwarding it here is what makes the documented escape hatch work.
+        Forwarding ``runtime.disable_vendor_blas_fallback`` here is what makes
+        the documented escape hatch work.
 
         It is forced on for HIP + device graph capture: the fallback's first
         GEMM constructs the hipBLASLt handle, and ``hipblasLtCreate`` zeroes a
@@ -1254,11 +1287,9 @@ class PipelineConfig(ConfigFileModel):
         returns ``hipErrorStreamCaptureImplicit``, so the model worker dies
         instead of raising. MAX's own kernels cover the same shapes.
         """
-        if self.runtime.device_graph_capture and accelerator_api() == "hip":
-            return True
-        return os.environ.get(
-            "MODULAR_DISABLE_VENDOR_FALLBACK", ""
-        ).lower() in ("1", "true", "on", "yes")
+        return self.runtime.disable_vendor_blas_fallback or bool(
+            self.runtime.device_graph_capture and accelerator_api() == "hip"
+        )
 
     def estimate_signal_buffer_memory(
         self, arch_config: ArchConfig | None = None
@@ -1588,6 +1619,8 @@ class PipelineConfig(ConfigFileModel):
             )
             if arch_name is not None and arch is None:
                 raise ValueError(f"No architecture found for {arch_name}")
+            if arch is not None:
+                _validate_kv_cache_format(models["main"].kv_cache, arch)
             if arch is not None and speculator is not None:
                 arch = speculator.derive()
 
@@ -1672,6 +1705,7 @@ class PipelineConfig(ConfigFileModel):
             speculative=speculative,
             task=args.task,
             debug_verify_replay=args.debug_verify_replay,
+            tokenizer_impl=args.tokenizer_impl,
             **top_level,
         )
 

@@ -91,7 +91,7 @@ class QuantStrategy(Protocol):
         group_size: int,
         input_scale: TensorValue | None,
         expert_start: TensorValue,
-        scales_offset: TensorValue,
+        scales_offset: TensorValue | None,
         expert_ids: TensorValue,
     ) -> tuple[TensorValue, TensorValue]:
         """Quantizes activations with per-expert scales and padding."""
@@ -139,11 +139,26 @@ class Fp8Strategy:
         group_size: int,
         input_scale: TensorValue | None,
         expert_start: TensorValue,
-        scales_offset: TensorValue,
+        scales_offset: TensorValue | None,
         expert_ids: TensorValue,
     ) -> tuple[TensorValue, TensorValue]:
-        """Falls back to ungrouped FP8 quantization."""
-        return self.quantize(tensor, group_size)
+        """Quantizes to FP8, stopping at the last row ``expert_start`` covers.
+
+        FP8 needs no per-expert scale padding, so this differs from
+        :meth:`quantize` only in what it skips: ``tensor`` is the EP receive
+        buffer, sized for the worst-case dispatch, and ``expert_start`` ends at
+        the row count this step actually received. The rows below that count
+        quantize identically either way.
+        """
+        return quantize_dynamic_scaled_float8(
+            tensor,
+            self.config.input_scale,
+            self.config.weight_scale,
+            group_size_or_per_token=group_size,
+            out_type=self.dtype,
+            scales_type=self.config.weight_scale.dtype,
+            row_offsets=expert_start,
+        )
 
     def grouped_matmul(
         self,
@@ -196,7 +211,10 @@ class Fp8Strategy:
         swiglu_alpha: float = 0.0,
         swiglu_limit: float = 0.0,
     ) -> tuple[TensorValue, TensorValue]:
-        """Applies fused SiLU gate and returns quantized activations.
+        """Applies the SiLU gate and returns quantized activations.
+
+        The gate is plain graph ops feeding the row-bounded quantize, which
+        the graph compiler fuses into a single kernel.
 
         ``max_padded_M`` and the ``clamp_activation``/``swiglu_*`` args are
         accepted for ``QuantStrategy`` conformance; they only apply to the
@@ -206,12 +224,19 @@ class Fp8Strategy:
             "clamped SwiGLU-OAI activation is only supported on the MXFP4 EP"
             " path"
         )
-        _, _, expert_start_indices, _, _ = expert_inputs
-        return fused_silu_quantized(
-            gate_up_projs,
+        _, _, expert_start_indices, expert_ids, _ = expert_inputs
+        moe_dim = int(gate_up_projs.shape[1]) // 2
+        activated = (
+            ops.silu(gate_up_projs[:, :moe_dim]) * gate_up_projs[:, moe_dim:]
+        )
+        assert self.config.input_scale.block_size is not None
+        return self.grouped_quantize(
+            activated,
+            self.config.input_scale.block_size[1],
+            None,
             expert_start_indices,
-            self.config,
-            self.dtype,
+            None,
+            expert_ids,
         )
 
 
@@ -255,13 +280,18 @@ class NvMxf4f8Strategy:
         group_size: int,
         input_scale: TensorValue | None,
         expert_start: TensorValue,
-        scales_offset: TensorValue,
+        scales_offset: TensorValue | None,
         expert_ids: TensorValue,
         indices: TensorValue | None = None,
     ) -> tuple[TensorValue, TensorValue]:
         """Quantizes activations per-expert with padded scale alignment."""
         if self.is_nvfp4 and input_scale is None:
             raise ValueError("NVFP4 requires input_scale")
+        if scales_offset is None:
+            raise ValueError(
+                "block-scaled grouped quantize needs scales_offset to place"
+                " each expert's padded scale tile"
+            )
         sf_tensor = (
             (1.0 / input_scale).to(tensor.device)
             if input_scale is not None
@@ -576,7 +606,7 @@ class BlockScaledStrategy:
         group_size: int,
         input_scale: TensorValue | None,
         expert_start: TensorValue,
-        scales_offset: TensorValue,
+        scales_offset: TensorValue | None,
         expert_ids: TensorValue,
     ) -> tuple[TensorValue, TensorValue]:
         """Falls back to ungrouped MXFP4 quantization."""
@@ -690,7 +720,7 @@ class Mxfp6Strategy:
         group_size: int,
         input_scale: TensorValue | None,
         expert_start: TensorValue,
-        scales_offset: TensorValue,
+        scales_offset: TensorValue | None,
         expert_ids: TensorValue,
     ) -> tuple[TensorValue, TensorValue]:
         """Falls back to ungrouped MXFP6 quantization."""

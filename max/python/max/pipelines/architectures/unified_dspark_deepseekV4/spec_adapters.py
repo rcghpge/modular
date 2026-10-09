@@ -26,7 +26,11 @@ from collections.abc import Mapping, Sequence
 from max.graph import BufferType, TensorType, TensorValue, ops
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer import ReturnLogits, logits_postprocess
-from max.pipelines.speculative.block_driver import Accepted, BlockBatch
+from max.pipelines.speculative.block_driver import (
+    Accepted,
+    BlockBatch,
+    DraftSampler,
+)
 from max.pipelines.speculative.spec_target import Verified
 from max.pipelines.speculative.unified_graph_ops import broadcast_per_device
 
@@ -141,6 +145,7 @@ class DSparkDeepseekV4Proposer:
     """
 
     samples_from_anchor = True
+    supports_zero_draft_rows = False
 
     def __init__(self, model: DeepseekV4, config: DeepseekV4Config) -> None:
         self.replicas: Sequence[DeepseekV4] = [model]
@@ -190,7 +195,13 @@ class DSparkDeepseekV4Proposer:
         )
 
     def head(
-        self, batch: BlockBatch, block_hs: TensorValue, accepted: Accepted
+        self,
+        batch: BlockBatch,
+        block_hs: TensorValue,
+        accepted: Accepted,
+        sampler: DraftSampler,
     ) -> TensorValue:
-        drafts, _ = self.replicas[0].dspark_head(block_hs, accepted.next_tokens)
+        drafts, _ = self.replicas[0].dspark_head(
+            block_hs, accepted.next_tokens, sampler=sampler.sample_next
+        )
         return drafts
