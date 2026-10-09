@@ -3045,12 +3045,16 @@ def _process_log_probabilities(
     token_generator_outputs: list[TokenGeneratorOutput],
 ) -> CompletionLogprobs:
     token_log_probabilities = []
-    top_log_probabilities = []
+    top_log_probabilities: list[dict[str, float]] = []
     for output in token_generator_outputs:
         if output.token_log_probabilities:
             token_log_probabilities.extend(output.token_log_probabilities)
         if output.top_log_probabilities:
-            top_log_probabilities.extend(output.top_log_probabilities)
+            # The completions format keys by string, so ids that decode
+            # alike collapse here, as in OpenAI's API.
+            top_log_probabilities.extend(
+                dict(top.values()) for top in output.top_log_probabilities
+            )
 
     return CompletionLogprobs(
         token_logprobs=token_log_probabilities,
@@ -3090,7 +3094,7 @@ def _process_chat_log_probabilities(
         ):
             # Build top_logprobs list from the dict
             top_logprobs_list: list[TopLogprob] = []
-            for token_str, logprob in top_logprobs_dict.items():
+            for token_str, logprob in top_logprobs_dict.values():
                 top_logprobs_list.append(
                     TopLogprob(
                         token=token_str,

@@ -80,7 +80,9 @@ class TokenGeneratorOutput:
     token_count: int = 1
     # TODO: (MODELS-1118) determine whether to include logprobs for reasoning tokens in the response delta
     token_log_probabilities: list[float] | None = None
-    top_log_probabilities: list[dict[str, float]] | None = None
+    top_log_probabilities: list[dict[int, tuple[str, float]]] | None = None
+    """Per position, token id to its decoded string and logprob. Keyed by id
+    because distinct ids can decode to the same string."""
     sampled_tokens: list[str] | None = None
     """Decoded sampled token at each ``token_log_probabilities`` position."""
     prompt_token_count: int | None = None
@@ -298,18 +300,21 @@ class TokenGeneratorPipeline(
         self,
         log_prob: LogProbabilities,
         skip_special_tokens: bool,
-    ) -> list[dict[str, float]]:
+    ) -> list[dict[int, tuple[str, float]]]:
+        # A nested comprehension with ``await`` is a SyntaxError before 3.11.
         top_log_probabilities = []
         for top_token_log_probs in log_prob.top_log_probabilities:
-            decoded_log_probs = {}
-            for token_id, value in top_token_log_probs.items():
-                decoded_log_probs[
-                    await self.tokenizer.decode(
-                        token_id, skip_special_tokens=skip_special_tokens
+            top_log_probabilities.append(
+                {
+                    token_id: (
+                        await self.tokenizer.decode(
+                            token_id, skip_special_tokens=skip_special_tokens
+                        ),
+                        value,
                     )
-                ] = value
-            top_log_probabilities.append(decoded_log_probs)
-
+                    for token_id, value in top_token_log_probs.items()
+                }
+            )
         return top_log_probabilities
 
     async def next_token_chunk(
@@ -632,7 +637,7 @@ class TokenGeneratorPipeline(
                         # per-token). Does not consider reasoning tokens.
                         token_log_prob_values: list[float] | None = None
                         top_token_log_prob_values: (
-                            list[dict[str, float]] | None
+                            list[dict[int, tuple[str, float]]] | None
                         ) = None
                         sampled_token_values: list[str] | None = None
                         if token_log_probs is not None:
