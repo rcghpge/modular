@@ -99,13 +99,10 @@ def run_reduce[
     @__copy_capture(res_device)
     @__parameter
     def output_fn[
-        _dtype: DType, width: SIMDLength, _rank: Int
-    ](
-        coords: IndexList[_rank],
-        val: StaticTuple[SIMD[_dtype, width], num_reductions],
-    ):
+        _dtype: DType, width: SIMDLength
+    ](coords: Coord, val: StaticTuple[SIMD[_dtype, width], num_reductions],):
         res_device.store[width=width, alignment=align_of[dtype]()](
-            Coord(rebind[IndexList[rank]](coords)),
+            coords,
             rebind[SIMD[dtype, width]](val[0]),
         )
 
@@ -122,11 +119,10 @@ def run_reduce[
         def input_fn[
             dtype: DType,
             width: Int,
-            _rank: Int,
-        ](coords: IndexList[_rank]) -> SIMD[dtype, width]:
+        ](coords: Coord) -> SIMD[dtype, width]:
             return rebind[SIMD[dtype, width]](
                 input_tile.load[width=width, alignment=align_of[dtype]()](
-                    Coord(rebind[IndexList[rank]](coords))
+                    coords
                 )
             )
 

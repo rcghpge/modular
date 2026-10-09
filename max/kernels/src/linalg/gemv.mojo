@@ -3062,28 +3062,25 @@ def gemv[
 
     @inline(.always)
     @__parameter
-    def input_fn[
-        dtype: DType, width: Int, rank: Int
-    ](idx: IndexList[rank]) -> SIMD[dtype, width]:
+    def input_fn[dtype: DType, width: Int](idx: Coord) -> SIMD[dtype, width]:
         return (
-            a_buf.load_linear[width=width](Index(idx[0], idx[1])).cast[dtype]()
-            * b_buf.load_linear[width=width](IndexList[1](idx[1])).cast[dtype]()
-        ).cast[dtype]()
+            a_buf.load[width=width](idx).cast[dtype]()
+            * b_buf.load[width=width]((idx[1],)).cast[dtype]()
+        )
 
     @inline(.always)
     @__parameter
     def output_fn[
-        out_type: DType, width: SIMDLength, rank: Int
-    ](idx: IndexList[rank], value: SIMD[out_type, width]):
+        out_type: DType, width: SIMDLength
+    ](idx: Coord, value: SIMD[out_type, width]):
         comptime if elementwise_lambda_fn:
             comptime func = elementwise_lambda_fn.value()
+            var m = Int(idx[0].value())
 
             comptime for i in range(width):
-                func[out_type, 1]((idx[0] + i, 0), value[i])
+                func[out_type, 1]((m + i, 0), value[i])
         else:
-            c_buf.store_linear[width=width](
-                IndexList[1](idx[0]), value.cast[c_type]()
-            )
+            c_buf.store[width=width]((idx[0],), value.cast[c_type]())
 
     @inline(.always)
     def reduce_impl[

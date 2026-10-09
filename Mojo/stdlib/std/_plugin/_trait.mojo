@@ -14,6 +14,7 @@
 from std.collections import OptionalReg
 from std.reflection.location import SourceLocation
 
+from std.utils.coord import Coord
 from std.utils.index import IndexList
 from std.math.math import _ExpPluginHookFnType, _TanhPluginHookFnType
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
@@ -32,13 +33,11 @@ comptime _ReduceGeneratorPluginHookFnType = (
         init_type: DType,
         InputFnType: ImplicitlyCopyable
         & RegisterPassable
-        & def[dtype: DType, width: Int, rank: Int](IndexList[rank]) -> SIMD[
-            dtype, width
-        ],
+        & def[dtype: DType, width: Int](Coord) -> SIMD[dtype, width],
         OutputFnType: ImplicitlyCopyable
         & RegisterPassable
-        & def[dtype: DType, width: SIMDLength, rank: Int](
-            IndexList[rank], StaticTuple[SIMD[dtype, width], num_reductions]
+        & def[dtype: DType, width: SIMDLength](
+            Coord, StaticTuple[SIMD[dtype, width], num_reductions]
         ) -> None,
         ReduceFnType: ImplicitlyCopyable
         & RegisterPassable

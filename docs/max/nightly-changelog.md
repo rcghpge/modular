@@ -771,6 +771,19 @@ This version is still a work in progress.
   warp.reduce[shuffle_down](val, add)  # was: warp.reduce[shuffle_down, add](val)
   ```
 
+- The reduction callbacks in the `max.algorithm` package now take a `Coord`
+  instead of an `IndexList[rank]`, and no longer carry a `rank` parameter.
+  This changes the `input_fn` and `output_fn` contracts of `sum()`, `min()`,
+  `max()`, `mean()` and `product()`, along with `row_reduce()` and
+  `reduce_launch()` in the GPU backend. The coordinate holds the same values
+  as before, so results are unchanged:
+
+  ```mojo
+  # was: def input_fn[width: Int, rank: Int](idx: IndexList[rank]) -> ...
+  def input_fn[width: Int](idx: Coord) -> SIMD[dtype, width]:
+      return input.load[width=width](idx)
+  ```
+
 - Text generation now stops on every `eos_token_id` in a model's
   `generation_config.json`, as Hugging Face `generate` does, in addition to
   the tokenizer's EOS token and the `eos_token_id` in `config.json`. This
