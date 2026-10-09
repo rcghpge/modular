@@ -9,13 +9,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/Conversion/OperandInference.h"
 #include "GraphCompiler/Conversion/ParameterInference.h"
 #include "GraphCompiler/Interfaces/MAPToMOGGState.h"
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
-#include "GraphCompiler/MOGGDialect/Analysis/TraitContractDerivation.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
@@ -378,9 +378,25 @@ consumingFusedContract(Value mapResult, bool isOutput, MAPToMOGGState &state) {
       state.registry.lookupKernelBySymName(callOp.getCallee()));
   if (!adaptor.executeFunction)
     return {};
+  // Not the operand's raw position: a variadic argument binds a run of
+  // operands, which shifts every argument after it. No mutable-to-immutable
+  // widening: the inputs reaching here are prologue results, always
+  // immutable, and results ignore the flag.
+  ErrorOr<MOGG::KernelDeclOperandMapping> mapping =
+      MOGG::mapToKernelImplementation(
+          callOp.getInputs(), callOp.getOutputs(), *adaptor.executeFunction,
+          callOp.getCallee(), callOp.getHasSameVariadicOperandSize(),
+          /*hasExtraOutputShapeArgument=*/false,
+          /*resultLeavesByValue=*/callOp.getOpaqueResult() != nullptr);
+  if (mapping.isError())
+    return {};
+  const MOGG::KernelDeclIndexToOperandAdaptorMapping &argForOperand =
+      isOutput ? mapping->resultMapping : mapping->operandMapping;
+  auto arg = argForOperand.find(*operandIdx);
+  if (arg == argForOperand.end())
+    return {};
   std::optional<MOGG::TensorArgContract> contract =
-      MOGG::declaredExecuteOperandContract(*adaptor.executeFunction,
-                                           *operandIdx, isOutput);
+      arg->second.getTraitContract();
   if (!contract)
     return {};
   return MOGG::tensorArgContractToAttr(state.builder.getContext(), *contract);

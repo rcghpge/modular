@@ -1072,6 +1072,178 @@ struct TraitTensorTupleAddArray:
             )
 
 
+# Device entry for `trait_tensor_tuple_fused_concat`: one thread per output
+# element, which finds the tuple element `k` that owns it and loads through that
+# element's fused producer. `inputs` is the host tuple's `device_type`, so
+# element `k` is the access-enabled view of `Ins[k]`, refined to `Loadable` at
+# the load.
+def _gpu_fused_tuple_concat_kernel[
+    dtype: DType,
+    LayoutType: TensorLayout,
+    *Ins: LoadAccess,
+](
+    output: TileTensor[dtype, LayoutType, MutAnyOrigin],
+    inputs: TensorTuple[*Ins].device_type,
+    offsets: StaticTuple[Int32, len(Ins) + 1],
+    n_dev: Int32,
+):
+    var i = Int32(global_idx.x)
+    if i >= n_dev:
+        return
+    comptime for k in range(len(Ins)):
+        if i >= offsets[k] and i < offsets[k + 1]:
+            comptime assert conforms_to(type_of(inputs[k]), Loadable)
+            output.raw_store(
+                Int(i),
+                inputs[k].load[1](Coord(Int(i - offsets[k]))).cast[dtype](),
+            )
+
+
+# `mo.concat`'s shape with a fused `TensorTuple`: concatenates rank-1 inputs
+# into `z`, casting each to the output dtype. Each element is the fused
+# producer's `_MoggInputLoadFusionTensor`, so the elements may differ in dtype
+# and length. Like `Concat`, the CPU arm captures the whole input set in one
+# closure and loads element `k` by comptime index; the GPU arm launches with
+# the tuple itself.
+@extensibility.register("trait_tensor_tuple_fused_concat")
+struct TraitTensorTupleFusedConcat:
+    @staticmethod
+    def execute[
+        Ins: TypeList[Trait=Input & Fused & LoadAccess, ...],
+        //,
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        inputs: TensorTuple[*Ins],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            var zt = to_tile_tensor(z)
+            comptime out_dtype = type_of(zt).dtype
+
+            @inline(.always)
+            def load_input[k: Int](j: Int) {imm inputs} -> Scalar[out_dtype]:
+                comptime assert conforms_to(type_of(inputs[k]), Loadable)
+                return inputs[k].load[1](Coord(j)).cast[out_dtype]()
+
+            var offset = 0
+            comptime for k in range(len(Ins)):
+                var n = Int(inputs[k].shape().product())
+                for j in range(n):
+                    zt.raw_store(offset + j, load_input[k](j))
+                offset += n
+        else:
+            # The tuple holds host-side proxies, so it crosses as a
+            # `DevicePassable`, like `_MoggDenseTensorArg`: the launch
+            # projects each element to its access-enabled device view.
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            comptime assert conforms_to(type_of(inputs), DevicePassable)
+            var zt = to_tile_tensor(z)
+            var offsets = StaticTuple[Int32, len(Ins) + 1](fill=0)
+            comptime for k in range(len(Ins)):
+                offsets[k + 1] = offsets[k] + Int32(
+                    Int(inputs[k].shape().product())
+                )
+            var n = Int(offsets[len(Ins)])
+            comptime block_size = 64
+            ctx.enqueue_function[
+                _gpu_fused_tuple_concat_kernel[
+                    type_of(zt).dtype, type_of(zt).LayoutType, *Ins
+                ]
+            ](
+                zt,
+                inputs,
+                offsets,
+                Int32(n),
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
+# Device entry for `trait_tensor_tuple_fused_store_split`: one thread per input
+# element, which finds the tuple element `k` that owns it and stores through
+# that element's fused consumer. `outputs` is the host tuple's `device_type`, so
+# element `k` is the access-enabled view of `Outs[k]`, refined to `Storable` at
+# the store.
+def _gpu_fused_tuple_split_kernel[
+    dtype: DType,
+    LayoutType: TensorLayout,
+    *Outs: StoreAccess,
+](
+    outputs: TensorTuple[*Outs].device_type,
+    input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    offsets: StaticTuple[Int32, len(Outs) + 1],
+    n_dev: Int32,
+):
+    var i = Int32(global_idx.x)
+    if i >= n_dev:
+        return
+    var v = rebind[Scalar[dtype]](input.raw_load(Int(i)))
+    comptime for k in range(len(Outs)):
+        if i >= offsets[k] and i < offsets[k + 1]:
+            comptime assert conforms_to(type_of(outputs[k]), Storable)
+            outputs[k].store[1](
+                Coord(Int(i - offsets[k])),
+                v.cast[type_of(outputs[k]).dtype](),
+            )
+
+
+# `mo.split`'s shape with a fused-output `TensorTuple`, the inverse of
+# `trait_tensor_tuple_fused_concat`: splits rank-1 `x` across the outputs,
+# casting each run to its output's dtype. Each element is the fused consumer's
+# `_MoggOutputStoreFusionTensor`, so a store runs that output's epilogue.
+@extensibility.register("trait_tensor_tuple_fused_store_split")
+struct TraitTensorTupleFusedStoreSplit:
+    @staticmethod
+    def execute[
+        Outs: TypeList[Trait=Output & Fused & StoreAccess, ...],
+        //,
+        target: StaticString,
+    ](
+        outputs: TensorTuple[*Outs],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            var xt = to_tile_tensor(x)
+            var offset = 0
+            comptime for k in range(len(Outs)):
+                comptime assert conforms_to(type_of(outputs[k]), Storable)
+                var n = Int(outputs[k].shape().product())
+                for j in range(n):
+                    var v = rebind[Scalar[type_of(xt).dtype]](
+                        xt.raw_load(offset + j)
+                    )
+                    outputs[k].store[1](
+                        Coord(j), v.cast[type_of(outputs[k]).dtype]()
+                    )
+                offset += n
+        else:
+            comptime assert conforms_to(type_of(outputs), DevicePassable)
+            comptime assert conforms_to(type_of(x), DevicePassable)
+            var offsets = StaticTuple[Int32, len(Outs) + 1](fill=0)
+            comptime for k in range(len(Outs)):
+                offsets[k + 1] = offsets[k] + Int32(
+                    Int(outputs[k].shape().product())
+                )
+            var n = Int(offsets[len(Outs)])
+            comptime block_size = 64
+            ctx.enqueue_function[
+                _gpu_fused_tuple_split_kernel[
+                    type_of(x).dtype, type_of(x).LayoutType, *Outs
+                ]
+            ](
+                outputs,
+                x,
+                offsets,
+                Int32(n),
+                grid_dim=(ceildiv(n, block_size),),
+                block_dim=(block_size,),
+            )
+
+
 # Output-store (epilogue) fusion: computes `2 * x[i]` and hands it to the fused
 # store, which runs the consumer epilogue and writes. `x` is a plain dense input.
 # Device entry for the fused-store double path: one thread per element computes

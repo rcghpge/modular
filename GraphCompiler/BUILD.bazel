@@ -1546,6 +1546,7 @@ modular_cc_library(
         ":MODialect",
         ":MOGGDialect",
         ":MOSHDialect",
+        ":OperandInference",
         ":ParameterInference",
         "//Support:MDialect",
         "@llvm-project//mlir:IR",
