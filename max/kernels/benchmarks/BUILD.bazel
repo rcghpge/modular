@@ -298,6 +298,9 @@ mojo_binary(
             # Dedicated target below: the Qwen3.8 prod shape is carried in
             # `-D` defines, which the generic glob cannot pass.
             "gpu/nn/bench_qwen38_decode_attn.mojo",
+            # Dedicated `mojo_test` below: it calls the registered graph ops
+            # (needs `builtin_kernels`) and is timed on remote B200.
+            "gpu/bench_squeeze_shape.mojo",
         ],
     )
 ]
@@ -327,9 +330,41 @@ mojo_binary(
             # Dedicated target below: the Qwen3.8 prod shape is carried in
             # `-D` defines, which the generic glob cannot pass.
             "gpu/nn/bench_qwen38_decode_attn.mojo",
+            # Dedicated `mojo_test` below: it calls the registered graph ops
+            # (needs `builtin_kernels`) and is timed on remote B200.
+            "gpu/bench_squeeze_shape.mojo",
         ],
     )
 ]
+
+# `mo.squeeze_shape` / `mo.unsqueeze_shape` through their registered
+# `execute` entry points (gather_scatter.mojo). A `mojo_test` so it can be
+# timed on remote B200 (`bazel test --config=remote-b200`); pass
+# `--test_arg=--nsys` for the fixed-count launch mode used under nsys.
+mojo_test(
+    name = "gpu/bench_squeeze_shape.mojo.run",
+    size = "enormous",
+    srcs = ["gpu/bench_squeeze_shape.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
+    enable_assertions = False,
+    tags = [
+        "gpu",
+        "manual",
+    ],
+    target_compatible_with = ["//:has_gpu"],
+    deps = [
+        "//max:builtin_kernels",
+        "//max:extensibility",
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
+)
+
+build_test(
+    name = "gpu/bench_squeeze_shape.mojo.test",
+    tags = ["gpu"],
+    targets = ["gpu/bench_squeeze_shape.mojo.run"],
+)
 
 # MlaPrefillV2 device-timed TFLOPS bench.
 # Delegates numeric steps to the gated MlaPrefillV2Core FP32-scores / reference-cadence

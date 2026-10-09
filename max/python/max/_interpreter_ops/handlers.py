@@ -884,9 +884,10 @@ def _handle_squeeze_shape(
 ) -> Sequence[Buffer]:
     """Handle mo.squeeze_shape - computes shape with specified dimensions removed.
 
-    This is a CPU-side shape metadata operation. Given an input shape vector
-    and a list of indices, returns a new shape vector with the indicated
-    dimensions removed. The indicated dimensions must have size 1.
+    Given an input shape vector and a list of indices, returns a new shape
+    vector with the indicated dimensions removed. The indicated dimensions
+    must have size 1. The shape is computed on the host and the result is
+    placed on the op's target device.
 
     Args:
         op: The squeeze shape operation.
@@ -894,12 +895,14 @@ def _handle_squeeze_shape(
             indices tensor specifying which dimensions to remove.
 
     Returns:
-        List containing the new shape vector as a 1D si64 buffer.
+        List containing the new shape vector as a 1D buffer with the input
+        shape's dtype.
     """
     assert isinstance(inputs[0], Buffer)
     assert isinstance(inputs[1], Buffer)
 
-    input_shape = inputs[0].to_numpy().tolist()
+    input_np = inputs[0].to_numpy()
+    input_shape = input_np.tolist()
     remove_indices = inputs[1].to_numpy().tolist()
 
     rank = len(input_shape)
@@ -915,8 +918,8 @@ def _handle_squeeze_shape(
     result_shape = [
         dim for i, dim in enumerate(input_shape) if i not in normalized
     ]
-    result_np = np.array(result_shape, dtype=np.int64)
-    return [Buffer.from_numpy(result_np)]
+    result_np = np.array(result_shape, dtype=input_np.dtype)
+    return [Buffer.from_numpy(result_np).to(_get_target_device(op))]
 
 
 @register_op_handler(mo.UnsqueezeShapeOp)
@@ -926,10 +929,10 @@ def _handle_unsqueeze_shape(
 ) -> Sequence[Buffer]:
     """Handle mo.unsqueeze_shape - computes shape with size-1 dimensions inserted.
 
-    This is a CPU-side shape metadata operation. Given an input shape vector
-    of rank N and a list of M indices, returns a new shape vector of rank N+M
-    where the indicated positions are filled with 1 and the original dimensions
-    fill the remaining positions.
+    Given an input shape vector of rank N and a list of M indices, returns a
+    new shape vector of rank N+M where the indicated positions are filled with
+    1 and the original dimensions fill the remaining positions. The shape is
+    computed on the host and the result is placed on the op's target device.
 
     Args:
         op: The unsqueeze shape operation.
@@ -937,12 +940,14 @@ def _handle_unsqueeze_shape(
             padding indices tensor specifying where to insert size-1 dims.
 
     Returns:
-        List containing the new shape vector as a 1D si64 buffer.
+        List containing the new shape vector as a 1D buffer with the input
+        shape's dtype.
     """
     assert isinstance(inputs[0], Buffer)
     assert isinstance(inputs[1], Buffer)
 
-    input_shape = inputs[0].to_numpy().tolist()
+    input_np = inputs[0].to_numpy()
+    input_shape = input_np.tolist()
     padding_indices = inputs[1].to_numpy().tolist()
 
     new_rank = len(input_shape) + len(padding_indices)
@@ -964,8 +969,8 @@ def _handle_unsqueeze_shape(
             result_shape.append(int(input_shape[input_idx]))
             input_idx += 1
 
-    result_np = np.array(result_shape, dtype=np.int64)
-    return [Buffer.from_numpy(result_np)]
+    result_np = np.array(result_shape, dtype=input_np.dtype)
+    return [Buffer.from_numpy(result_np).to(_get_target_device(op))]
 
 
 @register_op_handler(mo.TransposeOp)

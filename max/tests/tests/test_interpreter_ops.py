@@ -47,6 +47,8 @@ from max._interpreter_ops.handlers import (
     _handle_gather_sum,
     _handle_index_to_tensor,
     _handle_shape_from_tensor,
+    _handle_squeeze_shape,
+    _handle_unsqueeze_shape,
 )
 from max.driver import CPU, Buffer, Device
 from max.dtype import DType
@@ -4730,6 +4732,52 @@ class TestGatherSumOp:
         expected = gathered.sum(axis=1, keepdims=True)
         assert isinstance(result[0], Buffer)
         np.testing.assert_array_equal(result[0].to_numpy(), expected)
+
+
+def _mock_op_on(device: DeviceRef) -> MagicMock:
+    mock_result = MagicMock()
+    mock_result.type.device_ref = device.to_mlir()
+    mock_op = MagicMock()
+    mock_op.results = [mock_result]
+    return mock_op
+
+
+class TestSqueezeUnsqueezeShapeOps:
+    """Tests for the mo.squeeze_shape and mo.unsqueeze_shape handlers.
+
+    No graph API emits these ops (ops.squeeze and ops.unsqueeze lower to
+    reshape), so the tests call the handlers directly.
+    """
+
+    @pytest.mark.parametrize("np_dtype", [np.int32, np.int64])
+    def test_squeeze_shape(self, np_dtype: type) -> None:
+        """Negative and unsorted indices; the shape dtype is preserved."""
+        shape = Buffer.from_numpy(np.array([2, 1, 3, 1, 1], dtype=np_dtype))
+        indices = Buffer.from_numpy(np.array([-1, 1, 3], dtype=np.int32))
+
+        (out,) = _handle_squeeze_shape(
+            _mock_op_on(DeviceRef.CPU()), [shape, indices]
+        )
+
+        assert isinstance(out, Buffer)
+        result = out.to_numpy()
+        assert result.dtype == np_dtype
+        np.testing.assert_array_equal(result, [2, 3])
+
+    @pytest.mark.parametrize("np_dtype", [np.int32, np.int64])
+    def test_unsqueeze_shape(self, np_dtype: type) -> None:
+        """Negative indices count from the end of the output rank."""
+        shape = Buffer.from_numpy(np.array([10, 11, 12, 13], dtype=np_dtype))
+        indices = Buffer.from_numpy(np.array([0, -3, 3], dtype=np.int64))
+
+        (out,) = _handle_unsqueeze_shape(
+            _mock_op_on(DeviceRef.CPU()), [shape, indices]
+        )
+
+        assert isinstance(out, Buffer)
+        result = out.to_numpy()
+        assert result.dtype == np_dtype
+        np.testing.assert_array_equal(result, [1, 10, 11, 1, 1, 12, 13])
 
 
 class TestArgMaxMinOp:

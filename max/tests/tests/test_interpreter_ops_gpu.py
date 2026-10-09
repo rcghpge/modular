@@ -20,12 +20,17 @@ import operator
 import os
 from collections.abc import Generator, Sequence
 from typing import Any
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 import torch
 from max import _interpreter
 from max._interpreter_ops import GC_FAMILIES, adopted_from_manifest
+from max._interpreter_ops.handlers import (
+    _handle_squeeze_shape,
+    _handle_unsqueeze_shape,
+)
 from max.driver import CPU, Accelerator, Buffer, accelerator_count
 from max.dtype import DType
 from max.experimental import functional as F
@@ -788,6 +793,55 @@ class TestShapeRearrangeGPU:
         np.testing.assert_array_equal(
             torch.from_dlpack(out).cpu().numpy(), expected
         )
+
+
+class TestSqueezeUnsqueezeShapeGPU:
+    """mo.squeeze_shape and mo.unsqueeze_shape results land on the GPU.
+
+    No graph API emits these ops, so the tests call the handlers directly.
+    """
+
+    @staticmethod
+    def _gpu_op() -> MagicMock:
+        mock_result = MagicMock()
+        mock_result.type.device_ref = DeviceRef.GPU().to_mlir()
+        mock_op = MagicMock()
+        mock_op.results = [mock_result]
+        return mock_op
+
+    def test_squeeze_shape_on_gpu(self) -> None:
+        gpu = Accelerator()
+        shape = Buffer.from_numpy(np.array([2, 1, 3, 1, 1], dtype=np.int32)).to(
+            gpu
+        )
+        indices = Buffer.from_numpy(np.array([-1, 1, 3], dtype=np.int64)).to(
+            gpu
+        )
+
+        (out,) = _handle_squeeze_shape(self._gpu_op(), [shape, indices])
+
+        assert isinstance(out, Buffer)
+        assert out.device == gpu
+        result = out.to_numpy()
+        assert result.dtype == np.int32
+        np.testing.assert_array_equal(result, [2, 3])
+
+    def test_unsqueeze_shape_on_gpu(self) -> None:
+        gpu = Accelerator()
+        shape = Buffer.from_numpy(
+            np.array([10, 11, 12, 13], dtype=np.int32)
+        ).to(gpu)
+        indices = Buffer.from_numpy(np.array([0, -3, 3], dtype=np.int64)).to(
+            gpu
+        )
+
+        (out,) = _handle_unsqueeze_shape(self._gpu_op(), [shape, indices])
+
+        assert isinstance(out, Buffer)
+        assert out.device == gpu
+        result = out.to_numpy()
+        assert result.dtype == np.int32
+        np.testing.assert_array_equal(result, [1, 10, 11, 1, 1, 12, 13])
 
 
 class TestRangeGPU:
