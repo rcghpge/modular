@@ -2740,7 +2740,7 @@ def MO_ReshapeOp : MO_ShapeModifierOp<"reshape", [
 def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  MO_HostOnly,
+  MO_SingleDevice,
 ]> {
   let summary = "Squeeze-shape operation";
   let description = [{
@@ -2778,7 +2778,7 @@ def MO_SqueezeShapeOp : MO_ShapeModifierOp<"squeeze_shape", [
 def MO_UnsqueezeShapeOp : MO_ShapeModifierOp<"unsqueeze_shape", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
   DeclareOpInterfaceMethods<MO_Staticization>,
-  MO_HostOnly,
+  MO_SingleDevice,
 ]> {
   let summary = "Unsqueeze-shape operation";
   let description = [{
