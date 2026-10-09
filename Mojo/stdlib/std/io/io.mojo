@@ -442,10 +442,6 @@ def print[
             _ = printf_append_string_n(
                 msg, cstr.as_bytes_with_nul(), is_last=True
             )
-        elif is_apple_gpu():
-            _metal_print_write(
-                StringSlice(unsafe_from_utf8=cstr.as_bytes_with_nul())
-            )
         else:
             CompilationTarget.unsupported_target_error[
                 operation=__get_current_function_name()

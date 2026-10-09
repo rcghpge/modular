@@ -11,14 +11,27 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std._plugin._trait import PluginHooks
+from std._plugin._trait import PluginHooks, _PrintEmitPluginHookFnType
+from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
+from std.ffi import CStringSpan
+from std.io.file_descriptor import FileDescriptor
+from std.sys._metal_print import _metal_print_write
+
+
+def _print_emit[O: Origin](cstr: CStringSpan[O], file: FileDescriptor):
+    """Writes `print()` output from a Metal kernel to the os_log stream.
+
+    Metal kernels have a single os_log stream, so `file` is ignored.
+    """
+    _metal_print_write(StringSlice(unsafe_from_utf8=cstr.as_bytes_with_nul()))
 
 
 struct MetalPlugin(PluginHooks):
-    """`PluginHooks` implementation for Apple Metal backends.
-
-    Every hook is left at its `PluginHooks` default.
-    """
+    """`PluginHooks` implementation for Apple Metal backends."""
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["metal"]()
+
+    comptime print_emit_fn: OptionalReg[
+        _PrintEmitPluginHookFnType
+    ] = _print_emit
