@@ -603,11 +603,6 @@ class KVCacheBufferInterface(Protocol):
     """Interface for a KV cache buffer (single leaf or a tree of leaves)."""
 
     @property
-    def total_num_pages(self) -> int:
-        """Returns the total number of pages."""
-        ...
-
-    @property
     def all_buffers(self) -> list[Buffer]:
         """Returns all buffers."""
         ...
@@ -627,12 +622,6 @@ class MultiKVCacheBuffer(KVCacheBufferInterface):
     """
 
     children: dict[str, KVCacheBufferInterface]
-
-    @property
-    def total_num_pages(self) -> int:
-        """Returns the total number of pages."""
-        first = next(iter(self.children.values()))
-        return first.total_num_pages
 
     @property
     def all_buffers(self) -> list[Buffer]:
@@ -704,11 +693,6 @@ class KVCacheBuffer(KVCacheBufferInterface):
     :attr:`values_per_layer`). ``scales[shard]`` aliases
     ``scales_per_layer[shard][0]``. ``None`` for a single multi-layer scale
     buffer or an unquantized cache."""
-    is_jenga: bool = False
-    """Whether this buffer is associated with Jenga KV cache
-
-    TODO: Delete this field after reworking KVCacheBufferInterface.
-    """
 
     def __post_init__(self) -> None:
         all_buffers = self.all_buffers
@@ -786,24 +770,11 @@ class KVCacheBuffer(KVCacheBufferInterface):
         if len(unique_shapes) > 1:
             raise ValueError("All scales must have the same shape")
 
-        # Allow the number of pages to be different between values / scales only
-        # for Jenga KV cache.
-        # TODO: Get rid of this hack.
-        unique_num_pages = {b.shape[0] for b in all_buffers}
-        if not self.is_jenga and len(unique_num_pages) > 1:
-            raise ValueError(
-                "Values and scales must have the same number of pages"
-            )
         for value, scale in zip(self.values, self.scales, strict=True):
             if value.device != scale.device:
                 raise ValueError(
                     "Corresponding values and scales must be on the same device"
                 )
-
-    @property
-    def total_num_pages(self) -> int:
-        """Returns the total number of pages across all values and scales."""
-        return self.values[0].shape[0]
 
     @property
     def all_buffers(self) -> list[Buffer]:
@@ -857,11 +828,6 @@ class RecurrentStateBuffer(KVCacheBufferInterface):
         for leaf_id, buffers in self.pages.items():
             if not buffers:
                 raise ValueError(f"state leaf {leaf_id!r} has no device pages")
-
-    @property
-    def total_num_pages(self) -> int:
-        """Returns the first leaf's block count, including the null block."""
-        return next(iter(self.pages.values()))[0].shape[0]
 
     @property
     def all_buffers(self) -> list[Buffer]:
@@ -2336,7 +2302,6 @@ class KVCacheParams(KVCacheParamInterface):
             values_packed=values_packed,
             scales=scales,
             scales_packed=scales_packed,
-            is_jenga=True,
         )
 
 
