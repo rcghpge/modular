@@ -13,8 +13,8 @@
 """Configuration types for MAX speculative decoding.
 
 Exposes :class:`SpeculativeConfig`, which controls the speculative decoding
-method, the number of draft tokens per step, and the rejection sampling
-strategy used to verify drafts.
+method, the number of draft tokens per step, and how the target verifies
+drafts.
 """
 
 from __future__ import annotations
@@ -37,7 +37,6 @@ from .depth_schedule import DepthScheduleEntry, normalize_depth_schedule
 
 __all__ = [
     "MAGIC_DRAFT_TOKEN_ID",
-    "RejectionSamplingStrategy",
     "SpeculativeConfig",
     "SpeculativeMethod",
     "VerifyWidthRange",
@@ -58,28 +57,6 @@ SpeculativeMethod = Literal["eagle", "mtp", "dflash", "dflash2", "dspark"]
 
 _ONE_TOKEN_PER_STEP: tuple[SpeculativeMethod, ...] = ("eagle", "mtp")
 """Methods that draft one token per step, and so default to a width of 2."""
-
-RejectionSamplingStrategy = Literal[
-    "greedy", "residual", "typical-acceptance", "logit-comparison"
-]
-"""The supported strategies for verifying drafted tokens against the target.
-
-- ``greedy``: accepts a drafted token only when it matches the target's
-  argmax at that position.
-- ``residual``: samples from the residual distribution after subtracting
-  the draft's probability, the standard rejection-sampling rule for
-  matching the target distribution.
-- ``typical-acceptance``: accepts drafted tokens that fall within the
-  target's typical set, trading a small distributional mismatch for higher
-  acceptance rates.
-- ``logit-comparison``: compares target and draft logits directly to decide
-  acceptance.
-
-No speculative path reads this selection today: every unified speculative
-architecture builds its own ``AcceptanceSampler``
-(``max/python/max/nn/sampling/rejection_sampler.py``), which dispatches on
-``synthetic_acceptance_rate`` and ``use_greedy_acceptance`` instead.
-"""
 
 
 class VerifyWidthRange(BaseModel):
@@ -120,8 +97,8 @@ class SpeculativeConfig(ConfigFileModel):
     ``--num-speculative-tokens-per-batch-size``,
     ``--adaptive-speculative-widths``,
     ``--adaptive-speculative-min-batch-size``,
-    ``--num-speculative-tokens-mixed-batch``,
-    ``--rejection-sampling-strategy``, and ``--synthetic-acceptance-rate``.
+    ``--num-speculative-tokens-mixed-batch``, and
+    ``--synthetic-acceptance-rate``.
     Construct the config directly when configuring a pipeline
     programmatically:
 
@@ -322,21 +299,6 @@ class SpeculativeConfig(ConfigFileModel):
     nothing at all.
     """
 
-    rejection_sampling_strategy: RejectionSamplingStrategy | None = Field(
-        default=None,
-        description=(
-            "Rejection sampling strategy for verifying draft tokens. "
-            "Currently inert: the architecture's AcceptanceSampler decides "
-            "the acceptance rule."
-        ),
-    )
-    """The requested rejection sampling strategy for verifying drafted tokens.
-
-    Inert: see :data:`RejectionSamplingStrategy`. The acceptance rule in
-    effect is ``AcceptanceSampler.acceptance_rule``, and the startup config
-    dump reports it alongside the fields that decide it.
-    """
-
     synthetic_acceptance_rate: float | None = Field(
         default=None,
         description=(
@@ -533,15 +495,3 @@ class SpeculativeConfig(ConfigFileModel):
             self.speculative_method is not None
             and self.speculative_method not in _ONE_TOKEN_PER_STEP
         )
-
-    def uses_greedy_rejection(self) -> bool:
-        """Returns whether the ``"greedy"`` rejection sampling strategy is selected."""
-        return self.rejection_sampling_strategy == "greedy"
-
-    def uses_typical_acceptance(self) -> bool:
-        """Returns whether the ``"typical-acceptance"`` strategy is selected."""
-        return self.rejection_sampling_strategy == "typical-acceptance"
-
-    def uses_logit_comparison(self) -> bool:
-        """Returns whether the ``"logit-comparison"`` strategy is selected."""
-        return self.rejection_sampling_strategy == "logit-comparison"
