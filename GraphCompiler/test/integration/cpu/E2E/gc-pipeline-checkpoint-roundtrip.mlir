@@ -5,23 +5,23 @@
 // Each checkpoint the gc-pipeline dumps re-parses and survives a text and
 // bytecode roundtrip.
 // RUN: mo-opt %t/matmul_add.mo.mlir --verify-roundtrip -o /dev/null
-// RUN: mo-opt %t/matmul_add.mo-pre-mogg.mlir --verify-roundtrip -o /dev/null
+// RUN: mo-opt %t/matmul_add.mo-pre-map.mlir --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.mo-to-map.mlir --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.map-pre-mogg.mlir --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.map-to-mogg.mlir --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.mogg-pre-mgp.mlir --verify-roundtrip -o /dev/null
-// RUN: mo-opt %t/matmul_add.mgp-pre-pipeline.mlir --verify-roundtrip -o /dev/null
+// RUN: mo-opt %t/matmul_add.mogg-to-mgp.mlir --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.mgp.mlir --verify-roundtrip -o /dev/null
 
 // The pipeline resumes from each checkpoint: every stage runs on the previous
 // stage's dump, and the model compiled from the last dump still executes.
 // RUN: mo-opt %t/matmul_add.mo.mlir --mo-pipeline=constant-fold=false --verify-roundtrip -o /dev/null
-// RUN: mo-opt %t/matmul_add.mo-pre-mogg.mlir --mo-to-map --verify-roundtrip -o /dev/null
+// RUN: mo-opt %t/matmul_add.mo-pre-map.mlir --mo-to-map --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.mo-to-map.mlir --map-pipeline --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.map-pre-mogg.mlir --map-to-mogg --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.map-to-mogg.mlir --mogg-pipeline --verify-roundtrip -o /dev/null
 // RUN: mo-opt %t/matmul_add.mogg-pre-mgp.mlir --mogg-to-mgp --verify-roundtrip -o /dev/null
-// RUN: mo-opt %t/matmul_add.mgp-pre-pipeline.mlir --mgp-pipeline --jit --mogg-strip-kernel-decls --jit-pipeline --verify-roundtrip -o %t/resumed.mlir
+// RUN: mo-opt %t/matmul_add.mogg-to-mgp.mlir --mgp-pipeline --jit --mogg-strip-kernel-decls --jit-pipeline --verify-roundtrip -o %t/resumed.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t/resumed.mlir | FileCheck %s
 
 // CHECK-LABEL: Running 'matmul_add':

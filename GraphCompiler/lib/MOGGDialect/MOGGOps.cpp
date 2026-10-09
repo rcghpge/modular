@@ -2828,6 +2828,18 @@ void KernelOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// ExecuteCompiledOp
+//===----------------------------------------------------------------------===//
+
+void ExecuteCompiledOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  if (!getOutputParamDecls().empty())
+    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
+  effects.emplace_back(mlir::MemoryEffects::Read::get());
+  effects.emplace_back(mlir::MemoryEffects::Write::get());
+}
+
+//===----------------------------------------------------------------------===//
 // AsScalarOp
 //===----------------------------------------------------------------------===//
 

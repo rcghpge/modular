@@ -403,6 +403,7 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
 
 
 def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   MO_ExplicitDevice,
   MO_HasDeviceInterface,
@@ -416,6 +417,11 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
     runtime to reconstruct tensor shapes. `outputParamDecls` defines parameter
     values, which MGP translates into parameter system calls. `isAsync` means
     the kernel uses Mojo async/await.
+
+    The kernel reads and writes memory its operands only point to, such as
+    the buffer an init-block call fills, so the op is never pure: a call
+    whose results are unused is not dead, and two identical calls are not
+    redundant.
   }];
 
   let arguments = (ins

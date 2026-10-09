@@ -1,6 +1,6 @@
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: env MODULAR_MAX_TEMPS_DIR=%t mo-opt %s --gc-pipeline-pre-jit -o /dev/null
-// RUN: FileCheck %s --check-prefix=PREMOGG --input-file=%t/add+mul.mo-pre-mogg.mlir
+// RUN: FileCheck %s --check-prefix=PREMAP --input-file=%t/add+mul.mo-pre-map.mlir
 // RUN: FileCheck %s --check-prefix=MGP --input-file=%t/add+mul.mgp.mlir
 // RUN: FileCheck %s --check-prefix=MOJO --input-file=%t/add+mul.mojo
 
@@ -21,10 +21,10 @@ mo.graph @mul(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> (!mo.tensor
   mo.output %r : !mo.tensor<[4], f32>
 }
 
-// The mo-pre-mogg boundary is still in the mo dialect (the mgp dump has
+// The mo-pre-map boundary is still in the mo dialect (the mgp dump has
 // mgp.model instead). Both graphs are present in the shared dump.
-// PREMOGG-DAG: mo.graph @add
-// PREMOGG-DAG: mo.graph @mul
+// PREMAP-DAG: mo.graph @add
+// PREMAP-DAG: mo.graph @mul
 
 // MGP-DAG: mgp.model @add
 // MGP-DAG: mgp.model @mul

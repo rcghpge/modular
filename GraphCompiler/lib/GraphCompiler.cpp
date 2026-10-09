@@ -366,8 +366,9 @@ void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
   pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
   pm.addPass(MOGG::createWrapKernelsWithTraceOp());
 
-  pm.addNestedPass<GraphOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<GraphOp>(mlir::createCSEPass());
+  // On the module, not GraphOp: the outlined stubs are its siblings.
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 }
 
 void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
@@ -439,6 +440,9 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   // per-device copies (e.g. across EP shards) merge below.
   pm.addPass(MOGG::createCanonicalizeKernelStubDeviceIds());
 
+  // Stubs that differ only by a redundant op merge once it is gone.
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(MOGG::createMergeIdenticalKernelStubs());
 
   // index.constant emits fewer lines of Mojo than its lowered form.
@@ -559,7 +563,7 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
       pm.addPass(MO::createDumpStagePass(dumpSuffix, dumpBaseName));
   };
 
-  buildStage([&](auto &p) { buildMoPipeline(p, moOpts); }, "mo-pre-mogg");
+  buildStage([&](auto &p) { buildMoPipeline(p, moOpts); }, "mo-pre-map");
 
   buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "mo-to-map");
 
@@ -590,7 +594,7 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
       "mogg-pre-mgp");
 
   buildStage([&](auto &p) { p.addPass(MGP::createMOGGToMGP(moToPrimOpts)); },
-             "mgp-pre-pipeline");
+             "mogg-to-mgp");
 
   buildStage(
       [&](auto &p) {
