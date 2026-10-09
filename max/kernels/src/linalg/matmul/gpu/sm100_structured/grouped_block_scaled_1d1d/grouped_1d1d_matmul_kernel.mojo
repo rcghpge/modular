@@ -3539,18 +3539,7 @@ struct Grouped1D1DMatmulKernel[
                     var take = warp.shuffle_xor(give, UInt32(4))
                     var gate = upper_tok[j] if tok_is_even else take
                     var up = take if tok_is_even else lower_tok[j]
-                    comptime if ClampActivation:
-                        var alpha_ip = swiglu_out.clamp_alpha()
-                        var limit_ip = swiglu_out.clamp_limit()
-                        var g_c = min(gate, limit_ip)
-                        var u_c = max(min(up, limit_ip), -limit_ip)
-                        var sigmoid_ip = recip(
-                            Float32(1.0) + exp(-(g_c * alpha_ip))
-                        )
-                        sw_tok[j] = (u_c + Float32(1.0)) * g_c * sigmoid_ip
-                    else:
-                        var sigmoid = recip(Float32(1.0) + exp(-gate))
-                        sw_tok[j] = gate * sigmoid * up
+                    sw_tok[j] = activation(gate, up)
 
                 # Earlier row loads of this warp read these slots.
                 syncwarp()
