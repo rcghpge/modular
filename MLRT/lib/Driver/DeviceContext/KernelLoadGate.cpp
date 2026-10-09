@@ -8,6 +8,7 @@
 
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
+#include "llvm/Support/Threading.h"
 
 #include <cassert>
 
@@ -23,7 +24,7 @@ bool KernelLoadGate::tryAcquireCollective(AsyncRT::CPUDevice &cpuDevice,
   if (state_ == State::Idle) {
     // Idle -> Active: allocate idle chain for next loader, return true.
     idle_ = AsyncValueRef<Chain>::allocate(cpuDevice);
-    if (activeLoads_ == 0) {
+    if (inFlightLoads_ == 0) {
       state_ = State::Active;
       return true;
     }
@@ -33,9 +34,9 @@ bool KernelLoadGate::tryAcquireCollective(AsyncRT::CPUDevice &cpuDevice,
     grant = drainGrant_.copy();
     return false;
   }
-  // {Active, Draining}: enqueue chain onto pending list and return false.
-  pending_.push_back(AsyncValueRef<Chain>::allocate(cpuDevice));
-  grant = pending_.back().copy();
+  // {Active, Draining}: queue a chain behind the owner and return false.
+  queuedCollectives_.push_back(AsyncValueRef<Chain>::allocate(cpuDevice));
+  grant = queuedCollectives_.back().copy();
   return false;
 }
 
@@ -46,17 +47,17 @@ void KernelLoadGate::releaseCollective() {
     std::lock_guard<std::mutex> lock(mu_);
     assert(state_ == State::Active &&
            "releasing a kernel-load gate no collective owns");
-    if (pending_.empty()) {
+    if (queuedCollectives_.empty()) {
       // Active -> Idle: mark idle chain ready to wake next loader.
       state_ = State::Idle;
       wake = std::move(idle_);
     } else {
-      // Pop next chain from pending list.
-      AsyncValueRef<Chain> next = std::move(pending_.front());
-      pending_.pop_front();
+      // Pop the next queued collective's chain.
+      AsyncValueRef<Chain> next = std::move(queuedCollectives_.front());
+      queuedCollectives_.erase(queuedCollectives_.begin());
       // The owner's own loads close before its enqueues finish, and every other
       // load has waited since the claim, so none can be in flight here.
-      assert(activeLoads_ == 0 &&
+      assert(inFlightLoads_ == 0 &&
              "handing off a kernel-load gate with loads still open");
       wake = std::move(next);
     }
@@ -72,12 +73,12 @@ void KernelLoadGate::openLoad() {
     {
       // Hold lock while updating KernelLoadGate internal state
       std::lock_guard<std::mutex> lock(mu_);
-      // Idle: increment active load counter and return.
+      // Idle: increment the in-flight load counter and return.
       // Special case: if this thread is enqueuing a collective, it already
       // holds the gate and doesn't need to wait for itself. But we still
-      // track the pending load.
+      // track the in-flight load.
       if (state_ == State::Idle || isEnqueueThread()) {
-        ++activeLoads_;
+        ++inFlightLoads_;
         return;
       }
       // {Active, Draining}: copy idle chain and wait on it.
@@ -93,9 +94,9 @@ void KernelLoadGate::closeLoad() {
   {
     // Hold lock while updating KernelLoadGate internal state
     std::lock_guard<std::mutex> lock(mu_);
-    // Decrement active load counter.
-    --activeLoads_;
-    if (activeLoads_ == 0 && state_ == State::Draining) {
+    // Decrement the in-flight load counter.
+    --inFlightLoads_;
+    if (inFlightLoads_ == 0 && state_ == State::Draining) {
       // Draining -> Active: open the gate for the next collective.
       state_ = State::Active;
       grant = std::move(drainGrant_);
@@ -106,15 +107,15 @@ void KernelLoadGate::closeLoad() {
 }
 
 bool KernelLoadGate::isEnqueueThread() const {
-  std::thread::id self = std::this_thread::get_id();
-  for (std::thread::id entry : enqueueThreads_)
+  uint64_t self = llvm::get_threadid();
+  for (uint64_t entry : enqueueThreads_)
     if (entry == self)
       return true;
   return false;
 }
 
 void KernelLoadGate::beginEnqueue() {
-  std::thread::id self = std::this_thread::get_id();
+  uint64_t self = llvm::get_threadid();
   std::lock_guard<std::mutex> lock(mu_);
   // A second registration would mean a launch body waited and this thread ran
   // another device's share inside it, which keying on thread identity rules
@@ -125,9 +126,9 @@ void KernelLoadGate::beginEnqueue() {
 }
 
 void KernelLoadGate::endEnqueue() {
-  std::thread::id self = std::this_thread::get_id();
+  uint64_t self = llvm::get_threadid();
   std::lock_guard<std::mutex> lock(mu_);
-  for (std::thread::id &entry : enqueueThreads_) {
+  for (uint64_t &entry : enqueueThreads_) {
     if (entry != self)
       continue;
     // Order does not matter, so swap with the back rather than shift.

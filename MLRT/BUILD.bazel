@@ -458,7 +458,10 @@ modular_cc_library(
     hdrs = ["include/MLRT/Driver/DeviceContext/KernelLoadGate.h"],
     includes = ["include"],
     visibility = ["//MLRT:consumers"],
-    deps = ["//AsyncRT:Runtime"],
+    deps = [
+        "//AsyncRT:Runtime",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 # Shared device-to-worker affinity logic used by both the graph compiler

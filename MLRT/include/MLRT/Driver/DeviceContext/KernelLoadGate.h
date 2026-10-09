@@ -17,13 +17,12 @@
 
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/AsyncValueRef.h"
+#include "llvm/ADT/SmallVector.h"
 
 #include <cstddef>
-#include <deque>
+#include <cstdint>
 #include <mutex>
-#include <thread>
 #include <utility>
-#include <vector>
 
 namespace M::Driver {
 
@@ -160,20 +159,24 @@ private:
 
   std::mutex mu_;
   State state_ = State::Idle;
-  size_t activeLoads_ = 0;
-  /// Threads running the open collective's per-device enqueues. Holds one
-  /// entry per participating device, so a scan is cheaper than a map, and it
-  /// reaches its steady-state capacity on the first collective.
-  std::vector<std::thread::id> enqueueThreads_;
+  size_t inFlightLoads_ = 0;
+  /// Threads running the open collective's per-device enqueues, keyed by
+  /// `llvm::get_threadid()`, the identity AsyncRT itself checks its workers
+  /// against. Holds one entry per participating device, so a scan is cheaper
+  /// than a map, and the inline capacity covers a node's devices without
+  /// allocating.
+  llvm::SmallVector<uint64_t, 8> enqueueThreads_;
   /// Fulfilled when the gate returns to Idle; waited on by loads. Survives a
   /// hand-off between queued collectives, so loads wait out the whole run of
   /// them. Null while Idle.
   AsyncRT::AsyncValueRef<AsyncRT::Chain> idle_;
   /// The grant owed to the collective in Draining, fulfilled by the load whose
-  /// close brings `activeLoads_` to zero. Null outside Draining.
+  /// close brings `inFlightLoads_` to zero. Null outside Draining.
   AsyncRT::AsyncValueRef<AsyncRT::Chain> drainGrant_;
-  /// Grants for collectives queued behind the owner, in arrival order.
-  std::deque<AsyncRT::AsyncValueRef<AsyncRT::Chain>> pending_;
+  /// Grants for collectives queued behind the owner, in arrival order. Empty
+  /// unless collectives overlap, and short when they do.
+  llvm::SmallVector<AsyncRT::AsyncValueRef<AsyncRT::Chain>, 2>
+      queuedCollectives_;
 };
 
 } // namespace M::Driver
