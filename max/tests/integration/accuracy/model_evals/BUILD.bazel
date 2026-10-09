@@ -265,6 +265,16 @@ modular_py_test(
 )
 
 modular_py_test(
+    name = "test_gpqa_eval",
+    size = "small",
+    srcs = ["test_gpqa_eval.py"],
+    deps = [
+        ":eval_common",
+        ":gpqa_eval",
+    ],
+)
+
+modular_py_test(
     name = "test_exacto_report",
     size = "small",
     srcs = ["test_exacto_report.py"],
