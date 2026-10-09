@@ -450,6 +450,7 @@ SharedState::SharedState(llvm::SourceMgr &sourceMgr, ParserConfig &config)
   docsBasePath = config.docsBasePath;
 
   preloadAllKGENDialects(config.context);
+  compilerCaches = KGEN::CompilerCaches::getOrCreate(config.context);
 
   // Record any existing buffers in the source manager.
   for (int i = 0, e = sourceMgr.getNumBuffers(); i < e; ++i) {

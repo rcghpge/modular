@@ -13,6 +13,7 @@
 
 #include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Mojo/Interpreter/InterpreterAttrs.h"
+#include "Mojo/KGENDialect/CompilerCaches.h"
 #include "Mojo/KGENDialect/FoldUtils.h"
 #include "Mojo/KGENDialect/KGENDType.h"
 #include "Mojo/KGENDialect/KGENDialect.h"
@@ -5434,6 +5435,15 @@ class Canonicalizer : public ParameterReplacer<Canonicalizer> {
     if (auto can = getLocalCanonical(value))
       return can;
 
+    // Walking is repeated for the same value many times; cache across calls.
+    using Base =
+        std::conditional_t<std::is_base_of_v<Type, T>, Type, Attribute>;
+    CanonicalCache *cache = getCache(value.getContext());
+    if (cache) {
+      if (const void *hit = cache->lookup(value.getAsOpaquePointer()))
+        return Base::getFromOpaquePointer(hit);
+    }
+
     // Otherwise, recursively walk and rebuild the attribute with
     // canonicalized subelements.
     SmallVector<Attribute, 16> newAttrs;
@@ -5447,9 +5457,17 @@ class Canonicalizer : public ParameterReplacer<Canonicalizer> {
     value.walkImmediateSubElements(
         [&](Attribute attr) { walkFn(attr, newAttrs); },
         [&](Type type) { walkFn(type, newTypes); });
-    if (!changed)
-      return value;
-    return value.replaceImmediateSubElements(newAttrs, newTypes);
+    Base result =
+        changed ? Base(value.replaceImmediateSubElements(newAttrs, newTypes))
+                : Base(value);
+    if (cache && result)
+      cache->insert(value.getAsOpaquePointer(), result.getAsOpaquePointer());
+    return result;
+  }
+
+  static CanonicalCache *getCache(MLIRContext *context) {
+    CompilerCaches *caches = CompilerCaches::get(context);
+    return caches ? &caches->canonical : nullptr;
   }
 
   friend class ParameterReplacer<Canonicalizer>;

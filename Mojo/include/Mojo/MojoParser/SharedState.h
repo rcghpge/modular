@@ -19,6 +19,7 @@
 #ifndef KGEN_MOJOPARSER_SHAREDSTATE_H
 #define KGEN_MOJOPARSER_SHAREDSTATE_H
 
+#include "Mojo/KGENDialect/CompilerCaches.h"
 #include "Mojo/KGENDialect/ParameterEvaluator.h"
 #include "Mojo/LITDialect/OriginTrackable.h"
 #include "Mojo/MojoParser/IRValues.h"
@@ -160,6 +161,10 @@ public:
 
   /// This is used to efficiently walk MLIR types to find embedded origins.
   CachedOriginFinder cachedOriginFinder;
+
+  /// Caches for the parameter helpers, shared with every other state on this
+  /// context.
+  std::shared_ptr<KGEN::CompilerCaches> compilerCaches;
 
   /// Find all ParamDeclRefAttr's in side the type at the current scope.
   void collectParamRefsInType(Type type,
