@@ -21,8 +21,6 @@ mo.graph @neg_non_sm100(
     %c_in_scales: !mo.tensor<[49], f32, gpu:0>,
     %est_m: !mo.tensor<[], ui32>,
     %gate_up_nae: !mo.tensor<[], ui32>,
-    %swiglu_alpha: !mo.tensor<[], f32>,
-    %swiglu_limit: !mo.tensor<[], f32>,
     %down_w: !mo.tensor<[49, 7168, 1024], ui8, gpu:0>,
     %down_bs: !mo.tensor<[49, 56, 32, 32, 4, 4], f8e4m3fn, gpu:0>,
     %down_es: !mo.tensor<[49], f32, gpu:0>,
@@ -31,7 +29,7 @@ mo.graph @neg_non_sm100(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae, %swiglu_alpha, %swiglu_limit) {clamp_activation = false} : (
+      %gate_up_nae) : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -39,8 +37,7 @@ mo.graph @neg_non_sm100(
       !mo.tensor<[50], ui32, gpu:0>, !mo.tensor<[49], si32, gpu:0>,
       !mo.tensor<[49], ui32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
       !mo.tensor<[49], f32, gpu:0>, !mo.tensor<[49], f32, gpu:0>,
-      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>,
-      !mo.tensor<[], f32>, !mo.tensor<[], f32>
+      !mo.tensor<[], ui32>, !mo.tensor<[], ui32>
     ) -> (!mo.tensor<[66560, 1024], ui8, gpu:0>,
           !mo.tensor<[569, 32, 32, 4, 4], f8e4m3fn, gpu:0>)
   %out = mo.composite.grouped_matmul_block_scaled(

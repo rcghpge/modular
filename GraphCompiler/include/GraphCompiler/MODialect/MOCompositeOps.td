@@ -743,9 +743,7 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"comp
 def MOComposite_GroupedMatmulSwigluNvfp4Op
     : MO_CompositeOp<"grouped_matmul_swiglu_nvfp4", [
   Pure,
-  MO_SingleDeviceWithHostOperands<[
-    "estimated_total_m", "num_active_experts", "swiglu_alpha",
-    "swiglu_limit"]>,
+  MO_SingleDeviceWithHostOperands<["estimated_total_m", "num_active_experts"]>,
 ]> {
   let summary = "Grouped gate-up GEMM + SwiGLU + bf16->nvfp4 quantize (MoE L1)";
   let description = [{
@@ -754,8 +752,9 @@ def MOComposite_GroupedMatmulSwigluNvfp4Op
     packed activations for the down leg (`c_packed`) and their per-expert
     SwiGLU scale tile (`c_swiglu_scales`).
 
-    `swiglu_alpha`/`swiglu_limit` parameterize the clamped SwiGLU (swigluoai),
-    enabled by `clamp_activation`.
+    The gated activation is built at compile time from the `activation`,
+    `swiglu_alpha` and `swiglu_limit` attributes; the constants are decimal
+    strings because kernel parameters cannot be floats.
 
     When `has_a_row_scales` is set, `a_row_scales` holds one bf16 scale per
     `hidden_states` row, applied with its expert scale before the SwiGLU.
@@ -775,9 +774,9 @@ def MOComposite_GroupedMatmulSwigluNvfp4Op
     MO_Tensor:$c_input_scales,
     MO_Tensor:$estimated_total_m,
     MO_Tensor:$num_active_experts,
-    MO_Tensor:$swiglu_alpha,
-    MO_Tensor:$swiglu_limit,
-    DefaultValuedAttr<BoolAttr, "false">:$clamp_activation,
+    DefaultValuedAttr<StrAttr, "\"silu\"">:$activation,
+    DefaultValuedAttr<StrAttr, "\"0.0\"">:$swiglu_alpha,
+    DefaultValuedAttr<StrAttr, "\"0.0\"">:$swiglu_limit,
     DefaultValuedAttr<BoolAttr, "false">:$has_a_row_scales
   );
   let results = (outs MO_Tensor:$c_packed, MO_Tensor:$c_swiglu_scales);
@@ -852,8 +851,9 @@ def MOComposite_MegaFFNNvfp4Op : MO_CompositeOp<"mega_ffn_nvfp4", [
     `inChain`/`outChain` sequence the write and are dropped before kernel-arg
     binding, so `arrival_count` binds to the `MutableInputTensor` arg.
 
-    The discardable `clamp_activation` attribute selects swigluoai, with the
-    kernel supplying the alpha/limit constants.
+    The gate-up leg's gated activation rides on the discardable `activation`,
+    `swiglu_alpha` and `swiglu_limit` string attributes, copied from
+    `mo.composite.grouped_matmul_swiglu_nvfp4` by the fusion.
 
     `gate_up_a_row_scales`/`has_gate_up_a_row_scales` are the gate-up leg's
     per-row input scales (see `mo.composite.grouped_matmul_swiglu_nvfp4`).

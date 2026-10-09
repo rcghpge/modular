@@ -4594,12 +4594,14 @@ public:
         /*inChain=*/inChain,
         /*has_gate_up_a_row_scales=*/l1.getHasARowScales());
 
-    // Forward the clamped-SwiGLU (`swigluoai`) activation selector from L1; the
-    // kernel supplies the canonical alpha/limit constants when it is set.
-    if (auto clampAttr = l1->getAttr("clamp_activation"))
-      megaFFN->setAttr("clamp_activation", clampAttr);
-    else
-      megaFFN->setAttr("clamp_activation", rewriter.getBoolAttr(false));
+    // Forward L1's gated activation; the fused kernel builds it from these at
+    // compile time, so dropping one would silently change the numerics.
+    megaFFN->setAttr(l1.getActivationAttrName(),
+                     mlir::StringAttr::get(ctx, l1.getActivation()));
+    megaFFN->setAttr(l1.getSwigluAlphaAttrName(),
+                     mlir::StringAttr::get(ctx, l1.getSwigluAlpha()));
+    megaFFN->setAttr(l1.getSwigluLimitAttrName(),
+                     mlir::StringAttr::get(ctx, l1.getSwigluLimit()));
 
     // downOp has a single result; the fused op's outChain is unused (the buffer
     // is touched only here).
