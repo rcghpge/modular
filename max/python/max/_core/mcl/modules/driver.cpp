@@ -505,6 +505,9 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           An event can be used to wait for the GPU execution to reach a certain
           point on the given queue.
 
+          For example, create an event, record it on the default queue, and
+          wait for the queue to reach it:
+
           .. code-block:: python
 
               from max import driver
@@ -516,29 +519,19 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
               device.default_queue.record_event(event)
               # Wait for execution on the default queue to reach the event
               event.synchronize()
+
+          Args:
+              device (Device): The device on which to create the event.
+              enable_timing (bool): If True, enable GPU timing on this event.
+                  Events created with ``enable_timing=True`` can be used with
+                  :meth:`elapsed_time` to measure GPU execution time.
+                  Defaults to False.
+
+          Raises:
+              ValueError: If event creation failed.
   )nbdoc")
       .def(nb::init<Python::Device &, bool>(), "device"_a,
-           "enable_timing"_a = false, R"nbdoc(
-        Creates an event for synchronization on the specified device.
-
-        Args:
-            device (Device): The device on which to create the event.
-            enable_timing (bool): If True, enable GPU timing on this event.
-                Events created with ``enable_timing=True`` can be used with
-                :meth:`elapsed_time` to measure GPU execution time.
-                Defaults to False.
-
-        Raises:
-            ValueError: If event creation failed.
-
-        .. code-block:: python
-
-            from max import driver
-
-            device = driver.Accelerator()
-            event = driver.DeviceEvent(device)
-            timed_event = driver.DeviceEvent(device, enable_timing=True)
-      )nbdoc")
+           "enable_timing"_a = false)
       .def("synchronize", &Python::DeviceEvent::synchronize, R"nbdoc(
           Ensures all operations on this queue complete before returning.
 
@@ -562,15 +555,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         and recorded on a queue before calling this method. The end
         event must be synchronized before calling this method.
 
-        Args:
-            end_event (DeviceEvent): The ending event.
-
-        Returns:
-            float: Elapsed time in milliseconds.
-
-        Raises:
-            RuntimeError: If either event was not created with timing
-                enabled, or if the events have not been recorded.
+        For example, time the GPU work enqueued between two recorded events:
 
         .. code-block:: python
 
@@ -587,6 +572,16 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
             end.synchronize()
 
             elapsed_ms = start.elapsed_time(end)
+
+        Args:
+            end_event (DeviceEvent): The ending event.
+
+        Returns:
+            float: Elapsed time in milliseconds.
+
+        Raises:
+            RuntimeError: If either event was not created with timing
+                enabled, or if the events have not been recorded.
       )nbdoc")
       .def("__str__", &Python::DeviceEvent::getAsString)
       .def("__repr__", &Python::DeviceEvent::getAsString)
