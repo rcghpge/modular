@@ -3069,13 +3069,9 @@ struct BundledAllReduceSum:
         responsible for launching one instance per device and passing all N
         input buffers to each launch.
 
-        Because `mo.parallel` owns the fan-out, this path does not take the
-        kernel-load gate that `_launch_device_collective` claims for a
-        distributed op's per-device enqueues. A first-time kernel load on
-        another thread can therefore interleave with these launches and
-        deadlock against the device-side barrier (MXSERV-441); the lowering
-        emits N independent async stubs, with no single point to claim the
-        gate from or release it at.
+        This path does not take the kernel-load gate: `mo.parallel` emits N
+        independent async stubs, with no single point to claim or release it,
+        so a first-time kernel load can still interleave with these launches.
 
         Parameters:
             dtype: Element type of the input and output tensors.

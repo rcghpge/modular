@@ -30,20 +30,17 @@ def _launch_device_collective[
 ](func: F, var dev_ctxs: Array[DeviceContext, num_devices]) raises:
     """Dispatch async tasks to call func[i]() for each device in dev_ctxs.
 
-    The tasks run concurrently, one per device affinity worker. They must:
-    every collective kernel spins at a device-side barrier until all peers
-    arrive, and several fill the GPU while they do, so a peer still compiling
-    its own copy would wait for a quiesce that never comes.
+    The tasks run concurrently, one per device affinity worker, because each
+    collective kernel spins at a device-side barrier until all peers arrive.
 
-    Unrelated kernel loads are held off until every device has been enqueued.
     The tasks are dispatched only once this collective owns the kernel-load
-    gate, and the last of them releases it; this frame never holds the gate
-    while it waits, because the wait may run a task that needs the gate.
+    gate, which holds off unrelated kernel loads until every device has been
+    enqueued, and the last task releases it. This frame never holds the gate
+    while it waits.
 
-    `func` must not wait or launch a collective of its own. A nested collective
-    queues behind this one, which releases the gate only after `func` returns,
-    so the two deadlock. A wait lets other work run on a thread registered as
-    this collective's, and that work's kernel loads would pass the gate.
+    `func` must not wait or launch a collective of its own: a nested
+    collective would queue behind this one and never be granted, and a wait
+    would let other work run on a thread registered as this collective's.
 
     Parameters:
         num_devices: Number of devices participating in the collective.
