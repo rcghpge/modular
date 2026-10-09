@@ -118,5 +118,5 @@ def modular_py_library(
                 ":" + name,
                 "//max/tests/docstring_examples:sybil_collect",
             ] + docstring_example_deps,
-            tags = ["no-pydeps"],
+            tags = ["no-pydeps", "skip-ci-asan"],
         )

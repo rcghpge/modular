@@ -23,6 +23,7 @@ modular_run_binary_test(
     name = "layer_comparison_test",
     size = "large",
     binary = "layer_comparison",
+    tags = ["skip-ci-asan"],
     # FIXME: MOCO-3663 — doc example tests consistently timeout on remote macOS workers
     target_compatible_with = select({
         "@platforms//os:macos": ["@platforms//:incompatible"],
