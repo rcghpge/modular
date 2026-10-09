@@ -115,7 +115,8 @@ _EXTRA_DEPS = {
             "test.resources:gpu-memory": _GPU_MEMORY.get(src, "5"),
         },
         main = src,
-        tags = ["gpu"],
+        # Flaky due to a K/V DMA race in `MhaPrefillV2` (KERN-3053).
+        tags = ["gpu"] + (["manual"] if src == "test_mha_prefill_v2_ragged_gate.mojo" else []),
         target_compatible_with = ["//:has_gpu"] + _EXTRA_CONSTRAINTS.get(src, []),
         deps = [
             "//max:internal_utils",
