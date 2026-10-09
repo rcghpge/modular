@@ -28,7 +28,7 @@
 // CHECK-NOT: mogg_tensor_create_broadcast
 
 mo.graph @add_scalar_constant(%arg0: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %s = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %s = mo.constant <#M.dense_array<2.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%s) : !mo.tensor<[], f32> -> !mo.tensor<[2, 2], f32>
   %r = mo.add(%arg0, %b) : !mo.tensor<[2, 2], f32>
   mo.output %r : !mo.tensor<[2, 2], f32>

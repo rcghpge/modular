@@ -2,8 +2,8 @@
 // RUN: mt --execute --result-output-style=full --model-inputs=ones %t.mlir | FileCheck %s
 
 mo.graph @si32_mul() -> (!mo.tensor<[6], si32>) {
-  %0 = mo.constant {value = #M.dense_array<1, -2, 14, 4, -2, -6> : tensor<6xsi32>} : !mo.tensor<[6], si32>
-  %1 = mo.constant {value = #M.dense_array<-4, 563, 129, 6, -4, 1> : tensor<6xsi32>} :!mo.tensor<[6], si32>
+  %0 = mo.constant <#M.dense_array<1, -2, 14, 4, -2, -6> : tensor<6xsi32>> : !mo.tensor<[6], si32>
+  %1 = mo.constant <#M.dense_array<-4, 563, 129, 6, -4, 1> : tensor<6xsi32>> :!mo.tensor<[6], si32>
   %2 = mo.mul(%0, %1) : !mo.tensor<[6], si32>
   mo.output %2 : !mo.tensor<[6], si32>
 }
@@ -63,10 +63,10 @@ mo.graph @fused_ui16() -> (!mo.tensor<[6], ui16>) {
 // CHECK{LITERAL}: 'fused_ui16' returned tensor<6xui16> [0, 0, 1806, 24, 8, 0]
 
 mo.graph @many_bcasts_si32() -> !mo.tensor<[2, 2, 3], si32> {
-  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12> : tensor<12xsi32>} : !mo.tensor<[2, 2, 3], si32>
-  %1 = mo.constant {value = #M.dense_array<3, 0> : tensor<2xsi32>} : !mo.tensor<[2, 1, 1], si32>
-  %2 = mo.constant {value = #M.dense_array<5, 25> : tensor<2xsi32>} : !mo.tensor<[2, 1], si32>
-  %3 = mo.constant {value = #M.dense_array<1, 7, 8> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %0 = mo.constant <#M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12> : tensor<12xsi32>> : !mo.tensor<[2, 2, 3], si32>
+  %1 = mo.constant <#M.dense_array<3, 0> : tensor<2xsi32>> : !mo.tensor<[2, 1, 1], si32>
+  %2 = mo.constant <#M.dense_array<5, 25> : tensor<2xsi32>> : !mo.tensor<[2, 1], si32>
+  %3 = mo.constant <#M.dense_array<1, 7, 8> : tensor<3xsi32>> : !mo.tensor<[3], si32>
 
   %bcast = mo.static.broadcast_to(%1) : !mo.tensor<[2, 1, 1], si32> -> !mo.tensor<[2, 2, 3], si32>
   %bcast2 = mo.static.broadcast_to(%2) : !mo.tensor<[2, 1], si32> -> !mo.tensor<[2, 2, 3], si32>
@@ -103,10 +103,10 @@ mo.graph @fused_si64() -> (!mo.tensor<[6], si64>) {
 // CHECK{LITERAL}: 'fused_si64' returned tensor<6xsi64> [0, 0, 1806, 24, 8, 0]
 
 mo.graph @many_bcasts_si64() -> !mo.tensor<[2, 2, 3], si64> {
-  %0 = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12> : tensor<12xsi64>} : !mo.tensor<[2, 2, 3], si64>
-  %1 = mo.constant {value = #M.dense_array<3, 0> : tensor<2xsi64>} : !mo.tensor<[2, 1, 1], si64>
-  %2 = mo.constant {value = #M.dense_array<5, 25> : tensor<2xsi64>} : !mo.tensor<[2, 1], si64>
-  %3 = mo.constant {value = #M.dense_array<1, 7, 8> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12> : tensor<12xsi64>> : !mo.tensor<[2, 2, 3], si64>
+  %1 = mo.constant <#M.dense_array<3, 0> : tensor<2xsi64>> : !mo.tensor<[2, 1, 1], si64>
+  %2 = mo.constant <#M.dense_array<5, 25> : tensor<2xsi64>> : !mo.tensor<[2, 1], si64>
+  %3 = mo.constant <#M.dense_array<1, 7, 8> : tensor<3xsi64>> : !mo.tensor<[3], si64>
 
   %bcast = mo.static.broadcast_to(%1) : !mo.tensor<[2, 1, 1], si64> -> !mo.tensor<[2, 2, 3], si64>
   %bcast2 = mo.static.broadcast_to(%2) : !mo.tensor<[2, 1], si64> -> !mo.tensor<[2, 2, 3], si64>
@@ -134,7 +134,7 @@ mo.graph @many_bcasts_si64() -> !mo.tensor<[2, 2, 3], si64> {
 mo.graph @fused_cast(%arg0: !mo.tensor<[2, 2, 2], si32>, %arg1: !mo.tensor<[2, 2, 2], si32>) -> (!mo.tensor<[2, 2, 2], f32>) {
   %0 = mo.cast(%arg0) : (!mo.tensor<[2, 2, 2], si32>) -> !mo.tensor<[2, 2, 2], f32>
   %1 = mo.cast(%arg1) : (!mo.tensor<[2, 2, 2], si32>) -> !mo.tensor<[2, 2, 2], f32>
-  %cst = mo.constant {value = #M.dense_array<2.500000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<2.500000e-01> : tensor<f32>> : !mo.tensor<[], f32>
   %cst_bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[2, 2, 2], f32>
   %2 = mo.add(%0, %1) : !mo.tensor<[2, 2, 2], f32>
   %3 = mo.mul(%2, %cst_bcast) : !mo.tensor<[2, 2, 2], f32>

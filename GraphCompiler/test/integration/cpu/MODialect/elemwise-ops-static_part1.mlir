@@ -2,8 +2,8 @@
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @add() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %2 = mo.add(%0, %1) : !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
 }
@@ -11,8 +11,8 @@ mo.graph @add() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @and() -> (!mo.tensor<[4], bool>) {
-  %lhs = mo.constant {value = #M.dense_array<true, true, false, false> : tensor<4xi1>} : !mo.tensor<[4], bool>
-  %rhs = mo.constant {value = #M.dense_array<true, false, true, false> : tensor<4xi1>} : !mo.tensor<[4], bool>
+  %lhs = mo.constant <#M.dense_array<true, true, false, false> : tensor<4xi1>> : !mo.tensor<[4], bool>
+  %rhs = mo.constant <#M.dense_array<true, false, true, false> : tensor<4xi1>> : !mo.tensor<[4], bool>
   %res = mo.and(%lhs, %rhs) : !mo.tensor<[4], bool>
   mo.output %res : !mo.tensor<[4], bool>
 }
@@ -20,8 +20,8 @@ mo.graph @and() -> (!mo.tensor<[4], bool>) {
 
 
 mo.graph @max() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %2 = mo.max(%0, %1) : !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
 }
@@ -29,8 +29,8 @@ mo.graph @max() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @mul() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %2 = mo.mul(%0, %1) : !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
 }
@@ -38,8 +38,8 @@ mo.graph @mul() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @min() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %2 = mo.min(%0, %1) : !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
 }
@@ -47,8 +47,8 @@ mo.graph @min() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @mod_integer() -> (!mo.tensor<[5], si32>) {
-  %0 = mo.constant {value = #M.dense_array<-1, 2, -3, -4, 5> : tensor<5xsi32>} : !mo.tensor<[5], si32>
-  %1 = mo.constant {value = #M.dense_array<3, 1, -6, 2, 5> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %0 = mo.constant <#M.dense_array<-1, 2, -3, -4, 5> : tensor<5xsi32>> : !mo.tensor<[5], si32>
+  %1 = mo.constant <#M.dense_array<3, 1, -6, 2, 5> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %2 = mo.mod(%0, %1) : !mo.tensor<[5], si32>
   mo.output %2 : !mo.tensor<[5], si32>
 }
@@ -56,8 +56,8 @@ mo.graph @mod_integer() -> (!mo.tensor<[5], si32>) {
 
 
 mo.graph @mod_float() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.1, 2.1, -3.1, -4.1, 5.1> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.2, 1.2, -6.2, 2.2, 5.2> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.1, 2.1, -3.1, -4.1, 5.1> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.2, 1.2, -6.2, 2.2, 5.2> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %2 = mo.mod(%0, %1) : !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
 }
@@ -65,7 +65,7 @@ mo.graph @mod_float() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @not() -> (!mo.tensor<[4], bool>) {
-  %in = mo.constant {value = #M.dense_array<true, true, false, false> : tensor<4xi1>} : !mo.tensor<[4], bool>
+  %in = mo.constant <#M.dense_array<true, true, false, false> : tensor<4xi1>> : !mo.tensor<[4], bool>
   %res = mo.not(%in) : !mo.tensor<[4], bool>
   mo.output %res : !mo.tensor<[4], bool>
 }
@@ -73,8 +73,8 @@ mo.graph @not() -> (!mo.tensor<[4], bool>) {
 
 
 mo.graph @xor() -> (!mo.tensor<[4], bool>) {
-  %lhs = mo.constant {value = #M.dense_array<true, true, false, false> : tensor<4xi1>} : !mo.tensor<[4], bool>
-  %rhs = mo.constant {value = #M.dense_array<true, false, true, false> : tensor<4xi1>} : !mo.tensor<[4], bool>
+  %lhs = mo.constant <#M.dense_array<true, true, false, false> : tensor<4xi1>> : !mo.tensor<[4], bool>
+  %rhs = mo.constant <#M.dense_array<true, false, true, false> : tensor<4xi1>> : !mo.tensor<[4], bool>
   %res = mo.xor(%lhs, %rhs) : !mo.tensor<[4], bool>
   mo.output %res : !mo.tensor<[4], bool>
 }
@@ -82,27 +82,27 @@ mo.graph @xor() -> (!mo.tensor<[4], bool>) {
 
 
 mo.graph @select() -> (!mo.tensor<[5], f32>) {
-  %c = mo.constant {value = #M.dense_array<true, false, true, true, false> : tensor<5xui8>} : !mo.tensor<[5], bool>
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %c = mo.constant <#M.dense_array<true, false, true, true, false> : tensor<5xui8>> : !mo.tensor<[5], bool>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %2 = mo.select(%c, %0, %1) : (!mo.tensor<[5], bool>, !mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
 }
 // CHECK{LITERAL}: 'select' returned tensor<5xf32> [-1.000000e+00, 1.000000e+00, -3.000000e+00, -4.000000e+00, 5.000000e+00]
 
 mo.graph @select_bool() -> !mo.tensor<[], bool> {
-  %1 = mo.constant {value = #M.dense_array<-1> : tensor<si64>} : !mo.tensor<[], si64>
-  %3 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-  %7 = mo.constant {value = #M.dense_array<false> : tensor<1xui8>} : !mo.tensor<[], bool>
-  %8 = mo.constant {value = #M.dense_array<true> : tensor<1xui8>} : !mo.tensor<[], bool>
+  %1 = mo.constant <#M.dense_array<-1> : tensor<si64>> : !mo.tensor<[], si64>
+  %3 = mo.constant <#M.dense_array<0> : !M.array<1xsi64>> : !mo.tensor<[], si64>
+  %7 = mo.constant <#M.dense_array<false> : tensor<1xui8>> : !mo.tensor<[], bool>
+  %8 = mo.constant <#M.dense_array<true> : tensor<1xui8>> : !mo.tensor<[], bool>
   %9 = mo.greater_equal(%1, %3) : (!mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[], bool>
   %12 = mo.select(%9, %7, %8) : (!mo.tensor<[], bool>, !mo.tensor<[], bool>, !mo.tensor<[], bool>) -> !mo.tensor<[], bool>
   mo.output %12 : !mo.tensor<[], bool>
 }
 
 mo.graph @sub() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %2 = mo.sub(%0, %1) : !mo.tensor<[5], f32>
   mo.output %2 : !mo.tensor<[5], f32>
 }
@@ -110,7 +110,7 @@ mo.graph @sub() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @relu() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %1 = mo.relu(%0) : !mo.tensor<[5], f32>
   mo.output %1 : !mo.tensor<[5], f32>
 }
@@ -118,8 +118,8 @@ mo.graph @relu() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @combined() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %add = mo.add(%0, %1) : !mo.tensor<[5], f32>
   %relu = mo.relu(%add) : !mo.tensor<[5], f32>
   mo.output %relu : !mo.tensor<[5], f32>
@@ -128,7 +128,7 @@ mo.graph @combined() -> (!mo.tensor<[5], f32>) {
 
 
 mo.graph @erf() -> (!mo.tensor<[6], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-10.0, -1.0, -0.5, 0.5, 1.0, 10.0> : tensor<6xf32>} : !mo.tensor<[6], f32>
+  %0 = mo.constant <#M.dense_array<-10.0, -1.0, -0.5, 0.5, 1.0, 10.0> : tensor<6xf32>> : !mo.tensor<[6], f32>
   %1 = mo.erf(%0) : !mo.tensor<[6], f32>
   mo.output %1 : !mo.tensor<[6], f32>
 }

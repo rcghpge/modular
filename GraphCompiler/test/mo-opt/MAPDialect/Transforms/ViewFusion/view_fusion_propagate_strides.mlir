@@ -29,7 +29,7 @@ mo.graph @reshape(%x: !mo.tensor<[24], f32>, %o: !mo.tensor<[3, 4, 2], f32>) -> 
 // CHECK-LABEL: mo.graph @transpose
 // CHECK: map.index.transpose<#map.index.transpose.spec<[2, 3, 4] -> [3, 4, 2], perm = [1, 2, 0]>>
 mo.graph @transpose(%x: !mo.tensor<[2, 3, 4], f32>, %o: !mo.tensor<[3, 4, 2], f32>) -> !mo.tensor<[3, 4, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 2, 0> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %perm = mo.constant <#M.dense_array<1, 2, 0> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %0 = mo.transpose(%x, %perm) : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[3, 4, 2], f32>
   %1 = mo.add(%0, %o) : !mo.tensor<[3, 4, 2], f32>
   mo.output %1 : !mo.tensor<[3, 4, 2], f32>
@@ -38,9 +38,9 @@ mo.graph @transpose(%x: !mo.tensor<[2, 3, 4], f32>, %o: !mo.tensor<[3, 4, 2], f3
 // CHECK-LABEL: mo.graph @slice_dim_pos_step
 // CHECK: map.index.slice<#map.index.slice.spec<[3, 5] -> [2, 3], starts = [1, 0], stops = [3, 5], steps = [1, 2]>>
 mo.graph @slice_dim_pos_step(%x: !mo.tensor<[3, 5], f32>, %o: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<3, 5> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<3, 5> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%x, %start, %stop, %step) : (
     !mo.tensor<[3, 5], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[2, 3], f32>
@@ -54,9 +54,9 @@ mo.graph @slice_dim_pos_step(%x: !mo.tensor<[3, 5], f32>, %o: !mo.tensor<[2, 3],
 // CHECK-LABEL: mo.graph @slice_dim_neg_step
 // CHECK: map.index.slice<#map.index.slice.spec<[5, 3] -> [2, 2], starts = [4, 2], stops = [4, 2], steps = [-2, -1]>>
 mo.graph @slice_dim_neg_step(%x: !mo.tensor<[5, 3], f32>, %o: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %start = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<-1, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<-2, -1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<-1, -1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<-1, -1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<-2, -1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%x, %start, %stop, %step) : (
     !mo.tensor<[5, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[2, 2], f32>
@@ -72,7 +72,7 @@ mo.graph @slice_dim_neg_step(%x: !mo.tensor<[5, 3], f32>, %o: !mo.tensor<[2, 2],
 // CHECK: map.index.reshape<#map.index.reshape.spec<[24] -> [2, 3, 4]>> (%[[TIDX]])
 mo.graph @reshape_and_transpose(%x: !mo.tensor<[24], f32>, %o: !mo.tensor<[3, 4, 2], f32>) -> !mo.tensor<[3, 4, 2], f32> {
   %0 = mo.static.reshape(%x) : !mo.tensor<[24], f32> -> !mo.tensor<[2, 3, 4], f32>
-  %perm = mo.constant {value = #M.dense_array<1, 2, 0> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %perm = mo.constant <#M.dense_array<1, 2, 0> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %1 = mo.transpose(%0, %perm) : (!mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[3, 4, 2], f32>
   %2 = mo.add(%1, %o) : !mo.tensor<[3, 4, 2], f32>
   mo.output %2 : !mo.tensor<[3, 4, 2], f32>
@@ -84,9 +84,9 @@ mo.graph @reshape_and_transpose(%x: !mo.tensor<[24], f32>, %o: !mo.tensor<[3, 4,
 // CHECK-LABEL: mo.graph @slice_column_zero_start
 // CHECK: map.index.slice<#map.index.slice.spec<[4, 10] -> [4, 8], starts = [0, 0], stops = [4, 8], steps = [1, 1]>>
 mo.graph @slice_column_zero_start(%x: !mo.tensor<[4, 10], f32>, %o: !mo.tensor<[4, 8], f32>) -> !mo.tensor<[4, 8], f32> {
-  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 8> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%x, %start, %stop, %step) : (
     !mo.tensor<[4, 10], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[4, 8], f32>
@@ -102,7 +102,7 @@ mo.graph @slice_column_zero_start(%x: !mo.tensor<[4, 10], f32>, %o: !mo.tensor<[
 // CHECK-DAG: map.index.transpose<#map.index.transpose.spec<[3, 4, 5] -> [5, 4, 3], perm = [2, 1, 0]>>
 mo.graph @fused_broadcast_transpose(%x: !mo.tensor<[4, 1], f32>, %y: !mo.tensor<[3, 4, 5], f32>) -> !mo.tensor<[5, 4, 3], f32> {
   %0 = mo.static.broadcast_to(%x) : !mo.tensor<[4, 1], f32> -> !mo.tensor<[5, 4, 3], f32>
-  %perm = mo.constant {value = #M.dense_array<2, 1, 0> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %perm = mo.constant <#M.dense_array<2, 1, 0> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %1 = mo.transpose(%y, %perm) : (!mo.tensor<[3, 4, 5], f32>, !mo.tensor<[3], si32>) -> !mo.tensor<[5, 4, 3], f32>
   %2 = mo.add(%0, %1) : !mo.tensor<[5, 4, 3], f32>
   mo.output %2 : !mo.tensor<[5, 4, 3], f32>

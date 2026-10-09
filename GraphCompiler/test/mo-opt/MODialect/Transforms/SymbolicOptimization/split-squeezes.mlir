@@ -7,11 +7,11 @@ mo.graph @split_squeezes<D0 -> D1, D2>(
 // CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) {
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[D2, 10], f32>)  {
 
-  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %split_sizes = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
 
   // Notice the extra transpose on input
-  // CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0, 2> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[PERM:.*]] = mo.constant <#M.dense_array<1, 0, 2> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
   // CHECK-NEXT: %[[INPUT_T:.*]] = mo.transpose(%[[INPUT]], %[[PERM]])
   // CHECK-SAME: : (!mo.tensor<[[[D0]], 2, 10], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, [[D0]], 10], f32>
 
@@ -48,11 +48,11 @@ mo.graph @split_squeeze_with_device<D0 -> D1, D2>(
 // CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) {
 ) -> (!mo.tensor<[D1, 10], f32, cpu:0>, !mo.tensor<[D2, 10], f32, cpu:0>)  {
 
-  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %split_sizes = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
 
   // Notice the extra transpose on input
-  // CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0, 2> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[PERM:.*]] = mo.constant <#M.dense_array<1, 0, 2> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
   // CHECK-NEXT: %[[INPUT_T:.*]] = mo.transpose(%[[INPUT]], %[[PERM]])
   // CHECK-SAME: : (!mo.tensor<[[[D0]], 2, 10], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, [[D0]], 10], f32>
 
@@ -91,10 +91,10 @@ mo.graph @split_squeezes_dyn_axis<D0 -> D1, D2>(
 // CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) {
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[D2, 10], f32>)  {
 
-  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %split_sizes = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
 
-  // CHECK-DAG: %[[PERM:.*]] = mo.constant {value = #M.dense_array<1, 0, 2> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[PERM:.*]] = mo.constant <#M.dense_array<1, 0, 2> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
   // CHECK-NEXT: %[[INPUT_T:.*]] = mo.transpose(%[[INPUT]], %[[PERM]])
   // CHECK-SAME: : (!mo.tensor<[[[D0]], 2, 10], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, [[D0]], 10], f32>
 
@@ -130,12 +130,12 @@ mo.graph @split_squeezes_split_sizes_not_all_ones<D0 -> D1, D2>(
 // CHECK-SAME: ) -> (!mo.tensor<[[[D1]], 10], f32>, !mo.tensor<[[[D2]], 10], f32>) {
 ) -> (!mo.tensor<[D1, 10], f32>, !mo.tensor<[D2, 10], f32>)  {
 
-  %split_sizes = mo.constant {value = #M.dense_array<2, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
 
-  // CHECK-DAG: %[[C0:.*]] = mo.constant {value = #M.dense_array<0, 2, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-DAG: %[[C1:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-DAG: %[[C2:.*]] = mo.constant {value = #M.dense_array<0, 0, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  // CHECK-DAG: %[[C3:.*]] = mo.constant {value = #M.dense_array<9223372036854775807, 2, 9223372036854775807> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[C0:.*]] = mo.constant <#M.dense_array<0, 2, 0> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[C1:.*]] = mo.constant <#M.dense_array<1, 1, 1> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[C2:.*]] = mo.constant <#M.dense_array<0, 0, 0> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[C3:.*]] = mo.constant <#M.dense_array<9223372036854775807, 2, 9223372036854775807> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
   // CHECK: %[[SLICE1:.*]] = mo.slice(%[[INPUT]], %[[C2]], %[[C3]], %[[C1]])
   // CHECK-SAME: : (!mo.tensor<[{{.*}}, 2, 10], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[?, ?, ?], f32>
   // CHECK: %[[SLICE2:.*]] = mo.slice(%[[INPUT]], %[[C0]], %[[C3]], %[[C1]])
@@ -170,7 +170,7 @@ mo.graph @split_squeezes_non_squeezing_reshape<D0 -> D1, D2>(
 // CHECK-SAME: ) -> (!mo.tensor<[{{.*}}], f32>, !mo.tensor<[{{.*}}, 10], f32>) {
 ) -> (!mo.tensor<[D1], f32>, !mo.tensor<[D2, 10], f32>)  {
 
-  %split_sizes = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
 
   // CHECK: %[[SLICE1:.*]] = mo.slice(%[[INPUT]]
   // CHECK: %[[SLICE2:.*]] = mo.slice(%[[INPUT]]
@@ -194,30 +194,30 @@ mo.graph @split_squeezes_non_squeezing_reshape<D0 -> D1, D2>(
 }
 
 // CHECK-LABEL: rotary_embeddings_2
-// CHECK-DAG: [[VAR0:%.*]] = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR1:%.*]] = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR2:%.*]] = mo.constant {value = #M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR3:%.*]] = mo.constant {value = #M.dense_array<0, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR4:%.*]] = mo.constant {value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR5:%.*]] = mo.constant {value = #M.dense_array<2, 0, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-// CHECK-DAG: [[VAR6:%.*]] = mo.constant {value = #M.dense_array<2, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: [[VAR8:%.*]] = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+// CHECK-DAG: [[VAR0:%.*]] = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: [[VAR1:%.*]] = mo.constant <#M.dense_array<0, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: [[VAR2:%.*]] = mo.constant <#M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: [[VAR3:%.*]] = mo.constant <#M.dense_array<0, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: [[VAR4:%.*]] = mo.constant <#M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: [[VAR5:%.*]] = mo.constant <#M.dense_array<2, 0, 1> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+// CHECK-DAG: [[VAR6:%.*]] = mo.constant <#M.dense_array<2, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: [[VAR8:%.*]] = mo.constant <#M.dense_array<2, 1, 0> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
 // CHECK: [[TRANSPOSE:%.*]] = mo.transpose(%arg0, [[VAR5]]) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 2], f32>
 // CHECK: [[RESHAPE:%.*]] = mo.static.reshape([[TRANSPOSE]]) : !mo.tensor<[2, 2, 2], f32> -> !mo.tensor<[4, 2], f32>
 // CHECK: %{{.*}}:2 = mo.split([[RESHAPE]], [[VAR6]]) {axis = 0 : index} : (!mo.tensor<[4, 2], f32>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 
 mo.graph @rotary_embeddings_2(%arg0: !mo.tensor<[2, 2, 2], f32>, %arg1: !mo.tensor<[1, 2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
-  %0 = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  %1 = mo.constant {value = #M.dense_array<0, 0, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  %2 = mo.constant {value = #M.dense_array<9223372036854775807, 9223372036854775807, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  %3 = mo.constant {value = #M.dense_array<0, 0, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  %4 = mo.constant {value = #M.dense_array<9223372036854775807, 9223372036854775807, 2> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
-  %5 = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %7 = mo.constant {value = #M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %8 = mo.constant {value = #M.dense_array<0, 2> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %9 = mo.constant {value = #M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %10 = mo.constant {value = #M.dense_array<2, 1, 0> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<1, 1, 1> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  %1 = mo.constant <#M.dense_array<0, 0, 0> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  %2 = mo.constant <#M.dense_array<9223372036854775807, 9223372036854775807, 1> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  %3 = mo.constant <#M.dense_array<0, 0, 1> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  %4 = mo.constant <#M.dense_array<9223372036854775807, 9223372036854775807, 2> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
+  %5 = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %6 = mo.constant <#M.dense_array<0, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %7 = mo.constant <#M.dense_array<9223372036854775807, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %8 = mo.constant <#M.dense_array<0, 2> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %9 = mo.constant <#M.dense_array<9223372036854775807, 4> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %10 = mo.constant <#M.dense_array<2, 1, 0> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
   %13 = mo.slice(%arg0, %1, %2, %0) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 1], f32>
   %14 = mo.slice(%arg0, %3, %4, %0) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 2, 1], f32>
   %15 = mo.static.reshape(%13) : !mo.tensor<[2, 2, 1], f32> -> !mo.tensor<[2, 2], f32>

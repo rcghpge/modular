@@ -4,7 +4,7 @@
 // CHECK: 'graph' returned tensor({{\[}}[1.0000, 2.0000, 3.0000, 4.0000]], dtype=f32, shape=[4])
 
 mo.graph @graph(%a : !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %b = mo.constant {value = #M.dense_array<0.0, 1.0, 2.0, 3.0> : tensor<4xf32> } : !mo.tensor<[4], f32>
+  %b = mo.constant <#M.dense_array<0.0, 1.0, 2.0, 3.0> : tensor<4xf32>> : !mo.tensor<[4], f32>
   %ch0 = mo.chain.create()
   %a_gpu, %ch1 = mo.transfer[%ch0] %a : !mo.tensor<[4], f32> to <"gpu", 0>
   %b_gpu, %ch2 = mo.transfer[%ch1] %b : !mo.tensor<[4], f32> to <"gpu", 0>

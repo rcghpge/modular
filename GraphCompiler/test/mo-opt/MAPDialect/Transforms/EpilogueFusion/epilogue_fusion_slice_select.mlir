@@ -24,9 +24,9 @@ mo.graph @concat_window_relu(
   %a: !mo.tensor<[4, 8, 16], f32>,
   %b: !mo.tensor<[4, 1, 16], f32>
 ) -> (!mo.tensor<[4, 9, 16], f32>, !mo.tensor<[4, 8, 16], f32>) {
-  %starts = mo.constant {value = #M.dense_array<0, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %stops = mo.constant {value = #M.dense_array<4, 9, 16> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %steps = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %starts = mo.constant <#M.dense_array<0, 1, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %stops = mo.constant <#M.dense_array<4, 9, 16> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %concat = mo.concat[1] (%a, %b) : (!mo.tensor<[4, 8, 16], f32>, !mo.tensor<[4, 1, 16], f32>) -> !mo.tensor<[4, 9, 16], f32>
   %window = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[4, 9, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 8, 16], f32>
   %relu = mo.relu(%window) : !mo.tensor<[4, 8, 16], f32>

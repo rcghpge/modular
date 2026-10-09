@@ -9,7 +9,7 @@ mo.graph @unsqueeze_shape<N1, N2 -> O1, O2, O3, O4, O5>(
 ) -> !mo.tensor<[O1, O2, O3, O4, O5], f32> {
 
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, N2], f32>) -> !mo.tensor<[2], si32>
-  %indices = mo.constant {value = #M.dense_array<0, 2, -1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %indices = mo.constant <#M.dense_array<0, 2, -1> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %unsqueezed_shape = mo.unsqueeze_shape(%dummy_shape, %indices) : (
     !mo.tensor<[2], si32>, !mo.tensor<[3], si32>
   ) -> !mo.tensor<[5], si32>

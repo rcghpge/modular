@@ -24,9 +24,9 @@ mo.graph @gemv_partial_rms_norm_basic(
     -> !mo.tensor<[1, 2112], bf16, gpu:0>
 
   // Slice for normed portion: [1, 2112] -> [1, 1536]
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<1, 1536> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<1, 1536> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step) :
     (!mo.tensor<[1, 2112], bf16, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 1536], bf16, gpu:0>
@@ -38,8 +38,8 @@ mo.graph @gemv_partial_rms_norm_basic(
      !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[1, 1536], bf16, gpu:0>
 
   // Slice for unnormed portion: [1, 2112] -> [1, 576]
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 1536> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 2112> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 1536> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 2112> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[1, 2112], bf16, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 576], bf16, gpu:0>
@@ -66,9 +66,9 @@ mo.graph @cpu_not_fused(
     (!mo.tensor<[1, 1024], f32, cpu:0>, !mo.tensor<[1024, 512], f32, cpu:0>)
     -> !mo.tensor<[1, 512], f32, cpu:0>
 
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<1, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<1, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step) :
     (!mo.tensor<[1, 512], f32, cpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, cpu:0>
@@ -78,8 +78,8 @@ mo.graph @cpu_not_fused(
     (!mo.tensor<[1, 256], f32, cpu:0>, !mo.tensor<[256], f32, cpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 256], f32, cpu:0>
 
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[1, 512], f32, cpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, cpu:0>
@@ -102,9 +102,9 @@ mo.graph @m_not_one_not_fused(
     (!mo.tensor<[4, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[4, 512], f32, gpu:0>
 
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<4, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<4, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step) :
     (!mo.tensor<[4, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[4, 256], f32, gpu:0>
@@ -114,8 +114,8 @@ mo.graph @m_not_one_not_fused(
     (!mo.tensor<[4, 256], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[4, 256], f32, gpu:0>
 
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<4, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<4, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[4, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[4, 256], f32, gpu:0>
@@ -138,9 +138,9 @@ mo.graph @transpose_b_false_not_fused(
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<1, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<1, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -150,8 +150,8 @@ mo.graph @transpose_b_false_not_fused(
     (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 256], f32, gpu:0>
 
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -175,9 +175,9 @@ mo.graph @non_unit_step_not_fused(
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
   // Step of 2 in column dimension
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<1, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step_2 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<1, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step_2 = mo.constant <#M.dense_array<1, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step_2) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 128], f32, gpu:0>
@@ -187,9 +187,9 @@ mo.graph @non_unit_step_not_fused(
     (!mo.tensor<[1, 128], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 128], f32, gpu:0>
 
-  %step_1 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step_1 = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step_1) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -239,9 +239,9 @@ mo.graph @matmul_has_other_user_not_fused(
   // Third use of gemv - prevents fusion
   %direct_use = mo.add(%gemv, %gemv) : !mo.tensor<[1, 512], f32, gpu:0>
 
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<1, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<1, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -251,8 +251,8 @@ mo.graph @matmul_has_other_user_not_fused(
     (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 256], f32, gpu:0>
 
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -275,9 +275,9 @@ mo.graph @normed_slice_has_other_user_not_fused(
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<1, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<1, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -290,8 +290,8 @@ mo.graph @normed_slice_has_other_user_not_fused(
     (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 256], f32, gpu:0>
 
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -315,8 +315,8 @@ mo.graph @non_constant_slice_not_fused(
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   // Dynamic stop value prevents fusion
   %normed_slice = mo.slice(%gemv, %start_normed, %dynamic_stop, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
@@ -327,8 +327,8 @@ mo.graph @non_constant_slice_not_fused(
     (!mo.tensor<[1, ?], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, ?], f32, gpu:0>
 
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -351,9 +351,9 @@ mo.graph @multiply_before_cast_false_not_fused(
     (!mo.tensor<[1, 1024], f32, gpu:0>, !mo.tensor<[1024, 512], f32, gpu:0>)
     -> !mo.tensor<[1, 512], f32, gpu:0>
 
-  %start_normed = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_normed = mo.constant {value = #M.dense_array<1, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_normed = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_normed = mo.constant <#M.dense_array<1, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed_slice = mo.slice(%gemv, %start_normed, %stop_normed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>
@@ -364,8 +364,8 @@ mo.graph @multiply_before_cast_false_not_fused(
     (!mo.tensor<[1, 256], f32, gpu:0>, !mo.tensor<[256], f32, gpu:0>,
      !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 256], f32, gpu:0>
 
-  %start_unnormed = mo.constant {value = #M.dense_array<0, 256> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop_unnormed = mo.constant {value = #M.dense_array<1, 512> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start_unnormed = mo.constant <#M.dense_array<0, 256> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop_unnormed = mo.constant <#M.dense_array<1, 512> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %unnormed_slice = mo.slice(%gemv, %start_unnormed, %stop_unnormed, %step) :
     (!mo.tensor<[1, 512], f32, gpu:0>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>)
     -> !mo.tensor<[1, 256], f32, gpu:0>

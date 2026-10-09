@@ -12,13 +12,13 @@ mo.graph @select_mask<SEQ, FIN_SEQ, DIM>(
     %V_raw: !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>,
     %norm_scalar: !mo.tensor<[], f32>
 ) -> !mo.tensor<[1, 2, SEQ, DIM], f32> {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-    %perm2 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+    %perm2 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
-    %select_cond = mo.constant {value = #M.dense_array<false, true, true, false> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
+    %select_cond = mo.constant <#M.dense_array<false, true, true, false> : tensor<4xsi1>> : !mo.tensor<[1, 1, 2, 2], bool>
     %select_cond_bcast = mo.static.broadcast_to(%select_cond): !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 
-    %neg_inf = mo.constant {value = #M.dense_array<-3.e38>: tensor<1xf32>} : !mo.tensor<[], f32>
+    %neg_inf = mo.constant <#M.dense_array<-3.e38>: tensor<1xf32>> : !mo.tensor<[], f32>
     %neg_inf_bcast = mo.static.broadcast_to(%neg_inf): !mo.tensor<[], f32> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     %Q = mo.transpose(%Q_raw, %perm2) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, SEQ, DIM], f32>
@@ -48,9 +48,9 @@ mo.graph @select_mask<SEQ, FIN_SEQ, DIM>(
 }
 // CHECK-LABEL: mo.graph @select_mask<SEQ, FIN_SEQ, DIM>
 // CHECK-SAME: ([[VARG0:%.*]]: !mo.tensor<[1, SEQ, 2, DIM], f32>, [[VARG1:%.*]]: !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, [[VARG2:%.*]]: !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, [[VARG3:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[1, 2, SEQ, DIM], f32> {
-// CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT: [[V1:%.*]] = mo.constant {value = #M.dense_array<-3.000000e+38> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT: [[V2:%.*]] = mo.constant {value = #M.dense_array<false, true, true, false> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
+// CHECK-NEXT: [[V0:%.*]] = mo.constant <#M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+// CHECK-NEXT: [[V1:%.*]] = mo.constant <#M.dense_array<-3.000000e+38> : tensor<1xf32>> : !mo.tensor<[], f32>
+// CHECK-NEXT: [[V2:%.*]] = mo.constant <#M.dense_array<false, true, true, false> : tensor<4xsi1>> : !mo.tensor<[1, 1, 2, 2], bool>
 // CHECK-NEXT: [[V3:%.*]] = mo.static.broadcast_to([[V2]]) : !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 // CHECK-NEXT: [[V4:%.*]] = mo.static.broadcast_to([[V1]]) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 // CHECK-NEXT: [[V5:%.*]] = mo.not([[V3]]) : !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
@@ -76,13 +76,13 @@ mo.graph @select_mask_reverse<SEQ, FIN_SEQ, DIM>(
     %V_raw: !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>,
     %norm_scalar: !mo.tensor<[], f32>
 ) -> !mo.tensor<[1, 2, SEQ, DIM], f32> {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-    %perm2 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+    %perm2 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
-    %select_cond = mo.constant {value = #M.dense_array<true, false, false, true> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
+    %select_cond = mo.constant <#M.dense_array<true, false, false, true> : tensor<4xsi1>> : !mo.tensor<[1, 1, 2, 2], bool>
     %select_cond_bcast = mo.static.broadcast_to(%select_cond): !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 
-    %neg_inf = mo.constant {value = #M.dense_array<-3.e38>: tensor<1xf32>} : !mo.tensor<[], f32>
+    %neg_inf = mo.constant <#M.dense_array<-3.e38>: tensor<1xf32>> : !mo.tensor<[], f32>
     %neg_inf_bcast = mo.static.broadcast_to(%neg_inf): !mo.tensor<[], f32> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     %Q = mo.transpose(%Q_raw, %perm2) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, SEQ, DIM], f32>
@@ -120,9 +120,9 @@ mo.graph @select_mask_reverse<SEQ, FIN_SEQ, DIM>(
 
 // CHECK-LABEL: mo.graph @select_mask_reverse<SEQ, FIN_SEQ, DIM>
 // CHECK-SAME: ([[VARG0:%.*]]: !mo.tensor<[1, SEQ, 2, DIM], f32>, [[VARG1:%.*]]: !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, [[VARG2:%.*]]: !mo.tensor<[1, FIN_SEQ, 2, DIM], f32>, [[VARG3:%.*]]: !mo.tensor<[], f32>) -> !mo.tensor<[1, 2, SEQ, DIM], f32> {
-// CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-// CHECK-NEXT: [[V1:%.*]] = mo.constant {value = #M.dense_array<-3.000000e+38> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT: [[V2:%.*]] = mo.constant {value = #M.dense_array<true, false, false, true> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
+// CHECK-NEXT: [[V0:%.*]] = mo.constant <#M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+// CHECK-NEXT: [[V1:%.*]] = mo.constant <#M.dense_array<-3.000000e+38> : tensor<1xf32>> : !mo.tensor<[], f32>
+// CHECK-NEXT: [[V2:%.*]] = mo.constant <#M.dense_array<true, false, false, true> : tensor<4xsi1>> : !mo.tensor<[1, 1, 2, 2], bool>
 // CHECK-NEXT: [[V3:%.*]] = mo.static.broadcast_to([[V2]]) : !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 // CHECK-NEXT: [[V4:%.*]] = mo.static.broadcast_to([[V1]]) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 // CHECK-NEXT: [[V5:%.*]] = mo.cast([[V3]]) : (!mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>) -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
@@ -140,13 +140,13 @@ mo.graph @select_mask_no_trigger<SEQ, FIN_SEQ, DIM>(
     %norm_scalar: !mo.tensor<[], f32>
 ) -> !mo.tensor<[1, 2, SEQ, DIM], f32>
 {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-    %perm2 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+    %perm2 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
-    %select_cond = mo.constant {value = #M.dense_array<true, false, false, true> : tensor<4xsi1>} : !mo.tensor<[1, 1, 2, 2], bool>
+    %select_cond = mo.constant <#M.dense_array<true, false, false, true> : tensor<4xsi1>> : !mo.tensor<[1, 1, 2, 2], bool>
     %select_cond_bcast = mo.static.broadcast_to(%select_cond): !mo.tensor<[1, 1, 2, 2], bool> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], bool>
 
-    %neg_inf = mo.constant {value = #M.dense_array<-3.e38>: tensor<1xf32>} : !mo.tensor<[], f32>
+    %neg_inf = mo.constant <#M.dense_array<-3.e38>: tensor<1xf32>> : !mo.tensor<[], f32>
     %neg_inf_bcast = mo.static.broadcast_to(%neg_inf): !mo.tensor<[], f32> -> !mo.tensor<[1, 2, SEQ, FIN_SEQ], f32>
 
     %Q = mo.transpose(%Q_raw, %perm2) : (!mo.tensor<[1, SEQ, 2, DIM], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 2, SEQ, DIM], f32>

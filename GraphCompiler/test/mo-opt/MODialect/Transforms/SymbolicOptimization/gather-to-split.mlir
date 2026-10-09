@@ -8,11 +8,11 @@ mo.graph @gather_to_split<D0>(
   %dyn_idx: !mo.tensor<[1], si64>
 // CHECK-SAME: ) -> !mo.tensor<[1, D0, 10], f32> {
 ) -> !mo.tensor<[1, D0, 10], f32> {
-  %idx0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %idx0 = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %idx1 = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %idx2 = mo.constant <#M.dense_array<2> : tensor<1xsi64>> : !mo.tensor<[1], si64>
 
-  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[SPLIT_SIZES:.*]] = mo.constant <#M.dense_array<1, 1, 1> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
   // CHECK: %[[SPLIT_RES:.*]]:3 = mo.split(%[[INPUT]], %[[SPLIT_SIZES]]) {axis = 0 : index}
   // CHECK-SAME: : (!mo.tensor<[3, [[D0]], 10], f32>, !mo.tensor<[3], si64>) -> (!mo.tensor<[1, [[D0]], 10], f32>, !mo.tensor<[1, [[D0]], 10], f32>, !mo.tensor<[1, [[D0]], 10], f32>)
   %gather0 = mo.gather(%input, %idx0) {axis = 0 : index}
@@ -47,11 +47,11 @@ mo.graph @gather_to_split_with_device<D0>(
   %dyn_idx: !mo.tensor<[1], si64>
 // CHECK-SAME: ) -> !mo.tensor<[1, D0, 10], f32, dev:0> {
 ) -> !mo.tensor<[1, D0, 10], f32, dev:0> {
-  %idx0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64, dev:0>
-  %idx1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64, dev:0>
-  %idx2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64, dev:0>
+  %idx0 = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[1], si64, dev:0>
+  %idx1 = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64, dev:0>
+  %idx2 = mo.constant <#M.dense_array<2> : tensor<1xsi64>> : !mo.tensor<[1], si64, dev:0>
 
-  // CHECK-NEXT: %[[SPLIT_SIZES:.*]] = mo.constant {value = #M.dense_array<1, 1, 1> : !M.array<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-NEXT: %[[SPLIT_SIZES:.*]] = mo.constant <#M.dense_array<1, 1, 1> : !M.array<3xsi64>> : !mo.tensor<[3], si64>
   // CHECK-NEXT: %[[SPLIT_RES:.*]]:3 = mo.split(%[[INPUT]], %[[SPLIT_SIZES]]) {axis = 0 : index}
   // CHECK-SAME: : (!mo.tensor<[3, [[D0]], 10], f32, dev:0>, !mo.tensor<[3], si64>) -> (!mo.tensor<[1, [[D0]], 10], f32, dev:0>, !mo.tensor<[1, [[D0]], 10], f32, dev:0>, !mo.tensor<[1, [[D0]], 10], f32, dev:0>)
   %gather0 = mo.gather(%input, %idx0) {axis = 0 : index}
@@ -76,10 +76,10 @@ mo.graph @gather_to_split_dyn_axis_0<D0>(
   %input: !mo.tensor<[D0, 3], f32>
 // CHECK-SAME: ) -> !mo.tensor<[[[D0]], 3], f32> {
 ) -> !mo.tensor<[D0, 3], f32> {
-  // CHECK-NEXT: %[[IDX0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  // CHECK-NEXT: %[[IDX1:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  // CHECK-NEXT: %[[IDX0:.*]] = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %idx0 = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  // CHECK-NEXT: %[[IDX1:.*]] = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %idx1 = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
 
   // CHECK-NEXT: %[[GATHER0:.*]] = mo.gather(%[[INPUT]], %[[IDX0]]) {axis = 0 : index}
   // CHECK-SAME: : (!mo.tensor<[[[D0]], 3], f32>, !mo.tensor<[1], si64>) -> !mo.tensor<[[[D0]], 3], f32>
@@ -105,10 +105,10 @@ mo.graph @gather_to_split_control_flow(
   %cond: !mo.tensor<[], bool>
 // CHECK-SAME: ) -> !mo.tensor<[2, 3], f32> {
 ) -> !mo.tensor<[2, 3], f32> {
-  // CHECK-NEXT: %[[IDX0:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  // CHECK-NEXT: %[[IDX1:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %idx1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  // CHECK-NEXT: %[[IDX0:.*]] = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %idx0 = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  // CHECK-NEXT: %[[IDX1:.*]] = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %idx1 = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
 
   // CHECK-NEXT: %[[GATHER0:.*]] = mo.gather(%[[INPUT]], %[[IDX0]]) {axis = 0 : index}
   // CHECK-SAME: : (!mo.tensor<[2, 3], f32>, !mo.tensor<[1], si64>) -> !mo.tensor<[2, 3], f32>

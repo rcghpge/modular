@@ -3,11 +3,11 @@
 
 // CHECK-LABEL: mo.graph @repeated_application
 mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si32> {
-  // CHECK-NEXT: %{{.*}} = mo.constant {value = #M.dense_array<4>
+  // CHECK-NEXT: %{{.*}} = mo.constant <#M.dense_array<4>
   // CHECK-NEXT: mo.output
-  %e1 = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} :
+  %e1 = mo.constant <#M.dense_array<3> : tensor<1xsi32>> :
 				!mo.tensor<[], si32>
-  %e2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} :
+  %e2 = mo.constant <#M.dense_array<2> : tensor<1xsi32>> :
 				!mo.tensor<[], si32>
   %e3 = mo.add(%e1, %e1) : !mo.tensor<[], si32>
   %e4 = mo.greater_equal(%e3, %e2) :(!mo.tensor<[], si32>, !mo.tensor<[], si32>)
@@ -20,18 +20,18 @@ mo.graph @repeated_application(%e0 : !mo.tensor<[], si32>) -> !mo.tensor<[], si3
 }
 
 // CHECK-LABEL: mo.graph @large_op
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<2, 3> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<3, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-// CHECK-DAG: %{{.*}} = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
+// CHECK-DAG: %{{.*}} = mo.constant <#M.dense_array<2, 3> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: %{{.*}} = mo.constant <#M.dense_array<2> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+// CHECK-DAG: %{{.*}} = mo.constant <#M.dense_array<3, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+// CHECK-DAG: %{{.*}} = mo.constant <#M.dense_array<0> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+// CHECK-DAG: %{{.*}} = mo.constant <#M.dense_array<1> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+// CHECK-DAG: %{{.*}} = mo.constant <#M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>> : !mo.tensor<[3], f32>
 mo.graph @large_op(%arg0: !mo.tensor<[2, 2, 3], f32>) -> !mo.tensor<[2, 2], f32> {
-  %0 = mo.constant {value = #M.dense_array<3> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %2 = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
-  %3 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  %4 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
+  %0 = mo.constant <#M.dense_array<3> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+  %1 = mo.constant <#M.dense_array<0> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+  %2 = mo.constant <#M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3xf32>> : !mo.tensor<[3], f32>
+  %3 = mo.constant <#M.dense_array<0> : !M.array<1xsi32>> : !mo.tensor<[], si32>
+  %4 = mo.constant <#M.dense_array<1> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
   %5 = mo.shape_of(%2) : (!mo.tensor<[3], f32>) -> !mo.tensor<[1], si64>
   %6 = mo.concat[0] (%5, %4) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   %7 = mo.reshape<() -> D15>(%2, %6) : (!mo.tensor<[3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D15, 1], f32>

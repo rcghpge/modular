@@ -19,8 +19,8 @@ mo.graph @slice_non_staticizable<d0, d1>(%buf: !mo.buffer<[5, 5], f32>, %slice: 
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
-  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop  = mo.constant {value = #M.dense_array<5, 5> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop  = mo.constant <#M.dense_array<5, 5> : tensor<2xsi64>> : !mo.tensor<[2], si64>
 
   %vbuf, %ch1 = mo.mutable.load(%buf, %ch0) : (!bt, !c) -> (!tt, !c)
   %neg = mo.negative(%vbuf) : !tt
@@ -44,9 +44,9 @@ mo.graph @slice_staticizable<d0, d1>(%buf: !mo.buffer<[5, 5], f32>, %slice: !mo.
 {
   %ch0 = mo.chain.create(%buf) : !bt
 
-  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop  = mo.constant {value = #M.dense_array<5, 5> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step  = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop  = mo.constant <#M.dense_array<5, 5> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step  = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
 
   %vbuf, %ch1 = mo.mutable.load(%buf, %ch0) : (!bt, !c) -> (!tt, !c)
   %neg = mo.negative(%vbuf) : !tt

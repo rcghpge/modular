@@ -22,10 +22,10 @@ mo.graph @rejects_if(%cond: !mo.tensor<[], bool>) -> !mo.tensor<[2, 3], si32>
     attributes {isDeviceGraph} {
   // expected-error @below {{device-graphable mo.graph cannot contain control-flow op 'mo.if'}}
   %ret = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, 3], si32> {
-    %cst = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
+    %cst = mo.constant <#M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>> : !mo.tensor<[2, 3], si32>
     mo.yield %cst : !mo.tensor<[2, 3], si32>
   } else {
-    %cst = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
+    %cst = mo.constant <#M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>> : !mo.tensor<[2, 3], si32>
     mo.yield %cst : !mo.tensor<[2, 3], si32>
   }
   mo.output %ret : !mo.tensor<[2, 3], si32>

@@ -23,9 +23,9 @@
 // CHECK:       map.index.slice
 mo.graph @no_fuse_slice_consumer(%a: !mo.tensor<[8], f32>) -> !mo.tensor<[3], f32> {
   %c = mo.custom {device = #M.device_ref<"cpu", 0>, symbol = "map_lower_one_fused_output"}(%a) : (!mo.tensor<[8], f32>) -> !mo.tensor<[8], f32>
-  %start = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %stop = mo.constant {value = #M.dense_array<4> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %step = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %start = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %stop = mo.constant <#M.dense_array<4> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %step = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %res = mo.slice(%c, %start, %stop, %step) : (
     !mo.tensor<[8], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>
   ) -> !mo.tensor<[3], f32>

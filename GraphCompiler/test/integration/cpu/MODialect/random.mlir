@@ -2,10 +2,10 @@
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @random_normal() -> !mo.tensor<[1, 1, 7, 8], f32> {
-    %shape = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %mean = mo.constant {value = #M.dense_array<3.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-    %variance = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-    %seed = mo.constant {value = #M.dense_array<2> : tensor<1xui64>} : !mo.tensor<[1], ui64>
+    %shape = mo.constant <#M.dense_array<1, 1, 7, 8> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %mean = mo.constant <#M.dense_array<3.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+    %variance = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+    %seed = mo.constant <#M.dense_array<2> : tensor<1xui64>> : !mo.tensor<[1], ui64>
     %output = mo.random.normal(%shape, %mean, %variance, %seed) : (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[1], ui64>) -> !mo.tensor<[1, 1, 7, 8], f32>
     mo.output %output : !mo.tensor<[1, 1, 7, 8], f32>
 }
@@ -14,10 +14,10 @@ mo.graph @random_normal() -> !mo.tensor<[1, 1, 7, 8], f32> {
 // CHECK-NEXT: 'random_normal' returned tensor<1x1x7x8xf32> [{{((-?[[:digit:]]\.[[:digit:]]+e[+-][[:digit:]]+(, )?){56})}}
 
 mo.graph @random_normal_f32_mean_var() -> !mo.tensor<[1, 1, 7, 8], f32> {
-    %shape = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %mean = mo.constant {value = #M.dense_array<3.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-    %variance = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-    %seed = mo.constant {value = #M.dense_array<2> : tensor<1xui64>} : !mo.tensor<[1], ui64>
+    %shape = mo.constant <#M.dense_array<1, 1, 7, 8> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %mean = mo.constant <#M.dense_array<3.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+    %variance = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+    %seed = mo.constant <#M.dense_array<2> : tensor<1xui64>> : !mo.tensor<[1], ui64>
     %output = mo.random.normal(%shape, %mean, %variance, %seed) : (!mo.tensor<[4], si64>, !mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[1], ui64>) -> !mo.tensor<[1, 1, 7, 8], f32>
     mo.output %output : !mo.tensor<[1, 1, 7, 8], f32>
 }
@@ -35,10 +35,10 @@ mo.graph @random_fallback_shape_func<() -> D0, D1, D2, D3>(%one : !mo.tensor<[],
 // CHECK-NEXT: 'random_fallback_shape_func' returned tensor<1x1x1x1xsi64> [1]
 
 mo.graph @random_uniform() -> !mo.tensor<[1, 1, 7, 8], f64> {
-    %shape = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %lowerBound = mo.constant {value = #M.dense_array<0.0> : tensor<1xf64>} : !mo.tensor<[], f64>
-    %upperBound = mo.constant {value = #M.dense_array<100.0> : tensor<1xf64>} : !mo.tensor<[], f64>
-    %seed = mo.constant {value = #M.dense_array<2> : tensor<1xui64>} : !mo.tensor<[1], ui64>
+    %shape = mo.constant <#M.dense_array<1, 1, 7, 8> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %lowerBound = mo.constant <#M.dense_array<0.0> : tensor<1xf64>> : !mo.tensor<[], f64>
+    %upperBound = mo.constant <#M.dense_array<100.0> : tensor<1xf64>> : !mo.tensor<[], f64>
+    %seed = mo.constant <#M.dense_array<2> : tensor<1xui64>> : !mo.tensor<[1], ui64>
     %output = mo.random.uniform(%shape, %lowerBound, %upperBound, %seed) : (!mo.tensor<[4], si64>, !mo.tensor<[], f64>, !mo.tensor<[], f64>, !mo.tensor<[1], ui64>) -> !mo.tensor<[1, 1, 7, 8], f64>
     mo.output %output : !mo.tensor<[1, 1, 7, 8], f64>
 }
@@ -47,10 +47,10 @@ mo.graph @random_uniform() -> !mo.tensor<[1, 1, 7, 8], f64> {
 // CHECK-NEXT: 'random_uniform' returned tensor<1x1x7x8xf64> [{{((-?[[:digit:]]\.[[:digit:]]+e[+-][[:digit:]]+(, )?){56})}}
 
 mo.graph @random_uniform_ints() -> !mo.tensor<[1000], si64> {
-    %shape = mo.constant {value = #M.dense_array<1000> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-    %lowerBound = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %upperBound = mo.constant {value = #M.dense_array<12> : tensor<1xsi64>} : !mo.tensor<[], si64>
-    %seed = mo.constant {value = #M.dense_array<2> : tensor<1xui64>} : !mo.tensor<[1], ui64>
+    %shape = mo.constant <#M.dense_array<1000> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+    %lowerBound = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[], si64>
+    %upperBound = mo.constant <#M.dense_array<12> : tensor<1xsi64>> : !mo.tensor<[], si64>
+    %seed = mo.constant <#M.dense_array<2> : tensor<1xui64>> : !mo.tensor<[1], ui64>
     %output = mo.random.uniform(%shape, %lowerBound, %upperBound, %seed) : (!mo.tensor<[1], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[1], ui64>) -> !mo.tensor<[1000], si64>
     mo.output %output : !mo.tensor<[1000], si64>
 }

@@ -144,7 +144,7 @@ mo.graph @bmm_with_transpose(
   %input: !mo.tensor<[4, 3, 2], f32>,
   %weight: !mo.tensor<[3, 2], f32>
 ) -> (!mo.tensor<[4, 3, 3], f32>) {
-  %perm = mo.constant {value = #M.dense_array<0, 2, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant <#M.dense_array<0, 2, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[3, 2], f32> -> !mo.tensor<[4, 3, 2], f32>
   %transpose = mo.transpose(%weight_bcast, %perm) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 2, 3], f32>
   %res = mo.batch_matmul(%input, %transpose) : (!mo.tensor<[4, 3, 2], f32>, !mo.tensor<[4, 2, 3], f32>) -> !mo.tensor<[4, 3, 3], f32>
@@ -172,7 +172,7 @@ mo.graph @fail_bmm_transpose_affects_batch_dim(
   %input: !mo.tensor<[4, 4, 4], f32>,
   %weight: !mo.tensor<[4, 4], f32>
 ) -> (!mo.tensor<[4, 4, 4], f32>) {
-  %perm = mo.constant {value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant <#M.dense_array<2, 0, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %weight_bcast = mo.static.broadcast_to(%weight) : !mo.tensor<[4, 4], f32> -> !mo.tensor<[4, 4, 4], f32>
   %transpose = mo.transpose(%weight_bcast, %perm) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[3], si64>) -> !mo.tensor<[4, 4, 4], f32>
   %res = mo.batch_matmul(%input, %transpose) : (!mo.tensor<[4, 4, 4], f32>, !mo.tensor<[4, 4, 4], f32>) -> !mo.tensor<[4, 4, 4], f32>

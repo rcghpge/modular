@@ -6,7 +6,7 @@
 // subcomponents of mogg.
 
 mo.graph @abs() -> (!mo.tensor<[3, 6], f32>) {
-  %cst1 = mo.constant {value = #M.dense_array<1.500000e+00, -2.000000e+00, 2.500000e+00, -3.000000e+00, 3.500000e+00, 4.000000e+00, -4.500000e+00, 5.000000e+00, 5.500000e+00, -6.000000e+00, 6.500000e+00, -7.000000e+00, 7.500000e+00, -8.000000e+00, 8.5000000e+00, -9.000000e+00, 9.500000e+00, -1.000000e+01> : tensor<18xf32>} : !mo.tensor<[3, 6], f32>
+  %cst1 = mo.constant <#M.dense_array<1.500000e+00, -2.000000e+00, 2.500000e+00, -3.000000e+00, 3.500000e+00, 4.000000e+00, -4.500000e+00, 5.000000e+00, 5.500000e+00, -6.000000e+00, 6.500000e+00, -7.000000e+00, 7.500000e+00, -8.000000e+00, 8.5000000e+00, -9.000000e+00, 9.500000e+00, -1.000000e+01> : tensor<18xf32>> : !mo.tensor<[3, 6], f32>
   %1 = mo.abs(%cst1) : !mo.tensor<[3, 6], f32>
   mo.output %1 : !mo.tensor<[3, 6], f32>
 }
@@ -18,8 +18,8 @@ mo.graph @abs() -> (!mo.tensor<[3, 6], f32>) {
 
 
 mo.graph @pow() -> (!mo.tensor<[3, 6], f32>) {
-  %cst1 = mo.constant {value = #M.dense_array<50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00> : tensor<18xf32>} : !mo.tensor<[3, 6], f32>
-  %cst2 = mo.constant {value = #M.dense_array<2.500000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %cst1 = mo.constant <#M.dense_array<50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00, 50.000000e+00> : tensor<18xf32>> : !mo.tensor<[3, 6], f32>
+  %cst2 = mo.constant <#M.dense_array<2.500000e+00> : tensor<1xf32>> : !mo.tensor<[], f32>
   %bcast = mo.static.broadcast_to(%cst2) : !mo.tensor<[], f32> -> !mo.tensor<[3, 6], f32>
   %1 = mo.pow(%cst1 : !mo.tensor<[3, 6], f32>, %bcast : !mo.tensor<[3, 6], f32>) : !mo.tensor<[3, 6], f32>
   mo.output %1 : !mo.tensor<[3, 6], f32>
@@ -32,8 +32,8 @@ mo.graph @pow() -> (!mo.tensor<[3, 6], f32>) {
 
 
 mo.graph @pow_int() -> (!mo.tensor<[3, 6], si32>) {
-  %cst1 = mo.constant {value = #M.dense_array<3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3> : tensor<18xsi32>} : !mo.tensor<[3, 6], si32>
-  %cst2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[], si32>
+  %cst1 = mo.constant <#M.dense_array<3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3> : tensor<18xsi32>> : !mo.tensor<[3, 6], si32>
+  %cst2 = mo.constant <#M.dense_array<2> : tensor<1xsi32>> : !mo.tensor<[], si32>
   %bcast = mo.static.broadcast_to(%cst2) : !mo.tensor<[], si32> -> !mo.tensor<[3, 6], si32>
   %1 = mo.pow(%cst1 : !mo.tensor<[3, 6], si32>, %bcast : !mo.tensor<[3, 6], si32>) : !mo.tensor<[3, 6], si32>
   mo.output %1 : !mo.tensor<[3, 6], si32>
@@ -45,8 +45,8 @@ mo.graph @pow_int() -> (!mo.tensor<[3, 6], si32>) {
 // CHECK: pow_int' returned tensor<3x6xsi32> [9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]
 
 mo.graph @batch_matmul() -> (!mo.tensor<[2, 2, 2], f32>) {
-  %cst1 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<2x2x2xf32>} : !mo.tensor<[2, 2, 2], f32>
-  %cst2 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<2x2x2xf32>} : !mo.tensor<[2, 2, 2], f32>
+  %cst1 = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<2x2x2xf32>> : !mo.tensor<[2, 2, 2], f32>
+  %cst2 = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<2x2x2xf32>> : !mo.tensor<[2, 2, 2], f32>
   %1 = mo.batch_matmul(%cst1, %cst2) : (!mo.tensor<[2, 2, 2], f32>, !mo.tensor<[2, 2, 2], f32>) -> (!mo.tensor<[2, 2, 2], f32>)
   mo.output %1 : !mo.tensor<[2, 2, 2], f32>
 

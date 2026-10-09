@@ -2,9 +2,9 @@
 // RUN: mt --execute %t.mlir --input-shapes=2x2x3 -model-inputs=ones | FileCheck %s
 
 mo.graph @many_bcasts<N, M, L>(%in : !mo.tensor<[N, M, L], f32>) -> !mo.tensor<[N, M, L], f32> {
-  %1 = mo.constant {value = #M.dense_array<2.000000e+00, 0.000000e+00> : tensor<2xf32>} : !mo.tensor<[2, 1, 1], f32>
-  %2 = mo.constant {value = #M.dense_array<5.000000e-01, 2.500000e-01> : tensor<2xf32>} : !mo.tensor<[2, 1], f32>
-  %3 = mo.constant {value = #M.dense_array<1.000000e+00, 7.000000e+00, 8.000000e+00> : tensor<3xf32>} : !mo.tensor<[3], f32>
+  %1 = mo.constant <#M.dense_array<2.000000e+00, 0.000000e+00> : tensor<2xf32>> : !mo.tensor<[2, 1, 1], f32>
+  %2 = mo.constant <#M.dense_array<5.000000e-01, 2.500000e-01> : tensor<2xf32>> : !mo.tensor<[2, 1], f32>
+  %3 = mo.constant <#M.dense_array<1.000000e+00, 7.000000e+00, 8.000000e+00> : tensor<3xf32>> : !mo.tensor<[3], f32>
 
   %bcast = mo.static.broadcast_to(%1) : !mo.tensor<[2, 1, 1], f32> -> !mo.tensor<[N, M, L], f32>
   %bcast2 = mo.static.broadcast_to(%2) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[N, M, L], f32>

@@ -10,8 +10,8 @@
 mo.graph @bad_shape<d0, d1>(%arg0: !mo.buffer<[5, 5], f32>, %arg1: !mo.tensor<[d0, d1], f32>, %arg2: !mo.tensor<[2], si64>) -> (!mo.buffer<[5, 5], f32>, !mo.chain) {
   %0 = mo.chain.create(%arg0) : !mo.buffer<[5, 5], f32>
   %1 = mo.add(%arg2, %arg2) : !mo.tensor<[2], si64>
-  %2 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %3 = mo.constant {value = #M.dense_array<5, 5> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %2 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %3 = mo.constant <#M.dense_array<5, 5> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %outTensor, %outChain = mo.mutable.load(%arg0, %0) : (!mo.buffer<[5, 5], f32>, !mo.chain) -> (!mo.tensor<[5, 5], f32>, !mo.chain)
   %4 = mo.negative(%outTensor) : !mo.tensor<[5, 5], f32>
   %5 = mo.mutable.store(%arg0, %4, %outChain) : (!mo.buffer<[5, 5], f32>, !mo.tensor<[5, 5], f32>, !mo.chain) -> !mo.chain

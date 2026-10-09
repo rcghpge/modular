@@ -9,7 +9,7 @@
 // CHECK-NEXT: [2.0000, 2.0000, 2.0000, 2.0000]], dtype=f32, shape=[4,4])
 mo.graph @col_parallel_matmul(%a: !mo.tensor<[4,4], f32>) -> (!mo.tensor<[4, 4], f32>) {
   %identityWeights = "mo.constant"() {value = #M.dense_array<2.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00> : tensor<4x4xf32>} : () -> !mo.tensor<[4, 4], f32, gpu:0>
-  %splitSizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %splitSizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %weightsSplit:2 = mo.split(%identityWeights, %splitSizes) {axis = 1 : index} : (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[2], si64>) -> (!mo.tensor<[4, 2], f32, gpu:0>, !mo.tensor<[4, 2], f32, gpu:0>)
   %ch0 = mo.chain.create()
   %weights0, %ch1 = mo.transfer[%ch0] %weightsSplit#0: !mo.tensor<[4, 2], f32, gpu:0> to <"gpu", 0>
@@ -31,7 +31,7 @@ mo.graph @col_parallel_matmul(%a: !mo.tensor<[4,4], f32>) -> (!mo.tensor<[4, 4],
 // CHECK-NEXT: [2.0000, 2.0000, 2.0000, 2.0000]], dtype=f32, shape=[4,4])
 mo.graph @row_parallel_matmul(%a: !mo.tensor<[4,4], f32>) -> (!mo.tensor<[4, 4], f32>) {
   %identityWeights = "mo.constant"() {value = #M.dense_array<2.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00> : tensor<4x4xf32>} : () -> !mo.tensor<[4, 4], f32, gpu:0>
-  %splitSizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %splitSizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %weightsSplit:2 = mo.split(%identityWeights, %splitSizes) {axis = 0 : index} : (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:0>)
   %ch0 = mo.chain.create()
   %weights0, %ch1 = mo.transfer[%ch0] %weightsSplit#0: !mo.tensor<[2, 4], f32, gpu:0> to <"gpu", 0>

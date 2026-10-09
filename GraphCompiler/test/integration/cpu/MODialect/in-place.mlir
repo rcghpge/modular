@@ -51,7 +51,7 @@ mo.graph @sequenced_adds(%buf: !bt, %rhs: !tt) -> (!bt, !c)
 // CHECK{LITERAL}: [4.0000, 0.0000]], dtype=f32, shape=[2,2])
 mo.graph @add_relu(%buf: !bt) -> (!bt, !c)
 {
-  %init_val = mo.constant {value = #M.dense_array<2.0, -2.0, 3.0, -4.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %init_val = mo.constant <#M.dense_array<2.0, -2.0, 3.0, -4.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32>
 
   %ch0 = mo.chain.create(%buf) : !bt
 

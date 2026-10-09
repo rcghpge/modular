@@ -18,8 +18,8 @@ mo.graph @cpu_flash_attn_pattern<B, H, S, D>(
     %value_pre_transposed: !mo.tensor<[B, S, H, D], f32>,
     %norm_scalar1: !mo.tensor<[1], f32>
 ) -> !mo.tensor<[B, H, S, D], f32> {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %perm2 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %perm2 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
     %norm_scalar = mo.static.reshape(%norm_scalar1): !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
 
     // use for normalizing attnMatrix (attn_mat)
@@ -51,8 +51,8 @@ mo.graph @cpu_flash_attn_pattern<B, H, S, D>(
 // CHECK-SAME: [[VALUE:%.[a-zA-Z0-9_]*]]: !mo.tensor<[B, S, H, D], f32>,
 // CHECK-SAME: [[NORM:%.[a-zA-Z0-9_]*]]: !mo.tensor<[1], f32>)
 // CHECK-SAME: -> !mo.tensor<[B, H, S, D], f32> {
-// CHECK-NEXT: [[V0:%.[a-zA-Z0-9_]*]] = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf64>} : !mo.tensor<[], f64>
-// CHECK-NEXT: [[V1:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT: [[V0:%.[a-zA-Z0-9_]*]] = mo.constant <#M.dense_array<1.000000e+00> : !M.array<1xf64>> : !mo.tensor<[], f64>
+// CHECK-NEXT: [[V1:%.*]] = mo.constant <#M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V2:%.[a-zA-Z0-9_]*]] = mo.static.reshape([[NORM]]) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
 // CHECK-NEXT: [[V3:%.[a-zA-Z0-9_]*]] = mo.cast([[V0]]) : (!mo.tensor<[], f64>) -> !mo.tensor<[], f32>
 // CHECK-NEXT: [[V4:%.[a-zA-Z0-9_]*]] = mo.static.broadcast_to([[V3]]) : !mo.tensor<[], f32> -> !mo.tensor<[], f32>
@@ -69,11 +69,11 @@ mo.graph @cpu_flash_attn_not_pattern<B, H, S, D> (
     %norm_scalar1: !mo.tensor<[1], f32>
 ) -> !mo.tensor<[B, H, S, D], f32>
 {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %perm2 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %perm2 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
     // NOTE: this manually does the implemented conversion of div --> mul to maintain the same precision as above
-    %one = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
+    %one = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
     %norm_scalar2 = mo.div(%one, %norm_scalar1) : !mo.tensor<[1], f32>
     %norm_scalar = mo.static.reshape(%norm_scalar2): !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
 

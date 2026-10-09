@@ -147,11 +147,11 @@ mo.graph @merge_launch_attrs_and_locs(
 // CHECK-NOT:   map.store
 // CHECK:       mo.output
 mo.graph @two_views_of_one_tensor(%w: !mo.tensor<[8, 64], f32>) -> (!mo.tensor<[4, 64], f32>, !mo.tensor<[4, 64], f32>) {
-  %start0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop0 = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<4, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop1 = mo.constant {value = #M.dense_array<8, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop0 = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<4, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop1 = mo.constant <#M.dense_array<8, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %v0 = mo.slice(%w, %start0, %stop0, %step) : (
     !mo.tensor<[8, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[4, 64], f32>

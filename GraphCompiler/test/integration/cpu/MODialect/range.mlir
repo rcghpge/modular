@@ -2,8 +2,8 @@
 // RUN: mt --execute --result-output-style=full %t.mlir | FileCheck %s
 
 mo.graph @range1<() -> D0>(%limit: !mo.tensor<[], f32>) -> !mo.tensor<[D0], f32> {
-  %start = mo.constant {value = #M.dense_array<-4.5> : tensor<f32>} : !mo.tensor<[], f32>
-  %step = mo.constant {value = #M.dense_array<0.5> : tensor<f32>} : !mo.tensor<[], f32>
+  %start = mo.constant <#M.dense_array<-4.5> : tensor<f32>> : !mo.tensor<[], f32>
+  %step = mo.constant <#M.dense_array<0.5> : tensor<f32>> : !mo.tensor<[], f32>
   %output = mo.range<() -> D1>(%start, %limit, %step) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D1], f32>
   mo.output<D1> %output : !mo.tensor<[D1], f32>
 }

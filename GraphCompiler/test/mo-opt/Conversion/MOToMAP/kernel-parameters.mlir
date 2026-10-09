@@ -46,7 +46,7 @@ mo.graph @convDynamicStrides(%input: !mo.tensor<[1, 5, 5, 3], f32>, %filter: !mo
 // CHECK: map.call.opaque @{{.*}}ResizeNearest[
 // CHECK-SAME: coordinate_transform_mode = 0 : index
 mo.graph @resizeCoordTransformMode(%input: !mo.tensor<[1, 1, 2, 2], f32>) -> !mo.tensor<[1, 1, 7, 8], f32> {
-  %size = mo.constant {value = #M.dense_array<1, 1, 7, 8> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %size = mo.constant <#M.dense_array<1, 1, 7, 8> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %res = mo.resize.nearest(%input, %size) {coordinate_transform_mode = #mo.coord_trans_mode<half_pixel>, round_mode = 0} : (!mo.tensor<[1, 1, 2, 2], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 1, 7, 8], f32>
   mo.output %res : !mo.tensor<[1, 1, 7, 8], f32>
 }

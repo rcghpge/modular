@@ -91,8 +91,8 @@ mo.graph @static_reshape_fold_same_static_rank<N>(%from: !mo.tensor<[N, 3], f32>
 
 // CHECK: mo.graph @static_reshape_fold_static_out_shape_attr() -> !mo.tensor<[2, 2], si32> {
 mo.graph @static_reshape_fold_static_out_shape_attr() -> !mo.tensor<[2, 2], si32> {
-  // CHECK-NEXT: %[[INPUT:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
-  %from = mo.constant {value = #M.dense_array<1, 2, 3, 4> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK-NEXT: %[[INPUT:.*]] = mo.constant <#M.dense_array<1, 2, 3, 4> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
+  %from = mo.constant <#M.dense_array<1, 2, 3, 4> : tensor<4xsi32>> : !mo.tensor<[4], si32>
   %res = mo.static.reshape(%from) : !mo.tensor<[4], si32> -> !mo.tensor<[2, 2], si32>
   // CHECK-NEXT: mo.output %[[INPUT]] : !mo.tensor<[2, 2], si32>
   mo.output %res : !mo.tensor<[2, 2], si32>

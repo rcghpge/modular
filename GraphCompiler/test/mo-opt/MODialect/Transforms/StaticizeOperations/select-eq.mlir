@@ -11,7 +11,7 @@ mo.graph @select_eq_cond<N1, N2, N3, N4 -> O1, O2>(
 
   %dummy1_shape = mo.shape_of(%dummy1) : (!mo.tensor<[N1, N2], f32>) -> !mo.tensor<[2], si32>
   %dummy2_shape = mo.shape_of(%dummy2) : (!mo.tensor<[N3, N4], f32>) -> !mo.tensor<[2], si32>
-  %neg_ones = mo.constant {value = #M.dense_array<-1, -1> : !M.array<2xsi32>} : !mo.tensor<[2], si32>
+  %neg_ones = mo.constant <#M.dense_array<-1, -1> : !M.array<2xsi32>> : !mo.tensor<[2], si32>
   // NOTE constant folding won't be able to fold this, we'll need the range
   // analysis from `PropagateShapesPass`.
   %cond = mo.equal(%dummy1_shape, %neg_ones) : (

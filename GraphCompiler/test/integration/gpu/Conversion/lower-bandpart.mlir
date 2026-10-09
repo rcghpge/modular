@@ -8,9 +8,9 @@
 // CHECK-IR: "mgp.generic.execute"{{.*}}linalg.band_part
 
 mo.graph @linalg_band_part_rank_2_dyn<D0, D1>(%arg0: !mo.tensor<[D0, D1], f32>) -> !mo.tensor<[D0, D1], f32> {
-  %1 = mo.constant {value = #M.dense_array<-1> : tensor<si32>} : !mo.tensor<[], si32>
-  %2 = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %3 = mo.constant {value = #M.dense_array<0> : tensor<ui8>} : !mo.tensor<[], bool>
+  %1 = mo.constant <#M.dense_array<-1> : tensor<si32>> : !mo.tensor<[], si32>
+  %2 = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
+  %3 = mo.constant <#M.dense_array<0> : tensor<ui8>> : !mo.tensor<[], bool>
   %ch0 = mo.chain.create()
   %arg0_gpu, %ch1 = mo.transfer[%ch0] %arg0 : !mo.tensor<[D0, D1], f32> to <"gpu", 0>
   %4 = mo.linalg.band_part(%arg0_gpu, %1, %2, %3) { device = #M.device_ref<"gpu", 0> } : (!mo.tensor<[D0, D1], f32, gpu:0>, !mo.tensor<[], si32>, !mo.tensor<[], si32>, !mo.tensor<[], bool>) -> !mo.tensor<[D0, D1], f32, gpu:0>

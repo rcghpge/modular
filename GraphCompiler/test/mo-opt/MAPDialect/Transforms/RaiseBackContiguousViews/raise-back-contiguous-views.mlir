@@ -12,13 +12,13 @@
 
 // CHECK-LABEL: mo.graph @contiguousSliceLeadingDim
 // CHECK-NOT:     map.iter.foreach
-// CHECK:         [[START:%.*]] = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>}
-// CHECK:         [[STOP:%.*]] = mo.constant {value = #M.dense_array<4> : !M.array<1xsi64>}
+// CHECK:         [[START:%.*]] = mo.constant <#M.dense_array<1> : !M.array<1xsi64>>
+// CHECK:         [[STOP:%.*]] = mo.constant <#M.dense_array<4> : !M.array<1xsi64>>
 // CHECK:         mogg.slice(%arg0, [[START]], [[STOP]]) : (!mo.tensor<[10, 64], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[3, 64], f32>
 mo.graph @contiguousSliceLeadingDim(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 64], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 64], f32>
@@ -32,9 +32,9 @@ mo.graph @contiguousSliceLeadingDim(%input: !mo.tensor<[10, 64], f32>) -> !mo.te
 // CHECK-NOT:     map.iter.foreach
 // CHECK:         mogg.slice(%arg0, %{{.*}}, %{{.*}}) : (!mo.tensor<[1, 10, 64], f32>, !mo.tensor<[], si64>, !mo.tensor<[], si64>) -> !mo.tensor<[1, 3, 64], f32>
 mo.graph @contiguousSliceSkipLeadingOnes(%input: !mo.tensor<[1, 10, 64], f32>) -> !mo.tensor<[1, 3, 64], f32> {
-  %start = mo.constant {value = #M.dense_array<0, 1, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %stop = mo.constant {value = #M.dense_array<1, 4, 64> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %start = mo.constant <#M.dense_array<0, 1, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %stop = mo.constant <#M.dense_array<1, 4, 64> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %step = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[1, 10, 64], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[1, 3, 64], f32>
@@ -49,9 +49,9 @@ mo.graph @contiguousSliceSkipLeadingOnes(%input: !mo.tensor<[1, 10, 64], f32>) -
 // CHECK:         map.iter.foreach<[3, 32]>
 // CHECK:         map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>>
 mo.graph @nonContiguousMultiDimSlice(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 32], f32>
@@ -103,9 +103,9 @@ mo.graph @contiguousSliceInsideIf(
     %input: !mo.tensor<[10, 64], f32>,
     %cond: !mo.tensor<[], bool>
 ) -> !mo.tensor<[3, 64], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[3, 64], f32> {
     %sliced = mo.slice(%input, %start, %stop, %step) : (
       !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>

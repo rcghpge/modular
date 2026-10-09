@@ -14,9 +14,9 @@
 // CHECK-SAME:    mut = true
 // CHECK-SAME:    (!mogg.buffer, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
 mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = map.iter.opaque
     inputs (%buf: !mo.buffer<[10, 64], f32>, %start: !mo.tensor<[2], si64>, %stop: !mo.tensor<[2], si64>, %step: !mo.tensor<[2], si64>)
     outputs (%out: !mo.tensor<[3, 32], f32>) {
@@ -36,9 +36,9 @@ mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[
 // CHECK-SAME:    mut = false
 // CHECK-SAME:    (!mogg.tensor, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
 mo.graph @sliceStrideOverTensor(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = map.iter.opaque
     inputs (%input: !mo.tensor<[10, 64], f32>, %start: !mo.tensor<[2], si64>, %stop: !mo.tensor<[2], si64>, %step: !mo.tensor<[2], si64>)
     outputs (%out: !mo.tensor<[3, 32], f32>) {

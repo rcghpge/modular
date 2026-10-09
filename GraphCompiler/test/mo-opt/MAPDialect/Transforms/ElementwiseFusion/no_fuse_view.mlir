@@ -12,7 +12,7 @@ mo.graph @no_fuse_transpose_of_square_matrix(
   %y: !mo.tensor<[3, 3], f32>
 ) -> !mo.tensor<[3, 3], f32> {
   %sum = mo.add(%x, %y) : !mo.tensor<[3, 3], f32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %out = mo.transpose(%sum, %perm) : (
     !mo.tensor<[3, 3], f32>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 3], f32>

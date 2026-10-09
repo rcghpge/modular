@@ -20,7 +20,7 @@ mo.graph @matmul_add_2d(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>, %arg1: !m
 // CHECK-NOT: mo.composite.matmul_add
 // CHECK: mo.add
 mo.graph @matmul_reshape_add_2d(%arg0: !mo.tensor<[65536, 1536], bf16, gpu:0>, %arg1: !mo.tensor<[1536, 1536], bf16, gpu:0>, %arg2: !mo.tensor<[32, 2048, 1536], bf16, gpu:0>) -> !mo.tensor<[32, 2048, 1536], bf16, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %1 = mo.transpose(%arg1, %0) : (!mo.tensor<[1536, 1536], bf16, gpu:0>, !mo.tensor<[2], si64>) -> !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>
   %2 = mo.matmul(%arg0, %1) : (!mo.tensor<[65536, 1536], bf16, gpu:0>, !mo.tensor<[1536, 1536], bf16, gpu:0, {layout = #mo.layout<KN>}>) -> !mo.tensor<[65536, 1536], bf16, gpu:0>
   %3 = mo.static.reshape(%2) : !mo.tensor<[65536, 1536], bf16, gpu:0> -> !mo.tensor<[32, 2048, 1536], bf16, gpu:0>

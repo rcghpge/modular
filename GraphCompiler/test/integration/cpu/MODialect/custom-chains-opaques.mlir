@@ -6,8 +6,8 @@
 // CHECK-LITERAL-NEXT: MyCustomScalarSI32.__init__ 42
 // CHECK-LITERAL: 'test_opaques_and_chains_non_raising' returned tensor([[142]], dtype=si32, shape=[1])
 mo.graph @test_opaques_and_chains_non_raising() -> (!mo.tensor<[1], si32>) {
-  %const100 = mo.constant {value = #M.dense_array<100> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %const42 = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %const100 = mo.constant <#M.dense_array<100> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+  %const42 = mo.constant <#M.dense_array<42> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 
   %ch0 = mo.chain.create()
 
@@ -28,8 +28,8 @@ mo.graph @test_opaques_and_chains_non_raising() -> (!mo.tensor<[1], si32>) {
 // CHECK-LITERAL-NEXT: MyCustomScalarSI32.__init__ 42
 // CHECK-LITERAL: 'test_opaques_and_chains_raising' returned tensor([[142]], dtype=si32, shape=[1])
 mo.graph @test_opaques_and_chains_raising() -> (!mo.tensor<[1], si32>) {
-  %const100 = mo.constant {value = #M.dense_array<100> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %const42 = mo.constant {value = #M.dense_array<42> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %const100 = mo.constant <#M.dense_array<100> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+  %const42 = mo.constant <#M.dense_array<42> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 
   %ch0 = mo.chain.create()
 

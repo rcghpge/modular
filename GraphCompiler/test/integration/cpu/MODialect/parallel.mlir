@@ -5,8 +5,8 @@
 
 // Execute two relu ops
 mo.graph @sequential_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
-  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const1 = mo.constant <#M.dense_array<1, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %const2 = mo.constant <#M.dense_array<-9, 8, -7> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %res1 = mo.relu(%const1) : !mo.tensor<[3], si32>
   %res2 = mo.relu(%const2) : !mo.tensor<[3], si32>
   mo.output %res1, %res2 : !mo.tensor<[3], si32>, !mo.tensor<[3], si32>
@@ -18,8 +18,8 @@ mo.graph @sequential_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
 
 // Test for mo.parallel op
 mo.graph @parallel_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
-  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const1 = mo.constant <#M.dense_array<1, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %const2 = mo.constant <#M.dense_array<-9, 8, -7> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
@@ -33,9 +33,9 @@ mo.graph @parallel_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
 
 // Test mo.parallel with multiple kernels: add with captured constant + relu.
 mo.graph @parallel_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
-  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %bias = mo.constant {value = #M.dense_array<-5, -5, -5> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const1 = mo.constant <#M.dense_array<1, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %const2 = mo.constant <#M.dense_array<-9, 8, -7> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %bias = mo.constant <#M.dense_array<-5, -5, -5> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
@@ -55,8 +55,8 @@ mo.graph @parallel_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) 
 // The optimizer strength-reduces add(%arg0, %arg0) to mul(%arg0, 2), which
 // introduces a captured constant and exercises the captured-value path.
 mo.graph @parallel_self_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
-  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const1 = mo.constant <#M.dense_array<1, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %const2 = mo.constant <#M.dense_array<-9, 8, -7> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {
@@ -82,8 +82,8 @@ mo.graph @parallel_self_add_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si
 // [1,-2,3]:  relu=[1,0,3], neg=[-1,2,-3], add=[0,2,0]
 // [-9,8,-7]: relu=[0,8,0], neg=[9,-8,7],  add=[9,0,7]
 mo.graph @parallel_diamond() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
-  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %const1 = mo.constant <#M.dense_array<1, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %const2 = mo.constant <#M.dense_array<-9, 8, -7> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32>, !mo.tensor<[3], si32>]>) {

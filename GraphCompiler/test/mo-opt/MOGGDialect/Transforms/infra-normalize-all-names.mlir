@@ -53,8 +53,8 @@ kgen.generator @func_c(%arg0: si32) -> si32 {
 // CHECK-LABEL: mo.graph @__S0<__P0, __P1>
 // CHECK-SAME: %arg1: !mo.tensor<[0, __P0, __P1], bool>
 mo.graph @my_graph<D1, D10>(%arg0: !mo.tensor<[1], ui64>, %arg1: !mo.tensor<[0, D1, D10], bool>) -> (!mo.tensor<[D10], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-  %c1 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %c0 = mo.constant <#M.dense_array<0.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
+  %c1 = mo.constant <#M.dense_array<1.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   // CHECK: mosh.param.to_value: !mosh.ape = <[__P1]>
   %shape_val = mosh.param.to_value: !mosh.ape = <[D10]>
   %shape_tensor = mo.shape.to_tensor(%shape_val) -> !mo.tensor<[1], si64>

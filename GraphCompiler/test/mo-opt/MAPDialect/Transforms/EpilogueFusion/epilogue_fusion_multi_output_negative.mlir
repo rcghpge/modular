@@ -23,7 +23,7 @@ mo.graph @transposed_pair(
   %w: !mo.tensor<[8, 8], f32>
 ) -> (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32>) {
   %mm = mo.matmul(%x, %y) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %t = mo.transpose(%mm, %perm) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[8, 8], f32>
   %a = mo.add(%t, %z) : !mo.tensor<[8, 8], f32>
   %b = mo.add(%t, %w) : !mo.tensor<[8, 8], f32>

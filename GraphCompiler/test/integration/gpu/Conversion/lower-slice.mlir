@@ -15,9 +15,9 @@
 // CHECK-MT-NEXT: [1.0000, 1.0000, 1.0000]], dtype=f32, shape=[3,3])
 
 mo.graph @graph<() -> D0, D1>(%input: !mo.tensor<[10, 10], f32>) -> !mo.tensor<[D0, D1], f32> {
-  %start = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64> } : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<8, 8> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %ch0 = mo.chain.create()
   %input_gpu, %ch1 = mo.transfer[%ch0] %input : !mo.tensor<[10, 10], f32> to <"gpu", 0>
   %res_gpu = mo.slice<() -> D2, D3>(%input_gpu, %start, %stop, %step) { device = #M.device_ref<"gpu", 0> } : (

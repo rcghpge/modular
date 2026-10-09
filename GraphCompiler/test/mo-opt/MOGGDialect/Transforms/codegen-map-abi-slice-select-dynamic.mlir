@@ -34,8 +34,8 @@ mo.graph @matmul_slice_step_dynamic<M, H>(
   %b: !mo.tensor<[4, 8], f32>,
   %stops: !mo.tensor<[2], si64>
 ) -> (!mo.tensor<[M, 8], f32>, !mo.tensor<[H, 8], f32>) {
-  %starts = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %steps = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %starts = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %steps = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %mm = mo.matmul(%a, %b) : (!mo.tensor<[M, 4], f32>, !mo.tensor<[4, 8], f32>) -> !mo.tensor<[M, 8], f32>
   %slice = mo.slice(%mm, %starts, %stops, %steps) : (!mo.tensor<[M, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[H, 8], f32>
   mo.output %mm, %slice : !mo.tensor<[M, 8], f32>, !mo.tensor<[H, 8], f32>

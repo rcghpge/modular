@@ -16,10 +16,10 @@ mo.graph @conv_const_filter(
   // CHECK-IR: mo.invoke_shape_func["pack_conv_filter_shape"]<() -> [[P1:.*]], [[P2:.*]], [[P3:.*]], [[P4:.*]], [[P5:.*]]>(%{{.*}}) {kgenParams = {dilations = dense<1> : vector<2xi64>, filter_shape = dense<[2, 2, 1, 1]> : vector<4xi64>, input_shape = dense<[2, 2, 1, 1]> : vector<4xi64>, num_groups = 1 : index, output_shape = dense<[4, 2, 2, 1]> : vector<4xi64>, paddings = dense<0> : vector<4xi64>, strides = dense<1> : vector<2xi64>}}
   // CHECK-IR: %[[PACKED_FILTER:.*]] = mo.layout.transform(%{{.*}}) {kgenParams = {num_groups = 1 : index}} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}> -> !mo.tensor<[[[P1]], [[P2]], [[P3]], [[P4]], [[P5]]], f32, {layout = #mo.layout<FRSCf>}>
   // CHECK-IR: mo.conv({{.*}}, %[[PACKED_FILTER]])
-  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
-  %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %ones = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %filter = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
+  %ng = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"
@@ -45,11 +45,11 @@ mo.graph @conv_transp_filter(
   // CHECK-IR: mo.invoke_shape_func["pack_conv_filter_shape"]<() -> [[P1:.*]], [[P2:.*]], [[P3:.*]], [[P4:.*]], [[P5:.*]]>(%{{.*}}) {kgenParams = {dilations = dense<1> : vector<2xi64>, filter_shape = dense<[2, 2, 1, 1]> : vector<4xi64>, input_shape = dense<[2, 2, 1, 1]> : vector<4xi64>, num_groups = 1 : index, output_shape = dense<[4, 2, 2, 1]> : vector<4xi64>, paddings = dense<0> : vector<4xi64>, strides = dense<1> : vector<2xi64>}}
   // CHECK-IR: %[[PACKED_FILTER:.*]] = mo.layout.transform(%{{.*}}) {kgenParams = {num_groups = 1 : index}} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}> -> !mo.tensor<[[[P1]], [[P2]], [[P3]], [[P4]], [[P5]]], f32, {layout = #mo.layout<FRSCf>}>
   // CHECK-IR: mo.conv({{.*}}, %[[PACKED_FILTER]])
-  %ones = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
-  %perm = mo.constant {value = #M.dense_array<1, 0, 2, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %ones = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %ng = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
+  %filter = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
+  %perm = mo.constant <#M.dense_array<1, 0, 2, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %filter_t = mo.transpose(%filter, %perm) : (!mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[4], si64>) -> !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
@@ -75,10 +75,10 @@ mo.graph @conv_const_filter_dyn_output<() -> D0, D1>(
   // CHECK-IR: mo.invoke_shape_func["pack_conv_filter_shape"]<() -> [[P1:.*]], [[P2:.*]], [[P3:.*]], [[P4:.*]], [[P5:.*]]>(%{{.*}}) {kgenParams = {dilations = dense<1> : vector<2xi64>, filter_shape = dense<[2, 2, 1, 1]> : vector<4xi64>, input_shape = dense<[2, 2, 1, 1]> : vector<4xi64>, num_groups = 1 : index, output_shape = dense<[4, -9223372036854775808, -9223372036854775808, 1]> : vector<4xi64>, paddings = dense<0> : vector<4xi64>, strides = dense<-9223372036854775808> : vector<2xi64>}}
   // CHECK-IR: %[[PACKED_FILTER:.*]] = mo.layout.transform(%{{.*}}) {kgenParams = {num_groups = 1 : index}} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}> -> !mo.tensor<[[[P1]], [[P2]], [[P3]], [[P4]], [[P5]]], f32, {layout = #mo.layout<FRSCf>}>
   // CHECK-IR: mo.conv({{.*}}, %[[PACKED_FILTER]])
-  %dilations = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %pa = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %filter = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
-  %ng = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %dilations = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %pa = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %filter = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> : !mo.tensor<[2, 2, 1, 1], f32, {layout = #mo.layout<RSCF>}>
+  %ng = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   // CHECK-MGP-NOT: "pack_conv_filter_shape"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.conv:{{.*}}"

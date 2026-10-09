@@ -4,7 +4,7 @@
 
 // x + 0 -> x
 mo.graph @add_with_cst_zero(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], f64> {
-  %zero = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>} : !mo.tensor<[1, 2, 3], f64>
+  %zero = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>> : !mo.tensor<[1, 2, 3], f64>
   %0 = mo.add(%input, %zero) : !mo.tensor<[1, 2, 3], f64>
   mo.output %0 : !mo.tensor<[1, 2, 3], f64>
 }
@@ -13,7 +13,7 @@ mo.graph @add_with_cst_zero(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1
 
 // x + bcast(0) -> x
 mo.graph @add_with_bcast_zero(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %zero = mo.constant {value = #M.dense_array<0.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %zero = mo.constant <#M.dense_array<0.0> : tensor<1xf32>> : !mo.tensor<[], f32>
   %bcast_zero = mo.static.broadcast_to(%zero) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, 3], f32>
   %0 = mo.add(%input, %bcast_zero) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
@@ -23,7 +23,7 @@ mo.graph @add_with_bcast_zero(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<
 
 // 0 + x -> x
 mo.graph @add_with_cst_zero_reversed(%input: !mo.tensor<[1, 2, 3], si32>) -> !mo.tensor<[1, 2, 3], si32> {
-  %zero = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi32>} : !mo.tensor<[1, 2, 3], si32>
+  %zero = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi32>> : !mo.tensor<[1, 2, 3], si32>
   %0 = mo.add(%zero, %input) : !mo.tensor<[1, 2, 3], si32>
   mo.output %0 : !mo.tensor<[1, 2, 3], si32>
 }
@@ -32,7 +32,7 @@ mo.graph @add_with_cst_zero_reversed(%input: !mo.tensor<[1, 2, 3], si32>) -> !mo
 
 // bcast(0) + x -> x
 mo.graph @add_with_bcast_zero_reversed(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %zero = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[], si64>
   %bcast_zero = mo.static.broadcast_to(%zero) : !mo.tensor<[], si64> -> !mo.tensor<[1, 2, 3], si64>
   %0 = mo.add(%bcast_zero, %input) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
@@ -41,7 +41,7 @@ mo.graph @add_with_bcast_zero_reversed(%input: !mo.tensor<[1, 2, 3], si64>) -> !
 // CHECK-NEXT: mo.output
 
 mo.graph @add_with_non_zero(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], f64> {
-  %zero = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 1.0> : tensor<6xf64>} : !mo.tensor<[1, 2, 3], f64>
+  %zero = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 1.0> : tensor<6xf64>> : !mo.tensor<[1, 2, 3], f64>
   %0 = mo.add(%input, %zero) : !mo.tensor<[1, 2, 3], f64>
   mo.output %0 : !mo.tensor<[1, 2, 3], f64>
 }
@@ -52,7 +52,7 @@ mo.graph @add_with_non_zero(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1
 
 // x - 0 -> x
 mo.graph @sub_with_cst_zero(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], f64> {
-  %zero = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>} : !mo.tensor<[1, 2, 3], f64>
+  %zero = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>> : !mo.tensor<[1, 2, 3], f64>
   %0 = mo.sub(%input, %zero) : !mo.tensor<[1, 2, 3], f64>
   mo.output %0 : !mo.tensor<[1, 2, 3], f64>
 }
@@ -71,7 +71,7 @@ mo.graph @sub_with_same(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2,
 
 // x * 1 -> x
 mo.graph @mul_with_cst_one(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], f64> {
-  %one = mo.constant {value = #M.dense_array<1.0, 1.0, 1.0, 1.0, 1.0, 1.0> : tensor<6xf64>} : !mo.tensor<[1, 2, 3], f64>
+  %one = mo.constant <#M.dense_array<1.0, 1.0, 1.0, 1.0, 1.0, 1.0> : tensor<6xf64>> : !mo.tensor<[1, 2, 3], f64>
   %0 = mo.mul(%input, %one) : !mo.tensor<[1, 2, 3], f64>
   mo.output %0 : !mo.tensor<[1, 2, 3], f64>
 }
@@ -80,7 +80,7 @@ mo.graph @mul_with_cst_one(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1,
 
 // x * 0 -> bcast(0)
 mo.graph @mul_with_cst_zero(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], f64> {
-  %zero = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>} : !mo.tensor<[1, 2, 3], f64>
+  %zero = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>> : !mo.tensor<[1, 2, 3], f64>
   %0 = mo.mul(%input, %zero) : !mo.tensor<[1, 2, 3], f64>
   mo.output %0 : !mo.tensor<[1, 2, 3], f64>
 }
@@ -91,7 +91,7 @@ mo.graph @mul_with_cst_zero(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1
 
 // 0 / x -> bcast(0)
 mo.graph @zero_div(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], f64> {
-  %zero = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>} : !mo.tensor<[1, 2, 3], f64>
+  %zero = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<6xf64>> : !mo.tensor<[1, 2, 3], f64>
   %0 = mo.div(%zero, %input) : !mo.tensor<[1, 2, 3], f64>
   mo.output %0 : !mo.tensor<[1, 2, 3], f64>
 }
@@ -102,7 +102,7 @@ mo.graph @zero_div(%input: !mo.tensor<[1, 2, 3], f64>) -> !mo.tensor<[1, 2, 3], 
 
 // x / 1 -> x
 mo.graph @div_by_one(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %one = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %one = mo.constant <#M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.div(%input, %one) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
@@ -111,7 +111,7 @@ mo.graph @div_by_one(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3
 
 // x ** 1 -> x
 mo.graph @pow_by_one(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %one = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %one = mo.constant <#M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], si64>, %one : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
@@ -120,7 +120,7 @@ mo.graph @pow_by_one(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3
 
 // x ** 0 -> bcast(1)
 mo.graph @pow_by_zero(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %zero = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %zero = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], si64>, %zero : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
@@ -131,7 +131,7 @@ mo.graph @pow_by_zero(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 
 
 // x ** 0 -> bcast(1)
 mo.graph @pow_of_zero(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %zero = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %zero = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.pow(%zero : !mo.tensor<[1, 2, 3], si64>, %input : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
@@ -142,7 +142,7 @@ mo.graph @pow_of_zero(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 
 
 // x ** 0 -> bcast(1)
 mo.graph @pow_of_one(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %one = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %one = mo.constant <#M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.pow(%one : !mo.tensor<[1, 2, 3], si64>, %input : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
@@ -169,7 +169,7 @@ mo.graph @min_same_operand(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1
 
 // min(x, max(x, y)) -> x
 mo.graph @min_of_max(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %cst = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %cst = mo.constant <#M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.max(%input, %cst) : !mo.tensor<[1, 2, 3], si64>
   %1 = mo.min(%0, %input) : !mo.tensor<[1, 2, 3], si64>
   mo.output %1 : !mo.tensor<[1, 2, 3], si64>
@@ -179,7 +179,7 @@ mo.graph @min_of_max(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3
 
 // max(x, min(x, y)) -> x
 mo.graph @max_of_min(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %cst = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %cst = mo.constant <#M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.min(%input, %cst) : !mo.tensor<[1, 2, 3], si64>
   %1 = mo.max(%0, %input) : !mo.tensor<[1, 2, 3], si64>
   mo.output %1 : !mo.tensor<[1, 2, 3], si64>
@@ -199,7 +199,7 @@ mo.graph @mod_same_operand(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1
 
 // mod(x, 1) -> bcast(0)
 mo.graph @mod_by_1(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %one = mo.constant {value = #M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %one = mo.constant <#M.dense_array<1, 1, 1, 1, 1, 1> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.mod(%input, %one) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
@@ -276,8 +276,8 @@ mo.graph @xor_same_operand(%input: !mo.tensor<[1, 2, 3], bool>) -> !mo.tensor<[1
 
 // ((x ^ y) ^ z) -> x ^ (y * z)
 mo.graph @pow_chain(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %cst_4 = mo.constant {value = #M.dense_array<4,4,4,4,4,4> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
-  %cst_3 = mo.constant {value = #M.dense_array<3,3,3,3,3,3> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %cst_4 = mo.constant <#M.dense_array<4,4,4,4,4,4> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
+  %cst_3 = mo.constant <#M.dense_array<3,3,3,3,3,3> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], si64>, %cst_4 : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   %1 = mo.pow(%0 : !mo.tensor<[1, 2, 3], si64>, %cst_3 : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %1 : !mo.tensor<[1, 2, 3], si64>
@@ -293,8 +293,8 @@ mo.graph @pow_chain(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3]
 
 // Should not optimize because exponent of different types.
 mo.graph @pow_chain_different_types(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %cst_4 = mo.constant {value = #M.dense_array<4,4,4,4,4,4> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
-  %cst_3 = mo.constant {value = #M.dense_array<5,5,5,5,5,5> : tensor<6xsi32>} : !mo.tensor<[1, 2, 3], si32>
+  %cst_4 = mo.constant <#M.dense_array<4,4,4,4,4,4> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
+  %cst_3 = mo.constant <#M.dense_array<5,5,5,5,5,5> : tensor<6xsi32>> : !mo.tensor<[1, 2, 3], si32>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], si64>, %cst_4 : !mo.tensor<[1, 2, 3], si64>) : !mo.tensor<[1, 2, 3], si64>
   %1 = mo.pow(%0 : !mo.tensor<[1, 2, 3], si64>, %cst_3 : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], si64>
   mo.output %1 : !mo.tensor<[1, 2, 3], si64>
@@ -323,7 +323,7 @@ mo.graph @relu_roundtrip(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2
 
 // x * 2 -> x + x
 mo.graph @mul_by_2_roundtrip(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %cst = mo.constant {value = #M.dense_array<2,2,2,2,2,2> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %cst = mo.constant <#M.dense_array<2,2,2,2,2,2> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.mul(%input, %cst) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
@@ -335,7 +335,7 @@ mo.graph @mul_by_2_roundtrip(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<
 
 // x ** -{1,2} -> 1 / (x ** {1,2})
 mo.graph @pow_neg_1_2_roundtrip(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %cst = mo.constant {value = #M.dense_array<-2.,-2.,-2.,-2.,-2.,-2.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %cst = mo.constant <#M.dense_array<-2.,-2.,-2.,-2.,-2.,-2.> : tensor<6xf32>> : !mo.tensor<[1, 2, 3], f32>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f32>, %cst : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
@@ -348,7 +348,7 @@ mo.graph @pow_neg_1_2_roundtrip(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tenso
 
 // 0 - x -> -x
 mo.graph @sub_0_to_neg(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %cst = mo.constant {value = #M.dense_array<-0.,-0.,-0.,-0.,-0.,-0.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %cst = mo.constant <#M.dense_array<-0.,-0.,-0.,-0.,-0.,-0.> : tensor<6xf32>> : !mo.tensor<[1, 2, 3], f32>
   %0 = mo.sub(%cst, %input) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
@@ -403,18 +403,18 @@ mo.graph @div_of_div_to_div_of_mul(%input1: !mo.tensor<[1, 2, 3], f32>, %input2:
 // Make sure the rewrite won't fire for non-fp inputs.
 // x / cst -> x * (1 / cst)
 mo.graph @div_by_cst_to_mul_of_reciprocal_int(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], si64> {
-  %cst = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+  %cst = mo.constant <#M.dense_array<1, 2, 3, 4, 5, 6> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
   %0 = mo.div(%input, %cst) : !mo.tensor<[1, 2, 3], si64>
   mo.output %0 : !mo.tensor<[1, 2, 3], si64>
 }
 // CHECK-LABEL:  @div_by_cst_to_mul_of_reciprocal_int
-// CHECK-NEXT:    %[[BCAST:.*]] = mo.constant {value = #M.dense_array<1, 2, 3, 4, 5, 6> : tensor<6xsi64>} : !mo.tensor<[1, 2, 3], si64>
+// CHECK-NEXT:    %[[BCAST:.*]] = mo.constant <#M.dense_array<1, 2, 3, 4, 5, 6> : tensor<6xsi64>> : !mo.tensor<[1, 2, 3], si64>
 // CHECK-NEXT:    %[[DIV:.*]] = mo.div({{.*}}) : !mo.tensor<[1, 2, 3], si64>
 // CHECK-NEXT:    mo.output %[[DIV]] : !mo.tensor<[1, 2, 3], si64>
 
 // x / cst -> x * (1 / cst)
 mo.graph @div_by_cst_to_mul_of_reciprocal(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %cst = mo.constant {value = #M.dense_array<1., 2., 3., 4., 5., 6.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %cst = mo.constant <#M.dense_array<1., 2., 3., 4., 5., 6.> : tensor<6xf32>> : !mo.tensor<[1, 2, 3], f32>
   %0 = mo.div(%input, %cst) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
@@ -463,41 +463,41 @@ mo.graph @div_by_bcast_symbolic_fan_out<N>(%input: !mo.tensor<[N, 16], f32>, %sc
 // CHECK-NOT:     mo.mul
 
 mo.graph @pow_float_to_pow_int(%input: !mo.tensor<[1, 2, 3], si64>) -> !mo.tensor<[1, 2, 3], f32> {
-  %cst = mo.constant {value = #M.dense_array<5.> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<5.> : tensor<1xf32>> : !mo.tensor<[], f32>
   %cst_bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, 3], f32>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], si64>, %cst_bcast : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
 // CHECK-LABEL:  @pow_float_to_pow_int
-// CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant <#M.dense_array<5> : !M.array<1xsi32>> : !mo.tensor<[], si32>
 // CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si32> -> !mo.tensor<[1, 2, 3], si32>
 // CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], f32>
 
 mo.graph @pow_float_to_pow_float(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %cst = mo.constant {value = #M.dense_array<5.> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<5.> : tensor<1xf32>> : !mo.tensor<[], f32>
   %cst_bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[1, 2, 3], f32>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f32>, %cst_bcast : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
 // CHECK-LABEL:  @pow_float_to_pow_float
-// CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant <#M.dense_array<5> : !M.array<1xsi32>> : !mo.tensor<[], si32>
 // CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si32> -> !mo.tensor<[1, 2, 3], si32>
 // CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], f32>
 
 mo.graph @pow_float16_to_pow_float16(%input: !mo.tensor<[1, 2, 3], f16>) -> !mo.tensor<[1, 2, 3], f16> {
-  %cst = mo.constant {value = #M.dense_array<5.> : tensor<1xf16>} : !mo.tensor<[], f16>
+  %cst = mo.constant <#M.dense_array<5.> : tensor<1xf16>> : !mo.tensor<[], f16>
   %cst_bcast = mo.static.broadcast_to(%cst) : !mo.tensor<[], f16> -> !mo.tensor<[1, 2, 3], f16>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f16>, %cst_bcast : !mo.tensor<[1, 2, 3], f16>) : !mo.tensor<[1, 2, 3], f16>
   mo.output %0 : !mo.tensor<[1, 2, 3], f16>
 }
 // CHECK-LABEL:  @pow_float16_to_pow_float16
-// CHECK-NEXT:    %[[CST:.*]] = mo.constant {value = #M.dense_array<5> : !M.array<1xsi32>} : !mo.tensor<[], si32>
+// CHECK-NEXT:    %[[CST:.*]] = mo.constant <#M.dense_array<5> : !M.array<1xsi32>> : !mo.tensor<[], si32>
 // CHECK-NEXT:    %[[BCAST:.*]] = mo.static.broadcast_to(%[[CST]]) : !mo.tensor<[], si32> -> !mo.tensor<[1, 2, 3], si32>
 // CHECK-NEXT:    %2 = mo.pow({{.*}}, %[[BCAST]] : !mo.tensor<[1, 2, 3], si32>) : !mo.tensor<[1, 2, 3], f16>
 
 // x ** 2 -> x * x
 mo.graph @pow_square_to_mul(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %cst = mo.constant {value = #M.dense_array<2.,2.,2.,2.,2.,2.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %cst = mo.constant <#M.dense_array<2.,2.,2.,2.,2.,2.> : tensor<6xf32>> : !mo.tensor<[1, 2, 3], f32>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f32>, %cst : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }
@@ -507,7 +507,7 @@ mo.graph @pow_square_to_mul(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1
 
 // x ** 3 -> x * x * x
 mo.graph @pow_cube_to_mul(%input: !mo.tensor<[1, 2, 3], f32>) -> !mo.tensor<[1, 2, 3], f32> {
-  %cst = mo.constant {value = #M.dense_array<3.,3.,3.,3.,3.,3.> : tensor<6xf32>} : !mo.tensor<[1, 2, 3], f32>
+  %cst = mo.constant <#M.dense_array<3.,3.,3.,3.,3.,3.> : tensor<6xf32>> : !mo.tensor<[1, 2, 3], f32>
   %0 = mo.pow(%input : !mo.tensor<[1, 2, 3], f32>, %cst : !mo.tensor<[1, 2, 3], f32>) : !mo.tensor<[1, 2, 3], f32>
   mo.output %0 : !mo.tensor<[1, 2, 3], f32>
 }

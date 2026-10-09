@@ -10,39 +10,39 @@
 // np.concatenate(inputs)
 
 mo.graph @concat_0axis_special_10_num10_test(%arg0 : !mo.tensor<[10], si32>) -> (!mo.tensor<[100], si32>) {
-	%cst_0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_0 = mo.constant <#M.dense_array<1> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_0 = mo.static.broadcast_to(%cst_0) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_0 = mo.add(%arg0, %bcast_0) : !mo.tensor<[10], si32>
-	%cst_1 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_1 = mo.constant <#M.dense_array<2> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_1 = mo.static.broadcast_to(%cst_1) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_1 = mo.add(%arg0, %bcast_1) : !mo.tensor<[10], si32>
-	%cst_2 = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_2 = mo.constant <#M.dense_array<3> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_2 = mo.static.broadcast_to(%cst_2) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_2 = mo.add(%arg0, %bcast_2) : !mo.tensor<[10], si32>
-	%cst_3 = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_3 = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_3 = mo.static.broadcast_to(%cst_3) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_3 = mo.add(%arg0, %bcast_3) : !mo.tensor<[10], si32>
-	%cst_4 = mo.constant {value = #M.dense_array<5> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_4 = mo.constant <#M.dense_array<5> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_4 = mo.static.broadcast_to(%cst_4) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_4 = mo.add(%arg0, %bcast_4) : !mo.tensor<[10], si32>
-	%cst_5 = mo.constant {value = #M.dense_array<6> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_5 = mo.constant <#M.dense_array<6> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_5 = mo.static.broadcast_to(%cst_5) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_5 = mo.add(%arg0, %bcast_5) : !mo.tensor<[10], si32>
-	%cst_6 = mo.constant {value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_6 = mo.constant <#M.dense_array<7> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_6 = mo.static.broadcast_to(%cst_6) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_6 = mo.add(%arg0, %bcast_6) : !mo.tensor<[10], si32>
-	%cst_7 = mo.constant {value = #M.dense_array<8> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_7 = mo.constant <#M.dense_array<8> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_7 = mo.static.broadcast_to(%cst_7) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_7 = mo.add(%arg0, %bcast_7) : !mo.tensor<[10], si32>
-	%cst_8 = mo.constant {value = #M.dense_array<9> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_8 = mo.constant <#M.dense_array<9> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_8 = mo.static.broadcast_to(%cst_8) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_8 = mo.add(%arg0, %bcast_8) : !mo.tensor<[10], si32>
-	%cst_9 = mo.constant {value = #M.dense_array<10> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_9 = mo.constant <#M.dense_array<10> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_9 = mo.static.broadcast_to(%cst_9) : !mo.tensor<[1], si32> -> !mo.tensor<[10], si32>
 	%in_9 = mo.add(%arg0, %bcast_9) : !mo.tensor<[10], si32>
-	%axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+	%axis = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64>
 	%concat = mo.concat[0] (%in_0,%in_1,%in_2,%in_3,%in_4,%in_5,%in_6,%in_7,%in_8,%in_9) : (!mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>, !mo.tensor<[10], si32>) -> !mo.tensor<[100], si32>
-	%factor = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%factor = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_factor = mo.static.broadcast_to(%factor) : !mo.tensor<[1], si32> -> !mo.tensor<[100], si32>
 	%res = mo.mul(%concat, %bcast_factor) : !mo.tensor<[100], si32>
 	mo.output %res : !mo.tensor<[100], si32>
@@ -53,39 +53,39 @@ mo.graph @concat_0axis_special_10_num10_test(%arg0 : !mo.tensor<[10], si32>) -> 
 
 
 mo.graph @concat_0axis_special_2_2_num10_test(%arg0 : !mo.tensor<[2, 2], si32>) -> (!mo.tensor<[20, 2], si32>) {
-	%cst_0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_0 = mo.constant <#M.dense_array<1> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_0 = mo.static.broadcast_to(%cst_0) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_0 = mo.add(%arg0, %bcast_0) : !mo.tensor<[2, 2], si32>
-	%cst_1 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_1 = mo.constant <#M.dense_array<2> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_1 = mo.static.broadcast_to(%cst_1) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_1 = mo.add(%arg0, %bcast_1) : !mo.tensor<[2, 2], si32>
-	%cst_2 = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_2 = mo.constant <#M.dense_array<3> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_2 = mo.static.broadcast_to(%cst_2) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_2 = mo.add(%arg0, %bcast_2) : !mo.tensor<[2, 2], si32>
-	%cst_3 = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_3 = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_3 = mo.static.broadcast_to(%cst_3) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_3 = mo.add(%arg0, %bcast_3) : !mo.tensor<[2, 2], si32>
-	%cst_4 = mo.constant {value = #M.dense_array<5> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_4 = mo.constant <#M.dense_array<5> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_4 = mo.static.broadcast_to(%cst_4) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_4 = mo.add(%arg0, %bcast_4) : !mo.tensor<[2, 2], si32>
-	%cst_5 = mo.constant {value = #M.dense_array<6> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_5 = mo.constant <#M.dense_array<6> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_5 = mo.static.broadcast_to(%cst_5) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_5 = mo.add(%arg0, %bcast_5) : !mo.tensor<[2, 2], si32>
-	%cst_6 = mo.constant {value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_6 = mo.constant <#M.dense_array<7> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_6 = mo.static.broadcast_to(%cst_6) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_6 = mo.add(%arg0, %bcast_6) : !mo.tensor<[2, 2], si32>
-	%cst_7 = mo.constant {value = #M.dense_array<8> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_7 = mo.constant <#M.dense_array<8> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_7 = mo.static.broadcast_to(%cst_7) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_7 = mo.add(%arg0, %bcast_7) : !mo.tensor<[2, 2], si32>
-	%cst_8 = mo.constant {value = #M.dense_array<9> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_8 = mo.constant <#M.dense_array<9> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_8 = mo.static.broadcast_to(%cst_8) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_8 = mo.add(%arg0, %bcast_8) : !mo.tensor<[2, 2], si32>
-	%cst_9 = mo.constant {value = #M.dense_array<10> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_9 = mo.constant <#M.dense_array<10> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_9 = mo.static.broadcast_to(%cst_9) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2], si32>
 	%in_9 = mo.add(%arg0, %bcast_9) : !mo.tensor<[2, 2], si32>
-	%axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+	%axis = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64>
 	%concat = mo.concat[0] (%in_0,%in_1,%in_2,%in_3,%in_4,%in_5,%in_6,%in_7,%in_8,%in_9) : (!mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>, !mo.tensor<[2, 2], si32>) -> !mo.tensor<[20, 2], si32>
-	%factor = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%factor = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_factor = mo.static.broadcast_to(%factor) : !mo.tensor<[1], si32> -> !mo.tensor<[20, 2], si32>
 	%res = mo.mul(%concat, %bcast_factor) : !mo.tensor<[20, 2], si32>
 	mo.output %res : !mo.tensor<[20, 2], si32>
@@ -96,39 +96,39 @@ mo.graph @concat_0axis_special_2_2_num10_test(%arg0 : !mo.tensor<[2, 2], si32>) 
 
 
 mo.graph @concat_0axis_special_2_2_4_num10_test(%arg0 : !mo.tensor<[2, 2, 4], si32>) -> (!mo.tensor<[20, 2, 4], si32>) {
-	%cst_0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_0 = mo.constant <#M.dense_array<1> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_0 = mo.static.broadcast_to(%cst_0) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_0 = mo.add(%arg0, %bcast_0) : !mo.tensor<[2, 2, 4], si32>
-	%cst_1 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_1 = mo.constant <#M.dense_array<2> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_1 = mo.static.broadcast_to(%cst_1) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_1 = mo.add(%arg0, %bcast_1) : !mo.tensor<[2, 2, 4], si32>
-	%cst_2 = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_2 = mo.constant <#M.dense_array<3> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_2 = mo.static.broadcast_to(%cst_2) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_2 = mo.add(%arg0, %bcast_2) : !mo.tensor<[2, 2, 4], si32>
-	%cst_3 = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_3 = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_3 = mo.static.broadcast_to(%cst_3) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_3 = mo.add(%arg0, %bcast_3) : !mo.tensor<[2, 2, 4], si32>
-	%cst_4 = mo.constant {value = #M.dense_array<5> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_4 = mo.constant <#M.dense_array<5> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_4 = mo.static.broadcast_to(%cst_4) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_4 = mo.add(%arg0, %bcast_4) : !mo.tensor<[2, 2, 4], si32>
-	%cst_5 = mo.constant {value = #M.dense_array<6> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_5 = mo.constant <#M.dense_array<6> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_5 = mo.static.broadcast_to(%cst_5) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_5 = mo.add(%arg0, %bcast_5) : !mo.tensor<[2, 2, 4], si32>
-	%cst_6 = mo.constant {value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_6 = mo.constant <#M.dense_array<7> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_6 = mo.static.broadcast_to(%cst_6) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_6 = mo.add(%arg0, %bcast_6) : !mo.tensor<[2, 2, 4], si32>
-	%cst_7 = mo.constant {value = #M.dense_array<8> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_7 = mo.constant <#M.dense_array<8> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_7 = mo.static.broadcast_to(%cst_7) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_7 = mo.add(%arg0, %bcast_7) : !mo.tensor<[2, 2, 4], si32>
-	%cst_8 = mo.constant {value = #M.dense_array<9> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_8 = mo.constant <#M.dense_array<9> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_8 = mo.static.broadcast_to(%cst_8) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_8 = mo.add(%arg0, %bcast_8) : !mo.tensor<[2, 2, 4], si32>
-	%cst_9 = mo.constant {value = #M.dense_array<10> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_9 = mo.constant <#M.dense_array<10> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_9 = mo.static.broadcast_to(%cst_9) : !mo.tensor<[1], si32> -> !mo.tensor<[2, 2, 4], si32>
 	%in_9 = mo.add(%arg0, %bcast_9) : !mo.tensor<[2, 2, 4], si32>
-	%axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+	%axis = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64>
 	%concat = mo.concat[0] (%in_0,%in_1,%in_2,%in_3,%in_4,%in_5,%in_6,%in_7,%in_8,%in_9) : (!mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>, !mo.tensor<[2, 2, 4], si32>) -> !mo.tensor<[20, 2, 4], si32>
-	%factor = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%factor = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_factor = mo.static.broadcast_to(%factor) : !mo.tensor<[1], si32> -> !mo.tensor<[20, 2, 4], si32>
 	%res = mo.mul(%concat, %bcast_factor) : !mo.tensor<[20, 2, 4], si32>
 	mo.output %res : !mo.tensor<[20, 2, 4], si32>
@@ -139,39 +139,39 @@ mo.graph @concat_0axis_special_2_2_4_num10_test(%arg0 : !mo.tensor<[2, 2, 4], si
 
 
 mo.graph @concat_0axis_special_1_2_1_1_2_1_4_num10_test(%arg0 : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> (!mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>) {
-	%cst_0 = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_0 = mo.constant <#M.dense_array<1> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_0 = mo.static.broadcast_to(%cst_0) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_0 = mo.add(%arg0, %bcast_0) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_1 = mo.constant {value = #M.dense_array<2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_1 = mo.constant <#M.dense_array<2> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_1 = mo.static.broadcast_to(%cst_1) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_1 = mo.add(%arg0, %bcast_1) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_2 = mo.constant {value = #M.dense_array<3> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_2 = mo.constant <#M.dense_array<3> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_2 = mo.static.broadcast_to(%cst_2) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_2 = mo.add(%arg0, %bcast_2) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_3 = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_3 = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_3 = mo.static.broadcast_to(%cst_3) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_3 = mo.add(%arg0, %bcast_3) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_4 = mo.constant {value = #M.dense_array<5> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_4 = mo.constant <#M.dense_array<5> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_4 = mo.static.broadcast_to(%cst_4) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_4 = mo.add(%arg0, %bcast_4) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_5 = mo.constant {value = #M.dense_array<6> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_5 = mo.constant <#M.dense_array<6> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_5 = mo.static.broadcast_to(%cst_5) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_5 = mo.add(%arg0, %bcast_5) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_6 = mo.constant {value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_6 = mo.constant <#M.dense_array<7> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_6 = mo.static.broadcast_to(%cst_6) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_6 = mo.add(%arg0, %bcast_6) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_7 = mo.constant {value = #M.dense_array<8> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_7 = mo.constant <#M.dense_array<8> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_7 = mo.static.broadcast_to(%cst_7) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_7 = mo.add(%arg0, %bcast_7) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_8 = mo.constant {value = #M.dense_array<9> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_8 = mo.constant <#M.dense_array<9> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_8 = mo.static.broadcast_to(%cst_8) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_8 = mo.add(%arg0, %bcast_8) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%cst_9 = mo.constant {value = #M.dense_array<10> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%cst_9 = mo.constant <#M.dense_array<10> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_9 = mo.static.broadcast_to(%cst_9) : !mo.tensor<[1], si32> -> !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
 	%in_9 = mo.add(%arg0, %bcast_9) : !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>
-	%axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+	%axis = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64>
 	%concat = mo.concat[0] (%in_0,%in_1,%in_2,%in_3,%in_4,%in_5,%in_6,%in_7,%in_8,%in_9) : (!mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>, !mo.tensor<[1, 2, 1, 1, 2, 1, 4], si32>) -> !mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>
-	%factor = mo.constant {value = #M.dense_array<4> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+	%factor = mo.constant <#M.dense_array<4> : tensor<1xsi32>> : !mo.tensor<[1], si32>
 	%bcast_factor = mo.static.broadcast_to(%factor) : !mo.tensor<[1], si32> -> !mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>
 	%res = mo.mul(%concat, %bcast_factor) : !mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>
 	mo.output %res : !mo.tensor<[10, 2, 1, 1, 2, 1, 4], si32>

@@ -16,10 +16,10 @@ mo.graph @no_attr(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32> {
 // Without the isDeviceGraph attribute, control-flow ops are allowed.
 mo.graph @control_flow_no_attr(%cond: !mo.tensor<[], bool>) -> !mo.tensor<[2, 3], si32> {
   %ret = mo.if (%cond : !mo.tensor<[], bool>) -> !mo.tensor<[2, 3], si32> {
-    %cst = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
+    %cst = mo.constant <#M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>> : !mo.tensor<[2, 3], si32>
     mo.yield %cst : !mo.tensor<[2, 3], si32>
   } else {
-    %cst = mo.constant {value = #M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>} : !mo.tensor<[2, 3], si32>
+    %cst = mo.constant <#M.dense_array<1, 0, 0, 1, 0, 1> : tensor<2x3xsi32>> : !mo.tensor<[2, 3], si32>
     mo.yield %cst : !mo.tensor<[2, 3], si32>
   }
   mo.output %ret : !mo.tensor<[2, 3], si32>

@@ -18,7 +18,7 @@ mogg.kernel.decl @my_add registration = "my_add" device_info = <"", "", "", ""> 
 mo.graph @folds_constant_into_opaque_call(
   %x: !mo.tensor<[2, 2], f32>
 ) -> !mo.tensor<[2, 2], f32> {
-  %weights = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %weights = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32>
   %y = map.iter.opaque inputs (%x : !mo.tensor<[2, 2], f32>, %weights as %w : !mo.tensor<[2, 2], f32>) outputs (%out : !mo.tensor<[2, 2], f32>) {
     map.call.opaque @my_matmul[] inputs (%x, %w) outputs (%out) kernelName = "my_matmul" : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>)
   } {device = #M.device_ref<"cpu", 0>}
@@ -44,7 +44,7 @@ mo.graph @folds_constant_into_opaque_call(
 mo.graph @folds_constant_into_foreach(
   %a: !mo.tensor<[2, 2], f32>
 ) -> !mo.tensor<[2, 2], f32> {
-  %bias = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %bias = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32>
   %r = map.iter.opaque
       inputs (%a : !mo.tensor<[2, 2], f32>, %bias as %b : !mo.tensor<[2, 2], f32>)
       outputs (%out : !mo.tensor<[2, 2], f32>) {
@@ -81,7 +81,7 @@ mo.graph @folds_constant_into_foreach(
 mo.graph @folds_constant_through_rebind<D0>(
   %a: !mo.tensor<[D0], f32>
 ) -> !mo.tensor<[D0], f32> {
-  %bias = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
+  %bias = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> : !mo.tensor<[4], f32>
   %rb = mo.rebind(%bias) : !mo.tensor<[4], f32> -> !mo.tensor<[D0], f32>
   %r = map.iter.opaque
       inputs (%a : !mo.tensor<[D0], f32>, %rb as %b : !mo.tensor<[D0], f32>)

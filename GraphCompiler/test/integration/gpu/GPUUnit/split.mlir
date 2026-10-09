@@ -6,8 +6,8 @@
 // CHECK-NEXT: tensor<2x5xsi32> [5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 // CHECK-NEXT: tensor<1x5xsi32> [15, 16, 17, 18, 19]
 mo.graph @split_outer_axis() -> (!mo.tensor<[1, 5], si32>, !mo.tensor<[2, 5], si32>, !mo.tensor<[1, 5], si32>) {
-  %input = mo.constant {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19> : tensor<20xsi32>} : !mo.tensor<[4, 5], si32, gpu:0>
-  %split_shapes = mo.constant {value = #M.dense_array<1, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19> : tensor<20xsi32>> : !mo.tensor<[4, 5], si32, gpu:0>
+  %split_shapes = mo.constant <#M.dense_array<1, 2, 1> : tensor<3xsi32>> : !mo.tensor<[3], si32>
 
   %res:3 = mo.split(%input, %split_shapes) {axis = 0 : index} :
     (!mo.tensor<[4, 5], si32, gpu:0>, !mo.tensor<[3], si32>)
@@ -25,8 +25,8 @@ mo.graph @split_outer_axis() -> (!mo.tensor<[1, 5], si32>, !mo.tensor<[2, 5], si
 // CHECK-NEXT: tensor<4x2xsi32> [2, 3, 7, 8, 12, 13, 17, 18]
 // CHECK-NEXT: tensor<4x1xsi32> [4, 9, 14, 19]
 mo.graph @split_inner_axis() -> (!mo.tensor<[4, 2], si32>, !mo.tensor<[4, 2], si32>, !mo.tensor<[4, 1], si32>) {
-  %input = mo.constant {value = #M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19> : tensor<20xsi32>} : !mo.tensor<[4, 5], si32, gpu:0>
-  %split_shapes = mo.constant {value = #M.dense_array<2, 2, 1> : tensor<3xsi32>} : !mo.tensor<[3], si32>
+  %input = mo.constant <#M.dense_array<0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19> : tensor<20xsi32>> : !mo.tensor<[4, 5], si32, gpu:0>
+  %split_shapes = mo.constant <#M.dense_array<2, 2, 1> : tensor<3xsi32>> : !mo.tensor<[3], si32>
 
   %res:3 = mo.split(%input, %split_shapes) {axis = 1 : index} :
     (!mo.tensor<[4, 5], si32, gpu:0>, !mo.tensor<[3], si32>)

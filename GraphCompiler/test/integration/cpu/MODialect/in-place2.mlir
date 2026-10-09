@@ -21,10 +21,10 @@
 // CHECK{LITERAL}: [1.0000, 0.0000, 0.0000, 0.0000, 1.0000],
 // CHECK{LITERAL}: [1.0000, 1.0000, 1.0000, 1.0000, 1.0000]], dtype=f32, shape=[5,5])
 mo.graph @basic_slice_store(%arg0: !mo.buffer<[5, 5], f32>, %arg1: !mo.tensor<[5, 5], f32>) -> (!mo.buffer<[5, 5], f32>, !c) {
-  %0 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %1 = mo.constant {value = #M.dense_array<4, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %2 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %3 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %0 = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %1 = mo.constant <#M.dense_array<4, 4> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %2 = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %3 = mo.constant <#M.dense_array<0.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   %4 = mo.static.broadcast_to(%3) : !mo.tensor<[], f32> -> !mo.tensor<[3, 3], f32>
   %5 = mo.chain.create(%arg0) : !mo.buffer<[5, 5], f32>
   %6 = mo.mutable.store.slice(%arg0, %4, %0, %1, %2, %5) : (!mo.buffer<[5, 5], f32>, !mo.tensor<[3, 3], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.chain) -> !mo.chain
@@ -37,9 +37,9 @@ mo.graph @basic_slice_store(%arg0: !mo.buffer<[5, 5], f32>, %arg1: !mo.tensor<[5
 // CHECK{LITERAL}: [-2.0000, 1.0000, -2.0000, 1.0000],
 // CHECK{LITERAL}: [1.0000, 1.0000, 1.0000, 1.0000]], dtype=f32, shape=[4,4])
 mo.graph @strided_compute(%arg0: !mo.buffer<[4, 4], f32>, %arg1: !mo.tensor<[2, 2], f32>) -> (!mo.buffer<[4, 4], f32>, !c) {
-  %0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %1 = mo.constant {value = #M.dense_array<4, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %2 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %1 = mo.constant <#M.dense_array<4, 4> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %2 = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %3 = mo.chain.create(%arg0) : !mo.buffer<[4, 4], f32>
   %outTensor, %outChain = mo.mutable.load(%arg0, %3) : (!mo.buffer<[4, 4], f32>, !mo.chain) -> (!mo.tensor<[4, 4], f32>, !mo.chain)
   %4 = mo.slice(%outTensor, %0, %1, %2) : (!mo.tensor<[4, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>

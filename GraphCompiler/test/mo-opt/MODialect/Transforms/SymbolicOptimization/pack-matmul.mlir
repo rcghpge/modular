@@ -11,8 +11,8 @@ mo.graph @pack_matmul_no_cache(
   %input2: !mo.tensor<[80000, 2], f32>
 ) -> (!mo.tensor<[40000, 3], f32>, !mo.tensor<[80000, 3], f32>) {
 
-  // CHECK-NEXT: %[[WEIGHTS:.*]] = mo.constant {value = #M.dense_array<0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
-  %weights = mo.constant {value = #M.dense_array<0., 1., 2., 3., 4., 5.> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
+  // CHECK-NEXT: %[[WEIGHTS:.*]] = mo.constant <#M.dense_array<0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
+  %weights = mo.constant <#M.dense_array<0., 1., 2., 3., 4., 5.> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
 
   // CHECK-NEXT: mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> [[D0:.*]], [[D1:.*]]>(%0)
   // CHECK-SAME:   {kgenParams = {a_shape = dense<[40000, 2]> : vector<2xi64>, a_type = f32, b_shape = dense<[2, 3]> : vector<2xi64>, b_type = f32, c_shape = dense<[40000, 3]> : vector<2xi64>, c_type = f32, transpose_in_0 = false}}
@@ -53,8 +53,8 @@ mo.graph @pack_matmul_cached(
   %input2: !mo.tensor<[40000, 2], f32>
 ) -> (!mo.tensor<[40000, 3], f32>, !mo.tensor<[40000, 3], f32>) {
 
-  // CHECK-NEXT: %[[WEIGHTS:.*]] = mo.constant {value = #M.dense_array<0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
-  %weights = mo.constant {value = #M.dense_array<0., 1., 2., 3., 4., 5.> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
+  // CHECK-NEXT: %[[WEIGHTS:.*]] = mo.constant <#M.dense_array<0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
+  %weights = mo.constant <#M.dense_array<0., 1., 2., 3., 4., 5.> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
 
   // CHECK-NEXT: %[[PACKED_WEIGHTS:.*]] = mo.layout.transform(%[[WEIGHTS]])
   // CHECK-SAME:   {kgenParams = {a_shape = dense<[40000, 2]> : vector<2xi64>, a_type = f32, b_shape = dense<[2, 3]> : vector<2xi64>, b_type = f32, c_shape = dense<[40000, 3]> : vector<2xi64>, c_type = f32}}

@@ -7,7 +7,7 @@
 
 // CHECK-LABEL: constant_fold_unsupported_result_types
 mo.graph @constant_fold_unsupported_result_types() -> (!mo.opaque<"MyCustomScalarReg">) {
-  %0 = mo.constant {value = #M.dense_array<42> : tensor<si32>} : !mo.tensor<[1], si32>
+  %0 = mo.constant <#M.dense_array<42> : tensor<si32>> : !mo.tensor<[1], si32>
   %ch0 = mo.chain.create()
 
   // CHECK: mo.custom {symbol = "buff_to_my_custom_scalar_reg"}

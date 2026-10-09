@@ -6,8 +6,8 @@
 
 mo.graph @transfer_concat(%arg0: !mo.tensor<[6, 3],f32>) -> !mo.tensor<[6, 3],f32> {
     %c = mo.chain.create()
-    %0 = mo.constant {value = #M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3x3xf32>} : !mo.tensor<[3, 3],f32>
-    %1 = mo.constant {value = #M.dense_array<2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<3x3xf32>} : !mo.tensor<[3, 3],f32>
+    %0 = mo.constant <#M.dense_array<1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00> : tensor<3x3xf32>> : !mo.tensor<[3, 3],f32>
+    %1 = mo.constant <#M.dense_array<2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<3x3xf32>> : !mo.tensor<[3, 3],f32>
     %g0, %outChain_0 = mo.transfer[%c] %0 : !mo.tensor<[3, 3],f32> to <"gpu", 0>
     %g1, %outChain_1 = mo.transfer[%c] %1 : !mo.tensor<[3, 3],f32> to <"gpu", 0>
     %g2, %outChain_2 = mo.transfer[%c] %arg0 : !mo.tensor<[6, 3],f32> to <"gpu", 0>

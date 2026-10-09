@@ -13,9 +13,9 @@
 // CHECK{LITERAL}: [-2.0000, 1.0000, -2.0000, 1.0000],
 // CHECK{LITERAL}: [1.0000, 1.0000, 1.0000, 1.0000]], dtype=f32, shape=[4,4])
 mo.graph @parameterized<d0, d1, d2, d3>(%arg0: !mo.buffer<[d0, d1], f32>, %arg1: !mo.tensor<[d2, d3], f32>) -> (!mo.buffer<[d0, d1], f32>, !mo.chain) {
-  %0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %1 = mo.constant {value = #M.dense_array<4, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %2 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %1 = mo.constant <#M.dense_array<4, 4> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %2 = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %3 = mo.chain.create(%arg0) : !mo.buffer<[d0, d1], f32>
   %outTensor, %outChain = mo.mutable.load(%arg0, %3) : (!mo.buffer<[d0, d1], f32>, !mo.chain) -> (!mo.tensor<[d0, d1], f32>, !mo.chain)
   %4 = mo.slice(%outTensor, %0, %1, %2) : (!mo.tensor<[d0, d1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[d2, d3], f32>

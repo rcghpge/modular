@@ -28,7 +28,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8<total_seq_len>(
       !mo.chain) {
     %allred:4, %out_chain = mo.distributed.allreduce.sum(%input0, %input1, %input2, %input3, %sign_buff0, %sign_buff1, %sign_buff2, %sign_buff3, %c) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.buffer<[537919488], ui8, gpu:0>, !mo.buffer<[537919488], ui8, gpu:1>, !mo.buffer<[537919488], ui8, gpu:2>, !mo.buffer<[537919488], ui8, gpu:3>, !mo.chain) -> (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.chain)
 
-    %scale_ub = mo.constant {value = #M.dense_array<1.200000e+03> : tensor<f32>} : !mo.tensor<[], f32>
+    %scale_ub = mo.constant <#M.dense_array<1.200000e+03> : tensor<f32>> : !mo.tensor<[], f32>
 
     // Add + RMNSNorm + Quant (GPU:0)
     %add0 = mo.add(%residual0, %allred#0) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
@@ -91,7 +91,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_residual_use<total_seq
       !mo.chain) {
     %allred:4, %out_chain = mo.distributed.allreduce.sum(%input0, %input1, %input2, %input3, %sign_buff0, %sign_buff1, %sign_buff2, %sign_buff3, %c) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.buffer<[537919488], ui8, gpu:0>, !mo.buffer<[537919488], ui8, gpu:1>, !mo.buffer<[537919488], ui8, gpu:2>, !mo.buffer<[537919488], ui8, gpu:3>, !mo.chain) -> (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.chain)
 
-    %scale_ub = mo.constant {value = #M.dense_array<1.200000e+03> : tensor<f32>} : !mo.tensor<[], f32>
+    %scale_ub = mo.constant <#M.dense_array<1.200000e+03> : tensor<f32>> : !mo.tensor<[], f32>
 
     // Add + RMNSNorm + Quant + Residual use (GPU:0)
     %add0 = mo.add(%residual0, %allred#0) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>
@@ -154,7 +154,7 @@ mo.graph @all_reduce_rms_norm_quantize_dynamic_scaled_fp8_amax_floor<total_seq_l
       !mo.chain) {
     %allred:4, %out_chain = mo.distributed.allreduce.sum(%input0, %input1, %input2, %input3, %sign_buff0, %sign_buff1, %sign_buff2, %sign_buff3, %c) : (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.buffer<[537919488], ui8, gpu:0>, !mo.buffer<[537919488], ui8, gpu:1>, !mo.buffer<[537919488], ui8, gpu:2>, !mo.buffer<[537919488], ui8, gpu:3>, !mo.chain) -> (!mo.tensor<[total_seq_len, 16384], bf16, gpu:0>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:1>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:2>, !mo.tensor<[total_seq_len, 16384], bf16, gpu:3>, !mo.chain)
 
-    %scale_ub = mo.constant {value = #M.dense_array<1.200000e+03> : tensor<f32>} : !mo.tensor<[], f32>
+    %scale_ub = mo.constant <#M.dense_array<1.200000e+03> : tensor<f32>> : !mo.tensor<[], f32>
 
     // Add + RMNSNorm + Quant (GPU:0)
     %add0 = mo.add(%residual0, %allred#0) : !mo.tensor<[total_seq_len, 16384], bf16, gpu:0>

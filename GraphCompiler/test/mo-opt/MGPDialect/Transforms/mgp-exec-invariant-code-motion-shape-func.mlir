@@ -16,9 +16,9 @@
 
 
 mo.graph @shape_func_consts() -> !mo.tensor<[D0], f32> {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-  %1 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-  %2 = mo.constant {value = #M.dense_array<8.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
+  %0 = mo.constant <#M.dense_array<1.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
+  %1 = mo.constant <#M.dense_array<0.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
+  %2 = mo.constant <#M.dense_array<8.000000e+00> : !M.array<1xf32>> : !mo.tensor<[], f32>
   mo.invoke_shape_func["mo.range"]<() -> D0>(%1, %2, %0) {dataDeptTensors = [0 : i32, 1 : i32, 2 : i32]} : (!mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>)
   %3 = mo.range(%1, %2, %0) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[D0], f32>
   mo.output %3 : !mo.tensor<[D0], f32>

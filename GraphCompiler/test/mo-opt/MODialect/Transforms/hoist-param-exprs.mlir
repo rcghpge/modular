@@ -128,7 +128,7 @@ mo.graph @dont_outline_unknown_dims<N, M>(%arg0: !mo.tensor<[N, ?], f32>, %arg1:
   // No question marks should disappear (there are 8 in the current IR)
   // CHECK-COUNT-8: ?
   // COUNT-NOT: ?
-  %ax = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[], si64>
   %1 = mo.concat[1](%arg0, %arg1):(!mo.tensor<[N, ?], f32>, !mo.tensor<[M, ?], f32>) -> !mo.tensor<[add(N, M), ?], f32>
   %2 = mo.mul(%1, %1) :!mo.tensor<[add(N, M), ?], f32>
   mo.output %2 : !mo.tensor<[add(N, M), ?], f32>
@@ -216,7 +216,7 @@ mo.graph @parallel_block_arg_param_expr<N, M>(
     %arg0: !mo.tensor<[N], f32>,
     %arg1: !mo.tensor<[M], f32>)
     -> (!mo.tensor<[N], f32>, !mo.tensor<[N], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<1xsi64>} : !mo.tensor<[], si64>
+  %ax = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[], si64>
   %sum = mo.concat[0](%arg0, %arg1)
       : (!mo.tensor<[N], f32>, !mo.tensor<[M], f32>) -> !mo.tensor<[add(N, M)], f32>
   // CHECK-DAG: kgen.param.declare [[ALIAS_BA:[a-zA-Z0-9_]+]]: scalar<si64> = <add

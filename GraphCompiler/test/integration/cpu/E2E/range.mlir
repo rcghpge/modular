@@ -7,7 +7,7 @@
 // CHECK: All MO values match numpy
 
 mo.graph @serving_default<() -> D0>(%arg0: !mo.tensor<[3], si32>) -> !mo.tensor<[D0], si32> attributes {argument_names = ["input_1"], result_names = ["lambda"]} {
-  %0 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %2:3 = mo.split(%arg0, %0) {axis = 0 : index} : (!mo.tensor<[3], si32>, !mo.tensor<[3], si64>) -> (!mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>)
   %3 = mo.static.reshape(%2#0) : !mo.tensor<[1], si32> -> !mo.tensor<[], si32>
   %4 = mo.static.reshape(%2#1) : !mo.tensor<[1], si32> -> !mo.tensor<[], si32>

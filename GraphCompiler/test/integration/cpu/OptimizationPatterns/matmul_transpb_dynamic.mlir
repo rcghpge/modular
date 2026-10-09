@@ -7,7 +7,7 @@
 mo.graph @matmul_transpb<M, K, N>(%x: !mo.tensor<[M, K], f32>, %w: !mo.tensor<[N, K], f32>) -> !mo.tensor<[M, N], f32> {
   // CHECK-PATTERN: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
 
-  %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %axes = mo.constant <#M.dense_array<1, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %0 = mo.transpose(%w, %axes) : (!mo.tensor<[N, K], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[K, N], f32>
   %1 = mo.matmul(%x, %0) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
   mo.output %1 : !mo.tensor<[M, N], f32>
@@ -21,7 +21,7 @@ mo.graph @matmul_reused_transpb<M, K, N>(%x: !mo.tensor<[M, K], f32>, %w: !mo.te
   // CHECK-PATTERN: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
   // CHECK-PATTERN: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<NK>}>)
 
-  %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %axes = mo.constant <#M.dense_array<1, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
 
   %w_t = mo.transpose(%w, %axes) : (!mo.tensor<[N, K], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[K, N], f32>
   %mm1 = mo.matmul(%x, %w_t) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
@@ -40,7 +40,7 @@ mo.graph @matmul_reused_transpb<M, K, N>(%x: !mo.tensor<[M, K], f32>, %w: !mo.te
 mo.graph @matmul_mul_transpb<M, K, N>(%x: !mo.tensor<[M, K], f32>, %w: !mo.tensor<[N, K], f32>) -> !mo.tensor<[M, N], f32> {
   // CHECK-PATTERN: mo.matmul({{.*}}) : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<KN>}>)
 
-  %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %axes = mo.constant <#M.dense_array<1, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
 
   %ww  = mo.mul(%w, %w) : !mo.tensor<[N, K], f32>
   %w_t = mo.transpose(%ww, %axes) : (!mo.tensor<[N, K], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[K, N], f32>
@@ -61,7 +61,7 @@ mo.graph @matmul_transpb_multi_layout_weight(
   // CHECK-PATTERN: mo.matmul({{.*}}) : (!mo.tensor<{{.*}}, f32>, !mo.tensor<{{.*}}, f32, {layout = #mo.layout<KN>}>)
 
   // Getting input to a specific shape so we can pass w and w_t to matmuls
-  %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %axes = mo.constant <#M.dense_array<1, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %x_t = mo.transpose(%x, %axes) : (!mo.tensor<[4, 2], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, 4], f32>
   %w_t = mo.transpose(%w, %axes) : (!mo.tensor<[4, 2], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, 4], f32>
 

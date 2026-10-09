@@ -3,21 +3,21 @@
 
 mo.graph @reshape_dyn_input_dyn_output<D0 -> D1, D2>(%input: !mo.tensor<[D0], f32>) -> !mo.tensor<[D1, D2], f32> {
   // TODO: Get a better way to generate a runtime dynamic output shape
-  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %output = mo.reshape<() -> D3, D4>(%input, %shape) : (!mo.tensor<[D0], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
   mo.output<D3, D4> %output : !mo.tensor<[D3, D4], f32>
 }
 // CHECK{LITERAL}: 'reshape_dyn_input_dyn_output' returned tensor<2x2xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00]
 
 mo.graph @reshape_refinement<D0>(%input: !mo.tensor<[D0], f32>) -> (!mo.tensor<[2, 2], f32>) {
-  %shape = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %output = mo.reshape(%input, %shape) : (!mo.tensor<[D0], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %output : !mo.tensor<[2, 2], f32>
 }
 // CHECK{LITERAL}: 'reshape_refinement' returned tensor<2x2xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00]
 
 mo.graph @reshape_illegal_refinement<D0>(%input: !mo.tensor<[D0], f32>) -> (!mo.tensor<[2, 4], f32>) {
-  %shape = mo.constant {value = #M.dense_array<2, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant <#M.dense_array<2, 4> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %output = rmo.mo.reshape(%input, %shape) : (!mo.tensor<[D0], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 4], f32>
   mo.output %output : !mo.tensor<[2, 4], f32>
 }

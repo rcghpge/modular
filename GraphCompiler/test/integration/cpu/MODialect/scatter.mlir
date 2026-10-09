@@ -21,9 +21,9 @@ mo.graph @scatter_axis_0() -> (!mo.tensor<[4, 2], f64>) {
   //    [3,   2.2],
   //    [5,   4.4],
   //    [3.3, 8]]]
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x2xf64>} : !mo.tensor<[4, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x2xf64>} : !mo.tensor<[2, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x2xf64>> : !mo.tensor<[4, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x2xf64>> : !mo.tensor<[2, 2], f64>
+  %indices = mo.constant <#M.dense_array<0, 1, 3, 2> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
   %res     = mo.scatter(%input, %updates, %indices) {axis = 0 : index} : (
     !mo.tensor<[4, 2], f64>, !mo.tensor<[2, 2], f64>, !mo.tensor<[2, 2], si32>
   ) -> !mo.tensor<[4, 2], f64>
@@ -51,9 +51,9 @@ mo.graph @scatter_axis_1() -> (!mo.tensor<[4, 2], f64>) {
   //    [3.3, 4.4],
   //    [5, 6],
   //    [7, 8]]]
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x2xf64>} : !mo.tensor<[4, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x2xf64>} : !mo.tensor<[2, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<1, 0, 0, 1> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x2xf64>> : !mo.tensor<[4, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x2xf64>> : !mo.tensor<[2, 2], f64>
+  %indices = mo.constant <#M.dense_array<1, 0, 0, 1> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
   %res     = mo.scatter(%input, %updates, %indices) {axis = 1 : index} : (
     !mo.tensor<[4, 2], f64>, !mo.tensor<[2, 2], f64>, !mo.tensor<[2, 2], si32>
   ) -> !mo.tensor<[4, 2], f64>
@@ -71,7 +71,7 @@ mo.graph @scatter_fallback_shape_func<() -> D0, D1, D2>(
     {dataDeptTensors = [], kgenParams = {axis = -1 : index}} :
     (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[1, 1, 2], f32>, !mo.tensor<[1, 1, 2], si32>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D3, D4, D5], si32>
 
   mo.output<D3, D4, D5> %val : !mo.tensor<[D3, D4, D5], si32>

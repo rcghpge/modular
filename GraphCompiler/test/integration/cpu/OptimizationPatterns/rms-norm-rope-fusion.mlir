@@ -16,7 +16,7 @@ mo.graph @rope_basic<seq_len>(
   %cos_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %sin_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>
 ) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -25,7 +25,7 @@ mo.graph @rope_basic<seq_len>(
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
-  %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %cat_axis = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
   %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -46,7 +46,7 @@ mo.graph @rope_commuted_add<seq_len>(
   %cos_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %sin_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>
 ) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -55,7 +55,7 @@ mo.graph @rope_commuted_add<seq_len>(
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
-  %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %cat_axis = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
   %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -77,7 +77,7 @@ mo.graph @rope_multiply_before_cast<seq_len>(
   %cos_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %sin_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>
 ) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = true} :
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -86,7 +86,7 @@ mo.graph @rope_multiply_before_cast<seq_len>(
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
-  %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %cat_axis = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
   %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -116,7 +116,7 @@ mo.graph @rope_f32_rmsnorm_sandwich<seq_len>(
   %cos_vals: !mo.tensor<[seq_len, 4], bf16, gpu:0>,
   %sin_vals: !mo.tensor<[seq_len, 4], bf16, gpu:0>
 ) -> !mo.tensor<[seq_len, 4], bf16, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %input_f32 = mo.cast(%input) : (!mo.tensor<[seq_len, 4], bf16, gpu:0>) -> !mo.tensor<[seq_len, 4], f32, gpu:0>
   %normed_f32 = mo.reduce.rms_norm(%input_f32, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
@@ -152,7 +152,7 @@ mo.graph @rope_wrong_concat_order<seq_len>(
   %cos_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %sin_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>
 ) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -161,7 +161,7 @@ mo.graph @rope_wrong_concat_order<seq_len>(
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
-  %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %cat_axis = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
   // Wrong order: (x1, neg_x2) instead of (neg_x2, x1)
   %rotated = mo.concat[1](%x1, %neg_x2) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
@@ -183,7 +183,7 @@ mo.graph @rope_missing_cos_mul<seq_len>(
   %offset:   !mo.tensor<[], f32>,
   %sin_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>
 ) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -192,7 +192,7 @@ mo.graph @rope_missing_cos_mul<seq_len>(
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[seq_len, 2], f32, gpu:0>
-  %cat_axis = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %cat_axis = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
   %rotated = mo.concat[1](%neg_x2, %x1) :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
     -> !mo.tensor<[seq_len, 4], f32, gpu:0>
@@ -215,7 +215,7 @@ mo.graph @rope_wrong_split_axis(
   %sin_vals: !mo.tensor<[4, 4], f32, gpu:0>
 ) -> !mo.tensor<[4, 4], f32, gpu:0> {
   // Split along axis 0 (not the last axis == 1).
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
     (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -224,7 +224,7 @@ mo.graph @rope_wrong_split_axis(
     (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:0>)
   %neg_x2 = mo.negative(%x2) : !mo.tensor<[2, 4], f32, gpu:0>
-  %cat_axis = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+  %cat_axis = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64>
   %rotated = mo.concat[0](%neg_x2, %x1) :
     (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:0>)
     -> !mo.tensor<[4, 4], f32, gpu:0>
@@ -258,7 +258,7 @@ mo.graph @rope_text_rotate_half<seq_len>(
   %cos_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>,
   %sin_vals: !mo.tensor<[seq_len, 4], f32, gpu:0>
 ) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -287,7 +287,7 @@ mo.graph @rope_vision_split_user_not_negate<seq_len>(
   %epsilon: !mo.tensor<[], f32>,
   %offset:  !mo.tensor<[], f32>
 ) -> !mo.tensor<[seq_len, 4], f32, gpu:0> {
-  %split_sizes = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %split_sizes = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %normed = mo.reduce.rms_norm(%input, %weight, %epsilon, %offset)
     {multiply_before_cast = false} :
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
@@ -296,7 +296,7 @@ mo.graph @rope_vision_split_user_not_negate<seq_len>(
     (!mo.tensor<[seq_len, 4], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[seq_len, 2], f32, gpu:0>)
   // x2's single use is another split (real/imag halves), NOT a negate.
-  %inner_sizes = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %inner_sizes = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %x_re, %x_im = mo.split(%x2, %inner_sizes) {axis = 1 : index} :
     (!mo.tensor<[seq_len, 2], f32, gpu:0>, !mo.tensor<[2], si64>)
     -> (!mo.tensor<[seq_len, 1], f32, gpu:0>, !mo.tensor<[seq_len, 1], f32, gpu:0>)

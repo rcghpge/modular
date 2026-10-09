@@ -10,13 +10,13 @@
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"{{.*}}, #mogg.fusion_leaf<"mo.transpose"{{.*}}]>>
 // CHECK-SAME:  isAsync = false
 mo.graph @sliceIntoTranspose(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[32, 3], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %sliced = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 32], f32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.transpose(%sliced, %perm) : (!mo.tensor<[3, 32], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[32, 3], f32>
   mo.output %res : !mo.tensor<[32, 3], f32>
 }
@@ -30,7 +30,7 @@ mo.graph @sliceIntoTranspose(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3
 // CHECK-SAME:  isAsync = false
 mo.graph @reshapeIntoTranspose(%input: !mo.tensor<[24], f32>) -> !mo.tensor<[6, 4], f32> {
   %reshaped = mo.static.reshape(%input) : !mo.tensor<[24], f32> -> !mo.tensor<[4, 6], f32>
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.transpose(%reshaped, %perm) : (!mo.tensor<[4, 6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[6, 4], f32>
   mo.output %res : !mo.tensor<[6, 4], f32>
 }
@@ -43,7 +43,7 @@ mo.graph @reshapeIntoTranspose(%input: !mo.tensor<[24], f32>) -> !mo.tensor<[6, 
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_view<[#mogg.fusion_leaf<"mo.transpose"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>
 // CHECK-SAME:  hasWriteEffect = false}
 mo.graph @transposeIntoElementwise(%input: !mo.tensor<[3, 32], f32>, %other: !mo.tensor<[32, 3], f32>) -> !mo.tensor<[32, 3], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %t = mo.transpose(%input, %perm) : (!mo.tensor<[3, 32], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[32, 3], f32>
   %res = mo.add(%t, %other) : !mo.tensor<[32, 3], f32>
   mo.output %res : !mo.tensor<[32, 3], f32>

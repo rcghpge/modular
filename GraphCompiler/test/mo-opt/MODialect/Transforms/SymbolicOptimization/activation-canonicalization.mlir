@@ -15,7 +15,7 @@ mo.graph @relu_not_decomposed(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> 
 // CHECK-LABEL: @max_to_relu
 mo.graph @max_to_relu(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   // CHECK: mo.relu(%{{.*}})
-  %zero_s = mo.constant {value = #M.dense_array<0.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %zero_s = mo.constant <#M.dense_array<0.0> : tensor<1xf32>> : !mo.tensor<[], f32>
   %zero = mo.static.broadcast_to(%zero_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %0 = mo.max(%x, %zero) : !mo.tensor<[4], f32>
   mo.output %0 : !mo.tensor<[4], f32>
@@ -25,7 +25,7 @@ mo.graph @max_to_relu(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 // CHECK-LABEL: @div_exp_to_sigmoid
 mo.graph @div_exp_to_sigmoid(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   // CHECK: mo.sigmoid(%{{.*}})
-  %one_s = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %one_s = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
   %one = mo.static.broadcast_to(%one_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %neg = mo.negative(%x) : !mo.tensor<[4], f32>
   %exp = mo.exp(%neg) : !mo.tensor<[4], f32>
@@ -47,7 +47,7 @@ mo.graph @sigmoid_mul_to_silu(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> 
 // CHECK-LABEL: @sigmoid_mul_to_gelu_quick
 mo.graph @sigmoid_mul_to_gelu_quick(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   // CHECK: mo.gelu_quick(%{{.*}})
-  %c_s = mo.constant {value = #M.dense_array<1.702> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %c_s = mo.constant <#M.dense_array<1.702> : tensor<1xf32>> : !mo.tensor<[], f32>
   %c = mo.static.broadcast_to(%c_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %scaled = mo.mul(%c, %x) : !mo.tensor<[4], f32>
   %s = mo.sigmoid(%scaled) : !mo.tensor<[4], f32>
@@ -59,11 +59,11 @@ mo.graph @sigmoid_mul_to_gelu_quick(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4],
 // CHECK-LABEL: @erf_to_gelu
 mo.graph @erf_to_gelu(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   // CHECK: mo.gelu(%{{.*}})
-  %half_s = mo.constant {value = #M.dense_array<0.5> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %half_s = mo.constant <#M.dense_array<0.5> : tensor<1xf32>> : !mo.tensor<[], f32>
   %half = mo.static.broadcast_to(%half_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
-  %one_s = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %one_s = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
   %one = mo.static.broadcast_to(%one_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
-  %sqrt2_s = mo.constant {value = #M.dense_array<1.4142135623730951> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %sqrt2_s = mo.constant <#M.dense_array<1.4142135623730951> : tensor<1xf32>> : !mo.tensor<[], f32>
   %sqrt2 = mo.static.broadcast_to(%sqrt2_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %hx = mo.mul(%half, %x) : !mo.tensor<[4], f32>
   %xdiv = mo.div(%x, %sqrt2) : !mo.tensor<[4], f32>
@@ -82,15 +82,15 @@ mo.graph @erf_to_gelu(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 // CHECK-LABEL: @tanh_to_gelu_tanh
 mo.graph @tanh_to_gelu_tanh(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   // CHECK: mo.gelu_tanh(%{{.*}})
-  %half_s = mo.constant {value = #M.dense_array<0.5> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %half_s = mo.constant <#M.dense_array<0.5> : tensor<1xf32>> : !mo.tensor<[], f32>
   %half = mo.static.broadcast_to(%half_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
-  %one_s = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %one_s = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
   %one = mo.static.broadcast_to(%one_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
-  %c1_s = mo.constant {value = #M.dense_array<0.7978845608028654> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %c1_s = mo.constant <#M.dense_array<0.7978845608028654> : tensor<1xf32>> : !mo.tensor<[], f32>
   %c1 = mo.static.broadcast_to(%c1_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
-  %c2_s = mo.constant {value = #M.dense_array<0.044715> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %c2_s = mo.constant <#M.dense_array<0.044715> : tensor<1xf32>> : !mo.tensor<[], f32>
   %c2 = mo.static.broadcast_to(%c2_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
-  %three_s = mo.constant {value = #M.dense_array<3.0> : tensor<1xf32>} : !mo.tensor<[], f32>
+  %three_s = mo.constant <#M.dense_array<3.0> : tensor<1xf32>> : !mo.tensor<[], f32>
   %three = mo.static.broadcast_to(%three_s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %hx = mo.mul(%x, %half) : !mo.tensor<[4], f32>
   %cube = mo.pow(%x : !mo.tensor<[4], f32>, %three : !mo.tensor<[4], f32>) : !mo.tensor<[4], f32>

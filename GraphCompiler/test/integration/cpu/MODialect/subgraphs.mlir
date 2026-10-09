@@ -12,8 +12,8 @@ mo.graph @relu(%arg0: !mo.tensor<[5], f32>) -> (!mo.tensor<[5], f32>) attributes
 }
 
 mo.graph @combined() -> (!mo.tensor<[5], f32>) {
-  %0 = mo.constant {value = #M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
-  %1 = mo.constant {value = #M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>} : !mo.tensor<[5], f32>
+  %0 = mo.constant <#M.dense_array<-1.0, 2.0, -3.0, -4.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
+  %1 = mo.constant <#M.dense_array<3.0, 1.0, -6.0, 2.0, 5.0> : tensor<5xf32>> : !mo.tensor<[5], f32>
   %add = mo.call @add(%0, %1) : (!mo.tensor<[5], f32>, !mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
   %relu = mo.call @relu(%add) : (!mo.tensor<[5], f32>) -> !mo.tensor<[5], f32>
   mo.output %relu : !mo.tensor<[5], f32>

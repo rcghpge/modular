@@ -13,9 +13,9 @@ mo.graph @wrap_unary_relu(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>}
+  %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
-  %c1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>}
+  %c1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:1>
   %b = mo.tensor.bundle(%c0, %c1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
@@ -70,9 +70,9 @@ mo.graph @wrap_binary_add(
     %r0: !mo.tensor<[3], f32, gpu:0>,
     %r1: !mo.tensor<[3], f32, gpu:1>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>}
+  %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
-  %c1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>}
+  %c1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:1>
   %b = mo.tensor.bundle(%c0, %c1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
@@ -125,9 +125,9 @@ mo.graph @wrap_chain_two_relu(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>}
+  %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
-  %c1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>}
+  %c1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:1>
   %b = mo.tensor.bundle(%c0, %c1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
@@ -185,9 +185,9 @@ mo.graph @reject_shared_binary_consumer(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:0>
 ) -> (!mo.tensor<[3], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>}
+  %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
-  %c1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>}
+  %c1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
   %b = mo.tensor.bundle(%c0, %c1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:0>)
@@ -237,9 +237,9 @@ mo.graph @reject_shared_outer_scalar(
     %eps: !mo.tensor<[], f32>,
     %wo: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>}
+  %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
-  %c1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>}
+  %c1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:1>
   %b = mo.tensor.bundle(%c0, %c1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
@@ -297,9 +297,9 @@ mo.graph @reject_fork_unbundle(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>}
+  %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
-  %c1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>}
+  %c1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:1>
   %b = mo.tensor.bundle(%c0, %c1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
@@ -358,9 +358,9 @@ mo.graph @reject_commutative_swap(
     %r0: !mo.tensor<[3], f32, gpu:0>,
     %r1: !mo.tensor<[3], f32, gpu:1>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %c0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>}
+  %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
-  %c1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>}
+  %c1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:1>
   %b = mo.tensor.bundle(%c0, %c1)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)

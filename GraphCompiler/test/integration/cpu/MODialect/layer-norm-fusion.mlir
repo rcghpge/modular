@@ -3,10 +3,10 @@
 
 
 mo.graph @layer_norm() -> !mo.tensor<[3, 2], f32> {
-  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<3x2xf32>} : !mo.tensor<[3, 2], f32>
-  %gamma = mo.constant {value = #M.dense_array<1.1, 2.1> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  %beta  = mo.constant {value = #M.dense_array<-1.0, -2.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  %eps   = mo.constant {value = #M.dense_array<0.00001> : tensor<f32>} : !mo.tensor<[], f32>
+  %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<3x2xf32>> : !mo.tensor<[3, 2], f32>
+  %gamma = mo.constant <#M.dense_array<1.1, 2.1> : tensor<2xf32>> : !mo.tensor<[2], f32>
+  %beta  = mo.constant <#M.dense_array<-1.0, -2.0> : tensor<2xf32>> : !mo.tensor<[2], f32>
+  %eps   = mo.constant <#M.dense_array<0.00001> : tensor<f32>> : !mo.tensor<[], f32>
   %lnorm = mo.reduce.layer_norm(%input, %gamma, %beta, %eps) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
   %res   = mo.add(%lnorm, %input) : !mo.tensor<[3, 2], f32>
   mo.output %res : !mo.tensor<[3, 2], f32>

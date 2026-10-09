@@ -5,7 +5,7 @@
 
 
 mo.graph @matmul_transpb_param_shapes<M, N, K>(%x: !mo.tensor<[M, K], f32>, %w: !mo.tensor<[N, K], f32>) -> (!mo.tensor<[M, N], f32>) {
-  %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %axes = mo.constant <#M.dense_array<1, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %0 = mo.transpose(%w, %axes) : (!mo.tensor<[N, K], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[K, N], f32>
   %1 = mo.matmul(%x, %0) : (!mo.tensor<[M, K], f32>, !mo.tensor<[K, N], f32>) -> !mo.tensor<[M, N], f32>
   mo.output %1 : !mo.tensor<[M, N], f32>

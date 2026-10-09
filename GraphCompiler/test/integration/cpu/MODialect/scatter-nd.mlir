@@ -20,9 +20,9 @@ mo.graph @scatter_nd_unsorted_segment_sum() -> (!mo.tensor<[4, 1, 2], f64>) {
   //    [[3, 4]],
   //    [[3.3, 4.4]],
   //    [[7, 8]]]
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>} : !mo.tensor<[4, 1, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x1x1x2xf64>} : !mo.tensor<[2, 1, 1, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<0, 2> : tensor<2x1x1xsi32>} : !mo.tensor<[2, 1, 1], si32>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>> : !mo.tensor<[4, 1, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x1x1x2xf64>> : !mo.tensor<[2, 1, 1, 2], f64>
+  %indices = mo.constant <#M.dense_array<0, 2> : tensor<2x1x1xsi32>> : !mo.tensor<[2, 1, 1], si32>
   %res     = mo.scatter_nd(%input, %updates, %indices) : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[2, 1, 1, 2], f64>, !mo.tensor<[2, 1, 1], si32>) -> !mo.tensor<[4, 1, 2], f64>
   mo.output %res : !mo.tensor<[4, 1, 2], f64>
 }
@@ -31,10 +31,10 @@ mo.graph @scatter_nd_unsorted_segment_sum() -> (!mo.tensor<[4, 1, 2], f64>) {
 
 mo.graph @scatter_nd_fallback_shape_func<() -> D0, D1, D2>() -> !mo.tensor<[D0, D1, D2], si64> {
 
-  %one     = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>} : !mo.tensor<[4, 1, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x1x1x2xf64>} : !mo.tensor<[2, 1, 1, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<0, 2> : tensor<2x1x1xsi32>} : !mo.tensor<[2, 1, 1], si32>
+  %one     = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>> : !mo.tensor<[4, 1, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4> : tensor<2x1x1x2xf64>> : !mo.tensor<[2, 1, 1, 2], f64>
+  %indices = mo.constant <#M.dense_array<0, 2> : tensor<2x1x1xsi32>> : !mo.tensor<[2, 1, 1], si32>
 
   mo.invoke_shape_func["mo.scatter_nd"]<() -> D3, D4, D5>(%input, %updates, %indices)
     {dataDeptTensors = []} : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[2, 1, 1, 2], f64>, !mo.tensor<[2, 1, 1], si32>)

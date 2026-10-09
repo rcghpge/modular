@@ -11,7 +11,7 @@ mo.graph @reshape<N -> out>(
 
   %n = mosh.param.to_value = <N>
   %n_scalar = mo.index.to_tensor(%n) -> !mo.tensor<[], si64>
-  %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %one = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %shape = mo.reshape(%n_scalar, %one) : (!mo.tensor<[], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
 
   // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[[[N]]], si64>

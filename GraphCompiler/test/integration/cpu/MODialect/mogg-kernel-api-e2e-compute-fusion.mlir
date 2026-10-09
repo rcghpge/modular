@@ -6,7 +6,7 @@
 // CHECK-LABEL: Running 'test_compute_out_no_fusion':
 // CHECK-NEXT: 'test_compute_out_no_fusion' returned tensor<1xf32> [4.000000e+00]
 mo.graph @test_compute_out_no_fusion() -> !mo.tensor<[1], f32> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %1 = mo.custom {symbol = "my_square_compute_out_fusion", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], f32>) -> !mo.tensor<[1], f32>
   mo.output %1 : !mo.tensor<[1], f32>
 }
@@ -16,8 +16,8 @@ mo.graph @test_compute_out_no_fusion() -> !mo.tensor<[1], f32> {
 // CHECK-LABEL: Running 'test_compute_out_simple_fusion':
 // CHECK-NEXT: 'test_compute_out_simple_fusion' returned tensor<1xf32> [-5.000000e+00]
 mo.graph @test_compute_out_simple_fusion() -> !mo.tensor<[1], f32> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
-  %1 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[1], f32>
+  %1 = mo.constant <#M.dense_array<1.000000e+00> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %2 = mo.custom {symbol = "my_square_compute_out_fusion", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], f32>) -> !mo.tensor<[1], f32>
   %3 = mo.add(%2, %1) :  !mo.tensor<[1], f32>
   %4 = mo.negative(%3) :  !mo.tensor<[1], f32>
@@ -30,8 +30,8 @@ mo.graph @test_compute_out_simple_fusion() -> !mo.tensor<[1], f32> {
 // CHECK-LABEL: Running 'test_compute_out_fusion_with_cast':
 // CHECK-NEXT: 'test_compute_out_fusion_with_cast' returned tensor<1xsi32> [-5]
 mo.graph @test_compute_out_fusion_with_cast() -> !mo.tensor<[1], si32> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
-  %1 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[1], f32>
+  %1 = mo.constant <#M.dense_array<1.000000e+00> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %2 = mo.custom {symbol = "my_square_compute_out_fusion", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], f32>) -> !mo.tensor<[1], f32>
   %3 = mo.add(%2, %1) :  !mo.tensor<[1], f32>
   %4 = mo.cast(%3) : (!mo.tensor<[1], f32>) -> !mo.tensor<[1], si32>

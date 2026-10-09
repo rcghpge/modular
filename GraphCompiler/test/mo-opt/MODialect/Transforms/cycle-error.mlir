@@ -3,9 +3,9 @@
 // %4 reads D5, which is only bound by the rebind in %7, and %7 depends on %4
 // through %5 and %6.
 mo.graph @main<D1>(%arg0: !mo.tensor<[1], si64>) -> (!mo.tensor<[1], si64>, !mo.tensor<[D5], bf16>) attributes {_kernel_library_paths = [], argument_names = ["input0"], result_names = ["output0", "output1"]} {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-  %1 = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-  %2 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[1], si64>
+  %0 = mo.constant <#M.dense_array<1.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
+  %1 = mo.constant <#M.dense_array<0.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
+  %2 = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[1], si64>
   %3 = mo.add(%arg0, %2) : !mo.tensor<[1], si64>
   // expected-error@+1 {{cannot schedule operation: dependency cycle in the graph}}
   %4 = mosh.param.to_value: !mosh.ape = <[D5]>

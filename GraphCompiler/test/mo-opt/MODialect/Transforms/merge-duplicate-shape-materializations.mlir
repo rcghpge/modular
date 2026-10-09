@@ -31,7 +31,7 @@ mo.graph @llama_dupe_params<N1, N2 -> O1, O2>(
   %dummy: !mo.tensor<[N1, N1], bf16>
 ) -> !mo.tensor<[O1, O2], bf16> {
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, N1], bf16>) -> !mo.tensor<[2], si32>
 
   // CHECK: mo.broadcast_to<() -> D1, D2>

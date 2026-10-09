@@ -17,8 +17,8 @@
 // CHECK: mo.graph @transformer_stack_partial
 
 mo.graph @ffn_block(%x: !mo.tensor<[128, 256], bf16, gpu:0>, %gamma: !mo.tensor<[256], bf16, gpu:0>, %w_gate: !mo.tensor<[256, 1024], bf16, gpu:0>, %w_up: !mo.tensor<[256, 1024], bf16, gpu:0>, %w_down: !mo.tensor<[1024, 256], bf16, gpu:0>) -> !mo.tensor<[128, 256], bf16, gpu:0> attributes {isSubgraph} {
-  %eps = mo.constant {value = #M.dense_array<9.99999974E-6> : tensor<f32>} : !mo.tensor<[], f32>
-  %weight_offset = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<bf16>} : !mo.tensor<[], bf16>
+  %eps = mo.constant <#M.dense_array<9.99999974E-6> : tensor<f32>> : !mo.tensor<[], f32>
+  %weight_offset = mo.constant <#M.dense_array<0.000000e+00> : tensor<bf16>> : !mo.tensor<[], bf16>
   %n = mo.reduce.rms_norm(%x, %gamma, %eps, %weight_offset) {multiply_before_cast = false} : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256], bf16, gpu:0>, !mo.tensor<[], f32>, !mo.tensor<[], bf16>) -> !mo.tensor<[128, 256], bf16, gpu:0>
   %gate = mo.matmul(%n, %w_gate) : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256, 1024], bf16, gpu:0>) -> !mo.tensor<[128, 1024], bf16, gpu:0>
   %gate_act = mo.gelu(%gate) : !mo.tensor<[128, 1024], bf16, gpu:0>
@@ -30,8 +30,8 @@ mo.graph @ffn_block(%x: !mo.tensor<[128, 256], bf16, gpu:0>, %gamma: !mo.tensor<
 }
 
 mo.graph @ffn_block_wide(%x: !mo.tensor<[128, 256], bf16, gpu:0>, %gamma: !mo.tensor<[256], bf16, gpu:0>, %w_gate: !mo.tensor<[256, 2048], bf16, gpu:0>, %w_up: !mo.tensor<[256, 2048], bf16, gpu:0>, %w_down: !mo.tensor<[2048, 256], bf16, gpu:0>) -> !mo.tensor<[128, 256], bf16, gpu:0> attributes {isSubgraph} {
-  %eps = mo.constant {value = #M.dense_array<9.99999974E-6> : tensor<f32>} : !mo.tensor<[], f32>
-  %weight_offset = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<bf16>} : !mo.tensor<[], bf16>
+  %eps = mo.constant <#M.dense_array<9.99999974E-6> : tensor<f32>> : !mo.tensor<[], f32>
+  %weight_offset = mo.constant <#M.dense_array<0.000000e+00> : tensor<bf16>> : !mo.tensor<[], bf16>
   %n = mo.reduce.rms_norm(%x, %gamma, %eps, %weight_offset) {multiply_before_cast = false} : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256], bf16, gpu:0>, !mo.tensor<[], f32>, !mo.tensor<[], bf16>) -> !mo.tensor<[128, 256], bf16, gpu:0>
   %gate = mo.matmul(%n, %w_gate) : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256, 2048], bf16, gpu:0>) -> !mo.tensor<[128, 2048], bf16, gpu:0>
   %gate_act = mo.gelu(%gate) : !mo.tensor<[128, 2048], bf16, gpu:0>
@@ -118,8 +118,8 @@ mo.graph @transformer_stack_partial(
   %x12 = mo.call @ffn_block_wide(%x11, %gamma11_wide, %w_gate11_wide, %w_up11_wide, %w_down11_wide) : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256], bf16, gpu:0>, !mo.tensor<[256, 2048], bf16, gpu:0>, !mo.tensor<[256, 2048], bf16, gpu:0>, !mo.tensor<[2048, 256], bf16, gpu:0>) -> !mo.tensor<[128, 256], bf16, gpu:0>
 
   // Head: unique output projection to a different width, not repeated.
-  %eps = mo.constant {value = #M.dense_array<9.99999974E-6> : tensor<f32>} : !mo.tensor<[], f32>
-  %weight_offset = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<bf16>} : !mo.tensor<[], bf16>
+  %eps = mo.constant <#M.dense_array<9.99999974E-6> : tensor<f32>> : !mo.tensor<[], f32>
+  %weight_offset = mo.constant <#M.dense_array<0.000000e+00> : tensor<bf16>> : !mo.tensor<[], bf16>
   %n_final = mo.reduce.rms_norm(%x12, %gamma_final, %eps, %weight_offset) {multiply_before_cast = false} : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256], bf16, gpu:0>, !mo.tensor<[], f32>, !mo.tensor<[], bf16>) -> !mo.tensor<[128, 256], bf16, gpu:0>
   %logits = mo.matmul(%n_final, %w_out) : (!mo.tensor<[128, 256], bf16, gpu:0>, !mo.tensor<[256, 512], bf16, gpu:0>) -> !mo.tensor<[128, 512], bf16, gpu:0>
 

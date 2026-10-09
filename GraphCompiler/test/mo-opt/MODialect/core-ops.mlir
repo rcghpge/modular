@@ -16,7 +16,7 @@ mo.graph @index_to_tensor(%arg0: !kgen.scalar<si64>) -> !mo.tensor<[], si64> {
 // CHECK-LABEL: mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> {
 mo.graph @index_to_tensor_fold() -> !mo.tensor<[], si64> {
   %0 = mosh.param.to_value = <42>
-  // CHECK-NEXT: %[[RES:.*]] = mo.constant {value = #M.dense_array<42> : tensor<si64>} : !mo.tensor<[], si64>
+  // CHECK-NEXT: %[[RES:.*]] = mo.constant <#M.dense_array<42> : tensor<si64>> : !mo.tensor<[], si64>
   %1 = mo.index.to_tensor(%0) -> !mo.tensor<[], si64>
   // CHECK-NEXT: mo.output %[[RES]] : !mo.tensor<[], si64>
   mo.output %1: !mo.tensor<[], si64>
@@ -134,8 +134,8 @@ mo.graph @empty_if_op(%arg0: !mo.tensor<[2, 1], f32>, %cond : !mo.tensor<[], boo
 // CHECK-LABEL: mo.graph @constant_fold_if_tensor(
 // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2], f32>, %[[ARG1:.*]]: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
 mo.graph @constant_fold_if_tensor(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
-  %true = mo.constant {value = #M.dense_array<1> : tensor<i1>} : !mo.tensor<[], bool>
-  %false = mo.constant {value = #M.dense_array<0> : tensor<i1>} : !mo.tensor<[], bool>
+  %true = mo.constant <#M.dense_array<1> : tensor<i1>> : !mo.tensor<[], bool>
+  %false = mo.constant <#M.dense_array<0> : tensor<i1>> : !mo.tensor<[], bool>
 
   %0 = mo.if(%true : !mo.tensor<[], bool>) -> !mo.tensor<[2], f32> {
     mo.yield %arg0 : !mo.tensor<[2], f32>
@@ -156,8 +156,8 @@ mo.graph @constant_fold_if_tensor(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor
 // CHECK-LABEL: mo.graph @constant_fold_if_scalar(
 // CHECK-SAME: %[[ARG0:.*]]: !mo.tensor<[2], f32>, %[[ARG1:.*]]: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
 mo.graph @constant_fold_if_scalar(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>, !mo.tensor<[2], f32>) {
-  %true = mo.constant.scalar {value = true} : !mo.scalar<bool>
-  %false = mo.constant.scalar {value = false} : !mo.scalar<bool>
+  %true = mo.constant.scalar <true> : !mo.scalar<bool>
+  %false = mo.constant.scalar <false> : !mo.scalar<bool>
 
   %0 = mo.if(%true : !mo.scalar<bool>) -> !mo.tensor<[2], f32> {
     mo.yield %arg0 : !mo.tensor<[2], f32>
@@ -196,8 +196,8 @@ mo.graph @remove_unused_results(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.tensor<[
 // CHECK-SAME: %[[COND:.*]]: !mo.tensor<[], bool>) -> !mo.tensor<[], bool> {
 mo.graph @condition_propagation(%cond: !mo.tensor<[], bool>) -> (!mo.tensor<[], bool>) {
 
-  // CHECK-DAG: %[[FALSE:.*]] = mo.constant {value = #M.dense_array<0> : tensor<1xi8>} : !mo.tensor<[], bool>
-  // CHECK-DAG: %[[TRUE:.*]] = mo.constant {value = #M.dense_array<1> : tensor<1xi8>} : !mo.tensor<[], bool>
+  // CHECK-DAG: %[[FALSE:.*]] = mo.constant <#M.dense_array<0> : tensor<1xi8>> : !mo.tensor<[], bool>
+  // CHECK-DAG: %[[TRUE:.*]] = mo.constant <#M.dense_array<1> : tensor<1xi8>> : !mo.tensor<[], bool>
 
   // CHECK: %[[V0:.*]] = mo.if(%[[COND]] : !mo.tensor<[], bool>) -> !mo.tensor<[], bool> {
   %0 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[], bool> {
@@ -216,8 +216,8 @@ mo.graph @condition_propagation(%cond: !mo.tensor<[], bool>) -> (!mo.tensor<[], 
 // CHECK-SAME: %[[COND:.*]]: !mo.scalar<bool>) -> !mo.scalar<bool> {
 mo.graph @condition_propagation_scalars(%cond: !mo.scalar<bool>) -> (!mo.scalar<bool>) {
 
-  // CHECK-DAG: %[[FALSE:.*]] = mo.constant.scalar {value = false} : !mo.scalar<bool>
-  // CHECK-DAG: %[[TRUE:.*]] = mo.constant.scalar {value = true} : !mo.scalar<bool>
+  // CHECK-DAG: %[[FALSE:.*]] = mo.constant.scalar <false> : !mo.scalar<bool>
+  // CHECK-DAG: %[[TRUE:.*]] = mo.constant.scalar <true> : !mo.scalar<bool>
 
   // CHECK: %[[V0:.*]] = mo.if(%[[COND]] : !mo.scalar<bool>) -> !mo.scalar<bool> {
   %0 = mo.if(%cond : !mo.scalar<bool>) -> !mo.scalar<bool> {
@@ -315,27 +315,27 @@ mo.graph @while_op_remove_duplicate_operands_no_change(%arg0: !mo.tensor<[2], f3
 
 // CHECK-LABEL: mo.graph @constant() -> !mo.tensor<[2, 3], f32>
 mo.graph @constant() -> !mo.tensor<[2, 3], f32> {
-  // CHECK: %[[VAL_0:.*]] = mo.constant {value = #M.dense_array<1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00, 5.{{0+}}e+00, 6.{{0+}}e+00> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32>
-  %0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32>
+  // CHECK: %[[VAL_0:.*]] = mo.constant <#M.dense_array<1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00, 5.{{0+}}e+00, 6.{{0+}}e+00> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32>
+  %0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32>
   // CHECK: mo.output %[[VAL_0]] : !mo.tensor<[2, 3], f32>
   mo.output %0 : !mo.tensor<[2, 3], f32>
 }
 
 // CHECK-LABEL: mo.graph @constant_cse() -> (!mo.tensor<[2], ui32>, !mo.tensor<[2], ui32>)
 mo.graph @constant_cse() -> (!mo.tensor<[2], ui32>, !mo.tensor<[2], ui32>) {
-  // CHECK: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui32>} : !mo.tensor<[2], ui32>
-  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui32>} : !mo.tensor<[2], ui32>
-  %1 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui32>} : !mo.tensor<[2], ui32>
+  // CHECK: %[[VAL0:.*]] = mo.constant <#M.dense_array<1, 2> : tensor<2xui32>> : !mo.tensor<[2], ui32>
+  %0 = mo.constant <#M.dense_array<1, 2> : tensor<2xui32>> : !mo.tensor<[2], ui32>
+  %1 = mo.constant <#M.dense_array<1, 2> : tensor<2xui32>> : !mo.tensor<[2], ui32>
   // CHECK: mo.output %[[VAL0]], %[[VAL0]] : !mo.tensor<[2], ui32>, !mo.tensor<[2], ui32>
   mo.output %0, %1 : !mo.tensor<[2], ui32>, !mo.tensor<[2], ui32>
 }
 
 // CHECK-LABEL: mo.graph @two_constants() -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>)
 mo.graph @two_constants() -> (!mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>) {
-  // CHECK-DAG: %[[VAL_0:.*]] = mo.constant {value = #M.dense_array<0.{{0+}}e+00, 1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00, 5.{{0+}}e+00> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32>
-  // CHECK-DAG: %[[VAL_1:.*]] = mo.constant {value = dense_resource<some_buffer> : tensor<4xsi8>} : !mo.tensor<[4], si8>
-  %0 = mo.constant {value = #M.dense_array<0.0, 1.0, 2.0, 3.0, 4.0, 5.0> : tensor<2x3xf32>} : !mo.tensor<[2, 3], f32>
-  %1 = mo.constant {value = dense_resource<some_buffer> : tensor<4xsi8>} : !mo.tensor<[4], si8>
+  // CHECK-DAG: %[[VAL_0:.*]] = mo.constant <#M.dense_array<0.{{0+}}e+00, 1.{{0+}}e+00, 2.{{0+}}e+00, 3.{{0+}}e+00, 4.{{0+}}e+00, 5.{{0+}}e+00> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32>
+  // CHECK-DAG: %[[VAL_1:.*]] = mo.constant <dense_resource<some_buffer> : tensor<4xsi8>> : !mo.tensor<[4], si8>
+  %0 = mo.constant <#M.dense_array<0.0, 1.0, 2.0, 3.0, 4.0, 5.0> : tensor<2x3xf32>> : !mo.tensor<[2, 3], f32>
+  %1 = mo.constant <dense_resource<some_buffer> : tensor<4xsi8>> : !mo.tensor<[4], si8>
   // CHECK: mo.output %[[VAL_0]], %[[VAL_1]] : !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>
   mo.output %0, %1 : !mo.tensor<[2, 3], f32>, !mo.tensor<[4], si8>
 }

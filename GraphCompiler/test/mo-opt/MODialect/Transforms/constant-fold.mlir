@@ -6,7 +6,7 @@
 // CHECK-LABEL: @incomplete_shape_func
 // CHECK: mo.invoke_shape_func["pack_matmul_b_shape_func"]
 mo.graph @incomplete_shape_func() -> (!mo.tensor<[?, ?], f32>) {
-  %1 = mo.constant {value = #M.dense_array<1.> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %1 = mo.constant <#M.dense_array<1.> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %2 = mo.static.broadcast_to(%1):!mo.tensor<[1], f32> -> !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>
   mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> MMPackSh0, MMPackSh1>(%2) {kgenParams = {a_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, a_type = f32, b_shape = dense<[768, 768]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, c_type = f32, transpose_in_0 = false}} : (!mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}>)
   %3 = mo.layout.transform(%2) {kgenParams = {a_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, a_type = f32, b_shape = dense<[768, 768]> : vector<2xi64>, b_type = f32, c_shape = dense<[-9223372036854775808, 768]> : vector<2xi64>, c_type = f32}} : !mo.tensor<[768, 768], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[MMPackSh0, MMPackSh1], f32, {layout = #mo.layout<KNkni>}>
@@ -16,13 +16,13 @@ mo.graph @incomplete_shape_func() -> (!mo.tensor<[?, ?], f32>) {
 
 // CHECK-LABEL: mo.graph @multiple_internal_ops
 // CHECK-SAME: (%[[ARG0:.*]]:
-// CHECK-NEXT: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<{{.*}}> : !M.array<6xf32>} : !mo.tensor<[3, 2], f32>
+// CHECK-NEXT: %[[VAL0:.*]] = mo.constant <#M.dense_array<{{.*}}> : !M.array<6xf32>> : !mo.tensor<[3, 2], f32>
 // CHECK-NEXT: %[[VAL1:.*]] = mo.matmul(%[[ARG0]], %[[VAL0]])
 // CHECK-NEXT: mo.output %[[VAL1]]
 mo.graph @multiple_internal_ops(%arg0: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[1, 2], f32> {
-  %c1 = mo.constant {value = #M.dense_array<-1.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %c1 = mo.constant <#M.dense_array<-1.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %1 = mo.static.broadcast_to(%c1) : !mo.tensor<[1], f32> -> !mo.tensor<[1, 3], f32>
-  %3 = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %3 = mo.constant <#M.dense_array<1, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
   %4 = mo.static.broadcast_to(%c1) : !mo.tensor<[1], f32> -> !mo.tensor<[2, 3], f32>
   %16 = mo.transpose(%4, %3) : (!mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
   %17 = mo.matmul(%arg0, %16) : (!mo.tensor<[1, 3], f32>, !mo.tensor<[3, 2], f32>) -> !mo.tensor<[1, 2], f32>
@@ -34,12 +34,12 @@ mo.graph @multiple_internal_ops(%arg0: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[1
 // CHECK-LABEL: @transitive_remove
 // CHECK: mo.output
 mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.tensor<[11, 2, 2, 2, 10], f32> {
-  %0 = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>} : !mo.tensor<[6], si64>
-  %1 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %2 = mo.constant {value = #M.dense_array<2, 2, 2> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %3 = mo.constant {value = #M.dense_array<3> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %5 = mo.constant {value = #M.dense_array<4> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %6 = mo.constant {value = #M.dense_array<1.000000e+00> : !M.array<1xf32>} : !mo.tensor<[], f32>
+  %0 = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi64>> : !mo.tensor<[6], si64>
+  %1 = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %2 = mo.constant <#M.dense_array<2, 2, 2> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %3 = mo.constant <#M.dense_array<3> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %5 = mo.constant <#M.dense_array<4> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %6 = mo.constant <#M.dense_array<1.000000e+00> : !M.array<1xf32>> : !mo.tensor<[], f32>
   %7 = mo.static.broadcast_to(%6) : !mo.tensor<[], f32> -> !mo.tensor<[2, 2, 3, 1, 10], f32>
   %8 = mo.shape_of(%arg0) : (!mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.tensor<[5], si64>
   %9 = mo.shape_of(%7) : (!mo.tensor<[2, 2, 3, 1, 10], f32>) -> !mo.tensor<[5], si64>
@@ -56,8 +56,8 @@ mo.graph @transitive_remove(%arg0: !mo.tensor<[11, 4, 4, 6, 5], f32>) -> !mo.ten
 // CHECK-NOT: mogg.concat
 // CHECK: mo.output
 mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
-  %1 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %2 = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %1 = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %2 = mo.constant <#M.dense_array<2> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %3 = mogg.concat(%1, %2) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
   mo.output %3 : !mo.tensor<[2], si64>
 }
@@ -66,12 +66,12 @@ mo.graph @fold_mogg_ops() -> !mo.tensor<[2], si64> {
 // COM: inference to clean up first. We can go up to the add in this case.
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @partial_fold_parameterized_outputs<() -> O>() -> !mo.tensor<[O], f32> {
-// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant {value = dense_resource<folded_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+// CHECK-NEXT: [[V0:[^ ]*]] = mo.constant <dense_resource<folded_const> : !M.array<600xf32>> : !mo.tensor<[600], f32>
 // CHECK-NEXT: kgen.param.declare A: scalar<si64> = <600>
 // CHECK-NEXT: [[V1:[^ ]*]] = mo.rebind([[V0]]) : !mo.tensor<[600], f32> -> !mo.tensor<[A], f32>
 // CHECK-NEXT: mo.output<A> [[V1]] : !mo.tensor<[A], f32>
 mo.graph @partial_fold_parameterized_outputs<() -> O>() -> (!mo.tensor<[O], f32>) {
-  %0 = mo.constant {value = dense_resource<large_const1> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+  %0 = mo.constant <dense_resource<large_const1> : !M.array<600xf32>> : !mo.tensor<[600], f32>
   %1 = mo.add(%0, %0): !mo.tensor<[600], f32>
   %2 = mo.rebind<() -> A>(%1): !mo.tensor<[600], f32> -> !mo.tensor<[A], f32>
   mo.output<A> %2 : !mo.tensor<[A], f32>
@@ -80,14 +80,14 @@ mo.graph @partial_fold_parameterized_outputs<() -> O>() -> (!mo.tensor<[O], f32>
 // CHECK-LABEL: @if_cache_resources
 // CHECK-SAME: ([[ARG0:%.*]]: !mo.tensor<[], bool>, [[ARG1:%.*]]: !mo.tensor<[600], f32>) -> !mo.tensor<[600], f32> {
 mo.graph @if_cache_resources(%arg0: !mo.tensor<[], bool>, %arg1: !mo.tensor<[600], f32>) -> (!mo.tensor<[600], f32>) {
-//  CHECK:   [[V0:%.*]] = mo.constant {value = dense_resource<folded_const_1> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+//  CHECK:   [[V0:%.*]] = mo.constant <dense_resource<folded_const_1> : !M.array<600xf32>> : !mo.tensor<[600], f32>
 //  CHECK-NEXT:   [[V1:%.*]] = mo.if([[ARG0]] : !mo.tensor<[], bool>) -> !mo.tensor<[600], f32> {
 //  CHECK-NEXT:     [[V2:%.*]] = mo.add([[ARG1]], [[V0]]) : !mo.tensor<[600], f32>
 //  CHECK-NEXT:     mo.yield [[V2]] : !mo.tensor<[600], f32>
 //  CHECK-NEXT:   } else {
 //  CHECK-NEXT:     [[V2]] = mo.mul([[ARG1]], [[V0]]) : !mo.tensor<[600], f32>
 //  CHECK-NEXT:     mo.yield [[V2]] : !mo.tensor<[600], f32>
-  %0 = mo.constant {value = dense_resource<large_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+  %0 = mo.constant <dense_resource<large_const> : !M.array<600xf32>> : !mo.tensor<[600], f32>
   %1 = mo.if(%arg0 : !mo.tensor<[], bool>) -> !mo.tensor<[600], f32> {
     %2 = mo.add(%0, %0) : !mo.tensor<[600], f32>
     %3 = mo.add(%arg1, %2) : !mo.tensor<[600], f32>
@@ -130,9 +130,9 @@ mo.graph @if_cache_resources(%arg0: !mo.tensor<[], bool>, %arg1: !mo.tensor<[600
 // recognizes when things are disjoint.
 
 // CHECK-LABEL: mo.graph @disjoint_set()
-// CHECK-DAG: mo.constant {value = dense_resource<{{.*}}> : !M.array<600xf32>} : !mo.tensor<[1, 600], f32>
-// CHECK-DAG: mo.constant {value = dense_resource<{{.*}}> : !M.array<600xf32>} : !mo.tensor<[600], f32>
-// CHECK-DAG: mo.constant {value = dense_resource<{{.*}}> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+// CHECK-DAG: mo.constant <dense_resource<{{.*}}> : !M.array<600xf32>> : !mo.tensor<[1, 600], f32>
+// CHECK-DAG: mo.constant <dense_resource<{{.*}}> : !M.array<600xf32>> : !mo.tensor<[600], f32>
+// CHECK-DAG: mo.constant <dense_resource<{{.*}}> : !M.array<600xf32>> : !mo.tensor<[600], f32>
 
 // No more constants
 // CHECK: mo.static.broadcast_to
@@ -142,8 +142,8 @@ mo.graph @if_cache_resources(%arg0: !mo.tensor<[], bool>, %arg1: !mo.tensor<[600
 // CHECK: mo.add
 // CHECK: mo.output
 mo.graph @disjoint_set() -> (!mo.tensor<[600, 600], f32>, !mo.tensor<[1, 600], f32>, !mo.tensor<[3, 600], f32>) {
-  %0 = mo.constant {value = dense_resource<large_const> : !M.array<600xf32>} : !mo.tensor<[600], f32>
-  %1 = mo.constant {value = dense_resource<large_const_alt> : !M.array<600xf32>} : !mo.tensor<[600], f32>
+  %0 = mo.constant <dense_resource<large_const> : !M.array<600xf32>> : !mo.tensor<[600], f32>
+  %1 = mo.constant <dense_resource<large_const_alt> : !M.array<600xf32>> : !mo.tensor<[600], f32>
 
   %00 = mo.static.broadcast_to(%0): !mo.tensor<[600], f32> -> !mo.tensor<[600, 600], f32>
   %11 = mo.static.broadcast_to(%1): !mo.tensor<[600], f32> -> !mo.tensor<[600, 600], f32>
@@ -185,7 +185,7 @@ mo.graph @disjoint_set() -> (!mo.tensor<[600, 600], f32>, !mo.tensor<[1, 600], f
 // COM: Do not constant fold ops with constant operands if they have unsupported result types
 
 mo.graph @scalar_to_scalar_ndbuff_reg() -> (!mo.opaque<"MyCustomScalarReg">) {
-  %0 = mo.constant {value = #M.dense_array<42> : tensor<si32>} : !mo.tensor<[1], si32>
+  %0 = mo.constant <#M.dense_array<42> : tensor<si32>> : !mo.tensor<[1], si32>
   %ch0 = mo.chain.create()
 
   %1 = mo.custom {symbol = "buff_to_my_custom_scalar_reg", device = #M.device_ref<"cpu", 0>}(%0) : (!mo.tensor<[1], si32>) -> (!mo.opaque<"MyCustomScalarReg">)

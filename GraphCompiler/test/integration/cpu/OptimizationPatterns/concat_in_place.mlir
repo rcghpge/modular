@@ -16,7 +16,7 @@
 // CHECK{LITERAL}: 'concat_static_output' returned tensor<6xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 7.615942e-01, 7.615942e-01, 7.615942e-01]
 
 mo.graph @concat_static_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %ax = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
   %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
   %out = mo.concat[0](%0, %1) : (
@@ -39,7 +39,7 @@ mo.graph @concat_static_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], 
 // CHECK: 'concat_nested_output' returned tensor<9xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 7.6159{{.*}}e-01, 7.6159{{.*}}e-01, 7.6159{{.*}}e-01, 8.4147{{.*}}e-01, 8.4147{{.*}}e-01, 8.4147{{.*}}e-01]
 
 mo.graph @concat_nested_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[9], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %ax = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
   %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
   %2 = mo.concat[0](%0, %1) : (
@@ -72,7 +72,7 @@ mo.graph @concat_nested_output(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[9], 
 // CHECK{LITERAL}: 'concat_within_if' returned tensor<6xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 7.615942e-01, 7.615942e-01, 7.615942e-01]
 
 mo.graph @concat_within_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[6], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %ax = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
   %2 = mo.if(%cond : !mo.tensor<[], bool>) -> !mo.tensor<[6], f32> {
     %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
     %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
@@ -115,7 +115,7 @@ mo.graph @concat_within_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bo
 // CHECK{LITERAL}: 'concat_across_if' returned tensor<6xf32> [7.615942e-01, 7.615942e-01, 7.615942e-01, 1.000000e+00, 1.000000e+00, 1.000000e+00]
 
 mo.graph @concat_across_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bool>) -> (!mo.tensor<[6], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %ax = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
   %neg = mo.not(%cond) : !mo.tensor<[], bool>
   %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
@@ -144,7 +144,7 @@ mo.graph @concat_across_if(%arg0: !mo.tensor<[3], f32>, %cond: !mo.tensor<[], bo
 // CHECK{LITERAL}: 'concat_multi_user_input' returned tensor<6xf32> [1.000000e+00, 1.000000e+00, 1.000000e+00, 7.615942e-01, 7.615942e-01, 7.615942e-01]
 
 mo.graph @concat_multi_user_input(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %ax = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
   %0 = mo.relu(%arg0) : !mo.tensor<[3], f32>
   %1 = mo.tanh(%0) : !mo.tensor<[3], f32>
   %out = mo.concat[0](%0, %1) : (
@@ -165,7 +165,7 @@ mo.graph @concat_multi_user_input(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6
 // CHECK{LITERAL}: 'concat_duplicated_input' returned tensor<6xf32> [7.615942e-01, 7.615942e-01, 7.615942e-01, 7.615942e-01, 7.615942e-01, 7.615942e-01]
 
 mo.graph @concat_duplicated_input(%arg0: !mo.tensor<[3], f32>) -> (!mo.tensor<[6], f32>) {
-  %ax = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
+  %ax = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
   %0 = mo.tanh(%arg0) : !mo.tensor<[3], f32>
   %out = mo.concat[0](%0, %0) : (
     !mo.tensor<[3], f32>, !mo.tensor<[3], f32>

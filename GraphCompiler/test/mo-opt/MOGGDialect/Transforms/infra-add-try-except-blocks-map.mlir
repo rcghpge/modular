@@ -10,7 +10,7 @@
 // CHECK:           mogg.raise
 
 mo.graph @checked() -> !mo.tensor<[4], f32> {
-  %0 = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
+  %0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[4], f32>
   %1 = mo.add(%0, %0) : !mo.tensor<[4], f32>
   mo.output %1 : !mo.tensor<[4], f32>
 }

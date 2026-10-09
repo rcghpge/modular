@@ -33,8 +33,8 @@ mo.graph @static_reshape_1d_to_scalar<N -> out>(
 
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N], f32>) -> !mo.tensor<[1], si64>
   %n = mo.static.reshape(%dummy_shape) : !mo.tensor<[1], si64> -> !mo.tensor<[], si64>
-  %start = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
-  %step = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %start = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64>
+  %step = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   // CHECK: [[RES:%.*]] = mo.range{{.*}} -> !mo.tensor<[[[N]]], si64>
   %res = mo.range<() -> D0>(%start, %n, %step) : (

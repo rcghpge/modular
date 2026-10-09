@@ -13,8 +13,8 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2, RS6513>(
     %norm_scalar: !mo.tensor<[], f32>,
     %attn_mask: !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 ) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32> {
-    %51 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-    %54 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %51 = mo.constant <#M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+    %54 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
     %Q = mo.transpose(%Q_raw, %54) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 
@@ -49,7 +49,7 @@ mo.graph @llama2_min_framework_cpu_mha<REFINE_S2, SUM_C1_S2, RS6513>(
 // CHECK-SAME: [[NORM:%[a-zA-Z0-9_]*]]: !mo.tensor<[], f32>,
 // CHECK-SAME: [[MASK:%[a-zA-Z0-9_]*]]: !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>)
 // CHECK-SAME: -> !mo.tensor<[1, 6, REFINE_S2, RS6513]
-// CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT: [[V0:%.*]] = mo.constant <#M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V1:%.*]] = mo.composite.masked_flash_attention_cpu([[QUERY]], [[KEYT]], [[VALUE]], [[MASK]], [[NORM]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, SUM_C1_S2, 6, RS6513], f32>, !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[1, REFINE_S2, 6, RS6513], f32>
 // CHECK-NEXT: [[V2:%.*]] = mo.transpose([[V1]], [[V0]]) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 // CHECK-NEXT: mo.output [[V2]] : !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
@@ -71,8 +71,8 @@ mo.graph @llama2_min_framework_cpu_mha_no_trigger<REFINE_S2, SUM_C1_S2, RS6513>(
     %attn_mask: !mo.tensor<[1, 6, REFINE_S2, SUM_C1_S2], f32>
 ) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 {
-    %51 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-    %54 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %51 = mo.constant <#M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+    %54 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
     %Q = mo.transpose(%Q_raw, %54) : (!mo.tensor<[1, REFINE_S2, 6, RS6513], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[1, 6, REFINE_S2, RS6513], f32>
 

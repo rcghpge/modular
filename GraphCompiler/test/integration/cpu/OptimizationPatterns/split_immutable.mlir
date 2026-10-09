@@ -2,7 +2,7 @@
 // RUN: mt --execute %t --input-shapes=1x1024x1024x3 | FileCheck %s
 
 mo.graph @split_immutable<D0, D1>(%arg0: !mo.tensor<[1, D0, D1, 3], f32>) -> !mo.tensor<[1, D0, D1, 3], f32> {
-    %one = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+    %one = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
     %split_out = mo.split(%arg0, %one) {axis = 0 : index} : (!mo.tensor<[1, D0, D1, 3], f32>, !mo.tensor<[1], si64>) -> (!mo.tensor<[1, D0, D1, 3], f32>)
 
     %0 = mo.add(%split_out, %split_out) : !mo.tensor<[1, D0, D1, 3], f32>

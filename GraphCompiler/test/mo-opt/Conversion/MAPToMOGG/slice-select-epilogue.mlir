@@ -33,8 +33,8 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
   %new: !mo.tensor<[B, S, 16], f32>,
   %stops: !mo.tensor<[3], si64>
 ) -> (!mo.tensor<[OB, OT, 16], f32>, !mo.tensor<[OB, 8, 16], f32>) {
-  %starts = mo.constant {value = #M.dense_array<0, -8, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %steps = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
   %slice = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[B, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[B, 8, 16], f32>
   mo.output<B, T> %concat, %slice : !mo.tensor<[B, T, 16], f32>, !mo.tensor<[B, 8, 16], f32>
@@ -55,9 +55,9 @@ mo.graph @matmul_slice_step(
   %a: !mo.tensor<[8, 4], f32>,
   %b: !mo.tensor<[4, 8], f32>
 ) -> (!mo.tensor<[8, 8], f32>, !mo.tensor<[4, 8], f32>) {
-  %starts = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stops = mo.constant {value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %steps = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %starts = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stops = mo.constant <#M.dense_array<8, 8> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %steps = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %mm = mo.matmul(%a, %b) : (!mo.tensor<[8, 4], f32>, !mo.tensor<[4, 8], f32>) -> !mo.tensor<[8, 8], f32>
   %slice = mo.slice(%mm, %starts, %stops, %steps) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[4, 8], f32>
   mo.output %mm, %slice : !mo.tensor<[8, 8], f32>, !mo.tensor<[4, 8], f32>
@@ -73,9 +73,9 @@ mo.graph @bmm_window(
   %a: !mo.tensor<[2, 16, 8], f32>,
   %b: !mo.tensor<[2, 8, 16], f32>
 ) -> (!mo.tensor<[2, 16, 16], f32>, !mo.tensor<[2, 4, 16], f32>) {
-  %starts = mo.constant {value = #M.dense_array<0, -4, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %stops = mo.constant {value = #M.dense_array<2, 16, 16> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %steps = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %starts = mo.constant <#M.dense_array<0, -4, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %stops = mo.constant <#M.dense_array<2, 16, 16> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %bmm = mo.batch_matmul(%a, %b) : (!mo.tensor<[2, 16, 8], f32>, !mo.tensor<[2, 8, 16], f32>) -> !mo.tensor<[2, 16, 16], f32>
   %slice = mo.slice(%bmm, %starts, %stops, %steps) : (!mo.tensor<[2, 16, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 4, 16], f32>
   mo.output %bmm, %slice : !mo.tensor<[2, 16, 16], f32>, !mo.tensor<[2, 4, 16], f32>
@@ -93,13 +93,13 @@ mo.graph @conv_window(
   %input: !mo.tensor<[2, 5, 5, 3], f32>,
   %filter: !mo.tensor<[3, 3, 3, 4], f32, {layout = #mo.layout<RSCF>}>
 ) -> (!mo.tensor<[2, 3, 3, 4], f32>, !mo.tensor<[2, 2, 3, 4], f32>) {
-  %strides = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %dilations = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %starts = mo.constant {value = #M.dense_array<0, -2, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %stops = mo.constant {value = #M.dense_array<2, 3, 3, 4> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %steps = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %strides = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %dilations = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %paddings = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
+  %starts = mo.constant <#M.dense_array<0, -2, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %stops = mo.constant <#M.dense_array<2, 3, 3, 4> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %steps = mo.constant <#M.dense_array<1, 1, 1, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %conv = mo.conv(%input, %filter) {filter_layout = ""} [strides = %strides, dilations = %dilations, paddings = %paddings, num_groups = %groups] : (
     !mo.tensor<[2, 5, 5, 3], f32>, !mo.tensor<[3, 3, 3, 4], f32, {layout = #mo.layout<RSCF>}>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[4], si64>, !mo.tensor<[], si64>
   ) -> !mo.tensor<[2, 3, 3, 4], f32>
@@ -122,8 +122,8 @@ mo.graph @concat_window_dynamic_in<S, T>(
   %new: !mo.tensor<[2, S, 16], f32>,
   %stops: !mo.tensor<[3], si64>
 ) -> (!mo.tensor<[2, T, 16], f32>, !mo.tensor<[2, 8, 16], f32>) {
-  %starts = mo.constant {value = #M.dense_array<0, -8, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %steps = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[2, 8, 16], f32>, !mo.tensor<[2, S, 16], f32>) -> !mo.tensor<[2, T, 16], f32>
   %slice = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[2, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 8, 16], f32>
   mo.output %concat, %slice : !mo.tensor<[2, T, 16], f32>, !mo.tensor<[2, 8, 16], f32>
@@ -143,8 +143,8 @@ mo.graph @matmul_slice_step_dynamic<M, H>(
   %b: !mo.tensor<[4, 8], f32>,
   %stops: !mo.tensor<[2], si64>
 ) -> (!mo.tensor<[M, 8], f32>, !mo.tensor<[H, 8], f32>) {
-  %starts = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %steps = mo.constant {value = #M.dense_array<2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %starts = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %steps = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %mm = mo.matmul(%a, %b) : (!mo.tensor<[M, 4], f32>, !mo.tensor<[4, 8], f32>) -> !mo.tensor<[M, 8], f32>
   %slice = mo.slice(%mm, %starts, %stops, %steps) : (!mo.tensor<[M, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[H, 8], f32>
   mo.output %mm, %slice : !mo.tensor<[M, 8], f32>, !mo.tensor<[H, 8], f32>

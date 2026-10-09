@@ -15,9 +15,9 @@ mo.graph @matmul_packb_static(%x: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[4000,
   // CHECK-IR: mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> [[P1:.*]], [[P2:.*]]>(%{{.*}}) {kgenParams = {a_shape = dense<[4000, 2]> : vector<2xi64>, a_type = f32, b_shape = dense<2> : vector<2xi64>, b_type = f32, c_shape = dense<[4000, 2]> : vector<2xi64>, c_type = f32, transpose_in_0 = false}}
   // CHECK-IR: %[[PACKED_WEIGHTS:.*]] = mo.layout.transform(%{{.*}}) {kgenParams = {a_shape = dense<[4000, 2]> : vector<2xi64>, a_type = f32, b_shape = dense<2> : vector<2xi64>, b_type = f32, c_shape = dense<[4000, 2]> : vector<2xi64>, c_type = f32}} : !mo.tensor<[2, 2], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[[[P1]], [[P2]]], f32, {layout = #mo.layout<KNkni>}>
   // CHECK-IR: mo.matmul({{.*}}, %[[PACKED_WEIGHTS]]) : (!mo.tensor<[4000, 2], f32>
-  %w = mo.constant {value = #M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %w = mo.constant <#M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32>
   %act = mo.static.broadcast_to(%x) : !mo.tensor<[2, 2], f32> -> !mo.tensor<[2000, 2, 2], f32>
-  %shape = mo.constant {value = #M.dense_array<4000, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %shape = mo.constant <#M.dense_array<4000, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %act2 = mo.reshape(%act, %shape) : (!mo.tensor<[2000, 2, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[4000, 2], f32>
   // CHECK-MGP-NOT: "pack_matmul_b_shape_func"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul{{.*}}"
@@ -35,7 +35,7 @@ mo.graph @matmul_packb<D0>(%x: !mo.tensor<[D0, 2], f32>) -> (!mo.tensor<[D0, 2],
   // CHECK-IR: mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> [[P1:.*]], [[P2:.*]]>(%{{.*}}) {kgenParams = {a_shape = dense<[[[S1:-[0-9]+]], 2]> : vector<2xi64>, a_type = f32, b_shape = dense<2> : vector<2xi64>, b_type = f32, c_shape = dense<[[[S1]], 2]> : vector<2xi64>, c_type = f32, transpose_in_0 = false}}
   // CHECK-IR: %[[PACKED_WEIGHTS:.*]] = mo.layout.transform(%{{.*}}) {kgenParams = {a_shape = dense<[[[S1]], 2]> : vector<2xi64>, a_type = f32, b_shape = dense<2> : vector<2xi64>, b_type = f32, c_shape = dense<[[[S1]], 2]> : vector<2xi64>, c_type = f32}} : !mo.tensor<[2, 2], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[[[P1]], [[P2]]], f32, {layout = #mo.layout<KNkni>}>
   // CHECK-IR: mo.matmul({{.*}}, %[[PACKED_WEIGHTS]]) : (!mo.tensor<[D0, 2], f32>
-  %w = mo.constant {value = #M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32>
+  %w = mo.constant <#M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32>
   // CHECK-MGP-NOT: "pack_matmul_b_shape_func"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul{{.*}}"
   %1 = mo.matmul(%x, %w) : (!mo.tensor<[D0, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[D0, 2], f32>
@@ -52,8 +52,8 @@ mo.graph @matmul_transposed_packb<D0>(%x: !mo.tensor<[D0, 2], f32>) -> (!mo.tens
   // CHECK-IR: mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> [[P1:.*]], [[P2:.*]]>(%{{.*}}) {kgenParams = {a_shape{{.*}}a_type{{.*}}b_shape = dense<[3, 2]>{{.*}}b_type{{.*}}c_shape{{.*}}c_type{{.*}}transpose_in_0 = true}}
   // CHECK-IR: %[[PACKED_WEIGHTS:.*]] = mo.layout.transform(%{{.*}}) {kgenParams = {a_shape{{.*}}a_type{{.*}}b_shape = dense<[3, 2]>{{.*}}b_type{{.*}}c_shape{{.*}}c_type{{.*}}}} : !mo.tensor<[3, 2], f32, {layout = #mo.layout<NK>}> -> !mo.tensor<[[[P1]], [[P2]]], f32, {layout = #mo.layout<KNkni>}>
   // CHECK-IR: mo.matmul({{.*}}, %[[PACKED_WEIGHTS]]) : (!mo.tensor<[D0, 2], f32>
-  %w = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<3x2xf32>} : !mo.tensor<[3, 2], f32>
-  %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %w = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<3x2xf32>> : !mo.tensor<[3, 2], f32>
+  %axes = mo.constant <#M.dense_array<1, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %0 = mo.transpose(%w, %axes) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, 3], f32>
   // CHECK-MGP-NOT: "pack_matmul_b_shape_func"
   // CHECK-MGP: "mgp.generic.execute"{{.*}}dSummary = {{.*}}mo.matmul{{.*}}"
@@ -71,8 +71,8 @@ mo.graph @matmul_pack_reshaped<D0>(%x: !mo.tensor<[D0, 2], f32>) -> (!mo.tensor<
   // CHECK-IR: mo.invoke_shape_func["pack_matmul_b_shape_func"]<() -> [[P1:.*]], [[P2:.*]]>(%{{.*}}) {kgenParams = {a_shape{{.*}}a_type{{.*}}b_shape = dense<[2, 3]>{{.*}}b_type{{.*}}c_shape{{.*}}c_type{{.*}}transpose_in_0 = false}}
   // CHECK-IR: %[[PACKED_WEIGHTS:.*]] = mo.layout.transform(%{{.*}}) {kgenParams = {a_shape{{.*}}a_type{{.*}}b_shape = dense<[2, 3]>{{.*}}b_type{{.*}}c_shape{{.*}}c_type{{.*}}}} : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}> -> !mo.tensor<[[[P1]], [[P2]]], f32, {layout = #mo.layout<KNkni>}>
   // CHECK-IR: mo.matmul({{.*}}, %[[PACKED_WEIGHTS]]) : (!mo.tensor<[D0, 2], f32>
-  %w = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<6xf32>} : !mo.tensor<[1, 3, 2, 1], f32>
-  %perm = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  %w = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<6xf32>> : !mo.tensor<[1, 3, 2, 1], f32>
+  %perm = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi32>> : !mo.tensor<[4], si32>
   %w_t = mo.transpose(%w, %perm) : (!mo.tensor<[1, 3, 2, 1], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[1, 2, 3, 1], f32>
   %w_rs = mo.static.reshape(%w_t) : !mo.tensor<[1, 2, 3, 1], f32> -> !mo.tensor<[2, 3], f32>
   %1 = mo.matmul(%x, %w_rs) : (!mo.tensor<[D0, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[D0, 3], f32>

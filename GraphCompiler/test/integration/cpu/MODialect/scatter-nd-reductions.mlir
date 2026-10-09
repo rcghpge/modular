@@ -21,9 +21,9 @@ mo.graph @scatter_nd_add() -> (!mo.tensor<[4, 1, 2], f64>) {
   //    [[3,   4]],
   //    [[10.5, 12.6]],
   //    [[7,   8]]]
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>} : !mo.tensor<[4, 1, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>} : !mo.tensor<[3, 1, 1, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>} : !mo.tensor<[3, 1, 1], si32>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>> : !mo.tensor<[4, 1, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>> : !mo.tensor<[3, 1, 1, 2], f64>
+  %indices = mo.constant <#M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>> : !mo.tensor<[3, 1, 1], si32>
   %res     = mo.scatter_nd.add(%input, %updates, %indices) : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[3, 1, 1, 2], f64>, !mo.tensor<[3, 1, 1], si32>) -> !mo.tensor<[4, 1, 2], f64>
   mo.output %res : !mo.tensor<[4, 1, 2], f64>
 }
@@ -49,9 +49,9 @@ mo.graph @scatter_nd_max() -> (!mo.tensor<[4, 1, 2], f64>) {
   //    [[3,   4]],
   //    [[5.5, 6.6]],
   //    [[7,   8]]]
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>} : !mo.tensor<[4, 1, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>} : !mo.tensor<[3, 1, 1, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>} : !mo.tensor<[3, 1, 1], si32>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>> : !mo.tensor<[4, 1, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>> : !mo.tensor<[3, 1, 1, 2], f64>
+  %indices = mo.constant <#M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>> : !mo.tensor<[3, 1, 1], si32>
   %res     = mo.scatter_nd.max(%input, %updates, %indices) : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[3, 1, 1, 2], f64>, !mo.tensor<[3, 1, 1], si32>) -> !mo.tensor<[4, 1, 2], f64>
   mo.output %res : !mo.tensor<[4, 1, 2], f64>
 }
@@ -77,9 +77,9 @@ mo.graph @scatter_nd_min() -> (!mo.tensor<[4, 1, 2], f64>) {
   //    [[3, 4]],
   //    [[5, 6]],
   //    [[7, 8]]]
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>} : !mo.tensor<[4, 1, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>} : !mo.tensor<[3, 1, 1, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>} : !mo.tensor<[3, 1, 1], si32>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>> : !mo.tensor<[4, 1, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>> : !mo.tensor<[3, 1, 1, 2], f64>
+  %indices = mo.constant <#M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>> : !mo.tensor<[3, 1, 1], si32>
   %res     = mo.scatter_nd.min(%input, %updates, %indices) : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[3, 1, 1, 2], f64>, !mo.tensor<[3, 1, 1], si32>) -> !mo.tensor<[4, 1, 2], f64>
   mo.output %res : !mo.tensor<[4, 1, 2], f64>
 }
@@ -105,9 +105,9 @@ mo.graph @scatter_nd_mul() -> (!mo.tensor<[4, 1, 2], f64>) {
   //    [[3,    4]],
   //    [[27.5, 39.6]],
   //    [[7,    8]]]
-  %input   = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>} : !mo.tensor<[4, 1, 2], f64>
-  %updates = mo.constant {value = #M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>} : !mo.tensor<[3, 1, 1, 2], f64>
-  %indices = mo.constant {value = #M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>} : !mo.tensor<[3, 1, 1], si32>
+  %input   = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<4x1x2xf64>> : !mo.tensor<[4, 1, 2], f64>
+  %updates = mo.constant <#M.dense_array<1.1, 2.2, 3.3, 4.4, 5.5, 6.6> : tensor<3x1x1x2xf64>> : !mo.tensor<[3, 1, 1, 2], f64>
+  %indices = mo.constant <#M.dense_array<0, 0, 2> : tensor<3x1x1xsi32>> : !mo.tensor<[3, 1, 1], si32>
   %res     = mo.scatter_nd.mul(%input, %updates, %indices) : (!mo.tensor<[4, 1, 2], f64>, !mo.tensor<[3, 1, 1, 2], f64>, !mo.tensor<[3, 1, 1], si32>) -> !mo.tensor<[4, 1, 2], f64>
   mo.output %res : !mo.tensor<[4, 1, 2], f64>
 }

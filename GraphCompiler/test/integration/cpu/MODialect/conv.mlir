@@ -105,17 +105,17 @@ mo.graph @conv_fallback_shape_func<() -> D0, D1, D2, D3>(
   %filter: !mo.tensor<[2, 2, 3, 1], f32, {layout = #mo.layout<RSCF>}>
 ) -> !mo.tensor<[D0, D1, D2, D3], si32> {
 
-  %strides = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %dilations = mo.constant {value = #M.dense_array<3, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi32>} : !mo.tensor<[4], si32>
-  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %strides = mo.constant <#M.dense_array<2, 3> : tensor<2xsi32>> : !mo.tensor<[2], si32>
+  %dilations = mo.constant <#M.dense_array<3, 2> : tensor<2xsi32>> : !mo.tensor<[2], si32>
+  %paddings = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
+  %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D4, D5, D6, D7>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
     {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32, {layout = #mo.layout<RSCF>}>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>, !mo.tensor<[], si64>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D4, D5, D6, D7], si32>
 
   mo.output<D4, D5, D6, D7> %val : !mo.tensor<[D4, D5, D6, D7], si32>
@@ -127,17 +127,17 @@ mo.graph @conv_fallback_padded_shape_func<() -> D0, D1, D2, D3>(
   %filter: !mo.tensor<[2, 2, 3, 1], f32, {layout = #mo.layout<RSCF>}>
 ) -> !mo.tensor<[D0, D1, D2, D3], si32> {
 
-  %strides = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %dilations = mo.constant {value = #M.dense_array<3, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %paddings = mo.constant {value = #M.dense_array<1, 1, 0, 0> : tensor<4xsi32>} : !mo.tensor<[4], si32>
-  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %strides = mo.constant <#M.dense_array<2, 3> : tensor<2xsi32>> : !mo.tensor<[2], si32>
+  %dilations = mo.constant <#M.dense_array<3, 2> : tensor<2xsi32>> : !mo.tensor<[2], si32>
+  %paddings = mo.constant <#M.dense_array<1, 1, 0, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
+  %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D4, D5, D6, D7>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
     {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
     (!mo.tensor<[32, 10, 20, 3], f32>, !mo.tensor<[2, 2, 3, 1], f32, {layout = #mo.layout<RSCF>}>,
      !mo.tensor<[2], si32>, !mo.tensor<[2], si32>, !mo.tensor<[4], si32>, !mo.tensor<[], si64>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D4, D5, D6, D7], si32>
 
   mo.output<D4, D5, D6, D7> %val : !mo.tensor<[D4, D5, D6, D7], si32>
@@ -149,17 +149,17 @@ mo.graph @conv3d_fallback_shape_func<() -> D0, D1, D2, D3, D4>(
   %filter: !mo.tensor<[2, 2, 3, 3, 1], f32, {layout = #mo.layout<QRSCF>}>
 ) -> !mo.tensor<[D0, D1, D2, D3, D4], si32> {
 
-  %strides = mo.constant {value = #M.dense_array<2, 3, 2> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %dilations = mo.constant {value = #M.dense_array<3, 2, 2> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %paddings = mo.constant {value = #M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi32>} : !mo.tensor<[6], si32>
-  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %strides = mo.constant <#M.dense_array<2, 3, 2> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %dilations = mo.constant <#M.dense_array<3, 2, 2> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %paddings = mo.constant <#M.dense_array<0, 0, 0, 0, 0, 0> : tensor<6xsi32>> : !mo.tensor<[6], si32>
+  %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D5, D6, D7, D8, D9>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
     {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
     (!mo.tensor<[2, 10, 20, 7, 3], f32>, !mo.tensor<[2, 2, 3, 3, 1], f32, {layout = #mo.layout<QRSCF>}>,
      !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[6], si32>, !mo.tensor<[], si64>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D5, D6, D7, D8, D9], si32>
 
   mo.output<D5, D6, D7, D8, D9> %val : !mo.tensor<[D5, D6, D7, D8, D9], si32>
@@ -171,17 +171,17 @@ mo.graph @conv3d_fallback_padded_shape_func<() -> D0, D1, D2, D3, D4>(
   %filter: !mo.tensor<[2, 2, 3, 3, 1], f32, {layout = #mo.layout<QRSCF>}>
 ) -> !mo.tensor<[D0, D1, D2, D3, D4], si32> {
 
-  %strides = mo.constant {value = #M.dense_array<2, 3, 2> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %dilations = mo.constant {value = #M.dense_array<3, 2, 2> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %paddings = mo.constant {value = #M.dense_array<3, 0, 0, 0, 2, 2> : tensor<6xsi32>} : !mo.tensor<[6], si32>
-  %num_groups = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
+  %strides = mo.constant <#M.dense_array<2, 3, 2> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %dilations = mo.constant <#M.dense_array<3, 2, 2> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %paddings = mo.constant <#M.dense_array<3, 0, 0, 0, 2, 2> : tensor<6xsi32>> : !mo.tensor<[6], si32>
+  %num_groups = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
 
   mo.invoke_shape_func["mo.conv"]<() -> D5, D6, D7, D8, D9>(%input, %filter, %strides, %dilations, %paddings, %num_groups)
     {dataDeptTensors = [2 : i32, 3 : i32, 4: i32, 5: i32]} :
     (!mo.tensor<[2, 10, 20, 7, 3], f32>, !mo.tensor<[2, 2, 3, 3, 1], f32, {layout = #mo.layout<QRSCF>}>,
      !mo.tensor<[3], si32>, !mo.tensor<[3], si32>, !mo.tensor<[6], si32>, !mo.tensor<[], si64>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D5, D6, D7, D8, D9], si32>
 
   mo.output<D5, D6, D7, D8, D9> %val : !mo.tensor<[D5, D6, D7, D8, D9], si32>

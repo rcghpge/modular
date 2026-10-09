@@ -19,7 +19,7 @@
 // CHECK: return rebind[SIMD[dtype, simd_width]](SIMD[DType.int32, simd_width](7))
 
 mo.graph @concat_constant(%arg: !mo.tensor<[2], si32>) -> (!mo.tensor<[3], si32>) {
-  %c = mo.constant {value = #M.dense_array<7> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %c = mo.constant <#M.dense_array<7> : tensor<1xsi32>> : !mo.tensor<[1], si32>
   %out = mo.concat[0](%c, %arg) : (
     !mo.tensor<[1], si32>, !mo.tensor<[2], si32>
   ) -> !mo.tensor<[3], si32>

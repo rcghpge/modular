@@ -29,17 +29,17 @@
 
 module {
   mo.graph @qwen3_5<total_seq_len, input_row_offsets_len, return_n_logits, total_num_pages, replica_0_batch_size, replica_0_max_num_pages, replica_0_steps_remaining, batch_size, max_slots, vision_merged_seq_len, total_image_tokens>(%arg0: !mo.tensor<[total_seq_len], si64, gpu:0>, %arg1: !mo.tensor<[input_row_offsets_len], ui32, gpu:0>, %arg2: !mo.tensor<[return_n_logits], si64>, %arg3: !mo.buffer<[269484032], ui8, gpu:0>, %arg4: !kv_cache, %arg5: !mo.tensor<[replica_0_batch_size], ui32, gpu:0>, %arg6: !mo.tensor<[replica_0_batch_size, replica_0_max_num_pages], ui32, gpu:0>, %arg7: !mo.tensor<[replica_0_steps_remaining, 2], ui32>, %arg8: !mo.tensor<[4], si64>, %arg9: !mo.tensor<[batch_size], ui32, gpu:0>, %arg10: !conv_state, %arg11: !conv_state, %arg12: !conv_state, %arg13: !recurrent_state, %arg14: !recurrent_state, %arg15: !recurrent_state, %arg16: !mo.tensor<[vision_merged_seq_len, 4096], bf16, gpu:0>, %arg17: !mo.tensor<[total_image_tokens], si32, gpu:0>) -> !hidden attributes {_kernel_library_paths = [], argument_names = ["input0", "input1", "input2", "input3", "input4", "input5", "input6", "input7", "input8", "input9", "input10", "input11", "input12", "input13", "input14", "input15", "input16", "input17"], result_names = ["output0"]} {
-    %c0_ui32 = mo.constant {value = #M.dense_array<0> : tensor<ui32>} : !mo.tensor<[], ui32>
-    %f32_one = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-    %f32_16 = mo.constant {value = #M.dense_array<1.600000e+01> : tensor<f32>} : !mo.tensor<[], f32>
-    %f32_zero = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
-    %f64_one = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<f64>} : !mo.tensor<[], f64>
-    %rope_theta = mo.constant {value = #M.dense_array<1.000000e+07> : tensor<f64>} : !mo.tensor<[], f64>
-    %f64_two = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f64>} : !mo.tensor<[], f64>
-    %f64_64 = mo.constant {value = #M.dense_array<6.400000e+01> : tensor<f64>} : !mo.tensor<[], f64>
-    %f64_zero = mo.constant {value = #M.dense_array<0.000000e+00> : tensor<f64>} : !mo.tensor<[], f64>
-    %vocab_size = mo.constant {value = #M.dense_array<248320> : tensor<si64>} : !mo.tensor<[], si64, gpu:0>
-    %c0_si64 = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64, gpu:0>
+    %c0_ui32 = mo.constant <#M.dense_array<0> : tensor<ui32>> : !mo.tensor<[], ui32>
+    %f32_one = mo.constant <#M.dense_array<1.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
+    %f32_16 = mo.constant <#M.dense_array<1.600000e+01> : tensor<f32>> : !mo.tensor<[], f32>
+    %f32_zero = mo.constant <#M.dense_array<0.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
+    %f64_one = mo.constant <#M.dense_array<1.000000e+00> : tensor<f64>> : !mo.tensor<[], f64>
+    %rope_theta = mo.constant <#M.dense_array<1.000000e+07> : tensor<f64>> : !mo.tensor<[], f64>
+    %f64_two = mo.constant <#M.dense_array<2.000000e+00> : tensor<f64>> : !mo.tensor<[], f64>
+    %f64_64 = mo.constant <#M.dense_array<6.400000e+01> : tensor<f64>> : !mo.tensor<[], f64>
+    %f64_zero = mo.constant <#M.dense_array<0.000000e+00> : tensor<f64>> : !mo.tensor<[], f64>
+    %vocab_size = mo.constant <#M.dense_array<248320> : tensor<si64>> : !mo.tensor<[], si64, gpu:0>
+    %c0_si64 = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64, gpu:0>
     %embed_weight = mo.constant.external {align = 1 : ui64, device = #M.device_ref<"cpu", 0>, name = "embed_tokens.weight"} : !mo.tensor<[248320, 4096], bf16>
     %chain0 = mo.chain.create()
     %embed_sliced = rmo.slice(%embed_weight) [starts = #mosh<ape[0, 0]> : !mosh.ape, stops = #mosh<ape[248320, 4096]> : !mosh.ape, steps = #mosh<ape[1, 1]> : !mosh.ape] : (!mo.tensor<[248320, 4096], bf16>) -> !mo.tensor<[248320, 4096], bf16>

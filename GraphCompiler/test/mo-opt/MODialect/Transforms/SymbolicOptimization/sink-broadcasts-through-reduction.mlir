@@ -121,7 +121,7 @@ mo.graph @reduce_sinking_success_argmin_on_new_bcasted_dim<A, B, P1, P2, P3>(
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @reduce_sinking_success_argmin_on_new_bcasted_dim<[[A:[A-Z0-9]*]], [[B:[A-Z0-9]*]], [[P1:[A-Z0-9]*]], [[P2:[A-Z0-9]*]], [[P3:[A-Z0-9]*]]>
 // CHECK-SAME: ([[INPUT:%.*]]: !mo.tensor<[[[A]], [[B]]], f32>) -> (!mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>, !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>) {
-// CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0> : tensor<si64>} : !mo.tensor<[], si64>
+// CHECK-NEXT: [[V0:%.*]] = mo.constant <#M.dense_array<0> : tensor<si64>> : !mo.tensor<[], si64>
 // CHECK-NEXT: [[V1:%.*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], si64> -> !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>
 // CHECK-NEXT: mo.output [[V1]], [[V1]] : !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>, !mo.tensor<[1, [[P2]], [[P3]], [[A]], [[B]]], si64>
 

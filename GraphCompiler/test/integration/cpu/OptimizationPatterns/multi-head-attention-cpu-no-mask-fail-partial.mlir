@@ -8,7 +8,7 @@ mo.graph @cpu_flash_attn_pattern<BH, B, H, S, D>(
     %value_pre_transposed: !mo.tensor<[B, S, H, D], f32>,
     %norm: !mo.tensor<[BH, S, S], f32>
 ) -> !mo.tensor<[B, H, S, D], f32> {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
     %value = mo.transpose(%value_pre_transposed, %perm1) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, H, S, D], f32>
     %value_reshaped = mo.static.reshape(%value) : !mo.tensor<[B, H, S, D], f32> -> !mo.tensor<[BH, S, D], f32>
 

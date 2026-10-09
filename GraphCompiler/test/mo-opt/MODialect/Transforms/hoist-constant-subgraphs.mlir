@@ -232,7 +232,7 @@ mo.graph @param_declare_op<seq_len>(%arg0: !mo.tensor<[seq_len], f32>, %arg1_inv
   // This assert can be hoisted as it only depends on seq_len
   kgen.param.declare ASSERT: !mo.chain = <apply(:(!kgen.scalar<bool>) -> !mo.chain "mo.assert"{message = "rebind shape check failed" : !kgen.string}, identical(:scalar<si64> seq_len, 1))>
 
-  %86 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %86 = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %1715 = mo.slice<() -> NEW_DIM>(%arg0, %86, %86, %86) : (!mo.tensor<[seq_len], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[NEW_DIM], f32>
 
   // This assert cannot be hoisted as it depends on NEW_DIM, which is defined

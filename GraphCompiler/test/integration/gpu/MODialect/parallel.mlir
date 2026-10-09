@@ -6,8 +6,8 @@
 
 // Test for mo.parallel op on GPU
 mo.graph @parallel_gpu_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
-  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
-  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
+  %const1 = mo.constant <#M.dense_array<1, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32, gpu:0>
+  %const2 = mo.constant <#M.dense_array<-9, 8, -7> : tensor<3xsi32>> : !mo.tensor<[3], si32, gpu:0>
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>) -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>]>) {
@@ -28,8 +28,8 @@ mo.graph @parallel_gpu_op() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
 
 // Test mo.parallel with multiple kernels on GPU: negative then relu.
 mo.graph @parallel_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si32>) {
-  %const1 = mo.constant {value = #M.dense_array<1, -2, 3> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
-  %const2 = mo.constant {value = #M.dense_array<-9, 8, -7> : tensor<3xsi32>} : !mo.tensor<[3], si32, gpu:0>
+  %const1 = mo.constant <#M.dense_array<1, -2, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32, gpu:0>
+  %const2 = mo.constant <#M.dense_array<-9, 8, -7> : tensor<3xsi32>> : !mo.tensor<[3], si32, gpu:0>
   %bundle = mo.tensor.bundle(%const1, %const2) : (!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>) -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>]>)
          -> (!mo.bundle<[!mo.tensor<[3], si32, gpu:0>, !mo.tensor<[3], si32, gpu:0>]>) {

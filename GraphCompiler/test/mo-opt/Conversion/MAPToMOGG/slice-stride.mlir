@@ -36,9 +36,9 @@
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 mo.graph @sliceStaticBounds(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 32], f32>
@@ -76,8 +76,8 @@ mo.graph @sliceNegativeStartDynamicInDim(
     %input: !mo.tensor<[?, 64], f32>,
     %stop: !mo.tensor<[2], si64>)
     -> !mo.tensor<[?, 64], f32> {
-  %start = mo.constant {value = #M.dense_array<-8, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<-8, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[?, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[?, 64], f32>
@@ -95,8 +95,8 @@ mo.graph @slicePositiveStartDynamicInDim(
     %input: !mo.tensor<[?, 64], f32>,
     %stop: !mo.tensor<[2], si64>)
     -> !mo.tensor<[?, 64], f32> {
-  %start = mo.constant {value = #M.dense_array<2, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<2, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[?, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[?, 64], f32>

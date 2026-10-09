@@ -35,7 +35,7 @@
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.transpose(%input, %perm) : (
     !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 2], f32>
@@ -49,7 +49,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f
 // CHECK-LABEL: mo.graph @transpose3D
 // CHECK: mogg.tensor.create.transpose(%{{.*}}, %{{.*}}) {{.*}}outShape = #mosh<ape[4, 2, 3]>{{.*}}staticPermutations = array<i64: 2, 0, 1>{{.*}} : (!mogg.tensor, !mogg.tensor) -> !mogg.tensor
 mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[4, 2, 3], f32> {
-  %perm = mo.constant {value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant <#M.dense_array<2, 0, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %res = mo.transpose(%input, %perm) : (
     !mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[4, 2, 3], f32>

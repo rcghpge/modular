@@ -14,12 +14,12 @@
 // CHECK-NEXT:    [[VAL:%[^ ]+]] = mogg.tensor.load [[ARG]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK-NEXT:    mogg.tensor.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @chainedSliceStride(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[2, 16], f32> {
-  %start0 = mo.constant {value = #M.dense_array<1, 16> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop0 = mo.constant {value = #M.dense_array<5, 48> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step0 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<1, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop1 = mo.constant {value = #M.dense_array<3, 24> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step1 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<1, 16> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop0 = mo.constant <#M.dense_array<5, 48> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step0 = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<1, 8> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop1 = mo.constant <#M.dense_array<3, 24> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step1 = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = map.iter.opaque
     inputs (%input: !mo.tensor<[10, 64], f32>, %start0: !mo.tensor<[2], si64>, %stop0: !mo.tensor<[2], si64>, %step0: !mo.tensor<[2], si64>, %start1: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>, %step1: !mo.tensor<[2], si64>)
     outputs (%out: !mo.tensor<[2, 16], f32>) {

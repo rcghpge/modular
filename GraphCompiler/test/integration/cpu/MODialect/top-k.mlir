@@ -38,7 +38,7 @@ mo.graph @top_k_fallback_shape_func<() -> D0, D1, D2, D3>(
     {dataDeptTensors = [1 : i32, 2 : i32]} :
     (!mo.tensor<[32, 10, 20, 3], si64>, !mo.tensor<[], si64>, !mo.tensor<[], si64>, !mo.tensor<[], bool>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D4, D5, D6, D7], si32>
 
   mo.output<D4, D5, D6, D7> %val : !mo.tensor<[D4, D5, D6, D7], si32>

@@ -14,14 +14,14 @@
 // statically known slice result extent (2 and 2).
 
 // CHECK-LABEL: mo.graph @slice_to_split_dynamic_stop
-// CHECK:       %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2>
+// CHECK:       %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2>
 // CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) {axis = 1 : index}
 // CHECK:       mo.output %[[SPLIT]]#0, %[[SPLIT]]#1
 
 mo.graph @slice_to_split_dynamic_stop(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %start0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %slice0 = mo.slice(%arg0, %start0, %stop0, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   %slice1 = mo.slice(%arg0, %start1, %stop1, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %slice0, %slice1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -39,9 +39,9 @@ mo.graph @slice_to_split_dynamic_stop(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !m
 // CHECK:       mo.slice
 
 mo.graph @no_conversion_dynamic_stop_step_not_one(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %start0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<0, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %slice0 = mo.slice(%arg0, %start0, %stop0, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   %slice1 = mo.slice(%arg0, %start1, %stop1, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %slice0, %slice1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -55,14 +55,14 @@ mo.graph @no_conversion_dynamic_stop_step_not_one(%arg0: !mo.tensor<[2, 4], f32>
 // two results, which reads back as the input rotated by 2 (GEX-4199).
 
 // CHECK-LABEL: mo.graph @slice_to_split_negative_start
-// CHECK:       %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2>
+// CHECK:       %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2>
 // CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) {axis = 1 : index}
 // CHECK:       mo.output %[[SPLIT]]#0, %[[SPLIT]]#1
 
 mo.graph @slice_to_split_negative_start(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %start0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<0, -2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, -2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %slice0 = mo.slice(%arg0, %start0, %stop0, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   %slice1 = mo.slice(%arg0, %start1, %stop1, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %slice0, %slice1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -79,9 +79,9 @@ mo.graph @slice_to_split_negative_start(%arg0: !mo.tensor<[2, 4], f32>, %stop0: 
 // CHECK:       mo.slice
 
 mo.graph @no_conversion_start_outside_axis(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %start0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<0, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, 8> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %slice0 = mo.slice(%arg0, %start0, %stop0, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   %slice1 = mo.slice(%arg0, %start1, %stop1, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %slice0, %slice1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -98,9 +98,9 @@ mo.graph @no_conversion_start_outside_axis(%arg0: !mo.tensor<[2, 4], f32>, %stop
 // CHECK:       mo.slice
 
 mo.graph @no_conversion_clamped_starts_overlap(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %start0 = mo.constant {value = #M.dense_array<0, -100> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, -100> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %slice0 = mo.slice(%arg0, %start0, %stop0, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   %slice1 = mo.slice(%arg0, %start1, %stop1, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %slice0, %slice1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>
@@ -112,14 +112,14 @@ mo.graph @no_conversion_clamped_starts_overlap(%arg0: !mo.tensor<[2, 4], f32>, %
 // of 0 would name, so it pairs with the slice starting at 2 to tile the axis.
 
 // CHECK-LABEL: mo.graph @clamped_negative_start_folds
-// CHECK:       %[[SIZES:.*]] = mo.constant {value = #M.dense_array<2, 2>
+// CHECK:       %[[SIZES:.*]] = mo.constant <#M.dense_array<2, 2>
 // CHECK:       %[[SPLIT:.*]]:2 = mo.split(%arg0, %[[SIZES]]) {axis = 1 : index}
 // CHECK:       mo.output %[[SPLIT]]#0, %[[SPLIT]]#1
 
 mo.graph @clamped_negative_start_folds(%arg0: !mo.tensor<[2, 4], f32>, %stop0: !mo.tensor<[2], si64>, %stop1: !mo.tensor<[2], si64>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %start0 = mo.constant {value = #M.dense_array<0, -100> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<0, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, -100> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %slice0 = mo.slice(%arg0, %start0, %stop0, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   %slice1 = mo.slice(%arg0, %start1, %stop1, %step) : (!mo.tensor<[2, 4], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 2], f32>
   mo.output %slice0, %slice1 : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>

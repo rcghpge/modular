@@ -11,9 +11,9 @@
 // CHECK: 'trait_tensor_tuple_add_mixed_dtypes_gpu' returned tensor<2xf32> [3.000000e+00, 4.000000e+00]
 // CHECK-NEXT: , tensor<3xsi32> [5, 6, 12]
 mo.graph @trait_tensor_tuple_add_mixed_dtypes_gpu() -> (!mo.tensor<[2], f32>, !mo.tensor<[3], si32>) {
-  %in1 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %in2 = mo.constant {value = #M.dense_array<3.0, 4.0, 10.0> : tensor<3xf64>} : !mo.tensor<[3], f64>
-  %bias = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %in1 = mo.constant <#M.dense_array<1, 2> : tensor<2xsi32>> : !mo.tensor<[2], si32>
+  %in2 = mo.constant <#M.dense_array<3.0, 4.0, 10.0> : tensor<3xf64>> : !mo.tensor<[3], f64>
+  %bias = mo.constant <#M.dense_array<2.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %ch0 = mo.chain.create()
   %in1_gpu, %ch1 = mo.transfer[%ch0] %in1 : !mo.tensor<[2], si32> to <"gpu", 0>
   %in2_gpu, %ch2 = mo.transfer[%ch1] %in2 : !mo.tensor<[3], f64> to <"gpu", 0>
@@ -33,10 +33,10 @@ mo.graph @trait_tensor_tuple_add_mixed_dtypes_gpu() -> (!mo.tensor<[2], f32>, !m
 // CHECK-NEXT: , tensor<3xsi32> [1010, 1020, 1030]
 // CHECK-NEXT: , tensor<1xsi32> [1100]
 mo.graph @trait_tensor_tuple_add_size3_si32_gpu() -> (!mo.tensor<[2], si32>, !mo.tensor<[3], si32>, !mo.tensor<[1], si32>) {
-  %in1 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %in2 = mo.constant {value = #M.dense_array<10, 20, 30> : tensor<3xsi32>} : !mo.tensor<[3], si32>
-  %in3 = mo.constant {value = #M.dense_array<100> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %bias = mo.constant {value = #M.dense_array<1000> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %in1 = mo.constant <#M.dense_array<1, 2> : tensor<2xsi32>> : !mo.tensor<[2], si32>
+  %in2 = mo.constant <#M.dense_array<10, 20, 30> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %in3 = mo.constant <#M.dense_array<100> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+  %bias = mo.constant <#M.dense_array<1000> : tensor<1xsi32>> : !mo.tensor<[1], si32>
   %ch0 = mo.chain.create()
   %in1_gpu, %ch1 = mo.transfer[%ch0] %in1 : !mo.tensor<[2], si32> to <"gpu", 0>
   %in2_gpu, %ch2 = mo.transfer[%ch1] %in2 : !mo.tensor<[3], si32> to <"gpu", 0>
@@ -58,8 +58,8 @@ mo.graph @trait_tensor_tuple_add_size3_si32_gpu() -> (!mo.tensor<[2], si32>, !mo
 // One-element tuples bind exactly as single trait arguments would.
 // CHECK: 'trait_tensor_tuple_add_size1_f32_gpu' returned tensor<2xf32> [8.000000e+00, 9.000000e+00]
 mo.graph @trait_tensor_tuple_add_size1_f32_gpu() -> !mo.tensor<[2], f32> {
-  %in1 = mo.constant {value = #M.dense_array<7.0, 8.0> : tensor<2xf32>} : !mo.tensor<[2], f32>
-  %bias = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %in1 = mo.constant <#M.dense_array<7.0, 8.0> : tensor<2xf32>> : !mo.tensor<[2], f32>
+  %bias = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %ch0 = mo.chain.create()
   %in1_gpu, %ch1 = mo.transfer[%ch0] %in1 : !mo.tensor<[2], f32> to <"gpu", 0>
   %bias_gpu, %ch2 = mo.transfer[%ch1] %bias : !mo.tensor<[1], f32> to <"gpu", 0>

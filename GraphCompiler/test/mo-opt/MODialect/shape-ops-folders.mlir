@@ -8,7 +8,7 @@
 
 // CHECK-LABEL: mo.graph @shape_of_fold_static
 mo.graph @shape_of_fold_static(%arg0: !mo.tensor<[1, 1, 4, 14], bf16>) -> !mo.tensor<[4], si64> {
-  // CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<1, 1, 4, 14> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  // CHECK-NEXT: [[V0:%.*]] = mo.constant <#M.dense_array<1, 1, 4, 14> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %0 = mo.shape_of(%arg0) : (!mo.tensor<[1, 1, 4, 14], bf16>) -> !mo.tensor<[4], si64>
   // CHECK-NEXT: mo.output [[V0]]
   mo.output %0 : !mo.tensor<[4], si64>
@@ -42,12 +42,12 @@ mo.graph @to_tensor_fold<D0, D1, Sh0: !mosh.ape>() -> (
   // CHECK-SAME: !mo.tensor<{{\[}}[[D1]]{{\]}}, si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>
   !mo.tensor<[D1], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[1], si32>, !mo.tensor<[D0], si32>
 ) {
-  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<17, 42> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[VAL0:.*]] = mo.constant <#M.dense_array<17, 42> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   // CHECK-DAG: %[[VAL1:.*]] = mosh.param.to_value: !mosh.ape = <[[SH0]]>
   // CHECK-DAG: %[[VAL2:.*]] = mosh.param.to_value: !mosh.ape = <{{\[}}[[D0]], 42{{\]}}>
   // CHECK-DAG: %[[VAL3:.*]] = mo.shape.to_tensor(%[[VAL1]]) -> !mo.tensor<{{\[}}[[D1]]{{\]}}, si64>
   // CHECK-DAG: %[[VAL4:.*]] = mo.shape.to_tensor(%[[VAL2]]) -> !mo.tensor<[2], si64>
-  // CHECK-DAG: %[[VAL5:.*]] = mo.constant {value = #M.dense_array<23> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  // CHECK-DAG: %[[VAL5:.*]] = mo.constant <#M.dense_array<23> : tensor<1xsi32>> : !mo.tensor<[1], si32>
   // CHECK-DAG: %[[VAL6:.*]] = mo.rebind(%[[VAL5]]) : !mo.tensor<[1], si32> -> !mo.tensor<{{\[}}[[D0]]{{\]}}, si32>
   %sh0 = mosh.param.to_value: !mosh.ape = <Sh0>
   %sh1 = mosh.param.to_value: !mosh.ape = <[D0, 42]>
@@ -113,7 +113,7 @@ mo.graph @from_tensor_to_tensor<Sh: !mosh.ape -> O0: !mosh.ape>(%arg: !mo.tensor
 // CHECK-LABEL: mo.graph @from_tensor_constant
 // CHECK: kgen.param.declare SH: !mosh.ape = <[2]>
 mo.graph @from_tensor_constant<() -> Sh0: !mosh.ape>() {
-  %1 = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[1], si64>
+  %1 = mo.constant <#M.dense_array<2> : tensor<si64>> : !mo.tensor<[1], si64>
   %sh = mo.shape.from_tensor(%1) : (!mo.tensor<[1], si64>) -> !mosh.ape
 
   mosh.param.from_value SH : !mosh.ape = %sh

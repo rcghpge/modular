@@ -5,8 +5,8 @@
 // results. The rank-0 constant 10.0 is broadcast and added to
 // [1, 2, 3, 4], yielding [11, 12, 13, 14].
 mo.graph @scalar_add_const() -> (!mo.tensor<[4], f32>) {
-  %x = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
-  %s = mo.constant {value = #M.dense_array<1.000000e+01> : tensor<f32>} : !mo.tensor<[], f32>
+  %x = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> : !mo.tensor<[4], f32>
+  %s = mo.constant <#M.dense_array<1.000000e+01> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %r = mo.add(%x, %b) : !mo.tensor<[4], f32>
   mo.output %r : !mo.tensor<[4], f32>
@@ -18,8 +18,8 @@ mo.graph @scalar_add_const() -> (!mo.tensor<[4], f32>) {
 // `FloatLiteral`, so wrapping a fractional value fails to compile. Adding 0.5
 // to [1, 2, 3, 4] yields [1.5, 2.5, 3.5, 4.5].
 mo.graph @scalar_add_fractional() -> (!mo.tensor<[4], f32>) {
-  %x = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
-  %s = mo.constant {value = #M.dense_array<5.000000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %x = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> : !mo.tensor<[4], f32>
+  %s = mo.constant <#M.dense_array<5.000000e-01> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %r = mo.add(%x, %b) : !mo.tensor<[4], f32>
   mo.output %r : !mo.tensor<[4], f32>
@@ -29,8 +29,8 @@ mo.graph @scalar_add_fractional() -> (!mo.tensor<[4], f32>) {
 // A -inf constant (no Mojo float literal) is inlined via the numerics helper.
 // Adding -inf yields -inf for every element.
 mo.graph @scalar_add_neg_inf() -> (!mo.tensor<[4], f32>) {
-  %x = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
-  %s = mo.constant {value = #M.dense_array<0xFF800000> : tensor<f32>} : !mo.tensor<[], f32>
+  %x = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<4xf32>> : !mo.tensor<[4], f32>
+  %s = mo.constant <#M.dense_array<0xFF800000> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%s) : !mo.tensor<[], f32> -> !mo.tensor<[4], f32>
   %r = mo.add(%x, %b) : !mo.tensor<[4], f32>
   mo.output %r : !mo.tensor<[4], f32>
@@ -42,7 +42,7 @@ mo.graph @scalar_add_neg_inf() -> (!mo.tensor<[4], f32>) {
 // all-ones input, every element becomes 0.5, so softmax over each row of 3
 // equal values yields 1/3.
 mo.graph @softmax_mul_const_prologue(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.tensor<[2, 3], f32>) {
-  %s = mo.constant {value = #M.dense_array<5.000000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %s = mo.constant <#M.dense_array<5.000000e-01> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%s) : !mo.tensor<[], f32> -> !mo.tensor<[2, 3], f32>
   %mul = mo.mul(%arg0, %b) : !mo.tensor<[2, 3], f32>
   %sm = mo.reduce.softmax(%mul) {axis = 1 : index} : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
@@ -55,7 +55,7 @@ mo.graph @softmax_mul_const_prologue(%arg0: !mo.tensor<[2, 3], f32>) -> (!mo.ten
 // matmul. With all-ones inputs, each matmul element is 4, so scaling by 0.25
 // yields 1 for every element.
 mo.graph @matmul_mul_const_epilogue(%A: !mo.tensor<[5, 4], f32>, %B: !mo.tensor<[4, 4], f32>) -> (!mo.tensor<[5, 4], f32>) {
-  %s = mo.constant {value = #M.dense_array<2.500000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %s = mo.constant <#M.dense_array<2.500000e-01> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%s) : !mo.tensor<[], f32> -> !mo.tensor<[5, 4], f32>
   %mm = mo.matmul(%A, %B) : (!mo.tensor<[5, 4], f32>, !mo.tensor<[4, 4], f32>) -> !mo.tensor<[5, 4], f32>
   %mul = mo.mul(%mm, %b) : !mo.tensor<[5, 4], f32>

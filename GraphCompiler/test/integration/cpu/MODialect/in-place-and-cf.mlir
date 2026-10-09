@@ -62,8 +62,8 @@ mo.graph @basic_if_fb(%buf: !bt, %true: !condt) -> (!bt, !c)
 mo.graph @basic_while(%buf: !bt) -> (!bt, !c) {
    %ch0 = mo.chain.create()
 
-   %x = mo.constant {value = #M.dense_array<1.0, 1.0> : tensor<2xf32> } : !mo.tensor<[2], f32>
-   %y = mo.constant {value = #M.dense_array<4.0> : tensor<1xf32> } : !mo.tensor<[], f32>
+   %x = mo.constant <#M.dense_array<1.0, 1.0> : tensor<2xf32>> : !mo.tensor<[2], f32>
+   %y = mo.constant <#M.dense_array<4.0> : tensor<1xf32>> : !mo.tensor<[], f32>
 
    // Need this slightly weird structure of passing in the chain like this due
    // to the structure of a mo.while op -- the signature of the shadowed

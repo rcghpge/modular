@@ -27,7 +27,7 @@
 // CHECK-NEXT:      [[SUM:%[^ ]+]] = mogg.call.elementwise @builtin_kernels.elementwise.Add([[VAL]], [[CST]]) moOpName = "mo.add" : f32, f32 -> f32
 // CHECK-NEXT:      mogg.tensor.store [[OUT]]{{\[}}[[IDX]]] = [[SUM]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @addConstant(%x: !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32> {
-  %cst = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<2.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[8, 64], f32>
   %r = mo.add(%x, %b) : !mo.tensor<[8, 64], f32>
   mo.output %r : !mo.tensor<[8, 64], f32>
@@ -45,7 +45,7 @@ mo.graph @addConstant(%x: !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32> 
 // CHECK-NEXT:      [[CST2:%[^ ]+]] = mogg.constant.scalar 5.000000e-01 : f32 : f32
 // CHECK-NEXT:      mogg.tensor.store [[OUT2]]{{\[}}[[IDX2]]] = [[CST2]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @broadcastConstant() -> !mo.tensor<[8, 64], f32> {
-  %cst = mo.constant {value = #M.dense_array<5.000000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<5.000000e-01> : tensor<f32>> : !mo.tensor<[], f32>
   %b = mo.static.broadcast_to(%cst) : !mo.tensor<[], f32> -> !mo.tensor<[8, 64], f32>
   mo.output %b : !mo.tensor<[8, 64], f32>
 }

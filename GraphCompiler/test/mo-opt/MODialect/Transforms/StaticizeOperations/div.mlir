@@ -10,7 +10,7 @@ mo.graph @div_scalar<N -> out>(
 
   %n = mosh.param.to_value = <N>
   %n_scalar = mo.index.to_tensor(%n) -> !mo.tensor<[], si64>
-  %two = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
+  %two = mo.constant <#M.dense_array<2> : tensor<si64>> : !mo.tensor<[], si64>
   %div = mo.div(%n_scalar, %two) : !mo.tensor<[], si64>
   %shape = mo.static.reshape(%div) : !mo.tensor<[], si64> -> !mo.tensor<[1], si64>
   
@@ -33,7 +33,7 @@ mo.graph @div_non_scalar<N1, N2 -> out0, out1>(
 ) -> !mo.tensor<[out0, out1], si64> {
 
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[N1, N2], si64>) -> !mo.tensor<[2], si64>
-  %const = mo.constant {value = #M.dense_array<2, 3> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %const = mo.constant <#M.dense_array<2, 3> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %shape = mo.div(%dummy_shape, %const) : !mo.tensor<[2], si64>
 
   // CHECK-NEXT: [[RES:%.*]] = mo.static.broadcast_to([[INPUT]]) : {{.*}} -> !mo.tensor<[div([[N1]], 2), div([[N2]], 3)], si64>

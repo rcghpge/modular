@@ -62,7 +62,7 @@ mo.graph @extra_input_bundle_mismatch(
 // the terminator's last operand. Here the body drops it.
 mo.graph @chained_yield_missing_chain(%sig0: !mo.buffer<[1], ui8, gpu:0>)
     -> (!mo.tensor<[3], f32, gpu:0>) {
-  %in = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
+  %in = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>> : !mo.tensor<[3], f32, gpu:0>
   %dt = mo.tensor.bundle(%in) : (!mo.tensor<[3], f32, gpu:0>) -> (!mo.bundle<[3], f32, gpu:0>)
   %ch = mo.chain.create()
   // expected-error @below {{'mo.parallel' op mo.yield must produce a trailing !mo.chain when the parallel is chained}}
@@ -79,7 +79,7 @@ mo.graph @chained_yield_missing_chain(%sig0: !mo.buffer<[1], ui8, gpu:0>)
 
 // A chainless parallel must not yield a chain.
 mo.graph @chainless_yields_chain() -> (!mo.tensor<[3], f32, gpu:0>) {
-  %in = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
+  %in = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>> : !mo.tensor<[3], f32, gpu:0>
   %dt = mo.tensor.bundle(%in) : (!mo.tensor<[3], f32, gpu:0>) -> (!mo.bundle<[3], f32, gpu:0>)
   %ch = mo.chain.create()
   // expected-error @below {{'mo.parallel' op chainless parallel must not yield a chain}}

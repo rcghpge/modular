@@ -10,7 +10,7 @@ mo.graph @matmul_existing_transb(
   %x: !mo.tensor<[4, 2], f32, gpu:0>,
   %w: !mo.tensor<[4, 2], f32, gpu:0>
 ) -> !mo.tensor<[4, 4], f32, gpu:0> {
-  %axes = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %axes = mo.constant <#M.dense_array<1, 0> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %w_t = mo.transpose(%w, %axes) : (!mo.tensor<[4, 2], f32, gpu:0>, !mo.tensor<[2], si32>) -> !mo.tensor<[2, 4], f32, gpu:0>
   %mm1 = mo.matmul(%w, %w_t) : (!mo.tensor<[4, 2], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:0>) -> !mo.tensor<[4, 4], f32, gpu:0>
   mo.output %mm1 : !mo.tensor<[4, 4], f32, gpu:0>
@@ -22,12 +22,12 @@ mo.graph @matmul_existing_transb(
 // CHECK-LABEL: mo.graph @gpu_matmul_prefers_transpose
 
 // Note: constant is transposed from what it was before
-// CHECK: mo.constant {value = #M.dense_array<1.000000e+00, 4.000000e+00, 2.000000e+00, 5.000000e+00, 3.000000e+00, 6.000000e+00> : !M.array<6xf32>} : !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>
+// CHECK: mo.constant <#M.dense_array<1.000000e+00, 4.000000e+00, 2.000000e+00, 5.000000e+00, 3.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>
 // CHECK: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
 // CHECK: mo.matmul({{.*}}) {transpose_b = true} : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[3, 2], f32, gpu:0, {layout = #mo.layout<NK>}>) -> !mo.tensor<[2, 3], f32, gpu:0>
 // CHECK-NOT: mo.matmul
 mo.graph @gpu_matmul_prefers_transpose(%arg0: !mo.tensor<[2, 2], f32, gpu:0>, %arg1: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>} : !mo.tensor<[2, 3], f32, gpu:0>
+  %0 = mo.constant <#M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[2, 3], f32, gpu:0>
   %1 = mo.matmul(%arg0, %0) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   %2 = mo.matmul(%arg1, %0) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   %3 = mo.add(%1, %2) : !mo.tensor<[2, 3], f32, gpu:0>
@@ -36,13 +36,13 @@ mo.graph @gpu_matmul_prefers_transpose(%arg0: !mo.tensor<[2, 2], f32, gpu:0>, %a
 
 // We don't transform the matmul's weights since they have non-matmul uses
 // CHECK-LABEL: mo.graph @gpu_matmul_no_transform_non_matmul_uses
-// CHECK: mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>} : !mo.tensor<[2, 3], f32, gpu:0, {layout = #mo.layout<KN>}>
+// CHECK: mo.constant <#M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[2, 3], f32, gpu:0, {layout = #mo.layout<KN>}>
 
 // No more transforms or constants so all matmuls must be used the above constant
 // CHECK-NOT: mo.transpose
 // CHECK-NOT: mo.constant
 mo.graph @gpu_matmul_no_transform_non_matmul_uses(%arg0: !mo.tensor<[2, 2], f32, gpu:0>, %arg1: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>} : !mo.tensor<[2, 3], f32, gpu:0>
+  %0 = mo.constant <#M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[2, 3], f32, gpu:0>
   %1 = mo.matmul(%arg0, %0) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   %2 = mo.matmul(%arg1, %0) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[2, 3], f32, gpu:0>
   %3 = mo.add(%1, %2) : !mo.tensor<[2, 3], f32, gpu:0>
@@ -52,13 +52,13 @@ mo.graph @gpu_matmul_no_transform_non_matmul_uses(%arg0: !mo.tensor<[2, 2], f32,
 
 // We don't transform the matmul's weights since a matmul is not run on gpu
 // CHECK-LABEL: mo.graph @gpu_matmul_no_transform_non_gpu_uses
-// CHECK: mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>} : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
+// CHECK: mo.constant <#M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[2, 3], f32, {layout = #mo.layout<KN>}>
 
 // No more transforms or constants so all matmuls must be used the above constant
 // CHECK-NOT: mo.transpose
 // CHECK-NOT: mo.constant
 mo.graph @gpu_matmul_no_transform_non_gpu_uses(%arg0: !mo.tensor<[2, 2], f32>, %arg1: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 3], f32> {
-  %0 = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>} : !mo.tensor<[2, 3], f32>
+  %0 = mo.constant <#M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00> : !M.array<6xf32>> : !mo.tensor<[2, 3], f32>
   %1 = mo.matmul(%arg0, %0) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   %2 = mo.matmul(%arg1, %0) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f32>
   %3 = mo.add(%1, %2) : !mo.tensor<[2, 3], f32>

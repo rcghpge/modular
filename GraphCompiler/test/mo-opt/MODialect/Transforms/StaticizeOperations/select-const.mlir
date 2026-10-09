@@ -9,7 +9,7 @@ mo.graph @select_const_cond<N1, N2, N3, N4 -> O1, O2>(
   %dummy2: !mo.tensor<[N3, N4], f32>
 ) -> !mo.tensor<[O1, O2], f32> {
 
-  %cond = mo.constant {value = #M.dense_array<1, 0> : !M.array<2xi8>} : !mo.tensor<[2], bool>
+  %cond = mo.constant <#M.dense_array<1, 0> : !M.array<2xi8>> : !mo.tensor<[2], bool>
   %dummy1_shape = mo.shape_of(%dummy1) : (!mo.tensor<[N1, N2], f32>) -> !mo.tensor<[2], si32>
   %dummy2_shape = mo.shape_of(%dummy2) : (!mo.tensor<[N3, N4], f32>) -> !mo.tensor<[2], si32>
   %shape = mo.select(%cond, %dummy1_shape, %dummy2_shape) : (

@@ -4,16 +4,16 @@
 // CHECK: mo.composite.masked_flash_attention_gpu
 // Checks if bcasting a mask of rank 3 works with the pattern
 mo.graph @multihead_flash_attention_rank3_mask() -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %3 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %4 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %5 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %3 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %4 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %5 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %6 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %7 = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %8 = mo.constant <#M.dense_array<1, 1024, 1024> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %9 = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -38,16 +38,16 @@ mo.graph @multihead_flash_attention_rank3_mask() -> !mo.tensor<[1, 1024, 32, 128
 // CHECK: mo.composite.masked_flash_attention_gpu
 // Checks if bcasting a mask of rank 4 works with the pattern
 mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %3 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %4 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %5 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %7 = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %8 = mo.constant {value = #M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %9 = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %3 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %4 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %5 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %6 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %7 = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %8 = mo.constant <#M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %9 = mo.constant <#M.dense_array<1, 1, 1, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -75,16 +75,16 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
 // CHECK-SAME: !mo.tensor<[1, 32, 1024, 1024], bf16, gpu:0>, !mo.tensor<[], f32>) -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
 // Checks if bcasting a mask of rank 4 works with the pattern
   mo.graph @multihead_flash_attention_rank4_mask_bf16_with_casts() -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0> {
-    %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xbf16>} : !mo.tensor<[], bf16, gpu:0>
-    %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xbf16>} : !mo.tensor<[], bf16, gpu:0>
-    %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xbf16>} : !mo.tensor<[], bf16, gpu:0>
-    %3 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xbf16>} : !mo.tensor<[], bf16, gpu:0>
-    %4 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xbf16>} : !mo.tensor<[], bf16, gpu:0>
-    %5 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %6 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %7 = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %8 = mo.constant {value = #M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %9 = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xbf16>> : !mo.tensor<[], bf16, gpu:0>
+    %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xbf16>> : !mo.tensor<[], bf16, gpu:0>
+    %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xbf16>> : !mo.tensor<[], bf16, gpu:0>
+    %3 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xbf16>> : !mo.tensor<[], bf16, gpu:0>
+    %4 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xbf16>> : !mo.tensor<[], bf16, gpu:0>
+    %5 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %6 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %7 = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %8 = mo.constant <#M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %9 = mo.constant <#M.dense_array<1, 1, 1, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
       %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], bf16, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
     %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], bf16, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
     %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], bf16, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], bf16, gpu:0>
@@ -118,16 +118,16 @@ mo.graph @multihead_flash_attention_rank4_mask() -> !mo.tensor<[1, 1024, 32, 128
 // CHECK-NEXT: mo.transpose
 // CHECK-NEXT: mo.transpose
 mo.graph @multihead_flash_attention_rank3_mask_does_not_absorb_wrong_transpose() -> !mo.tensor<[128, 1024, 32, 1], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %3 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %4 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %5 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %3 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %4 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %5 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %6 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %7 = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %8 = mo.constant <#M.dense_array<1, 1024, 1024> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %9 = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -147,7 +147,7 @@ mo.graph @multihead_flash_attention_rank3_mask_does_not_absorb_wrong_transpose()
 
   // The pattern can absorb a transpose after the batch matmul as long as it can't prove it doesn't reshape BHSD -> BSHD
   // This one does something weird so we don't expect to absorb it.
-  %26 = mo.constant {value = #M.dense_array<3, 2, 1, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %26 = mo.constant <#M.dense_array<3, 2, 1, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %27 = mo.transpose(%25, %26) : (!mo.tensor<[1, 32, 1024, 128], f32, gpu:0>, !mo.tensor<[4], si64>) -> !mo.tensor<[128, 1024, 32, 1], f32, gpu:0>
   mo.output %27 : !mo.tensor<[128, 1024, 32, 1], f32, gpu:0>
 }
@@ -165,15 +165,15 @@ mo.graph @multihead_flash_attention_rank3_mask_does_not_absorb_wrong_transpose()
 // CHECK-SAME: !mo.tensor<[], f32>) -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
 // Checks if bcasting a mask of rank 4 works with the pattern
 mo.graph @multihead_flash_attention_rank4_mask_with_gqa() -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %3 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %4 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %5 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 0, 0, 0> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %7 = mo.constant {value = #M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %8 = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %3 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %4 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %5 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %6 = mo.constant <#M.dense_array<0, 0, 0, 0> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %7 = mo.constant <#M.dense_array<1, 1, 1024, 1024> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %8 = mo.constant <#M.dense_array<1, 1, 1, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
   // Groups = 4, so key and value have an initial head dimension of 8
   %9 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -220,16 +220,16 @@ mo.graph @multihead_flash_attention_rank4_mask_with_gqa() -> !mo.tensor<[1, 1024
 
 // `%dummy` is just meant to populate the parameter A and make it valid
 mo.graph @multihead_flash_attention_with_unsafe_bcasts_reshapes<A, B>(%dummy: !mo.tensor<[A, B], f32, gpu:0>) -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %3 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %4 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %5 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %3 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %4 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %5 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %6 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %7 = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %8 = mo.constant <#M.dense_array<1, 1024, 1024> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %9 = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 128], f32, gpu:0>
@@ -263,15 +263,15 @@ mo.graph @multihead_flash_attention_with_unsafe_bcasts_reshapes<A, B>(%dummy: !m
 // CHECK-LABEL: @multihead_flash_attention_non_matching_D_dim
 // CHECK-NOT: mo.custom
 mo.graph @multihead_flash_attention_non_matching_D_dim() -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %3 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %4 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %5 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %7 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %8 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %3 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %4 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %5 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %6 = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %7 = mo.constant <#M.dense_array<1, 1024, 1024> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %8 = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %9 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
   %10 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
   %11 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, 32, 256], f32, gpu:0>
@@ -294,16 +294,16 @@ mo.graph @multihead_flash_attention_non_matching_D_dim() -> !mo.tensor<[1, 1024,
 // CHECK-LABEL: @multihead_flash_attention_dynamic_H_dim
 // CHECK-NOT: mo.custom
 mo.graph @multihead_flash_attention_dynamic_H_dim<H0>() -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0> {
-  %0 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %1 = mo.constant {value = #M.dense_array<3.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %2 = mo.constant {value = #M.dense_array<4.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %3 = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %4 = mo.constant {value = #M.dense_array<8.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32, gpu:0>
-  %5 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-  %7 = mo.constant {value = #M.dense_array<0, 0, 0> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %8 = mo.constant {value = #M.dense_array<1, 1024, 1024> : tensor<3xsi64>} : !mo.tensor<[3], si64>
-  %9 = mo.constant {value = #M.dense_array<1, 1, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %0 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %1 = mo.constant <#M.dense_array<3.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %2 = mo.constant <#M.dense_array<4.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %3 = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %4 = mo.constant <#M.dense_array<8.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32, gpu:0>
+  %5 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %6 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+  %7 = mo.constant <#M.dense_array<0, 0, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %8 = mo.constant <#M.dense_array<1, 1024, 1024> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %9 = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %10 = mo.static.broadcast_to(%0) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0>
   %11 = mo.static.broadcast_to(%1) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0>
   %12 = mo.static.broadcast_to(%2) : !mo.tensor<[], f32, gpu:0> -> !mo.tensor<[1, 1024, H0, 128], f32, gpu:0>

@@ -20,7 +20,7 @@
 // mo.transpose is sync-launch, so the foreach carries `isAsync = false`.
 // CHECK:         isAsync = false
 mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.transpose(%input, %perm) : (
     !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 2], f32>
@@ -39,7 +39,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f
 // CHECK:         [[VAL2:%.*]] = map.load [[INPUT2]]{{\[}}[[IDX2_]]] : !mo.tensor<[2, 3, 4], f32>
 // CHECK:         map.store [[OUTARG2]]{{\[}}[[IDX2]]] = [[VAL2]] : !mo.tensor<[4, 2, 3], f32>
 mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[4, 2, 3], f32> {
-  %perm = mo.constant {value = #M.dense_array<2, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %perm = mo.constant <#M.dense_array<2, 0, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %res = mo.transpose(%input, %perm) : (
     !mo.tensor<[2, 3, 4], f32>, !mo.tensor<[3], si64>
   ) -> !mo.tensor<[4, 2, 3], f32>
@@ -54,7 +54,7 @@ mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[4, 2, 3
 // CHECK:         map.iter.foreach<[64, N]>
 // CHECK:         map.index.transpose<#map.index.transpose.spec<[N, 64] -> [64, N], perm = [1, 0]>>
 mo.graph @transposeSymbolicDim<N>(%input: !mo.tensor<[N, 64], f32>) -> !mo.tensor<[64, N], f32> {
-  %perm = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.transpose(%input, %perm) : (
     !mo.tensor<[N, 64], f32>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[64, N], f32>

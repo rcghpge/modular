@@ -58,20 +58,20 @@ mo.graph @cast(%arg0: !mo.tensor<[4, 5], f32>) -> (!mo.tensor<[4, 5], si32>) {
 
 // CHECK: mo.graph @cast_int_folder()
 mo.graph @cast_int_folder() -> (!mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>) {
-  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
-  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui64>} : !mo.tensor<[2], ui64>
+  // CHECK-DAG: %[[VAL0:.*]] = mo.constant <#M.dense_array<1, 2> : tensor<2xsi32>> : !mo.tensor<[2], si32>
+  %0 = mo.constant <#M.dense_array<1, 2> : tensor<2xui64>> : !mo.tensor<[2], ui64>
   %1 = mo.cast(%0) : (!mo.tensor<[2], ui64>) -> !mo.tensor<[2], si32>
 
-  // CHECK-DAG: %[[VAL1:.*]] = mo.constant {value = #M.dense_array<18446744073709551615, 0, 1> : tensor<3xui64>} : !mo.tensor<[3], ui64>
-  %2 = mo.constant {value = #M.dense_array<-1, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[VAL1:.*]] = mo.constant <#M.dense_array<18446744073709551615, 0, 1> : tensor<3xui64>> : !mo.tensor<[3], ui64>
+  %2 = mo.constant <#M.dense_array<-1, 0, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %3 = mo.cast(%2) : (!mo.tensor<[3], si64>) -> !mo.tensor<[3], ui64>
 
-  // CHECK-DAG: %[[VAL2:.*]] = mo.constant {value = #M.dense_array<4294967295, 0, 1, 2> : tensor<2x2xui32>} : !mo.tensor<[2, 2], ui32>
-  %4 = mo.constant {value = #M.dense_array<-1, 0, 1, 2> : tensor<2x2xsi32>} : !mo.tensor<[2, 2], si32>
+  // CHECK-DAG: %[[VAL2:.*]] = mo.constant <#M.dense_array<4294967295, 0, 1, 2> : tensor<2x2xui32>> : !mo.tensor<[2, 2], ui32>
+  %4 = mo.constant <#M.dense_array<-1, 0, 1, 2> : tensor<2x2xsi32>> : !mo.tensor<[2, 2], si32>
   %5 = mo.cast(%4) : (!mo.tensor<[2, 2], si32>) -> !mo.tensor<[2, 2], ui32>
 
-  // CHECK-DAG: %[[VAL3:.*]] = mo.constant {value = #M.dense_array<-2, -1, 0, 1, 2> : tensor<5xsi64>} : !mo.tensor<[5], si64>
-  %6 = mo.constant {value = #M.dense_array<-2, -1, 0, 1, 2> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  // CHECK-DAG: %[[VAL3:.*]] = mo.constant <#M.dense_array<-2, -1, 0, 1, 2> : tensor<5xsi64>> : !mo.tensor<[5], si64>
+  %6 = mo.constant <#M.dense_array<-2, -1, 0, 1, 2> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %7 = mo.cast(%6) : (!mo.tensor<[5], si32>) -> !mo.tensor<[5], si64>
 
   // CHECK-NEXT: %[[VAL0]], %[[VAL1]], %[[VAL2]], %[[VAL3]] : !mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !mo.tensor<[2, 2], ui32>, !mo.tensor<[5], si64>
@@ -80,14 +80,14 @@ mo.graph @cast_int_folder() -> (!mo.tensor<[2], si32>, !mo.tensor<[3], ui64>, !m
 
 // CHECK: mo.graph @cast_int_float_mixed_folder()
 mo.graph @cast_int_float_mixed_folder() -> (!mo.tensor<[2], f32>, !mo.tensor<[3], f64>) {
-  // CHECK-DAG: %[[VAL0:.*]] = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui64>} : !mo.tensor<[2], ui64>
+  // CHECK-DAG: %[[VAL0:.*]] = mo.constant <#M.dense_array<1, 2> : tensor<2xui64>> : !mo.tensor<[2], ui64>
   // CHECK-DAG: %[[VAL1:.*]] = mo.cast(%[[VAL0]]) : (!mo.tensor<[2], ui64>) -> !mo.tensor<[2], f32>
-  %0 = mo.constant {value = #M.dense_array<1, 2> : tensor<2xui64>} : !mo.tensor<[2], ui64>
+  %0 = mo.constant <#M.dense_array<1, 2> : tensor<2xui64>> : !mo.tensor<[2], ui64>
   %1 = mo.cast(%0) : (!mo.tensor<[2], ui64>) -> !mo.tensor<[2], f32>
 
-  // CHECK-DAG: %[[VAL2:.*]] = mo.constant {value = #M.dense_array<-1, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  // CHECK-DAG: %[[VAL2:.*]] = mo.constant <#M.dense_array<-1, 0, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   // CHECK-DAG: %[[VAL3:.*]] = mo.cast(%[[VAL2]]) : (!mo.tensor<[3], si64>) -> !mo.tensor<[3], f64>
-  %2 = mo.constant {value = #M.dense_array<-1, 0, 1> : tensor<3xsi64>} : !mo.tensor<[3], si64>
+  %2 = mo.constant <#M.dense_array<-1, 0, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %3 = mo.cast(%2) : (!mo.tensor<[3], si64>) -> !mo.tensor<[3], f64>
 
   // CHECK-NEXT: %[[VAL1]], %[[VAL3]] : !mo.tensor<[2], f32>, !mo.tensor<[3], f64>
@@ -98,20 +98,20 @@ mo.graph @cast_int_float_mixed_folder() -> (!mo.tensor<[2], f32>, !mo.tensor<[3]
 // CHECK: mo.graph @cast_int_between_signs() -> (!mo.tensor<[4], si32>, !mo.tensor<[4], ui32>, !mo.tensor<[7], si32>, !mo.tensor<[7], ui32>) {
 mo.graph @cast_int_between_signs() -> (!mo.tensor<[4], si32>, !mo.tensor<[4], ui32>, !mo.tensor<[7], si32>, !mo.tensor<[7], ui32>) {
   // Each of these is the maximum and minimum value for the dtype, and a few other numbers
-  %ui8 = mo.constant {value = #M.dense_array<255, 100, 1, 0> : tensor<4xui8>} : !mo.tensor<[4], ui8>
-  %si8 = mo.constant {value = #M.dense_array<127, 100, 1, 0, -128, -100, -1> : tensor<7xsi8>} : !mo.tensor<[7], si8>
+  %ui8 = mo.constant <#M.dense_array<255, 100, 1, 0> : tensor<4xui8>> : !mo.tensor<[4], ui8>
+  %si8 = mo.constant <#M.dense_array<127, 100, 1, 0, -128, -100, -1> : tensor<7xsi8>> : !mo.tensor<[7], si8>
 
-  // CHECK-DAG: %[[UI8_TO_SI32:.*]] = mo.constant {value = #M.dense_array<255, 100, 1, 0> : tensor<4xsi32>} : !mo.tensor<[4], si32>
+  // CHECK-DAG: %[[UI8_TO_SI32:.*]] = mo.constant <#M.dense_array<255, 100, 1, 0> : tensor<4xsi32>> : !mo.tensor<[4], si32>
   %ui8_to_si32 = mo.cast(%ui8): (!mo.tensor<[4], ui8>) -> !mo.tensor<[4], si32>
 
-  // CHECK-DAG: %[[UI8_TO_UI32:.*]] = mo.constant {value = #M.dense_array<255, 100, 1, 0> : tensor<4xui32>} : !mo.tensor<[4], ui32>
+  // CHECK-DAG: %[[UI8_TO_UI32:.*]] = mo.constant <#M.dense_array<255, 100, 1, 0> : tensor<4xui32>> : !mo.tensor<[4], ui32>
   %ui8_to_ui32 = mo.cast(%ui8): (!mo.tensor<[4], ui8>) -> !mo.tensor<[4], ui32>
 
-  // CHECK-DAG: %[[SI8_TO_SI32:.*]] = mo.constant {value = #M.dense_array<127, 100, 1, 0, -128, -100, -1> : tensor<7xsi32>} : !mo.tensor<[7], si32>
+  // CHECK-DAG: %[[SI8_TO_SI32:.*]] = mo.constant <#M.dense_array<127, 100, 1, 0, -128, -100, -1> : tensor<7xsi32>> : !mo.tensor<[7], si32>
   %si8_to_si32 = mo.cast(%si8): (!mo.tensor<[7], si8>) -> !mo.tensor<[7], si32>
 
   // Note casting negative elements to positive is undefined behavior so we don't check it
-  // CHECK-DAG: %[[SI8_TO_UI32:.*]] = mo.constant {value = #M.dense_array<127, 100, 1, 0
+  // CHECK-DAG: %[[SI8_TO_UI32:.*]] = mo.constant <#M.dense_array<127, 100, 1, 0
   %si8_to_ui32 = mo.cast(%si8): (!mo.tensor<[7], si8>) -> !mo.tensor<[7], ui32>
 
   // CHECK: mo.output %[[UI8_TO_SI32]], %[[UI8_TO_UI32]], %[[SI8_TO_SI32]], %[[SI8_TO_UI32]]

@@ -8,9 +8,9 @@ mo.graph @slice_error<N2, N3 -> O1, O2>(
 
   // This is effectively doing `dummy.shape[-2:1]`
   %dummy_shape = mo.shape_of(%dummy) : (!mo.tensor<[1, N2, N3, 2], f32>) -> !mo.tensor<[4], si32>
-  %start = mo.constant {value = #M.dense_array<-2> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %stop = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %step = mo.constant {value = #M.dense_array<1> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %start = mo.constant <#M.dense_array<-2> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+  %stop = mo.constant <#M.dense_array<1> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+  %step = mo.constant <#M.dense_array<1> : tensor<1xsi32>> : !mo.tensor<[1], si32>
   %sliced_shape = mo.slice(%dummy_shape, %start, %stop, %step) : (
     !mo.tensor<[4], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>
   ) -> !mo.tensor<[2], si32>

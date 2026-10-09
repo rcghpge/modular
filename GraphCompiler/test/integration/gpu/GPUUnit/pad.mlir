@@ -9,9 +9,9 @@ mo.graph @pad_constant_1d() -> (!mo.tensor<[6], f32>) {
   // [1, 2, 3]
   // -->
   // [5, 1, 2, 3, 5, 5]
-  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
-  %constant = mo.constant {value = #M.dense_array<5.0> : tensor<f32>} : !mo.tensor<[], f32>
-  %paddings = mo.constant {value = #M.dense_array<1, 2> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>> : !mo.tensor<[3], f32, gpu:0>
+  %constant = mo.constant <#M.dense_array<5.0> : tensor<f32>> : !mo.tensor<[], f32>
+  %paddings = mo.constant <#M.dense_array<1, 2> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %res = mo.pad.constant (%input, %paddings, %constant) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[2], si32>, !mo.tensor<[], f32>) -> !mo.tensor<[6], f32, gpu:0>
   %ch0 = mo.chain.create()
   %res_host, %ch1 = mo.transfer[%ch0] %res : !mo.tensor<[6], f32, gpu:0> to <"cpu", 0>
@@ -29,9 +29,9 @@ mo.graph @pad_constant_2d() -> (!mo.tensor<[4, 4], f32>) {
   //  [6, 1, 2, 6],
   //  [6, 3, 4, 6],
   //  [6, 6, 6, 6]]
-  %input = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
-  %constant = mo.constant {value = #M.dense_array<6.0> : tensor<f32>} : !mo.tensor<[], f32>
-  %paddings = mo.constant {value = #M.dense_array<1, 1, 1, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+  %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32, gpu:0>
+  %constant = mo.constant <#M.dense_array<6.0> : tensor<f32>> : !mo.tensor<[], f32>
+  %paddings = mo.constant <#M.dense_array<1, 1, 1, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %res = mo.pad.constant (%input, %paddings, %constant) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[4], si64>, !mo.tensor<[], f32>) -> !mo.tensor<[4, 4], f32, gpu:0>
   %ch0 = mo.chain.create()
   %res_host, %ch1 = mo.transfer[%ch0] %res : !mo.tensor<[4, 4], f32, gpu:0> to <"cpu", 0>

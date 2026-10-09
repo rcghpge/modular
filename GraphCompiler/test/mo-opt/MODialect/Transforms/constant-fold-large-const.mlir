@@ -3,21 +3,21 @@
 
 // CHECK: mo.graph @large_const_constant_subgraphs{{.*}}(%arg0: !mo.tensor<[10], ui32>)
 // CHECK-NEXT: mo.add(%arg0, %arg0)
-// CHECK: mo.constant {value = #M.dense_array<2, 2, 2, 2, 2, 2, 2, 2, 2, 2> : !M.array<10xui32>}
+// CHECK: mo.constant <#M.dense_array<2, 2, 2, 2, 2, 2, 2, 2, 2, 2> : !M.array<10xui32>>
 mo.graph @large_const() -> !mo.tensor<[10], ui32> {
-  %1 = mo.constant {value = dense_resource<large_const> : !M.array<10xui32>} : !mo.tensor<[10], ui32>
+  %1 = mo.constant <dense_resource<large_const> : !M.array<10xui32>> : !mo.tensor<[10], ui32>
   %2 = mo.add(%1, %1) : !mo.tensor<[10], ui32>
   mo.output %2 : !mo.tensor<[10], ui32>
 }
 
 // CHECK: mo.graph @large_const_aliased_output(%arg0: !mo.tensor<[4096], f32>, %arg1: !mo.tensor<[4096], f32>) -> !mo.tensor<[4096], f32>
 mo.graph @large_const_aliased_output(%r0 : !mo.tensor<[4096], f32>, %r1 : !mo.tensor<[4096], f32>) -> !mo.tensor<[4096], f32> {
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[], si32>
-  %int_cond = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
+  %axis = mo.constant <#M.dense_array<0> : tensor<1xsi32>> : !mo.tensor<[], si32>
+  %int_cond = mo.constant <#M.dense_array<0> : tensor<1xsi32>> : !mo.tensor<[1], si32>
   %cond = mo.equal(%int_cond, %int_cond) : (!mo.tensor<[1], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[1], bool>
   %cond_if = mo.static.reshape(%cond) : !mo.tensor<[1], bool> -> !mo.tensor<[], bool>
-  %c0 = mo.constant {value = dense_resource<large_const0> : tensor<2048xf32>} : !mo.tensor<[2048], f32>
-  %c1 = mo.constant {value = dense_resource<large_const1> : tensor<2048xf32>} : !mo.tensor<[2048], f32>
+  %c0 = mo.constant <dense_resource<large_const0> : tensor<2048xf32>> : !mo.tensor<[2048], f32>
+  %c1 = mo.constant <dense_resource<large_const1> : tensor<2048xf32>> : !mo.tensor<[2048], f32>
   %c2 = mo.concat[0] (%c0, %c1) : (!mo.tensor<[2048], f32>, !mo.tensor<[2048], f32>) -> !mo.tensor<[4096], f32>
   %c3 = mo.concat[0] (%c0, %c1) : (!mo.tensor<[2048], f32>, !mo.tensor<[2048], f32>) -> !mo.tensor<[4096], f32>
   %7:2 = mo.if(%cond_if : !mo.tensor<[], bool>) -> !mo.tensor<[4096], f32>, !mo.tensor<[4096], f32> {

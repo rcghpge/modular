@@ -18,8 +18,8 @@ mo.graph @cpu_flash_attn_pattern<B, H, S, D>(
     %value_pre_transposed: !mo.tensor<[B, S, H, D], f32>,
     %norm_scalar1: !mo.tensor<[1], f32>
 ) -> !mo.tensor<[B, H, S, D], f32> {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %perm2 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %perm2 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
     %norm_scalar = mo.static.reshape(%norm_scalar1): !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
 
     // use for normalizing attnMatrix (attn_mat)
@@ -52,14 +52,14 @@ mo.graph @cpu_flash_attn_pattern<B, H, S, D>(
 // CHECK-SAME: [[VALUE:%.[a-zA-Z0-9_]*]]: !mo.tensor<[B, S, H, D], f32>,
 // CHECK-SAME: [[NORM:%.[a-zA-Z0-9_]*]]: !mo.tensor<[1], f32>)
 // CHECK-SAME: -> !mo.tensor<[B, H, S, D], f32> {
-// CHECK-NEXT: [[V0:%.*]] = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+// CHECK-NEXT: [[V0:%.*]] = mo.constant <#M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
 // CHECK-NEXT: [[V1:%.*]] = mo.static.reshape([[NORM]]) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
 // CHECK-NEXT: [[V2:%.*]] = mo.composite.no_mask_flash_attention_cpu([[QUERY]], [[KEYT]], [[VALUE]], [[V1]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[B, S, H, D], f32>
 // CHECK-NEXT: [[V3:%.*]] = mo.transpose([[V2]], [[V0]]) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, H, S, D], f32>
 // CHECK-NEXT: mo.output [[V3]] : !mo.tensor<[B, H, S, D], f32>
 
 mo.graph @cpu_flash_attn_runnable_dyn<B, H, S, D>(%arg0: !mo.tensor<[B, S, H, D], f32>, %arg1: !mo.tensor<[B, S, H, D], f32>, %arg2: !mo.tensor<[B, S, H, D], f32>, %arg3: !mo.tensor<[1], f32>) -> !mo.tensor<[B, H, S, D], f32> {
-    %0 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+    %0 = mo.constant <#M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
     %1 = mo.static.reshape(%arg3) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
     %2 = mo.composite.no_mask_flash_attention_cpu(%arg0, %arg1, %arg2, %1) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[B, S, H, D], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[B, S, H, D], f32>
     %3 = mo.transpose(%2, %0) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, H, S, D], f32>
@@ -79,8 +79,8 @@ mo.graph @cpu_flash_attn_not_pattern<B, H, S, D> (
     %norm_scalar1: !mo.tensor<[1], f32>
 ) -> !mo.tensor<[B, H, S, D], f32>
 {
-    %perm1 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : tensor<4xsi64>} : !mo.tensor<[4], si64>
-    %perm2 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : tensor<4xsi64>} : !mo.tensor<[4], si64>
+    %perm1 = mo.constant <#M.dense_array<0, 2, 1, 3> : tensor<4xsi64>> : !mo.tensor<[4], si64>
+    %perm2 = mo.constant <#M.dense_array<0, 2, 3, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
 
     %norm_scalar = mo.static.reshape(%norm_scalar1): !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
 

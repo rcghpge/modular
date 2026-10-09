@@ -5,8 +5,8 @@
 
 module {
   mo.graph @serving_default<D0, D1, D2, D3, D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>, %arg1: !mo.tensor<[D4, D5, D6, D7], f32>) -> !mo.tensor<[D0, D1, D2, D3], f32> attributes {argument_names = ["input_1", "input_2"], result_names = ["lambda"]} {
-    %0 = mo.constant {value = #M.dense_array<-5.000000e-01> : tensor<f32>} : !mo.tensor<[], f32>
-    %1 = mo.constant {value = #M.dense_array<5.000000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+    %0 = mo.constant <#M.dense_array<-5.000000e-01> : tensor<f32>> : !mo.tensor<[], f32>
+    %1 = mo.constant <#M.dense_array<5.000000e-01> : tensor<f32>> : !mo.tensor<[], f32>
     %2 = mo.abs(%arg0) : !mo.tensor<[D0, D1, D2, D3], f32>
     %3 = mo.exp(%2) : !mo.tensor<[D0, D1, D2, D3], f32>
     %4 = mo.shape_of(%arg0) : (!mo.tensor<[D0, D1, D2, D3], f32>) -> !mo.tensor<[4], si64>

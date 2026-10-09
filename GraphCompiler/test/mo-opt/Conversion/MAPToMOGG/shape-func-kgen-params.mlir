@@ -16,7 +16,7 @@ mo.graph @gatherShapeFuncKgenParams<() -> D0, D1, D2, D3>(
     {dataDeptTensors = [], kgenParams = {axis = -2 : index}} :
     (!mo.tensor<[1, 2, 3], f32>, !mo.tensor<[4, 5], f32>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D4, D5, D6, D7], si32>
 
   mo.output<D4, D5, D6, D7> %val : !mo.tensor<[D4, D5, D6, D7], si32>

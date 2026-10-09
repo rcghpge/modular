@@ -11,8 +11,8 @@ mo.graph @bundled_allreduce(
     %sig0: !mo.buffer<[1], ui8, gpu:0>,
     %sig1: !mo.buffer<[1], ui8, gpu:1>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %in0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:0>
-  %in1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32, gpu:1>
+  %in0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>> : !mo.tensor<[3], f32, gpu:0>
+  %in1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>> : !mo.tensor<[3], f32, gpu:1>
 
   %dt = mo.tensor.bundle(%in0, %in1) : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>) -> (!mo.bundle<[3], f32, gpu:0-1>)
   %ch = mo.chain.create()

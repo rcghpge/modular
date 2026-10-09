@@ -18,9 +18,9 @@
 // CHECK:         [[VAL:%.*]] = map.load [[INPUT]]{{\[}}[[IDX_]]] : !mo.tensor<[10, 64], f32>
 // CHECK:         map.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mo.tensor<[3, 32], f32>
 mo.graph @sliceStaticBounds(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 32], f32>
@@ -59,8 +59,8 @@ mo.graph @sliceNonConstantStep(
     %input: !mo.tensor<[10, 64], f32>,
     %step: !mo.tensor<[2], si64>)
     -> !mo.tensor<[3, 32], f32> {
-  %start = mo.constant {value = #M.dense_array<1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 32], f32>
@@ -77,9 +77,9 @@ mo.graph @sliceNonConstantStep(
 // CHECK:         map.iter.foreach<[3, 32]>
 // CHECK:         map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [9, 32], stops = [3, 64], steps = [-2, 1]>>
 mo.graph @sliceReverseStep(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
-  %start = mo.constant {value = #M.dense_array<-1, 32> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<-7, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<-2, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<-1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<-7, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<-2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 32], f32>
@@ -93,9 +93,9 @@ mo.graph @sliceReverseStep(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 
 // CHECK-LABEL: mo.graph @sliceReverseWholeAxis
 // CHECK:         map.index.slice<#map.index.slice.spec<[10] -> [10], starts = [9], stops = [-1], steps = [-1]>>
 mo.graph @sliceReverseWholeAxis(%input: !mo.tensor<[10], f32>) -> !mo.tensor<[10], f32> {
-  %start = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %stop = mo.constant {value = #M.dense_array<-20> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %step = mo.constant {value = #M.dense_array<-1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
+  %start = mo.constant <#M.dense_array<-1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %stop = mo.constant <#M.dense_array<-20> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %step = mo.constant <#M.dense_array<-1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %res = mo.slice(%input, %start, %stop, %step) : (
     !mo.tensor<[10], f32>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>
   ) -> !mo.tensor<[10], f32>

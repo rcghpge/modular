@@ -4,7 +4,7 @@
 // CHECK-LABEL: --- Running 'arg_nonzero_op':
 // CHECK-NEXT: 'arg_nonzero_op' returned tensor<4x1xsi64> [1, 2, 3, 4]
 mo.graph @arg_nonzero_op<D0, D1, D2 -> D3>(%dummy: !mo.tensor<[D0, D1, D2], f32>) -> !mo.tensor<[D3, 1], si64> {
-  %val1 = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 2.0, 1.0, 0.0> : tensor<6xf32>} : !mo.tensor<[6], f32>
+  %val1 = mo.constant <#M.dense_array<0.0, 1.0, -1.0, 2.0, 1.0, 0.0> : tensor<6xf32>> : !mo.tensor<[6], f32>
   %0 = mo.arg_nonzero<() -> D4>(%val1) : (!mo.tensor<[6], f32>) -> !mo.tensor<[D4, 1], si64>
   mo.output<D4> %0 : !mo.tensor<[D4, 1], si64>
 }

@@ -6,16 +6,16 @@ mo.graph @reshape_number_of_elems<() -> D2, D3, D4>(
   %input: !mo.tensor<[10, 10], f32>
 ) -> !mo.tensor<[D2, D3, D4], f32> {
 
-  %axis = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[], si32>
-  %zero = mo.constant {value = #M.dense_array<0> : tensor<si32>} : !mo.tensor<[1], si32>
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[1], si32>
+  %axis = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[], si32>
+  %zero = mo.constant <#M.dense_array<0> : tensor<si32>> : !mo.tensor<[1], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[1], si32>
 
   %input_shape = mo.shape_of(%input) : (!mo.tensor<[10, 10], f32>) -> !mo.tensor<[2], si32>
   %d0 = mo.slice<() -> D0>(%input_shape, %zero, %one, %one) : (
     !mo.tensor<[2], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>, !mo.tensor<[1], si32>
   ) -> !mo.tensor<[D0], si32>
 
-  %dims = mo.constant {value = #M.dense_array<2, 4> : tensor<2xsi32>} : !mo.tensor<[2], si32>
+  %dims = mo.constant <#M.dense_array<2, 4> : tensor<2xsi32>> : !mo.tensor<[2], si32>
   %target_shape = mo.concat<() -> D1>[0](%d0, %dims) : (
     !mo.tensor<[D0], si32>, !mo.tensor<[2], si32>
   ) -> !mo.tensor<[D1], si32>
@@ -33,13 +33,13 @@ mo.graph @reshape_number_of_elems<() -> D2, D3, D4>(
 // This was adopted from an incorrect lowering of TF slice, which went silent
 // without error. This is a minimized version of the repro test.
 mo.graph @reshape_bad_annotated_rank<D0 -> D1, D2>(%arg0: !mo.tensor<[D0, 320], f32>) -> !mo.tensor<[D1, D2], f32> {
-  %0 = mo.constant {value = #M.dense_array<0> : tensor<1xsi32>} : !mo.tensor<[1], si32>
-  %1 = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
-  %2 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi32>} : !mo.tensor<[], si32>
-  %4 = mo.constant {value = #M.dense_array<1> : tensor<1xsi64>} : !mo.tensor<[1], si64>
-  %5 = mo.constant {value = #M.dense_array<1, 1> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %6 = mo.constant {value = #M.dense_array<0, 0> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
-  %7 = mo.constant {value = #M.dense_array<9223372036854775807, 9223372036854775807> : !M.array<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant <#M.dense_array<0> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+  %1 = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
+  %2 = mo.constant <#M.dense_array<1> : !M.array<1xsi32>> : !mo.tensor<[], si32>
+  %4 = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %5 = mo.constant <#M.dense_array<1, 1> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %6 = mo.constant <#M.dense_array<0, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  %7 = mo.constant <#M.dense_array<9223372036854775807, 9223372036854775807> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
   %8 = mo.slice<() -> D3, D4>(%arg0, %6, %7, %5) : (!mo.tensor<[D0, 320], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[D3, D4], f32>
   %9 = mo.shape_of(%8) : (!mo.tensor<[D3, D4], f32>) -> !mo.tensor<[2], si64>
   %10 = mo.shape_of(%9) : (!mo.tensor<[2], si64>) -> !mo.tensor<[1], si32>
@@ -60,7 +60,7 @@ mo.graph @concat_axis_out_of_bound<D0, D1 -> D2, D3>(
   %input1: !mo.tensor<[D0, 1], f32>,
   %input2: !mo.tensor<[D1, 2], f32>
 ) -> !mo.tensor<[D2, D3], f32> {
-  %axis = mo.constant {value = #M.dense_array<2> : tensor<si64>} : !mo.tensor<[], si64>
+  %axis = mo.constant <#M.dense_array<2> : tensor<si64>> : !mo.tensor<[], si64>
   // expected-error@below {{[concat] normalized axis must be within range [0, input_rank)}}
   %res = mo.concat<() -> D4, D5>[2](%input1, %input2) : (
     !mo.tensor<[D0, 1], f32>, !mo.tensor<[D1, 2], f32>

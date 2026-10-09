@@ -20,8 +20,8 @@ mo.graph @unsafe_bcast_norm_using_mul<B, S, KV_S, H, D, BCAST1>(
     %norm_scalar: !mo.tensor<[], f32>,
     %extra: !mo.tensor<[BCAST1], f32> // used to feed in extra params
 ) -> !mo.tensor<[BCAST1, S, H, D], f32> {
-    %perm0213 = mo.constant {value = #M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
-    %perm0231 = mo.constant {value = #M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>} : !mo.tensor<[4], si64>
+    %perm0213 = mo.constant <#M.dense_array<0, 2, 1, 3> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
+    %perm0231 = mo.constant <#M.dense_array<0, 2, 3, 1> : !M.array<4xsi64>> : !mo.tensor<[4], si64>
     %Q_bhsd = mo.transpose(%Q_bshd, %perm0213) : (!mo.tensor<[B, S, H, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, H, S, D], f32>
     %K_bhsdT = mo.transpose(%K_bshd, %perm0231) : (!mo.tensor<[B, KV_S, H, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, H, D, KV_S], f32>
     %V_bhsd = mo.transpose(%V_bshd, %perm0213) : (!mo.tensor<[BCAST1, KV_S, H, D], f32>, !mo.tensor<[4], si64>) -> !mo.tensor<[BCAST1, H, KV_S, D], f32>

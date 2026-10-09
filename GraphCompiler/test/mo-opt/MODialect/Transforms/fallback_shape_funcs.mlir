@@ -701,10 +701,10 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
   %input: !mo.tensor<[D0, D1, D2, D3], f32>
 ) -> !mo.tensor<[D4, D5, D6, D7], f32> {
 
-  %output_height = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-  %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-  %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-  %rois = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
+  %output_height = mo.constant <#M.dense_array<2> : tensor<1xsi64>> : !mo.tensor<[], si64>
+  %spatial_scale = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+  %sampling_ratio = mo.constant <#M.dense_array<2.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+  %rois = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 
   %output = mo.roi_align<() -> D8, D9, D10, D11>(%input, %rois, %output_height, %output_height, %spatial_scale, %sampling_ratio)
     {aligned = false,  mode = "AVG"}
@@ -718,10 +718,10 @@ mo.graph @roi_align_fallback_shape_func<D0, D1, D2, D3 -> D4, D5, D6, D7>(
 // CHECK-SAME:    %[[INPUT:.*]]: !mo.tensor<[[[D0]], [[D1]], [[D2]], [[D3]]], f32>
 // CHECK-SAME:  ) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
 //
-// CHECK-NEXT:  %[[OUTPUT_HEIGHT:.*]] = mo.constant {value = #M.dense_array<2> : tensor<1xsi64>} : !mo.tensor<[], si64>
-// CHECK-NEXT:  %[[SPATIAL_SCALE:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT:  %[[SAMPLING_RATIO:.*]] = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT:  %[[ROIS:.*]] = mo.constant {value = #M.dense_array<0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
+// CHECK-NEXT:  %[[OUTPUT_HEIGHT:.*]] = mo.constant <#M.dense_array<2> : tensor<1xsi64>> : !mo.tensor<[], si64>
+// CHECK-NEXT:  %[[SPATIAL_SCALE:.*]] = mo.constant <#M.dense_array<1.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32>
+// CHECK-NEXT:  %[[SAMPLING_RATIO:.*]] = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32>
+// CHECK-NEXT:  %[[ROIS:.*]] = mo.constant <#M.dense_array<0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 //
 // CHECK-NEXT:  mo.invoke_shape_func["mo.roi_align"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(
 // CHECK-SAME:    %[[INPUT]], %[[ROIS]], %[[OUTPUT_HEIGHT]], %[[OUTPUT_HEIGHT]], %[[SPATIAL_SCALE]], %[[SAMPLING_RATIO]])
@@ -746,9 +746,9 @@ mo.graph @roi_align_dynamic_output_size_fallback_shape_func<D0, D1, D2, D3 -> D4
   %output_width: !mo.tensor<[], si64>
 ) -> !mo.tensor<[D4, D5, D6, D7], f32> {
 
-  %spatial_scale = mo.constant {value = #M.dense_array<1.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-  %sampling_ratio = mo.constant {value = #M.dense_array<2.0> : tensor<1xf32>} : !mo.tensor<[], f32>
-  %rois = mo.constant {value = #M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
+  %spatial_scale = mo.constant <#M.dense_array<1.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+  %sampling_ratio = mo.constant <#M.dense_array<2.0> : tensor<1xf32>> : !mo.tensor<[], f32>
+  %rois = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 2.0, 2.0> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 
   %output = mo.roi_align<() -> D8, D9, D10, D11>(%input, %rois, %output_height, %output_width, %spatial_scale, %sampling_ratio)
     {aligned = false,  mode = "AVG"}
@@ -764,9 +764,9 @@ mo.graph @roi_align_dynamic_output_size_fallback_shape_func<D0, D1, D2, D3 -> D4
 // CHECK-SAME:    %[[OUTPUT_WIDTH:.*]]: !mo.tensor<[], si64>
 // CHECK-SAME:  ) -> !mo.tensor<[[[D4]], [[D5]], [[D6]], [[D7]]], f32> {
 //
-// CHECK-NEXT:  %[[SPATIAL_SCALE:.*]] = mo.constant {value = #M.dense_array<1.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT:  %[[SAMPLING_RATIO:.*]] = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<1xf32>} : !mo.tensor<[], f32>
-// CHECK-NEXT:  %[[ROIS:.*]] = mo.constant {value = #M.dense_array<0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<5xf32>} : !mo.tensor<[1, 5], f32>
+// CHECK-NEXT:  %[[SPATIAL_SCALE:.*]] = mo.constant <#M.dense_array<1.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32>
+// CHECK-NEXT:  %[[SAMPLING_RATIO:.*]] = mo.constant <#M.dense_array<2.000000e+00> : tensor<1xf32>> : !mo.tensor<[], f32>
+// CHECK-NEXT:  %[[ROIS:.*]] = mo.constant <#M.dense_array<0.000000e+00, 0.000000e+00, 0.000000e+00, 2.000000e+00, 2.000000e+00> : tensor<5xf32>> : !mo.tensor<[1, 5], f32>
 //
 // CHECK-NEXT:  mo.invoke_shape_func["mo.roi_align"]<() -> [[D8:.*]], [[D9:.*]], [[D10:.*]], [[D11:.*]]>(
 // CHECK-SAME:    %[[INPUT]], %[[ROIS]], %[[OUTPUT_HEIGHT]], %[[OUTPUT_WIDTH]], %[[SPATIAL_SCALE]], %[[SAMPLING_RATIO]])

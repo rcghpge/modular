@@ -13,15 +13,15 @@
 // CHECK:         mogg.slice({{.*}}) : (!mo.tensor<[10, 64], f32>, {{.*}}) -> !mo.tensor<[6, 64], f32>
 // CHECK:         mogg.slice({{.*}}) : (!mo.tensor<[6, 64], f32>, {{.*}}) -> !mo.tensor<[3, 64], f32>
 mo.graph @fusedSliceChainRaised(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 64], f32> {
-  %start1 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop1 = mo.constant {value = #M.dense_array<6, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step1 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop1 = mo.constant <#M.dense_array<6, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step1 = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %mid = mo.slice(%input, %start1, %stop1, %step1) : (
     !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[6, 64], f32>
-  %start2 = mo.constant {value = #M.dense_array<1, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop2 = mo.constant {value = #M.dense_array<4, 64> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step2 = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start2 = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop2 = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step2 = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%mid, %start2, %stop2, %step2) : (
     !mo.tensor<[6, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[3, 64], f32>
@@ -41,9 +41,9 @@ mo.graph @fusedSliceChainRaised(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor
 // CHECK:         mogg.slice({{.*}}) : (!mo.tensor<[512, 16], f32>, {{.*}}) -> !mo.tensor<[256, 16], f32>
 mo.graph @fusedReshapeSliceChainRaised(%input: !mo.tensor<[2, 256, 16], f32>) -> !mo.tensor<[256, 16], f32> {
   %flat = mo.static.reshape(%input) : !mo.tensor<[2, 256, 16], f32> -> !mo.tensor<[512, 16], f32>
-  %start = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop = mo.constant {value = #M.dense_array<256, 16> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %start = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<256, 16> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %res = mo.slice(%flat, %start, %stop, %step) : (
     !mo.tensor<[512, 16], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[256, 16], f32>

@@ -31,7 +31,7 @@ mo.graph @trait_fused_store_double_graph(%x: !mo.tensor<[4], f32>) -> !mo.tensor
 // copied by the custom op, then negated by the fused store.
 // CHECK: 'trait_fused_store_parameter_closure_graph' returned tensor<4xf32> [-5.000000e+00, -5.000000e+00, -5.000000e+00, -5.000000e+00]
 mo.graph @trait_fused_store_parameter_closure_graph() -> !mo.tensor<[4], f32> {
-    %x = mo.constant {value = #M.dense_array<5.0, 5.0, 5.0, 5.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
+    %x = mo.constant <#M.dense_array<5.0, 5.0, 5.0, 5.0> : tensor<4xf32>> : !mo.tensor<[4], f32>
     %ch0 = mo.chain.create()
     %x_gpu, %ch1 = mo.transfer[%ch0] %x : !mo.tensor<[4], f32> to <"gpu", 0>
     %raw_gpu = mo.custom {symbol = "trait_fused_store_parameter_closure", device = #M.device_ref<"gpu", 0>} (%x_gpu) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>
@@ -50,7 +50,7 @@ mo.graph @trait_fused_store_parameter_closure_graph() -> !mo.tensor<[4], f32> {
 // `-(2 * 5) == -10`.
 // CHECK: 'trait_fused_store_unified_closure_graph' returned tensor<4xf32> [-1.000000e+01, -1.000000e+01, -1.000000e+01, -1.000000e+01]
 mo.graph @trait_fused_store_unified_closure_graph() -> !mo.tensor<[4], f32> {
-    %x = mo.constant {value = #M.dense_array<5.0, 5.0, 5.0, 5.0> : tensor<4xf32>} : !mo.tensor<[4], f32>
+    %x = mo.constant <#M.dense_array<5.0, 5.0, 5.0, 5.0> : tensor<4xf32>> : !mo.tensor<[4], f32>
     %ch0 = mo.chain.create()
     %x_gpu, %ch1 = mo.transfer[%ch0] %x : !mo.tensor<[4], f32> to <"gpu", 0>
     %raw_gpu = mo.custom {symbol = "trait_fused_store_unified_closure", device = #M.device_ref<"gpu", 0>} (%x_gpu) : (!mo.tensor<[4], f32, gpu:0>) -> !mo.tensor<[4], f32, gpu:0>

@@ -14,7 +14,7 @@ mo.graph @custom_success<D0, D1 -> D2>(
 
   mo.invoke_shape_func["custom_op_that_raises"]<() -> D3>(%arg0) : (!mo.tensor<[D0], f32>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D3], si32>
   mo.output<D3> %val : !mo.tensor<[D3], si32>
 }
@@ -30,7 +30,7 @@ mo.graph @custom_raises<D0, D1 -> D2>(
 
   mo.invoke_shape_func["custom_op_that_raises"]<() -> D3>(%arg1) : (!mo.tensor<[D1], f32>)
 
-  %one = mo.constant {value = #M.dense_array<1> : tensor<si32>} : !mo.tensor<[], si32>
+  %one = mo.constant <#M.dense_array<1> : tensor<si32>> : !mo.tensor<[], si32>
   %val = mo.static.broadcast_to(%one): !mo.tensor<[], si32> -> !mo.tensor<[D3], si32>
   mo.output<D3> %val : !mo.tensor<[D3], si32>
 }

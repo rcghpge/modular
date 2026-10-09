@@ -36,7 +36,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // CHECK-NOT:       map.load
 // CHECK:           map.store [[OUT0]]{{\[}}[[IDX]]] = [[CST]] : !mo.tensor<[8, 64], f32>
 mo.graph @broadcastIndexOfConstant() -> !mo.tensor<[8, 64], f32> {
-  %cst = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<2.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   %output = map.iter.opaque
       inputs (%cst : !mo.tensor<[], f32>)
       outputs (%out : !mo.tensor<[8, 64], f32>) {
@@ -104,7 +104,7 @@ mo.graph @foldedMapConstant() -> !mo.tensor<[8, 64], f32> {
 // CHECK-NOT:       map.load
 // CHECK:           map.store [[COUT0]]{{\[}}[[CIDX]]] = [[CCST]] : !mo.tensor<[8, 64], f32>
 mo.graph @chainedKernel(%chIn: !mo.chain) -> !mo.tensor<[8, 64], f32> {
-  %cst = mo.constant {value = #M.dense_array<2.000000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<2.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   %output = map.iter.opaque
       inputs (%cst : !mo.tensor<[], f32>, %chIn : !mo.chain)
       outputs (%out : !mo.tensor<[8, 64], f32>) {
@@ -132,7 +132,7 @@ mo.graph @chainedKernel(%chIn: !mo.chain) -> !mo.tensor<[8, 64], f32> {
 // CHECK:           map.constant.scalar 3.500000e+00 : f32 : f32
 // CHECK-NOT:       map.load
 mo.graph @broadcastStrideOfConstant() -> !mo.tensor<[8, 64], f32> {
-  %cst = mo.constant {value = #M.dense_array<3.500000e+00> : tensor<1xf32>} : !mo.tensor<[1], f32>
+  %cst = mo.constant <#M.dense_array<3.500000e+00> : tensor<1xf32>> : !mo.tensor<[1], f32>
   %output = map.iter.opaque
       inputs (%cst : !mo.tensor<[1], f32>)
       outputs (%out : !mo.tensor<[8, 64], f32>) {
@@ -156,7 +156,7 @@ mo.graph @broadcastStrideOfConstant() -> !mo.tensor<[8, 64], f32> {
 // CHECK-NEXT:    inputs ()
 // CHECK:           map.constant.scalar 7 : si32 : si32
 mo.graph @integerConstant() -> !mo.tensor<[6], si32> {
-  %cst = mo.constant {value = #M.dense_array<7> : tensor<si32>} : !mo.tensor<[], si32>
+  %cst = mo.constant <#M.dense_array<7> : tensor<si32>> : !mo.tensor<[], si32>
   %output = map.iter.opaque
       inputs (%cst : !mo.tensor<[], si32>)
       outputs (%out : !mo.tensor<[6], si32>) {
@@ -183,7 +183,7 @@ mo.graph @integerConstant() -> !mo.tensor<[6], si32> {
 // CHECK-NEXT:    inputs ()
 // CHECK:           map.constant.scalar 2.500000e-01 : f32 : f32
 mo.graph @transferredConstant() -> !mo.tensor<[4], f32, gpu:0> {
-  %cst = mo.constant {device = #M.device_ref<"cpu", 0>, value = #M.dense_array<2.500000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<2.500000e-01> : tensor<f32>> {device = #M.device_ref<"cpu", 0>} : !mo.tensor<[], f32>
   %ch0 = mo.chain.create()
   %gpu_cst, %ch1 = mo.transfer[%ch0] %cst : !mo.tensor<[], f32> to <"gpu", 0>
   %output = map.iter.opaque
@@ -212,7 +212,7 @@ mo.graph @transferredConstant() -> !mo.tensor<[4], f32, gpu:0> {
 // CHECK-NEXT:        [[CST:%[^ ]+]] = map.constant.scalar 5.000000e-01 : f32 : f32
 // CHECK-NEXT:        map.yield [[CST]]
 mo.graph @prologueCapturedConstant() -> !mo.tensor<[4], f32> {
-  %cst = mo.constant {value = #M.dense_array<5.000000e-01> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<5.000000e-01> : tensor<f32>> : !mo.tensor<[], f32>
   %output = map.iter.opaque
       inputs (%cst : !mo.tensor<[], f32>)
       outputs (%out : !mo.tensor<[4], f32>) {
@@ -237,7 +237,7 @@ mo.graph @prologueCapturedConstant() -> !mo.tensor<[4], f32> {
 // CHECK:           map.iter.epilogue ({{.*}}) capturing ([[OCAP:%[^ =]+]] = [[OUT]] : !mo.tensor<[4], f32>) {
 // CHECK-NEXT:        map.constant.scalar 1.500000e+00 : f32 : f32
 mo.graph @epilogueCapturedConstant(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
-  %cst = mo.constant {value = #M.dense_array<1.500000e+00> : tensor<f32>} : !mo.tensor<[], f32>
+  %cst = mo.constant <#M.dense_array<1.500000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   %output = map.iter.opaque
       inputs (%x : !mo.tensor<[4], f32>, %cst : !mo.tensor<[], f32>)
       outputs (%out : !mo.tensor<[4], f32>) {
@@ -262,7 +262,7 @@ mo.graph @epilogueCapturedConstant(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], 
 // CHECK-NOT:   map.constant.scalar
 // CHECK:         map.load
 mo.graph @multiElementConstant() -> !mo.tensor<[8, 2], f32> {
-  %cst = mo.constant {value = #M.dense_array<1.000000e+00, 2.000000e+00> : tensor<2xf32>} : !mo.tensor<[2], f32>
+  %cst = mo.constant <#M.dense_array<1.000000e+00, 2.000000e+00> : tensor<2xf32>> : !mo.tensor<[2], f32>
   %output = map.iter.opaque
       inputs (%cst : !mo.tensor<[2], f32>)
       outputs (%out : !mo.tensor<[8, 2], f32>) {

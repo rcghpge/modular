@@ -8,8 +8,8 @@ mo.graph @parallel_with_extra_inputs(
     %w0: !mo.tensor<[3], f32>,
     %w1: !mo.tensor<[3], f32>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
-  %in0 = mo.constant {value = #M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
-  %in1 = mo.constant {value = #M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>} : !mo.tensor<[3], f32>
+  %in0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>> : !mo.tensor<[3], f32>
+  %in1 = mo.constant <#M.dense_array<4.0, 5.0, 6.0> : tensor<3xf32>> : !mo.tensor<[3], f32>
 
   %dt = mo.tensor.bundle(%in0, %in1) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)
   %de = mo.tensor.bundle(%w0, %w1) : (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) -> (!mo.bundle<[!mo.tensor<[3], f32>, !mo.tensor<[3], f32>]>)

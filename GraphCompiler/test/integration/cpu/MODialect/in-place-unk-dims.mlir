@@ -13,15 +13,15 @@
 // CHECK{LITERAL}: [1.0000, 2.0000, 1.0000, 2.0000],
 // CHECK{LITERAL}: [2.0000, 2.0000, 2.0000, 2.0000]], dtype=f32, shape=[4,4])
 mo.graph @unk_dims<D0, D1, D2, D3, D4, D5>(%arg0: !mo.buffer<[D0, D1], f32>, %arg1: !mo.tensor<[D2, D3], f32>, %slice: !mo.tensor<[D4, D5], f32>) -> (!mo.buffer<[D0, D1], f32>, !mo.tensor<[D0, D1], f32>, !mo.chain) {
-  %0 = mo.constant {value = #M.dense_array<1> : tensor<si64>} : !mo.tensor<[], si64>
-  %1 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %2 = mo.constant {value = #M.dense_array<1> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %3 = mo.constant {value = #M.dense_array<> : !M.array<0xsi64>} : !mo.tensor<[0], si64>
-  %4 = mo.constant {value = #M.dense_array<2> : !M.array<1xsi64>} : !mo.tensor<[1], si64>
-  %5 = mo.constant {value = #M.dense_array<0> : !M.array<1xsi64>} : !mo.tensor<[], si64>
-  %c0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %c1 = mo.constant {value = #M.dense_array<4, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %c2 = mo.constant {value = #M.dense_array<2, 2> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %0 = mo.constant <#M.dense_array<1> : tensor<si64>> : !mo.tensor<[], si64>
+  %1 = mo.constant <#M.dense_array<0> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+  %2 = mo.constant <#M.dense_array<1> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+  %3 = mo.constant <#M.dense_array<> : !M.array<0xsi64>> : !mo.tensor<[0], si64>
+  %4 = mo.constant <#M.dense_array<2> : !M.array<1xsi64>> : !mo.tensor<[1], si64>
+  %5 = mo.constant <#M.dense_array<0> : !M.array<1xsi64>> : !mo.tensor<[], si64>
+  %c0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %c1 = mo.constant <#M.dense_array<4, 4> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %c2 = mo.constant <#M.dense_array<2, 2> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %6 = mo.chain.create()
   %outTensor, %outChain = rmo.mo.mutable.load(%arg0, %6) : (!mo.buffer<[D0, D1], f32>, !mo.chain) -> (!mo.tensor<[D0, D1], f32>, !mo.chain)
   %casted = rmo.mo.cast(%0) : (!mo.tensor<[], si64>) -> !mo.tensor<[], f32>

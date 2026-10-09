@@ -55,11 +55,11 @@ mo.graph @keep_captured_activation(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.t
 mo.graph @sharded_weight(%x0: !mo.tensor<[4, 8], f32, gpu:0>, %x1: !mo.tensor<[4, 8], f32, gpu:1>) -> (!mo.tensor<[4, 4], f32, gpu:0>, !mo.tensor<[4, 4], f32, gpu:1>) {
   %w = mo.constant.external {align = 4 : ui64, device = #M.device_ref<"cpu", 0>, name = "w"} : !mo.tensor<[8, 8], f32>
   %root = mo.chain.create()
-  %step = mo.constant {value = #M.dense_array<1, 1> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start0 = mo.constant {value = #M.dense_array<0, 0> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop0 = mo.constant {value = #M.dense_array<8, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %start1 = mo.constant {value = #M.dense_array<0, 4> : tensor<2xsi64>} : !mo.tensor<[2], si64>
-  %stop1 = mo.constant {value = #M.dense_array<8, 8> : tensor<2xsi64>} : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start0 = mo.constant <#M.dense_array<0, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop0 = mo.constant <#M.dense_array<8, 4> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %start1 = mo.constant <#M.dense_array<0, 4> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop1 = mo.constant <#M.dense_array<8, 8> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %s0 = mo.sequence[1] (%x0 : !mo.tensor<[4, 8], f32, gpu:0>) (%arg) -> (!mo.tensor<[4, 4], f32, gpu:0>) {
     %w0 = mo.slice(%w, %start0, %stop0, %step) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[8, 4], f32>
     %wd, %ch = mo.transfer[%root] %w0 : !mo.tensor<[8, 4], f32> to <"gpu", 0>

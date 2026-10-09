@@ -14,9 +14,9 @@
 // perm = [(4, 2, 3, 0, 1)]
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_0_test() -> (!mo.tensor<[12, 2, 1, 3, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<0,1,1,0,1,0,0,0,1,1,1,1> : tensor<12xui32>} : !mo.tensor<[12], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<0,1,1,0,1,0,0,0,1,1,1,1> : tensor<12xui32>> : !mo.tensor<[12], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[12], ui32>) -> !mo.tensor<[12, 2, 1, 3, 4], si32>
   mo.output %res : !mo.tensor<[12, 2, 1, 3, 4], si32>
@@ -26,9 +26,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_0_test() -> (!mo.t
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_1_test() -> (!mo.tensor<[2, 12, 1, 3, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<1,0,0,0,1,0,1,0,0,1,1,1> : tensor<12xui32>} : !mo.tensor<[12], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<1,0,0,0,1,0,1,0,0,1,1,1> : tensor<12xui32>> : !mo.tensor<[12], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 1 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[12], ui32>) -> !mo.tensor<[2, 12, 1, 3, 4], si32>
   mo.output %res : !mo.tensor<[2, 12, 1, 3, 4], si32>
@@ -38,9 +38,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_1_test() -> (!mo.t
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_2_test() -> (!mo.tensor<[2, 2, 12, 3, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<0,0,0,0,0,0,0,0,0,0,0,0> : tensor<12xui32>} : !mo.tensor<[12], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<0,0,0,0,0,0,0,0,0,0,0,0> : tensor<12xui32>> : !mo.tensor<[12], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 2 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[12], ui32>) -> !mo.tensor<[2, 2, 12, 3, 4], si32>
   mo.output %res : !mo.tensor<[2, 2, 12, 3, 4], si32>
@@ -50,9 +50,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_2_test() -> (!mo.t
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_3_test() -> (!mo.tensor<[2, 2, 1, 12, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<1,2,2,2,0,1,2,0,2,1,1,1> : tensor<12xui32>} : !mo.tensor<[12], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<1,2,2,2,0,1,2,0,2,1,1,1> : tensor<12xui32>> : !mo.tensor<[12], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 3 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[12], ui32>) -> !mo.tensor<[2, 2, 1, 12, 4], si32>
   mo.output %res : !mo.tensor<[2, 2, 1, 12, 4], si32>
@@ -62,9 +62,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_3_test() -> (!mo.t
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_4_test() -> (!mo.tensor<[2, 2, 1, 3, 12], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<1,2,3,2,0,2,2,1,3,2,3,3> : tensor<12xui32>} : !mo.tensor<[12], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<1,2,3,2,0,2,2,1,3,2,3,3> : tensor<12xui32>> : !mo.tensor<[12], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 4 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[12], ui32>) -> !mo.tensor<[2, 2, 1, 3, 12], si32>
   mo.output %res : !mo.tensor<[2, 2, 1, 3, 12], si32>
@@ -74,9 +74,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_12_axis_4_test() -> (!mo.t
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_0_test() -> (!mo.tensor<[2, 3, 4, 2, 1, 3, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<1,0,1,1,0,0,1,0,0,1,0,0,0,0,0,0,1,1,0,1,1,0,1,0> : tensor<2x3x4xui32>} : !mo.tensor<[2, 3, 4], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<1,0,1,1,0,0,1,0,0,1,0,0,0,0,0,0,1,1,0,1,1,0,1,0> : tensor<2x3x4xui32>> : !mo.tensor<[2, 3, 4], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 0 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[2, 3, 4], ui32>) -> !mo.tensor<[2, 3, 4, 2, 1, 3, 4], si32>
   mo.output %res : !mo.tensor<[2, 3, 4, 2, 1, 3, 4], si32>
@@ -86,9 +86,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_0_test() -> (!m
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_1_test() -> (!mo.tensor<[2, 2, 3, 4, 1, 3, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<1,0,0,1,0,1,0,1,1,1,1,1,0,1,1,0,0,0,1,0,1,1,0,1> : tensor<2x3x4xui32>} : !mo.tensor<[2, 3, 4], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<1,0,0,1,0,1,0,1,1,1,1,1,0,1,1,0,0,0,1,0,1,1,0,1> : tensor<2x3x4xui32>> : !mo.tensor<[2, 3, 4], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 1 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[2, 3, 4], ui32>) -> !mo.tensor<[2, 2, 3, 4, 1, 3, 4], si32>
   mo.output %res : !mo.tensor<[2, 2, 3, 4, 1, 3, 4], si32>
@@ -98,9 +98,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_1_test() -> (!m
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_2_test() -> (!mo.tensor<[2, 2, 2, 3, 4, 3, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0> : tensor<2x3x4xui32>} : !mo.tensor<[2, 3, 4], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0> : tensor<2x3x4xui32>> : !mo.tensor<[2, 3, 4], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 2 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[2, 3, 4], ui32>) -> !mo.tensor<[2, 2, 2, 3, 4, 3, 4], si32>
   mo.output %res : !mo.tensor<[2, 2, 2, 3, 4, 3, 4], si32>
@@ -110,9 +110,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_2_test() -> (!m
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_3_test() -> (!mo.tensor<[2, 2, 1, 2, 3, 4, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<0,2,0,2,2,0,1,1,2,0,2,2,0,0,1,1,2,1,2,0,0,0,1,0> : tensor<2x3x4xui32>} : !mo.tensor<[2, 3, 4], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<0,2,0,2,2,0,1,1,2,0,2,2,0,0,1,1,2,1,2,0,0,0,1,0> : tensor<2x3x4xui32>> : !mo.tensor<[2, 3, 4], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 3 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[2, 3, 4], ui32>) -> !mo.tensor<[2, 2, 1, 2, 3, 4, 4], si32>
   mo.output %res : !mo.tensor<[2, 2, 1, 2, 3, 4, 4], si32>
@@ -122,9 +122,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_3_test() -> (!m
 
 
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_4_test() -> (!mo.tensor<[2, 2, 1, 3, 2, 3, 4], si32>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<3,3,2,3,1,0,2,1,2,0,2,1,3,0,0,2,1,2,3,3,0,1,0,0> : tensor<2x3x4xui32>} : !mo.tensor<[2, 3, 4], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<3,3,2,3,1,0,2,1,2,0,2,1,3,0,0,2,1,2,3,3,0,1,0,0> : tensor<2x3x4xui32>> : !mo.tensor<[2, 3, 4], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 4 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[2, 3, 4], ui32>) -> !mo.tensor<[2, 2, 1, 3, 2, 3, 4], si32>
   mo.output %res : !mo.tensor<[2, 2, 1, 3, 2, 3, 4], si32>
@@ -136,9 +136,9 @@ mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_4_test() -> (!m
 // This cast case tests hard fusions which change the output dtype of the kernel
 // CHECK: 'transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_4_with_cast_test' returned tensor<2x2x1x3x2x3x4xsi64> [-12, -12, -16, -12, -20, -24, -16, -20, -16, -24, -16, -20, -12, -24, -24, -16, -20, -16, -12, -12, -24, -20, -24, -24, 4, 4, 0, 4, -4, -8, 0, -4, 0, -8, 0, -4, 4, -8, -8, 0, -4, 0, 4, 4, -8, -4, -8, -8, 20, 20, 16, 20, 12, 8, 16, 12, 16, 8, 16, 12, 20, 8, 8, 16, 12, 16, 20, 20, 8, 12, 8, 8, -10, -10, -14, -10, -18, -22, -14, -18, -14, -22, -14, -18, -10, -22, -22, -14, -18, -14, -10, -10, -22, -18, -22, -22, 6, 6, 2, 6, -2, -6, 2, -2, 2, -6, 2, -2, 6, -6, -6, 2, -2, 2, 6, 6, -6, -2, -6, -6, 22, 22, 18, 22, 14, 10, 18, 14, 18, 10, 18, 14, 22, 10, 10, 18, 14, 18, 22, 22, 10, 14, 10, 10, -11, -11, -15, -11, -19, -23, -15, -19, -15, -23, -15, -19, -11, -23, -23, -15, -19, -15, -11, -11, -23, -19, -23, -23, 5, 5, 1, 5, -3, -7, 1, -3, 1, -7, 1, -3, 5, -7, -7, 1, -3, 1, 5, 5, -7, -3, -7, -7, 21, 21, 17, 21, 13, 9, 17, 13, 17, 9, 17, 13, 21, 9, 9, 17, 13, 17, 21, 21, 9, 13, 9, 9, -9, -9, -13, -9, -17, -21, -13, -17, -13, -21, -13, -17, -9, -21, -21, -13, -17, -13, -9, -9, -21, -17, -21, -21, 7, 7, 3, 7, -1, -5, 3, -1, 3, -5, 3, -1, 7, -5, -5, 3, -1, 3, 7, 7, -5, -1, -5, -5, 23, 23, 19, 23, 15, 11, 19, 15, 19, 11, 19, 15, 23, 11, 11, 19, 15, 19, 23, 23, 11, 15, 11, 11]
 mo.graph @transposed_gather_inshape_3x4x2x1x2_indices_2x3x4_axis_4_with_cast_test() -> (!mo.tensor<[2, 2, 1, 3, 2, 3, 4], si64>) {
-  %data = mo.constant {value = #M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>} : !mo.tensor<[3, 4, 2, 1, 2], si32>
-  %indices = mo.constant {value = #M.dense_array<3,3,2,3,1,0,2,1,2,0,2,1,3,0,0,2,1,2,3,3,0,1,0,0> : tensor<2x3x4xui32>} : !mo.tensor<[2, 3, 4], ui32>
-  %perm = mo.constant {value = #M.dense_array<4,2,3,0,1> : tensor<5xsi32>} : !mo.tensor<[5], si32>
+  %data = mo.constant <#M.dense_array<-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23> : tensor<3x4x2x1x2xsi32>> : !mo.tensor<[3, 4, 2, 1, 2], si32>
+  %indices = mo.constant <#M.dense_array<3,3,2,3,1,0,2,1,2,0,2,1,3,0,0,2,1,2,3,3,0,1,0,0> : tensor<2x3x4xui32>> : !mo.tensor<[2, 3, 4], ui32>
+  %perm = mo.constant <#M.dense_array<4,2,3,0,1> : tensor<5xsi32>> : !mo.tensor<[5], si32>
   %trans = mo.transpose(%data, %perm) : (!mo.tensor<[3, 4, 2, 1, 2], si32>, !mo.tensor<[5], si32>) -> !mo.tensor<[2, 2, 1, 3, 4], si32>
   %res = mo.gather(%trans, %indices) {axis = 4 : index} : (!mo.tensor<[2, 2, 1, 3, 4], si32>, !mo.tensor<[2, 3, 4], ui32>) -> !mo.tensor<[2, 2, 1, 3, 2, 3, 4], si32>
   %res_casted = mo.cast(%res): (!mo.tensor<[2, 2, 1, 3, 2, 3, 4], si32>) -> !mo.tensor<[2, 2, 1, 3, 2, 3, 4], si64>

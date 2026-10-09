@@ -10,8 +10,8 @@
 
 // --- Matmul alone on GPU ---
 mo.graph @parallel_gpu_matmul() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
-  %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
+  %a = mo.constant <#M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32, gpu:0>
+  %b = mo.constant <#M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32, gpu:0>
   %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>) -> (!mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>)
          -> (!mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>) {
@@ -33,8 +33,8 @@ mo.graph @parallel_gpu_matmul() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], 
 
 // --- Matmul + relu on GPU: epilogue fusion ---
 mo.graph @parallel_gpu_matmul_relu() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
-  %a = mo.constant {value = #M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
-  %b = mo.constant {value = #M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>} : !mo.tensor<[2, 2], f32, gpu:0>
+  %a = mo.constant <#M.dense_array<1.0, 0.0, 0.0, -1.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32, gpu:0>
+  %b = mo.constant <#M.dense_array<0.0, 1.0, -1.0, 0.0> : tensor<2x2xf32>> : !mo.tensor<[2, 2], f32, gpu:0>
   %bundle = mo.tensor.bundle(%a, %b) : (!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>) -> (!mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>)
   %res_bundle = mo.parallel (%arg0) in (%bundle : !mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>)
          -> (!mo.bundle<[!mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:0>]>) {
