@@ -504,7 +504,11 @@ void Python::DeviceStream::waitForDevice(const Device &device) const {
 uintptr_t Python::DeviceStream::nativeStreamHandle() const {
   // Mirrors getAsString's extraction: ask the device context for its native
   // stream and return the raw pointer. 0 when there is none (e.g. a CPU
-  // device), which native callers treat as "no stream".
+  // device), which native callers treat as "no stream". Non-zero means a
+  // CUstream / hipStream_t to callers, so other backends report 0.
+  M::Driver::Device::API api = stream->ctx->device().api();
+  if (api != M::Driver::Device::cudaAPI && api != M::Driver::Device::hipAPI)
+    return 0;
   auto err = stream->ctx->stream();
   if (err.isError())
     return 0;

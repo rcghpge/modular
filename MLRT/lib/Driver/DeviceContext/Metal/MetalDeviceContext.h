@@ -19,6 +19,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <vector>
 
 #if MODULAR_MACOS
 #include "MetalDriver.h"
@@ -28,7 +29,9 @@ namespace M::Driver {
 class MetalDevice;
 class MetalDeviceContext;
 class MetalDeviceEvent;
+class MetalDeviceStream;
 class MetalDeviceTimer;
+class MetalQueuePool;
 class MetalModuleFunction;
 class MetalDeviceFunction;
 class MetalDeviceFunctionArguments;
@@ -36,6 +39,8 @@ class MetalDeviceFunctionArguments;
 using MetalDeviceRef = RCRef<MetalDevice>;
 using MetalDeviceContextRef = RCRef<MetalDeviceContext>;
 using MetalDeviceEventRef = RCRef<MetalDeviceEvent>;
+using MetalDeviceStreamRef = RCRef<MetalDeviceStream>;
+using MetalQueuePoolRef = RCRef<MetalQueuePool>;
 using MetalDeviceTimerRef = RCRef<MetalDeviceTimer>;
 using MetalModuleFunctionRef = RCRef<const MetalModuleFunction>;
 using MetalDeviceFunctionRef = RCRef<MetalDeviceFunction>;
@@ -160,6 +165,29 @@ struct MetalEnqueueFunctionArgs {
   int32_t numBuffers;
 };
 
+// Metal fences only order work within one queue, so each queue has its own.
+struct MetalQueue {
+  NS::SharedPtr<MTL::CommandQueue> commandQueue;
+  // Null if creation failed.
+  NS::SharedPtr<MTL::Fence> orderFence;
+};
+
+/// Shared by a context and its `selectStream` views, like `CUDAStreamPool`.
+class MetalQueuePool : public ReferenceCounted<MetalQueuePool> {
+public:
+  explicit MetalQueuePool(MetalQueue base);
+
+  /// REQUIRES: i < size().
+  MetalQueue get(unsigned i) const;
+  unsigned size() const;
+  /// Thread-safe; returns the new queue's index.
+  unsigned emplace_back(MetalQueue queue);
+
+private:
+  mutable std::mutex mu_;
+  std::vector<MetalQueue> queues_;
+};
+
 class MetalDeviceContext : public DeviceContext {
 public:
   MetalDeviceContext(MetalDevice &device,
@@ -193,6 +221,10 @@ public:
 
   // Synchronize asynchronous operations.
   ErrorOr<DeviceStreamRef> stream() const override;
+  unsigned numStreams() const override;
+  // Metal queues have no priorities; `priority` is ignored.
+  ErrorOr<DeviceStreamRef> createStream(int priority = 0) override;
+  ErrorOr<DeviceContextRef> selectStream(unsigned streamId) override;
 
   ErrorOrSuccess synchronize() override;
 
@@ -240,10 +272,16 @@ public:
   MTL::Device *metalDevice() const {
     return MetalDevice::cast(device()).metalDevice();
   }
+  MTL::CommandQueue *commandQueue() const { return commandQueue_.get(); }
 
 private:
-  NS::SharedPtr<MTL::CommandQueue> commandQueue_;
+  MetalDeviceContext(MetalDevice &device, MetalQueuePoolRef queuePool,
+                     unsigned activeQueueId);
 
+  MetalQueuePoolRef queuePool_;
+
+  // Cached from `queuePool_`.
+  NS::SharedPtr<MTL::CommandQueue> commandQueue_;
   // FIFO ordering spine: every committed command buffer waits on then updates
   // this fence, so buffers finish in commit order (Metal only orders starts).
   NS::SharedPtr<MTL::Fence> orderFence_;
@@ -273,6 +311,34 @@ private:
   MTL::Buffer *getMetalBuffer(const void *ptr) const;
   MTL::StorageMode getStorageMode(Device::AllocMode mode) const;
   MTL::ResourceOptions getResourceOptions(Device::AllocMode mode) const;
+};
+
+// Targets its context's active queue, so created streams hold a view.
+class MetalDeviceStream : public DeviceStream {
+public:
+  explicit MetalDeviceStream(MetalDeviceContext &ctx);
+
+  ErrorOrSuccess synchronize() override;
+
+  ErrorOr<DeviceEventRef> enqueueEvent() const override;
+
+  ErrorOrSuccess enqueueFunctionExecDirect(
+      const DeviceFunction &func, uint32_t gridX, uint32_t gridY,
+      uint32_t gridZ, uint32_t blockX, uint32_t blockY, uint32_t blockZ,
+      uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
+      uint32_t argCount = 0, const size_t *argSizes = nullptr) const override;
+  ErrorOrSuccess eventRecord(const DeviceEvent &event) const override;
+  ErrorOrSuccess waitEvent(const DeviceEvent &event,
+                           unsigned int flags) const override;
+
+  ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
+
+  // The MTLCommandQueue.
+  void *ptr() const override;
+
+private:
+  // The base class's DeviceContextRef keeps this alive.
+  MetalDeviceContext &metalCtx_;
 };
 
 class MetalDeviceEvent : public DeviceEvent {

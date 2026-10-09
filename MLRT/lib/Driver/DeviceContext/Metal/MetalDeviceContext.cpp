@@ -540,31 +540,71 @@ void MetalDevice::forEachTrackedBuffer(
 // ===== MetalDeviceContext ===== //
 //
 
-MetalDeviceContext::MetalDeviceContext(
-    MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
-    : DeviceContext(device, TypeID::get<MetalDeviceContext>()),
-      commandQueue_(std::move(commandQueue)) {
-  // Seed printDisabled_ from env so callers that can't call
-  // setMetalPrintEnabled (e.g. launched subprocesses) can disable GPU print
-  // process-wide.
-  if (const char *env = std::getenv("MODULAR_DISABLE_METAL_GPU_PRINT"))
-    printDisabled_ = (env[0] != '\0' && env[0] != '0');
-
+// Seeded so the queue's first waitForFence has an update to wait on.
+static MetalQueue
+makeMetalQueue(MTL::Device *device,
+               NS::SharedPtr<MTL::CommandQueue> commandQueue) {
   NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
       NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-  orderFence_ = NS::TransferPtr(device.metalDevice()->newFence());
-  if (orderFence_) {
-    MTL::CommandBuffer *cmdBuffer = commandQueue_->commandBuffer();
+  NS::SharedPtr<MTL::Fence> fence = NS::TransferPtr(device->newFence());
+  if (fence) {
+    MTL::CommandBuffer *cmdBuffer = commandQueue->commandBuffer();
     MTL::BlitCommandEncoder *blit =
         cmdBuffer ? cmdBuffer->blitCommandEncoder() : nullptr;
     if (blit) {
-      blit->updateFence(orderFence_.get());
+      blit->updateFence(fence.get());
       blit->endEncoding();
       cmdBuffer->commit();
     } else {
-      orderFence_.reset();
+      fence.reset();
     }
   }
+  return MetalQueue{std::move(commandQueue), std::move(fence)};
+}
+
+MetalQueuePool::MetalQueuePool(MetalQueue base) {
+  queues_.push_back(std::move(base));
+}
+
+MetalQueue MetalQueuePool::get(unsigned i) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  assert(i < queues_.size() && "queue index out of range");
+  return queues_[i];
+}
+
+unsigned MetalQueuePool::size() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  return static_cast<unsigned>(queues_.size());
+}
+
+unsigned MetalQueuePool::emplace_back(MetalQueue queue) {
+  std::lock_guard<std::mutex> lock(mu_);
+  queues_.push_back(std::move(queue));
+  return static_cast<unsigned>(queues_.size()) - 1;
+}
+
+// For processes that cannot call setMetalPrintEnabled, e.g. subprocesses.
+static bool metalPrintDisabledByEnv() {
+  const char *env = std::getenv("MODULAR_DISABLE_METAL_GPU_PRINT");
+  return env && env[0] != '\0' && env[0] != '0';
+}
+
+MetalDeviceContext::MetalDeviceContext(
+    MetalDevice &device, NS::SharedPtr<MTL::CommandQueue> commandQueue)
+    : MetalDeviceContext(device,
+                         MetalQueuePoolRef::create(makeMetalQueue(
+                             device.metalDevice(), std::move(commandQueue))),
+                         /*activeQueueId=*/0) {}
+
+MetalDeviceContext::MetalDeviceContext(MetalDevice &device,
+                                       MetalQueuePoolRef queuePool,
+                                       unsigned activeQueueId)
+    : DeviceContext(device, TypeID::get<MetalDeviceContext>()),
+      queuePool_(std::move(queuePool)) {
+  MetalQueue active = queuePool_->get(activeQueueId);
+  commandQueue_ = std::move(active.commandQueue);
+  orderFence_ = std::move(active.orderFence);
+  printDisabled_ = metalPrintDisabledByEnv();
 }
 
 ErrorOrSuccess MetalDeviceContext::enqueueCopyToDevice(void *dst,
@@ -1144,8 +1184,74 @@ ErrorOrSuccess MetalDeviceContext::enqueueFunctionExecDirect(
 }
 
 ErrorOr<DeviceStreamRef> MetalDeviceContext::stream() const {
-  RETURN_ERROR("Metal stream not implemented");
+  // Streams enqueue through a mutable context.
+  return MetalDeviceStreamRef::create(const_cast<MetalDeviceContext &>(*this));
 }
+
+unsigned MetalDeviceContext::numStreams() const { return queuePool_->size(); }
+
+ErrorOr<DeviceStreamRef> MetalDeviceContext::createStream(int /*priority*/) {
+  NS::SharedPtr<NS::AutoreleasePool> autoreleasePool =
+      NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+  NS::SharedPtr<MTL::CommandQueue> commandQueue =
+      NS::TransferPtr(metalDevice()->newCommandQueue());
+  if (!commandQueue)
+    RETURN_ERROR("Failed to create Metal command queue for stream");
+  unsigned id = queuePool_->emplace_back(
+      makeMetalQueue(metalDevice(), std::move(commandQueue)));
+
+  // The stream retains the view.
+  MetalDeviceContextRef view = MetalDeviceContextRef::take(
+      new MetalDeviceContext(MetalDevice::cast(device()), queuePool_, id));
+  return MetalDeviceStreamRef::create(*view);
+}
+
+ErrorOr<DeviceContextRef> MetalDeviceContext::selectStream(unsigned streamId) {
+  if (streamId >= queuePool_->size())
+    return Error("invalid stream id: " + llvm::Twine(streamId));
+  if (queuePool_->get(streamId).commandQueue.get() == commandQueue_.get())
+    return DeviceContextRef::copy(this);
+  return DeviceContextRef::take(new MetalDeviceContext(
+      MetalDevice::cast(device()), queuePool_, streamId));
+}
+
+MetalDeviceStream::MetalDeviceStream(MetalDeviceContext &ctx)
+    : DeviceStream(ctx), metalCtx_(ctx) {}
+
+ErrorOrSuccess MetalDeviceStream::synchronize() {
+  return metalCtx_.synchronize();
+}
+
+ErrorOr<DeviceEventRef> MetalDeviceStream::enqueueEvent() const {
+  return metalCtx_.enqueueEvent();
+}
+
+ErrorOrSuccess MetalDeviceStream::enqueueFunctionExecDirect(
+    const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
+    uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
+    void *attrs, uint32_t numAttrs, void **args, uint32_t argCount,
+    const size_t *argSizes) const {
+  return metalCtx_.enqueueFunctionExecDirect(
+      func, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMemBytes, attrs,
+      numAttrs, args, argCount, argSizes);
+}
+
+ErrorOrSuccess MetalDeviceStream::eventRecord(const DeviceEvent &event) const {
+  return metalCtx_.enqueueEvent(event);
+}
+
+ErrorOrSuccess MetalDeviceStream::waitEvent(const DeviceEvent &event,
+                                            unsigned int /*flags*/) const {
+  return enqueueWaitForEvent(event);
+}
+
+ErrorOrSuccess
+MetalDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
+  // enqueueWaitFor only reads the event.
+  return metalCtx_.enqueueWaitFor(const_cast<DeviceEvent &>(event));
+}
+
+void *MetalDeviceStream::ptr() const { return metalCtx_.commandQueue(); }
 
 ErrorOrSuccess MetalDeviceContext::synchronize() {
   TRACY_ZONE_SCOPED_NC("MetalDeviceContext::synchronize", TRACY_COLOR_PURPLE);

@@ -18,6 +18,7 @@
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace M::Driver {
 
@@ -1007,6 +1008,82 @@ TEST_F(GPUDeviceContextTest, CrossContextEvent) {
 
   EXPECT_EQ(memcmp(dstHostBuf->ptr(), checkData, allocLen), 0);
   delete[] checkData;
+}
+
+TEST_F(GPUDeviceContextTest, CrossContextStreamEvent) {
+  ASSIGN_NO_ERR(DeviceContextRef, srcCtx,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, dstCtx,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceStreamRef, srcStream, srcCtx->stream());
+  ASSIGN_NO_ERR(DeviceStreamRef, dstStream, dstCtx->stream());
+
+  EXPECT_TRUE(*srcCtx == *srcCtx);
+  EXPECT_FALSE(*srcCtx == *dstCtx);
+
+  const int allocLen = 12 * 1024 * 1024;
+  std::vector<char> checkData(allocLen);
+  for (int i = 0; i < allocLen; ++i)
+    checkData[i] = static_cast<char>(i * 7);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, srcHostBuf,
+                srcCtx->createHostBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstHostBuf,
+                dstCtx->createHostBuffer(allocLen));
+  memcpy(srcHostBuf->ptr(), checkData.data(), allocLen);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, srcDevBuf,
+                srcCtx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstDevBuf,
+                dstCtx->enqueueCreateBuffer(allocLen));
+
+  EXPECT_NO_ERR(srcHostBuf->copyTo(*srcDevBuf));
+  ASSIGN_NO_ERR(DeviceEventRef, copyDoneEvent, srcCtx->eventCreate(false));
+  EXPECT_NO_ERR(srcStream->eventRecord(*copyDoneEvent));
+
+  EXPECT_NO_ERR(dstStream->enqueueWaitForEvent(*copyDoneEvent));
+  EXPECT_NO_ERR(srcDevBuf->copyTo(*dstDevBuf));
+  EXPECT_NO_ERR(dstDevBuf->copyTo(*dstHostBuf));
+  EXPECT_NO_ERR(dstStream->synchronize());
+
+  EXPECT_EQ(memcmp(dstHostBuf->ptr(), checkData.data(), allocLen), 0);
+}
+
+TEST_F(GPUDeviceContextTest, CreatedStreamEventOrdering) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+  unsigned baseStreams = ctx->numStreams();
+  ASSIGN_NO_ERR(DeviceStreamRef, sideStream, ctx->createStream());
+  EXPECT_EQ(ctx->numStreams(), baseStreams + 1);
+  ASSIGN_NO_ERR(DeviceContextRef, view, ctx->selectStream(baseStreams));
+  ASSIGN_NO_ERR(DeviceContextRef, baseView, ctx->selectStream(0));
+  EXPECT_EQ(baseView.getPointer(), ctx.getPointer());
+  EXPECT_FALSE(*view == *ctx);
+  ASSIGN_NO_ERR(DeviceStreamRef, viewStream, view->stream());
+  EXPECT_EQ(viewStream->ptr(), sideStream->ptr());
+  EXPECT_TRUE(ctx->selectStream(baseStreams + 1).isError());
+
+  const int allocLen = 12 * 1024 * 1024;
+  std::vector<char> checkData(allocLen);
+  for (int i = 0; i < allocLen; ++i)
+    checkData[i] = static_cast<char>(i * 13);
+
+  ASSIGN_NO_ERR(DeviceBufferRef, srcHostBuf, ctx->createHostBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstHostBuf, view->createHostBuffer(allocLen));
+  memcpy(srcHostBuf->ptr(), checkData.data(), allocLen);
+  ASSIGN_NO_ERR(DeviceBufferRef, srcDevBuf, ctx->enqueueCreateBuffer(allocLen));
+  ASSIGN_NO_ERR(DeviceBufferRef, dstDevBuf,
+                view->enqueueCreateBuffer(allocLen));
+
+  EXPECT_NO_ERR(srcHostBuf->copyTo(*srcDevBuf));
+  ASSIGN_NO_ERR(DeviceStreamRef, baseStream, ctx->stream());
+  ASSIGN_NO_ERR(DeviceEventRef, copyDoneEvent, ctx->eventCreate(false));
+  EXPECT_NO_ERR(baseStream->eventRecord(*copyDoneEvent));
+  EXPECT_NO_ERR(sideStream->enqueueWaitForEvent(*copyDoneEvent));
+  EXPECT_NO_ERR(srcDevBuf->copyTo(*dstDevBuf));
+  EXPECT_NO_ERR(dstDevBuf->copyTo(*dstHostBuf));
+  EXPECT_NO_ERR(sideStream->synchronize());
+
+  EXPECT_EQ(memcmp(dstHostBuf->ptr(), checkData.data(), allocLen), 0);
 }
 
 TEST_F(GPUDeviceContextTest, BasicEvent) {
