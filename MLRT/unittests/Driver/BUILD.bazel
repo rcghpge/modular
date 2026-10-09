@@ -392,15 +392,14 @@ modular_cc_test(
         # keep it off shared devices.
         "test.resources:gpu-memory": "180",
     },
-    # Reserving GPU memory means this cannot be scheduled at all without a GPU,
-    # so it has to be incompatible on CPU lanes rather than merely skipping at
-    # runtime the way the lighter targets above do.
-    gpu_constraints = ["//:has_gpu"],
+    # NVIDIA-only. The 180 GiB reservation is a whole B200 but only part of an
+    # MI355X, so other tests share the device. Separately, HIP does not
+    # reliably refuse a small VMM allocation once hipMalloc has driven free
+    # memory to zero: it either backs the 64 MiB request anyway or crashes
+    # inside HIP while mapping it. Requiring a GPU also keeps this off CPU
+    # lanes, which could not schedule the reservation.
+    gpu_constraints = ["//:nvidia_gpu"],
     tags = ["gpu"],
-    target_compatible_with = select({
-        "@platforms//os:macos": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
     deps = [
         ":TestUtils",
         "//MLRT:Driver/DeviceContextImpl",
