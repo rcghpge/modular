@@ -442,6 +442,11 @@ class TensorAgent:
     reg_dlists: list[nixl.RegistrationDescriptorList]
     """Registration descriptor list per NIXL group, parallel to ``base_addrs``."""
 
+    buffers: list[Buffer]
+    """Registered buffers, parallel to ``base_addrs``. NIXL holds only raw
+    addresses, so these keep the memory alive until the engine's
+    ``cleanup()`` deregisters it."""
+
     @classmethod
     def create_agent(
         cls,
@@ -559,6 +564,7 @@ class TensorAgent:
             device_id=device.id,
             agent_metadata=agent_metadata,
             reg_dlists=reg_dlists,
+            buffers=list(tensors),
         )
 
     def to_metadata(self) -> TensorAgentMetadata:
@@ -1874,6 +1880,7 @@ class TransferEngine:
                         raise ValueError(
                             f"Failed to deregister memory: {status}"
                         )
+                ta.buffers.clear()
 
 
 class KVTransferEngine(TransferEngine):

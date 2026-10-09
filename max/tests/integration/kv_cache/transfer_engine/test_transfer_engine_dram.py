@@ -30,6 +30,7 @@ file descriptor errors — see test_send_recv.py). The BUILD target sets
 
 from __future__ import annotations
 
+import gc
 import os
 from pathlib import Path
 from queue import Queue
@@ -200,6 +201,72 @@ def test_read_transfer_dram() -> None:
     assert np.array_equal(blocks_1.to_numpy(), expected_blocks_1)
     assert np.array_equal(blocks_2.to_numpy(), expected_blocks_2)
 
+    engine_2.cleanup()
+    engine_1.cleanup()
+
+
+def test_engine_keeps_registered_buffers_alive_dram() -> None:
+    """Transfers stay correct when the engine holds the only buffer refs.
+
+    NIXL registers raw addresses, so a buffer the engine drops is freed while
+    still registered. engine_1 and engine_2 own their buffers outright; the
+    pages relay through both into engine_3, whose buffer the test keeps.
+    """
+    total_num_pages = 4
+    elts_per_page = 64
+    num_elts = total_num_pages * elts_per_page
+
+    engine_1 = KVTransferEngine(
+        "engine_1",
+        [
+            [
+                kv_memory(
+                    Buffer.from_numpy(np.arange(num_elts, dtype=np.int16)),
+                    total_num_pages,
+                )
+            ]
+        ],
+    )
+    engine_2 = KVTransferEngine(
+        "engine_2",
+        [
+            [
+                kv_memory(
+                    Buffer.from_numpy(np.zeros(num_elts, dtype=np.int16)),
+                    total_num_pages,
+                )
+            ]
+        ],
+    )
+    blocks_3 = Buffer.from_numpy(np.zeros(num_elts, dtype=np.int16))
+    engine_3 = KVTransferEngine(
+        "engine_3", [[kv_memory(blocks_3, total_num_pages)]]
+    )
+
+    # Refill any freed allocations so a dangling registration reads -1s.
+    gc.collect()
+    _churn = [np.full(num_elts, -1, dtype=np.int16) for _ in range(4096)]
+
+    engine_1.connect(engine_2.metadata)
+    engine_2.connect(engine_1.metadata)
+    engine_2.connect(engine_3.metadata)
+    engine_3.connect(engine_2.metadata)
+
+    page_idxs = list(range(total_num_pages))
+    for src, dst in ((engine_1, engine_2), (engine_2, engine_3)):
+        queue: Queue[TransferReqData] = Queue()
+        sender = Thread(
+            target=_sender_routine,
+            args=(src, dst.metadata, queue, page_idxs, page_idxs),
+        )
+        receiver = Thread(target=_peer_routine, args=(dst, queue))
+        _run_transfer_pair(sender, receiver)
+
+    assert np.array_equal(
+        blocks_3.to_numpy(), np.arange(num_elts, dtype=np.int16)
+    )
+
+    engine_3.cleanup()
     engine_2.cleanup()
     engine_1.cleanup()
 
