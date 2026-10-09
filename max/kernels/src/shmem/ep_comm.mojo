@@ -270,6 +270,8 @@ def block_memcpy[
     num_bytes: Int,
     block_size: Int,
     bypass_l2: Bool = False,
+    unroll: Int = 1,
+    src_invariant: Bool = True,
 ](
     dst_p: UnsafePointer[mut=True, UInt8, _, address_space=dst_addr_space],
     src_p: UnsafePointer[mut=False, UInt8, _, address_space=src_addr_space],
@@ -284,6 +286,14 @@ def block_memcpy[
     caller publishes with `_publish_peer_stores`. On MI355X the stores then
     carry system-scope cache bits and are visible as they complete; elsewhere
     the flag changes nothing and the caller's release fence publishes them.
+
+    Set `unroll` above 1 when few threads copy a long message (one warp per
+    message): each thread then issues `unroll` independent loads before their
+    stores, so their latencies overlap instead of adding up one per trip.
+
+    Clear `src_invariant` when the source bytes were stored earlier in the
+    same launch: an invariant load (`ld.global.nc` on NVIDIA) tells the
+    compiler the memory does not change while the kernel runs.
     """
     comptime if bypass_l2 and _is_amd_mi355x():
         # See https://llvm.org/docs/AMDGPUUsage.html#memory-model-gfx942.
@@ -297,7 +307,9 @@ def block_memcpy[
         ), "num_bytes must be a multiple of the 16-byte store width"
         for i in range(thread_idx, num_bytes // store_width, block_size):
             var data = src_p.load[
-                width=store_width, alignment=store_width, invariant=True
+                width=store_width,
+                alignment=store_width,
+                invariant=src_invariant,
             ](i * store_width)
             inlined_assembly[
                 "global_store_dwordx4 $0, $1, off sc0 sc1",
@@ -307,15 +319,34 @@ def block_memcpy[
             ](Int(dst_p + i * store_width), bitcast[DType.uint32, 4](data))
     else:
         comptime simd_width = simd_width_of[DType.uint8]()
-        for i in range(thread_idx, num_bytes // simd_width, block_size):
-            dst_p.store[alignment=simd_width](
-                i * simd_width,
-                src_p.load[
-                    width=simd_width,
-                    alignment=simd_width,
-                    invariant=True,
-                ](i * simd_width),
-            )
+        comptime n_vec = num_bytes // simd_width
+        comptime if unroll == 1:
+            for i in range(thread_idx, n_vec, block_size):
+                dst_p.store[alignment=simd_width](
+                    i * simd_width,
+                    src_p.load[
+                        width=simd_width,
+                        alignment=simd_width,
+                        invariant=src_invariant,
+                    ](i * simd_width),
+                )
+        else:
+            for base in range(thread_idx, n_vec, block_size * unroll):
+                var vals = Array[SIMD[DType.uint8, simd_width], unroll](fill=0)
+                comptime for k in range(unroll):
+                    var i = base + k * block_size
+                    if i < n_vec:
+                        vals[k] = src_p.load[
+                            width=simd_width,
+                            alignment=simd_width,
+                            invariant=src_invariant,
+                        ](i * simd_width)
+                comptime for k in range(unroll):
+                    var i = base + k * block_size
+                    if i < n_vec:
+                        dst_p.store[alignment=simd_width](
+                            i * simd_width, vals[k]
+                        )
 
 
 @inline(.always)
@@ -3596,7 +3627,21 @@ struct EPDispatchKernel[
                             trace.stamp[DISPATCH_PAIR_COPY_ISSUE](
                                 _tr_pub, UInt64(global_perf_counter_ns())
                             )
-                    block_memcpy[Self.msg_bytes, WARP_SIZE, bypass_l2=True](
+                    # Under the role split one warp copies a whole message;
+                    # overlapping its loads keeps the copy from paying one
+                    # load latency per 512-byte step. The copy-role warps
+                    # stored this slot earlier in the launch, so those loads
+                    # must not be invariant.
+                    # TODO(KERN-3658): the stock dispatch stores the slot in
+                    # the same launch too and still loads it as invariant; it
+                    # changes in its own patch with its own measurements.
+                    block_memcpy[
+                        Self.msg_bytes,
+                        WARP_SIZE,
+                        bypass_l2=True,
+                        unroll=4 if Roles.enabled else 1,
+                        src_invariant=not Roles.enabled,
+                    ](
                         dst_recv_buf_ptr,
                         curr_send_buf_ptr,
                         lane_id(),

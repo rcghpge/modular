@@ -641,15 +641,27 @@ struct Struct_mega_ffn_ep_combine_send:
         # side, because a graph cannot read a Mojo comptime. Nothing keeps the
         # two in step, and a stride that disagrees silently corrupts the pool
         # rather than failing, so check the shape the kernel actually needs.
+        # The per-expert words are indexed by LOCAL expert (the weights'
+        # expert dim), as the Python allocator sizes them; the GLOBAL
+        # `n_experts` would refuse a valid buffer at EP8 below 28 tokens per
+        # rank.
+        comptime n_local_experts = Int(
+            gate_up_weight.static_spec.shape_tuple[0]
+        )
         var arrival_words = Int(arrival_count.dim_size[0]())
-        if (
-            arrival_words % ATOMIC_PAD != 0
-            or arrival_words < (n_experts + 1) * ATOMIC_PAD
-        ):
+        comptime required_words = (n_local_experts + 1) * ATOMIC_PAD
+        if arrival_words % ATOMIC_PAD != 0 or arrival_words < required_words:
             raise Error(
-                "arrival_count must be a whole number of ATOMIC_PAD-word pool"
-                " slots and hold at least n_experts + 1 of them, since the"
-                " send keeps its per-expert words in slot padding"
+                "arrival_count has ",
+                arrival_words,
+                " words; it must be a whole number of ",
+                ATOMIC_PAD,
+                "-word pool slots and hold at least ",
+                required_words,
+                (
+                    " (one slot per local expert, plus one), since the send"
+                    " keeps its per-expert words in slot padding"
+                ),
             )
 
         var num_active = Int(num_active_experts)
@@ -1580,7 +1592,6 @@ struct Struct_mega_ffn_ep_fused:
         comptime n_ranks = n_gpus_per_node
         # The format and MoE width follow from the weights; the decision and
         # geometry come from the same plan `mega_ffn.ep_fused_init` used.
-        comptime nvfp4 = b_type == DType.uint8
         comptime P = _FusedEPPlan[
             b_type,
             hidden_size,
@@ -1911,11 +1922,11 @@ struct Struct_mega_ffn_ep_fused:
             p4_direct_pair_release=True,
             p4_one_signal=True,
             p4_poll_fence=True,
-            # MXFP8 at token block 32 only, the measured configuration and the
-            # one its gates cover; NVFP4 and token block 8 keep the release at
-            # the first k-group.
-            ep_late_full_release=(not nvfp4 and G.token_block == 32),
-            ep_coop_src_info=(not nvfp4 and G.token_block == 32),
+            # Token block 32 (either format), the configuration the FULL
+            # correctness tests cover; token block 8 keeps the release at the
+            # first k-group and the elected-lane `src_info` writer.
+            ep_late_full_release=(G.token_block == 32),
+            ep_coop_src_info=(G.token_block == 32),
             ep_fused_full=True,
             ep_fused_full_verify=False,
             ep_input_scales_wrapper=in_scale_fn,

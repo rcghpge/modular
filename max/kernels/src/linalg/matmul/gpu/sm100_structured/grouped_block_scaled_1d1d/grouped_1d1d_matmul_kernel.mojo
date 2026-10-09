@@ -676,6 +676,11 @@ struct Grouped1D1DMatmulKernel[
     # cta_group=1 layout. False (default) keeps the cooperative
     # scatter path.
     swiglu_use_inplace: Bool = False,
+    # NVFP4 in-place path only: stage each warp's SwiGLU values through
+    # SMEM so that every lane quantizes and stores one token's SF block,
+    # instead of gathering each block into one writer lane with shuffles.
+    # Same output bytes; MXFP8 ignores it.
+    swiglu_inplace_token_per_lane: Bool = False,
     c_device_engine: TensorEngine = DefaultEngine[element_width=1],
     offsets_engine: TensorEngine = DefaultEngine[element_width=1],
     a_scale_offsets_engine: TensorEngine = DefaultEngine[element_width=1],
@@ -745,6 +750,11 @@ struct Grouped1D1DMatmulKernel[
             register path that skips the `bfloat16` SMEM scratchpad via
             cross-lane shuffles; `False` (default) keeps the cooperative
             scatter path.
+        swiglu_inplace_token_per_lane: When `True`, the NVFP4 in-place
+            path stages each warp's SwiGLU values through SMEM and every
+            lane quantizes and stores one token's SF block; the output
+            bytes are unchanged and MXFP8 ignores it (defaults to
+            `False`).
         c_device_engine: Engine of the C `TileTensor`.
         offsets_engine: Engine of the per-expert offsets
             `TileTensor`.
@@ -3414,6 +3424,197 @@ struct Grouped1D1DMatmulKernel[
             warp_row_offset = UInt32(warp_id_v) * UInt32(16)
         else:
             warp_row_offset = (UInt32(warp_id_v) % UInt32(2)) * UInt32(32)
+
+        # In-place NVFP4 with one token per lane. The path below gathers
+        # each token's SF block into one writer lane: per stage, 2 * repeats
+        # rounds of 12 shuffles and a whole quantization, with 4 of 32 lanes
+        # storing. Here each (gate, up) pair is evaluated once (the even
+        # lane takes the upper fragment, the odd lane the lower), the values
+        # go through SMEM, and lane t quantizes token t's block with the
+        # same arithmetic, so the output bytes do not change.
+        comptime if (
+            Self.swiglu_use_inplace
+            and Self.swiglu_inplace_token_per_lane
+            and not is_mxfp8
+        ):
+            comptime assert is_lower_frag_required and stageN <= WARP_SIZE, (
+                "one token per lane needs both TMEM row halves and at most"
+                " WARP_SIZE tokens per stage"
+            )
+            comptime TokPartialType = Array[
+                Scalar[Self.accum_type], rep_frag_size
+            ]
+            # A warp's stage is `stageN` rows of `SfVectorSize` floats.
+            # The c_tiles SMEM is idle on the in-place path.
+            comptime warp_floats = stageN * SfVectorSize
+            comptime rows_bytes = (
+                num_output_warps * warp_floats * size_of[DType.float32]()
+            )
+            comptime c_tile_bytes = (
+                Self.OutputM * Self.OutputN * size_of[Self.c_type]()
+            )
+            comptime assert (
+                rows_bytes <= c_tile_bytes
+            ), "the per-warp SwiGLU rows must fit in one C tile"
+            # Indexed (warp, token, granule, word): each token row's
+            # `SfVectorSize` floats as 4-float granules.
+            comptime tok_rows_layout = row_major[
+                num_output_warps, stageN, SfVectorSize // 4, 4
+            ]()
+            var tok_rows = TileTensor[
+                DType.float32,
+                type_of(tok_rows_layout),
+                MutAnyOrigin,
+                address_space=AddressSpace.SHARED,
+                linear_idx_type=DType.uint32,
+            ](c_tiles[0].unsafe_ptr().bitcast[Float32](), tok_rows_layout)
+            var tok_warp = UInt32(warp_id_v)
+            var tok_is_even = (lane_row & UInt32(1)) == UInt32(0)
+            # A row's 4-float granule g sits at g ^ ((token >> 1) & 3): the
+            # scalar stores are then at most 2-way bank conflicted and each
+            # lane's 16-byte row loads conflict-free. Every token this lane
+            # holds has (token >> 1) & 3 == lane % 4, and its values are
+            # word lane_row // 2 of granule 2 * (lane_row % 2) + f // 2.
+            var tok_key = UInt32(lane_v) % UInt32(4)
+            var tok_gran = UInt32(2) * (lane_row & UInt32(1))
+            var tok_gran0 = tok_gran ^ tok_key
+            var tok_gran1 = (tok_gran + UInt32(1)) ^ tok_key
+            var tok_word = lane_row >> 1
+            var tok_t = UInt32(lane_v)
+            var tok_ld_key = (tok_t >> 1) & UInt32(3)
+            var tok_byte_base = Int(n_abs) // 4 + Int(warp_row_offset) // 4
+            var tok_sf_col = Int(n_abs) // 2 + Int(warp_row_offset) // 2
+
+            comptime for loop_stage in range(num_stages):
+                # Element `2 * r + j` scales the fragment pair `(4 * r + j,
+                # 4 * r + 2 + j)`.
+                var token_scales = tile_scales.pairs[
+                    repeats, loop_stage * stageN
+                ](UInt32(lane_v))
+
+                var frags_tok = accum_tiles[loop_stage].load_fragments[
+                    repeats
+                ]()
+                AccumTmemArrayLocal.Tile.wait_load()
+
+                comptime if loop_stage == num_stages - 1:
+                    AccumBarrier[Self.cta_group].arrive(
+                        output_stage.pipeline, output_stage.index
+                    )
+
+                var upper_tok = rebind[TokPartialType](frags_tok.upper).copy()
+                var lower_tok = rebind[TokPartialType](frags_tok.lower).copy()
+
+                # Expert scale and bf16 round trip, as the path below.
+                comptime for r0 in range(repeats):
+                    var pair_scale = token_scales.slice[2, offset=2 * r0]()
+                    comptime for _pair in range(2):
+                        comptime _off = r0 * 4 + _pair * 2
+                        var src_u = SIMD[Self.accum_type, 2](
+                            upper_tok[_off], upper_tok[_off + 1]
+                        )
+                        var dst_u = (
+                            (src_u * pair_scale)
+                            .cast[.bfloat16]()
+                            .cast[Self.accum_type]()
+                        )
+                        upper_tok[_off] = dst_u[0]
+                        upper_tok[_off + 1] = dst_u[1]
+                        var src_l = SIMD[Self.accum_type, 2](
+                            lower_tok[_off], lower_tok[_off + 1]
+                        )
+                        var dst_l = (
+                            (src_l * pair_scale)
+                            .cast[.bfloat16]()
+                            .cast[Self.accum_type]()
+                        )
+                        lower_tok[_off] = dst_l[0]
+                        lower_tok[_off + 1] = dst_l[1]
+
+                # The even lane holds the gates, the odd lane the ups. Each
+                # sends the operand of the half the other evaluates.
+                var sw_tok = TokPartialType(uninitialized=True)
+                comptime for j in range(rep_frag_size):
+                    var give = lower_tok[j] if tok_is_even else upper_tok[j]
+                    var take = warp.shuffle_xor(give, UInt32(4))
+                    var gate = upper_tok[j] if tok_is_even else take
+                    var up = take if tok_is_even else lower_tok[j]
+                    comptime if ClampActivation:
+                        var alpha_ip = swiglu_out.clamp_alpha()
+                        var limit_ip = swiglu_out.clamp_limit()
+                        var g_c = min(gate, limit_ip)
+                        var u_c = max(min(up, limit_ip), -limit_ip)
+                        var sigmoid_ip = recip(
+                            Float32(1.0) + exp(-(g_c * alpha_ip))
+                        )
+                        sw_tok[j] = (u_c + Float32(1.0)) * g_c * sigmoid_ip
+                    else:
+                        var sigmoid = recip(Float32(1.0) + exp(-gate))
+                        sw_tok[j] = gate * sigmoid * up
+
+                # Earlier row loads of this warp read these slots.
+                syncwarp()
+                # Element `4 * r + f` is token `lane_col + 8 * r + f % 2`.
+                comptime for j in range(rep_frag_size):
+                    var tok = lane_col + UInt32(8 * (j // 4) + (j % 4) % 2)
+                    comptime if (j % 4) // 2 == 0:
+                        tok_rows[tok_warp, tok, tok_gran0, tok_word] = sw_tok[j]
+                    else:
+                        tok_rows[tok_warp, tok, tok_gran1, tok_word] = sw_tok[j]
+                syncwarp()
+
+                if stageN == WARP_SIZE or tok_t < UInt32(stageN):
+                    var pack16 = SIMD[Self.accum_type, SfVectorSize]()
+                    comptime for g in range(SfVectorSize // 4):
+                        var quad = tok_rows.load[width=4, alignment=16](
+                            (tok_warp, tok_t, UInt32(g) ^ tok_ld_key, Idx[0])
+                        )
+                        comptime for i in range(4):
+                            pack16[4 * g + i] = quad[i]
+
+                    var block_max = abs(pack16).reduce_max()
+                    var sf_f32 = tensor_sf * (block_max * SIXTH)
+                    var sf_byte = sf_f32.cast[SfDtype]()
+                    var output_scale = Float32(0.0)
+                    if block_max != Float32(0.0):
+                        output_scale = tensor_sf * recip(
+                            sf_byte.cast[.float32]()
+                        )
+                    var p_scaled = pack16 * output_scale
+                    var packed_lo = cast_fp32_to_fp4e2m1(
+                        p_scaled.slice[8, offset=0]()
+                    )
+                    var packed_hi = cast_fp32_to_fp4e2m1(
+                        p_scaled.slice[8, offset=8]()
+                    )
+                    var token_g = (
+                        m_abs + UInt32(loop_stage) * UInt32(stageN) + tok_t
+                    )
+                    if token_g < m_end:
+                        swiglu_out.store_packed_word(
+                            Int(token_g), tok_byte_base, packed_lo
+                        )
+                        swiglu_out.store_packed_word(
+                            Int(token_g), tok_byte_base + 4, packed_hi
+                        )
+                        swiglu_out.set_sf(
+                            Int(token_g) - m_local_base + sf_block_base,
+                            tok_sf_col,
+                            sf_byte,
+                        )
+
+            # Per-expert SF tail-pad zero-fill, as the path below.
+            if Int(m_abs) + Int(Self.MMA_N) >= Int(m_end) and n_abs == UInt32(
+                0
+            ):
+                swiglu_out.pad_sf_zero_block(
+                    sf_block_base,
+                    Int(m_end) - Int(m_start),
+                    Int(UInt32(warp_id_v) * UInt32(WARP_SIZE) + UInt32(lane_v)),
+                    num_output_warps * WARP_SIZE,
+                )
+
+            return
 
         # In-place register-only path (gated comptime; default off).
         # Skips the bf16 SMEM scratchpad: 4 useful lanes per warp
