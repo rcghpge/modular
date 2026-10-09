@@ -22,13 +22,6 @@ namespace {
 // cgroup v1 reports "unlimited" as a near-2**63 sentinel rather than "max".
 constexpr size_t noCgroupLimit = size_t(1) << 62;
 
-std::optional<std::string> readSmallFile(llvm::Twine path) {
-  auto buffer = llvm::MemoryBuffer::getFile(path);
-  if (!buffer)
-    return std::nullopt;
-  return std::string(buffer->get()->getBuffer());
-}
-
 std::optional<size_t> parseInt(llvm::StringRef contents) {
   contents = contents.trim();
   size_t value;
@@ -49,6 +42,13 @@ std::optional<size_t> parseStatKey(llvm::StringRef stat, llvm::StringRef key) {
 }
 
 #if MODULAR_LINUX
+std::optional<std::string> readSmallFile(llvm::Twine path) {
+  auto buffer = llvm::MemoryBuffer::getFile(path);
+  if (!buffer)
+    return std::nullopt;
+  return std::string(buffer->get()->getBuffer());
+}
+
 // Controller file names and memory.stat keys differ between cgroup v1 and v2.
 struct Cgroup {
   bool unifiedHierarchy;
