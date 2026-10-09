@@ -39,6 +39,7 @@ from linalg.fp6_utils import (
     FP6Format,
     fp6_reference_table,
 )
+from linalg.swiglu_activation import get_swiglu_activation
 from shmem.ep_comm import fused_silu_mxfp6_kernel
 
 
@@ -78,8 +79,8 @@ def _run_case[
     for i in range(n_experts):
         total_tokens += num_tokens_by_expert[i]
 
-    var alpha = Float32(1.702)
-    var limit = Float32(7.0)
+    comptime alpha = Float32(1.702)
+    comptime limit = Float32(7.0)
 
     var input_h = ctx.enqueue_create_host_buffer[.bfloat16](
         total_tokens * input_dim
@@ -126,7 +127,11 @@ def _run_case[
         hw.max_thread_block_size,
         hw.sm_count,
         fp6_format=fmt,
-        clamp_activation=clamp_activation,
+        activation=get_swiglu_activation[
+            "swigluoai" if clamp_activation else "silu",
+            alpha,
+            limit if clamp_activation else 0.0,
+        ],
     ]
 
     ctx.enqueue_function[kernel](
@@ -135,8 +140,6 @@ def _run_case[
         input_tt,
         off_tt,
         Int32(0),  # max_padded_M unused when the fold is off
-        alpha,
-        limit,
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )

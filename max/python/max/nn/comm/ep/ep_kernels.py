@@ -35,6 +35,7 @@ from max.graph import (
 )
 from max.support.math import ceildiv
 
+from ...activation import GatedActivation
 from ...quant_config import QuantConfig
 from .ep_config import NUM_GROUPS, EPConfig
 
@@ -754,7 +755,7 @@ def _call_mega_ffn_ep_combine_send(
     estimated_total_m: TensorValue,
     num_active_experts: TensorValue,
     config: EPConfig,
-    clamp_activation: bool = False,
+    activation: GatedActivation | None = None,
 ) -> None:
     """Runs the MoE FFN with the EP combine send fused into its epilogue.
 
@@ -796,13 +797,17 @@ def _call_mega_ffn_ep_combine_send(
             gate's numerator.
         num_active_experts: Active expert slots.
         config: EP configuration.
-        clamp_activation: Select the clamped (``swigluoai``) activation.
+        activation: The gated activation applied to each ``(gate, up)``
+            pair: :class:`~max.nn.activation.GatedActivation`'s
+            ``fused_activation`` with its ``alpha`` and ``limit``. Defaults to
+            plain SiLU. It must not set ``gated_activation_fn``, which no
+            kernel fuses.
     """
     _validate_ffn_combine_send_config(config)
 
     parameters = _ep_common_parameters(config)
     parameters["combine_dtype"] = config.combine_dtype
-    parameters["clamp_activation"] = clamp_activation
+    parameters.update((activation or GatedActivation()).kernel_parameters())
 
     ops.inplace_custom(
         "mega_ffn.ep_combine_send",
@@ -946,6 +951,7 @@ def _call_mega_ffn_ep_fused(
     c_input_scales: TensorValue,
     recv_count_ptrs: TensorValue,
     config: EPConfig,
+    activation: GatedActivation | None = None,
 ) -> TensorValue:
     """Runs dispatch -> MegaFFN (L1 + L2) -> weighted combine in ONE launch.
 
@@ -974,6 +980,11 @@ def _call_mega_ffn_ep_fused(
         recv_count_ptrs: The EP group-0 receive-count table (CPU ``uint64``,
             one address per device), which names every rank's workspace.
         config: EP configuration.
+        activation: The gated activation applied to each ``(gate, up)``
+            pair: :class:`~max.nn.activation.GatedActivation`'s
+            ``fused_activation`` with its ``alpha`` and ``limit``. Defaults to
+            plain SiLU. It must not set ``gated_activation_fn``, which no
+            kernel fuses.
 
     Returns:
         The token-indexed MoE output ``(T, hidden)`` BF16 (routed experts
@@ -1009,7 +1020,10 @@ def _call_mega_ffn_ep_fused(
                 device=input_tokens.device,
             )
         ],
-        parameters=_ep_common_parameters(config),
+        parameters={
+            **_ep_common_parameters(config),
+            **(activation or GatedActivation()).kernel_parameters(),
+        },
     )
     return results[0].tensor
 
@@ -1511,6 +1525,8 @@ def call_ep_combine(
 def fused_silu(
     input: TensorValue,
     row_offsets: TensorValue,
+    activation: GatedActivation | None = None,
+    interleaved: bool = False,
 ) -> TensorValue:
     """Performs the fused SILU operation for all the MLPs in the EP MoE
     module.
@@ -1526,6 +1542,14 @@ def fused_silu(
         row_offsets: The row offsets that determine the actual number of
             received tokens in the input tensor. Shape:
             ``[n_local_experts + 1]``.
+        activation: The gated activation applied to each ``(gate, up)``
+            pair: :class:`~max.nn.activation.GatedActivation`'s
+            ``fused_activation`` with its ``alpha`` and ``limit``. Defaults to
+            plain SiLU. It must not set ``gated_activation_fn``, which no
+            kernel fuses.
+        interleaved: Whether each ``input`` row holds the pairs interleaved,
+            ``[gate_0, up_0, gate_1, up_1, ...]``, rather than as
+            ``[gate | up]``. Defaults to ``False``.
 
     Returns:
         The output tokens after the SILU operation. Shape:
@@ -1541,6 +1565,8 @@ def fused_silu(
 
     hidden_size = input.shape[1] // 2
 
+    parameters: dict[str, bool | int | str] = {"interleaved": interleaved}
+    parameters.update((activation or GatedActivation()).kernel_parameters())
     return ops.custom(
         "ep.fused_silu",
         device=input.device,
@@ -1552,6 +1578,7 @@ def fused_silu(
                 device=input.device,
             ),
         ],
+        parameters=parameters,
     )[0].tensor
 
 
@@ -1563,9 +1590,7 @@ def fused_silu_quantized(
     input_scales: TensorValue | None = None,
     scales_offsets: TensorValue | None = None,
     max_padded_M: int = 0,
-    clamp_activation: bool = False,
-    swiglu_alpha: float = 0.0,
-    swiglu_limit: float = 0.0,
+    activation: GatedActivation | None = None,
 ) -> tuple[TensorValue, TensorValue]:
     """Perform fused SILU operation for all the MLPs in the EP MoE module.
 
@@ -1596,14 +1621,11 @@ def fused_silu_quantized(
             scales tensor will have shape
             ``[n_local_experts * max_padded_M, K_SCALES]`` instead of
             ``[max_recv_tokens, K_SCALES]``.
-        clamp_activation: When True (MXFP4 and MXFP8), apply the OAI-clamped SwiGLU
-            activation ``(clamp(up, -L, L) + 1) * min(gate, L) *
-            sigmoid(alpha * min(gate, L))`` instead of plain ``SiLU(gate) *
-            up``.
-        swiglu_alpha: Alpha for the clamped activation (ignored unless
-            ``clamp_activation``).
-        swiglu_limit: Limit ``L`` for the clamped activation (ignored unless
-            ``clamp_activation``).
+        activation: The gated activation applied to each ``(gate, up)``
+            pair: :class:`~max.nn.activation.GatedActivation`'s
+            ``fused_activation`` with its ``alpha`` and ``limit``. Defaults to
+            plain SiLU. It must not set ``gated_activation_fn``, which no
+            kernel fuses.
 
     Returns:
         A tuple containing:
@@ -1651,14 +1673,6 @@ def fused_silu_quantized(
     elif quant_config.is_mxfp4:
         op_name += ".mxfp4"
         hidden_size //= 2  # Two FP4 elements are packed into one uint8 element
-        # mxfp4 op always takes trailing alpha/limit CPU f32 constants
-        # (plain SiLU passes 0.0/0.0).
-        input_vals.append(
-            ops.constant(swiglu_alpha, DType.float32, device=DeviceRef.CPU())
-        )
-        input_vals.append(
-            ops.constant(swiglu_limit, DType.float32, device=DeviceRef.CPU())
-        )
         if max_padded_M > 0:
             # KS64 down-proj fusion: write the E8M0 scale directly
             # into the grouped matmul's per-expert fixed-stride slot layout so
@@ -1675,12 +1689,6 @@ def fused_silu_quantized(
     elif quant_config.is_mxfp6:
         op_name += ".mxfp6"
         hidden_size = hidden_size * 3 // 4
-        input_vals.append(
-            ops.constant(swiglu_alpha, DType.float32, device=DeviceRef.CPU())
-        )
-        input_vals.append(
-            ops.constant(swiglu_limit, DType.float32, device=DeviceRef.CPU())
-        )
         if max_padded_M > 0:
             n_local_experts = row_offsets.shape[0] - 1
             raw_hidden = input.shape[1] // 2
@@ -1693,12 +1701,6 @@ def fused_silu_quantized(
         # float8_e4m3fn, so falling through would select the legacy per-tensor
         # `.fp8` kernel. No `hidden_size //= 2`: one byte per element.
         op_name += ".mxfp8"
-        input_vals.append(
-            ops.constant(swiglu_alpha, DType.float32, device=DeviceRef.CPU())
-        )
-        input_vals.append(
-            ops.constant(swiglu_limit, DType.float32, device=DeviceRef.CPU())
-        )
         if max_padded_M > 0:
             # Same fold as MXFP4; the E8M0 scale layout is format-independent.
             n_local_experts = row_offsets.shape[0] - 1
@@ -1712,9 +1714,9 @@ def fused_silu_quantized(
             f"Unsupported quantization format: {quant_config.format}"
         )
 
-    parameters: dict[str, bool | int] = {}
+    parameters: dict[str, bool | int | str] = {}
+    parameters.update((activation or GatedActivation()).kernel_parameters())
     if quant_config.is_mxfp6:
-        parameters["clamp_activation"] = clamp_activation
         parameters["FP6_FORMAT"] = (
             1 if quant_config.mxfp6_format == "e3m2" else 0
         )
@@ -1722,8 +1724,6 @@ def fused_silu_quantized(
             parameters["fuse_a_scale_preshuffle"] = True
             parameters["max_padded_M"] = max_padded_M
     elif quant_config.is_mxfp4 or quant_config.is_mxfp8:
-        # Clamp flag applies even with the scale fold off.
-        parameters["clamp_activation"] = clamp_activation
         if max_padded_M > 0:
             parameters["fuse_a_scale_preshuffle"] = True
             parameters["max_padded_M"] = max_padded_M

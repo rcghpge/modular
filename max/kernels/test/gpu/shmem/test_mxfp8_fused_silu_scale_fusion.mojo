@@ -38,6 +38,7 @@ from std.testing import assert_equal, assert_true
 from layout import Coord, Idx, TileTensor, row_major
 from linalg.fp4_utils import MXFP8_SF_VECTOR_SIZE
 from linalg.matmul.gpu.amd import Shuffler
+from linalg.swiglu_activation import get_swiglu_activation
 from shmem.ep_comm import fused_silu_mx_kernel
 
 
@@ -63,13 +64,13 @@ def _run_check[
     hidden_size: Int,
     NUM_ACTIVE: Int,
     clamp_activation: Bool = False,
+    alpha: Float32 = 0.0,
+    limit: Float32 = 0.0,
 ](
     name: String,
     num_tokens_by_expert: List[Int],
     inflate_padded_M: Int,
     ctx: DeviceContext,
-    alpha: Float32 = 0.0,
-    limit: Float32 = 0.0,
 ) raises:
     comptime assert hidden_size % MXFP8_SF_VECTOR_SIZE == 0
     comptime input_dim = hidden_size * 2
@@ -154,7 +155,11 @@ def _run_check[
         hw.max_thread_block_size,
         hw.sm_count,
         fuse_a_scale_preshuffle=False,
-        clamp_activation=clamp_activation,
+        activation=get_swiglu_activation[
+            "swigluoai" if clamp_activation else "silu",
+            alpha,
+            limit if clamp_activation else 0.0,
+        ],
     ]
     comptime kernel_fused = fused_silu_mx_kernel[
         DType.float8_e4m3fn,
@@ -167,7 +172,11 @@ def _run_check[
         hw.max_thread_block_size,
         hw.sm_count,
         fuse_a_scale_preshuffle=True,
-        clamp_activation=clamp_activation,
+        activation=get_swiglu_activation[
+            "swigluoai" if clamp_activation else "silu",
+            alpha,
+            limit if clamp_activation else 0.0,
+        ],
     ]
 
     # ---- Path A: raw scales, then the standalone preshuffle. ----
@@ -190,8 +199,6 @@ def _run_check[
         input_tt,
         a_off_tt,
         Int32(0),  # max_padded_M unused when the fold is off
-        alpha,
-        limit,
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
@@ -234,8 +241,6 @@ def _run_check[
         input_tt,
         a_off_tt,
         Int32(max_padded_M),
-        alpha,
-        limit,
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
@@ -332,6 +337,10 @@ def main() raises:
         "down-proj-ks64", [9, 40], 0, ctx
     )
     # Clamped SwiGLU-OAI variant.
-    _run_check[hidden_size=3072, NUM_ACTIVE=2, clamp_activation=True](
-        "down-proj-clamped", [7, 40], 0, ctx, Float32(1.702), Float32(7.0)
-    )
+    _run_check[
+        hidden_size=3072,
+        NUM_ACTIVE=2,
+        clamp_activation=True,
+        alpha=1.702,
+        limit=7.0,
+    ]("down-proj-clamped", [7, 40], 0, ctx)

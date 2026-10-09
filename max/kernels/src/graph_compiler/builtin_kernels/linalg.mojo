@@ -82,6 +82,7 @@ from linalg.matmul.gpu.sm100_structured.grouped_block_scaled_1d1d import (
 from linalg.matmul.gpu.sm100_structured.structured_kernels.row_scales import (
     RealRowScales,
 )
+from linalg.swiglu_activation import comptime_atof, get_swiglu_activation
 from linalg.matmul.gpu.sm100_structured.default.dispatch_fused_bias_residual import (
     fused_bias_residual_matmul_dispatch_sm100,
 )
@@ -708,7 +709,9 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
         scales_type: DType,
         row_scales_type: DType,
         //,
-        clamp_activation: Bool,
+        activation: StaticString,
+        swiglu_alpha: StaticString,
+        swiglu_limit: StaticString,
         has_a_row_scales: Bool,
         target: StaticString,
     ](
@@ -726,8 +729,6 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
         c_input_scales: InputTensor[dtype=.float32, rank=1, ...],
         estimated_total_m: UInt32,
         num_active_experts: UInt32,
-        swiglu_alpha: Float32,
-        swiglu_limit: Float32,
         context: DeviceContext,
     ) raises:
         """Executes fused grouped NVFP4 matmul + SwiGLU + NVFP4 quant.
@@ -746,7 +747,11 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
                 Constraints: Must be `float8_e4m3fn`.
             row_scales_type: The per-row input scale data type.
                 Constraints: Must be `bfloat16` when `has_a_row_scales`.
-            clamp_activation: Whether to clamp the activation (swigluoai).
+            activation: Activation name, bound from the op's same-named
+                attribute; the activation is built at compile time.
+            swiglu_alpha: Activation constant as a decimal string (graph ops
+                cannot carry float parameters).
+            swiglu_limit: Activation constant as a decimal string.
             has_a_row_scales: Whether `a_row_scales` holds per-row input
                 scales.
             target: The target GPU device.
@@ -768,8 +773,6 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
             c_input_scales: Per-expert SiLU input scale (= 1/output_inv_scale).
             estimated_total_m: The estimated total number of tokens.
             num_active_experts: The number of active experts.
-            swiglu_alpha: The alpha value for the clamped activation.
-            swiglu_limit: The limit value for the clamped activation.
             context: The device context pointer.
         """
         comptime assert is_gpu[
@@ -777,6 +780,11 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
         ](), "fused SwiGLU+NVFP4 grouped matmul only supports GPUs"
         if num_active_experts == 0:
             return
+        comptime act = get_swiglu_activation[
+            activation,
+            comptime_atof[swiglu_alpha](),
+            comptime_atof[swiglu_limit](),
+        ]
         comptime if has_a_row_scales:
             comptime assert (
                 row_scales_type == DType.bfloat16
@@ -784,7 +792,7 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
             grouped_matmul_block_scaled_swiglu_sm100_dispatch[
                 transpose_b=True,
                 target=target,
-                clamp_activation=clamp_activation,
+                activation=act,
                 RowScalesT=RealRowScales,
             ](
                 c_packed.to_tile_tensor[.int64](),
@@ -801,8 +809,6 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
                 Int(num_active_experts),
                 Int(estimated_total_m),
                 context,
-                swiglu_alpha,
-                swiglu_limit,
                 RealRowScales(
                     rebind[Pointer[BFloat16, ImmutAnyOrigin]](
                         a_row_scales.unsafe_ptr()
@@ -814,7 +820,7 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
             grouped_matmul_block_scaled_swiglu_sm100_dispatch[
                 transpose_b=True,
                 target=target,
-                clamp_activation=clamp_activation,
+                activation=act,
             ](
                 c_packed.to_tile_tensor[.int64](),
                 c_swiglu_scales.to_tile_tensor[.int64](),
@@ -830,8 +836,6 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
                 Int(num_active_experts),
                 Int(estimated_total_m),
                 context,
-                swiglu_alpha,
-                swiglu_limit,
             )
 
 
@@ -1202,7 +1206,7 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
 ]:
     """MOGG wrapper for grouped MXFP8 matmul with a fused SwiGLU epilogue.
 
-    Runs gemm1 of an MoE FFN and folds the clamped SwiGLU plus the MXFP8
+    Runs gemm1 of an MoE FFN and folds the gated activation plus the MXFP8
     requantize into its epilogue, so the activation leaves the kernel already
     quantized and no standalone activation kernel is needed. AMD
     preshuffled-B only.
@@ -1221,6 +1225,9 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
         b_type: DType,
         //,
         target: StaticString,
+        activation: StaticString = "silu",
+        swiglu_alpha: StaticString = "0.0",
+        swiglu_limit: StaticString = "0.0",
     ](
         c: OutputTensor[dtype=.float8_e4m3fn, rank=2, ...],
         c_scales: OutputTensor[dtype=.float8_e8m0fnu, rank=2, ...],
@@ -1235,8 +1242,6 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
         estimated_total_m: UInt32,
         decode_grid_m_cap: UInt32,
         decode_grid_m_rows: UInt32,
-        swiglu_alpha: Float32,
-        swiglu_limit: Float32,
         context: DeviceContext,
     ) raises:
         """Executes gemm1 with the SwiGLU and MXFP8 requantize fused in.
@@ -1245,6 +1250,12 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
             a_type: The activation dtype (one byte wide).
             b_type: The weight dtype (one byte wide).
             target: The target GPU device.
+            activation: The gated activation the epilogue applies, built at
+                compile time with `swiglu_alpha` and `swiglu_limit`; the
+                constants are decimal strings because kernel parameters
+                cannot be floats.
+            swiglu_alpha: The activation's alpha.
+            swiglu_limit: The activation's clamp limit.
 
         Args:
             c: The MXFP8 activation, shape (total_tokens, N / 2).
@@ -1261,8 +1272,6 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
                 used to pick the persistent vs direct kernel path.
             decode_grid_m_cap: Decode-band gate; 0 disables.
             decode_grid_m_rows: Rows grid.y must cover per expert at decode.
-            swiglu_alpha: Alpha for the clamped SwiGLU.
-            swiglu_limit: Clamp limit for the clamped SwiGLU.
             context: The device context pointer.
         """
         comptime assert is_gpu[
@@ -1277,8 +1286,15 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
         ), "grouped block-scaled matmul operands must be one byte wide"
         if num_active_experts == 0:
             return
+        comptime act = get_swiglu_activation[
+            activation,
+            comptime_atof[swiglu_alpha](),
+            comptime_atof[swiglu_limit](),
+        ]
         block_scaled_grouped_matmul_amd_preb[
-            lane_bytes=Self.lane_bytes, fuse_swiglu_mxfp8=True
+            lane_bytes=Self.lane_bytes,
+            fuse_swiglu_mxfp8=True,
+            activation=act,
         ](
             c.to_tile_tensor[.int64](),
             a.to_tile_tensor[.int64]().bitcast[.uint8](),
@@ -1297,8 +1313,6 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
             .ptr.bitcast[UInt8]()
             .unsafe_origin_cast[MutAnyOrigin](),
             Self.scales_max_padded_m,
-            swiglu_alpha,
-            swiglu_limit,
         )
 
 

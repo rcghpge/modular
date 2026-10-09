@@ -44,6 +44,7 @@ from max.graph.ops.quantized import repack_gguf_quantized_weights
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
 from max.nn.quant_config import InputScaleSpec, QuantConfig, WeightScaleSpec
 
+from .activation import GatedActivation
 from .attention.mask_config import AttentionMaskVariant, MHAMaskVariant
 from .kv_cache import KVCacheParams, MHAKVCacheParams, PagedCacheValues
 
@@ -6822,12 +6823,11 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
     decode_grid_m_cap: int = 0,
     decode_grid_m_rows: int = 0,
     out_scales_max_padded_m: int = 0,
-    swiglu_alpha: float = 1.702,
-    swiglu_limit: float = 7.0,
+    activation: GatedActivation | None = None,
 ) -> tuple[TensorValue, TensorValue]:
     """Performs a grouped MXFP8 matmul with SwiGLU and requantize fused in.
 
-    Runs gemm1 of an MoE FFN and folds the clamped SwiGLU plus the MXFP8
+    Runs gemm1 of an MoE FFN and folds the gated activation plus the MXFP8
     requantize into its epilogue, so the activation leaves the kernel already
     quantized and no standalone activation kernel is needed. Because each
     (gate, up) pair collapses to one output value, the result carries half the
@@ -6859,8 +6859,11 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
             scales. Nonzero writes the 4D slot layout that gemm2 consumes
             without a preshuffle; zero writes plain row-major. Distinct from
             ``a_scales_max_padded_m``, which describes the input.
-        swiglu_alpha: Alpha for the clamped SwiGLU the epilogue applies.
-        swiglu_limit: Clamp limit for that SwiGLU.
+        activation: The gated activation applied to each ``(gate, up)``
+            pair: :class:`~max.nn.activation.GatedActivation`'s
+            ``fused_activation`` with its ``alpha`` and ``limit``. Defaults to
+            plain SiLU. It must not set ``gated_activation_fn``, which no
+            kernel fuses.
 
     Returns:
         The MXFP8 activation ``[total_tokens, N/2]`` and its E8M0 block
@@ -6957,8 +6960,6 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
             estimated_total_m_arg,
             decode_grid_m_cap_arg,
             decode_grid_m_rows_arg,
-            ops.constant(swiglu_alpha, DType.float32, device=DeviceRef.CPU()),
-            ops.constant(swiglu_limit, DType.float32, device=DeviceRef.CPU()),
         ],
         out_types=[
             TensorType(
@@ -6979,6 +6980,7 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
             # MXFP8 is one element per byte, so a lane always covers 32 bytes.
             "lane_bytes": 32,
             "scales_max_padded_m": out_scales_max_padded_m,
+            **(activation or GatedActivation()).kernel_parameters(),
         },
     )
     return outputs[0].tensor, outputs[1].tensor
@@ -7804,9 +7806,7 @@ def grouped_matmul_blocked_swiglu(
     expert_scales: TensorValue | None = None,
     c_input_scales: TensorValue | None = None,
     estimated_total_m: TensorValue | None = None,
-    clamp_activation: bool = False,
-    swiglu_alpha: float = 0.0,
-    swiglu_limit: float = 0.0,
+    activation: GatedActivation | None = None,
     a_row_scales: TensorValue | None = None,
 ) -> tuple[TensorValue, TensorValue]:
     """Performs fused grouped block-scaled matmul + SwiGLU for NVIDIA MoE.
@@ -7844,6 +7844,11 @@ def grouped_matmul_blocked_swiglu(
         expert_usage_stats_host: A tensor containing [max_tokens_per_expert,
             num_active_experts].
         estimated_total_m: The estimated total number of tokens.
+        activation: The gated activation applied to each ``(gate, up)``
+            pair: :class:`~max.nn.activation.GatedActivation`'s
+            ``fused_activation`` with its ``alpha`` and ``limit``. Defaults to
+            plain SiLU. It must not set ``gated_activation_fn``, which no
+            kernel fuses.
         a_row_scales: Optional per-row input scales with shape
             ``[total_tokens]``. Dtype must be bfloat16. Row ``m``'s gate and up
             values are multiplied by ``a_row_scales[m]`` together with the
@@ -7914,11 +7919,9 @@ def grouped_matmul_blocked_swiglu(
             f"{hidden_k}] but got {weight.shape}"
         )
 
-    if clamp_activation:
-        if swiglu_alpha == 0.0 or swiglu_limit == 0.0:
-            raise ValueError(
-                "swiglu_alpha and swiglu_limit must be set when clamp_activation is True"
-            )
+    activation_parameters = (
+        activation or GatedActivation()
+    ).kernel_parameters()
 
     # N = 2D, so weight.shape[1] must be even and D = N // 2.
     n_dim = weight.shape[1]
@@ -7956,9 +7959,8 @@ def grouped_matmul_blocked_swiglu(
 
     # Emitted as a first-class composite op (lowers 1:1 to the
     # `mo.composite.grouped_matmul_swiglu_nvfp4` kernel) so the MegaFFN fusion
-    # can match a typed op rather than a string-keyed `mo.custom`. The SwiGLU
-    # clamp params (`swiglu_alpha`/`swiglu_limit`) are host-scalar operands and
-    # `clamp_activation` a comptime attribute, matching the kernel signature.
+    # can match a typed op rather than a string-keyed `mo.custom`. The
+    # activation rides as string attributes, one per kernel parameter.
     results = Graph.current._add_op_generated(
         mo.CompositeGroupedMatmulSwigluNvfp4Op,
         c_packed_type,
@@ -7978,10 +7980,11 @@ def grouped_matmul_blocked_swiglu(
         if estimated_total_m is not None
         else expert_usage_stats_host[0],
         expert_usage_stats_host[1],
-        ops.constant(swiglu_alpha, DType.float32, device=DeviceRef.CPU()),
-        ops.constant(swiglu_limit, DType.float32, device=DeviceRef.CPU()),
-        clamp_activation=builtin.BoolAttr(clamp_activation),
         has_a_row_scales=builtin.BoolAttr(a_row_scales is not None),
+        **{
+            name: builtin.StringAttr(value)
+            for name, value in activation_parameters.items()
+        },
     )
 
     return results[0].tensor, results[1].tensor

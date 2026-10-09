@@ -38,6 +38,7 @@ from std.utils import StaticTuple
 from ....arch.amd.block_scaled_mma import CDNA4F8F6F4MatrixFormat
 from .block_scaled_matmul_amd import BlockScaledMatmulAMD
 from .block_scaled_matmul_amd_preb import BlockScaledMatmulAMD_PreB
+from linalg.swiglu_activation import swiglu, swiglu_activation_type
 
 
 def _validate_block_scaled_grouped_rows(
@@ -230,6 +231,7 @@ struct PreShuffledBGroupedGEMM[
         b_addr_split: Bool = False,
         waves_per_eu: Int = 0,
         fuse_swiglu_mxfp8: Bool = False,
+        activation: swiglu_activation_type = swiglu[0.0],
     ](
         c_tensor: TileTensor[
             mut=True, out_dtype, LayoutC, MutAnyOrigin, Engine=CEngine
@@ -264,9 +266,6 @@ struct PreShuffledBGroupedGEMM[
         # per-expert slot stride (0 = plain row-major).
         c_scales_ptr: Pointer[UInt8, MutAnyOrigin],
         c_scales_max_padded_m: UInt32,
-        # Clamped-SwiGLU constants, read only by the fused epilogue.
-        swiglu_alpha: Float32,
-        swiglu_limit: Float32,
     ):
         var _num_active_experts = Int(num_active_experts)
         var _max_padded_M = Int(max_padded_M)
@@ -288,6 +287,7 @@ struct PreShuffledBGroupedGEMM[
             scale_group=scale_group,
             b_addr_split=b_addr_split,
             fuse_swiglu_mxfp8=fuse_swiglu_mxfp8,
+            activation=activation,
         ]
         # K_SCALES (= K / 32) derived from A's K byte extent. The
         # preshuffled sfa_tensor's static shape is layout-dependent (i32-cell
@@ -431,8 +431,6 @@ struct PreShuffledBGroupedGEMM[
                     Int(a_start_row),
                     expert_slot,
                     Int(c_scales_max_padded_m),
-                    swiglu_alpha,
-                    swiglu_limit,
                 )
 
                 # advance to this WG's next claim in the global counter
@@ -492,6 +490,7 @@ struct PreShuffledBGroupedGEMM[
         b_addr_split: Bool = False,
         waves_per_eu: Int = 0,
         fuse_swiglu_mxfp8: Bool = False,
+        activation: swiglu_activation_type = swiglu[0.0],
     ](
         c_tensor: TileTensor[
             mut=True, out_dtype, LayoutC, MutAnyOrigin, Engine=CEngine
@@ -526,9 +525,6 @@ struct PreShuffledBGroupedGEMM[
         # per-expert slot stride (0 = plain row-major).
         c_scales_ptr: Pointer[UInt8, MutAnyOrigin],
         c_scales_max_padded_m: UInt32,
-        # Clamped-SwiGLU constants, read only by the fused epilogue.
-        swiglu_alpha: Float32,
-        swiglu_limit: Float32,
     ):
         var _max_padded_M = Int(max_padded_M)
         comptime assert a_offsets.flat_rank == 1, "a_offsets must be rank 1"
@@ -549,6 +545,7 @@ struct PreShuffledBGroupedGEMM[
             scale_group=scale_group,
             b_addr_split=b_addr_split,
             fuse_swiglu_mxfp8=fuse_swiglu_mxfp8,
+            activation=activation,
         ]
         # K_SCALES (= K / 32) derived from A's K byte extent. The
         # preshuffled sfa_tensor's static shape is layout-dependent (i32-cell
@@ -620,8 +617,6 @@ struct PreShuffledBGroupedGEMM[
             Int(a_start_row),
             block_idx.z,
             Int(c_scales_max_padded_m),
-            swiglu_alpha,
-            swiglu_limit,
         )
 
     # --------------------------------------------------------------------- #
@@ -645,6 +640,7 @@ struct PreShuffledBGroupedGEMM[
         waves_per_eu: Int = 0,
         static_grid_z: Bool = False,
         fuse_swiglu_mxfp8: Bool = False,
+        activation: swiglu_activation_type = swiglu[0.0],
     ](
         c: TileTensor[mut=True, ...],
         a: TileTensor[.uint8, ...],
@@ -661,8 +657,6 @@ struct PreShuffledBGroupedGEMM[
             UInt8, MutAnyOrigin
         ](unsafe_from_address=16),
         c_scales_max_padded_m: UInt32 = 0,
-        swiglu_alpha: Float32 = 1.702,
-        swiglu_limit: Float32 = 7.0,
     ) raises:
         comptime MatmulDeviceFunctionType = BlockScaledMatmulAMD_PreB[
             BM=BM,
@@ -679,6 +673,7 @@ struct PreShuffledBGroupedGEMM[
             scale_group=scale_group,
             b_addr_split=b_addr_split,
             fuse_swiglu_mxfp8=fuse_swiglu_mxfp8,
+            activation=activation,
         ]
 
         comptime N = c.static_shape[1] * (2 if fuse_swiglu_mxfp8 else 1)
@@ -755,6 +750,7 @@ struct PreShuffledBGroupedGEMM[
                 b_addr_split,
                 waves_per_eu,
                 fuse_swiglu_mxfp8,
+                activation,
             ]
             ctx.enqueue_function[kernel](
                 c,
@@ -768,8 +764,6 @@ struct PreShuffledBGroupedGEMM[
                 Int32(max_padded_M),
                 c_scales_ptr,
                 c_scales_max_padded_m,
-                swiglu_alpha,
-                swiglu_limit,
                 grid_dim=(Self.total_wg, 1, 1),
                 block_dim=MatmulDeviceFunctionType.num_threads,
             )
@@ -805,6 +799,7 @@ struct PreShuffledBGroupedGEMM[
                 b_addr_split,
                 waves_per_eu,
                 fuse_swiglu_mxfp8,
+                activation,
             ]
             # grid.y cap: decode cap when supplied, else full A-scale stride.
             var m_cap = (
@@ -828,8 +823,6 @@ struct PreShuffledBGroupedGEMM[
                 Int32(max_padded_M),
                 c_scales_ptr,
                 c_scales_max_padded_m,
-                swiglu_alpha,
-                swiglu_limit,
                 grid_dim=(
                     ceildiv(N, BN),
                     ceildiv(m_cap, BM),
@@ -1287,6 +1280,7 @@ def block_scaled_grouped_matmul_amd_preb[
     lane_bytes: Int = 0,
     fp6_format: Int = 0,
     fuse_swiglu_mxfp8: Bool = False,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     c: TileTensor[mut=True, ...],
     a: TileTensor[.uint8, ...],
@@ -1305,8 +1299,6 @@ def block_scaled_grouped_matmul_amd_preb[
         unsafe_from_address=16
     ),
     c_scales_max_padded_m: Int = 0,
-    swiglu_alpha: Float32 = 1.702,
-    swiglu_limit: Float32 = 7.0,
 ) raises:
     """Launches grouped MXFP4 matmul on AMD CDNA4 with pre-shuffled weights.
 
@@ -1325,10 +1317,12 @@ def block_scaled_grouped_matmul_amd_preb[
         fp6_format: 0 selects E2M3, 1 selects E3M2. Ignored unless
             `lane_bytes` resolves to 24 — both FP6 encodings put 24 bytes in a
             lane, so the byte count cannot choose between them.
-        fuse_swiglu_mxfp8: Folds the clamped SwiGLU and the MXFP8 requantize
-            into gemm1's epilogue. `c` then carries half the matmul's N as
-            packed E4M3 and `c_scales_ptr` receives its E8M0 block scales.
-            Requires the gate_up weight sigma-permuted on N.
+        fuse_swiglu_mxfp8: Folds the gated activation and the MXFP8
+            requantize into gemm1's epilogue. `c` then carries half the
+            matmul's N as packed E4M3 and `c_scales_ptr` receives its E8M0
+            block scales. Requires the gate_up weight sigma-permuted on N.
+        activation: The gated activation the fused epilogue applies, selected
+            at compile time (defaults to `swiglu`).
 
     Args:
         c: Output tensor [total_tokens, N].
@@ -1353,10 +1347,6 @@ def block_scaled_grouped_matmul_amd_preb[
             Unread unless `fuse_swiglu_mxfp8`.
         c_scales_max_padded_m: Per-expert slot stride for those scales; 0
             writes plain row-major.
-        swiglu_alpha: Alpha for the clamped SwiGLU. Unread unless
-            `fuse_swiglu_mxfp8`.
-        swiglu_limit: Clamp limit for the clamped SwiGLU. Unread unless
-            `fuse_swiglu_mxfp8`.
     """
 
     comptime assert (
@@ -1477,6 +1467,7 @@ def block_scaled_grouped_matmul_amd_preb[
             waves_per_eu=waves_per_eu,
             static_grid_z=use_decode_cap,
             fuse_swiglu_mxfp8=fuse_swiglu_mxfp8,
+            activation=activation,
         ](
             c,
             a,
@@ -1491,8 +1482,6 @@ def block_scaled_grouped_matmul_amd_preb[
             grid_m_cap,
             c_scales_ptr,
             UInt32(c_scales_max_padded_m),
-            swiglu_alpha,
-            swiglu_limit,
         )
 
     # Autotune entry point, mirroring the AMD dense-matmul hook in

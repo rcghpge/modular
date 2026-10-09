@@ -67,6 +67,9 @@ This version is still a work in progress.
   NVFP4 checkpoint can't run on eight GPUs, where each GPU's share of an
   expert would split an NVFP4 block. On MI355 GPUs, or on eight GPUs, use
   the BF16 checkpoint (`nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16`).
+- The Gemma 4, DiffusionGemma, and Inkling MoE layers compute their gated
+  activation in a fused kernel instead of separate graph ops, as do
+  `max.nn.moe.MoE` layers that use `swigluoai`.
 
 - Kimi K2.5 MXFP4 checkpoints, such as `amd/Kimi-K2.5-MXFP4`, start up
   faster on AMD MI355 GPUs. A warm start on eight GPUs dropped from about
@@ -614,6 +617,12 @@ This version is still a work in progress.
   reductions apply duplicate indices atomically in an unspecified order, and
   `ops.scatter` keeps an unspecified winner among duplicates. On Apple silicon
   GPUs, the reductions support only 32-bit dtypes.
+- `max.nn.moe.MoE` takes `interleaved_gate_up=True` for gate/up projections
+  stored as `[gate_0, up_0, gate_1, up_1, ...]`, and runs its fused activation
+  on them; `max.nn.comm.ep.ep_kernels.fused_silu` takes `interleaved=True` to
+  read that layout. Under expert parallelism, an interleaved `MoEQuantized`
+  layer needs the fused NVFP4 or MXFP8 grouped-matmul SwiGLU path, since the
+  fused SiLU quantize kernels read only `[gate | up]`.
 
 ### C API
 
@@ -799,6 +808,18 @@ This version is still a work in progress.
   `dkv_peer_attach_failures`, `dkv_peers_dropped`, `dkv_peer_loads`,
   `dkv_peer_load_failures`, and `dkv_hints_rejected`. They are zero unless the
   external KV-cache connector is in use.
+
+- `max.nn.moe.MoE` and `MoEQuantized` take the expert activation as one
+  `activation=` argument, a `GatedActivation` from `max.nn.activation`, in
+  place of `use_swigluoai`, `swiglu_alpha`, `swiglu_limit`, and
+  `gated_activation_fn`. Replace `use_swigluoai=True, swiglu_alpha=a,
+  swiglu_limit=l` with `activation=GatedActivation("swigluoai", alpha=a,
+  limit=l)`, and `gated_activation_fn=fn` with
+  `activation=GatedActivation(gated_activation_fn=fn)`. The fused SwiGLU
+  kernel wrappers `max.nn.kernels.grouped_matmul_blocked_swiglu` and
+  `grouped_dynamic_block_scaled_matmul_amd_swiglu_quant`, and
+  `max.nn.comm.ep.ep_kernels.fused_silu` and `fused_silu_quantized`, take the
+  same `activation=` argument.
 
 - `max.driver.DevicePinnedBuffer` is removed. Allocate
   `Buffer(dtype, shape, device=gpu, usage=Usage.STAGING | Usage.UNTRACKED)`

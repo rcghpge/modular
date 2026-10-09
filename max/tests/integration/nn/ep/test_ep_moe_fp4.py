@@ -30,7 +30,7 @@ from max.graph import (
 )
 from max.graph.weights import WeightData
 from max.nn.comm.ep import EPBatchManager, EPCommInitializer, EPConfig
-from max.nn.moe import MoEGate, MoEQuantized
+from max.nn.moe import GatedActivation, MoEGate, MoEQuantized
 from max.nn.moe.expert_parallel import forward_moe_sharded_layers
 from max.nn.quant_config import (
     InputScaleSpec,
@@ -703,9 +703,11 @@ def test_ep_moe_mxfp4(
         dtype=dtype,
         ep_batch_manager=ep_batch_manager,
         quant_config=fp4_config,
-        use_swigluoai=use_swigluoai,
-        swiglu_alpha=swiglu_alpha,
-        swiglu_limit=swiglu_limit,
+        activation=GatedActivation(
+            "swigluoai", alpha=swiglu_alpha, limit=swiglu_limit
+        )
+        if use_swigluoai
+        else None,
     )
     moe.sharding_strategy = ShardingStrategy.expert_parallel(n_devices)
     moe_shards = moe.shard(devices_ref)

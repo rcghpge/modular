@@ -28,7 +28,7 @@ Three probes, in increasing order of realism:
    positive finite BF16 magnitude as the block max (all 32640 of them), and
    reports the worst observed `|value * out_scale|` against 448.
 3. `test_fused_silu_adversarial` drives the real `fused_silu_mx_kernel` (both
-   `clamp_activation` variants) over adversarial-but-finite BF16 gate/up pairs,
+   activations) over adversarial-but-finite BF16 gate/up pairs,
    including pairs whose fp32 SwiGLU product overflows.
 
 Usage (plain `mojo` is shadowed by the installed shmem package — use bazel):
@@ -45,6 +45,7 @@ from std.testing import assert_true
 from layout import Coord, Idx, TileTensor, row_major
 from linalg.block_scaled_quantization import quantize_mx_amd
 from linalg.fp4_utils import MXFP8_SF_VECTOR_SIZE
+from linalg.swiglu_activation import get_swiglu_activation
 from shmem.ep_comm import fused_silu_mx_kernel
 
 comptime E4M3_MAXABS = Float32(448.0)
@@ -524,8 +525,8 @@ def _fill_pattern(
 
 
 def test_fused_silu_adversarial[
-    clamp_activation: Bool
-](ctx: DeviceContext, alpha: Float32 = 0.0, limit: Float32 = 0.0) raises -> Int:
+    clamp_activation: Bool, alpha: Float32 = 0.0, limit: Float32 = 0.0
+](ctx: DeviceContext) raises -> Int:
     comptime input_dim = SILU_HIDDEN * 2
     comptime output_dim = SILU_HIDDEN
     comptime scale_K = SILU_HIDDEN // MXFP8_SF_VECTOR_SIZE
@@ -575,7 +576,11 @@ def test_fused_silu_adversarial[
         hw.max_thread_block_size,
         hw.sm_count,
         fuse_a_scale_preshuffle=False,
-        clamp_activation=clamp_activation,
+        activation=get_swiglu_activation[
+            "swigluoai" if clamp_activation else "silu",
+            alpha,
+            limit if clamp_activation else 0.0,
+        ],
     ]
 
     var out_d = ctx.enqueue_create_buffer[.float8_e4m3fn](
@@ -597,8 +602,6 @@ def test_fused_silu_adversarial[
         input_tt,
         off_tt,
         Int32(0),
-        alpha,
-        limit,
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
@@ -732,9 +735,9 @@ def main() raises:
 
     print("===> probe 3: fused_silu_mx_kernel, adversarial finite BF16")
     var v_plain = test_fused_silu_adversarial[clamp_activation=False](ctx)
-    var v_clamped = test_fused_silu_adversarial[clamp_activation=True](
-        ctx, Float32(1.702), Float32(7.0)
-    )
+    var v_clamped = test_fused_silu_adversarial[
+        clamp_activation=True, alpha=1.702, limit=7.0
+    ](ctx)
     print(
         "    non-finite blocks: plain SiLU=",
         v_plain,

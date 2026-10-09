@@ -269,6 +269,7 @@ def bench_chain(
     from max.dtype import DType
     from max.engine import InferenceSession
     from max.graph import DeviceRef, Graph, TensorType, ops
+    from max.nn.activation import GatedActivation
     from max.nn.comm.ep.ep_kernels import fused_silu_quantized
     from max.nn.kernels import (
         block_scaled_preshuffle_b_5d,
@@ -278,6 +279,7 @@ def bench_chain(
 
     est_total_m = m
     decode_grid_m_rows = _decode_grid_m_rows(decode_grid_m_cap, cfg)
+    oai = GatedActivation("swigluoai", alpha=_SWIGLU_ALPHA, limit=_SWIGLU_LIMIT)
     n1, k1 = cfg.hidden, cfg.hidden  # gate_up N=6144 K=6144
     n2, k2 = cfg.hidden, cfg.inter  # down N=6144 K=3072
 
@@ -463,9 +465,7 @@ def bench_chain(
                 qcfg,
                 DType.float8_e4m3fn,
                 max_padded_M=stride if fold else 0,
-                clamp_activation=True,
-                swiglu_alpha=_SWIGLU_ALPHA,
-                swiglu_limit=_SWIGLU_LIMIT,
+                activation=oai,
             )
             down = _matmul(
                 c_packed,
@@ -515,6 +515,7 @@ def bench_chain(
                     decode_grid_m_cap=decode_grid_m_cap,
                     decode_grid_m_rows=decode_grid_m_rows,
                     out_scales_max_padded_m=stride,
+                    activation=oai,
                 )
             )
             down = _matmul(

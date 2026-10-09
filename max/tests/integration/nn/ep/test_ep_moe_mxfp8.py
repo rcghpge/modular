@@ -34,7 +34,7 @@ from max.nn.comm.ep.ep_kernels import (
     ep_mxfp4_max_padded_m,
     uses_mx_ep_token_format,
 )
-from max.nn.moe import MoEGate, MoEQuantized
+from max.nn.moe import GatedActivation, MoEGate, MoEQuantized
 from max.nn.moe.expert_parallel import forward_moe_sharded_layers
 from max.nn.quant_config import (
     InputScaleSpec,
@@ -401,9 +401,7 @@ def _build_ep_moe(
         dtype=ep_config.dispatch_dtype,
         ep_batch_manager=EPBatchManager(ep_config),
         quant_config=quant_config,
-        use_swigluoai=True,
-        swiglu_alpha=1.702,
-        swiglu_limit=7.0,
+        activation=GatedActivation("swigluoai", alpha=1.702, limit=7.0),
     )
     return moe, ep_config
 

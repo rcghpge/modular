@@ -100,7 +100,7 @@ from layout.tile_layout import Layout as TileLayout, _IntToComptimeInt
 from std.utils.index import IndexList
 from std.utils.static_tuple import StaticTuple
 
-from std.math import exp, recip
+from std.math import recip
 from std.time import global_perf_counter_ns
 
 from linalg.arch.sm100 import MmaOpSM100_BlockScaled_SS
@@ -116,6 +116,11 @@ from linalg.fp4_utils import (
     block_scaled_operands_compatible,
     cast_fp32_to_fp4e2m1,
     set_scale_factor,
+)
+from linalg.swiglu_activation import (
+    apply_swiglu_activation,
+    swiglu,
+    swiglu_activation_type,
 )
 from ..structured_kernels.config import (
     BlockScaledMatmulConfig,
@@ -319,10 +324,7 @@ trait SwiGLUOutput(DevicePassable, TrivialRegisterPassable):
 
     comptime SfDtype: DType
     comptime SfVectorSize: Int
-    # `True` enables clamped SwiGLU (`swigluoai`):
-    #   g' = min(g, L); u' = clamp(u, -L, L); (u'+1)·g'·σ(g'·α).
-    # `clamp_alpha()` and `clamp_limit()` carry the runtime constants.
-    comptime ClampActivation: Bool
+    comptime Activation: swiglu_activation_type
 
     def store_packed_byte(self, m: Int, byte_pos: Int, val: UInt8):
         """Store one output byte at GMEM (m, byte_pos).
@@ -373,16 +375,6 @@ trait SwiGLUOutput(DevicePassable, TrivialRegisterPassable):
         """
         ...
 
-    def clamp_alpha(self) -> Float32:
-        """Runtime α for the clamped activation. Unused when
-        `ClampActivation=False`."""
-        ...
-
-    def clamp_limit(self) -> Float32:
-        """Runtime limit L for the clamped activation. Unused when
-        `ClampActivation=False`."""
-        ...
-
     def pad_sf_zero_block(
         self,
         sf_block_base: Int,
@@ -412,12 +404,12 @@ trait SwiGLUOutput(DevicePassable, TrivialRegisterPassable):
 struct NullSwiGLUOutput[
     _sf_dtype: DType = NVFP4_SF_DTYPE,
     _sf_vector_size: Int = NVFP4_SF_VECTOR_SIZE,
-    _clamp_activation: Bool = False,
+    _activation: swiglu_activation_type = swiglu[0.0],
 ](SwiGLUOutput):
     """Zero-sized no-op SwiGLU output for `fuse_swiglu=False`.
 
     Parametric so the kernel's comptime trait bound matches the
-    dispatch's wiring; defaults are NVFP4 + plain SwiGLU.
+    dispatch's wiring; defaults are NVFP4 + `swiglu`.
 
     Parameters:
         _sf_dtype: `DType` of the per-block scale factors; `NVFP4_SF_DTYPE`
@@ -426,15 +418,14 @@ struct NullSwiGLUOutput[
         _sf_vector_size: Number of output elements covered by each scale
             factor; 16 for NVFP4, 32 for MXFP8 (defaults to
             `NVFP4_SF_VECTOR_SIZE`).
-        _clamp_activation: When `True`, enables the clamped SwiGLU
-            activation; unused on this no-op struct but kept so the
-            trait bound matches the dispatch wiring (defaults to
-            `False`).
+        _activation: Gated activation; unused on this no-op struct but
+            kept so the trait bound matches the dispatch wiring (defaults
+            to `swiglu`).
     """
 
     comptime SfDtype = Self._sf_dtype
     comptime SfVectorSize = Self._sf_vector_size
-    comptime ClampActivation = Self._clamp_activation
+    comptime Activation = Self._activation
 
     comptime device_type: AnyType = Self
 
@@ -456,14 +447,6 @@ struct NullSwiGLUOutput[
 
     @inline(.always)
     def input_scale(self, active_expert_idx: Int) -> Float32:
-        return Float32(0.0)
-
-    @inline(.always)
-    def clamp_alpha(self) -> Float32:
-        return Float32(0.0)
-
-    @inline(.always)
-    def clamp_limit(self) -> Float32:
         return Float32(0.0)
 
     @inline(.always)
@@ -495,7 +478,7 @@ struct RealSwiGLUOutput[
     sf_dim1: Int,
     _sf_dtype: DType = NVFP4_SF_DTYPE,
     _sf_vector_size: Int = NVFP4_SF_VECTOR_SIZE,
-    _clamp_activation: Bool = False,
+    _activation: swiglu_activation_type = swiglu[0.0],
 ](SwiGLUOutput):
     """Carries the three GMEM destinations (packed output, 5D SF tile,
     per-expert input scales) as raw pointers + comptime shape info.
@@ -519,14 +502,13 @@ struct RealSwiGLUOutput[
         _sf_vector_size: Number of output elements covered by each scale
             factor; 16 for NVFP4, 32 for MXFP8 (defaults to
             `NVFP4_SF_VECTOR_SIZE`).
-        _clamp_activation: When `True`, enables the clamped SwiGLU
-            activation (`swigluoai`); the runtime constants are carried
-            by `clamp_alpha` and `clamp_limit` (defaults to `False`).
+        _activation: Gated activation applied to each `(gate, up)` pair
+            (defaults to `swiglu`).
     """
 
     comptime SfDtype = Self._sf_dtype
     comptime SfVectorSize = Self._sf_vector_size
-    comptime ClampActivation = Self._clamp_activation
+    comptime Activation = Self._activation
 
     comptime device_type: AnyType = Self
 
@@ -538,10 +520,6 @@ struct RealSwiGLUOutput[
 
     @__allow_legacy_any_origin_fields
     var c_input_scales_ptr: UnsafePointer[Float32, ImmutAnyOrigin]
-    # Runtime alpha and L for the clamped activation. Always stored;
-    # the 8 bytes keep the struct layout uniform across activations.
-    var _clamp_alpha: Float32
-    var _clamp_limit: Float32
 
     @inline(.always)
     def __init__(
@@ -551,14 +529,10 @@ struct RealSwiGLUOutput[
             Scalar[Self._sf_dtype], MutAnyOrigin
         ],
         c_input_scales_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
-        clamp_alpha: Float32 = Float32(0.0),
-        clamp_limit: Float32 = Float32(0.0),
     ):
         self.c_packed_ptr = c_packed_ptr
         self.c_swiglu_scales_ptr = c_swiglu_scales_ptr
         self.c_input_scales_ptr = c_input_scales_ptr
-        self._clamp_alpha = clamp_alpha
-        self._clamp_limit = clamp_limit
 
     @inline(.always)
     def store_packed_byte(self, m: Int, byte_pos: Int, val: UInt8):
@@ -599,14 +573,6 @@ struct RealSwiGLUOutput[
     @inline(.always)
     def input_scale(self, active_expert_idx: Int) -> Float32:
         return self.c_input_scales_ptr[active_expert_idx]
-
-    @inline(.always)
-    def clamp_alpha(self) -> Float32:
-        return self._clamp_alpha
-
-    @inline(.always)
-    def clamp_limit(self) -> Float32:
-        return self._clamp_limit
 
     @inline(.always)
     def pad_sf_zero_block(
@@ -3373,7 +3339,7 @@ struct Grouped1D1DMatmulKernel[
             " MXFP8 (SF=32, E8M0); MXFP4 is not yet implemented."
         )
         comptime is_mxfp8 = SfVectorSize == 32
-        comptime ClampActivation = Self.SwiGLUOutputT.ClampActivation
+        comptime activation = Self.SwiGLUOutputT.Activation
         # NUM_THREADS_PER_SF=1 for NVFP4, =2 for MXFP8; MXFP8 lanes
         # cooperate via lane_group_max to derive the per-block scale.
         comptime src_width = 16
@@ -3580,22 +3546,9 @@ struct Grouped1D1DMatmulKernel[
                         else:
                             gate = partner
                             up = local
-                        comptime if ClampActivation:
-                            var alpha_ip = swiglu_out.clamp_alpha()
-                            var limit_ip = swiglu_out.clamp_limit()
-                            var g_c = min(gate, limit_ip)
-                            var u_c = max(min(up, limit_ip), -limit_ip)
-                            var sigmoid_ip = recip(
-                                Float32(1.0) + exp(-(g_c * alpha_ip))
-                            )
-                            sw_ip[r1 * n_swiglu_per_repeat + s] = (
-                                (u_c + Float32(1.0)) * g_c * sigmoid_ip
-                            )
-                        else:
-                            var sigmoid = recip(Float32(1.0) + exp(-gate))
-                            sw_ip[r1 * n_swiglu_per_repeat + s] = (
-                                gate * sigmoid * up
-                            )
+                        sw_ip[r1 * n_swiglu_per_repeat + s] = activation(
+                            gate, up
+                        )
 
                 # ---- Store path: per (warp, token, half) ----
                 # The writer lane is lane_row==0 at lane_col=token&~1
@@ -4019,26 +3972,10 @@ struct Grouped1D1DMatmulKernel[
                 var pair = pair_bf.cast[.float32]()
                 var gate, up = pair.deinterleave()
 
-                # silu(g) and the final SF reciprocal use `recip()`
-                # (`rcp.approx.ftz.f32`) rather than fp32 `/`: with only
-                # 4 epilogue warps (1 warp/scheduler) IEEE `div.f32`
-                # latency does not hide.
-                #
-                # Clamped variant: g' = min(g, L); u' = clamp(u, -L, L);
-                #                  z  = (u' + 1) · g' · σ(g'·α).
-                var z: SIMD[Self.accum_type, src_width]
-                comptime if ClampActivation:
-                    var alpha = swiglu_out.clamp_alpha()
-                    var limit = swiglu_out.clamp_limit()
-                    var g_clamped = min(gate, limit)
-                    var u_clamped = max(min(up, limit), -limit)
-                    var sigmoid = recip(
-                        Float32(1.0) + exp(-(g_clamped * alpha))
-                    )
-                    z = (u_clamped + Float32(1.0)) * g_clamped * sigmoid
-                else:
-                    var sigmoid = recip(Float32(1.0) + exp(-gate))
-                    z = gate * sigmoid * up
+                # The final SF reciprocal uses `recip()` (`rcp.approx.ftz.f32`)
+                # rather than fp32 `/`: with only 4 epilogue warps (1
+                # warp/scheduler) IEEE `div.f32` latency does not hide.
+                var z = apply_swiglu_activation[activation](gate, up)
 
                 # MXFP8 needs cross-lane amax across the 2 lanes that
                 # share one 32-elt SF block; NVFP4's 16-elt block fits

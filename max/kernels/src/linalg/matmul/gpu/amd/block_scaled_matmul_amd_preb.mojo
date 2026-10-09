@@ -32,7 +32,7 @@ Tile constraints:
   * `N` must be a multiple of 32 (= 16 * mn_pack) for B-scale cell alignment.
 """
 
-from std.math import ceildiv, exp
+from std.math import ceildiv
 from std.math.uutils import udivmod
 from std.memory.unsafe import bitcast
 from std.sys import simd_width_of
@@ -71,6 +71,7 @@ from structured_kernels.amd_tile_io import (
 )
 
 from ....utils import elementwise_epilogue_type
+from linalg.swiglu_activation import swiglu, swiglu_activation_type
 
 from .block_scaled_matmul_amd import MX_BLOCK_SIZE, _smem_row_bytes
 from ....block_scaled_utils import compute_mxfp8_block_scale
@@ -893,6 +894,7 @@ struct BlockScaledMatmulAMD_PreB[
     matrix_format: CDNA4F8F6F4MatrixFormat = CDNA4F8F6F4MatrixFormat.FLOAT4_E2M1,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     fuse_swiglu_mxfp8: Bool = False,
+    activation: swiglu_activation_type = swiglu[0.0],
 ]:
     """Preshuffled-B variant of `BlockScaledMatmulAMD`.
 
@@ -977,11 +979,13 @@ struct BlockScaledMatmulAMD_PreB[
         elementwise_lambda_fn: Optional epilogue applied to each output
             element in registers instead of storing it. The fused QKV ops
             use it to scatter K/V into the paged cache.
-        fuse_swiglu_mxfp8: Folds the clamped SwiGLU AND the MXFP8 requantize
-            into the epilogue, so `c` carries HALF the matmul's N as packed
-            E4M3 and `sfc_ptr` receives its E8M0 block scales. Requires the
-            gate_up weight sigma-permuted on N (gate and up in adjacent
+        fuse_swiglu_mxfp8: Folds the gated activation AND the MXFP8
+            requantize into the epilogue, so `c` carries HALF the matmul's N as
+            packed E4M3 and `sfc_ptr` receives its E8M0 block scales. Requires
+            the gate_up weight sigma-permuted on N (gate and up in adjacent
             columns); split halves cannot be paired in-register.
+        activation: The gated activation the fused epilogue applies to each
+            `(gate, up)` pair, selected at compile time (defaults to `swiglu`).
     """
 
     # WM is locked to BM — single warp along M for the preb (no-LDS-B) path.
@@ -1073,9 +1077,6 @@ struct BlockScaledMatmulAMD_PreB[
         sfc_expert_slot: Int = 0,
         # Zero selects plain row-major over the 4D slot layout.
         sfc_max_padded_m: Int = 0,
-        # Only read when `fuse_swiglu_mxfp8`; defaults are the OAI values.
-        swiglu_alpha: Float32 = 1.702,
-        swiglu_limit: Float32 = 7.0,
     ):
         comptime A_K_BYTES = a_layout.static_shape[1]
         comptime assert (
@@ -1619,15 +1620,7 @@ struct BlockScaledMatmulAMD_PreB[
                     # expert-load skew costs more than the fusion saves.
                     v = v.cast[DType.bfloat16]().cast[DType.float32]()
                     comptime for j in range(OUT_PER_FRAG):
-                        var g_c = min(v[2 * j], swiglu_limit)
-                        var u_c = v[2 * j + 1].clamp(
-                            -swiglu_limit, swiglu_limit
-                        )
-                        var o = (
-                            g_c
-                            / (1.0 + exp(-(g_c * swiglu_alpha)))
-                            * (u_c + 1.0)
-                        )
+                        var o = Self.activation(v[2 * j], v[2 * j + 1])
                         acts[n_mma * OUT_PER_FRAG + j] = o
                         lane_max = max(lane_max, max(o, -o))
 

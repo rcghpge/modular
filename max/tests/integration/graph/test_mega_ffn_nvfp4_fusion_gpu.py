@@ -25,8 +25,9 @@ through the `builtin_kernels/mega_ffn.mojo` registration to
 This is a graph-level flow test: it asserts the graph compiles (the registration
 type-checks against the composite op -- no "no kernel registered for
 'mo.composite.mega_ffn_nvfp4'" / operand rank/dtype mismatch) and runs to a
-correctly shaped/typed output, and that the swigluoai clamp selector and the
-gate-up leg's per-row input scales reach the kernel through the fusion. That
+correctly shaped/typed output, and that the swigluoai activation with its
+alpha/limit and the gate-up leg's per-row input scales reach the kernel through
+the fusion. That
 the fusion fires at all is checked on the IR in
 `test_mega_ffn_nvfp4_fusion_ir.py`. Deep numerical correctness (fused vs.
 chained reference, byte-exact) is covered by the Mojo kernel test
@@ -155,14 +156,15 @@ def test_mega_ffn_nvfp4_fusion_compiles_and_runs(
 
 
 def test_mega_ffn_nvfp4_fusion_clamp_reaches_kernel() -> None:
-    """The swigluoai clamp selector reaches the fused kernel.
+    """The swigluoai activation and its alpha/limit reach the fused kernel.
 
-    Builds the SAME fused MoE FFN graph twice -- ``clamp_activation`` True vs
-    False -- on identical inputs and asserts the outputs DIFFER. The selector
-    rides as a Bool op attribute (emitter -> fusion -> registration comptime
-    param); when set, the registration supplies swigluoai's canonical
-    alpha/limit to the dispatch. Identical outputs would mean the selector never
-    reached the kernel through the fusion.
+    Runs the SAME inputs through three graphs: fused plain SwiGLU, fused
+    swigluoai, and the unfused two-kernel chain with the same swigluoai. The
+    activation rides as string op attributes (emitter -> fusion ->
+    registration comptime params). Fused plain vs fused swigluoai must DIFFER,
+    or the activation never reached the kernel. Fused vs unfused swigluoai must
+    MATCH; non-canonical alpha/limit make that fail if the fusion drops or
+    defaults the constants, since the standalone L1 kernel always honors them.
     """
     E, M, D, K1, N2 = 16, 256, 512, 512, 256
     rng = np.random.default_rng(1234)
@@ -173,10 +175,21 @@ def test_mega_ffn_nvfp4_fusion_clamp_reaches_kernel() -> None:
     cpu_ref = DeviceRef.CPU()
     session = InferenceSession(devices=[device])
 
-    def _load(clamp: bool) -> Model:
+    def _load(clamp: bool, keep_intermediate: bool = False) -> Model:
         return session.load(
             build_graph(
-                E, M, D, K1, N2, sf_dim_0, device_ref, cpu_ref, clamp=clamp
+                E,
+                M,
+                D,
+                K1,
+                N2,
+                sf_dim_0,
+                device_ref,
+                cpu_ref,
+                clamp=clamp,
+                keep_intermediate=keep_intermediate,
+                swiglu_alpha=1.5,
+                swiglu_limit=5.0,
             )
         )
 
@@ -184,20 +197,29 @@ def test_mega_ffn_nvfp4_fusion_clamp_reaches_kernel() -> None:
         outputs = model.execute(*_to_buffers(np_in, device))
         return from_dlpack(outputs[0]).cpu().to(torch.float32)
 
-    # Load both before executing either: recording stops at the first execute.
-    plain, clamped = _load(clamp=False), _load(clamp=True)
+    # Load all three before executing any: recording stops at the first execute.
+    plain = _load(clamp=False)
+    clamped = _load(clamp=True)
+    clamped_unfused = _load(clamp=True, keep_intermediate=True)
     out_plain = _run(plain)
     out_clamped = _run(clamped)
+    out_clamped_unfused = _run(clamped_unfused)
 
     assert tuple(out_plain.shape) == (M, N2)
     max_abs_diff = (out_plain - out_clamped).abs().max().item()
     assert max_abs_diff > 0.0, (
         "clamped and unclamped fused outputs are identical -- the swigluoai "
-        "clamp selector did not reach the kernel through the fusion"
+        "activation did not reach the kernel through the fusion"
+    )
+    fused_vs_unfused = (out_clamped - out_clamped_unfused).abs().max().item()
+    assert fused_vs_unfused == 0.0, (
+        f"fused and unfused swigluoai outputs differ by {fused_vs_unfused} -- "
+        "the fusion did not forward swiglu_alpha/swiglu_limit to the kernel"
     )
     print(
-        f"\n=== mega_ffn_nvfp4 clamp reaches kernel: "
-        f"max|plain - clamped| = {max_abs_diff} (>0 => clamp applied) ===",
+        f"\n=== mega_ffn_nvfp4 activation reaches kernel: "
+        f"max|plain - clamped| = {max_abs_diff} (>0 => clamp applied), "
+        f"max|fused - unfused| = {fused_vs_unfused} ===",
         flush=True,
     )
 

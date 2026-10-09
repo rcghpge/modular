@@ -76,6 +76,7 @@ from shmem.ep_comm import (
 )
 from linalg.mx_format import MXFormat
 from linalg.fp6_utils import FP6Format
+from linalg.swiglu_activation import comptime_atof, get_swiglu_activation
 
 comptime RT_LAYOUT_2D = type_of(row_major(Int64(1), Int64(1)))
 
@@ -2887,6 +2888,10 @@ struct Struct_ep_fused_silu:
         input_dtype: DType,
         //,
         target: StaticString,
+        activation: StaticString = "silu",
+        swiglu_alpha: StaticString = "0.0",
+        swiglu_limit: StaticString = "0.0",
+        interleaved: Bool = False,
     ](
         output: OutputTensor[dtype=output_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
@@ -2903,6 +2908,12 @@ struct Struct_ep_fused_silu:
         This kernel will read the row offsets to determine the actual number of
         received tokens in the input tensor, and then only perform the SILU
         operation on the received tokens.
+
+        The gated activation is built at compile time from the `activation`,
+        `swiglu_alpha` and `swiglu_limit` parameters; the constants are
+        decimal strings because kernel parameters cannot be floats.
+        `interleaved` reads each input row as `[gate_0, up_0, ...]` instead
+        of `[gate | up]`.
         """
         # Ensure this kernel only runs on GPU targets
         comptime assert is_gpu[target](), "EP is only supported on GPU."
@@ -2916,6 +2927,12 @@ struct Struct_ep_fused_silu:
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
 
+        comptime act = get_swiglu_activation[
+            activation,
+            comptime_atof[swiglu_alpha](),
+            comptime_atof[swiglu_limit](),
+        ]
+
         comptime fused_silu = fused_silu_kernel[
             output_dtype,
             input_dtype,
@@ -2924,6 +2941,8 @@ struct Struct_ep_fused_silu:
             row_offsets_tensor.LayoutType,
             hw_info.max_thread_block_size,
             hw_info.sm_count,
+            activation=act,
+            interleaved=interleaved,
         ]
 
         @inline(.always)
@@ -2932,6 +2951,7 @@ struct Struct_ep_fused_silu:
             return String(
                 "output_dtype=", output_dtype,
                 ";input_dtype=", input_dtype,
+                ";activation=", activation,
             )
             # fmt: on
 
@@ -2964,7 +2984,9 @@ struct Struct_ep_fused_silu_mxfp4:
         *,
         fuse_a_scale_preshuffle: Bool = False,
         max_padded_M: Int = 0,
-        clamp_activation: Bool = False,
+        activation: StaticString = "silu",
+        swiglu_alpha: StaticString = "0.0",
+        swiglu_limit: StaticString = "0.0",
         # `ep.fused_silu.mxfp8` shares this body and overrides the label.
         trace_name: StaticString = "ep.fused_silu.mxfp4",
     ](
@@ -2972,10 +2994,6 @@ struct Struct_ep_fused_silu_mxfp4:
         scales: OutputTensor[dtype=scales_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
         row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
-        # Clamped-SwiGLU alpha/L (trailing CPU f32 constants); unused when
-        # clamp_activation=False.
-        alpha: Float32,
-        limit: Float32,
         context: DeviceContext,
     ) raises:
         """Execute the Expert Parallelism fused SILU kernel with MX
@@ -3001,6 +3019,10 @@ struct Struct_ep_fused_silu_mxfp4:
         K_SCALES`), so the standalone `preshuffle_grouped_scale_4d_gpu` can be
         omitted from the critical path. The scales output tensor must then have
         shape `[n_local_experts * max_padded_M, K_SCALES]`.
+
+        The gated activation is built at compile time from the `activation`,
+        `swiglu_alpha` and `swiglu_limit` parameters; the constants are
+        decimal strings because kernel parameters cannot be floats.
         """
         # Ensure this kernel only runs on GPU targets
         comptime assert is_gpu[target](), "EP is only supported on GPU."
@@ -3015,6 +3037,12 @@ struct Struct_ep_fused_silu_mxfp4:
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
 
+        comptime act = get_swiglu_activation[
+            activation,
+            comptime_atof[swiglu_alpha](),
+            comptime_atof[swiglu_limit](),
+        ]
+
         comptime fused_silu_mx = fused_silu_mx_kernel[
             quant_dtype,
             scales_dtype,
@@ -3026,7 +3054,7 @@ struct Struct_ep_fused_silu_mxfp4:
             hw_info.max_thread_block_size,
             hw_info.sm_count,
             fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
-            clamp_activation=clamp_activation,
+            activation=act,
         ]
 
         @inline(.always)
@@ -3037,7 +3065,7 @@ struct Struct_ep_fused_silu_mxfp4:
                 ";scales_dtype=", scales_dtype,
                 ";input_dtype=", input_dtype,
                 ";fuse_a_scale_preshuffle=", fuse_a_scale_preshuffle,
-                ";clamp_activation=", clamp_activation,
+                ";activation=", activation,
             )
             # fmt: on
 
@@ -3052,8 +3080,6 @@ struct Struct_ep_fused_silu_mxfp4:
                 input_tensor,
                 row_offsets_tensor,
                 Int32(max_padded_M),
-                alpha,
-                limit,
                 grid_dim=hw_info.sm_count,
                 block_dim=hw_info.max_thread_block_size,
                 attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -3074,14 +3100,14 @@ struct Struct_ep_fused_silu_mxfp8:
         *,
         fuse_a_scale_preshuffle: Bool = False,
         max_padded_M: Int = 0,
-        clamp_activation: Bool = False,
+        activation: StaticString = "silu",
+        swiglu_alpha: StaticString = "0.0",
+        swiglu_limit: StaticString = "0.0",
     ](
         output: OutputTensor[dtype=fp8_dtype, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
         row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
-        alpha: Float32,
-        limit: Float32,
         context: DeviceContext,
     ) raises:
         """Execute the EP fused SILU kernel with MXFP8 quantization.
@@ -3096,9 +3122,11 @@ struct Struct_ep_fused_silu_mxfp8:
             target=target,
             fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
             max_padded_M=max_padded_M,
-            clamp_activation=clamp_activation,
+            activation=activation,
+            swiglu_alpha=swiglu_alpha,
+            swiglu_limit=swiglu_limit,
             trace_name="ep.fused_silu.mxfp8",
-        ](output, scales, input, row_offsets, alpha, limit, context)
+        ](output, scales, input, row_offsets, context)
 
 
 @extensibility.register("ep.fused_silu.mxfp6")
@@ -3115,16 +3143,14 @@ struct Struct_ep_fused_silu_mxfp6:
         FP6_FORMAT: Int = 0,
         fuse_a_scale_preshuffle: Bool = False,
         max_padded_M: Int = 0,
-        clamp_activation: Bool = False,
+        activation: StaticString = "silu",
+        swiglu_alpha: StaticString = "0.0",
+        swiglu_limit: StaticString = "0.0",
     ](
         output: OutputTensor[dtype=.uint8, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=2, ...],
         input: InputTensor[dtype=input_dtype, rank=2, ...],
         row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
-        # Clamped-SwiGLU alpha/L (trailing CPU f32 constants); unused when
-        # clamp_activation=False.
-        alpha: Float32,
-        limit: Float32,
         context: DeviceContext,
     ) raises:
         """Execute the EP fused SILU kernel with MXFP6 quantization.
@@ -3137,6 +3163,10 @@ struct Struct_ep_fused_silu_mxfp6:
         `FP6_FORMAT` selects the element encoding (0 = E2M3, 1 = E3M2). Both
         occupy six bits and pack identically, so nothing downstream can recover
         it from the bytes -- it must match what the checkpoint declares.
+
+        The gated activation is built at compile time from the `activation`,
+        `swiglu_alpha` and `swiglu_limit` parameters; the constants are
+        decimal strings because kernel parameters cannot be floats.
         """
         comptime assert is_gpu[target](), "EP is only supported on GPU."
         comptime assert not fuse_a_scale_preshuffle or (
@@ -3157,6 +3187,12 @@ struct Struct_ep_fused_silu_mxfp6:
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
 
+        comptime act = get_swiglu_activation[
+            activation,
+            comptime_atof[swiglu_alpha](),
+            comptime_atof[swiglu_limit](),
+        ]
+
         comptime fused_silu_fp6 = fused_silu_mxfp6_kernel[
             scales_dtype,
             input_dtype,
@@ -3168,7 +3204,7 @@ struct Struct_ep_fused_silu_mxfp6:
             hw_info.sm_count,
             fp6_format=FP6Format(FP6_FORMAT),
             fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
-            clamp_activation=clamp_activation,
+            activation=act,
         ]
 
         @inline(.always)
@@ -3179,7 +3215,7 @@ struct Struct_ep_fused_silu_mxfp6:
                 ";input_dtype=", input_dtype,
                 ";FP6_FORMAT=", FP6_FORMAT,
                 ";fuse_a_scale_preshuffle=", fuse_a_scale_preshuffle,
-                ";clamp_activation=", clamp_activation,
+                ";activation=", activation,
             )
             # fmt: on
 
@@ -3194,8 +3230,6 @@ struct Struct_ep_fused_silu_mxfp6:
                 input_tensor,
                 row_offsets_tensor,
                 Int32(max_padded_M),
-                alpha,
-                limit,
                 grid_dim=hw_info.sm_count,
                 block_dim=hw_info.max_thread_block_size,
                 attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -3213,6 +3247,9 @@ struct Struct_ep_fused_silu_nvfp4:
         scales_dtype: DType,
         input_dtype: DType,
         target: StaticString,
+        activation: StaticString = "silu",
+        swiglu_alpha: StaticString = "0.0",
+        swiglu_limit: StaticString = "0.0",
     ](
         output: OutputTensor[dtype=fp4_dtype, rank=2, ...],
         scales: OutputTensor[dtype=scales_dtype, rank=5, ...],
@@ -3233,6 +3270,10 @@ struct Struct_ep_fused_silu_nvfp4:
         operation on the received tokens. Once the SILU operation is performed,
         the output will be quantized to the NVFP4 format. The scales tensor
         will be padded and zero-filled.
+
+        The gated activation is built at compile time from the `activation`,
+        `swiglu_alpha` and `swiglu_limit` parameters; the constants are
+        decimal strings because kernel parameters cannot be floats.
         """
         # Ensure this kernel only runs on GPU targets
         comptime assert is_gpu[target](), "EP is only supported on GPU."
@@ -3253,6 +3294,12 @@ struct Struct_ep_fused_silu_nvfp4:
         var gpu_ctx = context
         comptime hw_info = gpu_ctx.default_device_info
 
+        comptime act = get_swiglu_activation[
+            activation,
+            comptime_atof[swiglu_alpha](),
+            comptime_atof[swiglu_limit](),
+        ]
+
         comptime fused_silu_nvfp4 = fused_silu_nvfp4_kernel[
             fp4_dtype,
             scales_dtype,
@@ -3265,6 +3312,7 @@ struct Struct_ep_fused_silu_nvfp4:
             input_scales_tensor.LayoutType,
             hw_info.max_thread_block_size,
             hw_info.sm_count,
+            activation=act,
         ]
 
         @inline(.always)
@@ -3274,6 +3322,7 @@ struct Struct_ep_fused_silu_nvfp4:
                 "fp4_dtype=", fp4_dtype,
                 ";scales_dtype=", scales_dtype,
                 ";input_dtype=", input_dtype,
+                ";activation=", activation,
             )
             # fmt: on
 

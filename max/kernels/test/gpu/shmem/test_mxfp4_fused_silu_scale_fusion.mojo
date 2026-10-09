@@ -57,6 +57,7 @@ from layout import Coord, Idx, TileTensor, row_major
 from linalg.fp4_utils import E2M1_TO_FLOAT32, MXFP4_SF_VECTOR_SIZE
 from linalg.matmul.gpu.amd import Shuffler
 
+from linalg.swiglu_activation import get_swiglu_activation
 from shmem.ep_comm import fused_silu_mx_kernel
 
 from std.testing import assert_equal
@@ -101,13 +102,13 @@ def _run_fusion_check[
     hidden_size: Int,
     NUM_ACTIVE: Int,
     clamp_activation: Bool = False,
+    alpha: Float32 = 0.0,
+    limit: Float32 = 0.0,
 ](
     name: String,
     num_tokens_by_expert: List[Int],
     inflate_padded_M: Int,
     ctx: DeviceContext,
-    alpha: Float32 = 0.0,
-    limit: Float32 = 0.0,
 ) raises:
     comptime assert hidden_size % MXFP4_SF_VECTOR_SIZE == 0
     # fused_silu input is gate+up concatenated: input_dim == hidden_size * 2.
@@ -202,7 +203,11 @@ def _run_fusion_check[
         hw.max_thread_block_size,
         hw.sm_count,
         fuse_a_scale_preshuffle=False,
-        clamp_activation=clamp_activation,
+        activation=get_swiglu_activation[
+            "swigluoai" if clamp_activation else "silu",
+            alpha,
+            limit if clamp_activation else 0.0,
+        ],
     ]
     comptime kernel_fused = fused_silu_mx_kernel[
         DType.uint8,
@@ -215,7 +220,11 @@ def _run_fusion_check[
         hw.max_thread_block_size,
         hw.sm_count,
         fuse_a_scale_preshuffle=True,
-        clamp_activation=clamp_activation,
+        activation=get_swiglu_activation[
+            "swigluoai" if clamp_activation else "silu",
+            alpha,
+            limit if clamp_activation else 0.0,
+        ],
     ]
 
     # ---- Path A (reference): fused_silu writes raw [tokens, scale_K], then
@@ -237,8 +246,6 @@ def _run_fusion_check[
         input_tt,
         a_off_tt,
         Int32(0),  # max_padded_M unused when fuse_a_scale_preshuffle=False
-        alpha,
-        limit,
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
@@ -286,8 +293,6 @@ def _run_fusion_check[
         input_tt,
         a_off_tt,
         Int32(max_padded_M),
-        alpha,
-        limit,
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
@@ -314,18 +319,14 @@ def _run_fusion_check[
 
 def _run_activation_probe[
     hidden_size: Int,
-](
-    name: String,
-    num_tokens: Int,
     alpha: Float32,
     limit: Float32,
-    ctx: DeviceContext,
-) raises:
+](name: String, num_tokens: Int, ctx: DeviceContext,) raises:
     """Numerical correctness gate for the OAI-clamped SwiGLU activation.
 
     `_run_fusion_check`'s byte-compare shares the activation on both sides, so a
     clamp bug is invisible to it. This dequantizes the FP4 output and checks
-    each element against a host fp32 reference (`_swigluoai_activation`):
+    each element against a host fp32 swigluoai reference:
 
         g' = min(g, L);  u' = clamp(u, -L, L);  z = (u'+1)*g'*sigmoid(g'*alpha)
 
@@ -404,7 +405,7 @@ def _run_activation_probe[
         hw.max_thread_block_size,
         hw.sm_count,
         fuse_a_scale_preshuffle=False,
-        clamp_activation=True,
+        activation=get_swiglu_activation["swigluoai", alpha, limit],
     ]
 
     var out_d = ctx.enqueue_create_buffer[.uint8](num_tokens * output_dim)
@@ -424,8 +425,6 @@ def _run_activation_probe[
         input_tt,
         a_off_tt,
         Int32(0),  # max_padded_M unused when fuse_a_scale_preshuffle=False
-        alpha,
-        limit,
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
@@ -449,7 +448,7 @@ def _run_activation_probe[
             var up = input_h[m * input_dim + h + hidden_size].cast[
                 DType.float32
             ]()
-            # OAI-clamped SwiGLU reference (matches `_swigluoai_activation`).
+            # OAI-clamped SwiGLU reference.
             var g_c = min(gate, limit)
             var u_c = min(max(up, -limit), limit)
             var sig = 1.0 / (1.0 + exp(-(g_c * alpha)))
@@ -523,28 +522,43 @@ def main() raises:
 
     # KS96 = M3 down proj (hidden 3072 -> scale_K 96) with clamped SwiGLU.
     # Fold-off and fold-on run the same clamp, so slot byte-equivalence holds.
-    _run_fusion_check[hidden_size=3072, NUM_ACTIVE=1, clamp_activation=True](
-        "ks96-clamp-single-tiny", [1], 0, ctx, alpha=1.702, limit=7.0
-    )
-    _run_fusion_check[hidden_size=3072, NUM_ACTIVE=4, clamp_activation=True](
-        "ks96-clamp-decode", [1, 2, 0, 4], 0, ctx, alpha=1.702, limit=7.0
-    )
-    _run_fusion_check[hidden_size=3072, NUM_ACTIVE=3, clamp_activation=True](
-        "ks96-clamp-prefill", [128, 33, 96], 0, ctx, alpha=1.702, limit=7.0
-    )
-    # Inflated max_padded_M (> runtime max), clamp on: slot-stride guard.
-    _run_fusion_check[hidden_size=3072, NUM_ACTIVE=3, clamp_activation=True](
-        "ks96-clamp-inflated-stride",
-        [5, 20, 12],
-        128,
-        ctx,
+    _run_fusion_check[
+        hidden_size=3072,
+        NUM_ACTIVE=1,
+        clamp_activation=True,
         alpha=1.702,
         limit=7.0,
-    )
+    ]("ks96-clamp-single-tiny", [1], 0, ctx)
+    _run_fusion_check[
+        hidden_size=3072,
+        NUM_ACTIVE=4,
+        clamp_activation=True,
+        alpha=1.702,
+        limit=7.0,
+    ]("ks96-clamp-decode", [1, 2, 0, 4], 0, ctx)
+    _run_fusion_check[
+        hidden_size=3072,
+        NUM_ACTIVE=3,
+        clamp_activation=True,
+        alpha=1.702,
+        limit=7.0,
+    ]("ks96-clamp-prefill", [128, 33, 96], 0, ctx)
+    # Inflated max_padded_M (> runtime max), clamp on: slot-stride guard.
+    _run_fusion_check[
+        hidden_size=3072,
+        NUM_ACTIVE=3,
+        clamp_activation=True,
+        alpha=1.702,
+        limit=7.0,
+    ]("ks96-clamp-inflated-stride", [5, 20, 12], 128, ctx)
     # Cross-coverage: KS64 with the clamp on, and KS96 with plain SiLU.
-    _run_fusion_check[hidden_size=2048, NUM_ACTIVE=4, clamp_activation=True](
-        "ks64-clamp-decode", [1, 2, 0, 4], 0, ctx, alpha=1.702, limit=7.0
-    )
+    _run_fusion_check[
+        hidden_size=2048,
+        NUM_ACTIVE=4,
+        clamp_activation=True,
+        alpha=1.702,
+        limit=7.0,
+    ]("ks64-clamp-decode", [1, 2, 0, 4], 0, ctx)
     _run_fusion_check[hidden_size=3072, NUM_ACTIVE=5](
         "ks96-plainsilu-mixed", [3, 33, 0, 17, 64], 0, ctx
     )
@@ -552,10 +566,10 @@ def main() raises:
 
     # Clamp-math correctness gate (byte-equivalence can't catch it).
     # M3 constants: alpha=1.702, limit=7.0.
-    _run_activation_probe[hidden_size=3072](
-        "ks96-activation-probe", 128, 1.702, 7.0, ctx
+    _run_activation_probe[hidden_size=3072, alpha=1.702, limit=7.0](
+        "ks96-activation-probe", 128, ctx
     )
-    _run_activation_probe[hidden_size=2048](
-        "ks64-activation-probe", 96, 1.702, 7.0, ctx
+    _run_activation_probe[hidden_size=2048, alpha=1.702, limit=7.0](
+        "ks64-activation-probe", 96, ctx
     )
     print("All fused_silu_mx activation probes passed.")

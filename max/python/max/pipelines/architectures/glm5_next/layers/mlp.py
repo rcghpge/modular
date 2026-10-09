@@ -16,25 +16,20 @@ Layers 0-2 are dense at ``intermediate_size`` (12288); layers 3 onward, the MTP
 draft layer included, are MoE at ``moe_intermediate_size`` (2048) with one
 shared expert and eight of 288 routed. Both use GLM's clamped SwiGLU.
 
-**Every clamped-SwiGLU path already in MAX computes something else**, which is
-why the dense MLP below calls :func:`clamped_swiglu` directly rather than
-passing a ``limit`` to one of them:
+GLM needs ``silu(min(gate, limit)) * clamp(up, -limit, limit)``: the clamp
+bounds the activation's *input*. Clamping after the activation agrees below
+the limit and diverges above it, so random weights never show the difference
+and a real checkpoint does.
 
-* ``max/python/max/nn/moe/moe.py`` -- ``_swigluoai_activation`` adds GPT-OSS's
+The MoE below gets this order from the fused ``"silu"`` activation with a
+``limit``. The dense MLP calls :func:`clamped_swiglu` directly, because the
+other clamped-SwiGLU paths in MAX compute something else:
+
+* ``max/python/max/nn/activation.py`` -- ``swigluoai`` adds GPT-OSS's
   ``+1`` bias on ``up`` and an ``alpha`` inside the sigmoid.
 * ``max/python/max/nn/moe/moe.py`` -- ``make_concatenated_gated_activation_fn``
   with a ``limit`` applies the activation and *then* clamps.
 * ``max/python/max/nn/linear.py`` -- the ``swiglu_limit`` branch does the same.
-
-GLM needs ``silu(min(gate, limit)) * clamp(up, -limit, limit)``: the clamp
-bounds the activation's *input*. The two orders agree below the limit and
-diverge above it, so random weights never show it and a real checkpoint does.
-
-The MoE below selects :class:`~max.nn.moe.moe.ClampedSwiGLU`, the one
-custom activation the EP quantized path's fused grouped-matmul kernel
-implements natively (see ``max/python/max/nn/moe/moe_fp8.py``); every other
-custom ``gated_activation_fn`` is still rejected there because the kernel
-needs to know the activation shape at build time.
 """
 
 from __future__ import annotations
@@ -52,10 +47,10 @@ from max.graph import (
     Value,
 )
 from max.nn import MLP
+from max.nn.activation import GatedActivation
 from max.nn.comm.ep import EPBatchManager
 from max.nn.layer import Module
 from max.nn.moe.expert_parallel import forward_moe_sharded_layers
-from max.nn.moe.moe import ClampedSwiGLU
 from max.pipelines.architectures.deepseekV3_2.layers.moe import DeepseekV3_2MoE
 
 from ..model_config import Glm5NextConfig, token_shard_degree
@@ -111,7 +106,7 @@ class Glm5NextMoE(DeepseekV3_2MoE):
     """
 
     def __init__(self, *args, swiglu_limit: float, **kwargs) -> None:
-        kwargs["gated_activation_fn"] = ClampedSwiGLU(swiglu_limit)
+        kwargs["activation"] = GatedActivation("silu", limit=swiglu_limit)
         super().__init__(*args, **kwargs)
         self.swiglu_limit = swiglu_limit
 

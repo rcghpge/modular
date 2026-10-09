@@ -60,6 +60,11 @@ from linalg.fp6_utils import (
     pack_fp6_x4,
 )
 from linalg.mx_format import MXFormat
+from linalg.swiglu_activation import (
+    apply_swiglu_activation,
+    swiglu,
+    swiglu_activation_type,
+)
 from linalg.matmul.gpu.amd import Shuffler
 
 import max.gpu.primitives.block as block
@@ -110,7 +115,7 @@ from layout.tma_async import (
     create_tensor_tile,
     _default_desc_shape,
 )
-from std.math import exp, isfinite, recip
+from std.math import isfinite, recip
 from std.memory import unsafe_stack_allocation
 from std.memory.unsafe import bitcast
 from shmem import SHMEM_SIGNAL_SET, SHMEMScope, shmem_put_nbi, shmem_signal_op
@@ -6311,13 +6316,15 @@ def fused_silu_kernel[
     row_offsets_layout: TensorLayout,
     num_threads: Int,
     num_sms: Int,
+    activation: swiglu_activation_type = swiglu[0.0],
+    interleaved: Bool = False,
 ](
     output_tensor: TileTensor[output_dtype, output_layout, MutUntrackedOrigin],
     input_tensor: TileTensor[input_dtype, input_layout, ImmUntrackedOrigin],
     row_offsets: TileTensor[.uint32, row_offsets_layout, ImmUntrackedOrigin],
 ):
     """
-    This kernel performs the SILU operation for all the MLPs in the EP MoE
+    This kernel performs the gated activation for all the MLPs in the EP MoE
     module. We need to manually implement the kernel here is because after the
     EP dispatch phase, the actual number of received tokens is not known to the
     host. This kernel will read the row offsets to determine the actual number of
@@ -6335,6 +6342,11 @@ def fused_silu_kernel[
             `MAX_THREADS_PER_BLOCK` launch metadata.
         num_sms: Number of streaming multiprocessors (SMs) used to scatter
             processing across thread blocks.
+        activation: Gated activation applied to each `(gate, up)` pair,
+            selected at compile time (defaults to `swiglu`).
+        interleaved: Whether each `input_tensor` row is laid out as
+            `[gate_0, up_0, gate_1, up_1, ...]` instead of `[gate | up]`
+            (defaults to False).
 
     Arguments:
         output_tensor: The output tensor to store the result.
@@ -6379,15 +6391,27 @@ def fused_silu_kernel[
         ):
             var m, k = divmod((i * simd_width), output_dim)
 
-            var gate_proj = input_tensor.load[width=simd_width]((m, k)).cast[
-                accum_dtype
-            ]()
-            var up_proj = input_tensor.load[width=simd_width](
-                (m, k + output_dim)
-            ).cast[accum_dtype]()
+            var gate_proj: SIMD[accum_dtype, simd_width]
+            var up_proj: SIMD[accum_dtype, simd_width]
+            comptime if interleaved:
+                var gate_up = (
+                    input_tensor.load[width=2 * simd_width]((m, 2 * k))
+                    .cast[accum_dtype]()
+                    .deinterleave()
+                )
+                gate_proj = rebind[SIMD[accum_dtype, simd_width]](gate_up[0])
+                up_proj = rebind[SIMD[accum_dtype, simd_width]](gate_up[1])
+            else:
+                gate_proj = input_tensor.load[width=simd_width]((m, k)).cast[
+                    accum_dtype
+                ]()
+                up_proj = input_tensor.load[width=simd_width](
+                    (m, k + output_dim)
+                ).cast[accum_dtype]()
 
-            gate_proj = gate_proj / (1.0 + exp(-gate_proj))
-            var output_val = gate_proj * up_proj
+            var output_val = apply_swiglu_activation[activation](
+                gate_proj, up_proj
+            )
 
             output_tensor.store((m, k), output_val.cast[output_dtype]())
 
@@ -6408,6 +6432,7 @@ def fused_silu_nvfp4_kernel[
     input_scales_layout: TensorLayout,
     num_threads: Int,
     num_sms: Int,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     output_tensor: TileTensor[fp4_dtype, output_layout, MutUntrackedOrigin],
     scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
@@ -6419,14 +6444,15 @@ def fused_silu_nvfp4_kernel[
     input_scales: TileTensor[.float32, input_scales_layout, ImmUntrackedOrigin],
 ):
     """
-    This kernel performs the SILU operation for all the MLPs in the EP MoE
+    This kernel performs the gated activation for all the MLPs in the EP MoE
     module. We need to manually implement the kernel here is because after the
     EP dispatch phase, the actual number of received tokens is not known to the
     host. This kernel will read the row offsets to determine the actual number of
     received tokens in the input tensor.
 
-    Once the SILU operation is performed, the output tensor will be quantized to
-    the NVFP4 format. The scales tensor will be padded and zero-filled.
+    Once the activation is applied, the output tensor will be quantized to
+    the NVFP4 format. The scales tensor will be padded and zero-filled. The
+    activation is the comptime `activation` parameter (defaults to `swiglu`).
 
     Arguments:
         output_tensor: The output tensor to store the result.
@@ -6520,8 +6546,9 @@ def fused_silu_nvfp4_kernel[
                 (m, k + hidden_size)
             ).cast[accum_dtype]()
 
-            gate_proj = gate_proj / (1.0 + exp(-gate_proj))
-            var output_val = gate_proj * up_proj
+            var output_val = apply_swiglu_activation[activation](
+                gate_proj, up_proj
+            )
 
             # Quantization logic (NVFP4).
             var thread_max = abs(output_val).reduce_max().cast[.float32]()
@@ -6589,6 +6616,7 @@ def fused_silu_nvfp4_interleaved_kernel[
     input_scales_layout: TensorLayout,
     num_threads: Int,
     num_sms: Int,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     output_tensor: TileTensor[fp4_dtype, output_layout, MutUntrackedOrigin],
     scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
@@ -6720,8 +6748,9 @@ def fused_silu_nvfp4_interleaved_kernel[
                 pair[15],
             )
 
-            gate_proj = gate_proj / (1.0 + exp(-gate_proj))
-            var output_val = gate_proj * up_proj
+            var output_val = apply_swiglu_activation[activation](
+                gate_proj, up_proj
+            )
 
             var thread_max = abs(output_val).reduce_max().cast[.float32]()
             var group_max = warp.lane_group_max[num_lanes=NUM_THREADS_PER_SF](
@@ -6768,25 +6797,11 @@ def fused_silu_nvfp4_interleaved_kernel[
                 )
 
 
-@inline(.always)
-def sigmoid[
-    dtype: DType,
-    width: SIMDLength,
-    accum: DType = get_accum_type[dtype](),
-](x: SIMD[dtype, width]) -> SIMD[dtype, width]:
-    # Local copy: shmem can't import nn (nn -> shmem import cycle).
-    # TODO(KERN-3166): drop once sigmoid is layered below shmem.
-    comptime assert dtype.is_floating_point(), "dtype must be floating point"
-    comptime assert accum.is_floating_point(), "accum must be floating point"
-    var x_cast = x.cast[accum]()
-    return (1 / (1 + exp(-x_cast))).cast[dtype]()
-
-
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_threads))
 )
 @__name(
-    t"fused_silu_mx_{input_dtype}_{quant_dtype}_fuse_a_scale_preshuffle_{fuse_a_scale_preshuffle}_clamp_{clamp_activation}"
+    t"fused_silu_mx_{input_dtype}_{quant_dtype}_fuse_a_scale_preshuffle_{fuse_a_scale_preshuffle}"
 )
 def fused_silu_mx_kernel[
     quant_dtype: DType,
@@ -6800,27 +6815,24 @@ def fused_silu_mx_kernel[
     num_sms: Int,
     *,
     fuse_a_scale_preshuffle: Bool = False,
-    # Clamped SwiGLU-OAI variant; False (default) = plain SiLU(g) * u:
-    #   g'=min(g,L); u'=clamp(u,-L,L); z=(u'+1)*g'*sigmoid(g'*alpha)
-    clamp_activation: Bool = False,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     output_tensor: TileTensor[quant_dtype, output_layout, MutUntrackedOrigin],
     scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
     input_tensor: TileTensor[input_dtype, input_layout, ImmUntrackedOrigin],
     row_offsets: TileTensor[.uint32, offsets_layout, ImmUntrackedOrigin],
-    max_padded_M: Int32 = 0,  # Clamped-variant alpha/L; unused when clamp_activation=False.
-    alpha: Float32 = 0.0,
-    limit: Float32 = 0.0,
+    max_padded_M: Int32 = 0,
 ):
     """
-    This kernel performs the SILU operation for all the MLPs in the EP MoE
+    This kernel performs the gated activation for all the MLPs in the EP MoE
     module. We need to manually implement the kernel here is because after the
     EP dispatch phase, the actual number of received tokens is not known to the
     host. This kernel will read the row offsets to determine the actual number of
     received tokens in the input tensor.
 
-    Once the SILU operation is performed, the output tensor will be quantized to
-    the NVFP4 format. The scales tensor will be padded and zero-filled.
+    Once the activation is applied, the output tensor will be quantized to
+    the NVFP4 format. The scales tensor will be padded and zero-filled. The
+    activation is the comptime `activation` parameter (defaults to `swiglu`).
 
     Arguments:
         output_tensor: The output tensor to store the result.
@@ -6889,14 +6901,9 @@ def fused_silu_mx_kernel[
                 (m, k + hidden_size)
             ).cast[accum_dtype]()
 
-            var output_val: SIMD[accum_dtype, src_width]
-            comptime if clamp_activation:
-                var g_c = min(gate_proj, limit)
-                var u_c = up_proj.clamp(-limit, limit)
-                output_val = (g_c * sigmoid(g_c * alpha)) * (u_c + 1.0)
-            else:
-                gate_proj = gate_proj / (1.0 + exp(-gate_proj))
-                output_val = gate_proj * up_proj
+            var output_val = apply_swiglu_activation[activation](
+                gate_proj, up_proj
+            )
 
             var thread_max = abs(output_val).reduce_max().cast[.float32]()
             var group_max = warp.lane_group_max[num_lanes=NUM_THREADS_PER_SF](
@@ -7001,11 +7008,7 @@ def fused_silu_mxfp8_interleaved_kernel[
     scales_offsets_layout: TensorLayout,
     num_threads: Int,
     num_sms: Int,
-    # Optional clamped activation variant (`swigluoai`):
-    #   g' = min(g, L);  u' = clamp(u, -L, L)
-    #   z  = (u' + 1) * g' * sigmoid(g' * alpha)
-    # When False (default) the kernel applies plain SiLU(g) * u.
-    clamp_activation: Bool = False,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     output_tensor: TileTensor[fp8_dtype, output_layout, MutUntrackedOrigin],
     scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
@@ -7014,18 +7017,15 @@ def fused_silu_mxfp8_interleaved_kernel[
     scales_offsets: TileTensor[
         .uint32, scales_offsets_layout, ImmUntrackedOrigin
     ],
-    # Runtime alpha and L for the clamped activation; ignored when
-    # `clamp_activation=False`.
-    alpha: Float32 = Float32(0.0),
-    limit: Float32 = Float32(0.0),
 ):
     """SwiGLU + MXFP8 quantization for interleaved gate/up layout.
 
     MXFP8 counterpart of `fused_silu_nvfp4_interleaved_kernel`. Consumes
     BF16 inputs in the `[gate_0, up_0, gate_1, up_1, ...]` interleaved
     layout produced by permuting the MoE up-projection weight on the N
-    axis with `sigma(2i)=i, sigma(2i+1)=H+i`, applies SiLU(gate)*up, and
-    quantizes the result per 32-element block to FP8-E4M3 with FP8-UE8M0
+    axis with `sigma(2i)=i, sigma(2i+1)=H+i`, applies the comptime
+    `activation` (defaults to `swiglu`), and quantizes the result per
+    32-element block to FP8-E4M3 with FP8-UE8M0
     block scales.
 
     Compared with the NVFP4 variant the differences are:
@@ -7145,15 +7145,9 @@ def fused_silu_mxfp8_interleaved_kernel[
                 pair[15],
             )
 
-            var output_val: SIMD[accum_dtype, src_width]
-            comptime if clamp_activation:
-                var g_c = min(gate_proj, limit)
-                var u_c = up_proj.clamp(-limit, limit)
-                var sigmoid = 1.0 / (1.0 + exp(-(g_c * alpha)))
-                output_val = (u_c + 1.0) * g_c * sigmoid
-            else:
-                gate_proj = gate_proj / (1.0 + exp(-gate_proj))
-                output_val = gate_proj * up_proj
+            var output_val = apply_swiglu_activation[activation](
+                gate_proj, up_proj
+            )
 
             # Per-block (32-element) amax across 4 cooperating threads.
             var thread_max = abs(output_val).reduce_max().cast[.float32]()
@@ -7217,19 +7211,17 @@ def fused_silu_mxfp6_kernel[
     *,
     fp6_format: FP6Format,
     fuse_a_scale_preshuffle: Bool = False,
-    # Clamped SwiGLU-OAI variant; False (default) = plain SiLU(g) * u:
-    #   g'=min(g,L); u'=clamp(u,-L,L); z=(u'+1)*g'*sigmoid(g'*alpha)
-    clamp_activation: Bool = False,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     output_tensor: TileTensor[.uint8, output_layout, MutUntrackedOrigin],
     scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
     input_tensor: TileTensor[input_dtype, input_layout, ImmUntrackedOrigin],
     row_offsets: TileTensor[.uint32, offsets_layout, ImmUntrackedOrigin],
     max_padded_M: Int32 = 0,
-    alpha: Float32 = 0.0,
-    limit: Float32 = 0.0,
 ):
-    """SwiGLU + MXFP6 quantization for the EP MoE down-projection input.
+    """Gated activation + MXFP6 quantization for the EP MoE down-projection
+    input. The activation is the comptime `activation` parameter (defaults to
+    `swiglu`).
 
     MXFP6 counterpart of `fused_silu_mx_kernel`, which serves MXFP4 and MXFP8
     from one body by switching on elements-per-byte. FP6 cannot join it: four
@@ -7297,14 +7289,9 @@ def fused_silu_mxfp6_kernel[
                 (m, k + hidden_size)
             ).cast[accum_dtype]()
 
-            var output_val: SIMD[accum_dtype, blk]
-            comptime if clamp_activation:
-                var g_c = min(gate_proj, limit)
-                var u_c = up_proj.clamp(-limit, limit)
-                output_val = (g_c * sigmoid(g_c * alpha)) * (u_c + 1.0)
-            else:
-                gate_proj = gate_proj / (1.0 + exp(-gate_proj))
-                output_val = gate_proj * up_proj
+            var output_val = apply_swiglu_activation[activation](
+                gate_proj, up_proj
+            )
 
             var group_max = abs(output_val).reduce_max()
             var e8m0_scale = compute_mxfp6_even_scale[fp6_format](group_max)
