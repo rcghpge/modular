@@ -222,9 +222,9 @@ from layout import TileTensor, row_major
 
 comptime rows = 8
 comptime columns = 16
-comptime layout = row_major[rows, columns]()
+var layout = row_major[rows, columns]()
 var storage = Array[Float32, rows * columns](uninitialized=True)
-var tensor = TileTensor(storage, layout).fill(0)
+var tensor = TileTensor(storage, layout)
 ```
 
 `Array` is a statically-sized, stack-allocated array, so it's a fast and
@@ -238,20 +238,18 @@ You can also create a `TileTensor` using a
 preferable for very large tensors.
 
 ```mojo
-from std.memory import Layout as MemoryLayout, alloc, dealloc, unsafe_memset
+from std.memory import unsafe_memset
 from layout import TileTensor, row_major
 
 comptime rows = 1024
 comptime columns = 1024
 comptime buf_size = rows * columns
-comptime layout = row_major[rows, columns]()
-var allocation = alloc(MemoryLayout[Float32](count=buf_size))
-var ptr = allocation.unsafe_ptr()
+var layout = row_major[rows, columns]()
+var ptr = alloc[Float32]({count = buf_size}).unsafe_leak()
 unsafe_memset(ptr, 0, buf_size)
 var tensor = TileTensor(ptr, layout)
-tensor[0, 0] = 1
-print(tensor[0, 0])  # 1.0
-dealloc(allocation^)
+
+ptr.unsafe_free()
 ```
 
 Note that this example uses
@@ -423,17 +421,28 @@ The
 method extracts a tile with a given size at a given set of coordinates:
 
 ```mojo
+from std.collections import Array
+from layout import Coord, Idx, TileTensor
+from layout.tile_layout import Layout
+
 comptime rows = 2
 comptime columns = 4
 comptime tile_size = 32
-comptime tile_layout = Layout.row_major(tile_size, tile_size)
-comptime tiler_layout = Layout.row_major(rows, columns)
-comptime tiled_layout = blocked_product(tile_layout, tiler_layout)
-var storage = Array[Float32, tiled_layout.size()](
+var tiled_layout = Layout(
+    Coord(
+        Coord(Idx[rows], Idx[tile_size]),
+        Coord(Idx[columns], Idx[tile_size]),
+    ),
+    Coord(
+        Coord(Idx[columns * tile_size * tile_size], Idx[tile_size]),
+        Coord(Idx[tile_size * tile_size], Idx[1]),
+    ),
+)
+var storage = Array[Float32, rows * columns * tile_size * tile_size](
     fill_with=lambda (i: Int) -> Float32: Float32(i)
 )
-var tensor = LayoutTensor[.float32, tiled_layout](storage)
-var tile = tensor.tile[tile_size, tile_size](0, 1)
+var tensor = TileTensor(storage, tiled_layout)
+var tile = tensor.tile[32, 32](0, 1)
 ```
 
 This code creates a 64x128 tensor with 32x32 tiles, and extracts the tile
@@ -470,11 +479,10 @@ If you need to know the type of the tile (to declare a variable, for example),
 you can use the `TileType` type alias, with the same tile size parameters.
 
 ```mojo
-var my_tile: tensor.TileType[tile_size, tile_size]
-for i in range (rows):
+var my_tile = tensor.tile[tile_size, tile_size](0, 0)
+for i in range(rows):
     for j in range(columns):
         my_tile = tensor.tile[tile_size, tile_size](i, j)
-        # ... do something with the tile ...
 ```
 
 ### Tiled iterators
@@ -495,20 +503,18 @@ memory one tile at a time. This essentially treats the memory as a flat array of
 tiles.
 
 ```mojo
+from std.collections import Array
+from std.math import ceildiv
+from layout import TileTensor, row_major
+
 comptime buf_size = 128
+comptime tile_size = 16
 var storage = Array[Int16, buf_size](
     fill_with=lambda (i: Int) -> Int16: Int16(i)
 )
-comptime tile_layout = Layout.row_major(4, 4)
-var iter = LayoutTensorIter[
-    .int16,
-    tile_layout,
-](storage.unsafe_ptr(), buf_size)
-
-for i in range(ceildiv(buf_size, comptime (tile_layout.size()))):
-    var tile = iter[]
-    # ... do something with tile
-    iter += 1
+var tensor = TileTensor(storage, row_major[buf_size]())
+for i in range(ceildiv(buf_size, tile_size)):
+    var tile = tensor.tile[tile_size](i).reshape[4, 4]()
 ```
 
 The iterator constructor takes all of the parameters you'd use to construct a
@@ -526,8 +532,9 @@ iterator incremented by a specified offset (default 1). This means you can also
 use a pattern like this:
 
 ```mojo
+comptime num_tiles = buf_size // tile_size
 for i in range(num_tiles):
-    var current_tile = iter.next(i)[]
+    var current_tile = tensor.tile[tile_size](i).reshape[4, 4]()
     # Tile processing omitted.
 ```
 
@@ -543,17 +550,15 @@ To iterate over an existing tensor, call the
 method, which produces a `LayoutTensorIter`:
 
 ```mojo
+from std.math import ceildiv
+
 # given a tensor of size rows x cols
 comptime num_row_tiles = ceildiv(rows, tile_size)
 comptime num_col_tiles = ceildiv(cols, tile_size)
 
 for i in range(num_row_tiles):
-    var iter = tensor.tiled_iterator[tile_size, tile_size, axis=1](i, 0)
-
-    for _ in range(num_col_tiles):
-        var tile = iter[]
-        # ... do something with the tile
-        iter += 1
+    for j in range(num_col_tiles):
+        var tile = tensor.tile[tile_size, tile_size](i, j)
 ```
 
 ## Vectorizing tensors
