@@ -12,8 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 """Implements Mixture-of-Experts (MoE) routing, token dispatch, and expert computation kernels."""
 
-from std.collections import OptionalReg
-
 from std.math import align_up, ceildiv, exp, log1p
 from std.math.uutils import umod
 from std.memory import unsafe_stack_allocation
@@ -490,18 +488,15 @@ def group_limited_router_kernel[
     topk_group: Int,
     norm_weights: Bool,
     num_threads: Int,
-    scores_input_fn: OptionalReg[
-        def[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
-    ] = None,
+    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+        scores_type, width
+    ],
 ](
     expert_indices: TileTensor[
         mut=True, .int32, ExpertIndicesLayoutType, MutAnyOrigin
     ],
     expert_weights: TileTensor[
         mut=True, scores_type, ExpertWeightsLayoutType, MutAnyOrigin
-    ],
-    expert_scores: TileTensor[
-        scores_type, ExpertScoresLayoutType, ImmutAnyOrigin
     ],
     expert_bias: TileTensor[bias_type, ExpertBiasLayoutType, ImmutAnyOrigin],
     routed_scaling_factor: Float32,
@@ -522,8 +517,7 @@ def group_limited_router_kernel[
             output tensor.
         ExpertWeightsLayoutType: `TensorLayout` of the `expert_weights`
             output tensor.
-        ExpertScoresLayoutType: `TensorLayout` of the `expert_scores`
-            input tensor.
+        ExpertScoresLayoutType: `TensorLayout` of the routing scores.
         ExpertBiasLayoutType: `TensorLayout` of the `expert_bias` input
             tensor.
         n_routed_experts: Total number of routed experts scored per token.
@@ -538,9 +532,8 @@ def group_limited_router_kernel[
             one before applying the scaling factor.
         num_threads: Threads per block; must equal `n_routed_experts` so
             each thread scores one expert.
-        scores_input_fn: Optional lambda that loads scores given a
-            `(token, expert)` index; when `None`, scores load from
-            `expert_scores`.
+        scores_input_fn: Lambda that loads scores given a
+            `(token, expert)` index.
 
     Args:
         expert_indices: Output tensor holding the selected expert index per
@@ -548,8 +541,6 @@ def group_limited_router_kernel[
         expert_weights: Output tensor holding the routing weight per
             selected expert per token, excluding the bias. Shape
             `[num_tokens, n_experts_per_tok]`.
-        expert_scores: Input tensor of routing scores for every expert per
-            token. Shape `[num_tokens, n_routed_experts]`.
         expert_bias: Input tensor of per-expert bias added to scores during
             selection but excluded from the final weights. Shape
             `[n_routed_experts]`.
@@ -558,14 +549,14 @@ def group_limited_router_kernel[
     """
     comptime assert expert_indices.flat_rank == 2
     comptime assert expert_weights.flat_rank == 2
-    comptime assert expert_scores.flat_rank == 2
+    comptime assert ExpertScoresLayoutType.flat_rank == 2
     comptime assert expert_bias.flat_rank == 1
     comptime assert expert_bias.flat_rank >= 1
-    comptime assert expert_scores.flat_rank >= 2
+    comptime assert ExpertScoresLayoutType.flat_rank >= 2
     comptime assert expert_indices.flat_rank >= 2
 
     comptime assert (
-        expert_scores.static_shape[1] == n_routed_experts
+        ExpertScoresLayoutType.static_shape[1] == n_routed_experts
     ), "expert_scores.static_shape[1] must be equal to n_routed_experts"
 
     comptime assert (
@@ -592,8 +583,6 @@ def group_limited_router_kernel[
     var tid = thread_idx.x
     var warp_id = warp_id()
 
-    var num_tokens = expert_scores.dim(0)
-
     var shared_mem = unsafe_stack_allocation[
         topk_group * n_experts_per_tok,
         TopK_2[scores_type],
@@ -609,13 +598,7 @@ def group_limited_router_kernel[
     ]()
 
     with PDL():
-        var thread_expert_score: Scalar[scores_type]
-
-        comptime if scores_input_fn:
-            comptime scores_fn = scores_input_fn.value()
-            thread_expert_score = scores_fn[width=1]((token_idx, tid))
-        else:
-            thread_expert_score = expert_scores.load[width=1]((token_idx, tid))
+        var thread_expert_score = scores_input_fn[width=1]((token_idx, tid))
 
         thread_expert_score += thread_expert_bias
         var thd_topk2 = TopK_2(u=thread_expert_score, p=tid)
@@ -715,9 +698,6 @@ def router_group_limited[
     topk_group: Int,
     norm_weights: Bool,
     target: StaticString,
-    scores_input_fn: OptionalReg[
-        def[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
-    ] = None,
 ](
     expert_indices: TileTensor[mut=True, .int32, ...],
     expert_weights: TileTensor[mut=True, scores_type, ...],
@@ -740,7 +720,6 @@ def router_group_limited[
         topk_group: The number of expert groups to be selected per token.
         norm_weights: Whether to normalize the selected weights.
         target: The target device to run the kernel on.
-        scores_input_fn: Input lambda function to load the scores.
 
     Inputs:
         expert_indices: The indices of the routed experts for each token.
@@ -753,11 +732,85 @@ def router_group_limited[
         routed_scaling_factor: The scaling factor for the routed expert weights.
         context: The device context.
     """
+
+    def load_scores[
+        width: Int
+    ](coords: IndexList[2]) capturing -> SIMD[scores_type, width]:
+        return expert_scores.load[width=width]((coords[0], coords[1]))
+
+    router_group_limited[
+        n_routed_experts=n_routed_experts,
+        n_experts_per_tok=n_experts_per_tok,
+        n_groups=n_groups,
+        topk_group=topk_group,
+        norm_weights=norm_weights,
+        target=target,
+        scores_input_fn=load_scores,
+    ](
+        expert_indices,
+        expert_weights,
+        expert_scores.layout,
+        expert_bias,
+        routed_scaling_factor,
+        context,
+    )
+
+
+def router_group_limited[
+    scores_type: DType,
+    bias_type: DType,
+    //,
+    n_routed_experts: Int,
+    n_experts_per_tok: Int,
+    n_groups: Int,
+    topk_group: Int,
+    norm_weights: Bool,
+    target: StaticString,
+    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+        scores_type, width
+    ],
+](
+    expert_indices: TileTensor[mut=True, .int32, ...],
+    expert_weights: TileTensor[mut=True, scores_type, ...],
+    scores_layout: Some[TensorLayout],
+    expert_bias: TileTensor[mut=False, bias_type, ...],
+    routed_scaling_factor: Float32,
+    context: DeviceContext,
+) raises:
+    """
+    A manually fused MoE router with the group-limited strategy.
+
+    Reference: https://github.com/deepseek-ai/DeepSeek-V3/blob/9b4e9788e4a3a731f7567338ed15d3ec549ce03b/inference/model.py#L566.
+
+    Parameters:
+        scores_type: The data type of the scores and the output weights.
+        bias_type: The data type of the expert bias.
+        n_routed_experts: The number of experts to route to.
+        n_experts_per_tok: The number of experts to be selected per token.
+        n_groups: The number of expert groups.
+        topk_group: The number of expert groups to be selected per token.
+        norm_weights: Whether to normalize the selected weights.
+        target: The target device to run the kernel on.
+        scores_input_fn: Lambda that loads the score at a
+            `[token, expert]` coordinate.
+
+    Inputs:
+        expert_indices: The indices of the routed experts for each token.
+            Shape: [num_tokens, num_experts_per_tok].
+        expert_weights: The weights of the routed experts for each token.
+            Shape: [num_tokens, num_experts_per_tok].
+        scores_layout: Layout of the routing scores. Shape:
+            [num_tokens, n_routed_experts].
+        expert_bias: The bias for each expert. Shape: [n_routed_experts].
+        routed_scaling_factor: The scaling factor for the routed expert weights.
+        context: The device context.
+    """
     comptime assert is_gpu[
         target
     ](), "Group limited MoE router is only supported on GPU"
 
-    if expert_scores.dim(0) == 0:
+    var num_tokens = Int(scores_layout.shape[0]().value())
+    if num_tokens == 0:
         return
 
     var gpu_ctx = context
@@ -776,7 +829,7 @@ def router_group_limited[
             bias_type,
             expert_indices.LayoutType,
             expert_weights.LayoutType,
-            expert_scores.LayoutType,
+            type_of(scores_layout),
             expert_bias.LayoutType,
             n_routed_experts,
             n_experts_per_tok,
@@ -790,10 +843,9 @@ def router_group_limited[
         gpu_ctx.enqueue_function[kernel](
             expert_indices,
             expert_weights,
-            expert_scores,
             expert_bias,
             routed_scaling_factor,
-            grid_dim=expert_scores.dim(0),
+            grid_dim=num_tokens,
             block_dim=num_threads,
             attributes=pdl_launch_attributes(PDLLevel.ON),
         )
@@ -1055,9 +1107,9 @@ def single_group_router_eplb_kernel[
     num_log: Int,
     max_replicas: Int,
     hash_decorrelate: Bool,
-    scores_input_fn: OptionalReg[
-        def[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
-    ] = None,
+    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+        scores_type, width
+    ],
 ](
     expert_indices: TileTensor[
         mut=True, .int32, ExpertIndicesLayoutType, MutAnyOrigin
@@ -1067,9 +1119,6 @@ def single_group_router_eplb_kernel[
     ],  # log ids (for EPLB histogram)
     expert_weights: TileTensor[
         mut=True, scores_type, ExpertWeightsLayoutType, MutAnyOrigin
-    ],
-    expert_scores: TileTensor[
-        scores_type, ExpertScoresLayoutType, ImmutAnyOrigin
     ],
     expert_bias: TileTensor[bias_type, ExpertBiasLayoutType, ImmutAnyOrigin],
     logcnt: TileTensor[.int32, LogcntLayoutType, ImmutAnyOrigin],
@@ -1091,14 +1140,14 @@ def single_group_router_eplb_kernel[
     comptime assert expert_indices.flat_rank == 2
     comptime assert expert_indices_log.flat_rank == 2
     comptime assert expert_weights.flat_rank == 2
-    comptime assert expert_scores.flat_rank == 2
+    comptime assert ExpertScoresLayoutType.flat_rank == 2
     comptime assert expert_bias.flat_rank == 1
     comptime assert logcnt.flat_rank == 2
     comptime assert log2phy.flat_rank == 3
     comptime assert layer_idx.flat_rank == 1
 
     comptime assert (
-        expert_scores.static_shape[1] == n_routed_experts
+        ExpertScoresLayoutType.static_shape[1] == n_routed_experts
     ), "expert_scores.static_shape[1] must be equal to n_routed_experts"
     comptime assert (
         expert_indices.static_shape[1] == n_experts_per_tok
@@ -1137,12 +1186,7 @@ def single_group_router_eplb_kernel[
             scores_type
         ]()
 
-        var thread_expert_score: Scalar[scores_type]
-        comptime if scores_input_fn:
-            comptime scores_fn = scores_input_fn.value()
-            thread_expert_score = scores_fn[width=1]((token_idx, tid))
-        else:
-            thread_expert_score = expert_scores.load[width=1]((token_idx, tid))
+        var thread_expert_score = scores_input_fn[width=1]((token_idx, tid))
         var biased_score = thread_expert_score + thread_expert_bias
 
         var sorted_val3 = _block_top_k[n_experts_per_tok, num_threads](
@@ -1172,13 +1216,7 @@ def single_group_router_eplb_kernel[
                 log = Int(sorted_val3.p)
 
                 # Burst load #1 — original_weight (existing).
-                comptime if scores_input_fn:
-                    comptime d_fn = scores_input_fn.value()
-                    original_weight = d_fn[width=1]((token_idx, log))
-                else:
-                    original_weight = expert_scores.load[width=1](
-                        (token_idx, log)
-                    )
+                original_weight = scores_input_fn[width=1]((token_idx, log))
 
                 # Burst load #2 — full log2phy[Lidx, log, :] slice.
                 # One 4*max_replicas-byte HBM transaction (16B for mr=4,
@@ -1944,9 +1982,6 @@ def single_group_router_eplb[
     max_replicas: Int,
     hash_decorrelate: Bool,
     target: StaticString,
-    scores_input_fn: OptionalReg[
-        def[width: Int](IndexList[2]) capturing -> SIMD[scores_type, width]
-    ] = None,
 ](
     expert_indices: TileTensor[mut=True, .int32, ...],
     expert_indices_log: TileTensor[mut=True, .int32, ...],
@@ -1979,8 +2014,6 @@ def single_group_router_eplb[
             multiplicative hash before the modulo to break structured-position
             bias in replica selection.
         target: The target device to run the kernel on.
-        scores_input_fn: Optional fused input lambda to load scores. If None,
-            scores are loaded directly from expert_scores.
 
     Inputs:
         expert_indices: Output physical expert IDs.
@@ -2000,11 +2033,108 @@ def single_group_router_eplb[
         routed_scaling_factor: Scalar multiplied into every output weight.
         context: The device context.
     """
+
+    def load_scores[
+        width: Int
+    ](coords: IndexList[2]) capturing -> SIMD[scores_type, width]:
+        return expert_scores.load[width=width]((coords[0], coords[1]))
+
+    single_group_router_eplb[
+        n_routed_experts=n_routed_experts,
+        n_experts_per_tok=n_experts_per_tok,
+        norm_weights=norm_weights,
+        num_log=num_log,
+        max_replicas=max_replicas,
+        hash_decorrelate=hash_decorrelate,
+        target=target,
+        scores_input_fn=load_scores,
+    ](
+        expert_indices,
+        expert_indices_log,
+        expert_weights,
+        expert_scores.layout,
+        expert_bias,
+        logcnt,
+        log2phy,
+        layer_idx,
+        routed_scaling_factor,
+        context,
+    )
+
+
+def single_group_router_eplb[
+    scores_type: DType,
+    bias_type: DType,
+    //,
+    n_routed_experts: Int,
+    n_experts_per_tok: Int,
+    norm_weights: Bool,
+    num_log: Int,
+    max_replicas: Int,
+    hash_decorrelate: Bool,
+    target: StaticString,
+    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+        scores_type, width
+    ],
+](
+    expert_indices: TileTensor[mut=True, .int32, ...],
+    expert_indices_log: TileTensor[mut=True, .int32, ...],
+    expert_weights: TileTensor[mut=True, scores_type, ...],
+    scores_layout: Some[TensorLayout],
+    expert_bias: TileTensor[bias_type, ...],
+    logcnt: TileTensor[.int32, ...],
+    log2phy: TileTensor[.int32, ...],
+    layer_idx: TileTensor[.int32, ...],
+    routed_scaling_factor: Float32,
+    context: DeviceContext,
+) raises:
+    """Launches the single-group MoE router with EPLB log->phy remap on GPU.
+
+    Selects the top n_experts_per_tok experts per token using warp-bitonic sort
+    (2 or 3 phases depending on warp size), then remaps each selected logical
+    expert ID to a physical expert ID via the per-layer logcnt and log2phy
+    tables. One block is launched per token.
+
+    Parameters:
+        scores_type: DType of the routing scores and output weights.
+        bias_type: DType of the expert correction bias.
+        n_routed_experts: Total number of routed experts.
+        n_experts_per_tok: Experts selected per token, must be a power of two.
+        norm_weights: If True, normalize selected weights to sum to 1 before
+            applying routed_scaling_factor.
+        num_log: Number of logical experts per layer.
+        max_replicas: Maximum number of physical replicas per logical expert.
+        hash_decorrelate: If True, xor-hash the flat position with a Knuth
+            multiplicative hash before the modulo to break structured-position
+            bias in replica selection.
+        target: The target device to run the kernel on.
+        scores_input_fn: Lambda that loads the score at a
+            `[token, expert]` coordinate.
+
+    Inputs:
+        expert_indices: Output physical expert IDs.
+            Shape: [num_tokens, n_experts_per_tok].
+        expert_indices_log: Output logical expert IDs for EPLB histogram.
+            Shape: [num_tokens, n_experts_per_tok].
+        expert_weights: Output expert weights.
+            Shape: [num_tokens, n_experts_per_tok].
+        scores_layout: Layout of the routing scores. Shape:
+            [num_tokens, n_routed_experts].
+        expert_bias: Per-expert correction bias used for selection only.
+        logcnt: Per-(layer, logical) replica count.
+            Shape: [num_layers, num_log].
+        log2phy: Per-(layer, logical, replica) physical-ID table.
+            Shape: [num_layers, num_log, max_replicas].
+        layer_idx: Rank-1 scalar tensor carrying the current MoE layer index.
+        routed_scaling_factor: Scalar multiplied into every output weight.
+        context: The device context.
+    """
     comptime assert is_gpu[
         target
     ](), "Single group router (EPLB) is only supported on GPU"
 
-    if expert_scores.dim(0) == 0:
+    var num_tokens = Int(scores_layout.shape[0]().value())
+    if num_tokens == 0:
         return
 
     var gpu_ctx = context
@@ -2020,7 +2150,7 @@ def single_group_router_eplb[
             expert_indices.LayoutType,
             expert_indices_log.LayoutType,
             expert_weights.LayoutType,
-            expert_scores.LayoutType,
+            type_of(scores_layout),
             expert_bias.LayoutType,
             logcnt.LayoutType,
             log2phy.LayoutType,
@@ -2039,13 +2169,12 @@ def single_group_router_eplb[
             expert_indices,
             expert_indices_log,
             expert_weights,
-            expert_scores,
             expert_bias,
             logcnt,
             log2phy,
             layer_idx,
             routed_scaling_factor,
-            grid_dim=expert_scores.dim(0),
+            grid_dim=num_tokens,
             block_dim=num_threads,
             attributes=pdl_launch_attributes(PDLLevel(1)),
         )
