@@ -3949,6 +3949,157 @@ class TestScatterNdReduceGPU:
         )
 
 
+class TestScatterElementsGPU:
+    """GPU tests for the axis-scatter family (scatter, add/max/min/mul).
+
+    ``scatter_nd`` has GPU coverage above; this covers the element-wise
+    variants, whose eager GPU graphs (native atomics for add,
+    compare-exchange for max/min/mul, KERN-3243) were only exercised through
+    the compiled integration tests. Each test also asserts the output stays
+    resident on the accelerator — the point of the GPU family.
+    """
+
+    _OPS = {
+        "scatter": F.scatter,
+        "add": F.scatter_add,
+        "max": F.scatter_max,
+        "min": F.scatter_min,
+        "mul": F.scatter_mul,
+    }
+
+    @staticmethod
+    def _ref_torch(
+        op_name: str,
+        x_torch: "torch.Tensor",
+        updates_torch: "torch.Tensor",
+        indices_np: "Any",
+        axis: int,
+    ) -> "torch.Tensor":
+        """Sequential fold matching the kernel's per-update semantics."""
+        import numpy as np
+
+        out = x_torch.clone()
+        for upd_idx in np.ndindex(tuple(updates_torch.shape)):
+            out_idx = list(upd_idx)
+            out_idx[axis] = int(indices_np[upd_idx])
+            t = tuple(out_idx)
+            if op_name == "scatter":
+                out[t] = updates_torch[upd_idx]
+            elif op_name == "add":
+                out[t] = out[t] + updates_torch[upd_idx]
+            elif op_name == "mul":
+                out[t] = out[t] * updates_torch[upd_idx]
+            elif op_name == "max":
+                out[t] = torch.maximum(out[t], updates_torch[upd_idx])
+            else:
+                out[t] = torch.minimum(out[t], updates_torch[upd_idx])
+        return out
+
+    @pytest.mark.parametrize("axis", [0, 1])
+    def test_scatter_overwrite_gpu(self, axis: int) -> None:
+        """Overwrite scatter on GPU keeps the output on-device.
+
+        Indices are distinct per destination: without an atomic update
+        callable, duplicate indices leave an unspecified winner, so there
+        is no deterministic reference for collisions.
+        """
+        import numpy as np
+        from max.experimental.tensor import Tensor, realization_context
+
+        device = Accelerator()
+        x_np = np.arange(12, dtype=np.float32).reshape(3, 4)
+        if axis == 0:
+            updates_np = np.array(
+                [[90.0, 91.0, 92.0, 93.0], [10.0, 20.0, 30.0, 40.0]],
+                dtype=np.float32,
+            )
+            # Distinct (row, col) per update.
+            indices_np = np.array([[0, 1, 2, 1], [2, 0, 1, 2]], dtype=np.int64)
+        else:
+            updates_np = np.array(
+                [[90.0, 91.0], [92.0, 93.0], [10.0, 20.0]], dtype=np.float32
+            )
+            # Distinct (row, col) per update.
+            indices_np = np.array([[3, 0], [2, 1], [0, 3]], dtype=np.int64)
+
+        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+        updates = Tensor(storage=Buffer.from_numpy(updates_np).to(device))
+        indices = Tensor(storage=Buffer.from_numpy(indices_np).to(device))
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = F.scatter(x, updates, indices, axis=axis)
+
+        assert y.storage is not None
+        assert y.storage.device == device
+        # torch.testing.assert_close requires both sides on the same
+        # device, so fold the reference on cuda like the inputs.
+        expected = self._ref_torch(
+            "scatter",
+            torch.from_numpy(x_np).to("cuda"),
+            torch.from_numpy(updates_np).to("cuda"),
+            indices_np,
+            axis,
+        )
+        torch.testing.assert_close(
+            torch.from_dlpack(y), expected, rtol=0, atol=0
+        )
+
+    @pytest.mark.parametrize("reduce_op", ["add", "max", "min", "mul"])
+    @pytest.mark.parametrize("axis", [0, 1])
+    def test_scatter_reduce_gpu(self, reduce_op: str, axis: int) -> None:
+        """Reduce scatter on GPU folds duplicates and stays on-device.
+
+        Duplicate indices collide on one row (axis 0) or one column
+        (axis 1), exercising each reducer's atomic accumulate path.
+        """
+        import numpy as np
+        from max.experimental.tensor import Tensor, realization_context
+
+        device = Accelerator()
+        x_np = np.arange(12, dtype=np.float32).reshape(3, 4)
+        if axis == 0:
+            updates_np = np.array(
+                [[90.0, 91.0, 92.0, 93.0], [10.0, 20.0, 30.0, 40.0]],
+                dtype=np.float32,
+            )
+            # Both update rows hit row 0: every column collides.
+            indices_np = np.array([[0, 1, 0, 2], [0, 0, 0, 0]], dtype=np.int64)
+        else:
+            updates_np = np.array(
+                [[90.0, 91.0], [92.0, 93.0], [10.0, 20.0]], dtype=np.float32
+            )
+            # Columns 0-1 collide across all three update rows.
+            indices_np = np.array([[0, 0], [1, 0], [0, 1]], dtype=np.int64)
+
+        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+        updates = Tensor(storage=Buffer.from_numpy(updates_np).to(device))
+        indices = Tensor(storage=Buffer.from_numpy(indices_np).to(device))
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = self._OPS[reduce_op](x, updates, indices, axis=axis)
+
+        assert y.storage is not None
+        assert y.storage.device == device
+        # torch.testing.assert_close requires both sides on the same
+        # device, so fold the reference on cuda like the inputs.
+        expected = self._ref_torch(
+            reduce_op,
+            torch.from_numpy(x_np).to("cuda"),
+            torch.from_numpy(updates_np).to("cuda"),
+            indices_np,
+            axis,
+        )
+        torch.testing.assert_close(
+            torch.from_dlpack(y), expected, rtol=1e-5, atol=1e-5
+        )
+
+
 _NEED_2_GPUS = pytest.mark.skipif(
     accelerator_count() < 2,
     reason="Requires at least 2 accelerator devices",
