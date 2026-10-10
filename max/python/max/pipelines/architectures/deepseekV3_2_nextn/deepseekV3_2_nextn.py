@@ -214,6 +214,7 @@ class DeepseekV3_2NextN(Module):
         ep_inputs: list[Value[Any]] | None = None,
         prev_topk_indices: list[TensorValue] | None = None,
         reuse_prev_topk: bool = False,
+        selection_lag: int = 0,
         split_prefix: str = "draft",
     ) -> tuple[TensorValue, ...]:
         if not host_input_row_offsets.device == DeviceRef.CPU():
@@ -339,12 +340,15 @@ class DeepseekV3_2NextN(Module):
             prev_topk_indices if prev_topk_indices is not None else [],
             ep_inputs=ep_inputs,
             reuse_prev_topk=reuse_prev_topk,
+            selection_lag=selection_lag,
         )
 
         # The decoder layer returns ``hidden_states + topk_indices`` (both
-        # per-device lists concatenated).
+        # per-device lists concatenated). The selection is carried as physical
+        # rows in the draft's MLA cache, whose page table later draft steps
+        # share, so they reuse it without a page-table lookup.
         h = layer_outs[:n_devs]
-        topk_indices = layer_outs[n_devs:]
+        topk_indices = layer_outs[n_devs : 2 * n_devs]
 
         postprocess = deepseek_logits_postprocess(
             h=h,
@@ -364,8 +368,8 @@ class DeepseekV3_2NextN(Module):
             vocab_size=self.config.vocab_size,
         )
 
-        # Append the per-device top-k selection so the unified MTP module can
-        # gather and reuse it across subsequent draft steps.
+        # Append the per-device physical rows so the unified MTP module can
+        # gather and reuse them across subsequent draft steps.
         return (*postprocess, *topk_indices)
 
     def input_types(

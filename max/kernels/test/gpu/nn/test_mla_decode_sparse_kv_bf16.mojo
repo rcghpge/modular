@@ -490,6 +490,9 @@ def run_test_sparse_kv_bf16[
     q_type: DType,
     num_heads: Int,
     use_causal: Bool = False,
+    # Pass token positions and let the kernel decode them through the page
+    # table (the graph-op path) instead of precomputed physical rows.
+    logical: Bool = False,
 ](
     name: StringLiteral,
     batch_size: Int,
@@ -771,13 +774,16 @@ def run_test_sparse_kv_bf16[
             var g = bi * q_max_seq_len + s
             for i in range(topk):
                 var t = selected_tokens[g * topk + i]
-                var page_idx, tok_in_page = divmod(t, PAGE_SIZE)
-                var block_id = Int(
-                    lookup_table_host[bi * max_pages_per_batch + page_idx]
-                )
-                h_indices[g * topk + i] = Int32(
-                    block_id * PAGE_SIZE + tok_in_page
-                )
+                comptime if logical:
+                    h_indices[g * topk + i] = Int32(t)
+                else:
+                    var page_idx, tok_in_page = divmod(t, PAGE_SIZE)
+                    var block_id = Int(
+                        lookup_table_host[bi * max_pages_per_batch + page_idx]
+                    )
+                    h_indices[g * topk + i] = Int32(
+                        block_id * PAGE_SIZE + tok_in_page
+                    )
     var d_indices_device = ctx.enqueue_create_buffer[.int32](total_indices)
     ctx.enqueue_copy(d_indices_device, h_indices)
 
@@ -861,6 +867,7 @@ def run_test_sparse_kv_bf16[
             config=MHAConfig[q_type](num_heads, Q_DEPTH),
             ragged=True,
             sparse=True,
+            physical_indices=not logical,
         ](
             out_tt,
             q_tt,
@@ -881,6 +888,7 @@ def run_test_sparse_kv_bf16[
             config=MHAConfig[q_type](num_heads, Q_DEPTH),
             ragged=True,
             sparse=True,
+            physical_indices=not logical,
         ](
             out_tt,
             q_tt,
@@ -2645,6 +2653,24 @@ def main() raises:
                 ctx,
                 topk=64,
                 q_max_seq_len=8,
+            )
+
+            # Logical token positions, decoded through the shuffled per-batch
+            # page table inside the kernel (the graph-op path).
+            run_test_sparse_kv_bf16[.bfloat16, 64, logical=True](
+                "logical_b4_h64_cl2048_topk128",
+                4,
+                2048,
+                ctx,
+                topk=128,
+            )
+            run_test_sparse_kv_bf16[.bfloat16, 64, logical=True](
+                "logical_b3_h64_cl509_topk73_seq6",
+                3,
+                509,
+                ctx,
+                topk=73,
+                q_max_seq_len=6,
             )
 
             # Variable per-batch topk.

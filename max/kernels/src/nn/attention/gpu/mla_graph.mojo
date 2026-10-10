@@ -70,6 +70,7 @@ from nn.kv_cache_ragged import (
     generic_flare_mla_prefill_kv_cache_ragged,
 )
 from nn.attention.gpu.mla import _k_cache_to_buffer, mla_decode_max_seq_len
+from nn.attention.gpu.nvidia.sm100.mla_decode_utils import SparseRowLayout
 from nn.attention.mha_utils import (
     NullPointer,
     OptionalPointer,
@@ -1067,10 +1068,13 @@ def mla_decode_branch_fp8[
     # Read-once shared-index MTP fold (KERN-3141); threaded to flare_mla_decoding
     # (fp8-KV only; on the bf16 branch it is parity plumbing, always False).
     fold_shared_index: Bool = False,
+    # How the sparse index producer packs each row; see flare_mla_decoding.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
     # Off keeps Q in `dtype`, so the two stagings can be compared.
     fp8_q: Bool = True,
     # Whether `extra_k` is supplied; see `flare_mla_decoding`.
     has_extra_k: Bool = False,
+    physical_indices: Bool = True,
     # Presence of `attn_sink_ptr` / `topk_lengths` + `extra_topk_lengths`
     # (inferred from those arguments).
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
@@ -1107,6 +1111,8 @@ def mla_decode_branch_fp8[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # See flare_mla_decoding.
+    selection_lag: Int = 0,
 ) raises:
     """
     This is a manually fused kernel that performs the following operations:
@@ -1141,12 +1147,16 @@ def mla_decode_branch_fp8[
             shared-index fold on the sparse FP8 decode path, which packs the
             folded MTP query positions into one CTA and gathers their single
             shared top-k list once.
+        sparse_row: How the sparse index producer packs each row, which
+            bounds each row by its valid length (defaults to plain top-k).
         fp8_q: Whether to stage Q in the FP8 cache dtype where the sparse
             decode supports it, so the producers below quantize as they store.
             Off stages Q in `dtype` and routes to the sparse kernel that reads
             a wider Q.
         has_extra_k: Whether `extra_k` is supplied (defaults to False); see
             `flare_mla_decoding`.
+        physical_indices: Whether `d_indices` holds paged physical rows rather
+            than token positions (defaults to True); see `flare_mla_decoding`.
         AttnSinkPtrType: `OptionalPointer` type of `attn_sink_ptr`
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type of `topk_lengths` and
@@ -1190,6 +1200,8 @@ def mla_decode_branch_fp8[
         num_partitions_in: Capturable-graph num_partitions override.
         logical_indices: Logical sparse indices for position-based causal
             masking; `None` keeps the prior slot-count behavior.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it.
     """
 
     comptime kv_params = collection_t.kv_params
@@ -1336,7 +1348,9 @@ def mla_decode_branch_fp8[
         mask_str=mask_str,
         sparse_mla=sparse_mla,
         fold_shared_index=fold_shared_index,
+        sparse_row=sparse_row,
         has_extra_k=has_extra_k,
+        physical_indices=physical_indices,
     ](
         mla_decode_input,
         input_row_offsets,
@@ -1357,6 +1371,7 @@ def mla_decode_branch_fp8[
         extra_scales_ptr=extra_scales_ptr,
         num_partitions_in=num_partitions_in,
         logical_indices=logical_indices,
+        selection_lag=selection_lag,
     )
 
     # Create a view of the output tensor with logical shape
@@ -1671,6 +1686,41 @@ def mla_prefill_branch_sparse_fp8[
 
 
 @inline(.always)
+def _sparse_prefill_rows[
+    physical_indices: Bool
+](
+    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+    prefill_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+) raises -> UnsafePointer[Int32, MutAnyOrigin]:
+    """Returns the paged physical rows the sparse prefill branch gathers."""
+    if prefill_d_indices:
+        return prefill_d_indices.value()
+    comptime if not physical_indices:
+        raise Error(
+            "sparse prefill needs prefill_d_indices when d_indices holds token"
+            " positions"
+        )
+    return d_indices.value()
+
+
+def mla_graph_takes_decode_branch[
+    cache_dtype: DType, num_heads: Int
+](max_seq_len: Int) -> Bool:
+    """Returns whether `mla_prefill_decode_graph_*` takes its decode branch.
+
+    Parameters:
+        cache_dtype: Element type of the latent KV cache.
+        num_heads: Number of query attention heads.
+
+    Args:
+        max_seq_len: Maximum query length in the batch.
+
+    Returns:
+        True when `max_seq_len` fits the decode branch's query fold.
+    """
+    return max_seq_len <= mla_decode_max_seq_len[cache_dtype, num_heads]()
+
+
 def mla_prefill_decode_graph_fp8[
     dtype: DType,
     fp8_dtype: DType,
@@ -1695,6 +1745,9 @@ def mla_prefill_decode_graph_fp8[
     fp8_q: Bool = True,
     # Whether `extra_k` is supplied; see `flare_mla_decoding`.
     has_extra_k: Bool = False,
+    physical_indices: Bool = True,
+    # How the sparse index producer packs each row; see flare_mla_decoding.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
     # Presence of `attn_sink_ptr` / `topk_lengths` + `extra_topk_lengths`
     # (inferred from those arguments).
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
@@ -1734,6 +1787,8 @@ def mla_prefill_decode_graph_fp8[
     extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     # Capturable-graph scalar forwarded from the MoGG op input list.
     num_partitions_in: Optional[Int] = None,
+    prefill_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    selection_lag: Int = 0,
 ) raises:
     """
     This is a manually fused kernel that performs the following operations:
@@ -1765,6 +1820,12 @@ def mla_prefill_decode_graph_fp8[
             path (defaults to True); see `mla_decode_branch_fp8`.
         has_extra_k: Whether `extra_k` is supplied (defaults to False); see
             `flare_mla_decoding`.
+        physical_indices: Whether `d_indices` holds paged physical rows rather
+            than token positions for the decode branch (defaults to True); see
+            `flare_mla_decoding` and `prefill_d_indices`.
+        sparse_row: How the sparse index producer packs each row, which
+            bounds each decode row by its valid length (defaults to plain
+            top-k).
         AttnSinkPtrType: `OptionalPointer` type of `attn_sink_ptr`
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type of `topk_lengths` and
@@ -1821,6 +1882,13 @@ def mla_prefill_decode_graph_fp8[
         extra_scales_ptr: Extra-stream scales (defaults to None).
         num_partitions_in: Capturable-graph num_partitions override (defaults
             to None).
+        prefill_d_indices: Paged physical rows the sparse prefill branch
+            gathers in place of `d_indices` (defaults to None, meaning
+            `d_indices`). Required without `physical_indices`, since only
+            the decode kernels decode token positions.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it; read by the decode
+            branch only.
     """
 
     var seq_len = q.dim(0)
@@ -1829,12 +1897,9 @@ def mla_prefill_decode_graph_fp8[
         return
 
     # When running verification with MTP we want to use the decode branch.
-    if (
-        max_seq_len
-        <= mla_decode_max_seq_len[
-            collection_t.CacheType.dtype, q.static_shape[1]
-        ]()
-    ):
+    if mla_graph_takes_decode_branch[
+        collection_t.CacheType.dtype, q.static_shape[1]
+    ](max_seq_len):
         mla_decode_branch_fp8[
             m_scale_granularity=m_scale_granularity,
             n_scale_granularity=n_scale_granularity,
@@ -1846,6 +1911,8 @@ def mla_prefill_decode_graph_fp8[
             fold_shared_index=fold_shared_index,
             fp8_q=fp8_q,
             has_extra_k=has_extra_k,
+            physical_indices=physical_indices,
+            sparse_row=sparse_row,
         ](
             output,
             q,
@@ -1872,6 +1939,7 @@ def mla_prefill_decode_graph_fp8[
             extra_topk_lengths,
             extra_scales_ptr,
             num_partitions_in,
+            selection_lag=selection_lag,
         )
 
     else:
@@ -1924,7 +1992,9 @@ def mla_prefill_decode_graph_fp8[
                 w_uv,
                 w_uv_scale,
                 ctx,
-                d_indices.value(),
+                _sparse_prefill_rows[physical_indices](
+                    d_indices, prefill_d_indices
+                ),
                 prefill_topk_lengths,
                 prefill_attn_sink,
             )
@@ -2347,6 +2417,9 @@ def mla_decode_branch_bf16[
     ],
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
+    physical_indices: Bool = True,
+    # How the sparse index producer packs each row; see flare_mla_decoding.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
     # Presence of `attn_sink_ptr` / `topk_lengths` + `extra_topk_lengths`
     # (inferred from those arguments).
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
@@ -2371,6 +2444,8 @@ def mla_decode_branch_bf16[
     attn_sink_ptr: AttnSinkPtrType = null_pointer[AttnSinkPtrType](),
     # Capturable-graph scalar forwarded from the MoGG op input list.
     num_partitions_in: Optional[Int] = None,
+    # See flare_mla_decoding.
+    selection_lag: Int = 0,
 ) raises:
     """BF16 MLA decode path.
 
@@ -2385,6 +2460,10 @@ def mla_decode_branch_bf16[
             + qk_rope_head_dim.
         target: Target device (defaults to "cpu").
         sparse_mla: Whether to use sparse MLA (defaults to False).
+        physical_indices: Whether `d_indices` holds paged physical rows rather
+            than token positions (defaults to True); see `flare_mla_decoding`.
+        sparse_row: How the sparse index producer packs each row, which
+            bounds each row by its valid length (defaults to plain top-k).
         AttnSinkPtrType: `OptionalPointer` type of `attn_sink_ptr`
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type of `topk_lengths` and
@@ -2417,6 +2496,8 @@ def mla_decode_branch_bf16[
         topk_lengths: Per-batch valid top-k counts.
         attn_sink_ptr: Optional per-batch attention sink weights.
         num_partitions_in: Capturable-graph num_partitions override.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it.
     """
     comptime kv_params = collection_t.kv_params
     comptime assert kv_params.is_mla, "kv_params.is_mla should be true"
@@ -2554,6 +2635,8 @@ def mla_decode_branch_bf16[
         target=target,
         mask_str=mask_str,
         sparse_mla=sparse_mla,
+        physical_indices=physical_indices,
+        sparse_row=sparse_row,
     ](
         mla_decode_input,
         input_row_offsets,
@@ -2568,6 +2651,7 @@ def mla_decode_branch_bf16[
         topk_lengths=topk_lengths,
         attn_sink_ptr=attn_sink_ptr,
         num_partitions_in=num_partitions_in,
+        selection_lag=selection_lag,
     )
 
     # Create a view of the raw output tensor with logical shape
@@ -2881,6 +2965,11 @@ def mla_prefill_decode_graph_bf16[
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
     sparse_indices_stride: Int = 0,
+    # Whether the sparse indices are paged physical rows rather than token
+    # positions; see `flare_mla_decoding`.
+    physical_indices: Bool = True,
+    # How the sparse index producer packs each row; see flare_mla_decoding.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
     # Presence of `attn_sink_ptr` / `topk_lengths` + `extra_topk_lengths`
     # (inferred from those arguments).
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
@@ -2912,6 +3001,8 @@ def mla_prefill_decode_graph_bf16[
     attn_sink_ptr: AttnSinkPtrType = null_pointer[AttnSinkPtrType](),
     # Capturable-graph scalar forwarded from the MoGG op input list.
     num_partitions_in: Optional[Int] = None,
+    prefill_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    selection_lag: Int = 0,
 ) raises:
     """BF16 MLA prefill/decode graph.
 
@@ -2927,6 +3018,12 @@ def mla_prefill_decode_graph_bf16[
         sparse_mla: Whether to use sparse MLA (defaults to False).
         sparse_indices_stride: Row stride of the sparse decode index buffer
             (defaults to 0).
+        physical_indices: Whether `d_indices` holds paged physical rows rather
+            than token positions for the decode branch (defaults to True); see
+            `flare_mla_decoding` and `prefill_d_indices`.
+        sparse_row: How the sparse index producer packs each row, which
+            bounds each decode row by its valid length (defaults to plain
+            top-k).
         AttnSinkPtrType: `OptionalPointer` type of `attn_sink_ptr`
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type of `topk_lengths` and
@@ -2975,6 +3072,13 @@ def mla_prefill_decode_graph_bf16[
             to None).
         num_partitions_in: Capturable-graph num_partitions override (defaults
             to None).
+        prefill_d_indices: Paged physical rows the sparse prefill branch
+            gathers in place of `d_indices` (defaults to None, meaning
+            `d_indices`). Required without `physical_indices`, since only
+            the decode kernels decode token positions.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it; read by the decode
+            branch only.
     """
     var seq_len = q.dim(0)
 
@@ -2988,17 +3092,16 @@ def mla_prefill_decode_graph_bf16[
     # (prefill can't serve MTP); a BF16 cache or num_heads>16 returns 1 and routes
     # S>1 to prefill (no large-head decode fold exists). Mirrors
     # `mla_prefill_decode_graph_fp8`.
-    if (
-        max_seq_len
-        <= mla_decode_max_seq_len[
-            collection_t.CacheType.dtype, q.static_shape[1]
-        ]()
-    ):
+    if mla_graph_takes_decode_branch[
+        collection_t.CacheType.dtype, q.static_shape[1]
+    ](max_seq_len):
         mla_decode_branch_bf16[
             mask_str=mask_str,
             kv_input_fn=kv_input_fn,
             target=target,
             sparse_mla=sparse_mla,
+            physical_indices=physical_indices,
+            sparse_row=sparse_row,
         ](
             output,
             q,
@@ -3018,6 +3121,7 @@ def mla_prefill_decode_graph_bf16[
             topk_lengths,
             attn_sink_ptr,
             num_partitions_in,
+            selection_lag=selection_lag,
         )
     else:
         comptime if sparse_mla:
@@ -3064,7 +3168,9 @@ def mla_prefill_decode_graph_bf16[
                 w_uk,
                 w_uv,
                 ctx,
-                d_indices.value(),
+                _sparse_prefill_rows[physical_indices](
+                    d_indices, prefill_d_indices
+                ),
                 prefill_topk_lengths,
                 prefill_attn_sink,
             )

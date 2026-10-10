@@ -86,6 +86,7 @@ from nn.attention.gpu.mla import (
     flare_mla_prefill,
     mla_prefill_plan,
 )
+from nn.attention.gpu.nvidia.sm100.mla_decode_utils import SparseRowLayout
 from quantization.qmatmul import matmul_qint4
 from quantization.qmatmul_gpu import matmul_gpu_qint4_impl
 from quantization.qmatmul_k import matmul_Q4_K, matmul_Q6_K
@@ -4185,8 +4186,11 @@ def generic_flare_mla_decode_kv_cache_ragged[
     sparse_mla: Bool = False,
     # Read-once shared-index MTP fold (KERN-3141); threaded to flare_mla_decoding.
     fold_shared_index: Bool = False,
+    # How the sparse index producer packs each row; see flare_mla_decoding.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
     # Whether `extra_k` is supplied; see flare_mla_decoding.
     has_extra_k: Bool = False,
+    physical_indices: Bool = True,
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
 ](
@@ -4218,6 +4222,8 @@ def generic_flare_mla_decode_kv_cache_ragged[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # See flare_mla_decoding.
+    selection_lag: Int = 0,
 ) raises:
     """Dispatches MLA decode attention over a ragged batch against a paged KV cache.
 
@@ -4237,7 +4243,11 @@ def generic_flare_mla_decode_kv_cache_ragged[
             physical KV row indices via gather4 TMA (defaults to `False`).
         fold_shared_index: Whether to use the read-once shared-index MTP
             fold threaded to `flare_mla_decoding` (defaults to `False`).
+        sparse_row: How the sparse index producer packs each row, which
+            bounds each row by its valid length (defaults to plain top-k).
         has_extra_k: Whether `extra_k` is supplied (defaults to `False`).
+        physical_indices: Whether `d_indices` holds paged physical rows rather
+            than token positions (defaults to `True`); see `flare_mla_decoding`.
         AttnSinkPtrType: `OptionalPointer` type of `attn_sink_ptr`
             (inferred).
         TopkLengthsPtrType: `OptionalPointer` type of `topk_lengths` and
@@ -4273,6 +4283,8 @@ def generic_flare_mla_decode_kv_cache_ragged[
             from the MoGG op so SM100 grid sizing matches the kernel.
         logical_indices: Logical sparse indices for position-based causal
             masking; `None` keeps the prior slot-count behavior.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it.
     """
 
     @inline(.always)
@@ -4311,7 +4323,9 @@ def generic_flare_mla_decode_kv_cache_ragged[
             per_token_scale_rope_aware=per_token_scale_rope_aware,
             sparse_mla=sparse_mla,
             fold_shared_index=fold_shared_index,
+            sparse_row=sparse_row,
             has_extra_k=has_extra_k,
+            physical_indices=physical_indices,
         ](
             q,
             input_row_offsets,
@@ -4333,6 +4347,7 @@ def generic_flare_mla_decode_kv_cache_ragged[
             extra_scales_ptr,
             num_partitions_in,
             logical_indices,
+            selection_lag,
         )
 
 
@@ -4348,8 +4363,11 @@ def _flare_mla_decode_kv_cache_ragged[
     sparse_mla: Bool = False,
     # Read-once shared-index MTP fold (KERN-3141); threaded to flare_mla_decoding.
     fold_shared_index: Bool = False,
+    # How the sparse index producer packs each row; see flare_mla_decoding.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
     # Whether `extra_k` is supplied; see flare_mla_decoding.
     has_extra_k: Bool = False,
+    physical_indices: Bool = True,
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
 ](
@@ -4383,6 +4401,8 @@ def _flare_mla_decode_kv_cache_ragged[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # See flare_mla_decoding.
+    selection_lag: Int = 0,
 ) raises:
     """Performs flash attention using k and v caches from KVCacheT custom dtypes.
 
@@ -4411,6 +4431,8 @@ def _flare_mla_decode_kv_cache_ragged[
         num_partitions_in: Capturable-graph num_partitions override.
         logical_indices: Logical sparse indices for position-based causal
             masking; `None` keeps the prior slot-count behavior.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it.
     """
     comptime assert is_gpu[target](), "MLA is only supported on GPU"
 
@@ -4454,6 +4476,7 @@ def _flare_mla_decode_kv_cache_ragged[
         var has_num_partitions,
         var num_partitions_val,
         var logical_indices,
+        var selection_lag,
         imm,
     }:
         var _num_partitions_in: Optional[Int] = Optional[Int](
@@ -4467,6 +4490,8 @@ def _flare_mla_decode_kv_cache_ragged[
             sparse=sparse_mla,
             fold_shared_index=fold_shared_index,
             has_extra_k=has_extra_k,
+            physical_indices=physical_indices,
+            sparse_row=sparse_row,
         ](
             output,
             q,
@@ -4488,6 +4513,7 @@ def _flare_mla_decode_kv_cache_ragged[
             extra_scales_ptr=extra_scales_ptr,
             num_partitions_in=_num_partitions_in,
             logical_indices=logical_indices,
+            selection_lag=selection_lag,
         )
 
     dispatch_mask[

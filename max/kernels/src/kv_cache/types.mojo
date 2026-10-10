@@ -1746,6 +1746,26 @@ trait KVCacheT(DevicePassable, TrivialRegisterPassable):
         ...
 
     @inline(.always)
+    def sparse_tma_row(self, batch_idx: UInt32, logical_index: Int32) -> Int32:
+        """Returns the TMA row of a sparse selection's logical token, or `-1`.
+
+        Default: `row_idx`, with a negative (unused) slot staying `-1`. The
+        `PagedKVCache` override also maps a slot whose page is unallocated to
+        `-1`.
+
+        Args:
+            batch_idx: Batch entry the selection belongs to.
+            logical_index: Token position within the entry, or `-1`.
+
+        Returns:
+            The row `get_tma_row` would return for the slot's physical index,
+            or `-1`.
+        """
+        if logical_index < 0:
+            return -1
+        return Int32(self.row_idx(batch_idx, UInt32(logical_index)))
+
+    @inline(.always)
     def create_paged_tma_tile[
         swizzle_mode: TensorMapSwizzle,
         *,
@@ -2914,6 +2934,40 @@ struct PagedKVCache[
         var phys_block, offset = divmod(encoded_index, Int32(Self.page_size))
         var stride = Int32(self._stride())
         return phys_block * stride + offset
+
+    @inline(.always)
+    def sparse_tma_row(self, batch_idx: UInt32, logical_index: Int32) -> Int32:
+        """Returns the TMA row of a sparse selection's logical token, or `-1`.
+
+        A slot is `-1` when it is unused (negative), when its page lies past
+        the lookup table, or when the page is unallocated (the table holds the
+        `total_num_pages` sentinel, which is at least `blocks.dim[0]`).
+
+        Args:
+            batch_idx: Batch entry the selection belongs to.
+            logical_index: Token position within the entry, or `-1`.
+
+        Returns:
+            `get_tma_row(physical_block * page_size + offset)`, or `-1`.
+        """
+        # Branch-free: an invalid slot loads entry (0, 0) and is discarded, so
+        # a caller converting several slots issues all the table loads before
+        # waiting on any. A branch on each loaded block serialized them.
+        var lut_rows = Int(self.lookup_table.dim[0]())
+        var lut_cols = Int(self.lookup_table.dim[1]())
+        debug_assert(
+            lut_rows > 0 and lut_cols > 0, "sparse_tma_row: empty lookup table"
+        )
+        var page, offset = divmod(Int(logical_index), Self.page_size)
+        var in_table = (
+            logical_index >= 0 and page < lut_cols and Int(batch_idx) < lut_rows
+        )
+        var block = self.lookup_table.load[width=1](
+            Coord(Int(batch_idx) if in_table else 0, page if in_table else 0)
+        )[0]
+        var valid = in_table and Int(block) < Int(self.blocks.dim[0]())
+        var row = Int32(block) * Int32(self._stride()) + Int32(offset)
+        return row if valid else -1
 
     @inline(.always)
     def num_kv_rows(self) -> Int:

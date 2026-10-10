@@ -1554,14 +1554,10 @@ def _fp8_index_score_prefill_kernel_sm100[
                             # keys up to cache_len + tok_local, so forbidden slots
                             # are left unwritten and the separate mask pass is
                             # skipped. What carries the mask downstream is the
-                            # top-k's per-row bound, not a sentinel:
-                            # `topk_row_bounds_kernel` computes this same
-                            # `indexer_key_bound` and the bounded top-k pads past
-                            # it in-register, so the buffer is left
-                            # uninitialized. The `topk_gpu` arm (top_k > 2048) is
-                            # the exception -- it scans the whole row behind the
-                            # caller's -Float32.MAX fill, so an over-range write
-                            # there WOULD be selected.
+                            # top-k's per-row bound, not a sentinel: the top-k
+                            # computes this same `indexer_key_bound` and pads
+                            # past it in-register, so the buffer is left
+                            # uninitialized.
                             # The liveness half is memory safety rather than
                             # masking -- a dead token's row belongs to the NEXT
                             # batch entry.

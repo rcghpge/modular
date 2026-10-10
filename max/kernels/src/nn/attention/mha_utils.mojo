@@ -476,8 +476,8 @@ def indexer_key_bound[
     (`sparse_index_fp8_sm100[_prefill].mojo`) write score slots `[0, bound)`
     for each token and nothing else, computing this same bound inline in
     their store guards (their operands are `Int32`), and the bounded top-k
-    (`topk_row_bounds_kernel` in `mla_index_fp8.mojo` feeding
-    `persistent_topk_block_split`) reads exactly that range with no `-inf`
+    (`persistent_topk_block_split` with `mla_index_fp8.mojo`'s
+    `_IndexerRowBound`) reads exactly that range with no `-inf`
     prefill between them. If either side drifts, the top-k reads score slots
     the scorer never wrote.
     """

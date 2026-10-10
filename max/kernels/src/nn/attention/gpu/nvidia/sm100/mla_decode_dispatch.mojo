@@ -155,6 +155,7 @@ def _unbucketed_split_error(num_partitions: Int) -> Error:
 
 
 from nn.attention.gpu.nvidia.sm100.mla_decode_utils import (
+    SparseRowLayout,
     MLA_SM100_Decode_Config,
     mla_decode_k_fold_chunks,
     QOTMATile,
@@ -890,9 +891,15 @@ def mla_decode_sm100_dispatch[
     # Whether `extra_k` is supplied. Comptime so callers that never pass it
     # (every graph op) do not build the extra-KV sparse kernels.
     has_extra_k: Bool = False,
+    # Whether `d_indices` holds paged physical rows rather than token
+    # positions (decoded in-kernel through `k`'s lookup table). Graph ops pass
+    # token positions unless the indexer supplied physical rows; latent
+    # sparse attention passes flat rows.
+    physical_indices: Bool = True,
     # Presence of `attn_sink_ptr` / `topk_lengths` + `extra_topk_lengths`.
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     q: TileTensor[q_type, address_space=.GENERIC, ...],
     k: k_t,
@@ -926,6 +933,9 @@ def mla_decode_sm100_dispatch[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # Positions between the token each sparse row was computed for and
+    # the token that reads it.
+    selection_lag: Int = 0,
 ) raises:
     if (extra_k is not None) != has_extra_k:
         raise Error(
@@ -1071,6 +1081,8 @@ def mla_decode_sm100_dispatch[
             rope_aware_kv_sparse=rope_aware_kv_sparse,
             fold_shared_index=fold_shared_index,
             has_extra_k=has_extra_k,
+            physical_indices=physical_indices,
+            sparse_row=sparse_row,
         ](
             q,
             k,
@@ -1096,6 +1108,7 @@ def mla_decode_sm100_dispatch[
             extra_topk_lengths=extra_topk_lengths,
             extra_scales_ptr=extra_scales_ptr,
             logical_indices=logical_indices,
+            selection_lag=selection_lag,
         )
 
     comptime if k_t.page_size == 0 or k_t.page_size >= 128:
@@ -1155,8 +1168,11 @@ def _mla_decode_sm100_dispatch_impl[
     # Read-once shared-index fold (KERN-3141); see mla_decode_sm100_dispatch.
     fold_shared_index: Bool = False,
     has_extra_k: Bool = False,
+    # See mla_decode_sm100_dispatch.
+    physical_indices: Bool = True,
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     q: TileTensor[q_type, address_space=.GENERIC, ...],
     k: k_t,
@@ -1185,6 +1201,9 @@ def _mla_decode_sm100_dispatch_impl[
     ](),
     extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # Positions between the token each sparse row was computed for and
+    # the token that reads it.
+    selection_lag: Int = 0,
 ) raises:
     comptime hw_info = ctx.default_device_info
     comptime sm_count = hw_info.sm_count
@@ -1269,6 +1288,8 @@ def _mla_decode_sm100_dispatch_impl[
                 rope_aware_kv_sparse=rope_aware_kv_sparse,
                 fold_shared_index=fold_shared_index,
                 has_extra_k=has_extra_k,
+                physical_indices=physical_indices,
+                sparse_row=sparse_row,
             ](
                 q,
                 k,
@@ -1296,6 +1317,7 @@ def _mla_decode_sm100_dispatch_impl[
                 extra_scales_ptr=extra_scales_ptr,
                 effective_max_cache_len=effective_max_cache_len,
                 logical_indices=logical_indices,
+                selection_lag=selection_lag,
             )
 
             # Dispatch to specialized kernel based on num_partitions for compile-time unrolling.
@@ -1518,6 +1540,8 @@ def _mla_decode_sm100_dispatch_impl[
                 rope_aware_kv_sparse=rope_aware_kv_sparse,
                 fold_shared_index=fold_shared_index,
                 has_extra_k=has_extra_k,
+                physical_indices=physical_indices,
+                sparse_row=sparse_row,
             ](
                 q,
                 k,
@@ -1545,6 +1569,7 @@ def _mla_decode_sm100_dispatch_impl[
                 extra_scales_ptr=extra_scales_ptr,
                 effective_max_cache_len=effective_max_cache_len,
                 logical_indices=logical_indices,
+                selection_lag=selection_lag,
             )
 
         _launch_no_split_path()
@@ -1575,8 +1600,11 @@ def mla_decode_sm100_sink_split_k[
     # Read-once shared-index MTP fold (KERN-3141); see mla_decode_sm100_dispatch.
     fold_shared_index: Bool = False,
     has_extra_k: Bool = False,
+    # See mla_decode_sm100_dispatch.
+    physical_indices: Bool = True,
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     q: TileTensor[q_type, address_space=.GENERIC, ...],
     k: k_t,
@@ -1614,6 +1642,9 @@ def mla_decode_sm100_sink_split_k[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # Positions between the token each sparse row was computed for and
+    # the token that reads it.
+    selection_lag: Int = 0,
 ) raises:
     comptime _scale_block_size = k_t.quantization_granularity if k_t.quantization_enabled else 0
     # Use native FP8 path when:
@@ -1641,8 +1672,10 @@ def mla_decode_sm100_sink_split_k[
     # comptime locals, not the enclosing function's comptime params by bare
     # name).
     comptime _fold_shared_index = fold_shared_index
+    comptime _sparse_row = sparse_row
     comptime _has_attn_sink = not AttnSinkPtrType.is_null
     comptime _has_extra_k = has_extra_k
+    comptime _physical_indices = physical_indices
     comptime _has_variable_topk = not TopkLengthsPtrType.is_null
     # Scoped to the sparse native-FP8 kernel ONLY: this same mla_config
     # object is also read by the dense native_fp8 branch below (`elif
@@ -1759,6 +1792,8 @@ def mla_decode_sm100_sink_split_k[
                             ragged=True,
                             _is_cache_length_accurate=_is_cache_length_accurate,
                             has_extra_kv=_has_extra_k,
+                            physical_indices=_physical_indices,
+                            sparse_row=_sparse_row,
                         ](
                             q_tma_sparse,
                             k_gather4_tma_bf16,
@@ -1783,6 +1818,7 @@ def mla_decode_sm100_sink_split_k[
                             extra_indices_stride,
                             scalar_args_buf,
                             ctx,
+                            selection_lag=selection_lag,
                         )
                     else:
                         comptime ValidLengthType = NullPointer[.uint32]
@@ -1798,6 +1834,8 @@ def mla_decode_sm100_sink_split_k[
                             ragged=False,
                             _is_cache_length_accurate=_is_cache_length_accurate,
                             has_extra_kv=_has_extra_k,
+                            physical_indices=_physical_indices,
+                            sparse_row=_sparse_row,
                         ](
                             q_tma_sparse,
                             k_gather4_tma_bf16,
@@ -1822,6 +1860,7 @@ def mla_decode_sm100_sink_split_k[
                             extra_indices_stride,
                             scalar_args_buf,
                             ctx,
+                            selection_lag=selection_lag,
                         )
 
                 _launch_sparse_kv_bf16()
@@ -1887,8 +1926,10 @@ def mla_decode_sm100_sink_split_k[
                             ragged=True,
                             _is_cache_length_accurate=_is_cache_length_accurate,
                             has_extra_kv=_has_extra_k,
+                            physical_indices=_physical_indices,
                             fold_shared_index=_fold_shared_index_val,
                             q_len_fold=_q_len_fold_val,
+                            sparse_row=_sparse_row,
                         ](
                             q_tma_sparse_fp8,
                             k_gather4_tma,
@@ -1916,6 +1957,7 @@ def mla_decode_sm100_sink_split_k[
                             scalar_args_buf,
                             ctx,
                             logical_indices=logical_indices,
+                            selection_lag=selection_lag,
                         )
                     else:
                         comptime ValidLengthType = NullPointer[.uint32]
@@ -1931,8 +1973,10 @@ def mla_decode_sm100_sink_split_k[
                             ragged=False,
                             _is_cache_length_accurate=_is_cache_length_accurate,
                             has_extra_kv=_has_extra_k,
+                            physical_indices=_physical_indices,
                             fold_shared_index=_fold_shared_index_val,
                             q_len_fold=_q_len_fold_val,
+                            sparse_row=_sparse_row,
                         ](
                             q_tma_sparse_fp8,
                             k_gather4_tma,
@@ -1960,6 +2004,7 @@ def mla_decode_sm100_sink_split_k[
                             scalar_args_buf,
                             ctx,
                             logical_indices=logical_indices,
+                            selection_lag=selection_lag,
                         )
 
                 @inline(.always)
@@ -2015,8 +2060,10 @@ def mla_decode_sm100_sink_split_k[
                             ragged=True,
                             _is_cache_length_accurate=_is_cache_length_accurate,
                             has_extra_kv=_has_extra_k,
+                            physical_indices=_physical_indices,
                             fold_shared_index=_fold_shared_index,
                             q_len_fold=_q_len_fold,
+                            sparse_row=_sparse_row,
                         ](
                             q_tma_sparse,
                             k_gather4_tma,
@@ -2043,6 +2090,7 @@ def mla_decode_sm100_sink_split_k[
                             extra_scales_ptr,
                             scalar_args_buf,
                             ctx,
+                            selection_lag=selection_lag,
                         )
                     else:
                         comptime ValidLengthType = NullPointer[.uint32]
@@ -2058,8 +2106,10 @@ def mla_decode_sm100_sink_split_k[
                             ragged=False,
                             _is_cache_length_accurate=_is_cache_length_accurate,
                             has_extra_kv=_has_extra_k,
+                            physical_indices=_physical_indices,
                             fold_shared_index=_fold_shared_index,
                             q_len_fold=_q_len_fold,
+                            sparse_row=_sparse_row,
                         ](
                             q_tma_sparse,
                             k_gather4_tma,
@@ -2086,6 +2136,7 @@ def mla_decode_sm100_sink_split_k[
                             extra_scales_ptr,
                             scalar_args_buf,
                             ctx,
+                            selection_lag=selection_lag,
                         )
 
                 @inline(.always)
@@ -2108,6 +2159,9 @@ def mla_decode_sm100_sink_split_k[
                 return
 
         comptime if rope_aware_kv_sparse:
+            comptime assert (
+                _physical_indices
+            ), "the rope-aware sparse kernel takes paged physical rows only"
             # K_nope gather4 TMA: INT64, SWIZZLE_NONE (linear SMEM layout).
             # tile_width = nope only (padded_depth / 8 = 64 INT64 elements).
             # tile_stride = full row (nope + rope) / 8 = 80 INT64 elements.
@@ -2184,6 +2238,7 @@ def mla_decode_sm100_sink_split_k[
                         ragged=True,
                         _is_cache_length_accurate=_is_cache_length_accurate,
                         has_extra_kv=_has_extra_k,
+                        sparse_row=_sparse_row,
                     ](
                         q_tma_sparse,
                         k_nope_gather4_tma,
@@ -2212,6 +2267,7 @@ def mla_decode_sm100_sink_split_k[
                         extra_scales_ptr,
                         scalar_args_buf,
                         ctx,
+                        selection_lag=selection_lag,
                     )
                 else:
                     comptime ValidLengthType = NullPointer[.uint32]
@@ -2227,6 +2283,7 @@ def mla_decode_sm100_sink_split_k[
                         ragged=False,
                         _is_cache_length_accurate=_is_cache_length_accurate,
                         has_extra_kv=_has_extra_k,
+                        sparse_row=_sparse_row,
                     ](
                         q_tma_sparse,
                         k_nope_gather4_tma,
@@ -2255,6 +2312,7 @@ def mla_decode_sm100_sink_split_k[
                         extra_scales_ptr,
                         scalar_args_buf,
                         ctx,
+                        selection_lag=selection_lag,
                     )
 
             _launch_sparse()
@@ -3236,6 +3294,7 @@ def launch_mla_sm100_decode_sparse[
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     has_extra_kv: Bool = False,
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     q_tma: QOTMATile[
         dtype=q_type,
@@ -3350,6 +3409,9 @@ def launch_mla_sm100_decode_sparse[
     extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
+    # Positions between the token each sparse row was computed for and
+    # the token that reads it.
+    selection_lag: Int = 0,
 ) raises:
     """Launch the sparse MLA decode kernel with gather4 TMA descriptors.
 
@@ -3390,6 +3452,7 @@ def launch_mla_sm100_decode_sparse[
         AttnSinkPtrType=AttnSinkPtrType,
         has_extra_kv=has_extra_kv,
         TopkLengthsPtrType=TopkLengthsPtrType,
+        sparse_row=sparse_row,
         Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config.decoding_warp_split_k else PDLLevel.OFF
@@ -3420,6 +3483,7 @@ def launch_mla_sm100_decode_sparse[
         Int32(extra_indices_stride),
         extra_scales_ptr,
         scalar_args_buf,
+        Int32(selection_lag),
         grid_dim=grid_dim,
         block_dim=block_dim,
         shared_mem_bytes=sparse_smem_used,
@@ -3449,6 +3513,8 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
     # list is gathered once. Default False -> the unfolded baseline launch.
     fold_shared_index: Bool = False,
     q_len_fold: Int = 1,
+    physical_indices: Bool = True,
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     q_tma: QOTMATile[
         dtype=q_type,
@@ -3523,6 +3589,9 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
     extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
+    # Positions between the token each sparse row was computed for and
+    # the token that reads it.
+    selection_lag: Int = 0,
 ) raises:
     """Launches the all-FP8 sparse MLA decode kernel.
 
@@ -3560,6 +3629,8 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
         TopkLengthsPtrType=TopkLengthsPtrType,
         fold_shared_index=fold_shared_index,
         q_len_fold=q_len_fold,
+        physical_indices=physical_indices,
+        sparse_row=sparse_row,
         Engine=scalar_args_buf.Engine,
     ].kernel
     comptime pdl_level = PDLLevel.OVERLAP_AT_END if config.decoding_warp_split_k else PDLLevel.OFF
@@ -3595,6 +3666,7 @@ def launch_mla_sm100_decode_sparse_kv_fp8[
         Int32(extra_indices_stride),
         extra_scales_ptr,
         scalar_args_buf,
+        Int32(selection_lag),
         grid_dim=grid_dim,
         block_dim=block_dim,
         shared_mem_bytes=sparse_smem_used,
@@ -3619,6 +3691,8 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     has_extra_kv: Bool = False,
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    physical_indices: Bool = True,
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     q_tma: QOTMATile[
         dtype=q_type,
@@ -3694,6 +3768,9 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
     extra_indices_stride: Int,
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
+    # Positions between the token each sparse row was computed for and
+    # the token that reads it.
+    selection_lag: Int = 0,
 ) raises:
     """Launches the all-BF16 sparse MLA decode kernel.
 
@@ -3719,6 +3796,8 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
         AttnSinkPtrType=AttnSinkPtrType,
         has_extra_kv=has_extra_kv,
         TopkLengthsPtrType=TopkLengthsPtrType,
+        physical_indices=physical_indices,
+        sparse_row=sparse_row,
         Engine=scalar_args_buf.Engine,
     ]
     var block_x = ceildiv(config.num_q_heads, config.BM)
@@ -3756,6 +3835,7 @@ def launch_mla_sm100_decode_sparse_kv_bf16[
         extra_topk_lengths,
         Int32(extra_indices_stride),
         scalar_args_buf,
+        Int32(selection_lag),
         grid_dim=grid_dim,
         block_dim=block_dim,
         shared_mem_bytes=sparse_smem_used,
@@ -3782,6 +3862,8 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
     fold_shared_index: Bool = False,
     q_len_fold: Int = 1,
+    physical_indices: Bool = True,
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     q_tma: QOTMATile[
         dtype=q_type,
@@ -3862,6 +3944,9 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # Positions between the token each sparse row was computed for and
+    # the token that reads it.
+    selection_lag: Int = 0,
 ) raises:
     """Launches the native FP8 sparse MLA decode kernel (3 warpgroups).
 
@@ -3899,6 +3984,8 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
         TopkLengthsPtrType=TopkLengthsPtrType,
         fold_shared_index=fold_shared_index,
         q_len_fold=q_len_fold,
+        physical_indices=physical_indices,
+        sparse_row=sparse_row,
         Engine=scalar_args_buf.Engine,
     ]
     comptime kernel = KernelType.kernel
@@ -3938,6 +4025,7 @@ def launch_mla_sm100_decode_sparse_qkv_fp8[
         Int32(extra_indices_stride),
         extra_scales_ptr,
         scalar_args_buf,
+        Int32(selection_lag),
         grid_dim=grid_dim,
         block_dim=block_dim,
         shared_mem_bytes=sparse_smem_used,

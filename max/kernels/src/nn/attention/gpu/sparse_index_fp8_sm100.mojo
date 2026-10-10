@@ -845,8 +845,7 @@ def fp8_index_score_sm100[
     same `[total_seq, max_num_keys]` score buffer as the scalar
     `nn.index_fp8.fp8_index_kernel`. Out-of-range keys are left untouched --
     the bounded top-k derives the same per-row bound and never reads past it,
-    so the buffer needs no fill; only the unbounded `topk_gpu` arm relies on
-    the caller's `-inf` fill.
+    so the buffer needs no fill.
 
     Parameters:
         out_dtype: Element type of the score buffer, f32 or bf16 (inferred).

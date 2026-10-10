@@ -411,6 +411,9 @@ class DeepseekV3_2DecoderLayer(Module):
         next_input_gamma: list[TensorValue] | None = None,
         # Note: this is only used for MTP iterations after step 0.
         reuse_prev_topk: bool = False,
+        # Positions between the token the reused selection was computed for
+        # and this step's token.
+        selection_lag: int = 0,
     ) -> list[TensorValue]:
         # Dual-carry Pre-LN: attention uses ``xs_norm``; residuals use ``xs_raw``.
         apply_next = bool(next_input_gamma)
@@ -441,6 +444,7 @@ class DeepseekV3_2DecoderLayer(Module):
             mla_prefill_metadata=mla_prefill_metadata,
             prev_topk_indices=prev_topk,
             reuse_prev_topk=reuse_prev_topk,
+            selection_lag=selection_lag,
             indexer_layer_idx=indexer_layer_idx,
         )
 

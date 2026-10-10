@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import MutableSequence
+from collections.abc import MutableMapping, MutableSequence
 from typing import Any
 
 import numpy as np
@@ -3068,7 +3068,7 @@ def _validate_argument_tensor(
         raise ValueError("\n".join(errors))
 
 
-def mla_fp8_index_top_k(
+def _mla_fp8_index_top_k(
     q: TensorValue,
     q_s: TensorValue,
     input_row_offsets: TensorValue,
@@ -3076,40 +3076,12 @@ def mla_fp8_index_top_k(
     layer_idx: TensorValue,
     top_k: int,
     quantization_granularity: int,
-    mask_variant: MHAMaskVariant = MHAMaskVariant.CAUSAL_MASK,
-    kpool: int = 1,
-) -> TensorValue:
-    """Computes top-k indices for MLA FP8 indexed attention scores.
-
-    This function computes FP8 matmul between queries and cached keys (with scales),
-    applies masking, and returns the indices of the top-k highest-scoring keys per token.
-    Scores are aggregated (summed) across all attention heads.
-
-    Args:
-        q: Query tensor of shape [total_seq_len, num_heads, head_dim] in FP8.
-        q_s: Query scales tensor of shape [total_seq_len, num_heads] in float32.
-        input_row_offsets: Input row offsets tensor of shape [batch_size + 1].
-        k_collection: Paged KV cache collection. Must be FP8 quantized with scales.
-        layer_idx: Layer index for cache lookup.
-        top_k: Requested number of top indices per token.
-        quantization_granularity: Quantization granularity for the K cache.
-        mask_variant: The mask variant to use (NULL or CAUSAL_MASK).
-        kpool: Tokens per row of ``k_collection``. ``1`` scores one row per
-            cached token. ``k > 1`` means the cache holds one pooled key per
-            ``k`` consecutive tokens, so ``top_k`` counts pools and the
-            returned indices are pool ids that the caller expands back to
-            token positions.
-
-    Returns:
-        Output tensor of shape [total_seq_len, effective_k] containing top-k key
-        indices per token, where effective_k = min(top_k, max_num_keys).
-        Invalid positions are filled with -1. With ``kpool > 1`` the entries are
-        pool ids rather than token positions.
-
-    Raises:
-        ValueError: If ``top_k`` or ``kpool`` is not positive, or if
-            ``mask_variant`` is neither NULL nor CAUSAL.
-    """
+    mask_variant: MHAMaskVariant,
+    kpool: int,
+    mla_collection: PagedCacheValues | None,
+    *,
+    write_logical: bool,
+) -> list[TensorValue]:
     _validate_argument_tensor(
         "q", q, dtype=DType.float8_e4m3fn, rank=3, device_type=DeviceKind.GPU
     )
@@ -3147,6 +3119,10 @@ def mla_fp8_index_top_k(
     )
     if top_k <= 0:
         raise ValueError(f"top_k must be greater than 0, got {top_k}")
+    # The kernel's bounded top-k selects at most this many per row
+    # (`PERSISTENT_TOPK_MAX_N` in `nn/topk_bitonic.mojo`).
+    if top_k > 2048:
+        raise ValueError(f"top_k must be at most 2048, got {top_k}")
     if kpool < 1:
         raise ValueError(f"kpool must be at least 1, got {kpool}")
 
@@ -3160,34 +3136,214 @@ def mla_fp8_index_top_k(
         )
 
     mask_str = _mask_str(mask_variant)
-    result = ops.inplace_custom(
-        "mo.mla.indexer.ragged.float8.paged",
-        device=q.device,
-        values=[
-            q,
-            q_s,
-            input_row_offsets,
-            *k_collection.flatten_without_attention_dispatch_metadata(),
-            layer_idx,
-        ],
-        out_types=[
-            TensorType(
-                dtype=DType.int32,
-                shape=(q.shape[0], top_k),
-                device=q.device,
-            )
-        ],
-        parameters={
-            "num_heads": int(q.shape[1]),
-            "depth": int(q.shape[2]),
-            "k": top_k,
-            "quantization_granularity": quantization_granularity,
-            "mask_str": mask_str,
-            "kpool": kpool,
-        },
-    )[0].tensor
+    out_type = TensorType(
+        dtype=DType.int32, shape=(q.shape[0], top_k), device=q.device
+    )
+    parameters: dict[str, bool | int | str | DType] = {
+        "num_heads": int(q.shape[1]),
+        "depth": int(q.shape[2]),
+        "k": top_k,
+        "quantization_granularity": quantization_granularity,
+        "mask_str": mask_str,
+    }
+    values: list[Value[Any]] = [
+        q,
+        q_s,
+        input_row_offsets,
+        *k_collection.flatten_without_attention_dispatch_metadata(),
+        layer_idx,
+    ]
+    if mla_collection is None:
+        assert write_logical, "the plain indexer op writes only logical indices"
+        op_name = "mo.mla.indexer.ragged.float8.paged"
+        parameters["kpool"] = kpool
+        out_types = [out_type]
+    else:
+        assert kpool == 1, "physical indices need token positions"
+        op_name = "mo.mla.indexer.ragged.float8.paged.remap"
+        values += [mla_collection.kv_blocks, mla_collection.lookup_table]
+        parameters["write_logical"] = write_logical
+        # Without the logical store the kernel never touches that output, so
+        # it has no rows.
+        logical_type = TensorType(
+            dtype=DType.int32,
+            shape=(q.shape[0] if write_logical else 0, top_k),
+            device=q.device,
+        )
+        out_types = [logical_type, out_type]
+    return [
+        r.tensor
+        for r in ops.inplace_custom(
+            op_name,
+            device=q.device,
+            values=values,
+            out_types=out_types,
+            parameters=parameters,
+        )
+    ]
 
-    return result
+
+def mla_fp8_index_top_k(
+    q: TensorValue,
+    q_s: TensorValue,
+    input_row_offsets: TensorValue,
+    k_collection: PagedCacheValues,
+    layer_idx: TensorValue,
+    top_k: int,
+    quantization_granularity: int,
+    mask_variant: MHAMaskVariant = MHAMaskVariant.CAUSAL_MASK,
+    kpool: int = 1,
+) -> TensorValue:
+    """Computes top-k indices for MLA FP8 indexed attention scores.
+
+    This function computes FP8 matmul between queries and cached keys (with scales),
+    applies masking, and returns the indices of the top-k highest-scoring keys per token.
+    Scores are aggregated (summed) across all attention heads.
+
+    Args:
+        q: Query tensor of shape [total_seq_len, num_heads, head_dim] in FP8.
+        q_s: Query scales tensor of shape [total_seq_len, num_heads] in float32.
+        input_row_offsets: Input row offsets tensor of shape [batch_size + 1].
+        k_collection: Paged KV cache collection. Must be FP8 quantized with scales.
+        layer_idx: Layer index for cache lookup.
+        top_k: Requested number of top indices per token, at most 2048.
+        quantization_granularity: Quantization granularity for the K cache.
+        mask_variant: The mask variant to use (NULL or CAUSAL_MASK).
+        kpool: Tokens per row of ``k_collection``. ``1`` scores one row per
+            cached token. ``k > 1`` means the cache holds one pooled key per
+            ``k`` consecutive tokens, so ``top_k`` counts pools and the
+            returned indices are pool ids that the caller expands back to
+            token positions.
+
+    Returns:
+        Output tensor of shape [total_seq_len, top_k] containing top-k key
+        indices per token. Positions past a token's candidate keys are filled
+        with -1. With ``kpool > 1`` the entries are
+        pool ids rather than token positions.
+
+    Raises:
+        ValueError: If ``top_k`` is not in ``[1, 2048]``, ``kpool`` is not
+            positive, or ``mask_variant`` is neither NULL nor CAUSAL.
+    """
+    return _mla_fp8_index_top_k(
+        q,
+        q_s,
+        input_row_offsets,
+        k_collection,
+        layer_idx,
+        top_k,
+        quantization_granularity,
+        mask_variant,
+        kpool,
+        mla_collection=None,
+        write_logical=True,
+    )[0]
+
+
+def mla_fp8_index_top_k_with_physical(
+    q: TensorValue,
+    q_s: TensorValue,
+    input_row_offsets: TensorValue,
+    k_collection: PagedCacheValues,
+    mla_collection: PagedCacheValues,
+    layer_idx: TensorValue,
+    top_k: int,
+    quantization_granularity: int,
+    mask_variant: MHAMaskVariant = MHAMaskVariant.CAUSAL_MASK,
+) -> tuple[TensorValue, TensorValue]:
+    """Computes :func:`mla_fp8_index_top_k` and the selections' MLA cache rows.
+
+    The second output is each selected position's physical row in
+    ``mla_collection``, ``block_id * page_size + offset``, written by the
+    indexer's top-k as it selects. Pass it to the sparse MLA ops as
+    ``sparse_indices`` with ``physical_indices=True`` so they skip remapping
+    the logical indices.
+
+    Args:
+        q: Query tensor of shape [total_seq_len, num_heads, head_dim] in FP8.
+        q_s: Query scales tensor of shape [total_seq_len, num_heads] in float32.
+        input_row_offsets: Input row offsets tensor of shape [batch_size + 1].
+        k_collection: The indexer's paged K cache. Must be FP8 with scales.
+        mla_collection: The MLA cache the physical rows index.
+        layer_idx: Layer index for cache lookup.
+        top_k: Requested number of top indices per token, at most 2048.
+        quantization_granularity: Quantization granularity for the K cache.
+        mask_variant: The mask variant to use (NULL or CAUSAL_MASK).
+
+    Returns:
+        The logical indices, as :func:`mla_fp8_index_top_k` returns them, and
+        a tensor of the same shape holding their physical rows, ``-1`` where
+        the logical index is ``-1`` or its page is unmapped.
+
+    Raises:
+        ValueError: If ``top_k`` is not in ``[1, 2048]`` or ``mask_variant``
+            is neither NULL nor CAUSAL.
+    """
+    logical, physical = _mla_fp8_index_top_k(
+        q,
+        q_s,
+        input_row_offsets,
+        k_collection,
+        layer_idx,
+        top_k,
+        quantization_granularity,
+        mask_variant,
+        kpool=1,
+        mla_collection=mla_collection,
+        write_logical=True,
+    )
+    return logical, physical
+
+
+def mla_fp8_index_top_k_physical(
+    q: TensorValue,
+    q_s: TensorValue,
+    input_row_offsets: TensorValue,
+    k_collection: PagedCacheValues,
+    mla_collection: PagedCacheValues,
+    layer_idx: TensorValue,
+    top_k: int,
+    quantization_granularity: int,
+    mask_variant: MHAMaskVariant = MHAMaskVariant.CAUSAL_MASK,
+) -> TensorValue:
+    """Computes only the physical rows of :func:`mla_fp8_index_top_k_with_physical`.
+
+    The top-k skips writing the logical indices, which the sparse MLA ops do
+    not read once they have the physical rows.
+
+    Args:
+        q: Query tensor of shape [total_seq_len, num_heads, head_dim] in FP8.
+        q_s: Query scales tensor of shape [total_seq_len, num_heads] in float32.
+        input_row_offsets: Input row offsets tensor of shape [batch_size + 1].
+        k_collection: The indexer's paged K cache. Must be FP8 with scales.
+        mla_collection: The MLA cache the physical rows index.
+        layer_idx: Layer index for cache lookup.
+        top_k: Requested number of top indices per token, at most 2048.
+        quantization_granularity: Quantization granularity for the K cache.
+        mask_variant: The mask variant to use (NULL or CAUSAL_MASK).
+
+    Returns:
+        A ``[total_seq_len, top_k]`` tensor of the selected positions'
+        physical rows in ``mla_collection``, ``-1`` past a token's candidates
+        or where a page is unmapped.
+
+    Raises:
+        ValueError: If ``top_k`` is not in ``[1, 2048]`` or ``mask_variant``
+            is neither NULL nor CAUSAL.
+    """
+    return _mla_fp8_index_top_k(
+        q,
+        q_s,
+        input_row_offsets,
+        k_collection,
+        layer_idx,
+        top_k,
+        quantization_granularity,
+        mask_variant,
+        kpool=1,
+        mla_collection=mla_collection,
+        write_logical=False,
+    )[1]
 
 
 def mla_kpool_compress(
@@ -5132,6 +5288,99 @@ def mla_prefill_graph(
     )[0].tensor
 
 
+def _sparse_mla_operands(
+    parameters: MutableMapping[str, int | str | DType],
+    device: DeviceRef,
+    sparse_indices: TensorValue,
+    sparse_indices_stride: int | None,
+    physical_indices: bool | None,
+    sparse_topk_lengths: TensorValue | None,
+    sparse_attn_sink: TensorValue | None,
+) -> list[TensorValue]:
+    """Validates the sparse MLA decode operands and sets their op parameters.
+
+    Returns:
+        The operands in the order the `.sparse` ops take them.
+    """
+    if sparse_indices_stride is None:
+        raise ValueError("sparse_indices requires sparse_indices_stride.")
+    if physical_indices is None:
+        raise ValueError(
+            "sparse_indices requires physical_indices, to say whether they"
+            " are physical MLA cache rows or logical token positions."
+        )
+    if sparse_indices.dtype != DType.int32:
+        raise ValueError(
+            f"sparse_indices must be int32, got {sparse_indices.dtype}"
+        )
+    # An absent operand is a comptime op parameter, so the kernels are
+    # specialized on it; the op still takes a tensor, which it never reads.
+    if sparse_topk_lengths is None:
+        parameters["has_topk_lengths"] = False
+        sparse_topk_lengths = ops.constant(
+            [0], dtype=DType.int32, device=device
+        )
+    elif sparse_topk_lengths.dtype != DType.int32:
+        raise ValueError(
+            "sparse_topk_lengths must be int32, got"
+            f" {sparse_topk_lengths.dtype}"
+        )
+    if sparse_attn_sink is None:
+        parameters["has_attn_sink"] = False
+        sparse_attn_sink = ops.constant([0], dtype=DType.float32, device=device)
+    elif sparse_attn_sink.dtype != DType.float32:
+        raise ValueError(
+            f"sparse_attn_sink must be float32, got {sparse_attn_sink.dtype}"
+        )
+    parameters["physical_indices"] = physical_indices
+    parameters["indices_stride"] = sparse_indices_stride
+    return [
+        sparse_indices,
+        sparse_topk_lengths,
+        sparse_attn_sink,
+    ]
+
+
+def _set_sparse_row_layout(
+    parameters: MutableMapping[str, int | str | DType],
+    has_sparse_indices: bool,
+    index_kpool: int,
+    index_pool_topk: int,
+    index_kpool_select_tail: bool,
+    selection_lag: int,
+    physical_indices: bool | None,
+) -> None:
+    """Validates a sparse row layout and records it as op parameters.
+
+    The parameters are emitted only when they differ from plain top-k, so
+    graphs that do not set them are unchanged.
+
+    Raises:
+        ValueError: If the layout or ``physical_indices`` is set without
+            sparse indices, or the layout is out of range.
+    """
+    if not has_sparse_indices and physical_indices is not None:
+        raise ValueError("physical_indices requires sparse_indices.")
+    sparse_row_set = (
+        index_kpool != 1 or index_pool_topk != 0 or not index_kpool_select_tail
+    )
+    if not has_sparse_indices and (sparse_row_set or selection_lag != 0):
+        raise ValueError(
+            "index_kpool, index_pool_topk, index_kpool_select_tail and"
+            " selection_lag describe sparse_indices, which is not set."
+        )
+    if index_kpool < 1 or index_pool_topk < 0 or selection_lag < 0:
+        raise ValueError(
+            f"Invalid sparse row layout: index_kpool={index_kpool} must be"
+            f" at least 1, index_pool_topk={index_pool_topk} and"
+            f" selection_lag={selection_lag} must be non-negative."
+        )
+    if sparse_row_set:
+        parameters["index_kpool"] = index_kpool
+        parameters["index_pool_topk"] = index_pool_topk
+        parameters["index_kpool_select_tail"] = index_kpool_select_tail
+
+
 def mla_decode_graph(
     q: TensorValue,
     kv: TensorValue,
@@ -5159,6 +5408,11 @@ def mla_decode_graph(
     sparse_attn_sink: TensorValue | None = None,
     sparse_indices_stride: int | None = None,
     index_share: bool = False,
+    physical_indices: bool | None = None,
+    index_kpool: int = 1,
+    index_pool_topk: int = 0,
+    index_kpool_select_tail: bool = True,
+    selection_lag: int = 0,
 ) -> TensorValue:
     """This is a manually fused kernel that performs the following operations:
 
@@ -5199,15 +5453,36 @@ def mla_decode_graph(
         w_uk_scale: Optional FP8 scale tensor for `w_uk`.
         w_uv_scale: Optional FP8 scale tensor for `w_uv`.
         quant_config: Optional quantization config. When set, scales are required.
-        sparse_indices: Optional ``int32`` tensor of shape ``[total_seq_len, max_topk]``
-            with logical token indices into each sequence's KV; MOGG remaps them to
-            physical ``block * page_size + offset`` rows before the kernel.
+        sparse_indices: Optional ``int32`` tensor of shape
+            ``[total_seq_len, max_topk]`` selecting each token's keys, ``-1``
+            for an unused slot. ``physical_indices`` says which kind they are.
         sparse_topk_lengths: Per-batch valid top-k counts, ``int32`` rank-1.
             ``None`` means every row uses the full ``sparse_indices_stride``.
         sparse_attn_sink: Per-batch attention sink weights, ``float32`` rank-1.
             ``None`` means no sink.
         sparse_indices_stride: Row stride in ``sparse_indices`` (max top-k across
             the batch). Required when ``sparse_indices`` is set.
+        index_share: Whether the folded MTP query positions share one top-k
+            list, so the FP8 sparse decode gathers it once. The fold masks
+            each position by logical key position, so it requires logical
+            ``sparse_indices``.
+        physical_indices: Whether ``sparse_indices`` holds physical MLA
+            cache rows, ``block_id * page_size + offset``, as
+            :func:`mla_fp8_index_top_k_physical` returns them, rather than
+            logical token positions, which the kernel looks up in the cache's
+            page table. Required with ``sparse_indices``.
+        index_kpool: Keys per pool in the k-pool indexer that produced
+            ``sparse_indices``; 1 for a plain top-k list. With
+            ``index_pool_topk``, the kernel derives each row's valid length
+            from the token's visible key count and masks the ``-1`` padding
+            past it without reading the indices.
+        index_pool_topk: Maximum number of pools the indexer selects; 0 for
+            no bound beyond the row width.
+        index_kpool_select_tail: Whether the indexer appends the incomplete
+            trailing pool to each row.
+        selection_lag: Positions between the token each row of
+            ``sparse_indices`` was computed for and the token that reads it,
+            for a selection reused at a later position.
 
     Returns:
         Tensor of shape [total_seq_len, num_heads, v_head_dim].
@@ -5248,42 +5523,32 @@ def mla_decode_graph(
 
     input_values.append(scalar_args)
 
+    sparse = sparse_indices is not None
+    if index_share and physical_indices is not False:
+        raise ValueError(
+            "index_share masks by logical key position, so it requires"
+            " logical sparse_indices (physical_indices=False)."
+        )
+    _set_sparse_row_layout(
+        parameters,
+        sparse,
+        index_kpool,
+        index_pool_topk,
+        index_kpool_select_tail,
+        selection_lag,
+        physical_indices,
+    )
     if sparse_indices is not None:
-        if sparse_indices_stride is None:
-            raise ValueError("sparse_indices requires sparse_indices_stride.")
-        if sparse_indices.dtype != DType.int32:
-            raise ValueError(
-                f"sparse_indices must be int32, got {sparse_indices.dtype}"
-            )
-        # An absent operand is a comptime op parameter, so the kernels are
-        # specialized on it; the op still takes a tensor, which it never reads.
-        if sparse_topk_lengths is None:
-            parameters["has_topk_lengths"] = False
-            sparse_topk_lengths = ops.constant(
-                [0], dtype=DType.int32, device=q.device
-            )
-        elif sparse_topk_lengths.dtype != DType.int32:
-            raise ValueError(
-                "sparse_topk_lengths must be int32, got"
-                f" {sparse_topk_lengths.dtype}"
-            )
-        if sparse_attn_sink is None:
-            parameters["has_attn_sink"] = False
-            sparse_attn_sink = ops.constant(
-                [0], dtype=DType.float32, device=q.device
-            )
-        elif sparse_attn_sink.dtype != DType.float32:
-            raise ValueError(
-                "sparse_attn_sink must be float32, got"
-                f" {sparse_attn_sink.dtype}"
-            )
-        parameters["indices_stride"] = sparse_indices_stride
         op_name += ".sparse"
-        input_values += [
+        input_values += _sparse_mla_operands(
+            parameters,
+            q.device,
             sparse_indices,
+            sparse_indices_stride,
+            physical_indices,
             sparse_topk_lengths,
             sparse_attn_sink,
-        ]
+        )
         if index_share:
             if quant_config is None:
                 raise ValueError(
@@ -5299,6 +5564,12 @@ def mla_decode_graph(
     # tensors so the input order matches the MoGG op signature
     # (see graph_compiler/builtin_kernels/attention.mojo).
     input_values += [num_partitions_scalar]
+    if sparse:
+        # A runtime input rather than an op parameter, so draft steps that
+        # differ only in their lag share one compiled kernel.
+        input_values.append(
+            ops.constant(selection_lag, DType.int32, device=DeviceRef.CPU())
+        )
 
     return ops.inplace_custom(
         op_name,
@@ -5340,7 +5611,11 @@ def mla_prefill_decode_graph(
     sparse_topk_lengths: TensorValue | None = None,
     sparse_attn_sink: TensorValue | None = None,
     sparse_indices_stride: int | None = None,
-    index_share: bool = False,
+    physical_indices: bool | None = None,
+    index_kpool: int = 1,
+    index_pool_topk: int = 0,
+    index_kpool_select_tail: bool = True,
+    selection_lag: int = 0,
 ) -> TensorValue:
     """Fused MLA prefill/decode kernel for FP8.
 
@@ -5372,14 +5647,26 @@ def mla_prefill_decode_graph(
         w_uk_scale: Optional FP8 scale tensor for `w_uk`.
         w_uv_scale: Optional FP8 scale tensor for `w_uv`.
         quant_config: Optional quantization config. When set, scales are required.
-        sparse_indices: Optional ``int32`` tensor for sparse decode (same semantics
-            as :func:`mla_decode_graph`). Used only when the decode branch runs.
+        sparse_indices: Optional ``int32`` tensor selecting each token's keys
+            (same semantics as :func:`mla_decode_graph`).
         sparse_topk_lengths: Per-batch valid top-k counts for sparse decode.
             ``None`` means every row uses the full ``sparse_indices_stride``.
         sparse_attn_sink: Per-batch attention sink weights for sparse decode.
             ``None`` means no sink.
         sparse_indices_stride: Row stride in ``sparse_indices``. Required when
             ``sparse_indices`` is set.
+        physical_indices: Whether ``sparse_indices`` holds physical MLA
+            cache rows rather than logical token positions, which a decode
+            call looks up in the page table and a prefill call remaps first.
+            Required with ``sparse_indices``.
+        index_kpool: Keys per pool in the indexer that produced
+            ``sparse_indices`` (same semantics as :func:`mla_decode_graph`).
+        index_pool_topk: Maximum number of pools the indexer selects.
+        index_kpool_select_tail: Whether the indexer appends the incomplete
+            trailing pool to each row.
+        selection_lag: Positions between the token each row of
+            ``sparse_indices`` was computed for and the token that reads it.
+            Only the decode branch reads it.
 
     Returns:
         Tensor of shape [total_seq_len, num_heads, v_head_dim].
@@ -5428,50 +5715,37 @@ def mla_prefill_decode_graph(
 
     input_values.append(scalar_args)
 
+    sparse = sparse_indices is not None
+    _set_sparse_row_layout(
+        parameters,
+        sparse,
+        index_kpool,
+        index_pool_topk,
+        index_kpool_select_tail,
+        selection_lag,
+        physical_indices,
+    )
     if sparse_indices is not None:
-        if sparse_indices_stride is None:
-            raise ValueError("sparse_indices requires sparse_indices_stride.")
-        if sparse_indices.dtype != DType.int32:
-            raise ValueError(
-                f"sparse_indices must be int32, got {sparse_indices.dtype}"
-            )
-        # An absent operand is a comptime op parameter, so the kernels are
-        # specialized on it; the op still takes a tensor, which it never reads.
-        if sparse_topk_lengths is None:
-            parameters["has_topk_lengths"] = False
-            sparse_topk_lengths = ops.constant(
-                [0], dtype=DType.int32, device=q.device
-            )
-        elif sparse_topk_lengths.dtype != DType.int32:
-            raise ValueError(
-                "sparse_topk_lengths must be int32, got"
-                f" {sparse_topk_lengths.dtype}"
-            )
-        if sparse_attn_sink is None:
-            parameters["has_attn_sink"] = False
-            sparse_attn_sink = ops.constant(
-                [0], dtype=DType.float32, device=q.device
-            )
-        elif sparse_attn_sink.dtype != DType.float32:
-            raise ValueError(
-                "sparse_attn_sink must be float32, got"
-                f" {sparse_attn_sink.dtype}"
-            )
-        parameters["indices_stride"] = sparse_indices_stride
         op_name += ".sparse"
-        input_values += [
+        input_values += _sparse_mla_operands(
+            parameters,
+            q.device,
             sparse_indices,
+            sparse_indices_stride,
+            physical_indices,
             sparse_topk_lengths,
             sparse_attn_sink,
-        ]
-        if index_share:
-            # Read-once shared-index fold (KERN-3141); the sparse branch here
-            # already requires fp8. Only emitted when True -> off is
-            # byte-identical.
-            parameters["index_share"] = True
+        )
 
-    # Capturable-graph scalar appended last (see MoGG op signature).
+    # Capturable-graph scalar appended after the optional sparse tensors
+    # (see MoGG op signature).
     input_values += [num_partitions_scalar]
+    if sparse:
+        # A runtime input rather than an op parameter, so draft steps that
+        # differ only in their lag share one compiled kernel.
+        input_values.append(
+            ops.constant(selection_lag, DType.int32, device=DeviceRef.CPU())
+        )
 
     return ops.inplace_custom(
         op_name,

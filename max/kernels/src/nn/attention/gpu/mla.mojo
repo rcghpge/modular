@@ -142,6 +142,7 @@ from nn.attention.gpu.nvidia.sm100.mla_decode_dispatch import (
     MLADispatchScalarArgs,
     mla_decode_sm100_dispatch,
 )
+from nn.attention.gpu.nvidia.sm100.mla_decode_utils import SparseRowLayout
 from .nvidia.sm100.mla_prefill_per_token_scale import (
     mla_sm100_prefill_per_token_scale,
 )
@@ -241,10 +242,14 @@ def flare_mla_decoding[
     fold_shared_index: Bool = False,
     # Whether `extra_k` is supplied; must match `extra_k is not None`.
     has_extra_k: Bool = False,
+    physical_indices: Bool = True,
     # Presence of `attn_sink_ptr` / `topk_lengths` + `extra_topk_lengths`
     # (inferred from those arguments).
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    # How the sparse index producer packs each row; SM100 bounds each row by
+    # its closed-form valid length. See mla_decode_utils.mojo.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     output: TileTensor[mut=True, address_space=.GENERIC, ...],
     q: TileTensor[dtype, address_space=.GENERIC, ...],
@@ -289,6 +294,9 @@ def flare_mla_decoding[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # Positions between the token each sparse row was computed for and the
+    # token that reads it, for a selection reused at a later position.
+    selection_lag: Int = 0,
 ) raises:
     """MLA decoding kernel that would only be called in the optimized compute
     graph.
@@ -341,10 +349,17 @@ def flare_mla_decoding[
         has_extra_k: Whether `extra_k` is supplied (defaults to `False`).
             Must match `extra_k is not None`; comptime so callers without an
             extra cache do not build the extra-KV sparse kernels.
+        physical_indices: Whether `d_indices` holds paged
+            `physical_block * page_size + offset` rows rather than token
+            positions, which the kernels decode through the cache's lookup
+            table (defaults to `True`).
         AttnSinkPtrType: `OptionalPointer` type of `attn_sink_ptr`
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type shared by `topk_lengths`
             and `extra_topk_lengths` (inferred, defaults to `NullPointer`).
+        sparse_row: How the sparse index producer packs each row; SM100
+            masks the `-1` padding past each row's closed-form valid length
+            (defaults to plain top-k, which adds no bound).
 
     Args:
         output: Output tensor with shape `[batch, num_heads, depth_v]`
@@ -402,6 +417,8 @@ def flare_mla_decoding[
             instead of recomputing `num_partitions` at grid time.
         logical_indices: Logical sparse indices for position-based causal
             masking; `None` keeps the prior slot-count behavior.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it (defaults to 0).
     """
     comptime assert (
         ragged or rank == 4
@@ -473,6 +490,8 @@ def flare_mla_decoding[
                 rope_aware_kv_sparse=rope_aware_kv_sparse,
                 fold_shared_index=fold_shared_index,
                 has_extra_k=has_extra_k,
+                physical_indices=physical_indices,
+                sparse_row=sparse_row,
             ](
                 output,
                 q,
@@ -498,6 +517,7 @@ def flare_mla_decoding[
                 extra_scales_ptr=extra_scales_ptr,
                 num_partitions_in=num_partitions_in,
                 logical_indices=logical_indices,
+                selection_lag=selection_lag,
             )
         else:
             # Build extra_k_operand when extra_k is provided.
@@ -515,6 +535,8 @@ def flare_mla_decoding[
                 rope_aware_kv_sparse=rope_aware_kv_sparse,
                 fold_shared_index=fold_shared_index,
                 has_extra_k=has_extra_k,
+                physical_indices=physical_indices,
+                sparse_row=sparse_row,
             ](
                 output,
                 q,
@@ -540,6 +562,7 @@ def flare_mla_decoding[
                 extra_scales_ptr=extra_scales_ptr,
                 num_partitions_in=num_partitions_in,
                 logical_indices=logical_indices,
+                selection_lag=selection_lag,
             )
 
 
@@ -630,8 +653,12 @@ def flare_mla_decoding_dispatch[
     fold_shared_index: Bool = False,
     # See flare_mla_decoding.
     has_extra_k: Bool = False,
+    physical_indices: Bool = True,
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    # How the sparse index producer packs each row; SM100 bounds each row by
+    # its closed-form valid length. See mla_decode_utils.mojo.
+    sparse_row: SparseRowLayout = SparseRowLayout(),
 ](
     output: TileTensor[mut=True, address_space=.GENERIC, ...],
     q: TileTensor[dtype, address_space=.GENERIC, ...],
@@ -666,6 +693,9 @@ def flare_mla_decoding_dispatch[
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
     logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    # Positions between the token each sparse row was computed for and the
+    # token that reads it, for a selection reused at a later position.
+    selection_lag: Int = 0,
 ) raises:
     """Dispatches an MLA decoding request to the platform-specific kernel.
 
@@ -714,10 +744,17 @@ def flare_mla_decoding_dispatch[
         has_extra_k: Whether `extra_k` is supplied (defaults to `False`).
             Must match `extra_k is not None`; comptime so callers without an
             extra cache do not build the extra-KV sparse kernels.
+        physical_indices: Whether `d_indices` holds paged
+            `physical_block * page_size + offset` rows rather than token
+            positions, which the kernels decode through the cache's lookup
+            table (defaults to `True`).
         AttnSinkPtrType: `OptionalPointer` type of `attn_sink_ptr`
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type shared by `topk_lengths`
             and `extra_topk_lengths` (inferred, defaults to `NullPointer`).
+        sparse_row: How the sparse index producer packs each row; SM100
+            masks the `-1` padding past each row's closed-form valid length
+            (defaults to plain top-k, which adds no bound).
 
     Args:
         output: Output tensor with shape `[batch, num_heads, depth_v]`
@@ -776,6 +813,8 @@ def flare_mla_decoding_dispatch[
             instead of recomputing `num_partitions` at grid time.
         logical_indices: Logical sparse indices for position-based causal
             masking; `None` keeps the prior slot-count behavior.
+        selection_lag: Positions between the token each sparse row was
+            computed for and the token that reads it (defaults to 0).
     """
     comptime num_heads = config.num_heads
     comptime depth = config.depth
@@ -898,6 +937,8 @@ def flare_mla_decoding_dispatch[
                 rope_aware_kv_sparse=rope_aware_kv_sparse,
                 fold_shared_index=fold_shared_index,
                 has_extra_k=has_extra_k,
+                physical_indices=physical_indices,
+                sparse_row=sparse_row,
             ](
                 q,
                 k,
@@ -922,6 +963,7 @@ def flare_mla_decoding_dispatch[
                 extra_scales_ptr=extra_scales_ptr,
                 num_partitions_in=num_partitions_in,
                 logical_indices=logical_indices,
+                selection_lag=selection_lag,
             )
         else:
             # Legacy path: compute dispatch params and GPU buffer from inputs.
@@ -958,6 +1000,8 @@ def flare_mla_decoding_dispatch[
                 rope_aware_kv_sparse=rope_aware_kv_sparse,
                 fold_shared_index=fold_shared_index,
                 has_extra_k=has_extra_k,
+                physical_indices=physical_indices,
+                sparse_row=sparse_row,
             ](
                 q,
                 k,
@@ -985,10 +1029,16 @@ def flare_mla_decoding_dispatch[
                 extra_indices_stride=extra_indices_stride,
                 extra_topk_lengths=extra_topk_lengths,
                 extra_scales_ptr=extra_scales_ptr,
+                selection_lag=selection_lag,
             )
             _ = local_args^
 
     else:
+        comptime assert (
+            not sparse_row.is_bounded()
+        ), "sparse_row row bounds are only implemented for SM100."
+        if selection_lag != 0:
+            raise Error("selection_lag is only implemented for SM100.")
         var batch_size: Int
         comptime if ragged:
             batch_size = Int(valid_length.dim[0]()) - 1
