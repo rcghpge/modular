@@ -1889,7 +1889,8 @@ void StmtParser::emitComptimeCases(ArrayRef<MatchCaseEntry> caseEntries,
 
   // Single always-matching case (typically `case _:` / `case x:`): emit the
   // body inline with no comptime.if.
-  if (caseEntries.size() == 1 && caseEntries.front().alwaysMatches()) {
+  if (caseEntries.size() == 1 && (caseEntries.front().commandList.empty() ||
+                                  caseEntries.front().alwaysMatches())) {
     const MatchCaseEntry &entry = caseEntries.front();
     SmallVector<PatternBoundName, 4> bindings;
     if (failed(
@@ -2436,11 +2437,45 @@ void StmtParser::emitCases(ArrayRef<MatchCaseEntry> caseEntries,
     }
   };
 
-  // If there is one entry and it has no commands, then we have a _ pattern
-  // only, which is a trivial base case in recursive matching.  Emit it
-  // efficiently.
-  if (caseEntries.size() == 1 && caseEntries.front().commandList.empty()) {
-    emitCaseBody(caseEntries.front(), inMatchCase);
+  auto materializeBindings =
+      [&](ArrayRef<PatternBoundName> bindings) -> LogicalResult {
+    IREmitter emitter = getEmitter();
+    for (const PatternBoundName &binding : bindings) {
+      DeclRefNode nameNode(binding.name);
+      ExprDest declDest(LValueInitializerType{binding.value.getRValueType()},
+                        EC_VarInit);
+      declDest.setPatternDeclKind(binding.bindingKind);
+      LValue bindingLV = emitter.emitExprLValue(&nameNode, declDest);
+      if (!bindingLV)
+        return failure();
+
+      ExprDest storeDest(bindingLV, EC_VarInit);
+      if (!emitter.emitCResult(binding.value, &nameNode, storeDest))
+        return failure();
+    }
+    return success();
+  };
+
+  // A single case with no pattern tests needs no match operation. Emit any
+  // bindings and its body directly into the enclosing block.
+  if (caseEntries.size() == 1 &&
+      llvm::all_of(caseEntries.front().commandList,
+                   [](const PatternCommand *command) {
+                     return command->kind == PatternCommand::Bind;
+                   })) {
+    const MatchCaseEntry &caseEntry = caseEntries.front();
+    SmallVector<PatternBoundName> bindings;
+    if (failed(emissionState.emitCommands(builder, caseEntry.commandList,
+                                          bindings)))
+      return;
+
+    DebugInfo::DIBuilder::ScopeGuard scopeGuard;
+    llvm::SaveAndRestore<ASTDecl *> keepDecl(curDeclScope);
+    pushChildScope(scopeGuard, keepDecl);
+    if (failed(materializeBindings(bindings)))
+      return;
+
+    emitCaseBody(caseEntry, inMatchCase, /*needsScope=*/false);
     return;
   }
 
@@ -2503,32 +2538,13 @@ void StmtParser::emitCases(ArrayRef<MatchCaseEntry> caseEntries,
     DebugInfo::DIBuilder::ScopeGuard scopeGuard;
     llvm::SaveAndRestore<ASTDecl *> keepDecl(curDeclScope);
     pushChildScope(scopeGuard, keepDecl);
-    IREmitter emitter = getEmitter();
 
     // Materialize pattern bindings before the guard so guards can refer to
     // them. Match subjects are borrowed (BValues), so `var` bindings copy and
     // `ref` bindings borrow — same machinery as `var x = ...` / `ref x = ...`.
     // On failure, treat like a pattern emission error so later cases/statements
     // still parse (recovery), rather than aborting the whole match.
-    bool hadFailure = false;
-    for (const PatternBoundName &bn : bindings) {
-      DeclRefNode nameNode(bn.name);
-      ExprDest declDest(LValueInitializerType{bn.value.getRValueType()},
-                        EC_VarInit);
-      declDest.setPatternDeclKind(bn.bindingKind);
-      LValue bindingLV = emitter.emitExprLValue(&nameNode, declDest);
-      if (!bindingLV) {
-        hadFailure = true;
-        break;
-      }
-
-      ExprDest storeDest(bindingLV, EC_VarInit);
-      if (!emitter.emitCResult(bn.value, &nameNode, storeDest)) {
-        hadFailure = true;
-        break;
-      }
-    }
-    if (hadFailure)
+    if (failed(materializeBindings(bindings)))
       continue;
 
     // Emit the pattern guard and body of the case. Scope already opened above

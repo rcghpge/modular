@@ -784,13 +784,10 @@ def match_optional_product_concluding(
     # CHECK:       _get_enum_discriminant
     # CHECK:       @"__eq__(::SIMD
     # CHECK:       lit.return
-    # CHECK:       hlcf.unreachable
     # CHECK:       lit.return
-    # CHECK:       hlcf.unreachable
     # CHECK:       _get_enum_discriminant
     # CHECK:       @"__eq__(::SIMD
     # CHECK:       lit.return
-    # CHECK:       hlcf.unreachable
     # CHECK:       lit.return
     # CHECK-NOT:   _get_enum_discriminant
     # CHECK-NOT:   @"__eq__(::SIMD
@@ -842,14 +839,35 @@ def match_vec3(v: Vec3):
 def match_optional_refined_payload(opt: Optional[Int]):
     # `Some(0)` only covers one payload value; the following `Some(n)` remains
     # reachable and covers the rest of the constructor.
-    # CHECK:       lit.call {{.*}}@"case_callee{{.*}}<index> 0
-    # CHECK:       lit.call {{.*}}@"case_callee{{.*}}<index> 1
-    # CHECK:       lit.call {{.*}}@"case_callee{{.*}}<index> 2
+    # CHECK-NEXT:  [[DISC:%.*]] = lit.call {{.*}}@"_get_enum_discriminant{{.*}}(%opt)
+    # CHECK-NEXT:  [[TAG:%.*]] = kgen.rebind [[DISC]]
+    # CHECK-NEXT:  [[SOME:%.*]] = kgen.param.constant: !Int = <{:scalar<index> 1}>
+    # CHECK-NEXT:  [[IS_SOME:%.*]] = lit.call {{.*}}@"__eq__({{.*}}([[TAG]], [[SOME]])
+    # CHECK-NEXT:  [[SOME_COND:%.*]] = lit.call {{.*}}@"__mlir_bool__(::Bool)"([[IS_SOME]])
+    # CHECK-NEXT:  hlcf.if [[SOME_COND]] {
+    # CHECK-NEXT:    [[PAYLOAD:%.*]] = lit.call {{.*}}@"_unsafe_get_enum_payload{{.*}}(%opt)
+    # CHECK-NEXT:    [[VALUE:%.*]] = lit.ref.load [[PAYLOAD]]
+    # CHECK-NEXT:    [[ZERO:%.*]] = kgen.param.constant: !Int = <{:scalar<index> 0}>
+    # CHECK-NEXT:    [[IS_ZERO:%.*]] = lit.call {{.*}}@"__eq__({{.*}}([[VALUE]], [[ZERO]])
+    # CHECK-NEXT:    [[ZERO_COND:%.*]] = lit.call {{.*}}@"__mlir_bool__(::Bool)"([[IS_ZERO]])
+    # CHECK-NEXT:    hlcf.if [[ZERO_COND]] {
+    # CHECK-NEXT:      lit.call {{.*}}@"case_callee{{.*}}<index> 0
+    # CHECK-NEXT:      hlcf.yield
+    # CHECK-NEXT:    } else {
+    # CHECK-NEXT:      [[N:%.*]] = lit.var.decl "n" ref
+    # CHECK-NEXT:      lit.ref.store [[PAYLOAD]], [[N]]
+    # CHECK-NEXT:      lit.call {{.*}}@"case_callee{{.*}}<index> 1
+    # CHECK-NEXT:      hlcf.yield
+    # CHECK-NEXT:    }
+    # CHECK-NEXT:    hlcf.yield
+    # CHECK-NEXT:  } else {
+    # CHECK-NEXT:    lit.call {{.*}}@"case_callee{{.*}}<index> 2
+    # CHECK-NEXT:    hlcf.yield
+    # CHECK-NEXT:  }
     __match opt:
     case .Some(0):
         case_callee[0]()
     case .Some(n):
-        _ = n
         case_callee[1]()
     case .None:
         case_callee[2]()
@@ -954,15 +972,11 @@ def testMatchLadder(x: Bool, y: Tuple[Bool, Int]):
     # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 0
     # CHECK:         hlcf.yield
     # CHECK:       } else {
-    # CHECK:         hlcf.match {
-    # CHECK:           lit.call {{.*}}@"__getitem_param__{{.*}}(%y)
-    # CHECK:           [[Y_ELT:%.*]] = lit.var.decl "y_elt" ref
-    # CHECK:           lit.ref.store {{.*}}, [[Y_ELT]]
-    # CHECK:           lit.call {{.*}}@"case_callee{{.*}}<index> 1
-    # CHECK:           hlcf.match.complete
-    # CHECK:         } else {
-    # CHECK:           hlcf.unreachable
-    # CHECK:         }
+    # CHECK-NOT:     hlcf.match {
+    # CHECK:         lit.call {{.*}}@"__getitem_param__{{.*}}(%y)
+    # CHECK:         [[Y_ELT:%.*]] = lit.var.decl "y_elt" ref
+    # CHECK:         lit.ref.store {{.*}}, [[Y_ELT]]
+    # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 1
     # CHECK:         hlcf.yield
     # CHECK:       }
     __match y:
