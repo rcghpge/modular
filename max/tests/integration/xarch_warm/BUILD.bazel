@@ -1,15 +1,17 @@
 load("//bazel:api.bzl", "modular_py_binary", "modular_py_library", "modular_py_test", "requirement")
 load(":interp_cache.bzl", "compose_warm_cache", "warm_interp_cache")
 
-# oss/max-llm-book (test_gpt2_accel) force-loads this warm cache (MXF-533), so it
-# needs visibility here. This local directive extends the inherited //max/tests
-# default so gazelle (run by `//:format`) keeps the extra entry below instead of
-# regenerating it back to the parent directive's list.
-# gazelle:default_visibility //max/tests:__subpackages__,//:__pkg__,//oss/modular/max/tests:__subpackages__,//oss/max-llm-book:__subpackages__,//utils/benchmarking/kepler:__pkg__
+# oss/max-llm-book (test_gpt2_accel) and //max_private's eager suites force-load
+# this warm cache (MXF-533), so they need visibility here. This local directive
+# extends the inherited //max/tests default so gazelle (run by `//:format`)
+# keeps the extra entries below instead of regenerating them back to the parent
+# directive's list.
+# gazelle:default_visibility //max/tests:__subpackages__,//:__pkg__,//oss/modular/max/tests:__subpackages__,//oss/max-llm-book:__subpackages__,//max_private:__subpackages__,//utils/benchmarking/kepler:__pkg__
 
 package(default_visibility = [
     "//:__pkg__",
     "//max/tests:__subpackages__",
+    "//max_private:__subpackages__",
     "//oss/max-llm-book:__subpackages__",
     "//oss/modular/max/tests:__subpackages__",
     "//utils/benchmarking/kepler:__pkg__",
