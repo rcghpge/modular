@@ -41,7 +41,7 @@ void outlineForeach(IterForeachOp foreachOp) {
     opaque.setFusionInfoAttr(fusionInfo);
   opaque.setHasReadEffect(foreachOp.getHasReadEffect());
   opaque.setHasWriteEffect(foreachOp.getHasWriteEffect());
-  opaque.setIsAsync(foreachOp.getIsAsync());
+  opaque.setDispatch(foreachOp.getDispatch());
 
   // Chains get no block arg; the non-chain inputs and outputs are exactly the
   // `map.iter.foreach.body`'s captures.

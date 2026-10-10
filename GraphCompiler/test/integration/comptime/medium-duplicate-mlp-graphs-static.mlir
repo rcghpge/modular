@@ -2,7 +2,7 @@
 
 // Compile-time sniff test: two separate mo.graphs (matmul + broadcast
 // bias-add + relu) with identical shapes. Kernel-stub dedup
-// (MergeIdenticalKernelStubs) runs on the whole module, not per-graph, so
+// (MergeIdenticalFuncs) runs on the whole module, not per-graph, so
 // this is the "dedup across mo.graph ops" case -- both graphs' kernels are
 // expected to collapse onto shared ones. Static shapes throughout -- see
 // `medium-duplicate-mlp-graphs-dynamic.mlir` for the dynamic-leading-dim

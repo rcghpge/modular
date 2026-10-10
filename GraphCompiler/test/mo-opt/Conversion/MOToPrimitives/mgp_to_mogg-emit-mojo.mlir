@@ -23,20 +23,20 @@ mgp.model @basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.op
 // CHECK-LABEL: mgp.model @basic
 
 // In emit-mojo mode, index.constant is lowered to a buffer constant loaded at runtime
-// CHECK: mogg.generic.compiled.region () : () -> index {
+// CHECK: mogg.routine.async () : () -> index {
 // CHECK: mgp.buffer.constant
 // CHECK: mgp.buffer.to_index
 // CHECK: mogg.async.pack
 // CHECK: mogg.output
 
-// CHECK: mogg.generic.compiled.region () : () -> index {
+// CHECK: mogg.routine.async () : () -> index {
 // CHECK: mgp.buffer.constant
 // CHECK: mgp.buffer.to_index
 // CHECK: mogg.async.pack
 // CHECK: mogg.output
 
 // index.add stays inline with async unpack/pack wrapping
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mogg.async.unpack
 // CHECK: mogg.async.unpack
 // CHECK: index.add
@@ -68,7 +68,7 @@ mgp.model @buffer_borrow : mof devices [#M.device_ref<"cpu", 0>] init (%weights:
 // and is wrapped with async unpack/pack operations. Every buffer/tensor value
 // carries its own storage handle, so the output is packed with the uniform
 // owned pack (no borrow/lifetime-extension plumbing).
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mogg.async.unpack
 // CHECK: mogg.async.unpack
 // CHECK: mogg.async.unpack

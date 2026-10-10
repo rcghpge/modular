@@ -52,7 +52,7 @@ def MGP_ResourceConstantOp : MGP_Op<"resource.constant", [
   let summary = "Retrieves a pointer to the corresponding constant resources";
   let description = [{
     Retrieves a pointer to the constant resources attached to the parent
-    `mogg.kernel.stub`. Kernels differing only in constant values still merge
+    `mogg.func`. Kernels differing only in constant values still merge
     when the index matches, which speeds up compilation.
   }];
 

@@ -31,8 +31,10 @@ def MAPDialect : Dialect {
   }];
 
   let cppNamespace = "::M::MAP";
+  // MOGG owns attributes MAP ops carry, such as `dispatch` and `fusionInfo`.
   let dependentDialects = [
     "::M::MO::MODialect",
+    "::M::MOGG::MOGGDialect",
   ];
 
   let useDefaultTypePrinterParser = 1;

@@ -1,11 +1,11 @@
-// RUN: mo-opt %s --mogg-import-packages --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-generic-compiled-regions-to-functions --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mgp-lower-primitives --mogg-sequence-fusion --mogg-outline-async-routines --mogg-add-try-except-blocks --canonicalize --mogg-emit-mojo --mogg-dump-mojo 2>&1 | FileCheck %s
 
 // Test that when ops with different source note metadata (FusedLoc) are
 // sequence-fused, the outer MGP region wraps errors with the region name.
 // See GEX-2678.
 //
 // After --mgp-lower-primitives, each mgp.assert becomes a
-// GenericCompiledRegionOp with the op's FusedLoc metadata.
+// AsyncRoutineOp with the op's FusedLoc metadata.
 // --mogg-sequence-fusion merges adjacent regions into one kernel.
 // The resulting outer-level stub uses AsyncErrorOp to wrap the error with the
 // region name via mogg_format_region_error.

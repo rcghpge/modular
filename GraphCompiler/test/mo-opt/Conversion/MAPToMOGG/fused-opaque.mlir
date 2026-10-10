@@ -15,7 +15,7 @@
 
 // One fused output.
 // CHECK-LABEL: mo.graph @one_fused
-// CHECK: mogg.kernel (%{{.*}} : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK: mogg.routine (%{{.*}} : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 // CHECK: context (%[[CTX:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK: %[[OT:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK: %[[ESH:.*]] = mogg.shape.create()
@@ -47,7 +47,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 // arg number is offset by the two leading input block args, so this exercises
 // that the capture still resolves to the right (only) output tensor.
 // CHECK-LABEL: mo.graph @two_inputs_one_fused
-// CHECK: mogg.kernel (%{{.*}}, %{{.*}} : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK: mogg.routine (%{{.*}}, %{{.*}} : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 // CHECK: %[[OT:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK: %[[ESH:.*]] = mogg.shape.create()
 // CHECK: %[[EPI:.*]] = mogg.tensor.create.epilogue %[[ESH]] ({{[^)]*}}) capturing {%{{[^ ]+}} = %[[OT]] : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {

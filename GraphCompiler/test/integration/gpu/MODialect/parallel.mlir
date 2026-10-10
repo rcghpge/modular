@@ -48,14 +48,14 @@ mo.graph @parallel_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3], si3
 // CHECK: 'parallel_gpu_neg_relu' returned tensor<3xsi32> [0, 2, 0]
 // CHECK: , tensor<3xsi32> [9, 0, 7]
 
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready

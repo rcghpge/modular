@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg | FileCheck %s
 
 // CHECK-LABEL: mo.graph @add_with_index
-// CHECK: mogg.kernel (%{{.*}} : !mo.tensor<[8], si32>) -> !mo.tensor<[8], si32>
+// CHECK: mogg.routine (%{{.*}} : !mo.tensor<[8], si32>) -> !mo.tensor<[8], si32>
 // CHECK-NEXT: inputs ([[IP:%[^ :,]+]])
 // CHECK-NEXT: outputs ([[OP:%[^ :,]+]])
 // CHECK-NEXT: context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {

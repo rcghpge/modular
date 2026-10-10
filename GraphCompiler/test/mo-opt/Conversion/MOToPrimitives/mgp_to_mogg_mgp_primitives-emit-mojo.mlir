@@ -3,7 +3,7 @@
 //--- Test lowering of MGP
 
 // CHECK-LABEL: mgp.model @mgp_assert
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.assert
 // CHECK: mogg.output
 mgp.model @mgp_assert : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
@@ -19,7 +19,7 @@ mgp.model @mgp_assert : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !m
 }
 
 // CHECK-LABEL: mgp.model @mgp_alloc_cpu
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.buffer.alloc
 // CHECK: mogg.output
 mgp.model @mgp_alloc_cpu : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
@@ -34,7 +34,7 @@ mgp.model @mgp_alloc_cpu : mof devices [#M.device_ref<"cpu", 0>] init (%weights:
 }
 
 // CHECK-LABEL: mgp.model @mgp_tensor_spec_create_static
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.tensor_spec.create
 // CHECK: mogg.output
 mgp.model @mgp_tensor_spec_create_static : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
@@ -48,7 +48,7 @@ mgp.model @mgp_tensor_spec_create_static : mof devices [#M.device_ref<"cpu", 0>]
 }
 
 // CHECK-LABEL: mgp.model @mgp_tensor_spec_create_dynamic
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.tensor_spec.create
 // CHECK: mogg.output
 mgp.model @mgp_tensor_spec_create_dynamic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
@@ -75,10 +75,9 @@ mgp.model @mgp_device_profile : mof devices [#M.device_ref<"cpu", 0>, #M.device_
 }
 
 // CHECK-LABEL: mgp.model @mgp_buffer_to_bool
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async (
 // CHECK: mgp.buffer.to_bool
 // CHECK: mogg.output
-// CHECK: isAsync = false
 mgp.model @mgp_buffer_to_bool : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2
@@ -91,7 +90,7 @@ mgp.model @mgp_buffer_to_bool : mof devices [#M.device_ref<"cpu", 0>] init (%wei
 }
 
 // CHECK-LABEL: mgp.model @buffer_concat
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.buffer.concat
 // CHECK-NEXT: mogg.async.ready
 // CHECK: mogg.output
@@ -108,7 +107,7 @@ mgp.model @buffer_concat : mof devices [#M.device_ref<"cpu", 0>] init (%weights:
 }
 
 // CHECK-LABEL: mgp.model @mgp_device_to_host
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.buffer.device_to_host
 // CHECK-NEXT: mogg.async.ready
 // CHECK: mogg.output
@@ -126,7 +125,7 @@ mgp.model @mgp_device_to_host : mof devices [#M.device_ref<"cpu", 0>, #M.device_
 }
 
 // CHECK-LABEL: mgp.model @mgp_device_to_device
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.buffer.device_to_device
 // CHECK-NEXT: mogg.async.ready
 // CHECK: mogg.output
@@ -144,7 +143,7 @@ mgp.model @mgp_device_to_device : mof devices [#M.device_ref<"cpu", 0>, #M.devic
 }
 
 // CHECK-LABEL: mgp.model @mgp_host_to_device
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
 // CHECK: mgp.buffer.host_to_device
 // CHECK-NEXT: mogg.async.ready
 // CHECK: mogg.output
@@ -163,12 +162,12 @@ mgp.model @mgp_host_to_device : mof devices [#M.device_ref<"cpu", 0>, #M.device_
 }
 
 
+// An event sync runs as its own task.
 // CHECK-LABEL: mgp.model @mgp_sync
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async dispatch(deferred)
 // CHECK: mgp.sync
 // CHECK-NEXT: %[[OUT:.*]] = mogg.async.ready
 // CHECK: mogg.output %[[OUT]] : !mef.chain
-// CHECK: isAsync = true
 mgp.model @mgp_sync : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %gpu: !mgp.device_context<<"gpu", 0>>) {
   %ch0 = grt.chain.create ()
   %ctx = mgp.context.create 2

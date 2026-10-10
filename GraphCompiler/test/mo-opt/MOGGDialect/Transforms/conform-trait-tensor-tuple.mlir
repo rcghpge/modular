@@ -9,7 +9,7 @@
 // RUN:   --map-outline-structured-kernel-bodies \
 // RUN:   --canonicalize --cse --map-to-mogg \
 // RUN:   --mogg-conform-call-operands \
-// RUN:   --mogg-outline-kernels-into-functions --mogg-to-mgp --mogg-emit-mojo \
+// RUN:   --mogg-outline-routines --mogg-to-mgp --mogg-emit-mojo \
 // RUN:   -verify-each=false -o /dev/null
 // RUN: cat %t/*.mojo | FileCheck %s --check-prefix=MOJO
 

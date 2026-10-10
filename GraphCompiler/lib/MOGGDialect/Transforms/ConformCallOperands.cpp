@@ -183,11 +183,11 @@ packAgainstSignature(Operation *call, const KernelDeclFunctionAdaptor &fn,
   return packed;
 }
 
-// The enclosing `mogg.kernel`'s execution device, which `mogg.trait.create`
+// The enclosing `mogg.routine`'s execution device, which `mogg.trait.create`
 // needs at emit to pick alignment and device-passable flavor, as
 // `mogg.tensor.create` does.
 static M::DeviceRefAttr enclosingKernelDevice(Operation *call) {
-  if (auto kernel = call->getParentOfType<KernelOp>())
+  if (auto kernel = call->getParentOfType<RoutineOp>())
     return MO::getDeviceOrDefault(kernel);
   return {};
 }

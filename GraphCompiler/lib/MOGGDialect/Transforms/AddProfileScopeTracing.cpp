@@ -30,10 +30,9 @@ struct AddProfileScopeTracing
 
   /// Synthesize profiler ranges from contiguous ops sharing the
   /// same profile scope.
-  void addProfileScopeTracing(MOGG::KernelStubOp kernelOp,
-                              bool traceUnlabelled) {
+  void addProfileScopeTracing(MOGG::FuncOp kernelOp, bool traceUnlabelled) {
     // Use the kernel op locations since MergeIdenticalKernel fuses
-    // a single location into KernelStubOp.
+    // a single location into FuncOp.
     auto kernelScopeLayers = collectProfileScopeLayers(kernelOp->getLoc());
     if (kernelScopeLayers.size() > 1) {
       llvm::SetVector<ProfileScopeLayer> observedLayers;
@@ -143,7 +142,7 @@ struct AddProfileScopeTracing
   /// Heuristic excluding host-side bookkeeping (buffer lookups, tensor-view
   /// construction, shape math) from traced ranges.
   static bool opDoesSignificantWork(Operation *op) {
-    return isa<StubCallOpInterface, M::MGP::MGPHasDeviceOpInterface>(op);
+    return isa<FuncCallOpInterface, M::MGP::MGPHasDeviceOpInterface>(op);
   }
 
   /// Group adjacent single-layer entries of `leafLayerSets` that share the

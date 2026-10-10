@@ -48,27 +48,27 @@ static bool allUsesAreCachedBufferSlot(mlir::index::ConstantOp constOp) {
 } // namespace
 
 // GEX-3685: Lift `index.constant` ops feeding `mgp.buffer.get_cached` slot
-// operands to kernel-stub arguments, materialized at each `ExecuteCompiledOp`
+// operands to kernel-stub arguments, materialized at each `CompiledCallOp`
 // caller, so kernels differing only in the slot index become identical and
-// `MergeIdenticalKernelStubs` collapses them (e.g. a 537-line near-duplicate
+// `MergeIdenticalFuncs` collapses them (e.g. a 537-line near-duplicate
 // pair in gemma-4 vision).
 //
 // Only MGP-ABI kernel bodies contain `get_cached` (cf.
-// `RaiseBackIndexConstant`), and their only caller op is `ExecuteCompiledOp`:
-// `CallStubOp` / `CallStubAsyncOp` target MOGG-ABI kernels only (enforced by
-// `CallStubOp::verifySymbolUses`).
+// `RaiseBackIndexConstant`), and their only caller op is `CompiledCallOp`:
+// `CallOp` / `CallAsyncOp` target MOGG-ABI kernels only (enforced by
+// `CallOp::verifySymbolUses`).
 void liftBufferCacheSlots(mlir::ModuleOp moduleOp) {
   mlir::MLIRContext *ctx = moduleOp.getContext();
   mlir::Type indexType = mlir::IndexType::get(ctx);
 
-  // Symbol name -> ExecuteCompiledOp callers.
+  // Symbol name -> CompiledCallOp callers.
   llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<mlir::Operation *, 4>>
       callersByName;
-  moduleOp.walk([&](MOGG::ExecuteCompiledOp exec) {
+  moduleOp.walk([&](MOGG::CompiledCallOp exec) {
     callersByName[exec.getCalleeSymbolAttr().getAttr()].push_back(exec);
   });
 
-  for (auto kernel : moduleOp.getOps<MOGG::KernelStubOp>()) {
+  for (auto kernel : moduleOp.getOps<MOGG::FuncOp>()) {
     if (kernel.getAbi() != MOGG::ABIKind::MGP)
       continue;
     mlir::Block &body = kernel.getBodyBlock();
@@ -179,7 +179,7 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     state.builder.newline();
 
     for (auto &&kernelStub : llvm::make_early_inc_range(
-             moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
+             moduleOp.getBodyRegion().getOps<MOGG::FuncOp>())) {
       if (kernelStub.emitMojo(state).failed()) {
         signalPassFailure();
         return;
@@ -239,10 +239,10 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
     }
 
     // For each model, add a reference to the Mojo symbols in
-    // LoadCompiledKernelOp.
+    // CompiledLoadOp.
     for (auto modelOp : moduleOp.getOps<MGP::ModelOp>()) {
       llvm::SetVector<StringRef> kernelsToLoadInThisModel;
-      modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
+      modelOp.walk([&](MOGG::CompiledCallOp callOp) {
         kernelsToLoadInThisModel.insert(callOp.getCalleeSymbol());
       });
 
@@ -251,18 +251,18 @@ struct EmitMojo : public impl::EmitMojoBase<EmitMojo> {
 
       builder.setInsertionPointToStart(modelOp.getInitBlock());
       /// TODO: Add debug info support. For now, defaults to false.
-      MOGG::LoadCompiledKernelOp::create(
-          builder, loc,
-          builder.getArrayAttr(llvm::map_to_vector(
-              kernelsToLoadInThisModel,
-              [&](auto name) {
-                return cast<Attribute>(StringAttr::get(ctx, name));
-              })),
-          mojoTextAttr, /*debug*/ false);
+      MOGG::CompiledLoadOp::create(builder, loc,
+                                   builder.getArrayAttr(llvm::map_to_vector(
+                                       kernelsToLoadInThisModel,
+                                       [&](auto name) {
+                                         return cast<Attribute>(
+                                             StringAttr::get(ctx, name));
+                                       })),
+                                   mojoTextAttr, /*debug*/ false);
     }
 
     for (auto &&kernelStub : llvm::make_early_inc_range(
-             moduleOp.getBodyRegion().getOps<MOGG::KernelStubOp>())) {
+             moduleOp.getBodyRegion().getOps<MOGG::FuncOp>())) {
       kernelStub->erase();
     }
 

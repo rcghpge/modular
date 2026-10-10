@@ -53,14 +53,14 @@ mo.graph @parallel_matmul_relu() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2],
 // CHECK: , tensor<2x2xf32>
 // CHECK-SAME: [0.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00, 0.{{0*}}e+00]
 
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready

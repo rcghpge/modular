@@ -29,13 +29,13 @@ def SimplifyExtendLifetimesPass : Pass<"mgp-simplify-extend-lifetimes", "MGP::Mo
   let description = [{
     Given:
     ```mlir
-      %ch1 = mogg.generic.compiled.region(...) -> !mef.chain
+      %ch1 = mogg.routine.async(...) -> !mef.chain
       %ch2 = mgp.extend.lifetime %ch1, %t1, ... %tn
       op(%ch2)
     ```
     We can fuse these into simply:
     ```mlir
-      %ch1 = mogg.generic.compiled.region(..., %t1, ... %tn) -> !mef.chain
+      %ch1 = mogg.routine.async(..., %t1, ... %tn) -> !mef.chain
       op(%ch1)
     ```
     Provided they are not then removed for being unused. So we must run this pass last.
@@ -648,7 +648,7 @@ def StageDeviceGraphsPass :
                 "`mgp.device_graph.staging` op.";
   let description = [{
     Part of device-graph synthesis. For each `mgp.model` marked `isDeviceGraph`,
-    moves every `mogg.generic.compiled.region` in the execute block into a single
+    moves every `mogg.routine.async` in the execute block into a single
     `mgp.device_graph.staging` op. The regions' free values become the op's
     inputs (entering the body as `!mogg.async<T>` block args, unpacked inside),
     and values produced inside but consumed outside become the op's results
@@ -704,7 +704,7 @@ def ComputeDeviceGraphDependenciesPass :
   let description = [{
     Part of device-graph synthesis; runs after `mgp-stage-device-graphs`. For
     each `mgp.model` marked `isDeviceGraph`, converts every
-    `mogg.generic.compiled.region` inside the model's `mgp.device_graph.staging`
+    `mogg.routine.async` inside the model's `mgp.device_graph.staging`
     op into a `mgp.device_graph.dependencies` op: the region body moves in and
     references enclosing SSA directly (the dataflow boundary dissolves, with
     `mogg.async.pack` / `mogg.async.unpack` inserted to keep the verbatim body's
@@ -763,10 +763,10 @@ def GenerateBuildGraphStubsPass :
     Part of device-graph synthesis; runs after
     `mgp-compute-device-graph-dependencies`. Runs on the module so it can add
     module-scope recording stubs. For each `mgp.model` marked
-    `isDeviceGraph`, finds every `mogg.call.stub @stub_N` inside the
+    `isDeviceGraph`, finds every `mogg.call @stub_N` inside the
     `mgp.device_graph.staging` op of the model's execute block and, for each
     distinct callee, generates a sibling recording stub `@stub_N_build_graph`.
-    The sibling is an ordinary `mogg.kernel.stub` whose producer dispatch records
+    The sibling is an ordinary `mogg.func` whose producer dispatch records
     into a `!mgp.device_graph.builder` (via `mogg.call.build_graph`) instead of
     dispatching (`mogg.call.execute`), and which yields an
     `!mgp.device_graph.node` handle. The staged call is then retargeted to invoke
@@ -812,7 +812,7 @@ def FinalizeDeviceGraphsPass :
     For models without `isDeviceGraph`, the pass is a no-op.
   }];
 
-  // The pass wraps `mgp.device_graph.create` in a `mogg.generic.compiled.region`
+  // The pass wraps `mgp.device_graph.create` in a `mogg.routine.async`
   // (MOGG ops/attrs) carrying a `KGEN::ParamDeclArrayAttr`, so those dialects
   // must be loaded even for inputs that don't already reference them.
   let dependentDialects = ["M::MOGG::MOGGDialect", "M::KGEN::KGENDialect"];

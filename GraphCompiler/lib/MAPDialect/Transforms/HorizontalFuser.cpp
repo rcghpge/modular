@@ -371,15 +371,19 @@ void fuse(IterForeachOp a, IterForeachOp b) {
   MLIRContext *ctx = a.getContext();
   Location loc = mlir::FusedLoc::get(ctx, {a.getLoc(), b.getLoc()});
   OpBuilder builder(b);
-  // Async if either member is, as input fusion combines the launch policy.
-  auto fused =
-      IterForeachOp::create(builder, loc, resultTypes, a.getShapeAttr(), inputs,
-                            /*chain=*/Value(),
-                            /*fusionInfo=*/
-                            MOGG::createFusionInfo<MOGG::FusionHorizontalAttr>(
-                                ctx, {a.getOperation(), b.getOperation()}),
-                            /*hasReadEffect=*/false, /*hasWriteEffect=*/false,
-                            /*isAsync=*/a.getIsAsync() || b.getIsAsync());
+  // Deferred if either member is, as input fusion combines the launch policy.
+  auto fused = IterForeachOp::create(
+      builder, loc, resultTypes, a.getShapeAttr(), inputs,
+      /*chain=*/Value(),
+      /*fusionInfo=*/
+      MOGG::createFusionInfo<MOGG::FusionHorizontalAttr>(
+          ctx, {a.getOperation(), b.getOperation()}),
+      /*hasReadEffect=*/false, /*hasWriteEffect=*/false,
+      /*dispatch=*/
+      a.getDispatch() == MOGG::DispatchKind::Deferred ||
+              b.getDispatch() == MOGG::DispatchKind::Deferred
+          ? MOGG::DispatchKind::Deferred
+          : MOGG::DispatchKind::Immediate);
 
   // `device` and friends are discardable, so `create` does not carry them.
   // The pair shares its device; on any other clash `a`'s attribute wins.

@@ -60,16 +60,15 @@ FusionInfoAttr createFusionInfo(MLIRContext *ctx, ArrayRef<Operation *> ops,
 
 /// Fuses topologically-sorted GenericCompiledRegionOps into one region and
 /// replaces uses of their results. The caller must erase the old regions.
-GenericCompiledRegionOp
-fuseAndReplaceCompiledRegions(bool allowDuplication,
-                              ArrayRef<Operation *> toFuse);
+AsyncRoutineOp fuseAndReplaceCompiledRegions(bool allowDuplication,
+                                             ArrayRef<Operation *> toFuse);
 
 /// Intercepts inlining of an operation; returns true if handled. Arguments are
 /// the builder, the IRMapping to look up/update, the op, its source region,
 /// and the destination region.
-using fuseRegionInlineCallBackT = llvm::function_ref<bool(
-    OpBuilder &, mlir::IRMapping &, Operation *, MOGG::GenericCompiledRegionOp,
-    MOGG::GenericCompiledRegionOp)>;
+using fuseRegionInlineCallBackT =
+    llvm::function_ref<bool(OpBuilder &, mlir::IRMapping &, Operation *,
+                            MOGG::AsyncRoutineOp, MOGG::AsyncRoutineOp)>;
 
 // Aliased constants (MAXPLAT-70) are not lifted to init, so optimizations that
 // rely on that lifting skip them.

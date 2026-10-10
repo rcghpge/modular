@@ -18,7 +18,7 @@ unnecessary recompilation when possible:
   entirely avoid the MO->MEF compilation process.
 
 - **The MOGG cache**: sits between the Graph Compiler and the most of the Mojo
-  compiler. This cache maps `mogg.generic.compiled.region` operations to
+  compiler. This cache maps `mogg.routine.async` operations to
   executable code. The MOGG cache is implemented inside the `JitCompileKernels`
   transform and functions as a thin layer over the Mojo cache. Entries in the
   MOGG cache actually point to the compilation artifacts that live in the Mojo

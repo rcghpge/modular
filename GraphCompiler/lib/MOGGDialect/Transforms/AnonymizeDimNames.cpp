@@ -24,7 +24,7 @@ namespace {
 
 // Drops the param-decl-ref name from every `!mogg.dim<name>` block arg of
 // `stub` (and its function signature). Idempotent.
-void stripStubDimNames(MOGG::KernelStubOp stub) {
+void stripStubDimNames(MOGG::FuncOp stub) {
   MLIRContext *ctx = stub.getContext();
   SmallVector<Type> argTypes;
   bool changed = false;
@@ -49,8 +49,8 @@ struct AnonymizeDimNamesPass
   using AnonymizeDimNamesBase::AnonymizeDimNamesBase;
 
   void runOnOperation() override {
-    auto stubsRange = getOperation().getOps<MOGG::KernelStubOp>();
-    SmallVector<MOGG::KernelStubOp> stubs(stubsRange.begin(), stubsRange.end());
+    auto stubsRange = getOperation().getOps<MOGG::FuncOp>();
+    SmallVector<MOGG::FuncOp> stubs(stubsRange.begin(), stubsRange.end());
     mlir::parallelForEach(&getContext(), stubs, stripStubDimNames);
   }
 };

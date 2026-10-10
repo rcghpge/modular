@@ -75,7 +75,7 @@ struct EmitMojoState {
   /// One-per-module import of the `Tensor`, `DenseTensor`, `TileTensorable`
   /// marker traits, used as shape-function stub parameter bounds.
   bool emittedTraitMarkerImports = false;
-  /// The `mogg.generic.compiled.region` return values, set by ops feeding
+  /// The `mogg.routine.async` return values, set by ops feeding
   /// `mogg.output` (e.g. AsyncReadyOp or AsyncPack*).
   SmallVector<MojoValue> mojoReturnValues;
   /// Dense resources, passed in the void** input after inputs and outputs.
@@ -87,7 +87,7 @@ struct EmitMojoState {
   /// compiler misjudges lifetimes (mostly lambdas, until the new closures).
   SmallVector<MojoValue> keepAliveValues;
 
-  /// Emitted Mojo names per TaskHandle, from CallStubAsyncOp to AsyncJoinOp.
+  /// Emitted Mojo names per TaskHandle, from CallAsyncOp to AsyncJoinOp.
   struct TaskHandleInfo {
     MojoValue task;  // The Task variable from create_task()
     MojoValue error; // The Optional[Error] variable

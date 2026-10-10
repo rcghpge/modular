@@ -118,7 +118,9 @@ std::pair<bool, bool> getReadWriteEffects(Operation *op) {
 
 template <typename OpT>
 void stampAsyncLaunch(OpT iterOp, Operation *srcOp) {
-  iterOp.setIsAsync(!MO::kernelRequiresSyncLaunch(srcOp));
+  iterOp.setDispatch(MO::kernelRequiresSyncLaunch(srcOp)
+                         ? MOGG::DispatchKind::Immediate
+                         : MOGG::DispatchKind::Deferred);
 }
 
 FailureOr<Operation *>

@@ -3,7 +3,7 @@
 // CHECK-LABEL: mgp.model @shape_func_consts
 
 // Cast and save the output dimension in init
-// CHECK-DAG: %[[DIMS:.*]]:2 = mogg.generic.compiled.region
+// CHECK-DAG: %[[DIMS:.*]]:2 = mogg.routine.async
 // CHECK-DAG: %[[DIM_S:.*]] = pop.cast_to_builtin %[[DIMS]]#1 : !kgen.scalar<si64> to si64
 // CHECK-DAG: %[[DIM_I:.*]] = index.casts %[[DIM_S]]
 // CHECK-DAG: mgp.int.cache {{.*}} %[[DIM_I]]

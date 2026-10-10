@@ -45,13 +45,13 @@ splitIfTooLarge(ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {
     }
 
     fusionSets.back().push_back(op);
-    setSize += cast<MOGG::GenericCompiledRegionOp>(op).getIsStructuredKernel();
+    setSize += cast<MOGG::AsyncRoutineOp>(op).getIsStructured();
   }
 
   return fusionSets;
 }
 
-// Sequence fuses a topologically sorted set of MOGG::GenericCompiledRegionOp.
+// Sequence fuses a topologically sorted set of MOGG::AsyncRoutineOp.
 template <bool allowDuplication>
 static void fuseCompiledRegionsAndReplaceUses(
     ArrayRef<Operation *> compiledRegionOpsToFuseTogether) {
@@ -61,18 +61,18 @@ static void fuseCompiledRegionsAndReplaceUses(
 }
 
 static inline bool isaGenericCompiledRegionOp(Operation *op) {
-  return isa<MOGG::GenericCompiledRegionOp>(op);
+  return isa<MOGG::AsyncRoutineOp>(op);
 }
 
 static inline bool isFusibleIntoOther(Operation *op) {
-  if (auto asRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(op))
+  if (auto asRegion = dyn_cast<MOGG::AsyncRoutineOp>(op))
     return asRegion.getCanFuseIntoOther();
 
   return false;
 }
 
 static llvm::SetVector<MGP::DeviceContextType>
-getUsedContexts(MOGG::GenericCompiledRegionOp kernel) {
+getUsedContexts(MOGG::AsyncRoutineOp kernel) {
   llvm::SetVector<MGP::DeviceContextType> devices;
   for (auto operandTy : kernel.getOperandTypes()) {
     if (auto ctx = dyn_cast<MGP::DeviceContextType>(operandTy))
@@ -86,8 +86,8 @@ getUsedContexts(MOGG::GenericCompiledRegionOp kernel) {
 /// buffers that are located on different devices (ex:
 /// mgp.buffer.device_to_device). These kernels should not be sequence fused
 /// (see GEX-2590).
-static bool useSameContexts(MOGG::GenericCompiledRegionOp lhs,
-                            MOGG::GenericCompiledRegionOp rhs) {
+static bool useSameContexts(MOGG::AsyncRoutineOp lhs,
+                            MOGG::AsyncRoutineOp rhs) {
   auto lhsContexts = getUsedContexts(lhs);
   auto rhsContexts = getUsedContexts(rhs);
   if (lhsContexts.empty() || rhsContexts.empty())
@@ -100,8 +100,8 @@ static bool useSameContexts(MOGG::GenericCompiledRegionOp lhs,
 // that duplicationFlag is the same as getCanDuplicate for the parent op.
 template <bool checkForDuplication, bool duplicationFlag = false>
 static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
-  auto parentRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(parent);
-  auto childRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(child);
+  auto parentRegion = dyn_cast<MOGG::AsyncRoutineOp>(parent);
+  auto childRegion = dyn_cast<MOGG::AsyncRoutineOp>(child);
 
   if (!parentRegion || !childRegion)
     return false;
@@ -124,7 +124,7 @@ static inline bool areCompatibleForFusion(Operation *parent, Operation *child) {
 }
 
 static inline bool isComputationallySignificant(Operation *op) {
-  if (auto asRegion = dyn_cast<MOGG::GenericCompiledRegionOp>(op))
+  if (auto asRegion = dyn_cast<MOGG::AsyncRoutineOp>(op))
     return !asRegion.getCanFuseIntoOther();
   return false;
 }

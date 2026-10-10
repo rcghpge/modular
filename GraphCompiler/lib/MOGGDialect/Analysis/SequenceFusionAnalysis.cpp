@@ -445,7 +445,7 @@ FusionSubGraphs sourceDestinationSequenceFusionAnalysis(
     CanDuplicate canDuplicate, uint64_t maximumFusionSetSize) {
   FusionSubGraphs subgraphs;
   region.walk([&](Block *block) {
-    if (isa<GenericCompiledRegionOp>(block->getParentOp()))
+    if (isa<AsyncRoutineOp>(block->getParentOp()))
       return;
 
     int64_t numOps = block->getOperations().size();

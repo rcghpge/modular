@@ -113,7 +113,7 @@ Value buildTensor(Location loc, Value ptr, Type tensorType, MO::IOKind io,
 
 } // namespace
 
-// mo.invoke_shape_func -> mogg.kernel wrapping a mogg.call.shape. Not
+// mo.invoke_shape_func -> mogg.routine wrapping a mogg.call.shape. Not
 // destination-passing: the shape leaves by value, and the dims it defines ride
 // in `outputParamDecls`.
 LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
@@ -141,7 +141,7 @@ LogicalResult lowerInvokeShapeFuncToMOGG(MO::InvokeShapeFuncOp shapeFuncOp,
   // Host-only.
   state.device = MO::getDeviceOrDefaultAny(op);
 
-  auto kernel = MOGG::KernelOp::create(
+  auto kernel = MOGG::RoutineOp::create(
       builder, loc, /*resultTypes=*/TypeRange{shapeResultType}, inputs,
       /*chain=*/Value(),
       MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)),
@@ -868,7 +868,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   bool hasOutputChain = getOutputChain() != nullptr;
 
   // Reconstructed tensors record only the device label; the full ref stays on
-  // the `mogg.kernel` for device-context resolution.
+  // the `mogg.routine` for device-context resolution.
   state.device = MO::getDeviceOrDefault(*this);
 
   // A fresh leaf only when absent (e.g. hand-written test IR).
@@ -879,14 +879,14 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
           : MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(*this));
 
   OpBuilder &builder = state.builder;
-  auto kernel = MOGG::KernelOp::create(builder, loc, resultTypes, inputs,
-                                       inputChain, fusionInfo);
+  auto kernel = MOGG::RoutineOp::create(builder, loc, resultTypes, inputs,
+                                        inputChain, fusionInfo);
   kernel.setDeviceRef(state.device);
   // Without these, a kernel whose only effect is a mutable store would be
   // dead.
   kernel.setHasReadEffect(getHasReadEffect());
   kernel.setHasWriteEffect(getHasWriteEffect());
-  kernel.setIsAsync(getIsAsync());
+  kernel.setDispatch(getDispatch());
 
   // Dims anywhere in the kernel, not just its I/O: e.g. the reduced axis of a
   // dynamic-perm transpose fused into a reduce exists only on the view.
@@ -923,7 +923,7 @@ LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   // op with CPU scalar operands like `pad`'s paddings).
   //
   // TODO(GEX-3701): label each context with its `DeviceRefAttr` instead of
-  // relying on creation order matching the order `lowerToCompiledRegion`
+  // relying on creation order matching the order `lowerToAsync`
   // re-derives -- any reordering of `getUniqueDevicesFromKernel` would silently
   // misassign devices.
   bool variadicContext = false;

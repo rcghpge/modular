@@ -16,7 +16,7 @@
 // 2D swap: out.dim[0] = in.dim[1], out.dim[1] = in.dim[0].
 
 // CHECK-LABEL: mo.graph @transposeSwap
-// CHECK:       [[KERNEL:%[^ ]+]] = mogg.kernel ({{.*}} : !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
+// CHECK:       [[KERNEL:%[^ ]+]] = mogg.routine {{(dispatch\([a-z]+\) )?}}({{.*}} : !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
 // CHECK-NEXT:  inputs ([[IP:%[^ :,]+]], [[PP:%[^ :,]+]])
 // CHECK-NEXT:  outputs ([[OP:%[^ :,]+]])
 // CHECK-NEXT:  context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {

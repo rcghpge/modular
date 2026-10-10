@@ -124,7 +124,7 @@ mo.graph @merge_launch_attrs_and_locs(
   %a = map.iter.foreach<[8]> inputs (%x: !mo.tensor<[8], f32>) outputs (%out: !mo.tensor<[8], f32>) index (%idx: !map.index<1>) -> !mo.tensor<[8], f32> {
     %v = map.load %x[%idx] : !mo.tensor<[8], f32>
     map.store %out[%idx] = %v : !mo.tensor<[8], f32>
-  } {isAsync = false} loc("a")
+  } {dispatch = #mogg.dispatch<immediate>} loc("a")
   %b = map.iter.foreach<[8]> inputs (%x: !mo.tensor<[8], f32>) outputs (%out: !mo.tensor<[8], f32>) index (%idx: !map.index<1>) -> !mo.tensor<[8], f32> {
     %v = map.load %x[%idx] : !mo.tensor<[8], f32>
     map.store %out[%idx] = %v : !mo.tensor<[8], f32>

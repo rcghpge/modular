@@ -18,7 +18,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_OUTLINEGENERICCOMPILEDREGIONSTOFUNCTIONS
+#define GEN_PASS_DEF_OUTLINEASYNCROUTINES
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 } // namespace M::MOGG
@@ -28,10 +28,9 @@ namespace M::MOGG {
 /// Returns `__<callees>_async`, joining the stubs the region calls in call
 /// order, or `__primitive_<number>_async` when it calls none. The suffix keeps
 /// a region that calls a single stub from taking that stub's name.
-static std::string getAsyncStubName(GenericCompiledRegionOp region,
-                                    uint64_t number) {
+static std::string getAsyncStubName(AsyncRoutineOp region, uint64_t number) {
   SmallVector<std::string> callees;
-  region.getBody().walk([&](StubCallOpInterface call) {
+  region.getBody().walk([&](FuncCallOpInterface call) {
     callees.push_back(call.getCalleeSymbol().getValue().ltrim('_').str());
   });
   std::string base = callees.empty()
@@ -42,11 +41,9 @@ static std::string getAsyncStubName(GenericCompiledRegionOp region,
 
 namespace {
 
-struct OutlineGenericCompiledRegionsToFunctions
-    : public MOGG::impl::OutlineGenericCompiledRegionsToFunctionsBase<
-          OutlineGenericCompiledRegionsToFunctions> {
-  using OutlineGenericCompiledRegionsToFunctionsBase::
-      OutlineGenericCompiledRegionsToFunctionsBase;
+struct OutlineAsyncRoutines
+    : public MOGG::impl::OutlineAsyncRoutinesBase<OutlineAsyncRoutines> {
+  using OutlineAsyncRoutinesBase::OutlineAsyncRoutinesBase;
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
@@ -62,7 +59,7 @@ struct OutlineGenericCompiledRegionsToFunctions
 
     uint64_t stubNumber = 0;
     moduleOp.walk<mlir::WalkOrder::PreOrder>(
-        [&](MOGG::GenericCompiledRegionOp kernelOp) {
+        [&](MOGG::AsyncRoutineOp kernelOp) {
           auto loc = kernelOp.getLoc();
           auto resultTypes = kernelOp->getResultTypes();
           // The MGP-ABI stub takes the region body verbatim, so the signature
@@ -74,7 +71,7 @@ struct OutlineGenericCompiledRegionsToFunctions
           auto stubName =
               StringAttr::get(ctx, getAsyncStubName(kernelOp, stubNumber++));
           // Synthesize a leaf FusionInfoAttr from the summary when the region
-          // has no fusionInfo, so KernelStubOp always carries one.
+          // has no fusionInfo, so FuncOp always carries one.
           FusionInfoAttr fusionInfo = kernelOp.getFusionInfoAttr();
           if (!fusionInfo) {
             StringAttr opName = stubName;
@@ -84,9 +81,9 @@ struct OutlineGenericCompiledRegionsToFunctions
                 ctx, FusionLeafAttr::get(ctx, opName, /*loc=*/{}, /*sig=*/{}));
           }
           DeviceRefAttr device = MO::getDeviceOrDefaultAny(kernelOp);
-          auto stubOp = MOGG::KernelStubOp::create(
+          auto stubOp = MOGG::FuncOp::create(
               builder, loc, stubName, functionType, fusionInfo,
-              kernelOp.getIsAsyncAttr(), kernelOp.getConstantResourcesAttr(),
+              kernelOp.getDispatchAttr(), kernelOp.getConstantResourcesAttr(),
               MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MGP),
               builder.getStringAttr(device.getLabel()), nullptr, nullptr);
           stubOp.getBody().takeBody(kernelOp.getBody());
@@ -96,7 +93,7 @@ struct OutlineGenericCompiledRegionsToFunctions
           stubName = symtab.insert(stubOp);
 
           builder.setInsertionPoint(kernelOp);
-          auto callOp = MOGG::ExecuteCompiledOp::create(
+          auto callOp = MOGG::CompiledCallOp::create(
               builder, stubOp->getLoc(),
               /*resultTypes=*/resultTypes,
               /*operands=*/kernelOp->getOperands(),
@@ -105,7 +102,7 @@ struct OutlineGenericCompiledRegionsToFunctions
               /*outputParamDecls=*/
               KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
               /*fusionInfo=*/stubOp.getFusionInfoAttr(),
-              /*isAsync=*/stubOp.getIsAsyncAttr(),
+              /*dispatch=*/stubOp.getDispatchAttr(),
               /*constantResources=*/stubOp.getConstantResources());
           callOp.setDeviceRef(device);
 

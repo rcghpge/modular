@@ -9,6 +9,7 @@
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MODialect/MOUtils.h"
+#include "GraphCompiler/MOGGDialect/MOGGDialect.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"

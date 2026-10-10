@@ -1,9 +1,9 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --mogg-outline-kernels-into-functions --mogg-wrap-kernels-with-trace-op | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --mogg-outline-routines --mogg-wrap-funcs-with-trace | FileCheck %s
 
 // A MAP ABI stub's body gets wrapped in mogg.with_trace. The terminator stays
 // outside and reads its results, so a value-returning stub keeps its return.
 
-// CHECK-LABEL: mogg.kernel.stub @__add
+// CHECK-LABEL: mogg.func @__add
 // CHECK:         mogg.with_trace {
 // CHECK:           mogg.call.foreach
 // CHECK:           mogg.yield

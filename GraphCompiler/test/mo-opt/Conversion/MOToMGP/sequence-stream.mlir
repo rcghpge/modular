@@ -16,7 +16,7 @@
 // The body reads the region's input on the side stream.
 // CHECK: mgp.tensor.extract.buffer %[[A:[a-z0-9]+]]
 // The main-stream relu runs on BASE and does not wait for the side stream.
-// CHECK: %[[MAIN:[0-9]+]] = mogg.generic.compiled.region ({{.*}}, %[[BASE]])
+// CHECK: %[[MAIN:[0-9]+]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}({{.*}}, %[[BASE]])
 // Join: the base stream waits on VIEW at the add, the first consumer of the
 // body's result, and the join waits for the add's other input first. The host
 // thus enqueues the main-stream relu before the wait.

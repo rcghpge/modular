@@ -12,7 +12,7 @@
 // Rank-preserving: in-shape dim 0 (size 1) broadcasts to 8.
 
 // CHECK-LABEL: mo.graph @broadcastSameRank
-// CHECK:       [[KERNEL:%[^ ]+]] = mogg.kernel ({{.*}} : !mo.tensor<[1, 64], f32>) -> !mo.tensor<[8, 64], f32>
+// CHECK:       [[KERNEL:%[^ ]+]] = mogg.routine ({{.*}} : !mo.tensor<[1, 64], f32>) -> !mo.tensor<[8, 64], f32>
 // CHECK-NEXT:  inputs ([[IP:%[^ :,]+]])
 // CHECK-NEXT:  outputs ([[OP:%[^ :,]+]])
 // CHECK-NEXT:  context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {

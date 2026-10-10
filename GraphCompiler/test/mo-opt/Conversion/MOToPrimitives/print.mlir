@@ -26,7 +26,7 @@ mo.graph @print(%arg0: !mo.tensor<[4, 5], f32>) {
 
 // CHECK-LABEL: mgp.model @print_chained
 
-// CHECK: %[[CHAIN:.*]] = mogg.generic.compiled.region
+// CHECK: %[[CHAIN:.*]] = mogg.routine.async
 // CHECK: %[[JOINED_CH:.*]] = grt.chain.create (%[[CHAIN]]
 // CHECK: gp.debug.tensor.print %[[JOINED_CH]]
 

@@ -45,7 +45,7 @@ mo.graph @transfer_dev01(%a : !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 // CHECK-LABEL: --- Running 'add_dev01':
 // CHECK: 'add_dev01' returned tensor({{\[}}[2.0000, 2.0000, 2.0000, 2.0000]], dtype=f32, shape=[4])
 // CHECK-IR-LABEL: mgp.model @add_dev01
-// CHECK-IR: [[CH_KERNEL:%[0-9]+]] = mogg.generic.compiled.region
+// CHECK-IR: [[CH_KERNEL:%[0-9]+]] = mogg.routine.async
 // CHECK-IR: [[CH_CREATE:%[0-9]+]] = grt.chain.create {{.*}}[[CH_KERNEL]]
 // CHECK-IR: [[BEFORE_WAIT:%[0-9]+]] = mgp.device_wait({{.*}}[[CH_CREATE]]{{.*}}) device <"gpu", 1>
 // CHECK-IR: [[D2D_CHAIN:%[0-9]+]] = mgp.buffer.device_to_device {{.*}}[[BEFORE_WAIT]]{{.*}}: !mgp.buffer<<"gpu", 0>> -> !mgp.buffer<<"gpu", 1>>

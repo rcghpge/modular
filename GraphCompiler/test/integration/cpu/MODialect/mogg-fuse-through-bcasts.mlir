@@ -5,7 +5,7 @@
 
 // Despite rebinds (some of which are not topo. order), still fuse the adds
 // CHECK-IR-LABEL: @fuse_through_rebinds
-// CHECK-IR-COUNT-1: mogg.kernel
+// CHECK-IR-COUNT-1: mogg.routine
 // CHECK-IR-COUNT-2: mogg.call "mo.add"
 mo.graph @fuse_through_rebinds<A, B, C>(
     %arg0: !mo.tensor<[A, 2, 3], f32>,

@@ -71,7 +71,7 @@ def MOGG_TaskHandle : MOGG_Type<"TaskHandle", "task_handle"> {
   let summary = "Handle to an asynchronously dispatched task";
   let description = [{
     A Mojo task from `create_task`, emitted as a `(Task, Optional[Error])`
-    pair. Produced by `mogg.call.stub.async`, consumed by `mogg.async.join`.
+    pair. Produced by `mogg.call.async`, consumed by `mogg.async.join`.
   }];
 }
 
@@ -86,7 +86,7 @@ def MOGG_Error : MOGG_Type<"Error", "error"> {
 def MOGG_Async : MOGG_Type<"Async", "async"> {
   let summary = "An asynchronous wrapper around a value type";
   let description = [{
-    Models an asynchronously computed value. `mogg.generic.compiled.region`
+    Models an asynchronously computed value. `mogg.routine.async`
     body arguments are `!mogg.async<T>` because they are handles that must be
     unpacked (`mogg.async.unpack`) before use; `mogg.async.pack` is the
     inverse.

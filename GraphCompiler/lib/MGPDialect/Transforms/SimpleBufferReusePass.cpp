@@ -96,7 +96,7 @@ public:
     markAnalysesPreserved<BufferLifetimeAnalysisPass>();
 
     modelOp->walk<mlir::WalkOrder::PreOrder>([&](Block *block) {
-      if (isa_and_present<MOGG::GenericCompiledRegionOp>(block->getParentOp()))
+      if (isa_and_present<MOGG::AsyncRoutineOp>(block->getParentOp()))
         return WalkResult::skip();
 
       DenseMap<ReuseKey, SmallVector<MGP::BufferAllocOp>> allocGroups;

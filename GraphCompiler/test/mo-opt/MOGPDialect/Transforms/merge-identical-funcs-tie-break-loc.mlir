@@ -1,4 +1,4 @@
-// RUN: mo-opt %s -mogg-merge-identical-kernel-stubs -mlir-print-debuginfo -mlir-print-local-scope 2>&1 | FileCheck %s
+// RUN: mo-opt %s -mogg-merge-identical-funcs -mlir-print-debuginfo -mlir-print-local-scope 2>&1 | FileCheck %s
 //
 // The -mlir-print-local-scope flag is important: without it the printer hoists
 // every location into `#locN` aliases at the end of the module, and a check
@@ -15,7 +15,7 @@
 // kernel body genuinely shared by two profile scopes would silently
 // report as belonging to only one of them.
 //
-// Trigger mechanics (mirrors merge-identical-kernel-stubs-mixed-bucket.mlir):
+// Trigger mechanics (mirrors merge-identical-funcs-mixed-bucket.mlir):
 //   * @z_dup is a leaf with no in-graph callers, so it enters uniqueFuncSet
 //     directly at level 1 (CallGraph::doRewrite's `node->callers.empty()`
 //     path) and becomes the insertion winner: the accumulator that ends up
@@ -32,26 +32,26 @@
 // original source notes -- proving the accumulated location moved over rather
 // than being silently dropped. Without the fix @a_dup keeps only its own
 // `fused<...site_a...>` location and there is no enclosing `fused[`.
-// CHECK-LABEL: mogg.kernel.stub @a_dup private
+// CHECK-LABEL: mogg.func @a_dup private
 // CHECK: loc(fused[fused<{{.*}}site_a{{.*}}>[{{.*}}], fused<{{.*}}site_z{{.*}}>[{{.*}}]])
 
 // The call site is rewritten to the tie-break winner, not the insertion
 // winner.
 // CHECK-LABEL: @caller
-// CHECK: mogg.call.stub @a_dup
+// CHECK: mogg.call @a_dup
 
-mogg.kernel.stub @z_dup private()
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"z_dup">>} {
+mogg.func @z_dup private dispatch(deferred)()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"z_dup">>} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 10, in site_z\n">["model.py":10:0])
 
-mogg.kernel.stub @a_dup private()
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"a_dup">>} {
+mogg.func @a_dup private dispatch(deferred)()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"a_dup">>} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 20, in site_a\n">["model.py":20:0])
 
-mogg.kernel.stub @caller private()
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"caller">>} {
-  mogg.call.stub @a_dup
+mogg.func @caller private dispatch(deferred)()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"caller">>} {
+  mogg.call @a_dup
   mogg.output
 }

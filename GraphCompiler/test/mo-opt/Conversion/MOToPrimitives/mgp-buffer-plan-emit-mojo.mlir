@@ -1,7 +1,7 @@
 // RUN: mo-opt -allow-unregistered-dialect --canonicalize --mgp-lower-primitives %s | FileCheck %s
 
 // Test that mgp.buffer.plan operation is properly lowered with emit-mojo enabled.
-// The operation should be wrapped in mogg.generic.compiled.region with async pack/unpack.
+// The operation should be wrapped in mogg.routine.async with async pack/unpack.
 
 // CHECK-LABEL: mgp.model @buffer_plan_basic
 mgp.model @buffer_plan_basic : mof devices [#M.device_ref<"cpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) {
@@ -9,8 +9,8 @@ mgp.model @buffer_plan_basic : mof devices [#M.device_ref<"cpu", 0>] init (%weig
   %ctx = mgp.context.create 2
   mef.output %ch0, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %size0: index, %size1: index, %size2: index) -> (!mef.chain, index, index, index, index) {
-  // The operation is lowered to mogg.generic.compiled.region with async unpack/pack
-  // CHECK: mogg.generic.compiled.region
+  // The operation is lowered to mogg.routine.async with async unpack/pack
+  // CHECK: mogg.routine.async
   // CHECK: mogg.async.unpack
   // CHECK: mogg.async.unpack
   // CHECK: mogg.async.unpack
@@ -43,7 +43,7 @@ mgp.model @buffer_plan_existing_static_with_constant : mof devices [#M.device_re
   // After canonicalization, the constant 512 is merged into staticSizes alongside
   // the pre-existing 256. Only the truly dynamic size remains as a runtime operand,
   // so there should be exactly one mogg.async.unpack.
-  // CHECK: mogg.generic.compiled.region
+  // CHECK: mogg.routine.async
   // CHECK: mogg.async.unpack
   // CHECK-NOT: mogg.async.unpack
   // CHECK: mgp.buffer.plan

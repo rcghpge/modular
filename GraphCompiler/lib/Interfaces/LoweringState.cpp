@@ -662,7 +662,7 @@ static void rewireAsyncConsumersToProjection(Value asyncValue,
   });
 }
 
-void MOGraphLoweringState::lowerMOGGABI(MOGG::GenericCompiledRegionOp kernel) {
+void MOGraphLoweringState::lowerMOGGABI(MOGG::AsyncRoutineOp kernel) {
   auto builder = OpBuilder::atBlockBegin(&kernel.getBodyBlock());
 
   auto loc = kernel->getLoc();

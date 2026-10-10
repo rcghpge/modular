@@ -11,9 +11,9 @@
 // CHECK: [[ebuf:%.*]] = mgp.tensor.extract.buffer{{.*}} [[buf]]
 // The check below corresponds to the (lowered) mo.mutable.load
 // CHECK: mgp.buffer.device_to_device{{.*}}[[ebuf]]
-// CHECK: mogg.generic.compiled.region
-// CHECK: mogg.generic.compiled.region
-// CHECK: mogg.generic.compiled.region
+// CHECK: mogg.routine.async
+// CHECK: mogg.routine.async
+// CHECK: mogg.routine.async
 mo.graph @unfused_mutable_load_store(%buf: !bt, %rhs: !tt) -> !bt
 {
   %ch0 = mo.chain.create(%buf) : !bt

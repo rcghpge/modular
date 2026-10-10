@@ -11,7 +11,7 @@
 // would with two real loads.
 
 // CHECK-LABEL: mo.graph @addConstant
-// CHECK:       mogg.kernel ({{.*}} : !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32>
+// CHECK:       mogg.routine ({{.*}} : !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32>
 // CHECK-NEXT:  inputs ([[IP:%[^ :,]+]])
 // CHECK-NEXT:  outputs ([[OP:%[^ :,]+]])
 // CHECK-NEXT:  context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
@@ -37,7 +37,7 @@ mo.graph @addConstant(%x: !mo.tensor<[8, 64], f32>) -> !mo.tensor<[8, 64], f32> 
 // literal.
 
 // CHECK-LABEL: mo.graph @broadcastConstant
-// CHECK:       mogg.kernel () -> !mo.tensor<[8, 64], f32>
+// CHECK:       mogg.routine () -> !mo.tensor<[8, 64], f32>
 // CHECK-NEXT:  outputs ([[OP2:%[^ :,]+]])
 // CHECK:         mogg.call.foreach {{.*}} ([[IDX2:%[^ :,]+]] : !map.index<2>) capturing {[[OUT2:%[^ :,]+]] = {{[^ ]+}} : !mogg.tensor}
 // CHECK-NEXT:      [[CST2:%[^ ]+]] = mogg.constant.scalar 5.000000e-01 : f32 : f32

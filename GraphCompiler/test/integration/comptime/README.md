@@ -30,19 +30,19 @@ $MO_OPT $FIXTURE --gc-pipeline --mlir-timing -o /dev/null
 ```
 
 **Total kernels (before dedup)** -- kernel-stub dedup
-(`MergeIdenticalKernelStubs`) runs inside `EmitMojo`'s own nested pass
+(`MergeIdenticalFuncs`) runs inside `EmitMojo`'s own nested pass
 pipeline, not as a top-level pass, so it isn't directly targetable with
-`-mlir-print-ir-before/after`. Count `mogg.kernel.stub` ops right before
+`-mlir-print-ir-before/after`. Count `mogg.func` ops right before
 `EmitMojo` runs instead:
 
 ```bash
 $MO_OPT $FIXTURE --gc-pipeline -o /dev/null \
   -mlir-print-ir-before=mogg-emit-mojo 2>&1 >/dev/null \
-  | grep -c 'mogg.kernel.stub'
+  | grep -c 'mogg.func'
 ```
 
 **Unique kernels (after dedup) and lines of generated Mojo** -- by the time
-`EmitMojo` finishes it has already erased every `mogg.kernel.stub` (their
+`EmitMojo` finishes it has already erased every `mogg.func` (their
 bodies became emitted Mojo text), so "after `mogg-emit-mojo`" reads 0, not
 the deduped count. Dump the Mojo and count distinct kernel function
 definitions instead -- one `def stub_N` per surviving unique kernel:
@@ -64,7 +64,7 @@ wc -l /tmp/out.mojo                  # generated Mojo LOC
 - `-mlir-print-ir-before=<pass>`/`-mlir-print-ir-after=<pass>` only see
   passes that run on the *top-level* pass manager built by `--gc-pipeline`.
   Passes run inside another pass's own nested `PassManager` (like
-  `MergeIdenticalKernelStubs` inside `EmitMojo`) are invisible to these
+  `MergeIdenticalFuncs` inside `EmitMojo`) are invisible to these
   flags -- bracket the *outer* pass instead, as above.
 - `mo.reduce.rms_norm`'s `epsilon`/`weight_offset` operands are
   host-constrained (`MO_SingleDeviceWithHostOperands`) -- keep those two

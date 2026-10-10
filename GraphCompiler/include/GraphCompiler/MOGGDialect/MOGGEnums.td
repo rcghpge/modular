@@ -41,9 +41,23 @@ def MOGG_VariadicABI
   let genSpecializedAttr = 0;
 }
 
+// How the runtime schedules a routine. `mgp_generic_execute` reads it as the
+// `eIsAsync` bool of `mgp.generic.execute`.
+def MOGG_DispatchKind
+    : I32EnumAttr<"DispatchKind", "how the runtime schedules a routine", [
+  // Always runs out of line, as its own AsyncRT task.
+  I32EnumAttrCase<"Deferred", 0, "deferred">,
+  // Runs on the dispatching worker, unless task affinity moves it.
+  I32EnumAttrCase<"Immediate", 1, "immediate">,
+]> {
+  let cppNamespace = "::M::MOGG";
+  // Use `MOGG_DispatchKindAttr` (MOGGAttrs.td) rather than a bare `i32`.
+  let genSpecializedAttr = 0;
+}
+
 def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
   I32EnumAttrCase<"MGP", 1, "MGP">,
-  // A `mogg.kernel.stub` outlined from a `mogg.kernel` (advanced fusion), so
+  // A `mogg.func` outlined from a `mogg.routine` (advanced fusion), so
   // `EmitMojo` can branch on it separately from MGP emission.
   I32EnumAttrCase<"MOGG", 2, "MOGG">,
 ]> {

@@ -69,27 +69,27 @@ mo.graph @parallel_three_ops() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f
 // CHECK-SAME: [-0.{{0*}}e+00, -0.{{0*}}e+00, -1.{{0*}}e+00, -0.{{0*}}e+00]
 
 // Both graphs produce fused compiled regions with async dispatch.
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 
 // Verify that before lowering, the parallel body has multiple kernels.
 // neg+relu = 2 kernels:
 // CHECK-MOGG: mo.parallel
-// CHECK-MOGG:   mogg.kernel
-// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mogg.routine
+// CHECK-MOGG:   mogg.routine
 // CHECK-MOGG:   mo.yield
 // neg+relu+neg = 3 kernels:
 // CHECK-MOGG: mo.parallel
-// CHECK-MOGG:   mogg.kernel
-// CHECK-MOGG:   mogg.kernel
-// CHECK-MOGG:   mogg.kernel
+// CHECK-MOGG:   mogg.routine
+// CHECK-MOGG:   mogg.routine
+// CHECK-MOGG:   mogg.routine
 // CHECK-MOGG:   mo.yield

@@ -127,7 +127,7 @@ def MOGG_SliceOp : MOGG_Op<"slice", [
   let summary = "Contiguous zero-copy slice op lowerable to mgp.tensor.slice";
   let description = [{
     Unlike mo.slice, not lowered to a kernel by MOToMOGG. FuseViews lowers it
-    to a mogg.kernel temporarily and raises it back if unfused.
+    to a mogg.routine temporarily and raises it back if unfused.
   }];
 
   let arguments = (ins
@@ -171,10 +171,10 @@ def MOGG_OutputOp : MOGG_Op<"output", [
 // MOGG abstract compiled components representation
 //===----------------------------------------------------------------------===//
 
-def MOGG_CallStubOp : MOGG_Op<"call.stub", [
+def MOGG_CallOp : MOGG_Op<"call", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  MOGG_StubCallOpInterface,
+  MOGG_FuncCallOpInterface,
 ]> {
   let summary = "Calls into an outlined stub";
   let description = [{}];
@@ -190,14 +190,14 @@ def MOGG_CallStubOp : MOGG_Op<"call.stub", [
   }];
 
   let extraClassDeclaration = [{
-    KernelStubOp getCallee();
+    FuncOp getCallee();
   }];
 }
 
-def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
+def MOGG_CallAsyncOp : MOGG_Op<"call.async", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-  MOGG_StubCallOpInterface,
+  MOGG_FuncCallOpInterface,
 ]> {
   let summary = "Calls into an outlined stub asynchronously";
   let description = [{
@@ -217,7 +217,7 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
   }];
 
   let extraClassDeclaration = [{
-    KernelStubOp getCallee();
+    FuncOp getCallee();
   }];
 }
 
@@ -271,7 +271,7 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
 }
 
 
-def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
+def MOGG_AsyncRoutineOp : MOGG_Op<"routine.async", [
   DeclareOpInterfaceMethods<MGP_InOutSemanticsOpInterface>,
   DeclareOpInterfaceMethods<MGP_LiftableChainCreateOpInterface>,
   DeclInterface,
@@ -283,7 +283,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
   let summary = "An abstract function representing a compiled body of code";
   let description = [{
     Takes and returns AsyncValues and runs its body to completion (always
-    blocking). A generic form of mogg.kernel; the first result is a mef.chain.
+    blocking). A generic form of mogg.routine; the first result is a mef.chain.
 
     Sequence fusion (concatenating code) fuses a parent region into a child:
     `canFuseIntoOther` allows this region as parent, `canBeFusedInto` as
@@ -296,12 +296,13 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     MO_ParamDecls:$outputParamDecls,
     M_InOutSignatureAttr:$inOutSignature,
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
-    OptionalAttr<BoolAttr>:$isAsync,
+    DefaultValuedOptionalAttr<MOGG_DispatchKindAttr,
+                              "::M::MOGG::DispatchKind::Immediate">:$dispatch,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canFuseIntoOther,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canBeFusedInto,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$canDuplicate,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$isStructuredKernel
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$isStructured
   );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -309,6 +310,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
   let hasVerifier = 1;
 
   let assemblyFormat = [{
+    custom<ImmediateDispatch>($dispatch)
     custom<Kernel>($operands, type($operands), type($results), $body,
                    $outputParamDecls)
     custom<FusionInfo>($fusionInfo)
@@ -317,8 +319,7 @@ def MOGG_GenericCompiledRegionOp : MOGG_Op<"generic.compiled.region", [
     (`canFuseIntoOther` `=` $canFuseIntoOther^)?
     (`constantResources` `=` $constantResources^)?
     `inOutSignature` `=` $inOutSignature
-    (`isAsync` `=` $isAsync^)?
-    (`isStructuredKernel` `=` $isStructuredKernel^)?
+    (`isStructured` `=` $isStructured^)?
     attr-dict
   }];
 
@@ -383,12 +384,12 @@ def MOGG_ScratchPlaceholdersOp : MOGG_Op<"scratch_placeholders"> {
   }];
 }
 
-def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
+def MOGG_CompiledLoadOp : MOGG_LowerableOp<"compiled.load"> {
   let summary = "Loads pairs of (symbol, compiled object) into the runtime "
                 "for a given device.";
   let description = [{
     Registers each symbol with its compiled-object blob in the runtime, for
-    use by ops like `ExecuteCompiledOp`. The object format and registration
+    use by ops like `CompiledCallOp`. The object format and registration
     depend on the op's device.
   }];
 
@@ -403,7 +404,7 @@ def MOGG_LoadCompiledKernelOp : MOGG_LowerableOp<"load_compiled_kernel"> {
 }
 
 
-def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
+def MOGG_CompiledCallOp : MOGG_Op<"compiled.call", [
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   MO_ExplicitDevice,
@@ -411,13 +412,13 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
 ]> {
   let summary = "Executes a compiled kernel on a given device.";
   let description = [{
-    Looks up the compiled object (loaded by `LoadCompiledKernelOp`) by name
+    Looks up the compiled object (loaded by `CompiledLoadOp`) by name
     and calls it with the lowered operands.
 
     `usedParams` are the shape parameters the kernel uses; they are passed at
     runtime to reconstruct tensor shapes. `outputParamDecls` defines parameter
-    values, which MGP translates into parameter system calls. `isAsync` means
-    the kernel uses Mojo async/await.
+    values, which MGP translates into parameter system calls. `dispatch` says
+    how the runtime schedules the call (see `MOGG_DispatchKind`).
 
     The kernel reads and writes memory its operands only point to, such as
     the buffer an init-block call fills, so the op is never pure: a call
@@ -431,7 +432,8 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
     ArrayAttr:$usedParams,
     MO_ParamDecls:$outputParamDecls,
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
-    BoolAttr:$isAsync,
+    DefaultValuedOptionalAttr<MOGG_DispatchKindAttr,
+                              "::M::MOGG::DispatchKind::Immediate">:$dispatch,
     ArrayAttr:$constantResources
   );
   let results = (outs Variadic<AnyType>:$results);
@@ -439,14 +441,15 @@ def MOGG_ExecuteCompiledOp : MOGG_Op<"execute_kernel", [
   let assemblyFormat = [{
     $calleeSymbol `` custom<OutputParamDecls>($outputParamDecls)
     `` `(` $operands `)`
+    custom<ImmediateDispatch>($dispatch)
     custom<FusionInfo>($fusionInfo)
-    `constantResources` `=` $constantResources `,` `isAsync` `=` $isAsync `,`
+    `constantResources` `=` $constantResources `,`
     `usedParams` `=` $usedParams
     attr-dict `:` functional-type($operands, $results)
   }];
 }
 
-def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
+def MOGG_FuncOp : MOGG_Op<"func", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   FunctionOpInterface,
   IsolatedFromAbove,
@@ -463,7 +466,8 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     SymbolNameAttr:$sym_name,
     TypeAttrOf<FunctionType>:$function_type,
     MOGG_FusionInfoAttr:$fusionInfo,
-    OptionalAttr<BoolAttr>:$isAsync,
+    DefaultValuedOptionalAttr<MOGG_DispatchKindAttr,
+                              "::M::MOGG::DispatchKind::Immediate">:$dispatch,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
     MOGG_ABIKindAttr:$abi,
     // Execution-device label for each kernel's `target` parameter. A string
@@ -608,7 +612,7 @@ def MOGG_AsyncUnpackOp : MOGG_Op<"async.unpack", [
   let results = (outs AnyType:$output);
   let summary = "Unpacks an async value and returns it as sync";
   let description = [{
-    Projects `!mogg.async<T>` (values outside a `mogg.generic.compiled.region`)
+    Projects `!mogg.async<T>` (values outside a `mogg.routine.async`)
     to `T`. Inverse of `mogg.async.pack`. Only `T` is printed.
   }];
 
@@ -1009,7 +1013,7 @@ def MOGG_ShapeFunctionDeclOp
 // handles; shape/dtype/mut/io live on the creating op.
 //===----------------------------------------------------------------------===//
 
-def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
+def MOGG_RoutineOp : MOGG_LowerableOp<"routine", [
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
@@ -1041,7 +1045,8 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     // Without these, a kernel whose only effect is a mutable store looks dead.
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
+    DefaultValuedOptionalAttr<MOGG_DispatchKindAttr,
+                              "::M::MOGG::DispatchKind::Deferred">:$dispatch
   );
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain, MO_Opaque,
                                           MOGG_ShapeFuncResult]>>:$outputs);
@@ -1053,11 +1058,11 @@ def MOGG_KernelOp : MOGG_LowerableOp<"kernel", [
     /// Returns the last entry of `outputs` if it is a chain, else null.
     ::mlir::Value getOutputChain();
 
-    /// Lowers to a `mogg.generic.compiled.region` and registers its outputs;
+    /// Lowers to a `mogg.routine.async` and registers its outputs;
     /// returns null on error. `mo.parallel` calls it per launch to collect
     /// regions it fuses into one async region.
-    GenericCompiledRegionOp
-    lowerToCompiledRegion(::M::MGP::MOGraphLoweringState &loweringState);
+    AsyncRoutineOp
+    lowerToAsync(::M::MGP::MOGraphLoweringState &loweringState);
   }];
 }
 
@@ -1067,7 +1072,7 @@ def MOGG_ShapeCreateOp : MOGG_Op<"shape.create", [
 ]> {
   let summary = "Build a codegen shape from a static shape attr + dynamic dims.";
   let description = [{
-    `dynamic_dims` are in shape order, from the enclosing `mogg.kernel` block
+    `dynamic_dims` are in shape order, from the enclosing `mogg.routine` block
     arguments.
   }];
   let arguments = (ins Variadic<MOGG_Dim>:$dynamic_dims, MOSH_ShapeAttr:$shape);
@@ -1246,7 +1251,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
     DefaultValuedAttr<BoolAttr, "false">:$hasSameVariadicOperandSize
   );
   // An `!mo.opaque` result is allocated inside the kernel body, so it has no
-  // destination `$output`; `mogg.kernel` forwards it with `mogg.output`.
+  // destination `$output`; `mogg.routine` forwards it with `mogg.output`.
   let results = (outs Optional<MO_Opaque>:$opaqueResult);
   let assemblyFormat = [{
     $callee `` custom<OptionalKernelParams>($kernel_param)

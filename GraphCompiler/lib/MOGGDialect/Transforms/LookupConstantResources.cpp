@@ -58,7 +58,7 @@ struct LookupConstantResources
     if (wasInterrupted)
       return;
 
-    // KernelStubOp::emitMojo reads only the resource count, so keep an array
+    // FuncOp::emitMojo reads only the resource count, so keep an array
     // of the right size with placeholder entries.
     SmallVector<Attribute> dummyResources(constantResources.size(),
                                           UnitAttr::get(ctx));

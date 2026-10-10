@@ -53,19 +53,19 @@ mo.graph @static_ranks_unknown_to_static<D0, D1>(
 // CHECK-LABEL: mgp.model @multiple_rebind : mof
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain,
 
-// CHECK: %[[CH1:.*]] = mogg.generic.compiled.region (%[[CH0]]
+// CHECK: %[[CH1:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CH0]]
 
 // CHECK: %[[CH_M1:.*]] = grt.chain.create (%[[CH1]], %[[CH0]])
 
 // CHECK: %[[CH_M2:.*]] = grt.chain.create (%[[CH_M1]], %[[CH0]])
 
-// CHECK: %[[CH3:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M2]],
+// CHECK: %[[CH3:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}({{.*}}%[[CH_M2]],
 
 // CHECK: %[[CH_M3:.*]] = grt.chain.create (%[[CH3]], %[[CH0]])
 
 // CHECK: %[[CH_M4:.*]] = grt.chain.create (%[[CH_M3]], %[[CH0]])
 
-// CHECK: %[[CH5:.*]] = mogg.generic.compiled.region ({{.*}}%[[CH_M4]]
+// CHECK: %[[CH5:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}({{.*}}%[[CH_M4]]
 
 
 mo.graph @multiple_rebind<D0, D1>(

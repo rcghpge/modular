@@ -11,6 +11,7 @@
 #ifndef GENERICML_GRAPHCOMPILER_MOGGDIALECT_SUPPORT_ASMSYNTAX_H
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_SUPPORT_ASMSYNTAX_H
 
+#include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
 #include "mlir/IR/OpImplementation.h"
 
 namespace M::MOGG {
@@ -61,6 +62,23 @@ mlir::ParseResult parseOptionalKernelParams(mlir::OpAsmParser &parser,
 /// Prints `[key = value, ...]`, or nothing for null or empty `params`.
 void printOptionalKernelParams(mlir::OpAsmPrinter &p, mlir::Operation *op,
                                mlir::DictionaryAttr params);
+
+/// Parses an optional `dispatch(deferred|immediate)`. Without it `kind` stays
+/// null, so the op's default applies.
+mlir::ParseResult parseOptionalDispatch(mlir::OpAsmParser &parser,
+                                        DispatchKindAttr &kind);
+
+/// Prints `dispatch(...)` and returns true when `kind` is set and differs from
+/// `defaultKind`; prints nothing otherwise.
+bool printOptionalDispatch(mlir::OpAsmPrinter &p, DispatchKindAttr kind,
+                           DispatchKind defaultKind);
+
+/// `custom<ImmediateDispatch>` for declarative formats whose default is
+/// `immediate`.
+mlir::ParseResult parseImmediateDispatch(mlir::OpAsmParser &parser,
+                                         DispatchKindAttr &kind);
+void printImmediateDispatch(mlir::OpAsmPrinter &p, mlir::Operation *op,
+                            DispatchKindAttr kind);
 
 } // namespace M::MOGG
 

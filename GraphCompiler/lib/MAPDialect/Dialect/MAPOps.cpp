@@ -90,6 +90,12 @@ static void printValuesWithTypes(OpAsmPrinter &p, ValueRange values) {
 //===----------------------------------------------------------------------===//
 
 ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
+  MOGG::DispatchKindAttr dispatch;
+  if (MOGG::parseOptionalDispatch(parser, dispatch))
+    return mlir::failure();
+  if (dispatch)
+    result.addAttribute(getDispatchAttrName(result.name), dispatch);
+
   // inputs ( %A : tA, ... ), a trailing chain included; the chain is split
   // out into `$inputChain` below.
   SmallVector<OpAsmParser::Argument> allArgInfo;
@@ -146,6 +152,11 @@ ParseResult IterOpaqueOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void IterOpaqueOp::print(OpAsmPrinter &p) {
+  if (getDispatch() != MOGG::DispatchKind::Deferred) {
+    p << " ";
+    MOGG::printOptionalDispatch(p, getDispatchAttr(),
+                                MOGG::DispatchKind::Deferred);
+  }
   p.increaseIndent();
   p.printNewline();
   p << "inputs ";
@@ -208,11 +219,9 @@ void IterOpaqueOp::print(OpAsmPrinter &p) {
     }
   }
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
-  // Async is the default; only a sync kernel prints `isAsync = false`.
-  SmallVector<StringRef> elided{getOperandSegmentSizesAttrName().getValue()};
-  if (getIsAsync())
-    elided.push_back(getIsAsyncAttrName().getValue());
-  p.printOptionalAttrDict((*this)->getAttrs(), elided);
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {getOperandSegmentSizesAttrName().getValue(),
+                           getDispatchAttrName().getValue()});
 }
 
 LogicalResult IterOpaqueOp::verify() {
@@ -564,6 +573,12 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
     return mlir::failure();
   state.addAttribute(getShapeAttrName(state.name), shapeTypedAttr);
 
+  MOGG::DispatchKindAttr dispatch;
+  if (MOGG::parseOptionalDispatch(parser, dispatch))
+    return mlir::failure();
+  if (dispatch)
+    state.addAttribute(getDispatchAttrName(state.name), dispatch);
+
   // inputs (%x: T, %y: T)
   SmallVector<OpAsmParser::Argument> allArgInfo;
   if (parser.parseKeyword("inputs") ||
@@ -622,6 +637,11 @@ void IterForeachOp::print(OpAsmPrinter &p) {
   p << "<[";
   MOSH::printShapeValue(p, getShape().getValues());
   p << "]>";
+  if (getDispatch() != MOGG::DispatchKind::Deferred) {
+    p << " ";
+    MOGG::printOptionalDispatch(p, getDispatchAttr(),
+                                MOGG::DispatchKind::Deferred);
+  }
   p << "\n    ";
 
   Block &body = getBody().front();
@@ -669,12 +689,9 @@ void IterForeachOp::print(OpAsmPrinter &p) {
   }
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 
-  // Async is the default; only a sync kernel prints `isAsync = false`.
-  SmallVector<StringRef> elided{"shape",
-                                getOperandSegmentSizesAttrName().getValue()};
-  if (getIsAsync())
-    elided.push_back(getIsAsyncAttrName().getValue());
-  p.printOptionalAttrDict(getOperation()->getAttrs(), elided);
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          {"shape", getOperandSegmentSizesAttrName().getValue(),
+                           getDispatchAttrName().getValue()});
 }
 
 LogicalResult IterForeachOp::verify() {

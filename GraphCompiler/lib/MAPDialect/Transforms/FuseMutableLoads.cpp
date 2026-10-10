@@ -156,7 +156,7 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
                             /*hasWriteEffect=*/kernelOp.getHasWriteEffect());
 
   // Inherent, so `setDiscardableAttrs` below does not carry it.
-  newKernelOp.setIsAsync(kernelOp.getIsAsync());
+  newKernelOp.setDispatch(kernelOp.getDispatch());
 
   newKernelOp->setLoc(mlir::FusedLoc::get(
       kernelOp->getContext(), {loadOp->getLoc(), kernelOp->getLoc()}));
@@ -379,7 +379,7 @@ IterOpaqueOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
   newKernelOp.setHasReadEffect(true);
   newKernelOp.setHasWriteEffect(kernelOp.getHasWriteEffect());
   // Inherent, so `setDiscardableAttrs` below does not carry it.
-  newKernelOp.setIsAsync(kernelOp.getIsAsync());
+  newKernelOp.setDispatch(kernelOp.getDispatch());
 
   newKernelOp->setLoc(
       mlir::FusedLoc::get(ctx, {loadOp->getLoc(), kernelOp->getLoc()}));

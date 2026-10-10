@@ -58,11 +58,20 @@ def MOGG_VariadicABIAttr
 }
 
 //===----------------------------------------------------------------------===//
-// ABIKindAttr -- the calling convention of a `mogg.kernel.stub`
+// ABIKindAttr -- the calling convention of a `mogg.func`
 //===----------------------------------------------------------------------===//
 
 def MOGG_ABIKindAttr : EnumAttr<MOGGDialect, MOGG_ABIKind, "abi"> {
   let summary = "Calling convention of a kernel stub (see MOGG_ABIKind)";
+}
+
+//===----------------------------------------------------------------------===//
+// DispatchKindAttr -- how the runtime schedules a routine
+//===----------------------------------------------------------------------===//
+
+def MOGG_DispatchKindAttr
+    : EnumAttr<MOGGDialect, MOGG_DispatchKind, "dispatch"> {
+  let summary = "How the runtime schedules a routine (see MOGG_DispatchKind)";
 }
 
 //===----------------------------------------------------------------------===//

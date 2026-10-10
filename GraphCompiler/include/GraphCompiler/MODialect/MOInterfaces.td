@@ -38,7 +38,7 @@ def MO_TensorOpInterface : OpInterface<"MOTensorOpInterface"> {
 def MO_ConditionallyInPlaceInterface : OpInterface<"MOConditionallyInPlaceInterface"> {
   let description = [{
     Ops that may represent an in-place computation (e.g. a custom op on an
-    mo.buffer, or a load/store-fused mogg.kernel). Use with
+    mo.buffer, or a load/store-fused mogg.routine). Use with
     MOMutableOpInterface.
   }];
 

@@ -51,7 +51,7 @@
 using namespace M;
 using namespace MOGG;
 
-StringAttr M::MOGG::getKernelStubName(FusionInfoAttr fusionInfo) {
+StringAttr M::MOGG::getFuncName(FusionInfoAttr fusionInfo) {
   ASSERT_STREAM(fusionInfo, << "cannot name a kernel stub without fusion info");
   // The hash keeps names that share a truncated prefix distinct in Mojo.
   return StringAttr::get(
@@ -264,11 +264,10 @@ LogicalResult SplitOp::lower(MGP::MOGraphLoweringState &loweringState) {
 }
 
 //===----------------------------------------------------------------------===//
-// MOGG LoadCompiledKernelOp
+// MOGG CompiledLoadOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult
-LoadCompiledKernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
+LogicalResult CompiledLoadOp::lower(MGP::MOGraphLoweringState &loweringState) {
   OpBuilder &builder = loweringState.getInitOpBuilder();
   MGP::MGPBufferBuilder &bufferBuilder =
       loweringState.getBufferBuilder(MO::getDeviceOrDefaultAny(*this));
@@ -431,7 +430,13 @@ static LogicalResult verifySymbolUsesForKernelDeclCall(
 // CallMaterializeOp
 //===----------------------------------------------------------------------===//
 
-ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &result) {
+ParseResult RoutineOp::parse(OpAsmParser &parser, OperationState &result) {
+  DispatchKindAttr dispatch;
+  if (parseOptionalDispatch(parser, dispatch))
+    return failure();
+  if (dispatch)
+    result.addAttribute(getDispatchAttrName(result.name), dispatch);
+
   // Op operands: the `!mo.tensor` inputs, printed bare as `(%a, %b : types)`
   // (no `inputs` keyword).
   llvm::SMLoc operandsLoc = parser.getCurrentLocation();
@@ -463,7 +468,7 @@ ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
     numChainOperands = 1;
   }
-  result.addAttribute(KernelOp::getOperandSegmentSizesAttrName(result.name),
+  result.addAttribute(RoutineOp::getOperandSegmentSizesAttrName(result.name),
                       parser.getBuilder().getDenseI32ArrayAttr(
                           {numInputOperands, numChainOperands}));
 
@@ -517,7 +522,11 @@ ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &result) {
   return parser.parseRegion(*result.addRegion(), bodyArgs);
 }
 
-void KernelOp::print(OpAsmPrinter &p) {
+void RoutineOp::print(OpAsmPrinter &p) {
+  if (getDispatch() != DispatchKind::Deferred) {
+    p << " ";
+    printOptionalDispatch(p, getDispatchAttr(), DispatchKind::Deferred);
+  }
   // Op operands: the `!mo.tensor` inputs, printed bare.
   p << " (";
   p.printOperands(getInputs());
@@ -584,17 +593,15 @@ void KernelOp::print(OpAsmPrinter &p) {
   SmallVector<StringRef> elided{getOperandSegmentSizesAttrName().getValue()};
   if (getOutputParamDecls().empty())
     elided.push_back(getOutputParamDeclsAttrName().getValue());
-  // Async is the default; only a sync kernel prints `isAsync = false`.
-  if (getIsAsync())
-    elided.push_back(getIsAsyncAttrName().getValue());
+  elided.push_back(getDispatchAttrName().getValue());
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(), elided);
   p << " ";
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 }
 
-LogicalResult KernelOp::verify() {
+LogicalResult RoutineOp::verify() {
   // A chain result, if present, is last (mirrors `IterForeachOp::verify()` /
-  // `KernelOp::maybeGetOutChain()`) and never gets a body block argument.
+  // `RoutineOp::maybeGetOutChain()`) and never gets a body block argument.
   mlir::ResultRange outputs = getOutputs();
   for (auto [i, output] : llvm::enumerate(outputs))
     if (isa<MO::ChainType>(output.getType()) && i + 1 != outputs.size())
@@ -657,11 +664,11 @@ LogicalResult KernelOp::verify() {
                            << " must be a !mogg.context (the trailing args "
                               "after the dims are all contexts)";
 
-  // One kernel, one call -- counting the `mogg.call.stub` outlining leaves.
+  // One kernel, one call -- counting the `mogg.call` outlining leaves.
   size_t numCalls = 0;
   for (Operation &bodyOp : getBody().front())
     if (isa<CallOpaqueOp, CallForeachOp, CallElementwiseOp, CallShapeOp,
-            CallStubOp>(bodyOp))
+            CallOp>(bodyOp))
       ++numCalls;
   if (numCalls != 1)
     return emitOpError() << "expected exactly one call in the body, got "
@@ -691,7 +698,7 @@ LogicalResult KernelOp::verify() {
   return success();
 }
 
-Value KernelOp::getOutputChain() {
+Value RoutineOp::getOutputChain() {
   mlir::ResultRange outputs = getOutputs();
   if (outputs.empty())
     return nullptr;
@@ -699,19 +706,19 @@ Value KernelOp::getOutputChain() {
   return isa<MO::ChainType>(last.getType()) ? last : Value();
 }
 
-// Lowers a `mogg.kernel` into a `mogg.generic.compiled.region` around its
+// Lowers a `mogg.routine` into a `mogg.routine.async` around its
 // already-outlined stub: materialize the region operands (input buffers, new
 // output buffers, dims, device context), unpack + cast each async block arg to
-// the stub's handle, and re-home the `mogg.call.stub`.
+// the stub's handle, and re-home the `mogg.call`.
 //
 // TODO(GEX-3965): buffer allocation / context / dim materialization should move
 // to dedicated pre-MGP passes, leaving this a genuinely thin lowering.
-LogicalResult KernelOp::lower(MGP::MOGraphLoweringState &loweringState) {
-  return lowerToCompiledRegion(loweringState) ? success() : failure();
+LogicalResult RoutineOp::lower(MGP::MOGraphLoweringState &loweringState) {
+  return lowerToAsync(loweringState) ? success() : failure();
 }
 
-MOGG::GenericCompiledRegionOp
-KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
+MOGG::AsyncRoutineOp
+RoutineOp::lowerToAsync(MGP::MOGraphLoweringState &loweringState) {
   MGP::MOOpLoweringState st(loweringState, getOperation());
   MLIRContext *ctx = getContext();
   Location loc = getLoc();
@@ -730,7 +737,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
       ++numOutputs;
   unsigned numArgs = kernelBody.getNumArguments();
   if (numArgs < numInputs + numOutputs + 1) {
-    emitOpError("MOGGToMGP: malformed mogg.kernel body");
+    emitOpError("MOGGToMGP: malformed mogg.routine body");
     return nullptr;
   }
 
@@ -740,7 +747,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   Value inChain = loweringState.getCurrentExecuteChain();
   if (Value opChain = getChain()) {
     Value lowered = loweringState.lookupExecuteLoweredValue(opChain);
-    ASSERT_STREAM(lowered, << "no lowered value for mogg.kernel input chain: "
+    ASSERT_STREAM(lowered, << "no lowered value for mogg.routine input chain: "
                            << opChain);
     inChain = lowered;
   }
@@ -780,7 +787,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   // `createOutputStorage` skips chain-typed results, so it yields `numOutputs`
   // entries.
   assert(storage.size() == numOutputs &&
-         "expected one output storage per non-chain mogg.kernel result");
+         "expected one output storage per non-chain mogg.routine result");
   for (const MGP::MOOutputStorage &out : storage) {
     operands.push_back(out.buffer);
     semantics.push_back(InOutSignatureAttr::kOut);
@@ -795,7 +802,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     auto dimType =
         cast<MOGG::DimType>(kernelBody.getArgument(argIdx).getType());
     if (!dimType.getName()) {
-      emitOpError("MOGGToMGP: mogg.kernel dim arg lacks a name");
+      emitOpError("MOGGToMGP: mogg.routine dim arg lacks a name");
       return nullptr;
     }
     ErrorOr<Value> dimValue = loweringState.lowerExpression(
@@ -820,7 +827,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     SmallVector<DeviceRefAttr> devices =
         MO::getUniqueDevicesFromKernel(getOperation());
     if (devices.size() != numContexts) {
-      emitOpError("MOGGToMGP: mogg.kernel has ")
+      emitOpError("MOGGToMGP: mogg.routine has ")
           << numContexts << " context args but " << devices.size()
           << " unique devices";
       return nullptr;
@@ -848,17 +855,17 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     regionResultTypes.push_back(opaqueKernelResult.getType());
 
   OpBuilder &builder = st.builder;
-  auto region = MOGG::GenericCompiledRegionOp::create(
+  auto region = MOGG::AsyncRoutineOp::create(
       builder, loc, regionResultTypes, operands,
       /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, decls),
       InOutSignatureAttr::get(ctx, semantics),
       /*fusionInfo=*/getFusionInfoAttr(),
-      /*isAsync=*/BoolAttr::get(ctx, getIsAsync()),
+      /*dispatch=*/DispatchKindAttr::get(ctx, getDispatch()),
       /*constantResources=*/ArrayAttr::get(ctx, {}),
       /*canFuseIntoOther=*/BoolAttr::get(ctx, !MO::isOnHost(getOperation())),
       /*canBeFusedInto=*/BoolAttr::get(ctx, true),
       /*canDuplicate=*/BoolAttr::get(ctx, false),
-      /*isStructuredKernel=*/BoolAttr::get(ctx, true));
+      /*isStructured=*/BoolAttr::get(ctx, true));
   region.setDeviceRef(device);
 
   // Region body: one `!mogg.async<T>` block arg per operand, same order.
@@ -872,7 +879,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   regionBody->addArguments(argTypes, argLocs);
 
   // Unpack + cast each async arg to the handle the stub expects, then re-home
-  // the already-outlined `mogg.call.stub`. The leading chain arg has no stub
+  // the already-outlined `mogg.call`. The leading chain arg has no stub
   // counterpart, hence the `+ 1`.
   builder.setInsertionPointToStart(regionBody);
   SmallVector<Value> stubArgs;
@@ -892,7 +899,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
     stubArgs.push_back(handle);
   }
 
-  // Re-home `kernelBody`'s contents (the `mogg.call.stub` plus constants kept
+  // Re-home `kernelBody`'s contents (the `mogg.call` plus constants kept
   // at the call site) by cloning with block args mapped to `stubArgs`.
   // `mgp-anonymize-dim-names` strips the stub's dim names once all kernels are
   // lowered.
@@ -951,7 +958,7 @@ KernelOp::lowerToCompiledRegion(MGP::MOGraphLoweringState &loweringState) {
   }
   if (opaqueKernelResult) {
     if (!opaqueResult) {
-      emitOpError("MOGGToMGP: mogg.kernel returns an opaque but its body "
+      emitOpError("MOGGToMGP: mogg.routine returns an opaque but its body "
                   "produces none");
       return nullptr;
     }
@@ -1144,7 +1151,7 @@ LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// Error context helpers (used by KernelStubOp and AsyncErrorOp)
+// Error context helpers (used by FuncOp and AsyncErrorOp)
 //===----------------------------------------------------------------------===//
 
 /// Collect source notes (Python stack traces) from a location tree. Source
@@ -1273,23 +1280,23 @@ static std::string collectCompactSourceNotes(Location rootLoc) {
 }
 
 //===----------------------------------------------------------------------===//
-// KernelStubOp
+// FuncOp
 //===----------------------------------------------------------------------===//
 
-OutputOp KernelStubOp::getBodyTerminator() {
+OutputOp FuncOp::getBodyTerminator() {
   return cast<OutputOp>(getBodyBlock().getTerminator());
 }
 
-LogicalResult KernelStubOp::verify() {
+LogicalResult FuncOp::verify() {
   // FunctionOpInterface already verifies the arguments.
   return success();
 }
 
-bool KernelStubOp::isThrows() {
+bool FuncOp::isThrows() {
   // `AddTryExceptBlocks` always gives a MOGG stub the `mogg.raise` that renders
   // its error context. Answering without a body walk also keeps
-  // `mogg.call.stub`'s `isThrows` off a stub another thread is rewriting, and
-  // prevents deep recursion through CallStubOp chains in sequence-fused
+  // `mogg.call`'s `isThrows` off a stub another thread is rewriting, and
+  // prevents deep recursion through CallOp chains in sequence-fused
   // kernels.
   if (getAbi() == ABIKind::MOGG)
     return true;
@@ -1297,7 +1304,7 @@ bool KernelStubOp::isThrows() {
                       [](auto emitMojoOp) { return emitMojoOp.isThrows(); });
 }
 
-LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
+LogicalResult FuncOp::emitMojo(EmitMojoState &state) {
   // Emit the fusion info tree as a top-level comment before the function.
   state.builder.comment("FusionInfo:");
   std::string fusionTree = getFusionInfoAttr().toPrettyTree();
@@ -1305,14 +1312,14 @@ LogicalResult KernelStubOp::emitMojo(EmitMojoState &state) {
     state.builder.comment(("  " + line).str());
 
   // If MOGG, this is an advanced-fusion stub outlined by
-  // OutlineKernelsIntoFunctions. Otherwise it was a GenericCompiledRegionOp
+  // OutlineRoutines. Otherwise it was a AsyncRoutineOp
   // which has that implicit void** ABI.
   if (getAbi() == ABIKind::MOGG)
     return emitMojoMOGGABI(state);
   return emitMojoMGPABI(state);
 }
 
-LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
+LogicalResult FuncOp::emitMojoMGPABI(EmitMojoState &state) {
   state.mojoReturnValues.clear();
   state.mojoConstantResources.clear();
 
@@ -1398,7 +1405,7 @@ LogicalResult KernelStubOp::emitMojoMGPABI(EmitMojoState &state) {
   return success();
 }
 
-LogicalResult KernelStubOp::emitMojoMOGGABI(EmitMojoState &state) {
+LogicalResult FuncOp::emitMojoMOGGABI(EmitMojoState &state) {
   // The MOGG-ABI stub takes raw runtime handles (a `!mogg.pointer` per input
   // then output, the dynamic `!mogg.dim`s, a `!mogg.context`) and emits
   // straight-line Mojo, with no async wrapping or `void**` marshalling.
@@ -3108,15 +3115,21 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
 // These FuncOp attributes are disallowed while parsing since they can
 // be inferred. Likewise while printing we ignore them.
 static StringRef kernelStubOpDisallowedAttrNames[] = {
-    "name", "returnType", "sym_name", "function_type", "sym_visibility"};
+    "name",          "returnType",     "sym_name",
+    "function_type", "sym_visibility", "dispatch"};
 
-ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
+ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &state) {
   StringAttr name;
   if (failed(parser.parseSymbolName(name)))
     return failure();
   state.addAttribute(getSymNameAttrName(state.name), name);
   // Optional: without the keyword, `sym_visibility` keeps its default.
   (void)mlir::impl::parseOptionalVisibilityKeyword(parser, state.attributes);
+  DispatchKindAttr dispatch;
+  if (parseOptionalDispatch(parser, dispatch))
+    return failure();
+  if (dispatch)
+    state.addAttribute(getDispatchAttrName(state.name), dispatch);
 
   SmallVector<Type> resTypes;
   SmallVector<OpAsmParser::Argument> args;
@@ -3155,10 +3168,12 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   return success();
 }
 
-void KernelStubOp::print(OpAsmPrinter &p) {
+void FuncOp::print(OpAsmPrinter &p) {
   p << " ";
   p.printSymbolName(getSymNameAttr());
   p << " " << getSymVisibility() << " ";
+  if (printOptionalDispatch(p, getDispatchAttr(), DispatchKind::Immediate))
+    p << " ";
   printRegionArguments(p, getFunctionType().getResults(),
                        getBody().getArguments());
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
@@ -3167,9 +3182,9 @@ void KernelStubOp::print(OpAsmPrinter &p) {
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
 }
 
-void KernelOp::getEffects(
+void RoutineOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-  // Same rule as `KernelOp::getEffects` above, on the MAP-lowered kernel.
+  // Same rule as `RoutineOp::getEffects` above, on the MAP-lowered kernel.
   if (!getOutputParamDecls().empty())
     effects.emplace_back(mlir::MemoryEffects::Allocate::get());
 
@@ -3189,10 +3204,10 @@ void KernelOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
-// ExecuteCompiledOp
+// CompiledCallOp
 //===----------------------------------------------------------------------===//
 
-void ExecuteCompiledOp::getEffects(
+void CompiledCallOp::getEffects(
     SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
   if (!getOutputParamDecls().empty())
     effects.emplace_back(mlir::MemoryEffects::Allocate::get());
@@ -3205,22 +3220,21 @@ void ExecuteCompiledOp::getEffects(
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// GenericCompiledRegionOp
+// AsyncRoutineOp
 //===----------------------------------------------------------------------===//
 
-OutputOp GenericCompiledRegionOp::getBodyTerminator() {
+OutputOp AsyncRoutineOp::getBodyTerminator() {
   return cast<OutputOp>(getBodyBlock().getTerminator());
 }
 
 InOutSignatureAttr::InOutSemantics
-GenericCompiledRegionOp::getInOutSemantics(size_t index) {
-  ASSERT_STREAM(
-      index < getNumOperands(),
-      << "GenericCompiledRegionOp::getInOutSemantics index out of range.");
+AsyncRoutineOp::getInOutSemantics(size_t index) {
+  ASSERT_STREAM(index < getNumOperands(),
+                << "AsyncRoutineOp::getInOutSemantics index out of range.");
   return getInOutSignature()[index];
 }
 
-LogicalResult GenericCompiledRegionOp::verify() {
+LogicalResult AsyncRoutineOp::verify() {
   Region &body = getBody();
 
   if (getOperands().size() != body.getNumArguments())
@@ -3280,16 +3294,16 @@ unionInOutSemantics(InOutSignatureAttr::InOutSemantics a,
 
 // Canonicalize duplicated operands of a generic compiled region:
 //
-//     mogg.generic.compiled.region(%a, %b, %a) : (%x, %y, %z) { ...use %z... }
+//     mogg.routine.async(%a, %b, %a) : (%x, %y, %z) { ...use %z... }
 //
 // to
 //
-//     mogg.generic.compiled.region(%a, %b) : (%x, %y) { ...use %x... }
+//     mogg.routine.async(%a, %b) : (%x, %y) { ...use %x... }
 //
 // The block argument for each duplicate is redirected to the first
 // occurrence's argument, the duplicate operand/argument are erased, and the
 // surviving operand's in/out semantics absorb the union of the duplicates'.
-static LogicalResult deduplicateOperands(GenericCompiledRegionOp op,
+static LogicalResult deduplicateOperands(AsyncRoutineOp op,
                                          PatternRewriter &rewriter) {
   Block &entry = op.getBody().front();
 
@@ -3344,15 +3358,15 @@ static LogicalResult deduplicateOperands(GenericCompiledRegionOp op,
   return success();
 }
 
-// Canonicalize sequences of grt.chain.create + mogg.generic.compiled.region
+// Canonicalize sequences of grt.chain.create + mogg.routine.async
 //
 //     %ch = grt.chain.create(%0, %1)
-//     mogg.generic.compiled.region(%ch)
+//     mogg.routine.async(%ch)
 //
 // to
 //
-//     mogg.generic.compiled.region(%0, %1)
-static LogicalResult sinkChainCreateOperands(GenericCompiledRegionOp op,
+//     mogg.routine.async(%0, %1)
+static LogicalResult sinkChainCreateOperands(AsyncRoutineOp op,
                                              PatternRewriter &rewriter) {
   Region &body = op.getBody();
 
@@ -3421,7 +3435,7 @@ static LogicalResult sinkChainCreateOperands(GenericCompiledRegionOp op,
 //     is always retained so error/side-effect propagation and async-completion
 //     sequencing are preserved.
 // Uses of removed chain results are rewired to the surviving chain.
-static LogicalResult removeRedundantResults(GenericCompiledRegionOp op,
+static LogicalResult removeRedundantResults(AsyncRoutineOp op,
                                             PatternRewriter &rewriter) {
   OutputOp outputOp = op.getBodyTerminator();
 
@@ -3476,18 +3490,18 @@ static LogicalResult removeRedundantResults(GenericCompiledRegionOp op,
 
   // Rebuild the op with the collapsed result types, carrying over all of its
   // attributes (inherent + discardable) so nothing relied on later in the
-  // pipeline (e.g. isStructuredKernel, emitsMojo) is dropped.
+  // pipeline (e.g. isStructured, emitsMojo) is dropped.
   rewriter.setInsertionPoint(op);
-  auto newKernel = GenericCompiledRegionOp::create(
+  auto newKernel = AsyncRoutineOp::create(
       rewriter, op->getLoc(), newResultTypes, op.getOperands(),
       op.getOutputParamDeclsAttr(), op.getInOutSignatureAttr(),
       op.getFusionInfoAttr(),        // fusionInfo
-      op.getIsAsyncAttr(),           // isAsync
+      op.getDispatchAttr(),          // dispatch
       op.getConstantResourcesAttr(), // constantResources
       op.getCanFuseIntoOtherAttr(),  // canFuseIntoOther
       op.getCanBeFusedIntoAttr(),    // canBeFusedInto
       op.getCanDuplicateAttr(),      // canDuplicate
-      op.getIsStructuredKernelAttr() // isStructuredKernel
+      op.getIsStructuredAttr()       // isStructured
   );
 
   newKernel.setDeviceRef(op.getExecutionDevice());
@@ -3513,8 +3527,8 @@ static LogicalResult removeRedundantResults(GenericCompiledRegionOp op,
   return success();
 }
 
-LogicalResult GenericCompiledRegionOp::canonicalize(GenericCompiledRegionOp op,
-                                                    PatternRewriter &rewriter) {
+LogicalResult AsyncRoutineOp::canonicalize(AsyncRoutineOp op,
+                                           PatternRewriter &rewriter) {
   if (succeeded(deduplicateOperands(op, rewriter)))
     return success();
   if (succeeded(sinkChainCreateOperands(op, rewriter)))
@@ -4157,15 +4171,15 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// Shared verification for CallStubOp / CallStubAsyncOp
+// Shared verification for CallOp / CallAsyncOp
 //===----------------------------------------------------------------------===//
 
-static FailureOr<KernelStubOp>
+static FailureOr<FuncOp>
 verifyKernelStubCall(Operation *op, SymbolTableCollection &symbolTable,
                      FlatSymbolRefAttr calleeSymbol,
                      TypeRange callerOperandTypes) {
   auto calleeFunc =
-      symbolTable.lookupNearestSymbolFrom<KernelStubOp>(op, calleeSymbol);
+      symbolTable.lookupNearestSymbolFrom<FuncOp>(op, calleeSymbol);
   if (!calleeFunc) {
     return op->emitError(llvm::formatv("There is no kernel stub named '{}'",
                                        calleeSymbol.getValue()));
@@ -4199,29 +4213,29 @@ verifyKernelStubCall(Operation *op, SymbolTableCollection &symbolTable,
 }
 
 //===----------------------------------------------------------------------===//
-// CallStubOp
+// CallOp
 //===----------------------------------------------------------------------===//
 
-KernelStubOp CallStubOp::getCallee() {
+FuncOp CallOp::getCallee() {
   mlir::SymbolTable symTable(getOperation()->getParentOfType<ModuleOp>());
-  return dyn_cast_or_null<KernelStubOp>(symTable.lookup(getName()));
+  return dyn_cast_or_null<FuncOp>(symTable.lookup(getName()));
 }
 
-LogicalResult CallStubOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   auto calleeFunc = verifyKernelStubCall(*this, symbolTable, getCalleeSymbol(),
                                          getOperandTypes());
   if (failed(calleeFunc))
     return failure();
 
   // The MOGG ABI is the advanced-fusion outlining path (a stub outlined from a
-  // `mogg.kernel`); it reuses `mogg.call.stub` as its call site.
+  // `mogg.routine`); it reuses `mogg.call` as its call site.
   if (calleeFunc->getAbi() != ABIKind::MOGG)
     return emitError("Call site should be in the MOGG ABI");
 
   return success();
 }
 
-bool CallStubOp::isThrows() {
+bool CallOp::isThrows() {
   auto callee = getCallee();
   return callee && callee.isThrows();
 }
@@ -4245,7 +4259,7 @@ getStubCallOperands(EmitMojoState &state, Operation::operand_range ops) {
   return operands;
 }
 
-LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
+LogicalResult CallOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
   MojoValue func(getName());
   if (getNumResults()) {
@@ -4261,21 +4275,21 @@ LogicalResult CallStubOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// CallStubAsyncOp
+// CallAsyncOp
 //===----------------------------------------------------------------------===//
 
-KernelStubOp CallStubAsyncOp::getCallee() {
+FuncOp CallAsyncOp::getCallee() {
   mlir::SymbolTable symTable(getOperation()->getParentOfType<ModuleOp>());
-  return dyn_cast_or_null<KernelStubOp>(symTable.lookup(getName()));
+  return dyn_cast_or_null<FuncOp>(symTable.lookup(getName()));
 }
 
 LogicalResult
-CallStubAsyncOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+CallAsyncOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return verifyKernelStubCall(*this, symbolTable, getCalleeSymbol(),
                               getOperandTypes());
 }
 
-LogicalResult CallStubAsyncOp::emitMojo(EmitMojoState &state) {
+LogicalResult CallAsyncOp::emitMojo(EmitMojoState &state) {
   state.builder.newline();
 
   // 1. Create error slot: var error_N = Optional[Error]()
@@ -4644,7 +4658,7 @@ LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
 LogicalResult OutputOp::emitMojo(EmitMojoState &state) {
   // Only the MGP ABI hands results back through the `void**` slot vector, so
   // only it populates `state.mojoReturnValues`.
-  auto kernelStub = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  auto kernelStub = getOperation()->getParentOfType<MOGG::FuncOp>();
   if (!kernelStub || kernelStub.getAbi() != MOGG::ABIKind::MGP)
     return success();
 
@@ -4705,14 +4719,14 @@ static MojoValue boundaryTypeToMojo(EmitMojoState &state, Type type) {
 bool WithTraceOp::isThrows() { return true; }
 
 LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
-  // Find the enclosing KernelStubOp to get the device and fusion info.
-  auto kernelStubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  // Find the enclosing FuncOp to get the device and fusion info.
+  auto kernelStubOp = getOperation()->getParentOfType<MOGG::FuncOp>();
   if (!kernelStubOp)
-    return emitOpError("WithTraceOp must be nested in a KernelStubOp");
+    return emitOpError("WithTraceOp must be nested in a FuncOp");
 
   std::string deviceLabel = kernelStubOp.getDevice().str();
   // Distinct chains mean a kernel body shared by two non-nested
-  // profile_scope()s (MergeIdenticalKernelStubs merges their locations);
+  // profile_scope()s (MergeIdenticalFuncs merges their locations);
   // formatProfileScope marks that with `:` rather than `/`. The scope follows
   // the kernel name (unlike AddTryExceptBlocks' `[scope] __<stub>`) so the
   // fusion-info name leads the trace.
@@ -4784,9 +4798,9 @@ bool ProfileScopeBeginOp::isThrows() { return true; }
 LogicalResult ProfileScopeBeginOp::emitMojo(EmitMojoState &state) {
   // Build the Trace object: Trace[TraceLevel.OP, target=StaticString(device)]
   // ("[scope] region_name") and call start() on it.
-  auto kernelStubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  auto kernelStubOp = getOperation()->getParentOfType<MOGG::FuncOp>();
   if (!kernelStubOp)
-    return emitOpError("ProfileScopeBeginOp must be nested in a KernelStubOp");
+    return emitOpError("ProfileScopeBeginOp must be nested in a FuncOp");
 
   std::string deviceLabel = kernelStubOp.getDevice().str();
 
@@ -4823,11 +4837,11 @@ LogicalResult ProfileScopeEndOp::emitMojo(EmitMojoState &state) {
 bool RaiseOp::isThrows() { return true; }
 
 LogicalResult RaiseOp::emitMojo(EmitMojoState &state) {
-  // Find the enclosing KernelStubOp for kernel context (name, fusion info,
+  // Find the enclosing FuncOp for kernel context (name, fusion info,
   // source tracebacks).
-  auto kernelStubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  auto kernelStubOp = getOperation()->getParentOfType<MOGG::FuncOp>();
   if (!kernelStubOp)
-    return emitOpError("RaiseOp must be nested in a KernelStubOp");
+    return emitOpError("RaiseOp must be nested in a FuncOp");
 
   std::string stubName = kernelStubOp.getSymNameAttr().str();
 
@@ -4884,7 +4898,7 @@ LogicalResult TryOp::emitMojo(EmitMojoState &state) {
   // mogg.output. MGP forwards async values (its except block sets an error on
   // each), so those are `AnyAsyncValueRef`; other ABIs forward the result type
   // and raise instead, so only the try branch assigns.
-  auto stubOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  auto stubOp = getOperation()->getParentOfType<MOGG::FuncOp>();
   bool isMGPAbi = stubOp && stubOp.getAbi() == MOGG::ABIKind::MGP;
   for (OpResult result : getResults()) {
     MojoValue resultVar =
@@ -5018,7 +5032,7 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
 
   // Get the parent MGP region name for the error header.
   std::string regionName;
-  if (auto parentKernel = getOperation()->getParentOfType<MOGG::KernelStubOp>())
+  if (auto parentKernel = getOperation()->getParentOfType<MOGG::FuncOp>())
     regionName = parentKernel.getSymNameAttr().str();
 
   // Format the error with the region name prefix.
@@ -5076,7 +5090,7 @@ LogicalResult ShapeInitOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// GenericCompiledRegionOp Parsing/Printing
+// AsyncRoutineOp Parsing/Printing
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseKernel(
@@ -5098,7 +5112,7 @@ static ParseResult parseKernel(
   for (auto &arg : args)
     operandTypes.push_back(arg.type);
 
-  // For GenericCompiledRegionOp, if the kernel takes in a chain, there will be
+  // For AsyncRoutineOp, if the kernel takes in a chain, there will be
   // 1 fewer argument than operands.
   operandTypes.resize(operands.size(), MO::ChainType::get(p.getContext()));
 

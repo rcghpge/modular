@@ -2,7 +2,7 @@
 // RUN: mt --execute --input-shapes=2 --input-shapes=100 %t.mlir --result-output-style=full | FileCheck %s
 
 // This test make sure MOGG properly lowers KGEN expression with variadic
-// inputs (`stop_param` gets inlined into the `mogg.kernel` of the slice shape
+// inputs (`stop_param` gets inlined into the `mogg.routine` of the slice shape
 // func call).
 mo.graph @slice_shape_func_variadic_kgen_expr<D0 -> D1>(
   %dummy: !mo.tensor<[D0], f32>,

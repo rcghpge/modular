@@ -46,7 +46,7 @@ namespace M::MOGG {
 
 /// Returns `__<ops>`, a stub name built from the ops `fusionInfo` fuses. The
 /// caller inserts the stub into a symbol table for a unique name.
-StringAttr getKernelStubName(FusionInfoAttr fusionInfo);
+StringAttr getFuncName(FusionInfoAttr fusionInfo);
 
 template <typename Kernel>
 SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {

@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg | FileCheck %s
 
-// MAPToMOGG lowers a plain-output `map.iter.opaque` into a `mogg.kernel`:
+// MAPToMOGG lowers a plain-output `map.iter.opaque` into a `mogg.routine`:
 // inputs stay `!mo.tensor` operands and outputs stay `!mo.tensor` results, but
 // inside the body each tensor is reconstructed from a `!mogg.pointer` block
 // argument via `mogg.shape.create` / `mogg.tensor.create` (each recording the
@@ -11,7 +11,7 @@
 
 // Single plain output.
 // CHECK-LABEL: mo.graph @one_plain
-// CHECK: mogg.kernel (%[[A:.*]] : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+// CHECK: mogg.routine (%[[A:.*]] : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 // CHECK: inputs (%[[IP:[^ ,)]+]])
 // CHECK: outputs (%[[OP:[^ ,)]+]])
 // CHECK: context (%[[CTX:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
@@ -31,7 +31,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 
 // Two plain outputs: one input pointer, two output pointers, one context.
 // CHECK-LABEL: mo.graph @two_plain
-// CHECK: mogg.kernel (%{{.*}} : !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
+// CHECK: mogg.routine (%{{.*}} : !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
 // CHECK: inputs (%{{.*}})
 // CHECK: outputs (%{{.*}}, %{{.*}})
 // CHECK: context (%[[CTX:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {

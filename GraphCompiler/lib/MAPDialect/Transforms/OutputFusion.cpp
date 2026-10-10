@@ -216,7 +216,7 @@ IterOpaqueOp growOutputs(IterOpaqueOp dst, TypeRange extraTypes,
   auto newDst = IterOpaqueOp::create(
       rewriter, dst.getLoc(), resultTypes, dst.getInputs(), dst.getInputChain(),
       dst.getFusionInfoAttr(), dst.getHasReadEffect(), dst.getHasWriteEffect(),
-      dst.getIsAsync());
+      dst.getDispatch());
   // `device` and friends are discardable, so `create` does not carry them.
   newDst->setDiscardableAttrs(dst->getDiscardableAttrDictionary());
   newDst.getBody().takeBody(dst.getBody());

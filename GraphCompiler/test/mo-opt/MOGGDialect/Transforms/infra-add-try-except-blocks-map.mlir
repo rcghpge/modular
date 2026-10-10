@@ -1,10 +1,10 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --mo-nan-check-pass="stride=1" --mogg-outline-kernels-into-functions -mogg-add-try-except-blocks | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-elementwise --map-outline-structured-kernel-bodies --map-to-mogg --mo-nan-check-pass="stride=1" --mogg-outline-routines -mogg-add-try-except-blocks | FileCheck %s
 
 // A MAP ABI stub gets mogg.try/mogg.raise like a MOGG one. Without it there
 // is no mogg.raise on this path, and its emitMojo is the only renderer of a
 // kernel error's name, fusion info and source traceback.
 
-// CHECK-LABEL: mogg.kernel.stub @__add private
+// CHECK-LABEL: mogg.func @__add private
 // CHECK:         mogg.try {
 // CHECK:         } except(%{{[^)]+}}) {
 // CHECK:           mogg.raise

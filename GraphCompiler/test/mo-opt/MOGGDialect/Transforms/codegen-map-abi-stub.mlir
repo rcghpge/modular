@@ -2,19 +2,19 @@
 // RUN: env MODULAR_DEBUG=ir-output-dir=%t mo-opt %s \
 // RUN:   --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" \
 // RUN:   --mo-to-map --map-to-mogg --mogg-conform-call-operands \
-// RUN:   --mogg-outline-kernels-into-functions --mogg-emit-mojo -verify-each=false
+// RUN:   --mogg-outline-routines --mogg-emit-mojo -verify-each=false
 // RUN: FileCheck %s < %t/graph.mojo
 
-// End-to-end Mojo emission for the MOGG-ABI `mogg.kernel.stub`
-// (KernelStubOp::emitMojoMOGGABI plus the shape.create / tensor.create /
+// End-to-end Mojo emission for the MOGG-ABI `mogg.func`
+// (FuncOp::emitMojoMOGGABI plus the shape.create / tensor.create /
 // call.opaque / scalar.create / tuple.create emitters). The MOGG stub takes raw
 // `!mogg.pointer` / `!mogg.dim` / `!mogg.context` handles and reconstructs the
 // codegen tensors internally before invoking the opaque kernel's execute
 // function.
 //
-// The pipeline is stopped right after emission: the surrounding `mogg.kernel`
+// The pipeline is stopped right after emission: the surrounding `mogg.routine`
 // container is only consumed later (MOGGToMGP + region outlining), so its
-// `mogg.call.stub` dangles once emit erases the stub -- `-verify-each=false`
+// `mogg.call` dangles once emit erases the stub -- `-verify-each=false`
 // tolerates that. The emitted Mojo is read from the `ir-output-dir` dump rather
 // than `--mogg-dump-mojo`, which needs a fully lowered `mgp.model`.
 

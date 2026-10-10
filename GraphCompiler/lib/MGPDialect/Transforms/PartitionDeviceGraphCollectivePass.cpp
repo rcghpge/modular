@@ -89,7 +89,7 @@ private:
   llvm::SmallDenseMap<DeviceGraphStableCreateOp, Value> stableTensors;
 };
 
-M::DeviceRefAttr getDevice(GenericCompiledRegionOp op) {
+M::DeviceRefAttr getDevice(AsyncRoutineOp op) {
   return cast<MOHasDeviceInterface>(op.getOperation()).getExecutionDevice();
 }
 
@@ -97,13 +97,13 @@ M::DeviceRefAttr getDevice(GenericCompiledRegionOp op) {
 /// unique index.
 LogicalResult
 collectOperations(DeviceGraphStagingOp staging, StableInfos &stables,
-                  SmallVectorImpl<GenericCompiledRegionOp> &compiledRegions) {
+                  SmallVectorImpl<AsyncRoutineOp> &compiledRegions) {
   Block &body = staging.getBodyBlock();
 
   for (Operation &op : body.without_terminator()) {
     if (auto stable = dyn_cast<DeviceGraphStableCreateOp>(&op)) {
       stables.try_emplace(stable, static_cast<unsigned>(stables.size()));
-    } else if (auto region = dyn_cast<GenericCompiledRegionOp>(&op)) {
+    } else if (auto region = dyn_cast<AsyncRoutineOp>(&op)) {
       compiledRegions.push_back(region);
     } else {
       // Unknown ops inside a staging body are unexpected after staging.
@@ -116,7 +116,7 @@ collectOperations(DeviceGraphStagingOp staging, StableInfos &stables,
 }
 
 SmallVector<M::DeviceRefAttr>
-collectDevices(ArrayRef<GenericCompiledRegionOp> compiledRegions) {
+collectDevices(ArrayRef<AsyncRoutineOp> compiledRegions) {
   llvm::SmallSetVector<M::DeviceRefAttr, 8> deviceOrder;
 
   for (auto region : compiledRegions) {
@@ -151,7 +151,7 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
   baseMapper.map(stagingOp.getBodyInputs(), stagingOp.getInputs());
 
   StableInfos stableIndices;
-  SmallVector<GenericCompiledRegionOp> compiledRegions;
+  SmallVector<AsyncRoutineOp> compiledRegions;
 
   if (failed(collectOperations(stagingOp, stableIndices, compiledRegions)))
     return failure();
@@ -202,7 +202,7 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
             continue;
           }
 
-          auto compiledRegion = dyn_cast<GenericCompiledRegionOp>(&op);
+          auto compiledRegion = dyn_cast<AsyncRoutineOp>(&op);
           if (!compiledRegion) {
             bodyStatus = op.emitOpError(
                 "unexpected operation inside device-graph staging body");
@@ -229,8 +229,8 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
               mapper.map(operand, *resolved);
           }
 
-          auto cloned = cast<GenericCompiledRegionOp>(
-              builder.clone(*compiledRegion, mapper));
+          auto cloned =
+              cast<AsyncRoutineOp>(builder.clone(*compiledRegion, mapper));
           mapper.map(compiledRegion.getResults(), cloned.getResults());
         }
 
@@ -238,7 +238,7 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
         // device work yields only from its own region.
         SmallVector<Value> regionYields;
         for (Value origYield : stagingOp.getYieldOp().getOperands()) {
-          auto producer = origYield.getDefiningOp<GenericCompiledRegionOp>();
+          auto producer = origYield.getDefiningOp<AsyncRoutineOp>();
           if (!producer) {
             bodyStatus = stagingOp.getYieldOp().emitOpError(
                 "staging yield value is not produced by a compiled region");

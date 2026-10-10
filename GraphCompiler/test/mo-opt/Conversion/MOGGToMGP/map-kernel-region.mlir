@@ -1,16 +1,16 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg --mogg-conform-call-operands --mogg-outline-kernels-into-functions --mogg-to-mgp > %t
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg --mogg-conform-call-operands --mogg-outline-routines --mogg-to-mgp > %t
 // RUN: FileCheck %s < %t
 // RUN: FileCheck %s --check-prefix=NONAME < %t
 
 // The region's block arguments print their location after their type, where
 // the parser reads it.
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg --mogg-conform-call-operands --mogg-outline-kernels-into-functions --mogg-to-mgp --mlir-print-debuginfo | mo-opt --mlir-print-debuginfo | FileCheck %s --check-prefix=LOC
-// LOC: mogg.generic.compiled.region (%{{.*}}) : (%{{[^ ]*}}: !mef.chain loc(
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg --mogg-conform-call-operands --mogg-outline-routines --mogg-to-mgp --mlir-print-debuginfo | mo-opt --mlir-print-debuginfo | FileCheck %s --check-prefix=LOC
+// LOC: mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%{{.*}}) : (%{{[^ ]*}}: !mef.chain loc(
 
-// MOGGToMGP lowers a new-path mogg.kernel into a mogg.generic.compiled.region:
+// MOGGToMGP lowers a new-path mogg.routine into a mogg.routine.async:
 // its !mo.tensor inputs become !mgp.buffer operands, outputs are freshly
 // allocated, and inside the body each async block arg is unpacked + rebound to
-// the handle the already-outlined mogg.call.stub expects. Dim args are rebound
+// the handle the already-outlined mogg.call expects. Dim args are rebound
 // to an anonymous !mogg.dim (the source param-decl name is dropped, here and on
 // the stub signature, so a symbolic dim can't block kernel deduplication).
 //
@@ -19,22 +19,20 @@
 // own, so the stub call starts one block arg later.
 //
 // The region carries the real launch device (from region.setDeviceRef): the
-// device attr on mogg.generic.compiled.region is what sequence fusion reads, so
+// device attr on mogg.routine.async is what sequence fusion reads, so
 // it is asserted below to keep it from silently regressing to the host default.
 
 // A static-shape kernel: buffer inputs, buffer output, context. No dim args.
+// Async op: the region runs deferred, like the `mogg.routine` it came from.
 // CHECK-LABEL: mgp.model @one_plain
-// CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
+// CHECK: mogg.routine.async dispatch(deferred) (%{{.*}}) : (%{{.*}}: !mef.chain,
 // CHECK: mogg.async.unpack(%{{.*}}) : !mgp.buffer
 // CHECK: mogg.rebind %{{.*}} : !mgp.buffer to !mogg.pointer
 // CHECK: mogg.rebind %{{.*}} to !mogg.context
-// CHECK: mogg.call.stub @[[STUB0:__[A-Za-z0-9_]+]] %{{.*}} : !mogg.pointer, !mogg.pointer, !mogg.context
+// CHECK: mogg.call @[[STUB0:__[A-Za-z0-9_]+]] %{{.*}} : !mogg.pointer, !mogg.pointer, !mogg.context
 // CHECK: mogg.async.ready
 // CHECK: fusionInfo = #{{[^ ]+}} {{.*}}inOutSignature = <"iio.">
-// Async op: the region keeps `isAsync = true` (was hardcoded `false` before
-// KernelOp had an `isAsync` attribute).
-// CHECK-SAME: isAsync = true
-// CHECK: mogg.kernel.stub @[[STUB0]] private (%arg0: !mogg.pointer, %arg1: !mogg.pointer, %arg2: !mogg.context)
+// CHECK: mogg.func @[[STUB0]] private {{(dispatch\([a-z]+\) )?}}(%arg0: !mogg.pointer, %arg1: !mogg.pointer, %arg2: !mogg.context)
 // CHECK-SAME: device = "cpu"
 // CHECK: mogg.shape.create() <shape = #mosh<ape[2, 2]>{{.*}}>
 // CHECK: mogg.tensor.create(%arg0, %{{.*}}) <device = {{.*}}> : !mogg.tensor
@@ -48,12 +46,12 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // rebound to an anonymous !mogg.dim (NOT !mogg.dim<batch>). The referenced
 // stub's dim arg and its in-body shape.create use the anonymous !mogg.dim too.
 // CHECK-LABEL: mgp.model @dyn
-// CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
+// CHECK: mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%{{.*}}) : (%{{.*}}: !mef.chain,
 // CHECK: mogg.rebind %{{.*}} : !kgen.scalar<si64> to !mogg.dim{{$}}
-// CHECK: mogg.call.stub @[[STUB1:__[A-Za-z0-9_]+]] %{{.*}} : !mogg.pointer, !mogg.pointer, !mogg.dim, !mogg.context
+// CHECK: mogg.call @[[STUB1:__[A-Za-z0-9_]+]] %{{.*}} : !mogg.pointer, !mogg.pointer, !mogg.dim, !mogg.context
 // CHECK: mogg.async.ready
 // CHECK: fusionInfo = #{{[^ ]+}} {{.*}}inOutSignature = <"iio..">
-// CHECK: mogg.kernel.stub @[[STUB1]] private (%arg0: !mogg.pointer, %arg1: !mogg.pointer, %arg2: !mogg.dim, %arg3: !mogg.context)
+// CHECK: mogg.func @[[STUB1]] private {{(dispatch\([a-z]+\) )?}}(%arg0: !mogg.pointer, %arg1: !mogg.pointer, %arg2: !mogg.dim, %arg3: !mogg.context)
 // CHECK-SAME: device = "cpu"
 // CHECK: mogg.shape.create(%arg2) <shape = #mosh<ape[dyn, 4]>{{.*}}> : !mogg.dim
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%arg3 : !mogg.context)

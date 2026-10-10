@@ -85,7 +85,7 @@ bool dependsOnNoAliasConstantLikesOnly(mlir::Operation *operation) {
 }
 
 bool isTileCodegenForOp(mlir::Operation *op, mlir::ModuleOp moduleOp) {
-  auto kernelStubOp = op->getParentOfType<MOGG::KernelStubOp>();
+  auto kernelStubOp = op->getParentOfType<MOGG::FuncOp>();
   StringRef deviceLabel = kernelStubOp
                               ? kernelStubOp.getDevice()
                               : MO::getDeviceOrDefaultAny(op).getLabel();

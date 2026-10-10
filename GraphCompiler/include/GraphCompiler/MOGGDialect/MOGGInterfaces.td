@@ -35,10 +35,10 @@ def MOGG_KernelCallInterface : OpInterface<"KernelCallInterface"> {
   ];
 }
 
-def MOGG_StubCallOpInterface : OpInterface<"StubCallOpInterface"> {
+def MOGG_FuncCallOpInterface : OpInterface<"FuncCallOpInterface"> {
   let description = [{
-    Ops that call an outlined `mogg.kernel.stub` by symbol (`mogg.call.stub`,
-    `mogg.call.stub.async`). The callee is the `$name` attribute.
+    Ops that call an outlined `mogg.func` by symbol (`mogg.call`,
+    `mogg.call.async`). The callee is the `$name` attribute.
   }];
 
   let cppNamespace = "::M::MOGG";
@@ -112,7 +112,7 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
 
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let description = [{
-    A terminator for `mogg.kernel` operation.
+    A terminator for `mogg.routine` operation.
 
     A kernel terminator represents a call to a particular registered mojo
     function with the following calling convention:

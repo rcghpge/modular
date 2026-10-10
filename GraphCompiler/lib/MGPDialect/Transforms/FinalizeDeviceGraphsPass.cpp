@@ -87,11 +87,11 @@ LogicalResult resolveBuilderCasts(Region &region) {
   return mlir::success();
 }
 
-/// Build a `mogg.generic.compiled.region` around a device-graph build callback.
+/// Build a `mogg.routine.async` around a device-graph build callback.
 ///
 /// `operands` enter as `!mogg.async<T>` block arguments and are unpacked for
 /// `bodyBuilder`, whose returned values are packed and yielded.
-static FailureOr<MOGG::GenericCompiledRegionOp> wrapDeviceGraphBuildRegion(
+static FailureOr<MOGG::AsyncRoutineOp> wrapDeviceGraphBuildRegion(
     IRRewriter &rewriter, Location loc, DeviceRefAttr deviceRef,
     TypeRange resultTypes, ValueRange operands, StringRef fusionName,
     ArrayAttr constantResources,
@@ -103,16 +103,16 @@ static FailureOr<MOGG::GenericCompiledRegionOp> wrapDeviceGraphBuildRegion(
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
       operands.size(), InOutSignatureAttr::InOutSemantics::kNone);
 
-  auto regionOp = MOGG::GenericCompiledRegionOp::create(
+  auto regionOp = MOGG::AsyncRoutineOp::create(
       rewriter, loc, resultTypes, operands,
       KGEN::ParamDeclArrayAttr::get(ctx, {}),
       InOutSignatureAttr::get(ctx, operandSemantics),
       MOGG::FusionInfoAttr::get(
           ctx, MOGG::FusionLeafAttr::get(ctx, StringAttr::get(ctx, fusionName),
                                          /*loc=*/{}, /*signature=*/{})),
-      rewriter.getBoolAttr(false), constantResources,
-      rewriter.getBoolAttr(false), rewriter.getBoolAttr(false),
-      rewriter.getBoolAttr(false));
+      MOGG::DispatchKindAttr::get(ctx, MOGG::DispatchKind::Immediate),
+      constantResources, rewriter.getBoolAttr(false),
+      rewriter.getBoolAttr(false), rewriter.getBoolAttr(false));
   regionOp.setDeviceRef(deviceRef);
 
   Block &regionBody = regionOp.getBody().emplaceBlock();
@@ -206,7 +206,7 @@ collectDeviceContexts(DeviceGraphCollectiveOp collectiveOp, ModelOp model) {
 
 /// Lower a single `mgp.device_graph.collective` op into a
 /// `mgp.device_graph.collective.create` wrapped in a
-/// `mogg.generic.compiled.region`, plus a bare
+/// `mogg.routine.async`, plus a bare
 /// `mgp.device_graph.collective.execute` that replays it.
 LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
                                    ModelOp model) {

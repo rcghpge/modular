@@ -9,7 +9,7 @@ mgp.model @fold_true_assert : mof devices [#M.device_ref<"cpu", 0>] init (%arg0:
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %cond : i1) -> (!mef.chain) {
   // Make sure that error message was turned into dynamic value.
   //
-  // CHECK: mogg.generic.compiled.region
+  // CHECK: mogg.routine.async
   // CHECK:  mgp.assert %{{.*}}, "Tensor type mismatch for argument 0: Expected shape: [2,4]"
   // CHECK:  constantResources = ["Tensor type mismatch for argument 0: Expected shape: [2,4]"]
   %assert = mgp.assert %cond, "Tensor type mismatch for argument 0: Expected shape: [2,4]"

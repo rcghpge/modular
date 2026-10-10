@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-to-mogg | FileCheck %s
 
-// Dynamic shapes: `mogg.kernel` gains one `!mogg.dim` block argument per UNIQUE
+// Dynamic shapes: `mogg.routine` gains one `!mogg.dim` block argument per UNIQUE
 // dynamic dimension (deduped across inputs and outputs), listed in the grouped
 // header's `dims(...)` after `context(...)`, and each `mogg.shape.create` is fed
 // the dims for its own tensor. The dim block arg keeps its source parameter name
@@ -11,7 +11,7 @@
 // both `shape.create`s use it, each printing `#mosh<ape[dyn, 4]>`.
 
 // CHECK-LABEL: mo.graph @dyn
-// CHECK: mogg.kernel (%{{.*}} : !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>
+// CHECK: mogg.routine (%{{.*}} : !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>
 // CHECK: inputs (%{{.*}})
 // CHECK: outputs (%{{.*}})
 // CHECK: context (%[[CTX:[^ ,)]+]])

@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Outlines each `mogg.kernel` body into a module-level `mogg.kernel.stub`
+// Outlines each `mogg.routine` body into a module-level `mogg.func`
 // (labeled with the `MAP` ABI) and replaces the kernel body with a single
-// `mogg.call.stub` forwarding the kernel's `!mogg.pointer` / `!mogg.dim` /
-// `!mogg.context` block arguments. The `mogg.kernel` container survives: it
+// `mogg.call` forwarding the kernel's `!mogg.pointer` / `!mogg.dim` /
+// `!mogg.context` block arguments. The `mogg.routine` container survives: it
 // keeps the `!mo.tensor` interface that `MOGGToMGP` later lowers.
 //
 //===----------------------------------------------------------------------===//
@@ -27,15 +27,15 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_OUTLINEKERNELSINTOFUNCTIONS
+#define GEN_PASS_DEF_OUTLINEROUTINES
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
 
-// Outlines one `mogg.kernel`: its body moves into `stub`; the kernel's body is
-// rebuilt as a single `mogg.call.stub` forwarding fresh block args to `stub`.
+// Outlines one `mogg.routine`: its body moves into `stub`; the kernel's body is
+// rebuilt as a single `mogg.call` forwarding fresh block args to `stub`.
 void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
-                   MOGG::KernelOp kernel) {
+                   MOGG::RoutineOp kernel) {
   MLIRContext *ctx = kernel.getContext();
   Location loc = kernel.getLoc();
 
@@ -66,7 +66,7 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   auto functionType =
       TypeAttr::get(FunctionType::get(ctx, stubArgTypes, stubResultTypes));
 
-  // Forward the fusion-tree provenance `MAPToMOGG` threaded onto `mogg.kernel`
+  // Forward the fusion-tree provenance `MAPToMOGG` threaded onto `mogg.routine`
   // from the source `map.iter.opaque`; fall back to a fresh leaf only if it's
   // absent (e.g. a kernel region built by hand in a test).
   MOGG::FusionInfoAttr fusionInfo = kernel.getFusionInfoAttr();
@@ -75,7 +75,7 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
 
   // Name the stub after the ops it fuses, e.g. "__relu_add"; the symbol table
   // appends a numeric suffix below when two kernels fuse the same ops.
-  auto stubName = MOGG::getKernelStubName(fusionInfo);
+  auto stubName = MOGG::getFuncName(fusionInfo);
 
   // Place the stub just after the kernel's top-level ancestor for readable,
   // deterministic output.
@@ -85,9 +85,9 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
     topAncestor = topAncestor->getParentOp();
   builder.setInsertionPointAfter(topAncestor);
 
-  auto stub = MOGG::KernelStubOp::create(
+  auto stub = MOGG::FuncOp::create(
       builder, loc, stubName, functionType, fusionInfo,
-      /*isAsync=*/nullptr, /*constantResources=*/ArrayAttr::get(ctx, {}),
+      /*dispatch=*/nullptr, /*constantResources=*/ArrayAttr::get(ctx, {}),
       MOGG::ABIKindAttr::get(ctx, MOGG::ABIKind::MOGG),
       /*device=*/
       builder.getStringAttr(MO::getDeviceOrDefaultAny(kernel).getLabel()),
@@ -112,7 +112,7 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   if (!bodyOutput)
     MOGG::OutputOp::create(builder, loc, ValueRange{});
 
-  // Rebuild the kernel body as a single `mogg.call.stub` forwarding fresh block
+  // Rebuild the kernel body as a single `mogg.call` forwarding fresh block
   // args (same types) to the stub, preceded by the constants it hands over.
   Block *callBody = builder.createBlock(&kernel.getBody());
   SmallVector<Value> forwarded;
@@ -123,14 +123,13 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
     cst->moveBefore(callBody, callBody->end());
     forwarded.push_back(cst.getPointer());
   }
-  MOGG::CallStubOp::create(builder, loc, /*resultTypes=*/stubResultTypes,
-                           FlatSymbolRefAttr::get(stubName), forwarded,
-                           /*affinity_device_id=*/nullptr);
+  MOGG::CallOp::create(builder, loc, /*resultTypes=*/stubResultTypes,
+                       FlatSymbolRefAttr::get(stubName), forwarded,
+                       /*affinity_device_id=*/nullptr);
 }
 
-struct OutlineKernelsIntoFunctionsPass
-    : public MOGG::impl::OutlineKernelsIntoFunctionsBase<
-          OutlineKernelsIntoFunctionsPass> {
+struct OutlineRoutinesPass
+    : public MOGG::impl::OutlineRoutinesBase<OutlineRoutinesPass> {
   using Base::Base;
 
   void runOnOperation() override {
@@ -139,13 +138,13 @@ struct OutlineKernelsIntoFunctionsPass
     // and the table consistent.
     SymbolTable &symtab =
         getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
-    SmallVector<MOGG::KernelOp> kernels;
-    getOperation().walk([&](MOGG::KernelOp k) {
+    SmallVector<MOGG::RoutineOp> kernels;
+    getOperation().walk([&](MOGG::RoutineOp k) {
       kernels.push_back(k);
-      // No need to recurse inside a `mogg.kernel`.
+      // No need to recurse inside a `mogg.routine`.
       return WalkResult::skip();
     });
-    for (MOGG::KernelOp kernel : kernels)
+    for (MOGG::RoutineOp kernel : kernels)
       outlineKernel(builder, symtab, kernel);
   }
 };

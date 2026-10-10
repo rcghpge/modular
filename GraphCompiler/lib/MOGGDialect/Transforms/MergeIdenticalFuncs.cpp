@@ -20,7 +20,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_MERGEIDENTICALKERNELSTUBS
+#define GEN_PASS_DEF_MERGEIDENTICALFUNCS
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 } // namespace M::MOGG
@@ -31,7 +31,7 @@ namespace {
 
 // A stub with its precomputed hash, so repeated insertions don't rehash.
 struct KernelStubHashEntry {
-  MOGG::KernelStubOp op;
+  MOGG::FuncOp op;
   unsigned hash;
 
   // Will be called in isEqual only.
@@ -90,9 +90,9 @@ struct KernelStubOpEquivalenceInfo
   }
 };
 
-static unsigned getHashValue(const MOGG::KernelStubOp cStubOp) {
+static unsigned getHashValue(const MOGG::FuncOp cStubOp) {
   llvm::hash_code hash = {};
-  MOGG::KernelStubOp stubOp = const_cast<MOGG::KernelStubOp &>(cStubOp);
+  MOGG::FuncOp stubOp = const_cast<MOGG::FuncOp &>(cStubOp);
 
   auto properties = stubOp.getProperties();
   properties.sym_name = {};
@@ -126,23 +126,23 @@ static unsigned getHashValue(const MOGG::KernelStubOp cStubOp) {
   return hash;
 }
 
-// The edge type is `StubCallOpInterface` so `CallGraphBase::build` finds both
-// `mogg.call.stub` and `mogg.call.stub.async` edges, and a caller stub is
+// The edge type is `FuncCallOpInterface` so `CallGraphBase::build` finds both
+// `mogg.call` and `mogg.call.async` edges, and a caller stub is
 // canonicalized before it is hashed.
-struct CallGraphNode : public KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp,
-                                            MOGG::StubCallOpInterface> {
-  using Base = KGEN::SCCNode<CallGraphNode, MOGG::KernelStubOp,
-                             MOGG::StubCallOpInterface>;
+struct CallGraphNode : public KGEN::SCCNode<CallGraphNode, MOGG::FuncOp,
+                                            MOGG::FuncCallOpInterface> {
+  using Base =
+      KGEN::SCCNode<CallGraphNode, MOGG::FuncOp, MOGG::FuncCallOpInterface>;
   using Base::Base;
 
   unsigned hash;
 };
 
 struct CallStubOrCalleeName {
-  MOGG::StubCallOpInterface callOp;
+  MOGG::FuncCallOpInterface callOp;
   StringAttr name;
 
-  CallStubOrCalleeName(MOGG::StubCallOpInterface call)
+  CallStubOrCalleeName(MOGG::FuncCallOpInterface call)
       : callOp(call), name(call.getCalleeSymbol().getAttr()) {}
   CallStubOrCalleeName(StringAttr n) : callOp(nullptr), name(n) {}
 };
@@ -170,7 +170,7 @@ struct CallGraph : public KGEN::SCCGraph<CallGraph, CallGraphNode,
 
 void CallGraph::doRewrite(CallGraphNode *node) {
   for (auto [caller, callee] : node->callsites) {
-    MOGG::KernelStubOp replacementCallee = nullptr;
+    MOGG::FuncOp replacementCallee = nullptr;
     {
       std::lock_guard<std::mutex> lock(setAccessMutex);
       replacementCallee =
@@ -196,7 +196,7 @@ void CallGraph::doRewrite(CallGraphNode *node) {
   // stub is recorded to replace external calls afterwards (see
   // mergeIdenticalKernelStubs below).
   if (node->callers.empty()) {
-    MOGG::KernelStubOp replacementCallee = nullptr;
+    MOGG::FuncOp replacementCallee = nullptr;
     std::lock_guard<std::mutex> lock(setAccessMutex);
     replacementCallee =
         uniqueFuncSet.insert(KernelStubHashEntry{node->func, node->hash})
@@ -234,9 +234,8 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
     finalReplacements[replacement] = finalCandidate.name;
 
     // Fuse locations to maintain provenance information.
-    if (KernelStubOp accumulatedOp = symTable.lookup<KernelStubOp>(replacement))
-      if (KernelStubOp finalOp =
-              symTable.lookup<KernelStubOp>(finalCandidate.name))
+    if (FuncOp accumulatedOp = symTable.lookup<FuncOp>(replacement))
+      if (FuncOp finalOp = symTable.lookup<FuncOp>(finalCandidate.name))
         if (finalOp != accumulatedOp)
           finalOp->setLoc(mlir::FusedLoc::get(
               finalOp->getContext(),
@@ -251,15 +250,15 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
   }
 
   // Rewrite callers that aren't call-graph nodes to the deduplicated callee:
-  //   - ExecuteCompiledOp in mgp.ModelOps, and
-  //   - StubCallOpInterface ops inside pre-outline
-  //     mogg.generic.compiled.region ops.
+  //   - CompiledCallOp in mgp.ModelOps, and
+  //   - FuncCallOpInterface ops inside pre-outline
+  //     mogg.routine.async ops.
   // A graph-edge callee has a caller, so is never in `topLevelReplacements`.
   module.walk([&](Operation *op) {
     StringAttr calleeName;
-    if (auto execOp = dyn_cast<MOGG::ExecuteCompiledOp>(op))
+    if (auto execOp = dyn_cast<MOGG::CompiledCallOp>(op))
       calleeName = execOp.getCalleeSymbolAttr().getAttr();
-    else if (auto stubCall = dyn_cast<MOGG::StubCallOpInterface>(op))
+    else if (auto stubCall = dyn_cast<MOGG::FuncCallOpInterface>(op))
       calleeName = stubCall.getCalleeSymbol().getAttr();
     else
       return;
@@ -273,17 +272,16 @@ void mergeIdenticalKernelStubs(ModuleOp module) {
       return;
 
     auto newRef = mlir::FlatSymbolRefAttr::get(replacement->second);
-    if (auto execOp = dyn_cast<MOGG::ExecuteCompiledOp>(op))
+    if (auto execOp = dyn_cast<MOGG::CompiledCallOp>(op))
       execOp.setCalleeSymbolAttr(newRef);
     else
-      cast<MOGG::StubCallOpInterface>(op).setCalleeSymbol(newRef);
+      cast<MOGG::FuncCallOpInterface>(op).setCalleeSymbol(newRef);
   });
 }
 
-struct MergeIdenticalKernelStubs
-    : public MOGG::impl::MergeIdenticalKernelStubsBase<
-          MergeIdenticalKernelStubs> {
-  using MergeIdenticalKernelStubsBase::MergeIdenticalKernelStubsBase;
+struct MergeIdenticalFuncs
+    : public MOGG::impl::MergeIdenticalFuncsBase<MergeIdenticalFuncs> {
+  using MergeIdenticalFuncsBase::MergeIdenticalFuncsBase;
 
   void runOnOperation() override { mergeIdenticalKernelStubs(getOperation()); }
 };

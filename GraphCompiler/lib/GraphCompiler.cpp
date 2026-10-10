@@ -66,7 +66,7 @@ void M::MO::registerShapeInferencePipeline() {
 }
 
 void M::MO::buildJitPipeline(mlir::OpPassManager &pm) {
-  pm.addPass(MOGG::createLowerMOGGRegionCompiles());
+  pm.addPass(MOGG::createLowerCompiledRoutines());
   pm.addPass(MGP::createInlineMGPCallsPass());
   pm.addPass(MGP::createFixupOverhangsPass());
   pm.addPass(mlir::createCSEPass());
@@ -156,21 +156,21 @@ void M::MO::registerPasses() {
   MO::registerMOTransformsPasses();
   MAP::registerMAPTransformsPasses();
   MAP::registerMAPToMOGGPasses();
-  MOGG::registerOutlineKernelsIntoFunctionsPass();
+  MOGG::registerOutlineRoutinesPass();
   MGP::registerMOGGToMGP();
 
-  MOGG::registerCanonicalizeKernelStubDeviceIds();
-  MOGG::registerMergeIdenticalKernelStubs();
+  MOGG::registerCanonicalizeFuncDeviceIds();
+  MOGG::registerMergeIdenticalFuncs();
   MOGG::registerAddProfileScopeTracingPass();
-  MOGG::registerWrapKernelsWithTraceOpPass();
+  MOGG::registerWrapFuncsWithTracePass();
   MOGG::registerAddTryExceptBlocksPass();
   MOGG::registerLookupConstantResources();
   MGP::registerRaiseBackIndexConstant();
-  MOGG::registerOutlineGenericCompiledRegionsToFunctionsPass();
+  MOGG::registerOutlineAsyncRoutinesPass();
   MOGG::registerEmitMojo();
   MOGG::registerDumpMojo();
   MOGG::registerLoadMojo();
-  MOGG::registerLowerMOGGRegionCompiles();
+  MOGG::registerLowerCompiledRoutines();
   MGP::registerLowerPrimitives();
   MOGG::registerSequenceFusion();
 
@@ -363,8 +363,8 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
 void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
                               const MoggPipelineOptions &) {
   pm.addPass(MOGG::createConformCallOperands());
-  pm.addPass(MOGG::createOutlineKernelsIntoFunctions());
-  pm.addPass(MOGG::createWrapKernelsWithTraceOp());
+  pm.addPass(MOGG::createOutlineRoutines());
+  pm.addPass(MOGG::createWrapFuncsWithTrace());
 
   // On the module, not GraphOp: the outlined stubs are its siblings.
   pm.addPass(mlir::createCanonicalizerPass());
@@ -429,7 +429,7 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
 
   pm.addPass(MGP::createSimplifyExtendLifetimesPass());
 
-  pm.addPass(MOGG::createOutlineGenericCompiledRegionsToFunctions());
+  pm.addPass(MOGG::createOutlineAsyncRoutines());
   pm.addPass(MOGG::createLookupConstantResources());
 
   // Lifting slot-index constants into stub arguments lets kernels differing
@@ -438,20 +438,20 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
 
   // The emitted Mojo reads the device label, not the id, so erasing ids lets
   // per-device copies (e.g. across EP shards) merge below.
-  pm.addPass(MOGG::createCanonicalizeKernelStubDeviceIds());
+  pm.addPass(MOGG::createCanonicalizeFuncDeviceIds());
 
   // Stubs that differ only by a redundant op merge once it is gone.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(MOGG::createMergeIdenticalKernelStubs());
+  pm.addPass(MOGG::createMergeIdenticalFuncs());
 
   // index.constant emits fewer lines of Mojo than its lowered form.
   pm.addPass(MGP::createRaiseBackIndexConstant());
 
   pm.addPass(MGP::createFixupOverhangsPass());
-  pm.addNestedPass<MOGG::KernelStubOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<MOGG::FuncOp>(mlir::createCanonicalizerPass());
 
-  // Drop stubs orphaned by MergeIdenticalKernelStubs.
+  // Drop stubs orphaned by MergeIdenticalFuncs.
   pm.addPass(mlir::createSymbolDCEPass());
 
   // Before try/except wrapping: the begin/end Trace calls raise, and the

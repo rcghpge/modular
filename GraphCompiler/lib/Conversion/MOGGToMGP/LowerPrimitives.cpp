@@ -71,9 +71,10 @@ static inline bool canFuseOp(Operation *op) {
          op->getName().getIdentifier().strref().starts_with("testfuse.");
 }
 
-static inline bool isAsync(Operation *op) {
+static inline MOGG::DispatchKind getDispatch(Operation *op) {
   // Event sync should be launched in a separate thread.
-  return isa<MGP::SyncOp>(op);
+  return isa<MGP::SyncOp>(op) ? MOGG::DispatchKind::Deferred
+                              : MOGG::DispatchKind::Immediate;
 }
 
 static inline bool canDuplicate(Operation *op) {
@@ -89,7 +90,7 @@ static inline bool canDuplicate(Operation *op) {
              mlir::index::IndexDialect>(op->getDialect());
 }
 
-static ErrorOr<MOGG::GenericCompiledRegionOp>
+static ErrorOr<MOGG::AsyncRoutineOp>
 wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
                         CompiledRegionBodyBuilder bodyBuilder) {
   auto constResources = builder.getArrayAttr({});
@@ -98,17 +99,18 @@ wrapGenericRegionAround(OpBuilder &builder, Location loc, Operation *op,
 
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics(
       op->getNumOperands(), InOutSignatureAttr::InOutSemantics::kNone);
-  auto newKernel = MOGG::GenericCompiledRegionOp::create(
+  auto newKernel = MOGG::AsyncRoutineOp::create(
       builder, loc, op->getResultTypes(), op->getOperands(),
       KGEN::ParamDeclArrayAttr::get(builder.getContext(), {}),
       InOutSignatureAttr::get(builder.getContext(), operandSemantics),
       MOGG::FusionInfoAttr::get(builder.getContext(),
                                 MOGG::createFusionLeaf(op)),
-      builder.getBoolAttr(isAsync(op)),     // isAsync
-      constResources,                       // constantResources
-      builder.getBoolAttr(canFuseOp(op)),   // canFuseIntoOther
-      builder.getBoolAttr(canFuseOp(op)),   // canBeFusedInto
-      builder.getBoolAttr(canDuplicate(op)) // canDuplicate
+      MOGG::DispatchKindAttr::get(builder.getContext(),
+                                  getDispatch(op)), // dispatch
+      constResources,                               // constantResources
+      builder.getBoolAttr(canFuseOp(op)),           // canFuseIntoOther
+      builder.getBoolAttr(canFuseOp(op)),           // canBeFusedInto
+      builder.getBoolAttr(canDuplicate(op))         // canDuplicate
   );
 
   if (auto hasDeviceOp = dyn_cast<MGPHasDeviceOpInterface>(op))
@@ -161,7 +163,7 @@ void LowerPrimitivesPass::runOnOperation() {
   };
 
   const auto walkerFn = [&](Operation *op) {
-    if (isa<MOGG::GenericCompiledRegionOp, MOGG::KernelStubOp>(op))
+    if (isa<MOGG::AsyncRoutineOp, MOGG::FuncOp>(op))
       return mlir::WalkResult::skip();
 
     // Constant external ops should not be lowered to mojo so they can be

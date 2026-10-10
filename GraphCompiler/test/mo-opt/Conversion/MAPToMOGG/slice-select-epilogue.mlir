@@ -26,7 +26,7 @@
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  mogg.call.opaque @{{.*}}.Concat[axis = 1 : index] inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) context({{.*}}) hasEpilogueFusion = true
-// CHECK-NOT:   mogg.kernel
+// CHECK-NOT:   mogg.routine
 mo.graph @concat_slice_window<B, S, T -> OB, OT>(
   %cache: !mo.tensor<[B, 8, 16], f32>,
   %new: !mo.tensor<[B, S, 16], f32>,

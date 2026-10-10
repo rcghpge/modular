@@ -7,7 +7,7 @@
 mogg.primitive.decl @foreach_impl registration = "mogg.call.foreach" function = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
 
 // expected-error @below {{device-graph recording stub generation: expected the producer launch context to be an argument of the kernel stub}}
-mogg.kernel.stub @stub_1 private (%p: !mogg.pointer) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
+mogg.func @stub_1 private dispatch(deferred) (%p: !mogg.pointer) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   %ctx = "test.make_ctx"() : () -> !mogg.context
   %shape = "test.shape"() : () -> !mogg.shape
   %t = "test.tensor"() : () -> !mogg.tensor
@@ -25,7 +25,7 @@ mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weight
     %node = mgp.device_graph.dependencies builder(%b) dependencies() {
     ^bb0(%dep_builder: !mgp.device_graph.builder):
       %p = "test.pointer"() : () -> !mogg.pointer
-      mogg.call.stub @stub_1 %p : !mogg.pointer
+      mogg.call @stub_1 %p : !mogg.pointer
       mgp.device_graph.dependencies.yield
     }
     mgp.device_graph.collective.yield

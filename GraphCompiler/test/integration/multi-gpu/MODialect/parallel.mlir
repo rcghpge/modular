@@ -52,14 +52,14 @@ mo.graph @parallel_multi_gpu_neg_relu() -> (!mo.tensor<[3], si32>, !mo.tensor<[3
 // CHECK: 'parallel_multi_gpu_neg_relu' returned tensor<3xsi32> [0, 2, 0]
 // CHECK: , tensor<3xsi32> [9, 0, 7]
 
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
-// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
+// CHECK-MGP:   mogg.call.async @{{__[A-Za-z0-9_]+}}({{.*}}) affinity_device_id = {{[0-9]+}}
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready

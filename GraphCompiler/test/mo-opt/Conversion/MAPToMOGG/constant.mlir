@@ -10,7 +10,7 @@
 // alignment is known.
 
 // CHECK-LABEL: mo.graph @constant
-// CHECK: mogg.kernel () -> !mo.tensor<[2, 2], f32>
+// CHECK: mogg.routine () -> !mo.tensor<[2, 2], f32>
 // CHECK-NEXT: outputs ([[OP:%[^ :,]+]])
 // CHECK-NEXT: context ([[CTX:%[^ :,]+]])
 // CHECK-NEXT:   [[OSH:%[^ ]+]] = mogg.shape.create()

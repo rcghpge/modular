@@ -30,7 +30,7 @@
 #include "llvm/ADT/DenseMap.h"
 
 namespace M::MOGG {
-class GenericCompiledRegionOp;
+class AsyncRoutineOp;
 }
 
 namespace M::MGP {
@@ -417,8 +417,8 @@ public:
     return builderContext.getHostBufferBuilder();
   }
 
-  /// Packs outputs and unpacks inputs of a MOGG::GenericCompiledRegionOp.
-  static void lowerMOGGABI(MOGG::GenericCompiledRegionOp kernelOp);
+  /// Packs outputs and unpacks inputs of a MOGG::AsyncRoutineOp.
+  static void lowerMOGGABI(MOGG::AsyncRoutineOp kernelOp);
 
 private:
   //===-----------------------------------------------------------------===//

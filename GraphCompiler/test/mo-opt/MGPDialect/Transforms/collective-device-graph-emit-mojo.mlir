@@ -4,7 +4,7 @@
 
 // End-to-end Mojo emission for a multi-device `mgp.device_graph.collective`.
 // The collective is finalized into a `mgp.device_graph.collective.create`
-// wrapped in a `mogg.generic.compiled.region`, then `mogg-emit-mojo` emits that
+// wrapped in a `mogg.routine.async`, then `mogg-emit-mojo` emits that
 // region as a Mojo function.
 
 // A single indexed build closure is generated and dispatched by device ordinal.

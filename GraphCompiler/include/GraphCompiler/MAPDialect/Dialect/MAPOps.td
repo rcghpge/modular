@@ -97,7 +97,8 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     OptionalAttr<AnyAttr>:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
+    DefaultValuedOptionalAttr<MOGG_DispatchKindAttr,
+                              "::M::MOGG::DispatchKind::Deferred">:$dispatch
   );
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Opaque, MO_Chain]>>:$results);
   let regions = (region SizedRegion<1>:$body);
@@ -344,7 +345,8 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
     OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
-    DefaultValuedOptionalAttr<BoolAttr, "true">:$isAsync
+    DefaultValuedOptionalAttr<MOGG_DispatchKindAttr,
+                              "::M::MOGG::DispatchKind::Deferred">:$dispatch
   );
 
   let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain]>>:$results);

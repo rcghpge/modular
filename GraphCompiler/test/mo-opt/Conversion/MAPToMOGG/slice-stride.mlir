@@ -13,7 +13,7 @@
 // Static bounds (mo.constant starts/stops/steps): every bound is a literal.
 
 // CHECK-LABEL: mo.graph @sliceStaticBounds
-// CHECK:       [[KERNEL:%[^ ]+]] = mogg.kernel ({{.*}} : !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
+// CHECK:       [[KERNEL:%[^ ]+]] = mogg.routine ({{.*}} : !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
 // CHECK-NEXT:  inputs ([[IP0:%[^ :,]+]], [[IP1:%[^ :,]+]], [[IP2:%[^ :,]+]], [[IP3:%[^ :,]+]])
 // CHECK-NEXT:  outputs ([[OP:%[^ :,]+]])
 // CHECK-NEXT:  context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {

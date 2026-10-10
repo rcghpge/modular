@@ -51,8 +51,7 @@ Value reconcileAcrossBoundary(OpBuilder &builder, Location loc, Value value,
 /// re-sourced from `graphBuilder` via `builtin.unrealized_conversion_cast`, so
 /// the body is tied to the device graph under construction.
 LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
-                                    Value graphBuilder,
-                                    GenericCompiledRegionOp region,
+                                    Value graphBuilder, AsyncRoutineOp region,
                                     const IRMapping &oldValueToNew) {
   Block &srcBlock = region.getBody().front();
 
@@ -113,10 +112,10 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
   return success();
 }
 
-/// Replaces every `mogg.generic.compiled.region` in `collectiveOp` with a
+/// Replaces every `mogg.routine.async` in `collectiveOp` with a
 /// `mgp.device_graph.dependencies` op, preserving per-device ordering.
 LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
-  llvm::MapVector<GenericCompiledRegionOp, DeviceGraphDependenciesOp> oldToNew;
+  llvm::MapVector<AsyncRoutineOp, DeviceGraphDependenciesOp> oldToNew;
   IRMapping oldValueToNew;
 
   // Regions are converted per device; edges, including cross-device ones, are
@@ -125,7 +124,7 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
        collectiveOp.graphs()) {
     Value regionBuilder = graph.builder;
 
-    for (auto region : graph.getOps<GenericCompiledRegionOp>()) {
+    for (auto region : graph.getOps<AsyncRoutineOp>()) {
       OpBuilder builder(region);
 
       LogicalResult bodyResult = success();
@@ -149,7 +148,7 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
     llvm::SmallSetVector<Value, 8> edges;
     for (Value operand : region.getOperands()) {
       Operation *def = operand.getDefiningOp();
-      if (auto producer = dyn_cast_if_present<GenericCompiledRegionOp>(def))
+      if (auto producer = dyn_cast_if_present<AsyncRoutineOp>(def))
         if (auto it = oldToNew.find(producer); it != oldToNew.end())
           edges.insert(it->second.getNode());
     }
@@ -176,7 +175,7 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
   return success();
 }
 
-/// Converts the staged `mogg.generic.compiled.region` ops into
+/// Converts the staged `mogg.routine.async` ops into
 /// `mgp.device_graph.dependencies` ops, making the dependency DAG explicit.
 LogicalResult computeDeviceGraphDependencies(ModelOp model) {
   Block *execute = model.getExecuteBlock();

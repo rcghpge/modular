@@ -19,7 +19,7 @@ using namespace mlir;
 namespace {
 
 /// Rewrite each `mgp.guard` in the model's execute block into a forwarding
-/// `mogg.generic.compiled.region`.
+/// `mogg.routine.async`.
 ///
 /// `mgp.guard` lowers to a runtime primitive, not via EmitMojo, so staging
 /// would leave it in the execute block. A guard between two staged regions
@@ -49,14 +49,14 @@ void lowerGuardsToCompiledRegions(MLIRContext *ctx, ModelOp model) {
     SmallVector<M::InOutSignatureAttr::InOutSemantics> operandSemantics(
         operands.size(), M::InOutSignatureAttr::InOutSemantics::kNone);
 
-    auto regionOp = GenericCompiledRegionOp::create(
+    auto regionOp = AsyncRoutineOp::create(
         builder, loc, /*results=*/guard.getResultTypes(),
         /*operands=*/operands,
         /*outputParamDecls=*/KGEN::ParamDeclArrayAttr::get(ctx, {}),
         /*inOutSignature=*/M::InOutSignatureAttr::get(ctx, operandSemantics),
         /*fusionInfo=*/
         FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(guard)),
-        /*isAsync=*/builder.getBoolAttr(false),
+        /*dispatch=*/DispatchKindAttr::get(ctx, DispatchKind::Immediate),
         /*constantResources=*/builder.getArrayAttr({}),
         /*canFuseIntoOther=*/builder.getBoolAttr(false),
         /*canBeFusedInto=*/builder.getBoolAttr(false),
@@ -83,13 +83,12 @@ void stageDeviceGraphOps(MLIRContext *ctx, ModelOp model) {
 
   Block *executeBlock = model.getExecuteBlock();
 
-  /// Staged: every `mogg.generic.compiled.region`, plus each
+  /// Staged: every `mogg.routine.async`, plus each
   /// `mgp.device_graph.stable.create` of a staged producer's result (left
   /// outside, it would form a cycle with the staging op). Block order
   /// preserves scheduling.
   llvm::DenseSet<Operation *> stagedOpSet;
-  for (GenericCompiledRegionOp region :
-       executeBlock->getOps<GenericCompiledRegionOp>())
+  for (AsyncRoutineOp region : executeBlock->getOps<AsyncRoutineOp>())
     stagedOpSet.insert(region);
 
   for (DeviceGraphStableCreateOp stableCreate :

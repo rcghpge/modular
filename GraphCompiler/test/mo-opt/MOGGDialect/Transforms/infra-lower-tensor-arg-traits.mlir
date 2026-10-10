@@ -127,7 +127,7 @@
 // Dense CPU emit: the stub takes raw pointer args and reconstructs each tensor
 // via `mogg_tensor_init`, then assembles `_MoggDenseTensorArg` before
 // forwarding to `execute`.
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg --mogg-pipeline --mogg-to-mgp --mogg-outline-generic-compiled-regions-to-functions --mogg-add-try-except-blocks --mogg-emit-mojo --mogg-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%tensor_arg_trait_pkg mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg --mogg-pipeline --mogg-to-mgp --mogg-outline-async-routines --mogg-add-try-except-blocks --mogg-emit-mojo --mogg-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
 //
 // Dense assembly types available inside the stub.
 // EMIT-DAG: struct _MoggTensorIO

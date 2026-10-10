@@ -4,7 +4,7 @@
 // canonicalizes and CSEs the whole module, not just the graphs. The input and
 // output have the same dynamic shape, so `map-to-mogg` builds two identical
 // `mogg.shape.create` ops; only one survives in the stub.
-// CHECK-LABEL: mogg.kernel.stub
+// CHECK-LABEL: mogg.func
 // CHECK:       mogg.shape.create
 // CHECK-NOT:   mogg.shape.create
 // CHECK:       mogg.output

@@ -1,13 +1,13 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-mutable-loads --map-outline-structured-kernel-bodies --map-to-mogg --mogg-conform-call-operands --mogg-outline-kernels-into-functions --mogg-to-mgp > %t
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-mutable-loads --map-outline-structured-kernel-bodies --map-to-mogg --mogg-conform-call-operands --mogg-outline-routines --mogg-to-mgp > %t
 // RUN: FileCheck %s < %t
 
-// A `!mo.buffer` operand of a new-path mogg.kernel is written in place by the
+// A `!mo.buffer` operand of a new-path mogg.routine is written in place by the
 // body, so the region must give it the mutable signature (`m`) and not the
 // input one (`i`): MGP reads that signature to decide whether the kernel writes
 // the buffer, so an input-signature buffer makes it treat the write as a read
 // and the store is lost between executions.
 // CHECK-LABEL: mgp.model @mutable_store
-// CHECK: mogg.generic.compiled.region (%{{.*}}) : (%{{.*}}: !mef.chain,
+// CHECK: mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%{{.*}}) : (%{{.*}}: !mef.chain,
 // CHECK: inOutSignature = <"iim.">
 mo.graph @mutable_store(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[1], si32> {
   %0 = mo.chain.create()
@@ -22,9 +22,9 @@ mo.graph @mutable_store(%arg0: !mo.tensor<[1], si32>) -> !mo.tensor<[1], si32> {
 // so dropping that edge for the ambient execute chain would leave the two
 // writes ordered only by however their chains happen to be joined.
 // CHECK-LABEL: mgp.model @two_writes_chained
-// CHECK: %[[STORE1:[0-9]+]] = mogg.generic.compiled.region (%{{[0-9]+}},
+// CHECK: %[[STORE1:[0-9]+]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%{{[0-9]+}},
 // CHECK: %[[CHAIN2:[0-9]+]] = grt.chain.create (%arg0, %[[STORE1]])
-// CHECK: mogg.generic.compiled.region (%[[CHAIN2]],
+// CHECK: mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CHAIN2]],
 mo.graph @two_writes_chained(%a: !mo.tensor<[4], si32>, %b: !mo.tensor<[4], si32>) -> (!mo.buffer<[4], si32>, !mo.chain) {
   %ch0 = mo.chain.create()
   %buf = mo.buffer.create : !mo.buffer<[4], si32>

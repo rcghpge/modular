@@ -1,7 +1,7 @@
 // RUN: mo-opt %s | FileCheck %s
 
 // Compile-time sniff test: 3 ops that share no shape or dtype, so the
-// kernel-stub dedup pass (MergeIdenticalKernelStubs) has nothing to merge --
+// kernel-stub dedup pass (MergeIdenticalFuncs) has nothing to merge --
 // the "no caching" control case. Static shapes throughout -- see
 // `small-distinct-ops-dynamic.mlir` for the dynamic-leading-dim sibling.
 // See README.md in this directory.

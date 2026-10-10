@@ -34,18 +34,17 @@ struct RaiseBackIndexConstant
     auto moduleOp = getOperation();
     // Callee -> callers, built from the model ops rather than a SymbolTable
     // to skip the thousands of KernelStubOps.
-    llvm::DenseMap<StringAttr, SmallVector<MOGG::ExecuteCompiledOp>> symbolUses;
+    llvm::DenseMap<StringAttr, SmallVector<MOGG::CompiledCallOp>> symbolUses;
     for (auto &&modelOp : moduleOp.getOps<MGP::ModelOp>()) {
-      modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
+      modelOp.walk([&](MOGG::CompiledCallOp callOp) {
         symbolUses[callOp.getCalleeSymbolAttr().getAttr()].push_back(callOp);
       });
     }
 
-    auto stubsRange = moduleOp.getOps<MOGG::KernelStubOp>();
-    SmallVector<MOGG::KernelStubOp> kernels(stubsRange.begin(),
-                                            stubsRange.end());
+    auto stubsRange = moduleOp.getOps<MOGG::FuncOp>();
+    SmallVector<MOGG::FuncOp> kernels(stubsRange.begin(), stubsRange.end());
     mlir::parallelForEach(
-        moduleOp->getContext(), kernels, [&](MOGG::KernelStubOp kernelStub) {
+        moduleOp->getContext(), kernels, [&](MOGG::FuncOp kernelStub) {
           if (kernelStub.getAbi() != MOGG::ABIKind::MGP)
             return;
 

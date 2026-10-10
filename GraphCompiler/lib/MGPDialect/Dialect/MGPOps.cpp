@@ -306,7 +306,7 @@ LogicalResult BufferConstantOp::emitMojo(MOGG::EmitMojoState &state) {
   MOGG::MojoValue function(primitiveMojoName(primDecl));
 
   auto elementsAttr = getValue();
-  auto kernelOp = getOperation()->getParentOfType<MOGG::KernelStubOp>();
+  auto kernelOp = getOperation()->getParentOfType<MOGG::FuncOp>();
   auto constantResources = kernelOp.getConstantResources();
   auto it = llvm::find(constantResources, elementsAttr);
   if (it == constantResources.end())
@@ -579,10 +579,10 @@ SmallVector<Attribute> AssertOp::getLiftableAttributes() {
 
 LogicalResult AssertOp::canonicalize(AssertOp op, PatternRewriter &rewriter) {
   bool isInKernel = false;
-  if (op->getParentOfType<MOGG::GenericCompiledRegionOp>())
+  if (op->getParentOfType<MOGG::AsyncRoutineOp>())
     isInKernel = true;
 
-  if (op->getParentOfType<MOGG::KernelStubOp>())
+  if (op->getParentOfType<MOGG::FuncOp>())
     isInKernel = true;
 
   BoolAttr condAttr;

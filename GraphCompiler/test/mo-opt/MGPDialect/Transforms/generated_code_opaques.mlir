@@ -12,7 +12,7 @@ module {
     %3 = mgp.runtime.create %0, %1[1]
     mef.output %3, %1, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
   } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.opaque<"">) {
-    %0:2 = mogg.generic.compiled.region (%arg0) : (%arg2: !mef.chain) -> (!mef.chain, !mgp.opaque<"">){
+    %0:2 = mogg.routine.async (%arg0) : (%arg2: !mef.chain) -> (!mef.chain, !mgp.opaque<"">){
       // %1 = mogg.mgp_to_async_ref(%arg2) : (!mef.chain) -> !kgen.pointer<none>
       %3 = mogg.stack_allocate_opaques : !mgp.opaque<"">
       %4 = "mogg.to_kgen"(%3) {typeMethodsDict = {__del__ = #kgen.symbol.constant<@"MOGGTests::MyCustomInt::__del__(MOGGTests::MyCustomInt)"> : !kgen.generator<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem) -> !kgen.none>, __moveinit__ = #kgen.symbol.constant<@"MOGGTests::MyCustomInt::__moveinit__(MOGGTests::MyCustomInt=&,MOGGTests::MyCustomInt)"> : !kgen.generator<(!kgen.pointer<struct<(index) memoryOnly>> owned_in_mem, !kgen.pointer<struct<(index) memoryOnly>> byref_result) -> !kgen.none>}} : (!mgp.opaque<"">) -> !kgen.pointer<struct<(index) memoryOnly>>
@@ -23,7 +23,7 @@ module {
       mogg.create_async_mojo_value(%6, %7) : (!mgp.opaque<"">, !kgen.pointer<none>) -> ()
       %8 = mogg.async_ref_to_mgp(%7) : (!kgen.pointer<none>) -> !mgp.opaque<"">
       mogg.output %8 : !mgp.opaque<"">
-    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__test_make_custom_int">> canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__test_make_custom_int">> canFuseIntoOther = false inOutSignature = <"i"> {device = #M.device_ref<"cpu", 0>}
     mef.output %arg0, %0#1 : !mef.chain, !mgp.opaque<"">
   }
 }

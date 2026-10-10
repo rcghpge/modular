@@ -5,7 +5,7 @@
 // `mo.graph ... attributes {isSubgraph}`, unique output head) except the
 // last of the 12 repeated calls invokes a *sibling* subgraph
 // (`ffn_block_wide`, same op sequence but a wider intermediate size) instead
-// of `ffn_block`. Kernel-stub dedup (`MergeIdenticalKernelStubs`) is
+// of `ffn_block`. Kernel-stub dedup (`MergeIdenticalFuncs`) is
 // expected to collapse the 11 `ffn_block` call sites together, while
 // `ffn_block_wide`'s differently-shaped kernels stand alone -- dedup, but
 // not for the whole module. Dynamic leading (sequence) dimension `D0`

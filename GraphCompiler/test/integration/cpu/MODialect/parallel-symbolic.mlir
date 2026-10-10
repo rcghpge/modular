@@ -16,9 +16,9 @@ mo.graph @parallel_symbolic<N>(
   mo.output %res_0, %res_1 : !mo.tensor<[N, 3], si32>, !mo.tensor<[N, 3], si32>
 }
 
-// CHECK: mogg.generic.compiled.region
-// CHECK:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}
-// CHECK:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}
+// CHECK: mogg.routine.async
+// CHECK:   mogg.call.async @{{__[A-Za-z0-9_]+}}
+// CHECK:   mogg.call.async @{{__[A-Za-z0-9_]+}}
 // CHECK:   mogg.async.join
 // CHECK:   mogg.async.ready
 
@@ -39,8 +39,8 @@ mo.graph @parallel_symbolic_add_relu<N>(
   mo.output %res_0, %res_1 : !mo.tensor<[N, 3], f32>, !mo.tensor<[N, 3], f32>
 }
 
-// CHECK: mogg.generic.compiled.region
-// CHECK:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}
-// CHECK:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}
+// CHECK: mogg.routine.async
+// CHECK:   mogg.call.async @{{__[A-Za-z0-9_]+}}
+// CHECK:   mogg.call.async @{{__[A-Za-z0-9_]+}}
 // CHECK:   mogg.async.join
 // CHECK:   mogg.async.ready

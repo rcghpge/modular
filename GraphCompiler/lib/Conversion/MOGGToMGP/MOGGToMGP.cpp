@@ -473,7 +473,7 @@ LogicalResult MOGraphLowering::lower(MO::OutputOp output) {
 
     // The model's results expect mgp.opaque. ToMGPFromOpaqueOp is a type
     // rebind, folded away once the input becomes mgp.opaque (e.g. after
-    // OutlineGenericCompiledRegionsToFunctions).
+    // OutlineAsyncRoutines).
     if (auto moOpaqueType = dyn_cast<MO::OpaqueType>(loweredValue.getType())) {
       Type mgpOpaqueType =
           MGP::OpaqueType::get(output->getContext(), moOpaqueType.getSymbol(),
@@ -1713,7 +1713,7 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
             MO::GuardOp, MO::ChainCreateOp, MO::MutableStoreOp,
             MO::MutableLoadOp, MO::BufferCreateOp, MO::BufferTransferOp,
             MO::CallOp>([this](auto op) { return lower(op); })
-      // Externally-defined ops, e.g. `mogg.kernel`.
+      // Externally-defined ops, e.g. `mogg.routine`.
       .Case<MGP::LowerableToMGPInterface>(
           [this](auto op) { return lowerInterface(op); })
       .Default([](Operation *op) -> LogicalResult {
@@ -1952,12 +1952,11 @@ LogicalResult MOGraphLowering::run() {
 ///     single AsyncReadyOp producing the output chain.
 ///   - The original regions in `groupRegions` have been erased.
 ///   - The fused region is inserted after `groupRegions.back()`.
-static MOGG::GenericCompiledRegionOp
+static MOGG::AsyncRoutineOp
 fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
                       ArrayRef<Operation *> groupRegions) {
-  MOGG::GenericCompiledRegionOp fusedRegion =
-      MOGG::fuseAndReplaceCompiledRegions(/*allowDuplication=*/false,
-                                          groupRegions);
+  MOGG::AsyncRoutineOp fusedRegion = MOGG::fuseAndReplaceCompiledRegions(
+      /*allowDuplication=*/false, groupRegions);
 
   // fuseAndReplaceCompiledRegions leaves InOutSignatureAttr empty because it
   // normally runs after ABI lowering. We call it earlier, so downstream passes
@@ -1970,10 +1969,10 @@ fuseAndConvertToAsync(mlir::MLIRContext *ctx, Location loc,
   // emitter can choose an affinity-aware create_task.
   Block &body = fusedRegion.getBody().front();
   SmallVector<Value> taskHandles;
-  body.walk([&](MOGG::CallStubOp callStub) {
+  body.walk([&](MOGG::CallOp callStub) {
     OpBuilder b(ctx);
     b.setInsertionPoint(callStub);
-    MOGG::CallStubAsyncOp asyncCall = MOGG::CallStubAsyncOp::create(
+    MOGG::CallAsyncOp asyncCall = MOGG::CallAsyncOp::create(
         b, callStub.getLoc(), callStub.getName(), callStub.getInputs(),
         callStub.getAffinityDeviceIdAttr());
     taskHandles.push_back(asyncCall.getTaskHandle());
@@ -2038,7 +2037,7 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
   SmallVector<Operation *> kernelOps;
   SmallVector<MO::BundledExpandOp> expandOps;
   for (Operation &op : bodyBlock.without_terminator()) {
-    if (isa<MOGG::KernelOp>(&op)) {
+    if (isa<MOGG::RoutineOp>(&op)) {
       kernelOps.push_back(&op);
     } else if (auto expand = dyn_cast<MO::BundledExpandOp>(&op)) {
       expandOps.push_back(expand);
@@ -2052,7 +2051,7 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     return parallelOp.emitOpError("body must contain at least one kernel");
 
   // Each kernel is cloned per launch, lowered via
-  // `KernelOp::lowerToCompiledRegion`, then fused and made async. Fusion is per
+  // `RoutineOp::lowerToAsync`, then fused and made async. Fusion is per
   // kernel group, since a later group's buffer allocs may depend on an earlier
   // group's chain. Bundled kernels (collectives) are N-expanded so each clone
   // sees every launch's inputs.
@@ -2125,22 +2124,22 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
             result.setType(resTy.cloneWith(launchDevice));
       }
 
-      auto clonedKernel = cast<MOGG::KernelOp>(clonedOp);
+      auto clonedKernel = cast<MOGG::RoutineOp>(clonedOp);
       if (retarget)
         clonedKernel.setDeviceRef(launchDevice);
-      MOGG::GenericCompiledRegionOp launchRegion =
-          clonedKernel.lowerToCompiledRegion(loweringState);
+      MOGG::AsyncRoutineOp launchRegion =
+          clonedKernel.lowerToAsync(loweringState);
       if (!launchRegion)
         return failure();
 
-      // Stamp the GPU device ordinal on each CallStubOp for
+      // Stamp the GPU device ordinal on each CallOp for
       // fuseAndConvertToAsync. A plain I64Attr, since kernel-layer device refs
       // are label-only.
       if (launchDevice && launchDevice.getLabel() == M::kGPULabel) {
         auto affinityId =
             mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64),
                                    static_cast<int64_t>(launchDevice.getId()));
-        launchRegion->walk([&](MOGG::CallStubOp callStub) {
+        launchRegion->walk([&](MOGG::CallOp callStub) {
           callStub.setAffinityDeviceIdAttr(affinityId);
         });
       }
@@ -2156,7 +2155,7 @@ LogicalResult MOGraphLowering::lower(MO::ParallelOp parallelOp) {
     }
     allClones.append(kernelClones);
 
-    MOGG::GenericCompiledRegionOp fusedRegion =
+    MOGG::AsyncRoutineOp fusedRegion =
         fuseAndConvertToAsync(ctx, loc, groupRegions);
     Value fusedChain = fusedRegion.getResult(0);
     for (Value res : kernelOp->getResults())
@@ -2424,7 +2423,7 @@ void MOGGToMGPPass::runOnOperation() {
 
   deferSideStreamJoins(theModule);
 
-  // A named dim on a stub's boundary would block MergeIdenticalKernelStubs
+  // A named dim on a stub's boundary would block MergeIdenticalFuncs
   // from deduplicating identical stubs. A nested pass so it stays testable on
   // its own.
   mlir::PassManager pm = mlir::PassManager::on<ModuleOp>(

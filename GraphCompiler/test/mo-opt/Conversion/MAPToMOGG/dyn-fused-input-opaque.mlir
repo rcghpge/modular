@@ -2,7 +2,7 @@
 
 // The prologue builds its shape from the dynamic dim.
 // CHECK-LABEL: mo.graph @dyn_fused_producer
-// CHECK: mogg.kernel
+// CHECK: mogg.routine
 // CHECK: dims (%[[D:.*]]: !mogg.dim<batch>)
 // CHECK: mogg.shape.create(%[[D]])
 // CHECK-SAME: <shape = #mosh<ape[dyn, 4]> : !mosh.ape>

@@ -1,7 +1,7 @@
-// RUN: mo-opt %s --mogg-import-packages -mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-pipeline -mogg-to-mgp -mogg-outline-generic-compiled-regions-to-functions -mogg-add-profile-scope-tracing -mogg-add-try-except-blocks --mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages -mo-to-map --map-outline-structured-kernel-bodies --map-to-mogg --mogg-pipeline -mogg-to-mgp -mogg-outline-async-routines -mogg-add-profile-scope-tracing -mogg-add-try-except-blocks --mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
 
 // Full-pipeline regression for the in-region range bracketing mechanism.
-// After outlining to KernelStubOp and enabling profile-scope-tracing, the
+// After outlining to FuncOp and enabling profile-scope-tracing, the
 // emitted Mojo must contain a Trace call whose name contains the kernel stub
 // symbol ("__..._async"), confirming in-region range bracketing is emitted,
 // not just the per-kernel trace-name suffix from WithTraceOp.

@@ -8,7 +8,7 @@
 // IR), and a unique output head (RMSNorm -> projection to a different
 // output width). Dynamic leading (sequence) dimension `D0` throughout -- see
 // `large-transformer-stack-static.mlir` for the all-static sibling. Kernel-
-// stub dedup (`MergeIdenticalKernelStubs`) is expected to collapse the 12
+// stub dedup (`MergeIdenticalFuncs`) is expected to collapse the 12
 // subgraph-inlined call sites down to one kernel per distinct op in the
 // block, while the stem and head (structurally unlike the block and unlike
 // each other) stay separate. See README.md in this directory.

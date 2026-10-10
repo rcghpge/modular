@@ -24,15 +24,13 @@ using namespace M;
 
 namespace M::MOGG {
 
-GenericCompiledRegionOp
-fuseAndReplaceCompiledRegions(bool allowDuplication,
-                              ArrayRef<Operation *> toFuse) {
-  ASSERT_STREAM(llvm::all_of(toFuse,
-                             [](auto op) {
-                               return isa<MOGG::GenericCompiledRegionOp>(op);
-                             }),
-                << "Expected all operations to be "
-                << MOGG::GenericCompiledRegionOp::getOperationName());
+AsyncRoutineOp fuseAndReplaceCompiledRegions(bool allowDuplication,
+                                             ArrayRef<Operation *> toFuse) {
+  ASSERT_STREAM(
+      llvm::all_of(toFuse,
+                   [](auto op) { return isa<MOGG::AsyncRoutineOp>(op); }),
+      << "Expected all operations to be "
+      << MOGG::AsyncRoutineOp::getOperationName());
   llvm::SetVector<Value> allResults;
   llvm::SetVector<Value> allOperands;
   for (Operation *op : toFuse) {
@@ -56,7 +54,7 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
   for (auto result : allResults) {
     // We keep at least one chain output such that error could be propagated
     // properly. Duplicated chain outputs and operands are removed later in the
-    // pipeline by the GenericCompiledRegionOp canonicalization.
+    // pipeline by the AsyncRoutineOp canonicalization.
     bool isChain = isa<MEF::ChainType>(result.getType());
     if (isChain) {
       chainsThatShouldBeRemapped.push_back(result);
@@ -90,35 +88,35 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
   }
 
   // Maintain attributes.
-  auto firstRegionOp = cast<MOGG::GenericCompiledRegionOp>(toFuse.front());
-  const bool isAsync = llvm::any_of(toFuse, [&](auto region) {
-    return cast<MOGG::GenericCompiledRegionOp>(region).getIsAsync().value_or(
-        false);
+  auto firstRegionOp = cast<MOGG::AsyncRoutineOp>(toFuse.front());
+  // One deferred part makes the fused region deferred.
+  const bool deferred = llvm::any_of(toFuse, [&](auto region) {
+    return cast<MOGG::AsyncRoutineOp>(region).getDispatch() ==
+           MOGG::DispatchKind::Deferred;
   });
   llvm::SmallSetVector<Attribute, 4> resources;
   for (Operation *regionOp : toFuse) {
-    auto res = cast<MOGG::GenericCompiledRegionOp>(regionOp)
+    auto res = cast<MOGG::AsyncRoutineOp>(regionOp)
                    .getConstantResourcesAttr()
                    .getValue();
     resources.insert(res.begin(), res.end());
   }
   const bool canFuseIntoOther = llvm::all_of(toFuse, [&](auto region) {
-    return cast<MOGG::GenericCompiledRegionOp>(region).getCanFuseIntoOther();
+    return cast<MOGG::AsyncRoutineOp>(region).getCanFuseIntoOther();
   });
   const bool canBeFusedInto = llvm::all_of(toFuse, [&](auto region) {
-    return cast<MOGG::GenericCompiledRegionOp>(region).getCanBeFusedInto();
+    return cast<MOGG::AsyncRoutineOp>(region).getCanBeFusedInto();
   });
   const bool canDuplicate = llvm::all_of(toFuse, [&](auto region) {
-    return cast<MOGG::GenericCompiledRegionOp>(region).getCanDuplicate();
+    return cast<MOGG::AsyncRoutineOp>(region).getCanDuplicate();
   });
-  const bool isStructuredKernel = llvm::any_of(toFuse, [&](auto region) {
-    return cast<MOGG::GenericCompiledRegionOp>(region).getIsStructuredKernel();
+  const bool isStructured = llvm::any_of(toFuse, [&](auto region) {
+    return cast<MOGG::AsyncRoutineOp>(region).getIsStructured();
   });
   DeviceRefAttr device =
-      cast<MOGG::GenericCompiledRegionOp>(toFuse.front()).getExecutionDevice();
+      cast<MOGG::AsyncRoutineOp>(toFuse.front()).getExecutionDevice();
   for (auto region : toFuse) {
-    auto regionDevice =
-        cast<MOGG::GenericCompiledRegionOp>(region).getExecutionDevice();
+    auto regionDevice = cast<MOGG::AsyncRoutineOp>(region).getExecutionDevice();
     if (regionDevice.getLabel() == kGPULabel)
       device = regionDevice;
   }
@@ -133,15 +131,16 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
   auto loc = mlir::FusedLoc::get(ctx, locs);
 
   SmallVector<InOutSignatureAttr::InOutSemantics> operandSemantics;
-  auto fusedCompiledRegionOp = MOGG::GenericCompiledRegionOp::create(
+  auto fusedCompiledRegionOp = MOGG::AsyncRoutineOp::create(
       builder, loc, fusedRegionOutputTypes, fusedRegionOperands.getArrayRef(),
       KGEN::ParamDeclArrayAttr::get(ctx, {}),
       InOutSignatureAttr::get(ctx, operandSemantics),
       /*fusionInfo=*/
       MOGG::createFusionInfo<MOGG::FusionSequenceAttr>(ctx, toFuse),
-      /*isAsync=*/BoolAttr::get(ctx, isAsync),
+      /*dispatch=*/
+      deferred ? MOGG::DispatchKind::Deferred : MOGG::DispatchKind::Immediate,
       /*constantResources=*/builder.getArrayAttr(resources.getArrayRef()),
-      canFuseIntoOther, canBeFusedInto, canDuplicate, isStructuredKernel);
+      canFuseIntoOther, canBeFusedInto, canDuplicate, isStructured);
   fusedCompiledRegionOp.setDeviceRef(device);
   Block &newBody = fusedCompiledRegionOp.getBody().emplaceBlock();
   builder.setInsertionPoint(&newBody, newBody.begin());
@@ -159,7 +158,7 @@ fuseAndReplaceCompiledRegions(bool allowDuplication,
 
   IRMapping mapper;
   for (auto op : toFuse) {
-    auto asRegionOp = cast<MOGG::GenericCompiledRegionOp>(op);
+    auto asRegionOp = cast<MOGG::AsyncRoutineOp>(op);
     for (auto [operand, argument] :
          llvm::zip(asRegionOp->getOperands(),
                    asRegionOp.getBody().front().getArguments())) {

@@ -48,14 +48,14 @@ mo.graph @mogg_split<D0, D1, D2>(
 // CHECK-LABEL: mgp.model @mogg_split_chain_prop : mof
 
 // CHECK: } execute (%[[CH0:.*]]: !mef.chain,
-// CHECK: %[[CH1:.*]] = mogg.generic.compiled.region (%[[CH0]]
+// CHECK: %[[CH1:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CH0]]
 
 // CHECK: %[[OUT_BUF1:.*]] = mgp.buffer.slice
 // CHECK: %[[OUT_BUF2:.*]] = mgp.buffer.slice
 
-// CHECK: mogg.generic.compiled.region (%[[CH1]], {{.*}}%[[OUT_BUF1]]
+// CHECK: mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CH1]], {{.*}}%[[OUT_BUF1]]
 
-// CHECK: mogg.generic.compiled.region (%[[CH1]], {{.*}}%[[OUT_BUF2]]
+// CHECK: mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CH1]], {{.*}}%[[OUT_BUF2]]
 
 mo.graph @mogg_split_chain_prop<D0, D1, D2>(
   %input: !mo.tensor<[D0, 8], f32>,

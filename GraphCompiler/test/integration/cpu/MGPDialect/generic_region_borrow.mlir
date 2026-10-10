@@ -1,7 +1,7 @@
 // TODO(GEX-2747): Fix MGPPrimitives tests with EmitMojo
 // XFAIL: *
 
-// RUN: mo-opt --mgp-lower-primitives --jit --mogg-lower-mogg-region-compile %s -o %t.mlir
+// RUN: mo-opt --mgp-lower-primitives --jit --mogg-lower-compiled-routines %s -o %t.mlir
 // RUN: mt --execute --model-inputs=ones --result-output-style=full %t.mlir | FileCheck %s
 
 // CHECK-LABEL:--- Running 'buffer_borrow_intrinsic':
@@ -27,7 +27,7 @@ mgp.model @buffer_borrow_intrinsic : mof devices [#M.device_ref<"cpu", 0>] init 
   %ch2 = mgp.debug.tensor.print %arg0, %buf0, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<4xui8>) -> !mef.chain
   %ch3 = mgp.debug.tensor.print %ch2, %buf1, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<4xui8>) -> !mef.chain
 
-  %1 = mogg.generic.compiled.region (%arg1, %buf0, %buf1) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
+  %1 = mogg.routine.async (%arg1, %buf0, %buf1) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
     %3 = mogg.buffer.borrow (%b1, %b2) : (!mgp.buffer, !mgp.buffer) -> !mgp.buffer
     mogg.output %3 : !mgp.buffer
   } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mgp.buffer.alloc">> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
@@ -67,14 +67,14 @@ mgp.model @buffer_borrow_constant : mof devices [#M.device_ref<"cpu", 0>] init (
   %ch2 = mgp.debug.tensor.print %arg0, %buf0, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<3xf32>) -> !mef.chain
   %ch3 = mgp.debug.tensor.print %ch2, %buf1, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<3xf32>) -> !mef.chain
 
-  %1 = mogg.generic.compiled.region (%arg1, %buf0, %buf1) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
+  %1 = mogg.routine.async (%arg1, %buf0, %buf1) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
     %3 = mogg.buffer.borrow (%b1, %b2) : (!mgp.buffer, !mgp.buffer) -> !mgp.buffer
     mogg.output %3 : !mgp.buffer
   } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mgp.buffer.alloc">> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
 
   %ch4 = mgp.debug.tensor.print %ch3, %1, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<3xf32>) -> !mef.chain
 
-  %2 = mogg.generic.compiled.region (%arg1, %buf1, %buf0) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
+  %2 = mogg.routine.async (%arg1, %buf1, %buf0) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
     %3 = mogg.buffer.borrow (%b1, %b2) : (!mgp.buffer, !mgp.buffer) -> !mgp.buffer
     mogg.output %3 : !mgp.buffer
   } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mgp.buffer.alloc">> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}

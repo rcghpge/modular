@@ -5,7 +5,7 @@
 // RUN:   --map-outline-structured-kernel-bodies \
 // RUN:   --canonicalize --cse --map-to-mogg \
 // RUN:   --mogg-conform-call-operands \
-// RUN:   --mogg-outline-kernels-into-functions --mogg-to-mgp --mogg-emit-mojo \
+// RUN:   --mogg-outline-routines --mogg-to-mgp --mogg-emit-mojo \
 // RUN:   -verify-each=false
 // RUN: cat %t/*.mojo | FileCheck %s
 // RUN: cat %t/*.mojo | FileCheck %s --check-prefix=NOPARAM
@@ -27,7 +27,7 @@
 //
 // The pipeline runs through `mogg-to-mgp` (so the region consumes the outlined
 // stub), then emits; `mogg-emit-mojo` still erases the stub, so
-// `-verify-each=false` tolerates the dangling `mogg.call.stub`. `mogg-to-mgp`
+// `-verify-each=false` tolerates the dangling `mogg.call`. `mogg-to-mgp`
 // names the `ir-output-dir` dump after the graphs (not `graph.mojo`), so the
 // checks read `%t/*.mojo`.
 

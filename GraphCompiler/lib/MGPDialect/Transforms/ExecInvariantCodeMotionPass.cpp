@@ -55,7 +55,7 @@ static Value getLiftableBufferOp(Operation *op) {
 
 static llvm::SmallVector<Value> getLiftableIndexOutputs(Operation *op) {
   llvm::SmallVector<Value> res;
-  if (auto kernelOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
+  if (auto kernelOp = dyn_cast<MOGG::AsyncRoutineOp>(op)) {
     for (Value result : op->getResults()) {
       if (result.getType().isIntOrIndex() ||
           MOSH::ShapeAttr::isDimType(result.getType()))
@@ -155,7 +155,7 @@ static bool isLiftableTrivialOp(Operation *op) {
 static Value getLiftableChainOp(Operation *op) {
   if (auto createChainOp = dyn_cast<GRT::ChainCreateOp>(op))
     return createChainOp.getResult();
-  if (auto regionOp = dyn_cast<MOGG::GenericCompiledRegionOp>(op)) {
+  if (auto regionOp = dyn_cast<MOGG::AsyncRoutineOp>(op)) {
     // TODO(GEX-4344): The 'liftable' interfaces assume an op returns at most
     // one value, which forces this special case for multi-result regions.
     // A chain plus dimension results can move to 'init': the chain is ordered

@@ -39,8 +39,7 @@ ProducerDispatch matchProducerDispatch(Operation *op) {
   return {};
 }
 
-ProducerDispatch findProducerDispatch(KernelStubOp stub,
-                                      WithTraceOp &withTrace) {
+ProducerDispatch findProducerDispatch(FuncOp stub, WithTraceOp &withTrace) {
   ProducerDispatch result;
   stub.walk([&](Operation *op) {
     ProducerDispatch match = matchProducerDispatch(op);
@@ -76,9 +75,9 @@ struct RecordingStub {
 /// The stub returns nothing; the enclosing `mgp.device_graph.dependencies` op
 /// carries node ordering.
 FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
-                                             KernelStubOp original) {
+                                             FuncOp original) {
   MLIRContext *ctx = original.getContext();
-  OwningOpRef<KernelStubOp> clone = cast<KernelStubOp>(original->clone());
+  OwningOpRef<FuncOp> clone = cast<FuncOp>(original->clone());
 
   WithTraceOp withTrace;
   ProducerDispatch producer = findProducerDispatch(*clone, withTrace);
@@ -208,9 +207,10 @@ Value enclosingGraphBuilder(Operation *op) {
   llvm_unreachable("unable to determine body region");
 }
 
-/// Retargets a `mogg.call.stub @stub_N` to `@stub_N_build_graph`, passing the
+/// Retargets a `mogg.call @stub_N` to `@stub_N_build_graph`, passing the
 /// builder in the launch-context position; other operands pass through.
-LogicalResult rewriteGraphCall(CallStubOp call, const RecordingStub &sibling) {
+LogicalResult rewriteGraphCall(M::MOGG::CallOp call,
+                               const RecordingStub &sibling) {
   SmallVector<Value> operands = llvm::to_vector(call.getInputs());
   if (sibling.contextArgIndex >= operands.size() ||
       !isa<DeviceContextType, M::MOGG::ContextType>(
@@ -225,9 +225,9 @@ LogicalResult rewriteGraphCall(CallStubOp call, const RecordingStub &sibling) {
   // context chain this leaves dead is canonicalized away before finalization.
   operands[sibling.contextArgIndex] = enclosingGraphBuilder(call);
 
-  auto newCall = CallStubOp::create(rewriter, call.getLoc(),
-                                    call.getResultTypes(), sibling.name,
-                                    operands, call.getAffinityDeviceIdAttr());
+  auto newCall = M::MOGG::CallOp::create(
+      rewriter, call.getLoc(), call.getResultTypes(), sibling.name, operands,
+      call.getAffinityDeviceIdAttr());
 
   rewriter.replaceAllUsesWith(call.getResults(), newCall.getResults());
 
@@ -252,25 +252,25 @@ void rewriteBuilderAllocs(Operation *container) {
   });
 }
 
-/// Retargets each `mogg.call.stub` in `container` to a generated recording
+/// Retargets each `mogg.call` in `container` to a generated recording
 /// stub.
 LogicalResult generateBuildGraphStubs(SymbolTable &symtab,
                                       Operation *container) {
-  // TODO: Support `CallStubAsyncOp`.
-  SmallVector<CallStubOp> calls;
-  container->walk([&](CallStubOp call) { calls.push_back(call); });
+  // TODO: Support `CallAsyncOp`.
+  SmallVector<M::MOGG::CallOp> calls;
+  container->walk([&](M::MOGG::CallOp call) { calls.push_back(call); });
 
   if (calls.empty())
     return success();
 
   // One sibling per distinct callee; all calls to it are retargeted.
   llvm::DenseMap<StringAttr, RecordingStub> calleeToSibling;
-  for (CallStubOp call : calls) {
+  for (M::MOGG::CallOp call : calls) {
     StringAttr callee = call.getNameAttr().getRootReference();
 
     RecordingStub &sibling = calleeToSibling[callee];
     if (!sibling.name) {
-      auto original = symtab.lookup<KernelStubOp>(callee.getValue());
+      auto original = symtab.lookup<FuncOp>(callee.getValue());
       if (!original)
         return call.emitError("device-graph recording stub call: '")
                << callee.getValue() << "' does not name a kernel stub";

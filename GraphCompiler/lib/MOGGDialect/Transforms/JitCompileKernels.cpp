@@ -99,11 +99,11 @@ struct JitCompileKernels
           builder(ctx), mojoCache(objectCompiler->getTransformCache()) {}
   };
 
-  // Collect unique kernel symbols from ExecuteCompiledOp calls
+  // Collect unique kernel symbols from CompiledCallOp calls
   llvm::SetVector<StringAttr> collectRegionSymbols(ModuleOp mgpModuleOp) {
     llvm::SetVector<StringAttr> uniqueSymbols;
     for (auto &&modelOp : mgpModuleOp.getOps<MGP::ModelOp>()) {
-      modelOp.walk([&](MOGG::ExecuteCompiledOp callOp) {
+      modelOp.walk([&](MOGG::CompiledCallOp callOp) {
         uniqueSymbols.insert(callOp.getCalleeSymbolAttr().getAttr());
       });
     }
@@ -135,15 +135,15 @@ struct JitCompileKernels
                                      /*namePrefix=*/"__kernel_");
   }
 
-  // Update call sites and remove old LoadCompiledKernelOp
+  // Update call sites and remove old CompiledLoadOp
   void updateMGPCallSites(
       ModuleOp mgpModuleOp,
       const DenseMap<StringAttr, KGEN::GeneratorOp> &renamedRegions) {
     for (auto &&modelOp : mgpModuleOp.getOps<MGP::ModelOp>()) {
       DenseSet<StringAttr> kernelsToLoadInThisModel;
-      MOGG::LoadCompiledKernelOp loadKernelsOp = nullptr;
+      MOGG::CompiledLoadOp loadKernelsOp = nullptr;
       modelOp.walk([&](Operation *op) {
-        if (auto callOp = dyn_cast<MOGG::ExecuteCompiledOp>(op)) {
+        if (auto callOp = dyn_cast<MOGG::CompiledCallOp>(op)) {
           auto oldName = callOp.getCalleeSymbolAttr().getAttr();
           auto it = renamedRegions.find(oldName);
           if (it != renamedRegions.end()) {
@@ -153,10 +153,9 @@ struct JitCompileKernels
             kernelsToLoadInThisModel.insert(newName);
           }
         } else if (auto loadCompiledKernelOp =
-                       dyn_cast<MOGG::LoadCompiledKernelOp>(op)) {
-          ASSERT_STREAM(
-              !loadKernelsOp,
-              << "Expected at most one LoadCompiledKernelOp per ModelOp");
+                       dyn_cast<MOGG::CompiledLoadOp>(op)) {
+          ASSERT_STREAM(!loadKernelsOp,
+                        << "Expected at most one CompiledLoadOp per ModelOp");
           loadKernelsOp = loadCompiledKernelOp;
         }
       });
@@ -326,7 +325,7 @@ struct JitCompileKernels
     // normalizes `FlatSymbolRefAttr`s, so stubs differing only in their
     // `FusionStruct_*` type would merge and `setInputsHash()` would collapse
     // their callers into wrong code. Stub dedup happens in
-    // `MergeIdenticalKernelStubs`. Stub renaming can return once fusion stops
+    // `MergeIdenticalFuncs`. Stub renaming can return once fusion stops
     // encoding identity in nominal struct symbols.
 
     llvm::SetVector<StringAttr> symbolsToRename(regionSymbols.begin(),
@@ -484,7 +483,7 @@ struct JitCompileKernels
         llvm::to_vector_of<mlir::Attribute>(cachingResult.cacheMissSymbols));
     for (auto &&modelOp : state.mgpModule.getOps<MGP::ModelOp>()) {
       state.builder.setInsertionPointToStart(modelOp.getInitBlock());
-      MOGG::LoadCompiledKernelOp::create(
+      MOGG::CompiledLoadOp::create(
           state.builder, state.mgpModule->getLoc(), /*symbols=*/symbolsAttr,
           /*value=*/archiveAttr,
           /*debuginfo=*/debugKGENStubs ||
@@ -508,7 +507,7 @@ struct JitCompileKernels
           createArchiveAttr(state.ctx, symbolsAndBufferPair.second, blobHash);
       for (auto &&modelOp : state.mgpModule.getOps<MGP::ModelOp>()) {
         state.builder.setInsertionPointToStart(modelOp.getInitBlock());
-        MOGG::LoadCompiledKernelOp::create(
+        MOGG::CompiledLoadOp::create(
             state.builder, state.mgpModule->getLoc(), /*symbols=*/symbolsAttr,
             /*value=*/archiveAttr,
             /*debuginfo=*/debugKGENStubs ||

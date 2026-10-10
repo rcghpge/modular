@@ -47,16 +47,16 @@ func.func @codegen_ops(%ptr: !mogg.pointer, %dim: !mogg.dim,
   // one !mogg.pointer per input then output, a context, then the dynamic dims.
   // The body block args print as labeled groups (context before dims), but the
   // in-memory order stays [inputs, outputs, dims, context]. No terminator: the
-  // output pointer block arg is the output. Like `mogg.kernel.stub`, the op
+  // output pointer block arg is the output. Like `mogg.func`, the op
   // carries a `device` attribute (the `MOExplicitDevice` trait) recording its
   // execution device.
-  // CHECK: mogg.kernel (%{{.*}} : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  // CHECK: mogg.routine (%{{.*}} : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   // CHECK: inputs (%{{.*}})
   // CHECK: outputs (%{{.*}})
   // CHECK: context (%{{.*}})
   // CHECK: dims (%{{.*}}: !mogg.dim)
   // CHECK-SAME: attributes {device = #M.device_ref<"gpu", 0>}
-  %kr = mogg.kernel (%ta : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
+  %kr = mogg.routine (%ta : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
     inputs(%in_ptr : !mogg.pointer)
     outputs(%out_ptr : !mogg.pointer)
     context(%kctx : !mogg.context)

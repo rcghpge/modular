@@ -112,3 +112,37 @@ void M::MOGG::printOptionalKernelParams(OpAsmPrinter &p, Operation *op,
   printKernelParamsBody(p, op, params);
   p << "]";
 }
+
+ParseResult M::MOGG::parseOptionalDispatch(OpAsmParser &parser,
+                                           DispatchKindAttr &kind) {
+  if (failed(parser.parseOptionalKeyword("dispatch")))
+    return success();
+  StringRef keyword;
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  if (parser.parseLParen() || parser.parseKeyword(&keyword) ||
+      parser.parseRParen())
+    return failure();
+  std::optional<DispatchKind> value = symbolizeDispatchKind(keyword);
+  if (!value)
+    return parser.emitError(loc, "expected 'deferred' or 'immediate'");
+  kind = DispatchKindAttr::get(parser.getContext(), *value);
+  return success();
+}
+
+bool M::MOGG::printOptionalDispatch(OpAsmPrinter &p, DispatchKindAttr kind,
+                                    DispatchKind defaultKind) {
+  if (!kind || kind.getValue() == defaultKind)
+    return false;
+  p << "dispatch(" << stringifyDispatchKind(kind.getValue()) << ")";
+  return true;
+}
+
+ParseResult M::MOGG::parseImmediateDispatch(OpAsmParser &parser,
+                                            DispatchKindAttr &kind) {
+  return parseOptionalDispatch(parser, kind);
+}
+
+void M::MOGG::printImmediateDispatch(OpAsmPrinter &p, Operation *,
+                                     DispatchKindAttr kind) {
+  printOptionalDispatch(p, kind, DispatchKind::Immediate);
+}

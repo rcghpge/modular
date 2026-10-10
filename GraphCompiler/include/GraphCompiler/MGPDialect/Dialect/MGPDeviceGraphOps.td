@@ -223,7 +223,7 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
 ]> {
   let summary = "A compiled region with explicit device-graph dependency edges.";
   let description = [{
-    One is created per `mogg.generic.compiled.region` when lowering towards
+    One is created per `mogg.routine.async` when lowering towards
     device-graph execution. It separates the region's dataflow from its
     ordering, so region bodies can be merged while their execution order
     dependencies are still tracked.
@@ -256,7 +256,7 @@ def DeviceGraphDependenciesOp : MGP_DeviceGraphOp<"dependencies", [
       %node, %r = mgp.device_graph.dependencies builder(%b)
           dependencies(%depA, %depB) {
       ^bb0(%builder: !mgp.device_graph.builder):
-        // ops copied from the former mogg.generic.compiled.region, referencing
+        // ops copied from the former mogg.routine.async, referencing
         // enclosing SSA directly
         mgp.device_graph.dependencies.yield %v : !mgp.buffer<<"gpu", 0>>
       } : (!mgp.device_graph.node, !mgp.device_graph.node)
@@ -357,7 +357,7 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
     `!mo.tensor` type domains. It is eliminated when its contents are lifted
     into `mgp.device_graph.create`, so it never reaches EmitMojo.
 
-    Like `mogg.generic.compiled.region` it is `IsolatedFromAbove`: `inputs`
+    Like `mogg.routine.async` it is `IsolatedFromAbove`: `inputs`
     operands of type `T` enter as block arguments of the same bare `T`, and the
     body yields bare `T` values typed as `stagedResults`. The verifier requires
     these types to match exactly; no `!mogg.async<T>` crosses the boundary.
@@ -382,7 +382,7 @@ def DeviceGraphStagingOp : MGP_DeviceGraphOp<"staging", [
 
   let arguments = (ins
     Variadic<AnyType>:$inputs,
-    // Constant resources of the inlined mogg.generic.compiled.region ops; this
+    // Constant resources of the inlined mogg.routine.async ops; this
     // op is later synthesized back into one.
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources
   );
@@ -724,7 +724,7 @@ def DeviceGraphCollectiveOp : MGP_DeviceGraphOp<"collective", [
   let arguments = (ins
     M_DeviceRefsAttr:$devices,
     MGP_StableAddressArrayAttr:$stableTypes,
-    // As mogg.generic.compiled.region ops are inlined away, we need to
+    // As mogg.routine.async ops are inlined away, we need to
     // preserve the constant resource attributes.
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources
   );

@@ -11,7 +11,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_WRAPKERNELSWITHTRACEOP
+#define GEN_PASS_DEF_WRAPFUNCSWITHTRACE
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 } // namespace M::MOGG
@@ -20,12 +20,12 @@ namespace M::MOGG {
 
 namespace {
 
-struct WrapKernelsWithTraceOp
-    : public MOGG::impl::WrapKernelsWithTraceOpBase<WrapKernelsWithTraceOp> {
-  using WrapKernelsWithTraceOpBase::WrapKernelsWithTraceOpBase;
+struct WrapFuncsWithTrace
+    : public MOGG::impl::WrapFuncsWithTraceBase<WrapFuncsWithTrace> {
+  using WrapFuncsWithTraceBase::WrapFuncsWithTraceBase;
 
   void runOnOperation() override {
-    MOGG::KernelStubOp stub = getOperation();
+    MOGG::FuncOp stub = getOperation();
     // A MOGG-ABI stub is wrapped by `createKernelStub`, an MGP-ABI one by
     // `AddProfileScopeTracing`.
     if (stub.getAbi() != MOGG::ABIKind::MOGG)

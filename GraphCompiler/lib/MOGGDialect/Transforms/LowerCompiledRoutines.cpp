@@ -26,7 +26,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_LOWERMOGGREGIONCOMPILES
+#define GEN_PASS_DEF_LOWERCOMPILEDROUTINES
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 } // namespace M::MOGG
@@ -39,22 +39,20 @@ namespace M::MOGG {
 
 namespace {
 
-struct LowerMOGGRegionCompilesPass
-    : public MOGG::impl::LowerMOGGRegionCompilesBase<
-          LowerMOGGRegionCompilesPass> {
-  using LowerMOGGRegionCompilesBase::LowerMOGGRegionCompilesBase;
+struct LowerCompiledRoutinesPass
+    : public MOGG::impl::LowerCompiledRoutinesBase<LowerCompiledRoutinesPass> {
+  using LowerCompiledRoutinesBase::LowerCompiledRoutinesBase;
   void rewriteExecuteCompiledOp(OpBuilder &builder, const Value &context,
                                 size_t runtimeSlot, size_t module_index,
                                 size_t kernel_index,
-                                MOGG::ExecuteCompiledOp &oldKernel);
+                                MOGG::CompiledCallOp &oldKernel);
   void runOnOperation() override;
 };
 
-// Rewrite the MOGG::ExecuteCompiledOp into a MGP::ExecuteGenericOp
-void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
+// Rewrite the MOGG::CompiledCallOp into a MGP::ExecuteGenericOp
+void LowerCompiledRoutinesPass::rewriteExecuteCompiledOp(
     OpBuilder &builder, const Value &context, size_t runtimeSlot,
-    size_t module_index, size_t kernel_index,
-    MOGG::ExecuteCompiledOp &oldKernel) {
+    size_t module_index, size_t kernel_index, MOGG::CompiledCallOp &oldKernel) {
   auto ctx = oldKernel.getOperation()->getContext();
   SmallVector<Value> outputs;
   SmallVector<Type> resultTypes;
@@ -81,7 +79,8 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
       oldKernel->getOperands(), runtimeSlot, module_index, kernel_index,
       StringAttr::get(ctx, oldKernel.getFusionInfoAttr().toString(
                                /*includeLineNumbers=*/false)),
-      oldKernel.getIsAsync(), oldKernel.getConstantResources());
+      /*eIsAsync=*/oldKernel.getDispatch() == MOGG::DispatchKind::Deferred,
+      oldKernel.getConstantResources());
 
   for (auto [idx, result] : llvm::enumerate(outputs))
     result.replaceAllUsesWith(newExecuteOp.getResult(idx));
@@ -90,10 +89,10 @@ void LowerMOGGRegionCompilesPass::rewriteExecuteCompiledOp(
 }
 
 // Lowers compiled JIT kernels:
-// - MOGG::LoadCompiledKernelOp -> MGP::ModuleLoadOp, after the RuntimeCreateOp.
-// - MOGG::ExecuteCompiledOp -> MGP::ExecuteGenericOp in the init and execute
+// - MOGG::CompiledLoadOp -> MGP::ModuleLoadOp, after the RuntimeCreateOp.
+// - MOGG::CompiledCallOp -> MGP::ExecuteGenericOp in the init and execute
 //   blocks, preserving init-block ordering.
-void LowerMOGGRegionCompilesPass::runOnOperation() {
+void LowerCompiledRoutinesPass::runOnOperation() {
   MLIRContext *ctx = getOperation().getContext();
   for (auto model :
        llvm::make_early_inc_range(getOperation().getOps<MGP::ModelOp>())) {
@@ -103,7 +102,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
 
     MGP::ExecuteState execState(ctx, model);
 
-    // MOGG::LoadCompiledKernelOp is CPU-only; count the right one for
+    // MOGG::CompiledLoadOp is CPU-only; count the right one for
     // moduleIndex.
     const auto hostDevice = DeviceRefAttr::get(ctx, kCPULabel, 0);
 
@@ -125,9 +124,9 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     // For each kernel name, track the module index and kernel index
     llvm::StringMap<std::pair<uint64_t, uint64_t>> kernelModuleAndFnIndex;
     uint64_t deviceModuleIndex = 0;
-    // Rewrite the MOGG::LoadCompiledKernelOp in init blocks.
-    for (auto loadKernels : llvm::make_early_inc_range(
-             init.getOps<MOGG::LoadCompiledKernelOp>())) {
+    // Rewrite the MOGG::CompiledLoadOp in init blocks.
+    for (auto loadKernels :
+         llvm::make_early_inc_range(init.getOps<MOGG::CompiledLoadOp>())) {
       Operation *insertionOp = lastDeviceRuntimeOp.getOperation();
       size_t runtimeSlot = lastDeviceRuntimeOp.getSlot();
       Value opContext = lastDeviceRuntimeOp.getTheContext();
@@ -182,10 +181,10 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
       op.erase();
     }
 
-    // Rewrite the MOGG::ExecuteCompiledOp in both init and execute blocks.
+    // Rewrite the MOGG::CompiledCallOp in both init and execute blocks.
     // Shunt all the executes for Init stage at the very end of init
     builder.setInsertionPoint(init.getTerminator());
-    init.walk([&](MOGG::ExecuteCompiledOp kernel) {
+    init.walk([&](MOGG::CompiledCallOp kernel) {
       auto [moduleIndex, kernelIndex] =
           kernelModuleAndFnIndex[kernel.getCalleeSymbol()];
       rewriteExecuteCompiledOp(builder, lastDeviceRuntimeOp.getTheContext(),
@@ -194,7 +193,7 @@ void LowerMOGGRegionCompilesPass::runOnOperation() {
     });
 
     WalkResult executeWalkResult =
-        execute.walk([&](MOGG::ExecuteCompiledOp kernel) {
+        execute.walk([&](MOGG::CompiledCallOp kernel) {
           builder.setInsertionPoint(kernel);
           Region *parentRegion = kernel->getParentRegion();
           Value executeContext = nullptr;

@@ -18,28 +18,28 @@
 // CHECK-SAME:      !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>,
 // CHECK-SAME:      !mgp.stable_addr<<2x3xf32, <"gpu", 1>>>)
 // CHECK:       <"gpu", 0> {
-// CHECK:         %[[PROD0:[a-z0-9_]+]] = mogg.generic.compiled.region
+// CHECK:         %[[PROD0:[a-z0-9_]+]] = mogg.routine.async
 // CHECK:         %[[P0:[a-z0-9_]+]] = mgp.device_graph.stable.place %[[B]][0], %[[PROD0]] : !mgp.tensor<2x3xf32, <"gpu", 0>>
 // CHECK:         %[[S0:[a-z0-9_]+]] = mgp.tensor.extract.tensor_spec %[[PROD0]] : <2x3xf32, <"gpu", 0>>
 // CHECK:         %[[T0:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[P0]], %[[S0]] : !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>
 // CHECK:         %[[G1:[a-z0-9_]+]] = mgp.device_graph.stable.get %[[B]][1] : !mgp.stable_addr<<2x3xf32, <"gpu", 1>>>
 // CHECK:         %[[S1:[a-z0-9_]+]] = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
 // CHECK:         %[[T1:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[G1]], %[[S1]] : !mgp.stable_addr<<2x3xf32, <"gpu", 1>>>
-// CHECK:         mogg.generic.compiled.region (%[[T0]], %[[T1]], %{{[a-z0-9_]+}})
+// CHECK:         mogg.routine.async (%[[T0]], %[[T1]], %{{[a-z0-9_]+}})
 // CHECK-SAME:      (%[[A0:[a-z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>,
 // CHECK-SAME:       %[[A1:[a-z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 1>, stable>,
 // CHECK:           mogg.async.unpack(%[[A0]]) : !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
 // CHECK:           mogg.async.unpack(%[[A1]]) : !mgp.tensor<2x3xf32, <"gpu", 1>, stable>
 // CHECK:         mgp.device_graph.collective.yield
 // CHECK:       }, <"gpu", 1> {
-// CHECK:         %[[PROD1:[a-z0-9_]+]] = mogg.generic.compiled.region
+// CHECK:         %[[PROD1:[a-z0-9_]+]] = mogg.routine.async
 // CHECK:         %[[P1:[a-z0-9_]+]] = mgp.device_graph.stable.place %[[B]][1], %[[PROD1]]
 // CHECK:         %[[S1B:[a-z0-9_]+]] = mgp.tensor.extract.tensor_spec %[[PROD1]]
 // CHECK:         %[[T1B:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[P1]], %[[S1B]]
 // CHECK:         %[[G0:[a-z0-9_]+]] = mgp.device_graph.stable.get %[[B]][0]
 // CHECK:         %[[S0B:[a-z0-9_]+]] = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
 // CHECK:         %[[T0B:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[G0]], %[[S0B]]
-// CHECK:         mogg.generic.compiled.region (%[[T0B]], %[[T1B]], %{{[a-z0-9_]+}})
+// CHECK:         mogg.routine.async (%[[T0B]], %[[T1B]], %{{[a-z0-9_]+}})
 // CHECK:         mgp.device_graph.collective.yield
 // CHECK:       }
 
@@ -68,7 +68,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
          %gpu1_t: !mgp.device_context<<"gpu", 1>>):
 
     // Producer on gpu:0.
-    %a = mogg.generic.compiled.region (%in0_t, %gpu0_t)
+    %a = mogg.routine.async (%in0_t, %gpu0_t)
         : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>,
            %devctx: !mgp.device_context<<"gpu", 0>>)
         -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
@@ -77,10 +77,10 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
       "test.use_ctx"(%c) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer0">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer0">> inOutSignature = <""> {device = #M.device_ref<"gpu", 0>}
 
     // Producer on gpu:1.
-    %b = mogg.generic.compiled.region (%in1_t, %gpu1_t)
+    %b = mogg.routine.async (%in1_t, %gpu1_t)
         : (%arg: !mgp.tensor<2x3xf32, <"gpu", 1>>,
            %devctx: !mgp.device_context<<"gpu", 1>>)
         -> !mgp.tensor<2x3xf32, <"gpu", 1>> {
@@ -89,7 +89,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
       "test.use_ctx"(%c) : (!mgp.device_context<<"gpu", 1>>) -> ()
       %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 1>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 1>>>
-    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer1">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer1">> inOutSignature = <""> {device = #M.device_ref<"gpu", 1>}
 
     // Promote each producer result to a stable address inside the staging body.
     %s0 = mgp.device_graph.stable.create %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
@@ -98,7 +98,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
     // Consumer on gpu:0, reading both stable values.
     // The stable flag is an internal device-graph detail: the value returned
     // from the staging region escapes as a normal tensor.
-    %c0 = mogg.generic.compiled.region (%s0, %s1, %gpu0_t)
+    %c0 = mogg.routine.async (%s0, %s1, %gpu0_t)
         : (%arg0: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>,
            %arg1: !mgp.tensor<2x3xf32, <"gpu", 1>, stable>,
             %devctx: !mgp.device_context<<"gpu", 0>>)
@@ -111,10 +111,10 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
           : !mgp.tensor<2x3xf32, <"gpu", 0>, stable> to !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%v) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer0">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer0">> inOutSignature = <""> {device = #M.device_ref<"gpu", 0>}
 
     // Consumer on gpu:1, reading both stable values.
-    %c1 = mogg.generic.compiled.region (%s0, %s1, %gpu1_t)
+    %c1 = mogg.routine.async (%s0, %s1, %gpu1_t)
         : (%arg0: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>,
            %arg1: !mgp.tensor<2x3xf32, <"gpu", 1>, stable>,
             %devctx: !mgp.device_context<<"gpu", 1>>)
@@ -127,7 +127,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
           : !mgp.tensor<2x3xf32, <"gpu", 1>, stable> to !mgp.tensor<2x3xf32, <"gpu", 1>>
       %p = mogg.async.pack(%v) : !mgp.tensor<2x3xf32, <"gpu", 1>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 1>>>
-    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer1">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer1">> inOutSignature = <""> {device = #M.device_ref<"gpu", 1>}
 
     mgp.device_graph.staging.yield %c0, %c1
         : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
@@ -148,14 +148,14 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
 // CHECK:       mgp.device_graph.collective builder(%[[B:[a-z0-9_]+]]) stable(
 // CHECK-SAME:      !mgp.stable_addr<<2x3xf32, <"gpu", 0>>>)
 // CHECK:       <"gpu", 0> {
-// CHECK:         mogg.generic.compiled.region
+// CHECK:         mogg.routine.async
 // CHECK:         mgp.device_graph.stable.place
 // CHECK:         mgp.device_graph.collective.yield
 // CHECK:       }, <"gpu", 1> {
 // CHECK:         %[[G0:[a-z0-9_]+]] = mgp.device_graph.stable.get %[[B]][0]
 // CHECK:         %[[S0:[a-z0-9_]+]] = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
 // CHECK:         %[[T0:[a-z0-9_]+]] = mgp.device_graph.stable.tensor %[[G0]], %[[S0]]
-// CHECK:         mogg.generic.compiled.region (%[[T0]], %{{[a-z0-9_]+}})
+// CHECK:         mogg.routine.async (%[[T0]], %{{[a-z0-9_]+}})
 // CHECK-SAME:      (%[[A0:[a-z0-9_]+]]: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>,
 // CHECK:           mogg.async.unpack(%[[A0]]) : !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
 // CHECK:         mgp.device_graph.collective.yield %{{.*}} : !mgp.tensor<2x3xf32, <"gpu", 1>>
@@ -184,7 +184,7 @@ mgp.model @consumer_only_device device_graph : mof devices [#M.device_ref<"gpu",
          %gpu1_t: !mgp.device_context<<"gpu", 1>>):
 
     // Producer on gpu:0.
-    %a = mogg.generic.compiled.region (%in0_t, %gpu0_t)
+    %a = mogg.routine.async (%in0_t, %gpu0_t)
         : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>,
            %devctx: !mgp.device_context<<"gpu", 0>>)
         -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
@@ -193,13 +193,13 @@ mgp.model @consumer_only_device device_graph : mof devices [#M.device_ref<"gpu",
       "test.use_ctx"(%c) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer0">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer0">> inOutSignature = <""> {device = #M.device_ref<"gpu", 0>}
 
     // Promote the producer result to a stable address.
     %s0 = mgp.device_graph.stable.create %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
 
     // Consumer on gpu:1, reading the stable value from gpu:0.
-    %c0 = mogg.generic.compiled.region (%s0, %gpu1_t)
+    %c0 = mogg.routine.async (%s0, %gpu1_t)
         : (%arg0: !mgp.tensor<2x3xf32, <"gpu", 0>, stable>,
            %devctx: !mgp.device_context<<"gpu", 1>>)
         -> !mgp.tensor<2x3xf32, <"gpu", 1>> {
@@ -210,7 +210,7 @@ mgp.model @consumer_only_device device_graph : mof devices [#M.device_ref<"gpu",
           : !mgp.tensor<2x3xf32, <"gpu", 0>, stable> to !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%v) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer1">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer1">> inOutSignature = <""> {device = #M.device_ref<"gpu", 1>}
 
     mgp.device_graph.staging.yield %c0
         : !mgp.tensor<2x3xf32, <"gpu", 1>>

@@ -364,7 +364,7 @@ Consumes `map` and produces `mogg` (depends on `mo` and `mosh`).
 
 #### Additional notes
 
-Each lowered kernel becomes a `mogg.kernel` container whose body calls the
+Each lowered kernel becomes a `mogg.routine` container whose body calls the
 selected kernel (`mogg.call.opaque` for opaque kernels, `mogg.call.elementwise`
 / `mogg.call.foreach` for elementwise loops). The `enableComputeLambdas` option
 controls whether an epilogue feeding a `_FusedComputeOutputTensor` argument gets
@@ -397,11 +397,11 @@ local, 1:1 lowering.
 Pass definition:
 `GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`.
 
-### OutlineKernelsIntoFunctions
+### OutlineRoutines
 
 #### Description
 
-Outlines each `mogg.kernel` body into a module-level `mogg.kernel.stub`.
+Outlines each `mogg.routine` body into a module-level `mogg.func`.
 
 #### Dialects
 
@@ -409,13 +409,13 @@ Consumes and produces `mogg` (and `mo`).
 
 #### Additional notes
 
-Moves each `mogg.kernel` body into a `mogg.kernel.stub` labeled with the MAP ABI
-and replaces the body with a single `mogg.call.stub` forwarding the kernel's
-pointer/dim/context block arguments to the stub. The `mogg.kernel` container is
+Moves each `mogg.routine` body into a `mogg.func` labeled with the MAP ABI
+and replaces the body with a single `mogg.call` forwarding the kernel's
+pointer/dim/context block arguments to the stub. The `mogg.routine` container is
 kept because it carries the `!mo.tensor` interface that `MOGGToMGP` later
 lowers. The MAP ABI label lets `EmitMojo` branch on the advanced-fusion
 emission path.
-`WrapKernelsWithTraceOp` then wraps each stub body in a per-kernel trace range.
+`WrapFuncsWithTrace` then wraps each stub body in a per-kernel trace range.
 
 Pass definition:
 `GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`.
@@ -449,8 +449,8 @@ Then lowers graphs in the topologically sorted order while detecting dependency
 cycles. Each graph is lowered to a single `mgp` model, walking its body,
 arguments and patching the control flow with `grt`. The lowering of ops goes
 either through the `LowerableToMGPInterface` or dispatches to a specialized
-handler if an op has one. The advanced-fusion `mogg.kernel` container (produced
-by `MAPToMOGG` / `OutlineKernelsIntoFunctions`) implements
+handler if an op has one. The advanced-fusion `mogg.routine` container (produced
+by `MAPToMOGG` / `OutlineRoutines`) implements
 `LowerableToMGPInterface` directly and is lowered through that path. `mo.call`s
 are lowered to `mgp.call`s
 with implicit operands that include chains, context, weight registry, device
@@ -484,7 +484,7 @@ Pass definition:
 
 #### Description
 
-Wraps eligible MGP/POP/index ops into mogg.generic.compiled.region kernels and
+Wraps eligible MGP/POP/index ops into mogg.routine.async kernels and
 applies the MOGG ABI to prepare for fusion and Mojo emission.
 
 #### Dialects
@@ -496,9 +496,9 @@ Consumes and produces `mgp` and depends on `kgen` (`lit`, `pop`) plus `mef`,
 
 The pass aids the sequence fusion pass by lowering some top-level model ops to
 uniform compiled region kernels. It walks the ops that implement
-`EmitsMojoInterface`, wraps them into a new `mogg.generic.compiled.region`, and
+`EmitsMojoInterface`, wraps them into a new `mogg.routine.async`, and
 rewrites the complied region's ABI to MOGG ABI. The MOGG ABI means the
-async‑value calling convention used for mogg.generic.compiled.region: inputs
+async‑value calling convention used for mogg.routine.async: inputs
 are unpacked from async wrappers on entry, and outputs are packed back into
 async wrappers on exit, with special handling for chains and borrowed buffers.
 The ABI lowering does three things:
@@ -527,13 +527,13 @@ Pass definition:
 
 #### Description
 
-Replaces `mgp.buffer.constant` uses inside `mogg.kernel.stub` with
+Replaces `mgp.buffer.constant` uses inside `mogg.func` with
 `mgp.resource.constant` indices that reference the stub’s constant resource
 table. This makes constants comparable by index rather than by value.
 
 #### Dialects
 
-Consumes and produces `mgp` (within `mogg.kernel.stub`).
+Consumes and produces `mgp` (within `mogg.func`).
 
 #### Performance
 
@@ -543,12 +543,12 @@ constant payloads in the IR and allowing identical kernels to share constants.
 #### Additional notes
 
 The pass runs late in the pipeline, right before emitting Mojo. It walks
-`BufferConstantOp` in a `KernelStubOp`, resolves each constant against the
+`BufferConstantOp` in a `FuncOp`, resolves each constant against the
 stub’s resource list, then replaces it with `ResourceConstantOp`, and resets
 the resource array to a dummy list of the same size.
 
 The pass expects all the resources to be found in the constant resources array
-attached to the `KernelStubOp` by the `MO::ConstantOp` lowering. The resources
+attached to the `FuncOp` by the `MO::ConstantOp` lowering. The resources
 are referenced by index, so that multiple kernels can access the same resource.
 This has many obvious benefits including memory efficiency, avoiding hashing
 kernels by constant values, and compilation efficiency. Earlier in the
@@ -653,13 +653,13 @@ Pass definition:
 
 #### Description
 
-Fuses `mgp.extend.lifetime` into a producer `mogg.generic.compiled.region` by
+Fuses `mgp.extend.lifetime` into a producer `mogg.routine.async` by
 threading the extend-lifetime inputs directly into the kernel op and removing
 the explicit lifetime extension op.
 
 #### Dialects
 
-Consumes `mgp`, rewriting uses of `mogg.generic.compiled.region` and `mef`
+Consumes `mgp`, rewriting uses of `mogg.routine.async` and `mef`
 chain values.
 
 #### Performance
@@ -723,11 +723,11 @@ Source:
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/MGPDialect/Transforms/MGPTransforms.td>
 
-### OutlineGenericCompiledRegionsToFunctions
+### OutlineAsyncRoutines
 
 #### Description
 
-Outlines `mogg.generic.compiled.region` bodies into `mogg.kernel.stub` ops and
+Outlines `mogg.routine.async` bodies into `mogg.func` ops and
 replaces the original region with `mogg.execute.compiled` calls.
 
 #### Dialects
@@ -742,7 +742,7 @@ them explicit and deterministic. The entry points get uniform and addressable
 
 #### Additional notes
 
-Each `mogg.generic.compiled.region` is outlined into a named mogg.kernel.stub
+Each `mogg.routine.async` is outlined into a named mogg.func
 (`__<stubs it calls>_async`, or `__primitive_<n>_async` when it calls none),
 and the original site becomes a `mogg.execute.compiled` call.
 Sets the device from the original op, and forwards summary/async/constant
@@ -750,7 +750,7 @@ resource attributes. Uses `ABIKind::MGP` (void-style; multiple results via
 opaque buffers) for the stub.
 
 Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/OutlineGenericCompiledRegionsToFunctions.cpp>
+<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/OutlineAsyncRoutines.cpp>
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
@@ -768,18 +768,18 @@ Consumes and produces `mogg` (within kernel stubs).
 #### Additional notes
 
 Two kernels that differ only in a cached-buffer slot index get structurally
-identical bodies after this runs, so `MergeIdenticalKernelStubs` can then
+identical bodies after this runs, so `MergeIdenticalFuncs` can then
 collapse them. Runs in `buildMgpPipeline` before the merge (it was previously
 nested inside `EmitMojo`).
 
 Pass definition:
 `GraphCompiler/include/GraphCompiler/MOGGDialect/MOGGPasses.td`.
 
-### MergeIdenticalKernelStubs
+### MergeIdenticalFuncs
 
 #### Description
 
-Merges structurally identical `mogg.kernel.stub` ops using their hashes, so the
+Merges structurally identical `mogg.func` ops using their hashes, so the
 Mojo compiler elaborates each distinct kernel once.
 
 #### Dialects
@@ -793,7 +793,7 @@ shards), cutting kernel count and Mojo compile time.
 
 #### Additional notes
 
-`CanonicalizeKernelStubDeviceIds` (erases device ids inside stubs) and
+`CanonicalizeFuncDeviceIds` (erases device ids inside stubs) and
 `LiftBufferCacheSlots` run first so otherwise-identical stubs hash equal.
 `SymbolDCE` later removes the stubs this pass leaves without callers. These
 passes run in `buildMgpPipeline` just before `EmitMojo`; they were previously
@@ -981,7 +981,7 @@ after all uses of the candidate buffer. The pass groups allocs by
 `(runtimeSize, device, alignment)`, uses `BufferLifetimeAnalysis` dependency
 trees to ensure all uses of one buffer execute after the other, and avoids
 reuse when allocations share a use. Skips allocs inside
-`mogg.generic.compiled.region`.
+`mogg.routine.async`.
 
 The pass marks BufferLifetimeAnalysis preserved though the IR is modified (so
 the analysis is invalid). The expectation is that the next pass (dynamic memory
@@ -1032,7 +1032,7 @@ Pass definition:
 
 #### Description
 
-Fuses sequences of `mogg.generic.compiled.region` ops into larger regions based
+Fuses sequences of `mogg.routine.async` ops into larger regions based
 on dataflow and fusion-compatibility rules.
 
 #### Dialects
@@ -1047,8 +1047,8 @@ Reduces kernel count and overhead by merging compatible compiled regions.
 #### Additional notes
 
 SequenceFusion is the final MGP‑level kernel fusion pass. It fuses sequences of
-mogg.generic.compiled.region ops into a single compiled region. The pass runs
-after LowerPrimitives, so it doesn't work with `mogg.kernel`. It reuses
+mogg.routine.async ops into a single compiled region. The pass runs
+after LowerPrimitives, so it doesn't work with `mogg.routine`. It reuses
 `sourceDestinationSequenceFusionAnalysis` to build a subgraph of fusible ops.
 Fusion is done in three phases:
 
@@ -1075,7 +1075,7 @@ Pass definition:
 
 #### Description
 
-Emits Mojo source for `mogg.kernel.stub` and compiled regions, stores it as a
+Emits Mojo source for `mogg.func` and compiled regions, stores it as a
 module resource, and wires models to load the emitted kernels at init time.
 
 #### Dialects
@@ -1094,18 +1094,18 @@ EmitMojo is the last step of the MO to MGP pipeline before JIT compilation, and
 it now only emits Mojo text. The stub-preparation work it used to do nested
 inside itself has been hoisted into `buildMgpPipeline` as its own passes that
 run before EmitMojo (see `GraphCompiler/lib/GraphCompiler.cpp`):
-`LiftBufferCacheSlots`, `CanonicalizeKernelStubDeviceIds`,
-`MergeIdenticalKernelStubs`, `RaiseBackIndexConstant`, `FixupOverhangsPass`,
+`LiftBufferCacheSlots`, `CanonicalizeFuncDeviceIds`,
+`MergeIdenticalFuncs`, `RaiseBackIndexConstant`, `FixupOverhangsPass`,
 `SymbolDCE`, `AddProfileScopeTracing`, and `AddTryExceptBlocks`. By the time
 EmitMojo runs, the kernel stubs are already deduplicated and finalized.
-EmitMojo inserts `mogg.load_compiled_kernel` ops in model init and removes
+EmitMojo inserts `mogg.compiled.load` ops in model init and removes
 kernel stubs after emitting the Mojo blob.
 The last step builds a `EmitMojoState` (holds contexts, metadata; responsible
 for symbol resolution via `MojoLibraryAnalysis`, constant resolution, type
 conversion, and lifetime management), imports Mojo stdlib together with custom
 kernel packages and walks kernel stubs.
 For each `mgp.model`, the pass gathers all kernel symbols references by the
-execute section, and adds a `mogg.load_compiled_kernel` op into init that points
+execute section, and adds a `mogg.compiled.load` op into init that points
 to the Mojo blob. The op is later lowered to `mgp` buffer load while
 JitCompileKernels provides the pointer to the correct resource.
 
@@ -1114,7 +1114,7 @@ Source:
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
-### LowerMOGGRegionCompiles
+### LowerCompiledRoutines
 
 #### Description
 
@@ -1142,7 +1142,7 @@ placeholder chain, removes `mogg.to_mgp_from_opaque` in execute, and fixes
 isolated-from-above bindings. Module loads are forced to CPU.
 
 Source:
-<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/LowerMOGGRegionCompile.cpp>
+<https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/lib/GraphCompiler/MOGGDialect/Transforms/LowerCompiledRoutines.cpp>
 Pass definition:
 <https://github.com/modularml/modular/blob/b71cbf8b216acc98960181ebedcd1a1a627b2288/GraphCompiler/include/GraphCompiler/GraphCompiler/Conversion/MOGGToMGP.td>
 
@@ -1150,7 +1150,7 @@ Pass definition:
 
 #### Description
 
-Removes redundant inputs/results on `mogg.generic.compiled.region` ops after
+Removes redundant inputs/results on `mogg.routine.async` ops after
 sequence fusion, collapsing duplicate operands and unused chain/results.
 
 #### Dialects
@@ -1217,7 +1217,7 @@ boundaries; increases IR size.
 
 #### Additional notes
 
-Part of the JIT compilation pipeline, run early after LowerMOGGRegionCompiles.
+Part of the JIT compilation pipeline, run early after LowerCompiledRoutines.
 Builds a call graph, rejects recursion, offsets runtime slot indices in cloned
 ops, prefixes placeholder weight names, updates init output chains, and erases
 inlined subgraph models when unused. Also updates `mgp.context.create` slot
@@ -1778,7 +1778,7 @@ Source:
 
 Takes Mojo source text emitted by the compiler (stored as a module resource),
 parses it, runs the KGEN pipelines (LIT -> KGEN -> elaborated KGEN -> LLVM), and
-replaces the MOGG::LoadCompiledKernelOp resource with the compiled binary.
+replaces the MOGG::CompiledLoadOp resource with the compiled binary.
 
 #### Dialects
 

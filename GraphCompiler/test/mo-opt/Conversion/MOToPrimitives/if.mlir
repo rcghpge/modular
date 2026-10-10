@@ -47,18 +47,18 @@ mo.graph @if_op_scalar_cond() -> (!mo.tensor<[2], f32>) {
 // CHECK: %[[CH0:.*]] = grt.chain.create (%[[ENTRY_CH]], %[[ENTRY_CH]])
 
 // CHECK: %[[IF_OUT:.*]]:2 = grt.if
-// CHECK: %[[TRUE_CH0:.*]] = mogg.generic.compiled.region (%[[ENTRY_CH]]
+// CHECK: %[[TRUE_CH0:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[ENTRY_CH]]
 // } else {
-// CHECK: %[[FALSE_CH0:.*]] = mogg.generic.compiled.region (%[[CH0]]
+// CHECK: %[[FALSE_CH0:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CH0]]
 
 // CHECK: %[[CND_CH:.*]] = grt.chain.create (%[[ENTRY_CH]], %[[IF_OUT]]#0)
 
 // CHECK: grt.if
 // CHECK: %[[CH1:.*]] = grt.chain.create (%[[IF_OUT]]#0, %[[IF_OUT]]#0, %[[IF_OUT]]#0)
-// CHECK: %[[TRUE_CH1:.*]] = mogg.generic.compiled.region (%[[CH1]]
+// CHECK: %[[TRUE_CH1:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CH1]]
 // } else {
 // CHECK: %[[CH1:.*]] = grt.chain.create (%[[IF_OUT]]#0, %[[CND_CH]])
-// CHECK: %[[FALSE_CH1:.*]] = mogg.generic.compiled.region (%[[CH1]]
+// CHECK: %[[FALSE_CH1:.*]] = mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%[[CH1]]
 
 mo.graph @if_op_multi_if(%arg0: !mo.tensor<[2], f32>) -> (!mo.tensor<[2], f32>) {
   %cond = mo.constant <#M.dense_array<1> : tensor<1xi8>> : !mo.tensor<[], bool>

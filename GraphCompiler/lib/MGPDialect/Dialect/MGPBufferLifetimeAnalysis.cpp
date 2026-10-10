@@ -480,7 +480,7 @@ BufferLifetimeAnalysisPass::BufferLifetimeAnalysisPass(Operation *op) {
 
   SmallVector<Block *> blocks;
   op->walk<mlir::WalkOrder::PreOrder>([&](Block *block) {
-    if (isa_and_present<MOGG::GenericCompiledRegionOp>(block->getParentOp()))
+    if (isa_and_present<MOGG::AsyncRoutineOp>(block->getParentOp()))
       return WalkResult::skip();
 
     blocks.push_back(block);

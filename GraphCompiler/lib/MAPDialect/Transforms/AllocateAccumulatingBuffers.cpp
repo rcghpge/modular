@@ -99,7 +99,7 @@ static IterOpaqueOp addScratchResult(IterOpaqueOp op, Type scratchType,
     newOp.setFusionInfoAttr(fusionInfo);
   newOp.setHasReadEffect(op.getHasReadEffect());
   newOp.setHasWriteEffect(op.getHasWriteEffect());
-  newOp.setIsAsync(op.getIsAsync());
+  newOp.setDispatch(op.getDispatch());
 
   newOp.getBody().takeBody(op.getBody());
   scratchArg = newOp.getBody().front().addArgument(scratchType, op.getLoc());

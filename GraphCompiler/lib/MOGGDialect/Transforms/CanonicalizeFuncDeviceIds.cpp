@@ -14,7 +14,7 @@ using namespace M;
 
 namespace M::MOGG {
 
-#define GEN_PASS_DEF_CANONICALIZEKERNELSTUBDEVICEIDS
+#define GEN_PASS_DEF_CANONICALIZEFUNCDEVICEIDS
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
@@ -25,11 +25,9 @@ namespace {
 // reads only the device label, never the id.
 constexpr uint64_t kCanonicalDeviceId = 0;
 
-struct CanonicalizeKernelStubDeviceIds
-    : public impl::CanonicalizeKernelStubDeviceIdsBase<
-          CanonicalizeKernelStubDeviceIds> {
-  using CanonicalizeKernelStubDeviceIdsBase::
-      CanonicalizeKernelStubDeviceIdsBase;
+struct CanonicalizeFuncDeviceIds
+    : public impl::CanonicalizeFuncDeviceIdsBase<CanonicalizeFuncDeviceIds> {
+  using CanonicalizeFuncDeviceIdsBase::CanonicalizeFuncDeviceIdsBase;
 
   void runOnOperation() override {
     mlir::ModuleOp moduleOp = getOperation();
@@ -44,8 +42,8 @@ struct CanonicalizeKernelStubDeviceIds
       return DeviceRefAttr::get(ctx, deviceRef.getLabel(), kCanonicalDeviceId);
     });
 
-    for (KernelStubOp kernelStub :
-         llvm::make_early_inc_range(moduleOp.getOps<KernelStubOp>()))
+    for (FuncOp kernelStub :
+         llvm::make_early_inc_range(moduleOp.getOps<FuncOp>()))
       replacer.recursivelyReplaceElementsIn(kernelStub, /*replaceAttrs=*/true,
                                             /*replaceLocs=*/false,
                                             /*replaceTypes=*/true);

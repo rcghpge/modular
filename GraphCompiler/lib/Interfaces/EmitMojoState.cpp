@@ -521,7 +521,7 @@ static MojoValue getHasEpilogueFusionValue(mlir::Operation *) {
 }
 
 static MojoValue getHasPrologueFusionValue(mlir::Operation *callOp) {
-  auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
+  auto kernelStubOp = callOp->getParentOfType<FuncOp>();
   if (!kernelStubOp)
     return true;
   FusionInfoAttr fusionInfo = kernelStubOp.getFusionInfoAttr();
@@ -568,15 +568,15 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   }
 
   // Some special parameters are common to all kernels.
-  // TODO(GEX-2847): Check the op, not the KernelStubOp, in case these get
+  // TODO(GEX-2847): Check the op, not the FuncOp, in case these get
   // sequence fused. Safe today: stubs are outlined before sequence fusion, and
   // sequence-fused ones are all on the host.
   if (paramName == MOGG::kMoggTargetParameterName) {
-    auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
+    auto kernelStubOp = callOp->getParentOfType<FuncOp>();
     return MojoValue(kernelStubOp.getDevice()).quote();
   }
   if (paramName == MOGG::kMoggTraceNameParameterName) {
-    auto kernelStubOp = callOp->getParentOfType<KernelStubOp>();
+    auto kernelStubOp = callOp->getParentOfType<FuncOp>();
     return getTraceNameValue(kernelStubOp.getFusionInfoAttr());
   }
   if (paramName == MOGG::kMoggHasEpilogueFusionParameterName)

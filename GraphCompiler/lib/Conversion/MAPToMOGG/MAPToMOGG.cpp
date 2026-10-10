@@ -9,7 +9,7 @@
 // `MAPOpsLowerableToMOGG.cpp`); `MAPToMOGGState` walks each `map.iter.opaque`
 // and dispatches on whatever op it finds.
 //
-// A `map.iter.opaque` becomes a `mogg.kernel` whose body rebuilds each tensor
+// A `map.iter.opaque` becomes a `mogg.routine` whose body rebuilds each tensor
 // from a `!mogg.pointer` block argument via `mogg.shape.create` /
 // `mogg.tensor.create`. A nested `map.call.opaque` becomes a
 // `mogg.call.opaque`, a `map.iter.foreach.body` a `mogg.call.foreach`, and a

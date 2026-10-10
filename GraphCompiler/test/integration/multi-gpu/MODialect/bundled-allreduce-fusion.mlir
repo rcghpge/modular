@@ -4,11 +4,11 @@
 // Verify per-kernel stub structure at the MGP stage.
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-pipeline --map-to-mogg --mogg-pipeline --mogg-to-mgp | FileCheck %s --check-prefix=CHECK-MGP
 
-// Verify that MergeIdenticalKernelStubs deduplicates the per-launch stubs
+// Verify that MergeIdenticalFuncs deduplicates the per-launch stubs
 // into a single shared stub (canonical arg ordering makes them identical).
 // SymbolDCE removes the dead stubs whose callers were rewritten.
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-pipeline --map-to-mogg --mogg-pipeline --mogg-to-mgp \
-// RUN:   --mogg-merge-identical-kernel-stubs --symbol-dce -o /dev/null
+// RUN:   --mogg-merge-identical-funcs --symbol-dce -o /dev/null
 
 // Test that mo.bundled.allreduce.sum followed by mo.relu inside mo.parallel
 // compiles through the full mo-to-mogg pipeline. This exercises both the
@@ -54,7 +54,7 @@ mo.graph @bundled_allreduce_then_relu(
 // The fusion path folds relu into the bundled-allreduce epilogue, so a single
 // fused stub is dispatched async to each GPU (one call per device) inside one
 // compiled region, then joined over the two task handles.
-// CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{__bundled_allreduce_sum[A-Za-z0-9_]*}}
-// CHECK-MGP:   mogg.call.stub.async @{{__bundled_allreduce_sum[A-Za-z0-9_]*}}
+// CHECK-MGP: mogg.routine.async
+// CHECK-MGP:   mogg.call.async @{{__bundled_allreduce_sum[A-Za-z0-9_]*}}
+// CHECK-MGP:   mogg.call.async @{{__bundled_allreduce_sum[A-Za-z0-9_]*}}
 // CHECK-MGP:   mogg.async.join({{.*}})

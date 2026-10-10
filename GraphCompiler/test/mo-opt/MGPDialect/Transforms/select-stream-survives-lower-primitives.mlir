@@ -16,7 +16,7 @@ module {
     mef.output %2, %1, %wr, %dc : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
   } execute (%ch: !mef.chain, %ctx: !mgp.context, %wr: !mgp.opaque<"weights_registry">, %dc: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain, !mgp.device_context<<"gpu", 0>>) {
     // CHECK: mgp.device_context.select_stream[1]
-    // CHECK-NOT: mogg.generic.compiled.region
+    // CHECK-NOT: mogg.routine.async
     // CHECK-NOT: mgp.generic.execute
     %view = mgp.device_context.select_stream[1] %dc : !mgp.device_context<<"gpu", 0>>
     mef.output %ch, %view : !mef.chain, !mgp.device_context<<"gpu", 0>>
