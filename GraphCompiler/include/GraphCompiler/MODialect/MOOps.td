@@ -3158,7 +3158,7 @@ def MO_TransposeOp : MO_TensorOp<"transpose", [
 
 def MO_TileOp : MO_TensorOp<"tile", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly,
+  MO_SingleDeviceWithHostOperands<["repeats"]>,
   MO_ParamDeclaration,
 ]> {
   let summary = "Tiling operation";

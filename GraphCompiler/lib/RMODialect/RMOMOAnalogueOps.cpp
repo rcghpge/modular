@@ -619,10 +619,13 @@ void MOTileOp::inferMOTypesImpl(
   moOperandTypes.push_back(input.getType());
   moInputParamDecls.push_back({});
 
-  // `repeats` has static shape [rank].
-  TypedAttr dimAttr = ShapeAttr::getDim(context, input.getType().getRank());
-  moOperandTypes.push_back(
-      repeats.getType().cloneWith(SmallVector<TypedAttr>{dimAttr}));
+  // `repeats` has static shape [rank] and lives on the host: the tile op
+  // pins its repeats operand there while the data follows the input.
+  auto repeatsTy = cast<TensorType>(repeats.getType());
+  SmallVector<TypedAttr> repeatsDims{
+      ShapeAttr::getDim(context, input.getType().getRank())};
+  moOperandTypes.push_back(TensorType::get(
+      context, repeatsDims, repeatsTy.getDtype(), getHostDevice(context)));
   moInputParamDecls.push_back({});
 
   if (!requireRmoResults(graphOp, rmoResults, "tile"))

@@ -822,14 +822,37 @@ mo.graph @tile_dynamic<D0, D1, D2, D3>(%input: !mo.tensor<[D0, D1], f32>) -> !mo
   mo.output %res : !mo.tensor<[D2, D3], f32>
 }
 
+// A symbolic input dim blocks the broadcast rewrite: the lowered form would
+// need the host-resident repeats to size a device-side shape tensor.
 // CHECK: mo.graph @tile_broadcast<[[D0:[^,>]*]], [[D1:[^,>]*]], [[D2:[^,>]*]]>(%[[INPUT:.*]]: !mo.tensor<[1, [[D0]]], f32>) -> !mo.tensor<{{\[}}[[D1]], [[D2]]{{\]}}, f32> {
 mo.graph @tile_broadcast<D0, D1, D2>(%input: !mo.tensor<[1, D0], f32>) -> !mo.tensor<[D1, D2], f32> {
-
-  // CHECK: mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[1, [[D0]]], f32> -> !mo.tensor<{{\[}}[[D1]], [[D2]]{{\]}}, f32>
+  // CHECK: %[[REPEATS:.*]] = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %repeats = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
-
-
-
+  // CHECK: mo.tile(%[[INPUT]], %[[REPEATS]]) : (!mo.tensor<[1, [[D0]]], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<{{\[}}[[D1]], [[D2]]{{\]}}, f32>
   %res = mo.tile(%input, %repeats) : (!mo.tensor<[1, D0], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[D1, D2], f32>
+  // CHECK: mo.output %[[RES:.*]] : !mo.tensor<{{\[}}[[D1]], [[D2]]{{\]}}, f32>
   mo.output %res : !mo.tensor<[D1, D2], f32>
+}
+
+// Statically known broadcastable tile: input dim 1 with repeat 2 lowers to a
+// static broadcast, keeping the host repeats out of the device shape ops.
+// CHECK: mo.graph @tile_broadcast_static(%[[INPUT:.*]]: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 3], f32> {
+mo.graph @tile_broadcast_static(%input: !mo.tensor<[1, 3], f32>) -> !mo.tensor<[2, 3], f32> {
+  // CHECK-NOT: mo.tile
+  %repeats = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  // CHECK: %[[BCST:.*]] = mo.static.broadcast_to(%[[INPUT]]) : !mo.tensor<[1, 3], f32> -> !mo.tensor<[2, 3], f32>
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[1, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+  // CHECK: mo.output %[[BCST]] : !mo.tensor<[2, 3], f32>
+  mo.output %res : !mo.tensor<[2, 3], f32>
+}
+
+// A device-resident input stays on its device: only the repeats are host.
+// CHECK: mo.graph @tile_gpu(%[[INPUT:.*]]: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[4, 3], f32, gpu:0> {
+mo.graph @tile_gpu(%input: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[4, 3], f32, gpu:0> {
+  // CHECK: %[[REPEATS:.*]] = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %repeats = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  // CHECK: %[[RES:.*]] = mo.tile(%[[INPUT]], %[[REPEATS]]) : (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2], si64>) -> !mo.tensor<[4, 3], f32, gpu:0>
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2], si64>) -> !mo.tensor<[4, 3], f32, gpu:0>
+  // CHECK: mo.output %[[RES]] : !mo.tensor<[4, 3], f32, gpu:0>
+  mo.output %res : !mo.tensor<[4, 3], f32, gpu:0>
 }

@@ -1734,21 +1734,23 @@ LogicalResult TileOp::canonicalize(TileOp op, PatternRewriter &rewriter) {
     return failure();
   ArrayRef<int64_t> repeatsVec(maybeRepeatsVec.value());
 
-  // A tile is a broadcast if every repeated dimension has size 1.
+  // A tile is a broadcast when every repeated dimension has size 1. This
+  // fires only with statically known input dimensions: the rewrite lowers
+  // straight to a static broadcast, never through shape tensors, which
+  // would mix the input's device with the host-resident repeats.
   for (auto [inDim, repeats] : llvm::zip(inputTy.getIntDims(), repeatsVec)) {
+    if (mlir::ShapedType::isDynamic(inDim))
+      return failure();
     if (repeats < 1 || (repeats > 1 && inDim != 1))
       return failure();
   }
 
-  TensorType shapeTy =
-      inputTy.cloneWith({(int64_t)inputTy.getRank()},
-                        rewriter.getIntegerType(64, /*isSigned=*/true));
-  TensorValue inputShape =
-      ShapeOfOp::create(rewriter, op.getLoc(), shapeTy, op.getInput());
-  TensorValue bcastShape = BroadcastShapeOp::create(
-      rewriter, op.getLoc(), shapeTy, inputShape, op.getRepeats());
-  rewriter.replaceOpWithNewOp<BroadcastToOp>(
-      op, op.getType(), op.getInput(), bcastShape, op.getOutputParamDecls());
+  auto bcast = Static::BroadcastToOp::create(rewriter, op.getLoc(),
+                                             op.getType(), op.getInput());
+  // A static broadcast preserves the shape, so the result needs a rebind to
+  // carry the tile's declared output parameters through.
+  rewriter.replaceOpWithNewOp<RebindOp>(op, op.getType(), bcast.getResult(),
+                                        op.getOutputParamDecls());
   return success();
 }
 

@@ -683,6 +683,27 @@ mo.graph @tile_repeats_rank_mismatch(%input: !mo.tensor<[?, ?, ?], f32>) -> !mo.
   mo.output %res : !mo.tensor<[?, ?, ?], f32>
 }
 
+// -----
+
+// `repeats` is a host operand: a device-resident input is fine, but the
+// repeats must stay on the CPU.
+mo.graph @tile_repeats_on_gpu(%input: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[4, 3], f32, gpu:0> {
+  %repeats = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64, gpu:0>
+  // expected-error@+1 {{mo.tile: Operand 1 - mo.constant (using zero-based indexing) is constrained to be on device #M.device_ref<"cpu", 0> but has device #M.device_ref<"gpu", 0>.}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2], si64, gpu:0>) -> !mo.tensor<[4, 3], f32, gpu:0>
+  mo.output %res : !mo.tensor<[4, 3], f32, gpu:0>
+}
+
+// -----
+
+// All operands and the result must share one device; the host-resident
+// repeats do not move the execution device.
+mo.graph @tile_input_result_device_mismatch(%input: !mo.tensor<[2, 3], f32, gpu:0>) -> !mo.tensor<[4, 3], f32, gpu:1> {
+  %repeats = mo.constant <#M.dense_array<2, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  // expected-error@+1 {{mo.tile: Operand 0 (using zero-based indexing) is constrained to be on device #M.device_ref<"gpu", 1> but has device #M.device_ref<"gpu", 0>.}}
+  %res = mo.tile(%input, %repeats) : (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2], si64>) -> !mo.tensor<[4, 3], f32, gpu:1>
+  mo.output %res : !mo.tensor<[4, 3], f32, gpu:1>
+}
 
 
 //===----------------------------------------------------------------------===//
