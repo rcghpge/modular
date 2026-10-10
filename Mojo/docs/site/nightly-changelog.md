@@ -380,6 +380,10 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `std.math.hypot` no longer calls the system libm and now runs on GPU as well
+  as CPU. On CPU its result comes from the same Mojo implementation, so it can
+  differ from the system libm in the last ulp.
+
 - `float64` `log()` now uses double-precision coefficients and is within
   1 ulp of the correctly rounded result; it was previously off by up to about
   2e7 ulp. It runs the same Mojo code on CPU and GPU.

@@ -118,7 +118,7 @@ def test_math() raises:
             log1p,
             # logb,
             cbrt,
-            # hypot_fn,
+            hypot_fn,
             erfc,
             # lgamma,
             # gamma,

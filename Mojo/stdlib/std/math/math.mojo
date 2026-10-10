@@ -2684,7 +2684,8 @@ def hypot[
     """Computes the `hypot` of the inputs.
 
     Constraints:
-        The input must be a floating-point type.
+        The input must be a floating-point type. Float64 is unsupported on
+        Apple GPU.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
@@ -2698,21 +2699,14 @@ def hypot[
         The `hypot` of the inputs.
     """
 
-    @inline(.nodebug)
-    def _float32_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["hypotf", Scalar[result_type]](arg0, arg1)
+    _assert_float64_supported[dtype, "hypot"]()
 
-    @inline(.nodebug)
-    def _float64_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["hypot", Scalar[result_type]](arg0, arg1)
-
-    comptime if dtype == .float64:
-        return _simd_apply[_float64_dispatch, result_dtype=dtype](arg0, arg1)
-    return _simd_apply[_float32_dispatch, result_dtype=dtype](arg0, arg1)
+    comptime if bit_width_of[dtype]() < 32:
+        var r = _hypot_impl(arg0.cast[.float32](), arg1.cast[.float32]())
+        comptime if is_apple_gpu() and dtype == .bfloat16:
+            return rebind[SIMD[dtype, width]](_narrow_f32_to_bf16_bits(r))
+        return r.cast[dtype]()
+    return _hypot_impl(arg0, arg1)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4246,10 +4240,10 @@ def round[T: Roundable, //](number: T, ndigits: Int) -> T:
 # These run unchanged on CPU and GPU, so they avoid the target-dependent
 # approximations (`sqrt.approx`, `lg2.approx`, `ex2.approx` on NVIDIA) and
 # keep float32 paths free of float64 values, which Apple GPUs reject.
-# Sources are cited per function. Compilers may contract a*b + c into an
-# fma depending on target and flags, so results can differ between targets
-# in the last ulp outside paths that use explicit fma. Apple GPUs may flush
-# subnormals and carry no correct-rounding guarantee for sqrt.
+# Sources are cited per function. Compilers may contract a*b + c into an fma
+# depending on target and flags, so results can differ between targets in the
+# last ulp outside paths that use explicit fma. Apple GPUs may flush subnormals
+# and carry no correct-rounding guarantee for sqrt.
 
 comptime _SQRT2 = 1.41421356237309504880168872420969807856967187537694
 
@@ -4268,6 +4262,138 @@ comptime _LN2_LO_F64 = 1.90821492927058770002e-10
 def _assert_float64_supported[dtype: DType, name: StaticString]():
     comptime assert dtype != .float64 or not is_apple_gpu(), (
         "`" + name + "` does not support float64 on Apple GPU"
+    )
+
+
+@inline(.always)
+def _scale_down_bits[
+    dtype: DType, width: SIMDLength, //, shift: Int
+](y: SIMD[dtype, width]) -> type_of(y) where dtype.is_floating_point():
+    """Returns `y * 2^-shift`, correctly rounded (to nearest even) even when
+    the result is subnormal, for finite normal `y`. Uses integer operations
+    only, so flush-to-zero targets keep subnormal results."""
+    comptime TInt = SIMD[_integral_type_of[dtype](), width]
+    comptime mantissa_width = FPUtils[dtype].mantissa_width()
+    comptime bits = bit_width_of[dtype]()
+    comptime sign_mask = TInt(1) << TInt(bits - 1)
+    comptime mantissa_mask = TInt((1 << mantissa_width) - 1)
+    var b = y._to_bits_signed()
+    var sign = b & sign_mask
+    var mag = b & ~sign_mask
+    var e = mag >> TInt(mantissa_width)
+    var new_e = e - TInt(shift)
+    # Normal result: only the exponent field changes.
+    var normal = (new_e << TInt(mantissa_width)) | (mag & mantissa_mask)
+    # Subnormal result: shift the full significand right and round to
+    # nearest even; a carry into bit mantissa_width encodes the minimum
+    # normal correctly. Shifts past mantissa_width + 1 round to zero.
+    var s = min(TInt(1) - new_e, TInt(mantissa_width + 2))
+    var sig = (mag & mantissa_mask) | TInt(1 << mantissa_width)
+    var q = sig >> s
+    var rem = sig & ((TInt(1) << s) - 1)
+    var half = TInt(1) << (s - 1)
+    var up = rem.gt(half) | (rem.eq(half) & (q & 1).ne(0))
+    var sub = q + up.select(TInt(1), TInt(0))
+    var r = new_e.ge(1).select(normal, sub)
+    return SIMD[dtype, width](from_bits=sign | r)
+
+
+@inline(.always)
+def _narrow_f32_to_bf16_bits[
+    width: SIMDLength, //
+](x: SIMD[DType.float32, width]) -> SIMD[DType.bfloat16, width]:
+    """Rounds float32 to bfloat16 (nearest even) from the bits, keeping
+    subnormal results that a flush-to-zero `cast` would drop. NaN stays NaN."""
+    var b = x.to_bits()
+    var rounded = (b + 0x7FFF + ((b >> 16) & 1)) >> 16
+    var r = isnan(x).select((b >> 16) | 0x40, rounded)
+    return SIMD[DType.bfloat16, width](from_bits=r.cast[DType.uint16]())
+
+
+@inline(.always)
+def _sqrt_ieee[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x):
+    # `sqrt` is `sqrt.approx.ftz` for float32 on NVIDIA. float64 needs no
+    # special case: its sqrt lowers to the IEEE round-to-nearest instruction.
+    comptime if is_nvidia_gpu() and dtype == .float32:
+        return _llvm_unary_fn["llvm.sqrt"](x)
+    return sqrt(x)
+
+
+@inline(.always)
+def _hypot_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    comptime T = SIMD[dtype, width]
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime U = SIMD[FPUtils[dtype].uint_type, width]
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime bias = FPUtils[dtype].exponent_bias()
+
+    # Floating min/max may flush subnormal operands before normalization.
+    var magnitude_mask = ~U(FPUtils[dtype].sign_mask())
+    var ax_bits = x.to_bits[FPUtils[dtype].uint_type]() & magnitude_mask
+    var ay_bits = y.to_bits[FPUtils[dtype].uint_type]() & magnitude_mask
+    var big_bits = max(ax_bits, ay_bits).cast[FPUtils[dtype].integral_type]()
+    var small_bits = min(ax_bits, ay_bits).cast[FPUtils[dtype].integral_type]()
+
+    # Scale by 2^-e (e = exponent of the larger magnitude) so the sum of
+    # squares can neither overflow nor lose the larger term to underflow. The
+    # clamp keeps both 2^e and 2^-e normal.
+    comptime exp_mask = (1 << FPUtils[dtype].exponent_width()) - 1
+    var e_big = (big_bits >> I(mant)) & I(exp_mask)
+    var e = (e_big - I(bias)).clamp(I(1 - bias), I(bias - 1))
+    var down = T(from_bits=(I(bias) - e) << I(mant))
+    var up = T(from_bits=(I(bias) + e) << I(mant))
+    var e_small = (small_bits >> I(mant)) & I(exp_mask)
+    var big_subnormal = e_big.eq(0)
+    var small_subnormal = e_small.eq(0)
+    var a = T(from_bits=big_subnormal.select(I(0), big_bits)) * down
+    var b = T(from_bits=small_subnormal.select(I(0), small_bits)) * down
+
+    # A subnormal operand is `m * 2^(emin - mant)` for its integer significand
+    # m, so its scaled value is `m * 2^(emin - mant - e)`, built here without
+    # arithmetic on the subnormal itself, which targets that flush subnormals
+    # would read as zero. Past e = -mant the unit is not normal, and the
+    # operand is below 2^-mant of `a` and negligible.
+    comptime sub_exp = 1 - bias - mant
+    var unit = _pow2_impl[dtype, width](
+        (I(sub_exp) - e).clamp(I(1 - bias), I(bias))
+    )
+    var mant_mask = I((1 << mant) - 1)
+    a = big_subnormal.select((big_bits & mant_mask).cast[dtype]() * unit, a)
+    b = (small_subnormal & e.le(I(-mant))).select(
+        (small_bits & mant_mask).cast[dtype]() * unit, b
+    )
+    var s = fma(a, a, b * b)
+    var r = _sqrt_ieee(s) * up
+    comptime if is_apple_gpu():
+        # Apple GPUs flush a subnormal product to zero. The result is
+        # subnormal only when the exponent clamp is active, so scale it down
+        # with integer operations instead.
+        r = e.eq(I(1 - bias)).select(
+            _scale_down_bits[bias - 1](_sqrt_ieee(s)), r
+        )
+
+    # C99 F.10.4.3: hypot(±inf, y) is +inf even when y is NaN.
+    r = (isnan(x) | isnan(y)).select(nan[dtype](), r)
+    return (isinf(x) | isinf(y)).select(inf[dtype](), r)
+
+
+@inline(.always)
+def _pow2_impl[
+    dtype: DType, width: SIMDLength
+](k: SIMD[FPUtils[dtype].integral_type, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    """Returns 2^k for k in the normal exponent range."""
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    return SIMD[dtype, width](
+        from_bits=(k + I(FPUtils[dtype].exponent_bias()))
+        << I(FPUtils[dtype].mantissa_width())
     )
 
 
