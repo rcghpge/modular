@@ -20,6 +20,7 @@ _EXTRA_MOJO_TEST_CONSTRAINTS = {
     "test_occupancy_max_active_blocks.mojo": _APPLE_GPU_INCOMPATIBLE,  # occupancy query not implemented for Metal
     "test_device_context_sub_buffer.mojo": _APPLE_GPU_INCOMPATIBLE,  # FIXME: GEX-2562
     "test_device_graph_builder.mojo": _APPLE_GPU_INCOMPATIBLE,  # Metal does not support device graph builder
+    "test_multi_device_peer.mojo": ["//:has_multi_gpu"] + _APPLE_GPU_INCOMPATIBLE,
 }
 
 [
