@@ -231,6 +231,38 @@ M_driver_status_t M_driver_context::memoryInfo(uint64_t *free,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_context::enablePeerAccess(M_driver_context &peer) {
+  M::Target::CUDA::CUDALoader &cuda = device.driver.rawCuda;
+  bool canAccess = false;
+  if (M_driver_status_t s = device.canAccessPeer(peer.device, &canAccess);
+      s != M_DRIVER_STATUS_SUCCESS)
+    return s;
+  if (!canAccess)
+    return M_DRIVER_STATUS_INCOMPATIBLE;
+
+  // cuCtxEnablePeerAccess acts on the current context.
+  ScopedContext scope(primaryCtx, cuda);
+  if (scope.status != M_DRIVER_STATUS_SUCCESS)
+    return scope.status;
+  CUresult r = cuda.cuCtxEnablePeerAccess(peer.primaryCtx, /*flags=*/0);
+  if (r != CUDA_SUCCESS && r != CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED)
+    return cudaErrorStatus(&device.driver, r, "cuCtxEnablePeerAccess");
+
+  // cuCtxEnablePeerAccess does not cover the peer's stream-ordered pool.
+  CUmemoryPool pool;
+  if (CUresult r2 = cuda.cuDeviceGetMemPool(&pool, peer.device.deviceId);
+      r2 != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r2, "cuDeviceGetMemPool");
+  CUmemAccessDesc desc{};
+  desc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  desc.location.id = device.deviceId;
+  desc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+  if (CUresult r3 = cuda.cuMemPoolSetAccess(pool, &desc, /*count=*/1);
+      r3 != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r3, "cuMemPoolSetAccess");
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 M_driver_status_t
 M_driver_context::allocPinnedMapped(uint64_t size, M_driver_memory_t *memory,
                                     void **host_ptr, uint64_t *device_address) {

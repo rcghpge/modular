@@ -51,3 +51,11 @@ M_driver_status_t M_driver_device_attribute(M_driver_device_t device,
     return M_DRIVER_STATUS_BAD_DEVICE;
   return device->attribute(attribute, value);
 }
+
+M_driver_status_t M_driver_device_can_access_peer(M_driver_device_t device,
+                                                  M_driver_device_t peer,
+                                                  bool *out_can_access) {
+  if (device == nullptr || peer == nullptr)
+    return M_DRIVER_STATUS_BAD_DEVICE;
+  return device->canAccessPeer(*peer, out_can_access);
+}

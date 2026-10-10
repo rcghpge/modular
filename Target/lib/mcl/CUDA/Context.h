@@ -42,6 +42,7 @@ struct M_driver_context {
   M_driver_status_t
   setCurrentDriverContext(M_driver_native_handle_t driver_context);
   M_driver_status_t memoryInfo(uint64_t *free, uint64_t *total);
+  M_driver_status_t enablePeerAccess(M_driver_context &peer);
   M_driver_status_t
   tensorMapEncodeTiled(void *tensor_map, int32_t data_type, uint32_t rank,
                        uint64_t global_device_address,

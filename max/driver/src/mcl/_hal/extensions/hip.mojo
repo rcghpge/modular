@@ -3,21 +3,29 @@
 # This file is Modular Inc proprietary.
 #
 # ===----------------------------------------------------------------------=== #
+from std.collections import OptionalReg
 from std.ffi import _DLHandle
 
 from ..plugins import RawPluginComponent
 from ..status import HALError
-from .traits import HALExtensions
+from .peer_access import RawPluginPeerAccess
+from .traits import HALExtensions, SupportsPeerAccessV1
 
 
 struct HIPExtensionFunctions(RawPluginComponent):
     pass
 
 
-struct HIPHALExtensions(HALExtensions):
+struct HIPHALExtensions(HALExtensions, SupportsPeerAccessV1):
     """`HALExtensions` implementation for AMD HIP backends."""
+
+    comptime PeerAccessTy = RawPluginPeerAccess
+    var _peer: OptionalReg[RawPluginPeerAccess]
 
     def __init__(
         out self, lib: _DLHandle, so_path: StringSlice
     ) raises HALError:
-        pass
+        self._peer = RawPluginPeerAccess.load(lib, so_path)
+
+    def peer_access(self) -> OptionalReg[Self.PeerAccessTy]:
+        return self._peer

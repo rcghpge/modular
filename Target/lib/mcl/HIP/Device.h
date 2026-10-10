@@ -40,6 +40,8 @@ public:
 
   M_driver_status_t property(llvm::StringRef name, void *value);
   M_driver_status_t attribute(int32_t attribute, int32_t *value);
+  M_driver_status_t canAccessPeer(const M_driver_device &peer,
+                                  bool *out_can_access);
 };
 
 #endif // TARGET_LIB_HIP_DEVICE_H

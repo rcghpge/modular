@@ -9,6 +9,7 @@ from .plugin import (
     EventHandle,
     QueueHandle,
     FunctionHandle,
+    ContextHandle,
 )
 from .buffer import Buffer, BufferView
 from .context import Context
@@ -235,6 +236,24 @@ struct Queue[device_spec: DeviceSpec](Deinitable, Movable):
             "copy_intra_device source view smaller than destination",
         )
         self._raw[].copy_intra_device(self._handle, dst._view, src._view)
+
+    def copy_inter_device(
+        self,
+        dst: BufferView,
+        src: BufferView,
+        src_context: ContextHandle,
+    ) raises HALError:
+        """
+        Peer copy of `dst.byte_size` bytes from `src` on `src_context`'s
+        device into `dst`. Not ordered against work on the source device.
+        """
+        debug_assert(
+            src.byte_size() >= dst.byte_size(),
+            "copy_inter_device source view smaller than destination",
+        )
+        self._raw[].copy_inter_device(
+            self._handle, dst._view, src._view, src_context
+        )
 
     def launch_host_func[
         origin: MutOrigin

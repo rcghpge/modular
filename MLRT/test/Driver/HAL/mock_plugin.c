@@ -8,8 +8,9 @@
 /// hardware. Implements all M_driver_* symbols expected by the Mojo Plugin
 /// struct with deterministic stub behaviour:
 ///
-///   - 2 mock devices
+///   - 2 mock devices, or 1 when MOCK_DEVICE_COUNT=1
 ///   - status_message returns standard strings for all predefined codes
+///   - no device pair is peer-accessible; enabling peer access is refused
 ///   - memory alloc returns malloc'd blocks; free calls free()
 ///   - queue/event/bundle/function operations succeed silently
 
@@ -25,15 +26,20 @@
 // NOTE: global state — not safe for concurrent test processes sharing
 // the same .so instance.
 // ---------------------------------------------------------------------------
+#define MOCK_MAX_DEVICE_COUNT 2
+
 static int g_driver_sentinel;
-static int g_device_sentinels[2];
+static int g_device_sentinels[MOCK_MAX_DEVICE_COUNT];
 static int g_context_sentinel;
 static int g_queue_sentinel;
 static int g_event_sentinel;
 static int g_bundle_sentinel;
 static int g_function_sentinel;
 
-#define MOCK_DEVICE_COUNT 2
+static int64_t mock_device_count(void) {
+  const char *env = getenv("MOCK_DEVICE_COUNT");
+  return (env && strcmp(env, "1") == 0) ? 1 : MOCK_MAX_DEVICE_COUNT;
+}
 
 // ---------------------------------------------------------------------------
 // status_message
@@ -170,7 +176,7 @@ M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
   (void)driver;
   if (!count)
     return M_DRIVER_STATUS_INVALID_ARG;
-  *count = MOCK_DEVICE_COUNT;
+  *count = mock_device_count();
   return M_DRIVER_STATUS_SUCCESS;
 }
 
@@ -181,7 +187,7 @@ M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
   (void)driver;
   if (!device)
     return M_DRIVER_STATUS_INVALID_ARG;
-  if (device_id < 0 || device_id >= MOCK_DEVICE_COUNT)
+  if (device_id < 0 || device_id >= mock_device_count())
     return M_DRIVER_STATUS_BAD_DEVICE;
   *device = (M_driver_device_t)&g_device_sentinels[device_id];
   return M_DRIVER_STATUS_SUCCESS;
@@ -214,6 +220,19 @@ M_driver_status_t M_driver_device_attribute(M_driver_device_t device,
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+// The CUDA and HIP extension sets expect these symbols, even under the mock.
+M_DRIVER_API_EXPORT
+M_driver_status_t M_driver_device_can_access_peer(M_driver_device_t device,
+                                                  M_driver_device_t peer,
+                                                  bool *out_can_access) {
+  if (!device || !peer)
+    return M_DRIVER_STATUS_BAD_DEVICE;
+  if (!out_can_access)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  *out_can_access = false;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
@@ -231,6 +250,15 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
   (void)context;
   return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_DRIVER_API_EXPORT
+M_driver_status_t
+M_driver_context_enable_peer_access(M_driver_context_t context,
+                                    M_driver_context_t peer) {
+  if (!context || !peer)
+    return M_DRIVER_STATUS_BAD_CONTEXT;
+  return M_DRIVER_STATUS_INCOMPATIBLE;
 }
 
 // Mock implements a single global "current driver context" so tests can

@@ -114,9 +114,11 @@ def MojoHAL_Device_numberOfDevices(
 
 @export
 def MojoHAL_DeviceContext_enableAllPeerAccess() abi("C") -> _CString[]:
-    # The HAL backend is single-device, so peer-to-peer access between
-    # devices is trivially satisfied: enabling it is a no-op that succeeds.
-    return None
+    try:
+        DeviceContext.enable_all_peer_access()
+        return None
+    except e:
+        return _err_cstr(String(e))
 
 
 @export
@@ -457,9 +459,11 @@ def MojoHAL_DeviceContext_canAccess(
     ctx: _DeviceContextBoxPtr,
     peer: _DeviceContextBoxPtr,
 ) abi("C") -> Bool:
-    # The HAL plugin interface has no peer-access query yet; report no peer
-    # access, which callers treat as "use staged copies".
-    return False
+    # The C++ signature has no error channel; a failed query is "no".
+    try:
+        return ctx[].can_access(peer[])
+    except:
+        return False
 
 
 @export

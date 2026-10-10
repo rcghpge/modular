@@ -32,7 +32,12 @@ using namespace nanobind::literals;
 using namespace M;
 using namespace Driver;
 
+#if MODULAR_HAL_DEVICE_CONTEXT
+extern "C" const char *MojoHAL_DeviceContext_enableAllPeerAccess();
+extern "C" void MojoHAL_strfree(const char *s);
+#else
 extern "C" const char *AsyncRT_DeviceContext_enableAllPeerAccess();
+#endif
 
 // This function wraps the internals of the overloads of Tensor.to().
 // In each of these, the method will return the same Python object if the
@@ -945,8 +950,12 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
       "enable_all_peer_access",
       []() {
 #if MODULAR_HAL_DEVICE_CONTEXT
-  // The HAL DeviceContext manages a single device, so there are no
-  // peers to enable (mirroring the Mojo-side no-op).
+        const char *err = MojoHAL_DeviceContext_enableAllPeerAccess();
+        if (err) {
+          std::string message(err);
+          MojoHAL_strfree(err);
+          throw std::runtime_error(message);
+        }
 #else
         const char *err = AsyncRT_DeviceContext_enableAllPeerAccess();
         if (err)

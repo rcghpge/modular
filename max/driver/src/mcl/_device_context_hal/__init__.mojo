@@ -15,6 +15,7 @@ accelerator, and compile and execute functions on the accelerator.
 This variant of the module provides the `max.gpu.host.device_context`
 implementation when the HAL backend is enabled."""
 
+from std.atomic import Atomic
 from std.builtin.device_passable import (
     DevicePassable,
     DevicePointerLike,
@@ -38,6 +39,7 @@ from std.memory import (
 from std.memory.unsafe import bitcast
 from std.pathlib import Path
 from std.utils import Variant
+from std.utils.lock import BlockingScopedLock, BlockingSpinLock
 from std.memory import unsafe_stack_allocation
 from std.os import abort, getenv
 from std.reflection import call_location, reflect, SourceLocation
@@ -59,6 +61,7 @@ from max.gpu.host._hal import (
 )
 from max.gpu.host._hal._machine import DeviceSpec
 from max.gpu.host._hal.event import EVENT_FLAG_CPU_VISIBLE
+from max.gpu.host._hal.extensions.traits import SupportsPeerAccessV1
 from max.gpu.host._hal.execution_config import (
     ExecutionConfig,
     BlockExecutionConfig,
@@ -211,6 +214,78 @@ def _load_gpu_driver() -> Optional[ArcPointer[Driver]]:
 
 
 comptime _GPU_DRIVER = _Global["MODULAR_HAL_GPU_DRIVER", _load_gpu_driver]
+
+
+struct _PeerState(Movable):
+    """Process-wide peer-access state, as in the legacy C++ `canAccessPeer_`.
+
+    `lock` guards only this bookkeeping, never a driver call, because
+    collectives read `all_enabled` from AsyncRT workers. The writer that
+    completes the matrix publishes `all_enabled`, so readers never lock.
+    """
+
+    var lock: BlockingSpinLock
+    var all_enabled: Atomic[Int32]
+    var device_count: Int
+    var enabled: List[Bool]
+    # Releasing the last ref resets the CUDA primary context and its peer grant.
+    var contexts: List[Optional[ArcPointer[Context[get_device_spec[0]()]]]]
+
+    def __init__(out self, device_count: Int):
+        self.lock = BlockingSpinLock()
+        self.all_enabled = Atomic[Int32](0)
+        self.device_count = device_count
+        self.enabled = List[Bool](
+            length=device_count * device_count, fill=False
+        )
+        self.contexts = List[
+            Optional[ArcPointer[Context[get_device_spec[0]()]]]
+        ](length=device_count, fill=None)
+
+    def retain(
+        mut self,
+        device_id: Int,
+        context: ArcPointer[Context[get_device_spec[0]()]],
+    ):
+        if not self.contexts[device_id]:
+            self.contexts[device_id] = context
+
+    def record_enabled(
+        mut self,
+        src: Int,
+        src_context: ArcPointer[Context[get_device_spec[0]()]],
+        dst: Int,
+        dst_context: ArcPointer[Context[get_device_spec[0]()]],
+    ):
+        """Records a granted `src` -> `dst` pair. Call with `lock` held."""
+        self.retain(src, src_context)
+        self.retain(dst, dst_context)
+        self.enabled[src * self.device_count + dst] = True
+        self.enabled[src * self.device_count + src] = True
+        if self.all_set():
+            self.all_enabled.store(1)
+
+    def all_set(self) -> Bool:
+        if self.device_count < 2:
+            return False
+        for b in self.enabled:
+            if not b:
+                return False
+        return True
+
+
+def _init_peer_state() -> _PeerState:
+    # `_Global` initializers must not raise; no plugin means zero devices.
+    try:
+        var maybe_driver = _GPU_DRIVER.get_or_create_ptr()
+        if not maybe_driver[]:
+            return _PeerState(0)
+        return _PeerState(Int(maybe_driver[].value()[].get_device_count()))
+    except:
+        return _PeerState(0)
+
+
+comptime _PEER_STATE = _Global["MODULAR_HAL_PEER_STATE", _init_peer_state]
 
 
 @fieldwise_init
@@ -377,20 +452,50 @@ struct DeviceContextBase[
             )
 
         self._handle = None
-        self._driver = Driver.create(chosen)
+        if not _driver_satisfies_api(String(chosen.split("@")[0]), "gpu"):
+            self._driver = Driver.create(chosen)
 
-        # Validate that the loaded plugin satisfies the requested api (its
-        # concrete vendor name, or the generic accelerator alias "gpu").
-        var driver_name = self._driver[].get_name()
-        if not _driver_satisfies_api(String(driver_name), api):
-            raise Error(
-                String(
-                    t"Requested API {api} not supported by driver {driver_name}"
+            # Validate that the loaded plugin satisfies the requested api (its
+            # concrete vendor name, or the generic accelerator alias "gpu").
+            var driver_name = self._driver[].get_name()
+            if not _driver_satisfies_api(String(driver_name), api):
+                raise Error(
+                    String(
+                        t"Requested API {api} not supported by driver"
+                        t" {driver_name}"
+                    )
+                )
+            self._device = self._driver[].get_device[0]()
+        else:
+            # Shared so peer calls get both contexts from one driver.
+            var maybe_driver = _GPU_DRIVER.get_or_create_ptr()
+            if not maybe_driver[]:
+                # `_Global` init drops the load error; reload to raise it.
+                _ = Driver.create(chosen)
+                raise Error(
+                    String(t"failed to load accelerator plugin '{chosen}'")
+                )
+            var driver = maybe_driver[].value()
+            var driver_name = driver[].get_name()
+            if not _driver_satisfies_api(String(driver_name), api):
+                raise Error(
+                    String(
+                        t"Requested API {api} not supported by driver"
+                        t" {driver_name}"
+                    )
+                )
+            var count = Int(driver[].get_device_count())
+            if device_id < 0 or device_id >= count:
+                raise Error(
+                    String(t"device_id {device_id} out of range [0, {count})")
+                )
+            self._driver = driver
+            # The spec stays id 0 for typing; the runtime id picks the device.
+            self._device = rebind[ArcPointer[Device[Self.device_spec]]](
+                self._driver[].get_device_dynamic[Optional[Int64](0)](
+                    Int64(device_id)
                 )
             )
-
-        # TODO: DRIV-163 - Use real device_id
-        self._device = self._driver[].get_device[0]()
         self._context = self._device[].get_context()
         self._stream = self._context[].create_stream()
 
@@ -1877,12 +1982,33 @@ struct DeviceContextBase[
                 `dst`.
 
         Raises:
-            If the operation fails.
+            If the operation fails, or if `dst_buf` is not on this context's
+            device.
         """
-        self._stream[].copy_intra_device(
-            dst_buf._inner[]._buffer.view(),
-            src_buf._inner[]._buffer.view(),
-        )
+        # The plugin writes `dst` through this queue's context.
+        var dst_device = dst_buf._inner[]._context[].get_device_id()
+        if dst_device != self._device[].id:
+            raise Error(
+                String(
+                    t"enqueue_copy destination is on device {dst_device}, not"
+                    t" on this context's device {self._device[].id}"
+                )
+            )
+        var src_context = src_buf._inner[]._context
+        var dst_view = dst_buf._inner[]._buffer.view()
+        var src_view = src_buf._inner[]._buffer.view()
+        if src_context[].get_device_id() == self._device[].id:
+            self._stream[].copy_intra_device(dst_view, src_view)
+        else:
+            # This plugin would misread another driver's context handle.
+            if not (src_context[]._raw is self._context[]._raw):
+                raise Error(
+                    "enqueue_copy source is on another driver; cross-device"
+                    " copies need both buffers on the same driver"
+                )
+            self._stream[].copy_inter_device(
+                dst_view, src_view, src_context[]._handle
+            )
 
     def enqueue_copy[
         dtype: DType
@@ -2349,28 +2475,114 @@ struct DeviceContextBase[
             UInt64(size_of[dtype]()),
         )
 
-    @staticmethod
-    def enable_all_peer_access() raises:
-        """Enables peer-to-peer access between all accelerators.
+    def can_access(self, peer: DeviceContext) raises -> Bool:
+        """Returns True if this device can access the identified peer device.
 
-        The HAL backend manages a single device, so there are no peers to
-        enable and this is a no-op.
+        Args:
+            peer: The peer device context.
+
+        Returns:
+            False for self, a peer on another driver, or a build without
+            peer access; otherwise the plugin's answer.
 
         Raises:
-            Never raises; declared `raises` to match the default
-            `DeviceContext` API.
+            If the plugin query fails.
         """
-        pass
+        # A foreign handle would be misread; CPU and GPU 0 also share id 0.
+        if not (self._driver is peer._driver):
+            return False
+        if self._device[].id == peer._device[].id:
+            return False
+        comptime Ext = type_of(self._device[].extensions)
+        comptime if conforms_to(Ext, SupportsPeerAccessV1):
+            return self._device[].can_access_peer(peer._device[])
+        else:
+            return False
+
+    def enable_peer_access(self, peer: DeviceContext) raises:
+        """Enables direct memory access to the peer device.
+
+        Args:
+            peer: The peer device context whose memory becomes accessible.
+
+        Raises:
+            If the build or `peer`'s driver lacks peer access, or the
+            plugin refuses the pair.
+        """
+        if not (self._driver is peer._driver):
+            raise Error("Peer access not implemented")
+        comptime Ext = type_of(self._device[].extensions)
+        comptime if conforms_to(Ext, SupportsPeerAccessV1):
+            if not self._device[].extensions.peer_access():
+                raise Error("Peer access not implemented")
+            self._context[].enable_peer_access(peer._context[])
+            var src = Int(self._device[].id)
+            var dst = Int(peer._device[].id)
+            var state = _PEER_STATE.get_or_create_ptr()
+            with BlockingScopedLock(state[].lock):
+                state[].record_enabled(src, self._context, dst, peer._context)
+        else:
+            raise Error("Peer access not implemented")
+
+    @staticmethod
+    def enable_all_peer_access() raises:
+        """Enables peer-to-peer access between all accelerators, both ways.
+
+        A silent no-op without peer access or with one accelerator, as on the
+        legacy backend; collective setup warns on a raise.
+
+        Raises:
+            On the first pair the plugin refuses.
+        """
+        comptime Ext = Device[Self.device_spec].Extensions
+        comptime if conforms_to(Ext, SupportsPeerAccessV1):
+            var maybe_driver = _GPU_DRIVER.get_or_create_ptr()
+            if not maybe_driver[]:
+                return
+            var driver = maybe_driver[].value()
+            var count = Int(driver[].get_device_count())
+            if count <= 1:
+                return
+            var state = _PEER_STATE.get_or_create_ptr()
+            if state[].all_enabled.load() != 0:
+                return
+            var contexts = List[ArcPointer[Context[Self.device_spec]]]()
+            for i in range(count):
+                # Matches `__init__`'s lookup, so the contexts are shared.
+                var device = rebind[ArcPointer[Device[Self.device_spec]]](
+                    driver[].get_device_dynamic[Optional[Int64](0)](Int64(i))
+                )
+                # A non-vendor `.so` may lack the group; stay a no-op.
+                if not device[].extensions.peer_access():
+                    return
+                contexts.append(device[].get_context())
+            # Concurrent callers may repeat a grant; the plugin treats an
+            # already-enabled pair as success.
+            for i in range(count):
+                for j in range(count):
+                    if i == j:
+                        continue
+                    contexts[i][].enable_peer_access(contexts[j][])
+                    with BlockingScopedLock(state[].lock):
+                        state[].record_enabled(i, contexts[i], j, contexts[j])
 
     @staticmethod
     def all_peer_access_enabled() raises -> Bool:
-        """Returns whether peer-to-peer access is enabled between all GPU pairs.
-
-        The HAL backend manages a single device (fewer than two GPUs), so this
-        returns False, matching the legacy semantics for that case.
+        """Returns whether peer access is enabled between all GPU pairs.
 
         Returns:
-            False, since the HAL backend manages a single device.
+            False with fewer than two accelerators or without peer access.
+
+        Raises:
+            If the process-global peer state cannot be created.
+        """
+        return _PEER_STATE.get_or_create_ptr()[].all_enabled.load() != 0
+
+    def supports_multicast(self) raises -> Bool:
+        """Returns True if this device supports multicast memory mappings.
+
+        Returns:
+            False. Multicast is not implemented on the HAL backend.
 
         Raises:
             Never raises; declared `raises` to match the default
@@ -6227,10 +6439,10 @@ struct DevicePointer[
 # Unsupported feature stubs
 # ===-----------------------------------------------------------------------===#
 #
-# The HAL `DeviceContext` targets basic single-device execution. The following
+# The HAL `DeviceContext` targets basic device execution. The following
 # types exist so the `gpu.host` package surface matches the AsyncRT
-# implementation, but their features (CUDA-graph capture, multi-GPU collectives
-# and multicast, host-visible completion flags) are not implemented here.
+# implementation, but their features (CUDA-graph capture, multicast,
+# host-visible completion flags) are not implemented here.
 
 
 struct CompletionFlag(ImplicitlyCopyable):
@@ -6422,13 +6634,28 @@ removed in a future version of Mojo."""
 
 
 struct DeviceMulticastBuffer[dtype: DType]:
-    """A multi-GPU multicast buffer (unsupported by the HAL `DeviceContext`).
+    """A multi-GPU multicast buffer. Not supported by the HAL `DeviceContext`:
+    every operation raises, so multicast-aware callers still compile.
 
     Parameters:
         dtype: Data dtype stored in the buffer.
     """
 
-    pass
+    @doc_hidden
+    def __init__(out self, var contexts: List[DeviceContext], size: Int) raises:
+        raise Error("Multicast not supported by the HAL DeviceContext")
+
+    @doc_hidden
+    def unicast_buffer_for(
+        self, ctx: DeviceContext
+    ) raises -> DeviceBuffer[Self.dtype]:
+        raise Error("Multicast not supported by the HAL DeviceContext")
+
+    @doc_hidden
+    def multicast_buffer_for(
+        self, ctx: DeviceContext
+    ) raises -> DeviceBuffer[Self.dtype]:
+        raise Error("Multicast not supported by the HAL DeviceContext")
 
 
 @inline(.always)

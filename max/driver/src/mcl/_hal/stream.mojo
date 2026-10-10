@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from .plugin import OpaquePointer, FunctionHandle, OutParam
+from .plugin import OpaquePointer, FunctionHandle, OutParam, ContextHandle
 from std.collections import OptionalReg
 from .buffer import Buffer, BufferView
 from .context import Context
@@ -178,6 +178,17 @@ struct Stream[device_spec: DeviceSpec](Deinitable, Movable):
         """Same-device buffer copy. Runs after all previous Stream ops."""
         self._chain_wait()
         self._queue[].copy_intra_device(dst, src)
+        self._chain_signal()
+
+    def copy_inter_device(
+        mut self,
+        dst: BufferView,
+        src: BufferView,
+        src_context: ContextHandle,
+    ) raises HALError:
+        """Peer copy. Runs after all previous Stream ops, not the source's."""
+        self._chain_wait()
+        self._queue[].copy_inter_device(dst, src, src_context)
         self._chain_signal()
 
     def set_memory(

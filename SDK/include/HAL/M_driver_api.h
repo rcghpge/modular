@@ -15,6 +15,7 @@
 #include "M_driver_event.h"
 #include "M_driver_function.h"
 #include "M_driver_memory.h"
+#include "M_driver_peer.h"
 #include "M_driver_queue.h"
 #include "M_driver_tma.h"
 

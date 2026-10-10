@@ -13,6 +13,7 @@ from .plugin import (
     M_driver_dlpack_device,
 )
 from ._plugin._overlay import HAL_PLUGINS
+from .extensions.traits import SupportsPeerAccessV1
 from .status import STATUS_SUCCESS, STATUS_INVALID_ARG, HALError
 
 from std.collections import Array
@@ -81,9 +82,10 @@ struct Device[spec: DeviceSpec](Deinitable, Movable):
     var _self_ref: WeakPointer[Self]
     var id: Int64
 
-    var extensions: HAL_PLUGINS.for_target[
+    comptime Extensions = HAL_PLUGINS.for_target[
         DeviceSpec._mlir_target[Self.spec]()
     ].extensions
+    var extensions: Self.Extensions
 
     @staticmethod
     def _create(
@@ -142,6 +144,19 @@ struct Device[spec: DeviceSpec](Deinitable, Movable):
     def get_attribute(self, attribute: Int32) raises HALError -> Int32:
         """Queries a numeric device attribute by its CUDA-style ID."""
         return self._raw[].get_device_attribute(self._handle, attribute)
+
+    def can_access_peer(
+        self, peer: Device[Self.spec]
+    ) raises HALError -> Bool where conforms_to(
+        Self.Extensions, SupportsPeerAccessV1
+    ):
+        """Returns whether this device can access `peer` once enabled."""
+        var peer_access = self.extensions.peer_access()
+        if not peer_access:
+            return False
+        return peer_access.value().can_access_peer(
+            self._raw[], self._handle, peer._handle
+        )
 
     def get_dlpack_device(
         self, pinned: Bool

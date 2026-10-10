@@ -105,6 +105,23 @@ M_driver_status_t M_driver_device::destroy(M_driver_device_t device) {
   return M_DRIVER_STATUS_SUCCESS;
 }
 
+M_driver_status_t M_driver_device::canAccessPeer(const M_driver_device &peer,
+                                                 bool *out_can_access) {
+  if (out_can_access == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (deviceId == peer.deviceId) {
+    *out_can_access = false;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  int canAccess = 0;
+  if (hipError_t r = driver.hip().hipDeviceCanAccessPeer(&canAccess, deviceId,
+                                                         peer.deviceId);
+      r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipDeviceCanAccessPeer");
+  *out_can_access = canAccess == 1;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
 // CUDA `CUdevice_attribute` enum values used by callers. We translate them
 // into HIP's `hipDeviceAttribute_t` since the two enums have different
 // numeric layouts. Extend as new attributes are needed by real callers.

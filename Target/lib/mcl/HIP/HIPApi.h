@@ -57,6 +57,11 @@
   HIP_FN(hipMemcpyPeerAsync)                                                   \
   HIP_FN(hipMemcpy)                                                            \
   HIP_FN(hipMemcpyPeer)                                                        \
+  HIP_FN(hipDeviceCanAccessPeer)                                               \
+  HIP_FN(hipDeviceEnablePeerAccess)                                            \
+  HIP_FN(hipDeviceGetDefaultMemPool)                                           \
+  HIP_FN(hipMemPoolSetAccess)                                                  \
+  HIP_FN(hipGetLastError)                                                      \
   HIP_FN(hipMemsetAsync)                                                       \
   HIP_FN(hipMemsetD16Async)                                                    \
   HIP_FN(hipMemsetD32Async)                                                    \

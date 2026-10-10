@@ -1019,3 +1019,76 @@ TEST_F(DriverPluginContextTest, MemoryUnwrapIsIdempotent) {
     ASSERT_SUCCESS(memory_free_sync(context, owner)); // frees the region
   }
 }
+
+namespace {
+// Peer access is an optional extension, outside the fixture's core symbols.
+struct PeerAccessSymbols {
+  M_driver_device_can_access_peer_func_ptr_t device_can_access_peer;
+  M_driver_context_enable_peer_access_func_ptr_t context_enable_peer_access;
+};
+
+PeerAccessSymbols lookupPeerAccess(void *soHandle) {
+  return {(M_driver_device_can_access_peer_func_ptr_t)dlsym(
+              soHandle, "M_driver_device_can_access_peer"),
+          (M_driver_context_enable_peer_access_func_ptr_t)dlsym(
+              soHandle, "M_driver_context_enable_peer_access")};
+}
+} // namespace
+
+TEST_F(DriverPluginContextTest, PeerAccessCapabilityIsSymmetricAndSelfFalse) {
+  auto [device_can_access_peer, context_enable_peer_access] =
+      lookupPeerAccess(soHandle);
+  if (device_can_access_peer == nullptr)
+    GTEST_SKIP() << "plugin does not export peer access";
+  if (devices.size() < 2)
+    GTEST_SKIP() << "peer access requires at least two devices";
+
+  bool selfAccess = true;
+  ASSERT_SUCCESS(device_can_access_peer(devices[0], devices[0], &selfAccess));
+  EXPECT_FALSE(selfAccess);
+
+  bool zeroToOne = false, oneToZero = true;
+  ASSERT_SUCCESS(device_can_access_peer(devices[0], devices[1], &zeroToOne));
+  ASSERT_SUCCESS(device_can_access_peer(devices[1], devices[0], &oneToZero));
+  EXPECT_EQ(zeroToOne, oneToZero);
+}
+
+TEST_F(DriverPluginContextTest, PeerAccessEnableIsIdempotent) {
+  auto [device_can_access_peer, context_enable_peer_access] =
+      lookupPeerAccess(soHandle);
+  if (context_enable_peer_access == nullptr)
+    GTEST_SKIP() << "plugin does not export peer access";
+  if (contexts.size() < 2)
+    GTEST_SKIP() << "peer access requires at least two devices";
+  bool canAccess = false;
+  ASSERT_SUCCESS(device_can_access_peer(devices[0], devices[1], &canAccess));
+  if (!canAccess)
+    GTEST_SKIP() << "hardware pair does not support peer access";
+
+  EXPECT_SUCCESS(context_enable_peer_access(contexts[0], contexts[1]));
+  EXPECT_SUCCESS(context_enable_peer_access(contexts[0], contexts[1]));
+  EXPECT_SUCCESS(context_enable_peer_access(contexts[1], contexts[0]));
+}
+
+TEST_F(DriverPluginContextTest, PeerAccessSelfPairRejected) {
+  auto [device_can_access_peer, context_enable_peer_access] =
+      lookupPeerAccess(soHandle);
+  if (context_enable_peer_access == nullptr)
+    GTEST_SKIP() << "plugin does not export peer access";
+  EXPECT_NE(context_enable_peer_access(contexts[0], contexts[0]),
+            M_DRIVER_STATUS_SUCCESS);
+}
+
+TEST_F(DriverPluginContextTest, PeerAccessNullArgs) {
+  auto [device_can_access_peer, context_enable_peer_access] =
+      lookupPeerAccess(soHandle);
+  if (device_can_access_peer == nullptr)
+    GTEST_SKIP() << "plugin does not export peer access";
+  bool unused = false;
+  EXPECT_EQ(device_can_access_peer(nullptr, devices[0], &unused),
+            M_DRIVER_STATUS_BAD_DEVICE);
+  EXPECT_EQ(device_can_access_peer(devices[0], devices[0], nullptr),
+            M_DRIVER_STATUS_INVALID_ARG);
+  EXPECT_EQ(context_enable_peer_access(nullptr, contexts[0]),
+            M_DRIVER_STATUS_BAD_CONTEXT);
+}

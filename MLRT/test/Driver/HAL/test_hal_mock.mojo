@@ -19,6 +19,7 @@ from _hal.device import Device, get_device_spec
 from _hal.queue import Queue
 from _hal.stream import Stream
 from _hal.event import Event, EVENT_FLAG_CPU_VISIBLE
+from _hal.extensions.traits import SupportsPeerAccessV1
 from _hal.status import (
     STATUS_SUCCESS,
     STATUS_INCOMPATIBLE_VERSION,
@@ -707,6 +708,29 @@ def test_unified_copy_pinned_cross_device_on_queue() raises:
 # ===-----------------------------------------------------------------------===#
 
 
+def test_peer_access_mock() raises:
+    var driver = Driver.create(_get_plugin_spec())
+    var dev0 = driver[].get_device_dynamic(Int64(0))
+    var dev1 = driver[].get_device_dynamic(Int64(1))
+    comptime Ext = type_of(dev0[].extensions)
+    comptime if conforms_to(Ext, SupportsPeerAccessV1):
+        # The mock exports the peer group but has no peer-capable pair.
+        assert_false(dev0[].can_access_peer(dev1[]))
+        var ctx0 = dev0[].get_context()
+        var ctx1 = dev1[].get_context()
+        # `assert_raises` does not catch the typed `HALError`.
+        var enable_raised = False
+        try:
+            ctx0[].enable_peer_access(ctx1[])
+        except e:
+            enable_raised = True
+            assert_equal(e.status, STATUS_INCOMPATIBLE)
+            assert_true("failed to enable peer access" in e.message)
+        assert_true(enable_raised)
+    else:
+        print("extension set has no peer access; nothing to call")
+
+
 def main() raises:
     test_status_code_values()
 
@@ -742,3 +766,4 @@ def main() raises:
     test_unified_copy_inter_device_dst_not_on_queue_raises()
     test_unified_copy_pinned_cross_device()
     test_unified_copy_pinned_cross_device_on_queue()
+    test_peer_access_mock()

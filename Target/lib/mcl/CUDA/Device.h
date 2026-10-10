@@ -26,6 +26,9 @@ struct M_driver_device {
 
   M_driver_status_t property(llvm::StringRef name, void *value);
   M_driver_status_t attribute(int32_t attribute, int32_t *value);
+  // False without native atomics, which spin-barrier collectives need.
+  M_driver_status_t canAccessPeer(const M_driver_device &peer,
+                                  bool *out_can_access) const;
 };
 
 #endif // TARGET_LIB_CUDA_DEVICE_H
