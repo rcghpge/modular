@@ -5315,8 +5315,6 @@ def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
     I64Attr:$n_gpus_per_node,
     I64Attr:$n_nodes,
     BoolAttr:$fused_shared_expert,
-    BoolAttr:$fuse_a_scale_preshuffle,
-    I64Attr:$max_padded_m,
     DefaultValuedAttr<StrAttr, "\"auto\"">:$mx_format
   );
   let results = (outs
@@ -5333,9 +5331,7 @@ def MO_EPDispatchMXFP4Op : MO_DistributedOp<"distributed.ep.dispatch.mxfp4", [
         `n_experts` `=` $n_experts `,`
         `max_token_per_rank` `=` $max_token_per_rank `,`
         `n_gpus_per_node` `=` $n_gpus_per_node `,` `n_nodes` `=` $n_nodes `,`
-        `fused_shared_expert` `=` $fused_shared_expert `,`
-        `fuse_a_scale_preshuffle` `=` $fuse_a_scale_preshuffle `,`
-        `max_padded_m` `=` $max_padded_m
+        `fused_shared_expert` `=` $fused_shared_expert
         (`,` `mx_format` `=` $mx_format^)? `]` attr-dict `:`
     functional-type(operands, results)
   }];
