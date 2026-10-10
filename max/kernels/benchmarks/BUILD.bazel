@@ -301,6 +301,8 @@ mojo_binary(
             # Dedicated `mojo_test` below: it calls the registered graph ops
             # (needs `builtin_kernels`) and is timed on remote B200.
             "gpu/bench_squeeze_shape.mojo",
+            # Same reason: dedicated `mojo_test` below for the tile op.
+            "gpu/bench_tile.mojo",
         ],
     )
 ]
@@ -333,6 +335,8 @@ mojo_binary(
             # Dedicated `mojo_test` below: it calls the registered graph ops
             # (needs `builtin_kernels`) and is timed on remote B200.
             "gpu/bench_squeeze_shape.mojo",
+            # Same reason: dedicated `mojo_test` below for the tile op.
+            "gpu/bench_tile.mojo",
         ],
     )
 ]
@@ -364,6 +368,29 @@ build_test(
     name = "gpu/bench_squeeze_shape.mojo.test",
     tags = ["gpu"],
     targets = ["gpu/bench_squeeze_shape.mojo.run"],
+)
+
+# `mo.tile` through its registered `Tile.execute` entry point
+# (gather_scatter.mojo). A `mojo_test` so it can be timed on remote B200
+# (`bazel test --config=remote-b200`); pass `--test_arg=--nsys` for the
+# fixed-count launch mode used under nsys/ncu.
+mojo_test(
+    name = "gpu/bench_tile.mojo.run",
+    size = "enormous",
+    srcs = ["gpu/bench_tile.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
+    enable_assertions = False,
+    tags = [
+        "gpu",
+        "manual",
+    ],
+    target_compatible_with = ["//:has_gpu"],
+    deps = [
+        "//max:builtin_kernels",
+        "//max:extensibility",
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
 )
 
 # MlaPrefillV2 device-timed TFLOPS bench.
