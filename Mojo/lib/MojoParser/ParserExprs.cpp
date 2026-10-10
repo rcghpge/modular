@@ -72,13 +72,13 @@ public:
   ParseResult parseStarredItem(ExprNode *&result, bool allowAssign);
 
   template <typename T, typename... Args>
-  T *alloc(Args &&...args) {
-    return shared.allocPersistent<T>(std::forward<Args>(args)...);
+  T *create(Args &&...args) {
+    return shared.persistentAllocator.create<T>(std::forward<Args>(args)...);
   }
 
   template <typename T>
-  ArrayRef<T> copyArrayRef(ArrayRef<T> elements) {
-    return shared.getPersistentCopy(elements);
+  ArrayRef<T> internElements(ArrayRef<T> elements) {
+    return shared.persistentAllocator.internElements(elements);
   }
 
   /// Return true if the current token is part of the current statement, false
@@ -166,7 +166,7 @@ ExprParser::parseStarredExprListAsTuple(ExprNode *&result,
     ExprNode *inner = nullptr;
     if (parseStarredExprListAsTuple(inner, terminators, /*allowAssign=*/false))
       return failure();
-    result = alloc<UnaryOpNode>(kind, opLoc, inner);
+    result = create<UnaryOpNode>(kind, opLoc, inner);
     return success();
   }
 
@@ -177,7 +177,8 @@ ExprParser::parseStarredExprListAsTuple(ExprNode *&result,
 
   // If there was a tuple inside the parens, form it.
   if (firstCommaLoc.isValid())
-    result = alloc<TupleNode>(firstCommaLoc, copyArrayRef<ExprNode *>(exprs));
+    result =
+        create<TupleNode>(firstCommaLoc, internElements<ExprNode *>(exprs));
   else {
     assert(exprs.size() == 1);
     result = exprs[0];
@@ -345,9 +346,9 @@ ParseResult ExprParser::parseExpression(ExprNode *&result, Precedence minPrec) {
       if (parseComparisonExpr(result, rhs, infixInfo.nodeKind, binOpLoc))
         return failure();
     } else if (tokKind == Token::Kind::kw_if) {
-      result = alloc<IfElseOpNode>(result, binOpLoc, ifElseCond, elseLoc, rhs);
+      result = create<IfElseOpNode>(result, binOpLoc, ifElseCond, elseLoc, rhs);
     } else
-      result = alloc<BinOpNode>(infixInfo.nodeKind, result, binOpLoc, rhs);
+      result = create<BinOpNode>(infixInfo.nodeKind, result, binOpLoc, rhs);
     infixInfo = InfixInfo::get(getToken().getKind(), *this);
   }
   return success();
@@ -370,7 +371,7 @@ ParseResult ExprParser::parseStarredItem(ExprNode *&result, bool allowAssign) {
   if (parseExpression(result, subPrec))
     return failure();
   if (starLoc.isValid())
-    result = alloc<UnaryOpNode>(ExprNode::kUnpack, starLoc, result);
+    result = create<UnaryOpNode>(ExprNode::kUnpack, starLoc, result);
   return success();
 }
 
@@ -396,8 +397,8 @@ ParseResult ExprParser::parseComparisonExpr(ExprNode *&result, ExprNode *rhs,
     ops.push_back(infixInfo.nodeKind);
     infixInfo = InfixInfo::get(getToken().getKind(), *this);
   }
-  result = alloc<ChainedCmpOpNode>(copyArrayRef<ExprNode *>(exprs),
-                                   copyArrayRef<ExprNode::Kind>(ops), loc);
+  result = create<ChainedCmpOpNode>(internElements<ExprNode *>(exprs),
+                                    internElements<ExprNode::Kind>(ops), loc);
   return success();
 }
 
@@ -531,43 +532,43 @@ ParseResult ExprParser::parsePrimaryExpr(ExprNode *&result) {
       if (parsePrefixLParen(result, lparenLoc))
         return failure();
       result =
-          alloc<UnaryOpNode>(ExprNode::kComptime, startTok.getLoc(), result);
+          create<UnaryOpNode>(ExprNode::kComptime, startTok.getLoc(), result);
       break;
     }
 
     ExprNode *expr = nullptr;
     if (parseExpression(expr, subExprPrec))
       return failure();
-    result = alloc<UnaryOpNode>(unaryKind, startTok.getLoc(), expr);
+    result = create<UnaryOpNode>(unaryKind, startTok.getLoc(), expr);
     break;
   }
   case Token::identifier: // primary -> atom -> identifier
   case Token::escaped_identifier:
     consumeIdentifier();
-    result = alloc<DeclRefNode>(startTok.getSpelling(),
-                                startTok.is(Token::escaped_identifier));
+    result = create<DeclRefNode>(startTok.getSpelling(),
+                                 startTok.is(Token::escaped_identifier));
     break;
   case Token::integer: // primary -> literal -> integer
     consumeToken(Token::integer);
-    result = alloc<IntLiteralNode>(startTok.getSpelling());
+    result = create<IntLiteralNode>(startTok.getSpelling());
     break;
   case Token::kw_False:
     consumeToken(Token::kw_False);
-    result = alloc<BoolLiteralNode>(startTok.getLoc(), false);
+    result = create<BoolLiteralNode>(startTok.getLoc(), false);
     break;
   case Token::kw_True:
     consumeToken(Token::kw_True);
-    result = alloc<BoolLiteralNode>(startTok.getLoc(), true);
+    result = create<BoolLiteralNode>(startTok.getLoc(), true);
     break;
   case Token::kw_Self:
     consumeToken(Token::kw_Self);
     result =
-        alloc<SimpleLiteralNode>(ExprNode::kSelfLiteral, startTok.getLoc());
+        create<SimpleLiteralNode>(ExprNode::kSelfLiteral, startTok.getLoc());
     break;
   case Token::kw__:
     consumeToken(Token::kw__);
     result =
-        alloc<SimpleLiteralNode>(ExprNode::kDiscardLiteral, startTok.getLoc());
+        create<SimpleLiteralNode>(ExprNode::kDiscardLiteral, startTok.getLoc());
     break;
   case Token::dot: {
     // Inferred attribute reference: `.member` (base type inferred from
@@ -584,18 +585,18 @@ ParseResult ExprParser::parsePrimaryExpr(ExprNode *&result) {
       // identifier.
       spelling = StringRef(spelling.data(), 0);
     }
-    result = alloc<InferredAttributeRefNode>(
+    result = create<InferredAttributeRefNode>(
         dotLoc, spelling, nameTok.is(Token::escaped_identifier));
     break;
   }
   case Token::dot_dot_dot:
     consumeToken(Token::dot_dot_dot);
-    result =
-        alloc<SimpleLiteralNode>(ExprNode::kEllipsisLiteral, startTok.getLoc());
+    result = create<SimpleLiteralNode>(ExprNode::kEllipsisLiteral,
+                                       startTok.getLoc());
     break;
   case Token::float_num: // primary -> literal -> floatnumber
     consumeToken(Token::float_num);
-    result = alloc<FloatLiteralNode>(startTok.getSpelling());
+    result = create<FloatLiteralNode>(startTok.getSpelling());
     break;
   case Token::string: { // primary -> literal -> stringliteral
     SmallVector<StringRef> spellings;
@@ -604,7 +605,7 @@ ParseResult ExprParser::parsePrimaryExpr(ExprNode *&result) {
       consumeToken(Token::string);
       // Python supports string literal concatenation
     } while (getToken().is(Token::string) && isTokenInCurrentStatement());
-    result = alloc<StringLiteralNode>(copyArrayRef<StringRef>(spellings));
+    result = create<StringLiteralNode>(internElements<StringRef>(spellings));
     break;
   }
   case Token::t_string: { // primary -> literal -> t-string
@@ -621,15 +622,15 @@ ParseResult ExprParser::parsePrimaryExpr(ExprNode *&result) {
         return failure();
     } while (getToken().is(Token::t_string) && isTokenInCurrentStatement());
 
-    result =
-        alloc<TStringExprNode>(tstringStart, tstringEnd,
-                               copyArrayRef<TStringExprNode::Part>(allParts));
+    result = create<TStringExprNode>(
+        tstringStart, tstringEnd,
+        internElements<TStringExprNode::Part>(allParts));
     break;
   }
   case Token::kw_None:
     consumeToken(Token::kw_None);
     result =
-        alloc<SimpleLiteralNode>(ExprNode::kNoneLiteral, startTok.getLoc());
+        create<SimpleLiteralNode>(ExprNode::kNoneLiteral, startTok.getLoc());
     break;
   case Token::l_paren: // primary -> atom -> enclosure -> parenth_form
     consumeToken(Token::l_paren);
@@ -683,9 +684,9 @@ ParseResult ExprParser::parsePrimaryExpr(ExprNode *&result) {
 
   case Token::kw___is_run_in_comptime_interpreter: {
     Token tok = consumeToken();
-    result = alloc<MagicFunctionNode>(ExprNode::kIsRunInComptimeInterpreter,
-                                      tok.getLoc(), tok.getSpelling(),
-                                      ArrayRef<ExprNode *>{}, tok.getLoc());
+    result = create<MagicFunctionNode>(ExprNode::kIsRunInComptimeInterpreter,
+                                       tok.getLoc(), tok.getSpelling(),
+                                       ArrayRef<ExprNode *>{}, tok.getLoc());
     break;
   }
 
@@ -749,7 +750,7 @@ ParseResult ExprParser::parsePrimaryExpr(ExprNode *&result) {
         break;
       }
 
-      result = alloc<UnaryOpNode>(ExprNode::kTransfer, loc, result);
+      result = create<UnaryOpNode>(ExprNode::kTransfer, loc, result);
       continue;
     }
 
@@ -909,14 +910,14 @@ ParseResult ExprParser::parsePrefixLParen(ExprNode *&result, SMLoc lparenLoc) {
   if (consumeIf(Token::r_paren, &rparenLoc)) {
     // Empty tuples are represented as ParenNode(TupleNode()) where the tuple
     // has no subexpressions.
-    element = alloc<TupleNode>(lparenLoc, ArrayRef<ExprNode *>());
+    element = create<TupleNode>(lparenLoc, ArrayRef<ExprNode *>());
   } else if (parseStarredExprListAsTuple(element, Token::r_paren,
                                          /*allowAssign=*/true) ||
              parseToken(Token::r_paren,
                         "expected ')' in parenthesized expression", &rparenLoc))
     return failure();
 
-  result = alloc<ParenNode>(lparenLoc, element, rparenLoc);
+  result = create<ParenNode>(lparenLoc, element, rparenLoc);
   return success();
 }
 
@@ -974,9 +975,9 @@ ParseResult ExprParser::parseComprehension(ExprNode *&result,
   }
 
   // Create the comprehension node.
-  result = alloc<ComprehensionNode>(kind, startLoc, expr, value,
-                                    copyArrayRef<ComprehensionClause>(clauses),
-                                    endLoc);
+  result = create<ComprehensionNode>(
+      kind, startLoc, expr, value, internElements<ComprehensionClause>(clauses),
+      endLoc);
   return success();
 }
 
@@ -987,7 +988,7 @@ ParseResult ExprParser::parsePrefixLSquare(ExprNode *&result,
   SmallVector<ExprNode *> exprs;
   // Handle empty list: []
   if (consumeIf(Token::r_square, &rsquareLoc)) {
-    result = alloc<ListLiteralNode>(lsquareLoc, exprs, rsquareLoc);
+    result = create<ListLiteralNode>(lsquareLoc, exprs, rsquareLoc);
     return success();
   }
   // Parse the items in the list.
@@ -996,8 +997,8 @@ ParseResult ExprParser::parsePrefixLSquare(ExprNode *&result,
 
   // Handle a normal list.
   if (consumeIf(Token::r_square, &rsquareLoc)) {
-    result = alloc<ListLiteralNode>(lsquareLoc, copyArrayRef<ExprNode *>(exprs),
-                                    rsquareLoc);
+    result = create<ListLiteralNode>(
+        lsquareLoc, internElements<ExprNode *>(exprs), rsquareLoc);
     return success();
   }
 
@@ -1114,11 +1115,11 @@ ParseResult ExprParser::parsePrefixLBrace(ExprNode *&result, SMLoc lbraceLoc) {
                  &rbraceLoc))
     return failure();
 
-  auto stableElts = copyArrayRef<std::pair<ExprNode *, ExprNode *>>(elements);
+  auto stableElts = internElements<std::pair<ExprNode *, ExprNode *>>(elements);
   if (isDict)
-    result = alloc<DictLiteralNode>(lbraceLoc, stableElts, rbraceLoc);
+    result = create<DictLiteralNode>(lbraceLoc, stableElts, rbraceLoc);
   else
-    result = alloc<SetInitLiteralNode>(lbraceLoc, stableElts, rbraceLoc);
+    result = create<SetInitLiteralNode>(lbraceLoc, stableElts, rbraceLoc);
   return success();
 }
 
@@ -1136,8 +1137,8 @@ ParseResult ExprParser::parseAttributeRefSuffix(ExprNode *&result,
     spelling = StringRef(spelling.data(), 0);
   }
 
-  result = alloc<AttributeRefNode>(result, dotLoc, spelling,
-                                   token.is(Token::escaped_identifier));
+  result = create<AttributeRefNode>(result, dotLoc, spelling,
+                                    token.is(Token::escaped_identifier));
   return success();
 }
 
@@ -1220,8 +1221,8 @@ ParseResult ExprParser::parseCallSuffix(ExprNode *&result, SMLoc lparenLoc) {
     return failure();
 
   // Otherwise we're good to go.
-  result = alloc<CallNode>(result, lparenLoc, copyArrayRef<Operand>(operands),
-                           rparenLoc);
+  result = create<CallNode>(result, lparenLoc,
+                            internElements<Operand>(operands), rparenLoc);
   return success();
 }
 
@@ -1271,8 +1272,8 @@ ParseResult ExprParser::parseExprOrSlice(ExprNode *&result) {
         return failure();
   }
 
-  result = alloc<SliceLiteralNode>(result, colon1Loc, secondExpr, colon2Loc,
-                                   thirdExpr);
+  result = create<SliceLiteralNode>(result, colon1Loc, secondExpr, colon2Loc,
+                                    thirdExpr);
   return success();
 }
 
@@ -1361,8 +1362,8 @@ ParseResult ExprParser::parseSubscriptSuffix(ExprNode *&result,
   // If we have an empty parameter list, we return immediately.
   SMLoc rsquareLoc;
   if (consumeIf(Token::r_square, &rsquareLoc)) {
-    result = alloc<SubscriptNode>(result, lsquareLoc, ArrayRef<Operand>(),
-                                  rsquareLoc);
+    result = create<SubscriptNode>(result, lsquareLoc, ArrayRef<Operand>(),
+                                   rsquareLoc);
     return success();
   }
 
@@ -1391,8 +1392,8 @@ ParseResult ExprParser::parseSubscriptSuffix(ExprNode *&result,
 
   if (parseToken(Token::r_square, "expected ']' in call argument list"))
     return failure();
-  result = alloc<SubscriptNode>(result, lsquareLoc,
-                                copyArrayRef<Operand>(operands), rsquareLoc);
+  result = create<SubscriptNode>(result, lsquareLoc,
+                                 internElements<Operand>(operands), rsquareLoc);
   return success();
 }
 
@@ -1445,12 +1446,12 @@ ParseResult ExprParser::parseFunctionType(ExprNode *&result) {
     return failure();
   }
 
-  result = alloc<FunctionTypeNode>(
-      baseLoc, copyArrayRef<ParsedArgument>(paramList.params),
-      copyArrayRef<ParsedArgument>(fnSignature.parsedArgs),
-      copyArrayRef<ParsedArgument>(fnSignature.resultArg)[0],
+  result = create<FunctionTypeNode>(
+      baseLoc, internElements<ParsedArgument>(paramList.params),
+      internElements<ParsedArgument>(fnSignature.parsedArgs),
+      internElements<ParsedArgument>(fnSignature.resultArg)[0],
       fnSignature.effects, fnSignature.isThin, fnSignature.thrownTypeExpr,
-      originExpr, copyArrayRef<ParsedConstraint>(paramList.bodyConstraints),
+      originExpr, internElements<ParsedConstraint>(paramList.bodyConstraints),
       endLoc);
   return success();
 }
@@ -1471,8 +1472,8 @@ ParseResult ExprParser::parseGeneratorType(ExprNode *&result) {
   if (ParserBase::parseExpression(bodyTypeExpr, stmtIndent))
     return failure();
 
-  result = alloc<GeneratorTypeNode>(
-      baseLoc, copyArrayRef<ParsedArgument>(paramList.params), bodyTypeExpr,
+  result = create<GeneratorTypeNode>(
+      baseLoc, internElements<ParsedArgument>(paramList.params), bodyTypeExpr,
       bodyTypeExpr->getRangeEnd());
   return success();
 }
@@ -1527,12 +1528,12 @@ ParseResult ExprParser::parseLambda(ExprNode *&result) {
       ParserBase::parseExpression(bodyExpr, stmtIndent))
     return failure();
 
-  result = alloc<LambdaNode>(
-      lambdaLoc, copyArrayRef<ParsedArgument>(paramList.params),
-      copyArrayRef<ParsedArgument>(fnSignature.parsedArgs),
-      copyArrayRef<ParsedArgument>(fnSignature.resultArg)[0],
+  result = create<LambdaNode>(
+      lambdaLoc, internElements<ParsedArgument>(paramList.params),
+      internElements<ParsedArgument>(fnSignature.parsedArgs),
+      internElements<ParsedArgument>(fnSignature.resultArg)[0],
       fnSignature.effects, fnSignature.thrownTypeExpr,
-      copyArrayRef<std::tuple<StringRef, CaptureConvention, SMLoc>>(
+      internElements<std::tuple<StringRef, CaptureConvention, SMLoc>>(
           captureList.parsedCaptures),
       captureList.hasExplicitCaptureList, captureList.captureAllByConvention,
       bodyExpr, endLoc);
@@ -1593,8 +1594,8 @@ ParseResult ExprParser::parseMagicFunction(ExprNode *&result) {
       return failure();
   }
 
-  result = alloc<MagicFunctionNode>(nodeKind, baseLoc, spelling,
-                                    copyArrayRef<ExprNode *>(subExprs), rpLoc);
+  result = create<MagicFunctionNode>(
+      nodeKind, baseLoc, spelling, internElements<ExprNode *>(subExprs), rpLoc);
   return success();
 }
 
@@ -1622,8 +1623,8 @@ ParseResult ParserBase::parseExpressionList(ExprNode *&result,
   // If we parsed multiple items or have a comma, then this is actually a tuple.
   // If there was a tuple inside the parens, form it.
   if (exprs.size() != 1 || firstCommaLoc.isValid())
-    result = parser.alloc<TupleNode>(firstCommaLoc,
-                                     parser.copyArrayRef<ExprNode *>(exprs));
+    result = parser.create<TupleNode>(firstCommaLoc,
+                                      parser.internElements<ExprNode *>(exprs));
   else
     result = exprs[0];
   return success();
@@ -1763,7 +1764,7 @@ ParseResult ParserBase::parseSimpleStmtExprs(ExprNode *&result,
     ExprNode *type = nullptr;
     if (p.parseExpression(type))
       return failure();
-    expr = p.alloc<BinOpNode>(ExprNode::kTypePattern, expr, colonLoc, type);
+    expr = p.create<BinOpNode>(ExprNode::kTypePattern, expr, colonLoc, type);
   }
 
   // If that was it, just return the expression.
@@ -1790,6 +1791,6 @@ ParseResult ParserBase::parseSimpleStmtExprs(ExprNode *&result,
   if (parseSimpleStmtExprs(rhsExpr, stmtIndent))
     return failure();
 
-  result = p.alloc<BinOpNode>(assignKind.value(), expr, assignLoc, rhsExpr);
+  result = p.create<BinOpNode>(assignKind.value(), expr, assignLoc, rhsExpr);
   return success();
 }

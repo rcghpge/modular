@@ -22,6 +22,8 @@
 
 #include "gtest/gtest.h"
 #include <cstdint>
+#include <string>
+#include <type_traits>
 #include <utility>
 
 namespace {
@@ -29,6 +31,36 @@ namespace {
 struct alignas(32) OverAligned {
   int value;
 };
+
+struct CopyTracked {
+  CopyTracked(int value, int &copyCount)
+      : value(value), copyCount(&copyCount) {}
+  CopyTracked(const CopyTracked &other)
+      : value(other.value), copyCount(other.copyCount) {
+    ++*copyCount;
+  }
+
+  int value;
+  int *copyCount;
+};
+
+struct MoveOnlyTracked {
+  MoveOnlyTracked(int value, int &moveCount)
+      : value(value), moveCount(&moveCount) {}
+  MoveOnlyTracked(const MoveOnlyTracked &) = delete;
+  MoveOnlyTracked(MoveOnlyTracked &&other)
+      : value(other.value), moveCount(other.moveCount) {
+    ++*moveCount;
+  }
+
+  int value;
+  int *moveCount;
+};
+
+static_assert(!std::is_trivially_copyable_v<CopyTracked>);
+static_assert(std::is_trivially_destructible_v<CopyTracked>);
+static_assert(!std::is_copy_constructible_v<MoveOnlyTracked>);
+static_assert(std::is_trivially_destructible_v<MoveOnlyTracked>);
 
 TEST(BumpAllocator, allocationsHonorAlignment) {
   M::BumpAllocator allocator;
@@ -42,17 +74,41 @@ TEST(BumpAllocator, allocationsHonorAlignment) {
   EXPECT_EQ(allocator.getNumSlabs(), 1u);
 }
 
-TEST(BumpAllocator, createsObjectsAndCopiesArrays) {
+TEST(BumpAllocator, createsObjectsAndInternsValues) {
   M::BumpAllocator allocator;
 
   auto *created = allocator.create<std::pair<int, int>>(3, 5);
+  int copyCount = 0;
+  CopyTracked value(7, copyCount);
+  CopyTracked *interned = allocator.intern(value);
+  int moveCount = 0;
+  MoveOnlyTracked moveOnly(9, moveCount);
+  MoveOnlyTracked *moved = allocator.intern(std::move(moveOnly));
+  CopyTracked values[] = {{2, copyCount}, {4, copyCount}, {6, copyCount}};
+  llvm::ArrayRef<CopyTracked> internedElements =
+      allocator.internElements<CopyTracked>(values);
   const int source[] = {2, 4, 6};
-  llvm::ArrayRef<int> copy = allocator.copyArray<int>(source);
+  llvm::ArrayRef<int> internedIntegers = allocator.internElements<int>(source);
+  std::string sourceString = "hello";
+  llvm::StringRef internedString = allocator.internString(sourceString);
+  sourceString[0] = 'j';
 
   EXPECT_EQ(created->first, 3);
   EXPECT_EQ(created->second, 5);
-  EXPECT_EQ(copy, llvm::ArrayRef(source));
-  EXPECT_NE(copy.data(), source);
+  EXPECT_EQ(interned->value, 7);
+  EXPECT_NE(interned, &value);
+  EXPECT_EQ(moved->value, 9);
+  EXPECT_NE(moved, &moveOnly);
+  EXPECT_EQ(moveCount, 1);
+  ASSERT_EQ(internedElements.size(), 3u);
+  EXPECT_EQ(internedElements[0].value, 2);
+  EXPECT_EQ(internedElements[1].value, 4);
+  EXPECT_EQ(internedElements[2].value, 6);
+  EXPECT_EQ(copyCount, 4);
+  EXPECT_EQ(internedIntegers, llvm::ArrayRef(source));
+  EXPECT_NE(internedIntegers.data(), source);
+  EXPECT_EQ(internedString, "hello");
+  EXPECT_NE(internedString.data(), sourceString.data());
 }
 
 TEST(BumpAllocator, largeAllocationsUseDedicatedSlabs) {

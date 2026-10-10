@@ -1467,7 +1467,6 @@ struct MatchCoveringSpace {
 
   // LiteralSet (open Equal-literal universe):
   CoveredLiteralNode *coveredLiterals = nullptr;
-  llvm::BumpPtrAllocator *allocator = nullptr;
 
   bool hasOpenCtor() const {
     if ((kind != Kind::FiniteCtors && kind != Kind::OpenCtors) || !remaining)
@@ -1514,11 +1513,10 @@ struct MatchCoveringSpace {
     return false;
   }
 
-  void coverLiteral(StringRef spelling) {
-    assert(kind == Kind::LiteralSet && allocator);
-    void *mem = allocator->Allocate(sizeof(CoveredLiteralNode),
-                                    alignof(CoveredLiteralNode));
-    coveredLiterals = new (mem) CoveredLiteralNode{spelling, coveredLiterals};
+  void coverLiteral(StringRef spelling, BumpAllocator &allocator) {
+    assert(kind == Kind::LiteralSet);
+    coveredLiterals =
+        allocator.create<CoveredLiteralNode>(spelling, coveredLiterals);
   }
 };
 
@@ -1618,7 +1616,7 @@ static bool collectFiniteDims(PatternMatchBuilder &builder,
 static MatchCoveringSpace *createRootCoveringSpace(PatternMatchBuilder &builder,
                                                    const PatternPath *rootPath,
                                                    SMLoc matchLoc) {
-  auto *space = builder.create<MatchCoveringSpace>();
+  auto *space = builder.allocator.create<MatchCoveringSpace>();
   ASTType subjectType = rootPath->type;
 
   // EnumLike root → closed or open constructor space.
@@ -1642,7 +1640,7 @@ static MatchCoveringSpace *createRootCoveringSpace(PatternMatchBuilder &builder,
                                         : MatchCoveringSpace::Kind::OpenCtors;
     space->numCtors = names->size();
     space->caseNames = *names;
-    space->remaining = builder.allocator.Allocate<bool>(space->numCtors);
+    space->remaining = builder.allocator.allocate<bool>(space->numCtors);
     std::fill(space->remaining, space->remaining + space->numCtors, true);
     return space;
   }
@@ -1666,11 +1664,11 @@ static MatchCoveringSpace *createRootCoveringSpace(PatternMatchBuilder &builder,
 
     space->kind = MatchCoveringSpace::Kind::Product;
     space->numDims = dims.size();
-    space->dims = builder.allocator.Allocate<MatchCoveringDim>(dims.size());
+    space->dims = builder.allocator.allocate<MatchCoveringDim>(dims.size());
     for (size_t i = 0; i < dims.size(); ++i)
       space->dims[i] = dims[i];
     space->numCells = numCells;
-    space->cells = builder.allocator.Allocate<bool>(numCells);
+    space->cells = builder.allocator.allocate<bool>(numCells);
     std::fill(space->cells, space->cells + numCells, true);
     return space;
   }
@@ -1678,7 +1676,6 @@ static MatchCoveringSpace *createRootCoveringSpace(PatternMatchBuilder &builder,
   // Everything else: open Equal-literal universe (Int, String, …). Track
   // covered spellings for duplicate / unreachability; never prove exhaustivity.
   space->kind = MatchCoveringSpace::Kind::LiteralSet;
-  space->allocator = &builder.allocator;
   return space;
 }
 
@@ -1860,7 +1857,8 @@ getSimpleRootLiteralCoverage(PatternCommandList commands,
 /// was closed by a bind-only alternative.
 static bool coverLiteralCommands(MatchCoveringSpace &space,
                                  PatternCommandList commands,
-                                 const PatternPath *rootPath, bool &hitOpen) {
+                                 const PatternPath *rootPath,
+                                 BumpAllocator &allocator, bool &hitOpen) {
   hitOpen = false;
   assert(space.kind == MatchCoveringSpace::Kind::LiteralSet);
 
@@ -1879,7 +1877,7 @@ static bool coverLiteralCommands(MatchCoveringSpace &space,
     return false;
   if (space.isLiteralCovered(*literal))
     return true;
-  space.coverLiteral(*literal);
+  space.coverLiteral(*literal, allocator);
   hitOpen = true;
   return true;
 }
@@ -2036,8 +2034,8 @@ static bool coverProductCommands(MatchCoveringSpace &space,
 /// case as unreachable — a complex alt might still match at runtime.
 static bool coverCommands(MatchCoveringSpace &space,
                           PatternCommandList commands,
-                          const PatternPath *rootPath, bool &hitOpen,
-                          bool &allAltsInterpreted) {
+                          const PatternPath *rootPath, BumpAllocator &allocator,
+                          bool &hitOpen, bool &allAltsInterpreted) {
   hitOpen = false;
   allAltsInterpreted = true;
 
@@ -2054,7 +2052,7 @@ static bool coverCommands(MatchCoveringSpace &space,
     else if (space.kind == MatchCoveringSpace::Kind::Product)
       ok = coverProductCommands(space, alt, altHit);
     else if (space.kind == MatchCoveringSpace::Kind::LiteralSet)
-      ok = coverLiteralCommands(space, alt, rootPath, altHit);
+      ok = coverLiteralCommands(space, alt, rootPath, allocator, altHit);
     else
       return false;
 
@@ -2201,7 +2199,7 @@ void PatternMatchBuilder::markResidualConcludingCase(
 
     bool hitOpen = false;
     bool allAltsInterpreted = false;
-    if (!coverCommands(*space, entry.commandList, rootPath, hitOpen,
+    if (!coverCommands(*space, entry.commandList, rootPath, allocator, hitOpen,
                        allAltsInterpreted))
       continue;
     if (hitOpen && space->isFullyCovered()) {
@@ -2257,7 +2255,7 @@ std::string PatternMatchBuilder::checkCaseExhaustivityAndUnreachability(
 
     bool hitOpen = false;
     bool allAltsInterpreted = false;
-    if (!coverCommands(*space, entry.commandList, rootPath, hitOpen,
+    if (!coverCommands(*space, entry.commandList, rootPath, allocator, hitOpen,
                        allAltsInterpreted))
       continue;
 

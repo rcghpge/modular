@@ -1532,10 +1532,10 @@ ParseResult StmtParser::parseWhileStmt(size_t curIndent) {
       Token nameTok = getToken();
       if (parseIdentifier("expected a name after 'as'"))
         return failure();
-      auto *name = shared.allocPersistent<DeclRefNode>(
+      auto *name = shared.persistentAllocator.create<DeclRefNode>(
           nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
-      patternExpr = shared.allocPersistent<BinOpNode>(ExprNode::kAsPat,
-                                                      patternExpr, asLoc, name);
+      patternExpr = shared.persistentAllocator.create<BinOpNode>(
+          ExprNode::kAsPat, patternExpr, asLoc, name);
     }
 
     if (parseToken(Token::equal, "expected '=' after conditional pattern") ||
@@ -1796,10 +1796,10 @@ ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
         skipUntilIndentation(caseIndent);
         continue;
       }
-      auto *name = shared.allocPersistent<DeclRefNode>(
+      auto *name = shared.persistentAllocator.create<DeclRefNode>(
           nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
-      patternExpr = shared.allocPersistent<BinOpNode>(ExprNode::kAsPat,
-                                                      patternExpr, asLoc, name);
+      patternExpr = shared.persistentAllocator.create<BinOpNode>(
+          ExprNode::kAsPat, patternExpr, asLoc, name);
     }
 
     // Optional match guard: `case <pattern> if <cond>:`.
@@ -3846,9 +3846,9 @@ ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
         Token nameTok = getToken();
         if (parseIdentifier("expected a name after 'as'"))
           return failure();
-        auto *name = shared.allocPersistent<DeclRefNode>(
+        auto *name = shared.persistentAllocator.create<DeclRefNode>(
             nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
-        patternExpr = shared.allocPersistent<BinOpNode>(
+        patternExpr = shared.persistentAllocator.create<BinOpNode>(
             ExprNode::kAsPat, patternExpr, asLoc, name);
       }
 

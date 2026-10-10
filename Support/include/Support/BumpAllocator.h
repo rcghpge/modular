@@ -28,6 +28,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Config/abi-breaking.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/AllocatorBase.h"
@@ -35,8 +36,8 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <limits>
+#include <memory>
 #include <new>
 #include <optional>
 #include <type_traits>
@@ -123,17 +124,40 @@ public:
     return new (allocate<T>()) T(std::forward<Args>(args)...);
   }
 
-  /// Copies a trivially copyable array into allocator-owned storage.
+  /// Copy-constructs a value in allocator-owned storage.
   template <typename T>
-  llvm::ArrayRef<T> copyArray(llvm::ArrayRef<T> values) {
-    static_assert(std::is_trivially_copyable_v<T>);
+  T *intern(const T &value) {
+    static_assert(std::is_trivially_destructible_v<T>);
+    return new (allocate<T>()) T(value);
+  }
+
+  /// Move-constructs a value in allocator-owned storage.
+  template <typename T>
+  std::enable_if_t<!std::is_lvalue_reference_v<T>, std::remove_cv_t<T> *>
+  intern(T &&value) {
+    using ValueType = std::remove_cv_t<T>;
+    static_assert(std::is_trivially_destructible_v<ValueType>);
+    return new (allocate<ValueType>()) ValueType(std::forward<T>(value));
+  }
+
+  /// Copy-constructs an array in allocator-owned storage.
+  template <typename T>
+  llvm::ArrayRef<T> internElements(llvm::ArrayRef<T> values) {
+    static_assert(std::is_trivially_destructible_v<T>);
     if (values.empty())
       return {};
     assert(values.size() <= std::numeric_limits<size_t>::max() / sizeof(T) &&
            "array allocation size overflow");
     T *storage = allocate<T>(values.size());
-    std::memcpy(storage, values.data(), values.size() * sizeof(T));
+    std::uninitialized_copy(values.begin(), values.end(), storage);
     return {storage, values.size()};
+  }
+
+  /// Copies a string into allocator-owned storage.
+  llvm::StringRef internString(llvm::StringRef value) {
+    llvm::ArrayRef<char> storage =
+        internElements<char>({value.data(), value.size()});
+    return {storage.data(), storage.size()};
   }
 
   /// Marks an allocation inaccessible to AddressSanitizer. Storage is not

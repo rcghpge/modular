@@ -23,12 +23,11 @@
 #include "Mojo/MojoParser/ExprDest.h"
 #include "Mojo/MojoParser/Lexer.h"
 
+#include "Support/BumpAllocator.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/Support/Allocator.h"
 #include "llvm/Support/Compiler.h"
 
-#include <cstring>
 #include <string>
 
 namespace llvm {
@@ -182,7 +181,7 @@ public:
   static constexpr size_t kMaxSuggestedCases = 8;
   PatternMatchBuilder(ASTDecl &declScope, ExprContext paramContext);
 
-  llvm::BumpPtrAllocator allocator;
+  BumpAllocator allocator;
   ASTDecl &declScope;
   ExprContext paramContext;
   SharedState &shared;
@@ -195,22 +194,6 @@ public:
 
   MojoInflightDiag emitError(SMLoc loc, const Twine &message = {});
   MojoInflightDiag emitWarning(SMLoc loc, const Twine &message = {});
-
-  template <typename T, typename... Args>
-  T *create(Args &&...args) {
-    return new (allocator.Allocate(sizeof(T), alignof(T)))
-        T(std::forward<Args>(args)...);
-  }
-
-  template <typename T>
-  ArrayRef<T> internArray(ArrayRef<T> values) {
-    if (values.empty())
-      return {};
-    T *storage = static_cast<T *>(
-        allocator.Allocate(sizeof(T) * values.size(), alignof(T)));
-    std::memcpy(storage, values.data(), sizeof(T) * values.size());
-    return {storage, values.size()};
-  }
 
   const PatternPath *getRootPath(ASTType type) {
     return getOrCreatePath(PatternPath::Root, nullptr, type, 0, {});
@@ -232,7 +215,7 @@ public:
   }
 
   PatternCommand *createEqual(const PatternPath *path, const ExprNode *expr) {
-    auto *cmd = create<PatternCommand>();
+    auto *cmd = allocator.create<PatternCommand>();
     cmd->kind = PatternCommand::Equal;
     cmd->path = path;
     cmd->expr = expr;
@@ -240,7 +223,7 @@ public:
   }
   PatternCommand *createEnumTag(const PatternPath *path, const ExprNode *expr,
                                 size_t caseIndex) {
-    auto *cmd = create<PatternCommand>();
+    auto *cmd = allocator.create<PatternCommand>();
     cmd->kind = PatternCommand::EnumTag;
     cmd->path = path;
     cmd->expr = expr;
@@ -249,16 +232,16 @@ public:
   }
   PatternCommand *createOr(const PatternPath *path, const ExprNode *expr,
                            ArrayRef<PatternCommandList> alternatives) {
-    auto *cmd = create<PatternCommand>();
+    auto *cmd = allocator.create<PatternCommand>();
     cmd->kind = PatternCommand::Or;
     cmd->path = path;
     cmd->expr = expr;
-    cmd->orAlternatives = internArray(alternatives);
+    cmd->orAlternatives = allocator.internElements(alternatives);
     return cmd;
   }
   PatternCommand *createBind(const PatternPath *path, const ExprNode *expr,
                              StringRef name, PatternDeclKind declKind) {
-    auto *cmd = create<PatternCommand>();
+    auto *cmd = allocator.create<PatternCommand>();
     cmd->kind = PatternCommand::Bind;
     cmd->path = path;
     cmd->expr = expr;
@@ -269,7 +252,7 @@ public:
 
   /// Bump-allocate `commands` and return an immutable command list.
   PatternCommandList internCommandList(ArrayRef<const PatternCommand *> cmds) {
-    return {internArray(cmds)};
+    return {allocator.internElements(cmds)};
   }
 
   /// Drop a handled leading test and move irrefutable bindings behind the
@@ -353,7 +336,7 @@ private:
     const PatternPath *&slot = pathUniques[key];
     if (slot)
       return slot;
-    auto *path = create<PatternPath>();
+    auto *path = allocator.create<PatternPath>();
     path->kind = kind;
     path->parent = parent;
     path->type = type;

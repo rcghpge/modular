@@ -149,8 +149,8 @@ ASTDecl &DeclResolver::createUnlistedDecl(DeclIRValue irValue, SMLoc loc,
                                           LexerCursor cursor,
                                           LexerCursor endCursor,
                                           ssize_t indentation) {
-  ASTDecl *decl = shared.allocPersistent<ASTDecl>(
-      shared, irValue, loc, parentDecl, cursor, endCursor, indentation);
+  ASTDecl *decl = new (shared.persistentAllocator.allocate<ASTDecl>())
+      ASTDecl(shared, irValue, loc, parentDecl, cursor, endCursor, indentation);
   parsedDeclList.push_back(decl);
 
   // If this is a declaration which has a TypeCheckErrorType, then all
