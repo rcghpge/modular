@@ -564,25 +564,19 @@ def apple_batched_matmul[
     var b_rows = Int(b.dim[b.rank - 2]())
     var b_cols = Int(b.dim[b.rank - 1]())
 
-    var c_stride = c_rows * c_cols
-    var a_stride = a_rows * a_cols
-    var b_stride = b_rows * b_cols
+    # Collapse the leading batch dims into one batch axis so each per-batch
+    # 2D operand view is a subscript slice. This assumes the batch dims are
+    # packed contiguously, the same assumption the pointer form made.
+    var c3 = c.reshape(row_major(batch_size, c_rows, c_cols))
+    var a3 = a.reshape(row_major(batch_size, a_rows, a_cols))
+    var b3 = b.reshape(row_major(batch_size, b_rows, b_cols))
 
     var cblas_gemm = get_cblas_f32_function()
 
     for batch in range(batch_size):
-        var c2 = TileTensor(
-            c.ptr + batch * c_stride,
-            row_major(c_rows, c_cols),
-        )
-        var a2 = TileTensor(
-            a.ptr + batch * a_stride,
-            row_major(a_rows, a_cols),
-        )
-        var b2 = TileTensor(
-            b.ptr + batch * b_stride,
-            row_major(b_rows, b_cols),
-        )
+        var c2 = c3[batch, :, :]
+        var a2 = a3[batch, :, :]
+        var b2 = b3[batch, :, :]
 
         var batch_coords = _get_start_indices_of_nth_subvolume[2](
             batch, c_shape_idx
