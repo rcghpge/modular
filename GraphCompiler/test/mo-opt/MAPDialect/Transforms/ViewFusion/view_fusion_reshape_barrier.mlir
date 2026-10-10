@@ -76,7 +76,7 @@ mo.graph @sliceReshapeTransposeIntoPrologue(
     map.store %to[%k] = %v : !mo.tensor<[6, 16], f32>
   }
   %res = map.iter.opaque inputs (%transposed : !mo.tensor<[6, 16], f32>) outputs (%o : !mo.tensor<[6, 16], f32>) {
-    %pro = map.iter.prologue (%pi : !map.index<2>) capturing (%pc = %transposed : !mo.tensor<[6, 16], f32>) {
+    %pro = map.iter.prologue (%pi : !map.index<2>) capturing {%pc = %transposed : !mo.tensor<[6, 16], f32>} {
       %pv = map.load %pc[%pi] : !mo.tensor<[6, 16], f32>
       map.yield %pv : f32
     } : !mo.tensor<[6, 16], f32>

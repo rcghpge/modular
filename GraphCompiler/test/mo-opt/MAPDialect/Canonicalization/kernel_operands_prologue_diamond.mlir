@@ -10,7 +10,7 @@
 // mid-pipeline canonicalize, before fusion ever reaches outlining, so the
 // following CSE already collapsed the redundant loads and adds into a single
 // diamond over one add.
-// CHECK-NEXT:    %[[DATA:.*]] = map.iter.prologue (%[[I:[^ ]*]] : !map.index<2>) capturing (%[[CX:[^ ]*]] = %[[X]] : !mo.tensor<[3, 3], f32>, %[[CY:[^ ]*]] = %[[Y]] : !mo.tensor<[3, 3], f32>) {
+// CHECK-NEXT:    %[[DATA:.*]] = map.iter.prologue (%[[I:[^ ]*]] : !map.index<2>) capturing {%[[CX:[^ ]*]] = %[[X]] : !mo.tensor<[3, 3], f32>, %[[CY:[^ ]*]] = %[[Y]] : !mo.tensor<[3, 3], f32>} {
 // CHECK-NEXT:      %[[XV:.*]] = map.load %[[CX]][%[[I]]]
 // CHECK-NEXT:      %[[YV:.*]] = map.load %[[CY]][%[[I]]]
 // CHECK-NEXT:      %[[ADD:.*]] = map.call.elementwise @{{.*}}.Add(%[[I]], %[[XV]], %[[YV]])
@@ -21,11 +21,11 @@
 // CHECK-NEXT:    } : !mo.tensor<[3, 3], f32>
 
 // The single-capture indices prologue and epilogue are untouched.
-// CHECK-NEXT:    %[[IPRO:.*]] = map.iter.prologue (%[[I2:[^ ]*]] : !map.index<2>) capturing (%[[CI:[^ ]*]] = %[[IDXS]] : !mo.tensor<[2, 2], si32>) {
+// CHECK-NEXT:    %[[IPRO:.*]] = map.iter.prologue (%[[I2:[^ ]*]] : !map.index<2>) capturing {%[[CI:[^ ]*]] = %[[IDXS]] : !mo.tensor<[2, 2], si32>} {
 // CHECK-NEXT:      %[[IV:.*]] = map.load %[[CI]][%[[I2]]] : !mo.tensor<[2, 2], si32>
 // CHECK-NEXT:      map.yield %[[IV]] : si32
 // CHECK-NEXT:    } : !mo.tensor<[2, 2], si32>
-// CHECK-NEXT:    %[[EPI:.*]] = map.iter.epilogue (%[[V:[^ ]*]] : f32, %[[I3:[^ ]*]] : !map.index<3>) capturing (%[[CO:[^ ]*]] = %[[O]] : !mo.tensor<[2, 2, 3], f32>) {
+// CHECK-NEXT:    %[[EPI:.*]] = map.iter.epilogue (%[[V:[^ ]*]] : f32, %[[I3:[^ ]*]] : !map.index<3>) capturing {%[[CO:[^ ]*]] = %[[O]] : !mo.tensor<[2, 2, 3], f32>} {
 // CHECK-NEXT:      map.store %[[CO]][%[[I3]]] = %[[V]] : !mo.tensor<[2, 2, 3], f32>
 // CHECK-NEXT:    } : !mo.tensor<[2, 2, 3], f32>
 // CHECK-NEXT:    map.call.opaque @{{.*}}.Gather[axis = 0 : index] inputs(%[[DATA]], %[[IPRO]]) outputs(%[[EPI]])

@@ -8,6 +8,7 @@
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
+#include "GraphCompiler/MOGGDialect/Support/AsmSyntax.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
@@ -22,36 +23,9 @@ using namespace M;
 using namespace mlir;
 using namespace M::MAP;
 
-//===----------------------------------------------------------------------===//
-// map.call.opaque — bracketed kernel-params directive
-//===----------------------------------------------------------------------===//
-
-// Parses the `key = value, ...` body between the brackets in `@callee[...]`
-// into a dictionary.
-static ParseResult parseKernelParamsBody(OpAsmParser &parser,
-                                         DictionaryAttr &params) {
-  SmallVector<NamedAttribute> entries;
-  StringRef key;
-  while (succeeded(parser.parseOptionalKeyword(&key))) {
-    Attribute value;
-    if (parser.parseEqual() || parser.parseAttribute(value))
-      return mlir::failure();
-    entries.emplace_back(StringAttr::get(parser.getContext(), key), value);
-    if (failed(parser.parseOptionalComma()))
-      break;
-  }
-  params = DictionaryAttr::get(parser.getContext(), entries);
-  return mlir::success();
-}
-
-static void printKernelParamsBody(OpAsmPrinter &p, Operation *,
-                                  DictionaryAttr params) {
-  llvm::interleaveComma(params, p, [&](NamedAttribute attr) {
-    p.printKeywordOrString(attr.getName().strref());
-    p << " = ";
-    p.printAttribute(attr.getValue());
-  });
-}
+// The declarative formats name these unqualified.
+using M::MOGG::parseKernelParamsBody;
+using M::MOGG::printKernelParamsBody;
 
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
@@ -392,28 +366,14 @@ ParseResult IterEpilogueOp::parse(OpAsmParser &parser, OperationState &result) {
                                /*allowType=*/true))
     return mlir::failure();
 
-  // capturing ( %inner = %outer : type, ... ): each %outer is an operand
+  // capturing {%inner = %outer : type, ...}: each %outer is an operand
   // shadowed by the block argument %inner.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
-  if (parser.parseKeyword("capturing") || parser.parseLParen())
+  if (M::MOGG::parseBindings(parser, "capturing", entryArgs, captures,
+                             captureTypes, /*impliedType=*/Type(),
+                             /*required=*/true))
     return mlir::failure();
-  if (failed(parser.parseOptionalRParen())) {
-    do {
-      OpAsmParser::Argument innerArg;
-      OpAsmParser::UnresolvedOperand outer;
-      Type type;
-      if (parser.parseArgument(innerArg) || parser.parseEqual() ||
-          parser.parseOperand(outer) || parser.parseColonType(type))
-        return mlir::failure();
-      innerArg.type = type;
-      entryArgs.push_back(innerArg);
-      captures.push_back(outer);
-      captureTypes.push_back(type);
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen())
-      return mlir::failure();
-  }
   if (parser.resolveOperands(captures, captureTypes,
                              parser.getCurrentLocation(), result.operands))
     return mlir::failure();
@@ -456,13 +416,11 @@ void IterEpilogueOp::print(OpAsmPrinter &p) {
 
   p << " (";
   printValuesWithTypes(p, block.getArguments().take_front(numLeading));
-  p << ") capturing (";
-  llvm::interleaveComma(
-      llvm::seq<unsigned>(0, captures.size()), p, [&](unsigned i) {
-        BlockArgument inner = block.getArgument(numLeading + i);
-        p << inner << " = " << captures[i] << " : " << inner.getType();
-      });
   p << ") ";
+  M::MOGG::printBindings(p, "capturing", captures,
+                         block.getArguments().drop_front(numLeading),
+                         /*impliedType=*/Type(), /*required=*/true);
+  p << " ";
   if (Value intermediateTensor = getIntermediateTensor())
     p << "intermediate " << intermediateTensor << " : "
       << intermediateTensor.getType() << " ";
@@ -501,27 +459,13 @@ ParseResult IterPrologueOp::parse(OpAsmParser &parser, OperationState &result) {
                                /*allowType=*/true))
     return failure();
 
-  // capturing ( %inner = %outer : type, ... ), as in map.iter.epilogue.
+  // capturing {%inner = %outer : type, ...}, as in map.iter.epilogue.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
-  if (parser.parseKeyword("capturing") || parser.parseLParen())
+  if (M::MOGG::parseBindings(parser, "capturing", entryArgs, captures,
+                             captureTypes, /*impliedType=*/Type(),
+                             /*required=*/true))
     return failure();
-  if (failed(parser.parseOptionalRParen())) {
-    do {
-      OpAsmParser::Argument innerArg;
-      OpAsmParser::UnresolvedOperand outer;
-      Type type;
-      if (parser.parseArgument(innerArg) || parser.parseEqual() ||
-          parser.parseOperand(outer) || parser.parseColonType(type))
-        return failure();
-      innerArg.type = type;
-      entryArgs.push_back(innerArg);
-      captures.push_back(outer);
-      captureTypes.push_back(type);
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen())
-      return failure();
-  }
   if (parser.resolveOperands(captures, captureTypes,
                              parser.getCurrentLocation(), result.operands))
     return failure();
@@ -546,13 +490,11 @@ void IterPrologueOp::print(OpAsmPrinter &p) {
 
   p << " (";
   printValuesWithTypes(p, block.getArguments().take_front(numLeading));
-  p << ") capturing (";
-  llvm::interleaveComma(
-      llvm::seq<unsigned>(0, captures.size()), p, [&](unsigned i) {
-        BlockArgument inner = block.getArgument(numLeading + i);
-        p << inner << " = " << captures[i] << " : " << inner.getType();
-      });
   p << ") ";
+  M::MOGG::printBindings(p, "capturing", captures,
+                         block.getArguments().drop_front(numLeading),
+                         /*impliedType=*/Type(), /*required=*/true);
+  p << " ";
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
   p << " : " << getResult().getType();
   p.printOptionalAttrDict((*this)->getAttrs());
@@ -860,27 +802,13 @@ ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
         parser.getCurrentLocation(),
         "'map.iter.foreach.body' expects exactly one index argument");
 
-  // capturing ( %inner = %outer : type, ... ), as in map.iter.epilogue.
+  // capturing {%inner = %outer : type, ...}, as in map.iter.epilogue.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
-  if (parser.parseKeyword("capturing") || parser.parseLParen())
+  if (M::MOGG::parseBindings(parser, "capturing", entryArgs, captures,
+                             captureTypes, /*impliedType=*/Type(),
+                             /*required=*/true))
     return mlir::failure();
-  if (failed(parser.parseOptionalRParen())) {
-    do {
-      OpAsmParser::Argument innerArg;
-      OpAsmParser::UnresolvedOperand outer;
-      Type type;
-      if (parser.parseArgument(innerArg) || parser.parseEqual() ||
-          parser.parseOperand(outer) || parser.parseColonType(type))
-        return mlir::failure();
-      innerArg.type = type;
-      entryArgs.push_back(innerArg);
-      captures.push_back(outer);
-      captureTypes.push_back(type);
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen())
-      return mlir::failure();
-  }
   if (parser.resolveOperands(captures, captureTypes,
                              parser.getCurrentLocation(), state.operands))
     return mlir::failure();
@@ -906,13 +834,10 @@ void IterForeachBodyOp::print(OpAsmPrinter &p) {
   p << "index   ";
   printBlockArgList(p, block.getArguments().take_front(numLeading));
   p.printNewline();
-  p << "capturing (";
-  llvm::interleaveComma(
-      llvm::seq<unsigned>(0, captures.size()), p, [&](unsigned i) {
-        BlockArgument inner = block.getArgument(numLeading + i);
-        p << inner << " = " << captures[i] << " : " << inner.getType();
-      });
-  p << ") ";
+  M::MOGG::printBindings(p, "capturing", captures,
+                         block.getArguments().drop_front(numLeading),
+                         /*impliedType=*/Type(), /*required=*/true);
+  p << " ";
   p.decreaseIndent();
 
   p.printRegion(getBody(), /*printEntryBlockArgs=*/false);

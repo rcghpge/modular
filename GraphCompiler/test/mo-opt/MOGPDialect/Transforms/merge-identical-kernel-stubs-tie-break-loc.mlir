@@ -32,7 +32,7 @@
 // original source notes -- proving the accumulated location moved over rather
 // than being silently dropped. Without the fix @a_dup keeps only its own
 // `fused<...site_a...>` location and there is no enclosing `fused[`.
-// CHECK-LABEL: mogg.kernel.stub @a_dup
+// CHECK-LABEL: mogg.kernel.stub @a_dup private
 // CHECK: loc(fused[fused<{{.*}}site_a{{.*}}>[{{.*}}], fused<{{.*}}site_z{{.*}}>[{{.*}}]])
 
 // The call site is rewritten to the tie-break winner, not the insertion
@@ -40,18 +40,18 @@
 // CHECK-LABEL: @caller
 // CHECK: mogg.call.stub @a_dup
 
-mogg.kernel.stub @z_dup() fusionInfo = z_dup
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @z_dup private() fusionInfo = z_dup
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 10, in site_z\n">["model.py":10:0])
 
-mogg.kernel.stub @a_dup() fusionInfo = a_dup
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @a_dup private() fusionInfo = a_dup
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 20, in site_a\n">["model.py":20:0])
 
-mogg.kernel.stub @caller() fusionInfo = caller
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @caller private() fusionInfo = caller
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @a_dup
   mogg.output
 }

@@ -7,7 +7,7 @@
 
 // CHECK-LABEL: mo.graph @gatherShapeFuncKgenParams
 // CHECK: mogg.call.shape @{{.*}}gather_shape_fn
-// CHECK-SAME: kernel_param = {axis = -2 : index, output_rank = 4 : index}
+// CHECK-SAME: [axis = -2 : index, output_rank = 4 : index]
 mo.graph @gatherShapeFuncKgenParams<() -> D0, D1, D2, D3>(
     %input: !mo.tensor<[1, 2, 3], f32>,
     %indices: !mo.tensor<[4, 5], f32>

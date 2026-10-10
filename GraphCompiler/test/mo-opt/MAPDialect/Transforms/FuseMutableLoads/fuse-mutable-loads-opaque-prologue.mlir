@@ -19,7 +19,7 @@ mogg.kernel.decl @builtin_kernels.kernels.Struct_sampler_apply_penalties registr
 // CHECK:       map.iter.opaque
 // CHECK-NEXT:  inputs (%[[TARGET]]: !mo.buffer<[3, 2], si32>, %[[BUF]]: !mo.buffer<[3, 2], si32>,
 // CHECK-SAME:  %[[CH0]]: !mo.chain)
-// CHECK:       %[[PRO:.*]] = map.iter.prologue (%[[IDX:.*]] : !map.index<2>) capturing (%[[CAP:.*]] = %[[BUF]] : !mo.buffer<[3, 2], si32>)
+// CHECK:       %[[PRO:.*]] = map.iter.prologue (%[[IDX:.*]] : !map.index<2>) capturing {%[[CAP:.*]] = %[[BUF]] : !mo.buffer<[3, 2], si32>}
 // CHECK:       map.load %[[CAP]][%[[IDX]]] : !mo.buffer<[3, 2], si32>
 // CHECK:       map.call.opaque @{{.*}}sampler_apply_penalties[] inputs({{.*}}%[[PRO]],
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_mutable_load<[#mogg.fusion_leaf<"mo.mutable.load"{{.*}}, #mogg.fusion_leaf<"custom__sampler.apply_penalties"{{.*}}]>>
@@ -30,7 +30,7 @@ mo.graph @fuse_into_opaque_with_prologue(%buf: !mo.buffer<[3, 2], si32>, %target
       inputs (%target : !mo.buffer<[3, 2], si32>, %t : !mo.tensor<[3, 2], si32>, %offsets : !mo.tensor<[11], ui32>, %penalty : !mo.tensor<[7], f32>, %ch0 : !mo.chain)
       outputs (%c : !mo.chain)
   {
-    %pro = map.iter.prologue (%idx : !map.index<2>) capturing (%cap = %t : !mo.tensor<[3, 2], si32>) {
+    %pro = map.iter.prologue (%idx : !map.index<2>) capturing {%cap = %t : !mo.tensor<[3, 2], si32>} {
       %v = map.load %cap[%idx] : !mo.tensor<[3, 2], si32>
       map.yield %v : si32
     } : !mo.tensor<[3, 2], si32>

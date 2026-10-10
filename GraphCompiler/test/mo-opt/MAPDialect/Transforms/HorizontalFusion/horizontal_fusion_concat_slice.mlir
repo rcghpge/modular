@@ -14,7 +14,7 @@
 // CHECK:       %[[OUT:.*]]:2 = map.iter.opaque
 // CHECK-NEXT:  inputs (%{{.*}}: !mo.tensor<[B, 8, 16], f32>, %{{.*}}: !mo.tensor<[B, S, 16], f32>)
 // CHECK-NEXT:  outputs (%[[O0:[a-z0-9]+]] : !mo.tensor<[B, T, 16], f32>, %[[O1:[a-z0-9]+]] : !mo.tensor<[B, 8, 16], f32>)
-// CHECK:       %[[EPI:[a-z0-9]+]] = map.iter.epilogue (%[[VAL:[a-z0-9]+]] : f32, %[[IDX:[a-z0-9]+]] : !map.index<3>) capturing (%[[CAP0:[a-z0-9]+]] = %[[O0]] : !mo.tensor<[B, T, 16], f32>, %[[CAP1:[a-z0-9]+]] = %[[O1]] : !mo.tensor<[B, 8, 16], f32>) {
+// CHECK:       %[[EPI:[a-z0-9]+]] = map.iter.epilogue (%[[VAL:[a-z0-9]+]] : f32, %[[IDX:[a-z0-9]+]] : !map.index<3>) capturing {%[[CAP0:[a-z0-9]+]] = %[[O0]] : !mo.tensor<[B, T, 16], f32>, %[[CAP1:[a-z0-9]+]] = %[[O1]] : !mo.tensor<[B, 8, 16], f32>} {
 // CHECK-NEXT:  map.store %[[CAP0]][%[[IDX]]] = %[[VAL]] : !mo.tensor<[B, T, 16], f32>
 // CHECK-NEXT:  map.index.slice.select<#map.index.slice.spec<[B, T, 16] -> [B, 8, 16], starts = [0, -8, 0], stops = [?, ?, ?], steps = [1, 1, 1]>> (%[[IDX]]) -> (%[[IOUT:[a-z0-9]+]]) : !map.index<3> {
 // CHECK-NEXT:  map.store %[[CAP1]][%[[IOUT]]] = %[[VAL]] : !mo.tensor<[B, 8, 16], f32>

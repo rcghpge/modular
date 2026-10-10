@@ -9,11 +9,11 @@
 // Single caller: the slot-0 constant resource (little-endian int64 42) is
 // raised back to `index.constant 42`, which feeds the output directly.
 
-// CHECK-LABEL: mogg.kernel.stub @raise_single
+// CHECK-LABEL: mogg.kernel.stub @raise_single private
 // CHECK:         %[[C:.+]] = index.constant 42
 // CHECK:         mogg.output %[[C]] : index
-mogg.kernel.stub @raise_single(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_single
-  attributes {abi = 1 : i32, constantResources = [], device = "cpu", isAsync = false} {
+mogg.kernel.stub @raise_single private(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_single
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "cpu", isAsync = false} {
   %buf = mgp.resource.constant() resourceSlot = 0 : () -> !mgp.buffer<<"cpu", 0>>
   %idx = mgp.buffer.to_index %chain, %buf : !mgp.buffer<<"cpu", 0>>
   mogg.output %idx : index
@@ -22,11 +22,11 @@ mogg.kernel.stub @raise_single(%chain: !mef.chain, %ctx: !mgp.context) -> (index
 // Two callers: the lowering is preserved because the constant could differ
 // between the two call sites, so no `index.constant` is recovered.
 
-// CHECK-LABEL: mogg.kernel.stub @raise_multi
+// CHECK-LABEL: mogg.kernel.stub @raise_multi private
 // CHECK-NOT:     index.constant
 // CHECK:         mgp.buffer.to_index
-mogg.kernel.stub @raise_multi(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_multi
-  attributes {abi = 1 : i32, constantResources = [], device = "cpu", isAsync = false} {
+mogg.kernel.stub @raise_multi private(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_multi
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "cpu", isAsync = false} {
   %buf = mgp.resource.constant() resourceSlot = 0 : () -> !mgp.buffer<<"cpu", 0>>
   %idx = mgp.buffer.to_index %chain, %buf : !mgp.buffer<<"cpu", 0>>
   mogg.output %idx : index

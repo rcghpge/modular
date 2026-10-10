@@ -39,11 +39,11 @@ mo.graph @broadcastOfSliceIntoExistingEpilogue(
 // CHECK-NEXT:  %[[STOP:.*]] = map.constant #M.dense_array<12> : tensor<1xsi64>
 // CHECK-NEXT:  %[[STEP:.*]] = map.constant #M.dense_array<1> : tensor<1xsi64>
 // CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing
-// CHECK-SAME:      (%[[OCAP:.*]] = %[[O]] : !mo.tensor<[8, 8], f32>,
+// CHECK-SAME:      {%[[OCAP:.*]] = %[[O]] : !mo.tensor<[8, 8], f32>,
 // CHECK-SAME:       %[[BCAP:.*]] = %[[BIAS]] : !mo.tensor<[16], f32>,
 // CHECK-SAME:       %[[STARTCAP:.*]] = %[[START]] : !mo.tensor<[1], si64>,
 // CHECK-SAME:       %[[STOPCAP:.*]] = %[[STOP]] : !mo.tensor<[1], si64>,
-// CHECK-SAME:       %[[STEPCAP:.*]] = %[[STEP]] : !mo.tensor<[1], si64>)
+// CHECK-SAME:       %[[STEPCAP:.*]] = %[[STEP]] : !mo.tensor<[1], si64>}
 // CHECK-NEXT:  %[[BIDX:.*]] = map.index.broadcast<{{.*}}> (%[[IDX]])
 // CHECK-NEXT:  %[[SIDX:.*]] = map.index.slice<{{.*}}> (%[[BIDX]], %[[STARTCAP]], %[[STOPCAP]], %[[STEPCAP]])
 // CHECK-NEXT:  %[[BV:.*]] = map.load %[[BCAP]][%[[SIDX]]] : !mo.tensor<[16], f32>

@@ -19,7 +19,7 @@ mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", 
 // CHECK-NEXT:    inputs ([[INPUT:%[^ :,]+]]: !mo.tensor<[10, 64], f32>, [[STARTS:%[^ :,]+]]: !mo.tensor<[2], si64>, [[STOPS:%[^ :,]+]]: !mo.tensor<[2], si64>, [[STEPS:%[^ :,]+]]: !mo.tensor<[2], si64>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[3, 32], f32>) {
 // CHECK-NEXT:      [[STRIDED:%[^ ]+]] = map.index.slice.stride<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> ([[INPUT]], [[STARTS]], [[STOPS]], [[STEPS]])
-// CHECK-NEXT:      [[PRO:%[^ ]+]] = map.iter.prologue ([[PIDX:%[^ :]+]] : !map.index<2>) capturing ([[NEWCAP:%[^ ]+]] = [[STRIDED]] : !mo.tensor<[3, 32], f32>) {
+// CHECK-NEXT:      [[PRO:%[^ ]+]] = map.iter.prologue ([[PIDX:%[^ :]+]] : !map.index<2>) capturing {[[NEWCAP:%[^ ]+]] = [[STRIDED]] : !mo.tensor<[3, 32], f32>} {
 // CHECK-NOT:       map.index.slice
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = map.load [[NEWCAP]]{{\[}}[[PIDX]]] : !mo.tensor<[3, 32], f32>
 // CHECK-NEXT:      map.yield [[VAL]] : f32
@@ -34,7 +34,7 @@ mo.graph @prologueSliceHoist(%input: !mo.tensor<[10, 64], f32>,
       inputs (%input : !mo.tensor<[10, 64], f32>, %starts : !mo.tensor<[2], si64>, %stops : !mo.tensor<[2], si64>, %steps : !mo.tensor<[2], si64>)
       outputs (%out : !mo.tensor<[3, 32], f32>) {
     %pro = map.iter.prologue (%pidx : !map.index<2>)
-        capturing (%input0 = %input : !mo.tensor<[10, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>) {
+        capturing {%input0 = %input : !mo.tensor<[10, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>} {
       %idx_ = map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> (%pidx, %starts0, %stops0, %steps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
       %v = map.load %input0[%idx_] : !mo.tensor<[10, 64], f32>

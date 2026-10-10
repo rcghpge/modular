@@ -19,7 +19,7 @@ module {
 // CHECK-NEXT:      [[BS:%[^ ]+]] = map.index.broadcast.stride<#map.index.broadcast.spec<[1] -> [8]>> ([[IN]])
 // CHECK-NEXT:      map.iter.foreach.body<[2, 4]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ({{.*}}[[BCAP:%[^ ]+]] = [[BS]] : !mo.tensor<[8], f32>) {
+// CHECK-NEXT:        capturing {{{.*}}[[BCAP:%[^ ]+]] = [[BS]] : !mo.tensor<[8], f32>} {
 // The reshape stays in the loop (it feeds the store); the load reads the hoisted
 // broadcast view at the reshaped index. No load-side broadcast survives.
 // CHECK-NEXT:      [[R:%[^ ]+]] = map.index.reshape<#map.index.reshape.spec<[8] -> [2, 4]>> ([[IDX]])
@@ -33,7 +33,7 @@ mo.graph @broadcastAtopStoreReshape(%c: !mo.tensor<[1], f32>)
       outputs (%out : !mo.tensor<[8], f32>) {
     map.iter.foreach.body<[2, 4]>
         index (%idx: !map.index<2>)
-        capturing (%c0 = %c : !mo.tensor<[1], f32>, %out0 = %out : !mo.tensor<[8], f32>) {
+        capturing {%c0 = %c : !mo.tensor<[1], f32>, %out0 = %out : !mo.tensor<[8], f32>} {
       %r = map.index.reshape<#map.index.reshape.spec<[8] -> [2, 4]>> (%idx)
           : !map.index<2> -> !map.index<1>
       %b = map.index.broadcast<#map.index.broadcast.spec<[1] -> [8]>> (%r)

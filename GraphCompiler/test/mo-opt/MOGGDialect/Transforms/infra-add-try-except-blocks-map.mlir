@@ -4,9 +4,9 @@
 // is no mogg.raise on this path, and its emitMojo is the only renderer of a
 // kernel error's name, fusion info and source traceback.
 
-// CHECK-LABEL: mogg.kernel.stub @add_mogg
+// CHECK-LABEL: mogg.kernel.stub @add_mogg private
 // CHECK:         mogg.try {
-// CHECK:         } except {
+// CHECK:         } except(%{{[^)]+}}) {
 // CHECK:           mogg.raise
 
 mo.graph @checked() -> !mo.tensor<[4], f32> {

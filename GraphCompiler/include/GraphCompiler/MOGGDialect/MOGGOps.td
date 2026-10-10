@@ -21,6 +21,7 @@ include "GraphCompiler/MODialect/MOTypes.td"
 include "GraphCompiler/MODialect/MOAttrs.td"
 include "GraphCompiler/MODialect/MOEnums.td"
 include "GraphCompiler/MODialect/MOInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "GraphCompiler/MOSHDialect/MOSHAttrs.td"
 include "GraphCompiler/Interfaces/LowerableToMGPInterface.td"
 include "GraphCompiler/Interfaces/EmitsMojoInterface.td"
@@ -259,11 +260,11 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
   );
 
   let assemblyFormat = [{
-    `[` $kernelSymName `]`
+    `[` $kernelSymName `]` `` custom<OptionalKernelParams>($kernel_param)
     (`inputs` `(` $inputs^ `:` qualified(type($inputs)) `)`)?
     (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
     `builder` `(` $graphBuilder `)`
-    (`isThrows` $isThrows^)? (`kernel_param` `=` $kernel_param^)?
+    (`isThrows` $isThrows^)?
     `moOpName` `=` $moOpName attr-dict
   }];
   let hasVerifier = 1;
@@ -464,7 +465,7 @@ def MOGG_KernelStubOp : MOGG_Op<"kernel.stub", [
     MOGG_FusionInfoAttr:$fusionInfo,
     OptionalAttr<BoolAttr>:$isAsync,
     DefaultValuedAttr<ArrayAttr, "{}">:$constantResources,
-    MOGG_ABIKind:$abi,
+    MOGG_ABIKindAttr:$abi,
     // Execution-device label for each kernel's `target` parameter. A string
     // rather than `#M.device_ref` because only the label matters.
     StrAttr:$device,
@@ -522,7 +523,7 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
 
   let assemblyFormat = [{
-    `(` $buffer (`,` $dims^)? `)` `io` `=` $io `,` `mut` `=` $mut
+    `(` $buffer (`,` $dims^)? `)` `io` `=` custom<IOKind>($io) `,` `mut` `=` $mut
     attr-dict `:` qualified(type($buffer)) `->` qualified(type($tensor))
   }];
 }
@@ -667,8 +668,8 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
     %lambda = mogg.bind (%output) output_lambda (%arg8: f32, %arg9: !pop.array<2, index>) {
       %17 = mogg.call "split_dim_indices"(%arg9, %8) {axis = 0 : index} : !pop.array<2, index>, !mo.scalar<si64> -> !pop.array<3, index>
       mogg.output %arg8, %17 : f32, !pop.array<3, index>
-    }: (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32}>) -> !mo.tensor<[4, 1], f32>
-    %reshaped = mogg.tensor.reshape(%output) : (!mo.tensor<[2, 2, 1], f32, {io = 0 : i32}>) -> !mo.tensor<[4, 1], f32>
+    }: (!mo.tensor<[2, 2, 1], f32, {io = #mo.io<Output>}>) -> !mo.tensor<[4, 1], f32>
+    %reshaped = mogg.tensor.reshape(%output) : !mo.tensor<[2, 2, 1], f32, {io = #mo.io<Output>}> -> !mo.tensor<[4, 1], f32>
     %fused = mogg.materialize_fused_tensor(%lambda, %reshaped) : (!mo.tensor<[4, 1], f32>, !mo.tensor<[4, 1], f32>) -> !mo.tensor<[4, 1], f32>
     ```
   }];
@@ -766,14 +767,18 @@ def MOGG_RaiseOp : MOGG_Op<"raise", [
 
 def MOGG_TryOp : MOGG_Op<"try", [
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
 ]> {
   let summary = "Op that represent a try / except statement";
+  let description = [{
+    The except region takes the raised `!mogg.error` as its only argument,
+    printed as `except(%err)`.
+  }];
   let regions = (region SizedRegion<1>:$tryRegion, SizedRegion<1>:$exceptRegion);
   let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
-    $tryRegion
-    `except` $exceptRegion
+    $tryRegion custom<ExceptRegion>($exceptRegion)
     attr-dict `:` type($outputs)
   }];
 
@@ -794,7 +799,7 @@ def MOGG_AsyncErrorOp : MOGG_Op<"async.error", [
     ```
     mogg.try {
      ...
-    } except (%err: !mogg.Error) {
+    } except(%err) {
       %chain = mogg.async.error %err : !mef.chain
       %dim0 = mogg.async.error %err : !si64
       mogg.yield %chain, %dim0
@@ -1101,7 +1106,7 @@ def MOGG_TensorCreateOp : MOGG_Op<"tensor.create", [
   let assemblyFormat = [{
     `(` $ptr `,` $shape `)`
     `<` `device` `=` $device `,` `elementType` `=` $elementType `,`
-        `io` `=` $io `,` `mut` `=` $mut `,`
+        `io` `=` custom<IOKind>($io) `,` `mut` `=` $mut `,`
         `shapeAttr` `=` qualified($shapeAttr)
         (`,` `stable` `=` $stable^)? `>`
     attr-dict `:` qualified(type($tensor))
@@ -1109,6 +1114,7 @@ def MOGG_TensorCreateOp : MOGG_Op<"tensor.create", [
 }
 
 def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   AttrSizedOperandSegments,
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
@@ -1147,16 +1153,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
   );
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);
-  let assemblyFormat = [{
-    $shape (`capturing` `(` $captures^ `:` type($captures) `)`)?
-    (`shapes` `(` $shapeCaptures^ `)`)?
-    `ptr` $outputPtr
-    (`computeOutputArg` `=` $computeOutputArg^)?
-    (`contract` `=` $contract^)?
-    `device` `=` $device `,` `elementType` `=` $elementType `,`
-    `io` `=` $io `,` `mut` `=` $mut
-    attr-dict-with-keyword $body
-  }];
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
 
@@ -1180,6 +1177,7 @@ def MOGG_TensorGetPtrOp : MOGG_Op<"tensor.get_ptr", [
 }
 
 def MOGG_TensorCreatePrologueOp : MOGG_Op<"tensor.create.prologue", [
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   AttrSizedOperandSegments,
   SingleBlock,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
@@ -1206,14 +1204,7 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"tensor.create.prologue", [
   );
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);
-  let assemblyFormat = [{
-    $shape (`capturing` `(` $captures^ `:` type($captures) `)`)?
-    (`shapes` `(` $shapeCaptures^ `)`)?
-    (`contract` `=` $contract^)?
-    `device` `=` $device `,` `elementType` `=` $elementType `,`
-    `io` `=` $io `,` `mut` `=` $mut
-    attr-dict-with-keyword $body
-  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def MOGG_TensorStoreOp : MOGG_Op<"tensor.store", [
@@ -1258,14 +1249,13 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
   // destination `$output`; `mogg.kernel` forwards it with `mogg.output`.
   let results = (outs Optional<MO_Opaque>:$opaqueResult);
   let assemblyFormat = [{
-    $callee
+    $callee `` custom<OptionalKernelParams>($kernel_param)
     (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
     (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
     (`context` `(` $device_contexts^ `:` type($device_contexts) `)`)?
     (`hasEpilogueFusion` `=` $hasEpilogueFusion^)?
     (`hasPrologueFusion` `=` $hasPrologueFusion^)?
     (`hasSameVariadicOperandSize` `=` $hasSameVariadicOperandSize^)?
-    (`kernel_param` `=` $kernel_param^)?
     attr-dict (`->` type($opaqueResult)^)?
   }];
 }
@@ -1411,6 +1401,7 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 }
 
 def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
@@ -1433,11 +1424,7 @@ def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
     StrAttr:$device
   );
   let regions = (region SizedRegion<1>:$body);
-  let assemblyFormat = [{
-    $callee `shape` `(` $shape `)` `context` `(` $context `)`
-    (`capturing` `(` $capturing^ `:` type($capturing) `)`)?
-    `device` `=` $device attr-dict-with-keyword $body
-  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
@@ -1456,8 +1443,9 @@ def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
   );
   let results = (outs MOGG_ShapeFuncResult:$result);
   let assemblyFormat = [{
-    $callee `(` $operands `:` type($operands) `)` `->` type($result)
-    (`isThrows` $isThrows^)? (`kernel_param` `=` $kernel_param^)? attr-dict
+    $callee `` custom<OptionalKernelParams>($kernel_param) ``
+    `(` $operands `:` type($operands) `)` `->` type($result)
+    (`isThrows` $isThrows^)? attr-dict
   }];
 }
 
@@ -1488,8 +1476,8 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
   let results = (outs Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
-    $callee `(` $inputs (`,` $index^)? `)`
-    (`kernel_param` `=` $kernel_param^)? `moOpName` `=` $moOpName
+    $callee `` custom<OptionalKernelParams>($kernel_param) ``
+    `(` $inputs (`,` $index^)? `)` `moOpName` `=` $moOpName
     attr-dict `:` type($inputs) (`,` type($index)^)? `->` type($outputs)
   }];
 

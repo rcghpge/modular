@@ -19,7 +19,7 @@
 // CHECK:   context (%[[C:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK:     mogg.call.stub @[[STUB0:[A-Za-z0-9_]+_mogg[0-9_]*]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer, !mogg.pointer, !mogg.context
 // CHECK-NOT: mogg.call.opaque
-// CHECK: mogg.kernel.stub @[[STUB0]] (%{{.*}}: !mogg.pointer, %{{.*}}: !mogg.pointer, %{{.*}}: !mogg.context) fusionInfo = {{.*}} attributes {abi = 2 : i32,
+// CHECK: mogg.kernel.stub @[[STUB0]] private (%{{.*}}: !mogg.pointer, %{{.*}}: !mogg.pointer, %{{.*}}: !mogg.context) fusionInfo = {{.*}} attributes {abi = #mogg.abi<MOGG>,
 // CHECK:   %[[ISH:.*]] = mogg.shape.create() {{.*}}{{$}}
 // CHECK:   %[[IT:.*]] = mogg.tensor.create(%{{.*}}, %[[ISH]]) {{.*}}mut = false{{.*}} : !mogg.tensor
 // CHECK:   %[[OT:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}}mut = true{{.*}} : !mogg.tensor
@@ -37,9 +37,8 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK:   outputs (%[[OP:[^ ,)]+]])
 // CHECK:   context (%[[C:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK:     mogg.call.stub @[[STUB1:[A-Za-z0-9_]+_mogg[0-9_]*]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer, !mogg.pointer, !mogg.context
-// CHECK: mogg.kernel.stub @[[STUB1]] {{.*}} attributes {abi = 2 : i32,
-// CHECK:   %{{.*}} = mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor) ptr %{{.*}} {{.*}} {
-// CHECK:   ^bb0(%{{.*}}: f32, %{{.*}}: !map.index<2>, %[[CAP:.*]]: !mogg.tensor):
+// CHECK: mogg.kernel.stub @[[STUB1]] private {{.*}} attributes {abi = #mogg.abi<MOGG>,
+// CHECK:   %{{.*}} = mogg.tensor.create.epilogue %{{.*}} (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP:[^ ,)]+]] = %{{.*}} : !mogg.tensor} ptr %{{.*}} {{.*}} {
 // CHECK:     mogg.tensor.store %[[CAP]][%{{.*}}] = %{{.*}}
 // CHECK:   }
 // CHECK:   mogg.call.opaque @{{.*}}MapLowerOneFusedOutput
@@ -57,7 +56,7 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK:   context (%[[C:[^ ,)]+]])
 // CHECK:   dims (%[[D:.*]]: !mogg.dim<batch>) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK:     mogg.call.stub @[[STUB2:[A-Za-z0-9_]+_mogg[0-9_]*]] %[[IP]], %[[OP]], %[[D]], %[[C]] : !mogg.pointer, !mogg.pointer, !mogg.dim<batch>, !mogg.context
-// CHECK: mogg.kernel.stub @[[STUB2]] (%{{.*}}: !mogg.pointer, %{{.*}}: !mogg.pointer, %[[SD:.*]]: !mogg.dim<batch>, %{{.*}}: !mogg.context) fusionInfo = {{.*}} attributes {abi = 2 : i32,
+// CHECK: mogg.kernel.stub @[[STUB2]] private (%{{.*}}: !mogg.pointer, %{{.*}}: !mogg.pointer, %[[SD:.*]]: !mogg.dim<batch>, %{{.*}}: !mogg.context) fusionInfo = {{.*}} attributes {abi = #mogg.abi<MOGG>,
 // CHECK:   mogg.shape.create(%[[SD]]) {{.*}} : !mogg.dim<batch>
 mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {
   %c = mo.custom [symbol = "map_lower_one_plain_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>

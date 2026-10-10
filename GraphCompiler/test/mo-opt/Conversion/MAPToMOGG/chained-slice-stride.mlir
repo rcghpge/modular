@@ -9,8 +9,7 @@
 // CHECK-LABEL: mo.graph @chainedSliceStride
 // CHECK:       [[INNER:%[^ ]+]] = mogg.tensor.create.slice([[IT0:%[^ ]+]], {{.*}}) {{.*}}outShape = #mosh<ape[4, 32]>{{.*}} : !mogg.tensor
 // CHECK-NEXT:  [[OUTER:%[^ ]+]] = mogg.tensor.create.slice([[INNER]], {{.*}}) {{.*}}outShape = #mosh<ape[2, 16]>{{.*}} : !mogg.tensor
-// CHECK:       mogg.call.foreach @builtin_primitives.primitives._foreach shape({{%[^ ]+}}) context({{%[^ ]+}}) capturing([[OUTER]], [[OT:%[^ ]+]] : !mogg.tensor, !mogg.tensor) device = "cpu" {
-// CHECK-NEXT:  ^bb0([[ARG:%[^ :,]+]]: !mogg.tensor, [[OUTARG:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK:       mogg.call.foreach @builtin_primitives.primitives._foreach shape({{%[^ ]+}}) context({{%[^ ]+}}) ([[IDX:%[^ :,]+]] : !map.index<2>) capturing {[[ARG:%[^ :,]+]] = [[OUTER]] : !mogg.tensor, [[OUTARG:%[^ :,]+]] = [[OT:%[^ ]+]] : !mogg.tensor} device = "cpu" {
 // CHECK-NEXT:    [[VAL:%[^ ]+]] = mogg.tensor.load [[ARG]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK-NEXT:    mogg.tensor.store [[OUTARG]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor, !map.index<2>, f32
 mo.graph @chainedSliceStride(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[2, 16], f32> {
@@ -27,7 +26,7 @@ mo.graph @chainedSliceStride(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[2
     %view2 = map.index.slice.stride<#map.index.slice.spec<[4, 32] -> [2, 16], starts = [1, 8], stops = [3, 24], steps = [1, 1]>> (%view1, %start1, %stop1, %step1) : (!mo.tensor<[4, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 16], f32>
     map.iter.foreach.body<[2, 16]>
       index (%idx: !map.index<2>)
-      capturing (%view20 = %view2 : !mo.tensor<[2, 16], f32>, %out0 = %out : !mo.tensor<[2, 16], f32>) {
+      capturing {%view20 = %view2 : !mo.tensor<[2, 16], f32>, %out0 = %out : !mo.tensor<[2, 16], f32>} {
       %val = map.load %view20[%idx] : !mo.tensor<[2, 16], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[2, 16], f32>
     }

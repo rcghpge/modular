@@ -23,10 +23,10 @@ mogg.kernel.decl @kernels.consumer registration = "kernels.consumer" device_info
 // CHECK-NEXT:  inputs (%[[IN]]: !mo.tensor<[10, 64], f32>, %[[STARTS]]: !mo.tensor<[2], si64>, %[[STOPS]]: !mo.tensor<[2], si64>, %[[STEPS]]: !mo.tensor<[2], si64>)
 // CHECK-NEXT:  outputs (%[[O:.*]] : !mo.tensor<[3, 32], f32>) {
 // CHECK-NEXT:  %[[PRO:.*]] = map.iter.prologue (%[[PI:.*]] : !map.index<2>) capturing
-// CHECK-SAME:      (%[[CIN:.*]] = %[[IN]] : !mo.tensor<[10, 64], f32>,
+// CHECK-SAME:      {%[[CIN:.*]] = %[[IN]] : !mo.tensor<[10, 64], f32>,
 // CHECK-SAME:       %[[CSTARTS:.*]] = %[[STARTS]] : !mo.tensor<[2], si64>,
 // CHECK-SAME:       %[[CSTOPS:.*]] = %[[STOPS]] : !mo.tensor<[2], si64>,
-// CHECK-SAME:       %[[CSTEPS:.*]] = %[[STEPS]] : !mo.tensor<[2], si64>)
+// CHECK-SAME:       %[[CSTEPS:.*]] = %[[STEPS]] : !mo.tensor<[2], si64>}
 // CHECK-NEXT:  %[[SIDX:.*]] = map.index.slice<{{.*}}> (%[[PI]], %[[CSTARTS]], %[[CSTOPS]], %[[CSTEPS]])
 // CHECK-NEXT:  %[[VAL:.*]] = map.load %[[CIN]][%[[SIDX]]] : !mo.tensor<[10, 64], f32>
 // CHECK-NEXT:  map.yield %[[VAL]] : f32
@@ -53,7 +53,7 @@ mo.graph @sliceIntoExistingPrologue(
     map.store %ewout[%i] = %val : !mo.tensor<[3, 32], f32>
   }
   %res = map.iter.opaque inputs (%ew : !mo.tensor<[3, 32], f32>) outputs (%o : !mo.tensor<[3, 32], f32>) {
-    %pro = map.iter.prologue (%pi : !map.index<2>) capturing (%pc = %ew : !mo.tensor<[3, 32], f32>) {
+    %pro = map.iter.prologue (%pi : !map.index<2>) capturing {%pc = %ew : !mo.tensor<[3, 32], f32>} {
       %pv = map.load %pc[%pi] : !mo.tensor<[3, 32], f32>
       map.yield %pv : f32
     } : !mo.tensor<[3, 32], f32>
@@ -92,7 +92,7 @@ mo.graph @elementwiseIntoExistingPrologue_noFuse(
     map.store %ewout[%i] = %sum : !mo.tensor<[4], f32>
   }
   %res = map.iter.opaque inputs (%ew : !mo.tensor<[4], f32>) outputs (%o : !mo.tensor<[4], f32>) {
-    %pro = map.iter.prologue (%pi : !map.index<1>) capturing (%pc = %ew : !mo.tensor<[4], f32>) {
+    %pro = map.iter.prologue (%pi : !map.index<1>) capturing {%pc = %ew : !mo.tensor<[4], f32>} {
       %pv = map.load %pc[%pi] : !mo.tensor<[4], f32>
       map.yield %pv : f32
     } : !mo.tensor<[4], f32>

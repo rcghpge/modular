@@ -6,25 +6,25 @@
 // canonicalized before the region is hashed, so the inner stubs and the
 // regions each collapse to one in a single merge + symbol-dce run.
 
-mogg.kernel.stub @inner_1() fusionInfo = inner_1
-  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @inner_1 private() fusionInfo = inner_1
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
   mogg.output
 }
 
-mogg.kernel.stub @inner_2() fusionInfo = inner_2
-  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @inner_2 private() fusionInfo = inner_2
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
   mogg.output
 }
 
-mogg.kernel.stub @region_a() fusionInfo = region_a
-  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @region_a private() fusionInfo = region_a
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
   %t = mogg.call.stub.async @inner_1
   mogg.async.join(%t)
   mogg.output
 }
 
-mogg.kernel.stub @region_b() fusionInfo = region_b
-  attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @region_b private() fusionInfo = region_b
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
   %t = mogg.call.stub.async @inner_2
   mogg.async.join(%t)
   mogg.output
@@ -32,10 +32,10 @@ mogg.kernel.stub @region_b() fusionInfo = region_b
 
 // Exactly one inner stub and one region stub survive, and the surviving
 // region's async callsite points at the canonical inner stub.
-// CHECK:       mogg.kernel.stub @inner_1
-// CHECK-NOT:   mogg.kernel.stub @inner_2
-// CHECK:       mogg.kernel.stub @region_a
-// CHECK-NOT:   mogg.kernel.stub @region_b
+// CHECK:       mogg.kernel.stub @inner_1 private
+// CHECK-NOT:   mogg.kernel.stub @inner_2 private
+// CHECK:       mogg.kernel.stub @region_a private
+// CHECK-NOT:   mogg.kernel.stub @region_b private
 // CHECK:         mogg.call.stub.async @inner_1
 
 // Both model executions target the single merged region.

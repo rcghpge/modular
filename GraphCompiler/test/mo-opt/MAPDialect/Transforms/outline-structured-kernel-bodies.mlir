@@ -16,7 +16,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[256, 256], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[256, 256]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ([[X0:%[^ ,]+]] = [[X]] : !mo.tensor<[256, 256], f32>, [[Y0:%[^ ,]+]] = [[Y]] : !mo.tensor<[256, 256], f32>, [[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[256, 256], f32>) {
+// CHECK-NEXT:        capturing {[[X0:%[^ ,]+]] = [[X]] : !mo.tensor<[256, 256], f32>, [[Y0:%[^ ,]+]] = [[Y]] : !mo.tensor<[256, 256], f32>, [[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[256, 256], f32>} {
 // CHECK-NEXT:      [[XV:%[^ ]+]] = map.load [[X0]][[[IDX]]] : !mo.tensor<[256, 256], f32>
 // CHECK-NEXT:      [[YV:%[^ ]+]] = map.load [[Y0]][[[IDX]]] : !mo.tensor<[256, 256], f32>
 // CHECK-NEXT:      [[RES:%[^ ]+]] = map.call.elementwise @builtin_kernels.elementwise.Add([[IDX]], [[XV]], [[YV]]) : !map.index<2>, f32, f32 -> f32
@@ -46,7 +46,7 @@ mo.graph @add(%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], 
 // CHECK-NEXT:    outputs ([[OUT2:%[^ :,]+]] : !mo.tensor<[M, N], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[M, N]>
 // CHECK-NEXT:        index   ([[IDX2:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ([[X02:%[^ ,]+]] = [[X2]] : !mo.tensor<[M, N], f32>, [[Y02:%[^ ,]+]] = [[Y2]] : !mo.tensor<[M, N], f32>, [[OUT02:%[^ ,]+]] = [[OUT2]] : !mo.tensor<[M, N], f32>) {
+// CHECK-NEXT:        capturing {[[X02:%[^ ,]+]] = [[X2]] : !mo.tensor<[M, N], f32>, [[Y02:%[^ ,]+]] = [[Y2]] : !mo.tensor<[M, N], f32>, [[OUT02:%[^ ,]+]] = [[OUT2]] : !mo.tensor<[M, N], f32>} {
 // CHECK-NEXT:      [[XV2:%[^ ]+]] = map.load [[X02]][[[IDX2]]] : !mo.tensor<[M, N], f32>
 // CHECK-NEXT:      [[YV2:%[^ ]+]] = map.load [[Y02]][[[IDX2]]] : !mo.tensor<[M, N], f32>
 // CHECK-NEXT:      [[RES2:%[^ ]+]] = map.call.elementwise @builtin_kernels.elementwise.Add([[IDX2]], [[XV2]], [[YV2]]) : !map.index<2>, f32, f32 -> f32

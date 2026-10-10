@@ -39,10 +39,10 @@ mo.graph @sliceBoundViewIntoPrologue_noFuse(
               %stops: !mo.tensor<[1], si64>, %steps: !mo.tensor<[1], si64>)
       outputs (%o : !mo.tensor<[1], si64>) {
     %pro = map.iter.prologue (%pi : !map.index<1>)
-        capturing (%cdata = %data : !mo.tensor<[8], si64>,
+        capturing {%cdata = %data : !mo.tensor<[8], si64>,
                    %cstarts = %starts : !mo.tensor<[1], si64>,
                    %cstops = %stops : !mo.tensor<[1], si64>,
-                   %csteps = %steps : !mo.tensor<[1], si64>) {
+                   %csteps = %steps : !mo.tensor<[1], si64>} {
       %si = map.index.slice<#map.index.slice.spec<[8] -> [1], starts = [?], stops = [?], steps = [1]>> (%pi, %cstarts, %cstops, %csteps)
           : (!map.index<1>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !map.index<1>
       %v = map.load %cdata[%si] : !mo.tensor<[8], si64>

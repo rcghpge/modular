@@ -12,7 +12,7 @@
 // CHECK-LABEL: mo.graph @matmul_two_adds
 // CHECK:       %[[OUT:.*]]:2 = map.iter.opaque
 // CHECK:       outputs (%[[O0:.*]] : !mo.tensor<[8, 8], f32>, %[[O1:.*]] : !mo.tensor<[8, 8], f32>)
-// CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP0:.*]] = %[[O0]] : {{.*}}, %[[CAPZ:.*]] = %{{.*}}, %[[CAPW:.*]] = %{{.*}}, %[[CAP1:.*]] = %[[O1]] : !mo.tensor<[8, 8], f32>)
+// CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP0:.*]] = %[[O0]] : {{.*}}, %[[CAPZ:.*]] = %{{.*}}, %[[CAPW:.*]] = %{{.*}}, %[[CAP1:.*]] = %[[O1]] : !mo.tensor<[8, 8], f32>}
 // CHECK-NEXT:  %[[ZV:.*]] = map.load %[[CAPZ]]
 // CHECK-NEXT:  %[[ADD0:.*]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[VAL]], %[[ZV]])
 // CHECK-NEXT:  %[[WV:.*]] = map.load %[[CAPW]]
@@ -66,7 +66,7 @@ mo.graph @matmul_three_adds(
 // CHECK-LABEL: mo.graph @matmul_add_and_cast
 // CHECK:       %[[OUT:.*]]:2 = map.iter.opaque
 // CHECK:       outputs (%[[O0:.*]] : !mo.tensor<[2, 2], f32>, %[[O1:.*]] : !mo.tensor<[2, 2], si32>)
-// CHECK-NEXT:  map.iter.epilogue (%[[VAL:.*]] : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP0:.*]] = %[[O0]] : {{.*}}, %{{.*}}, %[[CAP1:.*]] = %[[O1]] : !mo.tensor<[2, 2], si32>)
+// CHECK-NEXT:  map.iter.epilogue (%[[VAL:.*]] : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP0:.*]] = %[[O0]] : {{.*}}, %{{.*}}, %[[CAP1:.*]] = %[[O1]] : !mo.tensor<[2, 2], si32>}
 // CHECK:       map.store %[[CAP0]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], f32>
 // CHECK:       map.store %[[CAP1]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], si32>
 // CHECK-NOT:   map.iter.foreach
@@ -88,7 +88,7 @@ mo.graph @matmul_add_and_cast(
 // CHECK-LABEL: mo.graph @matmul_two_adds_dynamic<N>
 // CHECK:       %[[OUT:.*]]:2 = map.iter.opaque
 // CHECK:       outputs (%[[O0:.*]] : !mo.tensor<[N, N], f32>, %[[O1:.*]] : !mo.tensor<[N, N], f32>)
-// CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP0:.*]] = %[[O0]] : {{.*}}, %{{.*}}, %{{.*}}, %[[CAP1:.*]] = %[[O1]] : !mo.tensor<[N, N], f32>)
+// CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP0:.*]] = %[[O0]] : {{.*}}, %{{.*}}, %{{.*}}, %[[CAP1:.*]] = %[[O1]] : !mo.tensor<[N, N], f32>}
 // CHECK:       map.store %[[CAP0]]
 // CHECK:       map.store %[[CAP1]]
 // CHECK:       map.call.opaque @{{.*}}.Matmul{{.*}} outputs(%[[EPI]])

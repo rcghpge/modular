@@ -28,8 +28,7 @@
 // CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output{{.*}} : !mogg.tensor
 // CHECK-NEXT:    [[TRANS:%[^ ]+]] = mogg.tensor.create.transpose([[IT]], [[PT]]) {{.*}}outShape = #mosh<ape[3, 2]>{{.*}}staticPermutations = array<i64: 1, 0>{{.*}} : !mogg.tensor
 // CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 2]> : !mosh.ape>
-// CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[TRANS]] : !mogg.tensor, !mogg.tensor) device = "cpu" {
-// CHECK-NEXT:    ^bb0([[OUT:%[^ :,]+]]: !mogg.tensor, [[TRANSARG:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) ([[IDX:%[^ :,]+]] : !map.index<2>) capturing {[[OUT:%[^ :,]+]] = [[OT]] : !mogg.tensor, [[TRANSARG:%[^ :,]+]] = [[TRANS]] : !mogg.tensor} device = "cpu" {
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[TRANSARG]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK-NEXT:      mogg.tensor.store [[OUT]]{{\[}}[[IDX]]] = [[VAL]] : !mogg.tensor, !map.index<2>, f32
 // CHECK-NEXT:    }

@@ -14,7 +14,7 @@ mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", 
 #innerSpec = #map.index.slice.spec<[4, 16] -> [2, 16], starts = [1, 0], stops = [4, 16], steps = [2, 1]>
 
 // CHECK-LABEL: func.func @slice_select_step
-// CHECK:       map.iter.epilogue (%[[VAL:[a-z0-9_]+]] : f32, %[[IDX:[a-z0-9_]+]] : !map.index<2>) capturing (%[[FULL:[a-z0-9_]+]] = %{{.*}} : !mo.tensor<[8, 16], f32>, %[[SLICE:[a-z0-9_]+]] = %{{.*}} : !mo.tensor<[4, 16], f32>) {
+// CHECK:       map.iter.epilogue (%[[VAL:[a-z0-9_]+]] : f32, %[[IDX:[a-z0-9_]+]] : !map.index<2>) capturing {%[[FULL:[a-z0-9_]+]] = %{{.*}} : !mo.tensor<[8, 16], f32>, %[[SLICE:[a-z0-9_]+]] = %{{.*}} : !mo.tensor<[4, 16], f32>} {
 // CHECK-NEXT:    map.store %[[FULL]][%[[IDX]]] = %[[VAL]] : !mo.tensor<[8, 16], f32>
 // CHECK-NEXT:    map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%[[IDX]]) -> (%[[IOUT:[a-z0-9_]+]]) : !map.index<2> {
 // CHECK-NEXT:      map.store %[[SLICE]][%[[IOUT]]] = %[[VAL]] : !mo.tensor<[4, 16], f32>
@@ -22,7 +22,7 @@ mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", 
 // CHECK-NEXT:  } : !mo.tensor<[8, 16], f32>
 func.func @slice_select_step(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[4, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       map.index.slice.select<#stepSpec> (%idx) -> (%iout) : !map.index<2> {
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
@@ -40,7 +40,7 @@ func.func @slice_select_step(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16
 // CHECK-NEXT:    map.store %{{.*}}[%[[IOUT]]] = %{{.*}} : !mo.tensor<[4, 16], f32>
 func.func @slice_select_window(%X: !mo.tensor<[N, 16], f32>) -> (!mo.tensor<[N, 16], f32>, !mo.tensor<[4, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[N, 16], f32>) outputs (%full : !mo.tensor<[N, 16], f32>, %slice : !mo.tensor<[4, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[N, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[N, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[N, 16], f32>
       map.index.slice.select<#windowSpec> (%idx) -> (%iout) : !map.index<2> {
         map.store %caps[%iout] = %val : !mo.tensor<[4, 16], f32>
@@ -64,7 +64,7 @@ func.func @slice_select_window(%X: !mo.tensor<[N, 16], f32>) -> (!mo.tensor<[N, 
 // CHECK-NEXT:  }
 func.func @slice_select_nested(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[2, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[2, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[2, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[2, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       map.index.slice.select<#stepSpec> (%idx) -> (%mid) : !map.index<2> {
         map.index.slice.select<#innerSpec> (%mid) -> (%iout) : !map.index<2> {

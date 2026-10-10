@@ -13,7 +13,7 @@
 // CHECK:       map.iter.opaque
 // CHECK:       inputs (%{{.*}}: !mo.tensor<[4], f32>, %[[BUF:[a-zA-Z0-9_]+]]: !mo.buffer<[4], f32>)
 // CHECK:       map.iter.epilogue
-// CHECK-SAME:  %[[BCAP:[a-zA-Z0-9_]+]] = %[[BUF]] : !mo.buffer<[4], f32>)
+// CHECK-SAME:  %[[BCAP:[a-zA-Z0-9_]+]] = %[[BUF]] : !mo.buffer<[4], f32>}
 // CHECK:       map.call.elementwise @{{.*}}MutableStore
 // CHECK:       map.store %[[BCAP]]
 // CHECK:       map.call.opaque @{{.*}}MapLowerOneFusedOutput
@@ -38,7 +38,7 @@ mo.graph @mutable_store_consumer_fused(
 // CHECK-LABEL: mo.graph @chain_consumed_not_fused
 // The kernel keeps its own output and its plain store epilogue.
 // CHECK:       map.iter.epilogue
-// CHECK-SAME:  %[[CAP:[a-zA-Z0-9_]+]] = %[[OUT:[a-zA-Z0-9_]+]] : !mo.tensor<[4], f32>)
+// CHECK-SAME:  %[[CAP:[a-zA-Z0-9_]+]] = %[[OUT:[a-zA-Z0-9_]+]] : !mo.tensor<[4], f32>}
 // CHECK:       map.store %[[CAP]][%{{.*}}] = %{{.*}} : !mo.tensor<[4], f32>
 // The store stays a separate kernel, writing the buffer itself.
 // CHECK:       map.iter.foreach

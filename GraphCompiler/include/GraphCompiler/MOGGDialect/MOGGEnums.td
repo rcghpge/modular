@@ -48,6 +48,8 @@ def MOGG_ABIKind : I32EnumAttr<"ABIKind", "ABI kind", [
   I32EnumAttrCase<"MOGG", 2, "MOGG">,
 ]> {
   let cppNamespace = "::M::MOGG";
+  // Use `MOGG_ABIKindAttr` (MOGGAttrs.td) rather than a bare `i32`.
+  let genSpecializedAttr = 0;
 }
 
 // Role a trait-bound tensor argument plays in the graph signature. Kept in

@@ -10,7 +10,7 @@
 // CHECK-LABEL: mo.graph @matmul_result_escapes
 // CHECK:       %[[OUT:.*]]:2 = map.iter.opaque
 // CHECK:       outputs (%[[O0:[a-z0-9]+]] : !mo.tensor<[8, 8], f32>, %[[O1:[a-z0-9]+]] : !mo.tensor<[8, 8], f32>)
-// CHECK:       %[[EPI:[a-z0-9]+]] = map.iter.epilogue (%[[VAL:[a-z0-9]+]] : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP0:[a-z0-9]+]] = %[[O0]] : {{.*}}, %[[CAPZ:[a-z0-9]+]] = %{{.*}}, %[[CAP1:[a-z0-9]+]] = %[[O1]] : !mo.tensor<[8, 8], f32>)
+// CHECK:       %[[EPI:[a-z0-9]+]] = map.iter.epilogue (%[[VAL:[a-z0-9]+]] : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP0:[a-z0-9]+]] = %[[O0]] : {{.*}}, %[[CAPZ:[a-z0-9]+]] = %{{.*}}, %[[CAP1:[a-z0-9]+]] = %[[O1]] : !mo.tensor<[8, 8], f32>}
 // The producer's own store survives -- `%mm` is still an output of the graph.
 // CHECK-NEXT:  map.store %[[CAP0]][%{{.*}}] = %[[VAL]]
 // CHECK-NEXT:  %[[ZV:[a-z0-9]+]] = map.load %[[CAPZ]]

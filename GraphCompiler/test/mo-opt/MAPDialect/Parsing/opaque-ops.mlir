@@ -29,7 +29,7 @@ func.func @index_type_roundtrip(%i: !map.index<3>) -> !map.index<3> {
 // CHECK: %[[MM:.*]] = map.iter.opaque
 // CHECK: inputs (%[[A:.*]]: !mo.tensor<[128, 256], f32>, %[[B:.*]]: !mo.tensor<[256, 512], f32>)
 // CHECK: outputs (%[[OUT:.*]] : !mo.tensor<[128, 512], f32>) {
-// CHECK:   %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing (%[[CAP:.*]] = %[[OUT]] : !mo.tensor<[128, 512], f32>) {
+// CHECK:   %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing {%[[CAP:.*]] = %[[OUT]] : !mo.tensor<[128, 512], f32>} {
 // CHECK:     map.store %[[CAP]][%[[IDX]]] = %[[VAL]] : !mo.tensor<[128, 512], f32>
 // CHECK:   } : !mo.tensor<[128, 512], f32>
 // CHECK:   map.call.opaque @kernels.matmul[packed_b = false, transpose_b = false] inputs(%[[A]], %[[B]]) outputs(%[[EPI]]) kernelName = "mo.matmul" : (!mo.tensor<[128, 256], f32>, !mo.tensor<[256, 512], f32>) -> !mo.tensor<[128, 512], f32>
@@ -38,7 +38,7 @@ func.func @index_type_roundtrip(%i: !map.index<3>) -> !map.index<3> {
 // CHECK: return %[[MM]]
 func.func @opaque_matmul(%A: !mo.tensor<[128, 256], f32>, %B: !mo.tensor<[256, 512], f32>) -> !mo.tensor<[128, 512], f32> {
   %mm = map.iter.opaque inputs (%A : !mo.tensor<[128, 256], f32>, %B : !mo.tensor<[256, 512], f32>) outputs (%out : !mo.tensor<[128, 512], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%cap = %out : !mo.tensor<[128, 512], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%cap = %out : !mo.tensor<[128, 512], f32>} {
       map.store %cap[%idx] = %val : !mo.tensor<[128, 512], f32>
     } : !mo.tensor<[128, 512], f32>
     map.call.opaque @kernels.matmul[packed_b = false, transpose_b = false] inputs (%A, %B) outputs (%epi) kernelName = "mo.matmul" : (!mo.tensor<[128, 256], f32>, !mo.tensor<[256, 512], f32>) -> (!mo.tensor<[128, 512], f32>)
@@ -54,14 +54,14 @@ func.func @opaque_matmul(%A: !mo.tensor<[128, 256], f32>, %B: !mo.tensor<[256, 5
 // CHECK: map.iter.opaque
 // CHECK: inputs (%[[X:.*]]: !mo.tensor<[2, 3, 4], f32>)
 // CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 3, 4], f32>) {
-// CHECK:   map.iter.epilogue (%[[V:.*]] : f32, %[[I:.*]] : !map.index<3>) capturing (%[[C:.*]] = %[[O]] : !mo.tensor<[2, 3, 4], f32>) {
+// CHECK:   map.iter.epilogue (%[[V:.*]] : f32, %[[I:.*]] : !map.index<3>) capturing {%[[C:.*]] = %[[O]] : !mo.tensor<[2, 3, 4], f32>} {
 // CHECK:     map.store %[[C]][%[[I]]] = %[[V]] : !mo.tensor<[2, 3, 4], f32>
 // CHECK:   } : !mo.tensor<[2, 3, 4], f32>
 // CHECK:   map.call.opaque @kernels.relu[] inputs(%[[X]]) outputs(%{{.*}}) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f32>
 // CHECK:   map.yield %[[O]] : !mo.tensor<[2, 3, 4], f32>
 func.func @opaque_unary(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f32> {
   %y = map.iter.opaque inputs (%X : !mo.tensor<[2, 3, 4], f32>) outputs (%out : !mo.tensor<[2, 3, 4], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<3>) capturing (%cap = %out : !mo.tensor<[2, 3, 4], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<3>) capturing {%cap = %out : !mo.tensor<[2, 3, 4], f32>} {
       map.store %cap[%idx] = %val : !mo.tensor<[2, 3, 4], f32>
     } : !mo.tensor<[2, 3, 4], f32>
     map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)
@@ -94,22 +94,22 @@ func.func @opaque_no_yield(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 
 // CHECK: map.iter.opaque
 // CHECK: inputs (%[[X:.*]]: !mo.tensor<[2, 3, 4], f32>)
 // CHECK: outputs (%[[O:.*]] : !mo.tensor<[2, 3, 4], f32>) {
-// CHECK:   %[[PRO:.*]] = map.iter.prologue (%[[PI:.*]] : !map.index<3>) capturing (%[[PC:.*]] = %[[X]] : !mo.tensor<[2, 3, 4], f32>) {
+// CHECK:   %[[PRO:.*]] = map.iter.prologue (%[[PI:.*]] : !map.index<3>) capturing {%[[PC:.*]] = %[[X]] : !mo.tensor<[2, 3, 4], f32>} {
 // CHECK:     %[[PV:.*]] = map.load %[[PC]][%[[PI]]] : !mo.tensor<[2, 3, 4], f32>
 // CHECK:     map.yield %[[PV]] : f32
 // CHECK:   } : !mo.tensor<[2, 3, 4], f32>
-// CHECK:   %[[EPI:.*]] = map.iter.epilogue (%[[V:.*]] : f32, %[[I:.*]] : !map.index<3>) capturing (%[[C:.*]] = %[[O]] : !mo.tensor<[2, 3, 4], f32>) {
+// CHECK:   %[[EPI:.*]] = map.iter.epilogue (%[[V:.*]] : f32, %[[I:.*]] : !map.index<3>) capturing {%[[C:.*]] = %[[O]] : !mo.tensor<[2, 3, 4], f32>} {
 // CHECK:     map.store %[[C]][%[[I]]] = %[[V]] : !mo.tensor<[2, 3, 4], f32>
 // CHECK:   } : !mo.tensor<[2, 3, 4], f32>
 // CHECK:   map.call.opaque @kernels.relu[] inputs(%[[PRO]]) outputs(%[[EPI]]) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f32>
 // CHECK:   map.yield %[[O]] : !mo.tensor<[2, 3, 4], f32>
 func.func @opaque_prologue_and_epilogue(%X: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[2, 3, 4], f32> {
   %y = map.iter.opaque inputs (%X : !mo.tensor<[2, 3, 4], f32>) outputs (%out : !mo.tensor<[2, 3, 4], f32>) {
-    %pro = map.iter.prologue (%pidx : !map.index<3>) capturing (%pcap = %X : !mo.tensor<[2, 3, 4], f32>) {
+    %pro = map.iter.prologue (%pidx : !map.index<3>) capturing {%pcap = %X : !mo.tensor<[2, 3, 4], f32>} {
       %pval = map.load %pcap[%pidx] : !mo.tensor<[2, 3, 4], f32>
       map.yield %pval : f32
     } : !mo.tensor<[2, 3, 4], f32>
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<3>) capturing (%cap = %out : !mo.tensor<[2, 3, 4], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<3>) capturing {%cap = %out : !mo.tensor<[2, 3, 4], f32>} {
       map.store %cap[%idx] = %val : !mo.tensor<[2, 3, 4], f32>
     } : !mo.tensor<[2, 3, 4], f32>
     map.call.opaque @kernels.relu[] inputs (%pro) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[2, 3, 4], f32>) -> (!mo.tensor<[2, 3, 4], f32>)

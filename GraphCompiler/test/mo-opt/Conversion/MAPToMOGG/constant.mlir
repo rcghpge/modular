@@ -19,8 +19,7 @@
 // CHECK-NEXT:   [[CSH:%[^ ]+]] = mogg.shape.create()
 // CHECK-NEXT:   [[CT:%[^ ]+]] = mogg.tensor.create([[CP]], [[CSH]]) {{.*}}io = Input, mut = false
 // CHECK-NEXT:   [[LSH:%[^ ]+]] = mogg.shape.create()
-// CHECK-NEXT:   mogg.call.foreach {{.*}} capturing([[CT]], [[OT]] : !mogg.tensor, !mogg.tensor)
-// CHECK-NEXT:   ^bb0([[CIN:%[^ :,]+]]: !mogg.tensor, [[OUT:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:   mogg.call.foreach {{.*}} ([[IDX:%[^ :,]+]] : !map.index<2>) capturing {[[CIN:%[^ :,]+]] = [[CT]] : !mogg.tensor, [[OUT:%[^ :,]+]] = [[OT]] : !mogg.tensor}
 // CHECK-NEXT:     [[CV:%[^ ]+]] = mogg.tensor.load [[CIN]][[[IDX]]]
 // CHECK-NEXT:     mogg.tensor.store [[OUT]][[[IDX]]] = [[CV]]
 mo.graph @constant() -> !mo.tensor<[2, 2], f32> {
@@ -30,7 +29,7 @@ mo.graph @constant() -> !mo.tensor<[2, 2], f32> {
     %c = map.constant #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32> : !mo.tensor<[2, 2], f32>
     map.iter.foreach.body<[2, 2]>
         index (%idx: !map.index<2>)
-        capturing (%c0 = %c : !mo.tensor<[2, 2], f32>, %out0 = %out : !mo.tensor<[2, 2], f32>) {
+        capturing {%c0 = %c : !mo.tensor<[2, 2], f32>, %out0 = %out : !mo.tensor<[2, 2], f32>} {
       %cv = map.load %c0[%idx] : !mo.tensor<[2, 2], f32>
       map.store %out0[%idx] = %cv : !mo.tensor<[2, 2], f32>
     }

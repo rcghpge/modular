@@ -128,8 +128,7 @@ func.func @tryUnusedResult(%arg0: index) -> index {
   %0:2 = mogg.try {
     %a = mogg.async.pack(%arg0) : index
     mogg.yield %a, %a : !mogg.async<index>, !mogg.async<index>
-  } except {
-  ^bb0(%err: !mogg.error):
+  } except(%err) {
     %e0 = mogg.async.error %err : !mogg.async<index>
     %e1 = mogg.async.error %err : !mogg.async<index>
     mogg.yield %e0, %e1 : !mogg.async<index>, !mogg.async<index>
@@ -141,7 +140,7 @@ func.func @tryUnusedResult(%arg0: index) -> index {
 // CHECK-LABEL: func.func @tryUnusedResult
 // CHECK:       %[[TRY:.*]] = mogg.try {
 // CHECK:         mogg.yield %{{[^,]*}} : !mogg.async<index>
-// CHECK:       } except {
+// CHECK:       } except(%{{[^)]+}}) {
 // CHECK:         %[[ERR:.*]] = mogg.async.error
 // CHECK-NOT:     mogg.async.error
 // CHECK:         mogg.yield %[[ERR]] : !mogg.async<index>

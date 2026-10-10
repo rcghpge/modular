@@ -7,12 +7,12 @@
 // CHECK: mogg.shape.create(%[[D]])
 // CHECK-SAME: <shape = #mosh<ape[dyn, 4]> : !mosh.ape>
 // CHECK-SAME: : !mogg.dim<batch>
-// CHECK: %[[PRO:.*]] = mogg.tensor.create.prologue %{{.*}} capturing(
-// CHECK-SAME: %[[C0:.*]], %[[C1:.*]] : !mogg.tensor, !mogg.tensor)
+// CHECK: %[[PRO:[^ ]+]] = mogg.tensor.create.prologue %{{[^ ]+}}
+// CHECK-SAME: (%[[I:[^ ]+]] : !map.index<2>)
+// CHECK-SAME: capturing {%[[A0:[^ ]+]] = %[[C0:[^ ]+]] : !mogg.tensor,
+// CHECK-SAME: %[[A1:[^ ]+]] = %[[C1:[^ ]+]] : !mogg.tensor}
 // CHECK-SAME: device = "cpu", elementType = f32,
 // CHECK-SAME: io = Input, mut = false {
-// CHECK: ^bb0(%[[I:.*]]: !map.index<2>, %[[A0:.*]]: !mogg.tensor,
-// CHECK-SAME: %[[A1:.*]]: !mogg.tensor):
 // CHECK: %[[L0:.*]] = mogg.tensor.load %[[A0]][%[[I]]]
 // CHECK: %[[L1:.*]] = mogg.tensor.load %[[A1]][%[[I]]]
 // CHECK: %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add(%[[L0]], %[[L1]])

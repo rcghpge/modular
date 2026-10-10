@@ -19,8 +19,7 @@
 // CHECK: context (%[[CTX:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK: %[[OT:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK: %[[ESH:.*]] = mogg.shape.create()
-// CHECK: %[[EPI:.*]] = mogg.tensor.create.epilogue %[[ESH]] capturing(%[[OT]] : !mogg.tensor) ptr %{{.*}} device = "cpu",{{.*}}mut = true {
-// CHECK: ^bb0(%[[V:.*]]: f32, %[[I:.*]]: !map.index<2>, %[[CAP:.*]]: !mogg.tensor):
+// CHECK: %[[EPI:[^ ,)]+]] = mogg.tensor.create.epilogue %[[ESH]] (%[[V:[^ ,)]+]] : f32, %[[I:[^ ,)]+]] : !map.index<2>) capturing {%[[CAP:[^ ,)]+]] = %[[OT]] : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {
 // CHECK:   mogg.tensor.store %[[CAP]][%[[I]]] = %[[V]] : !mogg.tensor, !map.index<2>, f32
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOneFusedOutput inputs(%{{.*}} : !mogg.tensor) outputs(%[[EPI]] : !mogg.tensor) context(%[[CTX]] : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
@@ -34,9 +33,9 @@ mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK: %[[OT0:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK: %[[OT1:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK: %[[ESH0:.*]] = mogg.shape.create()
-// CHECK: %[[E0:.*]] = mogg.tensor.create.epilogue %[[ESH0]] capturing(%[[OT0]] : !mogg.tensor) ptr %{{.*}} device = "cpu",{{.*}}mut = true {
+// CHECK: %[[E0:.*]] = mogg.tensor.create.epilogue %[[ESH0]] ({{[^)]*}}) capturing {%{{[^ ]+}} = %[[OT0]] : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {
 // CHECK: %[[ESH1:.*]] = mogg.shape.create()
-// CHECK: %[[E1:.*]] = mogg.tensor.create.epilogue %[[ESH1]] capturing(%[[OT1]] : !mogg.tensor) ptr %{{.*}} device = "cpu",{{.*}}mut = true {
+// CHECK: %[[E1:.*]] = mogg.tensor.create.epilogue %[[ESH1]] ({{[^)]*}}) capturing {%{{[^ ]+}} = %[[OT1]] : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {
 // CHECK: mogg.call.opaque @{{.*}}MapLowerTwoFusedOutputs inputs(%{{.*}} : !mogg.tensor) outputs(%[[E0]], %[[E1]] : !mogg.tensor, !mogg.tensor) context(%{{.*}} : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
@@ -51,7 +50,7 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !m
 // CHECK: mogg.kernel (%{{.*}}, %{{.*}} : !mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
 // CHECK: %[[OT:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK: %[[ESH:.*]] = mogg.shape.create()
-// CHECK: %[[EPI:.*]] = mogg.tensor.create.epilogue %[[ESH]] capturing(%[[OT]] : !mogg.tensor) ptr %{{.*}} device = "cpu",{{.*}}mut = true {
+// CHECK: %[[EPI:.*]] = mogg.tensor.create.epilogue %[[ESH]] ({{[^)]*}}) capturing {%{{[^ ]+}} = %[[OT]] : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {
 // CHECK: mogg.call.opaque @{{.*}}MapLowerTwoInputsOneFusedOutput inputs(%{{.*}}, %{{.*}} : !mogg.tensor, !mogg.tensor) outputs(%[[EPI]] : !mogg.tensor) context(%{{.*}} : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @two_inputs_one_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
@@ -61,7 +60,7 @@ mo.graph @two_inputs_one_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2
 
 // Mixed: first output fused (epilogue tensor), second plain (raw output tensor).
 // CHECK-LABEL: mo.graph @two_partial
-// CHECK: %[[EPI:.*]] = mogg.tensor.create.epilogue %{{.*}} capturing(%{{.*}} : !mogg.tensor) ptr %{{.*}} device = "cpu",{{.*}}mut = true {
+// CHECK: %[[EPI:.*]] = mogg.tensor.create.epilogue %{{.*}} ({{[^)]*}}) capturing {%{{[^ ]+}} = %{{.*}} : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedOutputs inputs(%{{.*}} : !mogg.tensor) outputs(%[[EPI]], %{{.*}} : !mogg.tensor, !mogg.tensor) context(%{{.*}} : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @two_partial(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {

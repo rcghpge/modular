@@ -15,7 +15,7 @@ mogg.kernel.decl @kernels.consumer registration = "kernels.consumer" device_info
 // CHECK:       %[[RES:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[A]]: !mo.tensor<[4], f32>, %[[B]]: !mo.tensor<[4], f32>)
 // CHECK-NEXT:  outputs (%[[O:.*]] : !mo.tensor<[4], f32>) {
-// CHECK-NEXT:  %[[PRO:.*]] = map.iter.prologue (%[[PI:.*]] : !map.index<1>) capturing (%[[CA:.*]] = %[[A]] : !mo.tensor<[4], f32>, %[[CB:.*]] = %[[B]] : !mo.tensor<[4], f32>)
+// CHECK-NEXT:  %[[PRO:.*]] = map.iter.prologue (%[[PI:.*]] : !map.index<1>) capturing {%[[CA:.*]] = %[[A]] : !mo.tensor<[4], f32>, %[[CB:.*]] = %[[B]] : !mo.tensor<[4], f32>}
 // CHECK-NEXT:  %[[AV:.*]] = map.load %[[CA]][%[[PI]]] : !mo.tensor<[4], f32>
 // CHECK-NEXT:  %[[BV:.*]] = map.load %[[CB]][%[[PI]]] : !mo.tensor<[4], f32>
 // CHECK-NEXT:  %[[SUM:.*]] = map.call.elementwise @builtin_kernels.elementwise.Add(%[[PI]], %[[AV]], %[[BV]]) : !map.index<1>, f32, f32 -> f32
@@ -41,7 +41,7 @@ mo.graph @fuse_add_into_prologue(
     map.store %ewout[%i] = %sum : !mo.tensor<[4], f32>
   }
   %res = map.iter.opaque inputs (%ew : !mo.tensor<[4], f32>) outputs (%o : !mo.tensor<[4], f32>) {
-    %pro = map.iter.prologue (%pi : !map.index<1>) capturing (%pc = %ew : !mo.tensor<[4], f32>) {
+    %pro = map.iter.prologue (%pi : !map.index<1>) capturing {%pc = %ew : !mo.tensor<[4], f32>} {
       %pv = map.load %pc[%pi] : !mo.tensor<[4], f32>
       map.yield %pv : f32
     } : !mo.tensor<[4], f32>
@@ -55,7 +55,7 @@ mo.graph @fuse_add_into_prologue(
 // CHECK-NOT:   map.iter.foreach
 // CHECK:       %[[DRES:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[DA]]: !mo.tensor<[D0], f32>, %[[DB]]: !mo.tensor<[D0], f32>)
-// CHECK:       map.iter.prologue (%[[DPI:.*]] : !map.index<1>) capturing (%[[DCA:.*]] = %[[DA]] : !mo.tensor<[D0], f32>, %[[DCB:.*]] = %[[DB]] : !mo.tensor<[D0], f32>)
+// CHECK:       map.iter.prologue (%[[DPI:.*]] : !map.index<1>) capturing {%[[DCA:.*]] = %[[DA]] : !mo.tensor<[D0], f32>, %[[DCB:.*]] = %[[DB]] : !mo.tensor<[D0], f32>}
 // CHECK:       map.call.elementwise @builtin_kernels.elementwise.Add({{.*}}) : !map.index<1>, f32, f32 -> f32
 // CHECK:       map.yield
 // CHECK:       mo.output %[[DRES]] : !mo.tensor<[D0], f32>
@@ -76,7 +76,7 @@ mo.graph @fuse_add_into_prologue_dynamic<D0>(
     map.store %ewout[%i] = %sum : !mo.tensor<[D0], f32>
   }
   %res = map.iter.opaque inputs (%ew : !mo.tensor<[D0], f32>) outputs (%o : !mo.tensor<[D0], f32>) {
-    %pro = map.iter.prologue (%pi : !map.index<1>) capturing (%pc = %ew : !mo.tensor<[D0], f32>) {
+    %pro = map.iter.prologue (%pi : !map.index<1>) capturing {%pc = %ew : !mo.tensor<[D0], f32>} {
       %pv = map.load %pc[%pi] : !mo.tensor<[D0], f32>
       map.yield %pv : f32
     } : !mo.tensor<[D0], f32>
@@ -113,7 +113,7 @@ mo.graph @no_fuse_multi_use(
     map.store %ewout[%i] = %sum : !mo.tensor<[4], f32>
   }
   %res = map.iter.opaque inputs (%ew : !mo.tensor<[4], f32>) outputs (%o : !mo.tensor<[4], f32>) {
-    %pro = map.iter.prologue (%pi : !map.index<1>) capturing (%pc = %ew : !mo.tensor<[4], f32>) {
+    %pro = map.iter.prologue (%pi : !map.index<1>) capturing {%pc = %ew : !mo.tensor<[4], f32>} {
       %pv = map.load %pc[%pi] : !mo.tensor<[4], f32>
       map.yield %pv : f32
     } : !mo.tensor<[4], f32>

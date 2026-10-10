@@ -7,12 +7,11 @@
 mogg.primitive.decl @foreach_impl registration = "mogg.call.foreach" function = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
 
 // expected-error @below {{device-graph recording stub generation: expected the producer launch context to be an argument of the kernel stub}}
-mogg.kernel.stub @stub_1 (%p: !mogg.pointer) fusionInfo = "test.k":1 attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true, sym_visibility = "private"} {
+mogg.kernel.stub @stub_1 private (%p: !mogg.pointer) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
   %ctx = "test.make_ctx"() : () -> !mogg.context
   %shape = "test.shape"() : () -> !mogg.shape
   %t = "test.tensor"() : () -> !mogg.tensor
-  mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) capturing(%t : !mogg.tensor) device = "gpu" {
-  ^bb0(%a: !mogg.tensor, %i: !map.index<2>):
+  mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) (%i : !map.index<2>) capturing {%a = %t : !mogg.tensor} device = "gpu" {
   }
   mogg.output
 }

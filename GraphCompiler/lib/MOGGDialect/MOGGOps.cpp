@@ -18,6 +18,7 @@
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
+#include "GraphCompiler/MOGGDialect/Support/AsmSyntax.h"
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoBuilder.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
@@ -140,6 +141,36 @@ struct DenseFusionRenderer final : ElementwiseBodyRenderer {
   StringRef simdWidthParamName() const override { return "width"; }
 };
 } // namespace
+
+// `except(%err) {...}`: the error is the except region's only argument, and
+// its type is always `!mogg.error`.
+static ParseResult parseExceptRegion(OpAsmParser &parser, Region &region) {
+  SmallVector<OpAsmParser::Argument> args;
+  if (parser.parseKeyword("except") ||
+      parser.parseArgumentList(args, OpAsmParser::Delimiter::OptionalParen))
+    return failure();
+  for (OpAsmParser::Argument &arg : args)
+    arg.type = ErrorType::get(parser.getContext());
+  return parser.parseRegion(region, args);
+}
+
+static void printExceptRegion(OpAsmPrinter &p, Operation *, Region &region) {
+  p << "except";
+  if (!region.empty() && region.getNumArguments() != 0) {
+    p << "(";
+    llvm::interleaveComma(region.getArguments(), p);
+    p << ")";
+  }
+  p << " ";
+  p.printRegion(region, /*printEntryBlockArgs=*/false);
+}
+
+void TryOp::getAsmBlockArgumentNames(Region &region,
+                                     OpAsmSetValueNameFn setNameFn) {
+  if (&region == &getExceptRegion() && !region.empty())
+    for (BlockArgument arg : region.getArguments())
+      setNameFn(arg, "err");
+}
 
 static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim) {
   p << '<';
@@ -2299,6 +2330,340 @@ emitMapFusionFunctor(EmitMojoState &state, Region &region,
   return state.builder.var(structNameVal(comptimeArgs, instanceArgs));
 }
 
+//===----------------------------------------------------------------------===//
+// Fused tensor bodies: tensor.create.epilogue, tensor.create.prologue and
+// call.foreach
+//
+// Each region's arguments are leading values the kernel hands the body (the
+// value and the index), then one per capture, then one per shape capture. The
+// syntax binds every capture to its block argument by name:
+//
+//   %shape (%val : f32, %idx : !map.index<2>)
+//       capturing {%cap = %t : !mogg.tensor} shapes {%shape0 = %s} ...
+//===----------------------------------------------------------------------===//
+
+/// Parses the bare case name an op format binds `io` with, as in
+/// `io = Input`. Outside an op format the attribute prints as `#mo.io<Input>`.
+static ParseResult parseIOKind(OpAsmParser &parser, MO::IOKindAttr &io) {
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  StringRef keyword;
+  if (parser.parseKeyword(&keyword))
+    return failure();
+  std::optional<MO::IOKind> kind = MO::symbolizeIOKind(keyword);
+  if (!kind)
+    return parser.emitError(loc) << "unknown io kind '" << keyword << "'";
+  io = MO::IOKindAttr::get(parser.getContext(), *kind);
+  return success();
+}
+
+static void printIOKind(OpAsmPrinter &p, Operation *, MO::IOKindAttr io) {
+  p << MO::stringifyIOKind(io.getValue());
+}
+
+/// Parses the attributes the fused tensor creates bind, as their declarative
+/// siblings print them: `[computeOutputArg = true] [contract = <...>]
+/// device = "...", elementType = T, io = K, mut = B`. `computeOutputArg` is
+/// only accepted when `computeOutputArgName` is set.
+static ParseResult
+parseFusedTensorAttrs(OpAsmParser &parser, OperationState &result,
+                      StringAttr computeOutputArgName, StringAttr contractName,
+                      StringAttr deviceName, StringAttr elementTypeName,
+                      StringAttr ioName, StringAttr mutName) {
+  if (computeOutputArgName &&
+      succeeded(parser.parseOptionalKeyword("computeOutputArg"))) {
+    BoolAttr computeOutputArg;
+    if (parser.parseEqual() || parser.parseAttribute(computeOutputArg))
+      return failure();
+    result.addAttribute(computeOutputArgName, computeOutputArg);
+  }
+  if (succeeded(parser.parseOptionalKeyword("contract"))) {
+    TensorArgContractAttr contract;
+    if (parser.parseEqual() ||
+        parser.parseCustomAttributeWithFallback(contract))
+      return failure();
+    result.addAttribute(contractName, contract);
+  }
+  StringAttr device;
+  Type elementType;
+  MO::IOKindAttr io;
+  BoolAttr mut;
+  if (parser.parseKeyword("device") || parser.parseEqual() ||
+      parser.parseAttribute(device) || parser.parseComma() ||
+      parser.parseKeyword("elementType") || parser.parseEqual() ||
+      parser.parseType(elementType) || parser.parseComma() ||
+      parser.parseKeyword("io") || parser.parseEqual() ||
+      parseIOKind(parser, io) || parser.parseComma() ||
+      parser.parseKeyword("mut") || parser.parseEqual() ||
+      parser.parseAttribute(mut))
+    return failure();
+  result.addAttribute(deviceName, device);
+  result.addAttribute(elementTypeName, TypeAttr::get(elementType));
+  result.addAttribute(ioName, io);
+  result.addAttribute(mutName, mut);
+  return success();
+}
+
+static void printFusedTensorAttrs(OpAsmPrinter &p, bool computeOutputArg,
+                                  TensorArgContractAttr contract,
+                                  StringAttr device, Type elementType,
+                                  MO::IOKindAttr io, bool mut) {
+  if (computeOutputArg)
+    p << " computeOutputArg = true";
+  if (contract) {
+    p << " contract = ";
+    p.printStrippedAttrOrType(contract);
+  }
+  p << " device = ";
+  p.printAttribute(device);
+  p << ", elementType = " << elementType << ", io = ";
+  printIOKind(p, nullptr, io);
+  p << ", mut = " << (mut ? "true" : "false");
+}
+
+static void nameArgs(ArrayRef<BlockArgument> args, StringRef prefix,
+                     OpAsmSetValueNameFn setNameFn) {
+  for (auto [i, arg] : llvm::enumerate(args))
+    setNameFn(arg, args.size() == 1 ? prefix.str() : (prefix + Twine(i)).str());
+}
+
+static void nameLeadingArgs(ArrayRef<BlockArgument> args,
+                            ArrayRef<StringRef> names,
+                            OpAsmSetValueNameFn setNameFn) {
+  if (args.size() != names.size())
+    return;
+  for (auto [arg, name] : llvm::zip_equal(args, names))
+    setNameFn(arg, name);
+}
+
+/// Parses `(%leading...) capturing {...} shapes {...}` into `entryArgs`,
+/// ordered as the region expects them.
+static ParseResult
+parseFusedBodyArgs(OpAsmParser &parser,
+                   SmallVectorImpl<OpAsmParser::Argument> &entryArgs,
+                   SmallVectorImpl<OpAsmParser::UnresolvedOperand> &captures,
+                   SmallVectorImpl<Type> &captureTypes,
+                   SmallVectorImpl<OpAsmParser::UnresolvedOperand> &shapes) {
+  SmallVector<OpAsmParser::Argument> shapeArgs;
+  SmallVector<Type> shapeTypes;
+  if (parseLeadingArgs(parser, entryArgs) ||
+      parseBindings(parser, "capturing", entryArgs, captures, captureTypes,
+                    /*impliedType=*/Type(), /*required=*/false) ||
+      parseBindings(parser, "shapes", shapeArgs, shapes, shapeTypes,
+                    ShapeType::get(parser.getContext()), /*required=*/false))
+    return failure();
+  entryArgs.append(shapeArgs.begin(), shapeArgs.end());
+  return success();
+}
+
+static void printFusedBodyArgs(OpAsmPrinter &p, Block &body,
+                               ValueRange captures, ValueRange shapes) {
+  auto args = body.getArguments();
+  size_t numLeading = args.size() - captures.size() - shapes.size();
+  p << " ";
+  printLeadingArgs(p, args.take_front(numLeading));
+  if (!captures.empty()) {
+    p << " ";
+    printBindings(p, "capturing", captures,
+                  args.slice(numLeading, captures.size()),
+                  /*impliedType=*/Type(), /*required=*/false);
+  }
+  if (!shapes.empty()) {
+    p << " ";
+    printBindings(p, "shapes", shapes, args.take_back(shapes.size()),
+                  ShapeType::get(body.getParent()->getContext()),
+                  /*required=*/false);
+  }
+}
+
+static void nameFusedBodyArgs(Block &body, size_t numCaptures, size_t numShapes,
+                              ArrayRef<StringRef> leading,
+                              OpAsmSetValueNameFn setNameFn) {
+  auto args = body.getArguments();
+  size_t numLeading = args.size() - numCaptures - numShapes;
+  nameLeadingArgs(args.take_front(numLeading), leading, setNameFn);
+  nameArgs(args.slice(numLeading, numCaptures), "cap", setNameFn);
+  nameArgs(args.take_back(numShapes), "shape", setNameFn);
+}
+
+ParseResult TensorCreateEpilogueOp::parse(OpAsmParser &parser,
+                                          OperationState &result) {
+  MLIRContext *ctx = parser.getContext();
+  OpAsmParser::UnresolvedOperand shape, outputPtr;
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand> captures, shapes;
+  SmallVector<Type> captureTypes;
+  if (parser.parseOperand(shape) ||
+      parseFusedBodyArgs(parser, entryArgs, captures, captureTypes, shapes) ||
+      parser.parseKeyword("ptr") || parser.parseOperand(outputPtr) ||
+      parseFusedTensorAttrs(
+          parser, result, getComputeOutputArgAttrName(result.name),
+          getContractAttrName(result.name), getDeviceAttrName(result.name),
+          getElementTypeAttrName(result.name), getIoAttrName(result.name),
+          getMutAttrName(result.name)) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
+  Type shapeTy = ShapeType::get(ctx);
+  if (parser.resolveOperand(shape, shapeTy, result.operands) ||
+      parser.resolveOperands(captures, captureTypes, parser.getNameLoc(),
+                             result.operands) ||
+      parser.resolveOperands(shapes, shapeTy, result.operands) ||
+      parser.resolveOperand(outputPtr, PointerType::get(ctx), result.operands))
+    return failure();
+  result.addAttribute(getOperandSegmentSizesAttrName(result.name),
+                      parser.getBuilder().getDenseI32ArrayAttr(
+                          {1, static_cast<int32_t>(captures.size()),
+                           static_cast<int32_t>(shapes.size()), 1}));
+  result.addTypes(TensorType::get(ctx));
+  return parser.parseRegion(*result.addRegion(), entryArgs);
+}
+
+void TensorCreateEpilogueOp::print(OpAsmPrinter &p) {
+  p << " " << getShape();
+  printFusedBodyArgs(p, getBody().front(), getCaptures(), getShapeCaptures());
+  p << " ptr " << getOutputPtr();
+  printFusedTensorAttrs(p, getComputeOutputArg(), getContractAttr(),
+                        getDeviceAttr(), getElementType(), getIoAttr(),
+                        getMut());
+  p.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      {getOperandSegmentSizesAttrName().getValue(),
+       getComputeOutputArgAttrName().getValue(),
+       getContractAttrName().getValue(), getDeviceAttrName().getValue(),
+       getElementTypeAttrName().getValue(), getIoAttrName().getValue(),
+       getMutAttrName().getValue()});
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+void TensorCreateEpilogueOp::getAsmBlockArgumentNames(
+    Region &region, OpAsmSetValueNameFn setNameFn) {
+  if (!region.empty())
+    nameFusedBodyArgs(region.front(), getCaptures().size(),
+                      getShapeCaptures().size(), {"val", "idx"}, setNameFn);
+}
+
+ParseResult TensorCreatePrologueOp::parse(OpAsmParser &parser,
+                                          OperationState &result) {
+  MLIRContext *ctx = parser.getContext();
+  OpAsmParser::UnresolvedOperand shape;
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand> captures, shapes;
+  SmallVector<Type> captureTypes;
+  if (parser.parseOperand(shape) ||
+      parseFusedBodyArgs(parser, entryArgs, captures, captureTypes, shapes) ||
+      parseFusedTensorAttrs(
+          parser, result, /*computeOutputArgName=*/{},
+          getContractAttrName(result.name), getDeviceAttrName(result.name),
+          getElementTypeAttrName(result.name), getIoAttrName(result.name),
+          getMutAttrName(result.name)) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
+  Type shapeTy = ShapeType::get(ctx);
+  if (parser.resolveOperand(shape, shapeTy, result.operands) ||
+      parser.resolveOperands(captures, captureTypes, parser.getNameLoc(),
+                             result.operands) ||
+      parser.resolveOperands(shapes, shapeTy, result.operands))
+    return failure();
+  result.addAttribute(getOperandSegmentSizesAttrName(result.name),
+                      parser.getBuilder().getDenseI32ArrayAttr(
+                          {1, static_cast<int32_t>(captures.size()),
+                           static_cast<int32_t>(shapes.size())}));
+  result.addTypes(TensorType::get(ctx));
+  return parser.parseRegion(*result.addRegion(), entryArgs);
+}
+
+void TensorCreatePrologueOp::print(OpAsmPrinter &p) {
+  p << " " << getShape();
+  printFusedBodyArgs(p, getBody().front(), getCaptures(), getShapeCaptures());
+  printFusedTensorAttrs(p, /*computeOutputArg=*/false, getContractAttr(),
+                        getDeviceAttr(), getElementType(), getIoAttr(),
+                        getMut());
+  p.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      {getOperandSegmentSizesAttrName().getValue(),
+       getContractAttrName().getValue(), getDeviceAttrName().getValue(),
+       getElementTypeAttrName().getValue(), getIoAttrName().getValue(),
+       getMutAttrName().getValue()});
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+void TensorCreatePrologueOp::getAsmBlockArgumentNames(
+    Region &region, OpAsmSetValueNameFn setNameFn) {
+  if (!region.empty())
+    nameFusedBodyArgs(region.front(), getCaptures().size(),
+                      getShapeCaptures().size(), {"idx"}, setNameFn);
+}
+
+// Unlike the epilogue and prologue, the foreach body takes its captures first
+// and the index last.
+ParseResult CallForeachOp::parse(OpAsmParser &parser, OperationState &result) {
+  MLIRContext *ctx = parser.getContext();
+  FlatSymbolRefAttr callee;
+  OpAsmParser::UnresolvedOperand shape, context;
+  SmallVector<OpAsmParser::Argument> leadingArgs, entryArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand> captures;
+  SmallVector<Type> captureTypes;
+  if (parser.parseAttribute(callee, getCalleeAttrName(result.name),
+                            result.attributes) ||
+      parser.parseKeyword("shape") || parser.parseLParen() ||
+      parser.parseOperand(shape) || parser.parseRParen() ||
+      parser.parseKeyword("context") || parser.parseLParen() ||
+      parser.parseOperand(context) || parser.parseRParen() ||
+      parseLeadingArgs(parser, leadingArgs) ||
+      parseBindings(parser, "capturing", entryArgs, captures, captureTypes,
+                    /*impliedType=*/Type(), /*required=*/false))
+    return failure();
+  StringAttr device;
+  if (parser.parseKeyword("device") || parser.parseEqual() ||
+      parser.parseAttribute(device) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+  result.addAttribute(getDeviceAttrName(result.name), device);
+  entryArgs.append(leadingArgs.begin(), leadingArgs.end());
+
+  if (parser.resolveOperand(shape, ShapeType::get(ctx), result.operands) ||
+      parser.resolveOperand(context, ContextType::get(ctx), result.operands) ||
+      parser.resolveOperands(captures, captureTypes, parser.getNameLoc(),
+                             result.operands))
+    return failure();
+  return parser.parseRegion(*result.addRegion(), entryArgs);
+}
+
+void CallForeachOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printAttributeWithoutType(getCalleeAttr());
+  p << " shape(" << getShape() << ") context(" << getContext() << ") ";
+  auto args = getBody().front().getArguments();
+  size_t numCaptures = getCapturing().size();
+  printLeadingArgs(p, args.drop_front(numCaptures));
+  if (numCaptures) {
+    p << " ";
+    printBindings(p, "capturing", getCapturing(), args.take_front(numCaptures),
+                  /*impliedType=*/Type(),
+                  /*required=*/false);
+  }
+  p << " device = ";
+  p.printAttribute(getDeviceAttr());
+  p.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      {getCalleeAttrName().getValue(), getDeviceAttrName().getValue()});
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+void CallForeachOp::getAsmBlockArgumentNames(Region &region,
+                                             OpAsmSetValueNameFn setNameFn) {
+  if (region.empty())
+    return;
+  auto args = region.front().getArguments();
+  size_t numCaptures = getCapturing().size();
+  nameArgs(args.take_front(numCaptures), "cap", setNameFn);
+  nameLeadingArgs(args.drop_front(numCaptures), {"idx"}, setNameFn);
+}
+
 LogicalResult TensorCreateEpilogueOp::verify() {
   Block &body = getBody().front();
   if (body.empty())
@@ -2750,13 +3115,16 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
 // These FuncOp attributes are disallowed while parsing since they can
 // be inferred. Likewise while printing we ignore them.
 static StringRef kernelStubOpDisallowedAttrNames[] = {
-    "name", "returnType", "sym_name", "function_type", "fusionInfo"};
+    "name",          "returnType", "sym_name",
+    "function_type", "fusionInfo", "sym_visibility"};
 
 ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   StringAttr name;
   if (failed(parser.parseSymbolName(name)))
     return failure();
   state.addAttribute(getSymNameAttrName(state.name), name);
+  // Optional: without the keyword, `sym_visibility` keeps its default.
+  (void)mlir::impl::parseOptionalVisibilityKeyword(parser, state.attributes);
 
   SmallVector<Type> resTypes;
   SmallVector<OpAsmParser::Argument> args;
@@ -2807,7 +3175,7 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
 void KernelStubOp::print(OpAsmPrinter &p) {
   p << " ";
   p.printSymbolName(getSymNameAttr());
-  p << " ";
+  p << " " << getSymVisibility() << " ";
   printRegionArguments(p, getFunctionType().getResults(),
                        getBody().getArguments());
   printFusionInfo(p, *this, getFusionInfoAttr());

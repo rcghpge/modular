@@ -23,7 +23,7 @@ mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[
     %view = map.index.slice.stride<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> (%buf, %start, %stop, %step) : (!mo.buffer<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
     map.iter.foreach.body<[3, 32]>
       index (%idx: !map.index<2>)
-      capturing (%view0 = %view : !mo.tensor<[3, 32], f32>, %out0 = %out : !mo.tensor<[3, 32], f32>) {
+      capturing {%view0 = %view : !mo.tensor<[3, 32], f32>, %out0 = %out : !mo.tensor<[3, 32], f32>} {
       %val = map.load %view0[%idx] : !mo.tensor<[3, 32], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[3, 32], f32>
     }
@@ -45,7 +45,7 @@ mo.graph @sliceStrideOverTensor(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor
     %view = map.index.slice.stride<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> (%input, %start, %stop, %step) : (!mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
     map.iter.foreach.body<[3, 32]>
       index (%idx: !map.index<2>)
-      capturing (%view0 = %view : !mo.tensor<[3, 32], f32>, %out0 = %out : !mo.tensor<[3, 32], f32>) {
+      capturing {%view0 = %view : !mo.tensor<[3, 32], f32>, %out0 = %out : !mo.tensor<[3, 32], f32>} {
       %val = map.load %view0[%idx] : !mo.tensor<[3, 32], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[3, 32], f32>
     }

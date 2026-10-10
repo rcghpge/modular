@@ -58,6 +58,14 @@ def MOGG_VariadicABIAttr
 }
 
 //===----------------------------------------------------------------------===//
+// ABIKindAttr -- the calling convention of a `mogg.kernel.stub`
+//===----------------------------------------------------------------------===//
+
+def MOGG_ABIKindAttr : EnumAttr<MOGGDialect, MOGG_ABIKind, "abi"> {
+  let summary = "Calling convention of a kernel stub (see MOGG_ABIKind)";
+}
+
+//===----------------------------------------------------------------------===//
 // TensorArgContractAttr -- the trait-lane tensor-argument contract
 //===----------------------------------------------------------------------===//
 

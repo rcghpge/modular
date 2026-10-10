@@ -5,12 +5,12 @@
 // CHECK-NEXT:  %[[OUT:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[INDICES]]: !mo.tensor<[2, 2], si32>, %[[A]]: !mo.tensor<[3, 3], f32>, %[[B]]: !mo.tensor<[3, 3], f32>)
 // CHECK-NEXT:  outputs (%{{.*}} : !mo.tensor<[2, 2, 3], f32>) {
-// CHECK-NEXT:  %[[PD:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%[[CA:.*]] = %[[A]] : !mo.tensor<[3, 3], f32>, %[[CB:.*]] = %[[B]] : !mo.tensor<[3, 3], f32>)
+// CHECK-NEXT:  %[[PD:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing {%[[CA:.*]] = %[[A]] : !mo.tensor<[3, 3], f32>, %[[CB:.*]] = %[[B]] : !mo.tensor<[3, 3], f32>}
 // CHECK-NEXT:  %[[AV:.*]] = map.load %[[CA]][%{{.*}}] : !mo.tensor<[3, 3], f32>
 // CHECK-NEXT:  %[[BV:.*]] = map.load %[[CB]][%{{.*}}] : !mo.tensor<[3, 3], f32>
 // CHECK-NEXT:  %[[ADD:.*]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[AV]], %[[BV]])
 // CHECK-NEXT:  map.yield %[[ADD]] : f32
-// CHECK:       %[[PI:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%[[CI:.*]] = %[[INDICES]] : !mo.tensor<[2, 2], si32>)
+// CHECK:       %[[PI:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing {%[[CI:.*]] = %[[INDICES]] : !mo.tensor<[2, 2], si32>}
 // CHECK-NEXT:  %{{.*}} = map.load %[[CI]][%{{.*}}] : !mo.tensor<[2, 2], si32>
 // CHECK-NEXT:  map.yield
 // CHECK:       map.call.opaque @{{.*}}.Gather{{.*}} inputs(%[[PD]], %[[PI]])
@@ -31,9 +31,9 @@ mo.graph @add_gather(
 
 // CHECK-LABEL: mo.graph @add_gather_indices
 // CHECK-SAME:  (%[[DATA:.*]]: !mo.tensor<[3, 3], f32>, %[[I0:.*]]: !mo.tensor<[2, 2], si32>, %[[I1:.*]]: !mo.tensor<[2, 2], si32>)
-// CHECK:       %[[PD:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%{{.*}} = %[[DATA]] : !mo.tensor<[3, 3], f32>)
+// CHECK:       %[[PD:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing {%{{.*}} = %[[DATA]] : !mo.tensor<[3, 3], f32>}
 // CHECK-NOT:   map.call.elementwise
-// CHECK:       %[[PI:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing (%[[C0:.*]] = %[[I0]] : !mo.tensor<[2, 2], si32>, %[[C1:.*]] = %[[I1]] : !mo.tensor<[2, 2], si32>)
+// CHECK:       %[[PI:.*]] = map.iter.prologue (%{{.*}} : !map.index<2>) capturing {%[[C0:.*]] = %[[I0]] : !mo.tensor<[2, 2], si32>, %[[C1:.*]] = %[[I1]] : !mo.tensor<[2, 2], si32>}
 // CHECK:       map.call.elementwise @{{.*}}.Add(%{{.*}}) : !map.index<2>, si32, si32 -> si32
 // CHECK:       map.call.opaque @{{.*}}.Gather{{.*}} inputs(%[[PD]], %[[PI]])
 // CHECK:       #mogg.fusion_prologue<[#mogg.fusion_leaf<"mo.add"

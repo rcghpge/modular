@@ -42,15 +42,16 @@ def MO_CoordinateTransformModeAttr : EnumAttr<MODialect, MO_CoordinateTransformM
   let cppNamespace = "::M::MO";
 }
 
-def MO_IOKind : I32EnumAttr<"IOKind", "IO type of a mojo kernel operand", [
-  I32EnumAttrCase<"Unknown", 32, "Unknown">, // Can't do -1.
-  I32EnumAttrCase<"Output", 0, "Output">,
-  I32EnumAttrCase<"Input", 1, "Input">,
-  I32EnumAttrCase<"FusedInput", 2, "FusedInput">,
-  I32EnumAttrCase<"FusedOutput", 3, "FusedOutput">,
-  I32EnumAttrCase<"FusedComputeOutput", 31, "FusedComputeOutput">
-]> {
-  let cppNamespace = "::M::MO";
-}
+def MO_IOKindEnum : MO_Enum<"IOKind", "IO type of a mojo kernel operand", [
+  MO_EnumCase<"Unknown", 32>, // Can't do -1.
+  MO_EnumCase<"Output", 0>,
+  MO_EnumCase<"Input", 1>,
+  MO_EnumCase<"FusedInput", 2>,
+  MO_EnumCase<"FusedOutput", 3>,
+  MO_EnumCase<"FusedComputeOutput", 31>
+]>;
+
+// Prints as `#mo.io<Input>` rather than the case's integer.
+def MO_IOKind : EnumAttr<MODialect, MO_IOKindEnum, "io">;
 
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOENUMS_TD

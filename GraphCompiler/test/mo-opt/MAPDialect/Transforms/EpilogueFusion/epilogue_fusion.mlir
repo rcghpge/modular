@@ -5,7 +5,7 @@
 // CHECK-NEXT:  %[[OUT:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[X]]: !mo.tensor<[8, 8], f32>, %[[Y]]: !mo.tensor<[8, 8], f32>, %[[Z]]: !mo.tensor<[8, 8], f32>)
 // CHECK-NEXT:  outputs (%{{.*}} : !mo.tensor<[8, 8], f32>) {
-// CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %{{.*}} : !map.index<2>) capturing (%[[CAP0:.*]] = %{{.*}} : !mo.tensor<[8, 8], f32>, %[[CAP1:.*]] = %[[Z]] : !mo.tensor<[8, 8], f32>)
+// CHECK-NEXT:  %[[EPI:.*]] = map.iter.epilogue (%[[VAL:.*]] : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP0:.*]] = %{{.*}} : !mo.tensor<[8, 8], f32>, %[[CAP1:.*]] = %[[Z]] : !mo.tensor<[8, 8], f32>}
 // CHECK-NEXT:  %[[ZV:.*]] = map.load %[[CAP1]][%{{.*}}] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:  %[[ADD:.*]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[VAL]], %[[ZV]])
 // CHECK-NEXT:  map.store %[[CAP0]][%{{.*}}] = %[[ADD]] : !mo.tensor<[8, 8], f32>
@@ -111,7 +111,7 @@ mo.graph @no_fuse_across_blocks(
 // CHECK-LABEL: mo.graph @cast_fused
 // CHECK:      %[[DST:.*]] = map.iter.opaque
 // CHECK:        outputs (%[[OUT:.*]] : !mo.tensor<[4], si32>) {
-// CHECK-NEXT:   map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<1>) capturing (%[[CAP:.*]] = %[[OUT]] : !mo.tensor<[4], si32>)
+// CHECK-NEXT:   map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<1>) capturing {%[[CAP:.*]] = %[[OUT]] : !mo.tensor<[4], si32>}
 // CHECK-NEXT:   map.call.elementwise @{{.*}}.Cast(%[[IDX]], %[[VAL]]) : !map.index<1>, f32 -> si32
 // CHECK-NEXT:   map.store %[[CAP]][%[[IDX]]] = %{{.*}} : !mo.tensor<[4], si32>
 // CHECK:      } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"
@@ -131,7 +131,7 @@ mo.graph @cast_fused(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], si32> {
 // CHECK-LABEL: mo.graph @fuse_matmul_cast
 // CHECK:      %[[DST:.*]] = map.iter.opaque
 // CHECK:        outputs (%[[OUT:.*]] : !mo.tensor<[8, 8], si32>) {
-// CHECK-NEXT:   map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing (%[[CAP:.*]] = %[[OUT]] : !mo.tensor<[8, 8], si32>)
+// CHECK-NEXT:   map.iter.epilogue (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing {%[[CAP:.*]] = %[[OUT]] : !mo.tensor<[8, 8], si32>}
 // CHECK-NEXT:   map.call.elementwise @{{.*}}.Cast(%[[IDX]], %[[VAL]]) : !map.index<2>, f32 -> si32
 // CHECK-NEXT:   map.store %[[CAP]][%[[IDX]]] = %{{.*}} : !mo.tensor<[8, 8], si32>
 // CHECK:      map.call.opaque @{{.*}}.Matmul{{.*}} outputs(%{{.*}})
@@ -201,7 +201,7 @@ mo.graph @two_producers_one_fuses(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], 
 // CHECK:      } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"custom__map_lower_two_fused_outputs"
 // CHECK:      %{{.*}} = map.iter.opaque
 // CHECK-NEXT: inputs (%[[DST]]#1: !mo.tensor<[4], f32>, %[[DST]]#0: !mo.tensor<[4], f32>)
-// CHECK:      capturing (%[[CAP0:.*]] = %{{.*}} : !mo.tensor<[4], f32>, %[[CAP1:.*]] = %[[DST]]#0 : !mo.tensor<[4], f32>)
+// CHECK:      capturing {%[[CAP0:.*]] = %{{.*}} : !mo.tensor<[4], f32>, %[[CAP1:.*]] = %[[DST]]#0 : !mo.tensor<[4], f32>}
 // CHECK:      map.call.elementwise @builtin_kernels.elementwise.Add
 // CHECK:      map.call.opaque @{{.*}}MapLowerOneFusedOutput{{.*}}
 // CHECK:      } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"{{.*}}, #mogg.fusion_leaf<"mo.add"

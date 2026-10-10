@@ -31,7 +31,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[8, 64], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[8, 64]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ([[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[8, 64], f32>) {
+// CHECK-NEXT:        capturing {[[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[8, 64], f32>} {
 // CHECK-NEXT:      [[CST:%[^ ]+]] = map.constant.scalar 2.000000e+00 : f32 : f32
 // CHECK-NOT:       map.load
 // CHECK:           map.store [[OUT0]]{{\[}}[[IDX]]] = [[CST]] : !mo.tensor<[8, 64], f32>
@@ -42,7 +42,7 @@ mo.graph @broadcastIndexOfConstant() -> !mo.tensor<[8, 64], f32> {
       outputs (%out : !mo.tensor<[8, 64], f32>) {
     map.iter.foreach.body<[8, 64]>
         index (%idx: !map.index<2>)
-        capturing (%cst0 = %cst : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>) {
+        capturing {%cst0 = %cst : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [8, 64]>> (%idx)
           : !map.index<2> -> !map.index<0>
       %val = map.load %cst0[%idx_] : !mo.tensor<[], f32>
@@ -65,7 +65,7 @@ mo.graph @broadcastIndexOfConstant() -> !mo.tensor<[8, 64], f32> {
 // CHECK-NEXT:    outputs ([[FOUT:%[^ :,]+]] : !mo.tensor<[8, 64], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[8, 64]>
 // CHECK-NEXT:        index   ([[FIDX:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ([[FOUT0:%[^ ,]+]] = [[FOUT]] : !mo.tensor<[8, 64], f32>) {
+// CHECK-NEXT:        capturing {[[FOUT0:%[^ ,]+]] = [[FOUT]] : !mo.tensor<[8, 64], f32>} {
 // CHECK-NEXT:      [[FCST:%[^ ]+]] = map.constant.scalar 6.250000e-02 : f32 : f32
 // CHECK-NOT:       map.load
 // CHECK:           map.store [[FOUT0]]{{\[}}[[FIDX]]] = [[FCST]] : !mo.tensor<[8, 64], f32>
@@ -76,7 +76,7 @@ mo.graph @foldedMapConstant() -> !mo.tensor<[8, 64], f32> {
     %cst = map.constant #M.dense_array<6.250000e-02> : tensor<f32> : !mo.tensor<[], f32>
     map.iter.foreach.body<[8, 64]>
         index (%idx: !map.index<2>)
-        capturing (%cst0 = %cst : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>) {
+        capturing {%cst0 = %cst : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [8, 64]>> (%idx)
           : !map.index<2> -> !map.index<0>
       %val = map.load %cst0[%idx_] : !mo.tensor<[], f32>
@@ -99,7 +99,7 @@ mo.graph @foldedMapConstant() -> !mo.tensor<[8, 64], f32> {
 // CHECK-NEXT:    outputs ([[COUT:%[^ :,]+]] : !mo.tensor<[8, 64], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[8, 64]>
 // CHECK-NEXT:        index   ([[CIDX:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ([[COUT0:%[^ ,]+]] = [[COUT]] : !mo.tensor<[8, 64], f32>) {
+// CHECK-NEXT:        capturing {[[COUT0:%[^ ,]+]] = [[COUT]] : !mo.tensor<[8, 64], f32>} {
 // CHECK-NEXT:      [[CCST:%[^ ]+]] = map.constant.scalar 2.000000e+00 : f32 : f32
 // CHECK-NOT:       map.load
 // CHECK:           map.store [[COUT0]]{{\[}}[[CIDX]]] = [[CCST]] : !mo.tensor<[8, 64], f32>
@@ -110,7 +110,7 @@ mo.graph @chainedKernel(%chIn: !mo.chain) -> !mo.tensor<[8, 64], f32> {
       outputs (%out : !mo.tensor<[8, 64], f32>) {
     map.iter.foreach.body<[8, 64]>
         index (%idx: !map.index<2>)
-        capturing (%cst0 = %cst : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>) {
+        capturing {%cst0 = %cst : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [8, 64]>> (%idx)
           : !map.index<2> -> !map.index<0>
       %val = map.load %cst0[%idx_] : !mo.tensor<[], f32>
@@ -140,7 +140,7 @@ mo.graph @broadcastStrideOfConstant() -> !mo.tensor<[8, 64], f32> {
         : !mo.tensor<[1], f32> -> !mo.tensor<[8, 64], f32>
     map.iter.foreach.body<[8, 64]>
         index (%idx: !map.index<2>)
-        capturing (%out0 = %out : !mo.tensor<[8, 64], f32>, %strided0 = %strided : !mo.tensor<[8, 64], f32>) {
+        capturing {%out0 = %out : !mo.tensor<[8, 64], f32>, %strided0 = %strided : !mo.tensor<[8, 64], f32>} {
       %val = map.load %strided0[%idx] : !mo.tensor<[8, 64], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[8, 64], f32>
     }
@@ -162,7 +162,7 @@ mo.graph @integerConstant() -> !mo.tensor<[6], si32> {
       outputs (%out : !mo.tensor<[6], si32>) {
     map.iter.foreach.body<[6]>
         index (%idx: !map.index<1>)
-        capturing (%cst0 = %cst : !mo.tensor<[], si32>, %out0 = %out : !mo.tensor<[6], si32>) {
+        capturing {%cst0 = %cst : !mo.tensor<[], si32>, %out0 = %out : !mo.tensor<[6], si32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [6]>> (%idx)
           : !map.index<1> -> !map.index<0>
       %val = map.load %cst0[%idx_] : !mo.tensor<[], si32>
@@ -191,7 +191,7 @@ mo.graph @transferredConstant() -> !mo.tensor<[4], f32, gpu:0> {
       outputs (%out : !mo.tensor<[4], f32, gpu:0>) {
     map.iter.foreach.body<[4]>
         index (%idx: !map.index<1>)
-        capturing (%cst0 = %gpu_cst : !mo.tensor<[], f32, gpu:0>, %out0 = %out : !mo.tensor<[4], f32, gpu:0>) {
+        capturing {%cst0 = %gpu_cst : !mo.tensor<[], f32, gpu:0>, %out0 = %out : !mo.tensor<[4], f32, gpu:0>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [4]>> (%idx)
           : !map.index<1> -> !map.index<0>
       %val = map.load %cst0[%idx_] : !mo.tensor<[], f32, gpu:0>
@@ -208,7 +208,7 @@ mo.graph @transferredConstant() -> !mo.tensor<[4], f32, gpu:0> {
 // CHECK-LABEL: mo.graph @prologueCapturedConstant
 // CHECK:         map.iter.opaque
 // CHECK-NEXT:    inputs ()
-// CHECK:           map.iter.prologue (%{{[^ :]+}} : !map.index<1>) capturing () {
+// CHECK:           map.iter.prologue (%{{[^ :]+}} : !map.index<1>) capturing {} {
 // CHECK-NEXT:        [[CST:%[^ ]+]] = map.constant.scalar 5.000000e-01 : f32 : f32
 // CHECK-NEXT:        map.yield [[CST]]
 mo.graph @prologueCapturedConstant() -> !mo.tensor<[4], f32> {
@@ -216,7 +216,7 @@ mo.graph @prologueCapturedConstant() -> !mo.tensor<[4], f32> {
   %output = map.iter.opaque
       inputs (%cst : !mo.tensor<[], f32>)
       outputs (%out : !mo.tensor<[4], f32>) {
-    %pro = map.iter.prologue (%pidx : !map.index<1>) capturing (%pcap = %cst : !mo.tensor<[], f32>) {
+    %pro = map.iter.prologue (%pidx : !map.index<1>) capturing {%pcap = %cst : !mo.tensor<[], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [4]>> (%pidx)
           : !map.index<1> -> !map.index<0>
       %pval = map.load %pcap[%idx_] : !mo.tensor<[], f32>
@@ -234,7 +234,7 @@ mo.graph @prologueCapturedConstant() -> !mo.tensor<[4], f32> {
 // CHECK:         map.iter.opaque
 // CHECK-NEXT:    inputs ([[X:%[^ :,]+]]: !mo.tensor<[4], f32>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[4], f32>) {
-// CHECK:           map.iter.epilogue ({{.*}}) capturing ([[OCAP:%[^ =]+]] = [[OUT]] : !mo.tensor<[4], f32>) {
+// CHECK:           map.iter.epilogue ({{.*}}) capturing {[[OCAP:%[^ =]+]] = [[OUT]] : !mo.tensor<[4], f32>} {
 // CHECK-NEXT:        map.constant.scalar 1.500000e+00 : f32 : f32
 mo.graph @epilogueCapturedConstant(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %cst = mo.constant <#M.dense_array<1.500000e+00> : tensor<f32>> : !mo.tensor<[], f32>
@@ -242,7 +242,7 @@ mo.graph @epilogueCapturedConstant(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], 
       inputs (%x : !mo.tensor<[4], f32>, %cst : !mo.tensor<[], f32>)
       outputs (%out : !mo.tensor<[4], f32>) {
     %epi = map.iter.epilogue (%eval : f32, %eidx : !map.index<1>)
-        capturing (%ocap = %out : !mo.tensor<[4], f32>, %ccap = %cst : !mo.tensor<[], f32>) {
+        capturing {%ocap = %out : !mo.tensor<[4], f32>, %ccap = %cst : !mo.tensor<[], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [4]>> (%eidx)
           : !map.index<1> -> !map.index<0>
       %bias = map.load %ccap[%idx_] : !mo.tensor<[], f32>
@@ -268,7 +268,7 @@ mo.graph @multiElementConstant() -> !mo.tensor<[8, 2], f32> {
       outputs (%out : !mo.tensor<[8, 2], f32>) {
     map.iter.foreach.body<[8, 2]>
         index (%idx: !map.index<2>)
-        capturing (%cst0 = %cst : !mo.tensor<[2], f32>, %out0 = %out : !mo.tensor<[8, 2], f32>) {
+        capturing {%cst0 = %cst : !mo.tensor<[2], f32>, %out0 = %out : !mo.tensor<[8, 2], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[2] -> [8, 2]>> (%idx)
           : !map.index<2> -> !map.index<1>
       %val = map.load %cst0[%idx_] : !mo.tensor<[2], f32>
@@ -289,7 +289,7 @@ mo.graph @oneElementRuntimeInput(%scalar: !mo.tensor<[], f32>) -> !mo.tensor<[8,
       outputs (%out : !mo.tensor<[8, 64], f32>) {
     map.iter.foreach.body<[8, 64]>
         index (%idx: !map.index<2>)
-        capturing (%scalar0 = %scalar : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>) {
+        capturing {%scalar0 = %scalar : !mo.tensor<[], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[] -> [8, 64]>> (%idx)
           : !map.index<2> -> !map.index<0>
       %val = map.load %scalar0[%idx_] : !mo.tensor<[], f32>
@@ -311,7 +311,7 @@ mo.graph @dynamicSource<D0>(%dyn: !mo.tensor<[D0], f32>) -> !mo.tensor<[8, D0], 
       outputs (%out : !mo.tensor<[8, D0], f32>) {
     map.iter.foreach.body<[8, D0]>
         index (%idx: !map.index<2>)
-        capturing (%dyn0 = %dyn : !mo.tensor<[D0], f32>, %out0 = %out : !mo.tensor<[8, D0], f32>) {
+        capturing {%dyn0 = %dyn : !mo.tensor<[D0], f32>, %out0 = %out : !mo.tensor<[8, D0], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[D0] -> [8, D0]>> (%idx)
           : !map.index<2> -> !map.index<1>
       %val = map.load %dyn0[%idx_] : !mo.tensor<[D0], f32>

@@ -10,12 +10,12 @@
 // First kernel: slot 197 lifted to a new index argument; body now reads
 // from the new arg instead of an inline constant.
 
-// CHECK-LABEL: mogg.kernel.stub @lift_a
+// CHECK-LABEL: mogg.kernel.stub @lift_a private
 // CHECK-SAME:    (%[[CHAIN_A:[^:]+]]: !mef.chain, %[[CTX_A:[^:]+]]: !mgp.context, %[[SLOT_A:[^:]+]]: index)
 // CHECK-NOT:     index.constant
 // CHECK:         mgp.buffer.get_cached %[[CHAIN_A]], %[[CTX_A]][%[[SLOT_A]]]
-mogg.kernel.stub @lift_a(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>) fusionInfo = lift_a
-  attributes {abi = 1 : i32, constantResources = [], device = "gpu", isAsync = false} {
+mogg.kernel.stub @lift_a private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>) fusionInfo = lift_a
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "gpu", isAsync = false} {
   %slot = index.constant 197
   %buf = mgp.buffer.get_cached %arg0, %arg1[%slot] : !mgp.buffer<<"gpu", 0>>
   mogg.output %buf : !mgp.buffer<<"gpu", 0>>
@@ -23,12 +23,12 @@ mogg.kernel.stub @lift_a(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer
 
 // Second kernel: differs only in the slot value; same lift treatment.
 
-// CHECK-LABEL: mogg.kernel.stub @lift_b
+// CHECK-LABEL: mogg.kernel.stub @lift_b private
 // CHECK-SAME:    (%[[CHAIN_B:[^:]+]]: !mef.chain, %[[CTX_B:[^:]+]]: !mgp.context, %[[SLOT_B:[^:]+]]: index)
 // CHECK-NOT:     index.constant
 // CHECK:         mgp.buffer.get_cached %[[CHAIN_B]], %[[CTX_B]][%[[SLOT_B]]]
-mogg.kernel.stub @lift_b(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>) fusionInfo = lift_b
-  attributes {abi = 1 : i32, constantResources = [], device = "gpu", isAsync = false} {
+mogg.kernel.stub @lift_b private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>) fusionInfo = lift_b
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "gpu", isAsync = false} {
   %slot = index.constant 261
   %buf = mgp.buffer.get_cached %arg0, %arg1[%slot] : !mgp.buffer<<"gpu", 0>>
   mogg.output %buf : !mgp.buffer<<"gpu", 0>>
@@ -40,11 +40,11 @@ mogg.kernel.stub @lift_b(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer
 // aren't called via ExecuteCompiledOp, so caller rewriting wouldn't be sound
 // even if we tried.
 
-// CHECK-LABEL: mogg.kernel.stub @mogg_abi_kernel
+// CHECK-LABEL: mogg.kernel.stub @mogg_abi_kernel private
 // CHECK-SAME:    () fusionInfo
 // CHECK:         %{{.+}} = index.constant 7
-mogg.kernel.stub @mogg_abi_kernel() fusionInfo = mogg_abi_kernel
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = false} {
+mogg.kernel.stub @mogg_abi_kernel private() fusionInfo = mogg_abi_kernel
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = false} {
   %0 = index.constant 7
   mogg.output
 }
@@ -63,8 +63,8 @@ mogg.kernel.stub @mogg_abi_kernel() fusionInfo = mogg_abi_kernel
 // With merge + symbol-DCE chained, only one kernel body survives.
 // MergeIdenticalKernelStubs picks the lexicographically-smallest name as the
 // canonical one (`@lift_a`); both call sites get rewritten to point at it.
-// MERGED:     mogg.kernel.stub @lift_a
-// MERGED-NOT: mogg.kernel.stub @lift_b
+// MERGED:     mogg.kernel.stub @lift_a private
+// MERGED-NOT: mogg.kernel.stub @lift_b private
 // MERGED:     mogg.execute_kernel @lift_a
 // MERGED:     mogg.execute_kernel @lift_a
 mgp.model @top_level subgraph : mof devices [#M.device_ref<"cpu", 0>, #M.device_ref<"gpu", 0>]

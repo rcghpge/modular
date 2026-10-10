@@ -36,7 +36,7 @@ mo.graph @folds_constant_into_opaque_call(
 // bind the dropped input.
 // CHECK-NEXT:    map.iter.foreach.body<[2, 2]>
 // CHECK-NEXT:      index   ([[IDX:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:      capturing ([[ACAP:%[^ ]+]] = [[A]] : !mo.tensor<[2, 2], f32>, [[BCAP:%[^ ]+]] = [[B]] : !mo.tensor<[2, 2], f32>, [[OCAP:%[^ ]+]] = [[OUT]] : !mo.tensor<[2, 2], f32>) {
+// CHECK-NEXT:      capturing {[[ACAP:%[^ ]+]] = [[A]] : !mo.tensor<[2, 2], f32>, [[BCAP:%[^ ]+]] = [[B]] : !mo.tensor<[2, 2], f32>, [[OCAP:%[^ ]+]] = [[OUT]] : !mo.tensor<[2, 2], f32>} {
 // CHECK-NEXT:      [[AV:%[^ ]+]] = map.load [[ACAP]][[[IDX]]]
 // CHECK-NEXT:      [[BV:%[^ ]+]] = map.load [[BCAP]][[[IDX]]]
 // CHECK-NEXT:      [[SUM:%[^ ]+]] = map.call.elementwise @my_add([[IDX]], [[AV]], [[BV]])
@@ -50,9 +50,9 @@ mo.graph @folds_constant_into_foreach(
       outputs (%out : !mo.tensor<[2, 2], f32>) {
     map.iter.foreach.body<[2, 2]>
         index (%idx: !map.index<2>)
-        capturing (%a0 = %a : !mo.tensor<[2, 2], f32>,
+        capturing {%a0 = %a : !mo.tensor<[2, 2], f32>,
                    %b0 = %b : !mo.tensor<[2, 2], f32>,
-                   %out0 = %out : !mo.tensor<[2, 2], f32>) {
+                   %out0 = %out : !mo.tensor<[2, 2], f32>} {
       %av = map.load %a0[%idx] : !mo.tensor<[2, 2], f32>
       %bv = map.load %b0[%idx] : !mo.tensor<[2, 2], f32>
       %sum = map.call.elementwise @my_add(%idx, %av, %bv)
@@ -77,7 +77,7 @@ mo.graph @folds_constant_into_foreach(
 // CHECK-NEXT:    [[B:%[^ ]+]] = map.constant {{.*}} : tensor<4xf32> : <[D0], f32>
 // CHECK-NEXT:    map.iter.foreach.body<[D0]>
 // CHECK-NEXT:      index   ([[IDX:%[^ :,]+]]: !map.index<1>)
-// CHECK-NEXT:      capturing ([[ACAP:%[^ ]+]] = [[A]] : !mo.tensor<[D0], f32>, [[BCAP:%[^ ]+]] = [[B]] : !mo.tensor<[D0], f32>, [[OCAP:%[^ ]+]] = [[OUT]] : !mo.tensor<[D0], f32>) {
+// CHECK-NEXT:      capturing {[[ACAP:%[^ ]+]] = [[A]] : !mo.tensor<[D0], f32>, [[BCAP:%[^ ]+]] = [[B]] : !mo.tensor<[D0], f32>, [[OCAP:%[^ ]+]] = [[OUT]] : !mo.tensor<[D0], f32>} {
 mo.graph @folds_constant_through_rebind<D0>(
   %a: !mo.tensor<[D0], f32>
 ) -> !mo.tensor<[D0], f32> {
@@ -88,9 +88,9 @@ mo.graph @folds_constant_through_rebind<D0>(
       outputs (%out : !mo.tensor<[D0], f32>) {
     map.iter.foreach.body<[D0]>
         index (%idx: !map.index<1>)
-        capturing (%a0 = %a : !mo.tensor<[D0], f32>,
+        capturing {%a0 = %a : !mo.tensor<[D0], f32>,
                    %b0 = %b : !mo.tensor<[D0], f32>,
-                   %out0 = %out : !mo.tensor<[D0], f32>) {
+                   %out0 = %out : !mo.tensor<[D0], f32>} {
       %av = map.load %a0[%idx] : !mo.tensor<[D0], f32>
       %bv = map.load %b0[%idx] : !mo.tensor<[D0], f32>
       %sum = map.call.elementwise @my_add(%idx, %av, %bv)
@@ -118,9 +118,9 @@ mo.graph @keeps_non_constant_through_rebind<D0>(
       outputs (%out : !mo.tensor<[D0], f32>) {
     map.iter.foreach.body<[D0]>
         index (%idx: !map.index<1>)
-        capturing (%a0 = %a : !mo.tensor<[D0], f32>,
+        capturing {%a0 = %a : !mo.tensor<[D0], f32>,
                    %b0 = %b1 : !mo.tensor<[D0], f32>,
-                   %out0 = %out : !mo.tensor<[D0], f32>) {
+                   %out0 = %out : !mo.tensor<[D0], f32>} {
       %av = map.load %a0[%idx] : !mo.tensor<[D0], f32>
       %bv = map.load %b0[%idx] : !mo.tensor<[D0], f32>
       %sum = map.call.elementwise @my_add(%idx, %av, %bv)

@@ -10,7 +10,7 @@
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[4, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       // expected-error @below{{dim 0: start and step must be static}}
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [?, 0], stops = [?, 16], steps = [1, 1]>> (%idx) -> (%iout) : !map.index<2> {
@@ -29,7 +29,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[4, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       // expected-error @below{{dim 0: step must be positive, got -2}}
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [7, 0], stops = [-1, 16], steps = [-2, 1]>> (%idx) -> (%iout) : !map.index<2> {
@@ -49,7 +49,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[8, 8], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[8, 8], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[8, 8], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[8, 8], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       // expected-error @below{{the innermost dim must not be sliced}}
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [8, 8], starts = [0, 8], stops = [8, 16], steps = [1, 1]>> (%idx) -> (%iout) : !map.index<2> {
@@ -69,7 +69,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[4, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       // expected-error @below{{spec's in-shape #mosh<ape[9, 16]> : !mosh.ape does not match the shape #mosh<ape[8, 16]> : !mosh.ape its index addresses}}
       map.index.slice.select<#map.index.slice.spec<[9, 16] -> [4, 16], starts = [1, 0], stops = [9, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<2> {
@@ -90,7 +90,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[32, 4], f32>, !mo.tensor<[16, 4], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[32, 4], f32>, %slice : !mo.tensor<[16, 4], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[32, 4], f32>, %caps = %slice : !mo.tensor<[16, 4], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[32, 4], f32>, %caps = %slice : !mo.tensor<[16, 4], f32>} {
       %ridx = map.index.reshape<#map.index.reshape.spec<[32, 4] -> [8, 16]>> (%idx) : !map.index<2> -> !map.index<2>
       map.store %capf[%ridx] = %val : !mo.tensor<[32, 4], f32>
       // expected-error @below{{index must be its epilogue's index or an enclosing select's argument}}
@@ -110,7 +110,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[32, 4], f32>, !mo.ten
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[2, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[2, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[2, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[2, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%idx) -> (%mid) : !map.index<2> {
         // expected-error @below{{spec's in-shape #mosh<ape[8, 16]> : !mosh.ape does not match the shape #mosh<ape[4, 16]> : !mosh.ape its index addresses}}
@@ -131,7 +131,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[4, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       // expected-error @below{{tensor shape #mosh<ape[4, 16]> : !mosh.ape at the body's index does not match the slice's out-shape #mosh<ape[3, 16]> : !mosh.ape}}
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [3, 16], starts = [2, 0], stops = [8, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<2> {
@@ -150,7 +150,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[2, 8, 16], f32>) -> !mo.tensor<[2, 8, 16], f32> {
   %y = map.iter.opaque inputs (%X : !mo.tensor<[2, 8, 16], f32>) outputs (%full : !mo.tensor<[2, 8, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<3>) capturing (%capf = %full : !mo.tensor<[2, 8, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<3>) capturing {%capf = %full : !mo.tensor<[2, 8, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[2, 8, 16], f32>
       // expected-error @below{{index rank does not match spec's rank 2}}
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<3> {
@@ -168,7 +168,7 @@ func.func @f(%X: !mo.tensor<[2, 8, 16], f32>) -> !mo.tensor<[2, 8, 16], f32> {
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>, !mo.tensor<[], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[], f32>) outputs (%full : !mo.tensor<[], f32>, %slice : !mo.tensor<[], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<0>) capturing (%capf = %full : !mo.tensor<[], f32>, %caps = %slice : !mo.tensor<[], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<0>) capturing {%capf = %full : !mo.tensor<[], f32>, %caps = %slice : !mo.tensor<[], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[], f32>
       // expected-error @below{{cannot select from a slice of a rank-0 tensor}}
       map.index.slice.select<#map.index.slice.spec<[] -> [], starts = [], stops = [], steps = []>> (%idx) -> (%iout) : !map.index<0> {
@@ -188,7 +188,7 @@ func.func @f(%X: !mo.tensor<[], f32>) -> (!mo.tensor<[], f32>, !mo.tensor<[], f3
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
   %y:2 = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>, %slice : !mo.tensor<[4, 16], f32>) {
-    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing (%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>) {
+    %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[8, 16], f32>, %caps = %slice : !mo.tensor<[4, 16], f32>} {
       map.store %capf[%idx] = %val : !mo.tensor<[8, 16], f32>
       // expected-error @below{{body must take one index of the spec's rank}}
       "map.index.slice.select"(%idx) <{spec = #map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>}> ({

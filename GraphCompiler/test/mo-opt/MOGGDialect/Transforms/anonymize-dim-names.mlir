@@ -8,31 +8,31 @@
 // updates its uses automatically). Idempotent: the second RUN line reapplies
 // the pass a second time and checks the output is unchanged.
 
-// CHECK-LABEL: mogg.kernel.stub @named_dim
+// CHECK-LABEL: mogg.kernel.stub @named_dim private
 // CHECK-SAME: (%[[ARG:.*]]: !mogg.dim)
 // CHECK: mogg.shape.create(%[[ARG]]) {{.*}} : !mogg.dim
 // CHECK-NOT: !mogg.dim<
-mogg.kernel.stub @named_dim(%d: !mogg.dim<batch>)
+mogg.kernel.stub @named_dim private(%d: !mogg.dim<batch>)
   fusionInfo = named_dim
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   %s = mogg.shape.create(%d) <shape = #mosh<ape[batch, 4]> : !mosh.ape> : !mogg.dim<batch>
   mogg.output
 }
 
 // A stub with no dim args at all is left alone.
-// CHECK-LABEL: mogg.kernel.stub @no_dims
+// CHECK-LABEL: mogg.kernel.stub @no_dims private
 // CHECK-SAME: ()
-mogg.kernel.stub @no_dims()
+mogg.kernel.stub @no_dims private()
   fusionInfo = no_dims
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
 // An already-anonymous dim arg is left alone (no-op, not just harmless).
-// CHECK-LABEL: mogg.kernel.stub @already_anonymous
+// CHECK-LABEL: mogg.kernel.stub @already_anonymous private
 // CHECK-SAME: (%{{.*}}: !mogg.dim)
-mogg.kernel.stub @already_anonymous(%d: !mogg.dim)
+mogg.kernel.stub @already_anonymous private(%d: !mogg.dim)
   fusionInfo = already_anonymous
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }

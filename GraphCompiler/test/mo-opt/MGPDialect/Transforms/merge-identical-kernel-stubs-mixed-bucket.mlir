@@ -35,15 +35,15 @@
 
 // Both kernel definitions still survive -- this pass only rewrites
 // references; symbol-DCE would prune duplicates later.
-// CHECK-DAG: mogg.kernel.stub @inner
-// CHECK-DAG: mogg.kernel.stub @z_top
-mogg.kernel.stub @inner() fusionInfo = inner
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+// CHECK-DAG: mogg.kernel.stub @inner private
+// CHECK-DAG: mogg.kernel.stub @z_top private
+mogg.kernel.stub @inner private() fusionInfo = inner
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
-mogg.kernel.stub @z_top() fusionInfo = z_top
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @z_top private() fusionInfo = z_top
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.output
 }
 
@@ -53,8 +53,8 @@ mogg.kernel.stub @z_top() fusionInfo = z_top
 // CHECK-LABEL: @caller
 // CHECK:      mogg.call.stub @inner
 // CHECK-NEXT: mogg.output
-mogg.kernel.stub @caller() fusionInfo = caller
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @caller private() fusionInfo = caller
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
   mogg.call.stub @inner
   mogg.output
 }

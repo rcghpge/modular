@@ -67,8 +67,8 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     %mm = map.iter.opaque
         inputs (%A : !mo.tensor<[M, K], bf16>, %B : !mo.tensor<[K, N], bf16>)
         outputs (%out : !mo.tensor<[M, N], bf16>) {
-      %epi = map.iter.epilogue (%val : bf16, %idx : !map.index<2>) capturing (%out) {
-        map.store %out[%idx] = %val : !mo.tensor<[M, N], bf16>
+      %epi = map.iter.epilogue (%val : bf16, %idx : !map.index<2>) capturing {%cap = %out : !mo.tensor<[M, N], bf16>} {
+        map.store %cap[%idx] = %val : !mo.tensor<[M, N], bf16>
       } : !mo.tensor<[M, N], bf16>
       map.call.opaque @builtin_kernels.linalg.Matmul[transpose_b = false]
         inputs (%A, %B) outputs (%epi) : (...) -> (...)
@@ -181,7 +181,7 @@ def MAP_IterEpilogueOp : MAP_Op<"iter.epilogue", [
     An SSA callback the enclosing `map.call.opaque` consumes on its `outputs`:
     it is handed a value and an index and stores (or transforms then stores)
     it. The leading block arguments are the value and the index; the rest
-    shadow the captured operands. The `capturing (...)` clause is print/parse
+    shadow the captured operands. The `capturing {...}` clause is print/parse
     sugar over those operands.
 
     `$intermediateTensor` (not a capture, so no block argument) is the tensor
@@ -216,7 +216,7 @@ def MAP_IterPrologueOp : MAP_Op<"iter.prologue", [
     An SSA callback the enclosing `map.call.opaque` consumes on its `inputs`:
     it is handed an index and yields the value the kernel reads there. The
     leading block argument is the index; the rest shadow the captured operands.
-    The `capturing (...)` clause is print/parse sugar over those operands.
+    The `capturing {...}` clause is print/parse sugar over those operands.
   }];
 
   let arguments = (ins Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$captures);
@@ -394,7 +394,7 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
         outputs (%out: !mo.tensor<[8, 16, 128], f32>) {
       map.iter.foreach.body<[8, 16, 128]>
           index (%idx: !map.index<3>)
-          capturing (%x0 = %x, %y0 = %y, %out0 = %out) {
+          capturing {%x0 = %x, %y0 = %y, %out0 = %out} {
         %xv = map.load %x0[%idx] : !mo.tensor<[8, 16, 128], f32>
         %yv = map.load %y0[%idx] : !mo.tensor<[8, 16, 128], f32>
         %sum = map.call.elementwise @builtin_kernels.elementwise.Add(%idx, %xv, %yv)

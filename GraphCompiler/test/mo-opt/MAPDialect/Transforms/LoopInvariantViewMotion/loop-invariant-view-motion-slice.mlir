@@ -39,7 +39,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // CHECK-NEXT:      [[STRIDED:%[^ ]+]] = map.index.slice.stride<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> ([[INPUT]], [[STARTS]], [[STOPS]], [[STEPS]])
 // CHECK-NEXT:      map.iter.foreach.body<[3, 32]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ({{.*}}[[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[3, 32], f32>, [[NEWCAP:%[^ ]+]] = [[STRIDED]] : !mo.tensor<[3, 32], f32>) {
+// CHECK-NEXT:        capturing {{{.*}}[[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[3, 32], f32>, [[NEWCAP:%[^ ]+]] = [[STRIDED]] : !mo.tensor<[3, 32], f32>} {
 // CHECK-NOT:       map.index.slice
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = map.load [[NEWCAP]]{{\[}}[[IDX]]] : !mo.tensor<[3, 32], f32>
 // CHECK-NEXT:      map.store [[OUT0]]{{\[}}[[IDX]]] = [[VAL]] : !mo.tensor<[3, 32], f32>
@@ -54,7 +54,7 @@ mo.graph @sliceStatic(%input: !mo.tensor<[10, 64], f32>,
       outputs (%out : !mo.tensor<[3, 32], f32>) {
     map.iter.foreach.body<[3, 32]>
         index (%idx: !map.index<2>)
-        capturing (%input0 = %input : !mo.tensor<[10, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 32], f32>) {
+        capturing {%input0 = %input : !mo.tensor<[10, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 32], f32>} {
       %idx_ = map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> (%idx, %starts0, %stops0, %steps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
       %val = map.load %input0[%idx_] : !mo.tensor<[10, 64], f32>
@@ -83,7 +83,7 @@ mo.graph @sliceDynamic<N, M>(
       outputs (%out : !mo.tensor<[M, 32], f32>) {
     map.iter.foreach.body<[M, 32]>
         index (%idx: !map.index<2>)
-        capturing (%input0 = %input : !mo.tensor<[N, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[M, 32], f32>) {
+        capturing {%input0 = %input : !mo.tensor<[N, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[M, 32], f32>} {
       %idx_ = map.index.slice<#map.index.slice.spec<[N, 64] -> [M, 32], starts = [?, ?], stops = [?, ?], steps = [?, ?]>> (%idx, %starts0, %stops0, %steps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
       %val = map.load %input0[%idx_] : !mo.tensor<[N, 64], f32>
@@ -103,7 +103,7 @@ mo.graph @sliceDynamic<N, M>(
 // CHECK-NEXT:    outputs ([[OUT3:%[^ :,]+]] : !mo.tensor<[8, 8], f32>) {
 // CHECK-NEXT:      map.iter.foreach.body<[8, 8]>
 // CHECK-NEXT:        index   ([[IDX3:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ([[X30:%[^ ,]+]] = [[X3]] : !mo.tensor<[8, 8], f32>, [[OUT30:%[^ ,]+]] = [[OUT3]] : !mo.tensor<[8, 8], f32>) {
+// CHECK-NEXT:        capturing {[[X30:%[^ ,]+]] = [[X3]] : !mo.tensor<[8, 8], f32>, [[OUT30:%[^ ,]+]] = [[OUT3]] : !mo.tensor<[8, 8], f32>} {
 // CHECK-NEXT:      [[VAL3:%[^ ]+]] = map.load [[X30]]{{\[}}[[IDX3]]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:      map.store [[OUT30]]{{\[}}[[IDX3]]] = [[VAL3]] : !mo.tensor<[8, 8], f32>
 // CHECK-NEXT:    }
@@ -114,7 +114,7 @@ mo.graph @noTransform(%x: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32> {
       outputs (%out : !mo.tensor<[8, 8], f32>) {
     map.iter.foreach.body<[8, 8]>
         index (%idx: !map.index<2>)
-        capturing (%x0 = %x : !mo.tensor<[8, 8], f32>, %out0 = %out : !mo.tensor<[8, 8], f32>) {
+        capturing {%x0 = %x : !mo.tensor<[8, 8], f32>, %out0 = %out : !mo.tensor<[8, 8], f32>} {
       %val = map.load %x0[%idx] : !mo.tensor<[8, 8], f32>
       map.store %out0[%idx] = %val : !mo.tensor<[8, 8], f32>
     }
@@ -134,7 +134,7 @@ mo.graph @noTransform(%x: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32> {
 // CHECK-NEXT:      [[STRIDEDB:%[^ ]+]] = map.index.slice.stride<#map.index.slice.spec<[20, 20] -> [3, 3], starts = [5, 5], stops = [8, 8], steps = [1, 1]>>
 // CHECK-NEXT:      map.iter.foreach.body<[3, 3]>
 // CHECK-NEXT:        index   ([[IDX4:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ({{.*}}[[OUT40:%[^ ,]+]] = [[OUT4]] : !mo.tensor<[3, 3], f32>, [[NEWCAPA:%[^ ,]+]] = [[STRIDEDA]] : !mo.tensor<[3, 3], f32>, [[NEWCAPB:%[^ ]+]] = [[STRIDEDB]] : !mo.tensor<[3, 3], f32>) {
+// CHECK-NEXT:        capturing {{{.*}}[[OUT40:%[^ ,]+]] = [[OUT4]] : !mo.tensor<[3, 3], f32>, [[NEWCAPA:%[^ ,]+]] = [[STRIDEDA]] : !mo.tensor<[3, 3], f32>, [[NEWCAPB:%[^ ]+]] = [[STRIDEDB]] : !mo.tensor<[3, 3], f32>} {
 // CHECK-NOT:       map.index.slice
 // CHECK:           [[AV:%[^ ]+]] = map.load [[NEWCAPA]]{{\[}}[[IDX4]]]
 // CHECK:           [[BV:%[^ ]+]] = map.load [[NEWCAPB]]{{\[}}[[IDX4]]]
@@ -156,9 +156,9 @@ mo.graph @twoIndependentViews(
       outputs (%out : !mo.tensor<[3, 3], f32>) {
     map.iter.foreach.body<[3, 3]>
         index (%idx: !map.index<2>)
-        capturing (%a0 = %a : !mo.tensor<[10, 10], f32>, %aStarts0 = %aStarts : !mo.tensor<[2], si64>, %aStops0 = %aStops : !mo.tensor<[2], si64>, %aSteps0 = %aSteps : !mo.tensor<[2], si64>,
+        capturing {%a0 = %a : !mo.tensor<[10, 10], f32>, %aStarts0 = %aStarts : !mo.tensor<[2], si64>, %aStops0 = %aStops : !mo.tensor<[2], si64>, %aSteps0 = %aSteps : !mo.tensor<[2], si64>,
                    %b0 = %b : !mo.tensor<[20, 20], f32>, %bStarts0 = %bStarts : !mo.tensor<[2], si64>, %bStops0 = %bStops : !mo.tensor<[2], si64>, %bSteps0 = %bSteps : !mo.tensor<[2], si64>,
-                   %out0 = %out : !mo.tensor<[3, 3], f32>) {
+                   %out0 = %out : !mo.tensor<[3, 3], f32>} {
       %aIdx = map.index.slice<#map.index.slice.spec<[10, 10] -> [3, 3], starts = [0, 0], stops = [3, 3], steps = [1, 1]>> (%idx, %aStarts0, %aStops0, %aSteps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
       %aVal = map.load %a0[%aIdx] : !mo.tensor<[10, 10], f32>
@@ -182,7 +182,7 @@ mo.graph @twoIndependentViews(
 // CHECK:         [[STRIDED5:%[^ ]+]] = map.index.slice.stride
 // CHECK-NEXT:    map.iter.foreach.body<[3, 3]>
 // CHECK-NEXT:      index   ([[IDX5:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:      capturing ([[X50:%[^ ,]+]] = [[X5]] : !mo.tensor<[3, 3], f32>, {{.*}}[[NEWCAP5:%[^ ]+]] = [[STRIDED5]] : !mo.tensor<[3, 3], f32>) {
+// CHECK-NEXT:      capturing {[[X50:%[^ ,]+]] = [[X5]] : !mo.tensor<[3, 3], f32>, {{.*}}[[NEWCAP5:%[^ ]+]] = [[STRIDED5]] : !mo.tensor<[3, 3], f32>} {
 // CHECK-NOT:     map.index.slice
 // CHECK:         [[XV5:%[^ ]+]] = map.load [[X50]]{{\[}}[[IDX5]]] : !mo.tensor<[3, 3], f32>
 // CHECK:         [[AV5:%[^ ]+]] = map.load [[NEWCAP5]]{{\[}}[[IDX5]]]
@@ -198,7 +198,7 @@ mo.graph @mixedTransformedAndPlain(
       outputs (%out : !mo.tensor<[3, 3], f32>) {
     map.iter.foreach.body<[3, 3]>
         index (%idx: !map.index<2>)
-        capturing (%x0 = %x : !mo.tensor<[3, 3], f32>, %a0 = %a : !mo.tensor<[10, 10], f32>, %aStarts0 = %aStarts : !mo.tensor<[2], si64>, %aStops0 = %aStops : !mo.tensor<[2], si64>, %aSteps0 = %aSteps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 3], f32>) {
+        capturing {%x0 = %x : !mo.tensor<[3, 3], f32>, %a0 = %a : !mo.tensor<[10, 10], f32>, %aStarts0 = %aStarts : !mo.tensor<[2], si64>, %aStops0 = %aStops : !mo.tensor<[2], si64>, %aSteps0 = %aSteps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 3], f32>} {
       %xVal = map.load %x0[%idx] : !mo.tensor<[3, 3], f32>
       %aIdx = map.index.slice<#map.index.slice.spec<[10, 10] -> [3, 3], starts = [0, 0], stops = [3, 3], steps = [1, 1]>> (%idx, %aStarts0, %aStops0, %aSteps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
@@ -229,7 +229,7 @@ mo.graph @mixedTransformedAndPlain(
 // CHECK-NEXT:      [[STRIDED6:%[^ ]+]] = map.index.slice.stride
 // CHECK-NEXT:      map.iter.foreach.body<[3, 3]>
 // CHECK-NEXT:        index   ([[IDX6:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ({{.*}}[[NEWCAP6:%[^ ]+]] = [[STRIDED6]] : !mo.tensor<[3, 3], f32>) {
+// CHECK-NEXT:        capturing {{{.*}}[[NEWCAP6:%[^ ]+]] = [[STRIDED6]] : !mo.tensor<[3, 3], f32>} {
 // CHECK-NOT:       map.index.slice
 // CHECK-NOT:       map.index.slice.stride
 // CHECK:           [[V0:%[^ ]+]] = map.load [[NEWCAP6]]{{\[}}[[IDX6]]]
@@ -245,7 +245,7 @@ mo.graph @sharedChain(
       outputs (%out : !mo.tensor<[3, 3], f32>) {
     map.iter.foreach.body<[3, 3]>
         index (%idx: !map.index<2>)
-        capturing (%a0 = %a : !mo.tensor<[10, 10], f32>, %aStarts0 = %aStarts : !mo.tensor<[2], si64>, %aStops0 = %aStops : !mo.tensor<[2], si64>, %aSteps0 = %aSteps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 3], f32>) {
+        capturing {%a0 = %a : !mo.tensor<[10, 10], f32>, %aStarts0 = %aStarts : !mo.tensor<[2], si64>, %aStops0 = %aStops : !mo.tensor<[2], si64>, %aSteps0 = %aSteps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 3], f32>} {
       %aIdx = map.index.slice<#map.index.slice.spec<[10, 10] -> [3, 3], starts = [0, 0], stops = [3, 3], steps = [1, 1]>> (%idx, %aStarts0, %aStops0, %aSteps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
       %v0 = map.load %a0[%aIdx] : !mo.tensor<[10, 10], f32>
@@ -272,7 +272,7 @@ mo.graph @sharedChain(
 // CHECK-NEXT:      [[OUTER7:%[^ ]+]] = map.index.slice.stride<#map.index.slice.spec<[6, 6] -> [3, 3], starts = [0, 0], stops = [3, 3], steps = [1, 1]>> ([[INNER7]], [[STARTS7]], [[STOPS7]], [[STEPS7]])
 // CHECK-NEXT:      map.iter.foreach.body<[3, 3]>
 // CHECK-NEXT:        index   ([[IDX7:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ({{.*}}[[NEWCAP7:%[^ ]+]] = [[OUTER7]] : !mo.tensor<[3, 3], f32>) {
+// CHECK-NEXT:        capturing {{{.*}}[[NEWCAP7:%[^ ]+]] = [[OUTER7]] : !mo.tensor<[3, 3], f32>} {
 // CHECK-NOT:       map.index.slice
 // CHECK-NEXT:      [[VAL7:%[^ ]+]] = map.load [[NEWCAP7]]{{\[}}[[IDX7]]] : !mo.tensor<[3, 3], f32>
 // CHECK-NEXT:      map.store {{%[^ ,]+}}{{\[}}[[IDX7]]] = [[VAL7]] : !mo.tensor<[3, 3], f32>
@@ -288,7 +288,7 @@ mo.graph @chainedSliceIndex(
       outputs (%out : !mo.tensor<[3, 3], f32>) {
     map.iter.foreach.body<[3, 3]>
         index (%idx: !map.index<2>)
-        capturing (%input0 = %input : !mo.tensor<[10, 10], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 3], f32>) {
+        capturing {%input0 = %input : !mo.tensor<[10, 10], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 3], f32>} {
       %mid = map.index.slice<#map.index.slice.spec<[6, 6] -> [3, 3], starts = [0, 0], stops = [3, 3], steps = [1, 1]>> (%idx, %starts0, %stops0, %steps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
       %inner = map.index.slice<#map.index.slice.spec<[10, 10] -> [6, 6], starts = [0, 0], stops = [6, 6], steps = [1, 1]>> (%mid, %starts0, %stops0, %steps0)
@@ -313,7 +313,7 @@ mo.graph @chainedSliceIndex(
 // CHECK-SAME:        (!mo.buffer<[10, 64], f32>, {{.*}}) -> !mo.tensor<[3, 32], f32>
 // CHECK-NEXT:      map.iter.foreach.body<[3, 32]>
 // CHECK-NEXT:        index   ([[IDX8:%[^ :,]+]]: !map.index<2>)
-// CHECK-NEXT:        capturing ({{.*}}[[NEWCAP8:%[^ ]+]] = [[STRIDED8]] : !mo.tensor<[3, 32], f32>) {
+// CHECK-NEXT:        capturing {{{.*}}[[NEWCAP8:%[^ ]+]] = [[STRIDED8]] : !mo.tensor<[3, 32], f32>} {
 // CHECK-NOT:       map.index.slice
 // CHECK-NEXT:      [[VAL8:%[^ ]+]] = map.load [[NEWCAP8]]{{\[}}[[IDX8]]] : !mo.tensor<[3, 32], f32>
 mo.graph @sliceOfFusedBuffer(%buf: !mo.buffer<[10, 64], f32>,
@@ -326,7 +326,7 @@ mo.graph @sliceOfFusedBuffer(%buf: !mo.buffer<[10, 64], f32>,
       outputs (%out : !mo.tensor<[3, 32], f32>) {
     map.iter.foreach.body<[3, 32]>
         index (%idx: !map.index<2>)
-        capturing (%buf0 = %buf : !mo.buffer<[10, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 32], f32>) {
+        capturing {%buf0 = %buf : !mo.buffer<[10, 64], f32>, %starts0 = %starts : !mo.tensor<[2], si64>, %stops0 = %stops : !mo.tensor<[2], si64>, %steps0 = %steps : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 32], f32>} {
       %idx_ = map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [1, 1]>> (%idx, %starts0, %stops0, %steps0)
           : (!map.index<2>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !map.index<2>
       %val = map.load %buf0[%idx_] : !mo.buffer<[10, 64], f32>

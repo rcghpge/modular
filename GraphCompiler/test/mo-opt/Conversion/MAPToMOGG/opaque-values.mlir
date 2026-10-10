@@ -20,7 +20,7 @@
 // CHECK: mogg.kernel () -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 // CHECK-NOT: outputs (
 // CHECK: context (%[[CTX:[^ ,)]+]])
-// CHECK: %[[CALL:.*]] = mogg.call.opaque @{{.*}}MakeSimdPair kernel_param = {P0 = 4 : i64, P1 = 8 : i64} -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
+// CHECK: %[[CALL:.*]] = mogg.call.opaque @{{.*}}MakeSimdPair[P0 = 4 : i64, P1 = 8 : i64] -> !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 // CHECK: mogg.output %[[CALL]] : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>
 mo.graph @opaque_result() -> !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> {
   %pair = mo.custom [symbol = "make_simd_pair", device = #M.device_ref<"cpu", 0>, parameters = {}] () : () -> (!mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>)
@@ -37,7 +37,7 @@ mo.graph @opaque_result() -> !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}> {
 // CHECK: context (%[[CTX:[^ ,)]+]])
 // CHECK: %[[SH:.*]] = mogg.shape.create() <shape = #mosh<ape[12]> : !mosh.ape>
 // CHECK: %[[OT:.*]] = mogg.tensor.create(%[[OP]], %[[SH]]) {{.*}} : !mogg.tensor
-// CHECK: mogg.call.opaque @{{.*}}ParameterizedOpaqueType inputs(%[[IN]] : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>) outputs(%[[OT]] : !mogg.tensor)
+// CHECK: mogg.call.opaque @{{.*}}ParameterizedOpaqueType[P0 = 4 : i64] inputs(%[[IN]] : !mo.opaque<"{{.*}}SIMDPair", {S0 = 4 : i64, S1 = 8 : i64}>) outputs(%[[OT]] : !mogg.tensor)
 mo.graph @opaque_input(
     %pair: !mo.opaque<"SIMDPair", {S0 = 4, S1 = 8}>
 ) -> !mo.tensor<[12], si32> {

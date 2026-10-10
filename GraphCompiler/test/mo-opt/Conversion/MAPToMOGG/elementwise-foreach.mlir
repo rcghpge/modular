@@ -12,8 +12,7 @@
 // CHECK-NEXT:   [[OSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape>
 // CHECK-NEXT:   [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) <device = "cpu", elementType = f32, io = Output, mut = true, shapeAttr = #mosh<ape[2, 2]> : !mosh.ape> : !mogg.tensor
 // CHECK-NEXT:   [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape>
-// CHECK-NEXT:   mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[IT0]], [[IT1]], [[OT]] : !mogg.tensor, !mogg.tensor, !mogg.tensor) device = "cpu" {
-// CHECK-NEXT:   ^bb0([[IN0:%[^ :,]+]]: !mogg.tensor, [[IN1:%[^ :,]+]]: !mogg.tensor, [[OUT:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
+// CHECK-NEXT:   mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) ([[IDX:%[^ :,]+]] : !map.index<2>) capturing {[[IN0:%[^ :,]+]] = [[IT0]] : !mogg.tensor, [[IN1:%[^ :,]+]] = [[IT1]] : !mogg.tensor, [[OUT:%[^ :,]+]] = [[OT]] : !mogg.tensor} device = "cpu" {
 // CHECK-NEXT:     [[V0:%[^ ]+]] = mogg.tensor.load [[IN0]][[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK-NEXT:     [[V1:%[^ ]+]] = mogg.tensor.load [[IN1]][[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
 // CHECK-NEXT:     [[SUM:%[^ ]+]] = mogg.call.elementwise @testing_kernels.testing_kernels.AddElementwise([[V0]], [[V1]]) moOpName = "imposter_add_elementwise" : f32, f32 -> f32

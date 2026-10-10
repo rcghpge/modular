@@ -27,6 +27,7 @@ class ShapeType;
 } // namespace M::MOSH
 
 namespace M::MO {
+class IOKindAttr;
 class LayoutAttr;
 class MOHasDeviceTypeInterface;
 
