@@ -427,8 +427,8 @@ class TensorAgent:
 
     base_addrs: list[int]
     """Base memory address per NIXL group for this shard, indexed by group.
-    Parallel to ``reg_dlists`` and to the engine's ``bytes_per_group``; there
-    is no special "main" group."""
+    Parallel to the engine's ``bytes_per_group``; there is no special "main"
+    group."""
 
     backend: int
     """NIXL backend handle (UCX or libfabric)."""
@@ -440,7 +440,9 @@ class TensorAgent:
     """Metadata for this agent."""
 
     reg_dlists: list[nixl.RegistrationDescriptorList]
-    """Registration descriptor list per NIXL group, parallel to ``base_addrs``."""
+    """One registration per distinct memory region. Groups that view the same
+    region share its registration, so this can be shorter than
+    ``base_addrs``."""
 
     buffers: list[Buffer]
     """Registered buffers, parallel to ``base_addrs``. NIXL holds only raw
@@ -531,15 +533,23 @@ class TensorAgent:
             init_params=backend_params,
         )
 
-        # Register one memory region per group, uniformly.
+        # Register each distinct region once. Jenga hands every leaf a view of
+        # the same slab, and NIXL rejects remote metadata that lists one
+        # (addr, len, dev) twice with different backend keys
+        # (NIXL_ERR_NOT_ALLOWED in load_remote_metadata).
         base_addrs: list[int] = []
         reg_dlists: list[nixl.RegistrationDescriptorList] = []
+        registered: set[tuple[int, int]] = set()
         for group_index, tensor in enumerate(tensors):
             base_addr = tensor._data_ptr()
             num_bytes = tensor.num_elements * tensor.dtype.size_in_bytes
             _check_rdma_start_alignment(
                 base_addr, num_bytes, device, agent_name, group_index
             )
+            base_addrs.append(base_addr)
+            if (base_addr, num_bytes) in registered:
+                continue
+            registered.add((base_addr, num_bytes))
             reg_dlist = nixl.RegistrationDescriptorList(
                 type=memory_type,
                 descs=[(base_addr, num_bytes, device.id, "")],
@@ -549,7 +559,6 @@ class TensorAgent:
                 raise ValueError(
                     f"Failed to register memory for {agent_name}: {status}"
                 )
-            base_addrs.append(base_addr)
             reg_dlists.append(reg_dlist)
 
         # Get metadata after registration

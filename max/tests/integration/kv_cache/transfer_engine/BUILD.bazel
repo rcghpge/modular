@@ -82,7 +82,7 @@ modular_py_test(
     imports = ["."],
     # One test per shard: NIXL transfers can hit invalid-FD errors when
     # multiple transfers share a process (see test_send_recv.py header).
-    shard_count = 9,
+    shard_count = 10,
     target_compatible_with = [
         "@platforms//cpu:x86_64",
         "@platforms//os:linux",

@@ -543,3 +543,64 @@ def test_connect_rejects_leaf_id_mismatch_dram() -> None:
 
     engine_2.cleanup()
     engine_1.cleanup()
+
+
+def test_shared_slab_registers_once_dram() -> None:
+    """Leaves that view one slab share a single NIXL registration.
+
+    NIXL refuses remote metadata that lists the same (addr, len, dev) twice
+    with different backend keys. libfabric keys every registration
+    differently, so registering the slab once per leaf failed connect(). The
+    CPU UCX plugin packs identical keys and does not hit that error, so this
+    checks the registration count directly, then moves pages for every leaf.
+    """
+    slab_1 = Buffer.from_numpy(np.arange(24, dtype=np.int16) + 100)
+    slab_2 = Buffer.from_numpy(np.zeros(24, dtype=np.int16))
+    draft_1 = Buffer.from_numpy(np.arange(16, dtype=np.int16) + 500)
+    draft_2 = Buffer.from_numpy(np.zeros(16, dtype=np.int16))
+    leaf_ids = ["full", "full/scales", "draft"]
+
+    def make_engine(name: str, slab: Buffer, draft: Buffer) -> KVTransferEngine:
+        return KVTransferEngine(
+            name,
+            [[kv_memory(slab, 3), kv_memory(slab, 12), kv_memory(draft, 4)]],
+            leaf_ids=leaf_ids,
+        )
+
+    engine_1 = make_engine("engine_1", slab_1, draft_1)
+    engine_2 = make_engine("engine_2", slab_2, draft_2)
+    for engine in (engine_1, engine_2):
+        (agent,) = engine.tensor_agents[0]
+        assert len(agent.base_addrs) == 3
+        assert len(agent.reg_dlists) == 2
+
+    engine_1.connect(engine_2.metadata)
+    engine_2.connect(engine_1.metadata)
+
+    src_idxs = {**_SRC_IDXS, "draft": [3]}
+    dst_idxs = {**_DST_IDXS, "draft": [0]}
+    queue: Queue[TransferReqData] = Queue()
+
+    def send() -> None:
+        transfer_req = engine_1.initiate_send_transfer(
+            engine_2.metadata,
+            src_idxs,
+            dst_idxs,
+            src_replica_idx=0,
+            dst_replica_idx=0,
+        )
+        queue.put(transfer_req)
+        engine_1.sync_and_release(transfer_req)
+
+    _run_transfer_pair(
+        Thread(target=send),
+        Thread(target=_peer_routine, args=(engine_2, queue)),
+    )
+
+    assert np.array_equal(slab_2.to_numpy(), _expected_destination())
+    expected_draft = np.zeros(16, dtype=np.int16)
+    expected_draft[0:4] = np.arange(12, 16, dtype=np.int16) + 500
+    assert np.array_equal(draft_2.to_numpy(), expected_draft)
+
+    engine_2.cleanup()
+    engine_1.cleanup()
