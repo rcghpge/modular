@@ -86,21 +86,16 @@ def test_split_k_reduce_rank3[
         row_major(M, N),
     )
 
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c, epilogue_buffer)
-    def epilogue_fn[
-        _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_dtype, _width]) capturing -> None:
-        var another_val = rebind[SIMD[_dtype, _width]](
+    def add_epilogue_data[
+        _dtype: DType, _width: SIMDLength, *, alignment: Int
+    ](idx: IndexList[2], val: SIMD[_dtype, _width]) {
+        var epilogue_buffer
+    } -> SIMD[_dtype, _width]:
+        return val + rebind[SIMD[_dtype, _width]](
             epilogue_buffer.load[width=_width](Coord(idx[0], idx[1]))
         )
-        c.store(
-            Coord(idx[0], idx[1]),
-            rebind[SIMD[c_type, _width]](val + another_val),
-        )
 
-    split_k_reduce[elementwise_lambda_fn=epilogue_fn](c, work_space, ctx)
+    split_k_reduce(c, work_space, add_epilogue_data, ctx)
 
     ctx.enqueue_copy(c_host, c_device)
     ctx.synchronize()

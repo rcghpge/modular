@@ -197,14 +197,23 @@ def test[
 
     comptime if lambda_fn:
         comptime if config:
+            comptime func = lambda_fn.value()
+
+            def compute_fn[
+                _dtype: DType, width: SIMDLength, *, alignment: Int
+            ](idx: IndexList[2], val: SIMD[_dtype, width]) {
+                var m, var n
+            } -> SIMD[_dtype, width]:
+                return func(idx, (m, n), val)
+
             multistage_gemm[
                 transpose_b=transpose_b,
                 config=config.value(),
-                elementwise_lambda_fn=epilogue_fn,
             ](
                 c_device,
                 a_device,
                 b_device,
+                compute_fn,
                 ctx,
             )
         else:
@@ -415,6 +424,24 @@ def main() raises:
         # Our default split-k reduction precision is output precision. For
         # bfloat16, we need a larger tolerance since the reference may reduce
         # in float32.
+        test[
+            .bfloat16,
+            arange_a=True,
+            transpose_b=True,
+            lambda_fn=epilogue_test_fn,
+            config=MatmulConfig[
+                .bfloat16,
+                .bfloat16,
+                .bfloat16,
+                transpose_b=True,
+            ](
+                block_tile_shape=Index(64, 128, 64),
+                warp_tile_shape=Index(16, 128, 64),
+                num_pipeline_stages=3,
+            ),
+            N=Int(128),
+            K=Int(128),
+        ](ctx, 100, 128, 128)
         test[
             .bfloat16,
             transpose_b=True,

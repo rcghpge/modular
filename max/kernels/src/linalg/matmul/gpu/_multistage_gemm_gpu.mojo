@@ -1417,7 +1417,6 @@ def multistage_gemm_split_k_kernel[
     b_linear_idx_type: DType,
     workspace_linear_idx_type: DType,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor[c_type, CLT, MutAnyOrigin, linear_idx_type=c_linear_idx_type],
     a: TileTensor[

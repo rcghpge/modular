@@ -1894,7 +1894,6 @@ def _enqueue_gemv_kernel_vector[
     simd_width: Int,
     rows_per_warp: Int,
     transpose_b: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
     check_bounds: Bool,
@@ -1913,8 +1912,8 @@ def _enqueue_gemv_kernel_vector[
     ctx: DeviceContext,
 ) raises:
     """Enqueues `gemv_kernel_vector`, or its multirow variant when
-    `rows_per_warp > 1`, with the legacy epilogue, the value epilogue, or
-    the value compute epilogue.
+    `rows_per_warp > 1`, with no epilogue, the value epilogue, or the value
+    compute epilogue.
 
     Parameters:
         EpilogueFnType: Type of `epilogue_fn` (inferred).
@@ -1923,7 +1922,6 @@ def _enqueue_gemv_kernel_vector[
         rows_per_warp: Rows each warp reduces; 1 selects
             `gemv_kernel_vector`.
         transpose_b: Whether the output index is transposed.
-        elementwise_lambda_fn: Legacy epilogue lambda.
         has_epilogue_fn: Whether `epilogue_fn` stores the output.
         has_compute_fn: Whether `compute_fn` maps the output before it is
             stored.
@@ -2078,7 +2076,6 @@ def _enqueue_gemv_kernel_vector[
             simd_width=simd_width,
             rows_per_warp=rows_per_warp,
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             check_bounds=check_bounds,
             pdl_level=pdl_level,
         ]
@@ -2106,7 +2103,6 @@ def _enqueue_gemv_kernel_vector[
             type_of(b).Engine,
             simd_width=simd_width,
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             check_bounds=check_bounds,
             pdl_level=pdl_level,
         ]
@@ -2126,7 +2122,6 @@ def _enqueue_gemv_kernel_vector[
 @inline(.always)
 def gemv_gpu_dispatch[
     transpose_b: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel.ON,
     tile_m: Int = 1,
 ](
@@ -2143,7 +2138,6 @@ def gemv_gpu_dispatch[
 
     Parameters:
         transpose_b: When True, B is treated as transposed (N, K) row-major.
-        elementwise_lambda_fn: Optional epilogue applied element-wise to each output.
         pdl_level: Programmatic dependent launch level.
         tile_m: Number of output rows processed per CTA (used by GEMV_SPLIT_K).
 
@@ -2156,7 +2150,6 @@ def gemv_gpu_dispatch[
     """
     _gemv_gpu_dispatch_impl[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
         pdl_level=pdl_level,
@@ -2198,7 +2191,6 @@ def gemv_gpu_dispatch[
     """
     _gemv_gpu_dispatch_impl[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=True,
         has_compute_fn=False,
         pdl_level=pdl_level,
@@ -2240,7 +2232,6 @@ def gemv_gpu_dispatch[
     """
     _gemv_gpu_dispatch_impl[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=False,
         has_compute_fn=True,
         pdl_level=pdl_level,
@@ -2255,7 +2246,6 @@ def _gemv_gpu_dispatch_impl[
     //,
     *,
     transpose_b: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
     pdl_level: PDLLevel,
@@ -2383,7 +2373,6 @@ def _gemv_gpu_dispatch_impl[
                         num_threads=num_threads,
                         unroll_factor=unroll_factor,
                         weight_non_temporal=weight_non_temporal,
-                        elementwise_lambda_fn=elementwise_lambda_fn,
                         check_bounds_m=tile_m > 1,
                         check_bounds_n=static_N % tile_n != 0,
                         pdl_level=pdl_level,
@@ -2449,7 +2438,6 @@ def _gemv_gpu_dispatch_impl[
                         simd_width=simd_width,
                         rows_per_warp=1,
                         transpose_b=False,
-                        elementwise_lambda_fn=elementwise_lambda_fn,
                         has_epilogue_fn=has_epilogue_fn,
                         has_compute_fn=has_compute_fn,
                         check_bounds=check_bounds_k,
@@ -2477,7 +2465,6 @@ def _gemv_gpu_dispatch_impl[
                         simd_width=simd_width,
                         rows_per_warp=1,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=elementwise_lambda_fn,
                         has_epilogue_fn=has_epilogue_fn,
                         has_compute_fn=has_compute_fn,
                         check_bounds=check_bounds_k,
@@ -2502,7 +2489,6 @@ def _gemv_gpu_dispatch_impl[
                         simd_width=simd_width,
                         rows_per_warp=1,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=elementwise_lambda_fn,
                         has_epilogue_fn=has_epilogue_fn,
                         has_compute_fn=has_compute_fn,
                         check_bounds=check_bounds_k,
@@ -2531,7 +2517,6 @@ def _gemv_gpu_dispatch_impl[
                         simd_width=simd_width,
                         rows_per_warp=rows,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=elementwise_lambda_fn,
                         has_epilogue_fn=has_epilogue_fn,
                         has_compute_fn=has_compute_fn,
                         check_bounds=check_bounds_k,
@@ -2634,7 +2619,6 @@ def _gemv_gpu_dispatch_impl[
                         b_type,
                         a_type,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=elementwise_lambda_fn,
                         pdl_level=pdl_level,
                     ]
                     ctx.enqueue_function[kernel](
@@ -2696,7 +2680,6 @@ def _gemv_gpu_dispatch_impl[
                         c_type,
                         a_type,
                         b_type,
-                        elementwise_lambda_fn=elementwise_lambda_fn,
                         pdl_level=pdl_level,
                     ]
 
@@ -2762,7 +2745,6 @@ def _gemv_gpu_dispatch_impl[
                     a_type,
                     b_type,
                     tile_size=WARP_SIZE * WARPS_PER_BLOCK,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
                     pdl_level=pdl_level,
                 ]
                 ctx.enqueue_function[kernel](
@@ -2781,7 +2763,6 @@ def _gemv_gpu_dispatch_impl[
             logger.info("Executing: MATMUL_NAIVE kernel")
             enqueue_matmul_kernel_naive[
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
             ](c, a, b, epilogue_fn, compute_fn, ctx)
@@ -2818,7 +2799,6 @@ def log_shape[
 @inline(.always)
 def gemv_gpu[
     transpose_b: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel.ON,
 ](
     c: TileTensor[mut=True, ...],
@@ -2833,7 +2813,6 @@ def gemv_gpu[
 
     Parameters:
         transpose_b: When True, B is treated as transposed (N, K) row-major.
-        elementwise_lambda_fn: Optional epilogue applied element-wise to each output.
         pdl_level: Programmatic dependent launch level for PDL barriers.
 
     Args:
@@ -2844,7 +2823,6 @@ def gemv_gpu[
     """
     _gemv_gpu_impl[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
         pdl_level=pdl_level,
@@ -2881,7 +2859,6 @@ def gemv_gpu[
     """
     _gemv_gpu_impl[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=True,
         has_compute_fn=False,
         pdl_level=pdl_level,
@@ -2918,7 +2895,6 @@ def gemv_gpu[
     """
     _gemv_gpu_impl[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=False,
         has_compute_fn=True,
         pdl_level=pdl_level,
@@ -2932,7 +2908,6 @@ def _gemv_gpu_impl[
     //,
     *,
     transpose_b: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
     pdl_level: PDLLevel,
@@ -3020,7 +2995,6 @@ def _gemv_gpu_impl[
 
     _gemv_gpu_dispatch_impl[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
         pdl_level=pdl_level,

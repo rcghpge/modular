@@ -279,7 +279,6 @@ def matmul_kernel_naive[
     b_layout_type: TensorLayout,
     BLOCK_DIM: Int,
     transpose_b: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     s_type: DType = get_accum_type[c_type](),
     c_engine: TensorEngine = DefaultEngine[element_width=1],
     a_engine: TensorEngine = DefaultEngine[element_width=1],
@@ -295,7 +294,6 @@ def matmul_kernel_naive[
     _matmul_kernel_naive_impl[
         BLOCK_DIM=BLOCK_DIM,
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
         s_type=s_type,
@@ -331,7 +329,6 @@ def matmul_kernel_naive_epilogue_fn[
     _matmul_kernel_naive_impl[
         BLOCK_DIM=BLOCK_DIM,
         transpose_b=transpose_b,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=True,
         has_compute_fn=False,
         s_type=s_type,
@@ -367,7 +364,6 @@ def matmul_kernel_naive_compute_fn[
     _matmul_kernel_naive_impl[
         BLOCK_DIM=BLOCK_DIM,
         transpose_b=transpose_b,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=False,
         has_compute_fn=True,
         s_type=s_type,
@@ -391,7 +387,6 @@ def _matmul_kernel_naive_impl[
     *,
     BLOCK_DIM: Int,
     transpose_b: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
     s_type: DType,
@@ -433,10 +428,8 @@ def _matmul_kernel_naive_impl[
                 rebind[Scalar[a_type]](a[x, i]).cast[s_type]()
                 * rebind[Scalar[b_type]](b[i, y]).cast[s_type]()
             )
-    comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
-        apply_elementwise_epilogue[elementwise_lambda_fn](
-            epilogue_fn, Index(x, y), accum.cast[c_type]()
-        )
+    comptime if has_epilogue_fn:
+        epilogue_fn[c_type, 1, alignment=1](Index(x, y), accum.cast[c_type]())
     else:
         var out = accum.cast[c_type]()
         comptime if has_compute_fn:
@@ -451,7 +444,6 @@ def enqueue_matmul_kernel_naive[
     //,
     *,
     transpose_b: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -470,7 +462,6 @@ def enqueue_matmul_kernel_naive[
         EpilogueFnType: Type of `epilogue_fn` (inferred).
         ComputeFnType: Type of `compute_fn` (inferred).
         transpose_b: Whether `b` is stored as (N, K).
-        elementwise_lambda_fn: Legacy epilogue lambda.
         has_epilogue_fn: Whether `epilogue_fn` stores the output.
         has_compute_fn: Whether `compute_fn` maps the output before it is
             stored.
@@ -552,7 +543,6 @@ def enqueue_matmul_kernel_naive[
             type_of(b).LayoutType,
             BLOCK_DIM,
             transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             c_engine=type_of(c).Engine,
             a_engine=type_of(a).Engine,
             b_engine=type_of(b).Engine,
@@ -990,11 +980,9 @@ def _matmul_gpu_impl[
                 c, a, b, compute_fn, ctx
             )
         else:
-            gemv_gpu[
-                transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_wrapper,
-                pdl_level=PDLLevel.ON,
-            ](c, a, b, ctx)
+            gemv_gpu[transpose_b=transpose_b, pdl_level=PDLLevel.ON](
+                c, a, b, ctx
+            )
 
     # NOTE: k has to be a multiple of BK * num_stages. Hard coded this condition to 128 for now.
     # TODO: Need to find a better dispatch strategy.
@@ -1121,10 +1109,7 @@ def _matmul_gpu_impl[
         elif has_compute_fn:
             matmul_vendor[transpose_b=transpose_b](c, a, b, compute_fn, ctx)
         else:
-            matmul_vendor[
-                transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_wrapper,
-            ](c, a, b, ctx)
+            matmul_vendor[transpose_b=transpose_b](c, a, b, ctx)
 
     comptime if get_defined_bool["MODULE_USE_VENDOR_BLAS", False]():
         logger.info("Executing: Vendor BLAS")
@@ -1190,9 +1175,7 @@ def _matmul_gpu_impl[
                     ](c, a, b, runtime_config, compute_fn, ctx)
                 else:
                     return multistage_gemm[
-                        transpose_b=transpose_b,
-                        config=config,
-                        elementwise_lambda_fn=elementwise_lambda_wrapper,
+                        transpose_b=transpose_b, config=config
                     ](c, a, b, runtime_config, ctx)
 
             @inline(.always)
@@ -1218,14 +1201,10 @@ def _matmul_gpu_impl[
                 else:
                     comptime if config.num_k_partitions > 1:
                         return multistage_gemm[
-                            transpose_b=transpose_b,
-                            config=config,
-                            elementwise_lambda_fn=elementwise_lambda_wrapper,
+                            transpose_b=transpose_b, config=config
                         ](c, a, b, config, ctx)
                     return multistage_gemm[
-                        transpose_b=transpose_b,
-                        config=config,
-                        elementwise_lambda_fn=elementwise_lambda_wrapper,
+                        transpose_b=transpose_b, config=config
                     ](c, a, b, ctx)
 
             comptime static_N = c.static_shape[1]
@@ -1293,7 +1272,6 @@ def _matmul_gpu_impl[
                         else:
                             return gemv_gpu_dispatch[
                                 transpose_b=True,
-                                elementwise_lambda_fn=elementwise_lambda_wrapper,
                                 pdl_level=PDLLevel.OFF,
                                 tile_m=1,
                             ](GEMVAlgorithm.GemvSplitK, c, a, b, ctx)
@@ -2006,16 +1984,13 @@ def _matmul_gpu_impl[
     logger.info("Executing: Naive MATMUL kernel")
     enqueue_matmul_kernel_naive[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_wrapper,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
     ](c, a, b, epilogue_fn, compute_fn, ctx)
 
 
 @inline(.always)
-def split_k_reduce[
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-](
+def split_k_reduce(
     c: TileTensor[mut=True, ...],
     work_space: TileTensor[mut=False, ...],
     ctx: DeviceContext,
@@ -2023,13 +1998,7 @@ def split_k_reduce[
     """Reduces a split-K workspace into the output tensor by summing across K partitions.
 
     Loads each `(m, n)` element from every partition in `work_space`, accumulates
-    them, and stores the result into `c` (or passes it through
-    `elementwise_lambda_fn` when supplied).
-
-    Parameters:
-        elementwise_lambda_fn: Optional epilogue applied to the reduced
-            value before it is stored to `c` (defaults to `None`, which
-            stores the raw sum).
+    them, and stores the result into `c`.
 
     Args:
         c: Output tile of shape `(M, N)` that receives the reduced sum.
@@ -2037,11 +2006,65 @@ def split_k_reduce[
             holding the per-partition partial sums to be reduced.
         ctx: Device context used to launch the reduction kernel.
     """
-    _split_k_reduce_impl[
-        elementwise_lambda_fn=elementwise_lambda_fn,
-        has_epilogue_fn=False,
-        has_compute_fn=False,
-    ](c, work_space, no_epilogue_fn, no_compute_fn, ctx)
+    _split_k_reduce_impl[has_epilogue_fn=False, has_compute_fn=False](
+        c, work_space, no_epilogue_fn, no_compute_fn, ctx
+    )
+
+
+@inline(.always)
+def split_k_reduce[
+    EpilogueFnType: ElementwiseEpilogueFn, //
+](
+    c: TileTensor[mut=True, ...],
+    work_space: TileTensor[mut=False, ...],
+    epilogue_fn: EpilogueFnType,
+    ctx: DeviceContext,
+) raises:
+    """Reduces a split-K workspace by summing across K partitions and hands
+    each reduced output to `epilogue_fn`.
+
+    Parameters:
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+
+    Args:
+        c: Output tile of shape `(M, N)`. Only its shape is read;
+            `epilogue_fn` stores the result.
+        work_space: Read-only tile of shape `(num_partitions, M, N)`
+            holding the per-partition partial sums to be reduced.
+        epilogue_fn: Stores each reduced output.
+        ctx: Device context used to launch the reduction kernel.
+    """
+    _split_k_reduce_impl[has_epilogue_fn=True, has_compute_fn=False](
+        c, work_space, epilogue_fn, no_compute_fn, ctx
+    )
+
+
+@inline(.always)
+def split_k_reduce[
+    ComputeFnType: ElementwiseComputeFn, //
+](
+    c: TileTensor[mut=True, ...],
+    work_space: TileTensor[mut=False, ...],
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises:
+    """Reduces a split-K workspace by summing across K partitions and stores
+    `compute_fn` of each reduced output into `c`.
+
+    Parameters:
+        ComputeFnType: Type of `compute_fn` (inferred).
+
+    Args:
+        c: Output tile of shape `(M, N)` that receives the result.
+        work_space: Read-only tile of shape `(num_partitions, M, N)`
+            holding the per-partition partial sums to be reduced.
+        compute_fn: Maps each output index and reduced value to the value
+            to store.
+        ctx: Device context used to launch the reduction kernel.
+    """
+    _split_k_reduce_impl[has_epilogue_fn=False, has_compute_fn=True](
+        c, work_space, no_epilogue_fn, compute_fn, ctx
+    )
 
 
 @inline(.always)
@@ -2050,7 +2073,6 @@ def _split_k_reduce_impl[
     ComputeFnType: ElementwiseComputeFn,
     //,
     *,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -2077,9 +2099,8 @@ def _split_k_reduce_impl[
 
         comptime align = align_of[SIMD[c_type, simd_width]]()
 
-        comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
-            apply_elementwise_epilogue[elementwise_lambda_fn, alignment=align](
-                epilogue_fn,
+        comptime if has_epilogue_fn:
+            epilogue_fn[c_type, simd_width, alignment=align](
                 IndexList[2](Int(c_coord[0].value()), Int(c_coord[1].value())),
                 vec.cast[c_type](),
             )
@@ -2108,7 +2129,6 @@ def _multistage_gemm_amd[
     *,
     transpose_b: Bool,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -2140,7 +2160,6 @@ def _multistage_gemm_amd[
             c_type,
             kernel_config,
             enable_swizzle=True,
-            elementwise_lambda_fn=elementwise_lambda_fn,
         ]
         comptime if has_epilogue_fn:
             comptime k = kernel_type.run_with_epilogue_fn[
@@ -2205,7 +2224,6 @@ def _multistage_gemm_amd[
             c_type,
             True,
             matmul_config,
-            elementwise_lambda_fn,
         ]
         comptime if has_epilogue_fn:
             comptime k = kernel_type.run_with_epilogue_fn[
@@ -2311,7 +2329,6 @@ def multistage_gemm[
     *,
     transpose_b: Bool,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor[mut=True, c_type, ...],
     a: TileTensor[mut=False, a_type, ...],
@@ -2331,9 +2348,6 @@ def multistage_gemm[
             is read as `b[y, i]` instead of `b[i, y]`.
         config: Compile-time `MatmulConfig` selecting the block tile,
             warp tile, MMA shape, and pipeline stages for the kernel.
-        elementwise_lambda_fn: Optional epilogue applied to the
-            accumulated value before it is stored to `c` (defaults to
-            `None`, which stores the raw accumulation).
 
     Args:
         c: Output tile of shape `(M, N)` receiving the matmul result.
@@ -2356,7 +2370,6 @@ def multistage_gemm[
         _multistage_gemm_amd[
             transpose_b=transpose_b,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             has_epilogue_fn=False,
             has_compute_fn=False,
         ](c, a, b, no_epilogue_fn, no_compute_fn, ctx)
@@ -2370,7 +2383,6 @@ def multistage_gemm[
             a_linear_idx_type=a.linear_idx_type,
             b_linear_idx_type=b.linear_idx_type,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
         ]
         ctx.enqueue_function[gemm_kernel_type](
             c,
@@ -2432,7 +2444,6 @@ def multistage_gemm[
         _multistage_gemm_amd[
             transpose_b=transpose_b,
             config=config,
-            elementwise_lambda_fn=None,
             has_epilogue_fn=True,
             has_compute_fn=False,
         ](c, a, b, epilogue_fn, no_compute_fn, ctx)
@@ -2510,7 +2521,6 @@ def multistage_gemm[
         _multistage_gemm_amd[
             transpose_b=transpose_b,
             config=config,
-            elementwise_lambda_fn=None,
             has_epilogue_fn=False,
             has_compute_fn=True,
         ](c, a, b, no_epilogue_fn, compute_fn, ctx)
@@ -2550,7 +2560,6 @@ def multistage_gemm[
     *,
     transpose_b: Bool,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor[mut=True, c_type, ...],
     a: TileTensor[mut=False, a_type, ...],
@@ -2570,9 +2579,6 @@ def multistage_gemm[
             is read as `b[y, i]` instead of `b[i, y]`.
         config: Compile-time `MatmulConfig` selecting the block tile,
             warp tile, MMA shape, and pipeline stages for the kernel.
-        elementwise_lambda_fn: Optional epilogue applied to the
-            accumulated value before it is stored to `c` (defaults to
-            `None`, which stores the raw accumulation).
 
     Args:
         c: Output tile of shape `(M, N)` receiving the matmul result;
@@ -2591,7 +2597,6 @@ def multistage_gemm[
     _multistage_gemm_runtime_impl[
         transpose_b=transpose_b,
         config=config,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
     ](c, a, b, runtime_config, no_epilogue_fn, no_compute_fn, ctx)
@@ -2641,7 +2646,6 @@ def multistage_gemm[
     _multistage_gemm_runtime_impl[
         transpose_b=transpose_b,
         config=config,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=True,
         has_compute_fn=False,
     ](c, a, b, runtime_config, epilogue_fn, no_compute_fn, ctx)
@@ -2691,7 +2695,6 @@ def multistage_gemm[
     _multistage_gemm_runtime_impl[
         transpose_b=transpose_b,
         config=config,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=False,
         has_compute_fn=True,
     ](c, a, b, runtime_config, no_epilogue_fn, compute_fn, ctx)
@@ -2708,7 +2711,6 @@ def _multistage_gemm_runtime_impl[
     *,
     transpose_b: Bool,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -2751,7 +2753,6 @@ def _multistage_gemm_runtime_impl[
             b_linear_idx_type=b.linear_idx_type,
             workspace_linear_idx_type=tensor_work_space.linear_idx_type,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
         ]
 
         comptime if ctx.target.is_amd_gpu() and not has_amd_rdna_gpu_accelerator():
@@ -2780,7 +2781,6 @@ def _multistage_gemm_runtime_impl[
             )
 
         _split_k_reduce_impl[
-            elementwise_lambda_fn=elementwise_lambda_fn,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
         ](c, tensor_work_space, epilogue_fn, compute_fn, ctx)
@@ -2797,7 +2797,6 @@ def _multistage_gemm_runtime_impl[
         _multistage_gemm_amd[
             transpose_b=transpose_b,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
         ](c, a, b, epilogue_fn, compute_fn, ctx)
@@ -2858,7 +2857,6 @@ def _multistage_gemm_runtime_impl[
                 a_linear_idx_type=a.linear_idx_type,
                 b_linear_idx_type=b.linear_idx_type,
                 config=config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
             ]
             ctx.enqueue_function[gemm_kernel_type](
                 c,

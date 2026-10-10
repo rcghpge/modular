@@ -44,7 +44,6 @@ from .....utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
     GemmShape,
-    elementwise_epilogue_type,
     identity_compute_fn,
     no_epilogue_fn,
 )
@@ -104,7 +103,6 @@ def _small_MN_gemms_impl[
     //,
     *,
     config: TuningConfigSmallMNGemms,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
     pdl_level: PDLLevel,
@@ -140,7 +138,6 @@ def _small_MN_gemms_impl[
             gemm_mma_cpasync[
                 pdl_level=pdl_level,
                 tile_k=config.tile_k,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 swapAB=config.swapAB,
             ](c, a, b, m, static_K, static_N, 1, ctx)
     else:
@@ -249,7 +246,6 @@ def _small_MN_gemms_impl[
                 tile_n=config.tile_n,
                 num_threads=config.num_threads,
                 unroll_factor=config.unroll_factor,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 check_bounds_m=check_bounds_m,
                 check_bounds_n=check_bounds_n,
             ]
@@ -278,7 +274,6 @@ def dispatch_gemv[
     ComputeFnType: ElementwiseComputeFn,
     //,
     transpose_b: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = True,
@@ -307,8 +302,6 @@ def dispatch_gemv[
         ComputeFnType: Type of the compute epilogue closure (inferred).
         transpose_b: Whether `b` is stored transposed (defaults to
             `False`).
-        elementwise_lambda_fn: Optional epilogue applied to each output
-            element (defaults to `None`). Ignored when `has_compute_fn`.
         pdl_level: Programmatic dependent launch level for the
             dispatched kernel (defaults to `PDLLevel()`).
         has_epilogue_fn: Whether `epilogue_fn` stores the output
@@ -344,7 +337,6 @@ def dispatch_gemv[
     comptime if static_NK in SM100_GEMV_SHAPES:
         var status = sm100_heuristic_and_outliers_dispatch[
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
@@ -366,7 +358,6 @@ def dispatch_gemv[
     else:
         gemv_gpu[
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
         ](c, a, b, ctx)
 
@@ -378,7 +369,6 @@ def matmul_dispatch_sm100[
     b_type: DType,
     transpose_b: Bool = False,
     use_tf32: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c: TileTensor[mut=True, c_type, ...],
@@ -399,8 +389,6 @@ def matmul_dispatch_sm100[
         use_tf32: Whether to allow TF32 (truncated mantissa) multiplies
             for float32 instead of requiring IEEE-fp32 precision
             (defaults to `True`).
-        elementwise_lambda_fn: Optional epilogue applied to each output
-            element (defaults to `None`).
         pdl_level: Programmatic dependent launch level for the
             dispatched kernel (defaults to `PDLLevel()`).
     Args:
@@ -414,7 +402,6 @@ def matmul_dispatch_sm100[
     _matmul_dispatch_sm100_impl[
         transpose_b=transpose_b,
         use_tf32=use_tf32,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         pdl_level=pdl_level,
         has_epilogue_fn=False,
         has_compute_fn=False,
@@ -430,7 +417,6 @@ def matmul_dispatch_sm100[
     //,
     transpose_b: Bool = False,
     use_tf32: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     has_compute_fn: Bool = True,
 ](
@@ -459,8 +445,6 @@ def matmul_dispatch_sm100[
         use_tf32: Whether to allow TF32 (truncated mantissa) multiplies
             for float32 instead of requiring IEEE-fp32 precision
             (defaults to `True`).
-        elementwise_lambda_fn: Optional epilogue applied to each output
-            element (defaults to `None`). Ignored when `has_compute_fn`.
         pdl_level: Programmatic dependent launch level for the
             dispatched kernel (defaults to `PDLLevel()`).
         has_compute_fn: Whether to apply `compute_fn`. When False,
@@ -479,7 +463,6 @@ def matmul_dispatch_sm100[
     _matmul_dispatch_sm100_impl[
         transpose_b=transpose_b,
         use_tf32=use_tf32,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         pdl_level=pdl_level,
         has_epilogue_fn=False,
         has_compute_fn=has_compute_fn,
@@ -537,7 +520,6 @@ def matmul_dispatch_sm100[
     _matmul_dispatch_sm100_impl[
         transpose_b=transpose_b,
         use_tf32=use_tf32,
-        elementwise_lambda_fn=None,
         pdl_level=pdl_level,
         has_epilogue_fn=True,
         has_compute_fn=False,
@@ -555,7 +537,6 @@ def _matmul_dispatch_sm100_impl[
     *,
     transpose_b: Bool,
     use_tf32: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     pdl_level: PDLLevel,
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
@@ -633,7 +614,6 @@ def _matmul_dispatch_sm100_impl[
         if static_N == 1 or m == 1:
             dispatch_gemv[
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
@@ -684,7 +664,6 @@ def _matmul_dispatch_sm100_impl[
         def _dispatch_split_k[tile_m: Int]() raises {imm}:
             _dispatch_gemv_split_k[
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
                 pdl_level=pdl_level,
@@ -741,7 +720,6 @@ def _matmul_dispatch_sm100_impl[
                 )
                 _dispatch_gemv_split_k[
                     transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
                     has_epilogue_fn=has_epilogue_fn,
                     has_compute_fn=has_compute_fn,
                     pdl_level=pdl_level,
@@ -774,7 +752,6 @@ def _matmul_dispatch_sm100_impl[
         ):
             var status = sm100_heuristic_and_outliers_dispatch[
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
@@ -792,8 +769,6 @@ def _matmul_dispatch_sm100_impl[
         epilogue_type = String("Elementwise Epilogue Value")
     elif has_compute_fn:
         epilogue_type = String("Compute Epilogue")
-    elif elementwise_lambda_fn:
-        epilogue_type = String("Normal Epilogue")
 
     logger.info("------ Dispatching to SM100 (B200+) ------")
     logger.info(
@@ -836,7 +811,6 @@ def _matmul_dispatch_sm100_impl[
         ):
             status = matmul_dispatch_sm100_bf16[
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
@@ -845,7 +819,6 @@ def _matmul_dispatch_sm100_impl[
         elif a_type == .float8_e4m3fn and c_type in (DType.bfloat16,):
             status = matmul_dispatch_sm100_fp8[
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
@@ -854,7 +827,6 @@ def _matmul_dispatch_sm100_impl[
         elif a_type == .float32 and c_type in (DType.float32,):
             status = matmul_dispatch_sm100_fp32[
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
@@ -868,7 +840,6 @@ def _matmul_dispatch_sm100_impl[
     # We assume this is always a hit because the worst case is a naive matmul.
     return _vendor_blas_matmul_sm100[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
     ](c, a, b, epilogue_fn, compute_fn, ctx)
@@ -881,7 +852,6 @@ def _dispatch_gemv_split_k[
     //,
     *,
     transpose_b: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
     pdl_level: PDLLevel,
@@ -905,7 +875,6 @@ def _dispatch_gemv_split_k[
     else:
         gemv_gpu_dispatch[
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             tile_m=tile_m,
         ](GEMVAlgorithm.GemvSplitK, c, a, b, ctx)
@@ -923,7 +892,6 @@ def matmul_dispatch_sm100_fp8[
     ComputeFnType: ElementwiseComputeFn,
     //,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = True,
@@ -960,7 +928,6 @@ def matmul_dispatch_sm100_fp8[
     if m <= 128:
         var status = sm100_heuristic_and_outliers_dispatch[
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
@@ -984,7 +951,6 @@ def matmul_dispatch_sm100_fp8[
         _blackwell_matmul_with_epilogues[
             transpose_b,
             config=default_config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
@@ -1002,7 +968,6 @@ def matmul_dispatch_sm100_fp8[
         return _blackwell_matmul_with_epilogues[
             transpose_b,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
@@ -1062,7 +1027,6 @@ def matmul_dispatch_sm100_fp8[
     # The static-scale compute epilogue rides through as `compute_fn`.
     return sm100_heuristic_and_outliers_dispatch[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         pdl_level=pdl_level,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
@@ -1119,7 +1083,6 @@ def select_and_launch_sm100_config[
     ) raises -> None,
     //,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_tensor: Bool = False,
     epilogue_is_1d: Bool = False,
@@ -1248,7 +1211,6 @@ def matmul_dispatch_sm100_bf16[
     ComputeFnType: ElementwiseComputeFn,
     //,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = True,
@@ -1276,8 +1238,6 @@ def matmul_dispatch_sm100_bf16[
         ComputeFnType: Type of the compute epilogue closure (inferred).
         transpose_b: Whether `b` is stored transposed (defaults to
             `True`).
-        elementwise_lambda_fn: Optional epilogue applied to each output
-            element (defaults to `None`). Ignored when `has_compute_fn`.
         pdl_level: Programmatic dependent launch level for the
             dispatched kernel (defaults to `PDLLevel()`).
         has_epilogue_fn: Whether `epilogue_fn` stores the output
@@ -1320,7 +1280,6 @@ def matmul_dispatch_sm100_bf16[
     ):
         _vendor_blas_matmul_sm100[
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
         ](c, a, b, epilogue_fn, compute_fn, ctx)
@@ -1342,7 +1301,6 @@ def matmul_dispatch_sm100_bf16[
                 logger.info("Dispatching to small_MN_gemms: ", config)
                 _small_MN_gemms_impl[
                     config=config,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
                     has_epilogue_fn=has_epilogue_fn,
                     has_compute_fn=has_compute_fn,
                     pdl_level=pdl_level,
@@ -1351,7 +1309,6 @@ def matmul_dispatch_sm100_bf16[
 
     var status = sm100_heuristic_and_outliers_dispatch[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         pdl_level=pdl_level,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
@@ -1374,7 +1331,6 @@ def matmul_dispatch_sm100_bf16[
     _blackwell_matmul_with_epilogues[
         transpose_b,
         config=default_config,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         pdl_level=pdl_level,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
@@ -1390,7 +1346,6 @@ def matmul_dispatch_sm100_fp32[
     ComputeFnType: ElementwiseComputeFn,
     //,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = True,
@@ -1416,8 +1371,6 @@ def matmul_dispatch_sm100_fp32[
         ComputeFnType: Type of the compute epilogue closure (inferred).
         transpose_b: Whether `b` is stored transposed (defaults to
             `True`).
-        elementwise_lambda_fn: Optional epilogue applied to each output
-            element (defaults to `None`).
         pdl_level: Programmatic dependent launch level for the
             dispatched kernel (defaults to `PDLLevel()`).
         has_epilogue_fn: Whether `epilogue_fn` stores the output
@@ -1445,7 +1398,6 @@ def matmul_dispatch_sm100_fp32[
 
     return sm100_heuristic_and_outliers_dispatch[
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         pdl_level=pdl_level,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
@@ -1461,7 +1413,6 @@ def _vendor_blas_matmul_sm100[
     ComputeFnType: ElementwiseComputeFn,
     //,
     transpose_b: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
 ](
@@ -1493,10 +1444,7 @@ def _vendor_blas_matmul_sm100[
                 c, a, b, compute_fn, ctx
             )
         else:
-            return matmul_vendor[
-                transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_fn,
-            ](c, a, b, ctx)
+            return matmul_vendor[transpose_b=transpose_b,](c, a, b, ctx)
 
     except:
         # Fallback to multistage/naive GEMMs if cuBLAS fails.
@@ -1521,7 +1469,6 @@ def _vendor_blas_matmul_sm100[
                 multistage_gemm[
                     transpose_b=transpose_b,
                     config=config,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
                 ](c, a, b, config, ctx)
         else:
             comptime BLOCK_DIM = 16
@@ -1590,7 +1537,6 @@ def _vendor_blas_matmul_sm100[
                     type_of(b).LayoutType,
                     BLOCK_DIM,
                     transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
                     c_engine=type_of(c).Engine,
                     a_engine=type_of(a).Engine,
                     b_engine=type_of(b).Engine,
@@ -1777,7 +1723,6 @@ def _blackwell_matmul_with_epilogues[
     transpose_b: Bool,
     *,
     config: MatmulConfig[_, _, _, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     pdl_level: PDLLevel,
     EpilogueEngine: TensorEngine = DefaultEngine[element_width=1],
     has_epilogue_fn: Bool,
@@ -1800,7 +1745,7 @@ def _blackwell_matmul_with_epilogues[
 ) raises:
     comptime if has_epilogue_fn:
         comptime assert (
-            elementwise_lambda_fn is None and not has_compute_fn
+            not has_compute_fn
         ), "an elementwise epilogue value excludes the other epilogues"
         blackwell_matmul_tma_umma_warp_specialized[
             transpose_b, config=config, pdl_level=pdl_level
@@ -1809,7 +1754,6 @@ def _blackwell_matmul_with_epilogues[
         blackwell_matmul_tma_umma_warp_specialized[
             transpose_b,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             EpilogueEngine=EpilogueEngine,
             has_compute_fn=has_compute_fn,
@@ -1824,7 +1768,6 @@ def sm100_heuristic_and_outliers_dispatch[
     ComputeFnType: ElementwiseComputeFn,
     //,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_tensor: Bool = False,
     epilogue_is_1d: Bool = False,
@@ -1851,8 +1794,8 @@ def sm100_heuristic_and_outliers_dispatch[
     heuristic outlier config set.
 
     Wraps `select_and_launch_sm100_config` with a launch callback that invokes
-    `blackwell_matmul_tma_umma_warp_specialized` directly, passing through the
-    elementwise epilogue lambda, `epilogue_fn`, and `compute_fn`.
+    `blackwell_matmul_tma_umma_warp_specialized` directly, passing through
+    `epilogue_fn` and `compute_fn`.
 
     Parameters:
         c_type: Output element type (inferred).
@@ -1863,8 +1806,6 @@ def sm100_heuristic_and_outliers_dispatch[
         ComputeFnType: Type of the compute epilogue closure (inferred).
         transpose_b: Whether `b` is stored transposed (defaults to
             `True`).
-        elementwise_lambda_fn: Optional epilogue applied to each output
-            element (defaults to `None`).
         pdl_level: Programmatic dependent launch level for the
             dispatched kernel (defaults to `PDLLevel()`).
         has_epilogue_tensor: Whether an epilogue tensor is supplied for
@@ -1921,7 +1862,6 @@ def sm100_heuristic_and_outliers_dispatch[
             config=rebind[MatmulConfig[a_type, b_type, c_type, transpose_b]](
                 config
             ),
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             EpilogueEngine=EpilogueEngine,
             has_epilogue_fn=has_epilogue_fn,
@@ -1938,7 +1878,6 @@ def sm100_heuristic_and_outliers_dispatch[
 
     return select_and_launch_sm100_config[
         transpose_b,
-        elementwise_lambda_fn,
         pdl_level,
         has_epilogue_tensor=has_epilogue_tensor,
         epilogue_is_1d=epilogue_is_1d,

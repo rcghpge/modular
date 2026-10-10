@@ -153,7 +153,6 @@ def fused_bias_residual_matmul_dispatch_sm100[
                 logger.info("Dispatching to small_MN_gemms: ", config)
                 _small_MN_gemms_impl[
                     config=config,
-                    elementwise_lambda_fn=None,
                     has_epilogue_fn=False,
                     has_compute_fn=True,
                     pdl_level=pdl_level,
