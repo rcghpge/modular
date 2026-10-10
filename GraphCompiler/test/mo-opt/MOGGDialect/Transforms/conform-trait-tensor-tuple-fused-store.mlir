@@ -14,7 +14,7 @@
 // RUN:   --map-outline-structured-kernel-bodies \
 // RUN:   --canonicalize --cse --map-to-mogg \
 // RUN:   --mogg-conform-call-operands \
-// RUN:   --mogg-outline-kernels-into-functions --mogg-to-mgp --mogg-emit-mojo \
+// RUN:   --mogg-outline-routines --mogg-to-mgp --mogg-emit-mojo \
 // RUN:   -verify-each=false -o /dev/null
 // RUN: cat %t/*.mojo | FileCheck %s --check-prefix=MOJO
 
@@ -30,7 +30,7 @@
 // CHECK: %[[OUT0:.*]] = mogg.tensor.create.epilogue {{.*}}contract = <{role = output, fused = true, access = store, capabilities = none}>
 // CHECK: %[[OUT1:.*]] = mogg.tensor.create.epilogue {{.*}}contract = <{role = output, fused = true, access = store, capabilities = none}>
 // CHECK: %[[X:.*]] = mogg.trait.create(%{{.*}}) contract = <{role = input, fused = false, access = none, capabilities = none}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
-// CHECK: %[[OUTS:.*]] = mogg.tuple.create(%[[OUT0]], %[[OUT1]]) variadic_abi = <tensor_tuple> : (!mogg.tensor, !mogg.tensor) -> !mogg.tuple
+// CHECK: %[[OUTS:.*]] = mogg.tuple.create(%[[OUT0]], %[[OUT1]]) variadic_abi = <tensor_tuple> : !mogg.tensor, !mogg.tensor
 // CHECK: mogg.call.opaque @{{.*}}TraitTensorTupleFusedStoreSplit inputs(%[[X]] : !mogg.tensor) outputs(%[[OUTS]] : !mogg.tuple) {{.*}}hasEpilogueFusion = true
 
 // Emit wraps each element in its own store-fusion wrapper, one per epilogue,
