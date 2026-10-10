@@ -741,22 +741,19 @@ def mla_prefill_branch_fp8[
     # =========================================================================#
 
     # Create a view of the `q` tensor that only contains the last
-    # qk_rope_head_dim columns of each Q head.
-    var q_rope = TileTensor(
-        q.ptr + qk_nope_head_dim,
+    # qk_rope_head_dim columns of each Q head. The slice carries runtime
+    # extents, so reshape restores the static trailing dims.
+    var q_rope = q[:, :, qk_nope_head_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
 
     # In-place update of the rope part of the `q` tensor
     var q_rope_mut = TileTensor(
         q_rope.ptr.unsafe_mut_cast[True](),
-        TileLayout(
-            (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
-            (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        q_rope.layout,
     )
 
     mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
@@ -1300,23 +1297,22 @@ def mla_decode_branch_fp8[
     # =========================================================================#
 
     # Create a view of the `q` tensor that only contains the last
-    # qk_rope_head_dim columns of each Q head.
-    var q_rope = TileTensor(
-        q.ptr + qk_nope_head_dim,
+    # qk_rope_head_dim columns of each Q head. The slice carries runtime
+    # extents, so reshape restores the static trailing dims.
+    var q_rope = q[:, :, qk_nope_head_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
 
     # Create a view of the `mla_decode_input` tensor that only contains the last
     # qk_rope_head_dim columns of each Q head.
-    var mla_decode_input_rope = TileTensor(
-        mla_decode_input.ptr + kv_latent_dim,
+    var mla_decode_input_rope = mla_decode_input[:, :, kv_latent_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * k_cache_dim], Idx[k_cache_dim], Idx[1]),
-        ),
+        )
     )
 
     mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
@@ -1500,19 +1496,17 @@ def mla_prefill_branch_sparse_fp8[
         target=target,
     ](mla_decode_input_nope, q_nope, w_uk, w_uk_scale, ctx)
 
-    var q_rope = TileTensor(
-        q.ptr + qk_nope_head_dim,
+    var q_rope = q[:, :, qk_nope_head_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
-    var mla_decode_input_rope = TileTensor(
-        mla_decode_input.ptr + kv_latent_dim,
+    var mla_decode_input_rope = mla_decode_input[:, :, kv_latent_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * k_cache_dim], Idx[k_cache_dim], Idx[1]),
-        ),
+        )
     )
     mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
         mla_decode_input_rope,
@@ -2209,22 +2203,19 @@ def mla_prefill_branch_bf16[
     # =========================================================================#
 
     # Create a view of the `q` tensor that only contains the last
-    # qk_rope_head_dim columns of each Q head.
-    var q_rope = TileTensor(
-        q.ptr + qk_nope_head_dim,
+    # qk_rope_head_dim columns of each Q head. The slice carries runtime
+    # extents, so reshape restores the static trailing dims.
+    var q_rope = q[:, :, qk_nope_head_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
 
     # In-place update of the rope part of the `q` tensor
     var q_rope_mut = TileTensor(
         q_rope.ptr.unsafe_mut_cast[True](),
-        TileLayout(
-            (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
-            (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        q_rope.layout,
     )
 
     mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
@@ -2562,23 +2553,22 @@ def mla_decode_branch_bf16[
     # =========================================================================#
 
     # Create a view of the `q` tensor that only contains the last
-    # qk_rope_head_dim columns of each Q head.
-    var q_rope = TileTensor(
-        q.ptr + qk_nope_head_dim,
+    # qk_rope_head_dim columns of each Q head. The slice carries runtime
+    # extents, so reshape restores the static trailing dims.
+    var q_rope = q[:, :, qk_nope_head_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
 
     # Create a view of the `mla_decode_input` tensor that only contains the last
     # qk_rope_head_dim columns of each Q head.
-    var mla_decode_input_rope = TileTensor(
-        mla_decode_input.ptr + kv_latent_dim,
+    var mla_decode_input_rope = mla_decode_input[:, :, kv_latent_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * k_cache_dim], Idx[k_cache_dim], Idx[1]),
-        ),
+        )
     )
 
     mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
@@ -2790,19 +2780,17 @@ def mla_prefill_branch_sparse_bf16[
         mla_decode_input_nope, q_nope_t, w_uk, ctx
     )
 
-    var q_rope = TileTensor(
-        q.ptr + qk_nope_head_dim,
+    var q_rope = q[:, :, qk_nope_head_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
-    var mla_decode_input_rope = TileTensor(
-        mla_decode_input.ptr + kv_latent_dim,
+    var mla_decode_input_rope = mla_decode_input[:, :, kv_latent_dim:].reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_rope_head_dim]),
             (Idx[num_heads * k_cache_dim], Idx[k_cache_dim], Idx[1]),
-        ),
+        )
     )
     mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
         mla_decode_input_rope,
