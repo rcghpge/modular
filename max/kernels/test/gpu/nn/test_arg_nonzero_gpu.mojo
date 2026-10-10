@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from layout import TileTensor, row_major
+from layout import TileTensor, col_major, row_major
 from max.gpu.host import DeviceContext
 from nn.arg_nonzero import _arg_nonzero_gpu
 from std.math import nan
@@ -259,6 +259,39 @@ def test_arg_nonzero_gpu_scattered_within_tiles() raises:
             assert_equal(Int(output_host[i]), expected[i])
 
 
+def test_arg_nonzero_gpu_rejects_column_major_input() raises:
+    """A non-row-major input must raise, not misdecode coordinates.
+
+    The kernels walk memory linearly and decode coordinates from row-major
+    strides. The graph compiler materializes strided views before they reach
+    this op, so a column-major input is unreachable in practice; this test
+    pins the loud failure if that guarantee ever regresses.
+    """
+    comptime input_layout = col_major[2, 4]()
+    comptime output_layout = row_major[4, 2]()
+
+    with DeviceContext() as ctx:
+        var input_host = ctx.enqueue_create_host_buffer[.float32](8)
+        for i in range(8):
+            input_host[i] = 0.0
+        input_host[0] = 1.0
+
+        var input_device = ctx.enqueue_create_buffer[.float32](8)
+        var output_device = ctx.enqueue_create_buffer[.int64](8)
+        ctx.enqueue_copy(input_device, input_host)
+
+        var raised = False
+        try:
+            _arg_nonzero_gpu(
+                TileTensor(input_device, input_layout),
+                TileTensor(output_device, output_layout),
+                ctx,
+            )
+        except Error:
+            raised = True
+        assert_equal(raised, True)
+
+
 def main() raises:
     var suite = TestSuite()
     suite.test[test_arg_nonzero_gpu_order_and_float_semantics]()
@@ -267,4 +300,5 @@ def main() raises:
     suite.test[test_arg_nonzero_gpu_all_nonzero_at_tile_limit]()
     suite.test[test_arg_nonzero_gpu_first_element_past_tile_block]()
     suite.test[test_arg_nonzero_gpu_scattered_within_tiles]()
+    suite.test[test_arg_nonzero_gpu_rejects_column_major_input]()
     suite^.run()

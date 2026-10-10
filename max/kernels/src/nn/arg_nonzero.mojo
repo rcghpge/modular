@@ -291,6 +291,26 @@ def _arg_nonzero_gpu[
             stride *= Int(dims[later])
         strides_tuple[axis] = Int64(stride)
 
+    # The kernels below walk memory linearly (`raw_load(flat_index)`) and
+    # decode coordinates from row-major strides, so both hold only for a
+    # row-major input. The graph compiler guarantees this: strided views
+    # (slice/broadcast/reshape) never reach a non-fused kernel argument;
+    # they are materialized into dense row-major buffers first. Guard so a
+    # future non-row-major input fails loudly here, not as silently
+    # misdecoded coordinates.
+    var actual_strides = coord_to_index_list(input_buffer.layout.stride_coord())
+    var row_major_strides = dims.get_row_major_strides()
+    for axis in range(rank):
+        if actual_strides[axis] != row_major_strides[axis]:
+            raise Error(
+                "arg_nonzero GPU path requires a row-major input; axis "
+                + String(axis)
+                + " has stride "
+                + String(actual_strides[axis])
+                + ", expected "
+                + String(row_major_strides[axis])
+            )
+
     # One tile per block. The offsets kernel scans the tile counts in a
     # single block, so the grid is capped at BLOCK_SIZE tiles; larger
     # inputs take proportionally longer tiles, which the count/emit
