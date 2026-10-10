@@ -394,7 +394,7 @@ def TopKTopPMaskedProbsClusterKernel[
     # Clamp so a greedy (T=0) row cannot divide by zero.
     var inv_temp = 1.0 / max(temp_val, Float32(1e-6))
 
-    var logits_row = TileTensor(logits.ptr + bx * _d, row_major(Idx[1], _d))
+    var logits_row = logits[bx : bx + 1, :]
 
     # Row max, combined across the cluster in rank order so every CTA holds
     # the same bits. Every value below derives from it, so one disagreeing
@@ -1111,7 +1111,7 @@ def TopKTopPSamplingEmitDistClusterKernel[
     if min_p:
         min_p_thresh = min_p.unsafe_value()[row_idx]
 
-    var probs_row = TileTensor(probs.ptr + row_idx * _d, row_major(Idx[1], _d))
+    var probs_row = probs[row_idx : row_idx + 1, :]
 
     # Row max, combined across the cluster in rank order so every CTA holds
     # the same bits. Every value below derives from it, so one disagreeing

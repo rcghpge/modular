@@ -249,11 +249,8 @@ def TopKMaskLogitsKernel[
     var tx = thread_idx.x
     var row_idx = bx
 
-    var logits_ptr = logits.ptr + bx * _d
-    var masked_logits_ptr = masked_logits.ptr + bx * _d
-
-    var logits_row = TileTensor(logits_ptr, row_major(Idx[1], _d))
-    var masked_logits_row = TileTensor(masked_logits_ptr, row_major(Idx[1], _d))
+    var logits_row = logits[bx : bx + 1, :]
+    var masked_logits_row = masked_logits[bx : bx + 1, :]
 
     with PDL():
         var k = _top_k_val
@@ -2886,9 +2883,7 @@ def topk_softmax_sample_kernel[
     var tx = thread_idx.x
     var row_idx = bx
 
-    var logits_ptr = logits.ptr + bx * _d
-
-    var logits_row = TileTensor(logits_ptr, row_major(Idx[1], _d))
+    var logits_row = logits[bx : bx + 1, :]
 
     var k = _top_k_val
     if top_k_arr:
@@ -3333,7 +3328,7 @@ def TopKTopPMaskedProbsKernel[
     # Clamp so a greedy (T=0) row cannot divide by zero.
     var inv_temp = 1.0 / max(temp_val, Float32(1e-6))
 
-    var logits_row = TileTensor(logits.ptr + bx * _d, row_major(Idx[1], _d))
+    var logits_row = logits[bx : bx + 1, :]
 
     # Every block needs the same row maximum because the search contains
     # group barriers.
