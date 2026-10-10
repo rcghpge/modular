@@ -37,7 +37,11 @@ from nn.conv.conv_transpose import (
 )
 from nn.conv.conv_utils import elementwise_simd_epilogue_type
 from nn.pad import pad_constant, pad_reflect, pad_repeat, pad_shape
-from nn.pad_gpu import pad_constant as pad_constant_gpu
+from nn.pad_gpu import (
+    pad_constant as pad_constant_gpu,
+    pad_reflect as pad_reflect_gpu,
+    pad_repeat as pad_repeat_gpu,
+)
 from nn.pool import avg_pool, pool_shape, pool_shape_ceil
 from extensibility import (
     InputTensor,
@@ -299,17 +303,32 @@ struct PadRepeat:
     def execute[
         dtype: DType,
         rank: Int,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
         input: InputTensor[dtype=dtype, rank=rank, ...],
         padding: InputTensor[rank=1, ...],
-    ):
+        ctx: DeviceContext,
+    ) raises:
         var paddings_ptr = padding._ptr
-        pad_repeat(
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
-            paddings_ptr,
-        )
+
+        comptime if is_cpu[target]():
+            pad_repeat(
+                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[.int64](),
+                paddings_ptr,
+            )
+        elif is_gpu[target]():
+            pad_repeat_gpu(
+                output._ptr,
+                output.shape(),
+                input._ptr,
+                input.shape(),
+                paddings_ptr,
+                ctx,
+            )
+        else:
+            comptime assert False, "Unknown target " + target
 
 
 @extensibility.register_shape_function("mo.pad.repeat")
@@ -334,17 +353,32 @@ struct PadReflect:
     def execute[
         dtype: DType,
         rank: Int,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
         input: InputTensor[dtype=dtype, rank=rank, ...],
         padding: InputTensor[rank=1, ...],
-    ):
+        ctx: DeviceContext,
+    ) raises:
         var paddings_ptr = padding._ptr
-        pad_reflect(
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
-            paddings_ptr,
-        )
+
+        comptime if is_cpu[target]():
+            pad_reflect(
+                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[.int64](),
+                paddings_ptr,
+            )
+        elif is_gpu[target]():
+            pad_reflect_gpu(
+                output._ptr,
+                output.shape(),
+                input._ptr,
+                input.shape(),
+                paddings_ptr,
+                ctx,
+            )
+        else:
+            comptime assert False, "Unknown target " + target
 
 
 @extensibility.register_shape_function("mo.pad.reflect")
