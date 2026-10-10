@@ -14,7 +14,7 @@
 // CHECK: mogg.tensor.get_ptr
 // CHECK: mogg.tensor.create.epilogue
 // CHECK: ^bb0(%[[V:.*]]: f32, %[[I:.*]]: !map.index<2>, %[[CAP0:.*]]: !mogg.tensor, %[[CAP1:.*]]: !mogg.tensor):
-// CHECK: %[[SIDX:.*]] = mogg.index.reshape(%[[I]]) <fromShape = {{.*}}[8, 8]{{.*}}, toShape = {{.*}}[64]{{.*}}> : (!map.index<2>) -> !map.index<1>
+// CHECK: %[[SIDX:.*]] = mogg.index.reshape(%[[I]]) <fromShape = {{.*}}[8, 8]{{.*}}, toShape = {{.*}}[64]{{.*}}> : !map.index<2> -> !map.index<1>
 // CHECK: %[[BV:.*]] = mogg.tensor.load %[[CAP1]][%[[SIDX]]] : !mogg.tensor, !map.index<1>
 // CHECK: %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add
 // CHECK: mogg.tensor.store %[[CAP0]][%[[SIDX]]] = %[[ADD]] : !mogg.tensor, !map.index<1>, f32

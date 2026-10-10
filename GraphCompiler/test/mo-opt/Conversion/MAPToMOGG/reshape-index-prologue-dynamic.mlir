@@ -12,7 +12,7 @@
 // covered by `max/tests/integration/graph/test_reshape_prologue_fusion.py`.
 
 // CHECK-LABEL: mo.graph @dyn_reshape_into_prologue
-// CHECK: mogg.tensor.create.prologue %{{.*}} capturing(%{{.*}}, %{{.*}} : !mogg.tensor, !mogg.tensor) shapes(%{{.*}}, %{{.*}} : !mogg.shape, !mogg.shape)
+// CHECK: mogg.tensor.create.prologue %{{.*}} capturing(%{{.*}}, %{{.*}} : !mogg.tensor, !mogg.tensor) shapes(%{{.*}}, %{{.*}})
 // The shape captures trail the tensor captures, after the index -- and the
 // reshape reads those block args rather than falling back to the static shape.
 // CHECK: ^bb0(%[[IDX:.*]]: !map.index<2>, %{{.*}}: !mogg.tensor, %{{.*}}: !mogg.tensor, %[[FROMARG:.*]]: !mogg.shape, %[[TOARG:.*]]: !mogg.shape):

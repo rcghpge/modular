@@ -17,13 +17,13 @@
 
 // Before conform: MAPToMOGG makes both operands mutable buffers.
 // CHECK-LABEL: mo.graph @fused_mutable_load_into_immutable_input
-// CHECK:     mogg.tensor.create({{.*}}) {{.*}}mut = true{{.*}}-> !mogg.buffer
-// CHECK:     mogg.tensor.create({{.*}}) {{.*}}mut = true{{.*}}-> !mogg.buffer
+// CHECK:     mogg.tensor.create({{.*}}) {{.*}}mut = true{{.*}}: !mogg.buffer
+// CHECK:     mogg.tensor.create({{.*}}) {{.*}}mut = true{{.*}}: !mogg.buffer
 // CHECK:     mogg.call.opaque @{{.*}}MapLowerInplaceCopy inputs(%{{.*}}, %{{.*}} : !mogg.buffer, !mogg.buffer)
 
 // After conform: the read-only src is recreated immutable and the call uses it.
 // CONFORM-LABEL: mo.graph @fused_mutable_load_into_immutable_input
-// CONFORM:     mogg.tensor.create({{.*}}) {{.*}}mut = false{{.*}}-> !mogg.tensor
+// CONFORM:     mogg.tensor.create({{.*}}) {{.*}}mut = false{{.*}}: !mogg.tensor
 // CONFORM:     mogg.call.opaque @{{.*}}MapLowerInplaceCopy inputs(%{{.*}}, %{{.*}} : !mogg.buffer, !mogg.tensor)
 mo.graph @fused_mutable_load_into_immutable_input(%dst: !mo.buffer<[2, 2], f32>, %srcbuf: !mo.buffer<[2, 2], f32>) -> !mo.chain {
   %chain = mo.chain.create()

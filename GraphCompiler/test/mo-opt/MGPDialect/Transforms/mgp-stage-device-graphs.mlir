@@ -37,7 +37,7 @@ mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>]
   %b = mogg.generic.compiled.region (%a) : (%arg: !mgp.buffer<<"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
     %u = mogg.async.unpack(%arg) : !mgp.buffer<<"gpu", 0>>
     %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
-    %ch = mogg.chain.dummy() : () -> !mef.chain
+    %ch = mogg.chain.dummy()
     %t = mgp.tensor.create %ch, %u, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
@@ -83,7 +83,7 @@ mgp.model @dg_guard device_graph : mof devices [#M.device_ref<"gpu", 0>]
   // guard in the real graph).
   %ca = mogg.generic.compiled.region (%in) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mef.chain {
     %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
-    %r = mogg.async.ready : !mef.chain
+    %r = mogg.async.ready
     mogg.output %r : !mef.chain
   } fusionInfo = "test.assert" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
   // Guard: gates the model input on region A's chain. Not a compiled region, so
@@ -93,7 +93,7 @@ mgp.model @dg_guard device_graph : mof devices [#M.device_ref<"gpu", 0>]
   %b = mogg.generic.compiled.region (%g) : (%arg: !mgp.tensor<2x3xf32, <"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
     %u = mogg.async.unpack(%arg) : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
-    %ch = mogg.chain.dummy() : () -> !mef.chain
+    %ch = mogg.chain.dummy()
     %bf = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
     %t = mgp.tensor.create %ch, %bf, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
     %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>

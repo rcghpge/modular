@@ -12,7 +12,7 @@ mo.graph @no_context(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 }
 
 // CHECK-LABEL: mo.graph @with_context
-// CHECK: context (%[[CTX:.*]]: !mogg.context)
+// CHECK: context (%[[CTX:[^)]+]])
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%[[CTX]] : !mogg.context)
 mo.graph @with_context(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom [symbol = "map_lower_one_plain_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>

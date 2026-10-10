@@ -9,7 +9,7 @@
 
 // The second input is a scalar kernel argument.
 // CHECK-LABEL: func.func @scalar
-// CHECK: %[[SC:.*]] = mogg.scalar.create(%{{.*}}) : (!mogg.tensor) -> !mogg.scalar
+// CHECK: %[[SC:.*]] = mogg.scalar.create(%{{.*}})
 // CHECK: mogg.call.opaque @{{.*}}MapLowerScalar inputs(%{{.*}}, %[[SC]] : !mogg.tensor, !mogg.scalar) outputs(%{{.*}} : !mogg.tensor) context(%{{.*}} : !mogg.context)
 func.func @scalar(%in: !mogg.tensor, %scalar: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) {
   mogg.call.opaque @testing_kernels.testing_kernels.MapLowerScalar inputs(%in, %scalar : !mogg.tensor, !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
@@ -18,7 +18,7 @@ func.func @scalar(%in: !mogg.tensor, %scalar: !mogg.tensor, %out: !mogg.tensor, 
 
 // The two inputs satisfy one variadic kernel argument.
 // CHECK-LABEL: func.func @variadic
-// CHECK: %[[TUP:.*]] = mogg.tuple.create(%{{.*}}, %{{.*}}) : (!mogg.tensor, !mogg.tensor) -> !mogg.tuple
+// CHECK: %[[TUP:.*]] = mogg.tuple.create(%{{.*}}, %{{.*}}) : !mogg.tensor, !mogg.tensor
 // CHECK: mogg.call.opaque @{{.*}}MapLowerVariadic inputs(%[[TUP]] : !mogg.tuple) outputs(%{{.*}} : !mogg.tensor) context(%{{.*}} : !mogg.context)
 func.func @variadic(%a: !mogg.tensor, %b: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) {
   mogg.call.opaque @testing_kernels.testing_kernels.MapLowerVariadic inputs(%a, %b : !mogg.tensor, !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)

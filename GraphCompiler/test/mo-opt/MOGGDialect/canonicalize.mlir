@@ -161,8 +161,8 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
   %true = index.bool.constant true
   %true_0 = index.bool.constant true
   %0:2 = mogg.generic.compiled.region (%true, %true_0) : (%arg4: i1, %arg5: i1)  -> (!mef.chain, !mef.chain) {
-    %1 = mogg.async.ready : !mef.chain
-    %2 = mogg.async.ready : !mef.chain
+    %1 = mogg.async.ready
+    %2 = mogg.async.ready
     mogg.output %1, %2 : !mef.chain, !mef.chain
   } fusionInfo = Sequence(mgp.assert, mgp.assert) canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>, emitsMojo = false}
   %res = "test.sink"(%0#0, %0#1) : (!mef.chain, !mef.chain) -> !mef.chain

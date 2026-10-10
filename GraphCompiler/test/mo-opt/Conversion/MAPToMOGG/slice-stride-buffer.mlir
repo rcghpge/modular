@@ -9,10 +9,10 @@
 
 // CHECK-LABEL: mo.graph @sliceStrideOverBuffer
 // CHECK:       mogg.tensor.create({{%[^ ]+}}, {{%[^ ]+}})
-// CHECK-SAME:    -> !mogg.buffer
+// CHECK-SAME:    : !mogg.buffer
 // CHECK:       mogg.tensor.create.slice
 // CHECK-SAME:    mut = true
-// CHECK-SAME:    (!mogg.buffer, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
+// CHECK-SAME:    : !mogg.buffer{{$}}
 mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
   %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
@@ -34,7 +34,7 @@ mo.graph @sliceStrideOverBuffer(%buf: !mo.buffer<[10, 64], f32>) -> !mo.tensor<[
 // CHECK-LABEL: mo.graph @sliceStrideOverTensor
 // CHECK:       mogg.tensor.create.slice
 // CHECK-SAME:    mut = false
-// CHECK-SAME:    (!mogg.tensor, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
+// CHECK-SAME:    : !mogg.tensor{{$}}
 mo.graph @sliceStrideOverTensor(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
   %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>

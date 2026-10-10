@@ -13,15 +13,15 @@
 
 // CHECK-LABEL: mo.graph @broadcastSameRank
 // CHECK:       [[KERNEL:%[^ ]+]] = mogg.kernel ({{.*}} : !mo.tensor<[1, 64], f32>) -> !mo.tensor<[8, 64], f32>
-// CHECK-NEXT:  inputs ([[IP:%[^ :,]+]]: !mogg.pointer)
-// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]]: !mogg.pointer)
-// CHECK-NEXT:  context ([[CTX:%[^ :,]+]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK-NEXT:    [[ISH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[1, 64]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[IT:%[^ ]+]] = mogg.tensor.create([[IP]], [[ISH]]) {{.*}}io = Input{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[8, 64]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[BCAST:%[^ ]+]] = mogg.tensor.create.broadcast([[IT]]) {{.*}}outShape = #mosh<ape[8, 64]>{{.*}} : !mogg.tensor -> !mogg.tensor
-// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[8, 64]> : !mosh.ape> : () -> !mogg.shape
+// CHECK-NEXT:  inputs ([[IP:%[^ :,]+]])
+// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]])
+// CHECK-NEXT:  context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
+// CHECK-NEXT:    [[ISH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[1, 64]> : !mosh.ape>
+// CHECK-NEXT:    [[IT:%[^ ]+]] = mogg.tensor.create([[IP]], [[ISH]]) {{.*}}io = Input{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[8, 64]> : !mosh.ape>
+// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[BCAST:%[^ ]+]] = mogg.tensor.create.broadcast([[IT]]) {{.*}}outShape = #mosh<ape[8, 64]>{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[8, 64]> : !mosh.ape>
 // CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[BCAST]] : !mogg.tensor, !mogg.tensor) device = "cpu" {
 // CHECK-NEXT:    ^bb0([[OUT:%[^ :,]+]]: !mogg.tensor, [[BCASTARG:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[BCASTARG]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
@@ -41,7 +41,7 @@ mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>)
 // argument type at emission time.
 
 // CHECK-LABEL: mo.graph @broadcastRankExpanding
-// CHECK: mogg.tensor.create.broadcast(%{{.*}}) {{.*}}outShape = #mosh<ape[8, 64]>{{.*}} : !mogg.tensor -> !mogg.tensor
+// CHECK: mogg.tensor.create.broadcast(%{{.*}}) {{.*}}outShape = #mosh<ape[8, 64]>{{.*}} : !mogg.tensor
 mo.graph @broadcastRankExpanding(%input: !mo.tensor<[64], f32>)
     -> !mo.tensor<[8, 64], f32> {
   %res = mo.static.broadcast_to(%input) : !mo.tensor<[64], f32> -> !mo.tensor<[8, 64], f32>

@@ -221,7 +221,7 @@ mgp.model @compiled_region_chain_and_dim : mof devices [#M.device_ref<"cpu", 0>]
   mef.output %ch2, %ctx, %weights, %cpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !kgen.scalar<si64>) {
   %ch, %dim = mogg.generic.compiled.region (%ch0) : (%in: !mef.chain) -> (!mef.chain, !kgen.scalar<si64>) {
-    %ready = mogg.async.ready : !mef.chain
+    %ready = mogg.async.ready
     %c4 = index.constant 4
     %si = index.casts %c4 : index to si64
     %dim = pop.cast_from_builtin %si : si64 to !kgen.scalar<si64>
@@ -247,7 +247,7 @@ mgp.model @compiled_region_uncacheable_result : mof devices [#M.device_ref<"cpu"
 } execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>) -> (!mef.chain, !mgp.tensor<2x2xf32>) {
   %buf = mgp.buffer.constant #M.aligned_bytes<"0x0000803F0000803F0000803F0000803F", align 16>
   %ch, %tensor = mogg.generic.compiled.region (%ch0, %buf) : (%in: !mef.chain, %arg: !mgp.buffer) -> (!mef.chain, !mgp.tensor<2x2xf32>) {
-    %ready = mogg.async.ready : !mef.chain
+    %ready = mogg.async.ready
     %unpacked = mogg.async.unpack(%arg) : !mgp.buffer
     %spec = mgp.tensor_spec.create : !mgp.tensor_spec<2x2xf32>
     %created = mgp.tensor.create %ready, %unpacked, %spec : !mgp.tensor<2x2xf32>

@@ -13,8 +13,8 @@
 // execution device rides on the op for local alignment at emit.
 
 // CHECK-LABEL: mo.graph @trait_negate_graph
-// CHECK: %[[INTENSOR:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}}mut = false{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK: %[[OUTTENSOR:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}}mut = true{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK: %[[INTENSOR:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}}mut = false{{.*}} : !mogg.tensor
+// CHECK: %[[OUTTENSOR:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) {{.*}}mut = true{{.*}} : !mogg.tensor
 // CHECK: %[[INARG:.*]] = mogg.trait.create(%[[INTENSOR]]) contract = <{role = input, fused = false, access = none, capabilities = none}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
 // CHECK: %[[OUTARG:.*]] = mogg.trait.create(%[[OUTTENSOR]]) contract = <{role = output, fused = false, access = none, capabilities = none}>, device = {{.*}} : (!mogg.tensor) -> !mogg.tensor
 // CHECK: mogg.call.opaque @{{.*}}TraitNegate inputs(%[[INARG]] : !mogg.tensor) outputs(%[[OUTARG]] : !mogg.tensor) context(

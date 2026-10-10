@@ -18,15 +18,15 @@ mogg.kernel.stub @inner_2() fusionInfo = inner_2
 
 mogg.kernel.stub @region_a() fusionInfo = region_a
   attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
-  %t = mogg.call.stub.async @inner_1 -> !mogg.task_handle
-  mogg.async.join(%t) : (!mogg.task_handle)
+  %t = mogg.call.stub.async @inner_1
+  mogg.async.join(%t)
   mogg.output
 }
 
 mogg.kernel.stub @region_b() fusionInfo = region_b
   attributes {abi = 2 : i32, constantResources = [], device = "gpu", isAsync = true} {
-  %t = mogg.call.stub.async @inner_2 -> !mogg.task_handle
-  mogg.async.join(%t) : (!mogg.task_handle)
+  %t = mogg.call.stub.async @inner_2
+  mogg.async.join(%t)
   mogg.output
 }
 

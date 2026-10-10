@@ -21,7 +21,7 @@
 // CHECK:       %[[EPI:.*]] = mogg.tensor.create.epilogue %{{.*}} capturing(%[[CONCAT]], %[[WINDOW]] : !mogg.tensor, !mogg.tensor) shapes(%[[IN_SHAPE]], %[[OUT_SHAPE]]) ptr %[[PTR]]
 // CHECK-NEXT:  ^bb0(%[[VAL:[a-z0-9]+]]: f32, %[[IDX:[a-z0-9]+]]: !map.index<3>, %[[CAP0:[a-z0-9]+]]: !mogg.tensor, %[[CAP1:[a-z0-9]+]]: !mogg.tensor, %[[IN:[a-z0-9]+]]: !mogg.shape, %[[OUT:[a-z0-9]+]]: !mogg.shape):
 // CHECK-NEXT:    mogg.tensor.store %[[CAP0]][%[[IDX]]] = %[[VAL]]
-// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[B, T, 16]> : !mosh.ape, outShape = #mosh<ape[B, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>> : !map.index<3>, !mogg.shape, !mogg.shape {
+// CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[B, T, 16]> : !mosh.ape, outShape = #mosh<ape[B, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>> : !map.index<3> {
 // CHECK-NEXT:    ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<3>):
 // CHECK-NEXT:      mogg.tensor.store %[[CAP1]][%[[IOUT]]] = %[[VAL]]
 // CHECK-NEXT:    }

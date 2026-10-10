@@ -57,4 +57,4 @@ mo.graph @bundled_allreduce_then_relu(
 // CHECK-MGP: mogg.generic.compiled.region
 // CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_mogg}}
 // CHECK-MGP:   mogg.call.stub.async @{{Epilogue_bundled_allreduce_sum_[0-9a-f]+_mogg}}
-// CHECK-MGP:   mogg.async.join({{.*}}) : (!mogg.task_handle, !mogg.task_handle)
+// CHECK-MGP:   mogg.async.join({{.*}})

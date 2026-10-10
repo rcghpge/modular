@@ -17,17 +17,17 @@
 
 // CHECK-LABEL: mo.graph @transposeSwap
 // CHECK:       [[KERNEL:%[^ ]+]] = mogg.kernel ({{.*}} : !mo.tensor<[2, 3], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 2], f32>
-// CHECK-NEXT:  inputs ([[IP:%[^ :,]+]]: !mogg.pointer, [[PP:%[^ :,]+]]: !mogg.pointer)
-// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]]: !mogg.pointer)
-// CHECK-NEXT:  context ([[CTX:%[^ :,]+]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK-NEXT:    [[ISH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2, 3]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[IT:%[^ ]+]] = mogg.tensor.create([[IP]], [[ISH]]) {{.*}}io = Input{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[PSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[PT:%[^ ]+]] = mogg.tensor.create([[PP]], [[PSH]]) {{.*}}io = Input{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 2]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[TRANS:%[^ ]+]] = mogg.tensor.create.transpose([[IT]], [[PT]]) {{.*}}outShape = #mosh<ape[3, 2]>{{.*}}staticPermutations = array<i64: 1, 0>{{.*}} : (!mogg.tensor, !mogg.tensor) -> !mogg.tensor
-// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 2]> : !mosh.ape> : () -> !mogg.shape
+// CHECK-NEXT:  inputs ([[IP:%[^ :,]+]], [[PP:%[^ :,]+]])
+// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]])
+// CHECK-NEXT:  context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
+// CHECK-NEXT:    [[ISH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2, 3]> : !mosh.ape>
+// CHECK-NEXT:    [[IT:%[^ ]+]] = mogg.tensor.create([[IP]], [[ISH]]) {{.*}}io = Input{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[PSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape>
+// CHECK-NEXT:    [[PT:%[^ ]+]] = mogg.tensor.create([[PP]], [[PSH]]) {{.*}}io = Input{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 2]> : !mosh.ape>
+// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[TRANS:%[^ ]+]] = mogg.tensor.create.transpose([[IT]], [[PT]]) {{.*}}outShape = #mosh<ape[3, 2]>{{.*}}staticPermutations = array<i64: 1, 0>{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 2]> : !mosh.ape>
 // CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[TRANS]] : !mogg.tensor, !mogg.tensor) device = "cpu" {
 // CHECK-NEXT:    ^bb0([[OUT:%[^ :,]+]]: !mogg.tensor, [[TRANSARG:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[TRANSARG]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32
@@ -47,7 +47,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f
 // inferred later, purely from its Mojo argument type at emission time.
 
 // CHECK-LABEL: mo.graph @transpose3D
-// CHECK: mogg.tensor.create.transpose(%{{.*}}, %{{.*}}) {{.*}}outShape = #mosh<ape[4, 2, 3]>{{.*}}staticPermutations = array<i64: 2, 0, 1>{{.*}} : (!mogg.tensor, !mogg.tensor) -> !mogg.tensor
+// CHECK: mogg.tensor.create.transpose(%{{.*}}, %{{.*}}) {{.*}}outShape = #mosh<ape[4, 2, 3]>{{.*}}staticPermutations = array<i64: 2, 0, 1>{{.*}} : !mogg.tensor
 mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[4, 2, 3], f32> {
   %perm = mo.constant <#M.dense_array<2, 0, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %res = mo.transpose(%input, %perm) : (

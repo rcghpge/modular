@@ -36,8 +36,8 @@
 // CHECK-SAME: isAsync = true
 // CHECK: mogg.kernel.stub @[[STUB0]] (%arg0: !mogg.pointer, %arg1: !mogg.pointer, %arg2: !mogg.context)
 // CHECK-SAME: device = "cpu"
-// CHECK: mogg.shape.create() <shape = #mosh<ape[2, 2]>{{.*}}> : () -> !mogg.shape
-// CHECK: mogg.tensor.create(%arg0, %{{.*}}) <device = {{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK: mogg.shape.create() <shape = #mosh<ape[2, 2]>{{.*}}>
+// CHECK: mogg.tensor.create(%arg0, %{{.*}}) <device = {{.*}}> : !mogg.tensor
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%arg2 : !mogg.context)
 mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom [symbol = "map_lower_one_plain_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
@@ -55,7 +55,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK: inOutSignature = <"iio..">
 // CHECK: mogg.kernel.stub @[[STUB1]] (%arg0: !mogg.pointer, %arg1: !mogg.pointer, %arg2: !mogg.dim, %arg3: !mogg.context)
 // CHECK-SAME: device = "cpu"
-// CHECK: mogg.shape.create(%arg2) <shape = #mosh<ape[dyn, 4]>{{.*}}> : (!mogg.dim) -> !mogg.shape
+// CHECK: mogg.shape.create(%arg2) <shape = #mosh<ape[dyn, 4]>{{.*}}> : !mogg.dim
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%arg3 : !mogg.context)
 mo.graph @dyn(%a: !mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32> {
   %c = mo.custom [symbol = "map_lower_one_plain_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[batch, 4], f32>) -> !mo.tensor<[batch, 4], f32>

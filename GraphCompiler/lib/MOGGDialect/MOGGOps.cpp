@@ -74,14 +74,9 @@ static auto stringifyMLIRObject(T entity) {
   return str;
 }
 
-static ParseResult parseDim(OpAsmParser &p, StringAttr &name,
-                            Type &resultType) {
-  SmallVector<Type> tmpTypes;
-  if (p.parseLess() || KGEN::parseParamName(p, name) || p.parseGreater() ||
-      p.parseArrowTypeList(tmpTypes))
-    return failure();
-  resultType = tmpTypes[0];
-  return success();
+static ParseResult parseDim(OpAsmParser &p, StringAttr &name) {
+  return failure(p.parseLess() || KGEN::parseParamName(p, name) ||
+                 p.parseGreater());
 }
 
 /// Build a Mojo expression that loads from decomposed tensor components on the
@@ -146,12 +141,10 @@ struct DenseFusionRenderer final : ElementwiseBodyRenderer {
 };
 } // namespace
 
-static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim,
-                     Type resultTy) {
+static void printDim(OpAsmPrinter &p, Operation *op, StringAttr dim) {
   p << '<';
   KGEN::printParamName(p, dim);
   p << '>';
-  p.printArrowTypeList(TypeRange{resultTy});
 }
 
 //===----------------------------------------------------------------------===//
@@ -459,17 +452,33 @@ ParseResult KernelOp::parse(OpAsmParser &parser, OperationState &result) {
   // Body entry-block arguments given as labeled groups. The display order is
   // inputs, outputs, context, dims; the in-memory order the verifier and
   // downstream passes rely on is [inputs, outputs, dims, context].
+  // An argument prints its type only when it differs from the group's implied
+  // type: tensor handles are `!mogg.pointer`, contexts `!mogg.context`.
   SmallVector<OpAsmParser::Argument> inputArgs, outputArgs, ctxArgs, dimArgs;
-  auto parseGroup =
-      [&](StringRef keyword,
-          SmallVectorImpl<OpAsmParser::Argument> &into) -> ParseResult {
-    if (succeeded(parser.parseOptionalKeyword(keyword)))
-      return parser.parseArgumentList(into, OpAsmParser::Delimiter::Paren,
-                                      /*allowType=*/true);
-    return success();
+  auto parseGroup = [&](StringRef keyword,
+                        SmallVectorImpl<OpAsmParser::Argument> &into,
+                        Type impliedType) -> ParseResult {
+    if (failed(parser.parseOptionalKeyword(keyword)))
+      return success();
+    return parser.parseCommaSeparatedList(
+        OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+          OpAsmParser::Argument &arg = into.emplace_back();
+          if (parser.parseArgument(arg))
+            return failure();
+          arg.type = impliedType;
+          if (succeeded(parser.parseOptionalColon()))
+            return parser.parseType(arg.type);
+          if (!arg.type)
+            return parser.emitError(parser.getCurrentLocation(),
+                                    "expected ':' and a type");
+          return success();
+        });
   };
-  if (parseGroup("inputs", inputArgs) || parseGroup("outputs", outputArgs) ||
-      parseGroup("context", ctxArgs) || parseGroup("dims", dimArgs))
+  MLIRContext *ctx = parser.getContext();
+  if (parseGroup("inputs", inputArgs, PointerType::get(ctx)) ||
+      parseGroup("outputs", outputArgs, PointerType::get(ctx)) ||
+      parseGroup("context", ctxArgs, ContextType::get(ctx)) ||
+      parseGroup("dims", dimArgs, /*impliedType=*/nullptr))
     return failure();
 
   SmallVector<OpAsmParser::Argument> bodyArgs;
@@ -525,24 +534,26 @@ void KernelOp::print(OpAsmPrinter &p) {
   auto dimArgs = tail.empty() ? tail : tail.drop_back(1);
 
   p.increaseIndent();
-  auto printGroup = [&](StringRef label, auto group) {
+  auto printGroup = [&](StringRef label, auto group, Type impliedType) {
     if (group.empty())
       return;
     p.printNewline();
     p << label << " (";
-    llvm::interleaveComma(group, p,
-                          [&](BlockArgument ba) { p.printRegionArgument(ba); });
+    llvm::interleaveComma(group, p, [&](BlockArgument ba) {
+      if (ba.getType() == impliedType)
+        p.printOperand(ba);
+      else
+        p.printRegionArgument(ba);
+    });
     p << ")";
   };
-  printGroup("inputs", inputArgs);
-  printGroup("outputs", outputArgs);
-  if (ctxArg) {
-    p.printNewline();
-    p << "context (";
-    p.printRegionArgument(ctxArg);
-    p << ")";
-  }
-  printGroup("dims", dimArgs);
+  MLIRContext *ctx = getContext();
+  printGroup("inputs", inputArgs, PointerType::get(ctx));
+  printGroup("outputs", outputArgs, PointerType::get(ctx));
+  if (ctxArg)
+    printGroup("context", ArrayRef<BlockArgument>(ctxArg),
+               ContextType::get(ctx));
+  printGroup("dims", dimArgs, /*impliedType=*/Type());
   p.decreaseIndent();
 
   // Elided when empty.

@@ -12,13 +12,13 @@
 // Single plain output.
 // CHECK-LABEL: mo.graph @one_plain
 // CHECK: mogg.kernel (%[[A:.*]] : !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
-// CHECK: inputs (%[[IP:.*]]: !mogg.pointer)
-// CHECK: outputs (%[[OP:.*]]: !mogg.pointer)
-// CHECK: context (%[[CTX:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK:   %[[ISH:.*]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape> : () -> !mogg.shape
-// CHECK:   %[[IT:.*]] = mogg.tensor.create(%[[IP]], %[[ISH]]) <device = "cpu",{{.*}}mut = false{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK:   %[[OSH:.*]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape> : () -> !mogg.shape
-// CHECK:   %[[OT:.*]] = mogg.tensor.create(%[[OP]], %[[OSH]]) <device = "cpu",{{.*}}mut = true{{.*}}> : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
+// CHECK: inputs (%[[IP:[^ ,)]+]])
+// CHECK: outputs (%[[OP:[^ ,)]+]])
+// CHECK: context (%[[CTX:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
+// CHECK:   %[[ISH:.*]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape>
+// CHECK:   %[[IT:.*]] = mogg.tensor.create(%[[IP]], %[[ISH]]) <device = "cpu",{{.*}}mut = false{{.*}}> : !mogg.tensor
+// CHECK:   %[[OSH:.*]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape>
+// CHECK:   %[[OT:.*]] = mogg.tensor.create(%[[OP]], %[[OSH]]) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK:   mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%[[IT]] : !mogg.tensor) outputs(%[[OT]] : !mogg.tensor) context(%[[CTX]] : !mogg.context)
 // Nothing is fused here, so both flags keep their `false` default, which the
 // printer elides -- their absence is the assertion.
@@ -32,9 +32,9 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // Two plain outputs: one input pointer, two output pointers, one context.
 // CHECK-LABEL: mo.graph @two_plain
 // CHECK: mogg.kernel (%{{.*}} : !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)
-// CHECK: inputs (%{{.*}}: !mogg.pointer)
-// CHECK: outputs (%{{.*}}: !mogg.pointer, %{{.*}}: !mogg.pointer)
-// CHECK: context (%[[CTX:.*]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
+// CHECK: inputs (%{{.*}})
+// CHECK: outputs (%{{.*}}, %{{.*}})
+// CHECK: context (%[[CTX:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK:   mogg.call.opaque @{{.*}}MapLowerTwoPlainOutputs inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}}, %{{.*}} : !mogg.tensor, !mogg.tensor) context(%[[CTX]] : !mogg.context)
 mo.graph @two_plain(%a: !mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) {
   %c:2 = mo.custom [symbol = "map_lower_two_plain_outputs", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>)

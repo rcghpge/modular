@@ -10,12 +10,12 @@
 
 // CHECK-LABEL: mogg.kernel.stub @named_dim
 // CHECK-SAME: (%[[ARG:.*]]: !mogg.dim)
-// CHECK: mogg.shape.create(%[[ARG]]) {{.*}} : (!mogg.dim) -> !mogg.shape
+// CHECK: mogg.shape.create(%[[ARG]]) {{.*}} : !mogg.dim
 // CHECK-NOT: !mogg.dim<
 mogg.kernel.stub @named_dim(%d: !mogg.dim<batch>)
   fusionInfo = named_dim
   attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
-  %s = mogg.shape.create(%d) <shape = #mosh<ape[batch, 4]> : !mosh.ape> : (!mogg.dim<batch>) -> !mogg.shape
+  %s = mogg.shape.create(%d) <shape = #mosh<ape[batch, 4]> : !mosh.ape> : !mogg.dim<batch>
   mogg.output
 }
 

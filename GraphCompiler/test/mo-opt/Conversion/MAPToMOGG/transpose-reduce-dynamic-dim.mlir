@@ -16,7 +16,7 @@
 // CHECK: mogg.tensor.create.transpose
 // The prologue shape for the reduce input carries all four transposed dims,
 // including the reduced axis D11 that lives only on the intermediate view.
-// CHECK: mogg.shape.create({{.*}}) <shape = #mosh<ape[dyn, dyn, dyn, dyn]>{{.*}} : (!mogg.dim<D8>, !mogg.dim<D9>, !mogg.dim<D10>, !mogg.dim<D11>) -> !mogg.shape
+// CHECK: mogg.shape.create({{.*}}) <shape = #mosh<ape[dyn, dyn, dyn, dyn]>{{.*}} : !mogg.dim<D8>, !mogg.dim<D9>, !mogg.dim<D10>, !mogg.dim<D11>
 // CHECK: mogg.tensor.create.prologue
 
 mo.graph @serving_default<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>, %arg1: !mo.tensor<[4], si32>) -> !mo.tensor<[D4, D5, D6, D7], f32> attributes {argument_names = ["input_1", "input_2"], result_names = ["lambda"]} {

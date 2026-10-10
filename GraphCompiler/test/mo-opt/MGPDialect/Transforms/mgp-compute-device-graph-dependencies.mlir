@@ -50,7 +50,7 @@ mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>]
     %b_ = mogg.generic.compiled.region (%a) : (%arg: !mgp.buffer<<"gpu", 0>>) -> !mgp.tensor<2x3xf32, <"gpu", 0>> {
       %u = mogg.async.unpack(%arg) : !mgp.buffer<<"gpu", 0>>
       %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
-      %ch = mogg.chain.dummy() : () -> !mef.chain
+      %ch = mogg.chain.dummy()
       %t = mgp.tensor.create %ch, %u, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
@@ -97,7 +97,7 @@ mgp.model @dg_ctx device_graph : mof devices [#M.device_ref<"gpu", 0>]
       %bb = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
       "test.use_ctx"(%ctx_in) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
-      %ch = mogg.chain.dummy() : () -> !mef.chain
+      %ch = mogg.chain.dummy()
       %t = mgp.tensor.create %ch, %bb, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
@@ -138,7 +138,7 @@ mgp.model @dg_host_ctx device_graph : mof devices [#M.device_ref<"cpu", 0>, #M.d
       %bb = mgp.tensor.extract.buffer %u : <2x3xf32, <"gpu", 0>>
       "test.use_ctx"(%ctx_in) : (!mgp.device_context<<"cpu", 0>>) -> ()
       %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
-      %ch = mogg.chain.dummy() : () -> !mef.chain
+      %ch = mogg.chain.dummy()
       %t = mgp.tensor.create %ch, %bb, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
@@ -233,7 +233,7 @@ mgp.model @dg_collective device_graph : mof devices [#M.device_ref<"gpu", 0>, #M
       %ctx_in = mogg.async.unpack(%ctxarg) : !mgp.device_context<<"gpu", 0>>
       "test.use_ctx"(%ctx_in) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %s = mgp.tensor_spec.create : !mgp.tensor_spec<2x3xf32>
-      %ch = mogg.chain.dummy() : () -> !mef.chain
+      %ch = mogg.chain.dummy()
       %t = mgp.tensor.create %ch, %u, %s : !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%t) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>

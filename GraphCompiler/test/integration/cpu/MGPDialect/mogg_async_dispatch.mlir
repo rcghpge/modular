@@ -37,9 +37,9 @@ mgp.model @single_async_call : mof devices [#M.device_ref<"cpu", 0>] init (%weig
   %out_chain = mogg.generic.compiled.region (%arg0) :
       (%ch: !mef.chain) -> !mef.chain {
 
-    %task = mogg.call.stub.async @noop_stub -> !mogg.task_handle
-    mogg.async.join(%task) : (!mogg.task_handle)
-    %ready = mogg.async.ready : !mef.chain
+    %task = mogg.call.stub.async @noop_stub
+    mogg.async.join(%task)
+    %ready = mogg.async.ready
 
     mogg.output %ready : !mef.chain
   } canBeFusedInto = false canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>, summary = "single_async_call"}
@@ -63,10 +63,10 @@ mgp.model @two_parallel_async_calls : mof devices [#M.device_ref<"cpu", 0>] init
   %out_chain = mogg.generic.compiled.region (%arg0) :
       (%ch: !mef.chain) -> !mef.chain {
 
-    %t0 = mogg.call.stub.async @noop_stub -> !mogg.task_handle
-    %t1 = mogg.call.stub.async @noop_stub_2 -> !mogg.task_handle
-    mogg.async.join(%t0, %t1) : (!mogg.task_handle, !mogg.task_handle)
-    %ready = mogg.async.ready : !mef.chain
+    %t0 = mogg.call.stub.async @noop_stub
+    %t1 = mogg.call.stub.async @noop_stub_2
+    mogg.async.join(%t0, %t1)
+    %ready = mogg.async.ready
 
     mogg.output %ready : !mef.chain
   } canBeFusedInto = false canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>, summary = "two_parallel_async_calls"}
@@ -90,12 +90,12 @@ mgp.model @four_parallel_async_calls : mof devices [#M.device_ref<"cpu", 0>] ini
   %out_chain = mogg.generic.compiled.region (%arg0) :
       (%ch: !mef.chain) -> !mef.chain {
 
-    %t0 = mogg.call.stub.async @noop_stub -> !mogg.task_handle
-    %t1 = mogg.call.stub.async @noop_stub -> !mogg.task_handle
-    %t2 = mogg.call.stub.async @noop_stub_2 -> !mogg.task_handle
-    %t3 = mogg.call.stub.async @noop_stub_2 -> !mogg.task_handle
-    mogg.async.join(%t0, %t1, %t2, %t3) : (!mogg.task_handle, !mogg.task_handle, !mogg.task_handle, !mogg.task_handle)
-    %ready = mogg.async.ready : !mef.chain
+    %t0 = mogg.call.stub.async @noop_stub
+    %t1 = mogg.call.stub.async @noop_stub
+    %t2 = mogg.call.stub.async @noop_stub_2
+    %t3 = mogg.call.stub.async @noop_stub_2
+    mogg.async.join(%t0, %t1, %t2, %t3)
+    %ready = mogg.async.ready
 
     mogg.output %ready : !mef.chain
   } canBeFusedInto = false canFuseIntoOther = false inOutSignature = <"i"> isAsync = false {device = #M.device_ref<"cpu", 0>, summary = "four_parallel_async_calls"}

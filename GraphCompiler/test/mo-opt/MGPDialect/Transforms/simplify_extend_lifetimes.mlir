@@ -15,7 +15,7 @@ mgp.model @extend_lifetimes : mof devices [#M.device_ref<"cpu", 0>] init (%weigh
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %cpu: !mgp.device_context<<"cpu", 0>>, %arg2: !mgp.tensor<2x4xf32>, %arg3: !mgp.tensor<2x4xf32>) -> (!mef.chain) {
 
   %3 = mogg.generic.compiled.region () : ()  -> !mef.chain{
-    %ch = mogg.async.ready : !mef.chain
+    %ch = mogg.async.ready
     mogg.output %ch : !mef.chain
   } inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>}
 

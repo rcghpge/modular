@@ -211,7 +211,7 @@ def MOGG_CallStubAsyncOp : MOGG_Op<"call.stub.async", [
   );
   let results = (outs MOGG_TaskHandle:$task_handle);
   let assemblyFormat = [{
-    $name (`(` $inputs^ `:` type($inputs) `)`)? `->` type(results)
+    $name (`(` $inputs^ `:` type($inputs) `)`)?
     (`affinity_device_id` `=` $affinity_device_id^)? attr-dict
   }];
 
@@ -338,7 +338,7 @@ def MOGG_GetDimOp : MOGG_Op<"get_dim", [Pure]> {
   let results = (outs DimensionType:$result);
 
   let assemblyFormat = [{
-    custom<Dim>($dimension, type($result)) attr-dict
+    custom<Dim>($dimension) attr-dict
   }];
 }
 
@@ -522,8 +522,8 @@ def MOGG_TensorInitOp : MOGG_Op<"tensor.__init__", [
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
 
   let assemblyFormat = [{
-    `(` operands `)` `io` `=` $io `,` `mut` `=` $mut
-    attr-dict `:` functional-type(operands, results)
+    `(` $buffer (`,` $dims^)? `)` `io` `=` $io `,` `mut` `=` $mut
+    attr-dict `:` qualified(type($buffer)) `->` qualified(type($tensor))
   }];
 }
 
@@ -551,8 +551,9 @@ def MOGG_TensorArgInitOp : MOGG_Op<"tensor_arg.__init__", [
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor);
 
   let assemblyFormat = [{
-    `(` operands `)` `contract` `=` $contract
-    attr-dict `:` functional-type(operands, results)
+    `(` $buffer (`,` $dims^)? `)` (`context` `(` $device_context^ `)`)?
+    `contract` `=` $contract
+    attr-dict `:` qualified(type($buffer)) `->` qualified(type($tensor))
   }];
 }
 
@@ -569,7 +570,7 @@ def MOGG_AsyncReadyOp : MOGG_Op<"async.ready", [
   }];
 
   let assemblyFormat = [{
-    attr-dict `:` type(results)
+    attr-dict
   }];
 }
 
@@ -585,12 +586,12 @@ def MOGG_AsyncJoinOp : MOGG_Op<"async.join", [
 
     Example:
     ```mlir
-    mogg.async.join(%t0, %t1) : (!mogg.task_handle, !mogg.task_handle)
+    mogg.async.join(%t0, %t1)
     ```
   }];
 
   let assemblyFormat = [{
-    `(` $task_handles `)` attr-dict `:` `(` type($task_handles) `)`
+    `(` $task_handles `)` attr-dict
   }];
 }
 
@@ -679,7 +680,7 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
   let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` $tensor (`,` $dynamic_dims^)? `)` attr-dict `:` qualified(type($tensor)) `->` qualified(type($result))
   }];
 }
 
@@ -733,7 +734,7 @@ def MOGG_ProfileScopeBeginOp : MOGG_Op<"profile_scope.begin", [
   let arguments = (ins StrAttr:$name, OptionalAttr<StrAttr>:$color);
   let results = (outs MOGG_ProfileScopeRange:$range);
   let assemblyFormat = [{
-    $name (`color` `=` $color^)? attr-dict `:` qualified(type($range))
+    $name (`color` `=` $color^)? attr-dict
   }];
 }
 
@@ -745,7 +746,9 @@ def MOGG_ProfileScopeEndOp : MOGG_Op<"profile_scope.end", [
     Lowers to `t.end()`. Always throwing because `Trace.end()` raises.
   }];
   let arguments = (ins MOGG_ProfileScopeRange:$range);
-  let assemblyFormat = "$range attr-dict `:` qualified(type($range))";
+  let assemblyFormat = [{
+    $range attr-dict
+  }];
 }
 
 def MOGG_RaiseOp : MOGG_Op<"raise", [
@@ -814,8 +817,8 @@ def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [
   let description = [{
     Example:
     ```
-    %dim0 = mogg.shape_result.__getitem__(%shape, 0) : (!mogg.shape_func_result<4>) -> !kgen.scalar<si64>
-    %dim1 = mogg.shape_result.__getitem__(%shape, 1) : (!mogg.shape_func_result<4>) -> !kgen.scalar<si64>
+    %dim0 = mogg.shape_result.__getitem__(%shape, 0) : !mogg.shape_func_result<4>
+    %dim1 = mogg.shape_result.__getitem__(%shape, 1) : !mogg.shape_func_result<4>
     ```
   }];
 
@@ -826,7 +829,7 @@ def MOGG_ShapeResultGetItemOp : MOGG_Op<"shape_result.__getitem__", [
   let results = (outs SI64Scalar:$result);
 
   let assemblyFormat = [{
-    `(` $shape `,` $index `)` attr-dict `:` functional-type(operands, results)
+    `(` $shape `,` $index `)` attr-dict `:` qualified(type($shape))
   }];
 
   let hasVerifier = 1;
@@ -843,8 +846,8 @@ def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
 
     Example:
     ```
-      %shape = mogg.shape.__init__() <shape = #mosh<ape[1, 2, 3, 4]> : !mosh.ape> : (si64) -> !mogg.shape
-      %dyn_shape = mogg.shape.__init__(%d0_val) <shape = #mosh<ape[2, D0, 3]> : !mosh.ape> : (si64) -> !mogg.shape
+      %shape = mogg.shape.__init__() <shape = #mosh<ape[1, 2, 3, 4]> : !mosh.ape>
+      %dyn_shape = mogg.shape.__init__(%d0_val) <shape = #mosh<ape[2, D0, 3]> : !mosh.ape>
     ```
   }];
 
@@ -855,8 +858,7 @@ def MOGG_ShapeInitOp : MOGG_Op<"shape.__init__", [
   let results = (outs MOGG_Shape:$result);
 
   let assemblyFormat = [{
-    `(` $dynamic_dims `)` `<` `shape` `=` qualified($shape) `>`
-    attr-dict `:` functional-type(operands, results)
+    `(` $dynamic_dims `)` `<` `shape` `=` qualified($shape) `>` attr-dict
   }];
 }
 
@@ -875,7 +877,7 @@ def MOGG_ChainDummyOp : MOGG_Op<"chain.dummy", [
   let results = (outs ChainType:$chain);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` `)` attr-dict
   }];
 }
 
@@ -892,7 +894,7 @@ def MOGG_ChainSinkOp : MOGG_Op<"chain.sink", [
   let results = (outs);
 
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` $chain `)` attr-dict
   }];
 
   let hasCanonicalizeMethod = 1;
@@ -1067,7 +1069,7 @@ def MOGG_ShapeCreateOp : MOGG_Op<"shape.create", [
   let results = (outs MOGG_Shape:$result);
   let assemblyFormat = [{
     `(` $dynamic_dims `)` `<` `shape` `=` qualified($shape) `>`
-    attr-dict `:` functional-type(operands, results)
+    attr-dict (`:` qualified(type($dynamic_dims))^)?
   }];
 }
 
@@ -1097,12 +1099,12 @@ def MOGG_TensorCreateOp : MOGG_Op<"tensor.create", [
   // resolves `Buffer` vs `Tensor` from the type alone.
   let results = (outs AnyTypeOf<[MOGG_Tensor, MOGG_Buffer]>:$tensor);
   let assemblyFormat = [{
-    `(` operands `)`
+    `(` $ptr `,` $shape `)`
     `<` `device` `=` $device `,` `elementType` `=` $elementType `,`
         `io` `=` $io `,` `mut` `=` $mut `,`
         `shapeAttr` `=` qualified($shapeAttr)
         (`,` `stable` `=` $stable^)? `>`
-    attr-dict `:` functional-type(operands, results)
+    attr-dict `:` qualified(type($tensor))
   }];
 }
 
@@ -1148,7 +1150,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
   let assemblyFormat = [{
     $shape (`capturing` `(` $captures^ `:` type($captures) `)`)?
     (`shapes` `(` $shapeCaptures^ `)`)?
-    `ptr` $outputPtr `:` type($outputPtr) `:` type($shape) `->` type($tensor)
+    `ptr` $outputPtr
     (`computeOutputArg` `=` $computeOutputArg^)?
     (`contract` `=` $contract^)?
     `device` `=` $device `,` `elementType` `=` $elementType `,`
@@ -1173,7 +1175,7 @@ def MOGG_TensorGetPtrOp : MOGG_Op<"tensor.get_ptr", [
   let arguments = (ins MOGG_TensorLike:$tensor);
   let results = (outs MOGG_Pointer:$ptr);
   let assemblyFormat = [{
-    `(` $tensor `)` attr-dict `:` functional-type(operands, results)
+    `(` $tensor `)` attr-dict `:` qualified(type($tensor))
   }];
 }
 
@@ -1206,8 +1208,7 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"tensor.create.prologue", [
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
     $shape (`capturing` `(` $captures^ `:` type($captures) `)`)?
-    (`shapes` `(` $shapeCaptures^ `:` type($shapeCaptures) `)`)?
-    `:` type($shape) `->` type($tensor)
+    (`shapes` `(` $shapeCaptures^ `)`)?
     (`contract` `=` $contract^)?
     `device` `=` $device `,` `elementType` `=` $elementType `,`
     `io` `=` $io `,` `mut` `=` $mut
@@ -1281,7 +1282,7 @@ def MOGG_ScalarCreateOp : MOGG_Op<"scalar.create", [
   let arguments = (ins MOGG_Tensor:$tensor);
   let results = (outs MOGG_Scalar:$scalar);
   let assemblyFormat = [{
-    `(` $tensor `)` attr-dict `:` functional-type(operands, results)
+    `(` $tensor `)` attr-dict
   }];
 }
 
@@ -1333,7 +1334,7 @@ def MOGG_TupleCreateOp : MOGG_Op<"tuple.create", [
   let results = (outs MOGG_Tuple:$tuple);
   let assemblyFormat = [{
     `(` $elements `)` (`variadic_abi` `=` $variadic_abi^)?
-    attr-dict `:` functional-type(operands, results)
+    attr-dict (`:` qualified(type($elements))^)?
   }];
 }
 
@@ -1364,7 +1365,9 @@ def MOGG_BufferConstantOp : MOGG_Op<"buffer.constant", [Pure]> {
   }];
   let arguments = (ins ElementsAttr:$value);
   let results = (outs MOGG_Pointer:$pointer);
-  let assemblyFormat = [{ $value attr-dict `:` type($pointer) }];
+  let assemblyFormat = [{
+    $value attr-dict
+  }];
 }
 
 def MOGG_TensorLoadOp : MOGG_Op<"tensor.load", [
@@ -1531,10 +1534,7 @@ def MOGG_TensorCreateSliceOp : MOGG_Op<"tensor.create.slice", [
         `outShape` `=` qualified($outShape) `,`
         `staticStart` `=` qualified($staticStart) `,`
         `staticStep` `=` qualified($staticStep) `>`
-    attr-dict `:`
-    `(` qualified(type($input)) `,` qualified(type($starts)) `,`
-        qualified(type($stops)) `,` qualified(type($steps)) `)` `->`
-    qualified(type($result))
+    attr-dict `:` qualified(type($input))
   }];
 }
 
@@ -1559,7 +1559,7 @@ def MOGG_TensorCreateBroadcastOp : MOGG_Op<"tensor.create.broadcast", [
     `(` $input `)`
     `<` `elementType` `=` $elementType `,` `mut` `=` $mut `,`
         `outShape` `=` qualified($outShape) `>`
-    attr-dict `:` qualified(type($input)) `->` qualified(type($result))
+    attr-dict `:` qualified(type($input))
   }];
 }
 
@@ -1589,9 +1589,7 @@ def MOGG_TensorCreateTransposeOp : MOGG_Op<"tensor.create.transpose", [
     `<` `elementType` `=` $elementType `,` `mut` `=` $mut `,`
         `outShape` `=` qualified($outShape) `,`
         `staticPermutations` `=` qualified($staticPermutations) `>`
-    attr-dict `:`
-    `(` qualified(type($input)) `,` qualified(type($permutations)) `)` `->`
-    qualified(type($result))
+    attr-dict `:` qualified(type($input))
   }];
 }
 
@@ -1618,10 +1616,10 @@ def MOGG_TensorCreateReshapeOp : MOGG_Op<"tensor.create.reshape", [
   );
   let results = (outs MOGG_Tensor:$result);
   let assemblyFormat = [{
-    `(` operands `)`
+    `(` $input `,` $shape `)`
     `<` `elementType` `=` $elementType `,` `mut` `=` $mut `,`
         `outShape` `=` qualified($outShape) `>`
-    attr-dict `:` functional-type(operands, results)
+    attr-dict `:` qualified(type($input))
   }];
 }
 
@@ -1649,10 +1647,10 @@ def MOGG_IndexReshapeOp : MOGG_Op<"index.reshape", [
   );
   let results = (outs AnyType:$result);
   let assemblyFormat = [{
-    `(` operands `)`
+    `(` $index (`,` $dynamicShapes^)? `)`
     `<` `fromShape` `=` qualified($fromShape) `,`
         `toShape` `=` qualified($toShape) `>`
-    attr-dict `:` functional-type(operands, results)
+    attr-dict `:` qualified(type($index)) `->` qualified(type($result))
   }];
 }
 
@@ -1693,12 +1691,13 @@ def MOGG_IndexSliceSelectOp : MOGG_Op<"index.slice.select", [
   );
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat = [{
-    `(` operands `)`
+    `(` $index (`,` $dynamicShapes^)? `)`
     `<` `inShape` `=` qualified($inShape) `,`
         `outShape` `=` qualified($outShape) `,`
         `staticStart` `=` qualified($staticStart) `,`
         `staticStep` `=` qualified($staticStep) `>`
-    attr-dict `:` type(operands) $body
+    attr-dict `:` qualified(type($index))
+    $body
   }];
 }
 

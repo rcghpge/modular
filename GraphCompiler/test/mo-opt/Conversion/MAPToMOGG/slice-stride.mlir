@@ -14,21 +14,21 @@
 
 // CHECK-LABEL: mo.graph @sliceStaticBounds
 // CHECK:       [[KERNEL:%[^ ]+]] = mogg.kernel ({{.*}} : !mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[3, 32], f32>
-// CHECK-NEXT:  inputs ([[IP0:%[^ :,]+]]: !mogg.pointer, [[IP1:%[^ :,]+]]: !mogg.pointer, [[IP2:%[^ :,]+]]: !mogg.pointer, [[IP3:%[^ :,]+]]: !mogg.pointer)
-// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]]: !mogg.pointer)
-// CHECK-NEXT:  context ([[CTX:%[^ :,]+]]: !mogg.context) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
-// CHECK-NEXT:    [[ISH0:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[10, 64]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[IT0:%[^ ]+]] = mogg.tensor.create([[IP0]], [[ISH0]]) {{.*}}io = Input{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[ISH1:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[IT1:%[^ ]+]] = mogg.tensor.create([[IP1]], [[ISH1]]) {{.*}}io = Input{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[ISH2:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[IT2:%[^ ]+]] = mogg.tensor.create([[IP2]], [[ISH2]]) {{.*}}io = Input{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[ISH3:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[IT3:%[^ ]+]] = mogg.tensor.create([[IP3]], [[ISH3]]) {{.*}}io = Input{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 32]> : !mosh.ape> : () -> !mogg.shape
-// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output{{.*}} : (!mogg.pointer, !mogg.shape) -> !mogg.tensor
-// CHECK-NEXT:    [[STRIDED:%[^ ]+]] = mogg.tensor.create.slice([[IT0]], [[IT1]], [[IT2]], [[IT3]]) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}staticStart = array<i64: 1, 32>{{.*}}staticStep = array<i64: 1, 1>{{.*}} : (!mogg.tensor, !mogg.tensor, !mogg.tensor, !mogg.tensor) -> !mogg.tensor
-// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 32]> : !mosh.ape> : () -> !mogg.shape
+// CHECK-NEXT:  inputs ([[IP0:%[^ :,]+]], [[IP1:%[^ :,]+]], [[IP2:%[^ :,]+]], [[IP3:%[^ :,]+]])
+// CHECK-NEXT:  outputs ([[OP:%[^ :,]+]])
+// CHECK-NEXT:  context ([[CTX:%[^ :,]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
+// CHECK-NEXT:    [[ISH0:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[10, 64]> : !mosh.ape>
+// CHECK-NEXT:    [[IT0:%[^ ]+]] = mogg.tensor.create([[IP0]], [[ISH0]]) {{.*}}io = Input{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[ISH1:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape>
+// CHECK-NEXT:    [[IT1:%[^ ]+]] = mogg.tensor.create([[IP1]], [[ISH1]]) {{.*}}io = Input{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[ISH2:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape>
+// CHECK-NEXT:    [[IT2:%[^ ]+]] = mogg.tensor.create([[IP2]], [[ISH2]]) {{.*}}io = Input{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[ISH3:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[2]> : !mosh.ape>
+// CHECK-NEXT:    [[IT3:%[^ ]+]] = mogg.tensor.create([[IP3]], [[ISH3]]) {{.*}}io = Input{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[OSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 32]> : !mosh.ape>
+// CHECK-NEXT:    [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[STRIDED:%[^ ]+]] = mogg.tensor.create.slice([[IT0]], [[IT1]], [[IT2]], [[IT3]]) {{.*}}outShape = #mosh<ape[3, 32]>{{.*}}staticStart = array<i64: 1, 32>{{.*}}staticStep = array<i64: 1, 1>{{.*}} : !mogg.tensor
+// CHECK-NEXT:    [[LSH:%[^ ]+]] = mogg.shape.create() <shape = #mosh<ape[3, 32]> : !mosh.ape>
 // CHECK-NEXT:    mogg.call.foreach @builtin_primitives.primitives._foreach shape([[LSH]]) context([[CTX]]) capturing([[OT]], [[STRIDED]] : !mogg.tensor, !mogg.tensor) device = "cpu" {
 // CHECK-NEXT:    ^bb0([[OUT:%[^ :,]+]]: !mogg.tensor, [[STRIDEDARG:%[^ :,]+]]: !mogg.tensor, [[IDX:%[^ :,]+]]: !map.index<2>):
 // CHECK-NEXT:      [[VAL:%[^ ]+]] = mogg.tensor.load [[STRIDEDARG]]{{\[}}[[IDX]]] : !mogg.tensor, !map.index<2> -> f32

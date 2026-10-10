@@ -11,11 +11,11 @@
 
 // CHECK-LABEL: mo.graph @constant
 // CHECK: mogg.kernel () -> !mo.tensor<[2, 2], f32>
-// CHECK-NEXT: outputs ([[OP:%[^ :,]+]]: !mogg.pointer)
-// CHECK-NEXT: context ([[CTX:%[^ :,]+]]: !mogg.context)
+// CHECK-NEXT: outputs ([[OP:%[^ :,]+]])
+// CHECK-NEXT: context ([[CTX:%[^ :,]+]])
 // CHECK-NEXT:   [[OSH:%[^ ]+]] = mogg.shape.create()
 // CHECK-NEXT:   [[OT:%[^ ]+]] = mogg.tensor.create([[OP]], [[OSH]]) {{.*}}io = Output, mut = true
-// CHECK-NEXT:   [[CP:%[^ ]+]] = mogg.buffer.constant #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00> : tensor<2x2xf32> : !mogg.pointer
+// CHECK-NEXT:   [[CP:%[^ ]+]] = mogg.buffer.constant #M.dense_array<1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00> : tensor<2x2xf32>
 // CHECK-NEXT:   [[CSH:%[^ ]+]] = mogg.shape.create()
 // CHECK-NEXT:   [[CT:%[^ ]+]] = mogg.tensor.create([[CP]], [[CSH]]) {{.*}}io = Input, mut = false
 // CHECK-NEXT:   [[LSH:%[^ ]+]] = mogg.shape.create()
