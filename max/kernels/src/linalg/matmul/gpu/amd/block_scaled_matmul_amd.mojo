@@ -1150,8 +1150,8 @@ struct BlockScaledMatmulAMD[
         # M is not BM-aligned) are hardware-clamped to this split's region
         # and never bleed into the next split. For num_splits==1 the offset
         # is 0 and `c_split` is byte-identical to `c`.
-        var c_split = TileTensor(
-            c.ptr + split_id * M * N, row_major((Int(M), Idx[N]))
+        var c_split = c[split_id * M : (split_id + 1) * M, :].reshape(
+            row_major((Int(M), Idx[N]))
         )
         var c_writer = RegTileWriter[
             out_dtype, Self.MMA_M, WARP_SIZE // Self.MMA_M
