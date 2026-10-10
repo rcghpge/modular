@@ -207,19 +207,27 @@ struct ArgNonZero:
     """Registers the `mo.arg_nonzero` graph op with the graph compiler."""
 
     @staticmethod
-    def execute(
+    def execute[
+        target: StaticString,
+    ](
         output_buffer: OutputTensor[rank=2, ...],
         input_buffer: InputTensor,
+        ctx: DeviceContext,
     ) raises:
         """Executes the `mo.arg_nonzero` graph op.
+
+        Parameters:
+            target: Compilation target string.
 
         Args:
             output_buffer: Output tensor receiving the nonzero indices.
             input_buffer: Input tensor whose nonzero indices are found.
+            ctx: Device context used to enqueue GPU work.
         """
-        arg_nonzero.arg_nonzero(
+        arg_nonzero.arg_nonzero[target=target](
             input_buffer.to_tile_tensor[.int64](),
             output_buffer.to_tile_tensor[.int64](),
+            ctx,
         )
 
 

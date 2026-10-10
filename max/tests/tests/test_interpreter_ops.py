@@ -50,7 +50,7 @@ from max._interpreter_ops.handlers import (
     _handle_squeeze_shape,
     _handle_unsqueeze_shape,
 )
-from max.driver import CPU, Buffer, Device
+from max.driver import CPU, Accelerator, Buffer, Device, accelerator_count
 from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental import random as max_random
@@ -7836,8 +7836,7 @@ class TestArgNonzeroOp:
     ``np.argwhere(x != 0).astype(np.int64)``, which returns row-major
     coordinates in the same order as the kernel.
 
-    ``mo.arg_nonzero`` is MO_HostOnly so no GPU path exists; no GPU tests
-    are needed.
+    CPU and GPU buffers use the same rank-preserving graph family.
     """
 
     @staticmethod
@@ -7965,22 +7964,57 @@ class TestArgNonzeroOp:
         np.testing.assert_array_equal(np.from_dlpack(result), ref)
 
     def test_nonzero_gc_model_returns_exact_nnz(self) -> None:
-        """A compiled arg_nonzero model sizes its own data-dependent output.
-
-        Uses a flattened input directly; the [nnz, rank] coordinate decode is
-        covered by the handler-level tests above via F.nonzero.
-        """
+        """A compiled arg_nonzero model sizes its own data-dependent output."""
         x = Buffer.from_numpy(
-            np.array([0.0, 1.0, 0.0, 2.0, 0.0, 3.0], dtype=np.float32)
+            np.array([[0.0, 1.0, 0.0], [2.0, 0.0, 3.0]], dtype=np.float32)
         )
-        model = nonzero_gc.nonzero_model(DType.float32)
+        model = nonzero_gc.nonzero_model(CPU(), DType.float32, rank=2)
         (out,) = model(x)
-        np.testing.assert_array_equal(out.to_numpy(), np.array([[1], [3], [5]]))
+        np.testing.assert_array_equal(
+            out.to_numpy(), np.array([[0, 1], [1, 0], [1, 2]])
+        )
 
     def test_float16_unsupported(self) -> None:
         """float16 isn't in this family's CPU dtype set."""
         with pytest.raises(KeyError, match="float16"):
-            nonzero_gc.nonzero_model(DType.float16)
+            nonzero_gc.nonzero_model(CPU(), DType.float16, rank=1)
+
+    @pytest.mark.skipif(accelerator_count() == 0, reason="requires a GPU")
+    @pytest.mark.parametrize(
+        "dtype",
+        [DType.float32, DType.float64],
+        ids=["f32", "f64"],
+    )
+    def test_gpu_preserves_device_and_float_semantics(
+        self, dtype: DType
+    ) -> None:
+        """GPU eager nonzero keeps output resident and treats -0 as zero.
+
+        float64 must keep working on GPU even though nonzero isn't in the
+        standard GPU float sweep: before the GC family it ran via the CPU
+        f64 graph after a host round-trip. Nonzero only loads and compares
+        against zero, so it is swept here directly on non-Metal GPUs.
+        """
+        device = Accelerator()
+        x_np = np.array(
+            [[-0.0, np.nan, 0.0], [2.0, 0.0, -3.0]], dtype=dtype.to_numpy()
+        )
+        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            result = F.nonzero(x, out_dim="nnz")
+
+        assert result.storage is not None
+        assert result.storage.device == device
+        # np.from_dlpack rejects GPU-resident buffers (BufferError:
+        # Unsupported device in DLTensor), so move the result to the host
+        # before comparing.
+        np.testing.assert_array_equal(
+            result.to(CPU()).to_numpy(), self._nonzero_ref(x_np)
+        )
 
 
 class TestPadConstantOp:

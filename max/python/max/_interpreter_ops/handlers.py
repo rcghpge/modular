@@ -2193,12 +2193,9 @@ def _handle_arg_nonzero(
 ) -> Sequence[Buffer]:
     """Dispatches eager arg_nonzero to its GC model.
 
-    ``MO_HostOnly`` keeps the input on CPU. The compiled graph is canonicalized
-    to rank 1: the handler flattens the input, runs the flat model, and unravels
-    the resulting flat indices back into ``[nnz, rank]`` row-major coordinates
-    against the input's real shape with ``np.unravel_index`` -- the op's shape
-    function computes the exact nonzero count, so the model sizes its own flat
-    output and the handler neither counts nor allocates.
+    The compiled graph preserves rank and uses symbolic dimensions, so the
+    kernel writes final ``[nnz, rank]`` coordinates directly on the input
+    device. The op's shape function computes the exact nonzero count.
 
     Args:
         op: The arg_nonzero operation.
@@ -2226,16 +2223,9 @@ def _handle_arg_nonzero(
     graph_dtype = (
         dtype if dtype.is_float() else gc_compile.uint_view_dtype(dtype)
     )
-    flat = input_buffer.view(graph_dtype, (prod(shape),))
-
-    model = nonzero_gc.nonzero_model(graph_dtype)
-    (flat_idx,) = model(flat)
-    flat_np = flat_idx.to_numpy().reshape(-1)
-    # np.unravel_index already returns int64, so astype would otherwise copy.
-    coords_np = np.stack(np.unravel_index(flat_np, shape), axis=-1).astype(
-        np.int64, copy=False
-    )
-    return [Buffer.from_numpy(coords_np)]
+    model = nonzero_gc.nonzero_model(input_buffer.device, graph_dtype, rank)
+    (coordinates,) = model(input_buffer.view(graph_dtype, shape))
+    return [coordinates]
 
 
 # Padding operations

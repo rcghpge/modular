@@ -628,6 +628,17 @@ This version is still a work in progress.
 
 ## Kernels and GPU programming
 
+- Added GPU support for `mo.arg_nonzero` / `ops.nonzero`. The op previously
+  ran only on the host, so every nonzero call on a GPU tensor copied the
+  input to the host and back. It now runs on the input's device (a
+  multi-block GPU pipeline gathers the row-major coordinates, preserving the
+  stable CPU ordering), the op is now single-device instead of host-only,
+  and `ops.nonzero` no longer inserts the host round-trip. The output row
+  count is data-dependent, so only that count is still computed on the
+  host: the shape-function fallback copies data-dependent inputs to the
+  host first, and the eager interpreter family sweeps accelerators
+  directly.
+
 - Reworked the `gated_delta_conv1d_fwd` GPU kernel (Gated DeltaNet
   causal conv, Qwen3.5/3.8 and GLM-5/Kimi-Delta prefill pass 1) from
   one thread per channel walking the sequence serially to one thread

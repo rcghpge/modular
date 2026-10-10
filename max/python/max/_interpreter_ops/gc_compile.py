@@ -498,12 +498,12 @@ class GCFamilySpec(Protocol):
         point -- except for a family whose kernel is restricted to a device
         subset, which must override this to exclude the devices it never
         builds for: the ``MO_HostOnly`` families (``resize_gc``,
-        ``nonzero_gc``, ``nms_gc``, ``roi_align_gc``) which are CPU-only,
-        since sweeping an accelerator for a host-only op would only produce
-        an empty per-slot module. ``_adopt_from_manifest`` requires a
-        manifest entry for every device this returns, so a family that lists
-        a device it never populates fails adoption entirely. An empty list
-        (none of the family's devices are present) warms as a no-op.
+        ``nms_gc``, ``roi_align_gc``) which are CPU-only, since sweeping an
+        accelerator for a host-only op would only produce an empty per-slot
+        module. ``_adopt_from_manifest`` requires a manifest entry for every
+        device this returns, so a family that lists a device it never
+        populates fails adoption entirely. An empty list (none of the
+        family's devices are present) warms as a no-op.
         """
         return list(DISCOVERED_DEVICES)
 
