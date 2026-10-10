@@ -12,10 +12,13 @@
 # ===----------------------------------------------------------------------=== #
 """Implements the ONNX Tile operator, which replicates a tensor a specified number of times along each axis."""
 
-from layout import TileTensor
+from layout import Coord, TileTensor, coord_to_index_list, row_major
+from max.algorithm.functional import elementwise
+from max.gpu.host import DeviceContext
+from max.gpu.host.info import is_cpu
 from std.memory import unsafe_memcpy
 
-from std.utils import IndexList
+from std.utils import IndexList, StaticTuple
 
 # TODO: This implementation supports up to 4 dimensions.
 
@@ -26,7 +29,7 @@ from std.utils import IndexList
 
 
 @inline(.always)
-def tile[
+def _tile_cpu[
     dtype: DType, type_repeats: DType
 ](
     input: TileTensor[dtype, address_space=.GENERIC, ...],
@@ -256,6 +259,97 @@ def tile[
 
 
 @inline(.always)
+def _tile_gpu[
+    dtype: DType,
+    type_repeats: DType,
+    target: StaticString,
+](
+    input: TileTensor[dtype, address_space=.GENERIC, ...],
+    repeats: TileTensor[type_repeats, address_space=.GENERIC, ...],
+    output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
+    ctx: DeviceContext,
+) raises:
+    """Tiles `input` into `output` on a GPU via one thread per output element.
+
+    The coordinate decode is arithmetic -- iterative divmod from the
+    innermost axis -- against host-read dimensions, never through device-side
+    layout round-trips, which misplace reads on some targets.
+    """
+    comptime assert input.rank == output.rank
+    comptime assert input.rank <= 4
+    comptime assert (
+        repeats.flat_rank == 1 and type_repeats == .int64
+    ), "repeats must be rank-1 int64"
+
+    if input.rank != Int(repeats.dim(0)):
+        raise Error(
+            "Length of repeats tensor should be equal to the rank of the"
+            " input tensor."
+        )
+
+    # The input extents are read on the host and captured by value: the
+    # source coordinate of each output element wraps per axis.
+    var input_dims = coord_to_index_list(input.layout.shape_coord())
+    comptime rank = input.rank
+    var input_dims_t = StaticTuple[Int64, rank](fill=0)
+    comptime for axis in range(rank):
+        input_dims_t[axis] = Int64(input_dims[axis])
+    var num_elements = output.num_elements()
+    if num_elements == 0:
+        return
+
+    @inline(.always)
+    def copy_element[
+        simd_width: Int, alignment: Int = 1
+    ](output_index: Coord) {var}:
+        comptime assert simd_width == 1
+        # `output_index` is the output's per-axis coordinate. The source
+        # coordinate wraps each axis by the input's extent.
+        var output_coord = coord_to_index_list(output_index)
+        var input_index = output_coord
+        comptime for axis in range(rank):
+            input_index[axis] = output_coord[axis] % Int(input_dims_t[axis])
+        output.store(
+            Coord(output_coord),
+            input.load(Coord(input_index)),
+        )
+
+    elementwise[simd_width=1, target=target, _trace_description="tile"](
+        copy_element, output.layout.shape_coord(), ctx
+    )
+
+
+@inline(.always)
+def tile[
+    dtype: DType, type_repeats: DType
+](
+    input: TileTensor[dtype, address_space=.GENERIC, ...],
+    repeats: TileTensor[type_repeats, address_space=.GENERIC, ...],
+    output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
+) raises:
+    """Tiles `input` into `output` on the CPU."""
+    _tile_cpu(input, repeats, output)
+
+
+@inline(.always)
+def tile[
+    dtype: DType,
+    type_repeats: DType,
+    target: StaticString,
+](
+    input: TileTensor[dtype, address_space=.GENERIC, ...],
+    repeats: TileTensor[type_repeats, address_space=.GENERIC, ...],
+    output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
+    ctx: DeviceContext,
+) raises:
+    """Tiles `input` into `output` on CPU or GPU."""
+    comptime if is_cpu[target]():
+        _tile_cpu(input, repeats, output)
+    else:
+        _tile_gpu[dtype, type_repeats, target](input, repeats, output, ctx)
+
+
+@inline(.always)
 def tile_shape[
     input_type: DType,
     repeats_type: DType,
@@ -285,10 +379,14 @@ def tile_shape[
     if Int(repeats_buf.dim(0)) != input_buf.rank:
         raise Error("[tile] requires (len(repeats) == input_rank)")
 
-    # Compute and return the output shape.
+    # Compute and return the output shape. Negative repeats would produce a
+    # negative dimension, so reject them here (zero stays valid, like NumPy).
     var output_shape = IndexList[input_buf.rank]()
 
     comptime for i in range(input_buf.rank):
-        output_shape[i] = Int(input_buf.dim(i)) * Int(repeats_buf[i])
+        var repeat = Int(repeats_buf[i])
+        if repeat < 0:
+            raise Error("[tile] requires non-negative repeats")
+        output_shape[i] = Int(input_buf.dim(i)) * repeat
 
     return output_shape
