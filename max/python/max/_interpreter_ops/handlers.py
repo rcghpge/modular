@@ -2273,8 +2273,7 @@ def _handle_pad_constant(
 def _handle_pad_reflect(
     op: mo.PadReflectOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    """Handle mo.pad.reflect via rmo.MoPadReflectOp (CPU-only)."""
-    _check_cpu_only(op, _get_target_device(op))
+    """Handle mo.pad.reflect via rmo.MoPadReflectOp (CPU + GPU)."""
     return _handle_pad_via_gc(op, inputs, mo.PadReflectOp)
 
 
@@ -2282,8 +2281,7 @@ def _handle_pad_reflect(
 def _handle_pad_repeat(
     op: mo.PadRepeatOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    """Handle mo.pad.repeat (edge pad) via rmo.MoPadRepeatOp (CPU-only)."""
-    _check_cpu_only(op, _get_target_device(op))
+    """Handle mo.pad.repeat (edge pad) via rmo.MoPadRepeatOp (CPU + GPU)."""
     return _handle_pad_via_gc(op, inputs, mo.PadRepeatOp)
 
 

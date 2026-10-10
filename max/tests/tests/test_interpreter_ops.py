@@ -8186,6 +8186,26 @@ class TestPadReflectOp:
 
         np.testing.assert_array_equal(np.from_dlpack(out), x_np)
 
+    @pytest.mark.skipif(accelerator_count() == 0, reason="requires a GPU")
+    def test_gpu_reflect(self) -> None:
+        """Reflect pad on a GPU-resident tensor keeps the output on the
+        accelerator and matches the CPU reference."""
+        device = Accelerator()
+        x_np = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            out = F.pad(x, [1, 1, 0, 1], mode="reflect")
+
+        assert out.storage is not None
+        assert out.storage.device == device
+        np.testing.assert_array_equal(
+            out.to(CPU()).to_numpy(), self._ref(x_np, [1, 1, 0, 1])
+        )
+
 
 class TestPadRepeatOp:
     """Tests for mo.PadRepeatOp via F.pad(mode='edge')."""
@@ -8274,6 +8294,26 @@ class TestPadRepeatOp:
 
         np.testing.assert_array_equal(
             np.from_dlpack(out), self._ref(x_np, [1, 1, 2, 0])
+        )
+
+    @pytest.mark.skipif(accelerator_count() == 0, reason="requires a GPU")
+    def test_gpu_edge(self) -> None:
+        """Edge pad on a GPU-resident tensor keeps the output on the
+        accelerator and matches the CPU reference."""
+        device = Accelerator()
+        x_np = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            out = F.pad(x, [2, 1, 1, 0], mode="edge")
+
+        assert out.storage is not None
+        assert out.storage.device == device
+        np.testing.assert_array_equal(
+            out.to(CPU()).to_numpy(), self._ref(x_np, [2, 1, 1, 0])
         )
 
 
