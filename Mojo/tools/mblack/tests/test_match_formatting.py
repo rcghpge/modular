@@ -91,17 +91,31 @@ def f(value, expected):
 def test_mojo_formats_if_case():
     source = """\
 def f(pair):
-    if case (0,var x)=pair:
+    if case (0,x)=pair:
         return x
-    elif case (var x,1)=pair:
+    elif case (x,1)=pair:
         return x
 """
     expected = """\
 def f(pair):
-    if case (0, var x) = pair:
+    if case (0, x) = pair:
         return x
-    elif case (var x, 1) = pair:
+    elif case (x, 1) = pair:
         return x
+"""
+    assert_mojo_format(source, expected)
+
+
+def test_mojo_formats_while_case():
+    source = """\
+def f(pair):
+    while case (0,x)|(x,1)=pair:
+        pair = next_pair()
+"""
+    expected = """\
+def f(pair):
+    while case (0, x) | (x, 1) = pair:
+        pair = next_pair()
 """
     assert_mojo_format(source, expected)
 

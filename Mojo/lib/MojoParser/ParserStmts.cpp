@@ -1513,13 +1513,39 @@ ParseResult StmtParser::parseBreakOrContinueStmt(Token::Kind kind,
 // Compound statements.
 //===----------------------------------------------------------------------===//
 
-/// while_stmt ::=  "while" assignment_expression ":" suite
+/// while_stmt ::=  "while" ("case" pattern "=" assignment_expression |
+///                           assignment_expression) ":" suite
 ///                 ["else" ":" suite]
 ParseResult StmtParser::parseWhileStmt(size_t curIndent) {
   Location whileLoc = translateLocation(consumeToken(Token::kw_while).getLoc());
 
+  ExprNode *patternExpr = nullptr;
   ExprNode *condExp = nullptr;
-  if (parseExpression(condExp, curIndent, Precedence::kAssignExpr))
+  if (consumeIf(Token::kw_case)) {
+    if (parseExpressionList(patternExpr, curIndent,
+                            /*terminators=*/{Token::equal, Token::kw_as},
+                            Precedence(int(Precedence::kIfElse) + 1)))
+      return failure();
+
+    SMLoc asLoc;
+    if (consumeIf(Token::kw_as, &asLoc)) {
+      Token nameTok = getToken();
+      if (parseIdentifier("expected a name after 'as'"))
+        return failure();
+      auto *name = shared.allocPersistent<DeclRefNode>(
+          nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
+      patternExpr = shared.allocPersistent<BinOpNode>(ExprNode::kAsPat,
+                                                      patternExpr, asLoc, name);
+    }
+
+    if (parseToken(Token::equal, "expected '=' after conditional pattern") ||
+        parseExpression(condExp, curIndent, Precedence::kAssignExpr))
+      return failure();
+  } else if (parseExpression(condExp, curIndent, Precedence::kAssignExpr)) {
+    return failure();
+  }
+
+  if (parseToken(Token::colon, "expected ':' after 'while' condition"))
     return failure();
 
   // We will be moving the builder into sub-regions that are created, make sure
@@ -1534,38 +1560,96 @@ ParseResult StmtParser::parseWhileStmt(size_t curIndent) {
   // Create the body region.
   builder.setInsertionPointToStart(bodyBlock);
 
-  // Emit the condition expression into an if/break pattern:
-  // if <cond>:
-  //   hlcf.yield
-  // else:
-  //   lit.loop.break.else  // Jump to the 'else' block.
-  auto emitter = getEmitter();
-  RValue condRVal = emitter.emitExprScalarBool(condExp, EC_BoolCondition);
-  Value condVal =
-      emitter.emitSRValue({AnyValue(condRVal), condExp}, EC_BoolCondition);
-
-  // After the condition is evaluated, validate the end of the statement.
-  if (parseToken(Token::colon, "expected ':' after expression"))
-    return failure();
-  if (!condVal)
-    return success(); // IRGen error already emitted; parse succeeded!
-
-  HLCF::IfOp condIf = HLCF::IfOp::create(
-      *emitter.builder, whileLoc, TypeRange{}, condVal,
-      [&]() -> LogicalResult {
-        HLCF::YieldOp::create(*emitter.builder, whileLoc);
+  if (patternExpr) {
+    CValue subject = getEmitter().emitExprCValue(condExp, EC_MatchSubject);
+    if (!subject)
+      return success();
+    if (subject.getIfRValue() || subject.getIfDLValue()) {
+      BValue subjectBValue =
+          getEmitter().emitBValue({subject, condExp}, EC_MatchSubject);
+      if (!subjectBValue)
         return success();
-      },
-      [&]() -> LogicalResult {
-        LoopBreakElseOp::create(*emitter.builder, whileLoc);
-        return success();
-      });
-  if (!condIf)
-    return success();
-  builder.setInsertionPointAfter(condIf);
+      subject = subjectBValue;
+    }
 
-  if (failed(parseLocalScopeSuite(curIndent)))
-    return failure();
+    PatternMatchBuilder matchBuilder(*curDeclScope, EC_Type);
+    const PatternPath *rootPath =
+        matchBuilder.getRootPath(subject.getRValueType());
+    SmallVector<const PatternCommand *, 8> commands;
+    if (failed(patternExpr->buildCheckList(matchBuilder, subject, rootPath,
+                                           commands)))
+      return failure();
+
+    PatternEmitState emissionState{*curDeclScope, subject, rootPath, whileLoc,
+                                   DenseMap<const PatternPath *, CValue>()};
+    auto matchOp = HLCF::MatchOp::create(builder, whileLoc, TypeRange(),
+                                         /*caseRegionsCount=*/1);
+    Block &caseBlock = matchOp.getCaseRegions().front().emplaceBlock();
+    Block &matchElseBlock = matchOp.getElseRegion().emplaceBlock();
+
+    builder.setInsertionPointToStart(&caseBlock);
+    SmallVector<PatternBoundName> bindings;
+    if (failed(emissionState.emitCommands(builder, commands, bindings)))
+      return success();
+
+    {
+      DebugInfo::DIBuilder::ScopeGuard scopeGuard;
+      llvm::SaveAndRestore<ASTDecl *> keepDecl(curDeclScope);
+      pushChildScope(scopeGuard, keepDecl);
+
+      IREmitter emitter = getEmitter();
+      for (const PatternBoundName &binding : bindings) {
+        DeclRefNode nameNode(binding.name);
+        ExprDest declDest(LValueInitializerType{binding.value.getRValueType()},
+                          EC_VarInit);
+        declDest.setPatternDeclKind(binding.bindingKind);
+        LValue bindingLV = emitter.emitExprLValue(&nameNode, declDest);
+        if (!bindingLV)
+          return success();
+
+        ExprDest storeDest(bindingLV, EC_VarInit);
+        if (!emitter.emitCResult(binding.value, &nameNode, storeDest))
+          return success();
+      }
+
+      if (failed(parseSuite(curIndent)))
+        return failure();
+    }
+    HLCF::MatchCompleteOp::create(builder, whileLoc);
+
+    builder.setInsertionPointToStart(&matchElseBlock);
+    LoopBreakElseOp::create(builder, whileLoc);
+    builder.setInsertionPointAfter(matchOp);
+  } else {
+    // Emit the condition expression into an if/break pattern:
+    // if <cond>:
+    //   hlcf.yield
+    // else:
+    //   lit.loop.break.else  // Jump to the 'else' block.
+    auto emitter = getEmitter();
+    RValue condRVal = emitter.emitExprScalarBool(condExp, EC_BoolCondition);
+    Value condVal =
+        emitter.emitSRValue({AnyValue(condRVal), condExp}, EC_BoolCondition);
+    if (!condVal)
+      return success(); // IRGen error already emitted; parse succeeded!
+
+    HLCF::IfOp condIf = HLCF::IfOp::create(
+        *emitter.builder, whileLoc, TypeRange{}, condVal,
+        [&]() -> LogicalResult {
+          HLCF::YieldOp::create(*emitter.builder, whileLoc);
+          return success();
+        },
+        [&]() -> LogicalResult {
+          LoopBreakElseOp::create(*emitter.builder, whileLoc);
+          return success();
+        });
+    if (!condIf)
+      return success();
+    builder.setInsertionPointAfter(condIf);
+
+    if (failed(parseLocalScopeSuite(curIndent)))
+      return failure();
+  }
   LIT::LoopContinueOp::create(builder, whileLoc);
 
   // Create the else region.

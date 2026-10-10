@@ -221,32 +221,52 @@ def classify_or_bind_ref(var pair: Tuple[Int, Int]) -> String:
 
 
 def classify_if_case(pair: Tuple[Int, Int], fallback: Bool) -> String:
-    if case (0, var value) = pair:
+    if case (0, value) = pair:
         return String("first:", value)
     elif fallback:
         return "fallback"
-    elif case (var value, 1) = pair:
+    elif case (value, 1) = pair:
         return String("second:", value)
     else:
         return "miss"
 
 
 def classify_if_case_or(pair: Tuple[Int, Int]) -> String:
-    if case (0, var value) | (var value, 1) = pair:
+    if case (0, value) | (value, 1) = pair:
         return String("or:", value)
     else:
         return "miss"
 
 
 def classify_if_case_nested(value: Optional[Point]) -> String:
-    if case .Some(Point(x=0, y=var y)) = value:
+    if case .Some(Point(x=0, y=y)) = value:
         return String("y-axis:", y)
-    elif case .Some(Point(x=var x, y=0)) = value:
+    elif case .Some(Point(x=x, y=0)) = value:
         return String("x-axis:", x)
     elif case .None = value:
         return "none"
     else:
         return "other"
+
+
+def classify_while_case(var pair: Tuple[Int, Int]) -> String:
+    var result = String("miss")
+    while case (0, value) | (value, 1) = pair:
+        result = String("hit:", value)
+        pair = (4, 4)
+    else:
+        result += ":done"
+    return result^
+
+
+def classify_while_case_break(pair: Tuple[Int, Int]) -> String:
+    var result = String("miss")
+    while case (0, value) = pair:
+        result = String("break:", value)
+        break
+    else:
+        result += ":done"
+    return result^
 
 
 def classify_comptime_int[x: Int]() -> String:
@@ -477,6 +497,27 @@ def test_if_case():
     print(classify_if_case_nested(Optional(Point(3, 4))))
 
 
+def test_while_case():
+    # CHECK-LABEL: == test_while_case
+    print("== test_while_case")
+
+    # CHECK: hit:5:done
+    print(classify_while_case((0, 5)))
+    # CHECK: hit:7:done
+    print(classify_while_case((7, 1)))
+    # The first OR alternative wins when both match.
+    # CHECK: hit:1:done
+    print(classify_while_case((0, 1)))
+    # CHECK: miss:done
+    print(classify_while_case((4, 4)))
+
+    # An explicit break skips the loop's else block.
+    # CHECK: break:5
+    print(classify_while_case_break((0, 5)))
+    # CHECK: miss:done
+    print(classify_while_case_break((4, 4)))
+
+
 def test_comptime_match():
     # CHECK-LABEL: == test_comptime_match
     print("== test_comptime_match")
@@ -525,4 +566,5 @@ def main():
     test_explicit_value_patterns()
     test_or_bindings()
     test_if_case()
+    test_while_case()
     test_comptime_match()

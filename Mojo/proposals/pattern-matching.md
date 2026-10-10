@@ -619,6 +619,3 @@ following parts of this proposal are not yet implemented:
   protocol that backs both match patterns and failable sequence destructuring
   (`var [a, b, c] = get_list()`).
 - **Mapping patterns** — for example `case {"name": name, "age": age}:`.
-- **Conditional pattern bindings in `if` / `while`** — the `if pattern =
-  expression` and `while pattern = expression` forms described above (Mojo's
-  analogue of `if let` and `while let`).

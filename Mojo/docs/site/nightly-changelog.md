@@ -111,17 +111,23 @@ This version is still a work in progress.
   client matches when they compile against a new version of the package that
   adds a case they didn't know about.
 
-- `if case`: Conditional patterns are also available in `if` and `elif`
-  statements using `if case pattern = value`. The value is evaluated once, and
-  names bound by a successful pattern are available in that arm's body. Pattern
-  failure continues to the next `elif` or `else` arm:
+- `if case` and `while case`: Conditional patterns are also available in
+  `if`, `elif`, and `while` statements using `case pattern = value`. The value
+  is evaluated once, and names bound by a successful pattern are available in
+  the statement body. An `if case` pattern failure continues to the next
+  `elif` or `else` arm. A `while case` pattern failure exits the loop normally
+  and runs its `else` block, if present:
 
   ```mojo
   def describe_optional(value: Optional[Int]) -> String:
-      if case .Some(var item) = value:
+      if case .Some(item) = value:
           return String("some:", item)
       else:
           return "none"
+
+  def consume():
+      while case .Some(item) = get_next():
+          process(item)
   ```
 
 - The message on a `where` clause can now be written
