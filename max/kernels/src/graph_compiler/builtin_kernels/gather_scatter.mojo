@@ -1901,16 +1901,20 @@ struct Tile:
 
     @staticmethod
     def execute[
-        dtype: DType, rank: Int
+        dtype: DType,
+        rank: Int,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
         input: InputTensor[dtype=dtype, rank=rank, ...],
         repeats: InputTensor,
+        ctx: DeviceContext,
     ) raises:
-        tile(
+        tile[target=target](
             input.to_tile_tensor[.int64](),
             repeats.to_tile_tensor[.int64](),
             output.to_tile_tensor[.int64](),
+            ctx,
         )
 
 
