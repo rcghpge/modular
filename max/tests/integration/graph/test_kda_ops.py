@@ -879,6 +879,9 @@ def test_kda_chunk_amd_strided_views(
     )
 
 
+@pytest.mark.compile_on_gpu(
+    "asserts on the error its compile raises, which only compiling reproduces"
+)
 @pytest.mark.skipif(
     not _is_gfx950_gpu(), reason="AMD kda_chunk path is gfx950-only"
 )

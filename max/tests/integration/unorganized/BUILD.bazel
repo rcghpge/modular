@@ -272,6 +272,7 @@ modular_py_test(
         "test.resources:gpu-memory": "9",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -299,6 +300,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -325,6 +327,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -352,6 +355,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -376,6 +380,7 @@ modular_py_test(
         "test.resources:gpu-memory": "9",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -454,6 +459,7 @@ modular_py_test(
         "test.resources:gpu-memory": "9",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -480,6 +486,7 @@ modular_py_test(
         "test.resources:gpu-memory": "9",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -505,6 +512,7 @@ modular_py_test(
         "test.resources:gpu-memory": "9",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -530,6 +538,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -556,6 +565,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -581,6 +591,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -606,6 +617,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -631,6 +643,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -657,6 +670,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -682,6 +696,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -710,6 +725,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -738,6 +754,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",
@@ -767,6 +784,7 @@ modular_py_test(
         "test.resources:gpu-memory": "8",
     },
     gpu_constraints = _SAMPLING_GPU_CONSTRAINTS,
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-sandbox",

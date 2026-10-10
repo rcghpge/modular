@@ -206,6 +206,7 @@ modular_py_test(
     srcs = ["test_reduce_add_rmsnorm_fusion.py"],
     gpu_constraints = ["//:b200_gpu"],
     imports = ["."],
+    precompile_mefs = True,
     tags = [
         "gpu",
     ],
@@ -248,6 +249,7 @@ modular_py_test(
     srcs = ["test_cond_symbolic_dim_gpu.py"],
     gpu_constraints = ["//:b200_gpu"],
     imports = ["."],
+    precompile_mefs = True,
     tags = [
         "gpu",
         "no-mypy",
