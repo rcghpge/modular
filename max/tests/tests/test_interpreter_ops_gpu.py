@@ -371,9 +371,9 @@ class TestElementwiseGPU:
 
     def test_unsupported_op_raises_on_gpu(self) -> None:
         """Test that unsupported GPU ops raise an error."""
-        # atanh uses libm and is not supported on GPU
+        # GPU sweeps no float64 targets.
         a_torch = torch.tensor(
-            [0.1, 0.2, 0.3, 0.4], dtype=torch.float32, device="cuda"
+            [0.1, 0.2, 0.3, 0.4], dtype=torch.float64, device="cuda"
         )
 
         a = Tensor.from_dlpack(a_torch)
@@ -495,6 +495,42 @@ class TestElementwiseGPU:
         result_torch = torch.from_dlpack(c)
         # Use relaxed tolerance for lower precision dtypes
         torch.testing.assert_close(result_torch, expected, rtol=1e-2, atol=1e-2)
+
+    @pytest.mark.parametrize(
+        "op,torch_func",
+        [
+            (F.log1p, torch.log1p),
+            (F.atanh, torch.atanh),
+            (F.erf, torch.erf),
+            (F.gelu, torch.nn.functional.gelu),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "dtype", [DType.float32, DType.float16, DType.bfloat16]
+    )
+    def test_transcendental_unary_ops_gpu(
+        self, op: Any, torch_func: Any, dtype: DType
+    ) -> None:
+        """Test log1p, atanh, erf, and gelu on GPU over the swept float dtypes."""
+        torch_dtype = DTYPE_TO_TORCH[dtype]
+        # Inside atanh's (-1, 1) domain; spans erf's small/large branch split.
+        a_torch = torch.tensor(
+            [-0.95, -0.5, -1e-3, 0.0, 0.25, 0.75, 0.95],
+            dtype=torch_dtype,
+            device="cuda",
+        )
+
+        a = Tensor.from_dlpack(a_torch)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            c = op(a)
+
+        expected = torch_func(a_torch.float()).to(torch_dtype)
+        result_torch = torch.from_dlpack(c)
+        atol = 1e-6 if dtype == DType.float32 else 1e-2
+        torch.testing.assert_close(result_torch, expected, rtol=1e-2, atol=atol)
 
 
 class TestMatmulGPU:

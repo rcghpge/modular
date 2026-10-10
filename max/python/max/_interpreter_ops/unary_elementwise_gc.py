@@ -122,15 +122,6 @@ def _spec_for(op_type: type[_core.Operation]) -> UnarySpec | None:
     return gc_compile.spec_for(op_type, _UNARY_OPS_BY_NAME)
 
 
-# These lower to libm calls the GC backend only supports on CPU ("libm
-# operations are only available on CPU targets") — verified failing on both
-# Metal and CUDA (B200). Swept on CPU only, matching the historical interpreter
-# binding's GPU allowlist, which excluded exactly these four.
-_CPU_ONLY_OPS = frozenset({mo.Log1pOp, mo.AtanhOp, mo.ErfOp, mo.GeluOp})
-# Keyed by name so the CPU-only guard also fires for an rmo dispatch.
-_CPU_ONLY_NAMES = frozenset(op_type.__name__ for op_type in _CPU_ONLY_OPS)
-
-
 def _supported_dtypes(dtype_class: DTypeClass, device: Device) -> list[DType]:
     """Conservative swept dtype set for a (dtype_class, device)."""
     if dtype_class is DTypeClass.FLOAT:
@@ -185,14 +176,11 @@ def _is_supported(
     """Whether (op, device, dtype) is in the conservatively-supported set.
 
     Single source of truth for the swept matrix (the sweep filter and
-    :func:`unary_model`'s guard both route through it). CPU-only ops are
-    unsupported on accelerators; each op supports only its ``dtype_class``.
+    :func:`unary_model`'s guard both route through it). Each op supports only
+    its ``dtype_class``.
     """
     spec = _spec_for(op_type)
     if spec is None:
-        return False
-    name = gc_compile.canonical_op_name(op_type, _UNARY_OPS_BY_NAME)
-    if device.label != "cpu" and name in _CPU_ONLY_NAMES:
         return False
     return dtype in _supported_dtypes(spec.dtype_class, device)
 
