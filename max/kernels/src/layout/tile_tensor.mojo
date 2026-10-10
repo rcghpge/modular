@@ -2051,10 +2051,8 @@ struct TileTensor[
         # (e.g. offset-derived) `Engine`, so reinterpret its handle as
         # `self`'s before measuring the scalar-element distance.
         return Scalar[Self.linear_idx_type](
-            Self.Engine.distance(
-                self._storage,
-                rebind[type_of(self._storage)](other._storage),
-            )
+            (Int(self.unsafe_ptr()) - Int(other.unsafe_ptr()))
+            // size_of[Self.dtype]()
         )
 
     def write_to(self, mut w: Some[Writer]):

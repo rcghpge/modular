@@ -427,28 +427,6 @@ struct TMemEngine(TensorEngine):
         )
 
     @staticmethod
-    def distance[
-        dtype: DType, address_space: AddressSpace, //
-    ](
-        storage: Self.StorageType[mut=False, dtype, _, address_space],
-        other: Self.StorageType[mut=False, dtype, _, address_space],
-    ) -> Int:
-        """Returns the number of grid positions from `other` to `storage`.
-
-        Parameters:
-            dtype: The storages' `DType`.
-            address_space: The storages' address space parameter.
-
-        Args:
-            storage: The storage to measure the distance to.
-            other: The storage to measure the distance from.
-
-        Returns:
-            The signed difference of the two cells' flat grid indices.
-        """
-        return _grid_index(storage.addr) - _grid_index(other.addr)
-
-    @staticmethod
     def _check_copy[
         TMemLayoutType: TensorLayout,
         PtrLayoutType: TensorLayout,
