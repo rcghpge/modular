@@ -632,6 +632,20 @@ mo.graph @arg_nonzero<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32>) -> !mo.tensor<
 // CHECK-NEXT: %[[WHERE:.*]] = mo.arg_nonzero(%[[IN]]) : (!mo.tensor<[[[IN_PARAM]], 10], f32>) -> !mo.tensor<[[[WHERE_PARAM]], 2], si64>
 // CHECK-NEXT: mo.output<[[WHERE_PARAM]]> %[[WHERE]] : !mo.tensor<[[[WHERE_PARAM]], 2], si64>
 
+// An off-host data-dependent input is copied to the host before the shape
+// function reads it; the kernel itself still consumes the device original.
+mo.graph @arg_nonzero_gpu<D0 -> D1>(%arg0: !mo.tensor<[D0, 10], f32, dev:0>) -> !mo.tensor<[D1, 2], si64, dev:0> {
+  %0 = mo.arg_nonzero<() -> D2>(%arg0) : (!mo.tensor<[D0, 10], f32, dev:0>) -> !mo.tensor<[D2, 2], si64, dev:0>
+  mo.output<D2> %0 : !mo.tensor<[D2, 2], si64, dev:0>
+}
+// CHECK-LABEL: mo.graph @arg_nonzero_gpu
+// CHECK: (%[[GPU_IN:.*]]: !mo.tensor<[{{.*}}, 10], f32, dev:0>) -> !mo.tensor<[{{.*}}, 2], si64, dev:0> {
+// CHECK: %[[CHAIN:.*]] = mo.chain.create()
+// CHECK: %[[GPU_HOST:.*]], %{{.*}} = mo.transfer[%[[CHAIN]]] %[[GPU_IN]] : !mo.tensor<[{{.*}}, 10], f32, dev:0> to <"cpu", 0>
+// CHECK: mo.invoke_shape_func["mo.arg_nonzero"]<() -> {{.*}}>(%[[GPU_HOST]]) [dataDeptTensors = [0 : i32]]
+// CHECK: %[[GPU_WHERE:.*]] = mo.arg_nonzero(%[[GPU_IN]]) : (!mo.tensor<[{{.*}}, 10], f32, dev:0>) -> !mo.tensor<[{{.*}}, 2], si64, dev:0>
+// CHECK: mo.output<{{.*}}> %[[GPU_WHERE]] : !mo.tensor<[{{.*}}, 2], si64, dev:0>
+
 mo.graph @top_k_fallback_shape_func<() -> D0, D1, D2, D3>(
   %input: !mo.tensor<[32, 10, 20, 3], f32>,
   %K: !mo.tensor<[], si64>,

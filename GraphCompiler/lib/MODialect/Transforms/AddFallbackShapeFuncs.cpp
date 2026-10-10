@@ -354,7 +354,36 @@ void buildForOpResult(GraphOp &graph, OpBuilder &builder, TensorValue res,
   }
 
   Location loc = res.getLoc();
-  MO::InvokeShapeFuncOp::create(builder, loc, operands, shapeFuncName,
+
+  // Shape functions execute on the host and read data-dependent operands
+  // through their raw storage pointers. An off-host operand would hand the
+  // host a device address, so copy it to the host first. The transfer is a
+  // real runtime D2H: data-dependent output shapes need current input data
+  // on every execution.
+  DeviceRefAttr hostDevice = getHostDevice(builder.getContext());
+  SmallVector<Value> invokeOperands(operands.begin(), operands.end());
+  Value chain;
+  for (int32_t inputIdx : dataDepInputIdxs) {
+    if (static_cast<size_t>(inputIdx) >= invokeOperands.size())
+      continue;
+    auto tensorTy =
+        dyn_cast<MO::TensorType>(invokeOperands[inputIdx].getType());
+    if (!tensorTy)
+      continue;
+    DeviceRefAttr operandDevice = tensorTy.getDeviceRef();
+    if (!operandDevice || operandDevice == hostDevice)
+      continue;
+    if (!chain)
+      chain = MO::ChainCreateOp::create(builder, loc, ValueRange{}).getResult();
+    auto transfer = MO::TransferOp::create(
+        builder, loc, cast<TensorValue>(invokeOperands[inputIdx]), hostDevice,
+        cast<ChainValue>(chain),
+        /*alwaysElideSameDeviceCopy=*/false);
+    invokeOperands[inputIdx] = transfer.getResult();
+    chain = transfer.getOutChain();
+  }
+
+  MO::InvokeShapeFuncOp::create(builder, loc, invokeOperands, shapeFuncName,
                                 shapeParams, kgenParamAttrs,
                                 builder.getI32ArrayAttr(dataDepInputIdxs));
 }

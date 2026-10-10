@@ -3749,7 +3749,7 @@ def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression", [
 //===----------------------------------------------------------------------===//
 
 def MO_ArgNonzeroOp : MO_TensorOp<"arg_nonzero", [
-  MO_HostOnly,
+  MO_SingleDevice,
   MO_ParamDeclaration,
 ]> {
   let summary = "Nonzero-value indices operation";

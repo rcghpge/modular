@@ -19,25 +19,24 @@ mo.graph @static_shape<() -> M>(%arg0: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[M
   mo.output<K> %2 : !mo.tensor<[K, 1], si64>
 }
 
-// FIXME: GEX-2041: mo.arg_nonzero is constrained to CPU.
-// DISABLED-CHECK-LABEL: mo.graph @static_shape_with_device
-// DISABLED-CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[[[M]], 1], si64, dev:0> {
-// mo.graph @static_shape_with_device<() -> M>(%arg0: !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[M, 1], si64, dev:0> {
-  // DISABLED-CHECK-DAG: %[[RANGE:.*]] = mo.constant <#M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>> : !mo.tensor<[5, 1], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[PERM:.*]] = mo.constant <#M.dense_array<1, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[FLATARG:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[6], f32, dev:0>
-  // DISABLED-CHECK-DAG: %[[WHERE:.*]] = mo.arg_nonzero<() -> [[W:.*]]>(%[[FLATARG]]) : (!mo.tensor<[6], f32, dev:0>) -> !mo.tensor<[[[W]], 1], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[VAL5:.*]] = mo.static.broadcast_to(%[[WHERE]]) : !mo.tensor<[[[W]], 1], si64, dev:0> -> !mo.tensor<[[[W]], 5], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[VAL6:.*]] = mo.static.broadcast_to(%[[RANGE]]) : !mo.tensor<[5, 1], si64, dev:0> -> !mo.tensor<[5, [[W]]], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[WHERETP:.*]] = mo.transpose(%[[VAL5]], %[[PERM]]) : (!mo.tensor<[[[W]], 5], si64, dev:0>, !mo.tensor<[2], si64, dev:0>) -> !mo.tensor<[5, [[W]]], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[RES:.*]] = mo.add(%[[WHERETP]], %[[VAL6]]) : !mo.tensor<[5, [[W]]], si64, dev:0>
-  // DISABLED-CHECK-DAG: %[[OLDRES:.*]] = mo.static.reshape(%[[RES]]) : !mo.tensor<[5, [[W]]], si64, dev:0> -> !mo.tensor<[mul_no_wrap([[W]], 5), 1], si64, dev:0>
-  // %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[5, 2, 3], f32, dev:0>
-  // %1 = mo.static.reshape(%0) : !mo.tensor<[5, 2, 3], f32, dev:0> -> !mo.tensor<[30], f32, dev:0>
-  // %2 = mo.arg_nonzero<() -> K>(%1) : (!mo.tensor<[30], f32, dev:0>) -> !mo.tensor<[K, 1], si64, dev:0>
-  // DISABLED-CHECK: mo.output<mul_no_wrap([[W]], 5)> %[[OLDRES]] : !mo.tensor<[mul_no_wrap([[W]], 5), 1], si64, dev:0>
-  // mo.output<K> %2 : !mo.tensor<[K, 1], si64, dev:0>
-// }
+// CHECK-LABEL: mo.graph @static_shape_with_device
+// CHECK-SAME: <() -> [[M:.*]]>(%[[ARG0:.*]]: !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[[[M]], 1], si64, dev:0> {
+mo.graph @static_shape_with_device<() -> M>(%arg0: !mo.tensor<[2, 3], f32, dev:0>) -> !mo.tensor<[M, 1], si64, dev:0> {
+  // CHECK-DAG: %[[RANGE:.*]] = mo.constant <#M.dense_array<0, 6, 12, 18, 24> : tensor<5x1xsi64>> : !mo.tensor<[5, 1], si64, dev:0>
+  // CHECK-DAG: %[[PERM:.*]] = mo.constant <#M.dense_array<1, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
+  // CHECK-DAG: %[[FLATARG:.*]] = mo.static.reshape(%[[ARG0]]) : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[6], f32, dev:0>
+  // CHECK-DAG: %[[WHERE:.*]] = mo.arg_nonzero<() -> [[W:.*]]>(%[[FLATARG]]) : (!mo.tensor<[6], f32, dev:0>) -> !mo.tensor<[[[W]], 1], si64, dev:0>
+  // CHECK-DAG: %[[VAL5:.*]] = mo.static.broadcast_to(%[[WHERE]]) : !mo.tensor<[[[W]], 1], si64, dev:0> -> !mo.tensor<[[[W]], 5], si64, dev:0>
+  // CHECK-DAG: %[[VAL6:.*]] = mo.static.broadcast_to(%[[RANGE]]) : !mo.tensor<[5, 1], si64, dev:0> -> !mo.tensor<[5, [[W]]], si64, dev:0>
+  // CHECK-DAG: %[[WHERETP:.*]] = mo.transpose(%[[VAL5]], %[[PERM]]) : (!mo.tensor<[[[W]], 5], si64, dev:0>, !mo.tensor<[2], si64>) -> !mo.tensor<[5, [[W]]], si64, dev:0>
+  // CHECK-DAG: %[[RES:.*]] = mo.add(%[[WHERETP]], %[[VAL6]]) : !mo.tensor<[5, [[W]]], si64, dev:0>
+  // CHECK-DAG: %[[OLDRES:.*]] = mo.static.reshape(%[[RES]]) : !mo.tensor<[5, [[W]]], si64, dev:0> -> !mo.tensor<[mul_no_wrap([[W]], 5), 1], si64, dev:0>
+  %0 = mo.static.broadcast_to(%arg0) : !mo.tensor<[2, 3], f32, dev:0> -> !mo.tensor<[5, 2, 3], f32, dev:0>
+  %1 = mo.static.reshape(%0) : !mo.tensor<[5, 2, 3], f32, dev:0> -> !mo.tensor<[30], f32, dev:0>
+  %2 = mo.arg_nonzero<() -> K>(%1) : (!mo.tensor<[30], f32, dev:0>) -> !mo.tensor<[K, 1], si64, dev:0>
+  // CHECK: mo.output<mul_no_wrap([[W]], 5)> %[[OLDRES]] : !mo.tensor<[mul_no_wrap([[W]], 5), 1], si64, dev:0>
+  mo.output<K> %2 : !mo.tensor<[K, 1], si64, dev:0>
+}
 
 // CHECK-LABEL: mo.graph @dynamic_shape
 // CHECK-SAME: <[[A:.*]], [[B:.*]] -> [[M:.*]]>(%[[ARG:.*]]: !mo.tensor<[2, [[A]]], f32>) -> !mo.tensor<[[[M]], 1], si64> {
