@@ -162,9 +162,8 @@ struct PatternEmitState {
   /// the discriminant.
   CValue emitTestableValue(IREmitter &emitter, const PatternCommand *command);
 
-  /// Emit `__eq__` of `value` against the literal or enum tag in `command`,
-  /// as a scalar bool (PValue in param context). `value` is the subject for
-  /// `Equal` and the discriminant for `EnumTag`.
+  /// Compare `value` against the value or enum tag in `command` and return a
+  /// scalar bool (PValue in param context).
   RValue emitTestForValue(IREmitter &emitter, const PatternCommand *command,
                           CValue value);
 

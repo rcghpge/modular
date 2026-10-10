@@ -1021,6 +1021,58 @@ def comptime_match_literals[x: Int]():
         case_callee[2]()
 
 
+# CHECK-LABEL: lit.fn @"match_explicit_values
+def match_explicit_values(
+    value: Int, expected: Int, pair: Tuple[Int, Int]
+):
+    # A prefix-equality pattern compares against an existing value instead of
+    # introducing a binding.
+    # CHECK:       lit.call {{.*}}@"__eq__(::SIMD{{.*}}(%value, %expected)
+    __match value:
+    case == expected:
+        case_callee[0]()
+    case _:
+        case_callee[1]()
+
+    # It composes with structural patterns.
+    # CHECK:       lit.call {{.*}}@"__getitem_param__{{.*}}(%pair)
+    # CHECK:       lit.call {{.*}}@"__eq__(::SIMD
+    __match pair:
+    case (_, == expected):
+        case_callee[2]()
+    case _:
+        case_callee[3]()
+
+    # The expected value can be computed by an arbitrary expression.
+    # CHECK:       lit.call {{.*}}@"__add__(
+    # CHECK:       lit.call {{.*}}@"__eq__(::SIMD
+    __match value:
+    case == (expected + 1):
+        case_callee[4]()
+    case _:
+        case_callee[5]()
+
+
+# CHECK-LABEL: lit.fn @"comptime_match_type
+def comptime_match_type[T: AnyType]():
+    # Types are values, so explicit value patterns can distinguish them
+    # without interpreting bare identifiers as constants.
+    # CHECK:      hlcf.comptime.if {{.*}}identical(:!AnyType T, !Int){{.*}} {
+    # CHECK:        lit.call {{.*}}@"case_callee{{.*}}<index> 0
+    # CHECK:      } elif {{.*}}identical(:!AnyType T, !String){{.*}} {
+    # CHECK:        lit.call {{.*}}@"case_callee{{.*}}<index> 1
+    # CHECK:      } else {
+    # CHECK:        lit.call {{.*}}@"case_callee{{.*}}<index> 2
+    # CHECK:      }
+    comptime __match T:
+    case == Int:
+        case_callee[0]()
+    case == String:
+        case_callee[1]()
+    case _:
+        case_callee[2]()
+
+
 # CHECK-LABEL: lit.fn @"comptime_match_bool
 def comptime_match_bool[flag: Bool]():
     # True/False cover Bool, so the else is sealed with `hlcf.unreachable`.

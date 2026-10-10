@@ -173,7 +173,16 @@ LogicalResult
 ExprNode::buildCheckList(PatternMatchBuilder &builder, CValue subject,
                          const PatternPath *path,
                          SmallVectorImpl<const PatternCommand *> &out) const {
-  builder.emitError(getLoc(), "expression is not a valid match pattern");
+  auto diag =
+      builder.emitError(getLoc(), "expression is not a valid match pattern; "
+                                  "use '==' to compare against its value");
+  diag << getRange();
+  if (isa<BinOpNode, IfElseOpNode, LambdaNode>(this)) {
+    diag << FixIt::insertBeforeToken(getRangeStart(), "== (")
+         << FixIt::insertAfterToken(getRangeEnd(), ")", builder.shared.diags);
+  } else {
+    diag << FixIt::insertBeforeToken(getRangeStart(), "== ");
+  }
   return failure();
 }
 
@@ -331,6 +340,19 @@ LogicalResult BinOpNode::buildAsCheckList(
 LogicalResult UnaryOpNode::buildCheckList(
     PatternMatchBuilder &builder, CValue subject, const PatternPath *path,
     SmallVectorImpl<const PatternCommand *> &out) const {
+  // ==expr compares against the value of "expr" with == operator.
+  if (kind == kPrefixEQ) {
+    const ExprNode *value = subExpr->getWithoutParens();
+    if (isa<BoolLiteralNode, IntLiteralNode, FloatLiteralNode,
+            StringLiteralNode, SetInitLiteralNode>(value)) {
+      builder.emitWarning(getLoc())
+          << "'==' is redundant when matching a literal; remove it"
+          << FixIt::remove(getLoc());
+    }
+    out.push_back(builder.createEqual(path, this->subExpr));
+    return success();
+  }
+
   if (kind != kVarPat && kind != kRefPat)
     return ExprNode::buildCheckList(builder, subject, path, out);
 
@@ -807,15 +829,16 @@ CValue PatternEmitState::getPathValue(IREmitter &emitter,
   llvm_unreachable("unknown PatternPath kind");
 }
 
-/// Emit `__eq__` of `value` against the literal or enum tag in `command`, as a
-/// scalar bool. `value` is the subject for `Equal` and the discriminant for
-/// `EnumTag`.
+/// Compare `value` against the value or enum tag in `command` and return a
+/// scalar bool. Explicit value patterns use normal `==` expression emission;
+/// literals and enum tags call `__eq__` directly.
 RValue PatternEmitState::emitTestForValue(IREmitter &emitter,
                                           const PatternCommand *command,
                                           CValue value) {
   assert(command->kind == PatternCommand::Equal ||
          command->kind == PatternCommand::EnumTag);
   const ExprNode *expr = command->expr;
+
   AnyValue rhs;
   if (command->kind == PatternCommand::EnumTag) {
     TypedAttr indexAttr = IntegerAttr::get(IndexType::get(emitter.getContext()),
@@ -830,15 +853,17 @@ RValue PatternEmitState::emitTestForValue(IREmitter &emitter,
       rhs = emitter.emitExpr(expr, EC_MatchSubject, value.getRValueType());
     else
       rhs = emitter.emitExpr(expr, EC_MatchSubject);
-    if (!rhs)
-      return {};
   }
+  if (!rhs)
+    return {};
 
-  CValue eqResult = emitter.emitNamedMethodCall(
-      "__eq__",
-      CallOperands(CallSyntax::kMethodCall, expr, ExprDest(EC_BoolCondition),
-                   {{AnyValue(value), expr}, {rhs, expr}}));
-  return emitter.emitScalarBool({eqResult, expr}, EC_BoolCondition);
+  // Emit the comparison as an == node.
+  SyntheticNode subjectNode(expr->getLoc(), value);
+  SyntheticNode rhsValueNode(expr->getLoc(), rhs);
+  BinOpNode equality(ExprNode::kCmpEQ, &subjectNode, expr->getLoc(),
+                     &rhsValueNode);
+  CValue result = emitter.emitExprCValue(&equality, EC_BoolCondition);
+  return emitter.emitScalarBool({result, expr}, EC_BoolCondition);
 }
 
 /// Given an Equal/EnumTag command, emit the subject and (if an enum) extract

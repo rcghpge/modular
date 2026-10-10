@@ -152,6 +152,40 @@ def classify_pair(pair: Tuple[Int, Int]) -> String:
             return String("pair:", x, ",", y)
 
 
+def classify_expected(value: Int, expected: Int) -> String:
+    __match value:
+        case == expected:
+            return "expected"
+        case _:
+            return "other"
+
+
+def classify_expected_pair(pair: Tuple[Int, Int], expected: Int) -> String:
+    __match pair:
+        case (_, == expected):
+            return "expected-second"
+        case _:
+            return "other"
+
+
+def classify_computed_expected(value: Int, expected: Int) -> String:
+    __match value:
+        case == (expected + 1):
+            return "computed"
+        case _:
+            return "other"
+
+
+def classify_type[T: AnyType]() -> String:
+    comptime __match T:
+        case == Int:
+            return "integer"
+        case == String:
+            return "string"
+        case _:
+            return "other"
+
+
 def classify_or_bind_var(pair: Tuple[Int, Int]) -> String:
     __match pair:
         case (0, var x) | (var x, 1):
@@ -294,6 +328,32 @@ def test_tuples_and_structs():
     print(classify_point(Point(9, 1)))
 
 
+def test_explicit_value_patterns():
+    # CHECK-LABEL: == test_explicit_value_patterns
+    print("== test_explicit_value_patterns")
+
+    # CHECK: expected
+    print(classify_expected(42, 42))
+    # CHECK: other
+    print(classify_expected(7, 42))
+    # CHECK: expected-second
+    print(classify_expected_pair((1, 42), 42))
+    # CHECK: other
+    print(classify_expected_pair((42, 1), 42))
+    # CHECK: computed
+    print(classify_computed_expected(43, 42))
+    # CHECK: other
+    print(classify_computed_expected(42, 42))
+
+    # Types are ordinary compile-time values.
+    # CHECK: integer
+    print(classify_type[Int]())
+    # CHECK: string
+    print(classify_type[String]())
+    # CHECK: other
+    print(classify_type[Bool]())
+
+
 def test_or_bindings():
     # CHECK-LABEL: == test_or_bindings
     print("== test_or_bindings")
@@ -365,5 +425,6 @@ def main():
     test_enum_like_token()
     test_literals_guards_or()
     test_tuples_and_structs()
+    test_explicit_value_patterns()
     test_or_bindings()
     test_comptime_match()

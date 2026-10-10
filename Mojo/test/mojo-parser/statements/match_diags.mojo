@@ -642,7 +642,6 @@ def match_enum_with_payload_not_cover(a: Optional[Int]):
     case .None:
         pass
 
-
 def match_product_enum_payload_coverage(a: Tuple[Optional[Int], Bool]):
     __match a:
     case (.Some(_), True):
@@ -657,6 +656,41 @@ def match_product_enum_payload_coverage(a: Tuple[Optional[Int], Bool]):
     case (.Some(0), True):
         pass
     case (.Some(_), True):
+        pass
+    case _:
+        pass
+
+def match_redundant_explicit_literal_patterns(
+    value: Int, pair: Tuple[Int, String]
+):
+    __match value:
+    # expected-warning @+1 {{'==' is redundant when matching a literal; remove it}}
+    case == 0:
+        pass
+    case _:
+        pass
+
+    __match pair:
+    # expected-warning @+1 {{'==' is redundant when matching a literal; remove it}}
+    case (_, == "expected"):
+        pass
+    case _:
+        pass
+
+
+def match_expression_patterns_require_explicit_equality(
+    value: Int, pair: Tuple[Int, Int]
+):
+    __match value:
+    # expected-error @+1 {{expression is not a valid match pattern; use '==' to compare against its value}}
+    case pair[0]:
+        pass
+    case _:
+        pass
+
+    __match pair:
+    # expected-error @+1 {{expression is not a valid match pattern; use '==' to compare against its value}}
+    case (_, pair[1] + 1):
         pass
     case _:
         pass

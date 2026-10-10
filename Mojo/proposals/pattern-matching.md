@@ -2,11 +2,12 @@
 
 **Status**: Implementation underway.
 
-Date: Aug 29, 2026; Updated Sep 26, 2026.
+Date: Aug 29, 2026; Updated Oct 10, 2026.
 
-This is a set of notes to braindump thoughts on adding pattern matching to Mojo.
-It’s not meant to be canonical or a set of strongly held opinions; it is meant
-to help guide further design discussions.
+This is a design to add "pattern matching" to Mojo, using the existing Python
+`match` syntax, using it as a baseline for the core syntax and semantics with
+a few minor extensions to make the behavior comparable to modern functional
+languages, and providing support for pattern matching in `if` statements.
 
 A separate [Enums for Mojo Notes](enums.md) doc builds on the pattern system
 described here, but enums are not required to implement or motivate the core
@@ -16,9 +17,8 @@ pattern-matching design.
 
 **Pattern matching** is a general mechanism for testing whether a value has a
 particular structure and, when it does, extracting pieces of that value into new
-bindings. Python has rich support for pattern matching - Mojo should embrace
-its existing core syntax, and extend it in ways that are specific to its needs
-(e.g. due to ownership handling).
+bindings. Mojo follows Python's core syntax and extends it for language-specific
+needs such as ownership handling.
 
 Let's look at an example. Here we can see a pattern that simultaneously tests
 parts of a tuple and bind others:
@@ -69,8 +69,8 @@ These languages therefore suggest the same useful decomposition for Mojo:
 1. **Patterns describe values.** They provide matching, decomposition, and
    binding semantics independently of any particular control-flow construct.
 2. **Patterns compose recursively.** Binding, wildcard, tuple, sequence, value,
-   struct, and future pattern forms should fit into a common model rather than
-   being unrelated language features.
+   and struct patterns fit into a common model rather than being unrelated
+   language features.
 3. **Different language constructs can consume patterns differently.** A `match`
    statement may try several patterns, while an `if` may test one pattern and
    ordinary destructuring may require a particular structure.
@@ -78,12 +78,6 @@ These languages therefore suggest the same useful decomposition for Mojo:
 The goal is therefore to establish **patterns as a first-class piece of the
 language grammar and semantic model**, rather than designing `match` as an
 isolated control-flow feature.
-
-This also gives us a natural implementation progression. The language can first
-define the grammar, binding behavior, refutability, control-flow semantics, and
-lowering model for patterns over existing value forms. Other language features,
-including the separate enum proposal, can then add new kinds of patterns without
-requiring their own destructuring machinery.
 
 ### Destructuring in Mojo Today
 
@@ -132,10 +126,6 @@ the compiler must know that `value` has an appropriate two-element tuple
 structure. A value with an incompatible structure is a compile-time error rather
 than something that can fail dynamically.
 
-> **💡 NOTE:** The current tuple unpacking support is extremely hard-coded to
-> `Tuple` specifically; this should be generalized at some point.
->
-
 ### Destructuring vs. Match Patterns
 
 Destructuring and pattern matching are closely related, but they are not quite
@@ -154,6 +144,9 @@ match get_pair():
 
     # Error: arbitrary expressions/lvalues aren't value patterns.
     case var x, a[2]:
+
+    # Ok: Use == syntax to make comparison against a value explicit.
+    case var x, ==a[2]:
 ```
 
 Match patterns intentionally use a restricted grammar rather than treating
@@ -261,18 +254,17 @@ match values:
 A pattern is therefore **irrefutable when the compiler can prove that it matches
 every value of its input type; otherwise it is refutable**.
 
-Patterns that can be proven to never match should instead be diagnosed at
-compile time. For example, matching a statically known two-element tuple with a
-three-element tuple pattern is not a runtime match failure—it is simply invalid
-code.
+Patterns that can be proven to never match are diagnosed at compile time. For
+example, matching a statically known two-element tuple with a three-element
+tuple pattern is not a runtime match failure—it is simply invalid code.
 
 > 💡 Patterns that can **NEVER** match are a compile-time error. We expect `case
 > var (a, b):` to be a compile-time error if the matched value is a 3-element
 > tuple.
 >
 
-While not described here, Mojo should also support a `comptime match`
-statement when the match subject is a parameter expression.
+`comptime __match` applies the same pattern model when the subject is a
+parameter expression and performs the match at compile time.
 
 ### Exhaustiveness and unreachability
 
@@ -396,14 +388,14 @@ These are the main limitations that people may ask about:
 - **Sequence, dict, and other future pattern forms** are outside this
   covering model until those patterns land.
 
-## Pattern Forms to Add
+## Pattern forms
 
 Mojo already has several building blocks that naturally carry over into match
 patterns: `var` / `ref` bindings, `_` wildcards, tuple decomposition, and
-recursive nesting. We should extend this foundation with the following pattern
-forms to follow Python's precedent:
+recursive nesting. The pattern grammar builds on this foundation with the
+following forms:
 
-1. **Value patterns** match against a literal:
+1. **Literal value patterns** match against a literal:
 
     ```mojo
     case 0:
@@ -411,10 +403,8 @@ forms to follow Python's precedent:
     case 0, 1:  # two values in a tuple pattern
     ```
 
-    Arbitrary expressions are not supported by Python and therefore, we
-    shouldn’t accept them as part of the initial implementation. Notably,
-    `case Int:` would bind a new value named `Int`, not test against the type
-    `Int`. See “Future Directions” for how we can address that.
+    A bare identifier introduces a binding, so `case Int:` binds the subject to
+    a new name `Int` instead of comparing the subject to the type `Int`.
 
 2. **Initializer-list patterns** construct a value of the subject type and
    compare it to the subject with `==`:
@@ -430,7 +420,35 @@ forms to follow Python's precedent:
     and the resulting value is passed as the right-hand operand of the
     subject's `__eq__()` method.
 
-3. **Sequence patterns** decompose sequence-like values:
+3. **Explicit equality patterns** compare the subject to the value of an
+   expression:
+
+    ```mojo
+    case == expected:
+    case (x, == expected):
+    case == compute_expected():
+    ```
+
+    The explicit marker distinguishes comparison from the implicit binding
+    introduced by a bare identifier. It also allows matching on types without
+    introducing special type-pattern semantics:
+
+    ```mojo
+    comptime __match T:
+        case == Int:
+            return "integer"
+        case == String:
+            return "string"
+        case _:
+            return "other"
+    ```
+
+    Types are compile-time values and equality is already defined on them, so
+    `== Int` is an ordinary equality pattern whose expected value happens to be
+    a type. PEP 635 records similar explicit constant markers considered for
+    Python, and PEP 642 proposed the same `== expected` syntax.
+
+4. **Sequence patterns** decompose sequence-like values:
 
     ```mojo
     case []:
@@ -443,7 +461,7 @@ forms to follow Python's precedent:
     destructuring assignments. This should be tied into some trait that the
     collection conforms to.
 
-4. **Variable-length sequence patterns** capture a prefix, suffix, or remainder,
+5. **Variable-length sequence patterns** capture a prefix, suffix, or remainder,
    tied into the same trait (only a single `*` pattern is allowed):
 
     ```mojo
@@ -451,7 +469,7 @@ forms to follow Python's precedent:
     case [first, *middle, last]:
     ```
 
-5. **OR patterns** match when any of several alternatives match:
+6. **OR patterns** match when any of several alternatives match:
 
     ```mojo
     case 0 | 1:
@@ -461,7 +479,7 @@ forms to follow Python's precedent:
     Alternatives that introduce bindings must introduce compatible bindings on
     each path.
 
-6. **AS patterns** apply a pattern while also retaining the complete matched
+7. **AS patterns** apply a pattern while also retaining the complete matched
    value, producing an `imm` binding:
 
     ```mojo
@@ -469,7 +487,7 @@ forms to follow Python's precedent:
         ...
     ```
 
-7. **Struct patterns** decompose struct-like values:
+8. **Struct patterns** decompose struct-like values:
 
     ```mojo
     case Point(x=x_value, y=y_value):
@@ -479,7 +497,7 @@ forms to follow Python's precedent:
     Each element of the pattern must be a keyword argument denoting a valid
     field name of the struct. Field names may be omitted but not duplicated.
 
-8. **Mapping patterns** match particular keys and decompose their values:
+9. **Mapping patterns** match particular keys and decompose their values:
 
     ```mojo
     case {"name": name, "age": age}:
@@ -600,129 +618,19 @@ normal `if` / `while` syntax and the same match-pattern language used by `case`.
 
 ## Implementation status
 
-The nightlies include a prototype (currently hidden under the experimental
-`__match` keyword). It supports literal, initializer-list, and value patterns;
-tuple and struct patterns; `EnumLike` case patterns; OR patterns; `as`
-patterns; `var` / `ref` / `_` bindings; match guards; and basic exhaustivity /
-unreachability checking.
+The nightlies include a prototype under the experimental `__match` keyword. It
+supports literal, initializer-list, and explicit equality patterns; tuple and
+struct patterns; `EnumLike` case patterns; OR patterns; `as` patterns; `var` /
+`ref` / `_` bindings; match guards; compile-time matching; and basic
+exhaustivity and unreachability checking.
 
-Still missing relative to this proposal:
+The following parts of this proposal are not implemented:
 
 - **Sequence patterns** — fixed-length forms such as `case [x, y]:` and
-  variable-length forms such as `case [first, *rest]:`, plus the shared trait /
-  protocol that should back both match patterns and failable sequence
-  destructuring (`var [a, b, c] = get_list()`).
+  variable-length forms such as `case [first, *rest]:`, plus the shared trait or
+  protocol that backs both match patterns and failable sequence destructuring
+  (`var [a, b, c] = get_list()`).
 - **Mapping patterns** — for example `case {"name": name, "age": age}:`.
-- **`comptime match`** — matching when the subject is a parameter expression.
 - **Conditional pattern bindings in `if` / `while`** — the `if pattern =
-  expression` / `while pattern = expression` form described above (Mojo's
-  analogue of `if let` / `while let`).
-
-These are still on the TODO list.
-
-## Looking ahead
-
-This section captures possible future directions, making them explicitly
-"non-goals" for the initial implementation. Once we have more experience using
-a completed feature, we can evaluate whether these make sense to add.
-
-### Future Direction: Arbitrary Value Matching
-
-Bare identifiers in patterns introduce bindings, like in Python and following
-the precedent of `for` statements in Mojo:
-
-```mojo
-case (x, y):  # Declare a new imm bindings "x" and "y"
-```
-
-then a bare name can no longer also mean “match against the existing value with
-this name.” This is the same ambiguity Python faces: `case x` is a capture
-pattern, while qualified names such as `case HttpStatus.OK` are interpreted as
-value patterns. Python deliberately reserves dotted names for this purpose.
-
-We should adopt the same useful convention for qualified values:
-
-```mojo
-case Color.red:
-case .blue:      # Inferred version of the same syntax.
-case SomeModule.special_value:
-```
-
-but this does not solve every case. In particular, types are themselves comptime
-values in Mojo, and it would be useful to match on them:
-
-```mojo
-def storage_kindT: AnyType -> String:
-    comptime match T:
-    case Int:
-        return "integer"
-    case String:
-        return "string"
-    case _:
-        return "other"
-```
-
-Semantically, this should require no special “type matching” feature: types are
-values and equality is defined on them. The problem is purely syntactic. If bare
-identifiers implicitly bind, `case Int` cannot simultaneously mean “compare
-against the existing value `Int`.”
-
-Python considered this general problem extensively. PEP 635 records proposals
-for explicit constant markers such as `^CONSTANT`, `$CONSTANT`, and
-`==CONSTANT`, but ultimately left such a marker as a possible future extension.
-PEP 642 went further and proposed an explicit equality-pattern syntax:
-
-```mojo
-case == expected:
-```
-
-with the explicit meaning “match when the subject is equal to this value.” PEP
-642 was rejected in favor of Python's simpler initial design, but this
-particular idea is interesting for Mojo.
-
-For example, Mojo could eventually support:
-
-```mojo
-comptime match T:
-case == Int:
-    return "integer"
-case == String:
-    return "string"
-case _:
-    return "other"
-```
-
-and more generally:
-
-```mojo
-case (x, == expected):
-    ...
-```
-
-This gives a clean division of syntax:
-
-```mojo
-case x:              # Implicitly bind x.
-case 42:             # Literal value pattern.
-case Color.red:      # Qualified value pattern.
-case == expected:    # Explicit value pattern.
-```
-
-An explicit marker also gives us a place to consider more general expressions in
-the future:
-
-```mojo
-case == compute_expected():
-    ...
-```
-
-We do not need to support arbitrary expressions initially. In Mojo, expressions
-can have interesting reference and lvalue behavior, so keeping the first version
-constrained to simple value references may be preferable. The important point is
-that an explicit equality pattern provides a natural extension point if
-generalized value matching proves useful.
-
-This allows us to optimize the common syntax for bindings while still retaining
-an unambiguous way to match arbitrary existing values. It also avoids
-introducing special semantics for types: `== Int` is simply a value pattern
-whose value happens to be a type.
+  expression` and `while pattern = expression` forms described above (Mojo's
+  analogue of `if let` and `while let`).
