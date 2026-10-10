@@ -52,6 +52,7 @@ modular_cc_library(
     name = "Base",
     srcs = [
         "lib/AlignedAlloc.cpp",
+        "lib/BumpAllocator.cpp",
         "lib/Config.cpp",
         "lib/Debugger.cpp",
         "lib/Error.cpp",
@@ -65,6 +66,7 @@ modular_cc_library(
     hdrs = [
         "include/Support/AlignedAlloc.h",
         "include/Support/AssertStream.h",
+        "include/Support/BumpAllocator.h",
         "include/Support/CommandLine.h",
         "include/Support/Config.h",
         "include/Support/Debugger.h",
@@ -101,6 +103,7 @@ modular_cc_library(
         ":SymbolExport",
         "//Config",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:config",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
