@@ -19,7 +19,7 @@ DTYPE-BRANCHES on the operand element type: packed `uint8` activations ->
 that fuses the MoE gate/up grouped matmul + SwiGLU + re-quant (L1) and the down
 projection (L2) into one launch (one phase pipelined across SMs).  The graph
 compiler emits this composite when the MegaFFN fusion fires (SM100,
-`num_experts <= 64` per device, single-use intermediate, shared routing, bf16
+`num_experts <= 128` per device, single-use intermediate, shared routing, bf16
 out); the fusion + composite op are dtype-agnostic, so the same op carries
 NVFP4 (uint8) or MXFP8 (e4m3) data and this binding selects the dispatch.
 

@@ -15,7 +15,7 @@
 Builds the two-leg NVFP4 MoE FFN chain -- `grouped_matmul_swiglu_nvfp4` (gate-up
 "L1") followed by `grouped_matmul_block_scaled` (down "L2") -- as MAX graph ops
 that share their EP routing tensors, with L1's two outputs feeding only L2. On
-SM100 (`num_experts <= 64`, single-use intermediate, shared routing, bf16 out,
+SM100 (`num_experts <= 128`, single-use intermediate, shared routing, bf16 out,
 `mega-ffn-enable` default-true) the MegaFFN fusion rewrites the chain into a
 single `mo.composite.mega_ffn_nvfp4`, mints the persistent `arrival_count`
 scratch buffer itself (`mo.buffer.create` with a zero init value), and lowers
@@ -92,8 +92,8 @@ def _to_buffers(
     return buffers
 
 
-# E=16 = the EP-8 per-device shard of a 128-expert model; <= 64 (the fusion's
-# hard scheduler limit). D = moe_dim, K1 = hidden_in, N2 = hidden_out.
+# E=16 = the EP-8 per-device shard of a 128-expert model; E=128 is the fusion's
+# hard scheduler limit. D = moe_dim, K1 = hidden_in, N2 = hidden_out.
 #
 # The kernel tiles both contraction dims by BK = 128 // size_of(uint8) = 128
 # PACKED columns (= 256 unpacked NVFP4 elements) and the decode dispatch
@@ -105,6 +105,7 @@ def _to_buffers(
     "label,E,M,D,K1,N2",
     [
         ("small", 16, 256, 512, 512, 256),
+        ("e128_prefill", 128, 16384, 512, 512, 256),
     ],
 )
 def test_mega_ffn_nvfp4_fusion_compiles_and_runs(
