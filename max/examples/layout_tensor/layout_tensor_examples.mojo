@@ -13,90 +13,87 @@
 
 # DOC: max/layout/tensors.mdx
 
-from layout import Coord, Idx, TileTensor, row_major, col_major
-from layout.tile_layout import Layout, blocked_product
-from std.collections import Array
+from layout import (
+    IntTuple,
+    Layout,
+    LayoutTensor,
+    print_layout,
+    UNKNOWN_VALUE,
+    RuntimeLayout,
+    RuntimeTuple,
+)
 from std.math import ceildiv
-from std.memory import unsafe_memset
+from std.collections import Set, Array
+
+from layout.layout_tensor import LayoutTensorIter, _compute_distribute_layout
+from layout.layout import (
+    tile_to_shape,
+    blocked_product,
+    crd2idx,
+    idx2crd,
+    coalesce,
+)
+from layout.int_tuple import flatten
+from std.memory import Pointer, unsafe_memset
 from std.testing import assert_equal
+from std.utils import Index, IndexList
 
 
 def accessing_tensor_elements_example() raises:
     comptime rows = 4
     comptime columns = 8
-    var layout = row_major[rows, columns]()
+    comptime layout = Layout.row_major(rows, columns)
     var storage = Array[Float32, rows * columns](
         fill_with=lambda (i: Int) -> Float32: Float32(i)
     )
-    var tensor = TileTensor(storage, layout)
+    var tensor = LayoutTensor[.float32, layout](storage)
 
     var row, col = 0, 1
     # start-access-example-1
-    var element = tensor[row, col]  # The element is a scalar value.
+    var element = tensor[row, col][
+        0
+    ]  # element is guaranteed to be a scalar value
     # end-access-example-1
 
     assert_equal(element, 1)
     row, col = 0, 0
 
     # start-access-example-2
-    var elements = tensor.load[4](Coord(row, col))
+    var elements = tensor.load[4](row, col)
     elements = elements * 2
-    tensor.store(Coord(row, col), elements)
+    tensor.store(row, col, elements)
     # end-access-example-2
 
-    element = tensor[0, 2]
+    element = tensor[0, 2][0]
     assert_equal(element, 4)
-    assert_equal(tensor.num_elements(), rows * columns)
-    comptime assert type_of(tensor).element_size == 1
-    for i in range(rows):
-        for j in range(columns):
-            var offset = i * columns + j
-            var expected = offset * 2 if offset < 4 else offset
-            assert_equal(tensor[i, j], Float32(expected))
 
 
 def accessing_nested_tensor_elements_example() raises:
     comptime rows = 4
     comptime columns = 6
-    var tiler = row_major[2, 3]()
-    var layout = blocked_product(col_major[2, 2](), tiler)
+    comptime tiler = Layout.row_major(2, 3)
+    comptime layout = blocked_product(Layout.col_major(2, 2), tiler)
     var storage = Array[Float32, rows * columns](
         fill_with=lambda (i: Int) -> Float32: Float32(i)
     )
-    var tensor = TileTensor(storage, layout)
+    var tensor = LayoutTensor[.float32, layout](storage)
 
     # start-access-nested-tensor-example
-    var element = tensor[1, 0, 0, 1]
+    var element = tensor[1, 0, 0, 1][0]
     # end-access-nested-tensor-example
 
     assert_equal(element, 5)
-    assert_equal(tensor.layout.product(), rows * columns)
-    assert_equal(Int(tensor.dim[0]()), rows)
-    assert_equal(Int(tensor.dim[1]()), columns)
-    for row_inner in range(2):
-        for row_outer in range(2):
-            for col_inner in range(2):
-                for col_outer in range(3):
-                    assert_equal(
-                        tensor[row_inner, row_outer, col_inner, col_outer],
-                        Float32(
-                            row_inner
-                            + row_outer * 12
-                            + col_inner * 2
-                            + col_outer * 4
-                        ),
-                    )
 
 
 def layout_tensor_on_cpu_example() raises:
     # start-layout-tensor-on-cpu-example
     comptime rows = 8
     comptime columns = 16
-    var layout = row_major[rows, columns]()
+    comptime layout = Layout.row_major(rows, columns)
     var storage = Array[Float32, rows * columns](uninitialized=True)
-    var tensor = TileTensor(storage, layout)
+    var tensor = LayoutTensor[.float32, layout](storage)
     # end-layout-tensor-on-cpu-example
-    assert_equal(tensor.num_elements(), rows * columns)
+    assert_equal(tensor.size(), rows * columns)
     _ = tensor
 
 
@@ -105,15 +102,13 @@ def layout_tensor_from_pointer_example() raises:
     comptime rows = 1024
     comptime columns = 1024
     comptime buf_size = rows * columns
-    var layout = row_major[rows, columns]()
+    comptime layout = Layout.row_major(rows, columns)
     var ptr = alloc[Float32]({count = buf_size}).unsafe_leak()
     unsafe_memset(ptr, 0, buf_size)
-    var tensor = TileTensor(ptr, layout)
+    var tensor = LayoutTensor[.float32, layout](ptr)
     # end-layout-tensor-from-pointer-example
-    assert_equal(tensor.num_elements(), rows * columns)
-    for i in range(rows):
-        for j in range(columns):
-            assert_equal(tensor[i, j], Float32(0))
+    assert_equal(tensor.size(), rows * columns)
+    _ = tensor
     ptr.unsafe_free()
 
 
@@ -122,64 +117,52 @@ def layout_tensor_tile_example() raises:
     comptime rows = 2
     comptime columns = 4
     comptime tile_size = 32
-    var tiled_layout = Layout(
-        Coord(
-            Coord(Idx[rows], Idx[tile_size]),
-            Coord(Idx[columns], Idx[tile_size]),
-        ),
-        Coord(
-            Coord(Idx[columns * tile_size * tile_size], Idx[tile_size]),
-            Coord(Idx[tile_size * tile_size], Idx[1]),
-        ),
-    )
-    var storage = Array[Float32, rows * columns * tile_size * tile_size](
+    comptime tile_layout = Layout.row_major(tile_size, tile_size)
+    comptime tiler_layout = Layout.row_major(rows, columns)
+    comptime tiled_layout = blocked_product(tile_layout, tiler_layout)
+    var storage = Array[Float32, tiled_layout.size()](
         fill_with=lambda (i: Int) -> Float32: Float32(i)
     )
-    var tensor = TileTensor(storage, tiled_layout)
+    var tensor = LayoutTensor[.float32, tiled_layout](storage)
     var tile = tensor.tile[32, 32](0, 1)
     # end-layout-tensor-tile-example
-    assert_equal(tile[0, 0], Float32(tile_size * tile_size))
+    assert_equal(tile[0, 0][0], Float32(tile_size * tile_size))
     # start-layout-tensor-tile-example-2
-    var my_tile = tensor.tile[tile_size, tile_size](0, 0)
-    assert_equal(my_tile[0, 0], Float32(0))
+    var my_tile: tensor.TileType[tile_size, tile_size]
     for i in range(rows):
         for j in range(columns):
             my_tile = tensor.tile[tile_size, tile_size](i, j)
+            # ... do something with the tile ...
             # end-layout-tensor-tile-example-2
-            for row in range(tile_size):
-                for col in range(tile_size):
-                    assert_equal(
-                        my_tile[row, col],
-                        Float32(
-                            (i * columns + j) * tile_size * tile_size
-                            + row * tile_size
-                            + col
-                        ),
-                    )
+            _ = my_tile
 
 
-# Visits contiguous 4-by-4 tiles in storage order.
+# Iterates through a block of memory one tile at a time.
+# This essentially treats the memory as a flat array of
+# tiles (or a 2D row-major matrix of tiles).
 def layout_tensor_iterator_example() raises:
     # start-layout-tensor-iterator-example-1
     comptime buf_size = 128
-    comptime tile_size = 16
     var storage = Array[Int16, buf_size](
         fill_with=lambda (i: Int) -> Int16: Int16(i)
     )
-    var tensor = TileTensor(storage, row_major[buf_size]())
-    for i in range(ceildiv(buf_size, tile_size)):
-        var tile = tensor.tile[tile_size](i).reshape[4, 4]()
+    comptime tile_layout = Layout.row_major(4, 4)
+    var iter = LayoutTensorIter[.int16, tile_layout](
+        storage.unsafe_ptr(), buf_size
+    )
+
+    for i in range(ceildiv(buf_size, comptime (tile_layout.size()))):
+        var tile = iter[]
+        # ... do something with tile
+        iter += 1
         # end-layout-tensor-iterator-example-1
-        assert_equal(tile[0, 0], Int16(i * tile_size))
-        assert_equal(tile.num_elements(), tile_size)
-        for row in range(4):
-            for col in range(4):
-                assert_equal(
-                    tile[row, col], Int16(i * tile_size + row * 4 + col)
-                )
+        comptime tile_size = tile_layout.size()
+        assert_equal(tile[0, 0][0], Int16(i * tile_size))
 
 
 def layout_tensor_iterator_example2() raises:
+    # TODO: set up a tiled layout tensor as input and
+    # validate output.
     comptime rows = 4
     comptime cols = 8
     comptime size = rows * cols
@@ -188,27 +171,22 @@ def layout_tensor_iterator_example2() raises:
         fill_with=lambda (i: Int) -> Int32: Int32(i)
     )
 
-    var tensor = TileTensor(storage, row_major[rows, cols]())
+    comptime layout = Layout.row_major(rows, cols)
+    var tensor = LayoutTensor[.int32, layout, masked=True](storage)
     # start-layout-tensor-iterator-example-2
     # given a tensor of size rows x cols
     comptime num_row_tiles = ceildiv(rows, tile_size)
     comptime num_col_tiles = ceildiv(cols, tile_size)
 
     for i in range(num_row_tiles):
-        for j in range(num_col_tiles):
-            var tile = tensor.tile[tile_size, tile_size](i, j)
+        var iter = tensor.tiled_iterator[tile_size, tile_size, axis=1](i, 0)
+
+        for _ in range(num_col_tiles):
+            var tile = iter[]
+            # ... do something with the tile
+            iter += 1
             # end-layout-tensor-iterator-example-2
-            assert_equal(tile.num_elements(), tile_size * tile_size)
-            assert_equal(Int(tile.layout.stride[0]().value()), cols)
-            assert_equal(Int(tile.layout.stride[1]().value()), 1)
-            for row in range(tile_size):
-                for col in range(tile_size):
-                    assert_equal(
-                        tile[row, col],
-                        Int32(
-                            (i * tile_size + row) * cols + j * tile_size + col
-                        ),
-                    )
+            _ = tile
 
 
 def main() raises:
