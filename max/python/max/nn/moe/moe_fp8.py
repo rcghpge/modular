@@ -565,9 +565,6 @@ class MoEQuantized(MoE):
                         gate_up_scales,
                         expert_inputs=expert_inputs,
                         estimated_total_m=estimated_total_m,
-                        # KS224: ep_wait already wrote the up-proj
-                        # A-scale in slot layout.
-                        a_scales_preshuffled=True,
                         a_scales_max_padded_m=mxfp4_ep_max_padded_m,
                         decode_grid_m_cap=mxfp4_decode_grid_m_cap,
                         decode_grid_m_rows=mxfp4_decode_grid_m_rows,
@@ -594,9 +591,6 @@ class MoEQuantized(MoE):
                         gate_up_scales,
                         expert_inputs=expert_inputs,
                         estimated_total_m=estimated_total_m,
-                        # KS224: ep_wait wrote the up-proj A-scale in slot
-                        # layout.
-                        a_scales_preshuffled=True,
                         a_scales_max_padded_m=mxfp4_ep_max_padded_m,
                         decode_grid_m_cap=mxfp4_decode_grid_m_cap,
                         decode_grid_m_rows=mxfp4_decode_grid_m_rows,
@@ -631,7 +625,6 @@ class MoEQuantized(MoE):
                 down_scales,
                 expert_inputs=down_inputs,
                 estimated_total_m=estimated_total_m,
-                a_scales_preshuffled=True,
                 a_scales_max_padded_m=mxfp4_ep_max_padded_m,
                 decode_grid_m_cap=mxfp4_decode_grid_m_cap,
                 decode_grid_m_rows=mxfp4_decode_grid_m_rows,

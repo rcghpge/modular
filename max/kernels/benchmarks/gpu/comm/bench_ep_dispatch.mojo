@@ -18,7 +18,7 @@ scope: it is a different transport with different costs, and the single-node
 path is the one these kernels are tuned for.
 
 Each vendor is driven through the token formats it actually dispatches with --
-BF16 and MXFP8 on both, NVFP4 on NVIDIA, MXFP4 on AMD. Two shapes run per
+BF16 on both, NVFP4 on NVIDIA, MXFP8 and MXFP4 on AMD. Two shapes run per
 format: a decode-sized point, where cost is per launch, and a prefill-sized
 point, where it is per byte. They are different regimes, and an optimization
 can help one while doing nothing for the other.
@@ -502,25 +502,10 @@ struct MXDispatchTest[
     comptime n_local_experts = Self.n_experts // Self.n_ranks
     comptime k_scales = Self.hidden_size // MXFP4_SF_VECTOR_SIZE
 
-    comptime scales_padded_size = Self.max_recv_num_tokens + Self.n_local_experts * SF_MN_GROUP_SIZE
-
-    # Measure the KS224 up-proj fold, which is what MiniMax-M3 runs on CDNA4:
-    # the scale store lands in the grouped matmul's `scale_4d` slot rather
-    # than a row-major scale row, and the two have different store patterns.
-    # The slot layout is a CDNA4 MFMA layout, so NVIDIA keeps the row-major
-    # path it actually dispatches with.
-    comptime fuse_a_scale_preshuffle = default_accelerator().is_amd_gpu()
-    comptime max_padded_m = align_up(
-        Self.n_tokens_per_rank * Self.n_ranks, 32
-    ) if Self.fuse_a_scale_preshuffle else 0
-    comptime scales_rows = (
-        Self.n_local_experts * Self.max_padded_m
-    ) if Self.fuse_a_scale_preshuffle else Self.max_recv_num_tokens
-    comptime scales_per_slot = (
-        Self.n_local_experts * Self.max_padded_m * Self.k_scales
-    ) if Self.fuse_a_scale_preshuffle else (
-        Self.scales_padded_size * Self.k_scales
-    )
+    # Scales land in per-expert `scale_4d` slots sized for every rank's tokens.
+    comptime max_padded_m = align_up(Self.n_tokens_per_rank * Self.n_ranks, 32)
+    comptime scales_rows = Self.n_local_experts * Self.max_padded_m
+    comptime scales_per_slot = Self.scales_rows * Self.k_scales
 
     comptime is_fp4 = Self.quant_dtype == DType.uint8
     comptime quant_last_dim = (
@@ -540,7 +525,6 @@ struct MXDispatchTest[
         scales_layout=type_of(Self.output_scales_layout),
         Self.hidden_size,
         Self.top_k,
-        fuse_a_scale_preshuffle=Self.fuse_a_scale_preshuffle,
     ]
 
     var device_output_bufs_list: List[DeviceBuffer[Self.quant_dtype]]
@@ -1174,16 +1158,16 @@ def bench_all_formats[
         n_tokens_per_rank=n_tokens_per_rank,
     ](list_of_ctx)
 
-    bench_dispatch_mxfp8[
-        hidden_size=HIDDEN,
-        top_k=TOP_K,
-        n_experts=N_EXPERTS,
-        n_ranks=n_ranks,
-        n_slots=n_slots,
-        n_tokens_per_rank=n_tokens_per_rank,
-    ](list_of_ctx)
-
     comptime if list_of_ctx.T.target.is_amd_gpu():
+        bench_dispatch_mxfp8[
+            hidden_size=HIDDEN,
+            top_k=TOP_K,
+            n_experts=N_EXPERTS,
+            n_ranks=n_ranks,
+            n_slots=n_slots,
+            n_tokens_per_rank=n_tokens_per_rank,
+        ](list_of_ctx)
+
         bench_dispatch_mxfp4[
             hidden_size=HIDDEN,
             top_k=TOP_K,
@@ -1193,8 +1177,8 @@ def bench_all_formats[
             n_tokens_per_rank=n_tokens_per_rank,
         ](list_of_ctx)
     else:
-        # NVIDIA dispatches FP4 through the block-scaled format, not the MX
-        # one; the two differ in scale layout and in dispatch_wait tile shape.
+        # NVIDIA dispatches FP4 and MXFP8 through the block-scaled format,
+        # which differs from MX in scale layout and dispatch_wait tile shape.
         bench_dispatch_nvfp4[
             hidden_size=HIDDEN,
             top_k=TOP_K,

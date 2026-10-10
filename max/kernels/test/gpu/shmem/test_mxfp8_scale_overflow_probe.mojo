@@ -38,7 +38,7 @@ Usage (plain `mojo` is shadowed by the installed shmem package — use bazel):
 from max.gpu.host import DeviceContext, HostBuffer
 from max.gpu import global_idx
 from max.gpu.host.info import MI355X
-from std.math import exp, isfinite, recip
+from std.math import align_up, exp, isfinite, recip
 from std.memory import bitcast
 from std.testing import assert_true
 
@@ -46,6 +46,7 @@ from layout import Coord, Idx, TileTensor, row_major
 from linalg.block_scaled_quantization import quantize_mx_amd
 from linalg.fp4_utils import MXFP8_SF_VECTOR_SIZE
 from linalg.swiglu_activation import get_swiglu_activation
+from linalg.matmul.gpu.amd import Shuffler
 from shmem.ep_comm import fused_silu_mx_kernel
 
 comptime E4M3_MAXABS = Float32(448.0)
@@ -531,6 +532,8 @@ def test_fused_silu_adversarial[
     comptime output_dim = SILU_HIDDEN
     comptime scale_K = SILU_HIDDEN // MXFP8_SF_VECTOR_SIZE
     comptime n_off = 2
+    # The kernel writes scales into one expert's grouped-matmul `scale_4d` slot.
+    comptime max_padded_M = align_up(SILU_TOKENS, 32)
     comptime hw = ctx.default_device_info
 
     var input_h = ctx.enqueue_create_host_buffer[.bfloat16](
@@ -561,7 +564,7 @@ def test_fused_silu_adversarial[
     ).LayoutType
     comptime scales_layout = type_of(
         TileTensor[origin=MutAnyOrigin](
-            input_d, row_major(SILU_TOKENS, Idx[scale_K])
+            input_d, row_major(max_padded_M, Idx[scale_K])
         )
     ).LayoutType
 
@@ -575,7 +578,6 @@ def test_fused_silu_adversarial[
         off_tt.LayoutType,
         hw.max_thread_block_size,
         hw.sm_count,
-        fuse_a_scale_preshuffle=False,
         activation=get_swiglu_activation[
             "swigluoai" if clamp_activation else "silu",
             alpha,
@@ -587,7 +589,7 @@ def test_fused_silu_adversarial[
         SILU_TOKENS * output_dim
     )
     var scales_d = ctx.enqueue_create_buffer[.float8_e8m0fnu](
-        SILU_TOKENS * scale_K
+        max_padded_M * scale_K
     )
     out_d.enqueue_fill(Float8_e4m3fn(0))
     scales_d.enqueue_fill(Float8_e8m0fnu(0))
@@ -597,11 +599,11 @@ def test_fused_silu_adversarial[
             out_d, row_major(SILU_TOKENS, Idx[output_dim])
         ),
         TileTensor[origin=MutAnyOrigin](
-            scales_d, row_major(SILU_TOKENS, Idx[scale_K])
+            scales_d, row_major(max_padded_M, Idx[scale_K])
         ),
         input_tt,
         off_tt,
-        Int32(0),
+        Int32(max_padded_M),
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
@@ -610,7 +612,7 @@ def test_fused_silu_adversarial[
         SILU_TOKENS * output_dim
     )
     var scales_host = ctx.enqueue_create_host_buffer[.float8_e8m0fnu](
-        SILU_TOKENS * scale_K
+        max_padded_M * scale_K
     )
     ctx.enqueue_copy(out_h, out_d)
     ctx.enqueue_copy(scales_host, scales_d)
@@ -621,7 +623,10 @@ def test_fused_silu_adversarial[
     for t in range(SILU_TOKENS):
         for g in range(scale_K):
             var p = (t * scale_K + g) % NUM_PATTERNS
-            var scale_bits = bitcast[.uint8](scales_host[t * scale_K + g])
+            var scale_off = Shuffler[1].scale_4d_slot_byte_off[
+                K_SCALES=scale_K
+            ](0, t, g, max_padded_M)
+            var scale_bits = bitcast[.uint8](scales_host[scale_off])
             var scale = _e8m0_to_f32(scale_bits)
 
             # Host reference for the same activation the kernel computes.

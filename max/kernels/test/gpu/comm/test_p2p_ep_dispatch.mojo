@@ -798,10 +798,6 @@ struct MXDispatchTest[
     _n_ranks: Int,
     _n_slots: Int,
     _n_tokens_per_rank: Int,
-    # KS224 up-proj fold: `dispatch_wait` writes each token's E8M0 scale
-    # straight into the grouped matmul's per-expert `scale_4d` slot instead
-    # of a row-major scale row. AMD CDNA4 only.
-    _fuse_a_scale_preshuffle: Bool,
 ](DispatchTestT):
     comptime hidden_size = Self._hidden_size
     comptime top_k = Self._top_k
@@ -809,30 +805,16 @@ struct MXDispatchTest[
     comptime n_ranks = Self._n_ranks
     comptime n_slots = Self._n_slots
     comptime n_tokens_per_rank = Self._n_tokens_per_rank
-    comptime fuse_a_scale_preshuffle = Self._fuse_a_scale_preshuffle
     comptime max_recv_num_tokens = min(
         Self.n_experts, Self.n_ranks * Self.top_k
     ) * Self.n_tokens_per_rank
     comptime n_local_experts = Self.n_experts // Self.n_ranks
     comptime k_scales = Self.hidden_size // MXFP4_SF_VECTOR_SIZE
 
-    comptime scales_padded_size = Self.max_recv_num_tokens + Self.n_local_experts * SF_MN_GROUP_SIZE
-
-    # Per-expert `scale_4d` row capacity, mirroring the host-side
-    # `EPConfig._max_recv_tokens_per_expert`: an expert can receive every token
-    # of every rank, and the slot stride rounds that up to the scale atom's MN
-    # block.
-    comptime max_padded_m = align_up(
-        Self.n_tokens_per_rank * Self.n_ranks, 32
-    ) if Self.fuse_a_scale_preshuffle else 0
-    comptime scales_rows = (
-        Self.n_local_experts * Self.max_padded_m
-    ) if Self.fuse_a_scale_preshuffle else Self.max_recv_num_tokens
-    comptime scales_per_slot = (
-        Self.n_local_experts * Self.max_padded_m * Self.k_scales
-    ) if Self.fuse_a_scale_preshuffle else (
-        Self.scales_padded_size * Self.k_scales
-    )
+    # Scales land in per-expert `scale_4d` slots sized for every rank's tokens.
+    comptime max_padded_m = align_up(Self.n_tokens_per_rank * Self.n_ranks, 32)
+    comptime scales_rows = Self.n_local_experts * Self.max_padded_m
+    comptime scales_per_slot = Self.scales_rows * Self.k_scales
 
     comptime is_fp4 = Self.quant_dtype == DType.uint8
     comptime quant_last_dim = (
@@ -852,7 +834,6 @@ struct MXDispatchTest[
         scales_layout=type_of(Self.output_scales_layout),
         Self.hidden_size,
         Self.top_k,
-        fuse_a_scale_preshuffle=Self.fuse_a_scale_preshuffle,
     ]
 
     var device_output_bufs_list: List[DeviceBuffer[Self.quant_dtype]]
@@ -964,31 +945,16 @@ struct MXDispatchTest[
 
         var quant_val = self.host_output_bufs_list[dev_idx][output_offset]
 
-        # The per-slot stride must be `scales_per_slot`: that is the stride
-        # `get_token_handler` offsets the device tensor with (and the
-        # allocation stride). Using the unpadded token count here reads the
-        # wrong slot region for every slot but the first.
-        var scale_offset: Int
-        comptime if Self.fuse_a_scale_preshuffle:
-            # Decode the `scale_4d` slot layout the fold wrote: this token's
-            # scale is addressed by (expert, row within expert, k) rather
-            # than by the flat receive-buffer row. Reproducing the offset
-            # here is what pins the producer to the layout the grouped
-            # matmul reads.
-            scale_offset = slot_idx * Self.scales_per_slot + Shuffler[
-                1
-            ].scale_4d_slot_byte_off[K_SCALES=Self.k_scales](
-                expert_idx,
-                expert_token_idx,
-                hid_dim_idx // MXFP4_SF_VECTOR_SIZE,
-                Self.max_padded_m,
-            )
-        else:
-            scale_offset = (
-                slot_idx * Self.scales_per_slot
-                + token_idx * Self.k_scales
-                + (hid_dim_idx // MXFP4_SF_VECTOR_SIZE)
-            )
+        # Read the scale where the grouped matmul does: by (expert, row within
+        # expert, k) in `scale_4d`, not by the flat receive row.
+        var scale_offset = slot_idx * Self.scales_per_slot + Shuffler[
+            1
+        ].scale_4d_slot_byte_off[K_SCALES=Self.k_scales](
+            expert_idx,
+            expert_token_idx,
+            hid_dim_idx // MXFP4_SF_VECTOR_SIZE,
+            Self.max_padded_m,
+        )
         var token_scale = self.host_output_scales_bufs_list[dev_idx][
             scale_offset
         ]
@@ -1781,9 +1747,6 @@ def test_dispatch_mxfp4[
         _n_ranks=n_ranks,
         _n_slots=n_slots,
         _n_tokens_per_rank=n_tokens_per_rank,
-        # The MX suites cover the fold only: it is what MiniMax-M3 runs
-        # on CDNA4, and these suites are already MI355X-gated.
-        _fuse_a_scale_preshuffle=True,
     ]
     test_dispatch_common[
         DispatchTestType=dispatch_test_type,
@@ -1814,9 +1777,6 @@ def test_dispatch_mxfp8[
         _n_ranks=n_ranks,
         _n_slots=n_slots,
         _n_tokens_per_rank=n_tokens_per_rank,
-        # The MX suites cover the fold only: it is what MiniMax-M3 runs
-        # on CDNA4, and these suites are already MI355X-gated.
-        _fuse_a_scale_preshuffle=True,
     ]
     test_dispatch_common[
         DispatchTestType=dispatch_test_type,

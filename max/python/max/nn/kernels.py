@@ -6818,7 +6818,6 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
     expert_ids: TensorValue,
     expert_usage_stats_host: TensorValue,
     estimated_total_m: TensorValue | None = None,
-    a_scales_preshuffled: bool = False,
     a_scales_max_padded_m: int = 0,
     decode_grid_m_cap: int = 0,
     decode_grid_m_rows: int = 0,
@@ -6848,11 +6847,10 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
         expert_usage_stats_host: ``[max_tokens_per_expert,
             num_active_experts]``.
         estimated_total_m: Row-count estimate used to select the band.
-        a_scales_preshuffled: True when the INPUT A-scales already sit in the
-            per-expert slot layout (the KS224 ``ep_wait`` fold), so the
+        a_scales_max_padded_m: Nonzero when the INPUT A-scales already sit in
+            the per-expert slot layout (the KS224 ``ep_wait`` fold): the
+            build-time slot stride the producer wrote them at, so the
             standalone preshuffle is skipped.
-        a_scales_max_padded_m: Build-time slot stride the producer used for
-            the input A-scales. Required when ``a_scales_preshuffled``.
         decode_grid_m_cap: Decode-band gate; 0 disables.
         decode_grid_m_rows: Rows grid.y must cover per expert at decode.
         out_scales_max_padded_m: Per-expert slot stride for the EMITTED
@@ -6908,7 +6906,7 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
     # Same preshuffle-exactly-once rule as the unfused path: the preb kernel
     # reads A-scales in the 4D grouped layout, and `ep_wait` may already have
     # written them there.
-    if not a_scales_preshuffled:
+    if a_scales_max_padded_m <= 0:
         a_scales = block_scaled_preshuffle_grouped_scale_4d(
             a_scales,
             expert_start_indices,
@@ -6918,11 +6916,6 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
         )
         max_num_tokens_arg = expert_usage_stats_host[0]
     else:
-        if a_scales_max_padded_m <= 0:
-            raise ValueError(
-                "a_scales_max_padded_m must be > 0 when"
-                " a_scales_preshuffled=True"
-            )
         max_num_tokens_arg = ops.constant(
             a_scales_max_padded_m,
             dtype=expert_usage_stats_host.dtype,
@@ -7102,7 +7095,6 @@ def grouped_dynamic_block_scaled_matmul_amd(
     out_type: DType = DType.bfloat16,
     estimated_total_m: TensorValue | None = None,
     preshuffled_b: bool = False,
-    a_scales_preshuffled: bool = False,
     a_scales_max_padded_m: int = 0,
     a_scales_max_rows_per_expert: int | None = None,
     decode_grid_m_cap: int = 0,
@@ -7139,12 +7131,16 @@ def grouped_dynamic_block_scaled_matmul_amd(
             num_active_experts].
         out_type: Output dtype. Defaults to bfloat16.
         estimated_total_m: The estimated total number of tokens.
+        a_scales_max_padded_m: Nonzero when ``a_scales`` already sit in the
+            per-expert ``scale_4d`` slot layout (the EP path): the build-time
+            slot stride their producer wrote them at. Zero means row-major
+            A-scales, which this op preshuffles when ``preshuffled_b``.
         a_scales_max_rows_per_expert: Graph-build-time bound on the unpadded
             rows one expert can hold, sizing the per-step A-scale slot buffer.
             ``None`` falls back to the post-expansion row count, which
             over-allocates each slot roughly ``top_k``-fold. Must be positive
             when given, and requires ``preshuffled_b`` without
-            ``a_scales_preshuffled``, the only combination that sizes slots.
+            ``a_scales_max_padded_m``, the only combination that sizes slots.
         decode_grid_m_cap: Decode-band gate on the AMD preb path; 0 disables.
             Selects the band; `decode_grid_m_rows` bounds the grid.
         decode_grid_m_rows: Rows grid.y must cover per expert on the decode
@@ -7175,6 +7171,7 @@ def grouped_dynamic_block_scaled_matmul_amd(
             " packed uint8 MXFP4 weights, but got"
             f" {hidden_states.dtype}, {weight.dtype}"
         )
+    a_scales_preshuffled = a_scales_max_padded_m > 0
     if mixed_w4a8 and (preshuffled_b or a_scales_preshuffled):
         raise ValueError(
             "mixed AMD W4A8 requires row-major operands and scales"
@@ -7183,7 +7180,7 @@ def grouped_dynamic_block_scaled_matmul_amd(
     if a_scales_max_rows_per_expert is not None and not preshuffle_a_scales:
         raise ValueError(
             "a_scales_max_rows_per_expert requires preshuffled_b=True and"
-            " a_scales_preshuffled=False; it has no effect otherwise"
+            " a_scales_max_padded_m=0; it has no effect otherwise"
         )
 
     a_elems_per_byte = 2 if hidden_states.dtype == DType.uint8 else 1
@@ -7288,10 +7285,10 @@ def grouped_dynamic_block_scaled_matmul_amd(
     # `quantize_dynamic_block_scaled_mxfp4` upstream, so insert the per-step
     # preshuffle here. B-scales are static and preshuffled once at load.
     #
-    # When `a_scales_preshuffled=True` (KS64 down-proj fusion), the
-    # upstream `ep.fused_silu.mxfp4` kernel already wrote the scale directly
-    # into the slot layout, so we skip the standalone preshuffle entirely.
-    # Preshuffle must run exactly once: non-EP + up-proj keep `a_scales_preshuffled=False`.
+    # When `a_scales_max_padded_m` is set (the EP path), `ep_wait` or
+    # `ep.fused_silu` already wrote the scale directly into the slot layout,
+    # so we skip the standalone preshuffle entirely. Preshuffle must run
+    # exactly once: non-EP callers leave `a_scales_max_padded_m` at 0.
     if preshuffle_a_scales:
         a_scales = block_scaled_preshuffle_grouped_scale_4d(
             a_scales,
@@ -7306,17 +7303,13 @@ def grouped_dynamic_block_scaled_matmul_amd(
     # `align_up(max_num_tokens_per_expert, 32)`. On the non-fused path the
     # standalone preshuffle used the same runtime `expert_usage_stats[0]`, so
     # the writer and reader slot strides agree. On the fused path
-    # (`a_scales_preshuffled`), the producer (`ep.fused_silu.mxfp4`) wrote the
-    # slots with the *graph-build-time* stride `align_up(a_scales_max_padded_m,
-    # 32)`; the matmul MUST read with that same constant — NOT the runtime max
-    # — or, when the runtime max is below the build-time bound (the common
-    # decode case), it reads the wrong expert's scale slot.
+    # (`a_scales_preshuffled`), the producer (`ep_wait` or `ep.fused_silu`)
+    # wrote the slots with the *graph-build-time* stride
+    # `align_up(a_scales_max_padded_m, 32)`; the matmul MUST read with that same
+    # constant — NOT the runtime max — or, when the runtime max is below the
+    # build-time bound (the common decode case), it reads the wrong expert's
+    # scale slot.
     if a_scales_preshuffled:
-        if a_scales_max_padded_m <= 0:
-            raise ValueError(
-                "a_scales_max_padded_m must be > 0 when"
-                " a_scales_preshuffled=True"
-            )
         max_num_tokens_arg = ops.constant(
             a_scales_max_padded_m,
             dtype=expert_usage_stats_host.dtype,
@@ -7380,7 +7373,6 @@ def grouped_dynamic_scaled_mxfp6_matmul(
     estimated_total_m: TensorValue | None = None,
     decode_grid_m_cap: int = 0,
     decode_grid_m_rows: int = 0,
-    a_scales_preshuffled: bool = False,
     a_scales_max_padded_m: int = 0,
 ) -> TensorValue:
     """Performs a grouped MXFP6 matmul for MoE layers.
@@ -7410,6 +7402,10 @@ def grouped_dynamic_scaled_mxfp6_matmul(
         decode_grid_m_cap: Decode-band gate; 0 disables.
         decode_grid_m_rows: Rows grid.y must cover per expert on the decode
             bands.
+        a_scales_max_padded_m: Nonzero when ``a_scales`` already sit in the
+            per-expert ``scale_4d`` slot layout: the build-time slot stride
+            their producer wrote them at. Zero preshuffles row-major A-scales
+            here.
 
     Returns:
         The matmul result, ``[total_tokens, N]``.
@@ -7490,12 +7486,7 @@ def grouped_dynamic_scaled_mxfp6_matmul(
     else:
         estimated_total_m_arg = estimated_total_m.cast(DType.uint32)
 
-    if a_scales_preshuffled:
-        if a_scales_max_padded_m <= 0:
-            raise ValueError(
-                "a_scales_max_padded_m must be > 0 when"
-                " a_scales_preshuffled=True"
-            )
+    if a_scales_max_padded_m > 0:
         max_num_tokens_arg = ops.constant(
             a_scales_max_padded_m,
             dtype=expert_usage_stats_host.dtype,

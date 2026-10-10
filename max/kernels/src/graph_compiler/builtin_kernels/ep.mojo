@@ -26,6 +26,7 @@ from layout.tile_tensor import row_major
 from std.utils.index import IndexList
 
 from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id
+from std.math import align_up
 from std.sys.info import size_of
 from extensibility import (
     InputTensor,
@@ -851,8 +852,6 @@ struct Struct_ep_dispatch_wait_mxfp4:
         target: StaticString,
         num_input_tokens: Int = -1,
         *,
-        fuse_a_scale_preshuffle: Bool = False,
-        max_padded_M: Int = 0,
         MX_FORMAT: StaticString = "auto",
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
@@ -869,14 +868,15 @@ struct Struct_ep_dispatch_wait_mxfp4:
         tokens are in MXFP4 format: two FP4 elements packed per ``uint8`` in
         ``output_tokens`` with per-token even-mode scales in ``output_scales``.
 
-        When ``fuse_a_scale_preshuffle=True`` (KS224 up-proj fusion), the
-        kernel writes the E8M0 activation scale directly into the up-proj
-        grouped matmul's per-expert fixed-stride ``scale_4d`` slot layout (slot
-        stride ``max_padded_M * K_SCALES``), so the standalone
-        ``preshuffle_grouped_scale_4d_gpu`` can be dropped from the decode
-        critical path. The scales output tensor must then have shape
-        ``[n_local_experts * max_padded_M, K_SCALES]``.
+        The kernel writes the E8M0 activation scale directly into the up-proj
+        grouped matmul's per-expert fixed-stride ``scale_4d`` slot layout (KS224
+        up-proj fusion). A slot holds ``max_padded_M`` rows, the most tokens one
+        expert can receive rounded up to 32, so the scales output tensor has
+        shape ``[n_local_experts * max_padded_M, K_SCALES]``.
         """
+        comptime max_padded_M = align_up(
+            max_token_per_rank * n_gpus_per_node * n_nodes, 32
+        )
         var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
         var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
 
@@ -891,7 +891,6 @@ struct Struct_ep_dispatch_wait_mxfp4:
         var format_handler = MXTokenFormat[
             hidden_size,
             top_k,
-            fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
             mx_format=mx_fmt,
         ](
             output_tokens_tensor,
@@ -1424,8 +1423,6 @@ struct Struct_ep_dispatch_mxfp4:
         //,
         target: StaticString,
         *,
-        fuse_a_scale_preshuffle: Bool = False,
-        max_padded_M: Int = 0,
         MX_FORMAT: StaticString = "auto",
     ](
         output_tokens: OutputTensor[dtype=dispatch_dtype, rank=2, ...],
@@ -1444,13 +1441,15 @@ struct Struct_ep_dispatch_mxfp4:
         """Execute the fused Expert Parallelism MXFP4 dispatch kernel. Tokens
         are dispatched in MXFP4 format.
 
-        When ``fuse_a_scale_preshuffle=True`` (KS224 up-proj fusion), the
-        wait-side copy writes the E8M0 activation scale directly into the
+        The wait-side copy writes the E8M0 activation scale directly into the
         up-proj grouped matmul's per-expert fixed-stride ``scale_4d`` slot
-        layout (slot stride ``max_padded_M * K_SCALES``), dropping the standalone
-        preshuffle. The scales output tensor must then be slot-sized
-        (``[n_local_experts * max_padded_M, K_SCALES]``).
+        layout (KS224 up-proj fusion). A slot holds ``max_padded_M`` rows, the
+        most tokens one expert can receive rounded up to 32, so the scales
+        output tensor has shape ``[n_local_experts * max_padded_M, K_SCALES]``.
         """
+        comptime max_padded_M = align_up(
+            max_token_per_rank * n_gpus_per_node * n_nodes, 32
+        )
         var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
         var output_scales_tensor = output_scales.to_tile_tensor[.int64]()
 
@@ -1460,7 +1459,6 @@ struct Struct_ep_dispatch_mxfp4:
         var format_handler = MXTokenFormat[
             hidden_size,
             top_k,
-            fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
             mx_format=mx_fmt,
         ](
             output_tokens_tensor,
@@ -1838,8 +1836,6 @@ struct DistributedEPDispatchMXFP4:
         n_gpus_per_node: Int,
         n_nodes: Int,
         fused_shared_expert: Bool,
-        fuse_a_scale_preshuffle: Bool,
-        max_padded_m: Int,
         //,
         target: StaticString,
         _trace_name: StaticString,
@@ -1897,8 +1893,9 @@ struct DistributedEPDispatchMXFP4:
         Args:
             output_tokens: Output variadic tensors storing the dispatched
                 MXFP4-quantized tokens, one per device.
-            output_scales: Output variadic tensors storing the per-token
-                E8M0 scales for the dispatched tokens, one per device.
+            output_scales: Output variadic tensors storing the dispatched
+                tokens' E8M0 scales in the grouped matmul's per-expert slot
+                layout, one per device.
             row_offsets: Output variadic tensors storing the row offsets for
                 the received tokens, one per device.
             expert_ids: Output variadic tensors storing the expert ID for
@@ -1920,6 +1917,9 @@ struct DistributedEPDispatchMXFP4:
                 thread blocks, one per device.
             dev_ctxs: List of GPU device contexts, one per device.
         """
+        comptime max_padded_m = align_up(
+            max_token_per_rank * n_gpus_per_node * n_nodes, 32
+        )
         comptime num_devices = input_tokens.size
 
         var gpu_ctxs = dev_ctxs.filter_gpu_contexts[num_devices]()
@@ -1950,7 +1950,6 @@ struct DistributedEPDispatchMXFP4:
             var format_handler = MXTokenFormat[
                 hidden_size,
                 top_k,
-                fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
                 mx_format=mx_fmt,
             ](
                 out_tokens,
@@ -2982,8 +2981,7 @@ struct Struct_ep_fused_silu_mxfp4:
         input_dtype: DType,
         target: StaticString,
         *,
-        fuse_a_scale_preshuffle: Bool = False,
-        max_padded_M: Int = 0,
+        max_padded_M: Int,
         activation: StaticString = "silu",
         swiglu_alpha: StaticString = "0.0",
         swiglu_limit: StaticString = "0.0",
@@ -3013,12 +3011,10 @@ struct Struct_ep_fused_silu_mxfp4:
         operation on the received tokens. Once the SILU operation is performed,
         the output will be quantized to the MXFP4 or MXFP8 format.
 
-        When `fuse_a_scale_preshuffle=True` (KS64 fusion), the kernel
-        writes the E8M0 scale directly into the grouped matmul's per-expert
-        fixed-stride `scale_4d` slot layout (slot stride `max_padded_M *
-        K_SCALES`), so the standalone `preshuffle_grouped_scale_4d_gpu` can be
-        omitted from the critical path. The scales output tensor must then have
-        shape `[n_local_experts * max_padded_M, K_SCALES]`.
+        The kernel writes the E8M0 scale directly into the grouped matmul's
+        per-expert fixed-stride `scale_4d` slot layout (slot stride
+        `max_padded_M * K_SCALES`; KS64 fusion), so the scales output tensor
+        has shape `[n_local_experts * max_padded_M, K_SCALES]`.
 
         The gated activation is built at compile time from the `activation`,
         `swiglu_alpha` and `swiglu_limit` parameters; the constants are
@@ -3026,6 +3022,9 @@ struct Struct_ep_fused_silu_mxfp4:
         """
         # Ensure this kernel only runs on GPU targets
         comptime assert is_gpu[target](), "EP is only supported on GPU."
+        comptime assert (
+            max_padded_M > 0 and max_padded_M % 32 == 0
+        ), "max_padded_M must be a positive multiple of 32"
 
         var output_tensor = output.to_tile_tensor[.int64]()
         var scales_tensor = scales.to_tile_tensor[.int64]()
@@ -3053,7 +3052,6 @@ struct Struct_ep_fused_silu_mxfp4:
             row_offsets_tensor.LayoutType,
             hw_info.max_thread_block_size,
             hw_info.sm_count,
-            fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
             activation=act,
         ]
 
@@ -3064,7 +3062,6 @@ struct Struct_ep_fused_silu_mxfp4:
                 "quant_dtype=", quant_dtype,
                 ";scales_dtype=", scales_dtype,
                 ";input_dtype=", input_dtype,
-                ";fuse_a_scale_preshuffle=", fuse_a_scale_preshuffle,
                 ";activation=", activation,
             )
             # fmt: on
@@ -3098,8 +3095,7 @@ struct Struct_ep_fused_silu_mxfp8:
         input_dtype: DType,
         target: StaticString,
         *,
-        fuse_a_scale_preshuffle: Bool = False,
-        max_padded_M: Int = 0,
+        max_padded_M: Int,
         activation: StaticString = "silu",
         swiglu_alpha: StaticString = "0.0",
         swiglu_limit: StaticString = "0.0",
@@ -3115,12 +3111,11 @@ struct Struct_ep_fused_silu_mxfp8:
         Same body as `ep.fused_silu.mxfp4`: `fused_silu_mx_kernel` takes its
         element packing from the output dtype, so one `fp8_e4m3fn` byte per
         element here rather than two FP4 nibbles, leaving `output` at the full
-        hidden size along axis 1. With `fuse_a_scale_preshuffle`, `scales` must
-        be shaped `[n_local_experts * max_padded_M, K_SCALES]`.
+        hidden size along axis 1. `scales` is shaped
+        `[n_local_experts * max_padded_M, K_SCALES]`.
         """
         Struct_ep_fused_silu_mxfp4.execute[
             target=target,
-            fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
             max_padded_M=max_padded_M,
             activation=activation,
             swiglu_alpha=swiglu_alpha,
@@ -3140,9 +3135,8 @@ struct Struct_ep_fused_silu_mxfp6:
         input_dtype: DType,
         target: StaticString,
         *,
+        max_padded_M: Int,
         FP6_FORMAT: Int = 0,
-        fuse_a_scale_preshuffle: Bool = False,
-        max_padded_M: Int = 0,
         activation: StaticString = "silu",
         swiglu_alpha: StaticString = "0.0",
         swiglu_limit: StaticString = "0.0",
@@ -3169,13 +3163,9 @@ struct Struct_ep_fused_silu_mxfp6:
         decimal strings because kernel parameters cannot be floats.
         """
         comptime assert is_gpu[target](), "EP is only supported on GPU."
-        comptime assert not fuse_a_scale_preshuffle or (
+        comptime assert (
             max_padded_M > 0 and max_padded_M % 32 == 0
-        ), (
-            "the A-scale fold needs the graph-build-time slot stride:"
-            " max_padded_M must be a positive multiple of 32, since the"
-            " matmul reads with align_up(max_num_tokens_per_expert, 32)"
-        )
+        ), "max_padded_M must be a positive multiple of 32"
 
         var output_tensor = output.to_tile_tensor[.int64]()
         var scales_tensor = scales.to_tile_tensor[.int64]()
@@ -3203,7 +3193,6 @@ struct Struct_ep_fused_silu_mxfp6:
             hw_info.max_thread_block_size,
             hw_info.sm_count,
             fp6_format=FP6Format(FP6_FORMAT),
-            fuse_a_scale_preshuffle=fuse_a_scale_preshuffle,
             activation=act,
         ]
 
@@ -3214,7 +3203,6 @@ struct Struct_ep_fused_silu_mxfp6:
                 "scales_dtype=", scales_dtype,
                 ";input_dtype=", input_dtype,
                 ";FP6_FORMAT=", FP6_FORMAT,
-                ";fuse_a_scale_preshuffle=", fuse_a_scale_preshuffle,
                 ";activation=", activation,
             )
             # fmt: on

@@ -12,10 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 """`fused_silu_mxfp6_kernel` against a host fp32 SwiGLU reference.
 
-The MXFP4/MXFP8 siblings pair a fold-equivalence gate with a dequant gate;
-MXFP6 has no A-scale fold to compare against, so the dequant gate carries the
-whole test. It is the one that matters here anyway: it is the only check that
-can see a wrong element-to-scale-block pairing or a mis-sized packed row.
+The kernel writes its E8M0 scales in the grouped matmul's per-expert
+`scale_4d` slot layout. The test reads each one back through
+`Shuffler[1].scale_4d_slot_byte_off` at the slot its own row offsets assign,
+so a scale stored in the wrong slot fails the same dequant gate as a wrong
+element-to-scale-block pairing or a mis-sized packed row.
 
 FP6's byte width is three quarters of the hidden size, where MXFP8 is 1x and
 MXFP4 is 1/2. A kernel that reused either ratio would write a correctly-shaped
@@ -29,7 +30,7 @@ Usage (plain `mojo` is shadowed by the installed shmem package -- use bazel):
 
 from max.gpu.host import DeviceContext, HostBuffer
 from max.gpu.host.info import MI355X
-from std.math import exp, isfinite
+from std.math import align_up, exp, isfinite
 from std.random import random_float64, seed
 from std.testing import assert_almost_equal, assert_true
 
@@ -40,6 +41,7 @@ from linalg.fp6_utils import (
     fp6_reference_table,
 )
 from linalg.swiglu_activation import get_swiglu_activation
+from linalg.matmul.gpu.amd import Shuffler
 from shmem.ep_comm import fused_silu_mxfp6_kernel
 
 
@@ -76,8 +78,12 @@ def _run_case[
     comptime n_off = NUM_EXPERTS + 1
     debug_assert(len(num_tokens_by_expert) == n_experts)
     var total_tokens = 0
+    var max_tokens = 0
     for i in range(n_experts):
         total_tokens += num_tokens_by_expert[i]
+        max_tokens = max(max_tokens, num_tokens_by_expert[i])
+    var max_padded_M = align_up(max_tokens, 32)
+    var scale_rows = n_experts * max_padded_M
 
     comptime alpha = Float32(1.702)
     comptime limit = Float32(7.0)
@@ -102,9 +108,10 @@ def _run_case[
 
     var out_d = ctx.enqueue_create_buffer[.uint8](total_tokens * out_bytes)
     var scales_d = ctx.enqueue_create_buffer[.float8_e8m0fnu](
-        total_tokens * scale_k
+        scale_rows * scale_k
     )
     out_d.enqueue_fill(UInt8(0))
+    scales_d.enqueue_fill(Float8_e8m0fnu(0))
 
     var input_tt = TileTensor[origin=ImmutAnyOrigin](
         input_d, row_major(total_tokens, Idx[input_dim])
@@ -114,7 +121,7 @@ def _run_case[
         out_d, row_major(total_tokens, Idx[out_bytes])
     )
     var scales_tt = TileTensor[origin=MutAnyOrigin](
-        scales_d, row_major(total_tokens, Idx[scale_k])
+        scales_d, row_major(scale_rows, Idx[scale_k])
     )
 
     comptime kernel = fused_silu_mxfp6_kernel[
@@ -139,21 +146,25 @@ def _run_case[
         scales_tt,
         input_tt,
         off_tt,
-        Int32(0),  # max_padded_M unused when the fold is off
+        Int32(max_padded_M),
         grid_dim=hw.sm_count,
         block_dim=hw.max_thread_block_size,
     )
 
     var out_h = ctx.enqueue_create_host_buffer[.uint8](total_tokens * out_bytes)
     var scales_h = ctx.enqueue_create_host_buffer[.float8_e8m0fnu](
-        total_tokens * scale_k
+        scale_rows * scale_k
     )
     ctx.enqueue_copy(out_h, out_d)
     ctx.enqueue_copy(scales_h, scales_d)
     ctx.synchronize()
 
     var worst = Float32(0.0)
+    var expert = 0
     for m in range(total_tokens):
+        while Int(off_h[expert + 1]) <= m:
+            expert += 1
+        var local_row = m - Int(off_h[expert])
         for k in range(hidden_size):
             var g = Float32(input_h[m * input_dim + k])
             var u = Float32(input_h[m * input_dim + hidden_size + k])
@@ -166,9 +177,10 @@ def _run_case[
             else:
                 want = (g / (1.0 + exp(-g))) * u
 
-            var scale = Float32(
-                scales_h[m * scale_k + k // MXFP6_SF_VECTOR_SIZE]
-            )
+            var scale_off = Shuffler[1].scale_4d_slot_byte_off[
+                K_SCALES=scale_k
+            ](expert, local_row, k // MXFP6_SF_VECTOR_SIZE, max_padded_M)
+            var scale = Float32(scales_h[scale_off])
             var code = _unpack_code(out_h, m * out_bytes, k)
             var got = _decode_fp6_host[fmt](code) * scale
 

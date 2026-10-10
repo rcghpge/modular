@@ -214,7 +214,8 @@ class EPConfig:
         """Returns the most tokens one local expert can receive, rounded up to
         a multiple of ``alignment``: every rank can route all of its tokens to
         it. The default alignment gives the per-expert A-scale slot stride of
-        the MX grouped matmul."""
+        the MX grouped matmul, which the MX dispatch ops derive the same way
+        from their EP geometry."""
         n_ranks = self.n_gpus_per_node * self.n_nodes
         return (
             ceildiv(self.max_tokens_per_rank * n_ranks, alignment) * alignment

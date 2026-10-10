@@ -252,22 +252,6 @@ def _ep_dispatch_output_types(
     ]
 
 
-def _add_mxfp4_scale_fusion_parameters(
-    parameters: dict[str, bool | int | str | DType],
-    config: EPConfig,
-) -> None:
-    """Inject the KS224 up-proj scale-fusion op parameters.
-
-    The MX dispatch-wait kernel writes the activation scale directly into the
-    up-proj grouped-matmul's per-expert fixed-stride ``scale_4d`` slot layout
-    (slot stride ``max_padded_M * K_SCALES``), so the standalone preshuffle is
-    dropped. The matmul reader is told the same ``max_padded_M`` (single source
-    of truth, see ``moe_fp8._local_ep_compute``).
-    """
-    parameters["fuse_a_scale_preshuffle"] = True
-    parameters["max_padded_M"] = config._max_recv_tokens_per_expert()
-
-
 def _ep_common_parameters(
     config: EPConfig,
 ) -> dict[str, bool | int | str | DType]:
@@ -588,7 +572,6 @@ def call_ep_dispatch_wait(
         elif uses_mx_ep_token_format(config):
             op_name += ".mxfp4"
             _add_mx_format_parameter(parameters, config)
-            _add_mxfp4_scale_fusion_parameters(parameters, config)
         else:
             raise ValueError(
                 f"Unsupported dispatch dtype: {config.dispatch_dtype}"
@@ -1174,7 +1157,6 @@ def call_ep_dispatch(
         elif uses_mx_ep_token_format(config):
             op_name += ".mxfp4"
             _add_mx_format_parameter(parameters, config)
-            _add_mxfp4_scale_fusion_parameters(parameters, config)
         else:
             raise ValueError(
                 f"Unsupported dispatch dtype: {config.dispatch_dtype}"
@@ -1293,8 +1275,6 @@ def call_distributed_ep_dispatch(
             n_gpus_per_node=config.n_gpus_per_node,
             n_nodes=config.n_nodes,
             fused_shared_expert=config.fused_shared_expert,
-            fuse_a_scale_preshuffle=True,
-            max_padded_m=config._max_recv_tokens_per_expert(),
             mx_format=(
                 _mx_format_name(quant_config)
                 if quant_config is not None and quant_config.is_mxfp6
@@ -1581,13 +1561,13 @@ def fused_silu_quantized(
         out_type: Output dtype.
         input_scales: Optional input scales tensor. Needed by NVFP4.
         scales_offsets: Optional scales offsets tensor. Needed by NVFP4.
-        max_padded_M: When > 0 (MXFP4, MXFP6, and MXFP8 EP down-proj
-            fusion), the kernel writes the E8M0 activation scale directly
-            into the grouped-matmul per-expert slot layout.  Must equal
-            ``align_up(max_recv_tokens_per_expert, 32)``.  The output
-            scales tensor will have shape
-            ``[n_local_experts * max_padded_M, K_SCALES]`` instead of
-            ``[max_recv_tokens, K_SCALES]``.
+        max_padded_M: Per-expert slot stride in rows, required for the MX
+            formats, whose kernels write the E8M0 activation scale directly
+            into the grouped-matmul per-expert slot layout. A positive multiple
+            of 32, at least ``align_up(max_recv_tokens_per_expert, 32)``, and
+            the stride the matmul reads with (``a_scales_max_padded_m``). The
+            output scales tensor then has shape
+            ``[n_local_experts * max_padded_M, K_SCALES]``.
         activation: The gated activation applied to each ``(gate, up)``
             pair: :class:`~max.nn.activation.GatedActivation`'s
             ``fused_activation`` with its ``alpha`` and ``limit``. Defaults to
@@ -1612,9 +1592,6 @@ def fused_silu_quantized(
     hidden_size = input.shape[1] // 2
     op_name = "ep.fused_silu"
     input_vals: list[Value[Any]] = [input, row_offsets]
-    out_scales_type = quant_config.quantized_scales_type(
-        Shape([input.shape[0], input.shape[1] // 2]), input.device
-    )
 
     if quant_config.is_nvfp4:
         op_name += ".nvfp4"
@@ -1640,42 +1617,11 @@ def fused_silu_quantized(
     elif quant_config.is_mxfp4:
         op_name += ".mxfp4"
         hidden_size //= 2  # Two FP4 elements are packed into one uint8 element
-        if max_padded_M > 0:
-            # KS64 down-proj fusion: write the E8M0 scale directly
-            # into the grouped matmul's per-expert fixed-stride slot layout so
-            # the standalone preshuffle kernel is dropped from the critical path.
-            # Pass `n_local_experts * max_padded_M` rows and the raw hidden dim
-            # (input.shape[1] // 2) to _mxfp4_scales_type so its ceildiv(K,32)
-            # gives K_SCALES = hidden_size // 32 correctly.
-            n_local_experts = row_offsets.shape[0] - 1
-            raw_hidden = input.shape[1] // 2  # half of gate+up concat
-            out_scales_type = quant_config.quantized_scales_type(
-                Shape([n_local_experts * max_padded_M, raw_hidden]),
-                input.device,
-            )
     elif quant_config.is_mxfp6:
         op_name += ".mxfp6"
         hidden_size = hidden_size * 3 // 4
-        if max_padded_M > 0:
-            n_local_experts = row_offsets.shape[0] - 1
-            raw_hidden = input.shape[1] // 2
-            out_scales_type = quant_config.quantized_scales_type(
-                Shape([n_local_experts * max_padded_M, raw_hidden]),
-                input.device,
-            )
     elif quant_config.is_mxfp8:
-        # Must precede the generic float8 branch: MXFP8's out_type IS
-        # float8_e4m3fn, so falling through would select the legacy per-tensor
-        # `.fp8` kernel. No `hidden_size //= 2`: one byte per element.
         op_name += ".mxfp8"
-        if max_padded_M > 0:
-            # Same fold as MXFP4; the E8M0 scale layout is format-independent.
-            n_local_experts = row_offsets.shape[0] - 1
-            raw_hidden = input.shape[1] // 2
-            out_scales_type = quant_config.quantized_scales_type(
-                Shape([n_local_experts * max_padded_M, raw_hidden]),
-                input.device,
-            )
     else:
         raise ValueError(
             f"Unsupported quantization format: {quant_config.format}"
@@ -1683,17 +1629,25 @@ def fused_silu_quantized(
 
     parameters: dict[str, bool | int | str] = {}
     parameters.update((activation or GatedActivation()).kernel_parameters())
+    if quant_config.is_mx:
+        if max_padded_M <= 0 or max_padded_M % 32:
+            raise ValueError(
+                "MX fused_silu writes its scales in the grouped matmul's"
+                " per-expert slots, so max_padded_M must be a positive multiple"
+                f" of 32, got {max_padded_M}"
+            )
+        # KS64: the kernel writes the E8M0 scale straight into the grouped
+        # matmul's per-expert slots; the scale type takes the raw hidden dim.
+        n_local_experts = row_offsets.shape[0] - 1
+        out_scales_type = quant_config.quantized_scales_type(
+            Shape([n_local_experts * max_padded_M, input.shape[1] // 2]),
+            input.device,
+        )
+        parameters["max_padded_M"] = max_padded_M
     if quant_config.is_mxfp6:
         parameters["FP6_FORMAT"] = (
             1 if quant_config.mxfp6_format == "e3m2" else 0
         )
-        if max_padded_M > 0:
-            parameters["fuse_a_scale_preshuffle"] = True
-            parameters["max_padded_M"] = max_padded_M
-    elif quant_config.is_mxfp4 or quant_config.is_mxfp8:
-        if max_padded_M > 0:
-            parameters["fuse_a_scale_preshuffle"] = True
-            parameters["max_padded_M"] = max_padded_M
 
     result = ops.custom(
         op_name,

@@ -75,7 +75,6 @@ class QuantStrategy(Protocol):
         expert_scales: TensorValue | None = None,
         expert_inputs: tuple[TensorValue, ...] = (),
         estimated_total_m: TensorValue | None = None,
-        a_scales_preshuffled: bool = False,
         a_scales_max_padded_m: int = 0,
     ) -> TensorValue:
         """Runs grouped matmul for routed experts."""
@@ -188,14 +187,12 @@ class Fp8Strategy:
         expert_scales: TensorValue | None = None,
         expert_inputs: tuple[TensorValue, ...] = (),
         estimated_total_m: TensorValue | None = None,
-        a_scales_preshuffled: bool = False,
         a_scales_max_padded_m: int = 0,
     ) -> TensorValue:
         """Runs grouped FP8 matmul for the routed experts.
 
-        ``a_scales_preshuffled``/``a_scales_max_padded_m`` are accepted for
-        ``QuantStrategy`` conformance; they only apply to the MX EP paths and
-        are ignored here.
+        ``a_scales_max_padded_m`` is accepted for ``QuantStrategy``
+        conformance; it only applies to the MX EP paths and is ignored here.
         """
         hidden, input_scales, expert_start, expert_ids, usage_stats = (
             expert_inputs
@@ -334,14 +331,12 @@ class NvMxf4f8Strategy:
         expert_scales: TensorValue | None = None,
         expert_inputs: tuple[TensorValue, ...] = (),
         estimated_total_m: TensorValue | None = None,
-        a_scales_preshuffled: bool = False,
         a_scales_max_padded_m: int = 0,
     ) -> TensorValue:
         """Runs grouped NVIDIA block-scaled matmul with per-expert scales.
 
-        ``a_scales_preshuffled``/``a_scales_max_padded_m`` are accepted for
-        ``QuantStrategy`` conformance; they only apply to the MX EP paths and
-        are ignored here.
+        ``a_scales_max_padded_m`` is accepted for ``QuantStrategy``
+        conformance; it only applies to the MX EP paths and is ignored here.
         """
         if self.is_nvfp4 and expert_scales is None:
             raise ValueError("NVFP4 requires expert_scales")
@@ -612,7 +607,6 @@ class BlockScaledStrategy:
         expert_scales: TensorValue | None = None,
         expert_inputs: tuple[TensorValue, ...] = (),
         estimated_total_m: TensorValue | None = None,
-        a_scales_preshuffled: bool = False,
         a_scales_max_padded_m: int = 0,
         decode_grid_m_cap: int = 0,
         decode_grid_m_rows: int = 0,
@@ -636,7 +630,6 @@ class BlockScaledStrategy:
             usage_stats.to(DeviceRef.CPU()),
             estimated_total_m=estimated_total_m,
             preshuffled_b=True,
-            a_scales_preshuffled=a_scales_preshuffled,
             a_scales_max_padded_m=a_scales_max_padded_m,
             decode_grid_m_cap=decode_grid_m_cap,
             decode_grid_m_rows=decode_grid_m_rows,
@@ -648,7 +641,6 @@ class BlockScaledStrategy:
         weight_scales: TensorValue,
         expert_inputs: tuple[TensorValue, ...] = (),
         estimated_total_m: TensorValue | None = None,
-        a_scales_preshuffled: bool = False,
         a_scales_max_padded_m: int = 0,
         decode_grid_m_cap: int = 0,
         decode_grid_m_rows: int = 0,
@@ -669,11 +661,9 @@ class BlockScaledStrategy:
             weight_scales: Matching sigma-permuted E8M0 weight scales.
             expert_inputs: The EP dispatch 5-tuple.
             estimated_total_m: Row-count estimate used to pick the band.
-            a_scales_preshuffled: True when the input A-scales already sit in
-                the per-expert slot layout, so the standalone preshuffle is
-                skipped.
-            a_scales_max_padded_m: Build-time slot stride of those input
-                scales; required when ``a_scales_preshuffled``.
+            a_scales_max_padded_m: Nonzero when the input A-scales already sit
+                in the per-expert slot layout: their build-time slot stride, so
+                the standalone preshuffle is skipped.
             decode_grid_m_cap: Band cap for the decode grid.
             decode_grid_m_rows: Worst-case rows one expert can receive.
             out_scales_max_padded_m: Per-expert slot stride for the EMITTED
@@ -702,7 +692,6 @@ class BlockScaledStrategy:
             expert_ids,
             usage_stats.to(DeviceRef.CPU()),
             estimated_total_m=estimated_total_m,
-            a_scales_preshuffled=a_scales_preshuffled,
             a_scales_max_padded_m=a_scales_max_padded_m,
             decode_grid_m_cap=decode_grid_m_cap,
             decode_grid_m_rows=decode_grid_m_rows,
@@ -794,18 +783,11 @@ class Mxfp6Strategy:
         expert_scales: TensorValue | None = None,
         expert_inputs: tuple[TensorValue, ...] = (),
         estimated_total_m: TensorValue | None = None,
-        a_scales_preshuffled: bool = False,
         a_scales_max_padded_m: int = 0,
         decode_grid_m_cap: int = 0,
         decode_grid_m_rows: int = 0,
     ) -> TensorValue:
         """Runs the grouped MXFP6 matmul with per-expert scales."""
-        if a_scales_preshuffled and a_scales_max_padded_m <= 0:
-            raise ValueError(
-                "a_scales_max_padded_m must be > 0 when a_scales_preshuffled"
-                " is set for MXFP6"
-            )
-
         (
             hidden,
             hidden_scales,
@@ -826,7 +808,6 @@ class Mxfp6Strategy:
             estimated_total_m=estimated_total_m,
             decode_grid_m_cap=decode_grid_m_cap,
             decode_grid_m_rows=decode_grid_m_rows,
-            a_scales_preshuffled=a_scales_preshuffled,
             a_scales_max_padded_m=a_scales_max_padded_m,
         )
 
@@ -859,12 +840,11 @@ class Mxfp6Strategy:
         per MoE layer per device (456 of each at dp=2/ep=8) and an extra
         ``mo.quantize.dynamic.block.scaled.mxfp6``.
 
-        ``max_padded_M`` > 0 enables the down-proj A-scale fold: the kernel
-        writes the E8M0 scale straight into the grouped matmul's per-expert
-        slot, dropping the standalone preshuffle. The slot layout is shared
-        across MX formats (``scale_4d_slot_byte_off`` keys on ``K_SCALES`` and
-        ``MXFP6_SF_VECTOR_SIZE`` is 32 like FP4/FP8), so the reader is
-        unchanged.
+        The kernel writes the E8M0 scale straight into the grouped matmul's
+        per-expert slot at the ``max_padded_M`` stride. The slot layout is
+        shared across MX formats (``scale_4d_slot_byte_off`` keys on
+        ``K_SCALES`` and ``MXFP6_SF_VECTOR_SIZE`` is 32 like FP4/FP8), so the
+        reader is unchanged.
         """
         _, _, expert_start_indices, _, _ = expert_inputs
         return fused_silu_quantized(
