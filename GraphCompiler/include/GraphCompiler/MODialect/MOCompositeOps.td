@@ -746,8 +746,9 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"comp
 // fusion below can match named operands. Each lowers 1:1 to its kernel.
 //
 // Routing operands and expert-usage scalars come from the EP gate on-device;
-// the kernel's host contract (front-packed active experts, `num_experts <= 64`,
-// `ids[e] >= 0 => tokens[e] > 0`) is an upstream guarantee, not verified here.
+// the kernel's host contract (front-packed active experts,
+// `num_experts <= 128`, `ids[e] >= 0 => tokens[e] > 0`) is an upstream
+// guarantee, not verified here.
 
 def MOComposite_GroupedMatmulSwigluNvfp4Op
     : MO_CompositeOp<"grouped_matmul_swiglu_nvfp4", [

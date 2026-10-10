@@ -4448,9 +4448,9 @@ private:
 struct MegaFFNNvfp4Pattern
     : public MO::DeviceAwareRewritePattern<
           OpRewritePattern, MO::Composite::GroupedMatmulBlockScaledOp> {
-  // Hard scheduler limit: the kernel reads ids[lane] and ids[lane + 32] across
-  // the scheduler warp's 32 lanes, so the active-expert array is at most 64.
-  static constexpr int64_t kMaxNumExperts = 64;
+  // Hard scheduler limit: the scheduler warp holds at most four expert slots
+  // per lane (`MAX_EXPERTS` in mega_ffn_scheduler.mojo).
+  static constexpr int64_t kMaxNumExperts = 128;
 
   MegaFFNNvfp4Pattern(MLIRContext *ctx, MO::DeviceInfoMapping deviceInfoMapping)
       : DeviceAwareRewritePattern(ctx, 2),
@@ -4516,7 +4516,7 @@ public:
     int64_t numExperts =
         cast<MO::TensorType>(downOp.getWeight().getType()).getIntDim(0);
     if (numExperts != mlir::ShapedType::kDynamic && numExperts > kMaxNumExperts)
-      return rewriter.notifyMatchFailure(downOp, "num_experts exceeds 64");
+      return rewriter.notifyMatchFailure(downOp, "num_experts exceeds 128");
 
     // Output must be bf16 (the fused kernel writes bf16 hidden states).
     if (!resultTy.getElementType().isBF16())
