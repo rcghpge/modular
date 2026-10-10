@@ -39,11 +39,10 @@ How it works:
   device blocks and the scheduler cordons the request until the handle polls
   complete, so the GPU runs other ready work while the copy is in flight.
 * Each copy lane does a blocking ``memcpy; cuStreamSynchronize`` per block on a
-  dedicated copy engine (separate H2D and D2H aux streams per device). Keeping
-  exactly one copy in flight yields the shared copy engine back to the forward
-  pass after every block, so the connector never starves the forward's own
-  (tiny) input/output copies -- copy-engine scheduling ignores CUDA stream
-  priority, so this is the lever that matters.
+  dedicated copy engine (separate H2D and D2H aux streams per device). Each
+  H2D lane keeps one copy in flight on its own stream so it yields the copy
+  engine after every block. ``num_h2d_onload_lanes`` (default 1) is how many
+  of those lanes run at once.
 
 This shim owns the host staging region (allocated the same way as
 ``BlockOffloadEngine``) and passes its address plus the per-replica device
@@ -336,6 +335,7 @@ class TierConnector(KVConnector):
         disk_dir: OffloadDirectory | None,
         disk_offload_max_bytes: int,
         num_disk_workers: int = 32,
+        num_h2d_onload_lanes: int = 1,
         connector_type: KVConnectorType = KVConnectorType.rust_tiered,
     ) -> None:
         """Initializes the connector over ``replica_kv_memory``'s device buffers.
@@ -428,6 +428,7 @@ class TierConnector(KVConnector):
                 disk_path,
                 disk_offload_max_bytes,
                 num_disk_workers,
+                num_h2d_onload_lanes,
             )
         # Set only once the native connector exists, so `__del__` on a
         # half-built instance has nothing to stop.
@@ -526,7 +527,8 @@ class TierConnector(KVConnector):
             f"host_offload_max_bytes={to_human_readable_bytes(host_offload_max_bytes)}, "
             f"disk_cache_dir={disk_dir.path if disk_dir else 'disabled (host-only)'}, "
             f"disk_offload_max_bytes={to_human_readable_bytes(disk_offload_max_bytes)}, "
-            f"num_disk_workers={cfg.num_disk_workers}"
+            f"num_disk_workers={cfg.num_disk_workers}, "
+            f"num_h2d_onload_lanes={cfg.num_h2d_onload_lanes}"
         )
         logger.info(
             f"TierConnector: {num_huge_blocks} huge pages x {to_human_readable_bytes(huge_page_bytes)} = {to_human_readable_bytes(host_offload_max_bytes)}"
@@ -550,6 +552,7 @@ class TierConnector(KVConnector):
             disk_dir=disk_dir,
             disk_offload_max_bytes=disk_offload_max_bytes,
             num_disk_workers=cfg.num_disk_workers,
+            num_h2d_onload_lanes=cfg.num_h2d_onload_lanes,
             connector_type=cfg.type,
         )
 

@@ -196,6 +196,19 @@ class KVConnectorConfig(ConfigFileModel):
     )
     """Number of disk I/O worker threads for the tiered connectors."""
 
+    num_h2d_onload_lanes: int = Field(
+        default=1,
+        gt=0,
+        description=(
+            "Number of concurrent host-to-device KV onload copies for the "
+            "rust_tiered connector. Each lane owns an H2D aux stream and "
+            "does one memcpy+sync at a time. 1 is the historical single-copy "
+            "FIFO. 2 overlaps two host-hit onloads so they do not queue on "
+            "one copy."
+        ),
+    )
+    """Concurrent H2D onload lanes for the rust_tiered connector."""
+
     block_store_endpoint: str | None = Field(
         default=None,
         description=(

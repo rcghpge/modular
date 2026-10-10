@@ -349,6 +349,11 @@ class KVConnectorConfigInterface(Protocol):
         ...
 
     @property
+    def num_h2d_onload_lanes(self) -> int:
+        """Concurrent H2D onload lanes for the rust_tiered connector."""
+        ...
+
+    @property
     def block_store_endpoint(self) -> str | None:
         """Endpoint for the co-located dKV service."""
         ...
@@ -367,6 +372,7 @@ class NullKVConnectorConfig:
     disk_offload_max_gb: float | None = None
     disk_offload_dir: str | None = None
     num_disk_workers: int = 32
+    num_h2d_onload_lanes: int = 1
     block_store_endpoint: str | None = None
 
 
