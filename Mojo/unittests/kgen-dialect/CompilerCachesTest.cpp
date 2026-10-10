@@ -97,22 +97,20 @@ TEST(CompilerCachesTest, OtherThreadSeesChanges) {
 }
 
 // Every key maps to one value, so any hit must be that value whichever thread
-// inserted it first. Values lie outside the key range because inserting a value
-// also records it as its own canonical form.
+// inserted it first.
 TEST(CompilerCachesTest, ConcurrentInsertAndLookup) {
-  CanonicalCache cache;
+  CanonicalCache<const void *> cache;
   constexpr unsigned numThreads = 8;
   constexpr uintptr_t keysPerThread = 50000;
   constexpr uintptr_t stride = 10000;
-  constexpr uintptr_t offset = uintptr_t(1) << 40;
   std::atomic<bool> failed{false};
   std::vector<std::thread> threads;
   for (unsigned t = 0; t < numThreads; ++t) {
     threads.emplace_back([&, t] {
       uintptr_t first = 1 + t * stride;
       for (uintptr_t i = first; i < first + keysPerThread; ++i) {
-        cache.insert(ptr(i), ptr(i + offset));
-        if (cache.lookup(ptr(i)) != ptr(i + offset))
+        cache.insert(ptr(i), ptr(i * 3));
+        if (cache.lookup(ptr(i)) != ptr(i * 3))
           failed = true;
       }
     });
@@ -120,6 +118,6 @@ TEST(CompilerCachesTest, ConcurrentInsertAndLookup) {
   for (std::thread &thread : threads)
     thread.join();
   EXPECT_FALSE(failed);
-  EXPECT_EQ(cache.lookup(ptr(1)), ptr(1 + offset));
+  EXPECT_EQ(cache.lookup(ptr(1)), ptr(3));
   EXPECT_EQ(cache.lookup(ptr(uintptr_t(1) << 40)), nullptr);
 }

@@ -5438,7 +5438,7 @@ class Canonicalizer : public ParameterReplacer<Canonicalizer> {
     // Walking is repeated for the same value many times; cache across calls.
     using Base =
         std::conditional_t<std::is_base_of_v<Type, T>, Type, Attribute>;
-    CanonicalCache *cache = getCache(value.getContext());
+    CanonicalCache<const void *> *cache = getCache(value.getContext());
     if (cache) {
       if (const void *hit = cache->lookup(value.getAsOpaquePointer()))
         return Base::getFromOpaquePointer(hit);
@@ -5460,12 +5460,15 @@ class Canonicalizer : public ParameterReplacer<Canonicalizer> {
     Base result =
         changed ? Base(value.replaceImmediateSubElements(newAttrs, newTypes))
                 : Base(value);
-    if (cache && result)
+    if (cache && result) {
       cache->insert(value.getAsOpaquePointer(), result.getAsOpaquePointer());
+      if (changed)
+        cache->insert(result.getAsOpaquePointer(), result.getAsOpaquePointer());
+    }
     return result;
   }
 
-  static CanonicalCache *getCache(MLIRContext *context) {
+  static CanonicalCache<const void *> *getCache(MLIRContext *context) {
     CompilerCaches *caches = CompilerCaches::get(context);
     return caches ? &caches->canonical : nullptr;
   }

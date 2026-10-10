@@ -18,28 +18,31 @@
 #include "llvm/ADT/DenseMap.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <tuple>
 
 namespace M::KGEN {
 
-/// Thread-safe cache from an attribute or type to its canonical form. Canonical
-/// forms are pure functions of the uniqued value, so entries never go stale.
+/// Thread-safe cache from `KeyT` to the opaque pointer of an attribute or type.
+/// Entries are pure functions of uniqued values, so they never go stale.
+template <typename KeyT>
 class CanonicalCache {
 public:
-  /// Returns the cached canonical form of `key`, or null.
-  const void *lookup(const void *key) {
+  /// Returns null on a miss.
+  const void *lookup(const KeyT &key) {
     Shard &shard = getShard(key);
     std::shared_lock<std::shared_mutex> lock(shard.mutex);
     return shard.map.lookup(key);
   }
 
-  /// Records that `result` is the canonical form of `key`, and of itself.
-  void insert(const void *key, const void *result) {
-    insertOne(key, result);
-    if (key != result)
-      insertOne(result, result);
+  /// Records `value` for `key`; the first entry wins when threads race.
+  void insert(const KeyT &key, const void *value) {
+    Shard &shard = getShard(key);
+    std::unique_lock<std::shared_mutex> lock(shard.mutex);
+    shard.map.try_emplace(key, value);
   }
 
 private:
@@ -47,22 +50,20 @@ private:
   static constexpr size_t numShards = 64;
   struct Shard {
     std::shared_mutex mutex;
-    llvm::DenseMap<const void *, const void *> map;
+    llvm::DenseMap<KeyT, const void *> map;
   };
 
-  Shard &getShard(const void *key) {
-    return shards[llvm::DenseMapInfo<const void *>::getHashValue(key) %
-                  numShards];
-  }
-
-  void insertOne(const void *key, const void *value) {
-    Shard &shard = getShard(key);
-    std::unique_lock<std::shared_mutex> lock(shard.mutex);
-    shard.map.try_emplace(key, value);
+  Shard &getShard(const KeyT &key) {
+    return shards[llvm::DenseMapInfo<KeyT>::getHashValue(key) % numShards];
   }
 
   std::array<Shard, numShards> shards;
 };
+
+/// `IndexDepthAdjuster` results, keyed by the value, `adjustDepth` and
+/// `onlyAdjustIndexRef`.
+using DepthAdjustCache =
+    CanonicalCache<std::tuple<const void *, int64_t, unsigned>>;
 
 /// Caches for pure helpers of the parameter machinery. Every parser state on an
 /// `MLIRContext` shares one instance, owned through the `shared_ptr` that
@@ -80,7 +81,8 @@ public:
   getOrCreate(mlir::MLIRContext *context);
 
   /// Canonical forms, keyed by the value's opaque pointer.
-  CanonicalCache canonical;
+  CanonicalCache<const void *> canonical;
+  DepthAdjustCache depthAdjust;
 
 private:
   CompilerCaches() = default;
