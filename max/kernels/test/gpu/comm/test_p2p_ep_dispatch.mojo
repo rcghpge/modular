@@ -819,8 +819,9 @@ struct MXDispatchTest[
     comptime scales_padded_size = Self.max_recv_num_tokens + Self.n_local_experts * SF_MN_GROUP_SIZE
 
     # Per-expert `scale_4d` row capacity, mirroring the host-side
-    # `ep_mxfp4_down_slot_stride`: an expert can receive every token of every
-    # rank, and the slot stride rounds that up to the scale atom's MN block.
+    # `EPConfig._max_recv_tokens_per_expert`: an expert can receive every token
+    # of every rank, and the slot stride rounds that up to the scale atom's MN
+    # block.
     comptime max_padded_m = align_up(
         Self.n_tokens_per_rank * Self.n_ranks, 32
     ) if Self.fuse_a_scale_preshuffle else 0

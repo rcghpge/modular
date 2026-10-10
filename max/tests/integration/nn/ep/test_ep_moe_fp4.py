@@ -810,13 +810,6 @@ def test_ep_moe_mxfp4(
         for k in moe_weights_fp4
         if k.endswith(".weight") and moe_weights_fp4[k].dtype == torch.uint8
     ]
-    # Confirm the A-scale fold actually activated during the forward
-    # trace (configure_ep_scale_fusion sets this flag); guards against the gate
-    # silently degrading to a no-op if a default or gate condition changes.
-    assert ep_batch_manager.config.mxfp4_a_scales_preshuffled, (
-        "MXFP4 EP A-scale fold did not activate; the numeric gate would be moot"
-    )
-
     for key in weight_keys:
         weight = moe_weights_fp4.pop(key)
         scale = moe_weights_fp4.pop(f"{key}_scale")

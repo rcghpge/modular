@@ -33,7 +33,6 @@ from max.graph import (
     Value,
     ops,
 )
-from max.support.math import ceildiv
 
 from ...activation import GatedActivation
 from ...quant_config import QuantConfig
@@ -137,30 +136,6 @@ def _add_mx_format_parameter(
         parameters["MX_FORMAT"] = _mx_format_name(quant_config)
 
 
-def ep_mxfp4_max_padded_m(config: EPConfig) -> int:
-    """Per-expert ``scale_4d`` slot stride in rows for the MXFP4 A-scale
-    preshuffle fold (= ``align_up(max_recv_tokens_per_expert, 32)``). 0 when the
-    fold is off. Single source of truth shared by the dispatch producer
-    (``ep_wait`` up-proj / ``fused_silu`` down-proj) and the matmul reader
-    (``a_scales_max_padded_m``)."""
-    if not config.mxfp4_a_scales_preshuffled:
-        return 0
-    return ep_mxfp4_down_slot_stride(config)
-
-
-def ep_mxfp4_down_slot_stride(config: EPConfig) -> int:
-    """Raw per-expert ``scale_4d`` slot stride
-    (= ``align_up(max_recv_tokens_per_expert, 32)``) for the LOCAL SwiGLU
-    down-proj A-scale fold (``fused_silu`` writes it, the down matmul reads it).
-    Unconditional and independent of the distributed up-proj fold
-    (``mxfp4_a_scales_preshuffled``), so it engages on the distributed-dispatch
-    path where that fold is off. ``ep_mxfp4_max_padded_m`` returns this gated on
-    that flag; the caller here gates on applicability."""
-    n_ranks = config.n_gpus_per_node * config.n_nodes
-    max_recv_per_expert = config.max_tokens_per_rank * n_ranks
-    return ceildiv(max_recv_per_expert, 32) * 32
-
-
 def _ep_dispatch_output_types(
     config: EPConfig,
     device_ref: DeviceRef,
@@ -249,17 +224,11 @@ def _ep_dispatch_output_types(
                 src_info_type,
             ]
         elif uses_mx_ep_token_format(config):
-            # When the A-scale preshuffle fold is on, the dispatch-wait kernel
-            # writes the activation scale directly into the matmul's per-expert
-            # fixed-stride `scale_4d` slots, so the scales output is slot-sized
-            # (`n_local_experts * max_padded_M` rows; `n_local_experts` already
-            # includes the fused shared expert if present) rather than
-            # `max_recv_tokens` rows.
-            scales_rows = (
-                n_local_experts * ep_mxfp4_max_padded_m(config)
-                if config.mxfp4_a_scales_preshuffled
-                else max_recv_tokens
-            )
+            # The dispatch-wait kernel writes the activation scale directly
+            # into the matmul's per-expert fixed-stride `scale_4d` slots, so the
+            # scales output is slot-sized (`n_local_experts` already includes
+            # the fused shared expert if present).
+            scales_rows = n_local_experts * config._max_recv_tokens_per_expert()
             out_scales_type = quant_config.quantized_scales_type(
                 Shape([scales_rows, config.hidden_size]), device_ref
             )
@@ -289,16 +258,14 @@ def _add_mxfp4_scale_fusion_parameters(
 ) -> None:
     """Inject the KS224 up-proj scale-fusion op parameters.
 
-    When ``config.mxfp4_a_scales_preshuffled``, the MXFP4 dispatch-wait kernel
-    writes the activation scale directly into the up-proj grouped-matmul's
-    per-expert fixed-stride ``scale_4d`` slot layout (slot stride
-    ``max_padded_M * K_SCALES``), so the standalone preshuffle is dropped. The
-    matmul reader is told the same ``max_padded_M`` (single source of truth, see
-    ``moe_fp8._local_ep_compute``). No-op when the fusion is off.
+    The MX dispatch-wait kernel writes the activation scale directly into the
+    up-proj grouped-matmul's per-expert fixed-stride ``scale_4d`` slot layout
+    (slot stride ``max_padded_M * K_SCALES``), so the standalone preshuffle is
+    dropped. The matmul reader is told the same ``max_padded_M`` (single source
+    of truth, see ``moe_fp8._local_ep_compute``).
     """
-    if config.mxfp4_a_scales_preshuffled:
-        parameters["fuse_a_scale_preshuffle"] = True
-        parameters["max_padded_M"] = ep_mxfp4_max_padded_m(config)
+    parameters["fuse_a_scale_preshuffle"] = True
+    parameters["max_padded_M"] = config._max_recv_tokens_per_expert()
 
 
 def _ep_common_parameters(
@@ -1326,8 +1293,8 @@ def call_distributed_ep_dispatch(
             n_gpus_per_node=config.n_gpus_per_node,
             n_nodes=config.n_nodes,
             fused_shared_expert=config.fused_shared_expert,
-            fuse_a_scale_preshuffle=config.mxfp4_a_scales_preshuffled,
-            max_padded_m=ep_mxfp4_max_padded_m(config),
+            fuse_a_scale_preshuffle=True,
+            max_padded_m=config._max_recv_tokens_per_expert(),
             mx_format=(
                 _mx_format_name(quant_config)
                 if quant_config is not None and quant_config.is_mxfp6

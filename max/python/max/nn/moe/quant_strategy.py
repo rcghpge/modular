@@ -194,8 +194,8 @@ class Fp8Strategy:
         """Runs grouped FP8 matmul for the routed experts.
 
         ``a_scales_preshuffled``/``a_scales_max_padded_m`` are accepted for
-        ``QuantStrategy`` conformance; they only apply to the MXFP4 EP scale
-        fusion and are ignored here.
+        ``QuantStrategy`` conformance; they only apply to the MX EP paths and
+        are ignored here.
         """
         hidden, input_scales, expert_start, expert_ids, usage_stats = (
             expert_inputs
@@ -340,8 +340,8 @@ class NvMxf4f8Strategy:
         """Runs grouped NVIDIA block-scaled matmul with per-expert scales.
 
         ``a_scales_preshuffled``/``a_scales_max_padded_m`` are accepted for
-        ``QuantStrategy`` conformance; they only apply to the MXFP4 EP scale
-        fusion and are ignored here.
+        ``QuantStrategy`` conformance; they only apply to the MX EP paths and
+        are ignored here.
         """
         if self.is_nvfp4 and expert_scales is None:
             raise ValueError("NVFP4 requires expert_scales")
@@ -864,8 +864,7 @@ class Mxfp6Strategy:
         slot, dropping the standalone preshuffle. The slot layout is shared
         across MX formats (``scale_4d_slot_byte_off`` keys on ``K_SCALES`` and
         ``MXFP6_SF_VECTOR_SIZE`` is 32 like FP4/FP8), so the reader is
-        unchanged. The up-proj fold stays MXFP4-only -- its producer is the EP
-        dispatch path, which has no FP6 slot writer.
+        unchanged.
         """
         _, _, expert_start_indices, _, _ = expert_inputs
         return fused_silu_quantized(
