@@ -345,10 +345,6 @@ def _batched_matmul_cpu[
         var k,
         imm,
     }:
-        var a_stride_between_batches = a.num_elements() // Int(a.dim[0]())
-        var b_stride_between_batches = b.num_elements() // Int(b.dim[0]())
-        var c_stride_between_batches = c.num_elements() // Int(c.dim[0]())
-
         var batch_task_id, matmul_task_id = divmod(task_id, num_tasks_matmul)
 
         var num_batches = Int(c.dim[0]())
@@ -364,14 +360,8 @@ def _batched_matmul_cpu[
 
         for batch in range(batch_start, batch_start + batches_per_task):
             # Get a 2D view of the 3D Tensor.
-            var c_view = TileTensor(
-                c.ptr + batch * c_stride_between_batches,
-                row_major(Int(c.dim[1]()), Int(c.dim[2]())),
-            )
-            var a_view = TileTensor(
-                a.ptr + batch * a_stride_between_batches,
-                row_major(Int(a.dim[1]()), Int(a.dim[2]())),
-            )
+            var c_view = c[batch, :, :]
+            var a_view = a[batch, :, :]
 
             comptime config = get_kernel_config[a_type, b_type, c_type]()
             comptime use_i8mm = use_i8mm_fn[a_type, b_type, c_type]()
@@ -380,10 +370,7 @@ def _batched_matmul_cpu[
             var kh = align_up(k, 8)
             var mh = align_up(m, 2)
 
-            var b_view = TileTensor(
-                b.ptr + batch * b_stride_between_batches,
-                row_major(Int(b.dim[1]()), Int(b.dim[2]())),
-            )
+            var b_view = b[batch, :, :]
 
             var batch_coords = _get_start_indices_of_nth_subvolume[2](
                 batch, c_shape
