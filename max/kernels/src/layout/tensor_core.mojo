@@ -1570,6 +1570,121 @@ struct TensorCore[
                         )
 
     @inline(.always)
+    def load_a[
+        swizzle: Optional[Swizzle] = None,
+        *,
+    ](
+        self,
+        warp_tile: TileTensor[Self.in_type, _, _, address_space=.SHARED, ...],
+        fragments: TileTensor[
+            mut=True, Self.in_type, _, _, address_space=.LOCAL, ...
+        ],
+        mma_tile_coord_k: Int = 0,  # the k coordinate of mma tile
+    ):
+        """
+        Load A matrix fragments from a shared-memory warp tile.
+
+        TileTensor-native variant of the shared-memory `load_a` above: the
+        warp tile and the fragment destination are `TileTensor`s, and the
+        swizzle must be passed explicitly (the legacy overload for
+        `LayoutTensor`s cannot infer it from a `TileTensor` layout).
+        Bridges to the identical ldmatrix/distribute implementation, so the
+        register ordering, swizzle pattern, and alignment requirements match
+        the legacy overload exactly.
+
+        Parameters:
+            swizzle: Optional memory access pattern to optimize memory
+                bandwidth. Must be `None` on NVIDIA GPUs.
+
+        Args:
+            warp_tile: The source data in shared memory.
+            fragments: The destination scalar tile in local memory, of
+                shape (num_frags, MMA M-by-K registers per thread).
+            mma_tile_coord_k: The K coordinate of the MMA tile. Defaults
+                to 0.
+        """
+        comptime assert (
+            self.supported_fp32 or self.supported_half or self.supported_fp8
+        )
+        comptime assert (
+            warp_tile.element_size == 1
+        ), "warp_tile must be a scalar tile"
+        comptime assert (
+            fragments.element_size == 1
+        ), "fragments must be a scalar tile; vectorize is applied internally"
+        comptime assert type_of(
+            fragments
+        ).LayoutType.all_dims_known, (
+            "fragments must have static shape and strides"
+        )
+        comptime frag_width = fragments.static_shape[1]
+        self.load_a[swizzle](
+            warp_tile.to_layout_tensor(),
+            fragments.to_layout_tensor().vectorize[1, frag_width](),
+            mma_tile_coord_k,
+        )
+
+    @inline(.always)
+    def load_b[
+        swizzle: Optional[Swizzle] = None,
+        *,
+    ](
+        self,
+        warp_tile: TileTensor[Self.in_type, _, _, address_space=.SHARED, ...],
+        fragments: TileTensor[
+            mut=True, Self.in_type, _, _, address_space=.LOCAL, ...
+        ],
+        mma_tile_coord_k: Int = 0,  # the k coordinate of mma tile
+        warp_tile_coord_n: Int = 0,  # n coordinate of warp tile
+    ):
+        """
+        Load B matrix fragments from a shared-memory warp tile.
+
+        TileTensor-native variant of the shared-memory `load_b` above: the
+        warp tile and the fragment destination are `TileTensor`s, and the
+        swizzle must be passed explicitly. Bridges to the identical
+        ldmatrix/distribute implementation, so the register ordering,
+        swizzle pattern, and alignment requirements match the legacy
+        overload exactly.
+
+        Parameters:
+            swizzle: Optional memory access pattern for AMD GPUs to optimize
+                memory bandwidth. Must be `None` on NVIDIA GPUs, where the
+                swizzle is always derived from the warp tile's row stride.
+
+        Args:
+            warp_tile: Source tile in shared memory containing the B matrix
+                data.
+            fragments: The destination scalar tile in local memory, of
+                shape (num_frags, MMA K-by-N registers per thread).
+            mma_tile_coord_k: K-dimension coordinate within the warp tile.
+                Defaults to 0.
+            warp_tile_coord_n: N-dimension coordinate of the warp tile.
+                Defaults to 0.
+        """
+        comptime assert (
+            self.supported_fp32 or self.supported_half or self.supported_fp8
+        )
+        comptime assert (
+            warp_tile.element_size == 1
+        ), "warp_tile must be a scalar tile"
+        comptime assert (
+            fragments.element_size == 1
+        ), "fragments must be a scalar tile; vectorize is applied internally"
+        comptime assert type_of(
+            fragments
+        ).LayoutType.all_dims_known, (
+            "fragments must have static shape and strides"
+        )
+        comptime frag_width = fragments.static_shape[1]
+        self.load_b[swizzle](
+            warp_tile.to_layout_tensor(),
+            fragments.to_layout_tensor().vectorize[1, frag_width](),
+            mma_tile_coord_k,
+            warp_tile_coord_n,
+        )
+
+    @inline(.always)
     def load_b(
         self,
         warp_tile: TileTensor,

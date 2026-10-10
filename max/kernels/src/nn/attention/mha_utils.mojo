@@ -47,7 +47,6 @@ from layout import (
     RuntimeLayout,
     TensorLayout,
     TileTensor,
-    lt_to_tt_idx,
     row_major,
     UNKNOWN_VALUE,
 )
@@ -735,66 +734,6 @@ def _copy_frag_to_smem[
         ](
             p_smem_iter,
             p_reg_tile,
-            warp_x,
-            warp_y,
-        )
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name()
-        ]()
-
-
-# Legacy LayoutTensor-overload retained: its callers still pass LayoutTensor
-# register views — gpu/mha.mojo (mha_single_batch,
-# mha_single_batch_pipelined, mha_decoding_single_batch_pipelined),
-# gpu/mla.mojo (mla_decoding_single_batch, mla_prefill_single_batch), and
-# the p-fragment scatter tests. gpu/mha.mojo's mha_decoding_single_batch
-# already passes a native TileTensor and binds to the overload above. The
-# shared-memory operand has no TileTensor iterator equivalent yet.
-@inline(.always)
-def _copy_frag_to_smem[
-    BM: Int,
-    BN: Int,
-    BK: Int,
-    WM: Int,
-    WN: Int,
-    MMA_M: Int,
-    MMA_N: Int,
-    frag_simd_width: Int,
-    *,
-    type0: DType,
-    layout0: Layout,
-    type1: DType,
-    layout1: Layout,
-](
-    # Shared-memory iterator params stay legacy: there is no TileTensor
-    # iterator equivalent yet (repo-wide migration tracking).
-    p_smem_iter: LayoutTensorIter[
-        mut=True, type0, layout0, address_space=.SHARED, ...
-    ],
-    p_reg_tile: LayoutTensor[type1, layout1, _, address_space=.LOCAL],
-    warp_x: UInt32,
-    warp_y: UInt32,
-):
-    comptime if is_nvidia_gpu():
-        _copy_frag_to_smem_nvidia[
-            BM, BN, BK, WM, WN, MMA_M, MMA_N, frag_simd_width
-        ](
-            p_smem_iter,
-            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
-                p_reg_tile
-            ),
-            warp_x,
-            warp_y,
-        )
-    elif is_amd_gpu():
-        _copy_frag_to_smem_amd[
-            BM, BN, BK, WM, WN, MMA_M, MMA_N, frag_simd_width
-        ](
-            p_smem_iter,
-            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
-                p_reg_tile
-            ),
             warp_x,
             warp_y,
         )

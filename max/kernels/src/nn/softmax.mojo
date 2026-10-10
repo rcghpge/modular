@@ -2168,6 +2168,11 @@ def _online_softmax_iter_for_mma_output[
 #
 # Note that the `for k` loops are across warps (k is the index into
 # the `num_warps_n` rowwise warps).
+#
+# Dead in every current instantiation: its only caller is gpu/mha.mojo's
+# `decoding_warp_split_k` branch, which no live call site enables (SM100
+# split-K decode runs the TMEM path in sm100/mla_decode_dispatch.mojo
+# instead). Retained with the warp-split-K branch it serves.
 @inline(.always)
 def _online_softmax_iter_for_mma_output_split_warp_reduce[
     dtype: DType,

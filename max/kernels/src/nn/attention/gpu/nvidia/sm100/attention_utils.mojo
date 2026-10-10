@@ -118,7 +118,9 @@ comptime SharedMemTensor[
     address_space=.SHARED,
 ]
 
-# Legacy LayoutTensor aliases for TMA/MMA API boundaries
+# Legacy LayoutTensor alias: `STMatrixLayout.TensorType` builds local
+# register tiles for the tcgen05 TMEM `st_matrix` store path, which has no
+# TileTensor equivalent yet.
 comptime LocalLT[
     dtype: DType, layout: Layout, element_layout: Layout = Layout(1, 1)
 ] = LayoutTensor[

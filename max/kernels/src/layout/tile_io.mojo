@@ -18,11 +18,12 @@ from max.gpu.memory import CacheEviction, Fill
 from std.math.uutils import umod
 from std.sys import align_of
 
-from layout import Idx
+from layout import Coord, Idx
 from .layout_tensor import ThreadScope
 from .swizzle import Swizzle
 from .tile_layout import Layout
 from .tile_tensor import TileTensor
+from .tensor_engine import DefaultEngine
 
 
 @inline(.nodebug)
@@ -810,6 +811,91 @@ def copy_local_to_dram[
         num_threads=num_threads,
         thread_scope=thread_scope,
     ]().copy(dst, src)
+
+
+@inline(.nodebug)
+def copy_local_to_dram[
+    thread_layout: Layout,
+    *,
+    num_threads: Int = thread_layout.size(),
+    thread_scope: ThreadScope = ThreadScope.BLOCK,
+](
+    dst: TileTensor[mut=True, address_space=.GENERIC, ...],
+    src: TileTensor[address_space=.LOCAL, ...],
+    valid_rows: Int,
+):
+    """Copies register vectors into the valid rows of a generic-memory tile.
+
+    Clamps the signed row bound to the destination height. Unlike the
+    unbounded overload, this path uses natural scalar alignment for vector
+    loads and stores, including when every row is valid.
+
+    Parameters:
+        thread_layout: Canonical row-major, flat rank-two thread layout.
+        num_threads: Number of participating threads, with the same filtering
+            semantics as the unbounded overload.
+        thread_scope: Scope used to obtain the worker index.
+
+    Args:
+        dst: Flat rank-two FP32 tile with contiguous two-scalar vectors.
+        src: Static FP32 register layout with the same distributed vector count.
+        valid_rows: Number of valid destination rows, relative to `dst`.
+
+    Constraints:
+        Uses `DefaultEngine` with vector width two. Destination dimensions
+        must be positive, static, and divisible by the thread dimensions.
+        Source scalar offsets must describe disjoint contiguous vectors.
+        Destination column stride must be two; its positive row stride must
+        cover the entire row. Bases and scalar offsets require FP32 alignment.
+        Allocations and signed index types must accommodate the full layout.
+        BLOCK workers that wrap the thread layout require distinct destination
+        views and register owners, as in independent warp copies.
+    """
+    comptime assert src.dtype == .float32 and dst.dtype == .float32
+    comptime assert src.Engine == DefaultEngine[element_width=2]
+    comptime assert dst.Engine == DefaultEngine[element_width=2]
+    comptime assert src.rank == 2 and src.flat_rank == 2
+    comptime assert dst.rank == 2 and dst.flat_rank == 2
+    comptime assert src.LayoutType.all_dims_known
+    comptime assert dst.LayoutType.shape_known
+    comptime assert thread_layout.rank == 2
+    comptime assert thread_layout.shape_known and thread_layout.stride_known
+    comptime rows = dst.LayoutType.static_shape[0]
+    comptime cols = dst.LayoutType.static_shape[1]
+    comptime thread_rows = thread_layout.static_shape[0]
+    comptime thread_cols = thread_layout.static_shape[1]
+    comptime assert rows > 0 and cols > 0
+    comptime assert thread_rows > 0 and thread_cols > 0
+    comptime assert thread_layout.static_stride[0] == thread_cols
+    comptime assert thread_layout.static_stride[1] == 1
+    comptime assert rows % thread_rows == 0 and cols % thread_cols == 0
+    comptime assert dst.LayoutType.static_stride[1] == 2
+    comptime assert src.LayoutType.static_product == (
+        rows * cols // thread_layout.size()
+    )
+    debug_assert(Int(dst.layout.stride[0]().value()) >= 2 * cols)
+
+    var row_bound = min(rows, max(0, valid_rows))
+    if row_bound == 0:
+        return
+    var worker_idx = _get_worker_idx[thread_scope]()
+    comptime if num_threads > thread_layout.size():
+        if worker_idx >= thread_layout.size():
+            return
+
+    var thread_row = (worker_idx // thread_cols) % thread_rows
+    var thread_col = worker_idx % thread_cols
+    comptime fragment_rows = rows // thread_rows
+    comptime for i in range(src.LayoutType.static_product):
+        var row = thread_row + (i % fragment_rows) * thread_rows
+        if row < row_bound:
+            var col = thread_col + (i // fragment_rows) * thread_cols
+            dst._store_storage[alignment=4](
+                dst.layout[linear_idx_type=dst.linear_idx_type](
+                    Coord(row, col)
+                ),
+                rebind[dst.ElementType](src[(i)]),
+            )
 
 
 @inline(.nodebug)

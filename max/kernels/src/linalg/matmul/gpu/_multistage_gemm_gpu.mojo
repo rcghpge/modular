@@ -62,6 +62,7 @@ from layout.layout_tensor import (
 from layout.swizzle import Swizzle, make_ldmatrix_swizzle, make_swizzle
 from layout.tile_layout import Layout as TileLayout
 from layout.tile_tensor import lt_to_tt, stack_allocation
+from layout.tile_io import copy_local_to_shared as tile_io_copy_local_to_shared
 from layout.tensor_core import TensorCore, get_fragment_size, get_mma_shape
 
 from std.utils import StaticTuple
@@ -123,7 +124,6 @@ def warp_split_k_reduction[
     comptime assert c_reg_tile.static_shape[1] > 0
     comptime assert c_reg_tile.static_stride[1] == 1
     comptime assert c_reg_tile.static_stride[0] == c_reg_tile.static_shape[1]
-    comptime red_layout = Layout.row_major(1, num_threads_per_warp_k_part)
     comptime red_layout_native = row_major[1, num_threads_per_warp_k_part]()
 
     comptime num_mmas = c_layout.static_shape[0]
@@ -142,9 +142,9 @@ def warp_split_k_reduction[
             row_major[1, BM * BN](),
         )
         if i_red <= warp_k_part_id < 2 * i_red:
-            copy_local_to_shared[thread_layout=red_layout](
-                red_tb_smem.to_layout_tensor().vectorize[1, c_frag_size](),
-                c_reg_tile.to_layout_tensor().vectorize[1, c_frag_size](),
+            tile_io_copy_local_to_shared[thread_layout=red_layout_native](
+                red_tb_smem.vectorize[1, c_frag_size](),
+                c_reg_tile.vectorize[1, c_frag_size](),
             )
         barrier()
         if warp_k_part_id < i_red:

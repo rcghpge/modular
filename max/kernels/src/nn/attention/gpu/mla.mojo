@@ -78,7 +78,6 @@ from max.gpu.memory import (
 )
 from kv_cache.types import KVCacheT
 from layout import (
-    lt_to_tt_idx,
     Coord,
     Idx,
     IntTuple,
@@ -2165,20 +2164,15 @@ def mla_decoding_single_batch[
     comptime p_frag_size = frag_size[2]
     comptime p_frag_simdwidth = p_frag_size // 2
 
-    var p_reg_tile_native = tt_stack_allocation[
-        accum_type, address_space=.LOCAL
-    ](row_major[num_m_mmas * num_n_mmas, p_frag_size]())
+    var p_reg_tile = tt_stack_allocation[accum_type, address_space=.LOCAL](
+        row_major[num_m_mmas * num_n_mmas, p_frag_size]()
+    )
 
     comptime num_output_rows = num_m_mmas * (WN_O // MMA_N)  # num_n_mmas
     comptime num_output_rows_full = num_output_rows
-    var output_reg_tile_native = tt_stack_allocation[
-        accum_type, address_space=.LOCAL
-    ](row_major[num_output_rows_full, p_frag_size]()).fill(0)
-    # MMA, softmax and copy helpers retain their legacy LayoutTensor views.
-    var p_reg_tile = p_reg_tile_native.to_layout_tensor().as_unsafe_any_origin()
-    var output_reg_tile = (
-        output_reg_tile_native.to_layout_tensor().as_unsafe_any_origin()
-    )
+    var output_reg_tile = tt_stack_allocation[accum_type, address_space=.LOCAL](
+        row_major[num_output_rows_full, p_frag_size]()
+    ).fill(0)
 
     # Rowwise max and sum for online softmax
     comptime row_alignment = align_of[
@@ -2343,9 +2337,7 @@ def mla_decoding_single_batch[
             prefetch_init=True,
             static_num_iters=ufloordiv(nope_dim, BK),
         ](
-            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
-                p_reg_tile
-            ),
+            p_reg_tile,
             q_smem_iter,
             k_gmem_iter,
             q_smem_iter,
@@ -2367,9 +2359,7 @@ def mla_decoding_single_batch[
             prefetch_init=False,
             static_num_iters=ufloordiv(rope_dim, BK),
         ](
-            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
-                p_reg_tile
-            ),
+            p_reg_tile,
             q_smem_iter.next_unsafe(
                 q_smem_iter.linear_uint_type(ufloordiv(nope_dim, BK))
             ),
@@ -2470,13 +2460,13 @@ def mla_decoding_single_batch[
         # Increment mask to next BM x BN block.
         mask_warp_col += BN
 
-        comptime reg_layout_by_mma_unit = Layout.row_major(
+        comptime reg_layout_by_mma_unit = row_major[
             2 * num_m_mmas * num_n_mmas, 2
-        )
+        ]()
 
-        comptime output_layout_by_mma_unit = Layout.row_major(
+        comptime output_layout_by_mma_unit = row_major[
             2 * num_m_mmas * (WN_O // MMA_N), 2
-        )
+        ]()
         _online_softmax_iter_for_mma_output[
             accum_type,
             # score layout by mma unit
@@ -2487,11 +2477,11 @@ def mla_decoding_single_batch[
             Layout.row_major(8, 4),
             use_exp2=True,
         ](
-            lt_to_tt_idx[linear_idx_type=output_reg_tile.linear_idx_type](
-                output_reg_tile.reshape[output_layout_by_mma_unit]()
+            output_reg_tile.reshape[type_of(output_layout_by_mma_unit)](
+                output_layout_by_mma_unit
             ).vectorize[1, 2](),
-            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
-                p_reg_tile.reshape[reg_layout_by_mma_unit]()
+            p_reg_tile.reshape[type_of(reg_layout_by_mma_unit)](
+                reg_layout_by_mma_unit
             ).vectorize[1, 2](),
             warp_scratch.tile[2 * num_warps_n, WM](Coord(0, warp_y)),
             rowmax,
@@ -2524,9 +2514,7 @@ def mla_decoding_single_batch[
             prefetch_init=False,
             static_num_iters=ufloordiv(BN, BK),
         ](
-            lt_to_tt_idx[linear_idx_type=output_reg_tile.linear_idx_type](
-                output_reg_tile
-            ),
+            output_reg_tile,
             p_smem_iter,
             v_smem_iter,
             p_smem_iter,
@@ -2560,6 +2548,9 @@ def mla_decoding_single_batch[
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN_O](warp_y, warp_x)
 
+    # The FP32 -> half downcast copy still lives on the legacy path.
+    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
+
     # Write to global memory.
     comptime if output_type.is_half_float():
         comptime swizzle = make_swizzle[
@@ -2580,7 +2571,7 @@ def mla_decoding_single_batch[
             thread_layout=Layout.row_major(8, 4), swizzle=swizzle
         ](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile.vectorize[1, 2]().transpose(),
+            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
         )
 
         # Guard writing to shared memory.
@@ -2602,7 +2593,7 @@ def mla_decoding_single_batch[
     else:
         copy_local_to_dram[dst_thread_layout=Layout.row_major(8, 4)](
             output_gmem_warp_tile.vectorize[1, 2](),
-            output_reg_tile.vectorize[1, 2]().transpose(),
+            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
         )
 
 
@@ -3780,7 +3771,6 @@ def mla_prefill_single_batch[
         num_warps_m * num_warps_n == num_threads // WARP_SIZE
     ), "Number of warps doesn't match warp tile sizes."
 
-    var tid: Int = thread_idx.x
     var warp_id = UInt32(warp_id[broadcast=True]())
     var lane = UInt32(lane_id())
 
@@ -3896,18 +3886,13 @@ def mla_prefill_single_batch[
     comptime p_frag_size = frag_size[2]
     comptime p_frag_simdwidth = p_frag_size // 2
 
-    var p_reg_tile_native = tt_stack_allocation[
-        accum_type, address_space=.LOCAL
-    ](row_major[num_m_mmas * num_n_mmas, p_frag_size]())
-
-    var output_reg_tile_native = tt_stack_allocation[
-        accum_type, address_space=.LOCAL
-    ](row_major[num_m_mmas * num_n_mmas_output, p_frag_size]()).fill(0)
-    # MMA, softmax and copy helpers retain their legacy LayoutTensor views.
-    var p_reg_tile = p_reg_tile_native.to_layout_tensor().as_unsafe_any_origin()
-    var output_reg_tile = (
-        output_reg_tile_native.to_layout_tensor().as_unsafe_any_origin()
+    var p_reg_tile = tt_stack_allocation[accum_type, address_space=.LOCAL](
+        row_major[num_m_mmas * num_n_mmas, p_frag_size]()
     )
+
+    var output_reg_tile = tt_stack_allocation[accum_type, address_space=.LOCAL](
+        row_major[num_m_mmas * num_n_mmas_output, p_frag_size]()
+    ).fill(0)
 
     # Rowwise max and sum for online softmax
     comptime row_alignment = align_of[
@@ -4179,9 +4164,7 @@ def mla_prefill_single_batch[
             static_num_iters=q_depth // BK,
             k_group_size=config.k_group_size,
         ](
-            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
-                p_reg_tile
-            ),
+            p_reg_tile,
             q_smem_iter,
             k_smem_iter,
             q_smem_iter,
@@ -4279,12 +4262,12 @@ def mla_prefill_single_batch[
         # Increment mask to next BM x BN block.
         mask_warp_col += UInt32(BN)
 
-        comptime reg_layout_by_mma_unit = Layout.row_major(
+        comptime reg_layout_by_mma_unit = row_major[
             2 * num_m_mmas * num_n_mmas, 2
-        )
-        comptime reg_output_layout_by_mma_unit = Layout.row_major(
+        ]()
+        comptime reg_output_layout_by_mma_unit = row_major[
             2 * num_m_mmas * num_n_mmas_output, 2
-        )
+        ]()
 
         _online_softmax_iter_for_mma_output[
             accum_type,
@@ -4296,11 +4279,11 @@ def mla_prefill_single_batch[
             Layout.row_major(8, 4),
             use_exp2=True,
         ](
-            lt_to_tt_idx[linear_idx_type=output_reg_tile.linear_idx_type](
-                output_reg_tile.reshape[reg_output_layout_by_mma_unit]()
+            output_reg_tile.reshape[type_of(reg_output_layout_by_mma_unit)](
+                reg_output_layout_by_mma_unit
             ).vectorize[1, 2](),
-            lt_to_tt_idx[linear_idx_type=p_reg_tile.linear_idx_type](
-                p_reg_tile.reshape[reg_layout_by_mma_unit]()
+            p_reg_tile.reshape[type_of(reg_layout_by_mma_unit)](
+                reg_layout_by_mma_unit
             ).vectorize[1, 2](),
             warp_scratch.tile[2 * num_warps_n, WM](Coord(0, Int(warp_y))),
             rowmax,
@@ -4372,9 +4355,7 @@ def mla_prefill_single_batch[
                 static_num_iters=ufloordiv(BN, BK),
                 k_group_size=config.k_group_size,
             ](
-                lt_to_tt_idx[linear_idx_type=output_reg_tile.linear_idx_type](
-                    output_reg_tile
-                ),
+                output_reg_tile,
                 p_smem_iter,
                 v_smem_iter,
                 p_smem_iter,
@@ -4385,7 +4366,9 @@ def mla_prefill_single_batch[
         else:
             # Reuse 1st mma output (MMA_M, MMA_N) as 2nd mma's input (MMA_M, MMA_K).
             # The num_n_mmas dim becomes "num_k_mmas" for 2nd mma.
-            var p_reg_iter = p_reg_tile.tiled_iterator[
+            # Retained legacy: multistage_mma takes a LayoutTensorIter for
+            # its A operand; there is no TileTensor iterator equivalent yet.
+            var p_reg_iter = p_reg_tile.to_layout_tensor().tiled_iterator[
                 MMA_K // MMA_N * num_m_mmas, p_frag_size
             ](0, 0)
 
@@ -4406,9 +4389,7 @@ def mla_prefill_single_batch[
                 static_num_iters=ufloordiv(BN, BK),
                 k_group_size=config.k_group_size,
             ](
-                lt_to_tt_idx[linear_idx_type=output_reg_tile.linear_idx_type](
-                    output_reg_tile
-                ),
+                output_reg_tile,
                 p_reg_iter,
                 v_smem_iter,
                 p_smem_iter,
@@ -4461,6 +4442,9 @@ def mla_prefill_single_batch[
                     n_mma * num_m_mmas + m_mma, i + p_frag_size // 2
                 ] *= rowsum_inv1
 
+    # The FP32 -> half downcast copy still lives on the legacy path.
+    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
+
     # Write to global memory.
     comptime if output_type.is_half_float():
         comptime swizzle = make_swizzle[
@@ -4480,7 +4464,7 @@ def mla_prefill_single_batch[
             thread_layout=Layout.row_major(8, 4), swizzle=swizzle
         ](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile.vectorize[1, 2]().transpose(),
+            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
         )
 
         # Guard writing to shared memory.
@@ -4502,7 +4486,7 @@ def mla_prefill_single_batch[
     else:
         copy_local_to_dram[dst_thread_layout=Layout.row_major(8, 4)](
             output_gmem_warp_tile.vectorize[1, 2](),
-            output_reg_tile.vectorize[1, 2]().transpose(),
+            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
         )
 
 

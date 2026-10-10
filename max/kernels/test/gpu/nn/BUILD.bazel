@@ -569,6 +569,7 @@ _FILECHECK_TESTS = [
     for src in glob(
         ["**/*.mojo"],
         exclude = _FILECHECK_TESTS + [
+            "test_mha_fa2_fp32_direct_output.mojo",
             "test_mha_causal_mask.mojo",
             "test_mha_causal_mask_amd.mojo",
             "test_mla_decode_paged_variable.mojo",
@@ -1664,6 +1665,26 @@ mojo_test(
         "//max:internal_utils",
         "//max:kv_cache",
         "//max:linalg",
+        "//max:nn",
+        "@mojo//:std",
+    ],
+)
+
+# Bounded native LOCAL-to-DRAM epilogue correctness, exercised through
+# the direct FP32 MHA output path.
+mojo_test(
+    name = "test_mha_fa2_fp32_direct_output.mojo.test",
+    size = "large",
+    srcs = ["test_mha_fa2_fp32_direct_output.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
+    tags = ["gpu"],
+    target_compatible_with = [
+        "//:has_gpu",
+        "//:nvidia_gpu",
+    ],
+    deps = [
+        "//max:layout",
+        "//max:max_mojo",
         "//max:nn",
         "@mojo//:std",
     ],
