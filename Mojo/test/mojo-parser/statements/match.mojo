@@ -772,6 +772,40 @@ def test_or_MOCO_4953(var a: Optional[Int]):
         pass
 
 
+# CHECK-LABEL: lit.fn @"match_optional_product_concluding
+# MOCO-4945
+def match_optional_product_concluding(
+    a: Tuple[Optional[Int], Optional[Int]]
+) -> Int:
+    # Covering every constructor pair makes each residual match conclusive.
+    # Each dimension only tests Some; None is its exclusive complement.
+    # CHECK:       _get_enum_discriminant
+    # CHECK:       @"__eq__(::SIMD
+    # CHECK:       _get_enum_discriminant
+    # CHECK:       @"__eq__(::SIMD
+    # CHECK:       lit.return
+    # CHECK:       hlcf.unreachable
+    # CHECK:       lit.return
+    # CHECK:       hlcf.unreachable
+    # CHECK:       _get_enum_discriminant
+    # CHECK:       @"__eq__(::SIMD
+    # CHECK:       lit.return
+    # CHECK:       hlcf.unreachable
+    # CHECK:       lit.return
+    # CHECK-NOT:   _get_enum_discriminant
+    # CHECK-NOT:   @"__eq__(::SIMD
+    # CHECK:       lit.end_fn
+    __match a:
+    case (.Some(x), .Some(y)):
+        return 1
+    case (.Some(x), .None):
+        return 2
+    case (.None, .Some(y)):
+        return 3
+    case (.None, .None):
+        return 4
+
+
 @fieldwise_init
 struct Vec3:
     var x: Int
@@ -806,19 +840,18 @@ def match_vec3(v: Vec3):
 
 # CHECK-LABEL: lit.fn @"match_optional
 def match_optional(opt: Optional[Int], mut mut_opt: Optional[Int]):
-    # Immutable Optional: None then Some (sorted by discriminant). Some's
-    # then-region projects the payload.
+    # Immutable Optional: Some is tested and None is its exclusive complement.
+    # Some's then-region projects the payload.
     # CHECK:       lit.call {{.*}}@"_get_enum_discriminant{{.*}}[imm *"opt`
     # CHECK:       lit.call {{.*}}@"__eq__(
     # CHECK:       hlcf.if %{{.*}} {
-    # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 1
-    # CHECK:       } else {
-    # CHECK:         hlcf.if.elifcond.yield
-    # CHECK:       } then {
     # CHECK:         lit.call {{.*}}@"_unsafe_get_enum_payload{{.*}}(%opt)
     # CHECK:         [[ELT:%.*]] = lit.var.decl "elt" ref
     # CHECK:         lit.ref.store {{.*}}, [[ELT]]
     # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 0
+    # CHECK:       } else {
+    # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 1
+    # CHECK:       }
     __match opt:
     case Optional.Some(ref elt):
         _ = elt
@@ -832,14 +865,13 @@ def match_optional(opt: Optional[Int], mut mut_opt: Optional[Int]):
     # CHECK:       lit.call {{.*}}@"_get_enum_discriminant{{.*}}[muttoimm *"mut_opt`
     # CHECK:       lit.call {{.*}}@"__eq__(
     # CHECK:       hlcf.if %{{.*}} {
-    # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 3
-    # CHECK:       } else {
-    # CHECK:         hlcf.if.elifcond.yield
-    # CHECK:       } then {
     # CHECK:         lit.call {{.*}}@"_unsafe_get_enum_payload{{.*}}(%mut_opt)
     # CHECK:         [[MELT:%.*]] = lit.var.decl "elt" ref
     # CHECK:         lit.ref.store {{.*}}, [[MELT]]
     # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 2
+    # CHECK:       } else {
+    # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 3
+    # CHECK:       }
     __match mut_opt:
     case Optional.Some(ref elt):
         _ = elt
@@ -880,22 +912,16 @@ def testLValueMutableMatch(var a: Optional[Int]):
         value += 1
 
 # Bool ladder is one `hlcf.if` (no enclosing match: nothing follows it).
-# Arms are ordered by spelling (`False` then `True`).
+# `True` is tested and `False` is its exclusive complement.
 # The tuple ladder folds `(_, y_elt)` into the elif else of `y[0] == True`.
 # CHECK-LABEL: lit.fn @"testMatchLadder
 def testMatchLadder(x: Bool, y: Tuple[Bool, Int]):
     # CHECK:       lit.call {{.*}}@"__eq__(::Bool,::Bool)"(%x,
     # CHECK:       hlcf.if %{{.*}} {
-    # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 1
-    # CHECK:         hlcf.yield
-    # CHECK:       } else {
-    # CHECK:         lit.call {{.*}}@"__eq__(::Bool,::Bool)"(%x,
-    # CHECK:         hlcf.if.elifcond.yield
-    # CHECK:       } then {
     # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 0
     # CHECK:         hlcf.yield
     # CHECK:       } else {
-    # CHECK:         hlcf.unreachable
+    # CHECK:         lit.call {{.*}}@"case_callee{{.*}}<index> 1
     # CHECK:       }
     __match x:
     case True:

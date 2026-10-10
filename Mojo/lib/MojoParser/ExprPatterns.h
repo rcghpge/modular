@@ -273,6 +273,21 @@ public:
     return {internArray(cmds)};
   }
 
+  /// Drop a handled leading test and move irrefutable bindings behind the
+  /// remaining tests so recursive emission can cluster those tests.
+  PatternCommandList internResidualCommandList(PatternCommandList commandList) {
+    PatternCommandList remainingCommands = commandList.drop_front();
+    SmallVector<const PatternCommand *, 8> reorderedCommands;
+    reorderedCommands.reserve(remainingCommands.size());
+    for (const PatternCommand *command : remainingCommands)
+      if (command->kind != PatternCommand::Bind)
+        reorderedCommands.push_back(command);
+    for (const PatternCommand *command : remainingCommands)
+      if (command->kind == PatternCommand::Bind)
+        reorderedCommands.push_back(command);
+    return internCommandList(reorderedCommands);
+  }
+
   /// Diagnose non-exhaustive and unreachable `__match` cases; set
   /// `MatchCaseEntry::isUnreachable` / `isConcluding` for covered and
   /// coverage-completing arms. When requested, returns up to
@@ -295,6 +310,11 @@ public:
   /// `Pair(a=False, b=True)`). Leaves `out` empty for any other subject.
   void spellSubjectPatterns(const PatternPath *rootPath, SMLoc loc,
                             SmallVectorImpl<std::string> &out);
+
+  /// Recompute coverage for a residual case set produced during recursive
+  /// emission, marking the arm that closes its local search space.
+  void markResidualConcludingCase(MutableArrayRef<MatchCaseEntry> caseEntries,
+                                  const PatternPath *rootPath, SMLoc matchLoc);
 
 private:
   struct PathKey {

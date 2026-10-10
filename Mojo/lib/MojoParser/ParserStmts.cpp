@@ -298,15 +298,19 @@ struct StmtParser : public ParserBase {
   /// Emit a non-empty list of match case entries as one `hlcf.match`. Each
   /// entry's command list is tested in its own case region; the match else is
   /// a no-op fallthrough. `emissionState` is shared across the cases so path
-  /// projections are memoized for the whole match.
+  /// projections are memoized for the whole match. `matchBuilder` owns
+  /// residual command lists and recomputes their local coverage.
   void emitCases(ArrayRef<MatchCaseEntry> caseEntries,
+                 PatternMatchBuilder &matchBuilder,
                  PatternEmitState &emissionState, bool inMatchCase);
 
   /// Emit a cluster of cases that share a leading pattern test. When
   /// `inMatchCase` is true, emission is already inside an `hlcf.match` case
   /// region; otherwise a fresh match (or equivalent CF) may be created.
+  /// `matchBuilder` owns residual command lists and coverage state;
   /// `emissionState` is the match-wide path memo and emitter.
   void emitCaseCluster(ArrayRef<MatchCaseEntry> caseEntries,
+                       PatternMatchBuilder &matchBuilder,
                        PatternEmitState &emissionState, bool inMatchCase);
 
   /// Emit `comptime __match` as an `hlcf.comptime.if` elif chain: each case's
@@ -1784,7 +1788,8 @@ ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
   if (isComptime)
     emitComptimeCases(caseEntries, emissionState, curIndent);
   else
-    emitCases(caseEntries, emissionState, /*inMatchCase=*/false);
+    emitCases(caseEntries, checkListBuilder, emissionState,
+              /*inMatchCase=*/false);
 
   afterCaseCursor.restore(getLexer());
   return success();
@@ -2122,6 +2127,7 @@ struct SpellingOrEnumCase {
 /// produce a terminator. Otherwise, all scenarios fall through and no
 /// terminator is added.
 void StmtParser::emitCaseCluster(ArrayRef<MatchCaseEntry> caseEntries,
+                                 PatternMatchBuilder &matchBuilder,
                                  PatternEmitState &emissionState,
                                  bool inMatchCase) {
   assert(caseEntries.size() > 1 &&
@@ -2132,15 +2138,14 @@ void StmtParser::emitCaseCluster(ArrayRef<MatchCaseEntry> caseEntries,
         return entry.isConcluding;
       });
 
-  // A trailing always-matching case (`_` or bind-only) is the exclusive
-  // complement of the tested leading values (e.g. `case False: ...; case _:
-  // ...` is `False` then everything else). findClusterSize only includes it
-  // when every tested case is fully decided by the leading test; emit it as
-  // the elif else, not as another tested arm.
-  const MatchCaseEntry *trailingWildcard = nullptr;
+  // A trailing wildcard, or a constructor that locally completes coverage, is
+  // the exclusive complement of the tested leading values. Emit it as the
+  // else arm instead of redundantly testing the final constructor.
+  ArrayRef<MatchCaseEntry> trailingComplement;
+  bool dropComplementTest = false;
   ArrayRef<MatchCaseEntry> testedEntries = caseEntries;
   if (caseEntries.back().alwaysMatches(/*skipFirstCommand=*/false)) {
-    trailingWildcard = &caseEntries.back();
+    trailingComplement = caseEntries.take_back();
     testedEntries = caseEntries.drop_back();
     assert(
         llvm::all_of(testedEntries,
@@ -2148,6 +2153,27 @@ void StmtParser::emitCaseCluster(ArrayRef<MatchCaseEntry> caseEntries,
                        return e.alwaysMatches(/*skipFirstCommand=*/true);
                      }) &&
         "trailing catch-all requires tested cases with no residual patterns");
+  } else if (caseEntries.back().isConcluding) {
+    SpellingOrEnumCase complementTest =
+        SpellingOrEnumCase::getLeadingTest(caseEntries.back());
+    size_t complementStart = caseEntries.size() - 1;
+    while (complementStart != 0 &&
+           SpellingOrEnumCase::getLeadingTest(
+               caseEntries[complementStart - 1]) == complementTest)
+      --complementStart;
+
+    // Only fold a contiguous trailing cluster. A repeated earlier test would
+    // also belong in the complement arm and requires general regrouping.
+    bool testOccursEarlier = llvm::any_of(
+        caseEntries.take_front(complementStart),
+        [&](const MatchCaseEntry &entry) {
+          return SpellingOrEnumCase::getLeadingTest(entry) == complementTest;
+        });
+    if (!testOccursEarlier && complementStart != 0) {
+      trailingComplement = caseEntries.drop_front(complementStart);
+      testedEntries = caseEntries.take_front(complementStart);
+      dropComplementTest = true;
+    }
   }
   assert(!testedEntries.empty() &&
          "cluster must contain at least one tested case");
@@ -2248,12 +2274,18 @@ void StmtParser::emitCaseCluster(ArrayRef<MatchCaseEntry> caseEntries,
     SmallVector<MatchCaseEntry, 4> residuals;
     for (size_t j = i; j != groupEnd; ++j) {
       MatchCaseEntry subCaseEntry = orderedCases[j].second;
-      subCaseEntry.commandList = subCaseEntry.commandList.drop_front();
+      subCaseEntry.commandList =
+          matchBuilder.internResidualCommandList(subCaseEntry.commandList);
       residuals.push_back(subCaseEntry);
     }
 
+    matchBuilder.markResidualConcludingCase(
+        residuals, emissionState.rootPath,
+        orderedCases[i].second.patternExpr->getLoc());
+
     auto caseEmissionState = emissionState;
-    emitCases(residuals, caseEmissionState, /*inMatchCase*/ inMatchCase);
+    emitCases(residuals, matchBuilder, caseEmissionState,
+              /*inMatchCase*/ inMatchCase);
 
     // Emit cases will emit a terminator if inMatchCase is true but unreachable
     // arm may already have terminated this block with `hlcf.unreachable`. Only
@@ -2268,9 +2300,20 @@ void StmtParser::emitCaseCluster(ArrayRef<MatchCaseEntry> caseEntries,
   // Else is the trailing `_` (exclusive complement) when present; otherwise
   // fall through / match.next — or unreachable when coverage already concluded.
   builder.setInsertionPointToStart(&ifOp.getElseRegion().emplaceBlock());
-  if (trailingWildcard) {
+  if (!trailingComplement.empty()) {
+    SmallVector<MatchCaseEntry, 4> complementCases;
+    complementCases.reserve(trailingComplement.size());
+    for (MatchCaseEntry complement : trailingComplement) {
+      if (dropComplementTest)
+        complement.commandList =
+            matchBuilder.internResidualCommandList(complement.commandList);
+      complementCases.push_back(complement);
+    }
+    matchBuilder.markResidualConcludingCase(
+        complementCases, emissionState.rootPath,
+        trailingComplement.front().patternExpr->getLoc());
     auto caseEmissionState = emissionState;
-    emitCases(*trailingWildcard, caseEmissionState,
+    emitCases(complementCases, matchBuilder, caseEmissionState,
               /*inMatchCase*/ inMatchCase);
     if (!builder.getInsertionBlock()->mightHaveTerminator())
       HLCF::YieldOp::create(builder, loc);
@@ -2301,6 +2344,7 @@ void StmtParser::emitCaseCluster(ArrayRef<MatchCaseEntry> caseEntries,
 /// produce a terminator. Otherwise, all scenarios fall through and no
 /// terminator is added.
 void StmtParser::emitCases(ArrayRef<MatchCaseEntry> caseEntries,
+                           PatternMatchBuilder &matchBuilder,
                            PatternEmitState &emissionState, bool inMatchCase) {
   assert(!caseEntries.empty() && "emitCases requires a non-empty list");
 
@@ -2416,7 +2460,8 @@ void StmtParser::emitCases(ArrayRef<MatchCaseEntry> caseEntries,
 
   // If all of the cases are a cluster, emit them together.
   if (caseEntries.size() > 1 && clusterSizes.size() == 1) {
-    emitCaseCluster(caseEntries, emissionState, /*inMatchCase*/ inMatchCase);
+    emitCaseCluster(caseEntries, matchBuilder, emissionState,
+                    /*inMatchCase*/ inMatchCase);
     return;
   }
 
@@ -2444,7 +2489,8 @@ void StmtParser::emitCases(ArrayRef<MatchCaseEntry> caseEntries,
     // share case guards and diagnose situations with overlapping or
     // non-exhaustive clusters.
     if (thisCluster.size() > 1) {
-      emitCaseCluster(thisCluster, caseEmissionState, /*inMatchCase*/ true);
+      emitCaseCluster(thisCluster, matchBuilder, caseEmissionState,
+                      /*inMatchCase*/ true);
       continue;
     }
 

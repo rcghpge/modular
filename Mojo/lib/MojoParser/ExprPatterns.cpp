@@ -2128,6 +2128,41 @@ std::string PatternMatchBuilder::formatCaseArms(ArrayRef<std::string> patterns,
   return arms;
 }
 
+/// Recompute coverage after emission removes a shared leading test. For
+/// `(.Some, .Some)` followed by `(.Some, .None)`, clustering the first
+/// `.Some` leaves `.Some` / `.None` residuals that conclude the second value.
+void PatternMatchBuilder::markResidualConcludingCase(
+    MutableArrayRef<MatchCaseEntry> caseEntries, const PatternPath *rootPath,
+    SMLoc matchLoc) {
+  MatchCoveringSpace *space =
+      createRootCoveringSpace(*this, rootPath, matchLoc);
+
+  for (MatchCaseEntry &entry : caseEntries) {
+    entry.isConcluding = false;
+    if (entry.alwaysMatches()) {
+      entry.isConcluding = true;
+      return;
+    }
+    if (entry.guardExpr)
+      continue;
+    if (space->kind != MatchCoveringSpace::Kind::FiniteCtors &&
+        space->kind != MatchCoveringSpace::Kind::OpenCtors &&
+        space->kind != MatchCoveringSpace::Kind::Product &&
+        space->kind != MatchCoveringSpace::Kind::LiteralSet)
+      continue;
+
+    bool hitOpen = false;
+    bool allAltsInterpreted = false;
+    if (!coverCommands(*space, entry.commandList, rootPath, hitOpen,
+                       allAltsInterpreted))
+      continue;
+    if (hitOpen && space->isFullyCovered()) {
+      entry.isConcluding = true;
+      return;
+    }
+  }
+}
+
 std::string PatternMatchBuilder::checkCaseExhaustivityAndUnreachability(
     MutableArrayRef<MatchCaseEntry> caseEntries, const PatternPath *rootPath,
     SMLoc matchLoc, bool offerMissingCases) {
