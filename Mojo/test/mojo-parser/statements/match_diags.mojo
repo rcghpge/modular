@@ -220,6 +220,13 @@ def match_struct_pattern_diags(v: Vec3):
         pass
 
 
+def match_empty_struct_pattern(s: String):
+    __match s:
+    # expected-warning @+1 {{struct pattern without subpatterns does not test anything; replace it with '_'}}
+    case String():
+        pass
+
+
 def match_enum_pattern_diags(opt: Optional[Int], someEnum: Some[EnumLike]):
     # No-payload cases must be written without parentheses.
     __match opt:

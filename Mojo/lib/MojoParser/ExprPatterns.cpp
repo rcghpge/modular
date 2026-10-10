@@ -421,6 +421,14 @@ CallNode::buildCheckList(PatternMatchBuilder &builder, CValue subject,
     return failure();
   }
 
+  // Empty struct patterns like "case Pair()" are pointless and likely a bug.
+  // Warn the developer so they know that this isn't a comparison to a value.
+  if (operands.empty()) {
+    builder.emitWarning(getLoc()) << "struct pattern without subpatterns does "
+                                     "not test anything; replace it with '_'"
+                                  << getRange() << FixIt(getRange(), "_");
+  }
+
   struct FieldPattern {
     const Operand *operand;
     StructFieldOp fieldOp;
