@@ -1789,8 +1789,7 @@ tile.__doc__ = """Repeats a tensor along each of its dimensions.
 Each dimension ``i`` is copied ``repeats[i]`` times, so its output size is
 ``x.shape[i] * repeats[i]``.
 
-This op runs on CPU. An input on another device is copied to CPU for the
-operation and the result is copied back.
+The op runs on ``x``'s device; only ``repeats`` are host values.
 
 .. code-block:: python
 
@@ -1812,9 +1811,8 @@ Returns:
     A ``Tensor`` containing the tiled input.
 
 Raises:
-    ValueError: If ``repeats`` doesn't have one value per dimension, if any
-        statically known value isn't positive, or if ``x`` is on a non-CPU
-        device and ``strict_device_placement=DevicePlacementPolicy.Error``.
+    ValueError: If ``repeats`` doesn't have one value per dimension, or if
+        any statically known value isn't positive.
 """
 
 pad = functional(ops.pad, rule=pad_rule)

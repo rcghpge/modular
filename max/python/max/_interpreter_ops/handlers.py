@@ -1946,13 +1946,12 @@ def _handle_max_pool(
 def _handle_tile(
     op: mo.TileOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    """Handle mo.tile via rmo.MoTileOp with runtime repeats. CPU-only.
+    """Handle mo.tile via rmo.MoTileOp with runtime repeats.
 
-    Operands: input (device tensor), repeats (host int64 rank-1). Output
+    Operands: input (any device), repeats (host int64 rank-1;
+    ``to_numpy`` syncs a device-resident repeats to the host). Output
     shape[i] = input shape[i] * repeats[i].
     """
-    target_device = _get_target_device(op)
-    _check_cpu_only(op, target_device)
     assert isinstance(inputs[0], Buffer)
     assert isinstance(inputs[1], Buffer)
     input_buffer = inputs[0]

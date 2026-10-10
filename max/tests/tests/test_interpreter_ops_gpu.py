@@ -29,6 +29,7 @@ from max import _interpreter
 from max._interpreter_ops import GC_FAMILIES, adopted_from_manifest
 from max._interpreter_ops.handlers import (
     _handle_squeeze_shape,
+    _handle_tile,
     _handle_unsqueeze_shape,
 )
 from max.driver import CPU, Accelerator, Buffer, accelerator_count
@@ -878,6 +879,77 @@ class TestSqueezeUnsqueezeShapeGPU:
         result = out.to_numpy()
         assert result.dtype == np.int32
         np.testing.assert_array_equal(result, [1, 10, 11, 1, 1, 12, 13])
+
+
+class TestTileGPU:
+    """F.tile runs on the GPU without staging the input through the CPU."""
+
+    def test_tile_2d_gpu(self) -> None:
+        """F.tile on a 2-D GPU tensor along both axes."""
+        x_torch = torch.arange(6, dtype=torch.float32, device="cuda").reshape(
+            2, 3
+        )
+        x = Tensor.from_dlpack(x_torch)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = F.tile(x, (2, 3))
+        expected = np.tile(x_torch.cpu().numpy(), (2, 3))
+        np.testing.assert_array_equal(
+            torch.from_dlpack(y).cpu().numpy(), expected
+        )
+
+    def test_tile_3d_gpu(self) -> None:
+        """F.tile on a 3-D GPU tensor along every axis."""
+        x_torch = torch.arange(24, dtype=torch.float32, device="cuda").reshape(
+            2, 3, 4
+        )
+        x = Tensor.from_dlpack(x_torch)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = F.tile(x, (2, 1, 2))
+        expected = np.tile(x_torch.cpu().numpy(), (2, 1, 2))
+        np.testing.assert_array_equal(
+            torch.from_dlpack(y).cpu().numpy(), expected
+        )
+
+    def test_tile_integer_gpu(self) -> None:
+        """F.tile on an int32 GPU tensor."""
+        x_torch = torch.arange(6, dtype=torch.int32, device="cuda").reshape(
+            2, 3
+        )
+        x = Tensor.from_dlpack(x_torch)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = F.tile(x, (1, 2))
+        expected = np.tile(x_torch.cpu().numpy(), (1, 2))
+        np.testing.assert_array_equal(
+            torch.from_dlpack(y).cpu().numpy(), expected
+        )
+
+    def test_tile_gpu_resident_repeats(self) -> None:
+        """A GPU-resident repeats tensor syncs to the host for sizing.
+
+        The public API always builds repeats on the host; this reaches the
+        handler the way a raw mo.tile op with device-resident repeats does.
+        """
+        gpu = Accelerator()
+        x = Buffer.from_numpy(np.array([[1, 2], [3, 4]], dtype=np.float32)).to(
+            gpu
+        )
+        reps = Buffer.from_numpy(np.array([2, 2], dtype=np.int64)).to(gpu)
+
+        (out,) = _handle_tile(MagicMock(), [x, reps])
+
+        assert isinstance(out, Buffer)
+        assert out.device == gpu
+        expected = np.tile(np.array([[1, 2], [3, 4]]), (2, 2))
+        np.testing.assert_array_equal(out.to_numpy(), expected)
 
 
 class TestRangeGPU:

@@ -617,6 +617,12 @@ This version is still a work in progress.
   reductions apply duplicate indices atomically in an unspecified order, and
   `ops.scatter` keeps an unspecified winner among duplicates. On Apple silicon
   GPUs, the reductions support only 32-bit dtypes.
+- `ops.tile` now runs on GPU. It previously copied a GPU input to the CPU,
+  tiled it there, and copied the result back, so it also works under
+  `strict_device_placement=DevicePlacementPolicy.Error` now. Repeats remain
+  host metadata: the public API still accepts constant or symbolic repeat
+  counts, and a data-dependent output size is computed from a host copy of
+  the repeats, which blocks device-graph capture for such graphs.
 - `max.nn.moe.MoE` takes `interleaved_gate_up=True` for gate/up projections
   stored as `[gate_0, up_0, gate_1, up_1, ...]`, and runs its fused activation
   on them; `max.nn.comm.ep.ep_kernels.fused_silu` takes `interleaved=True` to
