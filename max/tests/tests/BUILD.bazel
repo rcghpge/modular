@@ -18,6 +18,7 @@ modular_py_test(
             "mojo_runtime_foreign_thread_subprocess.py",
             "test_compilation.py",
             "test_compile_pool.py",
+            "test_compile_pool_gpu.py",
             "test_dim_substitute.py",
             "test_eager_cold_start_policy.py",
             "test_executor.py",
@@ -101,6 +102,28 @@ modular_py_test(
         "compile_pool_parent_exit_subprocess.py",
         "test_compile_pool.py",
     ],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/experimental",
+        "//max/python/max/graph",
+        requirement("numpy"),
+    ],
+)
+
+modular_py_test(
+    name = "test_compile_pool_gpu",
+    srcs = ["test_compile_pool_gpu.py"],
+    exec_properties = {
+        "test.resources:gpu-memory": "2",
+    },
+    gpu_constraints = ["//:has_gpu"],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),  # FIXME: MOCO-2411
     deps = [
         "//max/python/max/driver",
         "//max/python/max/dtype",

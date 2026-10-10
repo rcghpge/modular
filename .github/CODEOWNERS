@@ -196,6 +196,7 @@
 /max/tests/tests/compile_pool_parent_exit_subprocess.py @modular/max-sdk
 /max/tests/tests/test_compilation.py @modular/max-sdk
 /max/tests/tests/test_compile_pool.py @modular/max-sdk
+/max/tests/tests/test_compile_pool_gpu.py @modular/max-sdk
 /max/tests/tests/test_compile_serialization.py @modular/max-sdk
 /max/tests/tests/test_dim_substitute.py @modular/max-sdk
 /max/tests/tests/test_eager_cold_start_policy.py @modular/max-sdk
