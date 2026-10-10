@@ -48,8 +48,14 @@ from std.math import (
     trunc,
     ulp,
 )
-from std.math.math import _call_libm
-from std.sys import CompilationTarget
+from std.builtin.dtype import _integral_type_of
+from std.math.math import (
+    _call_libm,
+    _is_subnormal_bits,
+    _is_zero_bits,
+    _log_accurate,
+)
+from std.sys import bit_width_of, CompilationTarget
 
 from std.testing import TestSuite
 from std.testing import (
@@ -59,7 +65,7 @@ from std.testing import (
     assert_true,
 )
 
-from std.utils.numerics import inf, isinf, isnan, nan, neg_inf
+from std.utils.numerics import FPUtils, inf, isinf, isnan, nan, neg_inf
 
 
 def test_sin() raises:
@@ -627,6 +633,190 @@ def test_log1p_accuracy() raises:
     assert_equal(log1p(Float64(0)), Float64(0))
     assert_true(isinf(log1p(Float64(-1))))
     assert_true(isnan(log1p(Float64(-2))))
+
+
+def _scaled[
+    dtype: DType
+](m: Scalar[dtype], k: Int) -> Scalar[dtype] where dtype.is_floating_point():
+    """Returns `m * 2**k` for `m` in [1, 2), rounding into the subnormals."""
+    comptime T = Scalar[dtype]
+    comptime U = _integral_type_of[dtype]()
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime bias = FPUtils[dtype].exponent_bias()
+    var lo = max(k, 1 - bias)
+    var p = T(from_bits=Scalar[U](lo + bias) << Scalar[U](mant))
+    var tail = T(from_bits=Scalar[U](bias + k - lo) << Scalar[U](mant))
+    return m * p * tail
+
+
+def _log_ulp_diff[
+    dtype: DType
+](
+    got: Scalar[dtype], want: Scalar[dtype]
+) -> Int where dtype.is_floating_point():
+    if isnan(got) or isnan(want):
+        return 0 if isnan(got) and isnan(want) else Int.MAX
+    if got == want:
+        return 0
+    if isinf(got) or isinf(want):
+        return Int.MAX
+    comptime sign_shift = UInt64(bit_width_of[dtype]() - 1)
+    var got_bits = got.to_bits().cast[.uint64]()
+    var want_bits = want.to_bits().cast[.uint64]()
+    if (
+        got != 0
+        and want != 0
+        and ((got_bits >> sign_shift) != (want_bits >> sign_shift))
+    ):
+        return Int.MAX
+    # Same-sign finite magnitudes differ by less than Int.MAX, even for f64.
+    comptime magnitude_mask = (UInt64(1) << sign_shift) - 1
+    var got_magnitude = got_bits & magnitude_mask
+    var want_magnitude = want_bits & magnitude_mask
+    return Int(
+        max(got_magnitude, want_magnitude) - min(got_magnitude, want_magnitude)
+    )
+
+
+def _test_log_ulp_comparator[
+    dtype: DType
+]() raises where dtype.is_floating_point():
+    comptime T = Scalar[dtype]
+    assert_equal(_log_ulp_diff(nan[dtype](), nan[dtype]()), 0)
+    assert_equal(_log_ulp_diff(nan[dtype](), T(1)), Int.MAX)
+    assert_equal(_log_ulp_diff(T(1), nan[dtype]()), Int.MAX)
+    assert_equal(_log_ulp_diff(inf[dtype](), inf[dtype]()), 0)
+    assert_equal(_log_ulp_diff(-inf[dtype](), -inf[dtype]()), 0)
+    assert_equal(_log_ulp_diff(T.MAX_FINITE, inf[dtype]()), Int.MAX)
+    assert_equal(_log_ulp_diff(inf[dtype](), T.MAX_FINITE), Int.MAX)
+    assert_equal(_log_ulp_diff(-T.MAX_FINITE, -inf[dtype]()), Int.MAX)
+    assert_equal(_log_ulp_diff(inf[dtype](), -inf[dtype]()), Int.MAX)
+    assert_equal(_log_ulp_diff(T(-1), T(1)), Int.MAX)
+    assert_equal(_log_ulp_diff(T(0), T(-0.0)), 0)
+    assert_equal(_log_ulp_diff(T(1), T(1)), 0)
+    assert_equal(_log_ulp_diff(T(-1), T(-1)), 0)
+
+
+def test_log_ulp_comparator() raises:
+    _test_log_ulp_comparator[.float64]()
+    _test_log_ulp_comparator[.float32]()
+    _test_log_ulp_comparator[.float16]()
+    _test_log_ulp_comparator[.bfloat16]()
+    var wrong_sign = Float64(from_bits=UInt64(0x3FFF5D4DC0C4548D))
+    var reference = Float64(from_bits=UInt64(0xC000A2B23F3BAB73))
+    assert_equal(_log_ulp_diff(wrong_sign, reference), Int.MAX)
+    assert_equal(_log_ulp_diff(reference, wrong_sign), Int.MAX)
+    var next_positive = Float64(from_bits=UInt64(0x3FF0000000000001))
+    var next_negative = Float64(from_bits=UInt64(0xBFF0000000000001))
+    assert_equal(_log_ulp_diff(next_positive, Float64(1)), 1)
+    assert_equal(_log_ulp_diff(next_negative, Float64(-1)), 1)
+    assert_equal(
+        _log_ulp_diff(Float64(0), Float64.MAX_FINITE), 0x7FEFFFFFFFFFFFFF
+    )
+    var min_subnormal = Float64(from_bits=UInt64(1))
+    assert_equal(_log_ulp_diff(min_subnormal, Float64(-0.0)), 1)
+    assert_equal(_log_ulp_diff(-min_subnormal, Float64(0)), 1)
+
+
+def _assert_ulp_vs_libm[
+    dtype: DType, //, name: StaticString
+](
+    x: Scalar[dtype], got: Scalar[dtype], max_ulp: Int
+) raises where dtype.is_floating_point():
+    var want = _call_libm[name](x)
+    var d = _log_ulp_diff(got, want)
+    assert_true(
+        d <= max_ulp,
+        String(t"{name}({x}) = {got}, libm {want} ({d} ulp)"),
+    )
+
+
+def _test_log_special[dtype: DType]() raises where dtype.is_floating_point():
+    comptime T = Scalar[dtype]
+    assert_equal(log(inf[dtype]()), inf[dtype]())
+    assert_equal(log(T(0)), neg_inf[dtype]())
+    assert_equal(log(T(-0.0)), neg_inf[dtype]())
+    assert_true(isnan(log(T(-1))))
+    assert_true(isnan(log(neg_inf[dtype]())))
+    assert_true(isnan(log(nan[dtype]())))
+    assert_equal(log(T(1)), T(0))
+    assert_equal(log2(inf[dtype]()), inf[dtype]())
+    assert_equal(log1p(inf[dtype]()), inf[dtype]())
+
+
+def test_log_special_values() raises:
+    _test_log_special[.float64]()
+    _test_log_special[.float32]()
+    _test_log_special[.float16]()
+    _test_log_special[.bfloat16]()
+
+
+def test_log_float64_ulp() raises:
+    # Mantissas near 1, sqrt(2)/2 and sqrt(2) at every 5th binade, which
+    # covers subnormals and the reduction boundaries.
+    var mantissas: Array[Float64, 6] = [
+        1.0,
+        1.0000000000000002,
+        1.4142135623730951,
+        1.4142135623730954,
+        1.9999999999999998,
+        1.2345678901234567,
+    ]
+    for k in range(-1074, 1024, 5):
+        for m in mantissas:
+            var x = _scaled(m, k)
+            _assert_ulp_vs_libm["log"](x, log(x), 1)
+    comptime n = 20_000
+    for i in range(1, n):
+        var x = Float64(i) / (n / 4.0)
+        _assert_ulp_vs_libm["log"](x, log(x), 1)
+        var y = 1.0 + Float64(i - n // 2) * 1e-12
+        _assert_ulp_vs_libm["log"](y, log(y), 1)
+
+
+def _check_bit_classification[
+    dtype: DType
+]() raises where dtype.is_floating_point():
+    comptime T = Scalar[dtype]
+    comptime TInt = Scalar[_integral_type_of[dtype]()]
+    comptime mw = FPUtils[dtype].mantissa_width()
+    comptime sign = TInt.MIN
+    for neg in range(2):
+        var s = sign if neg == 1 else TInt(0)
+        assert_true(_is_zero_bits(T(from_bits=s)))
+        assert_false(_is_subnormal_bits(T(from_bits=s)))
+        for m in [1, 2, (1 << mw) // 2, (1 << mw) - 1]:
+            var v = T(from_bits=s | TInt(m))
+            assert_false(_is_zero_bits(v))
+            assert_true(_is_subnormal_bits(v))
+        for b in [1 << mw, (1 << mw) + 1, 1 << (mw + 2)]:
+            var v = T(from_bits=s | TInt(b))
+            assert_false(_is_zero_bits(v))
+            assert_false(_is_subnormal_bits(v))
+    assert_false(_is_zero_bits(inf[dtype]()))
+    assert_false(_is_subnormal_bits(nan[dtype]()))
+
+
+def test_subnormal_bit_classification() raises:
+    _check_bit_classification[.float16]()
+    _check_bit_classification[.bfloat16]()
+    _check_bit_classification[.float32]()
+    _check_bit_classification[.float64]()
+
+
+def test_log_subnormal() raises:
+    """`_log_reduce` reads a subnormal's exponent from its bits, so the
+    smallest and largest subnormals, and the smallest normal, of each dtype
+    stay within 1 ulp of libm. The float32 kernel is called directly because
+    public float32 `log` does not use it yet."""
+    var bits32: List[UInt32] = [1, 0x007FFFFF, 0x00800000]
+    for b in bits32:
+        var x = Float32(from_bits=b)
+        _assert_ulp_vs_libm["log"](x, _log_accurate(x), 1)
+    var bits64: List[UInt64] = [1, 0x000FFFFFFFFFFFFF, 0x0010000000000000]
+    for b in bits64:
+        var x = Float64(from_bits=b)
+        _assert_ulp_vs_libm["log"](x, log(x), 1)
 
 
 def test_gcd() raises:

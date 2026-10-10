@@ -354,6 +354,10 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `float64` `log()` now uses double-precision coefficients and is within
+  1 ulp of the correctly rounded result; it was previously off by up to about
+  2e7 ulp. It runs the same Mojo code on CPU and GPU.
+
 ## Tooling changes
 
 - The `mojo` compiler now uses jemalloc as its allocator on Linux. Compiling
@@ -423,3 +427,5 @@ This version is still a work in progress.
   `Tuple[Pointer[Node, origin], Int]` inside `struct Node` was spuriously
   rejected with `struct has recursive reference to itself`, despite the
   recursion being behind a pointer.
+
+- `log()`, `log2()`, and `log1p()` of `inf` now return `inf` instead of `nan`.

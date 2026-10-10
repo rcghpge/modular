@@ -957,6 +957,7 @@ def _log_base[
         y = exp.fma(ln2, y)
     else:
         y = y.fma(log2e, exp)
+    y = x.eq(inf[dtype]()).select(x, y)
     return x.eq(0).select(Scalar[dtype].MIN, x.gt(0).select(y, nan[dtype]()))
 
 
@@ -977,11 +978,29 @@ def log[
         Vector containing result of performing natural log base E on x.
     """
 
-    comptime if size_of[dtype]() < size_of[DType.float32]():
+    _assert_float64_supported[dtype, "log"]()
+
+    comptime if dtype == .float64:
+        var r = _log_accurate(x)
+        r = x.eq(inf[dtype]()).select(x, r)
+        return x.eq(0).select(-inf[dtype](), x.gt(0).select(r, nan[dtype]()))
+    elif size_of[dtype]() < size_of[DType.float32]():
         return log(x.cast[.float32]()).cast[dtype]()
 
     if __is_run_in_comptime_interpreter:
         return _log_base[27](x)
+
+    comptime if is_apple_gpu() and dtype == .float32:
+        # Apple GPUs read float32 subnormals as zero in comparisons and
+        # `frexp`, so reduce from the bits instead.
+        var r = _log_accurate(x)
+        r = x.eq(inf[dtype]()).select(x, r)
+        var positive = x.gt(0) | (
+            _is_subnormal_bits(x) & x._to_bits_signed().gt(0)
+        )
+        return _is_zero_bits(x).select(
+            -inf[dtype](), positive.select(r, nan[dtype]())
+        )
 
     comptime if is_nvidia_gpu() and dtype == .float32:
         comptime ln2 = 0.69314718055966295651160180568695068359375
@@ -4219,3 +4238,174 @@ def round[T: Roundable, //](number: T, ndigits: Int) -> T:
         The rounded value of the object.
     """
     return number.__round__(ndigits)
+
+
+# ===----------------------------------------------------------------------=== #
+# Pure-Mojo libm implementations
+# ===----------------------------------------------------------------------=== #
+# These run unchanged on CPU and GPU, so they avoid the target-dependent
+# approximations (`sqrt.approx`, `lg2.approx`, `ex2.approx` on NVIDIA) and
+# keep float32 paths free of float64 values, which Apple GPUs reject.
+# Sources are cited per function. Compilers may contract a*b + c into an
+# fma depending on target and flags, so results can differ between targets
+# in the last ulp outside paths that use explicit fma. Apple GPUs may flush
+# subnormals and carry no correct-rounding guarantee for sqrt.
+
+comptime _SQRT2 = 1.41421356237309504880168872420969807856967187537694
+
+# ln2 = _LN2_HI_F64 + _LN2_LO_F64, where _LN2_HI_F64 has 32 significant bits
+# (21 trailing zero bits), so k * _LN2_HI_F64 is exact for |k| < 2^21.
+comptime _LN2_HI_F64 = 6.93147180369123816490e-01
+comptime _LN2_LO_F64 = 1.90821492927058770002e-10
+
+
+# ===----------------------------------------------------------------------=== #
+# Shared kernels
+# ===----------------------------------------------------------------------=== #
+
+
+@inline(.always)
+def _assert_float64_supported[dtype: DType, name: StaticString]():
+    comptime assert dtype != .float64 or not is_apple_gpu(), (
+        "`" + name + "` does not support float64 on Apple GPU"
+    )
+
+
+@inline(.always)
+def _log_kernel[
+    dtype: DType, width: SIMDLength, //
+](f: SIMD[dtype, width]) -> type_of(f):
+    """Returns `log(1 + f) - f + f*f/2` for `1 + f` in `[sqrt(2)/2, sqrt(2))`.
+
+    Uses Sun fdlibm k_log.h (float64) and FreeBSD msun e_logf.c (float32),
+    also carried by historical musl logf.c: `s = f / (2 + f)` and a minimax
+    polynomial in `s^2`.
+    """
+    var s = f / (2.0 + f)
+    var z = s * s
+    var w = z * z
+    var r: type_of(f)
+    comptime if dtype == .float64:
+        r = w * polynomial_evaluate[
+            [
+                Scalar[dtype](3.999999999940941908e-01),
+                2.222219843214978396e-01,
+                1.531383769920937332e-01,
+            ]
+        ](w) + z * polynomial_evaluate[
+            [
+                Scalar[dtype](6.666666666666735130e-01),
+                2.857142874366239149e-01,
+                1.818357216161805012e-01,
+                1.479819860511658591e-01,
+            ]
+        ](
+            w
+        )
+    else:
+        comptime assert dtype == .float32, "expected float32 or float64"
+        r = w * polynomial_evaluate[
+            [Scalar[dtype](0.40000972152), 0.24279078841]
+        ](w) + z * polynomial_evaluate[
+            [Scalar[dtype](0.66666662693), 0.28498786688]
+        ](
+            w
+        )
+    return s * (0.5 * f * f + r)
+
+
+@inline(.always)
+def _is_zero_bits[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[
+    DType.bool, width
+] where dtype.is_floating_point():
+    """Returns whether `x` is +-0, from its bits: Apple GPUs compare float32
+    subnormals as zero."""
+    comptime TInt = SIMD[_integral_type_of[dtype](), width]
+    comptime magnitude = TInt((1 << (bit_width_of[dtype]() - 1)) - 1)
+    return (x._to_bits_signed() & magnitude).eq(0)
+
+
+@inline(.always)
+def _is_subnormal_bits[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[
+    DType.bool, width
+] where dtype.is_floating_point():
+    """Returns whether `x` is a nonzero subnormal, from its bits."""
+    comptime TInt = SIMD[_integral_type_of[dtype](), width]
+    comptime mantissa_width = FPUtils[dtype].mantissa_width()
+    comptime magnitude = TInt((1 << (bit_width_of[dtype]() - 1)) - 1)
+    var m = x._to_bits_signed() & magnitude
+    return m.ne(0) & m.lt(TInt(1 << mantissa_width))
+
+
+@inline(.always)
+def _frexp_bits[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> Tuple[
+    type_of(x), type_of(x)
+] where dtype.is_floating_point():
+    """Returns `frexp(x)` for finite nonzero `x`, reading subnormal exponents
+    from the bit pattern so flush-to-zero targets keep them."""
+    comptime T = type_of(x)
+    comptime TInt = SIMD[_integral_type_of[dtype](), width]
+    comptime mantissa_width = FPUtils[dtype].mantissa_width()
+    comptime exponent_bias = FPUtils[dtype].exponent_bias()
+    comptime min_normal = T(from_bits=TInt(1 << mantissa_width))
+
+    var exponent_mask = _frexp_mask1[dtype, width]()
+    var half_exponent = _frexp_mask2[dtype, width]()
+    var bits = x._to_bits_signed()
+    var is_subnormal = (bits & exponent_mask).eq(0)
+    # A subnormal is `m * 2^(emin - mantissa_width)` for an integer significand
+    # `m`. Converting `m` is exact and `m * 2^emin` is normal, so the value
+    # survives targets that flush subnormal operands to zero.
+    var m = (bits & TInt((1 << mantissa_width) - 1)).cast[dtype]()
+    var x0 = is_subnormal.select(copysign(m * min_normal, x), x)
+    var bits0 = x0._to_bits_signed()
+    var e = ((bits0 & exponent_mask) >> TInt(mantissa_width)) - TInt(
+        exponent_bias - 1
+    )
+    e -= is_subnormal.select(TInt(mantissa_width), TInt(0))
+    var fraction = T(from_bits=(bits0 & ~exponent_mask) | half_exponent)
+    return (fraction, e.cast[dtype]())
+
+
+@inline(.always)
+def _log_reduce[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> Tuple[
+    type_of(x), type_of(x)
+] where dtype.is_floating_point():
+    """Returns `(k, f)` with `x = 2^k (1 + f)`, `1 + f` in `[sqrt(2)/2, sqrt(2))`,
+    for positive finite `x` (subnormals included)."""
+    var fr = _frexp_bits(x)
+    var below = fr[0].lt(_SQRT2 / 2)
+    return (
+        below.select(fr[1] - 1.0, fr[1]),
+        below.select(fr[0] + fr[0], fr[0]) - 1.0,
+    )
+
+
+@inline(.always)
+def _log_combine[
+    dtype: DType, width: SIMDLength, //
+](k: SIMD[dtype, width], f: type_of(k), c: type_of(k)) -> type_of(k):
+    """Returns `k*ln2 + log(1 + f) + c` for small `c`; ln2 is split so that
+    `k * ln2_hi` is exact."""
+    comptime is_f64 = dtype == .float64
+    comptime ln2_hi = Scalar[dtype](_LN2_HI_F64 if is_f64 else 6.9313812256e-01)
+    comptime ln2_lo = Scalar[dtype](_LN2_LO_F64 if is_f64 else 9.0580006145e-06)
+    var hfsq = 0.5 * f * f
+    return k.fma(ln2_hi, -((hfsq - (_log_kernel(f) + k.fma(ln2_lo, c))) - f))
+
+
+@inline(.always)
+def _log_accurate[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    """Computes the natural log of positive finite `x` to within about 1 ulp."""
+    var exponent, fraction = _log_reduce(x)
+    return _log_combine(exponent, fraction, 0)
