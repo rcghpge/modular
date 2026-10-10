@@ -550,6 +550,32 @@ def match_exhaustivity_literal_subjects(n: Int, s: String):
         pass
 
 
+def match_exhaustivity_names_every_missing_case(flag: Bool, pair: BoolPair):
+    # Guarded cases never count, so both `Bool` cases are still open.
+    # expected-warning @+1 {{'match' is not exhaustive; missing cases for 'False' and 'True'}}
+    __match flag:
+    case True if flag: pass
+
+    # A product subject lists every open combination.
+    # expected-warning @+1 {{'match' is not exhaustive; missing cases for 'False, True' and 'True, False'}}
+    __match pair:
+    case BoolPair(a=True, b=True): pass
+    case BoolPair(a=False, b=False): pass
+
+    # Three or more missing values are listed with a serial comma.
+    # expected-warning @+1 {{'match' is not exhaustive; missing cases for 'False, False', 'False, True', and 'True, False'}}
+    __match pair:
+    case BoolPair(a=True, b=True): pass
+
+
+def match_exhaustivity_summarizes_many_missing_cases(
+    flags: Tuple[Bool, Bool, Bool, Bool],
+):
+    # expected-warning @+1 {{, and 7 more}}
+    __match flags:
+    case (True, True, True, True): pass
+
+
 def comptime_match_or_binding_name_mismatch[x: Tuple[Int, Int]]():
     comptime __match x:
     # expected-error @+1 {{or-pattern alternatives must bind the same names; 'y' is bound in one alternative but not the other}}

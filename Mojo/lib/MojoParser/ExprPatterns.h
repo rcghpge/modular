@@ -29,6 +29,7 @@
 #include "llvm/Support/Compiler.h"
 
 #include <cstring>
+#include <string>
 
 namespace llvm {
 class raw_ostream;
@@ -100,6 +101,8 @@ struct MatchCaseEntry {
   ExprNode *guardExpr;
   LexerCursor caseCursor;
   size_t caseIndent;
+  /// Indentation of the case body; appended arms copy it.
+  size_t bodyIndent;
   PatternCommandList commandList;
 
   /// This is set to true if exclusivity checking finds that the case is
@@ -177,6 +180,7 @@ struct PatternEmitState {
 /// Bump storage, path uniquing, and binding-mode state for one `match`.
 class PatternMatchBuilder {
 public:
+  static constexpr size_t kMaxSuggestedCases = 8;
   PatternMatchBuilder(ASTDecl &declScope, ExprContext paramContext);
 
   llvm::BumpPtrAllocator allocator;
@@ -271,10 +275,26 @@ public:
 
   /// Diagnose non-exhaustive and unreachable `__match` cases; set
   /// `MatchCaseEntry::isUnreachable` / `isConcluding` for covered and
-  /// coverage-completing arms.
-  void checkCaseExhaustivityAndUnreachability(
+  /// coverage-completing arms. When requested, returns up to
+  /// kMaxSuggestedCases arms for a finite subject. Otherwise returns an empty
+  /// string.
+  std::string checkCaseExhaustivityAndUnreachability(
       MutableArrayRef<MatchCaseEntry> caseEntries, const PatternPath *rootPath,
-      SMLoc matchLoc);
+      SMLoc matchLoc, bool offerMissingCases);
+
+  /// Lay out one `case` arm with a `pass` body per pattern, each arm starting
+  /// on a new line at `caseIndent` with its body at `bodyIndent`.
+  static std::string formatCaseArms(ArrayRef<std::string> patterns,
+                                    size_t caseIndent, size_t bodyIndent);
+
+  /// Spell up to kMaxSuggestedCases patterns from the subject's finite domain,
+  /// in the order the exhaustiveness check enumerates them: each case of an
+  /// enum (`.red`,
+  /// or the bare literal `True` for a `Bool`), or each combination of cases
+  /// for a tuple or struct of such types (`False, .red`, or
+  /// `Pair(a=False, b=True)`). Leaves `out` empty for any other subject.
+  void spellSubjectPatterns(const PatternPath *rootPath, SMLoc loc,
+                            SmallVectorImpl<std::string> &out);
 
 private:
   struct PathKey {

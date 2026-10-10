@@ -2083,6 +2083,13 @@ void SharedState::notifyListenerOnRef(ArrayRef<ASTDecl *> decls,
     parserListener->onRef(decls, spelling, diags.convertToSMRange(range));
 }
 
+void SharedState::notifyListenerOnMatchMissingCases(llvm::SMRange matchRange,
+                                                    SMLoc insertLoc,
+                                                    StringRef arms) {
+  if (isListenerInterestedInLoc(parserListener, matchRange.Start))
+    parserListener->onMatchMissingCases(matchRange, insertLoc, arms);
+}
+
 /// Return the location of the identifier in the given expression.
 static SourceRange getIdentifierLocFromExpr(const ExprNode *expr) {
   if (auto attribute = dyn_cast<AttributeRefNode>(expr))

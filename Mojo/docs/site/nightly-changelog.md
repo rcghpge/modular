@@ -54,7 +54,10 @@ This version is still a work in progress.
   Both forms warn on non-exhaustive `EnumLike` subjects (including `Bool` and
   tuples/structs of such types) and on unreachable or duplicate cases. Open
   subjects such as `Int` and `String` diagnose duplicate literal cases but are
-  not required to be exhaustive.
+  not required to be exhaustive. The Mojo language server offers an "Add
+  missing cases" code action on any `__match` whose cases leave values
+  uncovered, including one with no cases yet, appending a `case` arm with a
+  `pass` body for each missing value.
 
   `EnumLike` types can now set `_enum_is_exhaustive` to `False` when their
   known cases do not cover every possible value. This is useful for extensible

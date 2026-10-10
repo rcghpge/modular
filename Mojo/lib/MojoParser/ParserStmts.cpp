@@ -1576,6 +1576,29 @@ ParseResult StmtParser::parseWhileStmt(size_t curIndent) {
   return success();
 }
 
+/// Return the end of the last `case` body of a match whose following token
+/// starts at `next`. Backs up over whitespace and over comment lines indented
+/// at or left of `caseIndent`: those introduce whatever follows the match
+/// rather than close its last body, so arms appended here land before them.
+static const char *findEndOfLastCase(const char *next, const char *lowerBound,
+                                     size_t caseIndent) {
+  const char *end = next;
+  while (true) {
+    while (end > lowerBound && llvm::isSpace(end[-1]))
+      --end;
+    const char *lineStart = end;
+    while (lineStart > lowerBound && lineStart[-1] != '\n')
+      --lineStart;
+    const char *firstNonSpace = lineStart;
+    while (firstNonSpace < end && llvm::isSpace(*firstNonSpace))
+      ++firstNonSpace;
+    if (firstNonSpace == end || *firstNonSpace != '#' ||
+        size_t(firstNonSpace - lineStart) > caseIndent)
+      return end;
+    end = lineStart;
+  }
+}
+
 /// match_stmt ::=  "match" expression_list ":" NEWLINE
 ///                 case_block+
 /// case_block  ::= "case" pattern ["as" name] ["if" expression] ":" suite
@@ -1590,8 +1613,10 @@ ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
 
   // Parse the match subject as an expression_list (commas form a tuple).
   ExprNode *subjectExpr = nullptr;
-  if (parseExpressionList(subjectExpr, curIndent, Token::colon) ||
-      parseToken(Token::colon, "expected ':' after match subject"))
+  if (parseExpressionList(subjectExpr, curIndent, Token::colon))
+    return failure();
+  SMLoc colonEndLoc = getToken().getEndLoc();
+  if (parseToken(Token::colon, "expected ':' after match subject"))
     return failure();
 
   Location matchLocation = translateLocation(matchLoc);
@@ -1705,9 +1730,12 @@ ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
       continue;
     }
 
-    // Okay, we successfully parsed a case block. Remember it for later.
+    // Okay, we successfully parsed a case block. Remember it for later. A
+    // same-line body (`case x: pass`) has no indentation of its own, so it
+    // counts as one level below `case`.
+    size_t bodyIndent = getToken().getIndentation().value_or(caseIndent + 4);
     caseEntries.push_back({patternExpr, guardExpr, getLexer().getCursor(),
-                           caseIndent,
+                           caseIndent, bodyIndent,
                            checkListBuilder.internCommandList(commands)});
     skipUntilIndentation(caseIndent);
   }
@@ -1715,17 +1743,35 @@ ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
   if (caseEntries.empty()) {
     // Pattern-type failures still count as a case being present; only diagnose
     // a missing case when no `case` header parsed successfully.
-    if (!hadError)
+    if (!hadError) {
       emitError(matchLoc) << "'match' statement must have at least one "
                              "'case' block";
+      if (shared.parserListener) {
+        SmallVector<std::string, 4> patterns;
+        checkListBuilder.spellSubjectPatterns(rootPath, matchLoc, patterns);
+        if (!patterns.empty())
+          shared.notifyListenerOnMatchMissingCases(
+              llvm::SMRange(matchLoc, colonEndLoc), colonEndLoc,
+              PatternMatchBuilder::formatCaseArms(patterns, curIndent,
+                                                  curIndent + 4));
+      }
+    }
     return success();
   }
 
   // Now that we have all the cases together, diagnose whether enum cases are
   // exhaustively covering the subject.  While here, diagnose unreachable cases,
-  // and mark them as such.
-  checkListBuilder.checkCaseExhaustivityAndUnreachability(caseEntries, rootPath,
-                                                          matchLoc);
+  // and mark them as such.  Arms for any missing values go right after the
+  // last case body.
+  SMLoc casesEndLoc = SMLoc::getFromPointer(
+      findEndOfLastCase(getToken().getLoc().getPointer(), matchLoc.getPointer(),
+                        caseEntries.back().caseIndent));
+  std::string missingArms =
+      checkListBuilder.checkCaseExhaustivityAndUnreachability(
+          caseEntries, rootPath, matchLoc, shared.parserListener != nullptr);
+  if (!missingArms.empty())
+    shared.notifyListenerOnMatchMissingCases(
+        llvm::SMRange(matchLoc, colonEndLoc), casesEndLoc, missingArms);
 
   auto afterCaseCursor = getLexer().getCursor();
 

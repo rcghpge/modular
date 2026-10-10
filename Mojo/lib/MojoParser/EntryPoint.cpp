@@ -505,3 +505,6 @@ void ParserListener::onCall(ArrayRef<ASTDecl *> decls, llvm::SMLoc rparenLoc,
 void ParserListener::onParameterBinding(ArrayRef<ASTDecl *> decls,
                                         llvm::SMLoc rsquareLoc,
                                         ArrayRef<ExprNode *> parameters) {}
+void ParserListener::onMatchMissingCases(llvm::SMRange matchRange,
+                                         llvm::SMLoc insertLoc,
+                                         StringRef arms) {}

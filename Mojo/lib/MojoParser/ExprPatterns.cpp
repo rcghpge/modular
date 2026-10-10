@@ -2020,11 +2020,117 @@ static bool coverCommands(MatchCoveringSpace &space,
   return anyInterpreted;
 }
 
+/// Whether `type` is the builtin `Bool`, whose cases are spelled as the bare
+/// literals `True` / `False` rather than as inferred members.
+static bool isBuiltinBool(PatternMatchBuilder &builder, ASTType type,
+                          SMLoc loc) {
+  ASTType boolType =
+      builder.shared.lookupBuiltinType("Bool", builder.declScope, loc);
+  return boolType &&
+         boolType.isEqualCanon(type.getWithoutParameters(builder.shared));
+}
+
+/// Spell case `ctor` of the enum at `path` as a pattern: `False` for a `Bool`,
+/// otherwise an inferred member such as `.Some`, which only tests the tag and
+/// so is valid whether or not the case carries a payload.
+static std::string spellCasePattern(PatternMatchBuilder &builder,
+                                    const PatternPath *path,
+                                    ArrayRef<TypedAttr> caseNames, size_t ctor,
+                                    SMLoc loc) {
+  StringRef name = caseNameSpelling(caseNames, ctor);
+  if (isBuiltinBool(builder, path->type, loc))
+    return name.str();
+  return ("." + name).str();
+}
+
+/// Spell the part of a product-cell pattern at `path` and below, where
+/// `indices` holds the cell's case per dimension: a leaf is its case pattern,
+/// a tuple `(a, b)`, and a struct `Type(f=a, g=b)`. The root tuple is spelled
+/// bare, since `case a, b:` needs no parentheses.
+static void spellProductCell(PatternMatchBuilder &builder,
+                             const MatchCoveringSpace &space,
+                             ArrayRef<size_t> indices, const PatternPath *path,
+                             SMLoc loc, bool parenthesize, raw_ostream &os) {
+  for (size_t d = 0; d < space.numDims; ++d) {
+    if (space.dims[d].path == path) {
+      os << spellCasePattern(builder, path, space.dims[d].caseNames, indices[d],
+                             loc);
+      return;
+    }
+  }
+
+  // The children of `path` in dimension order, which is declaration order
+  // for both tuple elements and struct fields.
+  SmallVector<const PatternPath *, 4> children;
+  for (size_t d = 0; d < space.numDims; ++d) {
+    const PatternPath *child = space.dims[d].path;
+    while (child && child->parent != path)
+      child = child->parent;
+    if (child && !llvm::is_contained(children, child))
+      children.push_back(child);
+  }
+
+  bool isStruct =
+      !children.empty() && children.front()->kind == PatternPath::StructField;
+  if (isStruct)
+    os << path->type.getAsString(ASTTypePrinterContext(&builder.shared)) << "(";
+  else if (parenthesize)
+    os << "(";
+  llvm::interleaveComma(children, os, [&](const PatternPath *child) {
+    if (child->kind == PatternPath::StructField)
+      os << child->fieldName.getValue() << "=";
+    spellProductCell(builder, space, indices, child, loc,
+                     /*parenthesize=*/true, os);
+  });
+  if (isStruct || parenthesize)
+    os << ")";
+}
+
+static std::string spellProductCell(PatternMatchBuilder &builder,
+                                    const MatchCoveringSpace &space,
+                                    size_t cell, const PatternPath *rootPath,
+                                    SMLoc loc) {
+  SmallVector<size_t, 4> indices;
+  decodeCell(space, cell, indices);
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  spellProductCell(builder, space, indices, rootPath, loc,
+                   /*parenthesize=*/false, os);
+  return result;
+}
+
 } // namespace
 
-void PatternMatchBuilder::checkCaseExhaustivityAndUnreachability(
+void PatternMatchBuilder::spellSubjectPatterns(
+    const PatternPath *rootPath, SMLoc loc, SmallVectorImpl<std::string> &out) {
+  MatchCoveringSpace *space = createRootCoveringSpace(*this, rootPath, loc);
+  if (space->kind == MatchCoveringSpace::Kind::FiniteCtors) {
+    for (size_t ctor = 0;
+         ctor < space->numCtors && out.size() < kMaxSuggestedCases; ++ctor)
+      out.push_back(
+          spellCasePattern(*this, rootPath, space->caseNames, ctor, loc));
+  } else if (space->kind == MatchCoveringSpace::Kind::Product) {
+    for (size_t cell = 0;
+         cell < space->numCells && out.size() < kMaxSuggestedCases; ++cell)
+      out.push_back(spellProductCell(*this, *space, cell, rootPath, loc));
+  }
+}
+
+std::string PatternMatchBuilder::formatCaseArms(ArrayRef<std::string> patterns,
+                                                size_t caseIndent,
+                                                size_t bodyIndent) {
+  std::string arms;
+  llvm::raw_string_ostream os(arms);
+  for (const std::string &pattern : patterns)
+    os << "\n"
+       << std::string(caseIndent, ' ') << "case " << pattern << ":\n"
+       << std::string(bodyIndent, ' ') << "pass";
+  return arms;
+}
+
+std::string PatternMatchBuilder::checkCaseExhaustivityAndUnreachability(
     MutableArrayRef<MatchCaseEntry> caseEntries, const PatternPath *rootPath,
-    SMLoc matchLoc) {
+    SMLoc matchLoc, bool offerMissingCases) {
   // Covering model (see MatchCoveringSpace):
   //   - Closed EnumLike root → FiniteCtors bitset.
   //   - Open EnumLike root → OpenCtors bitset for duplicate detection.
@@ -2109,25 +2215,72 @@ void PatternMatchBuilder::checkCaseExhaustivityAndUnreachability(
     }
   }
 
-  if (space->kind == MatchCoveringSpace::Kind::FiniteCtors &&
-      space->hasOpenCtor()) {
-    size_t witness = 0;
-    while (witness < space->numCtors && !space->remaining[witness])
-      ++witness;
-    assert(witness < space->numCtors);
-    emitWarning(matchLoc, "'match' is not exhaustive; missing case for ")
-        << "'" << caseNameSpelling(space->caseNames, witness) << "'";
-  } else if (space->kind == MatchCoveringSpace::Kind::Product &&
-             space->hasOpenCell()) {
-    size_t witness = 0;
-    while (witness < space->numCells && !space->cells[witness])
-      ++witness;
-    assert(witness < space->numCells);
-    emitWarning(matchLoc, "'match' is not exhaustive; missing case for ")
-        << "'" << formatProductWitness(*space, witness) << "'";
-  } else if (space->kind == MatchCoveringSpace::Kind::TooComplex) {
+  if (space->kind == MatchCoveringSpace::Kind::TooComplex) {
     // A catch-all would have closed the space via alwaysMatches().
     emitWarning(matchLoc, "'match' is too complex to check for exhaustivity; "
                           "add a '_' case");
+    return {};
   }
+
+  // Keep warnings readable when a finite subject has many uncovered values.
+  SmallVector<std::string, 4> missingNames;
+  size_t missingCount = 0;
+  if (space->kind == MatchCoveringSpace::Kind::FiniteCtors) {
+    for (size_t ctor = 0; ctor < space->numCtors; ++ctor) {
+      if (!space->remaining[ctor])
+        continue;
+      ++missingCount;
+      if (missingNames.size() < kMaxSuggestedCases)
+        missingNames.push_back(caseNameSpelling(space->caseNames, ctor).str());
+    }
+  } else if (space->kind == MatchCoveringSpace::Kind::Product) {
+    for (size_t cell = 0; cell < space->numCells; ++cell) {
+      if (!space->cells[cell])
+        continue;
+      ++missingCount;
+      if (missingNames.size() < kMaxSuggestedCases)
+        missingNames.push_back(formatProductWitness(*space, cell));
+    }
+  }
+  if (missingCount == 0)
+    return {};
+
+  MojoInflightDiag diag =
+      emitWarning(matchLoc, "'match' is not exhaustive; missing case");
+  diag << (missingNames.size() == 1 ? " for " : "s for ");
+  for (auto [idx, name] : llvm::enumerate(missingNames)) {
+    if (idx != 0)
+      diag << (idx + 1 != missingNames.size() ||
+                       missingCount > missingNames.size()
+                   ? ", "
+               : missingNames.size() == 2 ? " and "
+                                          : ", and ");
+    diag << "'" << name << "'";
+  }
+  if (missingCount > missingNames.size())
+    diag << ", and " << missingCount - missingNames.size() << " more";
+
+  if (!offerMissingCases)
+    return {};
+
+  // One arm per still-open value, laid out like the arm before it; the
+  // parser offers them through its listener as a code action.
+  SmallVector<std::string, 4> missingPatterns;
+  if (space->kind == MatchCoveringSpace::Kind::FiniteCtors) {
+    for (size_t ctor = 0;
+         ctor < space->numCtors && missingPatterns.size() < kMaxSuggestedCases;
+         ++ctor)
+      if (space->remaining[ctor])
+        missingPatterns.push_back(spellCasePattern(
+            *this, rootPath, space->caseNames, ctor, matchLoc));
+  } else if (space->kind == MatchCoveringSpace::Kind::Product) {
+    for (size_t cell = 0;
+         cell < space->numCells && missingPatterns.size() < kMaxSuggestedCases;
+         ++cell)
+      if (space->cells[cell])
+        missingPatterns.push_back(
+            spellProductCell(*this, *space, cell, rootPath, matchLoc));
+  }
+  const MatchCaseEntry &last = caseEntries.back();
+  return formatCaseArms(missingPatterns, last.caseIndent, last.bodyIndent);
 }
