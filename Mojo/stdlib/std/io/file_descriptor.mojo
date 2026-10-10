@@ -24,18 +24,11 @@ f.close()
 ```
 
 """
-from std.os import abort
-from std.sys import (
-    CompilationTarget,
-    is_amd_gpu,
-    is_gpu,
-    is_nvidia_gpu,
-)
+from std.sys import CompilationTarget, is_gpu
 from std.ffi import (
     c_ssize_t,
     c_int,
     external_call,
-    _external_call_const,
     get_errno,
 )
 

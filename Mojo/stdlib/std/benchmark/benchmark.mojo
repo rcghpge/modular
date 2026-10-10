@@ -183,7 +183,6 @@ elapsed and either `max_runtime_secs` OR `max_iters` is achieved.
 import std.format._utils as fmt
 
 from std.time import time_function
-from std.testing import assert_true
 from std.utils.numerics import max_finite, min_finite
 
 

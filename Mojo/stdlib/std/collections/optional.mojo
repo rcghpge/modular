@@ -43,7 +43,6 @@ from std.builtin.variadics import ParameterList, TypeList, _MLIR
 from std.format._utils import FormatStruct, TypeNames, write_to, write_repr_to
 from std.hashlib import Hasher
 from std.memory import MaybeUninit, forget_deinit
-from std.memory.unsafe_pointer import unsafe_cast
 from std.reflection import call_location, reflect
 from std.utils import StaticTuple
 from std.utils._nicheable import (

@@ -23,7 +23,6 @@ from std.memory import (
 from std.ffi import CStringSpan, c_char, external_call
 import std.format._utils as fmt
 from std.sys import is_gpu
-from std.sys.info import size_of, align_of
 
 
 # ===-----------------------------------------------------------------------===#

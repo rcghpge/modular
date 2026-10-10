@@ -41,7 +41,7 @@ print(info)
 from std.collections.string.string_span import _get_kgen_string
 from std.os import PathLike
 from std.pathlib import Path
-from std.sys.info import CompilationTarget, _TargetType
+from std.sys.info import CompilationTarget
 
 from std.reflection import get_linkage_name
 

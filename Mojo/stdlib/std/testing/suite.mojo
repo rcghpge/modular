@@ -18,7 +18,6 @@ formatted reporting. It includes support for colored output, timing statistics,
 and flexible test selection via CLI arguments.
 """
 
-from std.math import ceil, floor
 from std.os import sep
 from std.time import perf_counter_ns
 from std.utils._ansi import Color, Text

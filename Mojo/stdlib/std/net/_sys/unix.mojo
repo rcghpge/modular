@@ -15,8 +15,7 @@ platforms, Linux and macOS.
 """
 
 from std.ffi import c_int, c_size_t, c_ssize_t, c_uint, external_call
-from std.sys._libc_errno import ErrNo, get_errno
-from std.sys.info import CompilationTarget, platform_map, platform_type_map
+from std.sys.info import platform_map, platform_type_map
 
 from .linux import sockaddr as linux_sockaddr
 from .macos import sockaddr as macos_sockaddr

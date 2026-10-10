@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from ._trait import DefaultPlugin, PluginHooks
+from ._trait import DefaultPlugin
 from .selector import PluginSelector
 from .cuda import CUDAPlugin
 from .hip import HIPPlugin

@@ -21,7 +21,6 @@ from std.io.io import _printf
 from std.os import abort
 from std.reflection.type_info import _unqualified_type_name
 from std.sys import size_of
-from std.sys.info import is_gpu
 from std.sys.defines import get_defined_int
 from std.ffi import CStringSpan, c_char
 

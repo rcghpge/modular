@@ -22,7 +22,6 @@ memory specifications, thread organization, and performance characteristics.
 # the MLIR target configuration, the `data_layout` string format, and the
 # locations in this file that need to be updated.
 
-from std.math import ceildiv, floor
 from std.sys.info import (
     CompilationTarget,
     _accelerator_arch,

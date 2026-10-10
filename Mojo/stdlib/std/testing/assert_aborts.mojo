@@ -20,7 +20,6 @@ re-exec'd child and checks that the child crashed with the expected message.
 from std.ffi import _Global
 from std.os import abort, remove
 from std.os.env import getenv, setenv, unsetenv
-from std.os.path import exists
 from std.os.process import Process, ProcessStatus
 from std.reflection import call_location, SourceLocation
 from std.sys import argv

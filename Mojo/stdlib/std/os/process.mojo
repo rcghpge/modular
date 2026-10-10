@@ -21,7 +21,6 @@ _ = Process.run("echo", ["== TEST_ECHO"])
 ```
 """
 from std.collections import List, Optional
-from std.collections.string import StringSlice
 from std.sys import CompilationTarget
 from std.sys._libc import (
     waitpid,
@@ -36,8 +35,13 @@ from std.sys._libc import (
     close,
     WaitFlags,
 )
-from std.ffi import c_char, c_int, c_pid_t, get_errno, CStringSpan
-from .os import abort, sep
+from std.ffi import (
+    c_int,
+    c_pid_t,
+    get_errno,
+    CStringSpan,
+)
+from .os import sep
 
 
 # ===----------------------------------------------------------------------=== #

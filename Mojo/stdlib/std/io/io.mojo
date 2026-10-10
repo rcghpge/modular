@@ -20,7 +20,6 @@ from std.collections.string.string_span import get_static_string
 from std.format._utils import _FixedWriteBuffer, _FlushingWriteBuffer
 from std.sys import _libc as libc
 from std.ffi import (
-    c_char,
     c_size_t,
     c_ssize_t,
     external_call,

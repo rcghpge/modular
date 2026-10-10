@@ -18,7 +18,7 @@ These are Mojo built-ins, so you don't need to import them.
 
 from std.hashlib.hasher import Hasher
 from std.os import abort
-from std.sys import CompilationTarget, bit_width_of, size_of
+from std.sys import bit_width_of
 
 comptime _mIsSigned = __mlir_attr.`#kgen.simd<1> : !kgen.scalar<ui8>`
 comptime _mIsInteger = __mlir_attr.`#kgen.simd<128> : !kgen.scalar<ui8>`

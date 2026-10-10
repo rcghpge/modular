@@ -20,19 +20,11 @@ from std.collections import Span
 ```
 """
 from std.builtin.builtin_slice import ContiguousSlice
-from std.reflection import call_location, reflect
+from std.reflection import reflect
 from std.bit.mask import splat
-from std.bit import pop_count
-from std.memory import (
-    pack_bits,
-    unsafe_uninit_copy_n,
-    unsafe_memcpy,
-    unsafe_memmove,
-    MaybeUninit,
-)
+from std.memory import unsafe_uninit_copy_n, unsafe_memcpy, MaybeUninit
 from std.collections import check_bounds, check_slice_bounds
 from std.builtin.rebind import downcast
-from std.sys import align_of
 from std.sys.info import simd_width_of
 from std.traits import (
     IsTriviallyCopyable,

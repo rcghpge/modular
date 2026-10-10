@@ -29,7 +29,6 @@ from std.tempfile import gettempdir
 import std.os
 from std.format._utils import _FlushingWriteBuffer
 from std.pathlib import Path
-from std.sys import CompilationTarget
 from std.random import random_ui64
 
 from std.collections import Span

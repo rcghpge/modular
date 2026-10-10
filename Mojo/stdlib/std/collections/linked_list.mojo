@@ -19,15 +19,12 @@ traversal. The implementation includes iterator support for forward and reverse
 traversal.
 """
 
-from std.builtin.rebind import downcast, rebind_var
+from std.builtin.rebind import downcast
 from std.collections import check_bounds
 from std.reflection import call_location
 import std.format._utils as fmt
 from std.hashlib.hasher import Hasher
 from std.memory.alloc import alloc, dealloc, ThinAllocation, Layout
-from std.os import abort
-
-from std.sys import align_of, size_of
 
 
 @explicit_destroy(

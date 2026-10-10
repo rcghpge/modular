@@ -32,12 +32,12 @@ with open("my_file.txt", "r") as f:
 """
 
 from std.format._utils import _FlushingWriteBuffer
-from std.os import PathLike as stdPathLike, abort, makedirs, remove
+from std.os import PathLike as stdPathLike, abort, makedirs
 from std.os import SEEK_SET, SEEK_END
 from std.os.path import dirname
 from std.ffi import c_int, c_ssize_t, external_call
 from std.sys import size_of
-from std.sys._libc_errno import ErrNo, get_errno
+from std.sys._libc_errno import get_errno
 from std.sys.info import platform_map
 
 from std.collections import Span
