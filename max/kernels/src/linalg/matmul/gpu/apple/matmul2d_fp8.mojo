@@ -411,13 +411,12 @@ struct Matmul2dFp8[
         `c` instead, and with `has_compute_fn`, `compute_fn` maps each output
         before it is stored.
 
-        The per-group base views use a base-pointer offset (`a.ptr + a_start*K`,
-        `b.ptr + expert*N*K`) -- the ragged-group addressing idiom shared by every
-        grouped matmul kernel in the tree (`naive_grouped_matmul_kernel`,
-        `grouped_matmul_amd_kernel_launcher`); TileTensor has no runtime-offset
-        ragged-slice primitive that keeps the inner `(., K)` dims static. All
-        element access inside `_gemm_body` is TileTensor-indexed (MMA fragment
-        loaders + guarded `c.store`).
+        The per-group base views are ragged row slices of `a`/`c` at this
+        group's `a_offsets` window and the expert slab of `b` (index clamped
+        when the LoRA group is inactive) -- the ragged-group addressing idiom
+        shared by every grouped matmul kernel in the tree. All element access
+        inside `_gemm_body` is TileTensor-indexed (MMA fragment loaders +
+        guarded `c.store`).
         """
         var N = Int(N_arg)
         var K = Int(K_arg)
@@ -430,18 +429,9 @@ struct Matmul2dFp8[
         # base view is not built from a negative offset.
         var w_expert = max(expert, 0)
 
-        var c_group = TileTensor(
-            c.ptr + Int64(a_start) * Int64(N),
-            Layout(Coord(M, N), Coord(N, Idx[1])),
-        )
-        var a_group = TileTensor(
-            a.ptr + Int64(a_start) * Int64(K),
-            Layout(Coord(M, K), Coord(K, Idx[1])),
-        )
-        var w_group = TileTensor(
-            b.ptr + Int64(w_expert) * Int64(N) * Int64(K),
-            Layout(Coord(N, K), Coord(K, Idx[1])),
-        )
+        var c_group = c[a_start : a_start + M, :]
+        var a_group = a[a_start : a_start + M, :]
+        var w_group = b[w_expert, :, :]
         # `c_group` indexes this group's rows from 0; the epilogues take rows
         # of all of `c`.
         var c_ptr = c.ptr
