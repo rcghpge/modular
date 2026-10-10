@@ -177,6 +177,34 @@ Parameters:
     address_space: The address space of the pointer.
 """
 
+comptime OptionalMutPointer[
+    T: AnyType,
+    origin: MutOrigin,
+    *,
+    address_space: AddressSpace = .GENERIC,
+] = OptionalPointer[T, origin, address_space=address_space]
+"""An optional (nullable) mutable `Pointer`.
+
+Parameters:
+    T: The pointee type.
+    origin: The origin of the pointer.
+    address_space: The address space of the pointer.
+"""
+
+comptime OptionalImmPointer[
+    T: AnyType,
+    origin: ImmOrigin,
+    *,
+    address_space: AddressSpace = .GENERIC,
+] = OptionalPointer[T, origin, address_space=address_space]
+"""An optional (nullable) immutable `Pointer`.
+
+Parameters:
+    T: The pointee type.
+    origin: The origin of the pointer.
+    address_space: The address space of the pointer.
+"""
+
 comptime OpaquePointer[
     mut: Bool,
     //,

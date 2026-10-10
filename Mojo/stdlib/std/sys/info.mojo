@@ -21,6 +21,7 @@ print(CompilationTarget.is_x86())
 ```
 """
 
+from std.builtin.rebind import downcast
 from std.builtin.variadics import _MLIR
 from std.collections.string.string_span import _get_kgen_string
 from std.ffi import _external_call_const, external_call
@@ -835,6 +836,33 @@ def platform_map[
         return materialize[linux.value()]()
     else:
         CompilationTarget.unsupported_target_error[operation=operation]()
+
+
+struct _UnsupportedTarget[name: StaticString]:
+    pass
+
+
+comptime platform_type_map[
+    Trait: type_of(AnyType) = AnyType,
+    *,
+    linux: AnyType = _UnsupportedTarget["linux"],
+    macos: AnyType = _UnsupportedTarget["macos"],
+] = downcast[
+    # fmt: off
+    linux if CompilationTarget.is_linux() else
+    macos if CompilationTarget.is_macos() else
+    _UnsupportedTarget[CompilationTarget._os()],
+    # fmt: on
+    Trait,
+]
+"""Selects a type for the current compilation target, the type-level
+counterpart of `platform_map`.
+
+Parameters:
+    Trait: The trait every given type conforms to.
+    linux: The type to use on Linux.
+    macos: The type to use on macOS.
+"""
 
 
 @inline(.nodebug)
