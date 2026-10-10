@@ -3228,7 +3228,7 @@ def MO_PadConstantOp : MO_TensorOp<"pad.constant", [
 }
 
 def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
-  MO_HostOnly,
+  MO_SingleDeviceWithHostOperands<["paddings"]>,
   MO_PadLikeTraits,
   MO_ParamDeclaration,
 ]> {
@@ -3260,7 +3260,7 @@ def MO_PadReflectOp : MO_TensorOp<"pad.reflect", [
 }
 
 def MO_PadRepeatOp : MO_TensorOp<"pad.repeat", [
-  MO_HostOnly,
+  MO_SingleDeviceWithHostOperands<["paddings"]>,
   MO_PadLikeTraits,
   MO_ParamDeclaration,
 ]> {
