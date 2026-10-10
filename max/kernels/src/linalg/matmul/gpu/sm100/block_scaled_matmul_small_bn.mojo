@@ -503,21 +503,8 @@ def load_AB_SFA[
                 b_multicast_mask,
             )
             # 4D uint16 TMA for SF (avoids 2× overfetch from 16-byte innermost)
-            var sfa_smem_u16 = TileTensor[
-                sfa_tma_dtype,
-                sfa_smem_tile.LayoutType,
-                MutAnyOrigin,
-                address_space=.SHARED,
-            ](
-                rebind[
-                    UnsafePointer[
-                        Scalar[sfa_tma_dtype],
-                        MutAnyOrigin,
-                        address_space=.SHARED,
-                    ]
-                ](sfa_smem_tile.ptr),
-                sfa_smem_tile.layout,
-            )
+            # View the same SMEM tile as uint16 for the TMA copy.
+            var sfa_smem_u16 = sfa_smem_tile.bitcast[sfa_tma_dtype]()
             sfa_tma_op.async_copy_4d[cta_group](
                 sfa_smem_u16,
                 tma_mbar[0],
@@ -656,21 +643,7 @@ def _prefetch_weight_tiles_sbn[
                     a_multicast_mask,
                 )
                 var sfa_smem_tile = sfa_smem_tiles[offset]
-                var sfa_smem_u16 = TileTensor[
-                    sfa_tma_dtype,
-                    sfa_smem_tile.LayoutType,
-                    MutAnyOrigin,
-                    address_space=.SHARED,
-                ](
-                    rebind[
-                        UnsafePointer[
-                            Scalar[sfa_tma_dtype],
-                            MutAnyOrigin,
-                            address_space=.SHARED,
-                        ]
-                    ](sfa_smem_tile.ptr),
-                    sfa_smem_tile.layout,
-                )
+                var sfa_smem_u16 = sfa_smem_tile.bitcast[sfa_tma_dtype]()
                 sfa_tma_op.async_copy_4d[cta_group](
                     sfa_smem_u16,
                     tma_mbar[0],
@@ -776,21 +749,7 @@ def _complete_activation_tiles_sbn[
                     a_multicast_mask,
                 )
                 var sfa_smem_tile = sfa_smem_tiles[offset]
-                var sfa_smem_u16 = TileTensor[
-                    sfa_tma_dtype,
-                    sfa_smem_tile.LayoutType,
-                    MutAnyOrigin,
-                    address_space=.SHARED,
-                ](
-                    rebind[
-                        UnsafePointer[
-                            Scalar[sfa_tma_dtype],
-                            MutAnyOrigin,
-                            address_space=.SHARED,
-                        ]
-                    ](sfa_smem_tile.ptr),
-                    sfa_smem_tile.layout,
-                )
+                var sfa_smem_u16 = sfa_smem_tile.bitcast[sfa_tma_dtype]()
                 sfa_tma_op.async_copy_4d[cta_group](
                     sfa_smem_u16,
                     tma_mbar[0],
@@ -2384,12 +2343,7 @@ def _create_tma_and_launch[
         Idx[sf_atom_u16],
     )
     var sfa_4d_layout = tt_row_major(sfa_4d_shape)
-    var sfa_4d_tensor = TileTensor[
-        .uint16, type_of(sfa_4d_layout), ImmutAnyOrigin
-    ](
-        rebind[UnsafePointer[UInt16, ImmutAnyOrigin]](sfa_5d_tensor.ptr),
-        sfa_4d_layout,
-    )
+    var sfa_4d_tensor = sfa_5d_tensor.bitcast[.uint16]().reshape(sfa_4d_layout)
 
     comptime sfa_tma_tile_shape = coord[
         1,
@@ -2694,24 +2648,10 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
 
     var sfa_5d_shape = _scales_5d_shape(a_scales_tensor)
     var sfa_5d_layout = tt_row_major(sfa_5d_shape)
-    var sfa_5d_tensor = TileTensor[
-        sfa_dtype, type_of(sfa_5d_layout), ImmutAnyOrigin
-    ](
-        rebind[UnsafePointer[Scalar[sfa_dtype], ImmutAnyOrigin]](
-            a_scales_tensor.ptr
-        ),
-        sfa_5d_layout,
-    )
+    var sfa_5d_tensor = a_scales_tensor.as_imm().reshape(sfa_5d_layout)
     var sfb_5d_shape = _scales_5d_shape(b_scales_tensor)
     var sfb_5d_layout = tt_row_major(sfb_5d_shape)
-    var sfb_5d_tensor = TileTensor[
-        sfb_dtype, type_of(sfb_5d_layout), ImmutAnyOrigin
-    ](
-        rebind[UnsafePointer[Scalar[sfb_dtype], ImmutAnyOrigin]](
-            b_scales_tensor.ptr
-        ),
-        sfb_5d_layout,
-    )
+    var sfb_5d_tensor = b_scales_tensor.as_imm().reshape(sfb_5d_layout)
 
     comptime if is_batched_matmul:
         _create_tma_and_launch[
