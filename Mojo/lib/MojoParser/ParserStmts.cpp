@@ -288,10 +288,8 @@ struct StmtParser : public ParserBase {
 
   // Compound statements.
   ParseResult parseIfStmt(LexerCursor startCursor, size_t curIndent);
-  ParseResult parseElif(Location ifLoc, LexerCursor startCursor,
-                        size_t curIndent);
-  ParseResult parseComptimeIf(Location ifLoc, LexerCursor startCursor,
-                              size_t curIndent);
+  ParseResult parseIf(Location ifLoc, LexerCursor startCursor, size_t curIndent,
+                      bool isComptime);
   ParseResult parseWhileStmt(size_t curIndent);
   ParseResult parseMatchStmt(size_t curIndent, bool isComptime);
 
@@ -587,7 +585,7 @@ static void diagnoseIgnoredResult(const ExprNode *expr, CValue value,
     // Get the result type without any error handling in the way.
     Type resultType = sig->getUserResultType();
     if ((sig->getNumArguments() ==
-         ((unsigned)sig->hasMemoryOnlyResult() + (unsigned)sig->isThrows())) &&
+         ((size_t)sig->hasMemoryOnlyResult() + (size_t)sig->isThrows())) &&
         isImplicitlyIgnorableType(resultType)) {
       shared.emitWarning(expr->getLoc())
           << "function is not called; add '()' after name" << expr->getRange()
@@ -1001,16 +999,16 @@ ParseResult StmtParser::parseIfStmt(LexerCursor startCursor, size_t curIndent) {
   Location ifLoc = translateLocation(getToken().getLoc());
   if (parseToken(Token::kw_if, "expected 'if' token after decorators"))
     return failure();
-  return parseElif(ifLoc, startCursor, curIndent);
+  return parseIf(ifLoc, startCursor, curIndent, /*isComptime=*/false);
 }
 
 /// Parses 'comptime if <condition>:' after 'comptime' has been consumed.
-/// Delegates to parseComptimeIf for the actual IR generation.
+/// Delegates to parseIf for the actual IR generation.
 ParseResult StmtParser::parseComptimeIfStmt(LexerCursor startCursor,
                                             size_t curIndent) {
   Location ifLoc = translateLocation(getToken().getLoc());
   consumeToken(Token::kw_if);
-  return parseComptimeIf(ifLoc, startCursor, curIndent);
+  return parseIf(ifLoc, startCursor, curIndent, /*isComptime=*/true);
 }
 
 /// Helper to parse 'for <target> in <seq>:' syntax, used by both regular
@@ -3724,12 +3722,10 @@ ParseResult StmtParser::parseSingleWithStmt(size_t curIndent, SMLoc smLoc,
   return success();
 }
 
-ParseResult StmtParser::parseComptimeIf(Location ifLoc, LexerCursor startCursor,
-                                        size_t curIndent) {
-  // Mirror parseElif: collect all arms first, create a flat hlcf.comptime.if
-  // attached to the enclosing function, then re-parse suites into its regions.
-  // Bodies must be parsed under an attached op so emitNormalReturn can walk
-  // from the insertion block up to the enclosing FnOp.
+ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
+                                size_t curIndent, bool isComptime) {
+  // Collect all arms first, then re-parse their suites into the selected
+  // runtime or compile-time control-flow operation.
   llvm::SaveAndRestore builderSaver(builder);
 
   struct ArmEntry {
@@ -3768,79 +3764,79 @@ ParseResult StmtParser::parseComptimeIf(Location ifLoc, LexerCursor startCursor,
   }
   auto afterCursor = getLexer().getCursor();
 
-  auto emitComptimeCondAttr = [&](ExprNode *condExp) -> FailureOr<TypedAttr> {
-    RValue condRVal = getParamEmitter(EC_ComptimeIfCondition)
-                          .emitExprScalarBool(condExp, EC_ComptimeIfCondition);
-    if (!condRVal)
-      return failure();
-    PValue condPVal = condRVal.getIfPValue();
-    if (!condPVal) {
-      emitError(condExp->getLoc(),
-                "'comptime if' condition must be evaluable at compile-time")
-          << condExp->getRange();
-      return failure();
+  if (isComptime) {
+    auto emitComptimeCondAttr = [&](ExprNode *condExp) -> FailureOr<TypedAttr> {
+      RValue condRVal =
+          getParamEmitter(EC_ComptimeIfCondition)
+              .emitExprScalarBool(condExp, EC_ComptimeIfCondition);
+      if (!condRVal)
+        return failure();
+      PValue condPVal = condRVal.getIfPValue();
+      if (!condPVal) {
+        emitError(condExp->getLoc(),
+                  "'comptime if' condition must be evaluable at compile-time")
+            << condExp->getRange();
+        return failure();
+      }
+      return cast<TypedAttr>(condPVal.get());
+    };
+
+    SmallVector<Attribute, 4> conds;
+    conds.reserve(arms.size());
+    for (const ArmEntry &arm : arms) {
+      FailureOr<TypedAttr> attr = emitComptimeCondAttr(arm.condExpr);
+      if (failed(attr))
+        return failure();
+      conds.push_back(*attr);
     }
-    return cast<TypedAttr>(condPVal.get());
-  };
 
-  SmallVector<Attribute, 4> conds;
-  conds.reserve(arms.size());
-  for (const ArmEntry &arm : arms) {
-    FailureOr<TypedAttr> attr = emitComptimeCondAttr(arm.condExpr);
-    if (failed(attr))
-      return failure();
-    conds.push_back(*attr);
-  }
+    auto comptimeIfOp = HLCF::ComptimeIfOp::create(builder, ifLoc, TypeRange{},
+                                                   builder.getArrayAttr(conds));
 
-  auto comptimeIfOp = HLCF::ComptimeIfOp::create(builder, ifLoc, TypeRange{},
-                                                 builder.getArrayAttr(conds));
+    auto parseComptimeIfRegion =
+        [&](ArrayRef<ConstraintAttr> assumptions) -> ParseResult {
+      DebugInfo::DIBuilder::ScopeGuard scopeGuard;
+      llvm::SaveAndRestore<ASTDecl *> keepDecl(curDeclScope);
+      pushChildScope(scopeGuard, keepDecl);
+      curDeclScope->insertKnownAssumptions(assumptions);
+      return parseSuite(curIndent);
+    };
 
-  auto parseComptimeIfRegion =
-      [&](ArrayRef<ConstraintAttr> assumptions) -> ParseResult {
-    DebugInfo::DIBuilder::ScopeGuard scopeGuard;
-    llvm::SaveAndRestore<ASTDecl *> keepDecl(curDeclScope);
-    pushChildScope(scopeGuard, keepDecl);
-    curDeclScope->insertKnownAssumptions(assumptions);
-    return parseSuite(curIndent);
-  };
+    auto emitArmBody =
+        [&](Region &thenRegion, const ArmEntry &entry,
+            ArrayRef<ConstraintAttr> assumptions) -> ParseResult {
+      builder.createBlock(&thenRegion);
+      entry.bodyCursor.restore(getLexer());
+      if (failed(parseComptimeIfRegion(assumptions)))
+        return failure();
+      HLCF::ComptimeYieldOp::create(builder, entry.keywordLoc);
+      return success();
+    };
 
-  auto emitArmBody = [&](Region &thenRegion, const ArmEntry &entry,
-                         ArrayRef<ConstraintAttr> assumptions) -> ParseResult {
-    builder.createBlock(&thenRegion);
-    entry.bodyCursor.restore(getLexer());
-    if (failed(parseComptimeIfRegion(assumptions)))
-      return failure();
-    HLCF::ComptimeYieldOp::create(builder, entry.keywordLoc);
+    SmallVector<ConstraintAttr, 4> falseAssumptions;
+    auto thenRegions = comptimeIfOp.getThenRegions();
+    for (auto [idx, entry] : llvm::enumerate(arms)) {
+      TypedAttr cond = cast<TypedAttr>(conds[idx]);
+      SmallVector<ConstraintAttr, 4> thenAssumptions(falseAssumptions);
+      thenAssumptions.push_back(LIT::buildBranchAssumption(
+          cond, /*invertCondition=*/false, entry.keywordLoc));
+      if (failed(emitArmBody(thenRegions[idx], entry, thenAssumptions)))
+        return failure();
+      falseAssumptions.push_back(LIT::buildBranchAssumption(
+          cond, /*invertCondition=*/true, entry.keywordLoc));
+    }
+
+    builder.createBlock(&comptimeIfOp.getElseRegion());
+    if (elseBodyCursor) {
+      elseBodyCursor->restore(getLexer());
+      if (failed(parseComptimeIfRegion(falseAssumptions)))
+        return failure();
+    }
+    HLCF::ComptimeYieldOp::create(builder, ifLoc);
+
+    afterCursor.restore(getLexer());
     return success();
-  };
-
-  SmallVector<ConstraintAttr, 4> falseAssumptions;
-  auto thenRegions = comptimeIfOp.getThenRegions();
-  for (auto [idx, entry] : llvm::enumerate(arms)) {
-    TypedAttr cond = cast<TypedAttr>(conds[idx]);
-    SmallVector<ConstraintAttr, 4> thenAssumptions(falseAssumptions);
-    thenAssumptions.push_back(LIT::buildBranchAssumption(
-        cond, /*invertCondition=*/false, entry.keywordLoc));
-    if (failed(emitArmBody(thenRegions[idx], entry, thenAssumptions)))
-      return failure();
-    falseAssumptions.push_back(LIT::buildBranchAssumption(
-        cond, /*invertCondition=*/true, entry.keywordLoc));
   }
-
-  builder.createBlock(&comptimeIfOp.getElseRegion());
-  if (elseBodyCursor) {
-    elseBodyCursor->restore(getLexer());
-    if (failed(parseComptimeIfRegion(falseAssumptions)))
-      return failure();
-  }
-  HLCF::ComptimeYieldOp::create(builder, ifLoc);
-
-  afterCursor.restore(getLexer());
-  return success();
-}
-
-ParseResult StmtParser::parseElif(Location ifLoc, LexerCursor startCursor,
-                                  size_t curIndent) {
 
   struct DeadCodeInfo {
     /// The value of the constant condition.
@@ -3851,63 +3847,18 @@ ParseResult StmtParser::parseElif(Location ifLoc, LexerCursor startCursor,
 
     /// Index into elifRegions of the condition region, or ~0u for the first
     /// (operand) condition.
-    unsigned elifCondIndex;
+    size_t elifCondIndex;
   };
-
-  // One if/elif arm: condition AST + suite start so we can allocate the ElIf
-  // once, then emit conditions and re-parse suites in a second pass.
-  struct ElifEntry {
-    ExprNode *condExpr;
-    LexerCursor bodyCursor;
-    Location keywordLoc;
-  };
-
-  // We will be moving the builder into sub-regions that are created, make sure
-  // we end up after it when this is done.
-  llvm::SaveAndRestore builderSaver(builder);
-
-  // Parse all if/elif(/else) arms first so we know how many ElIf regions to
-  // allocate.
-  SmallVector<ElifEntry, 4> elifEntries;
-
-  ExprNode *firstCondExpr = nullptr;
-  if (parseExpression(firstCondExpr, curIndent, Precedence::kAssignExpr) ||
-      parseToken(Token::colon, "expected ':' after 'if' expression"))
-    return failure();
-  elifEntries.push_back({firstCondExpr, getLexer().getCursor(), ifLoc});
-  skipUntilIndentation(curIndent);
-
-  while (getToken().is(Token::kw_elif) &&
-         isTokenInCurrentStatement(curIndent, /*allowSameIndent=*/true)) {
-    Location elifLoc = translateLocation(consumeToken(Token::kw_elif).getLoc());
-    ExprNode *condExpr = nullptr;
-    if (parseExpression(condExpr, curIndent, Precedence::kAssignExpr) ||
-        parseToken(Token::colon, "expected ':' after 'elif' expression"))
-      return failure();
-    elifEntries.push_back({condExpr, getLexer().getCursor(), elifLoc});
-    skipUntilIndentation(curIndent);
-  }
-
-  std::optional<LexerCursor> elseBodyCursor;
-  if (isTokenInCurrentStatement(curIndent, /*allowSameIndent=*/true) &&
-      consumeIf(Token::kw_else)) {
-    if (parseToken(Token::colon, "expected ':' after else"))
-      return failure();
-    elseBodyCursor = getLexer().getCursor();
-    skipUntilIndentation(curIndent);
-  }
-
-  auto afterElifCursor = getLexer().getCursor();
 
   // Unreachable-arm metadata collected while emitting conditions; processed
-  // after the full elif is built so we can mark regions dead.
+  // after the full if is built so we can mark regions dead.
   SmallVector<DeadCodeInfo> ifOpsWithDeadCode;
 
   // Emit a previously-parsed condition at the current insertion point. The
   // first `if` condition is emitted before the elif; later `elif` conditions
   // stay in their regions.
   auto emitConditionExpr = [&](ExprNode *condExp,
-                               unsigned elifCondIndex) -> FailureOr<Value> {
+                               size_t elifCondIndex) -> FailureOr<Value> {
     auto emitter = getEmitter();
 
     RValue condI1RVal = emitter.emitExprScalarBool(condExp, EC_BoolCondition);
@@ -3927,7 +3878,7 @@ ParseResult StmtParser::parseElif(Location ifLoc, LexerCursor startCursor,
   };
 
   auto emitArmBody = [&](Block &bodyBlock,
-                         const ElifEntry &entry) -> ParseResult {
+                         const ArmEntry &entry) -> ParseResult {
     builder.setInsertionPointToStart(&bodyBlock);
     entry.bodyCursor.restore(getLexer());
     if (failed(parseLocalScopeSuite(curIndent)))
@@ -3938,12 +3889,11 @@ ParseResult StmtParser::parseElif(Location ifLoc, LexerCursor startCursor,
 
   // First condition is evaluated in the parent and becomes the elif operand.
   FailureOr<Value> firstCond =
-      emitConditionExpr(elifEntries.front().condExpr, /*elifCondIndex=*/~0u);
+      emitConditionExpr(arms.front().condExpr, /*elifCondIndex=*/~0u);
   if (failed(firstCond))
     return failure();
 
-  unsigned numExtraRegions =
-      elifEntries.size() > 1 ? (elifEntries.size() - 1) * 2 : 0;
+  size_t numExtraRegions = arms.size() > 1 ? (arms.size() - 1) * 2 : 0;
   HLCF::IfOp ifOp = HLCF::IfOp::create(builder, ifLoc, TypeRange(), *firstCond,
                                        numExtraRegions);
   ifOp.getThenRegion().emplaceBlock();
@@ -3951,14 +3901,14 @@ ParseResult StmtParser::parseElif(Location ifLoc, LexerCursor startCursor,
   for (Region &region : ifOp.getElifRegions())
     region.emplaceBlock();
 
-  if (failed(emitArmBody(ifOp.getThenRegion().front(), elifEntries.front())))
+  if (failed(emitArmBody(ifOp.getThenRegion().front(), arms.front())))
     return failure();
 
   // Subsequent conditions stay in their regions so they are only evaluated
   // when earlier arms fail.
   for (auto [idx, entry] :
-       llvm::enumerate(ArrayRef<ElifEntry>(elifEntries).drop_front())) {
-    unsigned condRegionIndex = idx * 2;
+       llvm::enumerate(ArrayRef<ArmEntry>(arms).drop_front())) {
+    size_t condRegionIndex = idx * 2;
     builder.setInsertionPointToStart(
         &ifOp.getElifRegions()[condRegionIndex].front());
     FailureOr<Value> elifCond =
@@ -4012,7 +3962,7 @@ ParseResult StmtParser::parseElif(Location ifLoc, LexerCursor startCursor,
     }
   }
 
-  afterElifCursor.restore(getLexer());
+  afterCursor.restore(getLexer());
   return success();
 }
 
@@ -4291,7 +4241,7 @@ static void buildImportChain(ParserBase &p, ASTDecl &dest, OpBuilder builder,
   assert(modulePath.relativeLevel == 0 && "import chains are absolute");
   ASTDecl *scope = &dest;
   ArrayRef<StringRef> components = modulePath.components;
-  for (unsigned i = 0, e = components.size(); i != e; ++i) {
+  for (size_t i = 0, e = components.size(); i != e; ++i) {
     auto segName = StringAttr::get(p.getContext(), components[i]);
 
     // Reuse the ImportOp already bound at this scope; otherwise create a new
@@ -4621,8 +4571,8 @@ void StmtParser::maybeMarkDefaultedTraitMethod(FnOp fnOp) {
   // of the signature will result in a parser failure anyways and the simple
   // logic that is provided is capable of handling valid syntactic forms.
   auto skipSignature = [&]() {
-    unsigned parenDepth = 0;
-    unsigned squareDepth = 0;
+    size_t parenDepth = 0;
+    size_t squareDepth = 0;
     while (true) {
       switch (getToken().getKind()) {
       case Token::eof:
