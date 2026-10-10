@@ -133,7 +133,7 @@ struct TestResult(EnumLike, Equatable, ImplicitlyCopyable, Writable):
         Args:
             writer: The writer to output the result code to.
         """
-        __match self:
+        match self:
             case .PASS:
                 writer.write(Text[Color.GREEN]("PASS"))
             case .FAIL:
@@ -149,7 +149,7 @@ struct TestResult(EnumLike, Equatable, ImplicitlyCopyable, Writable):
             writer: The writer to output to.
         """
         writer.write_string("TestResult.")
-        __match self:
+        match self:
             case .PASS:
                 writer.write_string("PASS")
             case .FAIL:

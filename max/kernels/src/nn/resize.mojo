@@ -75,7 +75,7 @@ def coord_transform[
     """
     var out_coord_f32 = Float32(out_coord)
 
-    comptime __match mode:
+    comptime match mode:
         case .HalfPixel:
             # note: coordinates are for the CENTER of the pixel
             # - 0.5 term at the end is so that when we round to the nearest integer
@@ -156,7 +156,7 @@ def resize_nearest_neighbor[
 
     @inline(.always)
     def round[dtype: DType](val: Scalar[dtype]) -> Scalar[dtype]:
-        comptime __match round_mode:
+        comptime match round_mode:
             case .HalfDown:
                 return ceil(val - 0.5)
             case .HalfUp:

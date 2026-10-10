@@ -99,7 +99,7 @@ struct Point(Copyable, ImplicitlyCopyable, Movable):
 
 
 def describe_optional(opt: Optional[Int]) -> String:
-    __match opt:
+    match opt:
         case .Some(value):
             return String("some:", value)
         case .None:
@@ -107,7 +107,7 @@ def describe_optional(opt: Optional[Int]) -> String:
 
 
 def describe_token(tok: Token) -> String:
-    __match tok:
+    match tok:
         case .eof:
             return "eof"
         case .identifier(name):
@@ -117,7 +117,7 @@ def describe_token(tok: Token) -> String:
 
 
 def classify_int(x: Int) -> String:
-    __match x:
+    match x:
         case 0:
             return "zero"
         case 1 | 2:
@@ -129,7 +129,7 @@ def classify_int(x: Int) -> String:
 
 
 def classify_point(p: Point) -> String:
-    __match p:
+    match p:
         case Point(x=0, y=0):
             return "origin"
         case Point(x=var x, y=0):
@@ -141,7 +141,7 @@ def classify_point(p: Point) -> String:
 
 
 def classify_pair(pair: Tuple[Int, Int]) -> String:
-    __match pair:
+    match pair:
         case (0, 0):
             return "origin"
         case (var x, 0):
@@ -153,7 +153,7 @@ def classify_pair(pair: Tuple[Int, Int]) -> String:
 
 
 def classify_expected(value: Int, expected: Int) -> String:
-    __match value:
+    match value:
         case == expected:
             return "expected"
         case _:
@@ -161,7 +161,7 @@ def classify_expected(value: Int, expected: Int) -> String:
 
 
 def classify_expected_pair(pair: Tuple[Int, Int], expected: Int) -> String:
-    __match pair:
+    match pair:
         case (_, == expected):
             return "expected-second"
         case _:
@@ -169,7 +169,7 @@ def classify_expected_pair(pair: Tuple[Int, Int], expected: Int) -> String:
 
 
 def classify_computed_expected(value: Int, expected: Int) -> String:
-    __match value:
+    match value:
         case == (expected + 1):
             return "computed"
         case _:
@@ -177,7 +177,7 @@ def classify_computed_expected(value: Int, expected: Int) -> String:
 
 
 def classify_type[T: AnyType]() -> String:
-    comptime __match T:
+    comptime match T:
         case == Int:
             return "integer"
         case == String:
@@ -187,7 +187,7 @@ def classify_type[T: AnyType]() -> String:
 
 
 def classify_or_bind_var(pair: Tuple[Int, Int]) -> String:
-    __match pair:
+    match pair:
         case (0, var x) | (var x, 1):
             return String("var:", x)
         case _:
@@ -195,7 +195,7 @@ def classify_or_bind_var(pair: Tuple[Int, Int]) -> String:
 
 
 def classify_or_bind_ref(var pair: Tuple[Int, Int]) -> String:
-    __match pair:
+    match pair:
         case (2, ref x) | (ref x, 3):
             return String("ref:", x)
         case _:
@@ -203,7 +203,7 @@ def classify_or_bind_ref(var pair: Tuple[Int, Int]) -> String:
 
 
 def classify_comptime_int[x: Int]() -> String:
-    comptime __match x:
+    comptime match x:
         case 0:
             return "zero"
         case 1 | 2:
@@ -215,7 +215,7 @@ def classify_comptime_int[x: Int]() -> String:
 
 
 def classify_comptime_bool[flag: Bool]() -> String:
-    comptime __match flag:
+    comptime match flag:
         case True:
             return "yes"
         case False:
@@ -223,7 +223,7 @@ def classify_comptime_bool[flag: Bool]() -> String:
 
 
 def classify_comptime_or_bind[pair: Tuple[Int, Int]]() -> String:
-    comptime __match pair:
+    comptime match pair:
         case (0, y) | (y, 1):
             return String("hit:", y)
         case _:
@@ -231,7 +231,7 @@ def classify_comptime_or_bind[pair: Tuple[Int, Int]]() -> String:
 
 
 def classify_comptime_as[x: Int]() -> String:
-    comptime __match x:
+    comptime match x:
         case 0 as n:
             return String("zero:", n)
         case _:
@@ -253,14 +253,14 @@ def test_optional():
     print(describe_optional(Optional[Int](None)))
 
     var mut_opt = Optional(7)
-    __match mut_opt:
+    match mut_opt:
         case .Some(ref value):
             # CHECK: mut-some: 7
             print("mut-some:", value)
         case .None:
             print("mut-none")
 
-    __match Optional[Int](None):
+    match Optional[Int](None):
         case .Some:
             print("tag-some")
         case .None:
@@ -279,7 +279,7 @@ def test_enum_like_token():
     # CHECK: int:99
     print(describe_token(Token.integer(99)))
 
-    __match Token.identifier("x"):
+    match Token.identifier("x"):
         case Token.eof:
             print("explicit-eof")
         case .identifier(var name):

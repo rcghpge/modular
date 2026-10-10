@@ -87,7 +87,7 @@ static constexpr StringRef kMissingDocMessage =
     "Unexpected empty documentation string";
 
 /// The title of the code action that appends a `case` arm per value of a
-/// `__match` subject its cases leave uncovered.
+/// `match` subject its cases leave uncovered.
 static constexpr StringRef kAddMissingCasesTitle = "Add missing cases";
 
 //===----------------------------------------------------------------------===//
@@ -1174,7 +1174,7 @@ MojoDocument::getCodeActionsSync(SMRange range,
     }
   }
 
-  // Offer to add the missing cases of a `__match` whose header contains the
+  // Offer to add the missing cases of a `match` whose header contains the
   // requested position. This needs no diagnostic, so it also covers a match
   // with no cases yet.
   if (!isCodeActionKindAllowed(context, lsp::CodeAction::kRefactor))

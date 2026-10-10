@@ -1130,7 +1130,7 @@ def mgp_buffer_memset[
     """
     # `cast` to the matching-width unsigned int truncates to the low N bits,
     # which is exactly the little-endian low-byte pattern.
-    __match elem_size:
+    match elem_size:
         case 1:
             _memset_buffer[.uint8, bDevice](
                 buffer, value_bits.cast[.uint8](), dev_context

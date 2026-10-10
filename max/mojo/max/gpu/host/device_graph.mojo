@@ -2081,7 +2081,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         ), "bitwidth of memset dtype must be one of [8,16,32,64]"
         var value: UInt64
 
-        comptime __match bitwidth:
+        comptime match bitwidth:
             case 8:
                 value = UInt64(Int(bitcast[.uint8, 1](val)))
             case 16:

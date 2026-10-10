@@ -8,7 +8,7 @@
   "uri":"test:///comptime.mojo",
   "languageId":"mojo",
   "version":1,
-  "text":"def foo[flag: Bool]():\n    comptime __match flag:\n"
+  "text":"def foo[flag: Bool]():\n    comptime match flag:\n"
 }}}
 // CHECK: "method": "textDocument/publishDiagnostics",
 // CHECK: "message": "'match' statement must have at least one 'case' block",
@@ -36,11 +36,11 @@
 // CHECK-NEXT:              "newText": "\n    case False:\n        pass\n    case True:\n        pass",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:                "end": {
-// CHECK-NEXT:                  "character": 26,
+// CHECK-NEXT:                  "character": 24,
 // CHECK-NEXT:                  "line": 1
 // CHECK-NEXT:                },
 // CHECK-NEXT:                "start": {
-// CHECK-NEXT:                  "character": 26,
+// CHECK-NEXT:                  "character": 24,
 // CHECK-NEXT:                  "line": 1
 // CHECK-NEXT:                }
 // CHECK-NEXT:              }

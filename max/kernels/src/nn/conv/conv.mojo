@@ -3828,7 +3828,7 @@ def get_cudnn_dtype[dtype: DType]() raises -> cudnnDataType_t:
         If the dtype is not supported by cuDNN.
     """
 
-    comptime __match dtype:
+    comptime match dtype:
         case .float32:
             return cudnnDataType_t.CUDNN_DATA_FLOAT
         case .float16:

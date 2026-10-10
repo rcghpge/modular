@@ -99,7 +99,7 @@ def _construct_mma_blocks(
 
         while op_idx < num_ops:
             var op = body.ops[order[op_idx]].op
-            __match op.role:
+            match op.role:
                 case .COMPUTE:
                     mma_op = op
                     op_idx += 1

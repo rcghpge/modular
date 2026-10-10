@@ -246,7 +246,7 @@ def normalize(
     """
     comptime dtype = value.dtype
 
-    comptime __match dtype:
+    comptime match dtype:
         case .int32:
             return normalize(rebind[Int32](value)).cast[result.dtype]()
         case .uint32:

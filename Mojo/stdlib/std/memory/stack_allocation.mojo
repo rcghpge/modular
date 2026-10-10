@@ -89,7 +89,7 @@ def unsafe_stack_allocation[
 
         comptime global_name = name.value() if name else "_global_alloc"
 
-        comptime __match address_space:
+        comptime match address_space:
             case .SHARED:
                 return {
                     _mlir_value = __mlir_op.`pop.global_alloc`[

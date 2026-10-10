@@ -98,7 +98,7 @@ struct UMMAKind(Equatable, Hashable, TrivialRegisterPassable, Writable):
         Args:
             writer: The writer to write the UMMA kind to.
         """
-        __match self:
+        match self:
             case .KIND_TF32:
                 writer.write("kind::tf32")
             case .KIND_F16:
@@ -1051,7 +1051,7 @@ struct MMASmemDescriptor(MMAOperandDescriptor, TrivialRegisterPassable):
         # TMA enumerates no swizzle, 32, 64, 128B as 0, 1, 2, 3.
         # WGMMA enumerates these as 0, 3, 2, 1.
         def _convert_swizzle_enum[mode: TensorMapSwizzle]() -> Int64:
-            comptime __match mode:
+            comptime match mode:
                 case .SWIZZLE_NONE:
                     return 0
                 case .SWIZZLE_32B:
@@ -1211,7 +1211,7 @@ struct MMASmemDescriptorPair(TrivialRegisterPassable):
         # TMA enumerates no swizzle, 32, 64, 128B as 0, 1, 2, 3.
         # WGMMA enumerates these as 0, 3, 2, 1.
         def _convert_swizzle_enum[mode: TensorMapSwizzle]() -> Int64:
-            comptime __match mode:
+            comptime match mode:
                 case .SWIZZLE_NONE:
                     return 0
                 case .SWIZZLE_32B:

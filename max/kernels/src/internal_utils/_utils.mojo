@@ -66,7 +66,7 @@ struct InitializationType(DevicePassable, Equatable, TrivialRegisterPassable):
 
     @staticmethod
     def from_str(str: String) raises -> Self:
-        __match str:
+        match str:
             case "zero":
                 return InitializationType.zero
             case "one":

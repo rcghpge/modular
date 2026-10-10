@@ -247,7 +247,7 @@ def _count_slice_dims[
     """Returns the number of `ContiguousSlice` (rank-preserving) arguments."""
     var count = 0
     comptime for i in range(slices.size):
-        __match slices[i]:
+        match slices[i]:
             case .slice:
                 count += 1
             case .index:
@@ -268,7 +268,7 @@ def _kept_slice_axis_for_output[
     """
     var kept_axes_seen = 0
     comptime for axis in range(slices.size):
-        __match slices[axis]:
+        match slices[axis]:
             case .slice:
                 if kept_axes_seen == out_axis:
                     return axis
@@ -307,7 +307,7 @@ def _slice_start[
 ]() -> Int:
     """Returns the first element of `axis` that the view selects: a slice's
     start, or the index a rank-reducing (`Int`) argument fixes the axis to."""
-    __match slices[axis]:
+    match slices[axis]:
         case .slice:
             return slices[axis].unsafe_get_slice().start.or_else(0)
         case .index:

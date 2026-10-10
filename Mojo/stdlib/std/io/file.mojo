@@ -96,7 +96,7 @@ def _open_file(path: String, mode: String) raises -> Int:
     var flags: Int
     var create_dirs = False
 
-    __match mode:
+    match mode:
         case "r":
             flags = O_RDONLY | O_CLOEXEC
         case "w":

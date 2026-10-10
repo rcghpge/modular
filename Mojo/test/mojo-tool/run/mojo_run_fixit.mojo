@@ -52,14 +52,14 @@ def take_bar(b: Bar) -> Int:
 
 # CHECK-LABEL: def redundant_literal_patterns(
 def redundant_literal_patterns(value: Int, pair: Tuple[Int, String]):
-    __match value:
+    match value:
         # CHECK: case 0:
         case == 0:
             pass
         case _:
             pass
 
-    __match pair:
+    match pair:
         # CHECK: case (_, "expected"):
         case (_, == "expected"):
             pass
@@ -69,17 +69,25 @@ def redundant_literal_patterns(value: Int, pair: Tuple[Int, String]):
 
 # CHECK-LABEL: def expression_patterns(
 def expression_patterns(value: Int, expected: Tuple[Int, Int]):
-    __match value:
+    match value:
         # CHECK: case == expected[0]:
         case expected[0]:
             pass
         case _:
             pass
 
-    __match expected:
+    match expected:
         # CHECK: case (_, == (expected[1] + 1)):
         case (_, expected[1] + 1):
             pass
+        case _:
+            pass
+
+
+# CHECK-LABEL: def deprecated_dunder_match(
+def deprecated_dunder_match(value: Int):
+    # CHECK: match value:
+    __match value:
         case _:
             pass
 

@@ -269,7 +269,7 @@ struct SM100MHADepth512[
         # ---- Initialization (per-CTA, then cluster sync) ----------------
 
         var warp_idx = UInt32(warp_id[broadcast=True]())
-        __match warp_idx:
+        match warp_idx:
             case 0:
                 # Initialize all barriers.
                 Depth512MBars[Self.config.num_kv_stages, Self.config.split_o](

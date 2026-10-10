@@ -551,7 +551,7 @@ public:
                                         llvm::SMLoc rsquareLoc,
                                         ArrayRef<Operand> operands);
 
-  /// Notify the parser listener, if present, that a `__match` statement leaves
+  /// Notify the parser listener, if present, that a `match` statement leaves
   /// values uncovered, and of the arms that would cover them.
   void notifyListenerOnMatchMissingCases(llvm::SMRange matchRange,
                                          SMLoc insertLoc, StringRef arms);

@@ -8,7 +8,7 @@
   "uri":"test:///styles.mojo",
   "languageId":"mojo",
   "version":1,
-  "text":"@fieldwise_init\nstruct Flags:\n    var a: Bool\n    var b: Bool\n\ndef foo(flag: Bool, f: Flags):\n    __match flag:\n        case True: pass\n\n    __match flag, flag:\n    case True, _: pass\n\n    __match f:\n    case Flags(a=True, b=True): pass\n"
+  "text":"@fieldwise_init\nstruct Flags:\n    var a: Bool\n    var b: Bool\n\ndef foo(flag: Bool, f: Flags):\n    match flag:\n        case True: pass\n\n    match flag, flag:\n    case True, _: pass\n\n    match f:\n    case Flags(a=True, b=True): pass\n"
 }}}
 // -----
 {"jsonrpc":"2.0","id":1,"method":"textDocument/codeAction","params":{

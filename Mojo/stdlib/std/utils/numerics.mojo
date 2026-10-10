@@ -481,7 +481,7 @@ def nan[dtype: DType]() -> Scalar[dtype]:
         dtype.is_floating_point()
     ), "Only floating point dtypes support NaN."
 
-    comptime __match dtype:
+    comptime match dtype:
         case .float8_e4m3fn:
             return rebind[Scalar[dtype]](
                 __mlir_attr.`#kgen.simd<"nan"> : !kgen.scalar<f8e4m3fn>`,
@@ -599,7 +599,7 @@ def inf[dtype: DType]() -> Scalar[dtype]:
         dtype.is_floating_point()
     ), "Only floating point dtypes support +inf."
 
-    comptime __match dtype:
+    comptime match dtype:
         case .float8_e4m3fnuz:
             return rebind[Scalar[dtype]](
                 __mlir_attr.`#kgen.simd<"inf"> : !kgen.scalar<f8e4m3fnuz>`,
@@ -654,7 +654,7 @@ def neg_inf[dtype: DType]() -> Scalar[dtype]:
         dtype.is_floating_point()
     ), "Only floating point dtypes support -inf."
 
-    comptime __match dtype:
+    comptime match dtype:
         case .float8_e4m3fn:
             return rebind[Scalar[dtype]](
                 __mlir_attr.`#kgen.simd<"-inf"> : !kgen.scalar<f8e4m3fn>`,

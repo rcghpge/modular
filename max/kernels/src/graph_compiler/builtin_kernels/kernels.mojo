@@ -4680,7 +4680,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                         )
 
         var dstate = B.dim_size(2)
-        __match dstate:
+        match dstate:
             case 16:
                 launch[16]()
             case 64:
@@ -4930,7 +4930,7 @@ struct CausalConv1DVarlenFwd[
                     x_vector_loads=False,
                 )
 
-            __match weight.dim_size(1):
+            match weight.dim_size(1):
                 case 1:
                     launch_gpu[1]()
                 case 2:

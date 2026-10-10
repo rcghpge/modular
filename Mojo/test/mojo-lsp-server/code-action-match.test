@@ -5,13 +5,13 @@
   "uri":"test:///foo.mojo",
   "languageId":"mojo",
   "version":1,
-  "text":"def foo(x: Optional[Int]):\n    __match x:\n    case .Some(_):\n        pass\n"
+  "text":"def foo(x: Optional[Int]):\n    match x:\n    case .Some(_):\n        pass\n"
 }}}
 // CHECK: "method": "textDocument/publishDiagnostics",
 // CHECK: "message": "'match' is not exhaustive; missing case for 'None'",
 // CHECK-NEXT: "range": {
 // CHECK-NEXT:   "end": {
-// CHECK-NEXT:     "character": 11,
+// CHECK-NEXT:     "character": 9,
 // CHECK-NEXT:     "line": 1
 // CHECK-NEXT:   },
 // CHECK-NEXT:   "start": {
@@ -28,11 +28,11 @@
     "uri":"test:///foo.mojo"
   },
   "range":{
-    "start":{"line":1,"character":4}, "end":{"line":1,"character":11}
+    "start":{"line":1,"character":4}, "end":{"line":1,"character":9}
   },
   "context":{
     "diagnostics":[{
-      "range":{"start":{"line":1,"character":4}, "end":{"line":1,"character":11}},
+      "range":{"start":{"line":1,"character":4}, "end":{"line":1,"character":9}},
       "message":"'match' is not exhaustive; missing case for 'None'",
       "severity":2,
       "source":"mojo"
@@ -74,7 +74,7 @@
     "uri":"test:///foo.mojo"
   },
   "range":{
-    "start":{"line":1,"character":13}, "end":{"line":1,"character":13}
+    "start":{"line":1,"character":11}, "end":{"line":1,"character":11}
   },
   "context":{
     "diagnostics":[],

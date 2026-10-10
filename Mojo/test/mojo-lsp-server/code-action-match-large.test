@@ -5,7 +5,7 @@
   "uri":"test:///large.mojo",
   "languageId":"mojo",
   "version":1,
-  "text":"def foo(flags: Tuple[Bool, Bool, Bool, Bool]):\n    __match flags:\n    print(flags)\n"
+  "text":"def foo(flags: Tuple[Bool, Bool, Bool, Bool]):\n    match flags:\n    print(flags)\n"
 }}}
 // -----
 {"jsonrpc":"2.0","id":5,"method":"textDocument/codeAction","params":{

@@ -141,7 +141,7 @@ mojo_test(
 ]
 
 # CPU-runnable: exercises the `EnumLike` conformances added across the
-# kernels' enum-behaving structs (runtime `__match`, discriminants,
+# kernels' enum-behaving structs (runtime `match`, discriminants,
 # non-exhaustive `-1` fallback) without launching any GPU work.
 mojo_test(
     name = "test_enum_like_conformance.mojo.test",

@@ -231,7 +231,7 @@ public:
                  const llvm::lsp::CodeActionContext &context,
                  LSPResponder<std::vector<llvm::lsp::CodeAction>> responder);
 
-  /// Record a `__match` statement whose header spans `matchRange` and whose
+  /// Record a `match` statement whose header spans `matchRange` and whose
   /// cases leave values uncovered; inserting `arms` at `insertLoc` covers
   /// them. Both locations are in this document's source manager.
   void addMatchMissingCases(llvm::SMRange matchRange, llvm::SMLoc insertLoc,
@@ -447,7 +447,7 @@ private:
       std::map<llvm::lsp::Range, std::vector<llvm::lsp::CodeAction>>>
       fixits;
 
-  /// A `__match` statement whose cases leave values uncovered, and the edit
+  /// A `match` statement whose cases leave values uncovered, and the edit
   /// that appends an arm for each of them.
   struct MatchMissingCases {
     llvm::SMRange matchRange;

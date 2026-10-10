@@ -7,7 +7,7 @@
   "uri":"test:///empty.mojo",
   "languageId":"mojo",
   "version":1,
-  "text":"def foo(flag: Bool):\n    __match flag:\n    print(flag)\n"
+  "text":"def foo(flag: Bool):\n    match flag:\n    print(flag)\n"
 }}}
 // -----
 {"jsonrpc":"2.0","id":4,"method":"textDocument/codeAction","params":{
@@ -15,11 +15,11 @@
     "uri":"test:///empty.mojo"
   },
   "range":{
-    "start":{"line":1,"character":4}, "end":{"line":1,"character":11}
+    "start":{"line":1,"character":4}, "end":{"line":1,"character":9}
   },
   "context":{
     "diagnostics":[{
-      "range":{"start":{"line":1,"character":4}, "end":{"line":1,"character":11}},
+      "range":{"start":{"line":1,"character":4}, "end":{"line":1,"character":9}},
       "message":"'match' statement must have at least one 'case' block",
       "severity":1,
       "source":"mojo"
@@ -37,7 +37,7 @@
     "uri":"test:///empty.mojo"
   },
   "range":{
-    "start":{"line":1,"character":4}, "end":{"line":1,"character":11}
+    "start":{"line":1,"character":4}, "end":{"line":1,"character":9}
   },
   "context":{
     "diagnostics":[],
@@ -56,11 +56,11 @@
 // CHECK-NEXT:              "newText": "\n    case False:\n        pass\n    case True:\n        pass",
 // CHECK-NEXT:              "range": {
 // CHECK-NEXT:                "end": {
-// CHECK-NEXT:                  "character": 17,
+// CHECK-NEXT:                  "character": 15,
 // CHECK-NEXT:                  "line": 1
 // CHECK-NEXT:                },
 // CHECK-NEXT:                "start": {
-// CHECK-NEXT:                  "character": 17,
+// CHECK-NEXT:                  "character": 15,
 // CHECK-NEXT:                  "line": 1
 // CHECK-NEXT:                }
 // CHECK-NEXT:              }

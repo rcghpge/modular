@@ -287,7 +287,7 @@ public:
     return internCommandList(reorderedCommands);
   }
 
-  /// Diagnose non-exhaustive and unreachable `__match` cases; set
+  /// Diagnose non-exhaustive and unreachable `match` cases; set
   /// `MatchCaseEntry::isUnreachable` / `isConcluding` for covered and
   /// coverage-completing arms. When requested, returns up to
   /// kMaxSuggestedCases arms for a finite subject. Otherwise returns an empty

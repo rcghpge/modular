@@ -3521,7 +3521,7 @@ def _get_type_mnemonic[dtype: DType]() -> StaticString:
     This internal utility function converts floating point DTypes into their
     corresponding string mnemonics used in GPU assembly instructions.
     """
-    __match dtype:
+    match dtype:
         case .float32:
             return "f32"
         case .float16:

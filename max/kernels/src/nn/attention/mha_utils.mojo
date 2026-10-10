@@ -169,7 +169,7 @@ struct FlashAttentionAlgorithm(
 
     @inline(.always)
     def write_to(self, mut writer: Some[Writer]):
-        __match self._value:
+        match self._value:
             case 0:
                 writer.write("naive-attention")
             case 1:

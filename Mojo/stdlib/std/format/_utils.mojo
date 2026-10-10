@@ -601,7 +601,7 @@ def _write_hex[
     comptime `u` = Byte(ord("u"))
     comptime `U` = Byte(ord("U"))
 
-    comptime __match amnt_hex_bytes:
+    comptime match amnt_hex_bytes:
         case 2:
             var chars = _hex_digits_to_hex_chars(UInt8(decimal))
             var buf = Array[Byte, 4](uninitialized=True)

@@ -390,7 +390,7 @@ struct MmaOpSM100_SS[
 
     @staticmethod
     def _get_umma_kind[dtype: DType]() -> UMMAKind:
-        comptime __match dtype:
+        comptime match dtype:
             case .float32:
                 return UMMAKind.KIND_TF32
             case .float16 | DType.bfloat16:

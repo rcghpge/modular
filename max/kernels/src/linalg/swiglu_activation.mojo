@@ -117,7 +117,7 @@ def geglu_tanh(gate: Float32, up: Float32) -> Float32:
 def _named_swiglu_activation[
     name: StaticString, alpha: Float32, limit: Float32
 ](gate: Float32, up: Float32) -> Float32:
-    comptime __match name:
+    comptime match name:
         case "silu":
             return swiglu[limit](gate, up)
         case "swigluoai":

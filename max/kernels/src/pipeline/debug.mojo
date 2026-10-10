@@ -78,7 +78,7 @@ def default_op_name(tag: Int) -> StaticString:
 
 
 def _koff_name(k: KOffsetKind) -> StaticString:
-    __match k:
+    match k:
         case .K0:
             return "K0   "
         case .K1:
@@ -213,7 +213,7 @@ def update_wait_counts(mut counts: WaitCounts, e: ScheduleEntry, next_tag: Int):
             vm+lgkm pairs. Pass `_Ops.NONE.value` for the last entry.
     """
     var t = e.op.tag
-    __match t:
+    match t:
         case _Ops.WAIT_VM.value:
             counts.n_vm += 1
             if next_tag == _Ops.WAIT_LGKM.value:

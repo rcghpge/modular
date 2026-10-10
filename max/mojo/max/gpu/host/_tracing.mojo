@@ -148,7 +148,7 @@ struct Color(Intable, TrivialRegisterPassable):
         Args:
             colorname: The name of the color to use.
         """
-        __match colorname:
+        match colorname:
             case "modular_purple":
                 self = Color.MODULAR_PURPLE
             case "blue":

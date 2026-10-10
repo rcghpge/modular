@@ -248,7 +248,7 @@ struct Format(ImplicitlyCopyable, Writable):
         Args:
             value: The format to print results.
         """
-        __match value:
+        match value:
             case Format.csv.value:
                 self.value = Format.csv.value
             case Format.tabular.value:
@@ -400,7 +400,7 @@ struct BenchConfig(Copyable):
             var args = argv()
             var i = 1
             while i < len(args):
-                __match args[i]:
+                match args[i]:
                     case "-o":
                         if i + 1 >= len(args):
                             raise Error("Missing value for -o option")

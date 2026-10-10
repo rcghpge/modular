@@ -160,7 +160,7 @@ struct SwizzleMode(
         Args:
             writer: The writer to output the string representation to.
         """
-        __match self._value:
+        match self._value:
             case 1:
                 writer.write("32B swizzle")
             case 2:

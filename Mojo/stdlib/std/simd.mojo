@@ -4421,7 +4421,7 @@ def _scalar_repr_alias[dtype: DType]() -> Optional[StaticString]:
         The scalar type alias name for `dtype`, or `None` when the `dtype` has
         no scalar alias.
     """
-    comptime __match dtype:
+    comptime match dtype:
         case .int:
             return StaticString("Int")
         case .uint:

@@ -10,8 +10,8 @@ This version is still a work in progress.
 
 ## Language enhancements
 
-- Added experimental `__match` / `case` pattern matching for early testing,
-  including `comptime __match` for compile-time subjects. Patterns include
+- Added `match` / `case` pattern matching, including `comptime match` for
+  compile-time subjects. Patterns include
   literals, contextual initializer lists such as `{}` and `{1, offset=2}`,
   explicit value patterns such as `== expected`, or-patterns (`|`), guards
   (`if`), `as` / bare name bindings, tuples, structs, and `EnumLike` types such
@@ -25,7 +25,7 @@ This version is still a work in progress.
 
   ```mojo
   def describe(p: Optional[Point]) -> String:
-      __match p:
+      match p:
           case .Some(Point(x=0, y=0)):
               return "origin"
           case .Some(Point(x=var x, y=0)) | .Some(Point(x=0, y=var x)):
@@ -41,7 +41,7 @@ This version is still a work in progress.
   # a parameter and the bound names are also parameters. var and ref specifiers
   # are not allowed in comptime match, because they are not meaningful.
   def matmul_tile[m: Int, n: Int, k: Int](...):
-      comptime __match (m, n, k):
+      comptime match (m, n, k):
           case (16, 16, 16):
               # Hand-tuned 16³ path.
               ...
@@ -51,13 +51,24 @@ This version is still a work in progress.
           case _:
               # Generic fallback.
               ...
+
+  # comptime match can also be used as a "type switch" since traits are
+  # comparable to specific types with `==`.
+  def classify_type[T: AnyType]() -> String:
+      comptime match T:
+          case == Int:
+              return "integer"
+          case == String:
+              return "string"
+          case _:
+              return "other"
   ```
 
   Both forms warn on non-exhaustive `EnumLike` subjects (including `Bool` and
   tuples/structs of such types) and on unreachable or duplicate cases. Open
   subjects such as `Int` and `String` diagnose duplicate literal cases but are
   not required to be exhaustive. The Mojo language server offers an "Add
-  missing cases" code action on any `__match` whose cases leave values
+  missing cases" code action on any `match` whose cases leave values
   uncovered, including one with no cases yet, appending a `case` arm with a
   `pass` body for each missing value.
 
@@ -80,7 +91,7 @@ This version is still a work in progress.
       ...
 
   def describe(error: ErrorCode) -> String:
-      __match error:
+      match error:
           case .FileNotFound:
               return "file not found"
           case .PermissionDenied:
@@ -146,7 +157,7 @@ This version is still a work in progress.
 
 - The enum-behaving structs across the standard library, MAX kernels, and
   MAX runtime now conform to `EnumLike`, so they support enum-style pattern
-  matching (`__match` with `case .NAME`) and reflective case metadata:
+  matching (`match` with `case .NAME`) and reflective case metadata:
   `Scope`, `FastMathFlag`, and `TestResult` in the standard library;
   `AllReduceAlgorithm`, `RasterOrder`, `MatmulSchedule`, `ReductionMode`,
   `GEMMKind`, `ThreadScope`, `FP6Format`, `MXFormat`, `Backend`,
@@ -159,7 +170,7 @@ This version is still a work in progress.
   resolution semantics.
 
   ```mojo
-  __match AllReduceAlgorithm.ONE_STAGE:
+  match AllReduceAlgorithm.ONE_STAGE:
       case .ONE_STAGE:
           launch_1stage()
       case .TWO_STAGE | .LAMPORT:

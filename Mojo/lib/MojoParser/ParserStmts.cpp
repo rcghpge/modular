@@ -111,6 +111,7 @@ static bool isStatementThatMightHaveDecorators(Token::Kind tokenKind) {
   case Token::kw_while:
   case Token::kw_try:
   case Token::kw_with:
+  case Token::kw_match:
   case Token::kw___match:
   case Token::kw___async:
   case Token::kw_def:
@@ -311,7 +312,7 @@ struct StmtParser : public ParserBase {
                        PatternMatchBuilder &matchBuilder,
                        PatternEmitState &emissionState, bool inMatchCase);
 
-  /// Emit `comptime __match` as an `hlcf.comptime.if` elif chain: each case's
+  /// Emit `comptime match` as an `hlcf.comptime.if` elif chain: each case's
   /// pattern tests (and optional guard, AND'd in) become a PValue bool
   /// condition; bodies fill then/else regions. Pattern bindings are installed
   /// as PValues before the guard is evaluated and remain visible in the body.
@@ -762,6 +763,7 @@ ParseResult StmtParser::parseStmt(bool onlySimpleStmt, bool &parsedCompound,
     if (rejectInNonFunctionScope())
       return success();
     return parseWhileStmt(stmtIndent);
+  case Token::kw_match:
   case Token::kw___match:
     rejectDecorator();  // Decorators not allowed.
     rejectSimpleStmt(); // Not a simple_stmt.
@@ -966,6 +968,7 @@ ParseResult StmtParser::parseComptimeCompoundStmt(LexerCursor startCursor,
     if (rejectInNonFunctionScope("for"))
       return success();
     return parseComptimeForStmt(startCursor, curIndent);
+  case Token::kw_match:
   case Token::kw___match:
     rejectDecorator();
     if (rejectInNonFunctionScope("match"))
@@ -1611,7 +1614,14 @@ static const char *findEndOfLastCase(const char *next, const char *lowerBound,
 /// suffixes rather than ternary/`as`-pattern operators.
 ///
 ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
-  SMLoc matchLoc = consumeToken(Token::kw___match).getLoc();
+  Token matchToken = consumeToken();
+  assert((matchToken.is(Token::kw_match) || matchToken.is(Token::kw___match)) &&
+         "expected match keyword");
+  SMLoc matchLoc = matchToken.getLoc();
+  if (matchToken.is(Token::kw___match)) {
+    shared.emitWarning(matchLoc, "'__match' is deprecated; use 'match'")
+        << FixIt::replaceToken(matchLoc, "match");
+  }
 
   // Parse the match subject as an expression_list (commas form a tuple).
   ExprNode *subjectExpr = nullptr;
@@ -1793,7 +1803,7 @@ ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
   return success();
 }
 
-/// Emit `comptime __match` as a flat `hlcf.comptime.if` / elif / else chain.
+/// Emit `comptime match` as a flat `hlcf.comptime.if` / elif / else chain.
 /// Each tested case contributes one condition attribute; a trailing
 /// always-matching case (`_` / bare binding) becomes the else arm. Pattern
 /// bindings are PValues installed before any guard runs and kept for the body;

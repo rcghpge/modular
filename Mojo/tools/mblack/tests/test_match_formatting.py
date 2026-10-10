@@ -75,13 +75,13 @@ def f(x):
 def test_mojo_formats_explicit_value_patterns():
     source = """\
 def f(value, expected):
-    __match value:
+    match value:
     case ==expected:
         return True
 """
     expected = """\
 def f(value, expected):
-    __match value:
+    match value:
         case == expected:
             return True
 """
@@ -116,7 +116,7 @@ def f(x):
 def test_mojo_formats_var_ref_patterns_in_kwargs():
     source = """\
 def classify_point(p: Point) -> String:
-    __match p:
+    match p:
     case Point(x=var x, y=0):
         return String("x-axis:", x)
     case Point(x=0, y=ref y):
@@ -130,7 +130,7 @@ def classify_point(p: Point) -> String:
 """
     expected = """\
 def classify_point(p: Point) -> String:
-    __match p:
+    match p:
         case Point(x=var x, y=0):
             return String("x-axis:", x)
         case Point(x=0, y=ref y):

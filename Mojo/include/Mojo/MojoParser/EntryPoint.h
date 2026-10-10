@@ -227,7 +227,7 @@ public:
                                   llvm::SMLoc rsquareLoc,
                                   ArrayRef<ExprNode *> parameters);
 
-  /// Notify the listener that the `case` arms of the `__match` statement whose
+  /// Notify the listener that the `case` arms of the `match` statement whose
   /// header spans `matchRange` leave values of its subject uncovered, or that
   /// it has no arms yet. Inserting `arms` at `insertLoc` appends one arm per
   /// uncovered value.

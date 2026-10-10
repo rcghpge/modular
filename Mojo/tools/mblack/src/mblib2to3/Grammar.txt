@@ -308,7 +308,8 @@ yield_arg: 'from' test | testlist_star_expr
 
 # 3.10 match statement definition
 #
-# Soft keywords use double quotes ("match", "case", "__match").
+# Pattern-matching soft keywords use double quotes. Keep "__match" for
+# deprecated-source compatibility.
 #
 # Two layouts are accepted after the subject colon:
 #   1. Indented: NEWLINE INDENT case_block+ DEDENT

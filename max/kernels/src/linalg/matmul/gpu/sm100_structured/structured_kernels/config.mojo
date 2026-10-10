@@ -138,7 +138,7 @@ struct GEMMKind(
         Args:
             writer: The writer to write the GEMM kind to.
         """
-        __match self:
+        match self:
             case .GEMM:
                 writer.write("kind::gemm")
             case .BMM:
@@ -153,7 +153,7 @@ struct GEMMKind(
     @inline(.always)
     def __str__(self) -> String:
         """Convert GEMM kind to a string."""
-        __match self:
+        match self:
             case .GEMM:
                 return "gemm"
             case .BMM:
@@ -283,7 +283,7 @@ def _compute_swizzle_modes(
             # {64,32,16} and fp32 tile_n {32,16,8} both map to {128B,64B,32B}.
             var elem_size = 2 if c_type == DType.bfloat16 else 4
             var row_bytes = output_tile_shape[1] * elem_size
-            __match row_bytes:
+            match row_bytes:
                 case 128:
                     c_swizzle = TensorMapSwizzle.SWIZZLE_128B
                 case 64:
@@ -473,7 +473,7 @@ def _write_common_config[
 
 
 def _get_dtype_name(dtype: DType) -> String:
-    __match dtype:
+    match dtype:
         case .bfloat16:
             return "bf16"
         case .float8_e4m3fn:

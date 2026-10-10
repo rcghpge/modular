@@ -1048,7 +1048,7 @@ def fa_prefill_apple[
             def _dispatch[sg: Int]() raises {var}:
                 _enqueue[sg]()
 
-            __match sg_env:
+            match sg_env:
                 case "4":
                     _dispatch[4]()
                 case "8":

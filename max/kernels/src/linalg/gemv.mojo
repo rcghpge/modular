@@ -149,7 +149,7 @@ struct GEMVAlgorithm(
 
     @inline(.always)
     def write_to(self, mut writer: Some[Writer]):
-        __match self:
+        match self:
             case .GemvKernel:
                 writer.write("GEMV")
             case .GemvKernelVector:
@@ -2278,7 +2278,7 @@ def _gemv_gpu_dispatch_impl[
     comptime static_N = c.static_shape[1] if has_N else UNKNOWN_VALUE
     comptime static_K = a.static_shape[1]
 
-    __match kernel_func:
+    match kernel_func:
         case GEMVAlgorithm.GemvSplitK:
             logger.info("Executing: GEMV_SPLIT_K kernel")
 

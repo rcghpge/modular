@@ -263,7 +263,7 @@ tuple pattern is not a runtime match failure—it is simply invalid code.
 > tuple.
 >
 
-`comptime __match` applies the same pattern model when the subject is a
+`comptime match` applies the same pattern model when the subject is a
 parameter expression and performs the match at compile time.
 
 ### Exhaustiveness and unreachability
@@ -406,21 +406,7 @@ following forms:
     A bare identifier introduces a binding, so `case Int:` binds the subject to
     a new name `Int` instead of comparing the subject to the type `Int`.
 
-2. **Initializer-list patterns** construct a value of the subject type and
-   compare it to the subject with `==`:
-
-    ```mojo
-    case {}:
-    case {1, offset=2}:
-    ```
-
-    As in a return statement or call argument, the subject provides the
-    contextual type for the initializer list. This is a value pattern, not a
-    destructuring pattern: the braces invoke the contextual type's initializer,
-    and the resulting value is passed as the right-hand operand of the
-    subject's `__eq__()` method.
-
-3. **Explicit equality patterns** compare the subject to the value of an
+2. **Explicit equality patterns** compare the subject to the value of an
    expression:
 
     ```mojo
@@ -434,7 +420,7 @@ following forms:
     introducing special type-pattern semantics:
 
     ```mojo
-    comptime __match T:
+    comptime match T:
         case == Int:
             return "integer"
         case == String:
@@ -448,7 +434,7 @@ following forms:
     a type. PEP 635 records similar explicit constant markers considered for
     Python, and PEP 642 proposed the same `== expected` syntax.
 
-4. **Sequence patterns** decompose sequence-like values:
+3. **Sequence patterns** decompose sequence-like values:
 
     ```mojo
     case []:
@@ -461,7 +447,7 @@ following forms:
     destructuring assignments. This should be tied into some trait that the
     collection conforms to.
 
-5. **Variable-length sequence patterns** capture a prefix, suffix, or remainder,
+4. **Variable-length sequence patterns** capture a prefix, suffix, or remainder,
    tied into the same trait (only a single `*` pattern is allowed):
 
     ```mojo
@@ -469,7 +455,7 @@ following forms:
     case [first, *middle, last]:
     ```
 
-6. **OR patterns** match when any of several alternatives match:
+5. **OR patterns** match when any of several alternatives match:
 
     ```mojo
     case 0 | 1:
@@ -479,7 +465,7 @@ following forms:
     Alternatives that introduce bindings must introduce compatible bindings on
     each path.
 
-7. **AS patterns** apply a pattern while also retaining the complete matched
+6. **AS patterns** apply a pattern while also retaining the complete matched
    value, producing an `imm` binding:
 
     ```mojo
@@ -487,7 +473,7 @@ following forms:
         ...
     ```
 
-8. **Struct patterns** decompose struct-like values:
+7. **Struct patterns** decompose struct-like values:
 
     ```mojo
     case Point(x=x_value, y=y_value):
@@ -497,16 +483,19 @@ following forms:
     Each element of the pattern must be a keyword argument denoting a valid
     field name of the struct. Field names may be omitted but not duplicated.
 
+8. **Initializer-list patterns** are struct patterns that implicitly use the
+   type of the subject to know which struct type is being inspected.
+
+    ```mojo
+    case {x=1, y=y_value}: print(y_value)
+    ```
+
 9. **Mapping patterns** match particular keys and decompose their values:
 
     ```mojo
     case {"name": name, "age": age}:
         ...
     ```
-
-Other language features may add additional pattern forms. In particular, the
-separate enum/`EnumLike` proposal adds patterns for selecting and decomposing
-sum-type alternatives through the same underlying machinery.
 
 Finally, **match guards** are useful but are not themselves patterns:
 
@@ -518,35 +507,19 @@ case [x, y] if x < y:
 The pattern matches first and introduces its bindings; the guard is then
 evaluated to determine whether the case is selected.
 
-## Conditional Pattern Bindings: “`if let`” for Mojo
+## Conditional Pattern Bindings: “`if case`” for Mojo
 
-Pattern matching also fits naturally into Mojo's existing `if` statement without
-requiring a distinct `if let` construct.
-
-A useful property of Mojo here is that `=` is already a **statement**, rather
-than an expression.
-
-We can extend the grammar of `if` conditions to accept either boolean
-expressions or `pattern = expression` conditional-match clauses:
+Pattern matching also fits naturally into Mojo's existing `if` statement, and it
+makes sense to allow the core "check a pattern matches and bind the expression
+in the body of the "then" block. To avoid ambiguity, this is introduced with
+"if case" syntax. For example:
 
 ```mojo
-if expression:
-    ...
-
-if pattern = expression:
-    ...
-```
-
-In the second form, the left-hand side is parsed using the full **match-pattern
-grammar**, rather than the more restricted destructuring grammar used by
-ordinary assignments. For example:
-
-```mojo
-if var [a, 0] = get_list():
+if case [a, 0] = get_list():
     use(a)
 ```
 
-The right-hand side is evaluated once and matched against `[var a, 0]`. The
+The right-hand side is evaluated once and matched against `[a, 0]`. The
 condition succeeds only if the list contains exactly two elements and its second
 element matches `0`. On success, `a` is bound and the body executes; otherwise
 the condition is false.
@@ -561,7 +534,7 @@ var [a, b] = get_list()
 var [a, 0] = get_list()
 
 # Conditional matching: valid; failure takes the false path.
-if var [a, 0] = get_list():
+if case [a, 0] = get_list():
     use(a)
 else:
     handle_other_shape()
@@ -571,26 +544,31 @@ Bindings introduced by a successful conditional match are scoped to the
 corresponding `if` body:
 
 ```mojo
-if var [first, second] = get_list():
+if case [first, second] = get_list():
     use(first, second)
 
 # `first` and `second` are not available here.
 ```
 
 This provides the capability commonly spelled `if let` in languages such as Rust
-and Swift, but without introducing a new `let`-specific construct. The `if`
-itself establishes match-pattern context, so nested and refutable patterns
-compose naturally:
+and Swift:
 
 ```mojo
-if (var x, [var y, 0]) = get_value():
+if case (x, [y, 0]) = get_value():
     use(x, y)
+```
+
+It also allows trailing conditions with the existing trailing "if" conditions:
+
+```mojo
+if case .Some(x) = get_optional_int() if x != 42:
+    print(x)
 ```
 
 Irrefutable patterns can technically appear in this position as well:
 
 ```mojo
-if var x = get_value():
+if case x = get_value():
     use(x)
 ```
 
@@ -603,28 +581,38 @@ This gives `if` conditions two natural forms:
 - A boolean expression succeeds when it evaluates to `True`.
 - A conditional pattern match succeeds when its pattern matches.
 
-Pattern failure in an `if` is therefore ordinary control flow rather than an
-exception.
-
 The same treatment should apply to `while` loop conditions:
 
 ```mojo
-while var [item, 0] = get_next():
+while case [item, 0] = get_next():
     use(item)
 ```
 
-This gives Mojo the ergonomics of `if let` and `while let` while reusing the
-normal `if` / `while` syntax and the same match-pattern language used by `case`.
+### Alternative considered
+
+We considered eliding the `case` keyword in `if case`. Note that `=` is a
+**statement**, rather than an expression. This means that we could have allowed
+the user to write:
+
+```mojo
+if expression:
+    ...
+
+if pattern = expression:
+    ...
+```
+
+In the second form, the left-hand side is parsed using the full **match-pattern
+grammar**. We can consider enabling this syntax in the future, but it admits a
+number of very confusing things, including things like `if 4 = foo():` and
+`if (True, x) = bar():` which visually look like they are comparison, not
+assignments. Requiring the `case` keyword makes these visually more distinct
+and obvious to readers.
 
 ## Implementation status
 
-The nightlies include a prototype under the experimental `__match` keyword. It
-supports literal, initializer-list, and explicit equality patterns; tuple and
-struct patterns; `EnumLike` case patterns; OR patterns; `as` patterns; `var` /
-`ref` / `_` bindings; match guards; compile-time matching; and basic
-exhaustivity and unreachability checking.
-
-The following parts of this proposal are not implemented:
+The core proposal is fully implemented and expected to work correctly. The
+following parts of this proposal are not yet implemented:
 
 - **Sequence patterns** — fixed-length forms such as `case [x, y]:` and
   variable-length forms such as `case [first, *rest]:`, plus the shared trait or

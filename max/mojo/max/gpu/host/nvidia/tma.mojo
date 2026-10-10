@@ -226,7 +226,7 @@ struct TensorMapSwizzle(
         Args:
             writer: The writer to write to.
         """
-        __match self._value:
+        match self._value:
             case 1:
                 writer.write("32B swizzle")
             case 2:

@@ -267,7 +267,7 @@ struct Unit:
 
     @staticmethod
     def _divisor(unit: String) -> Int:
-        __match unit:
+        match unit:
             case Unit.ns:
                 return 1
             case Unit.us:

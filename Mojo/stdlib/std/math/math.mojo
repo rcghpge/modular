@@ -804,7 +804,7 @@ def exp_approx_f32[W: Int](x: SIMD[.float32, W]) -> SIMD[.float32, W]:
 def _frexp_mask1[
     dtype: DType, width: Int
 ]() -> SIMD[_integral_type_of[dtype](), width]:
-    comptime __match dtype:
+    comptime match dtype:
         case .float16:
             return 0x7C00
         case .bfloat16:
@@ -820,7 +820,7 @@ def _frexp_mask1[
 def _frexp_mask2[
     dtype: DType, width: Int
 ]() -> SIMD[_integral_type_of[dtype](), width]:
-    comptime __match dtype:
+    comptime match dtype:
         case .float16:
             return 0x3800
         case .bfloat16:
@@ -3654,7 +3654,7 @@ def _call_amdgcn_intrinsic[intrin: StaticString](x: SIMD, out res: type_of(x)):
 
 @inline(.always)
 def _get_amdgcn_type_suffix[dtype: DType]() -> StaticString:
-    comptime __match dtype:
+    comptime match dtype:
         case .float16:
             return "f16"
         case .float32:
