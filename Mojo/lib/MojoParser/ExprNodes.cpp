@@ -4457,6 +4457,12 @@ AnyValue UnaryOpNode::emitIR(ExprDest &dest, IREmitter &emitter) const {
     return result;
   }
 
+  if (kind == kPrefixEQ) {
+    emitter.emitError(getLoc(), "prefix '==' is only valid in a pattern")
+        << getRange();
+    return {};
+  }
+
   if (kind == kComptime)
     return emitComptime(dest, emitter);
 

@@ -200,7 +200,7 @@ and_expr: shift_expr ('&' shift_expr)*
 shift_expr: arith_expr (('<<'|'>>') arith_expr)*
 arith_expr: term (('+'|'-') term)*
 term: factor (('*'|'@'|'/'|'%'|'//') factor)*
-factor: ('+'|'-'|'~') factor | power
+factor: ('+'|'-'|'~'|'==') factor | power
 power: [AWAIT] atom trailer* ['**' factor]
 # Contextually inferred member references (`.member`) are atoms so they parse
 # wherever an expression is expected: call args, subscripts, annotations, etc.
@@ -241,7 +241,7 @@ type_and_expr: type_shift_expr ('&' type_shift_expr)*
 type_shift_expr: type_arith_expr (('<<'|'>>') type_arith_expr)*
 type_arith_expr: type_term (('+'|'-') type_term)*
 type_term: type_factor (('*'|'@'|'/'|'%'|'//') type_factor)*
-type_factor: ('+'|'-'|'~') type_factor | type_power
+type_factor: ('+'|'-'|'~'|'==') type_factor | type_power
 type_power: [AWAIT] type_atom trailer* ['**' factor]
 type_atom: functype | generatortype | atom
 

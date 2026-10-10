@@ -72,6 +72,22 @@ def f(x):
     assert_mojo_format(source, expected)
 
 
+def test_mojo_formats_explicit_value_patterns():
+    source = """\
+def f(value, expected):
+    __match value:
+    case ==expected:
+        return True
+"""
+    expected = """\
+def f(value, expected):
+    __match value:
+        case == expected:
+            return True
+"""
+    assert_mojo_format(source, expected)
+
+
 def test_python_mode_keeps_case_indent():
     source = """\
 def f(x):

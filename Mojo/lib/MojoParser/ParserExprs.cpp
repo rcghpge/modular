@@ -413,6 +413,7 @@ bool ParserBase::isPrimaryExprStart(Token::Kind tokKind) {
   case Token::kw_not:
   case Token::kw_var:
   case Token::kw_ref:
+  case Token::equal_equal:
   case Token::kw_comptime:
   case Token::identifier:
   case Token::escaped_identifier:
@@ -470,6 +471,8 @@ getUnaryOpInfo(Token::Kind tokKind) {
     return {ExprNode::kVarPat, Precedence::kVarRefPat};
   case Token::kw_ref:
     return {ExprNode::kRefPat, Precedence::kVarRefPat};
+  case Token::equal_equal:
+    return {ExprNode::kPrefixEQ, Precedence::kFactor};
   case Token::kw_comptime:
     return {ExprNode::kComptime, Precedence::kUnpack};
   case Token::plus:
@@ -509,6 +512,7 @@ ParseResult ExprParser::parsePrimaryExpr(ExprNode *&result) {
   case Token::kw___await:
   case Token::kw_var:
   case Token::kw_ref:
+  case Token::equal_equal:
   case Token::kw_comptime:
   case Token::kw_not: { // u_expr
     warnIfUnprefixedAsyncSpelling(startTok);
