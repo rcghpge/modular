@@ -150,6 +150,25 @@ ErrorOrSuccess VirtualDeviceStream::enqueueFunctionExecDirect(
   RETURN_ERROR("VirtualDevice does not support function execution");
 }
 
+ErrorOrSuccess VirtualDeviceStream::enqueueHostFunc(void (*fn)(void *),
+                                                    void *userData) const {
+  RETURN_ERROR("VirtualDevice does not support host functions");
+}
+
+ErrorOrSuccess
+VirtualDeviceStream::enqueueWaitOnHostValue(const CompletionFlag &flag,
+                                            uint64_t value) const {
+  RETURN_ERROR("VirtualDevice does not support host-value waits");
+}
+
+ErrorOrSuccess VirtualDeviceStream::beginCapture() const {
+  RETURN_ERROR("VirtualDevice does not support graph capture");
+}
+
+ErrorOr<DeviceGraphRef> VirtualDeviceStream::endCapture() {
+  RETURN_ERROR("VirtualDevice does not support graph capture");
+}
+
 void *VirtualDeviceStream::ptr() const {
   // Return nullptr for virtual streams
   return nullptr;
@@ -274,6 +293,33 @@ ErrorOr<Device::MemInfo> VirtualDeviceContext::getDeviceMemoryInfo() const {
   return VirtualDevice::cast(device()).getMemoryInfo();
 }
 
+ErrorOr<DeviceStreamRef>
+VirtualDeviceContext::createExternalStream(void *externalStream) {
+  RETURN_ERROR("VirtualDevice does not support external streams");
+}
+
+ErrorOr<DeviceEventRef> VirtualDeviceContext::eventCreate(bool enableTiming) {
+  RETURN_ERROR("VirtualDevice does not support events");
+}
+
+ErrorOr<DeviceGraphBuilderRef>
+VirtualDeviceContext::createGraphBuilder(DeviceGraphMemoryPoolRef pool) {
+  RETURN_ERROR("VirtualDevice does not support device graphs");
+}
+
+ErrorOr<CompletionFlagRef> VirtualDeviceContext::allocateCompletionFlag() {
+  RETURN_ERROR("VirtualDevice does not support completion flags");
+}
+
+ErrorOrSuccess VirtualDeviceContext::freeCompletionFlag(void *hostPtr) {
+  RETURN_ERROR("VirtualDevice does not support completion flags");
+}
+
+ErrorOr<void *>
+VirtualDeviceContext::getHostAccessiblePointer(const void *devicePtr) {
+  RETURN_ERROR("VirtualDevice does not support host-accessible pointers");
+}
+
 const VirtualDeviceContext &
 VirtualDeviceContext::cast(const DeviceContext &ctx) {
   return DeviceContext::cast<VirtualDeviceContext>(ctx);
@@ -293,6 +339,11 @@ ErrorOrSuccess VirtualDeviceContext::memAlloc(void **ptr, size_t byteSize,
 ErrorOrSuccess VirtualDeviceContext::memFree(void *ptr, Device::FreeKind kind) {
   TRACY_ZONE_SCOPED_NC("VirtualDeviceContext::memFree", TRACY_COLOR_PURPLE);
   RETURN_ERROR("VirtualDevice does not support memory deallocation");
+}
+
+ErrorOrSuccess VirtualDeviceContext::memWrap(void **devPtr, void *hostPtr,
+                                             size_t byteSize) {
+  RETURN_ERROR("VirtualDevice does not support wrapping host memory");
 }
 
 void *VirtualDeviceContext::driverContext() const {

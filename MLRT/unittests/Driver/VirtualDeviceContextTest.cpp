@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MLRT/lib/Driver/DeviceContext/Virtual/VirtualDeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/lib/Driver/DeviceContext/CUDA/CUDACompilationDevice.h"
 #include "ScopedEnvVar.h"
 #include "TestUtils.h"
@@ -279,6 +280,37 @@ TEST_F(VirtualDeviceContextTest, FunctionLoadingIsRejected) {
                                    /*debugLevel=*/"",
                                    /*optimizationLevel=*/3),
                  "VirtualDevice does not support function loading");
+}
+
+// Features a real device has but a virtual one does not refuse by naming the
+// virtual device, not with the base class's generic "not supported on this
+// device": the message is how a record run tells "needs hardware" apart from a
+// failure.
+TEST_F(VirtualDeviceContextTest, HardwareOnlyFeaturesNameTheVirtualDevice) {
+  VirtualDeviceRef device =
+      VirtualDeviceRef::create(0, "VirtualGPU", createCompilationDevice());
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
+  ASSIGN_NO_ERR(DeviceStreamRef, stream, ctx->stream());
+
+  uint64_t host = 0;
+  EXPECT_ERR_MSG(ctx->allocateCompletionFlag(),
+                 "VirtualDevice does not support completion flags");
+  EXPECT_ERR_MSG(ctx->freeCompletionFlag(&host),
+                 "VirtualDevice does not support completion flags");
+  EXPECT_ERR_MSG(ctx->eventCreate(/*enableTiming=*/false),
+                 "VirtualDevice does not support events");
+  EXPECT_ERR_MSG(ctx->createExternalStream(nullptr),
+                 "VirtualDevice does not support external streams");
+  EXPECT_ERR_MSG(ctx->createGraphBuilder(),
+                 "VirtualDevice does not support device graphs");
+  EXPECT_ERR_MSG(ctx->getHostAccessiblePointer(&host),
+                 "VirtualDevice does not support host-accessible pointers");
+  EXPECT_ERR_MSG(stream->enqueueHostFunc([](void *) {}, nullptr),
+                 "VirtualDevice does not support host functions");
+  EXPECT_ERR_MSG(stream->beginCapture(),
+                 "VirtualDevice does not support graph capture");
+  EXPECT_ERR_MSG(stream->endCapture(),
+                 "VirtualDevice does not support graph capture");
 }
 
 TEST_F(VirtualDeviceContextTest, MultipleVirtualDevices) {

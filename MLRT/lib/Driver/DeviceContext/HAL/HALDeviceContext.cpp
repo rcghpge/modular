@@ -153,9 +153,10 @@ Error takeError(const char *err) {
   return result;
 }
 
+// Worded like the legacy backend's `VirtualDeviceContext`, so a caller can tell
+// "needs hardware" apart from a failure the same way under either backend.
 Error virtualDeviceError(const char *what) {
-  return Error(llvm::Twine("virtual (compile-only) device does not support ") +
-               what);
+  return Error(llvm::Twine("VirtualDevice does not support ") + what);
 }
 
 /// Memory a virtual device reports, matching the legacy backend's constant.

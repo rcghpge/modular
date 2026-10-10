@@ -111,6 +111,16 @@ public:
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
       uint32_t argCount = 0, const size_t *argSizes = nullptr) const override;
 
+  // The base class refuses these with a generic message. Overriding them names
+  // the virtual device, which is how a caller tells "needs hardware" apart
+  // from a failure.
+  ErrorOrSuccess enqueueHostFunc(void (*fn)(void *),
+                                 void *userData) const override;
+  ErrorOrSuccess enqueueWaitOnHostValue(const CompletionFlag &flag,
+                                        uint64_t value) const override;
+  ErrorOrSuccess beginCapture() const override;
+  ErrorOr<DeviceGraphRef> endCapture() override;
+
   void *ptr() const override;
 
   static const VirtualDeviceStream *verified_cast(const DeviceStream *stream);
@@ -172,6 +182,16 @@ public:
 
   ErrorOr<Device::MemInfo> getDeviceMemoryInfo() const override;
 
+  // Refused by name rather than by the base class's generic message; see
+  // `VirtualDeviceStream`.
+  ErrorOr<DeviceStreamRef> createExternalStream(void *externalStream) override;
+  ErrorOr<DeviceEventRef> eventCreate(bool enableTiming) override;
+  ErrorOr<DeviceGraphBuilderRef>
+  createGraphBuilder(DeviceGraphMemoryPoolRef pool) override;
+  ErrorOr<CompletionFlagRef> allocateCompletionFlag() override;
+  ErrorOrSuccess freeCompletionFlag(void *hostPtr) override;
+  ErrorOr<void *> getHostAccessiblePointer(const void *devicePtr) override;
+
   static const VirtualDeviceContext &cast(const DeviceContext &ctx);
   static const VirtualDeviceContext *verified_cast(const DeviceContext *ctx);
 
@@ -179,6 +199,8 @@ private:
   ErrorOrSuccess memAlloc(void **ptr, size_t byteSize,
                           Device::AllocMode mode) override;
   ErrorOrSuccess memFree(void *ptr, Device::FreeKind kind) override;
+  ErrorOrSuccess memWrap(void **devPtr, void *hostPtr,
+                         size_t byteSize) override;
 
   void *driverContext() const override;
 

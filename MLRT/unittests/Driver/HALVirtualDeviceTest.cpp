@@ -251,14 +251,21 @@ TEST_F(HALVirtualDeviceTest, CompletionFlagsAreRejected) {
 
 // A virtual device has no memory at all, so nothing can be resolved to a host
 // address. Both backends report the query as unsupported rather than guessing.
+// The HAL backend supports it on no device, so it refuses generically; the
+// legacy one supports it on real hardware, so it names the virtual device.
 TEST_F(HALVirtualDeviceTest, HostAccessiblePointerIsRejected) {
   DeviceRef device = virtualDevice();
   ASSERT_NE(device.getPointer(), nullptr);
   ASSIGN_NO_ERR(DeviceContextRef, ctx, device->createContext());
 
   uint64_t host = 0;
+#if MODULAR_HAL_DEVICE_CONTEXT
   EXPECT_ERR_MSG(ctx->getHostAccessiblePointer(&host),
                  "getHostAccessiblePointer is not supported on this device");
+#else
+  EXPECT_ERR_MSG(ctx->getHostAccessiblePointer(&host),
+                 "VirtualDevice does not support host-accessible pointers");
+#endif
 }
 
 #if MODULAR_HAL_DEVICE_CONTEXT
