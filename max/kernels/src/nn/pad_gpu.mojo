@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Implements GPU-specific tensor padding kernels with constant or edge-fill strategies."""
+"""Implements GPU-specific tensor padding kernels with constant, reflect, and repeat (edge-fill) strategies."""
 
 from std.algorithm.functional import vectorize
 from max.gpu import block_dim, block_idx, thread_idx
@@ -20,6 +20,7 @@ from layout.tile_layout import Layout
 from std.math import align_down, ceildiv
 from std.sys.info import align_of
 from std.collections import Array
+from std.utils import StaticTuple
 from std.utils.index import IndexList
 
 
@@ -323,3 +324,403 @@ def get_padding_output_shape[
         var after = paddings[2 * i + 1]
         output_shape[i] = Int(before) + input_shape[i] + Int(after)
     return output_shape
+
+
+@inline(.always)
+def _reflect_index(p: Int, in_len: Int, pre: Int) -> Int:
+    """Compute the reflect source index for output position `p` along an axis
+    with input length `in_len` and pre-padding `pre`.
+
+    The reflect pattern maps `p - pre` into a period of `2 * (in_len - 1)`
+    and folds back: positions in `[0, in_len)` map to themselves, positions in
+    `[in_len, 2*(in_len-1))` map to `period - r`.  When `in_len == 1` the
+    period is zero, so the source is always 0.
+    """
+    if in_len == 1:
+        return 0
+    var period = 2 * (in_len - 1)
+    var r = (p - pre) % period
+    if r < 0:
+        r += period
+    if r < in_len:
+        return r
+    return period - r
+
+
+@__name(t"padded_reflect_{dtype}")
+def padded_reflect_kernel[
+    InputLayoutType: TensorLayout,
+    input_origin: ImmOrigin,
+    OutputLayoutType: TensorLayout,
+    output_origin: MutOrigin,
+    dtype: DType,
+    rank: Int,
+    InputEngine: TensorEngine,
+    OutputEngine: TensorEngine,
+](
+    input_tensor: TileTensor[
+        dtype, InputLayoutType, input_origin, Engine=InputEngine
+    ],
+    output_tensor: TileTensor[
+        dtype, OutputLayoutType, output_origin, Engine=OutputEngine
+    ],
+    pre_pads: StaticTuple[Int32, rank],
+    rows_per_sm: Int32,
+    total_rows: Int32,
+    row_length: Int32,
+):
+    var _rows_per_sm = Int(rows_per_sm)
+    var _total_rows = Int(total_rows)
+    var _row_length = Int(row_length)
+    var start_row = block_idx.x * _rows_per_sm
+    var threads_per_row = block_dim.x
+
+    var rows_per_iter = block_dim.y
+    var end_row = min(start_row + _rows_per_sm, _total_rows)
+
+    start_row += thread_idx.y
+
+    for row in range(start_row, end_row, rows_per_iter):
+        var out_coord = output_tensor.layout.idx2crd(row * _row_length)
+
+        # Compute the source base offset for axes 0..rank-2 via the reflect
+        # formula.  The last axis is handled per-element below.
+        var base_offset = 0
+        comptime for axis in range(output_tensor.rank - 1):
+            var in_len = Int(input_tensor.layout.shape[axis]().value())
+            var src = _reflect_index(
+                Int(out_coord[axis].value()), in_len, Int(pre_pads[axis])
+            )
+            base_offset += src * Int(input_tensor.layout.stride[axis]().value())
+
+        var in_last = Int(
+            input_tensor.layout.shape[output_tensor.rank - 1]().value()
+        )
+        var pre_last = Int(pre_pads[output_tensor.rank - 1])
+        var in_stride_last = Int(
+            input_tensor.layout.stride[output_tensor.rank - 1]().value()
+        )
+
+        var output_ptr = output_tensor.ptr + Int(
+            output_tensor.layout(out_coord)
+        )
+        var input_ptr = input_tensor.ptr + base_offset
+
+        var tid = thread_idx.x % threads_per_row
+        for j in range(tid, _row_length, threads_per_row):
+            var src_last = _reflect_index(j, in_last, pre_last)
+            output_ptr[j] = input_ptr[src_last * in_stride_last]
+
+
+def _pad_reflect_impl[
+    rank: Int,
+    dtype: DType,
+    max_threads: Int = 256,
+    threads_per_row: Int = 16,
+](
+    input_tensor: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
+    output_tensor: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
+    pre_pads: StaticTuple[Int32, rank],
+    ctx: DeviceContext,
+) raises:
+    # Zero-element input: nothing to reflect.  The output is left as-is, which
+    # matches the CPU implementation (which also has no defined behavior for
+    # an empty input).
+    if input_tensor.num_elements() == 0:
+        return
+
+    var row_length = Int(output_tensor.dim(output_tensor.rank - 1))
+    var total_rows = output_tensor.num_elements() // row_length
+
+    comptime assert threads_per_row > 0 and max_threads % threads_per_row == 0
+
+    var sm_count = ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT)
+
+    var linear_block_count: Int
+    var rows_per_block: Int
+
+    if sm_count > total_rows:
+        linear_block_count = total_rows
+        rows_per_block = 1
+    else:
+        linear_block_count = sm_count
+        rows_per_block = ceildiv(total_rows, sm_count)
+
+    comptime block_rows = max_threads // threads_per_row
+    comptime kernel = padded_reflect_kernel[
+        input_origin=ImmOrigin(input_tensor.origin),
+        InputLayoutType=input_tensor.LayoutType,
+        output_origin=output_tensor.origin,
+        OutputLayoutType=output_tensor.LayoutType,
+        dtype=dtype,
+        rank=rank,
+        InputEngine=type_of(input_tensor.as_imm()).Engine,
+        OutputEngine=output_tensor.Engine,
+    ]
+
+    ctx.enqueue_function[kernel](
+        input_tensor.as_imm(),
+        output_tensor,
+        pre_pads,
+        Int32(rows_per_block),
+        Int32(total_rows),
+        Int32(row_length),
+        grid_dim=(linear_block_count),
+        block_dim=(threads_per_row, block_rows),
+    )
+
+
+def pad_reflect[
+    rank: Int, dtype: DType, padding_type: DType
+](
+    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output_shape: IndexList[rank],
+    input: UnsafePointer[mut=False, Scalar[dtype], _],
+    input_shape: IndexList[rank],
+    paddings: UnsafePointer[mut=False, Scalar[padding_type], _],
+    ctx: DeviceContext,
+) raises:
+    """
+    Fill `output` with values from `input`, and edges padded with reflected
+    values from the unpadded region.
+
+    Args:
+        output: The output buffer.
+        output_shape: The output shape.
+        input: The input buffer.
+        input_shape: The input shape.
+        paddings: Ordered (before, after) padding sizes for each axis.
+        ctx: Device context for participating GPU.
+
+    Example:
+        ```mojo
+        var input_shape = (X, Y, Z)
+        var paddings = [x0, x1, y0, y1, z0, z1]
+
+        out[x, y, z] =
+          input[reflect(x - x0), reflect(y - y0), reflect(z - z0)]
+        ```
+    """
+    var input_strides = Array[Int, rank]()
+    var output_strides = Array[Int, rank]()
+
+    _fill_strides_indexlist[rank](input_shape, input_strides)
+    _fill_strides_indexlist[rank](output_shape, output_strides)
+
+    var pre_pads = StaticTuple[Int32, rank](fill=0)
+    for axis in range(rank):
+        pre_pads[axis] = Int32(paddings[2 * axis])
+
+    var input_tensor = TileTensor(
+        input,
+        Layout(Coord(input_shape), Coord(input_strides)),
+    )
+    var output_tensor = TileTensor(
+        output,
+        Layout(Coord(output_shape), Coord(output_strides)),
+    )
+
+    _pad_reflect_impl[rank, dtype](
+        input_tensor,
+        output_tensor,
+        pre_pads,
+        ctx,
+    )
+
+
+@inline(.always)
+def _repeat_index(p: Int, in_len: Int, pre: Int) -> Int:
+    """Compute the repeat (edge) source index for output position `p` along an
+    axis with input length `in_len` and pre-padding `pre`.
+
+    Positions in the pre-padding region map to 0, positions in the unpadded
+    region map to themselves, and positions in the post-padding region map to
+    `in_len - 1`.
+    """
+    var src = p - pre
+    if src < 0:
+        return 0
+    if src >= in_len:
+        return in_len - 1
+    return src
+
+
+@__name(t"padded_repeat_{dtype}")
+def padded_repeat_kernel[
+    InputLayoutType: TensorLayout,
+    input_origin: ImmOrigin,
+    OutputLayoutType: TensorLayout,
+    output_origin: MutOrigin,
+    dtype: DType,
+    rank: Int,
+    InputEngine: TensorEngine,
+    OutputEngine: TensorEngine,
+](
+    input_tensor: TileTensor[
+        dtype, InputLayoutType, input_origin, Engine=InputEngine
+    ],
+    output_tensor: TileTensor[
+        dtype, OutputLayoutType, output_origin, Engine=OutputEngine
+    ],
+    pre_pads: StaticTuple[Int32, rank],
+    rows_per_sm: Int32,
+    total_rows: Int32,
+    row_length: Int32,
+):
+    var _rows_per_sm = Int(rows_per_sm)
+    var _total_rows = Int(total_rows)
+    var _row_length = Int(row_length)
+    var start_row = block_idx.x * _rows_per_sm
+    var threads_per_row = block_dim.x
+
+    var rows_per_iter = block_dim.y
+    var end_row = min(start_row + _rows_per_sm, _total_rows)
+
+    start_row += thread_idx.y
+
+    for row in range(start_row, end_row, rows_per_iter):
+        var out_coord = output_tensor.layout.idx2crd(row * _row_length)
+
+        # Compute the source base offset for axes 0..rank-2 via the repeat
+        # (clamp) formula.  The last axis is handled per-element below.
+        var base_offset = 0
+        comptime for axis in range(output_tensor.rank - 1):
+            var in_len = Int(input_tensor.layout.shape[axis]().value())
+            var src = _repeat_index(
+                Int(out_coord[axis].value()), in_len, Int(pre_pads[axis])
+            )
+            base_offset += src * Int(input_tensor.layout.stride[axis]().value())
+
+        var in_last = Int(
+            input_tensor.layout.shape[output_tensor.rank - 1]().value()
+        )
+        var pre_last = Int(pre_pads[output_tensor.rank - 1])
+        var in_stride_last = Int(
+            input_tensor.layout.stride[output_tensor.rank - 1]().value()
+        )
+
+        var output_ptr = output_tensor.ptr + Int(
+            output_tensor.layout(out_coord)
+        )
+        var input_ptr = input_tensor.ptr + base_offset
+
+        var tid = thread_idx.x % threads_per_row
+        for j in range(tid, _row_length, threads_per_row):
+            var src_last = _repeat_index(j, in_last, pre_last)
+            output_ptr[j] = input_ptr[src_last * in_stride_last]
+
+
+def _pad_repeat_impl[
+    rank: Int,
+    dtype: DType,
+    max_threads: Int = 256,
+    threads_per_row: Int = 16,
+](
+    input_tensor: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
+    output_tensor: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
+    pre_pads: StaticTuple[Int32, rank],
+    ctx: DeviceContext,
+) raises:
+    # Zero-element input: nothing to repeat.  The output is left as-is, which
+    # matches the CPU implementation (which also has no defined behavior for
+    # an empty input).
+    if input_tensor.num_elements() == 0:
+        return
+
+    var row_length = Int(output_tensor.dim(output_tensor.rank - 1))
+    var total_rows = output_tensor.num_elements() // row_length
+
+    comptime assert threads_per_row > 0 and max_threads % threads_per_row == 0
+
+    var sm_count = ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT)
+
+    var linear_block_count: Int
+    var rows_per_block: Int
+
+    if sm_count > total_rows:
+        linear_block_count = total_rows
+        rows_per_block = 1
+    else:
+        linear_block_count = sm_count
+        rows_per_block = ceildiv(total_rows, sm_count)
+
+    comptime block_rows = max_threads // threads_per_row
+    comptime kernel = padded_repeat_kernel[
+        input_origin=ImmOrigin(input_tensor.origin),
+        InputLayoutType=input_tensor.LayoutType,
+        output_origin=output_tensor.origin,
+        OutputLayoutType=output_tensor.LayoutType,
+        dtype=dtype,
+        rank=rank,
+        InputEngine=type_of(input_tensor.as_imm()).Engine,
+        OutputEngine=output_tensor.Engine,
+    ]
+
+    ctx.enqueue_function[kernel](
+        input_tensor.as_imm(),
+        output_tensor,
+        pre_pads,
+        Int32(rows_per_block),
+        Int32(total_rows),
+        Int32(row_length),
+        grid_dim=(linear_block_count),
+        block_dim=(threads_per_row, block_rows),
+    )
+
+
+def pad_repeat[
+    rank: Int, dtype: DType, padding_type: DType
+](
+    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output_shape: IndexList[rank],
+    input: UnsafePointer[mut=False, Scalar[dtype], _],
+    input_shape: IndexList[rank],
+    paddings: UnsafePointer[mut=False, Scalar[padding_type], _],
+    ctx: DeviceContext,
+) raises:
+    """
+    Fill `output` with values from `input`, and edges padded with the
+    boundary values from the unpadded region.
+
+    Args:
+        output: The output buffer.
+        output_shape: The output shape.
+        input: The input buffer.
+        input_shape: The input shape.
+        paddings: Ordered (before, after) padding sizes for each axis.
+        ctx: Device context for participating GPU.
+
+    Example:
+        ```mojo
+        var input_shape = (X, Y, Z)
+        var paddings = [x0, x1, y0, y1, z0, z1]
+
+        out[x, y, z] =
+          input[clamp(x - x0), clamp(y - y0), clamp(z - z0)]
+        ```
+    """
+    var input_strides = Array[Int, rank]()
+    var output_strides = Array[Int, rank]()
+
+    _fill_strides_indexlist[rank](input_shape, input_strides)
+    _fill_strides_indexlist[rank](output_shape, output_strides)
+
+    var pre_pads = StaticTuple[Int32, rank](fill=0)
+    for axis in range(rank):
+        pre_pads[axis] = Int32(paddings[2 * axis])
+
+    var input_tensor = TileTensor(
+        input,
+        Layout(Coord(input_shape), Coord(input_strides)),
+    )
+    var output_tensor = TileTensor(
+        output,
+        Layout(Coord(output_shape), Coord(output_strides)),
+    )
+
+    _pad_repeat_impl[rank, dtype](
+        input_tensor,
+        output_tensor,
+        pre_pads,
+        ctx,
+    )
