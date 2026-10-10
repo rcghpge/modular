@@ -9,8 +9,10 @@
 #include "GraphCompiler/MOGGDialect/MOGGInterfaces.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GraphCompiler/MOGGDialect/Support/SymbolNames.h"
 #include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/SymbolTable.h"
+#include "llvm/Support/FormatVariadic.h"
 
 using namespace M;
 
@@ -22,6 +24,21 @@ namespace M::MOGG {
 } // namespace M::MOGG
 
 namespace M::MOGG {
+
+/// Returns `__<callees>_async`, joining the stubs the region calls in call
+/// order, or `__primitive_<number>_async` when it calls none. The suffix keeps
+/// a region that calls a single stub from taking that stub's name.
+static std::string getAsyncStubName(GenericCompiledRegionOp region,
+                                    uint64_t number) {
+  SmallVector<std::string> callees;
+  region.getBody().walk([&](StubCallOpInterface call) {
+    callees.push_back(call.getCalleeSymbol().getValue().ltrim('_').str());
+  });
+  std::string base = callees.empty()
+                         ? llvm::formatv("primitive_{}", number).str()
+                         : joinNameParts(callees, TruncationMarker::Hash);
+  return "__" + base + "_async";
+}
 
 namespace {
 
@@ -55,8 +72,7 @@ struct OutlineGenericCompiledRegionsToFunctions
               FunctionType::get(ctx, kernelOp.getBodyBlock().getArgumentTypes(),
                                 kernelOp.getResultTypes()));
           auto stubName =
-              StringAttr::get(kernelOp->getContext(),
-                              llvm::formatv("region_{}", stubNumber++).str());
+              StringAttr::get(ctx, getAsyncStubName(kernelOp, stubNumber++));
           // Synthesize a leaf FusionInfoAttr from the summary when the region
           // has no fusionInfo, so KernelStubOp always carries one.
           FusionInfoAttr fusionInfo = kernelOp.getFusionInfoAttr();

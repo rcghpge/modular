@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-views | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt --mlir-print-local-scope %s --mogg-import-packages --mo-to-map --map-fuse-views | FileCheck %s
 
 // Fusing a producer into a consumer keeps the consumer's launch policy, as on
 // the old MO->MOGG path. A transpose launches synchronously

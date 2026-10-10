@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-horizontal | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages --mo-to-map --map-fuse-horizontal | FileCheck %s
 
 // A concat whose result escapes and is also sliced: the slice consumer reads
 // the concat through `map.index.slice`, so the escaping-reader merge inverts

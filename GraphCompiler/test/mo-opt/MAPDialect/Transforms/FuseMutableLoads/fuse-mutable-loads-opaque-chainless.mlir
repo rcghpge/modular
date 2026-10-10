@@ -1,4 +1,4 @@
-// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-mutable-loads | FileCheck %s
+// RUN: MAX_GC_USE_ADV_FUSION=1 mo-opt --mlir-print-local-scope %s --mogg-import-packages --mo-to-map --map-fuse-mutable-loads | FileCheck %s
 
 // GEX-4230 / GEX-3962: a mutable load feeding a *chainless* opaque kernel -- a
 // gather that indexes a whole buffer -- must fuse. The pass used to skip an

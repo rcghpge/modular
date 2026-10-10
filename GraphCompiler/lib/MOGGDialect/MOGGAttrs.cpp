@@ -166,6 +166,49 @@ std::string FusionInfoAttr::toString(bool includeLineNumbers, bool quote,
   return result;
 }
 
+/// Drops the dialect prefix of every dotted op name in `name`, including ones
+/// nested in a wrapper: `mo.reduce.rms_norm` -> `reduce.rms_norm`,
+/// `shapeof(mo.range)` -> `shapeof(range)`.
+static std::string stripNestedDialectPrefixes(StringRef name) {
+  std::string out;
+  bool atOpStart = true;
+  for (size_t i = 0; i < name.size();) {
+    if (atOpStart) {
+      size_t end = i;
+      while (end < name.size() &&
+             (llvm::isAlnum(name[end]) || name[end] == '_'))
+        ++end;
+      if (end > i && end < name.size() && name[end] == '.')
+        i = end + 1;
+    }
+    char c = name[i++];
+    out.push_back(c);
+    atOpStart = c == '(' || c == ',' || c == ' ';
+  }
+  return out;
+}
+
+static void collectLeafNames(Attribute node,
+                             SmallVectorImpl<std::string> &names) {
+  llvm::TypeSwitch<Attribute>(node)
+      .Case<FusionLeafAttr>([&](FusionLeafAttr leaf) {
+        names.push_back(
+            stripNestedDialectPrefixes(leaf.getOpName().getValue()));
+      })
+      .Case<FusionSequenceAttr, FusionHorizontalAttr, FusionElementwiseAttr,
+            FusionViewAttr, FusionMutableLoadAttr, FusionEpilogueAttr,
+            FusionPrologueAttr>([&](auto attr) {
+        for (Attribute child : attr.getChildren())
+          collectLeafNames(child, names);
+      });
+}
+
+SmallVector<std::string> FusionInfoAttr::getLeafNames() const {
+  SmallVector<std::string> names;
+  collectLeafNames(getRoot(), names);
+  return names;
+}
+
 std::string
 FusionInfoAttr::toPrettyTree(const llvm::DenseSet<Attribute> &highlightLeaves,
                              bool indent) const {
@@ -184,128 +227,21 @@ FusionInfoAttr::toPrettyTree(const llvm::DenseSet<Attribute> &highlightLeaves,
 }
 
 //===----------------------------------------------------------------------===//
-// FusionInfoAttr::parseTree
-//===----------------------------------------------------------------------===//
-
-namespace {
-
-ParseResult parseChildren(AsmParser &p, SmallVectorImpl<Attribute> &children,
-                          SmallVectorImpl<uint32_t> &operandIndices);
-
-/// Recursively parse a fusion info tree node. Group nodes (e.g. "Sequence",
-/// "Epilogue") recurse through parseChildren.
-Attribute parseNode(AsmParser &p) {
-  MLIRContext *ctx = p.getContext();
-
-  StringRef keyword;
-  if (succeeded(p.parseOptionalKeyword(
-          &keyword,
-          {FusionSequenceAttr::getFusionName(),
-           FusionHorizontalAttr::getFusionName(),
-           FusionElementwiseAttr::getFusionName(),
-           FusionEpilogueAttr::getFusionName(),
-           FusionPrologueAttr::getFusionName(), FusionViewAttr::getFusionName(),
-           FusionMutableLoadAttr::getFusionName()}))) {
-    SmallVector<Attribute> children;
-    SmallVector<uint32_t> operandIndices;
-
-    if (parseChildren(p, children, operandIndices))
-      return {};
-
-    if (keyword == FusionSequenceAttr::getFusionName())
-      return FusionSequenceAttr::get(ctx, children);
-    if (keyword == FusionHorizontalAttr::getFusionName())
-      return FusionHorizontalAttr::get(ctx, children);
-    if (keyword == FusionElementwiseAttr::getFusionName())
-      return FusionElementwiseAttr::get(ctx, children);
-    if (keyword == FusionEpilogueAttr::getFusionName())
-      return FusionEpilogueAttr::get(ctx, children, operandIndices);
-    if (keyword == FusionPrologueAttr::getFusionName())
-      return FusionPrologueAttr::get(ctx, children, operandIndices);
-    if (keyword == FusionViewAttr::getFusionName())
-      return FusionViewAttr::get(ctx, children);
-    if (keyword == FusionMutableLoadAttr::getFusionName())
-      return FusionMutableLoadAttr::get(ctx, children);
-
-    llvm_unreachable("unhandled fusion keyword");
-  }
-
-  // Leaf: parse op name with optional line number.
-  std::string opName;
-  if (p.parseOptionalKeywordOrString(&opName))
-    return {};
-
-  uint32_t lineNumber = 0;
-  if (succeeded(p.parseOptionalColon())) {
-    if (p.parseInteger(lineNumber))
-      return {};
-  }
-
-  // The textual format drops location and signature; only lit tests parse it.
-  LocationAttr loc;
-  if (lineNumber)
-    loc = FileLineColLoc::get(ctx, "", lineNumber, 0);
-  return FusionLeafAttr::get(ctx, StringAttr::get(ctx, opName), loc,
-                             /*signature=*/{});
-}
-
-/// Parse a parenthesized, comma-separated list of child nodes, with an
-/// optional trailing "operand=<N>" for epilogue/prologue groups.
-ParseResult parseChildren(AsmParser &p, SmallVectorImpl<Attribute> &children,
-                          SmallVectorImpl<uint32_t> &operandIndices) {
-  if (p.parseLParen())
-    return failure();
-
-  if (succeeded(p.parseOptionalRParen()))
-    return mlir::success();
-
-  do {
-    if (succeeded(p.parseOptionalKeyword("operandIndices"))) {
-      if (p.parseEqual() || p.parseLSquare())
-        return failure();
-      do {
-        uint32_t idx;
-        if (p.parseInteger(idx))
-          return failure();
-        operandIndices.push_back(idx);
-      } while (succeeded(p.parseOptionalComma()));
-      if (p.parseRSquare())
-        return failure();
-      break;
-    }
-
-    Attribute child = parseNode(p);
-    if (!child)
-      return failure();
-    children.push_back(child);
-  } while (succeeded(p.parseOptionalComma()));
-
-  return p.parseRParen();
-}
-
-} // namespace
-
-//===----------------------------------------------------------------------===//
 // FusionInfo custom printing/parsing for ops
 //===----------------------------------------------------------------------===//
 
 void M::MOGG::printFusionInfo(AsmPrinter &p, Operation *op,
                               FusionInfoAttr fusionInfo) {
-  if (fusionInfo)
-    p << " fusionInfo = "
-      << fusionInfo.toString(/*includeLineNumbers=*/true, /*quote*/ true);
+  if (!fusionInfo)
+    return;
+  p << " fusionInfo = ";
+  p.printAttribute(fusionInfo);
 }
 
 ParseResult M::MOGG::parseFusionInfo(AsmParser &p, FusionInfoAttr &fusionInfo) {
-  if (succeeded(p.parseOptionalKeyword("fusionInfo"))) {
-    if (p.parseEqual())
-      return failure();
-    Attribute root = parseNode(p);
-    if (!root)
-      return failure();
-    fusionInfo = FusionInfoAttr::get(p.getContext(), root);
-  }
-  return success();
+  if (failed(p.parseOptionalKeyword("fusionInfo")))
+    return success();
+  return failure(p.parseEqual() || p.parseAttribute(fusionInfo));
 }
 
 //===----------------------------------------------------------------------===//

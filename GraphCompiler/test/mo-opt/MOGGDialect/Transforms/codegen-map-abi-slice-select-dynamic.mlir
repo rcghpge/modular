@@ -15,7 +15,7 @@
 // and handed to the primitive, with the static shapes left unknown where the
 // dims are.
 
-// CHECK:      def Epilogue_{{.*}}, [[M:arg__[0-9]+]]: Int, [[H:arg__[0-9]+]]: Int,
+// CHECK:      def __{{.*}}, [[M:arg__[0-9]+]]: Int, [[H:arg__[0-9]+]]: Int,
 // CHECK:      var [[IN_COORD:var__+[0-9]+]] = layout.Coord(Scalar[DType.int]([[M]]), layout.Idx[8])
 // CHECK:      var [[OUT_COORD:var__+[0-9]+]] = layout.Coord(Scalar[DType.int]([[H]]), layout.Idx[8])
 // CHECK:      var [[IN_SHAPE:var__+[0-9]+]] = std.utils.coord.coord_to_index_list([[IN_COORD]])

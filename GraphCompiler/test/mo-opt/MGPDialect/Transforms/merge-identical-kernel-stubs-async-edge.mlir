@@ -6,25 +6,25 @@
 // canonicalized before the region is hashed, so the inner stubs and the
 // regions each collapse to one in a single merge + symbol-dce run.
 
-mogg.kernel.stub @inner_1 private() fusionInfo = inner_1
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @inner_1 private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"inner_1">>} {
   mogg.output
 }
 
-mogg.kernel.stub @inner_2 private() fusionInfo = inner_2
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @inner_2 private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"inner_2">>} {
   mogg.output
 }
 
-mogg.kernel.stub @region_a private() fusionInfo = region_a
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @region_a private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"region_a">>} {
   %t = mogg.call.stub.async @inner_1
   mogg.async.join(%t)
   mogg.output
 }
 
-mogg.kernel.stub @region_b private() fusionInfo = region_b
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @region_b private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"region_b">>} {
   %t = mogg.call.stub.async @inner_2
   mogg.async.join(%t)
   mogg.output
@@ -50,7 +50,7 @@ mgp.model @top_level subgraph : mof devices [#M.device_ref<"cpu", 0>, #M.device_
     %2 = mgp.runtime.create %0, %1[1]
     mef.output %0, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %arg4: !mgp.device_context<<"gpu", 0>>, %input : !mgp.tensor<4x16xf32>, %idx: index) -> (!mef.chain) {
-    mogg.execute_kernel @region_a() fusionInfo = mogg.generic.compiled.region:14 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>} : () -> ()
-    mogg.execute_kernel @region_b() fusionInfo = mogg.generic.compiled.region:14 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>} : () -> ()
+    mogg.execute_kernel @region_a() fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>} : () -> ()
+    mogg.execute_kernel @region_b() fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>} : () -> ()
     mef.output %arg0 : !mef.chain
 }

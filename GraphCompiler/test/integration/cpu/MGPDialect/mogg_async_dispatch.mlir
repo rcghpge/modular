@@ -11,13 +11,13 @@
 // Kernel stubs for async dispatch testing
 //===----------------------------------------------------------------------===//
 
-mogg.kernel.stub @noop_stub private () fusionInfo = "noop_stub"
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = false, summary = "noop_stub"} {
+mogg.kernel.stub @noop_stub private ()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = false, summary = "noop_stub", fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"noop_stub">>} {
   mogg.output
 }
 
-mogg.kernel.stub @noop_stub_2 private () fusionInfo = "noop_stub_2"
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = false, summary = "noop_stub_2"} {
+mogg.kernel.stub @noop_stub_2 private ()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = false, summary = "noop_stub_2", fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"noop_stub_2">>} {
   mogg.output
 }
 

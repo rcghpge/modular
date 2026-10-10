@@ -37,7 +37,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%[[B]]) {{.*}}moOpName = "test.k"
 // CHECK-NEXT: mogg.output
 // CHECK-NEXT: }
-mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
   mogg.output
 }
@@ -85,7 +85,7 @@ mgp.model @dg device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weight
 // CHECK-NOT: @stub_1_build_graph
 mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
 
-mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
   mogg.output
 }
@@ -132,7 +132,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
 // CHECK-NOT: mogg.call.build_graph
 // CHECK: mogg.call.opaque @k inputs(%{{.*}}) outputs(%{{.*}}) context(%[[REC]]
-mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
   mogg.output
 }
@@ -244,7 +244,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 
 // CHECK: mogg.kernel.stub @stub_1_build_graph private (%{{.*}}: !mogg.tensor, %{{.*}}: !mgp.device_graph.builder, %{{.*}}: !mogg.tensor)
 // CHECK-NEXT: mogg.call.build_graph["k"]
-mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %ctx: !mogg.context, %out: !mogg.tensor) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %ctx: !mogg.context, %out: !mogg.tensor) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
   mogg.output
 }
@@ -290,7 +290,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK: mogg.kernel.stub @stub_1_build_graph private (%{{.*}}: !mogg.context, %{{.*}}: !mogg.tensor, %{{.*}}: !mogg.tensor, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
 // CHECK: mogg.call.opaque @k inputs(%{{.*}}) outputs(%{{.*}}) context(%[[REC]]
-mogg.kernel.stub @stub_1 private (%aux: !mogg.context, %in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%aux: !mogg.context, %in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
   mogg.output
 }
@@ -334,7 +334,7 @@ mogg.primitive.decl @foreach_impl registration = "mogg.call.foreach" function = 
 // CHECK-NEXT: %[[REC:[a-zA-Z0-9_]+]] = mgp.device_graph.recording_context %[[B]] : !mogg.context
 // CHECK-NOT: mogg.call.build_graph
 // CHECK: mogg.call.foreach @foreach_impl shape(%{{.*}}) context(%[[REC]])
-mogg.kernel.stub @stub_1 private (%p: !mogg.pointer, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%p: !mogg.pointer, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   %shape = "test.shape"() : () -> !mogg.shape
   %t = "test.tensor"() : () -> !mogg.tensor
   mogg.call.foreach @foreach_impl shape(%shape) context(%ctx) (%i : !map.index<2>) capturing {%a = %t : !mogg.tensor} device = "gpu" {
@@ -379,7 +379,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK: mogg.kernel.stub @stub_1_build_graph private (%{{.*}}: !mogg.tensor, %{{.*}}: !mogg.tensor, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK: mogg.call.build_graph["k"]
 // CHECK-NOT: mogg.call.opaque
-mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
   mogg.output
 }
@@ -426,7 +426,7 @@ mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execu
 // CHECK: mogg.kernel.stub @stub_1 private (%{{.*}}: !mogg.tensor, %{{.*}}: !mogg.tensor, %{{.*}}: !mogg.context)
 // CHECK: mogg.kernel.stub @stub_1_build_graph private (%{{.*}}: !mogg.tensor, %{{.*}}: !mogg.tensor, %[[B:[a-zA-Z0-9_]+]]: !mgp.device_graph.builder)
 // CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%[[B]]) {{.*}}moOpName = "test.k"
-mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) fusionInfo = "test.k":1 attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true} {
+mogg.kernel.stub @stub_1 private (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
   mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context)
   mogg.output
 }

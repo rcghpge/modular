@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-elementwise | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_pkg" --mo-to-map --map-fuse-elementwise | FileCheck %s
 
 mo.graph @basic_add_mul(
   %x: !mo.tensor<[8], f32>,

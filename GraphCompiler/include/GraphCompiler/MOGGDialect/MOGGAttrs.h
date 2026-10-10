@@ -26,6 +26,8 @@
 
 namespace M::MOGG {
 
+/// Prints ` fusionInfo = #...`. The attribute prints in full, so the dialect's
+/// alias for it stands in for the tree.
 void printFusionInfo(mlir::AsmPrinter &p, mlir::Operation *op,
                      FusionInfoAttr fusionInfo);
 

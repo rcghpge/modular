@@ -77,7 +77,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
       "test.use_ctx"(%c) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = "test.producer0" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer0">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
 
     // Producer on gpu:1.
     %b = mogg.generic.compiled.region (%in1_t, %gpu1_t)
@@ -89,7 +89,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
       "test.use_ctx"(%c) : (!mgp.device_context<<"gpu", 1>>) -> ()
       %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 1>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 1>>>
-    } fusionInfo = "test.producer1" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer1">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
 
     // Promote each producer result to a stable address inside the staging body.
     %s0 = mgp.device_graph.stable.create %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
@@ -111,7 +111,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
           : !mgp.tensor<2x3xf32, <"gpu", 0>, stable> to !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%v) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = "test.consumer0" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer0">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
 
     // Consumer on gpu:1, reading both stable values.
     %c1 = mogg.generic.compiled.region (%s0, %s1, %gpu1_t)
@@ -127,7 +127,7 @@ mgp.model @multi_device_stable device_graph : mof devices [#M.device_ref<"gpu", 
           : !mgp.tensor<2x3xf32, <"gpu", 1>, stable> to !mgp.tensor<2x3xf32, <"gpu", 1>>
       %p = mogg.async.pack(%v) : !mgp.tensor<2x3xf32, <"gpu", 1>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 1>>>
-    } fusionInfo = "test.consumer1" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer1">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
 
     mgp.device_graph.staging.yield %c0, %c1
         : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
@@ -193,7 +193,7 @@ mgp.model @consumer_only_device device_graph : mof devices [#M.device_ref<"gpu",
       "test.use_ctx"(%c) : (!mgp.device_context<<"gpu", 0>>) -> ()
       %p = mogg.async.pack(%u) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = "test.producer0" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.producer0">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 0>}
 
     // Promote the producer result to a stable address.
     %s0 = mgp.device_graph.stable.create %a : !mgp.tensor<2x3xf32, <"gpu", 0>>
@@ -210,7 +210,7 @@ mgp.model @consumer_only_device device_graph : mof devices [#M.device_ref<"gpu",
           : !mgp.tensor<2x3xf32, <"gpu", 0>, stable> to !mgp.tensor<2x3xf32, <"gpu", 0>>
       %p = mogg.async.pack(%v) : !mgp.tensor<2x3xf32, <"gpu", 0>>
       mogg.output %p : !mogg.async<!mgp.tensor<2x3xf32, <"gpu", 0>>>
-    } fusionInfo = "test.consumer1" inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
+    } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.consumer1">> inOutSignature = <""> isAsync = false {device = #M.device_ref<"gpu", 1>}
 
     mgp.device_graph.staging.yield %c0
         : !mgp.tensor<2x3xf32, <"gpu", 1>>

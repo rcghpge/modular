@@ -24,6 +24,7 @@
 #include "GraphCompiler/MOGGDialect/Support/MojoIdentifiers.h"
 #include "GraphCompiler/MOGGDialect/Support/MojoTraits.h"
 #include "GraphCompiler/MOGGDialect/Support/ProfileScopeLabels.h"
+#include "GraphCompiler/MOGGDialect/Support/SymbolNames.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "MLRT/GraphRT/GRTDialect/GRTOps.h"
@@ -50,20 +51,12 @@
 using namespace M;
 using namespace MOGG;
 
-StringAttr M::MOGG::getKernelStubName(FusionInfoAttr fusionInfo, ABIKind abi) {
+StringAttr M::MOGG::getKernelStubName(FusionInfoAttr fusionInfo) {
   ASSERT_STREAM(fusionInfo, << "cannot name a kernel stub without fusion info");
-  MLIRContext *ctx = fusionInfo.getContext();
-  // Flatten to the same human-readable form used for trace labels (e.g.
-  // `Elementwise(relu, add)`), then sanitize into a symbol.
-  auto displayName = StringAttr::get(
-      ctx, fusionInfo.toString(/*includeLineNumbers=*/false, /*quote=*/false,
-                               /*stripDialectPrefixes=*/true));
-  auto sanitizedName = KGEN::sanitizeSymbolToUnderscores(displayName);
-
-  // Add the tag after sanitizing, which truncates long names and any tag.
-  return StringAttr::get(ctx, llvm::formatv("{0}_{1}", sanitizedName.getValue(),
-                                            stringifyABIKind(abi).lower())
-                                  .str());
+  // The hash keeps names that share a truncated prefix distinct in Mojo.
+  return StringAttr::get(
+      fusionInfo.getContext(),
+      "__" + joinNameParts(fusionInfo.getLeafNames(), TruncationMarker::Hash));
 }
 
 template <typename T>
@@ -3115,8 +3108,7 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
 // These FuncOp attributes are disallowed while parsing since they can
 // be inferred. Likewise while printing we ignore them.
 static StringRef kernelStubOpDisallowedAttrNames[] = {
-    "name",          "returnType", "sym_name",
-    "function_type", "fusionInfo", "sym_visibility"};
+    "name", "returnType", "sym_name", "function_type", "sym_visibility"};
 
 ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   StringAttr name;
@@ -3138,15 +3130,6 @@ ParseResult KernelStubOp::parse(OpAsmParser &parser, OperationState &state) {
   state.addAttribute(getFunctionTypeAttrName(state.name),
                      TypeAttr::get(FunctionType::get(parser.getContext(),
                                                      argTypes, resTypes)));
-
-  // Parse required fusionInfo before attr-dict.
-  FusionInfoAttr fusionInfo;
-  if (parseFusionInfo(parser, fusionInfo))
-    return failure();
-  if (!fusionInfo)
-    return parser.emitError(parser.getCurrentLocation(),
-                            "expected 'fusionInfo' attribute");
-  state.addAttribute("fusionInfo", fusionInfo);
 
   // If function attributes are present, parse them.
   NamedAttrList parsedAttributes;
@@ -3178,7 +3161,6 @@ void KernelStubOp::print(OpAsmPrinter &p) {
   p << " " << getSymVisibility() << " ";
   printRegionArguments(p, getFunctionType().getResults(),
                        getBody().getArguments());
-  printFusionInfo(p, *this, getFusionInfoAttr());
   p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs(),
                                      kernelStubOpDisallowedAttrNames);
   p << " ";
@@ -4732,7 +4714,7 @@ LogicalResult WithTraceOp::emitMojo(EmitMojoState &state) {
   // Distinct chains mean a kernel body shared by two non-nested
   // profile_scope()s (MergeIdenticalKernelStubs merges their locations);
   // formatProfileScope marks that with `:` rather than `/`. The scope follows
-  // the kernel name (unlike AddTryExceptBlocks' `[scope] region_N`) so the
+  // the kernel name (unlike AddTryExceptBlocks' `[scope] __<stub>`) so the
   // fusion-info name leads the trace.
   std::string traceName =
       kernelStubOp.getFusionInfoAttr().toString(/*includeLineNumbers=*/false,

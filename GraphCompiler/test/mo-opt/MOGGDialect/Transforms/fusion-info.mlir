@@ -1,8 +1,8 @@
-// RUN: mo-opt --gc-pipeline %s --mlir-print-ir-before=jit -o %t.mlir 2>&1 | FileCheck %s
+// RUN: mo-opt --gc-pipeline %s --mlir-print-ir-before=jit --mlir-print-local-scope -o %t.mlir 2>&1 | FileCheck %s
 
 // Check that fusionInfo is printed on kernel stubs after fusion passes.
 // Under the new API we expect the matmul+add to be fused followed by sequence fusing the cumsum.
-// CHECK: fusionInfo = Sequence({{.*}}Epilogue("mo.matmul":{{[0-9]+}}, "mo.add":{{[0-9]+}}, operandIndices=[0]))
+// CHECK: fusionInfo = #mogg.fusion<#mogg.fusion_sequence<[{{.*}}#mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul", loc = loc({{.*}}:{{[0-9]+}}:{{[0-9]+}}){{.*}}#mogg.fusion_leaf<"mo.add", loc = loc({{.*}}:{{[0-9]+}}:{{[0-9]+}}){{.*}}operandIndices = [0]>
 mo.graph @fusion_info_simple(
     %arg0: !mo.tensor<[20, 30], f32>,
     %arg1: !mo.tensor<[30, 40], f32>,

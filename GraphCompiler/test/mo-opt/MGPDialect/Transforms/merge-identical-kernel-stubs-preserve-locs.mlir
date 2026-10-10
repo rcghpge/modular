@@ -20,18 +20,18 @@
 // This only exists if the merge pass combined the locations.
 // CHECK: loc(fused[
 
-mogg.kernel.stub @func_a private() fusionInfo = func_a
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @func_a private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_a">>} {
   mogg.output
 } loc(fused<"  File \22model.py\22, line 10, in call_site_a\n">["model.py":10:0])
 
-mogg.kernel.stub @func_b private() fusionInfo = func_b
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @func_b private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_b">>} {
   mogg.output
 } loc(fused<"  File \22model.py\22, line 20, in call_site_b\n">["model.py":20:0])
 
-mogg.kernel.stub @caller private() fusionInfo = caller
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @caller private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"caller">>} {
   mogg.call.stub @func_a
   mogg.call.stub @func_b
   mogg.output

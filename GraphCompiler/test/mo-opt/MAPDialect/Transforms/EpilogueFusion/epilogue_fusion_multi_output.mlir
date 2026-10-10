@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-horizontal --map-fuse-epilogue | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages --mo-to-map --map-fuse-horizontal --map-fuse-epilogue | FileCheck %s
 
 // A multi-output consumer fuses into its producer's epilogue, which grows the
 // producer one destination-passing result per extra output. Horizontal fusion

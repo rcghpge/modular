@@ -743,7 +743,8 @@ them explicit and deterministic. The entry points get uniform and addressable
 #### Additional notes
 
 Each `mogg.generic.compiled.region` is outlined into a named mogg.kernel.stub
-(`region_<n>`), and the original site becomes a `mogg.execute.compiled` call.
+(`__<stubs it calls>_async`, or `__primitive_<n>_async` when it calls none),
+and the original site becomes a `mogg.execute.compiled` call.
 Sets the device from the original op, and forwards summary/async/constant
 resource attributes. Uses `ABIKind::MGP` (void-style; multiple results via
 opaque buffers) for the stub.

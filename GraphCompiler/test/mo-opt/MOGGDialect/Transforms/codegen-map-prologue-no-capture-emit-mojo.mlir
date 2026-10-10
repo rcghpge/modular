@@ -6,7 +6,7 @@
 // never materialized. Contrast the second operand's functor, which captures
 // the graph input and loads through it.
 
-// CHECK: def {{[A-Za-z0-9_]+_mogg(_[0-9]+)?}}(
+// CHECK: def {{__[A-Za-z0-9_]+}}(
 // The captureless functor takes no parameters and no constructor arguments.
 // CHECK: var [[F0:.*]] = [[FN0:PrologueLoadFunctor_[0-9]+]]()
 // CHECK: var [[DANGLING:.*]] = {{.*}}mogg_tensor_init[{{.*}}](Pointer[{{.*}}].unsafe_dangling()

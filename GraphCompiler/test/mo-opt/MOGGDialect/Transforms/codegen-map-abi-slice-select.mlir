@@ -18,7 +18,7 @@
 // `else` of `not` the bit, the branch sense of an early return. The runtime
 // in-shape is what resolves the negative start.
 
-// CHECK:      def Epilogue_{{.*}}, [[B:arg__[0-9]+]]: Int, {{arg__[0-9]+}}: Int, [[T:arg__[0-9]+]]: Int,
+// CHECK:      def __{{.*}}, [[B:arg__[0-9]+]]: Int, {{arg__[0-9]+}}: Int, [[T:arg__[0-9]+]]: Int,
 // CHECK:      var [[OUT_COORD:var__+[0-9]+]] = layout.Coord(Scalar[DType.int]([[B]]), layout.Idx[8], layout.Idx[16])
 // CHECK:      var [[IN_COORD:var__+[0-9]+]] = layout.Coord(Scalar[DType.int]([[B]]), Scalar[DType.int]([[T]]), layout.Idx[16])
 // CHECK:      var [[IN_SHAPE:var__+[0-9]+]] = std.utils.coord.coord_to_index_list([[IN_COORD]])

@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-mutable-loads | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages --mo-to-map --map-fuse-mutable-loads | FileCheck %s
 
 // Both loads fuse into the opaque kernels reading them.
 //

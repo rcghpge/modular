@@ -4,7 +4,7 @@
 // forwards the shape out, so it survives both hops. Without that forwarding
 // the shape is computed inside a region and discarded.
 
-// CHECK:       def {{.*}}shapeof{{.*}}_mogg
+// CHECK:       def __shapeof_imposter_add_raising_shape{{[_0-9]*}}(
 // CHECK-SAME:    -> std.utils.IndexList[
 // CHECK:         var [[OUT:[a-z_0-9]+]]: std.utils.IndexList[
 // CHECK:         try:

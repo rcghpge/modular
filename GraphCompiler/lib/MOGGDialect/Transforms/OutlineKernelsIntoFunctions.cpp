@@ -73,9 +73,9 @@ void outlineKernel(OpBuilder &builder, SymbolTable &symtab,
   if (!fusionInfo)
     fusionInfo = MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(kernel));
 
-  // Name the stub after the ops it fuses, e.g. "relu_add_mogg"; the symbol
-  // table appends a numeric suffix below when two kernels fuse the same ops.
-  auto stubName = MOGG::getKernelStubName(fusionInfo, MOGG::ABIKind::MOGG);
+  // Name the stub after the ops it fuses, e.g. "__relu_add"; the symbol table
+  // appends a numeric suffix below when two kernels fuse the same ops.
+  auto stubName = MOGG::getKernelStubName(fusionInfo);
 
   // Place the stub just after the kernel's top-level ancestor for readable,
   // deterministic output.

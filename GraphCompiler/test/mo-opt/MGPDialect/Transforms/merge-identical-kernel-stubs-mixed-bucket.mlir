@@ -37,13 +37,13 @@
 // references; symbol-DCE would prune duplicates later.
 // CHECK-DAG: mogg.kernel.stub @inner private
 // CHECK-DAG: mogg.kernel.stub @z_top private
-mogg.kernel.stub @inner private() fusionInfo = inner
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @inner private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"inner">>} {
   mogg.output
 }
 
-mogg.kernel.stub @z_top private() fusionInfo = z_top
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @z_top private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"z_top">>} {
   mogg.output
 }
 
@@ -53,8 +53,8 @@ mogg.kernel.stub @z_top private() fusionInfo = z_top
 // CHECK-LABEL: @caller
 // CHECK:      mogg.call.stub @inner
 // CHECK-NEXT: mogg.output
-mogg.kernel.stub @caller private() fusionInfo = caller
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @caller private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"caller">>} {
   mogg.call.stub @inner
   mogg.output
 }

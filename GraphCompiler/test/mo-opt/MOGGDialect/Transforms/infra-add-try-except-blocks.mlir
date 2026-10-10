@@ -10,14 +10,14 @@
 
 // The MGP ABI stub (@region_0) wraps the call to the MOGG stub in a
 // mogg.try/except that returns an async error value instead of raising.
-// CHECK-LABEL: mogg.kernel.stub @region_0 private
+// CHECK-LABEL: mogg.kernel.stub @{{__[A-Za-z0-9_]+_async}} private
 // CHECK:         mogg.try {
 // CHECK-NOT:       mogg.raise
 // CHECK:         } except(%{{[^)]+}}) {
 
 // The MOGG ABI stub (@relu_mogg) has mogg.with_trace around the kernel
 // terminator and mogg.try/mogg.raise for error propagation.
-// CHECK-LABEL: mogg.kernel.stub @relu_mogg private
+// CHECK-LABEL: mogg.kernel.stub @__relu private
 // CHECK:         mogg.try {
 // CHECK:           mogg.with_trace
 // CHECK:             mogg.call.foreach

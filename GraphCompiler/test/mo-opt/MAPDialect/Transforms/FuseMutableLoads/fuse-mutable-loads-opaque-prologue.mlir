@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --map-fuse-mutable-loads | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --map-fuse-mutable-loads | FileCheck %s
 
 // map.call.opaque verifies that its callee resolves to a mogg.kernel.decl. The
 // pass never reads the signature, so an empty declaration is enough here.

@@ -163,7 +163,7 @@ mgp.model @remove_redundant_chains : mof devices [#M.device_ref<"cpu", 0>] init 
     %1 = mogg.async.ready
     %2 = mogg.async.ready
     mogg.output %1, %2 : !mef.chain, !mef.chain
-  } fusionInfo = Sequence(mgp.assert, mgp.assert) canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>, emitsMojo = false}
+  } fusionInfo = #mogg.fusion<#mogg.fusion_sequence<[#mogg.fusion_leaf<"mgp.assert">, #mogg.fusion_leaf<"mgp.assert">]>> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>, emitsMojo = false}
   %res = "test.sink"(%0#0, %0#1) : (!mef.chain, !mef.chain) -> !mef.chain
   mef.output %res : !mef.chain
 }
@@ -186,7 +186,7 @@ mgp.model @preserve_kernel_attributes : mof devices [#M.device_ref<"cpu", 0>] in
   %true_0 = index.bool.constant true
   mogg.generic.compiled.region (%true, %true_0) : (%arg4: i1, %arg5: i1)  -> () {
     mogg.output
-  } fusionInfo = Sequence(mgp.assert, mgp.assert) canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>, emitsMojo = true}
+  } fusionInfo = #mogg.fusion<#mogg.fusion_sequence<[#mogg.fusion_leaf<"mgp.assert">, #mogg.fusion_leaf<"mgp.assert">]>> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> isAsync = false {device = #M.device_ref<"cpu", 0>, emitsMojo = true}
   mef.output %arg0 : !mef.chain
 }
 

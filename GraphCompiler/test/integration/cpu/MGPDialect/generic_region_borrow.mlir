@@ -30,7 +30,7 @@ mgp.model @buffer_borrow_intrinsic : mof devices [#M.device_ref<"cpu", 0>] init 
   %1 = mogg.generic.compiled.region (%arg1, %buf0, %buf1) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
     %3 = mogg.buffer.borrow (%b1, %b2) : (!mgp.buffer, !mgp.buffer) -> !mgp.buffer
     mogg.output %3 : !mgp.buffer
-  } fusionInfo = mgp.buffer.alloc canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
+  } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mgp.buffer.alloc">> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
 
 
   %ch4 = mgp.debug.tensor.print %ch3, %1, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<4xui8>) -> !mef.chain
@@ -70,14 +70,14 @@ mgp.model @buffer_borrow_constant : mof devices [#M.device_ref<"cpu", 0>] init (
   %1 = mogg.generic.compiled.region (%arg1, %buf0, %buf1) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
     %3 = mogg.buffer.borrow (%b1, %b2) : (!mgp.buffer, !mgp.buffer) -> !mgp.buffer
     mogg.output %3 : !mgp.buffer
-  } fusionInfo = mgp.buffer.alloc canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
+  } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mgp.buffer.alloc">> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
 
   %ch4 = mgp.debug.tensor.print %ch3, %1, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<3xf32>) -> !mef.chain
 
   %2 = mogg.generic.compiled.region (%arg1, %buf1, %buf0) : (%ctx: !mgp.context, %b1: !mgp.buffer, %b2: !mgp.buffer)  -> !mgp.buffer{
     %3 = mogg.buffer.borrow (%b1, %b2) : (!mgp.buffer, !mgp.buffer) -> !mgp.buffer
     mogg.output %3 : !mgp.buffer
-  } fusionInfo = mgp.buffer.alloc canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
+  } fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mgp.buffer.alloc">> canBeFusedInto = true canFuseIntoOther = true inOutSignature = <""> {device = #M.device_ref<"cpu", 0>}
 
   %ch5 = mgp.debug.tensor.print %ch4, %2, %spec1 : (!mef.chain, !mgp.buffer, !mgp.tensor_spec<3xf32>) -> !mef.chain
 

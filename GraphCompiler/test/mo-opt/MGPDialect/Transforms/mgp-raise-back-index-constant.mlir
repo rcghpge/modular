@@ -12,8 +12,8 @@
 // CHECK-LABEL: mogg.kernel.stub @raise_single private
 // CHECK:         %[[C:.+]] = index.constant 42
 // CHECK:         mogg.output %[[C]] : index
-mogg.kernel.stub @raise_single private(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_single
-  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "cpu", isAsync = false} {
+mogg.kernel.stub @raise_single private(%chain: !mef.chain, %ctx: !mgp.context) -> (index)
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "cpu", isAsync = false, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"raise_single">>} {
   %buf = mgp.resource.constant() resourceSlot = 0 : () -> !mgp.buffer<<"cpu", 0>>
   %idx = mgp.buffer.to_index %chain, %buf : !mgp.buffer<<"cpu", 0>>
   mogg.output %idx : index
@@ -25,8 +25,8 @@ mogg.kernel.stub @raise_single private(%chain: !mef.chain, %ctx: !mgp.context) -
 // CHECK-LABEL: mogg.kernel.stub @raise_multi private
 // CHECK-NOT:     index.constant
 // CHECK:         mgp.buffer.to_index
-mogg.kernel.stub @raise_multi private(%chain: !mef.chain, %ctx: !mgp.context) -> (index) fusionInfo = raise_multi
-  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "cpu", isAsync = false} {
+mogg.kernel.stub @raise_multi private(%chain: !mef.chain, %ctx: !mgp.context) -> (index)
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "cpu", isAsync = false, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"raise_multi">>} {
   %buf = mgp.resource.constant() resourceSlot = 0 : () -> !mgp.buffer<<"cpu", 0>>
   %idx = mgp.buffer.to_index %chain, %buf : !mgp.buffer<<"cpu", 0>>
   mogg.output %idx : index
@@ -38,11 +38,11 @@ init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"cpu",
     %1 = mgp.context.create 1
     mef.output %0, %1, %arg0, %arg1 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %idx: index) -> (!mef.chain) {
-    %s = mogg.execute_kernel @raise_single(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:1 constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
+    %s = mogg.execute_kernel @raise_single(%arg0, %arg1) fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
         : (!mef.chain, !mgp.context) -> (index)
-    %m0 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:2 constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
+    %m0 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
         : (!mef.chain, !mgp.context) -> (index)
-    %m1 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:3 constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
+    %m1 = mogg.execute_kernel @raise_multi(%arg0, %arg1) fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [#M.aligned_bytes<"0x2A00000000000000", align 8>], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>}
         : (!mef.chain, !mgp.context) -> (index)
     mef.output %arg0 : !mef.chain
 }

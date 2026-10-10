@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --canonicalize --cse --map-outline-structured-kernel-bodies --canonicalize | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --canonicalize --cse --map-outline-structured-kernel-bodies --canonicalize | FileCheck %s
 
 // CHECK-LABEL: mo.graph @diamond_gather
 // CHECK-SAME:  (%[[X:[^:]*]]: !mo.tensor<[3, 3], f32>, %[[Y:[^:]*]]: !mo.tensor<[3, 3], f32>, %[[IDXS:[^:]*]]: !mo.tensor<[2, 2], si32>)

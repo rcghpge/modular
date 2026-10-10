@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-elementwise | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages --mo-to-map --map-fuse-elementwise | FileCheck %s
 
 
 mo.graph @add_fuses_into_mutable_store(

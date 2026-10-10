@@ -14,8 +14,8 @@
 // CHECK-SAME:    (%[[CHAIN_A:[^:]+]]: !mef.chain, %[[CTX_A:[^:]+]]: !mgp.context, %[[SLOT_A:[^:]+]]: index)
 // CHECK-NOT:     index.constant
 // CHECK:         mgp.buffer.get_cached %[[CHAIN_A]], %[[CTX_A]][%[[SLOT_A]]]
-mogg.kernel.stub @lift_a private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>) fusionInfo = lift_a
-  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "gpu", isAsync = false} {
+mogg.kernel.stub @lift_a private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>)
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "gpu", isAsync = false, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"lift_a">>} {
   %slot = index.constant 197
   %buf = mgp.buffer.get_cached %arg0, %arg1[%slot] : !mgp.buffer<<"gpu", 0>>
   mogg.output %buf : !mgp.buffer<<"gpu", 0>>
@@ -27,8 +27,8 @@ mogg.kernel.stub @lift_a private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mg
 // CHECK-SAME:    (%[[CHAIN_B:[^:]+]]: !mef.chain, %[[CTX_B:[^:]+]]: !mgp.context, %[[SLOT_B:[^:]+]]: index)
 // CHECK-NOT:     index.constant
 // CHECK:         mgp.buffer.get_cached %[[CHAIN_B]], %[[CTX_B]][%[[SLOT_B]]]
-mogg.kernel.stub @lift_b private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>) fusionInfo = lift_b
-  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "gpu", isAsync = false} {
+mogg.kernel.stub @lift_b private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mgp.buffer<<"gpu", 0>>)
+  attributes {abi = #mogg.abi<MGP>, constantResources = [], device = "gpu", isAsync = false, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"lift_b">>} {
   %slot = index.constant 261
   %buf = mgp.buffer.get_cached %arg0, %arg1[%slot] : !mgp.buffer<<"gpu", 0>>
   mogg.output %buf : !mgp.buffer<<"gpu", 0>>
@@ -41,10 +41,10 @@ mogg.kernel.stub @lift_b private(%arg0: !mef.chain, %arg1: !mgp.context) -> (!mg
 // even if we tried.
 
 // CHECK-LABEL: mogg.kernel.stub @mogg_abi_kernel private
-// CHECK-SAME:    () fusionInfo
+// CHECK-SAME:    () attributes
 // CHECK:         %{{.+}} = index.constant 7
-mogg.kernel.stub @mogg_abi_kernel private() fusionInfo = mogg_abi_kernel
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = false} {
+mogg.kernel.stub @mogg_abi_kernel private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = false, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg_abi_kernel">>} {
   %0 = index.constant 7
   mogg.output
 }
@@ -74,9 +74,9 @@ init (%arg0: !mgp.opaque<"weights_registry">, %arg1: !mgp.device_context<<"cpu",
     %2 = mgp.runtime.create %0, %1[1]
     mef.output %0, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %arg4: !mgp.device_context<<"gpu", 0>>, %idx: index) -> (!mef.chain) {
-    %a = mogg.execute_kernel @lift_a(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:1 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>}
+    %a = mogg.execute_kernel @lift_a(%arg0, %arg1) fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>}
         : (!mef.chain, !mgp.context) -> (!mgp.buffer<<"gpu", 0>>)
-    %b = mogg.execute_kernel @lift_b(%arg0, %arg1) fusionInfo = mogg.generic.compiled.region:2 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>}
+    %b = mogg.execute_kernel @lift_b(%arg0, %arg1) fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"gpu", 0>}
         : (!mef.chain, !mgp.context) -> (!mgp.buffer<<"gpu", 0>>)
     mef.output %arg0 : !mef.chain
 }

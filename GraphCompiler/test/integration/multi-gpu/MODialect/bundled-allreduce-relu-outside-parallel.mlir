@@ -5,7 +5,7 @@
 // and merge passes in isolation are covered by their respective unit tests
 // under mo-opt/.../Transforms/.
 
-// RUN: mo-opt %s --mogg-import-packages \
+// RUN: mo-opt %s --mlir-print-local-scope --mogg-import-packages \
 // RUN:     --mo-create-parallel-from-unbundle --canonicalize \
 // RUN:     --mo-merge-adjacent-parallels \
 // RUN:     --mo-pipeline=kernel-decls-pre-populated=true \

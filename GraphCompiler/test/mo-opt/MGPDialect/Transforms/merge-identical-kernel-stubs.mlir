@@ -1,12 +1,12 @@
 // RUN: mo-opt -mogg-merge-identical-kernel-stubs
 
-mogg.kernel.stub @func_1() fusionInfo = func_1
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @func_1()
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_1">>} {
   mogg.output
 }
 
-mogg.kernel.stub @func_2() fusionInfo = func_2
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @func_2()
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_2">>} {
   mogg.output
 }
 
@@ -14,8 +14,8 @@ mogg.kernel.stub @func_2() fusionInfo = func_2
 // CHECK:      mogg.call.stub @func_1
 // CHECK-NEXT: mogg.call.stub @func_1
 // CHECK-NOT:  mogg.call.stub @func
-mogg.kernel.stub @func_3() fusionInfo = func_3
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @func_3()
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_3">>} {
   mogg.call.stub @func_1
   mogg.call.stub @func_2
   mogg.output
@@ -25,8 +25,8 @@ mogg.kernel.stub @func_3() fusionInfo = func_3
 // CHECK:      mogg.call.stub @func_1
 // CHECK:      mogg.call.stub @func_1
 // CHECK-NOT:  mogg.call.stub @func
-mogg.kernel.stub @func_4() fusionInfo = func_4
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @func_4()
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_4">>} {
   mogg.call.stub @func_1
   mogg.call.stub @func_2
   mogg.output
@@ -36,20 +36,20 @@ mogg.kernel.stub @func_4() fusionInfo = func_4
 // CHECK:      mogg.call.stub @func_3
 // CHECK:      mogg.call.stub @func_3
 // CHECK-NOT:  mogg.call.stub @func
-mogg.kernel.stub @func_5() fusionInfo = func_5
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @func_5()
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_5">>} {
   mogg.call.stub @func_3
   mogg.call.stub @func_4
   mogg.output
 }
 
-mogg.kernel.stub @func_6() fusionInfo = func_6
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", foo = "foo", isAsync = true} {
+mogg.kernel.stub @func_6()
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", foo = "foo", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_6">>} {
   mogg.output
 }
 
-mogg.kernel.stub @func_7() fusionInfo = func_7
-  attributes {abi = 2 : i32, constantResources = [], device = "cpu", foo = "foo", isAsync = true} {
+mogg.kernel.stub @func_7()
+  attributes {abi = 2 : i32, constantResources = [], device = "cpu", foo = "foo", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"func_7">>} {
   mogg.output
 }
 
@@ -62,7 +62,7 @@ mgp.model @top_level subgraph : mof devices [#M.device_ref<"cpu", 0>, #M.device_
     %2 = mgp.runtime.create %0, %1[1]
     mef.output %0, %1, %arg0, %arg1, %arg2 : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"cpu", 0>>, !mgp.device_context<<"gpu", 0>>
 } execute (%arg0: !mef.chain, %arg1: !mgp.context, %arg2: !mgp.opaque<"weights_registry">, %arg3: !mgp.device_context<<"cpu", 0>>, %arg4: !mgp.device_context<<"gpu", 0>>, %input : !mgp.tensor<4x16xf32>, %idx: index) -> (!mef.chain) {
-    mogg.execute_kernel @func_6() fusionInfo = mogg.generic.compiled.region:14 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>} : () -> ()
-    mogg.execute_kernel @func_7() fusionInfo = mogg.generic.compiled.region:14 constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>} : () -> ()
+    mogg.execute_kernel @func_6() fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>} : () -> ()
+    mogg.execute_kernel @func_7() fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mogg.generic.compiled.region">> constantResources = [], isAsync = false, usedParams = [] {device = #M.device_ref<"cpu", 0>} : () -> ()
     mef.output %arg0 : !mef.chain
 }

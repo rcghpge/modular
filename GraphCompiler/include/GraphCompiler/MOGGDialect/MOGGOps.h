@@ -44,9 +44,9 @@ using M::KGEN::LIT::FnTypeGeneratorType;
 
 namespace M::MOGG {
 
-/// Return a stub name from the ops in `fusionInfo`. The `abi` suffix separates
-/// MOGG and MAP names. The caller inserts the stub for a unique name.
-StringAttr getKernelStubName(FusionInfoAttr fusionInfo, ABIKind abi);
+/// Returns `__<ops>`, a stub name built from the ops `fusionInfo` fuses. The
+/// caller inserts the stub into a symbol table for a unique name.
+StringAttr getKernelStubName(FusionInfoAttr fusionInfo);
 
 template <typename Kernel>
 SmallVector<KGEN::ParamDeclRefAttr> getKernelUsedParameters(Kernel kernel) {

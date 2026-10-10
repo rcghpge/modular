@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels --canonicalize --map-fuse-mutable-loads | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages --mo-to-map --map-fuse-kernels --canonicalize --map-fuse-mutable-loads | FileCheck %s
 
 // CHECK-LABEL: mo.graph @single_add_buffer_lhs(
 // CHECK-SAME:  %[[BUF:.*]]: !mo.buffer<[10, 10], f32>, %[[RHS:.*]]: !mo.tensor<[10, 10], f32>

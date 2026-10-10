@@ -70,14 +70,14 @@ mo.graph @parallel_three_ops() -> (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f
 
 // Both graphs produce fused compiled regions with async dispatch.
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_(mogg|map)(_[0-9]+)?}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_(mogg|map)(_[0-9]+)?}}({{.*}})
+// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 
 // CHECK-MGP: mogg.generic.compiled.region
-// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_(mogg|map)(_[0-9]+)?}}({{.*}})
-// CHECK-MGP:   mogg.call.stub.async @{{[A-Za-z0-9_]+_(mogg|map)(_[0-9]+)?}}({{.*}})
+// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
+// CHECK-MGP:   mogg.call.stub.async @{{__[A-Za-z0-9_]+}}({{.*}})
 // CHECK-MGP:   mogg.async.join
 // CHECK-MGP:   mogg.async.ready
 

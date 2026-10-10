@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --map-fuse-prologue | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --map-fuse-prologue | FileCheck %s
 
 !DType = !lit.struct<@std::@builtin::@dtype::@DType>
 !SIMDLength = !lit.struct<@std::@builtin::@simd_length::@SIMDLength>

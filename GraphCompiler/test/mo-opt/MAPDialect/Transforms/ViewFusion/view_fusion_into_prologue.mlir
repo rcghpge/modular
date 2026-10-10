@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --map-fuse-views | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --map-fuse-views | FileCheck %s
 
 // Hand-authored MAP-level IR (mirrors
 // PrologueFusion/prologue_fusion_map_ir.mlir): exercises ViewFuser's own

@@ -40,18 +40,18 @@
 // CHECK-LABEL: @caller
 // CHECK: mogg.call.stub @a_dup
 
-mogg.kernel.stub @z_dup private() fusionInfo = z_dup
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @z_dup private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"z_dup">>} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 10, in site_z\n">["model.py":10:0])
 
-mogg.kernel.stub @a_dup private() fusionInfo = a_dup
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @a_dup private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"a_dup">>} {
   mogg.output
 } loc(fused<"  File \"model.py\", line 20, in site_a\n">["model.py":20:0])
 
-mogg.kernel.stub @caller private() fusionInfo = caller
-  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true} {
+mogg.kernel.stub @caller private()
+  attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "cpu", isAsync = true, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"caller">>} {
   mogg.call.stub @a_dup
   mogg.output
 }

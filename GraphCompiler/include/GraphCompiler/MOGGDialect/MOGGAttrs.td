@@ -262,11 +262,21 @@ def MOGG_FusionMutableLoadAttr : MOGGFusionGroupAttr<"FusionMutableLoad", "fusio
 def MOGG_FusionInfoAttr : MOGGAttr<"FusionInfo", "fusion"> {
   let summary = "An attribute that holds the fusion info tree.";
   let description = [{
-    Prints the tree in function-call syntax:
+    Ops print it as an alias named after the fused ops (see
+    `MOGGOpAsmDialectInterface`), with the tree spelled out once at the top:
 
     ```mlir
-    fusionInfo = Sequence(View(mo.slice:42), Epilogue(mo.matmul, Elementwise(mo.relu, mo.add), operandIndices=[0]))
+    #slice_matmul_relu_add = #mogg.fusion<#mogg.fusion_sequence<[
+        #mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice">]>,
+        #mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul">,
+            #mogg.fusion_elementwise<[#mogg.fusion_leaf<"mo.relu">,
+                                      #mogg.fusion_leaf<"mo.add">]>],
+            operandIndices = [0]>]>>
+    ... {fusionInfo = #slice_matmul_relu_add}
     ```
+
+    `toString` renders the function-call form used in trace labels, e.g.
+    `Sequence(View(mo.slice), Epilogue(mo.matmul, ...))`.
 
     The `root` parameter can be any of:
     - FusionLeafAttr: single operation
@@ -287,6 +297,11 @@ def MOGG_FusionInfoAttr : MOGGAttr<"FusionInfo", "fusion"> {
   let extraClassDeclaration = [{
     std::string toString(bool includeLineNumbers = false, bool quote = false,
                          bool stripDialectPrefixes = false) const;
+
+    /// Returns the fused ops' names in tree order, without their dialect
+    /// prefix (`mo.matmul` -> `matmul`, `shapeof(mo.range)` ->
+    /// `shapeof(range)`), skipping the group nodes.
+    llvm::SmallVector<std::string> getLeafNames() const;
 
     /// Returns a multi-line tree. Leaves in \p highlightLeaves (matched by
     /// attribute identity, not op name) get "<-- error". \p indent prefixes

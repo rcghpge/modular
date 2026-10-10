@@ -1,5 +1,5 @@
-// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map | FileCheck %s
-// RUN: mo-opt %s --mo-to-map | FileCheck %s --check-prefix=DISABLED
+// RUN: mo-opt --mlir-print-local-scope %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map | FileCheck %s
+// RUN: mo-opt --mlir-print-local-scope %s --mo-to-map | FileCheck %s --check-prefix=DISABLED
 
 // MOToMAP lowers each MO op with a registered opaque (non-elementwise,
 // non-view) kernel into a `map.iter.opaque` wrapping a `map.call.opaque`,

@@ -3,8 +3,8 @@
 
 // Check shapeof(range) + mo.range was moved to init
 // CHECK-IR-LABEL: mgp.model @shape_func_consts
-// CHECK-IR: fusionInfo = "shapeof(mo.range)
-// CHECK-IR: fusionInfo = "mo.range
+// CHECK-IR: fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"shapeof(mo.range)
+// CHECK-IR: fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.range
 // CHECK-IR: } execute (
 
 // CHECK-LABEL: Running 'shape_func_consts':
