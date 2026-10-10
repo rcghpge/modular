@@ -186,6 +186,24 @@ def classify_type[T: AnyType]() -> String:
             return "other"
 
 
+def classify_if_case_type[T: AnyType]() -> String:
+    comptime if case == Int = T:
+        return "integer"
+    elif case == String = T:
+        return "string"
+    else:
+        return "other"
+
+
+def classify_comptime_if_case_pair[pair: Tuple[Int, Int]]() -> String:
+    comptime if case (0, value) = pair:
+        return String("first:", value)
+    elif case (value, 1) = pair:
+        return String("second:", value)
+    else:
+        return "miss"
+
+
 def classify_or_bind_var(pair: Tuple[Int, Int]) -> String:
     match pair:
         case (0, var x) | (var x, 1):
@@ -200,6 +218,35 @@ def classify_or_bind_ref(var pair: Tuple[Int, Int]) -> String:
             return String("ref:", x)
         case _:
             return "miss"
+
+
+def classify_if_case(pair: Tuple[Int, Int], fallback: Bool) -> String:
+    if case (0, var value) = pair:
+        return String("first:", value)
+    elif fallback:
+        return "fallback"
+    elif case (var value, 1) = pair:
+        return String("second:", value)
+    else:
+        return "miss"
+
+
+def classify_if_case_or(pair: Tuple[Int, Int]) -> String:
+    if case (0, var value) | (var value, 1) = pair:
+        return String("or:", value)
+    else:
+        return "miss"
+
+
+def classify_if_case_nested(value: Optional[Point]) -> String:
+    if case .Some(Point(x=0, y=var y)) = value:
+        return String("y-axis:", y)
+    elif case .Some(Point(x=var x, y=0)) = value:
+        return String("x-axis:", x)
+    elif case .None = value:
+        return "none"
+    else:
+        return "other"
 
 
 def classify_comptime_int[x: Int]() -> String:
@@ -353,6 +400,22 @@ def test_explicit_value_patterns():
     # CHECK: other
     print(classify_type[Bool]())
 
+    # The same type switch expressed as conditional patterns.
+    # CHECK: if-case-integer
+    print("if-case-" + classify_if_case_type[Int]())
+    # CHECK: if-case-string
+    print("if-case-" + classify_if_case_type[String]())
+    # CHECK: if-case-other
+    print("if-case-" + classify_if_case_type[Bool]())
+
+    # Bindings introduced by a comptime conditional pattern are parameters.
+    # CHECK: first:5
+    print(classify_comptime_if_case_pair[(0, 5)]())
+    # CHECK: second:7
+    print(classify_comptime_if_case_pair[(7, 1)]())
+    # CHECK: miss
+    print(classify_comptime_if_case_pair[(4, 4)]())
+
 
 def test_or_bindings():
     # CHECK-LABEL: == test_or_bindings
@@ -378,6 +441,40 @@ def test_or_bindings():
     print(classify_or_bind_ref((8, 3)))
     # CHECK: miss
     print(classify_or_bind_ref((0, 0)))
+
+
+def test_if_case():
+    # CHECK-LABEL: == test_if_case
+    print("== test_if_case")
+
+    # CHECK: first:5
+    print(classify_if_case((0, 5), False))
+    # CHECK: fallback
+    print(classify_if_case((7, 1), True))
+    # CHECK: second:7
+    print(classify_if_case((7, 1), False))
+    # CHECK: miss
+    print(classify_if_case((4, 4), False))
+
+    # An OR pattern emits a nested hlcf.match operation.
+    # CHECK: or:5
+    print(classify_if_case_or((0, 5)))
+    # CHECK: or:7
+    print(classify_if_case_or((7, 1)))
+    # CHECK: or:1
+    print(classify_if_case_or((0, 1)))
+    # CHECK: miss
+    print(classify_if_case_or((4, 4)))
+
+    # Nested enum and struct patterns.
+    # CHECK: y-axis:8
+    print(classify_if_case_nested(Optional(Point(0, 8))))
+    # CHECK: x-axis:3
+    print(classify_if_case_nested(Optional(Point(3, 0))))
+    # CHECK: none
+    print(classify_if_case_nested(Optional[Point](None)))
+    # CHECK: other
+    print(classify_if_case_nested(Optional(Point(3, 4))))
 
 
 def test_comptime_match():
@@ -427,4 +524,5 @@ def main():
     test_tuples_and_structs()
     test_explicit_value_patterns()
     test_or_bindings()
+    test_if_case()
     test_comptime_match()

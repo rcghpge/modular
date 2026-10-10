@@ -3740,28 +3740,58 @@ ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
 
   struct ArmEntry {
     ExprNode *condExpr;
+    ExprNode *patternExpr;
     LexerCursor bodyCursor;
     Location keywordLoc;
+    SmallVector<PatternBoundName, 4> patternBindings;
   };
 
   SmallVector<ArmEntry, 4> arms;
 
-  ExprNode *firstCondExpr = nullptr;
-  if (parseExpression(firstCondExpr, curIndent, Precedence::kAssignExpr) ||
-      parseToken(Token::colon, "expected ':' after 'if' expression"))
+  auto parseArm = [&](Location keywordLoc, StringRef keyword) -> ParseResult {
+    ExprNode *condExpr = nullptr;
+    ExprNode *patternExpr = nullptr;
+    if (consumeIf(Token::kw_case)) {
+      if (parseExpressionList(patternExpr, curIndent,
+                              /*terminators=*/{Token::equal, Token::kw_as},
+                              Precedence(int(Precedence::kIfElse) + 1)))
+        return failure();
+
+      SMLoc asLoc;
+      if (consumeIf(Token::kw_as, &asLoc)) {
+        Token nameTok = getToken();
+        if (parseIdentifier("expected a name after 'as'"))
+          return failure();
+        auto *name = shared.allocPersistent<DeclRefNode>(
+            nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
+        patternExpr = shared.allocPersistent<BinOpNode>(
+            ExprNode::kAsPat, patternExpr, asLoc, name);
+      }
+
+      if (parseToken(Token::equal, "expected '=' after conditional pattern") ||
+          parseExpression(condExpr, curIndent, Precedence::kAssignExpr))
+        return failure();
+    } else if (parseExpression(condExpr, curIndent, Precedence::kAssignExpr)) {
+      return failure();
+    }
+
+    if (parseToken(Token::colon,
+                   "expected ':' after '" + keyword + "' condition"))
+      return failure();
+    arms.push_back(
+        {condExpr, patternExpr, getLexer().getCursor(), keywordLoc, {}});
+    skipUntilIndentation(curIndent);
+    return success();
+  };
+
+  if (failed(parseArm(ifLoc, "if")))
     return failure();
-  arms.push_back({firstCondExpr, getLexer().getCursor(), ifLoc});
-  skipUntilIndentation(curIndent);
 
   while (getToken().is(Token::kw_elif) &&
          isTokenInCurrentStatement(curIndent, /*allowSameIndent=*/true)) {
     Location elifLoc = translateLocation(consumeToken(Token::kw_elif).getLoc());
-    ExprNode *condExpr = nullptr;
-    if (parseExpression(condExpr, curIndent, Precedence::kAssignExpr) ||
-        parseToken(Token::colon, "expected ':' after 'elif' expression"))
+    if (failed(parseArm(elifLoc, "elif")))
       return failure();
-    arms.push_back({condExpr, getLexer().getCursor(), elifLoc});
-    skipUntilIndentation(curIndent);
   }
 
   std::optional<LexerCursor> elseBodyCursor;
@@ -3793,8 +3823,30 @@ ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
 
     SmallVector<Attribute, 4> conds;
     conds.reserve(arms.size());
-    for (const ArmEntry &arm : arms) {
-      FailureOr<TypedAttr> attr = emitComptimeCondAttr(arm.condExpr);
+    for (ArmEntry &arm : arms) {
+      FailureOr<TypedAttr> attr = [&]() -> FailureOr<TypedAttr> {
+        if (!arm.patternExpr)
+          return emitComptimeCondAttr(arm.condExpr);
+
+        PValue subject = getParamEmitter(EC_MatchSubject)
+                             .emitExprPValue(arm.condExpr, EC_MatchSubject);
+        if (!subject)
+          return failure();
+
+        PatternMatchBuilder matchBuilder(*curDeclScope, EC_Type);
+        const PatternPath *rootPath =
+            matchBuilder.getRootPath(subject.getRValueType());
+        SmallVector<const PatternCommand *, 8> commands;
+        if (failed(arm.patternExpr->buildCheckList(matchBuilder, subject,
+                                                   rootPath, commands)))
+          return failure();
+
+        PatternEmitState emissionState{*curDeclScope, subject, rootPath,
+                                       arm.keywordLoc,
+                                       DenseMap<const PatternPath *, CValue>()};
+        return emissionState.emitComptimeCondition(commands,
+                                                   arm.patternBindings);
+      }();
       if (failed(attr))
         return failure();
       conds.push_back(*attr);
@@ -3803,11 +3855,25 @@ ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
     auto comptimeIfOp = HLCF::ComptimeIfOp::create(builder, ifLoc, TypeRange{},
                                                    builder.getArrayAttr(conds));
 
-    auto parseComptimeIfRegion =
-        [&](ArrayRef<ConstraintAttr> assumptions) -> ParseResult {
+    auto parseComptimeIfRegion = [&](ArrayRef<ConstraintAttr> assumptions,
+                                     ArrayRef<PatternBoundName> bindings,
+                                     SMLoc bindingLoc) -> ParseResult {
       DebugInfo::DIBuilder::ScopeGuard scopeGuard;
       llvm::SaveAndRestore<ASTDecl *> keepDecl(curDeclScope);
       pushChildScope(scopeGuard, keepDecl);
+      IREmitter emitter = getParamEmitter(EC_MatchSubject);
+      for (const PatternBoundName &binding : bindings) {
+        PValue value = binding.value.getIfPValue();
+        if (!value) {
+          emitError(bindingLoc)
+              << "binding '" << binding.name
+              << "' in 'comptime if case' must be a compile-time value";
+          return failure();
+        }
+        DeclRefNode nameNode(binding.name);
+        if (failed(emitter.emitDestructuringPValue(value, &nameNode)))
+          return failure();
+      }
       curDeclScope->insertKnownAssumptions(assumptions);
       return parseSuite(curIndent);
     };
@@ -3817,7 +3883,10 @@ ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
             ArrayRef<ConstraintAttr> assumptions) -> ParseResult {
       builder.createBlock(&thenRegion);
       entry.bodyCursor.restore(getLexer());
-      if (failed(parseComptimeIfRegion(assumptions)))
+      SMLoc bindingLoc = entry.patternExpr ? entry.patternExpr->getLoc()
+                                           : entry.condExpr->getLoc();
+      if (failed(parseComptimeIfRegion(assumptions, entry.patternBindings,
+                                       bindingLoc)))
         return failure();
       HLCF::ComptimeYieldOp::create(builder, entry.keywordLoc);
       return success();
@@ -3839,11 +3908,141 @@ ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
     builder.createBlock(&comptimeIfOp.getElseRegion());
     if (elseBodyCursor) {
       elseBodyCursor->restore(getLexer());
-      if (failed(parseComptimeIfRegion(falseAssumptions)))
+      if (failed(parseComptimeIfRegion(falseAssumptions, {}, SMLoc())))
         return failure();
     }
     HLCF::ComptimeYieldOp::create(builder, ifLoc);
 
+    afterCursor.restore(getLexer());
+    return success();
+  }
+
+  bool hasPatternCondition = llvm::any_of(
+      arms, [](const ArmEntry &arm) { return arm.patternExpr != nullptr; });
+  if (hasPatternCondition) {
+    auto materializeBindings =
+        [&](ArrayRef<PatternBoundName> bindings) -> LogicalResult {
+      IREmitter emitter = getEmitter();
+      for (const PatternBoundName &binding : bindings) {
+        DeclRefNode nameNode(binding.name);
+        ExprDest declDest(LValueInitializerType{binding.value.getRValueType()},
+                          EC_VarInit);
+        declDest.setPatternDeclKind(binding.bindingKind);
+        LValue bindingLV = emitter.emitExprLValue(&nameNode, declDest);
+        if (!bindingLV)
+          return failure();
+
+        ExprDest storeDest(bindingLV, EC_VarInit);
+        if (!emitter.emitCResult(binding.value, &nameNode, storeDest))
+          return failure();
+      }
+      return success();
+    };
+
+    auto emitBody = [&](const ArmEntry &entry) -> ParseResult {
+      entry.bodyCursor.restore(getLexer());
+      if (failed(parseLocalScopeSuite(curIndent)))
+        return failure();
+      return success();
+    };
+
+    auto emitArmChain = [&](auto &self, size_t armIndex) -> ParseResult {
+      if (armIndex == arms.size()) {
+        if (elseBodyCursor) {
+          elseBodyCursor->restore(getLexer());
+          if (failed(parseLocalScopeSuite(curIndent)))
+            return failure();
+        }
+        return success();
+      }
+
+      const ArmEntry &arm = arms[armIndex];
+      if (!arm.patternExpr) {
+        FailureOr<Value> condition = [&]() -> FailureOr<Value> {
+          auto emitter = getEmitter();
+          RValue conditionRValue =
+              emitter.emitExprScalarBool(arm.condExpr, EC_BoolCondition);
+          if (!conditionRValue)
+            return failure();
+          SRValue conditionValue = emitter.emitSRValue(
+              {conditionRValue, arm.condExpr}, EC_BoolCondition);
+          if (!conditionValue)
+            return failure();
+          return Value(conditionValue);
+        }();
+        if (failed(condition))
+          return failure();
+
+        HLCF::IfOp ifOp = HLCF::IfOp::create(builder, arm.keywordLoc,
+                                             TypeRange(), *condition);
+        Block &thenBlock = ifOp.getThenRegion().emplaceBlock();
+        Block &elseBlock = ifOp.getElseRegion().emplaceBlock();
+
+        builder.setInsertionPointToStart(&thenBlock);
+        if (failed(emitBody(arm)))
+          return failure();
+        HLCF::YieldOp::create(builder, arm.keywordLoc);
+
+        builder.setInsertionPointToStart(&elseBlock);
+        if (failed(self(self, armIndex + 1)))
+          return failure();
+        HLCF::YieldOp::create(builder, arm.keywordLoc);
+        builder.setInsertionPointAfter(ifOp);
+        return success();
+      }
+
+      CValue subject =
+          getEmitter().emitExprCValue(arm.condExpr, EC_MatchSubject);
+      if (!subject)
+        return failure();
+      if (subject.getIfRValue() || subject.getIfDLValue()) {
+        BValue subjectBValue =
+            getEmitter().emitBValue({subject, arm.condExpr}, EC_MatchSubject);
+        if (!subjectBValue)
+          return failure();
+        subject = subjectBValue;
+      }
+
+      PatternMatchBuilder matchBuilder(*curDeclScope, EC_Type);
+      const PatternPath *rootPath =
+          matchBuilder.getRootPath(subject.getRValueType());
+      SmallVector<const PatternCommand *, 8> commands;
+      if (failed(arm.patternExpr->buildCheckList(matchBuilder, subject,
+                                                 rootPath, commands)))
+        return failure();
+
+      PatternEmitState emissionState{*curDeclScope, subject, rootPath,
+                                     arm.keywordLoc,
+                                     DenseMap<const PatternPath *, CValue>()};
+      auto matchOp = HLCF::MatchOp::create(builder, arm.keywordLoc, TypeRange(),
+                                           /*caseRegionsCount=*/1);
+      Region &caseRegion = matchOp.getCaseRegions().front();
+      Block &caseBlock = caseRegion.emplaceBlock();
+      Block &matchElseBlock = matchOp.getElseRegion().emplaceBlock();
+
+      builder.setInsertionPointToStart(&caseBlock);
+      SmallVector<PatternBoundName> bindings;
+      if (failed(emissionState.emitCommands(builder, commands, bindings)))
+        return failure();
+      {
+        DebugInfo::DIBuilder::ScopeGuard scopeGuard;
+        llvm::SaveAndRestore<ASTDecl *> keepDecl(curDeclScope);
+        pushChildScope(scopeGuard, keepDecl);
+        if (failed(materializeBindings(bindings)) || failed(emitBody(arm)))
+          return failure();
+      }
+      HLCF::MatchCompleteOp::create(builder, arm.keywordLoc);
+
+      builder.setInsertionPointToStart(&matchElseBlock);
+      if (failed(self(self, armIndex + 1)))
+        return failure();
+      HLCF::YieldOp::create(builder, arm.keywordLoc);
+      builder.setInsertionPointAfter(matchOp);
+      return success();
+    };
+
+    if (failed(emitArmChain(emitArmChain, 0)))
+      return failure();
     afterCursor.restore(getLexer());
     return success();
   }

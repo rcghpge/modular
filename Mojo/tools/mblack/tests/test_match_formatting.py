@@ -88,6 +88,24 @@ def f(value, expected):
     assert_mojo_format(source, expected)
 
 
+def test_mojo_formats_if_case():
+    source = """\
+def f(pair):
+    if case (0,var x)=pair:
+        return x
+    elif case (var x,1)=pair:
+        return x
+"""
+    expected = """\
+def f(pair):
+    if case (0, var x) = pair:
+        return x
+    elif case (var x, 1) = pair:
+        return x
+"""
+    assert_mojo_format(source, expected)
+
+
 def test_python_mode_keeps_case_indent():
     source = """\
 def f(x):

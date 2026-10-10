@@ -111,6 +111,19 @@ This version is still a work in progress.
   client matches when they compile against a new version of the package that
   adds a case they didn't know about.
 
+- `if case`: Conditional patterns are also available in `if` and `elif`
+  statements using `if case pattern = value`. The value is evaluated once, and
+  names bound by a successful pattern are available in that arm's body. Pattern
+  failure continues to the next `elif` or `else` arm:
+
+  ```mojo
+  def describe_optional(value: Optional[Int]) -> String:
+      if case .Some(var item) = value:
+          return String("some:", item)
+      else:
+          return "none"
+  ```
+
 - The message on a `where` clause can now be written
   `where <condition> else "<message>"`, as the preferred alternative to the
   existing `where (<condition>, "<message>")`, which will be deprecated over
