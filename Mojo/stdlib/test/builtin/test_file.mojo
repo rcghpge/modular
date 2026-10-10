@@ -13,7 +13,6 @@
 
 from std.os import remove
 from std.pathlib import Path, _dir_of_current_file
-from std.stat import S_ISFIFO
 from std.subprocess import run
 from std.tempfile import gettempdir
 from std.time import sleep

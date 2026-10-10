@@ -55,7 +55,7 @@ from std.math.math import (
     _is_zero_bits,
     _log_accurate,
 )
-from std.sys import bit_width_of, CompilationTarget
+from std.sys import bit_width_of
 
 from std.testing import TestSuite
 from std.testing import (

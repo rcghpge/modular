@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.sys import size_of
-from std.sys.info import CompilationTarget, Endian, is_64bit
+from std.sys.info import Endian, is_64bit
 
 from std.bit import count_leading_zeros
 from std.memory import alloc, dealloc, ThinAllocation, Layout

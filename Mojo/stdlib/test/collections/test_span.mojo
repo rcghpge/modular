@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.testing import TestSuite
-from std.testing import assert_equal, assert_raises, assert_true, assert_false
+from std.testing import assert_equal, assert_raises, assert_true
 from test_utils import (
     CopyCounter,
     DelCounter,
@@ -21,11 +21,6 @@ from test_utils import (
     check_write_to,
 )
 from std.memory import MaybeUninit, forget_deinit
-from std.traits import (
-    IsTriviallyCopyable,
-    IsTriviallyDeinitable,
-    IsTriviallyMovable,
-)
 from std.math import iota
 from std.hashlib import Hasher
 

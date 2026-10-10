@@ -15,7 +15,6 @@ from std.testing import (
     TestSuite,
     assert_equal,
     assert_false,
-    assert_true,
     assert_raises,
 )
 

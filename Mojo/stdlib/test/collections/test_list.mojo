@@ -12,7 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.sys.info import size_of
-from std.memory import forget_deinit
 
 from test_utils import (
     CopyCountedStruct,

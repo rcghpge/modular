@@ -13,7 +13,6 @@
 
 from std.math.math import _Expable, exp
 from std.random import randn_float64, seed
-from std.sys import CompilationTarget
 
 from test_utils import libm_call
 from std.testing import assert_almost_equal, assert_equal, TestSuite

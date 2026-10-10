@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.sys.info import CompilationTarget, is_64bit
+from std.sys.info import is_64bit
 
 from std.testing import (
     TestSuite,
