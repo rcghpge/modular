@@ -905,9 +905,7 @@ struct PRegisterBuffer[
                 ),
             )
         )
-        var mma_3d = TileTensor[
-            Self.dtype, layout_3d, MutAnyOrigin, address_space=.SHARED
-        ](mma_tile.ptr, layout_3d())
+        var mma_3d = mma_tile.reshape(layout_3d())
 
         var dist_res = mma_3d.distribute_with_offset[tl_3d](lane_id())
         var dst_frag = dist_res[0]

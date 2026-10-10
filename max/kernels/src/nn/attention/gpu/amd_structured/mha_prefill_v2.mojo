@@ -2219,17 +2219,12 @@ struct MhaPrefillV2[config: MhaConfigV2]:
             _s_barrier_raw()
 
         # Output store. col_l → row_l is a zero-cost re-tag of the same
-        # per-lane storage, so we construct a TileTensor view over
-        # `o_reg.ptr` directly under `O_T_LAYOUT` instead of invoking a
+        # per-lane storage, so we reshape `o_reg` to its transposed row_l
+        # view (O_T_LAYOUT) over the same storage instead of invoking a
         # transpose primitive. The in-place divide above made `o_reg`
         # hold the normalized output.
         comptime _o_view_layout = Self._MmaOp.O_T_LAYOUT
-        var o_normalized_view = TileTensor[
-            .float32,
-            type_of(_o_view_layout),
-            MutUntrackedOrigin,
-            address_space=.LOCAL,
-        ](o_reg.ptr, _o_view_layout)
+        var o_normalized_view = o_reg.reshape(_o_view_layout)
         var epilogue_writer = RegTileEpilogue[output_dtype, 1](o_warp_2d)
         # Partial-Q-tile bound: for sequences whose length is not a
         # multiple of BM, the last tile owns fewer than BM valid Q rows
