@@ -315,11 +315,12 @@ subject's type and the pattern command list for each case:
    An irrefutable alternative (for example `_` or bind-only) closes the whole
    space.
 
-5. **Enum payload refinements.** Nested tests under a matched constructor
-   (for example `Optional.Some(0)`) still credit the **tag** only. v1 treats
-   the `EnumLike` tag set as the universe, not the payload domain: `Some(0)`
-   plus `None` is exhaustive for `Optional`, and a later `Some(_)` is
-   unreachable at tag level.
+5. **Enum payload refinements.** A constructor is covered only when its payload
+   pattern is irrefutable. `Optional.Some(_)` covers `Some`, but
+   `Optional.Some(0)` does not: it leaves other `Some` payloads open, so a later
+   `Some(_)` remains reachable. In the opposite order, `Some(_)` makes a later
+   `Some(0)` unreachable because the refined pattern is a subset of the
+   constructor.
 
 6. **Oversized products.** If the flattened cell count exceeds a fixed cap
    (currently 1024), the subject is **too complex** to track cell-by-cell. The
@@ -378,9 +379,10 @@ These are the main limitations that people may ask about:
 - **Guards do not count.** `case True if cond:` does not cover `True` for
   exhaustivity, because the parser cannot reason about conditions (even if
   comptime expressions) at parser time.
-- **Payload domains are not refined.** Tag-level credit means
-  `Some(0) | Some(1)` does not prove anything about other `Some` payloads, and
-  conversely `Some(0)` is treated as covering all of `Some` for exhaustivity.
+- **Payload domains are not refined.** Refined payload patterns such as
+  `Some(0)` receive no constructor-level coverage credit. The analysis does not
+  prove that combinations of payload patterns cover a constructor or diagnose
+  duplicate payload patterns.
 - **Nested / product literals on open types are not tracked.** A subject such
   as `Tuple[Int, Int]` is not a finite `EnumLike` product, so it falls into the
   open-literal model, which only records **root** equal spellings. Duplicate

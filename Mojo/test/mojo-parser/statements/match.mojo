@@ -838,6 +838,23 @@ def match_vec3(v: Vec3):
         case_callee[1]()
 
 
+# CHECK-LABEL: lit.fn @"match_optional_refined_payload
+def match_optional_refined_payload(opt: Optional[Int]):
+    # `Some(0)` only covers one payload value; the following `Some(n)` remains
+    # reachable and covers the rest of the constructor.
+    # CHECK:       lit.call {{.*}}@"case_callee{{.*}}<index> 0
+    # CHECK:       lit.call {{.*}}@"case_callee{{.*}}<index> 1
+    # CHECK:       lit.call {{.*}}@"case_callee{{.*}}<index> 2
+    __match opt:
+    case .Some(0):
+        case_callee[0]()
+    case .Some(n):
+        _ = n
+        case_callee[1]()
+    case .None:
+        case_callee[2]()
+
+
 # CHECK-LABEL: lit.fn @"match_optional
 def match_optional(opt: Optional[Int], mut mut_opt: Optional[Int]):
     # Immutable Optional: Some is tested and None is its exclusive complement.

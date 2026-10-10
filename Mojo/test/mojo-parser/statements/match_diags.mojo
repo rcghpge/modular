@@ -451,18 +451,17 @@ def match_exhaustivity_diags(flag: Bool, opt: Optional[Int], pair: BoolPair):
     case Optional.None:
         pass
 
-    # Payload refinements still credit the enum tag: `Some(0)` covers `Some`.
-    __match opt:
+    # A payload refinement does not cover the whole enum case.
+    __match opt: # expected-warning {{'match' is not exhaustive; missing case for 'Some'}}
     case Optional.Some(0):
         pass
     case Optional.None:
         pass
 
-    # After a refined `Some` arm, a later `Some(_)` is unreachable at tag level.
+    # A later irrefutable payload pattern covers the rest of `Some`.
     __match opt:
     case Optional.Some(0):
         pass
-    # expected-warning @+1 {{'Some' is already covered by a previous case}}
     case Optional.Some(_):
         pass
     case Optional.None:
@@ -623,3 +622,41 @@ def comptime_match_unreachable_after_catchall[x: Int]():
     case 1:
         # expected-error @+1 {{use of unknown declaration 'also_missing'}}
         _ = also_missing
+
+# MOCO-4946: execution crashed with __match
+def match_enum_with_payload_not_cover(a: Optional[Int]):
+    __match a:
+    case .Some(0):
+        pass
+    case .Some(_):
+        pass
+    case .None:
+        pass
+
+    __match a:
+    case .Some(_):
+        pass
+    # expected-warning @+1 {{case is unreachable; 'Some' is already covered by a previous case}}
+    case .Some(0):
+        pass
+    case .None:
+        pass
+
+
+def match_product_enum_payload_coverage(a: Tuple[Optional[Int], Bool]):
+    __match a:
+    case (.Some(_), True):
+        pass
+    # expected-warning @+1 {{case is unreachable; previous cases cover every value of the match subject}}
+    case (.Some(0), True):
+        pass
+    case _:
+        pass
+
+    __match a:
+    case (.Some(0), True):
+        pass
+    case (.Some(_), True):
+        pass
+    case _:
+        pass
