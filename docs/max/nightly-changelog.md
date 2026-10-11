@@ -634,6 +634,13 @@ This version is still a work in progress.
 
 ## Kernels and GPU programming
 
+- Added GPU support for `ops.repeat_interleave` with scalar repeats. The op
+  previously rejected accelerator inputs outright, forcing callers (e.g.
+  Llama4 attention-scale construction) to round-trip data through the CPU.
+  Scalar repeats now run natively on the input's device, with the source
+  index decoded arithmetically from the output index; per-element
+  `TensorValue` repeats remain CPU-only and still raise on accelerators.
+
 - Added GPU support for `mo.arg_nonzero` / `ops.nonzero`. The op previously
   ran only on the host, so every nonzero call on a GPU tensor copied the
   input to the host and back. It now runs on the input's device (a

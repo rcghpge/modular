@@ -16,6 +16,7 @@ from std.sys import simd_width_of
 
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceContext
+from max.gpu.host.info import is_cpu
 from layout import Coord, Idx, TileTensor, coord_to_index_list, row_major
 
 from std.utils import IndexList
@@ -44,7 +45,7 @@ def _collapse_dims_around_axis(
 
 
 @inline(.always)
-def repeat_interleave[
+def _repeat_interleave_cpu[
     dtype: DType,
     type_repeats: DType,
 ](
@@ -141,6 +142,123 @@ def repeat_interleave[
     elementwise[simd_width_of[output.dtype]()](
         func, collapsed_output.layout.shape_coord(), ctx
     )
+
+
+def _repeat_interleave_gpu[
+    dtype: DType,
+    type_repeats: DType,
+    target: StaticString,
+](
+    input: TileTensor[dtype, ...],
+    repeats: TileTensor[type_repeats, ...],
+    axis: Int,
+    output: TileTensor[mut=True, dtype, ...],
+    ctx: DeviceContext,
+) raises:
+    """Fills `output` on a GPU for the scalar-repeats case only.
+
+    The GPU path requires a uniform repeat count: `repeats` is a size-1
+    buffer whose single value is read on the host (it is a constant built
+    from the Python scalar). Per-element repeats stay on the CPU path,
+    which builds the output->input offset map from the repeats values.
+
+    With a uniform count the output->input mapping is pure arithmetic --
+    every input element expands into `repeat_count` consecutive output
+    slots -- so the elementwise body decodes the source index with a
+    division instead of a data-dependent gather. The decode uses the
+    collapsed [outer, axis, inner] views over the same memory as the CPU
+    path, with the extents read on the host and captured by value (the
+    device-side layout round-trips misplace indices).
+    """
+    comptime assert input.flat_rank == output.flat_rank
+    comptime assert repeats.flat_rank == 1
+
+    var input_dims = coord_to_index_list(input.layout.shape_coord())
+    var output_dims = coord_to_index_list(output.layout.shape_coord())
+    var in_axis = Int(input_dims[axis])
+    var out_axis = Int(output_dims[axis])
+
+    if repeats.dim[0]() != 1:
+        raise Error(
+            "repeat_interleave GPU path requires scalar repeats; per-element"
+            " repeats are CPU-only"
+        )
+
+    # Derive the repeat count from the shapes instead of reading the
+    # device-resident repeats buffer on the host (a raw host read of
+    # device memory crashes). The shape function already guaranteed
+    # out_axis == in_axis * repeats, so the division is exact.
+    if in_axis == 0:
+        raise Error("repeat_interleave: input axis size must be positive")
+    if out_axis % in_axis != 0:
+        raise Error(
+            "repeat_interleave: output axis size must be a multiple of the"
+            " input axis size for scalar repeats"
+        )
+    var repeat_count = out_axis // in_axis
+    if repeat_count < 0:
+        raise Error("all repeat values must be non-negative")
+
+    var collapsed_input_shape = _collapse_dims_around_axis(input_dims, axis)
+    var collapsed_output_shape = _collapse_dims_around_axis(output_dims, axis)
+
+    assert collapsed_output_shape[0] == collapsed_input_shape[0]
+    assert collapsed_output_shape[2] == collapsed_input_shape[2]
+
+    var collapsed_input = TileTensor(
+        input.ptr,
+        row_major(Coord(collapsed_input_shape)),
+    )
+    var collapsed_output = TileTensor(
+        output.ptr,
+        row_major(Coord(collapsed_output_shape)),
+    )
+
+    var num_elements = output.num_elements()
+    if num_elements == 0:
+        return
+
+    @inline(.always)
+    def func[width: Int, alignment: Int = 1](idx: Coord) {var}:
+        var output_index = rebind[IndexList[3]](coord_to_index_list(idx))
+        var input_index = output_index
+        input_index[1] = output_index[1] // repeat_count
+
+        var input_idx = collapsed_input.layout(Coord(input_index))
+        var input_value = collapsed_input.raw_load[width=width](input_idx)
+
+        var output_idx = collapsed_output.layout(Coord(output_index))
+        collapsed_output.raw_store(output_idx, input_value)
+
+    elementwise[simd_width_of[output.dtype](), target=target](
+        func, collapsed_output.layout.shape_coord(), ctx
+    )
+
+
+@inline(.always)
+def repeat_interleave[
+    dtype: DType,
+    type_repeats: DType,
+    //,
+    target: StaticString = "cpu",
+](
+    input: TileTensor[dtype, ...],
+    repeats: TileTensor[type_repeats, ...],
+    axis: Int,
+    output: TileTensor[mut=True, dtype, ...],
+    ctx: DeviceContext,
+) raises:
+    """Fills `output` by repeating `input` along `axis`, on `target`.
+
+    The CPU path handles both scalar and per-element `repeats`; the GPU
+    path is scalar-repeats only (see `_repeat_interleave_gpu`).
+    """
+    comptime if is_cpu[target]():
+        _repeat_interleave_cpu(input, repeats, axis, output, ctx)
+    else:
+        _repeat_interleave_gpu[dtype, type_repeats, target](
+            input, repeats, axis, output, ctx
+        )
 
 
 @inline(.always)

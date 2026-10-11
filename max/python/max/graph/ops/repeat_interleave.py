@@ -27,6 +27,7 @@ from .custom import custom
 def _promote_repeats(
     repeats: int | TensorValue,
     input_dim: Dim,
+    device: DeviceRef,
     out_dim: DimLike | None,
 ) -> tuple[TensorValue, Dim | None]:
     if out_dim is not None:
@@ -43,7 +44,7 @@ def _promote_repeats(
         )
 
     return constant(
-        np.array([repeats]), DType.int64, DeviceRef.CPU()
+        np.array([repeats]), DType.int64, device
     ), input_dim * repeats
 
 
@@ -123,13 +124,17 @@ def repeat_interleave(
         A ``TensorValue`` representing the input with its elements interleaved.
 
     Raises:
-        ValueError: If ``repeats`` is non-positive, if ``axis`` is out of range,
-            or if the input is on a GPU device.
+        ValueError: If ``repeats`` is non-positive, if ``axis`` is out of
+            range, or if per-element ``TensorValue`` repeats are used on an
+            accelerator device.
     """
     x = TensorValue(x)
 
-    if x.device == DeviceRef.GPU():
-        raise ValueError("repeat_interleave is not supported on GPU")
+    if x.device != DeviceRef.CPU() and isinstance(repeats, TensorValue):
+        raise ValueError(
+            "repeat_interleave with per-element (tensor) repeats is not"
+            " supported on accelerator devices; use scalar repeats"
+        )
 
     if axis is not None and not -x.rank <= axis < x.rank:
         raise ValueError(
@@ -144,7 +149,9 @@ def repeat_interleave(
     if axis < 0:
         axis += x.rank
 
-    repeats, inferred_size = _promote_repeats(repeats, x.shape[axis], out_dim)
+    repeats, inferred_size = _promote_repeats(
+        repeats, x.shape[axis], x.device, out_dim
+    )
 
     result_shape = Shape(x.shape)
 

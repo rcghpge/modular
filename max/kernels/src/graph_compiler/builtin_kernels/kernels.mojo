@@ -760,7 +760,9 @@ struct RepeatInterleave:
     """Registers the `repeat_interleave` graph op with the graph compiler."""
 
     @staticmethod
-    def execute(
+    def execute[
+        target: StaticString,
+    ](
         output: OutputTensor,
         input: InputTensor[dtype=output.dtype, rank=output.rank, ...],
         repeats: InputTensor[rank=1, ...],
@@ -771,7 +773,7 @@ struct RepeatInterleave:
             axis.dtype.is_integral()
         ), "axis value must be integer type"
 
-        repeat_interleave(
+        repeat_interleave[target=target](
             input.to_tile_tensor[.int64](),
             repeats.to_tile_tensor[.int64](),
             Int(normalize_neg_index(axis, input.rank)),
