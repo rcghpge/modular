@@ -145,60 +145,63 @@ struct Struct_ep_init:
         var dispatch_msg_size: Int
 
         # Infer message sizes for dispatch phases
-        comptime if dispatch_fmt_str == "BlockwiseFP8":
-            comptime token_fmt_type = BlockwiseFP8TokenFormat[
-                fp8_dtype=dispatch_dtype,
-                scales_dtype=dispatch_scale_dtype,
-                output_layout=RT_LAYOUT_2D,
-                scales_layout=RT_LAYOUT_2D,
-                hidden_size,
-                top_k,
-            ]
-            dispatch_msg_size = token_fmt_type.msg_size()
+        comptime match dispatch_fmt_str:
+            case "BlockwiseFP8":
+                comptime token_fmt_type = BlockwiseFP8TokenFormat[
+                    fp8_dtype=dispatch_dtype,
+                    scales_dtype=dispatch_scale_dtype,
+                    output_layout=RT_LAYOUT_2D,
+                    scales_layout=RT_LAYOUT_2D,
+                    hidden_size,
+                    top_k,
+                ]
+                dispatch_msg_size = token_fmt_type.msg_size()
 
-        elif dispatch_fmt_str == "BLOCK_SCALED_NV":
-            comptime token_fmt_type = NVBlockScaledTokenFormat[
-                quant_dtype=dispatch_dtype,
-                scales_dtype=dispatch_scale_dtype,
-                output_layout=RT_LAYOUT_2D,
-                scales_offset_layout=RT_LAYOUT_2D,
-                hidden_size,
-                top_k,
-                nvfp4_dyn_global_scales=nvfp4_dyn_global_scales,
-            ]
-            dispatch_msg_size = token_fmt_type.msg_size()
+            case "BLOCK_SCALED_NV":
+                comptime token_fmt_type = NVBlockScaledTokenFormat[
+                    quant_dtype=dispatch_dtype,
+                    scales_dtype=dispatch_scale_dtype,
+                    output_layout=RT_LAYOUT_2D,
+                    scales_offset_layout=RT_LAYOUT_2D,
+                    hidden_size,
+                    top_k,
+                    nvfp4_dyn_global_scales=nvfp4_dyn_global_scales,
+                ]
+                dispatch_msg_size = token_fmt_type.msg_size()
 
-        elif dispatch_fmt_str == "MXFP4":
-            comptime token_fmt_type = MXTokenFormat[
-                quant_dtype=dispatch_dtype,
-                scales_dtype=dispatch_scale_dtype,
-                output_layout=RT_LAYOUT_2D,
-                scales_layout=RT_LAYOUT_2D,
-                hidden_size,
-                top_k,
-            ]
-            dispatch_msg_size = token_fmt_type.msg_size()
+            case "MXFP4":
+                comptime token_fmt_type = MXTokenFormat[
+                    quant_dtype=dispatch_dtype,
+                    scales_dtype=dispatch_scale_dtype,
+                    output_layout=RT_LAYOUT_2D,
+                    scales_layout=RT_LAYOUT_2D,
+                    hidden_size,
+                    top_k,
+                ]
+                dispatch_msg_size = token_fmt_type.msg_size()
 
-        elif dispatch_fmt_str == "MXFP6":
-            comptime token_fmt_type = MXTokenFormat[
-                quant_dtype=dispatch_dtype,
-                scales_dtype=dispatch_scale_dtype,
-                output_layout=RT_LAYOUT_2D,
-                scales_layout=RT_LAYOUT_2D,
-                hidden_size,
-                top_k,
-                mx_format=MXFormat.FP6_E2M3,
-            ]
-            dispatch_msg_size = token_fmt_type.msg_size()
+            case "MXFP6":
+                comptime token_fmt_type = MXTokenFormat[
+                    quant_dtype=dispatch_dtype,
+                    scales_dtype=dispatch_scale_dtype,
+                    output_layout=RT_LAYOUT_2D,
+                    scales_layout=RT_LAYOUT_2D,
+                    hidden_size,
+                    top_k,
+                    mx_format=MXFormat.FP6_E2M3,
+                ]
+                dispatch_msg_size = token_fmt_type.msg_size()
 
-        elif dispatch_fmt_str == "BF16":
-            comptime token_fmt_type = BF16TokenFormat[
-                output_layout=RT_LAYOUT_2D, hidden_size, top_k
-            ]
-            dispatch_msg_size = token_fmt_type.msg_size()
+            case "BF16":
+                comptime token_fmt_type = BF16TokenFormat[
+                    output_layout=RT_LAYOUT_2D, hidden_size, top_k
+                ]
+                dispatch_msg_size = token_fmt_type.msg_size()
 
-        else:
-            raise Error("Invalid dispatch format string: ", dispatch_fmt_str)
+            case _:
+                raise Error(
+                    "Invalid dispatch format string: ", dispatch_fmt_str
+                )
 
         var dispatch_send_size = max_token_per_rank * dispatch_msg_size
         var dispatch_recv_size = (
@@ -382,56 +385,59 @@ struct Struct_ep_dispatch_async:
             context: GPU device context for the current device.
         """
 
-        comptime if dispatch_fmt_str == "BlockwiseFP8":
-            comptime token_fmt_type = BlockwiseFP8TokenFormat[
-                fp8_dtype=dispatch_dtype,
-                scales_dtype=DType.float32,
-                output_layout=RT_LAYOUT_2D,
-                scales_layout=RT_LAYOUT_2D,
-                hidden_size,
-                top_k,
-            ]
-            ep_dispatch_async_kernel_api[
-                token_fmt_type,
-                n_experts,
-                max_token_per_rank,
-                n_gpus_per_node,
-                n_nodes,
-                target,
-            ](
-                atomic_counters.to_tile_tensor[.int64](),
-                input_tokens.to_tile_tensor[.int64]().as_imm(),
-                topk_ids.to_tile_tensor[.int64]().as_imm(),
-                send_ptrs.to_tile_tensor[.int64](),
-                recv_ptrs.to_tile_tensor[.int64](),
-                recv_count_ptrs.to_tile_tensor[.int64](),
-                context,
-            )
+        comptime match dispatch_fmt_str:
+            case "BlockwiseFP8":
+                comptime token_fmt_type = BlockwiseFP8TokenFormat[
+                    fp8_dtype=dispatch_dtype,
+                    scales_dtype=DType.float32,
+                    output_layout=RT_LAYOUT_2D,
+                    scales_layout=RT_LAYOUT_2D,
+                    hidden_size,
+                    top_k,
+                ]
+                ep_dispatch_async_kernel_api[
+                    token_fmt_type,
+                    n_experts,
+                    max_token_per_rank,
+                    n_gpus_per_node,
+                    n_nodes,
+                    target,
+                ](
+                    atomic_counters.to_tile_tensor[.int64](),
+                    input_tokens.to_tile_tensor[.int64]().as_imm(),
+                    topk_ids.to_tile_tensor[.int64]().as_imm(),
+                    send_ptrs.to_tile_tensor[.int64](),
+                    recv_ptrs.to_tile_tensor[.int64](),
+                    recv_count_ptrs.to_tile_tensor[.int64](),
+                    context,
+                )
 
-        elif dispatch_fmt_str == "BF16":
-            comptime token_fmt_type = BF16TokenFormat[
-                output_layout=RT_LAYOUT_2D, hidden_size, top_k
-            ]
+            case "BF16":
+                comptime token_fmt_type = BF16TokenFormat[
+                    output_layout=RT_LAYOUT_2D, hidden_size, top_k
+                ]
 
-            ep_dispatch_async_kernel_api[
-                token_fmt_type,
-                n_experts,
-                max_token_per_rank,
-                n_gpus_per_node,
-                n_nodes,
-                target,
-            ](
-                atomic_counters.to_tile_tensor[.int64](),
-                input_tokens.to_tile_tensor[.int64]().as_imm(),
-                topk_ids.to_tile_tensor[.int64]().as_imm(),
-                send_ptrs.to_tile_tensor[.int64](),
-                recv_ptrs.to_tile_tensor[.int64](),
-                recv_count_ptrs.to_tile_tensor[.int64](),
-                context,
-            )
+                ep_dispatch_async_kernel_api[
+                    token_fmt_type,
+                    n_experts,
+                    max_token_per_rank,
+                    n_gpus_per_node,
+                    n_nodes,
+                    target,
+                ](
+                    atomic_counters.to_tile_tensor[.int64](),
+                    input_tokens.to_tile_tensor[.int64]().as_imm(),
+                    topk_ids.to_tile_tensor[.int64]().as_imm(),
+                    send_ptrs.to_tile_tensor[.int64](),
+                    recv_ptrs.to_tile_tensor[.int64](),
+                    recv_count_ptrs.to_tile_tensor[.int64](),
+                    context,
+                )
 
-        else:
-            raise Error("Invalid dispatch format string: ", dispatch_fmt_str)
+            case _:
+                raise Error(
+                    "Invalid dispatch format string: ", dispatch_fmt_str
+                )
 
 
 @extensibility.register("ep.dispatch_async.block.scaled.nv")

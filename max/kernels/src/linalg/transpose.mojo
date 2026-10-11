@@ -356,14 +356,15 @@ def transpose_inplace[
     comptime assert rows == buf.static_shape[0]
     comptime assert cols == buf.static_shape[1]
 
-    comptime if rows == 4:
-        _transpose_inplace_4x4[rows, cols, dtype](buf)
-    elif rows == 8:
-        _transpose_inplace_8x8[rows, cols, dtype](buf)
-    elif rows == 16:
-        _transpose_inplace_16x16[rows, cols, dtype](buf)
-    else:
-        _transpose_inplace_naive[rows, cols, dtype](buf)
+    comptime match rows:
+        case 4:
+            _transpose_inplace_4x4[rows, cols, dtype](buf)
+        case 8:
+            _transpose_inplace_8x8[rows, cols, dtype](buf)
+        case 16:
+            _transpose_inplace_16x16[rows, cols, dtype](buf)
+        case _:
+            _transpose_inplace_naive[rows, cols, dtype](buf)
 
 
 def _permute_data[
