@@ -162,6 +162,12 @@ def repeat_interleave(
     # is statically known, otherwise use the provided out_dim.
     result_shape[axis] = inferred_size
 
+    # The axis stays a CPU constant: the kernel registration reads it
+    # as a host-side Scalar, and the compiled path (GPU included) depends
+    # on that. Eager execution is therefore CPU-only for now -- the
+    # interpreter's single-device custom-op admission rejects the
+    # mixed-device op -- until the axis moves to a compile-time custom
+    # op parameter (tracked in AGENT-492).
     axis_val = constant(axis, DType.int64, DeviceRef.CPU())
 
     output = custom(

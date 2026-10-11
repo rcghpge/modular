@@ -13,24 +13,22 @@
 
 """Graph-compiler resize model cache for the MO interpreter.
 
-Covers ``ResizeLinearOp``/``ResizeNearestOp`` only (``ResizeBicubicOp`` is
-intentionally excluded -- see below). ``size`` is a runtime rank-1 int64
-tensor operand on the MO-analogue ops (``rmo.mo.resize.linear``/``.nearest``),
-not a compile-time attribute -- so one compiled graph per ``(op, device,
-dtype, rank, variant)`` serves every output size, the same way
-``shape_rearrange_gc`` serves every pad width / repeat count / slice bound.
+Covers all three resize ops. ``size`` is a runtime rank-1 int64 tensor
+operand on the MO-analogue ops, not a compile-time attribute -- so one
+compiled graph per ``(op, device, dtype, rank, variant)`` serves every
+output size, the same way ``shape_rearrange_gc`` serves every pad width /
+repeat count / slice bound.
 
 ``coordinate_transform_mode`` (4 values) and ``antialias`` (linear only, 2
 values) / ``round_mode`` (nearest only, 4 values) are small closed compile-time
 attrs, baked into the cache key as a ``variant`` tuple -- same shape as
-``reduce_axis_gc``'s cumsum ``(exclusive, reverse)`` variant.
+``reduce_axis_gc``'s cumsum ``(exclusive, reverse)`` variant. Bicubic has no
+variant attrs (half-pixel mapping and the Keys ``a = -0.75`` filter are
+fixed), so its key carries the empty variant.
 
-``ResizeBicubicOp`` has no supported kernel -- see GEX-3990 (GraphCompiler
-has no shape-fallback registration for ``MO::ResizeBicubicOp``, unlike
-``MO::ResizeLinearOp``/``MO::ResizeNearestOp``).
-
-``ResizeNearestOp`` is single-device with a host ``size`` operand: its
-kernel runs on the input's device, so it sweeps every discovered device.
+``ResizeNearestOp`` and ``ResizeBicubicOp`` are single-device with a host
+``size`` operand: their kernels run on the input's device, so they sweep
+every discovered device. Bicubic is rank-4 only (NCHW images).
 ``ResizeLinearOp`` remains CPU-only (its kernel ping-pongs through
 host-allocated scratch buffers, so it cannot launch on an accelerator).
 
@@ -155,7 +153,40 @@ def _build_nearest_graph(
         graph.output(result)
 
 
+def _build_bicubic_graph(
+    module: Module, device: Device, dtype: DType, rank: int, variant: Variant
+) -> None:
+    device_ref = DeviceRef.from_device(device)
+    in_type = TensorType(dtype, _symbolic_dims(rank, "d"), device=device_ref)
+    size_type = TensorType(DType.int64, [rank], device=DeviceRef.CPU())
+    graph = Graph(
+        _graph_name(mo.ResizeBicubicOp, device, dtype, rank, variant),
+        input_types=[in_type, size_type],
+        module=module,
+    )
+    with graph:
+        x, size = (v.tensor for v in graph.inputs)
+        out_type = TensorType(
+            dtype, _symbolic_dims(rank, "o"), device=device_ref
+        )
+        result = Graph.current._add_op_generated(
+            rmo.MoResizeBicubicOp,
+            result=out_type,
+            input=x,
+            size=size,
+            output_param_decls=kgen.ParamDeclArrayAttr([]),
+        )[0].tensor
+        graph.output(result)
+
+
 _RESIZE_OPS: dict[type[_core.Operation], ResizeSpec] = {
+    mo.ResizeBicubicOp: ResizeSpec(
+        build=_build_bicubic_graph,
+        # The bicubic kernel is rank-4 only (NCHW images).
+        max_rank=4,
+        rank_keyed=False,
+        gpu=True,
+    ),
     mo.ResizeLinearOp: ResizeSpec(
         build=_build_linear_graph,
         max_rank=MAX_RANK,
@@ -170,6 +201,7 @@ _RESIZE_OPS: dict[type[_core.Operation], ResizeSpec] = {
         gpu=True,
     ),
 }
+
 
 RESIZE_GC_OPS = tuple(_RESIZE_OPS)
 

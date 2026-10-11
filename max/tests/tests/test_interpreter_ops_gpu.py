@@ -4096,6 +4096,22 @@ class TestScatterElementsGPU:
         )
 
 
+class TestRepeatInterleaveGPU:
+    """Eager GPU execution for repeat_interleave is not yet supported.
+
+    The compiled graph path runs on GPU (see
+    ``max/tests/integration/graph/test_repeat_interleave.py``), but the
+    eager interpreter cannot dispatch the custom op there: the axis rides
+    as a CPU constant (the kernel registration reads it as a host-side
+    Scalar), and the interpreter's single-device custom-op admission
+    (``_is_interpretable_custom``) rejects the resulting mixed-device op.
+    Enabling eager GPU dispatch needs the axis to become a compile-time
+    custom-op parameter; tracked in AGENT-492. When that lands, add the
+    residency test back: input on the accelerator, output resident,
+    values against ``torch.repeat_interleave``.
+    """
+
+
 _NEED_2_GPUS = pytest.mark.skipif(
     accelerator_count() < 2,
     reason="Requires at least 2 accelerator devices",

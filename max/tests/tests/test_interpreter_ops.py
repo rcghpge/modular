@@ -9219,25 +9219,93 @@ class TestResizeNearestOp:
 
 
 class TestResizeBicubicOp:
-    """Tests for bicubic resize interpreter op (mo.resize.bicubic)."""
+    """Tests for bicubic resize interpreter op (mo.resize.bicubic).
 
-    def test_unsupported(self) -> None:
-        """resize_bicubic has no supported kernel (GEX-3990): its old Mojo
-        binding has been deleted and the graph compiler has no
-        shape-fallback registration for MO::ResizeBicubicOp, so the handler
-        now raises rather than falling back to a Mojo kernel."""
+    Runs on the input's device (single-device MO op with a host ``size``
+    operand); the kernel is rank-4 only. The reference is a pure-NumPy
+    separable Keys (a=-0.75) bicubic with the kernel's clamp boundary
+    rule.
+    """
+
+    @staticmethod
+    def _cubic_weight(t: np.ndarray) -> np.ndarray:
+        """Keys cubic convolution weights (a=-0.75) for |t| in [0, 2)."""
+        a = -0.75
+        t = np.abs(t)
+        w = np.zeros_like(t)
+        near = t < 1.0
+        far = (t >= 1.0) & (t < 2.0)
+        # |t| < 1: (a+2)|t|^3 - (a+3)|t|^2 + 1
+        w[near] = (a + 2.0) * t[near] ** 3 - (a + 3.0) * t[near] ** 2 + 1.0
+        # 1 <= |t| < 2: a|t|^3 - 5a|t|^2 + 8a|t| - 4a
+        w[far] = (
+            a * t[far] ** 3 - 5.0 * a * t[far] ** 2 + 8.0 * a * t[far] - 4.0 * a
+        )
+        return w
+
+    @staticmethod
+    def _bicubic_ref(x_np: np.ndarray, out_shape: list[int]) -> np.ndarray:
+        """NumPy reference: Keys (a=-0.75) bicubic, half-pixel mapping.
+
+        Separable 1-D passes over H then W, matching the kernel's
+        construction. Out-of-range taps are clamped into the input
+        (the kernel's boundary rule); all four weights are kept.
+        """
+        _, _, h_in, w_in = x_np.shape
+        _, _, h_out, w_out = out_shape
+
+        def axis_pass(
+            a: np.ndarray, axis: int, size_in: int, size_out: int
+        ) -> np.ndarray:
+            scale = size_in / size_out
+            osh = list(a.shape)
+            osh[axis] = size_out
+            out = np.zeros(osh, dtype=np.float32)
+            moved = np.moveaxis(a, axis, -1)
+            moved_out = np.moveaxis(out, axis, -1)
+            for j in range(size_out):
+                center = (j + 0.5) * scale - 0.5
+                base = int(np.floor(center))
+                taps = np.array([base - 1, base, base + 1, base + 2])
+                weights = TestResizeBicubicOp._cubic_weight(taps - center)
+                # Boundary rule matches the kernel: clamp each tap into
+                # range, keep all four weights (no renormalization).
+                taps = np.clip(taps, 0, size_in - 1)
+                acc = np.zeros(moved.shape[:-1], dtype=np.float64)
+                for t, wt in zip(taps, weights, strict=True):
+                    acc += wt * moved[..., t]
+                moved_out[..., j] = acc.astype(np.float32)
+            return out
+
+        y = axis_pass(x_np, 2, h_in, h_out)
+        y = axis_pass(y, 3, w_in, w_out)
+        return y
+
+    def test_upsample(self) -> None:
+        """Upsamples 4x4 to 8x8 spatial through the eager bicubic path."""
         rng = np.random.default_rng(200)
         x_np = rng.standard_normal((1, 1, 4, 4)).astype(np.float32)
         x = Tensor.from_dlpack(x_np)
         out_shape = [1, 1, 8, 8]
 
-        with pytest.raises(NotImplementedError, match="resize_bicubic"):
-            with (
-                rc.EagerRealizationContext() as ctx,
-                realization_context(ctx),
-            ):
-                out = F.resize_bicubic(x, out_shape)
-                assert out is not None
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            out = F.resize_bicubic(x, out_shape)
+
+        ref = self._bicubic_ref(x_np, out_shape)
+        np.testing.assert_allclose(np.from_dlpack(out), ref, rtol=1e-3)
+
+    def test_rejects_non_rank4(self) -> None:
+        """The op requires rank-4 (NCHW); lower ranks fail at graph
+        construction with a clear ValueError."""
+        x_np = np.zeros((4, 4), dtype=np.float32)
+        x = Tensor.from_dlpack(x_np)
+        out_shape = [8, 8]
+
+        with pytest.raises(ValueError, match="rank-4"):
+            F.resize_bicubic(x, out_shape)
 
 
 class TestDistributedScatterSimulated:

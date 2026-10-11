@@ -2346,14 +2346,29 @@ def _handle_resize_nearest(
     return model(input_buffer, size_buffer)
 
 
-# TODO(GEX-3990): GraphCompiler has no shape-fallback registration for
-# MO::ResizeBicubicOp (unlike Linear/Nearest); resize_ops.mojo has been
-# deleted rather than kept as a fallback that can't be reached.
 @register_op_handler(mo.ResizeBicubicOp)
 def _handle_resize_bicubic(
     op: mo.ResizeBicubicOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    raise NotImplementedError("resize_bicubic is not yet supported")
+    """Handle mo.resize.bicubic.
+
+    Runs on the input's device like nearest (single-device MO op with a
+    host ``size`` operand); the kernel is rank-4 only. Bicubic has no
+    variant attrs, so the cache key carries the empty variant.
+    """
+    input_buffer, size_buffer = inputs
+    assert isinstance(input_buffer, Buffer)
+    assert isinstance(size_buffer, Buffer)
+
+    rank = len(input_buffer.shape)
+    model = resize_gc.resize_model(
+        mo.ResizeBicubicOp,
+        input_buffer.device,
+        input_buffer.dtype,
+        rank,
+        resize_gc._NO_VARIANT,
+    )
+    return model(input_buffer, size_buffer)
 
 
 # Distributed operations
