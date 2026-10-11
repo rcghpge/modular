@@ -4437,18 +4437,6 @@ def _is_subnormal_bits[
 
 
 @inline(.always)
-def _narrow_f32_to_bf16_bits[
-    width: SIMDLength, //
-](x: SIMD[DType.float32, width]) -> SIMD[DType.bfloat16, width]:
-    """Rounds float32 to bfloat16 (nearest even) from the bits, keeping
-    subnormal results that a flush-to-zero `cast` would drop. NaN stays NaN."""
-    var b = x.to_bits()
-    var rounded = (b + 0x7FFF + ((b >> 16) & 1)) >> 16
-    var r = isnan(x).select((b >> 16) | 0x40, rounded)
-    return SIMD[DType.bfloat16, width](from_bits=r.cast[DType.uint16]())
-
-
-@inline(.always)
 def _frexp_bits[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> Tuple[
