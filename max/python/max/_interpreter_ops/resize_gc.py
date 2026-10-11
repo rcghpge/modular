@@ -29,7 +29,10 @@ attrs, baked into the cache key as a ``variant`` tuple -- same shape as
 has no shape-fallback registration for ``MO::ResizeBicubicOp``, unlike
 ``MO::ResizeLinearOp``/``MO::ResizeNearestOp``).
 
-Both remaining ops are CPU-only (``MO_HostOnly`` at the MLIR level).
+``ResizeNearestOp`` is single-device with a host ``size`` operand: its
+kernel runs on the input's device, so it sweeps every discovered device.
+``ResizeLinearOp`` remains CPU-only (its kernel ping-pongs through
+host-allocated scratch buffers, so it cannot launch on an accelerator).
 
 Two compile modes, selected by ``MAX_EAGER_OP_PRECOMPILE`` (see
 :func:`gc_compile.should_precompile`). Must not import from ``handlers.py``.
@@ -48,13 +51,14 @@ from max.graph import DeviceRef, Graph, Module, TensorType
 
 MAX_RANK = gc_compile.MAX_RANK  # Sweep ranks 1..MAX_RANK for linear/nearest.
 
-# Resize is CPU-only, so gc_compile.CPU_FLOAT_DTYPES *is* its dtype set --
-# same policy as matmul_gc/unary_elementwise_gc/elementwise_binary_gc/
-# reduce_axis_gc/pooling_gc: no 16-bit floats on CPU (bfloat16 and float16
-# both fail to compile through the GC backend there; float16's failure is
-# empirically confirmed -- "The f16 data type is not supported on device
-# 'cpu:0'" -- bfloat16 is excluded for consistency with the same policy
-# rather than an independent per-op finding).
+# f32/f64 (the same no-16-bit-floats-on-CPU policy as
+# matmul_gc/unary_elementwise_gc/elementwise_binary_gc/reduce_axis_gc/
+# pooling_gc: bfloat16 and float16 both fail to compile through the GC
+# backend there; float16's failure is empirically confirmed -- "The f16 data
+# type is not supported on device 'cpu:0'" -- bfloat16 is excluded for
+# consistency). The GPU nearest sweep keeps the same dtype set as a
+# conservative first cut; 16-bit variants can widen it once a GPU lane
+# proves them.
 _RESIZE_DTYPES = gc_compile.CPU_FLOAT_DTYPES
 
 # Variant: (coord_mode, antialias) for linear; (coord_mode, round_mode) for
@@ -81,6 +85,8 @@ class ResizeSpec:
     max_rank: int
     rank_keyed: bool
     variants: tuple[Variant, ...] = (_NO_VARIANT,)
+    gpu: bool = False
+    """Whether this op's kernel can launch on accelerators."""
 
 
 def _symbolic_dims(rank: int, prefix: str) -> list[str]:
@@ -161,6 +167,7 @@ _RESIZE_OPS: dict[type[_core.Operation], ResizeSpec] = {
         max_rank=MAX_RANK,
         rank_keyed=True,
         variants=_nearest_variants(),
+        gpu=True,
     ),
 }
 
@@ -175,8 +182,20 @@ def _spec_for(op_type: type[_core.Operation]) -> ResizeSpec | None:
     return gc_compile.spec_for(op_type, _RESIZE_OPS_BY_NAME)
 
 
-# Resize is CPU-only for both remaining ops (see module docstring).
-_CPU_DEVICES = [d for d in gc_compile.DISCOVERED_DEVICES if d.label == "cpu"]
+# Devices the sweep covers: every op runs on CPU, and GPU-capable ops add
+# every discovered accelerator (see the module docstring).
+_SWEEP_DEVICES = list(gc_compile.DISCOVERED_DEVICES)
+
+
+def _devices_for(spec: ResizeSpec) -> list[Device]:
+    if spec.gpu:
+        return _SWEEP_DEVICES
+    return [d for d in _SWEEP_DEVICES if d.label == "cpu"]
+
+
+def _supports_device(op_type: type[_core.Operation], device: Device) -> bool:
+    spec = _spec_for(op_type)
+    return spec is not None and device in _devices_for(spec)
 
 
 def _ranks_for(spec: ResizeSpec) -> list[int]:
@@ -211,7 +230,7 @@ def _is_supported(
     spec = _spec_for(op_type)
     if spec is None:
         return False
-    if device not in _CPU_DEVICES:
+    if not _supports_device(op_type, device):
         return False
     if dtype not in _RESIZE_DTYPES:
         return False
@@ -222,7 +241,7 @@ class _ResizeFamily(gc_compile.GCFamilySpec):
     name = "resize"
 
     def sweep_devices(self) -> list[Device]:
-        return list(_CPU_DEVICES)
+        return list(gc_compile.DISCOVERED_DEVICES)
 
     def build_module(self) -> Module:
         module = Module()
@@ -235,9 +254,9 @@ class _ResizeFamily(gc_compile.GCFamilySpec):
     ) -> Module:
         if module is None:
             module = Module()
-        if device not in _CPU_DEVICES:
-            return module
-        for spec in _RESIZE_OPS.values():
+        for op_type, spec in _RESIZE_OPS.items():
+            if not _supports_device(op_type, device):
+                continue
             for dtype in _RESIZE_DTYPES:
                 for rank in _ranks_for(spec):
                     for variant in spec.variants:
@@ -285,8 +304,8 @@ def resize_model(
             return None
         return (
             f"Unsupported resize op/device/dtype/rank for key {key!r}."
-            f" Resize is CPU-only; supported dtypes: {_RESIZE_DTYPES};"
-            f" max rank: {MAX_RANK}."
+            f" Nearest sweeps every device; linear is CPU-only. Supported"
+            f" dtypes: {_RESIZE_DTYPES}; max rank: {MAX_RANK}."
         )
 
     def build(module: Module) -> None:

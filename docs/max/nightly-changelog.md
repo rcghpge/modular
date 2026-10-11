@@ -634,6 +634,14 @@ This version is still a work in progress.
 
 ## Kernels and GPU programming
 
+- Added GPU support for `ops.resize_nearest` / `mo.resize.nearest`. The op
+  was host-only; its kernel is a pure gather, so it now launches on the
+  input's device (the op is single-device with a host `size` operand, like
+  bicubic). The eager resize family sweeps accelerators for nearest
+  while linear stays CPU-only until its scratch-buffer kernel is ported;
+  new Metal-verified GPU kernel tests cover up/downsampling and both
+  coordinate modes, plus an eager GPU-residency test.
+
 - Added GPU support for `ops.repeat_interleave` with scalar repeats. The op
   previously rejected accelerator inputs outright, forcing callers (e.g.
   Llama4 attention-scale construction) to round-trip data through the CPU.

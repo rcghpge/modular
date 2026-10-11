@@ -8951,7 +8951,9 @@ class TestResizeNearestOp:
 
     Routes through F.resize_nearest -> ops.resize_nearest ->
     rmo.MoResizeNearestOp -> mo.ResizeNearestOp -> _handle_resize_nearest ->
-    resize_gc.resize_model.  CPU-only (MO_HostOnly).
+    resize_gc.resize_model.  Runs on the input's device (single-device MO
+    op with a host ``size`` operand); GPU-residency is covered by
+    ``test_gpu_output_stays_resident`` below.
 
     The reference is a pure-numpy nearest-neighbor lookup applied to every
     dimension.  Four coordinate transformation modes and four rounding modes
@@ -9185,6 +9187,35 @@ class TestResizeNearestOp:
 
         ref = self._resize_nearest_ref(x_np, out_shape)
         np.testing.assert_allclose(np.from_dlpack(out), ref)
+
+    @pytest.mark.skipif(accelerator_count() == 0, reason="requires a GPU")
+    def test_gpu_output_stays_resident(self) -> None:
+        """Eager nearest resize on an accelerator buffer stays on-device.
+
+        The kernel is a pure gather (elementwise over the output shape),
+        so it launches on the input's device; this exercises the
+        handler's device dispatch and the family's GPU graph directly.
+        """
+        device = Accelerator()
+        rng = np.random.default_rng(102)
+        x_np = rng.standard_normal((1, 2, 6, 6)).astype(np.float32)
+        out_shape = [1, 2, 9, 9]
+        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            out = F.resize_nearest(
+                x, out_shape, coordinate_transform_mode=0, round_mode=0
+            )
+
+        assert out.storage is not None
+        assert out.storage.device == device
+        ref = self._resize_nearest_ref(
+            x_np, out_shape, coordinate_transform_mode=0, round_mode=0
+        )
+        np.testing.assert_allclose(out.to(CPU()).to_numpy(), ref)
 
 
 class TestResizeBicubicOp:

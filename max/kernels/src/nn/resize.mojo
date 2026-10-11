@@ -128,6 +128,7 @@ def resize_nearest_neighbor[
     coordinate_transformation_mode: CoordinateTransformationMode,
     round_mode: RoundMode,
     dtype: DType,
+    target: StaticString = "cpu",
 ](
     input: TileTensor[mut=False, dtype, ...],
     output: TileTensor[mut=True, dtype, ...],
@@ -139,6 +140,7 @@ def resize_nearest_neighbor[
         coordinate_transformation_mode: How to map a coordinate in output to a coordinate in input.
         round_mode: How to round fractional input coordinates to integer indices.
         dtype: Type of input and output.
+        target: The target backend to execute on, such as "cpu" or "gpu".
 
     Args:
         input: The input to be resized.
@@ -194,7 +196,9 @@ def resize_nearest_neighbor[
         output.raw_store(out_idx, input.ptr[in_idx])
 
     # TODO (#21439): can use unsafe_memcpy when scale on inner dimension is 1
-    elementwise[1](nn_interpolate, output.layout.shape_coord(), ctx)
+    elementwise[1, target=target](
+        nn_interpolate, output.layout.shape_coord(), ctx
+    )
 
 
 @inline(.always)
