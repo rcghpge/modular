@@ -116,7 +116,7 @@ def test_math() raises:
             log2,
             log10,
             log1p,
-            # logb,
+            logb,
             cbrt,
             hypot_fn,
             erfc,

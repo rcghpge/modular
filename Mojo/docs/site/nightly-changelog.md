@@ -398,6 +398,9 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `std.math.logb` no longer calls the system libm and now runs on GPU as well
+  as CPU. It reads the exponent from the bit pattern, so subnormal inputs
+  return their true exponent even on GPUs that flush subnormals.
 - `std.math.lgamma()` no longer calls the system libm and now runs on GPU as
   well as CPU. On CPU its result comes from the same Mojo implementation, so
   it can differ from the system libm in the last ulp. It stays within about 2

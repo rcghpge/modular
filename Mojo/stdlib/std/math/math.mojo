@@ -35,7 +35,7 @@ from std.ffi import _external_call_const
 from std.sys.info import _is_sm_9x_or_newer, is_32bit
 
 from std.algorithm import vectorize
-from std.bit import count_trailing_zeros
+from std.bit import count_leading_zeros, count_trailing_zeros
 from std.builtin.dtype import _integral_type_of
 from std.simd import _modf, _simd_apply
 from std.collections import Span
@@ -2411,7 +2411,16 @@ def logb[
         The `logb` of the input.
     """
 
-    return _call_libm["logb"](x)
+    _assert_float64_supported[dtype, "logb"]()
+
+    comptime if dtype not in [
+        DType.float16,
+        DType.bfloat16,
+        DType.float32,
+        DType.float64,
+    ]:
+        return logb(x.cast[.float32]()).cast[dtype]()
+    return _logb_bits(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4119,6 +4128,36 @@ def _cbrt_f64[width: SIMDLength, //](x: SIMD[.float64, width]) -> type_of(x):
 
 
 @inline(.always)
+def _logb_bits[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    # Original algorithm: reads the exponent from the bit pattern alone, with a
+    # leading-zero count for subnormals, so targets that flush subnormal inputs
+    # still see them. A NaN input returns a NaN with its payload kept; unlike
+    # libm, the sign bit is cleared and a signaling NaN is not quieted.
+    comptime TInt = SIMD[_integral_type_of[dtype](), width]
+    comptime mantissa_width = FPUtils[dtype].mantissa_width()
+    comptime bias = FPUtils[dtype].exponent_bias()
+    comptime exp_field_max = (1 << FPUtils[dtype].exponent_width()) - 1
+
+    # Shifting out the sign bit leaves exponent and mantissa top-aligned.
+    var bits = x.to_bits() << 1
+    var exp_field = (bits >> type_of(bits)(mantissa_width + 1)).cast[
+        TInt.dtype
+    ]()
+    # A subnormal whose top set bit is bit b of `bits` has exponent
+    # b - bias - mantissa_width, and b = bit_width - 1 - clz.
+    var sub_e = (
+        TInt(bit_width_of[dtype]() - 1 - mantissa_width - bias)
+        - count_leading_zeros(bits).cast[TInt.dtype]()
+    )
+    var e = exp_field.eq(0).select(sub_e, exp_field - TInt(bias))
+    var result = e.cast[dtype]()
+
+    result = exp_field.eq(TInt(exp_field_max)).select(abs(x), result)
+    return bits.eq(0).select(-inf[dtype](), result)
+
+
 def _two_sum[
     dtype: DType, width: SIMDLength, //
 ](a: SIMD[dtype, width], b: type_of(a)) -> Tuple[type_of(a), type_of(a)]:
