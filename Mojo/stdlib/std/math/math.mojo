@@ -2044,7 +2044,11 @@ def acosh[
         The `acosh` of the input.
     """
 
-    return _call_libm["acosh"](x)
+    _assert_float64_supported[dtype, "acosh"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        return _acosh_impl(x.cast[.float32]()).cast[dtype]()
+    return _acosh_impl(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2071,7 +2075,15 @@ def asinh[
         The `asinh` of the input.
     """
 
-    return _call_libm["asinh"](x)
+    _assert_float64_supported[dtype, "asinh"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        var r = _asinh_impl(x.cast[.float32]())
+        comptime if dtype == .bfloat16 and is_apple_gpu():
+            # `cast` flushes the subnormal results (asinh(x) == x) here.
+            return rebind[SIMD[dtype, width]](_narrow_f32_to_bf16_bits(r))
+        return r.cast[dtype]()
+    return _asinh_impl(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4186,6 +4198,7 @@ def round[T: Roundable, //](number: T, ndigits: Int) -> T:
 # and carry no correct-rounding guarantee for sqrt.
 
 comptime _SQRT2 = 1.41421356237309504880168872420969807856967187537694
+comptime _LN2 = 0.69314718055994530941723212145817656807550013436026
 
 # ln2 = _LN2_HI_F64 + _LN2_LO_F64, where _LN2_HI_F64 has 32 significant bits
 # (21 trailing zero bits), so k * _LN2_HI_F64 is exact for |k| < 2^21.
@@ -4206,6 +4219,15 @@ def _assert_float64_supported[dtype: DType, name: StaticString]():
 
 
 @inline(.always)
+def _two_sum[
+    dtype: DType, width: SIMDLength, //
+](a: SIMD[dtype, width], b: type_of(a)) -> Tuple[type_of(a), type_of(a)]:
+    """Returns `(s, e)` with `s = fl(a + b)` and `a + b == s + e` exactly."""
+    var s = a + b
+    var bb = s - a
+    return (s, (a - (s - bb)) + (b - bb))
+
+
 def _scalbn_impl[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width], n: SIMD[.int32, width]) -> SIMD[
@@ -4754,3 +4776,89 @@ def _atanh_impl[
     # Below 2^-28, atanh(x) rounds to x.
     comptime tiny = Scalar[dtype](3.725290298461914e-09)
     return (isnan(x) | t.lt(tiny)).select(x, res)
+
+
+@inline(.always)
+def _log1p_dw[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], xl: type_of(x)) -> type_of(
+    x
+) where dtype.is_floating_point():
+    """`log(1 + x + xl)` for finite `x > -1` and `|xl| <= ulp(x)`.
+
+    Uses the fdlibm log1p rounded-sum correction with `xl` folded into the
+    correction term, so the low word costs no extra rounding.
+    """
+    comptime T = type_of(x)
+    var u = 1.0 + x
+    var kf = _log_reduce(u)
+    var c = (kf[0].ge(2.0).select(1.0 - (u - x), x - (u - 1.0)) + xl) / u
+    var near = x.gt(_SQRT2 / 2 - 1) & x.lt(_SQRT2 - 1)
+    return _log_combine(
+        near.select(T(0), kf[0]),
+        near.select(x, kf[1]),
+        near.select(xl / u, c),
+    )
+
+
+# Above these, acosh(x) and asinh(x) round to log(x) + ln2.
+comptime _ACOSH_ASINH_HUGE_F64 = 268435456.0  # 2^28
+comptime _ACOSH_ASINH_HUGE_F32 = 4096.0  # 2^12
+
+
+@inline(.always)
+def _acosh_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    # fdlibm e_acosh.c / musl acoshf.c, with the near-one argument
+    # t + sqrt(t^2 + 2t) carried in double-word.
+    comptime huge = Scalar[dtype](
+        _ACOSH_ASINH_HUGE_F64 if dtype == .float64 else _ACOSH_ASINH_HUGE_F32
+    )
+    comptime T = type_of(x)
+    var t = x - 1.0
+    # v + v_lo = t^2 + 2t; 2t - v is exact (Sterbenz) for t < 2.
+    var v = t.fma(t, t + t)
+    var v_lo = t.fma(t, (t + t) - v)
+    var s = _sqrt_ieee(v)
+    var s_lo = v.gt(0).select(((-s).fma(s, v) + v_lo) / (s + s), T(0))
+    var a = _two_sum(t, s)
+    var r_near_one = _log1p_dw(a[0], a[1] + s_lo)
+    var mid_arg = 2.0 * x - 1.0 / (x + _sqrt_ieee(x.fma(x, -1.0)))
+    # One log serves both ranges; above `huge` it is log(x) + ln2.
+    var is_huge = x.ge(huge)
+    var r_far = _log_accurate(is_huge.select(x, mid_arg)) + is_huge.select(
+        T(_LN2), T(0)
+    )
+    var r = x.lt(2.0).select(r_near_one, r_far)
+    r = x.lt(inf[dtype]()).select(r, x)
+    return x.ge(1.0).select(r, nan[dtype]())
+
+
+@inline(.always)
+def _asinh_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    # fdlibm s_asinh.c / musl asinhf.c.
+    # Below these, asinh(x) rounds to x.
+    comptime tiny_f64 = 3.725290298461914e-09  # 2^-28
+    comptime tiny_f32 = 2.44140625e-04  # 2^-12
+    comptime tiny = Scalar[dtype](tiny_f64 if dtype == .float64 else tiny_f32)
+    comptime huge = Scalar[dtype](
+        _ACOSH_ASINH_HUGE_F64 if dtype == .float64 else _ACOSH_ASINH_HUGE_F32
+    )
+    comptime T = type_of(x)
+    var a = abs(x)
+    var a2 = a * a
+    var arg = _two_sum(a, a2 / (1.0 + _sqrt_ieee(1.0 + a2)))
+    var r_small = _log1p_dw(arg[0], arg[1])
+    var mid_arg = 2.0 * a + 1.0 / (_sqrt_ieee(a2 + 1.0) + a)
+    var is_huge = a.ge(huge)
+    var r_far = _log_accurate(is_huge.select(a, mid_arg)) + is_huge.select(
+        T(_LN2), T(0)
+    )
+    var r = a.lt(2.0).select(r_small, r_far)
+    r = x.lt(0.0).select(-r, r)
+    # Tiny, infinite, and NaN inputs return x itself.
+    var regular = a.ge(tiny) & a.lt(inf[dtype]())
+    return regular.select(r, x)

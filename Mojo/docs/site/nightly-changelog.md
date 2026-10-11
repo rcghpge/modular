@@ -410,6 +410,9 @@ This version is still a work in progress.
   differ from the system libm, and between targets, in the last ulp. On
   targets that flush subnormals, subnormal inputs are handled and normal
   results are correct; subnormal results flush to zero.
+- `std.math` `acosh` and `asinh` no longer call the system libm and now run
+  on GPU as well as CPU. On CPU their results come from the same Mojo
+  implementations, so they can differ from the system libm in the last ulp.
 
 ## Tooling changes
 
