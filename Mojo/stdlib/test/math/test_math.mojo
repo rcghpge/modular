@@ -48,6 +48,9 @@ from std.math import (
     trunc,
     ulp,
 )
+from std.math.math import _call_libm
+from std.memory import bitcast
+from std.sys import CompilationTarget
 from std.builtin.dtype import _integral_type_of
 from std.math.math import (
     _call_libm,
@@ -1374,6 +1377,39 @@ def test_cbrt() raises:
             _call_libm["cbrt"](val),
             msg=String("mismatch for the value = ", val, " at index = ", i),
         )
+
+
+def test_cbrt_f32_ulp() raises:
+    # Every float32 exponent, subnormals included, against the float64 libm
+    # root: the float32 path is within 0.505 ulp of the true root.
+    comptime n = 1 << 14
+    for i in range(n):
+        var bits = UInt32(i) * ((0x7F800000 // n) | 1) % 0x7F800000
+        var x = bitcast[.float32](bits)
+        var got = cbrt(x)
+        var want = _call_libm["cbrt"](x.cast[.float64]())
+        var err = abs(got.cast[.float64]() - want) / ulp(got).cast[.float64]()
+        assert_true(err <= 0.506, msg=String(t"cbrt({x}) = {got}"))
+        assert_equal(cbrt(-x), -got)
+
+
+def test_cbrt_f32_mixed_lanes() raises:
+    # 0, -0, inf, -inf, nan, 2^-147, -2^-144, -27 in one vector.
+    var x = bitcast[.float32](
+        SIMD[.uint32, 8](
+            0, 0x80000000, 0x7F800000, 0xFF800000, 0x7FC00000, 4, 0x80000020, 0
+        )
+    )
+    x[7] = -27.0
+    var got = bitcast[.uint32](cbrt(x))
+    assert_equal(got[0], 0)
+    assert_equal(got[1], 0x80000000)
+    assert_equal(got[2], 0x7F800000)
+    assert_equal(got[3], 0xFF800000)
+    assert_true(isnan(bitcast[.float32](got[4])))
+    assert_equal(got[5], (127 - 49) << 23)
+    assert_equal(got[6], 0x80000000 | ((127 - 48) << 23))
+    assert_equal(bitcast[.float32](got[7]), -3.0)
 
 
 def test_acos() raises:

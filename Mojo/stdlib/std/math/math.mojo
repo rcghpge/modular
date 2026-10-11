@@ -2421,165 +2421,6 @@ def logb[
 # ===----------------------------------------------------------------------=== #
 
 
-def _ilogb[width: SIMDLength](x: SIMD[.float32, width]) -> SIMD[.int32, width]:
-    """Extract binary exponent from floating-point number.
-
-    Args:
-        x: Input floating-point value.
-
-    Returns:
-        Integer binary exponent of x.
-    """
-
-    @inline(.always)
-    def extract(x: SIMD[.float32, width]) -> SIMD[.int32, width]:
-        """Internal helper function to extract binary exponent from float.
-
-        Args:
-            x: Input floating-point value (assumed positive).
-
-        Returns:
-            Unbiased binary exponent as integer.
-        """
-        # Check if d is subnormal (very small, < 2^-64 ≈ 5.421010862427522e-20)
-        var is_subnormal_mask = x.lt(5.421010862427522e-20)
-        var d = is_subnormal_mask.select(
-            x * 1.8446744073709552e19,  # Scale by 2^64
-            x,
-        )
-
-        # Extract exponent bits from IEEE 754 representation
-        # Step 1: Reinterpret float as 32-bit integer
-        var bits = rebind[SIMD[.int32, width]](d._to_bits_signed())
-
-        # Step 2: Right shift by 23 to move exponent to lower bits
-        # This moves bits [30:23] to positions [7:0]
-        var exponent_bits = (bits >> 23) & 0xFF  # Mask to get 8 bits
-
-        # Step 3: Remove bias to get true exponent
-        # IEEE 754 bias for single precision is 127 (0x7f)
-        # If subnormal path was taken, also subtract 64 to compensate for scaling
-
-        return is_subnormal_mask.select(
-            exponent_bits - (64 + 0x7F),  # Remove bias and scaling offset
-            exponent_bits - 0x7F,  # Remove bias only
-        )
-
-    comptime FP_ILOGB0 = (-2147483647 - 1)
-    comptime FP_ILOGBNAN = 2147483647
-
-    # Extract the binary exponent from |x|
-    # For x = m × 2^e where m ∈ [1, 2), this returns e
-    var e = extract(abs(x))
-
-    comptime for i in range(width):
-        var d = x[i]
-
-        # Special case: ilogb(±0) returns FP_ILOGB0
-        if d == 0.0:
-            e[i] = FP_ILOGB0
-
-        # Special case: ilogb(NaN) returns FP_ILOGBNAN
-        if isnan(d):
-            e[i] = FP_ILOGBNAN
-
-        # Special case: ilogb(±∞) returns Int32.MAX
-        if isinf(d):
-            e[i] = Int32.MAX
-
-    return e
-
-
-def _cbrtf(x: Float32) -> Float32:
-    """Compute the cube root of a 32-bit floating-point number.
-
-    This function implements an efficient algorithm for computing the cube root (∛x)
-    of a single-precision floating-point value. The algorithm works by:
-
-    1. Extracting the binary exponent `e` from the input `x` such that x = 2^e * mantissa.
-    2. Normalizing the input by scaling `x` by 2^(-e) to obtain a mantissa in [0.5, 1).
-    3. Dividing the exponent `e` by 3 to obtain the cube root exponent, and computing the remainder.
-    4. Applying a correction factor based on the remainder to improve accuracy.
-    5. Reconstructing the result by scaling the cube root of the mantissa by 2^(e/3) and the correction factor.
-
-    Args:
-        x: Input value (Float32) for which to compute the cube root.
-
-    Returns:
-        The cube root of `x` as a Float32.
-    """
-    # Initialize correction factor q (may be adjusted based on exponent remainder)
-    var q = Float32(1.0)
-
-    # Extract exponent e such that x = 2^e * mantissa
-    # Add 1 to exponent for normalization purposes
-    var e = _ilogb(abs(x)) + 1  # Get binary exponent
-
-    # Normalize input: scale x by 2^(-e) to get mantissa in [0.5, 1)
-    var d = ldexp(x, -e)
-
-    # Compute exponent division by 3 with remainder
-    # We need to split e into: e = 3*qu + re where re ∈ {0, 1, 2}
-    # Add offset 6144 to ensure positive values for easier integer division
-    var t = Float32(e) + 6144.0
-    var qu = Int(t / 3.0)  # Quotient: e // 3
-    var re = Int(t - Float32(qu) * 3.0)  # Remainder: e % 3
-
-    comptime CBRT_2 = 1.2599210498948731647672106
-    comptime CBRT_4 = 1.5874010519681994747517056
-
-    # Apply correction factors based on remainder
-    # If e % 3 == 1: need to multiply by 2^(1/3) = cbrt(2)
-    if re == 1:
-        q = CBRT_2
-    # If e % 3 == 2: need to multiply by 2^(2/3) = cbrt(4)
-    elif re == 2:
-        q = CBRT_4
-
-    # Scale q by 2^(qu - 2048) to reconstruct proper exponent
-    # Subtract 2048 to compensate for the 6144 offset used earlier
-    q = ldexp(q, Int32(qu - 2048))
-
-    # Apply sign to correction factor (cube root preserves sign)
-    q = copysign(q, x)
-
-    # Work with absolute value for polynomial approximation
-    d = abs(d)
-
-    # Polynomial approximation for cbrt(d) where d ∈ [0.5, 1)
-    # Using Horner's method for efficient evaluation
-    var poly = polynomial_evaluate[
-        [
-            Scalar[x.dtype](2.2241256237030029296875),
-            -3.8095417022705078125,
-            5.898262500762939453125,
-            -5.532182216644287109375,
-            2.8208892345428466796875,
-            -0.601564466953277587890625,
-        ]
-    ](d)
-
-    # Newton-Raphson refinement step
-    # Formula: y_new = y - (y³ - d) / (3y²)
-    # Rearranged as: y_new = (2y³ + d) / (3y²)
-    var y = d * poly * poly  # d * (poly ** 2), where poly ≈ cbrt(d)
-
-    # Apply Newton iteration: y = y - (2/3) * y * (y*x - 1)
-    # This refines the approximation
-    y = y - (2.0 / 3.0) * y * (y * poly - 1.0)
-
-    # Multiply by the correction factor q to get final result
-    y = y * q
-
-    # Handle special cases
-    if isinf(x):
-        y = copysign(Float32.MAX, x)  # cbrt(±∞) = ±∞
-    if x == 0.0:
-        y = copysign(Float32(0.0), x)  # cbrt(±0) = ±0
-
-    return y
-
-
 def cbrt[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
@@ -2599,16 +2440,13 @@ def cbrt[
         The `cbrt` of the input.
     """
 
-    comptime if size_of[dtype]() < size_of[DType.float32]():
-        return cbrt(x.cast[.float32]()).cast[dtype]()
-    elif dtype == .float64:
-        return _call_libm["cbrt"](x)
-    else:
-        var result = SIMD[.float32, width]()
-        for i in range(width):
-            result[i] = _cbrtf(rebind[Float32](x[i]))
+    _assert_float64_supported[dtype, "cbrt"]()
 
-        return rebind[type_of(x)](result)
+    comptime if bit_width_of[dtype]() < 32:
+        return _cbrt_f32(x.cast[.float32]()).cast[dtype]()
+    elif dtype == .float32:
+        return _cbrt_f32(x._refine[.float32]())._refine[dtype]()
+    return _cbrt_f64(x._refine[.float64]())._refine[dtype]()
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4216,6 +4054,107 @@ def _assert_float64_supported[dtype: DType, name: StaticString]():
     comptime assert dtype != .float64 or not is_apple_gpu(), (
         "`" + name + "` does not support float64 on Apple GPU"
     )
+
+
+# See Licenses/Third-Party-Notices entries 19 and 20 for source notices.
+def _cbrt_f32[width: SIMDLength, //](x: SIMD[.float32, width]) -> type_of(x):
+    """Computes the cube root of float32 values in pure Mojo.
+
+    Follows FreeBSD msun `s_cbrtf.c` (bit-level estimate, Halley step) but
+    stays in float32: the exponent is split as `3q + r` by integer division so
+    the iteration runs on `m = 2^r * mantissa` in [1, 8), where nothing can
+    overflow, and the last Newton step takes `m - t^3` from FMA-based
+    error-free products. Max error is 0.505 ulp over all float32 inputs.
+    """
+    comptime sign_mask = 0x80000000
+    comptime abs_mask = 0x7FFFFFFF
+    comptime inf_bits = 0x7F800000
+    comptime min_normal_bits = 0x00800000
+    comptime mantissa_mask = 0x7FFFFF
+    comptime B1 = UInt32(709958130)  # (127 - 127/3 - 0.03306235651) * 2^23
+
+    var ux = bitcast[.uint32](x)
+    var hx = ux & abs_mask
+    # A subnormal is `hx * 2^-149`; converting the integer `hx` makes its
+    # exponent readable without arithmetic on a value that targets flushing
+    # subnormals (Apple GPUs) would treat as zero.
+    var is_tiny = hx.lt(min_normal_bits)
+    var hs = is_tiny.select(bitcast[.uint32](hx.cast[.float32]()), hx)
+    # For finite non-zero x, e + 150 lies in [1, 277], so unsigned division
+    # by 3 floors. Zero lanes wrap here; the final select discards their
+    # intermediates.
+    var e_field = hs >> 23
+    var eb = is_tiny.select(e_field - (127 + 149 - 150), e_field + (150 - 127))
+    var q = eb / 3
+    var r = eb - q * 3
+    var m = bitcast[.float32]((hs & mantissa_mask) | ((r + 127) << 23))
+    # q - 50 is in [-50, 42], so 2^(q - 50) is normal and the scaling exact.
+    var scale = bitcast[.float32]((q + (127 - 50)) << 23)
+
+    # ~5 bits, then Halley to ~16 bits.
+    var t = bitcast[.float32](bitcast[.uint32](m) / 3 + B1)
+    var t3 = t * t * t
+    t = t * (m + m + t3) / (m + t3 + t3)
+
+    # Newton on t^3 = m with the residual from t*t = t2 + t2_lo, so the step
+    # lands within 0.005 ulp of the root before the final rounding.
+    var t2 = t * t
+    var t2_lo = fma(t, t, -t2)
+    var res = fma(-t2_lo, t, fma(-t2, t, m))
+    t = t + res / (3.0 * t2)
+
+    var y = bitcast[.float32](bitcast[.uint32](t * scale) | (ux & sign_mask))
+    return (hx.ge(inf_bits) | hx.eq(0)).select(x + x, y)
+
+
+def _cbrt_f64[width: SIMDLength, //](x: SIMD[.float64, width]) -> type_of(x):
+    """Computes the cube root of float64 values in pure Mojo.
+
+    Ported from FreeBSD msun / musl `s_cbrt.c`: a bit-level estimate of the
+    exponent, a polynomial for `1/cbrt` to ~23 bits, rounding to 22 bits so
+    `t*t` is exact, then one Halley step in float64.
+    """
+    # Masks and thresholds for the high 32 bits of a float64.
+    comptime hi_abs_mask = 0x7FFFFFFF
+    comptime hi_inf_bits = 0x7FF00000
+    comptime hi_min_normal_bits = 0x00100000
+    comptime B1 = UInt32(715094163)  # (1023 - 1023/3 - 0.03306235651) * 2^20
+    comptime B2 = UInt32(696219795)  # (1023 - 1023/3 - 54/3 - 0.0330...) * 2^20
+    comptime P0 = 1.87595182427177009643
+    comptime P1 = -1.88497979543377169875
+    comptime P2 = 1.621429720105354466140
+    comptime P3 = -0.758397934778766047437
+    comptime P4 = 0.145996192886612446982
+
+    var hx = (bitcast[.uint64](x) >> 32).cast[.uint32]() & hi_abs_mask
+    var is_special = hx.ge(hi_inf_bits)
+    var is_tiny = hx.lt(hi_min_normal_bits)
+
+    # Subnormals are scaled by 2^54 so their exponent is readable.
+    comptime two_54 = 18014398509481984.0
+    var hx_scaled = (bitcast[.uint64](x * two_54) >> 32).cast[
+        .uint32
+    ]() & hi_abs_mask
+    var is_zero = is_tiny & hx_scaled.eq(0)
+    var hi = is_tiny.select(hx_scaled / 3 + B2, hx / 3 + B1)
+    var t = bitcast[.float64](
+        (bitcast[.uint64](x) & (UInt64(1) << 63)) | (hi.cast[.uint64]() << 32)
+    )
+
+    var r = (t * t) * (t / x)
+    t = t * polynomial_evaluate[[Float64(P0), P1, P2, P3, P4]](r)
+
+    t = bitcast[.float64](
+        (bitcast[.uint64](t) + 0x80000000) & 0xFFFFFFFFC0000000
+    )
+
+    var s = t * t
+    r = x / s
+    var w = t + t
+    r = (r - t) / (w + r)
+    t = t + t * r
+
+    return (is_special | is_zero).select(x + x, t)
 
 
 @inline(.always)

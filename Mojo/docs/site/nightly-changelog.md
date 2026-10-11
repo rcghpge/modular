@@ -386,6 +386,11 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `cbrt()` no longer calls the system libm and now runs on GPU for every
+  floating-point type, including `float64`. On CPU its results come from the
+  same Mojo implementation, so they can differ from the system libm in the
+  last ulp; `float32` results are within 0.505 ulp of the true root.
+
 - `std.math.remainder()` no longer calls the system libm and now runs on GPU
   as well as CPU. It is exact, so it matches the system libm bit for bit. On
   targets that flush subnormals, subnormal inputs and subnormal results
@@ -484,6 +489,11 @@ This version is still a work in progress.
   rejected with `struct has recursive reference to itself`, despite the
   recursion being behind a pointer.
 
+- `cbrt()` of `inf` and `-inf` now returns `inf` and `-inf` instead of
+  `Float32.MAX` and `-Float32.MAX`, and `float32` `cbrt()` is correct near
+  `Float32.MAX` and for subnormal inputs. On targets that flush subnormals,
+  subnormal inputs are handled and normal results are correct; subnormal
+  results flush to zero, though `cbrt()` never produces one.
 - `log()`, `log2()`, and `log1p()` of `inf` now return `inf` instead of `nan`.
 - `float64` `log1p()` is now accurate for inputs whose `1 + x` falls in
   `[sqrt(2)/2, sqrt(2))`, where it was off by up to about 7e9 ulp.

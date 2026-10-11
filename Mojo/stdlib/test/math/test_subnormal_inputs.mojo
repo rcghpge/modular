@@ -11,6 +11,18 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+# Subnormal inputs whose results are normal. The float32 `cbrt` path reads
+# the exponent from the integer significand, so no retained result depends
+# on floating-point arithmetic on the subnormal operand. This also works on
+# targets that flush subnormal operands to zero (Apple GPUs).
+
+from std.math import cbrt, inf, isfinite, nan
+from std.testing import TestSuite, assert_equal, assert_raises, assert_true
+
+comptime f32_min = Float32(from_bits=UInt32(1))  # 2^-149
+comptime f32_max_sub = Float32(from_bits=UInt32(0x007FFFFF))
+comptime f64_min = Float64(from_bits=UInt64(1))  # 2^-1074
+
 # Subnormal divisors and dividends on the host, where arithmetic is IEEE and
 # every result is exact. `remainder` reads a subnormal divisor through its
 # integer significand, so on a target that flushes subnormals (Apple GPUs in
@@ -20,10 +32,7 @@
 from std.math import remainder
 from std.testing import TestSuite, assert_equal, assert_true
 
-comptime f32_min = Float32(from_bits=UInt32(1))  # 2^-149
-comptime f32_max_sub = Float32(from_bits=UInt32(0x007FFFFF))
 comptime f32_min_normal = Float32(from_bits=UInt32(0x00800000))  # 2^-126
-comptime f64_min = Float64(from_bits=UInt64(1))  # 2^-1074
 
 
 def test_remainder_subnormal() raises:
@@ -104,6 +113,72 @@ from std.math.math import _narrow_f32_to_bf16_bits, _scale_down_bits
 from test_utils import ulp_distance
 
 comptime f64_max_sub = Float64(from_bits=UInt64(0x000FFFFFFFFFFFFF))
+
+
+def _check_cbrt[
+    dtype: DType
+](got: Scalar[dtype], want: Scalar[dtype], name: String) raises:
+    comptime assert dtype in (DType.float32, DType.float64)
+    assert_true(
+        isfinite(got) and isfinite(want),
+        String(t"{name}: expected finite values, got {got} and {want}"),
+    )
+    comptime sign = UInt64(1) << UInt64(63 if dtype == .float64 else 31)
+    var got_bits = got.to_bits[.uint64]()
+    var want_bits = want.to_bits[.uint64]()
+    assert_equal(
+        got_bits & sign,
+        want_bits & sign,
+        String(t"{name}: wrong sign for {got}, expected {want}"),
+    )
+    var d = (
+        got_bits - want_bits if got_bits >= want_bits else want_bits - got_bits
+    )
+    assert_true(d <= 1, String(t"{name} = {got}, expected {want} ({d} ulp)"))
+
+
+def test_check() raises:
+    # These bit patterns overflow a signed ULP distance to Int.MIN.
+    comptime want = Float64(from_bits=UInt64(0xAAA428A2F98D728A))
+    comptime bad = Float64(from_bits=UInt64(0x555BD75D06728D76))
+    with assert_raises(contains="wrong sign"):
+        _check_cbrt(bad, want, "cbrt(-max_sub)")
+    _check_cbrt(want, want, "exact")
+    _check_cbrt(Float64(from_bits=UInt64(0xAAA428A2F98D728B)), want, "one ulp")
+    with assert_raises(contains="ulp"):
+        _check_cbrt(
+            Float64(from_bits=UInt64(0xAAA428A2F98D728C)), want, "two ulp"
+        )
+
+    comptime for dtype in [DType.float32, DType.float64]:
+        with assert_raises(contains="wrong sign"):
+            _check_cbrt(Scalar[dtype](-4.0), Scalar[dtype](1.0), "wrong sign")
+        with assert_raises(contains="expected finite"):
+            _check_cbrt(
+                inf[dtype](), Scalar[dtype].MAX_FINITE, "infinite result"
+            )
+        with assert_raises(contains="expected finite"):
+            _check_cbrt(
+                Scalar[dtype].MAX_FINITE, inf[dtype](), "infinite reference"
+            )
+        with assert_raises(contains="expected finite"):
+            _check_cbrt(nan[dtype](), Scalar[dtype](1.0), "NaN result")
+        with assert_raises(contains="expected finite"):
+            _check_cbrt(Scalar[dtype](1.0), nan[dtype](), "NaN reference")
+
+
+def test_cbrt_subnormal() raises:
+    _check_cbrt(cbrt(f32_min), 1.119034708375443e-15, "cbrt(2^-149)")
+    # 2^-147 is a perfect cube.
+    assert_equal(cbrt(f32_min * 4), Float32(1.7763568394002505e-15))
+    _check_cbrt(cbrt(-f32_max_sub), -2.273736618907049e-13, "cbrt(-max_sub)")
+    assert_equal(cbrt(f64_min), 1.7031839360032603e-108)
+    _check_cbrt(cbrt(-f64_max_sub), -2.8126442852362615e-103, "cbrt(-max_sub)")
+    var v = cbrt(SIMD[.float32, 4](f32_min, -f32_max_sub, 8.0, f32_min * 4))
+    assert_equal(v[0], cbrt(f32_min))
+    assert_equal(v[1], cbrt(-f32_max_sub))
+    assert_equal(v[2], 2.0)
+    assert_equal(v[3], cbrt(f32_min * 4))
 
 
 def _check[
