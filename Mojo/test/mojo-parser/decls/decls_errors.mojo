@@ -338,9 +338,12 @@ struct TestPackErrorMessage[*Ts: AnyType](Movable where False):
 @always_inline("builtin")
 __async def always_inline_builtin_1(): pass
 
-# expected-error @+2 {{'@always_inline("builtin")' does not support this argument convention}}
 @always_inline("builtin")
 def always_inline_builtin_2(a: MemType): pass
+
+# expected-error @+2 {{'@always_inline("builtin")' does not support this argument convention}}
+@always_inline("builtin")
+def always_inline_builtin_2_used(a: MemType): _ = a
 
 # expected-error @+2 {{'@always_inline("builtin")' does not support this argument convention}}
 @always_inline("builtin")

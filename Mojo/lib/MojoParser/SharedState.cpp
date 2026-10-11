@@ -2911,13 +2911,17 @@ TypedAttr SharedState::foldInlineBuiltinFunction(ArrayRef<TypedAttr> operands,
   for (auto [convention, arg, argValue] :
        llvm::zip(fnOp.getFuncTypeGenerator().getArgConventions(),
                  fnOp.getBody()->getArguments(), operands)) {
+    if (folder.evaluator.getReboundType(arg.getType()) != argValue.getType()) {
+      folder.emitError(arg.getLoc()) << "argument type mismatch";
+      return {};
+    }
+    // An unused immutable memory argument needs no representation in the
+    // folder's value model.
+    if (convention == ArgConvention::ImmMem && arg.use_empty())
+      continue;
     if (convention != ArgConvention::ImmReg) {
       folder.emitError(arg.getLoc())
           << "does not support this argument convention";
-      return {};
-    }
-    if (folder.evaluator.getReboundType(arg.getType()) != argValue.getType()) {
-      folder.emitError(arg.getLoc()) << "argument type mismatch";
       return {};
     }
     folder.boundValues[arg] = argValue;
