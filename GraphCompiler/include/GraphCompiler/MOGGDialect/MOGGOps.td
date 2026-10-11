@@ -926,6 +926,8 @@ def MOGG_KernelDeclOp
 
     `build_graph` has the same tensor signature as `execute` but takes a
     `DeviceGraphBuilder` in place of the `DeviceContext`.
+
+    `reduction` marks a `ReduceOp` monoid (see `#mogg.kernel_reduction`).
   }];
 
   let arguments = (ins
@@ -936,6 +938,7 @@ def MOGG_KernelDeclOp
     OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$tile_elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
+    OptionalAttr<MOGG_KernelReductionAttr>:$reduction,
     ArrayAttr:$struct_params,
     BoolAttr:$is_user_defined,
     OptionalAttr<StrAttr>:$sym_visibility
@@ -949,6 +952,7 @@ def MOGG_KernelDeclOp
     (`elementwise` `=` $elementwise^)?
     (`tile_elementwise` `=` $tile_elementwise^)?
     (`build_graph` `=` $build_graph^)?
+    (`reduction` `=` $reduction^)?
     `struct_params` `=` $struct_params
     `is_user_defined` `=` $is_user_defined
     attr-dict

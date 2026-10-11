@@ -14,6 +14,7 @@ mojo_library(
         "//max/tests/integration/graph:__subpackages__",
     ],
     deps = [
+        "//max:algorithm",
         "//max:extensibility",
         "//max:layout",
         "//max:max_mojo",

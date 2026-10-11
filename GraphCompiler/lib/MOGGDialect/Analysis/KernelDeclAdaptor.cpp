@@ -49,15 +49,6 @@ static constexpr llvm::StringLiteral kAccessKey = "access";
 static constexpr llvm::StringLiteral kCapabilitiesKey = "capabilities";
 static constexpr llvm::StringLiteral kBoundKey = "bound";
 
-/// Check whether a symbol has the given root and leaf, ignoring intermediate
-/// refs, for types whose package depth varies (e.g. DeviceContext under
-/// max::gpu::host may be re-exported more shallowly). Mirrors MOGG::isXType.
-static bool symbolMatchesRootAndLeaf(mlir::SymbolRefAttr symbol,
-                                     llvm::StringLiteral root,
-                                     llvm::StringLiteral leaf) {
-  return symbol.getRootReference() == root && symbol.getLeafReference() == leaf;
-}
-
 /// Build a "root.intermediate...leaf" opaque type string from a symbol ref,
 /// '.'-joined like a Mojo qualified name, so consumers (e.g.
 /// mlirOpaqueTypeToMojoType) use it directly.
@@ -773,6 +764,8 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
             decl.getElementwise()->getSignature());
   }
 
+  if (KernelReductionAttr reductionAttr = decl.getReductionAttr())
+    reduction = reductionAttr;
   structParams = decl.getStructParams();
 }
 

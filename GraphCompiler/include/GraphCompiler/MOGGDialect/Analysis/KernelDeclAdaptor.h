@@ -193,11 +193,18 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr);
 // Type predicates and IOSpec helpers
 //===----------------------------------------------------------------------===//
 
+/// Check whether a symbol has the given root and leaf, ignoring intermediate
+/// refs, for symbols whose package depth varies (e.g. DeviceContext under
+/// max::gpu::host may be re-exported more shallowly).
+inline bool symbolMatchesRootAndLeaf(mlir::SymbolRefAttr symbol,
+                                     llvm::StringRef root,
+                                     llvm::StringRef leaf) {
+  return symbol.getRootReference() == root && symbol.getLeafReference() == leaf;
+}
+
 inline bool isXType(KGEN::LIT::StructType maybeTensor, llvm::StringLiteral root,
                     llvm::StringLiteral className) {
-  if (maybeTensor.getSymbol().getRootReference() != root)
-    return false;
-  return maybeTensor.getSymbol().getLeafReference() == className;
+  return symbolMatchesRootAndLeaf(maybeTensor.getSymbol(), root, className);
 }
 
 inline bool isExtensibilityTensor(KGEN::LIT::StructType maybeTensor) {
@@ -484,6 +491,8 @@ struct KernelDeclAdaptor {
   std::optional<KernelDeclFunctionAdaptor> elementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> tileElementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> buildGraphFunction;
+  /// Set for a `ReduceOp` monoid.
+  std::optional<KernelReductionAttr> reduction;
   /// Struct-level ParamDeclAttrs shared by all functions (e.g. `dtype`).
   mlir::ArrayAttr structParams;
 
@@ -491,6 +500,7 @@ struct KernelDeclAdaptor {
 
   bool isElementwise() const { return elementwiseFunction.has_value(); }
   bool isTileElementwise() const { return tileElementwiseFunction.has_value(); }
+  bool isReduction() const { return reduction.has_value(); }
 
   /// `label` is e.g. `kMoggExecuteFunctionLabel`. Returns nullptr if the label
   /// is unrecognised or the function is absent.
@@ -560,6 +570,18 @@ StreamType &operator<<(StreamType &os, const KernelDeclAdaptor &adaptor) {
     os << "execute";
     adaptor.executeFunction->printNested(os, "  ");
     os << "\n";
+  }
+  if (adaptor.isReduction()) {
+    os << "reduction " << adaptor.registeredOpName.strref()
+       << ": width = " << adaptor.reduction->getWidthParam().strref()
+       << ", outputs = [";
+    llvm::StringRef sep = "";
+    for (mlir::Attribute output : adaptor.reduction->getOutputs()) {
+      os << sep
+         << mlir::cast<KernelReductionOutputAttr>(output).getName().strref();
+      sep = ", ";
+    }
+    os << "]\n";
   }
   return os;
 }

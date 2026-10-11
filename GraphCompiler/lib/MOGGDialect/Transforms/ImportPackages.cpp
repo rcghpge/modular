@@ -299,10 +299,84 @@ struct ScannedKernel {
   mlir::StringAttr mojoName;
   DeviceInfoAttr deviceInfo;
   KGEN::LIT::FnOp executeFn;
-  KGEN::LIT::FnOp elementwiseFn;     // SIMD overload, may be null
-  KGEN::LIT::FnOp tileElementwiseFn; // TileTensor overload, may be null
-  KGEN::LIT::FnOp buildGraphFn;      // may be null
+  KGEN::LIT::FnOp elementwiseFn;       // SIMD overload, may be null
+  KGEN::LIT::FnOp tileElementwiseFn;   // TileTensor overload, may be null
+  KGEN::LIT::FnOp buildGraphFn;        // may be null
+  MOGG::KernelReductionAttr reduction; // null unless a `ReduceOp` monoid
 };
+
+/// Returns true if `decl` conforms to `algorithm.reduce_op.ReduceOp`.
+static bool conformsToReduceOp(KGEN::LIT::StructDeclOp decl) {
+  return llvm::any_of(
+      decl.getCanonicalTrait().getSymbols(), [](KGEN::TraitSymbolAttr trait) {
+        return symbolMatchesRootAndLeaf(trait.getSymbol(), kReduceOpTraitRoot,
+                                        kReduceOpTraitLeaf);
+      });
+}
+
+/// Returns the name of the struct parameter `attr` refers to, or "".
+static llvm::StringRef getParamRefName(mlir::Attribute attr) {
+  if (!attr)
+    return {};
+  auto ref =
+      mlir::dyn_cast<KGEN::ParamDeclRefAttr>(KGEN::SugarAttr::strip(attr));
+  return ref ? KGEN::demangleParameterName(ref.getName().strref())
+             : llvm::StringRef();
+}
+
+/// Returns the struct parameter the trait's `width` alias names, or "" when
+/// `width` isn't a bare struct parameter.
+static llvm::StringRef getReduceOpWidthParam(KGEN::LIT::StructDeclOp decl) {
+  for (auto alias : decl.getFields().front().getOps<KGEN::LIT::AliasDeclOp>()) {
+    if (KGEN::demangleParameterName(alias.getParamDecl().getName().strref()) !=
+        kReduceOpWidthAlias)
+      continue;
+    llvm::StringRef name = getParamRefName(alias.getValueAttr());
+    for (KGEN::ParamDeclAttr param : decl.getInputParams())
+      if (!name.empty() &&
+          KGEN::demangleParameterName(param.getName().strref()) == name)
+        return name;
+    return {};
+  }
+  return {};
+}
+
+/// Returns true if `size` is `widthParam`, bare or through the implicit
+/// `SIMDLength` conversion that `SIMD[dtype, W]` applies to it.
+static bool isReduceOpWidth(mlir::Attribute size, llvm::StringRef widthParam) {
+  if (getParamRefName(size) == widthParam)
+    return true;
+  auto sugar = mlir::dyn_cast<KGEN::SugarAttr>(size);
+  auto apply = sugar
+                   ? mlir::dyn_cast<KGEN::ParamOperatorAttr>(sugar.getSugared())
+                   : nullptr;
+  return apply && apply.getOpcode() == KGEN::POC::Apply &&
+         apply.getOperands().size() == 2 &&
+         getParamRefName(apply.getOperands()[1]) == widthParam;
+}
+
+/// Describes a `ReduceOp` monoid: its signature, its width parameter, and its
+/// output fields (the `SIMD` fields whose width is the width parameter).
+static MOGG::KernelReductionAttr getReduction(KGEN::LIT::StructDeclOp decl) {
+  mlir::MLIRContext *ctx = decl.getContext();
+  llvm::StringRef widthParam = getReduceOpWidthParam(decl);
+  llvm::SmallVector<mlir::Attribute> outputs;
+  for (auto field :
+       decl.getFields().front().getOps<KGEN::LIT::StructFieldOp>()) {
+    auto simd = KGEN::sugarDynCast<KGEN::LIT::StructType>(field.getType());
+    if (widthParam.empty() || !simd ||
+        simd.getSymbol().getLeafReference() != kLeafSIMD ||
+        simd.getParamValues().size() != 2 ||
+        !isReduceOpWidth(simd.getParamValues()[1], widthParam))
+      continue;
+    outputs.push_back(MOGG::KernelReductionOutputAttr::get(
+        ctx, mlir::StringAttr::get(ctx, field.getName()),
+        KGEN::SugarAttr::strip(simd.getParamValues()[0])));
+  }
+  return MOGG::KernelReductionAttr::get(ctx, decl.getSignature(),
+                                        mlir::StringAttr::get(ctx, widthParam),
+                                        mlir::ArrayAttr::get(ctx, outputs));
+}
 
 /// One primitive (non-struct) function found while scanning.
 /// Primitives are standalone functions decorated with @register_internal,
@@ -405,6 +479,9 @@ static mlir::LogicalResult scanForKernelDecls(
         return mlir::WalkResult::interrupt();
       }
     }
+
+    if (conformsToReduceOp(structDeclOp))
+      kernel.reduction = getReduction(structDeclOp);
 
     kernels.push_back(kernel);
     return mlir::WalkResult::advance();
@@ -764,27 +841,15 @@ struct ImportPackagesPass
       }
 
       // Collect struct-level ParamDeclAttrs (shared across all functions).
-      mlir::ArrayAttr structParams = emptyArray;
-      {
-        KGEN::LIT::FnOp paramSrcFn =
-            kernel.executeFn ? kernel.executeFn : kernel.elementwiseFn;
-        if (!paramSrcFn)
-          paramSrcFn = kernel.buildGraphFn;
-        if (paramSrcFn) {
-          if (auto structDecl = mlir::dyn_cast<KGEN::LIT::StructDeclOp>(
-                  paramSrcFn->getParentOp())) {
-            llvm::SmallVector<mlir::Attribute> attrs;
-            for (auto p : structDecl.getInputParams())
-              attrs.push_back(p);
-            structParams = mlir::ArrayAttr::get(ctx, attrs);
-          }
-        }
-      }
+      llvm::SmallVector<mlir::Attribute> paramAttrs(
+          kernel.structDeclOp.getInputParams());
+      mlir::ArrayAttr structParams = mlir::ArrayAttr::get(ctx, paramAttrs);
 
       auto declOp = KernelDeclOp::create(
           builder, mlir::FusedLoc::get(ctx, fnLocs), kernel.mojoName,
           kernel.registration, kernel.deviceInfo, *executeAttr,
-          *elementwiseAttr, *tileElementwiseAttr, *buildGraphAttr, structParams,
+          *elementwiseAttr, *tileElementwiseAttr, *buildGraphAttr,
+          kernel.reduction, structParams,
           mlir::BoolAttr::get(ctx, isUserDefined),
           /*sym_visibility=*/nullptr);
       symbolTable.insert(declOp);

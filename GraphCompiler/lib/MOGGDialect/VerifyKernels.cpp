@@ -7,6 +7,9 @@
 #include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/Analysis/MojoRegistry.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENPogUtils.h"
+#include "llvm/ADT/StringSet.h"
 
 using namespace M;
 using namespace KGEN;
@@ -479,9 +482,53 @@ declVerifyExecuteNotReturningOpaqueAndThrows(KernelDeclOp decl,
 LogicalResult declVerifyHasEntryPoint(KernelDeclOp decl,
                                       const KernelDeclAdaptor &adaptor) {
   if (!adaptor.executeFunction.has_value() &&
-      !adaptor.elementwiseFunction.has_value()) {
+      !adaptor.elementwiseFunction.has_value() && !adaptor.isReduction()) {
     decl->emitError() << "The kernel must have an entry point named execute";
     return failure();
+  }
+  return success();
+}
+
+// The rules `algorithm.reduce_op.ReduceOp` documents for monoids the GC
+// instantiates.
+LogicalResult declVerifyReduction(KernelDeclOp decl,
+                                  const KernelDeclAdaptor &adaptor) {
+  KernelReductionAttr reduction = *adaptor.reduction;
+  llvm::StringRef name = adaptor.registeredOpName.strref();
+  if (adaptor.executeFunction || adaptor.elementwiseFunction ||
+      adaptor.tileElementwiseFunction || adaptor.buildGraphFunction)
+    return decl->emitError()
+           << "reduction '" << name << "' must not define a kernel entry point";
+  llvm::StringRef width = reduction.getWidthParam().strref();
+  if (width.empty())
+    return decl->emitError()
+           << "reduction '" << name
+           << "': the `width` alias must name one of the struct's parameters";
+  if (reduction.getOutputs().empty())
+    return decl->emitError()
+           << "reduction '" << name
+           << "' has no output fields (SIMD fields whose width is `" << width
+           << "`)";
+
+  // Every parameter must be the width, an output's dtype, or defaulted.
+  llvm::StringSet<> inferable;
+  inferable.insert(width);
+  for (mlir::Attribute attr : reduction.getOutputs()) {
+    mlir::Attribute dtype =
+        mlir::cast<KernelReductionOutputAttr>(attr).getDtype();
+    if (auto ref = mlir::dyn_cast<ParamDeclRefAttr>(SugarAttr::strip(dtype)))
+      inferable.insert(demangleParameterName(ref.getName().strref()));
+  }
+  PogListAttr pogs = reduction.getSignature().getParamListAttrs();
+  for (auto [i, attr] : llvm::enumerate(adaptor.structParams)) {
+    llvm::StringRef param = demangleParameterName(
+        mlir::cast<ParamDeclAttr>(attr).getName().strref());
+    bool hasDefault = i < pogs.getPogs().size() && pogs.getDefault(i);
+    if (!inferable.contains(param) && !hasDefault)
+      return decl->emitError()
+             << "reduction '" << name << "': parameter '" << param
+             << "' is neither the `width` parameter, an output's dtype, nor "
+                "defaulted";
   }
   return success();
 }
@@ -565,9 +612,11 @@ declVerifyTileElementwiseFunction(KernelDeclOp decl,
 // same op name)
 //===----------------------------------------------------------------------===//
 
-enum class KernelTypeTag { Execute, Elementwise };
+enum class KernelTypeTag { Execute, Elementwise, Reduction };
 
 static KernelTypeTag getKernelType(const KernelDeclAdaptor &adaptor) {
+  if (adaptor.isReduction())
+    return KernelTypeTag::Reduction;
   if (adaptor.isElementwise() || adaptor.isTileElementwise())
     return KernelTypeTag::Elementwise;
   if (adaptor.executeFunction.has_value())
@@ -582,6 +631,8 @@ static llvm::StringRef kernelTypeName(KernelTypeTag t) {
     return "execute";
   case KernelTypeTag::Elementwise:
     return "elementwise";
+  case KernelTypeTag::Reduction:
+    return "reduction";
   }
   llvm_unreachable("unknown KernelTypeTag");
 }
@@ -779,6 +830,12 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
       if (setFlagIfFailed(failed, declVerifyHasEntryPoint, decl, adaptor)
               .failed())
         continue;
+
+      // A reduction's entry points are the monoid's own methods.
+      if (adaptor.isReduction()) {
+        (void)setFlagIfFailed(failed, declVerifyReduction, decl, adaptor);
+        continue;
+      }
 
       // Elementwise-only kernels: verify elementwise function(s).
       if (!adaptor.executeFunction.has_value()) {

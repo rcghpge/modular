@@ -173,6 +173,49 @@ def MOGG_KernelFunctionAttr : MOGGAttr<"KernelFunction", "kernel_function"> {
   }];
 }
 
+def MOGG_KernelReductionOutputAttr
+    : MOGGAttr<"KernelReductionOutput", "kernel_reduction_output"> {
+  let summary = "One output field of a reduction monoid";
+  let description = [{
+    `name` is the field's name and `dtype` its `SIMD` element type as declared:
+    a `#kgen.param.decl.ref` to a struct parameter (inferred from the
+    reduction's result type) or a fixed dtype. The field's full type isn't
+    kept: it refers to struct parameters by bare name, which only resolve in
+    the struct declaration's scope.
+  }];
+
+  let parameters = (ins
+    "::mlir::StringAttr":$name,
+    "::mlir::Attribute":$dtype
+  );
+
+  let assemblyFormat = [{
+    `<` $name `,` $dtype `>`
+  }];
+}
+
+def MOGG_KernelReductionAttr
+    : MOGGAttr<"KernelReduction", "kernel_reduction"> {
+  let summary = "Describes a registered `ReduceOp` monoid";
+  let description = [{
+    - `signature`    : the monoid struct's parameter signature, with defaults.
+    - `width_param`  : the struct parameter the trait's `width` alias names;
+                       empty when `width` is not a bare struct parameter.
+    - `outputs`      : `#mogg.kernel_reduction_output`s, the `SIMD` fields
+                       whose width is `width_param`.
+  }];
+
+  let parameters = (ins
+    "::M::KGEN::LIT::TypeSignatureType":$signature,
+    "::mlir::StringAttr":$width_param,
+    "::mlir::ArrayAttr":$outputs
+  );
+
+  let assemblyFormat = [{
+    `<` $signature `,` $width_param `,` $outputs `>`
+  }];
+}
+
 class MOGGFusionGroupAttr<string attrName, string attrMnemonic,
                           string name>
     : MOGGAttr<attrName, attrMnemonic> {

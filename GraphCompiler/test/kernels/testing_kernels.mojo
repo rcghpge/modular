@@ -19,6 +19,7 @@ from layout import TileTensor, CoordLike, Coord, DefaultEngine
 from layout.coord import DynamicCoord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
+from algorithm.reduce_op import ReduceOp
 from max.gpu.host import DeviceContext, DeviceContextArray
 from max.gpu.host import DeviceGraphBuilder
 from extensibility import (
@@ -1855,6 +1856,107 @@ struct PrintOutputShapeStridesFusedOp:
 @extensibility.register_shape_function("print_output_shape_strides_fused")
 def print_output_shape_strides_fused_shape(x: InputTensor) -> IndexList[x.rank]:
     return x.shape()
+
+
+@extensibility.register("test_monoid_mixed_fields")
+struct TestMonoidMixedFields[dtype: DType, W: Int = 1](ReduceOp):
+    """Mixes output fields (`W`-wide `SIMD`) with internal state."""
+
+    comptime Single = TestMonoidMixedFields[Self.dtype, 1]
+    comptime width = Self.W
+
+    var acc: SIMD[Self.dtype, Self.W]
+    var index: SIMD[.int64, Self.W]
+    var best: Scalar[Self.dtype]
+    var pair: SIMD[Self.dtype, 2]
+    var count: Int
+
+    def __init__(out self):
+        self.acc = 0
+        self.index = 0
+        self.best = 0
+        self.pair = 0
+        self.count = 0
+
+    def accumulate[
+        val_dtype: DType, w: Int
+    ](
+        mut self,
+        val: SIMD[val_dtype, w],
+        idx: SIMD[.int64, w] = SIMD[.int64, w](0),
+    ):
+        pass
+
+    def join(mut self, other: Self):
+        self.acc += other.acc
+
+    def __getitem__(self, j: Int) -> Self.Single:
+        return Self.Single()
+
+    def __setitem__(mut self, j: Int, s: Self.Single):
+        pass
+
+
+@extensibility.register("test_monoid_renamed_params")
+struct TestMonoidRenamedParams[T: DType, V: Int](ReduceOp):
+    """Parameters not named `dtype`/`W`."""
+
+    comptime Single = TestMonoidRenamedParams[Self.T, 1]
+    comptime width = Self.V
+
+    var total: SIMD[Self.T, Self.V]
+
+    def __init__(out self):
+        self.total = 0
+
+    def accumulate[
+        val_dtype: DType, w: Int
+    ](
+        mut self,
+        val: SIMD[val_dtype, w],
+        idx: SIMD[.int64, w] = SIMD[.int64, w](0),
+    ):
+        pass
+
+    def join(mut self, other: Self):
+        self.total += other.total
+
+    def __getitem__(self, j: Int) -> Self.Single:
+        return Self.Single()
+
+    def __setitem__(mut self, j: Int, s: Self.Single):
+        pass
+
+
+@extensibility.register("test_monoid_defaulted_param")
+struct TestMonoidDefaultedParam[dtype: DType, W: Int, K: Int = 3](ReduceOp):
+    """An extra parameter with a default."""
+
+    comptime Single = TestMonoidDefaultedParam[Self.dtype, 1, Self.K]
+    comptime width = Self.W
+
+    var acc: SIMD[Self.dtype, Self.W]
+
+    def __init__(out self):
+        self.acc = 0
+
+    def accumulate[
+        val_dtype: DType, w: Int
+    ](
+        mut self,
+        val: SIMD[val_dtype, w],
+        idx: SIMD[.int64, w] = SIMD[.int64, w](0),
+    ):
+        pass
+
+    def join(mut self, other: Self):
+        self.acc += other.acc
+
+    def __getitem__(self, j: Int) -> Self.Single:
+        return Self.Single()
+
+    def __setitem__(mut self, j: Int, s: Self.Single):
+        pass
 
 
 @extensibility.register("imposter_add_elementwise")

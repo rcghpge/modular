@@ -134,6 +134,12 @@ constexpr llvm::StringLiteral kLeafTileTensor = "TileTensor";
 constexpr llvm::StringLiteral kLeafDeviceContextArray = "DeviceContextArray";
 constexpr llvm::StringLiteral kLeafDeviceGraphBuilder = "DeviceGraphBuilder";
 
+/// The `ReduceOp` monoid trait (`algorithm.reduce_op.ReduceOp`) and its
+/// `width` alias, which names the struct parameter that is the SIMD width.
+constexpr llvm::StringLiteral kReduceOpTraitRoot = "algorithm";
+constexpr llvm::StringLiteral kReduceOpTraitLeaf = "ReduceOp";
+constexpr llvm::StringLiteral kReduceOpWidthAlias = "width";
+
 /// Mojo module names that the MojoRegistry imports unconditionally.
 constexpr llvm::StringLiteral kMoggKernelsModuleName = "builtin_kernels";
 constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "builtin_primitives";
