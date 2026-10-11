@@ -641,6 +641,14 @@ This version is still a work in progress.
   while linear stays CPU-only until its scratch-buffer kernel is ported;
   new Metal-verified GPU kernel tests cover up/downsampling and both
   coordinate modes, plus an eager GPU-residency test.
+- Added GPU support for `mo.roi_align` / `ops.roi_align`. The op previously
+  ran only on the host, so every ROI-align call on a GPU tensor copied the
+  input and ROIs to the host and back. It now runs on the input's device
+  (one thread per pooled output element, bilinearly sampling the region's
+  bin, mirroring the CPU loop bit-for-bit), the op is now single-device with
+  host-side scalar operands instead of host-only, and `ops.roi_align` no
+  longer inserts the host round-trip. The eager interpreter family now
+  sweeps accelerators directly.
 
 - Added GPU support for `ops.repeat_interleave` with scalar repeats. The op
   previously rejected accelerator inputs outright, forcing callers (e.g.

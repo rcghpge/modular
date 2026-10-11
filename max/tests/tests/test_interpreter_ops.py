@@ -7338,8 +7338,9 @@ class TestRoiAlignOp:
 
     Routes through F.roi_align -> ops.roi_align -> rmo.MoRoiAlignOp ->
     mo.RoiAlignOp -> _handle_roi_align -> roi_align_gc.roi_align_model.
-    CPU-only (MO_HostOnly).
-    The reference is a pure-numpy bilinear-interpolation ROI pooler.
+    The op is MO_SingleDeviceWithHostOperands: input/rois/output live on the
+    input device, the four numeric scalars stay host-side. These tests run on
+    CPU. The reference is a pure-numpy bilinear-interpolation ROI pooler.
     """
 
     @staticmethod
@@ -7617,6 +7618,64 @@ class TestRoiAlignOp:
         expected = self._roi_align_ref(x_np, rois_np, 3, 3)
         np.testing.assert_allclose(
             np.from_dlpack(y), expected, rtol=1e-5, atol=1e-5
+        )
+
+    @pytest.mark.skipif(accelerator_count() == 0, reason="requires a GPU")
+    @pytest.mark.parametrize(
+        "dtype, aligned, mode",
+        [
+            (DType.float32, False, "AVG"),
+            (DType.float16, False, "AVG"),
+            (DType.bfloat16, False, "AVG"),
+            (DType.float32, False, "MAX"),
+            (DType.float32, True, "AVG"),
+        ],
+        ids=["f32", "f16", "bf16", "f32-max", "f32-aligned"],
+    )
+    def test_gpu_keeps_output_resident(
+        self, dtype: DType, aligned: bool, mode: str
+    ) -> None:
+        """GPU eager roi_align keeps the output on the input device.
+
+        The op is MO_SingleDeviceWithHostOperands: input/rois/output live on
+        the input device, the four numeric scalars stay host-side. The result
+        must come back GPU-resident and match the CPU reference.
+        """
+        device = Accelerator()
+        x_np = np.arange(100, dtype=dtype.to_numpy()).reshape(1, 10, 10, 1)
+        rois_np = np.array([[0, 1, 1, 5, 5]], dtype=dtype.to_numpy())
+
+        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+        rois = Tensor(storage=Buffer.from_numpy(rois_np).to(device))
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = F.roi_align(
+                x,
+                rois,
+                output_height=3,
+                output_width=3,
+                aligned=aligned,
+                mode=mode,
+            )
+
+        assert y.storage is not None
+        assert y.storage.device == device
+        # np.from_dlpack rejects GPU-resident buffers, so move to host first.
+        # The kernel accumulates in float32, so compare against a float32
+        # reference with a tolerance that covers the output dtype's rounding.
+        expected = self._roi_align_ref(
+            x_np.astype(np.float32),
+            rois_np.astype(np.float32),
+            3,
+            3,
+            aligned=aligned,
+            mode=mode,
+        )
+        rtol, atol = (1e-2, 1e-2) if dtype != DType.float32 else (1e-5, 1e-5)
+        np.testing.assert_allclose(
+            y.to(CPU()).to_numpy(), expected, rtol=rtol, atol=atol
         )
 
 

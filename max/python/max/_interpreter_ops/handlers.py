@@ -2059,11 +2059,12 @@ def _handle_roi_align(
 ) -> Sequence[Buffer]:
     """Dispatches eager roi_align to its GC model.
 
-    ``MO_HostOnly`` keeps every operand on CPU. ``aligned`` and ``mode`` are
-    MLIR attributes the GC kernel takes as comptime params, so they join
-    dtype in the model cache key (see ``roi_align_gc``'s module docstring);
-    the four numeric scalars stay ordinary runtime operands, re-materialized
-    at the dtypes the graph declares.
+    ``input``/``rois`` and the result live on the device inferred from the
+    first device operand; the four numeric scalars stay host-side. ``aligned``
+    and ``mode`` are MLIR attributes the GC kernel takes as comptime params, so
+    they join dtype in the model cache key (see ``roi_align_gc``'s module
+    docstring); the scalars stay ordinary runtime operands, re-materialized at
+    the dtypes the graph declares.
 
     Args:
         op: The roi_align operation.
@@ -2106,7 +2107,7 @@ def _handle_roi_align(
         )
 
     model = roi_align_gc.roi_align_model(
-        input_buffer.dtype, bool(op.aligned), mode_str
+        input_buffer.device, input_buffer.dtype, bool(op.aligned), mode_str
     )
     # Re-materialized at the dtypes the graph declares: one compiled graph
     # fixes int64 + float32.
