@@ -29,10 +29,11 @@ _ALLOW = _eager_policy.ALLOW_LAZY_COMPILE_ENV_VAR
 def _isolated_policy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> Generator[None]:
-    """Resets warned-once state, names no warm store, and points the warm
-    stamp at an empty dir."""
+    """Resets warned-once state, names no warm store, allows lazy compiles,
+    and points the warm stamp at an empty dir."""
     _eager_policy._reset_for_test()
     monkeypatch.delenv(gc_compile.WARM_STORE_ENV_VAR, raising=False)
+    monkeypatch.delenv(_ALLOW, raising=False)
     gc_compile.warm_store.cache_clear()
     monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
     yield

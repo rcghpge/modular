@@ -23,7 +23,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from max import _core, engine
+from max import _core, _eager_policy, engine
 from max._core.dialects import mo, rmo
 from max._interpreter_ops import (
     data_movement_gc,
@@ -59,6 +59,7 @@ from max.experimental import realization_context as rc
 from max.experimental.executor import (
     CompilingExecutor,
     InterpreterExecutor,
+    UnsupportedGraphError,
     set_default_executor,
 )
 from max.experimental.functional import (
@@ -5802,6 +5803,9 @@ class TestScatterNdFusedModel:
         monkeypatch.delenv(
             gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
         )
+        monkeypatch.delenv(
+            _eager_policy.ALLOW_LAZY_COMPILE_ENV_VAR, raising=False
+        )
         monkeypatch.setattr(
             scatter_nd_gc._FAMILIES[mo.ScatterNdOp], "cache", {}
         )
@@ -6675,7 +6679,7 @@ class TestConv2dOp:
 
         x = Tensor.from_dlpack(x_np)
         f = Tensor.from_dlpack(f_np)
-        with pytest.raises(KeyError, match="float16"):
+        with pytest.raises(UnsupportedGraphError, match="float16"):
             with (
                 rc.EagerRealizationContext() as ctx,
                 realization_context(ctx),
@@ -6902,7 +6906,7 @@ class TestMaxPoolOp:
         x_np = np.arange(16, dtype=np.float16).reshape(1, 4, 4, 1)
         x = Tensor.from_dlpack(x_np)
 
-        with pytest.raises(KeyError, match="float16"):
+        with pytest.raises(UnsupportedGraphError, match="float16"):
             with (
                 rc.EagerRealizationContext() as ctx,
                 realization_context(ctx),
@@ -7320,7 +7324,7 @@ class TestAvgPool2dOp:
         x_np = np.arange(16, dtype=np.float16).reshape(1, 4, 4, 1)
         x = Tensor.from_dlpack(x_np)
 
-        with pytest.raises(KeyError, match="float16"):
+        with pytest.raises(UnsupportedGraphError, match="float16"):
             with (
                 rc.EagerRealizationContext() as ctx,
                 realization_context(ctx),
@@ -7890,8 +7894,11 @@ class TestArgNonzeroOp:
         ref = self._nonzero_ref(x_np)
         np.testing.assert_array_equal(np.from_dlpack(result), ref)
 
-    def test_6d_basic(self) -> None:
-        """Test nonzero on a rank-6 tensor."""
+    def test_6d_basic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test nonzero on a rank-6 tensor, which compiles on demand."""
+        monkeypatch.delenv(
+            _eager_policy.ALLOW_LAZY_COMPILE_ENV_VAR, raising=False
+        )
         x_np = np.zeros((2, 2, 2, 2, 2, 2), dtype=np.float32)
         x_np[0, 1, 0, 1, 0, 1] = 1.0
         x_np[1, 0, 1, 0, 1, 0] = -2.0
@@ -8916,7 +8923,7 @@ class TestResizeLinearOp:
         x = Tensor.from_dlpack(x_np)
         out_shape = [1, 2, 6, 6]
 
-        with pytest.raises(KeyError, match="float16"):
+        with pytest.raises(UnsupportedGraphError, match="float16"):
             with (
                 rc.EagerRealizationContext() as ctx,
                 realization_context(ctx),
@@ -9161,7 +9168,7 @@ class TestResizeNearestOp:
         x = Tensor.from_dlpack(x_np)
         out_shape = [1, 2, 6, 6]
 
-        with pytest.raises(KeyError, match="float16"):
+        with pytest.raises(UnsupportedGraphError, match="float16"):
             with (
                 rc.EagerRealizationContext() as ctx,
                 realization_context(ctx),
@@ -9456,7 +9463,8 @@ class TestLazyGCModelCompilation:
     def _isolate_from_session_warm(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> Generator[None, None, None]:
-        """Run these decision-logic tests free of the session's warm store.
+        """Run these decision-logic tests free of the session's warm store
+        and its lazy-compile ban.
 
         This target is a ``modular_eager_py_test``, so the process names a
         build-time warm store that every family loads from. This class instead
@@ -9465,6 +9473,9 @@ class TestLazyGCModelCompilation:
         in-body, after this fixture.
         """
         monkeypatch.delenv(gc_compile.WARM_STORE_ENV_VAR, raising=False)
+        monkeypatch.delenv(
+            _eager_policy.ALLOW_LAZY_COMPILE_ENV_VAR, raising=False
+        )
         gc_compile.warm_store.cache_clear()
         yield
         gc_compile.warm_store.cache_clear()

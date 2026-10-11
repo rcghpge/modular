@@ -563,7 +563,8 @@ class GCOpFamily:
             The compiled :class:`~max.engine.Model`.
 
         Raises:
-            KeyError: *unsupported_reason*'s message if it returns one.
+            UnsupportedOpVariant: *unsupported_reason*'s message if it
+                returns one.
             EagerLazyCompileDisallowed: if the target is still missing after
                 adoption and ``MAX_EAGER_ALLOW_LAZY_COMPILE=0``.
         """
@@ -573,7 +574,7 @@ class GCOpFamily:
         if unsupported_reason is not None:
             reason = unsupported_reason()
             if reason is not None:
-                raise KeyError(reason)
+                raise _eager_policy.UnsupportedOpVariant(reason)
         with COMPILE_LOCK:
             model = self.cache.get(key)
             if model is not None:

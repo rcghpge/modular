@@ -30,12 +30,23 @@ instead of compiling.
   (`gc_compile.warm_store`), at import under `MAX_EAGER_OP_PRECOMPILE=1`.
 - Adoption is all-or-nothing. A store missing an artifact a family needs raises
   `MissingArtifactError` instead of compiling: a box with more accelerators than
-  `WARM_DEVICE_COUNT`, or a GPU lane given the CPU-only warm, fails loudly.
-  Which warm a lane gets is decided by the lane `select`, so there is no
-  runtime check of host or GPU arch.
+  `WARM_DEVICE_COUNT` fails loudly. Which warm a lane gets is decided by the
+  lane `select`, so there is no runtime check of host or GPU arch.
+- Only B200 and MI355 have a GPU warm. A CPU lane gets the CPU-only warm, and
+  any other GPU lane (H100, Apple, a local box) gets none, so the interpreter
+  compiles its op families lazily there.
 - A family must exclude from `sweep_devices()` any device it builds nothing
   for; the producer fails if it doesn't, so producer and consumer always agree
   on which slots exist.
+
+[Eager execution in CI](../../../../docs/internal/EagerInCI.md) explains
+these settings and the defaults they override. `modular_eager_py_test` also
+adds the `_interpreter_ops` dep and sets
+`MAX_EAGER_EXECUTOR=interpreter`, so a graph the interpreter refuses fails its
+test instead of compiling on the GPU worker. A test that needs such a graph
+says so with `@pytest.mark.compile_on_gpu(reason)`; the plugin then runs that
+test with the compile-on-refusal executor. CPU suites may compile, and set
+`MAX_EAGER_EXECUTOR=fallback-internal`.
 
 `test_interp_warm_cache` (multi-GPU) and `test_cpu_warm_cache` (GPUs hidden)
 check that dispatches use loaded models with no cold recompile.

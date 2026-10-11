@@ -2,15 +2,17 @@ load("//bazel:api.bzl", "modular_py_binary", "modular_py_library", "requirement"
 load(":eager_py_test.bzl", "modular_eager_py_test")
 load(":interp_cache.bzl", "warm_interp_cache")
 
-# oss/max-llm-book (test_gpt2_accel) and //max_private's eager suites force-load
-# this warm cache (MXF-533), so they need visibility here. This local directive
+# oss/max-llm-book (test_gpt2_accel), max/internal/driver/test (the gpt2
+# conformance suites) and //max_private's eager suites force-load this warm
+# cache (MXF-533), so they need visibility here. This local directive
 # extends the inherited //max/tests default so gazelle (run by `//:format`)
 # keeps the extra entries below instead of regenerating them back to the parent
 # directive's list.
-# gazelle:default_visibility //max/tests:__subpackages__,//:__pkg__,//oss/modular/max/tests:__subpackages__,//oss/max-llm-book:__subpackages__,//max_private:__subpackages__,//utils/benchmarking/kepler:__pkg__
+# gazelle:default_visibility //max/tests:__subpackages__,//:__pkg__,//max/internal/driver/test:__pkg__,//oss/modular/max/tests:__subpackages__,//oss/max-llm-book:__subpackages__,//max_private:__subpackages__,//utils/benchmarking/kepler:__pkg__
 
 package(default_visibility = [
     "//:__pkg__",
+    "//max/internal/driver/test:__pkg__",
     "//max/tests:__subpackages__",
     "//max_private:__subpackages__",
     "//oss/max-llm-book:__subpackages__",
@@ -78,7 +80,11 @@ modular_py_library(
     srcs = ["eager_warm_plugin.py"],
     imports = ["."],
     visibility = ["//visibility:public"],
-    deps = ["@rules_python//python/runfiles"],
+    deps = [
+        "//max/python/max/experimental",
+        "@rules_python//python/runfiles",
+        requirement("pytest"),
+    ],
 )
 
 # Shared per-slot compile+export loop for warm_cpu and warm_accelerators.
@@ -223,13 +229,21 @@ modular_eager_py_test(
         "MODULAR_TORCH_MEMORY_PERCENT": "0.6",
     },
     gpu_constraints = _GPU_LANE_ONLY + ["//:has_multi_gpu"],
-    ignore_extra_deps = ["//max/python/max/_interpreter_ops"],
     tags = ["gpu"],
     deps = [
         "//max/python/max:tensor",
-        "//max/python/max/_interpreter_ops",
         requirement("torch"),
     ],
+)
+
+# compile_on_gpu swaps one test's interpreter-only executor for compile on
+# refusal.
+modular_eager_py_test(
+    name = "test_eager_warm_plugin",
+    srcs = ["test_eager_warm_plugin.py"],
+    cpu_only = True,
+    target_compatible_with = _MACOS_INCOMPATIBLE,
+    deps = ["//max/python/max/experimental"],
 )
 
 # The CPU-only warm on a box with its GPUs hidden.
@@ -243,11 +257,9 @@ modular_eager_py_test(
         # absence.
         "MODULAR_ENABLE_CACHE_LOGGING": "1",
     },
-    ignore_extra_deps = ["//max/python/max/_interpreter_ops"],
     target_compatible_with = _MACOS_INCOMPATIBLE,
     deps = [
         "//max/python/max:tensor",
-        "//max/python/max/_interpreter_ops",
         "//max/python/max/driver",
         requirement("torch"),
     ],

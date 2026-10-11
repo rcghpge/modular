@@ -48,6 +48,7 @@ modular_py_library(
     test_docstring_examples = True,
     deps = [
         "//max/python/max:_core",
+        "//max/python/max:_eager_policy",
         "//max/python/max:_mlir_context",
         "//max/python/max:_validation_hooks",
         "//max/python/max:interpreter",

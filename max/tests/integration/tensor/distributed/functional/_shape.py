@@ -640,6 +640,9 @@ class _Stack:
 class _Argsort:
     MESH_2: ClassVar[DeviceMesh]
 
+    @pytest.mark.compile_on_gpu(
+        "mx.argsort is staged as an undeclared custom op the interpreter can't bind"
+    )
     def test_argsort_replicated(self) -> None:
         """Argsort on replicated 1D tensor — placement preserved."""
         t_np = np.array([3, 1, 2, 0], dtype=np.float32)

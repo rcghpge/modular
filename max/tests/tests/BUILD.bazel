@@ -70,10 +70,6 @@ modular_eager_py_test(
     cpu_only = True,
     # Don't background-compile every eager graph (SDLC-4307 CI cpu/mem).
     env = {"MAX_EAGER_EXECUTOR": "fallback-internal"},
-    ignore_extra_deps = [
-        # The interpreter imports it lazily; without it every eager op compiles.
-        "//max/python/max/_interpreter_ops",
-    ],
     # Every case compiles a distinct graph, which serializes past the timeout
     # in one process.
     shard_count = 4,
@@ -84,7 +80,6 @@ modular_eager_py_test(
     deps = [
         "//max/python/max:_mlir_context",
         "//max/python/max:tree",
-        "//max/python/max/_interpreter_ops",
         "//max/python/max/driver",
         "//max/python/max/dtype",
         "//max/python/max/experimental",
@@ -229,8 +224,8 @@ modular_eager_py_test(
     }),  # FIXME: MOCO-2411
     deps = [
         "//max/python/max:_core",
+        "//max/python/max:_eager_policy",
         "//max/python/max:tensor",
-        "//max/python/max/_interpreter_ops",
         "//max/python/max/driver",
         "//max/python/max/dtype",
         "//max/python/max/engine",
@@ -250,8 +245,6 @@ modular_eager_py_test(
         "test.resources:gpu-memory": "4",
     },
     ignore_extra_deps = [
-        # lazy import
-        "//max/python/max/_interpreter_ops",
         "//max/python/max/nn",
     ],
     tags = ["gpu"],
@@ -260,7 +253,6 @@ modular_eager_py_test(
         "//max/python/max:_core",
         "//max/python/max:interpreter",
         "//max/python/max:tensor",
-        "//max/python/max/_interpreter_ops",
         "//max/python/max/driver",
         "//max/python/max/dtype",
         "//max/python/max/graph",
@@ -281,7 +273,6 @@ modular_eager_py_test(
     deps = [
         "//max/python/max:_core",
         "//max/python/max:_eager_policy",
-        "//max/python/max/_interpreter_ops",
         "//max/python/max/driver",
         "//max/python/max/graph",
     ],
