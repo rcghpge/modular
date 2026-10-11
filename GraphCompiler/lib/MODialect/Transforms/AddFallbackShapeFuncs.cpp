@@ -92,6 +92,7 @@ HAS_FALLBACK(MO::ReduceMinOp)
 HAS_FALLBACK(MO::ReduceMulOp)
 HAS_FALLBACK(MO::ReshapeOp)
 HAS_FALLBACK(MO::RoiAlignOp)
+HAS_FALLBACK(MO::ResizeBicubicOp)
 HAS_FALLBACK(MO::ResizeLinearOp)
 HAS_FALLBACK(MO::ResizeNearestOp)
 HAS_FALLBACK(MO::ScatterOp)
@@ -192,6 +193,7 @@ struct AddFallbackShapeFunctions
       CALL_FALLBACK(MO::ReduceMulOp)
       CALL_FALLBACK(MO::ReshapeOp)
       CALL_FALLBACK(MO::RoiAlignOp)
+      CALL_FALLBACK(MO::ResizeBicubicOp)
       CALL_FALLBACK(MO::ResizeLinearOp)
       CALL_FALLBACK(MO::ResizeNearestOp)
       CALL_FALLBACK(MO::ScatterOp)
@@ -706,6 +708,15 @@ ErrorOrSuccess Fallback<MO::ResizeNearestOp>::build(GraphOp &graph,
                                                     OpBuilder &builder,
                                                     MO::ResizeNearestOp op) {
   buildForOpResult(graph, builder, op, MO::ResizeNearestOp::getOperationName(),
+                   op.getOperands(), op.getOutputParamDecls(),
+                   /*kgenParams=*/{}, op.getDataDependentInputIndices());
+  return success();
+}
+
+ErrorOrSuccess Fallback<MO::ResizeBicubicOp>::build(GraphOp &graph,
+                                                    OpBuilder &builder,
+                                                    MO::ResizeBicubicOp op) {
+  buildForOpResult(graph, builder, op, MO::ResizeBicubicOp::getOperationName(),
                    op.getOperands(), op.getOutputParamDecls(),
                    /*kgenParams=*/{}, op.getDataDependentInputIndices());
   return success();
