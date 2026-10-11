@@ -855,12 +855,10 @@ struct RandomNormal:
     ) capturing raises:
         @inline(.always)
         def output_fn[
-            _width: SIMDLength,
-            _rank: Int,
-        ](coords: IndexList[_rank], val: SIMD[dtype, _width]) {imm output}:
+            _width: SIMDLength
+        ](coords: Coord, val: SIMD[dtype, _width]) {imm output}:
             output._lambda_store[width=_width](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](val),
+                coords, rebind[SIMD[output.dtype, _width]](val)
             )
 
         random_normal[target=target](
@@ -932,12 +930,10 @@ struct RandomUniform:
     ) capturing raises:
         @inline(.always)
         def output_fn[
-            _width: SIMDLength,
-            _rank: Int,
-        ](coords: IndexList[_rank], val: SIMD[dtype, _width]) {imm output}:
+            _width: SIMDLength
+        ](coords: Coord, val: SIMD[dtype, _width]) {imm output}:
             output._lambda_store[width=_width](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](val),
+                coords, rebind[SIMD[output.dtype, _width]](val)
             )
 
         random_uniform[target=target](
@@ -2092,7 +2088,10 @@ struct Struct_moe_router_group_limited:
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[scores_type, width]:
+        ](coords: Coord) -> SIMD[scores_type, width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the expert-scores lambda contract is rank 2"
             return expert_scores._lambda_load[width=width](coords)
 
         router_group_limited[
@@ -2178,7 +2177,10 @@ struct Struct_moe_single_group_router_eplb:
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[scores_type, width]:
+        ](coords: Coord) -> SIMD[scores_type, width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the expert-scores lambda contract is rank 2"
             return expert_scores._lambda_load[width=width](coords)
 
         single_group_router_eplb[
@@ -2231,7 +2233,10 @@ struct Struct_moe_single_group_router:
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[scores_type, width]:
+        ](coords: Coord) -> SIMD[scores_type, width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the expert-scores lambda contract is rank 2"
             return expert_scores._lambda_load[width=width](coords)
 
         single_group_router[

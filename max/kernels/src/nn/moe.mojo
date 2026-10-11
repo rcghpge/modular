@@ -52,7 +52,7 @@ from layout import (
 )
 from max.runtime.tracing import Trace, TraceLevel
 
-from std.utils.index import IndexList, StaticTuple
+from std.utils.index import StaticTuple
 
 from nn.activations import sigmoid
 from nn.topk import TopK_2
@@ -480,7 +480,7 @@ def group_limited_router_kernel[
     topk_group: Int,
     norm_weights: Bool,
     num_threads: Int,
-    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+    scores_input_fn: def[width: Int](Coord) capturing -> SIMD[
         scores_type, width
     ],
 ](
@@ -727,8 +727,11 @@ def router_group_limited[
 
     def load_scores[
         width: Int
-    ](coords: IndexList[2]) capturing -> SIMD[scores_type, width]:
-        return expert_scores.load[width=width]((coords[0], coords[1]))
+    ](coords: Coord) capturing -> SIMD[scores_type, width]:
+        comptime assert (
+            coords.rank == 2
+        ), "the expert-scores lambda contract is rank 2"
+        return expert_scores.load[width=width](coords)
 
     router_group_limited[
         n_routed_experts=n_routed_experts,
@@ -758,7 +761,7 @@ def router_group_limited[
     topk_group: Int,
     norm_weights: Bool,
     target: StaticString,
-    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+    scores_input_fn: def[width: Int](Coord) capturing -> SIMD[
         scores_type, width
     ],
 ](
@@ -990,7 +993,7 @@ def single_group_router_kernel[
     n_experts_per_tok: Int,
     norm_weights: Bool,
     num_threads: Int,
-    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+    scores_input_fn: def[width: Int](Coord) capturing -> SIMD[
         scores_type, width
     ],
 ](
@@ -1099,7 +1102,7 @@ def single_group_router_eplb_kernel[
     num_log: Int,
     max_replicas: Int,
     hash_decorrelate: Bool,
-    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+    scores_input_fn: def[width: Int](Coord) capturing -> SIMD[
         scores_type, width
     ],
 ](
@@ -1293,8 +1296,11 @@ def single_group_router[
 
     def load_scores[
         width: Int
-    ](coords: IndexList[2]) capturing -> SIMD[scores_type, width]:
-        return expert_scores.load[width=width]((coords[0], coords[1]))
+    ](coords: Coord) capturing -> SIMD[scores_type, width]:
+        comptime assert (
+            coords.rank == 2
+        ), "the expert-scores lambda contract is rank 2"
+        return expert_scores.load[width=width](coords)
 
     single_group_router[
         n_routed_experts,
@@ -1320,7 +1326,7 @@ def single_group_router[
     n_experts_per_tok: Int,
     norm_weights: Bool,
     target: StaticString,
-    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+    scores_input_fn: def[width: Int](Coord) capturing -> SIMD[
         scores_type, width
     ],
 ](
@@ -1522,14 +1528,20 @@ def _single_group_router_on_partials[
 
     def load_scores[
         width: Int
-    ](coords: IndexList[2]) capturing -> SIMD[scores_type, width]:
-        var score = partials.load[width=width]((coords[0], coords[1]))
+    ](coords: Coord) capturing -> SIMD[scores_type, width]:
+        comptime assert (
+            coords.rank == 2
+        ), "the expert-scores lambda contract is rank 2"
+        var score = partials.load[width=width](coords)
         # The router launches one block per token, so `grid_dim.x` is the
         # token count. Capturing `num_tokens` instead reads wrong values
         # on the device.
         comptime for split in range(1, num_splits):
             score += partials.load[width=width](
-                (split * Int(grid_dim.x) + coords[0], coords[1])
+                (
+                    split * Int(grid_dim.x) + Int(coords[0].value()),
+                    Int(coords[1].value()),
+                )
             )
         return sigmoid(score)
 
@@ -2028,8 +2040,11 @@ def single_group_router_eplb[
 
     def load_scores[
         width: Int
-    ](coords: IndexList[2]) capturing -> SIMD[scores_type, width]:
-        return expert_scores.load[width=width]((coords[0], coords[1]))
+    ](coords: Coord) capturing -> SIMD[scores_type, width]:
+        comptime assert (
+            coords.rank == 2
+        ), "the expert-scores lambda contract is rank 2"
+        return expert_scores.load[width=width](coords)
 
     single_group_router_eplb[
         n_routed_experts=n_routed_experts,
@@ -2065,7 +2080,7 @@ def single_group_router_eplb[
     max_replicas: Int,
     hash_decorrelate: Bool,
     target: StaticString,
-    scores_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
+    scores_input_fn: def[width: Int](Coord) capturing -> SIMD[
         scores_type, width
     ],
 ](
