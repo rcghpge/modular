@@ -834,7 +834,7 @@ struct Array[T: AnyType, length: Int](
     # Trait implementations
     # ===------------------------------------------------------------------=== #
 
-    @always_inline("builtin")
+    @inline(.always)
     def __len__(self) -> Int:
         """Returns the length of the array.
 
