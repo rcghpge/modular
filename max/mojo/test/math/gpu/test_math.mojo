@@ -122,7 +122,7 @@ def test_math() raises:
             erfc,
             # lgamma,
             # gamma,
-            # remainder_fn,
+            remainder_fn,
             # j0,
             # j1,
             # y0,

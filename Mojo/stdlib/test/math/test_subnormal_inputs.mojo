@@ -11,17 +11,98 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+# Subnormal divisors and dividends on the host, where arithmetic is IEEE and
+# every result is exact. `remainder` reads a subnormal divisor through its
+# integer significand, so on a target that flushes subnormals (Apple GPUs in
+# float32) the zero results below still hold and normal results stay exact;
+# the subnormal results are what such a target flushes to zero.
+
+from std.math import remainder
+from std.testing import TestSuite, assert_equal, assert_true
+
+comptime f32_min = Float32(from_bits=UInt32(1))  # 2^-149
+comptime f32_max_sub = Float32(from_bits=UInt32(0x007FFFFF))
+comptime f32_min_normal = Float32(from_bits=UInt32(0x00800000))  # 2^-126
+comptime f64_min = Float64(from_bits=UInt64(1))  # 2^-1074
+
+
+def test_remainder_subnormal() raises:
+    # Every multiple of the smallest subnormal reduces to a signed zero.
+    assert_true(remainder(Float32(1.0), f32_min).to_bits() == 0)
+    assert_true(remainder(-f32_max_sub, f32_min).to_bits() == 0x80000000)
+    assert_equal(remainder(Float32(8.0), f32_min), Float32(0.0))
+    assert_equal(
+        remainder(Float32(1.1754943508222875e-38), f32_min * 3), -f32_min
+    )
+    assert_equal(remainder(f32_max_sub, f32_min * 7), f32_min * 3)
+    assert_equal(remainder(f32_min, f32_min * 3), f32_min)
+    assert_true(remainder(Float64(1.0), f64_min).to_bits() == 0)
+    assert_equal(
+        remainder(Float64(2.2250738585072014e-308), f64_min * 3), f64_min
+    )
+    var v = remainder(
+        SIMD[.float32, 4](1.0, 7.0, f32_max_sub, -3.0),
+        SIMD[.float32, 4](f32_min, 3.0, f32_min * 7, f32_min),
+    )
+    assert_equal(v, SIMD[.float32, 4](0.0, 1.0, f32_min * 3, -0.0))
+
+
+def test_remainder_subnormal_results() raises:
+    # Subnormal results from subnormal and from normal inputs; the last pair
+    # is two normal inputs one ulp apart. 2^149 mod (2^23 - 1) = 2^11.
+    assert_true(remainder(f32_min, f32_min * 3).to_bits() == 1)
+    assert_true(remainder(Float32(1.0), f32_max_sub).to_bits() == 0x800)
+    assert_true(
+        remainder(
+            Float32(from_bits=UInt32(0x00800001)), f32_min_normal
+        ).to_bits()
+        == 1
+    )
+
+
+def test_remainder_normal_results_near_min_normal() raises:
+    # Normal results whose reduction runs close to the subnormal boundary,
+    # where `p * 0.5` is inexact and the fma residues are smallest.
+    assert_equal(
+        remainder(f32_min_normal * 3, f32_min_normal * 2), -f32_min_normal
+    )
+    assert_equal(
+        remainder(f32_min_normal * 5, f32_min_normal * 2), f32_min_normal
+    )
+    assert_equal(
+        remainder(f32_min_normal * 7, f32_min_normal * 4), -f32_min_normal
+    )
+    # 2^26 = 3 * 22369621 + 1, so 2^-100 = n * (3 * 2^-126) + 2^-126.
+    assert_equal(
+        remainder(Float32(from_bits=UInt32(0x0D800000)), f32_min_normal * 3),
+        f32_min_normal,
+    )
+    assert_equal(remainder(Float32(1.0), f32_min_normal * 3), f32_min_normal)
+    var v = remainder(
+        SIMD[.float32, 4](f32_min_normal * 3, 1.0, f32_min_normal * 5, -1.0),
+        SIMD[.float32, 4](
+            f32_min_normal * 2,
+            f32_min_normal * 3,
+            f32_min_normal * 2,
+            f32_min_normal * 3,
+        ),
+    )
+    assert_equal(
+        v,
+        SIMD[.float32, 4](
+            -f32_min_normal, f32_min_normal, f32_min_normal, -f32_min_normal
+        ),
+    )
+
+
 # CPU coverage of normal and subnormal outputs, and of the integer-only
 # helpers that keep subnormal results on targets that flush arithmetic.
 
 from std.math import hypot, inf, isinf, isnan, nan
 from std.math.math import _narrow_f32_to_bf16_bits, _scale_down_bits
-from std.testing import TestSuite, assert_equal, assert_true
 
 from test_utils import ulp_distance
 
-comptime f32_min = Float32(from_bits=UInt32(1))  # 2^-149
-comptime f32_max_sub = Float32(from_bits=UInt32(0x007FFFFF))
 comptime f64_max_sub = Float64(from_bits=UInt64(0x000FFFFFFFFFFFFF))
 
 

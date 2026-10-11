@@ -2909,6 +2909,7 @@ def remainder[
 
     Constraints:
         The input must be a floating-point type.
+        The `float64` type is not supported on Apple GPUs.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
@@ -2922,25 +2923,35 @@ def remainder[
         The `remainder` of the inputs.
     """
 
-    @inline(.nodebug)
-    def _float32_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["remainderf", Scalar[result_type]](
-            arg0, arg1
-        )
+    _assert_float64_supported[dtype, "remainder"]()
 
-    @inline(.nodebug)
-    def _float64_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["remainder", Scalar[result_type]](
-            arg0, arg1
+    comptime if dtype == .bfloat16:
+        # bfloat16 shares float32's exponent range, so a subnormal bfloat16
+        # is a subnormal float32. Widening through the bits keeps it from
+        # being flushed to zero by a float conversion on targets that flush
+        # subnormals, which would turn a subnormal divisor into NaN.
+        comptime I32 = SIMD[.int32, width]
+        # A bfloat16 is the top 16 bits of a float32.
+        comptime bf16_to_f32_shift = 16
+        var xw = SIMD[.float32, width](
+            from_bits=x._to_bits_signed().cast[.int32]()
+            << I32(bf16_to_f32_shift)
         )
-
-    comptime if dtype == .float64:
-        return _simd_apply[_float64_dispatch, result_dtype=dtype](x, y)
-    return _simd_apply[_float32_dispatch, result_dtype=dtype](x, y)
+        var yw = SIMD[.float32, width](
+            from_bits=y._to_bits_signed().cast[.int32]()
+            << I32(bf16_to_f32_shift)
+        )
+        var r = _remainder_impl(xw, yw)
+        comptime if is_apple_gpu():
+            # The result is exact in bfloat16 but may be subnormal, which the
+            # float32 -> bfloat16 cast flushes to zero on Apple GPUs.
+            return rebind[SIMD[dtype, width]](_narrow_f32_to_bf16_bits(r))
+        return r.cast[dtype]()
+    elif bit_width_of[dtype]() < 32:
+        return _remainder_impl(x.cast[.float32](), y.cast[.float32]()).cast[
+            dtype
+        ]()
+    return _remainder_impl(x, y)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4235,6 +4246,68 @@ def _assert_float64_supported[dtype: DType, name: StaticString]():
 
 
 @inline(.always)
+def _scalbn_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], n: SIMD[.int32, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    """Computes x * 2^n with a single final rounding (musl `scalbn`)."""
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime emax = FPUtils[dtype].exponent_bias()
+    comptime emin = 1 - emax
+    # Scaling down by 2^(emin + p) rather than 2^emin keeps the intermediate
+    # normal, so a subnormal result is rounded only once.
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime down_exp = emin + mant + 1
+    var up = _pow2_impl[dtype, width](I(emax))
+    var down = _pow2_impl[dtype, width](I(down_exp))
+    # A subnormal x is `m * 2^(emin - mant)` for its integer significand m;
+    # converting m is exact and keeps the scaling away from arithmetic on a
+    # subnormal, which targets that flush them (Apple GPUs) treat as zero.
+    var bits = x._to_bits_signed()
+    var sub = (
+        (bits >> I(mant)) & I((1 << FPUtils[dtype].exponent_width()) - 1)
+    ).eq(0)
+    var m = (bits & I((1 << mant) - 1)).cast[dtype]()
+    var y = sub.select(copysign(m, x), x)
+    var k = n.cast[FPUtils[dtype].integral_type]() + sub.select(
+        I(emin - mant), I(0)
+    )
+    comptime for _ in range(2):
+        var hi = k.gt(I(emax))
+        var lo = k.lt(I(emin))
+        y = hi.select(y * up, lo.select(y * down, y))
+        k = hi.select(k - I(emax), lo.select(k - I(down_exp), k))
+    k = k.clamp(I(emin), I(emax))
+    return y * _pow2_impl[dtype, width](k)
+
+
+@inline(.always)
+def _scale_up_subnormal[
+    dtype: DType, width: SIMDLength, //, shift: Int
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    """Returns `x * 2^shift` for subnormal `x`, built from its integer
+    significand so flush-to-zero targets keep the value. `shift` must make
+    the result normal (at least `mantissa_width`)."""
+    comptime TInt = SIMD[_integral_type_of[dtype](), width]
+    comptime mantissa_width = FPUtils[dtype].mantissa_width()
+    comptime assert shift >= mantissa_width, "result must be normal"
+    comptime emin = 1 - FPUtils[dtype].exponent_bias()
+    # The significand `m` converts exactly; `m * 2^(emin - mantissa_width +
+    # shift)` has only normal operands and a normal result.
+    var m = (x._to_bits_signed() & TInt((1 << mantissa_width) - 1)).cast[
+        dtype
+    ]()
+    comptime scale = SIMD[dtype, width](
+        from_bits=TInt(
+            (emin - mantissa_width + shift + FPUtils[dtype].exponent_bias())
+            << mantissa_width
+        )
+    )
+    return copysign(m * scale, x)
+
+
+@inline(.always)
 def _scale_down_bits[
     dtype: DType, width: SIMDLength, //, shift: Int
 ](y: SIMD[dtype, width]) -> type_of(y) where dtype.is_floating_point():
@@ -4280,6 +4353,114 @@ def _narrow_f32_to_bf16_bits[
 
 
 @inline(.always)
+def _fmod_pos_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    """Computes fmod(x, y) exactly for finite x >= 0 and finite normal
+    y > 0. Callers lift subnormal divisors first; a subnormal y would
+    push the quotient scale past the representable exponent range.
+
+    Each step strips up to `B` quotient bits: with y' = y * 2^k chosen so that
+    x / y' < 2^(B+1), q = trunc(x / y') estimates the quotient. `/` may be off
+    by a few ulps (GPU fast math), so q is stepped until x - q * y' lies in
+    [0, y'). Rounding is monotonic and 0 and y' are representable, so those
+    range tests on the rounded fma are exact; once they pass, x - q * y' is a
+    multiple of ulp(y') below y', which the fma computes exactly.
+    """
+    comptime B = 22 if dtype == .float32 else 50
+    comptime T = SIMD[dtype, width]
+    comptime I32 = SIMD[.int32, width]
+    var r = x
+    var ey = frexp(y)[1].cast[.int32]()
+    var active = r.ge(y)
+    while active.reduce_or():
+        var ex = frexp(r)[1].cast[.int32]()
+        var k = max(ex - ey - I32(B), I32(0))
+        # y is normal and k >= 0, so two exact power-of-two factors replace the
+        # general `_scalbn_impl`; 2^k itself can exceed the exponent range.
+        var kh = (k >> 1).cast[FPUtils[dtype].integral_type]()
+        var kl = k.cast[FPUtils[dtype].integral_type]() - kh
+        var yk = y * _pow2_impl[dtype, width](kh) * _pow2_impl[dtype, width](kl)
+        var q = trunc(r / yk)
+        var t = fma(-q, yk, r)
+        var neg = t.lt(0)
+        var fix = active & (neg | t.ge(yk))
+        while fix.reduce_or():
+            q = fix.select(q + neg.select(T(-1), T(1)), q)
+            t = fma(-q, yk, r)
+            neg = t.lt(0)
+            fix = active & (neg | t.ge(yk))
+        r = active.select(t, r)
+        active = r.ge(y)
+    return r
+
+
+@inline(.always)
+def _remainder_lifted_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    # Apple GPU variant of `_remainder_impl`.
+    comptime T = SIMD[dtype, width]
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime emin = 1 - FPUtils[dtype].exponent_bias()
+    var ax = abs(x)
+    var p = abs(y)
+    var p_bits = p._to_bits_signed()
+    var invalid = isnan(x) | isnan(y) | isinf(x) | p_bits.eq(0)
+
+    # The remainder is a multiple of the smaller ulp of |x| and |y|, so for a
+    # small |y| it can be subnormal, and targets that flush subnormals (Apple
+    # GPUs in float32) would lose it. Such a divisor is lifted by 2^(2 mant),
+    # which makes every operand and result of the reduction normal or zero:
+    # |x| is reduced modulo the lifted 2|y| (a multiple of 2|y|, so the
+    # remainder is unchanged), lifted itself, reduced again, and the result
+    # is scaled back with integer operations. A divisor above the limit
+    # leaves all intermediates normal.
+    comptime lift_limit = Scalar[FPUtils[dtype].integral_type](
+        (emin + mant + 3 + FPUtils[dtype].exponent_bias()) << mant
+    )
+    comptime lift_shift = 2 * mant
+    comptime lift = _pow2_impl[dtype, 1](
+        Scalar[FPUtils[dtype].integral_type](lift_shift)
+    )
+    var small_y = p_bits.lt(I(lift_limit))
+    var sub_y = p_bits.lt(I(1 << mant))
+    p = small_y.select(
+        sub_y.select(_scale_up_subnormal[lift_shift](p), p * lift), p
+    )
+    var p2 = p + p
+    var use_fmod = isfinite(p2) & ~invalid
+    var a = use_fmod.select(
+        _fmod_pos_impl(use_fmod.select(ax, T(0)), use_fmod.select(p2, T(1))),
+        ax,
+    )
+    if small_y.reduce_or():
+        var sub_a = a._to_bits_signed().lt(I(1 << mant))
+        var lifted = sub_a.select(_scale_up_subnormal[lift_shift](a), a * lift)
+        lifted = (use_fmod & small_y).select(lifted, T(0))
+        a = small_y.select(_fmod_pos_impl(lifted, use_fmod.select(p2, T(1))), a)
+
+    # p is far above the minimum normal here, so p * 0.5 is exact.
+    var p_half = p * 0.5
+    var c1 = a.gt(p_half)
+    a = c1.select(a - p, a)
+    var c2 = c1 & a.ge(p_half)
+    a = c2.select(a - p, a)
+    if small_y.reduce_or():
+        a = small_y.select(
+            _is_zero_bits(a).select(a, _scale_down_bits[lift_shift](a)), a
+        )
+
+    var r = x._to_bits_signed().lt(0).select(-a, a)
+    return invalid.select(nan[dtype](), r)
+
+
+@inline(.always)
 def _sqrt_ieee[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x):
@@ -4288,6 +4469,69 @@ def _sqrt_ieee[
     comptime if is_nvidia_gpu() and dtype == .float32:
         return _llvm_unary_fn["llvm.sqrt"](x)
     return sqrt(x)
+
+
+@inline(.always)
+def _remainder_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    # Sun fdlibm e_remainder.c: reduce |x| modulo 2|y| exactly, then pick the
+    # nearest multiple of |y| with ties to even.
+    comptime if is_apple_gpu():
+        return _remainder_lifted_impl(x, y)
+    comptime T = SIMD[dtype, width]
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime emin = 1 - FPUtils[dtype].exponent_bias()
+    var ax = abs(x)
+    var p = abs(y)
+    var p_bits = p._to_bits_signed()
+    var invalid = isnan(x) | isnan(y) | isinf(x) | p_bits.eq(0)
+
+    # A subnormal |y| = m * 2^(emin - mant) is read through its integer
+    # significand and lifted to `m * 2^emin`, that is scaled by 2^mant, so
+    # every operand of the reduction is normal. |x| is first reduced modulo
+    # the lifted 2|y|, a multiple of 2|y| that leaves the remainder
+    # unchanged, then lifted too, and the result scales back exactly. On
+    # targets that flush subnormals (Apple GPUs in float32) 2|y| would
+    # otherwise read as zero and the result be NaN; with the lift the result
+    # is a zero, since the true remainder is at most |y|/2 and so itself
+    # subnormal. Whenever the true result is normal, every intermediate is
+    # normal or zero, so those results are exact on such targets too.
+    var sub_y = (p_bits >> I(mant)).eq(0)
+    comptime lift = _pow2_impl[dtype, 1](
+        Scalar[FPUtils[dtype].integral_type](mant)
+    )
+    comptime sub_unit = _pow2_impl[dtype, 1](
+        Scalar[FPUtils[dtype].integral_type](emin)
+    )
+    p = sub_y.select((p_bits & I((1 << mant) - 1)).cast[dtype]() * sub_unit, p)
+    var p2 = p + p
+    var use_fmod = isfinite(p2) & ~invalid
+    var a = use_fmod.select(
+        _fmod_pos_impl(use_fmod.select(ax, T(0)), use_fmod.select(p2, T(1))),
+        ax,
+    )
+    if sub_y.reduce_or():
+        var lifted = (use_fmod & sub_y).select(a * lift, T(0))
+        a = sub_y.select(_fmod_pos_impl(lifted, use_fmod.select(p2, T(1))), a)
+
+    # Below 2^(emin+1), p * 0.5 is inexact, so compare 2a against p instead.
+    comptime tiny = _pow2_impl[dtype, 1](
+        Scalar[FPUtils[dtype].integral_type](2 - FPUtils[dtype].exponent_bias())
+    )
+    var small_p = p.lt(T(tiny))
+    var p_half = p * 0.5
+    var c1 = small_p.select((a + a).gt(p), a.gt(p_half))
+    a = c1.select(a - p, a)
+    var c2 = c1 & small_p.select((a + a).ge(p), a.ge(p_half))
+    a = c2.select(a - p, a)
+    a = sub_y.select(a * (1 / lift), a)
+
+    var r = x._to_bits_signed().lt(0).select(-a, a)
+    return invalid.select(nan[dtype](), r)
 
 
 @inline(.always)
