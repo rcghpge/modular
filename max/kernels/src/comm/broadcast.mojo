@@ -457,15 +457,16 @@ def _should_use_2stage[ngpus: Int](num_bytes: Int) -> Bool:
     - 8 GPUs: 2-stage wins for >= 2 MiB
     """
 
-    comptime if ngpus == 2:
-        return False
-    elif ngpus == 4:
-        return num_bytes >= 6 * 1024 * 1024  # 6 MiB
-    elif ngpus == 8:
-        return num_bytes >= 2 * 1024 * 1024  # 2 MiB
-    else:
-        # For other GPU counts, use 2-stage for large sizes as a reasonable default
-        return num_bytes >= 4 * 1024 * 1024  # 4 MiB
+    comptime match ngpus:
+        case 2:
+            return False
+        case 4:
+            return num_bytes >= 6 * 1024 * 1024  # 6 MiB
+        case 8:
+            return num_bytes >= 2 * 1024 * 1024  # 2 MiB
+        case _:
+            # For other GPU counts, use 2-stage for large sizes as a reasonable default
+            return num_bytes >= 4 * 1024 * 1024  # 4 MiB
 
 
 def broadcast[

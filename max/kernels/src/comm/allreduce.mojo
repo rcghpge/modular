@@ -224,12 +224,13 @@ struct AllReduceAlgorithm(EnumLike, TrivialRegisterPassable, Writable):
         Args:
             writer: The writer to write to.
         """
-        if self == Self.ONE_STAGE:
-            writer.write("1_stage")
-        elif self == Self.TWO_STAGE:
-            writer.write("2_stage")
-        else:
-            writer.write("lamport")
+        match self:
+            case .ONE_STAGE:
+                writer.write("1_stage")
+            case .TWO_STAGE:
+                writer.write("2_stage")
+            case _:
+                writer.write("lamport")
 
 
 @fieldwise_init
@@ -1838,7 +1839,7 @@ def allreduce[
     # This device's group. `group_start` is 0 for a full-world collective
     # (group_size == ngpus), so every group_start-relative read below is
     # byte-identical to the pre-grouping `input_tensors[0]` in that case.
-    var global_rank = my_rank.value() if my_rank else Int(ctx.id())
+    var global_rank = my_rank.or_else(Int(ctx.id()))
     var group_start = ualign_down(global_rank, group_size)
 
     # Return early, if the input buffer is empty. Read from THIS DEVICE'S

@@ -971,7 +971,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl[
             rebind[SIMD[kv_type, width]](cast_saturating[kv_type](output_val)),
         )
 
-    comptime if group_size:
+    comptime if case .Some(group_size) = group_size:
         comptime assert (
             not has_zp.value()
         ), "Zero point is not supported for quantization."
@@ -980,7 +980,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl[
         ), "Expect GPTQ weights in an uint8 tensor."
 
         _qmatmul_common[
-            group_size=group_size.value(),
+            group_size=group_size,
             target=target,
             elementwise_lambda_fn=write_to_cache,
         ](
@@ -1106,7 +1106,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_bias[
             rebind[SIMD[kv_type, width]](cast_saturating[kv_type](output_val)),
         )
 
-    comptime if group_size:
+    comptime if case .Some(group_size) = group_size:
         comptime assert (
             not has_zp.value()
         ), "Zero point is not supported for quantization."
@@ -1115,7 +1115,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_bias[
         ), "Expect GPTQ weights to be a 'uint8' tensor."
 
         _qmatmul_common[
-            group_size=group_size.value(),
+            group_size=group_size,
             target=target,
             elementwise_lambda_fn=write_to_cache,
         ](
@@ -3571,28 +3571,29 @@ def _qmatmul_gguf_quantized_common[
     weight: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     output: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
 ) raises:
-    comptime if quantization_encoding == "q4_0":
-        matmul_qint4[32, elementwise_lambda_fn=elementwise_lambda_fn](
-            hidden_state,
-            weight,
-            output,
-        )
-    elif quantization_encoding == "q4_k":
-        matmul_Q4_K[elementwise_lambda_fn=elementwise_lambda_fn](
-            hidden_state,
-            weight,
-            output,
-        )
-    elif quantization_encoding == "q6_k":
-        matmul_Q6_K[elementwise_lambda_fn=elementwise_lambda_fn](
-            hidden_state,
-            weight,
-            output,
-        )
-    else:
-        raise Error(
-            "Unsupported quantization encoding: ", quantization_encoding
-        )
+    comptime match quantization_encoding:
+        case "q4_0":
+            matmul_qint4[32, elementwise_lambda_fn=elementwise_lambda_fn](
+                hidden_state,
+                weight,
+                output,
+            )
+        case "q4_k":
+            matmul_Q4_K[elementwise_lambda_fn=elementwise_lambda_fn](
+                hidden_state,
+                weight,
+                output,
+            )
+        case "q6_k":
+            matmul_Q6_K[elementwise_lambda_fn=elementwise_lambda_fn](
+                hidden_state,
+                weight,
+                output,
+            )
+        case _:
+            raise Error(
+                "Unsupported quantization encoding: ", quantization_encoding
+            )
 
 
 # ===-----------------------------------------------------------------------===#

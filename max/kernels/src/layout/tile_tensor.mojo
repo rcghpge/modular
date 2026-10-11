@@ -76,15 +76,16 @@ def _default_invariant[mut: Bool]() -> Bool:
 def _async_fill_value[dtype: DType, fill: Fill]() -> Optional[Scalar[dtype]]:
     """Returns the value written to the bytes a masked async copy skips, or
     `None` when `Fill.NONE` asks for those bytes to be left as they are."""
-    comptime if fill == Fill.NONE:
-        return None
-    elif fill == Fill.NAN:
-        comptime assert (
-            dtype.is_floating_point()
-        ), "Fill.NAN requires a floating-point dtype"
-        return nan[dtype]()
-    else:
-        return Scalar[dtype](0)
+    comptime match fill:
+        case .NONE:
+            return None
+        case .NAN:
+            comptime assert (
+                dtype.is_floating_point()
+            ), "Fill.NAN requires a floating-point dtype"
+            return nan[dtype]()
+        case _:
+            return Scalar[dtype](0)
 
 
 struct _IndexOrSlice[static: Int = -1](
@@ -268,9 +269,9 @@ def _kept_slice_axis_for_output[
     var kept_axes_seen = 0
     comptime for axis in range(slices.size):
         match slices[axis]:
+            case .slice if kept_axes_seen == out_axis:
+                return axis
             case .slice:
-                if kept_axes_seen == out_axis:
-                    return axis
                 kept_axes_seen += 1
             case .index:
                 pass

@@ -175,20 +175,27 @@ def _supported_mma_shape[
 
     # Ideally this check should be input/output type dependent as mma_shape depends on input/output types
     # (https://mlir.llvm.org/docs/Dialects/NVVMDialect/#nvvmwgmmamma_async-nvvmwgmmammaasyncop).
-    comptime if mma_shape[0] == 64 and mma_shape[2] == 8:
-        return (
-            mma_shape[1] % 8 == 0 and mma_shape[1] >= 8 and mma_shape[1] <= 256
-        )
-    elif mma_shape[0] == 64 and mma_shape[2] == 16:
-        return (
-            mma_shape[1] % 8 == 0 and mma_shape[1] >= 8 and mma_shape[1] <= 256
-        )
-    elif mma_shape[0] == 64 and mma_shape[2] == 32:
-        return (
-            mma_shape[1] % 8 == 0 and mma_shape[1] >= 8 and mma_shape[1] <= 256
-        )
-    else:
-        return False
+    comptime match (mma_shape[0], mma_shape[2]):
+        case (64, 8):
+            return (
+                mma_shape[1] % 8 == 0
+                and mma_shape[1] >= 8
+                and mma_shape[1] <= 256
+            )
+        case (64, 16):
+            return (
+                mma_shape[1] % 8 == 0
+                and mma_shape[1] >= 8
+                and mma_shape[1] <= 256
+            )
+        case (64, 32):
+            return (
+                mma_shape[1] % 8 == 0
+                and mma_shape[1] >= 8
+                and mma_shape[1] <= 256
+            )
+        case _:
+            return False
 
 
 # Core matrix dimensions

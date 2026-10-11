@@ -38,7 +38,7 @@ from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
 @fieldwise_init
-struct MaskName(Equatable, Writable):
+struct MaskName(EnumLike, Equatable, Writable):
     """A canonical string name identifying a mask type."""
 
     var name: String
@@ -52,11 +52,61 @@ struct MaskName(Equatable, Writable):
     comptime CHUNKED_CAUSAL = Self("chunked_causal")
     comptime CAUSAL_PADDING = Self("causal_padding")
 
+    # `MaskName` accepts arbitrary strings, so the enum is not exhaustive.
+    comptime _enum_is_exhaustive = False
+
+    comptime _enum_case_names = ParameterList.of[
+        "NULL".value,
+        "CAUSAL".value,
+        "CHUNKED".value,
+        "SLIDING_WINDOW_CAUSAL".value,
+        "SLIDING_WINDOW_NONCAUSAL".value,
+        "MATERIALIZED".value,
+        "CHUNKED_CAUSAL".value,
+        "CAUSAL_PADDING".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        """Return the active case index."""
+        match self.name:
+            case "null":
+                return 0
+            case "causal":
+                return 1
+            case "chunked":
+                return 2
+            case "sliding_window_causal":
+                return 3
+            case "sliding_window_noncausal":
+                return 4
+            case "materialized":
+                return 5
+            case "chunked_causal":
+                return 6
+            case "causal_padding":
+                return 7
+            case _:
+                return -1
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        """Return the payload of case `id`. MaskName cases carry no payload."""
+        comptime assert False, "MaskName has no payload"
+
     def write_to(self, mut writer: Some[Writer]):
         """Writes the mask name.
 
         Args:
-            writer: The writer to write to.
+            writer: The writer to write_to.
         """
         writer.write_string(self.name)
 

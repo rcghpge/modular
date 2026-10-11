@@ -428,43 +428,48 @@ def _bitonic_sort_desc[
             comptime stride = 1 << (h - 1)
             var want_d = ((e0 >> s) & 1) == 0
 
-            comptime if stride == 1:
-                var want_d0 = ((e0 >> s) & 1) == 0
-                var want_d2 = ((e2 >> s) & 1) == 0
-                v0, i0, v1, i1 = _swap_pair_if[tiebreak](
-                    v0, i0, v1, i1, want_d0
-                )
-                v2, i2, v3, i3 = _swap_pair_if[tiebreak](
-                    v2, i2, v3, i3, want_d2
-                )
+            comptime match stride:
+                case 1:
+                    var want_d0 = ((e0 >> s) & 1) == 0
+                    var want_d2 = ((e2 >> s) & 1) == 0
+                    v0, i0, v1, i1 = _swap_pair_if[tiebreak](
+                        v0, i0, v1, i1, want_d0
+                    )
+                    v2, i2, v3, i3 = _swap_pair_if[tiebreak](
+                        v2, i2, v3, i3, want_d2
+                    )
 
-            elif stride == 2:
-                v0, i0, v2, i2 = _swap_pair_if[tiebreak](v0, i0, v2, i2, want_d)
-                v1, i1, v3, i3 = _swap_pair_if[tiebreak](v1, i1, v3, i3, want_d)
+                case 2:
+                    v0, i0, v2, i2 = _swap_pair_if[tiebreak](
+                        v0, i0, v2, i2, want_d
+                    )
+                    v1, i1, v3, i3 = _swap_pair_if[tiebreak](
+                        v1, i1, v3, i3, want_d
+                    )
 
-            else:
-                comptime ts = stride >> 2
-                var pv0 = warp.shuffle_xor(v0, UInt32(ts))
-                var pi0 = warp.shuffle_xor(i0, UInt32(ts))
-                var pv1 = warp.shuffle_xor(v1, UInt32(ts))
-                var pi1 = warp.shuffle_xor(i1, UInt32(ts))
-                var pv2 = warp.shuffle_xor(v2, UInt32(ts))
-                var pi2 = warp.shuffle_xor(i2, UInt32(ts))
-                var pv3 = warp.shuffle_xor(v3, UInt32(ts))
-                var pi3 = warp.shuffle_xor(i3, UInt32(ts))
-                var is_lo = (tid & ts) == 0
-                v0, i0 = _select_lane_after_xor[tiebreak](
-                    v0, i0, pv0, pi0, want_d, is_lo
-                )
-                v1, i1 = _select_lane_after_xor[tiebreak](
-                    v1, i1, pv1, pi1, want_d, is_lo
-                )
-                v2, i2 = _select_lane_after_xor[tiebreak](
-                    v2, i2, pv2, pi2, want_d, is_lo
-                )
-                v3, i3 = _select_lane_after_xor[tiebreak](
-                    v3, i3, pv3, pi3, want_d, is_lo
-                )
+                case _:
+                    comptime ts = stride >> 2
+                    var pv0 = warp.shuffle_xor(v0, UInt32(ts))
+                    var pi0 = warp.shuffle_xor(i0, UInt32(ts))
+                    var pv1 = warp.shuffle_xor(v1, UInt32(ts))
+                    var pi1 = warp.shuffle_xor(i1, UInt32(ts))
+                    var pv2 = warp.shuffle_xor(v2, UInt32(ts))
+                    var pi2 = warp.shuffle_xor(i2, UInt32(ts))
+                    var pv3 = warp.shuffle_xor(v3, UInt32(ts))
+                    var pi3 = warp.shuffle_xor(i3, UInt32(ts))
+                    var is_lo = (tid & ts) == 0
+                    v0, i0 = _select_lane_after_xor[tiebreak](
+                        v0, i0, pv0, pi0, want_d, is_lo
+                    )
+                    v1, i1 = _select_lane_after_xor[tiebreak](
+                        v1, i1, pv1, pi1, want_d, is_lo
+                    )
+                    v2, i2 = _select_lane_after_xor[tiebreak](
+                        v2, i2, pv2, pi2, want_d, is_lo
+                    )
+                    v3, i3 = _select_lane_after_xor[tiebreak](
+                        v3, i3, pv3, pi3, want_d, is_lo
+                    )
 
     # XOR bank-swizzle (bijection) to keep the SMEM stages bank-conflict-free.
     var sw0 = (e0 & ~31) | ((e0 ^ (e0 >> 5)) & 31)

@@ -1708,31 +1708,32 @@ struct TMATensorTile[
         """
         comptime assert coord_rank in (2, 3, 4)
 
-        comptime if coord_rank == 2:
-            self.async_copy[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](dst, mem_barrier, (Int(coords[0]), Int(coords[1])))
-        elif coord_rank == 3:
-            self.async_copy_3d[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (Int(coords[0]), Int(coords[1]), Int(coords[2])),
-            )
-        elif coord_rank == 4:
-            self.async_copy_4d[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                ),
-            )
+        comptime match coord_rank:
+            case 2:
+                self.async_copy[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](dst, mem_barrier, (Int(coords[0]), Int(coords[1])))
+            case 3:
+                self.async_copy_3d[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (Int(coords[0]), Int(coords[1]), Int(coords[2])),
+                )
+            case 4:
+                self.async_copy_4d[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                    ),
+                )
 
     @inline(.nodebug)
     def async_copy[
@@ -1761,45 +1762,46 @@ struct TMATensorTile[
         """
         comptime assert coord_rank in (2, 3, 4, 5)
 
-        comptime if coord_rank == 2:
-            self.async_copy[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](dst, mem_barrier, (Int(coords[0]), Int(coords[1])))
-        elif coord_rank == 3:
-            self.async_copy_3d[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (Int(coords[0]), Int(coords[1]), Int(coords[2])),
-            )
-        elif coord_rank == 4:
-            self.async_copy_4d[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                ),
-            )
-        else:
-            self.async_copy_5d[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                    Int(coords[4]),
-                ),
-            )
+        comptime match coord_rank:
+            case 2:
+                self.async_copy[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](dst, mem_barrier, (Int(coords[0]), Int(coords[1])))
+            case 3:
+                self.async_copy_3d[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (Int(coords[0]), Int(coords[1]), Int(coords[2])),
+                )
+            case 4:
+                self.async_copy_4d[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                    ),
+                )
+            case _:
+                self.async_copy_5d[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                        Int(coords[4]),
+                    ),
+                )
 
     @inline(.nodebug)
     def async_copy_elect[
@@ -1831,48 +1833,49 @@ struct TMATensorTile[
         """
         comptime assert coord_rank in (2, 3, 4, 5)
 
-        comptime if coord_rank == 2:
-            self.async_copy_elect[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](dst, mem_barrier, (Int(coords[0]), Int(coords[1])), elect)
-        elif coord_rank == 3:
-            self.async_copy_3d_elect[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (Int(coords[0]), Int(coords[1]), Int(coords[2])),
-                elect,
-            )
-        elif coord_rank == 4:
-            self.async_copy_4d_elect[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                ),
-                elect,
-            )
-        else:
-            self.async_copy_5d_elect[
-                cta_group=cta_group, eviction_policy=eviction_policy
-            ](
-                dst,
-                mem_barrier,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                    Int(coords[4]),
-                ),
-                elect,
-            )
+        comptime match coord_rank:
+            case 2:
+                self.async_copy_elect[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](dst, mem_barrier, (Int(coords[0]), Int(coords[1])), elect)
+            case 3:
+                self.async_copy_3d_elect[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (Int(coords[0]), Int(coords[1]), Int(coords[2])),
+                    elect,
+                )
+            case 4:
+                self.async_copy_4d_elect[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                    ),
+                    elect,
+                )
+            case _:
+                self.async_copy_5d_elect[
+                    cta_group=cta_group, eviction_policy=eviction_policy
+                ](
+                    dst,
+                    mem_barrier,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                        Int(coords[4]),
+                    ),
+                    elect,
+                )
 
     @inline(.nodebug)
     def async_copy_gather4[
@@ -2060,34 +2063,35 @@ struct TMATensorTile[
         """
         comptime assert coord_rank in (2, 3, 4, 5)
 
-        comptime if coord_rank == 2:
-            self.async_store(dst, (Int(coords[0]), Int(coords[1])))
-        elif coord_rank == 3:
-            self.async_store_3d(
-                dst,
-                (Int(coords[0]), Int(coords[1]), Int(coords[2])),
-            )
-        elif coord_rank == 4:
-            self.async_store_4d(
-                dst,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                ),
-            )
-        elif coord_rank == 5:
-            self.async_store_5d(
-                dst,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                    Int(coords[4]),
-                ),
-            )
+        comptime match coord_rank:
+            case 2:
+                self.async_store(dst, (Int(coords[0]), Int(coords[1])))
+            case 3:
+                self.async_store_3d(
+                    dst,
+                    (Int(coords[0]), Int(coords[1]), Int(coords[2])),
+                )
+            case 4:
+                self.async_store_4d(
+                    dst,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                    ),
+                )
+            case 5:
+                self.async_store_5d(
+                    dst,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                        Int(coords[4]),
+                    ),
+                )
 
     @inline(.always)
     def async_store[
@@ -2112,35 +2116,35 @@ struct TMATensorTile[
         """
         comptime assert coord_rank in (2, 3, 4, 5)
 
-        comptime if coord_rank == 2:
-            self.async_store(dst, (Int(coords[0]), Int(coords[1])))
-        elif coord_rank == 3:
-            self.async_store_3d(
-                dst,
-                (Int(coords[0]), Int(coords[1]), Int(coords[2])),
-            )
-        elif coord_rank == 4:
-            self.async_store_4d(
-                dst,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                ),
-            )
-
-        elif coord_rank == 5:
-            self.async_store_5d(
-                dst,
-                (
-                    Int(coords[0]),
-                    Int(coords[1]),
-                    Int(coords[2]),
-                    Int(coords[3]),
-                    Int(coords[4]),
-                ),
-            )
+        comptime match coord_rank:
+            case 2:
+                self.async_store(dst, (Int(coords[0]), Int(coords[1])))
+            case 3:
+                self.async_store_3d(
+                    dst,
+                    (Int(coords[0]), Int(coords[1]), Int(coords[2])),
+                )
+            case 4:
+                self.async_store_4d(
+                    dst,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                    ),
+                )
+            case 5:
+                self.async_store_5d(
+                    dst,
+                    (
+                        Int(coords[0]),
+                        Int(coords[1]),
+                        Int(coords[2]),
+                        Int(coords[3]),
+                        Int(coords[4]),
+                    ),
+                )
 
     @inline(.always)
     def async_multicast_load[
@@ -3679,98 +3683,99 @@ def create_tensor_tile[
         tile_shape.rank == 2 or not unpack_fp4
     ), "packed FP4 TMA is only wired for rank 2"
 
-    comptime if tile_shape.rank == 2:
-        # The innermost extent reaches the descriptor in FP4 elements, which
-        # is twice what the `uint8` view spells. Strides stay in `uint8`.
-        return create_tma_descriptor[
-            dtype, 2, swizzle_mode, unpack_fp4=unpack_fp4
-        ](
-            DeviceBuffer(
-                ctx,
-                tensor.ptr.address_space_cast[.GENERIC](),
-                1,
-                owning=False,
-            ),
-            (
-                Int(tensor.layout.shape[0]().value()),
-                Int(tensor.layout.shape[1]().value())
-                * (2 if unpack_fp4 else 1),
-            ),
-            (
-                Int(tensor.layout.stride[0]().value()),
-                Int(tensor.layout.stride[1]().value()),
-            ),
-            _coord_to_index_list[2, __desc_shape](),
-        )
+    comptime match tile_shape.rank:
+        case 2:
+            # The innermost extent reaches the descriptor in FP4 elements, which
+            # is twice what the `uint8` view spells. Strides stay in `uint8`.
+            return create_tma_descriptor[
+                dtype, 2, swizzle_mode, unpack_fp4=unpack_fp4
+            ](
+                DeviceBuffer(
+                    ctx,
+                    tensor.ptr.address_space_cast[.GENERIC](),
+                    1,
+                    owning=False,
+                ),
+                (
+                    Int(tensor.layout.shape[0]().value()),
+                    Int(tensor.layout.shape[1]().value())
+                    * (2 if unpack_fp4 else 1),
+                ),
+                (
+                    Int(tensor.layout.stride[0]().value()),
+                    Int(tensor.layout.stride[1]().value()),
+                ),
+                _coord_to_index_list[2, __desc_shape](),
+            )
 
-    elif tile_shape.rank == 3:
-        return create_tma_descriptor[dtype, 3, swizzle_mode](
-            DeviceBuffer(
-                ctx,
-                tensor.ptr.address_space_cast[.GENERIC](),
-                1,
-                owning=False,
-            ),
-            IndexList[3](
-                Int(tensor.layout.shape[0]().value()),
-                Int(tensor.layout.shape[1]().value()),
-                Int(tensor.layout.shape[2]().value()),
-            ),
-            IndexList[3](
-                Int(tensor.layout.stride[0]().value()),
-                Int(tensor.layout.stride[1]().value()),
-                Int(tensor.layout.stride[2]().value()),
-            ),
-            _coord_to_index_list[3, __desc_shape](),
-        )
+        case 3:
+            return create_tma_descriptor[dtype, 3, swizzle_mode](
+                DeviceBuffer(
+                    ctx,
+                    tensor.ptr.address_space_cast[.GENERIC](),
+                    1,
+                    owning=False,
+                ),
+                IndexList[3](
+                    Int(tensor.layout.shape[0]().value()),
+                    Int(tensor.layout.shape[1]().value()),
+                    Int(tensor.layout.shape[2]().value()),
+                ),
+                IndexList[3](
+                    Int(tensor.layout.stride[0]().value()),
+                    Int(tensor.layout.stride[1]().value()),
+                    Int(tensor.layout.stride[2]().value()),
+                ),
+                _coord_to_index_list[3, __desc_shape](),
+            )
 
-    elif tile_shape.rank == 4:
-        return create_tma_descriptor[dtype, 4, swizzle_mode](
-            DeviceBuffer(
-                ctx,
-                tensor.ptr.address_space_cast[.GENERIC](),
-                1,
-                owning=False,
-            ),
-            IndexList[4](
-                Int(tensor.layout.shape[0]().value()),
-                Int(tensor.layout.shape[1]().value()),
-                Int(tensor.layout.shape[2]().value()),
-                Int(tensor.layout.shape[3]().value()),
-            ),
-            IndexList[4](
-                Int(tensor.layout.stride[0]().value()),
-                Int(tensor.layout.stride[1]().value()),
-                Int(tensor.layout.stride[2]().value()),
-                Int(tensor.layout.stride[3]().value()),
-            ),
-            _coord_to_index_list[4, __desc_shape](),
-        )
+        case 4:
+            return create_tma_descriptor[dtype, 4, swizzle_mode](
+                DeviceBuffer(
+                    ctx,
+                    tensor.ptr.address_space_cast[.GENERIC](),
+                    1,
+                    owning=False,
+                ),
+                IndexList[4](
+                    Int(tensor.layout.shape[0]().value()),
+                    Int(tensor.layout.shape[1]().value()),
+                    Int(tensor.layout.shape[2]().value()),
+                    Int(tensor.layout.shape[3]().value()),
+                ),
+                IndexList[4](
+                    Int(tensor.layout.stride[0]().value()),
+                    Int(tensor.layout.stride[1]().value()),
+                    Int(tensor.layout.stride[2]().value()),
+                    Int(tensor.layout.stride[3]().value()),
+                ),
+                _coord_to_index_list[4, __desc_shape](),
+            )
 
-    else:  # rank == 5
-        return create_tma_descriptor[dtype, 5, swizzle_mode](
-            DeviceBuffer(
-                ctx,
-                tensor.ptr.address_space_cast[.GENERIC](),
-                1,
-                owning=False,
-            ),
-            IndexList[5](
-                Int(tensor.layout.shape[0]().value()),
-                Int(tensor.layout.shape[1]().value()),
-                Int(tensor.layout.shape[2]().value()),
-                Int(tensor.layout.shape[3]().value()),
-                Int(tensor.layout.shape[4]().value()),
-            ),
-            IndexList[5](
-                Int(tensor.layout.stride[0]().value()),
-                Int(tensor.layout.stride[1]().value()),
-                Int(tensor.layout.stride[2]().value()),
-                Int(tensor.layout.stride[3]().value()),
-                Int(tensor.layout.stride[4]().value()),
-            ),
-            _coord_to_index_list[5, __desc_shape](),
-        )
+        case _:  # rank == 5
+            return create_tma_descriptor[dtype, 5, swizzle_mode](
+                DeviceBuffer(
+                    ctx,
+                    tensor.ptr.address_space_cast[.GENERIC](),
+                    1,
+                    owning=False,
+                ),
+                IndexList[5](
+                    Int(tensor.layout.shape[0]().value()),
+                    Int(tensor.layout.shape[1]().value()),
+                    Int(tensor.layout.shape[2]().value()),
+                    Int(tensor.layout.shape[3]().value()),
+                    Int(tensor.layout.shape[4]().value()),
+                ),
+                IndexList[5](
+                    Int(tensor.layout.stride[0]().value()),
+                    Int(tensor.layout.stride[1]().value()),
+                    Int(tensor.layout.stride[2]().value()),
+                    Int(tensor.layout.stride[3]().value()),
+                    Int(tensor.layout.stride[4]().value()),
+                ),
+                _coord_to_index_list[5, __desc_shape](),
+            )
 
 
 def _padded_shape[

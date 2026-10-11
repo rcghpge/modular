@@ -810,32 +810,36 @@ def dispatch_mask[
         return callback_fn(mask)
 
     # TODO: attach string constants to mask types themselves.
-    comptime if MaskName.CAUSAL == mask_type:
-        return outer_wrapper(CausalMask())
-    elif MaskName.CHUNKED == mask_type:
-        comptime assert (
-            local_window_size > 0
-        ), "You must specify local_window_size for ChunkedMask"
-        return outer_wrapper(ChunkedMask[local_window_size]())
-    elif MaskName.NULL == mask_type:
-        return outer_wrapper(NullMask())
-    elif MaskName.SLIDING_WINDOW_CAUSAL == mask_type:
-        comptime assert (
-            local_window_size > 0
-        ), "You must specify local_window_size for SlidingWindowCausalMask"
-        return outer_wrapper(SlidingWindowCausalMask[local_window_size]())
-    elif MaskName.SLIDING_WINDOW_NONCAUSAL == mask_type:
-        comptime assert (
-            local_window_size > 0
-        ), "You must specify local_window_size for SlidingWindowNonCausalMask"
-        return outer_wrapper(SlidingWindowNonCausalMask[local_window_size]())
-    elif MaskName.CHUNKED_CAUSAL == mask_type:
-        comptime assert (
-            local_window_size > 0
-        ), "You must specify local_window_size for ChunkedCausalMask"
-        return outer_wrapper(ChunkedCausalMask[local_window_size]())
-    else:
-        comptime assert False, "Unsupported mask type: " + mask_type
+    comptime match mask_type:
+        case "causal":
+            return outer_wrapper(CausalMask())
+        case "chunked":
+            comptime assert (
+                local_window_size > 0
+            ), "You must specify local_window_size for ChunkedMask"
+            return outer_wrapper(ChunkedMask[local_window_size]())
+        case "null":
+            return outer_wrapper(NullMask())
+        case "sliding_window_causal":
+            comptime assert (
+                local_window_size > 0
+            ), "You must specify local_window_size for SlidingWindowCausalMask"
+            return outer_wrapper(SlidingWindowCausalMask[local_window_size]())
+        case "sliding_window_noncausal":
+            comptime assert local_window_size > 0, (
+                "You must specify local_window_size for"
+                " SlidingWindowNonCausalMask"
+            )
+            return outer_wrapper(
+                SlidingWindowNonCausalMask[local_window_size]()
+            )
+        case "chunked_causal":
+            comptime assert (
+                local_window_size > 0
+            ), "You must specify local_window_size for ChunkedCausalMask"
+            return outer_wrapper(ChunkedCausalMask[local_window_size]())
+        case _:
+            comptime assert False, "Unsupported mask type: " + mask_type
 
 
 @inline(.always)

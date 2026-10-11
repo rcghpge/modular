@@ -6159,16 +6159,17 @@ def _get_worker_idx[
     )
 
     comptime if thread_scope == ThreadScope.BLOCK:
-        comptime if block_dim_count == 1:
-            return thread_idx.x
-        elif block_dim_count == 2:
-            return thread_idx.y * block_dim.x + thread_idx.x
-        else:
-            return (
-                thread_idx.z * block_dim.y * block_dim.x
-                + thread_idx.y * block_dim.x
-                + thread_idx.x
-            )
+        comptime match block_dim_count:
+            case 1:
+                return thread_idx.x
+            case 2:
+                return thread_idx.y * block_dim.x + thread_idx.x
+            case _:
+                return (
+                    thread_idx.z * block_dim.y * block_dim.x
+                    + thread_idx.y * block_dim.x
+                    + thread_idx.x
+                )
     else:
         return lane_id()
 

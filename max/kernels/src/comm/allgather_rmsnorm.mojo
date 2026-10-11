@@ -187,8 +187,7 @@ def _allgather_rmsnorm_kernel[
             normed_out.store[width=simd_width](Coord(grow, col_idx), normed)
         # Same bf16 a standalone quantize would read back from `normed_out`, so
         # folding one in is byte-identical.
-        comptime if quant_epilogue:
-            comptime epilogue = quant_epilogue.value()
+        comptime if case .Some(epilogue) = quant_epilogue:
             epilogue[width=simd_width](grow, col_idx, normed)
 
     # End barrier: peers P2P-read this rank's shard, so it must not be reused
@@ -432,7 +431,7 @@ def _allgather_rmsnorm_impl[
     if not is_p2p_enabled():
         raise Error("allgather_rmsnorm requires P2P access between GPUs")
 
-    var global_rank = my_rank.value() if my_rank else Int(ctx.id())
+    var global_rank = my_rank.or_else(Int(ctx.id()))
     if not 0 <= global_rank < ngpus:
         raise Error(
             String(
@@ -721,7 +720,7 @@ def _dispatch_ag_norm[
 
     # Fusing only when every group in the span fuses keeps the threshold's
     # per-group meaning.
-    var global_rank = my_rank.value() if my_rank else Int(ctx.id())
+    var global_rank = my_rank.or_else(Int(ctx.id()))
     comptime gate_groups = 2 if _relay_pairs[ngpus, group_size](
         ctx.default_device_info.version
     ) else 1
@@ -848,7 +847,7 @@ def _dispatch_ag_norm_quant[
 
     # Fusing only when every group in the span fuses keeps the threshold's
     # per-group meaning.
-    var global_rank = my_rank.value() if my_rank else Int(ctx.id())
+    var global_rank = my_rank.or_else(Int(ctx.id()))
     comptime gate_groups = 2 if _relay_pairs[ngpus, group_size](
         ctx.default_device_info.version
     ) else 1
