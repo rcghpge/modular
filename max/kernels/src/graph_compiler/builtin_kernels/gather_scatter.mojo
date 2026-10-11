@@ -1983,14 +1983,14 @@ struct Concat:
         @__parameter
         @__copy_capture(inputs)
         def inputs_lambda[
-            input_index: Int, width: Int, _rank: Int, alignment: Int = 1
-        ](indices: IndexList[_rank]) -> SIMD[dtype, width]:
+            input_index: Int, width: Int, alignment: Int = 1
+        ](coords: Coord) -> SIMD[dtype, width]:
             comptime assert (
                 input_index < inputs.size
             ), "tensor index out of bounds"
             return inputs[input_index]._lambda_load[
                 width=width, element_alignment=alignment
-            ](rebind[IndexList[rank]](indices))
+            ](coords)
 
         # Copy-capture `output` for the same reason as `inputs` above: a
         # by-reference capture leaves the device kernel holding a host pointer
@@ -1999,10 +1999,10 @@ struct Concat:
         @__parameter
         @__copy_capture(output)
         def epilogue_wrapper[
-            _dtype: DType, _rank: Int, width: SIMDLength, *, alignment: Int = 1
-        ](indices: IndexList[_rank], value: SIMD[_dtype, width]):
+            _dtype: DType, width: SIMDLength, *, alignment: Int = 1
+        ](coords: Coord, value: SIMD[_dtype, width]):
             output._lambda_store[width=width, element_alignment=alignment](
-                rebind[IndexList[output.rank]](indices),
+                coords,
                 rebind[SIMD[output.dtype, width]](value),
             )
 

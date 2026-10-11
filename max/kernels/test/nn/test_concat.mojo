@@ -21,7 +21,7 @@ from layout import (
 from max.gpu.host import DeviceContext
 from nn.concat import _concat_parallel, _concat_serial, concat
 
-from std.utils import IndexList, StaticTuple
+from std.utils import StaticTuple
 
 
 def _tuple_to_list[
@@ -75,9 +75,8 @@ def test_concat() raises:
 
     @inline(.always)
     def epilogue_plus_one[
-        c_type: DType, _rank: Int, width: SIMDLength, *, alignment: Int
-    ](indices: IndexList[_rank], val: SIMD[c_type, width]) {var output}:
-        var coord = Coord(indices)
+        c_type: DType, width: SIMDLength, *, alignment: Int
+    ](coord: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coord.flat_rank
         output.store[width=width](
             coord,
@@ -146,9 +145,8 @@ def test_concat_parallel() raises:
 
     @inline(.always)
     def epilogue_plus_one[
-        c_type: DType, _rank: Int, width: SIMDLength, *, alignment: Int
-    ](indices: IndexList[_rank], val: SIMD[c_type, width]) {var output}:
-        var coord = Coord(indices)
+        c_type: DType, width: SIMDLength, *, alignment: Int
+    ](coord: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coord.flat_rank
         output.store[width=width](
             coord,
@@ -220,9 +218,8 @@ def test_concat_inner() raises:
 
     @inline(.always)
     def epilogue_plus_one[
-        c_type: DType, _rank: Int, width: SIMDLength, *, alignment: Int
-    ](indices: IndexList[_rank], val: SIMD[c_type, width]) {var output}:
-        var coord = Coord(indices)
+        c_type: DType, width: SIMDLength, *, alignment: Int
+    ](coord: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coord.flat_rank
         output.store[width=width](
             coord,
