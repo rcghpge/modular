@@ -1523,21 +1523,8 @@ ParseResult StmtParser::parseWhileStmt(size_t curIndent) {
   ExprNode *condExp = nullptr;
   if (consumeIf(Token::kw_case)) {
     if (parseExpressionList(patternExpr, curIndent,
-                            /*terminators=*/{Token::equal, Token::kw_as},
-                            Precedence(int(Precedence::kIfElse) + 1)))
+                            /*terminators=*/{Token::equal}, Precedence::kAsPat))
       return failure();
-
-    SMLoc asLoc;
-    if (consumeIf(Token::kw_as, &asLoc)) {
-      Token nameTok = getToken();
-      if (parseIdentifier("expected a name after 'as'"))
-        return failure();
-      auto *name = shared.persistentAllocator.create<DeclRefNode>(
-          nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
-      patternExpr = shared.persistentAllocator.create<BinOpNode>(
-          ExprNode::kAsPat, patternExpr, asLoc, name);
-    }
-
     if (parseToken(Token::equal, "expected '=' after conditional pattern") ||
         parseExpression(condExp, curIndent, Precedence::kAssignExpr))
       return failure();
@@ -1773,33 +1760,14 @@ ParseResult StmtParser::parseMatchStmt(size_t curIndent, bool isComptime) {
     consumeToken(Token::kw_case);
 
     // Parse the case pattern as an expression_list. Stop before `if` so a
-    // trailing match guard is not absorbed as a ternary `x if y else z`, and
-    // before `as` so a top-level `case <pattern> as name` is attached here.
-    // Item precedence is tighter than `if`/`as` for the same reason.
+    // trailing match guard is not absorbed as a ternary `x if y else z`.
     ExprNode *patternExpr = nullptr;
-    if (parseExpressionList(
-            patternExpr, caseIndent,
-            /*terminators=*/{Token::colon, Token::kw_if, Token::kw_as},
-            Precedence(int(Precedence::kIfElse) + 1))) {
+    if (parseExpressionList(patternExpr, caseIndent,
+                            /*terminators=*/{Token::colon, Token::kw_if},
+                            Precedence::kAsPat)) {
       skipUntilIndentation(caseIndent);
       hadError = true;
       continue;
-    }
-
-    // Optional `as` binding: `case <pattern> as name`. Nested `as` inside
-    // parentheses is handled by the expression parser.
-    SMLoc asLoc;
-    if (consumeIf(Token::kw_as, &asLoc)) {
-      Token nameTok = getToken();
-      if (parseIdentifier("expected a name after 'as'")) {
-        hadError = true;
-        skipUntilIndentation(caseIndent);
-        continue;
-      }
-      auto *name = shared.persistentAllocator.create<DeclRefNode>(
-          nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
-      patternExpr = shared.persistentAllocator.create<BinOpNode>(
-          ExprNode::kAsPat, patternExpr, asLoc, name);
     }
 
     // Optional match guard: `case <pattern> if <cond>:`.
@@ -3837,21 +3805,9 @@ ParseResult StmtParser::parseIf(Location ifLoc, LexerCursor startCursor,
     ExprNode *patternExpr = nullptr;
     if (consumeIf(Token::kw_case)) {
       if (parseExpressionList(patternExpr, curIndent,
-                              /*terminators=*/{Token::equal, Token::kw_as},
-                              Precedence(int(Precedence::kIfElse) + 1)))
+                              /*terminators=*/{Token::equal},
+                              Precedence::kAsPat))
         return failure();
-
-      SMLoc asLoc;
-      if (consumeIf(Token::kw_as, &asLoc)) {
-        Token nameTok = getToken();
-        if (parseIdentifier("expected a name after 'as'"))
-          return failure();
-        auto *name = shared.persistentAllocator.create<DeclRefNode>(
-            nameTok.getSpelling(), nameTok.is(Token::escaped_identifier));
-        patternExpr = shared.persistentAllocator.create<BinOpNode>(
-            ExprNode::kAsPat, patternExpr, asLoc, name);
-      }
-
       if (parseToken(Token::equal, "expected '=' after conditional pattern") ||
           parseExpression(condExpr, curIndent, Precedence::kAssignExpr))
         return failure();

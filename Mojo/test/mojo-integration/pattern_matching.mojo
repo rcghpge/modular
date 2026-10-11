@@ -176,6 +176,16 @@ def classify_computed_expected(value: Int, expected: Int) -> String:
             return "other"
 
 
+def classify_conditional_expected(
+    value: Int, expected: Int, alternate: Int, use_expected: Bool
+) -> String:
+    match value:
+        case == (expected if use_expected else alternate):
+            return "conditional"
+        case _:
+            return "other"
+
+
 def classify_type[T: AnyType]() -> String:
     comptime match T:
         case == Int:
@@ -221,7 +231,8 @@ def classify_or_bind_ref(var pair: Tuple[Int, Int]) -> String:
 
 
 def classify_if_case(pair: Tuple[Int, Int], fallback: Bool) -> String:
-    if case (0, value) = pair:
+    if case (0, value as same_value) = pair:
+        _ = same_value
         return String("first:", value)
     elif fallback:
         return "fallback"
@@ -232,7 +243,8 @@ def classify_if_case(pair: Tuple[Int, Int], fallback: Bool) -> String:
 
 
 def classify_if_case_or(pair: Tuple[Int, Int]) -> String:
-    if case (0, value) | (value, 1) = pair:
+    if case ((0, value) | (value, 1)) as matched = pair:
+        _ = matched
         return String("or:", value)
     else:
         return "miss"
@@ -251,7 +263,8 @@ def classify_if_case_nested(value: Optional[Point]) -> String:
 
 def classify_while_case(var pair: Tuple[Int, Int]) -> String:
     var result = String("miss")
-    while case (0, value) | (value, 1) = pair:
+    while case ((0, value) | (value, 1)) as matched = pair:
+        _ = matched
         result = String("hit:", value)
         pair = (4, 4)
     else:
@@ -411,6 +424,13 @@ def test_explicit_value_patterns():
     print(classify_computed_expected(43, 42))
     # CHECK: other
     print(classify_computed_expected(42, 42))
+    # A nested ternary remains part of the explicit value pattern.
+    # CHECK: conditional
+    print(classify_conditional_expected(42, 42, 7, True))
+    # CHECK: conditional
+    print(classify_conditional_expected(7, 42, 7, False))
+    # CHECK: other
+    print(classify_conditional_expected(42, 42, 7, False))
 
     # Types are ordinary compile-time values.
     # CHECK: integer

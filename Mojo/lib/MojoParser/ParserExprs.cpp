@@ -68,7 +68,8 @@ public:
                                           bool allowVarRef = false);
 
   ParseResult parseExpression(ExprNode *&result,
-                              Precedence minPrec = Precedence::kExpression);
+                              Precedence minPrec = Precedence::kExpression,
+                              ArrayRef<Token::Kind> terminators = {});
   ParseResult parseStarredItem(ExprNode *&result, bool allowAssign);
 
   template <typename T, typename... Args>
@@ -291,8 +292,11 @@ struct InfixInfo {
 /// Parse an expression using top-down operator precedence parsing.  minPrec
 /// specifies the minimum precedence that binary sub-expression must have to be
 /// included.  Anything looser than the specified precedence is left for a
-/// parent expression to parse.
-ParseResult ExprParser::parseExpression(ExprNode *&result, Precedence minPrec) {
+/// parent expression to parse. Terminators stop this expression and its
+/// same-level operands, but nested expressions such as parentheses start with
+/// no terminators.
+ParseResult ExprParser::parseExpression(ExprNode *&result, Precedence minPrec,
+                                        ArrayRef<Token::Kind> terminators) {
   // Parse any prefix expression like -1.
   if (parsePrimaryExpr(result))
     return failure();
@@ -301,7 +305,9 @@ ParseResult ExprParser::parseExpression(ExprNode *&result, Precedence minPrec) {
   // lower than minPrec. This means that it collects all tokens that bind
   // together before returning to the operator that called it.
   InfixInfo infixInfo = InfixInfo::get(getToken().getKind(), *this);
-  while (isTokenInCurrentStatement() && minPrec <= infixInfo.precedence) {
+  while (isTokenInCurrentStatement() &&
+         !llvm::is_contained(terminators, getToken().getKind()) &&
+         minPrec <= infixInfo.precedence) {
     Token::Kind tokKind = getToken().getKind();
     auto binOpLoc = consumeToken().getLoc();
 
@@ -312,7 +318,8 @@ ParseResult ExprParser::parseExpression(ExprNode *&result, Precedence minPrec) {
       // trueExpr 'if' condition 'else' falseExpr.
       // If/else operator needs special handling because it has an expression in
       // the middle of what can otherwise be parsed like a binary operator.
-      if (parseExpression(ifElseCond, Precedence(int(Precedence::kIfElse) + 1)))
+      if (parseExpression(ifElseCond, Precedence(int(Precedence::kIfElse) + 1),
+                          terminators))
         return failure();
       elseLoc = getToken().getLoc();
       if (parseToken(Token::Kind::kw_else, "expected 'else' clause in ternary; "
@@ -337,7 +344,7 @@ ParseResult ExprParser::parseExpression(ExprNode *&result, Precedence minPrec) {
       subExprPrec = Precedence(unsigned(infixInfo.precedence) + 1);
 
     ExprNode *rhs = nullptr;
-    if (parseExpression(rhs, subExprPrec))
+    if (parseExpression(rhs, subExprPrec, terminators))
       return failure();
 
     if (infixInfo.precedence == Precedence::kComparison) {
@@ -1612,7 +1619,8 @@ ParseResult ParserBase::parseExpressionList(ExprNode *&result,
   ExprParser parser(shared, getLexer(), stmtIndent);
   SmallVector<ExprNode *> exprs;
   auto parseItem = [&]() -> ParseResult {
-    return parser.parseExpression(exprs.emplace_back(nullptr), itemMinPrec);
+    return parser.parseExpression(exprs.emplace_back(nullptr), itemMinPrec,
+                                  terminators);
   };
 
   SMLoc firstCommaLoc;
