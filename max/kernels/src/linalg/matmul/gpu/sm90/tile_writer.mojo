@@ -61,9 +61,6 @@ from layout.tensor_core_async import st_matrix_n_layout, st_matrix_m_layout
 from ....utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    apply_elementwise_epilogue,
-    elementwise_compute_lambda_type,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -692,8 +689,6 @@ struct RegisterToGMemWriter[
     wgmma_shape: IndexList[3],
     num_consumer: Int,
     N: Int,  # Matrix N dimension
-    epilogue_fn: Optional[elementwise_epilogue_type] = None,
-    compute_lambda_fn: Optional[elementwise_compute_lambda_type] = None,
     check_runtime_bounds: Bool = False,  # New parameter for N-dimension bounds checking
     swapAB: Bool = False,
 ](RegTileWriter):
@@ -712,12 +707,8 @@ struct RegisterToGMemWriter[
         wgmma_shape: Shape of the WGMMA operation [M, N, K].
         num_consumer: Number of consumer warp groups.
         N: Matrix N dimension.
-        epilogue_fn: Optional epilogue function (mutates value in place).
-        compute_lambda_fn: Optional compute lambda function (returns new value).
         check_runtime_bounds: Whether to perform bounds checking on N dimension.
         swapAB: Whether to swap the A and B matrices.
-    Note:
-        At most one of epilogue_fn or compute_lambda_fn should be set.
     """
 
     comptime c_frag_size = Self.wgmma_shape[0] * Self.wgmma_shape[
@@ -761,10 +752,6 @@ struct RegisterToGMemWriter[
             tile_coords: Optional tile coordinates for epilogue processing.
             max_row: Optional maximum valid M coordinate (for epilogue).
         """
-        comptime assert (Self.epilogue_fn is None) or (
-            Self.compute_lambda_fn is None
-        ), "Only one of epilogue_fn or compute_lambda_fn should be set"
-
         # Store destination tensor
         self.dst = dst
         self.num_m_mmas = num_m_mmas
@@ -834,12 +821,7 @@ struct RegisterToGMemWriter[
                 value_epilogue_fn,
                 value_compute_fn,
             )
-        elif (
-            Self.epilogue_fn is not None
-            or Self.compute_lambda_fn is not None
-            or has_epilogue_fn
-            or has_compute_fn
-        ):
+        elif has_epilogue_fn or has_compute_fn:
             # Vectorized with epilogue/compute_lambda
             self._write_with_transform[
                 has_epilogue_fn=has_epilogue_fn, has_compute_fn=has_compute_fn
@@ -966,16 +948,10 @@ struct RegisterToGMemWriter[
         value_compute_fn: ComputeFnType,
     ) capturing:
         """Apply epilogue or compute_lambda and store result."""
-        # The legacy lambdas take alignment in bytes, the values in elements.
-        comptime alignment = align_of[SIMD[Self.c_type, 2]]()
         comptime value_alignment = 2
 
         var frag_val = c_reg_frag[mma_id, frag_idx].cast[Self.c_type]()
-        comptime if Bool(Self.epilogue_fn):
-            apply_elementwise_epilogue[Self.epilogue_fn, alignment=alignment](
-                value_epilogue_fn, (m, n), frag_val
-            )
-        elif has_epilogue_fn:
+        comptime if has_epilogue_fn:
             value_epilogue_fn[
                 Self.c_type, type_of(frag_val).length, alignment=value_alignment
             ]((m, n), frag_val)
@@ -983,13 +959,6 @@ struct RegisterToGMemWriter[
             var reg_val = value_compute_fn[
                 Self.c_type, type_of(frag_val).length, alignment=value_alignment
             ]((m, n), frag_val)
-            gmem_frag.store(Coord(Idx[frag_idx], Idx[0]), reg_val)
-        else:  # compute_lambda
-            comptime compute_lambda = Self.compute_lambda_fn.value()
-            var reg_val = compute_lambda[alignment=alignment](
-                (m, n),
-                c_reg_frag[mma_id, frag_idx].cast[Self.c_type](),
-            )
             gmem_frag.store(Coord(Idx[frag_idx], Idx[0]), reg_val)
 
     @inline(.always)
@@ -1118,17 +1087,7 @@ struct RegisterToGMemWriter[
                                 ),
                             )
 
-                    comptime if Bool(Self.epilogue_fn):
-                        var frag_m, frag_n = epilogue_coordinates()
-                        apply_elementwise_epilogue[
-                            Self.epilogue_fn,
-                            alignment=align_of[Scalar[Self.c_type]](),
-                        ](
-                            value_epilogue_fn,
-                            (frag_m, frag_n),
-                            reg_val,
-                        )
-                    elif has_epilogue_fn:
+                    comptime if has_epilogue_fn:
                         var frag_m, frag_n = epilogue_coordinates()
                         value_epilogue_fn[
                             Self.c_type, type_of(reg_val).length, alignment=1
@@ -1140,12 +1099,6 @@ struct RegisterToGMemWriter[
                                 Self.c_type,
                                 type_of(reg_val).length,
                                 alignment=1,
-                            ]((frag_m, frag_n), reg_val)
-                        elif Self.compute_lambda_fn:
-                            comptime compute_lambda = Self.compute_lambda_fn.value()
-                            var frag_m, frag_n = epilogue_coordinates()
-                            reg_val = compute_lambda[
-                                alignment=align_of[Scalar[Self.c_type]]()
                             ]((frag_m, frag_n), reg_val)
 
                         # Store coordinates

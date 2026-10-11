@@ -99,11 +99,9 @@ def shrink_qkv_permute_3mn_sm100(
     )
 
     @inline(.always)
-    @__copy_capture(c_lora, M)
-    @__parameter
     def permute_dim_lora_bmn[
-        dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]) -> None:
+        dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: IndexList[2], val: SIMD[dtype, width]) {var c_lora} -> None:
         """Epilogue: permute flat (M, 3N) columns to planar (3, M, N) tiles.
         Maps a flat column index `j` into `(head, n)` via `divmod(j, N)` and
         stores the SIMD vector `val` into the original 3D tile tensor at
@@ -139,7 +137,7 @@ def shrink_qkv_permute_3mn_sm100(
         )
 
     # Run grouped_matmul and apply permute_dim_lora as the elementwise epilogue.
-    grouped_matmul[elementwise_lambda_fn=permute_dim_lora_bmn,](
+    grouped_matmul[has_epilogue_fn=True](
         c,
         a,
         b,
@@ -148,6 +146,7 @@ def shrink_qkv_permute_3mn_sm100(
         max_num_tokens_per_expert,
         num_active_experts,
         ctx,
+        epilogue_fn=permute_dim_lora_bmn,
     )
 
 
@@ -318,11 +317,11 @@ def expand_qkv_sm100(
     comptime a_plane_splits = Index(q_dim, q_dim + kv_dim)
 
     @inline(.always)
-    @__copy_capture(q_out, kv_out, M)
-    @__parameter
     def route_qkv[
-        dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]) -> None:
+        dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: IndexList[2], val: SIMD[dtype, width]) {
+        var q_out, var kv_out, var M
+    } -> None:
         """Epilogue: scatter each matmul output element to `q_out` or `kv_out`.
 
         Routes one grouped-matmul result, produced at logical coordinate
@@ -385,7 +384,7 @@ def expand_qkv_sm100(
 
     comptime if boundaries_tile_aligned:
         grouped_matmul[
-            elementwise_lambda_fn=route_qkv,
+            has_epilogue_fn=True,
             a_plane_splits=a_plane_splits,
         ](
             c,
@@ -396,10 +395,11 @@ def expand_qkv_sm100(
             max_num_tokens_per_expert,
             num_active_experts,
             ctx,
+            epilogue_fn=route_qkv,
         )
     else:
         naive_grouped_matmul[
-            elementwise_lambda_fn=route_qkv,
+            has_epilogue_fn=True,
             a_plane_splits=a_plane_splits,
         ](
             c,
@@ -410,4 +410,5 @@ def expand_qkv_sm100(
             max_num_tokens_per_expert,
             num_active_experts,
             ctx,
+            epilogue_fn=route_qkv,
         )

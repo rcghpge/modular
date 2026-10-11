@@ -50,8 +50,6 @@ from .matmul.vendor.blas import matmul as vendor_matmul
 from .utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    apply_elementwise_epilogue,
-    elementwise_compute_lambda_type,
     elementwise_epilogue_type,
     no_compute_fn,
     lora_qkv_plane_row_offset,
@@ -100,7 +98,6 @@ def naive_grouped_matmul_kernel[
     EpilogueFnType: ElementwiseEpilogueFn,
     ComputeFnType: ElementwiseComputeFn,
     *,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
     a_plane_splits: IndexList[2] = Index(0, 0),
@@ -179,8 +176,8 @@ def naive_grouped_matmul_kernel[
 
     var idx: IndexList[2] = (Int(a_start_row) + m, n)
     var out = accum.cast[c_type]()
-    comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
-        apply_elementwise_epilogue[elementwise_lambda_fn](epilogue_fn, idx, out)
+    comptime if has_epilogue_fn:
+        epilogue_fn[c_type, 1, alignment=1](idx, out)
     else:
         comptime if has_compute_fn:
             out = compute_fn[c_type, 1, alignment=1](idx, out)
@@ -270,7 +267,6 @@ def grouped_matmul_amd_kernel_launcher[
     expert_ids_engine: TensorEngine,
     EpilogueFnType: ElementwiseEpilogueFn,
     ComputeFnType: ElementwiseComputeFn,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
 ](
@@ -333,9 +329,7 @@ def grouped_matmul_amd_kernel_launcher[
     var b_ptr = b_tensor.ptr + Int(expert_id) * Int(N) * Int(K)
     var c_ptr = c_tensor.ptr + Int(a_start_row) * Int(N)
 
-    comptime has_any_epilogue = (
-        Bool(elementwise_lambda_fn) or has_epilogue_fn or has_compute_fn
-    )
+    comptime has_any_epilogue = has_epilogue_fn or has_compute_fn
 
     # Takes this group's rows from 0; the epilogues take rows of all of `c`.
     @inline(.always)
@@ -351,12 +345,8 @@ def grouped_matmul_amd_kernel_launcher[
                     compute_fn[dtype, width, alignment=alignment](row_idx, val)
                 )
             )
-        elif has_epilogue_fn:
-            epilogue_fn[dtype, width, alignment=alignment](row_idx, val)
         else:
-            apply_elementwise_epilogue[elementwise_lambda_fn](
-                epilogue_fn, row_idx, val
-            )
+            epilogue_fn[dtype, width, alignment=alignment](row_idx, val)
 
     # Only perform matmul if expert_id is not -1
     # AMD matmul kernel performs the epilogue function
@@ -551,7 +541,6 @@ def grouped_matmul_amd[
     *,
     transpose_b: Bool = True,
     block_tile_shape: IndexList[3] = Index(128, 128, 64),
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
 ](
@@ -628,7 +617,6 @@ def grouped_matmul_amd[
             type_of(expert_ids).Engine,
             EpilogueFnType,
             ComputeFnType,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
         ]
@@ -680,10 +668,6 @@ def grouped_matmul[
     ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
     //,
     *,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    elementwise_compute_lambda_fn: Optional[
-        elementwise_compute_lambda_type
-    ] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
     a_plane_splits: IndexList[2] = Index(0, 0),
@@ -715,39 +699,10 @@ def grouped_matmul[
     host-scalar overload passes it so those callers skip the copy.
 
     With `has_epilogue_fn`, `epilogue_fn` stores each output at its
-    `(row, col)` in `c` in place of `elementwise_lambda_fn`, and groups whose
-    expert id is -1 pass it zeros. With `has_compute_fn` (or
-    `elementwise_compute_lambda_fn`), `compute_fn` maps each value before the
-    kernel's own store; SM100 applies it in registers and keeps its TMA store.
+    `(row, col)` in `c`, and groups whose expert id is -1 pass it zeros.
+    With `has_compute_fn`, `compute_fn` maps each value before the kernel's
+    own store; SM100 applies it in registers and keeps its TMA store.
     """
-    comptime if elementwise_compute_lambda_fn:
-        comptime compute_lambda = elementwise_compute_lambda_fn.value()
-
-        # TODO(MOCO-4720): the graph compiler still hands `grouped_matmul` its
-        # fused compute epilogue as a comptime capturing lambda. Take it as a
-        # value in the graph op to remove this adapter.
-        def compute_lambda_fn[
-            dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-            return compute_lambda[dtype, width, alignment=alignment](idx, val)
-
-        grouped_matmul[
-            elementwise_lambda_fn=elementwise_lambda_fn,
-            has_compute_fn=True,
-            a_plane_splits=a_plane_splits,
-        ](
-            c,
-            a,
-            b,
-            a_offsets,
-            expert_ids,
-            expert_usage_stats,
-            ctx,
-            host_stats,
-            compute_fn=compute_lambda_fn,
-        )
-        return
-
     comptime assert c.rank == 2 and c.flat_rank == 2
     comptime assert a.rank == 2 and a.flat_rank == 2
     comptime assert b.rank == 3 and b.flat_rank == 3
@@ -759,7 +714,7 @@ def grouped_matmul[
     comptime b_type = b.dtype
 
     comptime assert not (
-        (Bool(elementwise_lambda_fn) or has_epilogue_fn) and has_compute_fn
+        has_epilogue_fn and has_compute_fn
     ), "a store epilogue and a compute epilogue are mutually exclusive"
 
     comptime is_expert_shape_static = (
@@ -812,29 +767,25 @@ def grouped_matmul[
     # Apple weight-only FP8 (W8A16) MoE: bf16 activation x float8_e4m3fn weight.
     # Routes to the tiled simdgroup-MMA grouped kernel (the FP8 analog of the
     # dense Apple FP8 Linear) instead of the scalar-cast `naive_grouped_matmul`.
-    # The tiled store applies an epilogue passed as a value; a legacy
-    # `elementwise_lambda_fn` and the plane select fall through to naive. Pre-M5
-    # Apple also falls through (the M5 native-fp8 MMA is unvalidated pre-M5).
-    # CUDA/AMD builds compile this branch out (`ctx.target.is_apple_gpu()` is
-    # comptime).
+    # The tiled store applies an epilogue passed as a value; the plane select
+    # falls through to naive. Pre-M5 Apple also falls through (the M5 native-fp8
+    # MMA is unvalidated pre-M5). CUDA/AMD builds compile this branch out
+    # (`ctx.target.is_apple_gpu()` is comptime).
     comptime is_apple_fp8_moe_applicable = (
         ctx.target.is_apple_gpu()
         and a_type == .bfloat16
         and b_type == .float8_e4m3fn
         and is_expert_shape_static
-        and not elementwise_lambda_fn
         and not a_plane_select_on
     )
     # Apple bf16 x bf16 or fp16 x fp16: grouped GEMV at decode, grouped
-    # simdgroup MMA at prefill. Same epilogue restriction as the fp8 branch;
-    # the plane select is only implemented by the naive kernel. Compiled out
-    # off Apple.
+    # simdgroup MMA at prefill. The plane select is only implemented by the
+    # naive kernel. Compiled out off Apple.
     comptime is_apple_grouped_matmul_applicable = (
         ctx.target.is_apple_gpu()
         and a_type == b_type
         and (a_type == .bfloat16 or a_type == .float16)
         and is_expert_shape_static
-        and not elementwise_lambda_fn
         and not a_plane_select_on
     )
 
@@ -854,9 +805,7 @@ def grouped_matmul[
         get_static_string[
             "grouped_matmul_",
             String(a_type) + "x" + String(b_type) + "_to_" + String(c_type),
-            "_has_epilogue" if elementwise_lambda_fn
-            or has_epilogue_fn
-            or has_compute_fn else "",
+            "_has_epilogue" if has_epilogue_fn or has_compute_fn else "",
         ](),
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(ctx),
@@ -899,7 +848,6 @@ def grouped_matmul[
 
             grouped_matmul_sm90[
                 wgmma_shape=wgmma_shape,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
             ](
@@ -960,7 +908,6 @@ def grouped_matmul[
                 cta_group=cta_group,
                 a_swizzle=a_swizzle,
                 b_swizzle=b_swizzle,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
                 a_plane_splits=a_plane_splits,
@@ -980,7 +927,6 @@ def grouped_matmul[
             var max_num_tokens_per_expert = stats[0]
             var num_active_experts = stats[1]
             grouped_matmul_amd[
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
             ](
@@ -1097,7 +1043,6 @@ def grouped_matmul[
             var max_num_tokens_per_expert = stats[0]
             var num_active_experts = stats[1]
             naive_grouped_matmul[
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
                 a_plane_splits=a_plane_splits,
@@ -1121,7 +1066,6 @@ def grouped_matmul[
     ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
     //,
     *,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
     a_plane_splits: IndexList[2] = Index(0, 0),
@@ -1153,7 +1097,6 @@ def grouped_matmul[
         host[1] = UInt32(num_active_experts)
     var expert_usage_stats = TileTensor(usage_stats_buf, row_major(2))
     grouped_matmul[
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
         a_plane_splits=a_plane_splits,
@@ -1179,7 +1122,6 @@ def naive_grouped_matmul[
     //,
     *,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
     a_plane_splits: IndexList[2] = Index(0, 0),
@@ -1219,7 +1161,6 @@ def naive_grouped_matmul[
         type_of(expert_ids).Engine,
         EpilogueFnType,
         ComputeFnType,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
         a_plane_splits=a_plane_splits,

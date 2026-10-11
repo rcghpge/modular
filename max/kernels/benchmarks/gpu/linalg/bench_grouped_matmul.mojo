@@ -317,12 +317,27 @@ def bench_grouped_matmul[
     ctx.enqueue_copy(a_offsets_dev_buffer, a_offsets_host_ptr)
     ctx.enqueue_copy(expert_ids_dev_buffer, expert_ids_host_ptr)
 
+    # The block-scaled FP8 persistent kernel still takes a legacy capturing
+    # epilogue, so keep this `@__parameter` form for that call site.
     @inline(.always)
     @__copy_capture(c_dev)
     @__parameter
     def epilogue_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
     ](idx: IndexList[2], val: SIMD[dtype, width]) -> None:
+        var new_val = val
+
+        comptime for i in range(width):
+            new_val[i] = test_epilogue(idx[0], idx[1] + i, val[i])
+
+        c_dev.store_linear[width=width, alignment=alignment](
+            idx, new_val.cast[out_type]()
+        )
+
+    @inline(.always)
+    def epilogue_value_fn[
+        dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: IndexList[2], val: SIMD[dtype, width]) {var c_dev} -> None:
         var new_val = val
 
         comptime for i in range(width):
@@ -858,11 +873,7 @@ def bench_grouped_matmul[
                     pass
 
                 else:
-                    grouped_matmul[
-                        elementwise_lambda_fn=Optional[
-                            elementwise_epilogue_type
-                        ](epilogue_fn) if has_epilogue else None,
-                    ](
+                    grouped_matmul[has_epilogue_fn=has_epilogue](
                         c_dev,
                         a_dev,
                         b_dev,
@@ -871,6 +882,7 @@ def bench_grouped_matmul[
                         max_num_tokens_by_expert,
                         num_active_experts,
                         ctx,
+                        epilogue_fn=epilogue_value_fn,
                     )
 
             bencher_iter_custom(bench, kernel_launch, ctx)

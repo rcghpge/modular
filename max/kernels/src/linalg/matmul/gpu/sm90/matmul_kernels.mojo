@@ -76,8 +76,6 @@ from std.utils.static_tuple import StaticTuple
 from ....utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    elementwise_compute_lambda_type,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -260,10 +258,6 @@ struct HopperMatmulSM90Kernel[
     use_tma_store: Bool = False,
     promotion_frequency: Int = 1,
     pdl_level: PDLLevel = PDLLevel(),
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    elementwise_compute_lambda_fn: Optional[
-        elementwise_compute_lambda_type
-    ] = None,
     hilbert_swizzle: Bool = False,
     k_group_size: Int = 1,
     swapAB: Bool = False,
@@ -307,8 +301,6 @@ struct HopperMatmulSM90Kernel[
         promotion_frequency: How often FP8 accumulation is promoted to
             higher precision.
         pdl_level: Programmatic Dependency Launch (PDL) level.
-        elementwise_lambda_fn: Optional epilogue function.
-        elementwise_compute_lambda_fn: Optional compute function.
         hilbert_swizzle: Whether Hilbert-curve thread block scheduling is
             used.
         k_group_size: Number of K-dimension tiles loaded and consumed per
@@ -622,9 +614,6 @@ struct HopperMatmulSM90Kernel[
         EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
         ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
         //,
-        custom_elementwise_lambda_fn: Optional[
-            elementwise_epilogue_type
-        ] = Self.elementwise_lambda_fn,
         *,
         has_epilogue_fn: Bool = False,
         has_compute_fn: Bool = False,
@@ -646,9 +635,6 @@ struct HopperMatmulSM90Kernel[
         Parameters:
             EpilogueFnType: Type of `epilogue_fn` (inferred).
             ComputeFnType: Type of `compute_fn` (inferred).
-            custom_elementwise_lambda_fn: Optional epilogue function applied
-                to output elements (defaults to the struct's
-                `elementwise_lambda_fn`).
             has_epilogue_fn: Whether `epilogue_fn` stores the output.
             has_compute_fn: Whether `compute_fn` maps each output before it
                 is stored.
@@ -679,8 +665,6 @@ struct HopperMatmulSM90Kernel[
             wgmma_shape=Self.wgmma_shape,
             num_consumer=Self.num_consumer,
             use_tma_store=Self.use_tma_store,
-            elementwise_lambda_fn=custom_elementwise_lambda_fn,
-            elementwise_compute_lambda_fn=Self.elementwise_compute_lambda_fn,
             swapAB=Self.swapAB,
         ](
             c.as_unsafe_any_origin(),
@@ -947,9 +931,8 @@ struct HopperMatmulSM90Kernel[
             b_tensor_layout: Memory layout of input matrix B.
             c_tensor_layout: Memory layout of output matrix C.
             EpilogueFnType: Type of `epilogue_fn`.
-            has_epilogue_fn: Whether `epilogue_fn` stores the output, in
-                place of `elementwise_lambda_fn`. Launch with
-                `host_arg=epilogue_fn`.
+            has_epilogue_fn: Whether `epilogue_fn` stores the output. Launch
+                with `host_arg=epilogue_fn`.
             ComputeFnType: Type of `compute_fn`.
             has_compute_fn: Whether `compute_fn` maps each output before it
                 is stored. Launch with `host_arg2=compute_fn`.
@@ -1132,9 +1115,8 @@ struct HopperMatmulSM90Kernel[
                 scheduler to assign output tiles to blocks.
             c_tensor_layout: Memory layout of output matrix C.
             EpilogueFnType: Type of `epilogue_fn`.
-            has_epilogue_fn: Whether `epilogue_fn` stores the output, in
-                place of `elementwise_lambda_fn`. Launch with
-                `host_arg=epilogue_fn`.
+            has_epilogue_fn: Whether `epilogue_fn` stores the output. Launch
+                with `host_arg=epilogue_fn`.
             ComputeFnType: Type of `compute_fn`.
             has_compute_fn: Whether `compute_fn` maps each output before it
                 is stored. Launch with `host_arg2=compute_fn`.
@@ -1379,9 +1361,8 @@ struct HopperMatmulSM90Kernel[
             ExpertIdsLayout: Memory layout of the `expert_ids` tensor.
             c_tensor_layout: Memory layout of output matrix C.
             EpilogueFnType: Type of `epilogue_fn`.
-            has_epilogue_fn: Whether `epilogue_fn` stores the output, in
-                place of `elementwise_lambda_fn`. Launch with
-                `host_arg=epilogue_fn`.
+            has_epilogue_fn: Whether `epilogue_fn` stores the output. Launch
+                with `host_arg=epilogue_fn`.
             ComputeFnType: Type of `compute_fn`.
             has_compute_fn: Whether `compute_fn` maps each output before it
                 is stored. Launch with `host_arg2=compute_fn`.
@@ -1524,17 +1505,6 @@ struct HopperMatmulSM90Kernel[
                 row_major(M, Idx[N]),
             )
 
-            @__parameter
-            def elementwise_epilogue_fn_wrapper[
-                dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](idx: IndexList[2], val: SIMD[dtype, width]):
-                comptime if Self.elementwise_lambda_fn:
-                    comptime elementwise_epilogue = Self.elementwise_lambda_fn.value()
-                    var batch_idx = IndexList[2](
-                        Int(a_start_row + UInt32(idx[0])), idx[1]
-                    )
-                    elementwise_epilogue(batch_idx, val)
-
             comptime if has_compute_fn or has_epilogue_fn:
                 # `c_by_expert` indexes this group's rows from 0; the
                 # epilogues take rows of all of `c`.
@@ -1565,7 +1535,7 @@ struct HopperMatmulSM90Kernel[
                             row_idx, val
                         )
 
-                Self.consumer_output[None, has_epilogue_fn=True](
+                Self.consumer_output[has_epilogue_fn=True](
                     c_tma_op,
                     c_by_expert,
                     smem.c_tile(),
@@ -1578,11 +1548,7 @@ struct HopperMatmulSM90Kernel[
                     group_epilogue_fn,
                 )
             else:
-                Self.consumer_output[
-                    Optional[elementwise_epilogue_type](
-                        elementwise_epilogue_fn_wrapper
-                    ) if Self.elementwise_lambda_fn else None
-                ](
+                Self.consumer_output(
                     c_tma_op,
                     c_by_expert,
                     smem.c_tile(),

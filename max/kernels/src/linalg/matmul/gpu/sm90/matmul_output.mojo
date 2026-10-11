@@ -43,8 +43,6 @@ from std.utils.index import IndexList
 from ....utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    elementwise_compute_lambda_type,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -77,10 +75,6 @@ struct MatmulTileWriter[
     wgmma_shape: IndexList[3],
     num_consumer: Int = 1,
     use_tma_store: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    elementwise_compute_lambda_fn: Optional[
-        elementwise_compute_lambda_type
-    ] = None,
     swapAB: Bool = False,
 ](TrivialRegisterPassable):
     """Writes WGMMA accumulator register tiles to global memory for SM90 matmul.
@@ -112,14 +106,6 @@ struct MatmulTileWriter[
             tile (defaults to 1).
         use_tma_store: Whether to use TMA async stores for shared memory
             to global memory copies (defaults to `False`).
-        elementwise_lambda_fn: Optional epilogue lambda invoked with
-            each output element's global coordinates and value,
-            writing directly to global memory
-            (defaults to `None`).
-        elementwise_compute_lambda_fn: Optional compute lambda that
-            transforms each output element value before it is written
-            back to shared memory and then to global memory (defaults
-            to `None`).
         swapAB: Whether to swap the A and B operand roles for the small-M
             strategy, transposing the tile and block coordinate mapping
             (defaults to `False`).
@@ -317,12 +303,7 @@ struct MatmulTileWriter[
         var tile_coords: OptionalReg[TileCoordinates] = None
         var max_row: OptionalReg[UInt32] = None
 
-        comptime if (
-            Self.elementwise_lambda_fn is not None
-            or Self.elementwise_compute_lambda_fn is not None
-            or has_epilogue_fn
-            or has_compute_fn
-        ):
+        comptime if has_epilogue_fn or has_compute_fn:
             tile_coords = TileCoordinates(
                 IndexList[2](tile_origin[0], tile_origin[1]),
                 IndexList[2](consumer_coords[0], consumer_coords[1]),
@@ -333,8 +314,6 @@ struct MatmulTileWriter[
             wgmma_shape=Self.wgmma_shape,
             num_consumer=Self.num_consumer,
             N=Self.N,
-            epilogue_fn=Self.elementwise_lambda_fn,
-            compute_lambda_fn=Self.elementwise_compute_lambda_fn,
             check_runtime_bounds=check_runtime_bounds,
             swapAB=Self.swapAB,
         ](
@@ -466,17 +445,7 @@ struct MatmulTileWriter[
                     max_col,
                 )
 
-            comptime if Self.elementwise_compute_lambda_fn:
-                comptime compute_fn = Self.elementwise_compute_lambda_fn.value()
-
-                def _compute[
-                    dtype: DType, width: SIMDLength, *, alignment: Int = 1
-                ](index: IndexList[2], mut val: SIMD[dtype, width]) {}:
-                    val = compute_fn[alignment=alignment](index, val)
-
-                apply_epilogue(_compute)
-                named_barrier[Int32(Self.num_consumer_threads)](10)
-            elif has_compute_fn:
+            comptime if has_compute_fn:
 
                 def _value_compute[
                     dtype: DType, width: SIMDLength, *, alignment: Int = 1
@@ -490,16 +459,7 @@ struct MatmulTileWriter[
                 apply_epilogue(_value_compute)
                 named_barrier[Int32(Self.num_consumer_threads)](10)
 
-            comptime if Self.elementwise_lambda_fn:
-                comptime epilogue_fn = Self.elementwise_lambda_fn.value()
-
-                def _epilogue[
-                    dtype: DType, width: SIMDLength, *, alignment: Int = 1
-                ](index: IndexList[2], mut val: SIMD[dtype, width]) {}:
-                    _ = epilogue_fn[alignment=alignment](index, val)
-
-                apply_epilogue(_epilogue)
-            elif has_epilogue_fn:
+            comptime if has_epilogue_fn:
 
                 def _value_epilogue[
                     dtype: DType, width: SIMDLength, *, alignment: Int = 1
@@ -594,10 +554,9 @@ struct MatmulTileWriter[
             reg_tile_layout: Memory layout of the accumulator register tile.
             EpilogueFnType: Type of `epilogue_fn` (inferred).
             ComputeFnType: Type of `compute_fn` (inferred).
-            has_epilogue_fn: Whether `epilogue_fn` stores the output, in
-                place of `elementwise_lambda_fn`.
+            has_epilogue_fn: Whether `epilogue_fn` stores the output.
             has_compute_fn: Whether `compute_fn` maps each output before
-                it is stored, in place of `elementwise_compute_lambda_fn`.
+                it is stored.
 
         Args:
             tma_op: TMA tensor tile descriptor used for async stores from

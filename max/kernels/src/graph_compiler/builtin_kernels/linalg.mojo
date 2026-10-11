@@ -509,21 +509,19 @@ struct Struct_grouped_matmul_ragged:
     ) raises:
         comptime assert is_gpu[target](), "grouped matmul only support GPUs"
 
-        @__parameter
         @inline(.always)
         def epilogue_fn[
-            _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]):
+            _dtype: DType, _width: SIMDLength, *, alignment: Int
+        ](coords: IndexList[2], val: SIMD[_dtype, _width]) {var c}:
             c._lambda_store[width=_width, element_alignment=alignment](
                 coords,
                 rebind[SIMD[c_type, _width]](val),
             )
 
-        @__parameter
         @inline(.always)
         def output_compute_fn[
-            _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]) -> SIMD[
+            _dtype: DType, _width: SIMDLength, *, alignment: Int
+        ](coords: IndexList[2], val: SIMD[_dtype, _width]) {var c} -> SIMD[
             _dtype, _width
         ]:
             return rebind[SIMD[_dtype, _width]](
@@ -534,21 +532,9 @@ struct Struct_grouped_matmul_ragged:
 
         comptime has_compute_lambda = type_of(c)._has_compute_fusion
 
-        comptime elementwise_lambda = Optional[
-            matmul_elementwise_epilogue_type
-        ](
-            epilogue_fn
-        ) if has_epilogue_fusion and not has_compute_lambda else None
-
-        comptime compute_lambda = Optional[
-            matmul_elementwise_compute_lambda_type
-        ](
-            output_compute_fn
-        ) if has_epilogue_fusion and has_compute_lambda else None
-
         grouped_matmul[
-            elementwise_lambda_fn=elementwise_lambda,
-            elementwise_compute_lambda_fn=compute_lambda,
+            has_epilogue_fn=has_epilogue_fusion and not has_compute_lambda,
+            has_compute_fn=has_epilogue_fusion and has_compute_lambda,
         ](
             c.to_tile_tensor[.int64](),
             a.to_tile_tensor[.int64](),
@@ -557,6 +543,8 @@ struct Struct_grouped_matmul_ragged:
             expert_ids.to_tile_tensor[.int64](),
             expert_usage_stats.to_tile_tensor[.int64](),
             context,
+            epilogue_fn=epilogue_fn,
+            compute_fn=output_compute_fn,
         )
 
 
