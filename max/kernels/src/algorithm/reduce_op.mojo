@@ -1540,9 +1540,9 @@ struct ArgMax[
         """Folds the within-thread acc at lane 0 into the scalar
         `(best, best_idx)`, resets the SIMD acc so the cross-thread
         `join` can't double-count it, combines `(best, best_idx)` across
-        participants via `reducer.generic`, and leaves the winning index
-        in `acc_indices[0]` so the body's emit reads
-        `acc_indices.slice[tile_width]` uniformly (cooperative: lane 0;
+        participants via `reducer.generic`, and leaves the winning value
+        and index in `acc_values[0]` / `acc_indices[0]` so the body's emit
+        reads `acc_*.slice[tile_width]` uniformly (cooperative: lane 0;
         tiled: per-column, where `join_parallel` is skipped).
 
         At `W == 1` lane 0 is the running argmax directly; at `W > 1`
@@ -1566,6 +1566,7 @@ struct ArgMax[
         )
         self.acc_indices = SIMD[.int64, Self.W](Int64.MAX)
         reducer.generic(self)
+        self.acc_values[0] = self.best
         self.acc_indices[0] = _in_range_index(Int64(self.best_idx))
 
 
@@ -1714,8 +1715,9 @@ struct ArgMin[
     def join_parallel[R: Reducer](mut self, reducer: R):
         """Folds the within-thread acc at lane 0 into the scalar
         `(best, best_idx)`, resets the SIMD acc, combines across
-        participants via `reducer.generic`, and leaves the winning index
-        in `acc_indices[0]`. Mirrors `ArgMax.join_parallel` with the
+        participants via `reducer.generic`, and leaves the winning value
+        and index in `acc_values[0]` / `acc_indices[0]`. Mirrors
+        `ArgMax.join_parallel` with the
         `<` tie-break. Works at any `W` (collapse pre-reduces to lane 0
         when `W > 1`).
 
@@ -1737,4 +1739,5 @@ struct ArgMin[
         )
         self.acc_indices = SIMD[.int64, Self.W](Int64.MAX)
         reducer.generic(self)
+        self.acc_values[0] = self.best
         self.acc_indices[0] = _in_range_index(Int64(self.best_idx))
