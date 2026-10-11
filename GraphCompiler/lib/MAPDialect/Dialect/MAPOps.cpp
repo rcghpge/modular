@@ -10,6 +10,7 @@
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/Support/AsmSyntax.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Support/AssertStream.h"
 #include "Support/MDialect/ParserUtils.h"
 #include "mlir/IR/Builders.h"
@@ -18,6 +19,7 @@
 #include "mlir/IR/SymbolTable.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
 
 using namespace M;
 using namespace mlir;
@@ -754,14 +756,20 @@ void IterForeachOp::getEffects(
                        effects);
 }
 
-llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
-  // Scan results then inputs for the first value with a device annotation.
-  for (Value v : llvm::concat<Value>(getResults(), getInputs())) {
-    if (auto dt = llvm::dyn_cast<M::MO::MOHasDeviceTypeInterface>(v.getType()))
-      if (M::DeviceRefAttr device = dt.getDeviceRef())
-        return {device};
-  }
+// The first device annotation on `results`, then `inputs`.
+static llvm::SmallVector<M::DeviceRefAttr>
+getFirstExecutionDevice(ValueRange results, ValueRange inputs) {
+  for (ValueRange values : {results, inputs})
+    for (Value v : values)
+      if (auto dt =
+              llvm::dyn_cast<M::MO::MOHasDeviceTypeInterface>(v.getType()))
+        if (M::DeviceRefAttr device = dt.getDeviceRef())
+          return {device};
   return {M::DeviceRefAttr{}};
+}
+
+llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
+  return getFirstExecutionDevice(getResults(), getInputs());
 }
 
 void IterForeachOp::insertInputsAt(unsigned idx, ValueRange vals) {
@@ -879,6 +887,475 @@ LogicalResult IterForeachBodyOp::verify() {
                          << " does not match shape rank "
                          << getShape().getRank();
 
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// map.iter.rowwise
+//===----------------------------------------------------------------------===//
+
+// Parses `<[d0, d1, ...], axis = N>`.
+static ParseResult parseRowwiseShapeAndAxis(OpAsmParser &parser,
+                                            OperationState &state,
+                                            StringAttr shapeName,
+                                            StringAttr axisName) {
+  if (parser.parseLess())
+    return mlir::failure();
+  mlir::TypedAttr shapeTypedAttr;
+  auto shapeResult = MOSH::parseShapeAttr(parser, shapeTypedAttr);
+  if (!shapeResult.has_value())
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected '[' for the rowwise shape");
+  if (failed(*shapeResult))
+    return mlir::failure();
+  int64_t axis;
+  if (parser.parseComma() || parser.parseKeyword("axis") ||
+      parser.parseEqual() || parser.parseInteger(axis) || parser.parseGreater())
+    return mlir::failure();
+  state.addAttribute(shapeName, shapeTypedAttr);
+  state.addAttribute(axisName, parser.getBuilder().getI64IntegerAttr(axis));
+  return mlir::success();
+}
+
+static void printRowwiseShapeAndAxis(OpAsmPrinter &p, MOSH::ShapeAttr shape,
+                                     int64_t axis) {
+  p << "<[";
+  MOSH::printShapeValue(p, shape.getValues());
+  p << "], axis = " << axis << ">";
+}
+
+static LogicalResult verifyRowIndex(Operation *op, MOSH::ShapeAttr shape,
+                                    int64_t axis, BlockArgument row) {
+  int64_t rank = shape.getRank();
+  if (axis < 0 || axis >= rank)
+    return op->emitOpError()
+           << "axis " << axis << " is out of range for rank " << rank;
+  auto rowTy = llvm::dyn_cast<MAP::IndexType>(row.getType());
+  if (!rowTy)
+    return op->emitOpError() << "row block argument must be map.index<N>";
+  if (static_cast<int64_t>(rowTy.getRank()) != rank)
+    return op->emitOpError() << "row index rank " << rowTy.getRank()
+                             << " does not match shape rank " << rank;
+  return mlir::success();
+}
+
+ParseResult IterRowwiseOp::parse(OpAsmParser &parser, OperationState &state) {
+  if (parseRowwiseShapeAndAxis(parser, state, getShapeAttrName(state.name),
+                               getAxisAttrName(state.name)))
+    return mlir::failure();
+
+  MOGG::DispatchKindAttr dispatch;
+  if (MOGG::parseOptionalDispatch(parser, dispatch))
+    return mlir::failure();
+  if (dispatch)
+    state.addAttribute(getDispatchAttrName(state.name), dispatch);
+
+  // inputs (%x: T, ...)
+  SmallVector<OpAsmParser::Argument> allArgInfo;
+  if (parser.parseKeyword("inputs") ||
+      parseParenOperandListWithShadowing(parser, state, allArgInfo,
+                                         /*isIsolatedFromAbove=*/true))
+    return mlir::failure();
+  int32_t numInputOperands = static_cast<int32_t>(state.operands.size());
+
+  // outputs (%out: T, ...), block args only.
+  if (parser.parseKeyword("outputs") || parseBlockArgList(parser, allArgInfo))
+    return mlir::failure();
+
+  // row (%row: map.index<N>), block arg only.
+  SmallVector<OpAsmParser::Argument> rowArgInfo;
+  if (parser.parseKeyword("row") || parseBlockArgList(parser, rowArgInfo))
+    return mlir::failure();
+  if (rowArgInfo.size() != 1)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "'map.iter.rowwise' expects exactly one row "
+                            "argument");
+  allArgInfo.push_back(rowArgInfo.front());
+
+  // Optional chain (%c), an operand with no block arg.
+  int32_t numChainOperands = 0;
+  if (succeeded(parser.parseOptionalKeyword("chain"))) {
+    OpAsmParser::UnresolvedOperand chainOperand;
+    if (parser.parseLParen() || parser.parseOperand(chainOperand) ||
+        parser.parseRParen() ||
+        parser.resolveOperand(chainOperand,
+                              MO::ChainType::get(parser.getContext()),
+                              state.operands))
+      return mlir::failure();
+    numChainOperands = 1;
+  }
+  state.addAttribute(getOperandSegmentSizesAttrName(state.name),
+                     parser.getBuilder().getDenseI32ArrayAttr(
+                         {numInputOperands, numChainOperands}));
+
+  if (parser.parseArrowTypeList(state.types))
+    return mlir::failure();
+
+  if (parseRegion(parser, allArgInfo, *state.addRegion(),
+                  /*isIsolatedFromAbove=*/true))
+    return mlir::failure();
+
+  return parser.parseOptionalAttrDict(state.attributes);
+}
+
+void IterRowwiseOp::print(OpAsmPrinter &p) {
+  printRowwiseShapeAndAxis(p, getShape(), getAxis());
+  if (getDispatch() != MOGG::DispatchKind::Deferred) {
+    p << " ";
+    MOGG::printOptionalDispatch(p, getDispatchAttr(),
+                                MOGG::DispatchKind::Deferred);
+  }
+  p << "\n    ";
+
+  p << "inputs  ";
+  printParenOperandListWithShadowing(p, getInputs(), getInputBlockArgs(),
+                                     /*isIsolatedFromAbove=*/true);
+  p << "\n    ";
+  p << "outputs ";
+  printBlockArgList(p, getOutputBlockArgs());
+  p << "\n    ";
+  p << "row     ";
+  printBlockArgList(p, getBody().front().getArguments().take_back());
+  if (Value chain = getInputChain())
+    p << " chain(" << chain << ")";
+  p.printArrowTypeList(getResultTypes());
+  p << " ";
+
+  // As in map.iter.foreach: shadow manually, outputs and row shadow
+  // themselves.
+  llvm::DenseSet<Value> seen;
+  if (llvm::all_of(getInputs(),
+                   [&](Value v) { return seen.insert(v).second; })) {
+    SmallVector<Value> shadowValues(getInputs().begin(), getInputs().end());
+    for (BlockArgument arg :
+         getBody().front().getArguments().drop_front(getInputs().size()))
+      shadowValues.push_back(arg);
+    p.shadowRegionArgs(getBody(), shadowValues);
+  }
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          {getShapeAttrName().getValue(),
+                           getAxisAttrName().getValue(),
+                           getOperandSegmentSizesAttrName().getValue(),
+                           getDispatchAttrName().getValue()});
+}
+
+LogicalResult IterRowwiseOp::verify() {
+  Block &body = getBody().front();
+  unsigned numInputs = getInputs().size();
+
+  // A chain result must be last and has no block argument.
+  ResultRange results = getResults();
+  for (auto [i, result] : llvm::enumerate(results))
+    if (llvm::isa<MO::ChainType>(result.getType()) && i + 1 != results.size())
+      return emitOpError() << "only the last result may be a chain";
+  unsigned numOutputs = results.size() - (getOutputChain() ? 1 : 0);
+  unsigned expectedArgs = numInputs + numOutputs + 1;
+  if (body.getNumArguments() != expectedArgs)
+    return emitOpError() << "body expects " << expectedArgs
+                         << " block arguments (" << numInputs << " inputs + "
+                         << numOutputs << " outputs + 1 row), got "
+                         << body.getNumArguments();
+
+  for (auto [i, pair] :
+       llvm::enumerate(llvm::zip(getInputs(), getInputBlockArgs())))
+    if (std::get<0>(pair).getType() != std::get<1>(pair).getType())
+      return emitOpError() << "input block argument " << i
+                           << " type mismatch with operand";
+  for (auto [i, pair] :
+       llvm::enumerate(llvm::zip(results, getOutputBlockArgs())))
+    if (std::get<0>(pair).getType() != std::get<1>(pair).getType())
+      return emitOpError() << "output block argument " << i
+                           << " type mismatch with result";
+
+  MOSH::ShapeAttr shape = getShape();
+  int64_t axis = getAxis();
+  if (failed(verifyRowIndex(*this, shape, axis, getRowArg())))
+    return mlir::failure();
+
+  // Each result has the full shape (per element) or the shape with `axis`
+  // set to 1 (per row).
+  for (auto [i, result] : llvm::enumerate(results.take_front(numOutputs))) {
+    MOSH::ShapeAttr resultShape =
+        llvm::cast<MO::TensorType>(result.getType()).getShape();
+    bool perElement = resultShape == shape;
+    bool perRow = resultShape.getRank() == shape.getRank() &&
+                  MOSH::ShapeAttr::getStaticDim(resultShape[axis]) == 1;
+    for (int64_t d = 0, e = shape.getRank(); perRow && d < e; ++d)
+      perRow = d == axis || resultShape[d] == shape[d];
+    if (!perElement && !perRow)
+      return emitOpError() << "result " << i
+                           << " must have the rowwise shape, or that shape "
+                              "with dimension "
+                           << axis << " set to 1; got " << result.getType();
+  }
+  return mlir::success();
+}
+
+Block::BlockArgListType IterRowwiseOp::getInputBlockArgs() {
+  return getBody().front().getArguments().take_front(getInputs().size());
+}
+
+Block::BlockArgListType IterRowwiseOp::getOutputBlockArgs() {
+  unsigned numOutputs = getNumResults() - (getOutputChain() ? 1 : 0);
+  return getBody().front().getArguments().slice(getInputs().size(), numOutputs);
+}
+
+BlockArgument IterRowwiseOp::getRowArg() {
+  return getBody().front().getArguments().back();
+}
+
+llvm::SmallVector<M::DeviceRefAttr> IterRowwiseOp::getExecutionDevices() {
+  return getFirstExecutionDevice(getResults(), getInputs());
+}
+
+Value IterRowwiseOp::getOutputChain() {
+  ResultRange results = getResults();
+  if (results.empty())
+    return nullptr;
+  Value last = results.back();
+  return llvm::isa<MO::ChainType>(last.getType()) ? last : Value();
+}
+
+void IterRowwiseOp::setChain(Value chain) {
+  if (chain)
+    getChainMutable().assign(chain);
+}
+
+void IterRowwiseOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  collectKernelEffects(getOperation(), getHasReadEffect(), getHasWriteEffect(),
+                       effects);
+}
+
+//===----------------------------------------------------------------------===//
+// map.iter.rowwise.body
+//===----------------------------------------------------------------------===//
+
+ParseResult IterRowwiseBodyOp::parse(OpAsmParser &parser,
+                                     OperationState &state) {
+  if (parseRowwiseShapeAndAxis(parser, state, getShapeAttrName(state.name),
+                               getAxisAttrName(state.name)))
+    return mlir::failure();
+
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  if (parser.parseKeyword("row") || parseBlockArgList(parser, entryArgs))
+    return mlir::failure();
+  if (entryArgs.size() != 1)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "'map.iter.rowwise.body' expects exactly one row "
+                            "argument");
+
+  // capturing ( %inner = %outer : type, ... ), as in map.iter.foreach.body.
+  SmallVector<OpAsmParser::UnresolvedOperand> captures;
+  SmallVector<Type> captureTypes;
+  if (parser.parseKeyword("capturing") || parser.parseLParen())
+    return mlir::failure();
+  if (failed(parser.parseOptionalRParen())) {
+    do {
+      OpAsmParser::Argument innerArg;
+      OpAsmParser::UnresolvedOperand outer;
+      Type type;
+      if (parser.parseArgument(innerArg) || parser.parseEqual() ||
+          parser.parseOperand(outer) || parser.parseColonType(type))
+        return mlir::failure();
+      innerArg.type = type;
+      entryArgs.push_back(innerArg);
+      captures.push_back(outer);
+      captureTypes.push_back(type);
+    } while (succeeded(parser.parseOptionalComma()));
+    if (parser.parseRParen())
+      return mlir::failure();
+  }
+  if (parser.resolveOperands(captures, captureTypes,
+                             parser.getCurrentLocation(), state.operands))
+    return mlir::failure();
+
+  Region *body = state.addRegion();
+  if (parser.parseRegion(*body, entryArgs, /*enableNameShadowing=*/true))
+    return mlir::failure();
+
+  return parser.parseOptionalAttrDict(state.attributes);
+}
+
+void IterRowwiseBodyOp::print(OpAsmPrinter &p) {
+  printRowwiseShapeAndAxis(p, getShape(), getAxis());
+
+  Block &block = getBody().front();
+  ValueRange captures = getCaptures();
+  p.increaseIndent();
+  p.printNewline();
+  p << "row ";
+  printBlockArgList(p, block.getArguments().take_front());
+  p.printNewline();
+  p << "capturing (";
+  llvm::interleaveComma(
+      llvm::seq<unsigned>(0, captures.size()), p, [&](unsigned i) {
+        BlockArgument inner = block.getArgument(1 + i);
+        p << inner << " = " << captures[i] << " : " << inner.getType();
+      });
+  p << ") ";
+  p.decreaseIndent();
+
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(
+      getOperation()->getAttrs(),
+      {getShapeAttrName().getValue(), getAxisAttrName().getValue()});
+}
+
+LogicalResult IterRowwiseBodyOp::verify() {
+  Block &body = getBody().front();
+  unsigned numCaptures = getCaptures().size();
+  if (body.getNumArguments() != 1 + numCaptures)
+    return emitOpError() << "body expects exactly " << (1 + numCaptures)
+                         << " block arguments (the row, then one per "
+                            "capture), got "
+                         << body.getNumArguments();
+  return verifyRowIndex(*this, getShape(), getAxis(), body.getArgument(0));
+}
+
+//===----------------------------------------------------------------------===//
+// map.iter.reduce
+//===----------------------------------------------------------------------===//
+
+static bool isScalarType(Type type) {
+  return llvm::isa<FloatType, IntegerType>(type);
+}
+
+ParseResult IterReduceOp::parse(OpAsmParser &parser, OperationState &state) {
+  FlatSymbolRefAttr monoid;
+  if (parser.parseAttribute(monoid, getMonoidAttrName(state.name),
+                            state.attributes))
+    return mlir::failure();
+
+  SmallVector<OpAsmParser::Argument> indexArgInfo;
+  if (parser.parseKeyword("index") || parseBlockArgList(parser, indexArgInfo))
+    return mlir::failure();
+  if (indexArgInfo.size() != 1)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "'map.iter.reduce' expects exactly one index "
+                            "argument");
+
+  // Optional so that a fold without results reaches the verifier.
+  if (parser.parseOptionalArrowTypeList(state.types) ||
+      parser.parseRegion(*state.addRegion(), indexArgInfo))
+    return mlir::failure();
+
+  return parser.parseOptionalAttrDict(state.attributes);
+}
+
+void IterReduceOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printAttributeWithoutType(getMonoidAttr());
+  p << " index ";
+  printBlockArgList(p, getBody().front().getArguments());
+  p.printArrowTypeList(getResultTypes());
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          {getMonoidAttrName().getValue()});
+}
+
+void IterReduceOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  // Printing must not fail on IR that `verifySymbolUses` would reject.
+  auto decl = SymbolTable::lookupNearestSymbolFrom<M::MOGG::KernelDeclOp>(
+      *this, getMonoidAttr());
+  M::MOGG::KernelReductionAttr reduction =
+      decl ? decl.getReductionAttr() : nullptr;
+  if (!reduction)
+    return;
+  ArrayRef<Attribute> outputs = reduction.getOutputs().getValue();
+  if (outputs.size() != getNumResults())
+    return;
+  for (auto [result, attr] : llvm::zip_equal(getResults(), outputs))
+    setNameFn(result,
+              llvm::cast<M::MOGG::KernelReductionOutputAttr>(attr).getName());
+}
+
+YieldOp IterReduceOp::getYield() {
+  Block &body = getBody().front();
+  return body.empty() ? YieldOp() : llvm::dyn_cast<YieldOp>(body.back());
+}
+
+LogicalResult IterReduceOp::verify() {
+  if (getNumResults() == 0)
+    return emitOpError() << "must have at least one result";
+  for (auto [i, type] : llvm::enumerate(getResultTypes()))
+    if (!isScalarType(type))
+      return emitOpError() << "result " << i << " must be a scalar, got "
+                           << type;
+
+  Block &body = getBody().front();
+  if (body.getNumArguments() != 1)
+    return emitOpError() << "body expects exactly one block argument (the "
+                            "index), got "
+                         << body.getNumArguments();
+  Operation *parent = (*this)->getParentOp();
+  MOSH::ShapeAttr shape =
+      llvm::isa<IterRowwiseOp>(parent)
+          ? llvm::cast<IterRowwiseOp>(parent).getShape()
+          : llvm::cast<IterRowwiseBodyOp>(parent).getShape();
+  auto indexTy = llvm::dyn_cast<IndexType>(getIndexArg().getType());
+  if (!indexTy)
+    return emitOpError() << "index block argument must be map.index<N>";
+  if (indexTy.getRank() != shape.getRank())
+    return emitOpError() << "index rank " << indexTy.getRank()
+                         << " does not match the rowwise shape rank "
+                         << shape.getRank();
+
+  if (!getYield())
+    return emitOpError() << "body must end with a map.yield of the "
+                            "contribution";
+  if (getYield().getOperands().empty())
+    return emitOpError() << "must yield at least one contribution";
+  for (auto [i, type] : llvm::enumerate(getYield().getOperandTypes()))
+    if (!isScalarType(type))
+      return emitOpError() << "contribution " << i << " must be a scalar, got "
+                           << type;
+
+  WalkResult stores =
+      body.walk([](StoreOp) { return WalkResult::interrupt(); });
+  if (stores.wasInterrupted())
+    return emitOpError() << "must not store; a fold only reads the row";
+  return mlir::success();
+}
+
+LogicalResult
+IterReduceOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  auto decl = symbolTable.lookupNearestSymbolFrom<M::MOGG::KernelDeclOp>(
+      *this, getMonoidAttr());
+  if (!decl)
+    return emitOpError("'")
+           << getMonoid() << "' does not refer to a kernel.decl op";
+  M::MOGG::KernelReductionAttr reduction = decl.getReductionAttr();
+  if (!reduction)
+    return emitOpError("kernel '") << getMonoid() << "' is not a reduction";
+
+  ArrayRef<Attribute> outputs = reduction.getOutputs().getValue();
+  if (outputs.size() != getNumResults())
+    return emitOpError("monoid '") << getMonoid() << "' has " << outputs.size()
+                                   << " output fields, but the fold has "
+                                   << getNumResults() << " results";
+
+  // Outputs whose dtype is the same struct parameter share one type. Fixed
+  // dtypes are checked when the monoid's parameters are inferred.
+  llvm::StringMap<std::pair<unsigned, Type>> paramTypes;
+  for (auto [i, attr] : llvm::enumerate(outputs)) {
+    auto output = llvm::cast<M::MOGG::KernelReductionOutputAttr>(attr);
+    auto ref = llvm::dyn_cast<KGEN::ParamDeclRefAttr>(
+        KGEN::SugarAttr::strip(output.getDtype()));
+    if (!ref)
+      continue;
+    Type type = getResult(i).getType();
+    auto [it, inserted] =
+        paramTypes.try_emplace(ref.getName().strref(), i, type);
+    if (!inserted && it->second.second != type)
+      return emitOpError("results ")
+             << it->second.first << " and " << i << " are both of dtype "
+             << "parameter " << ref.getName() << " but have types "
+             << it->second.second << " and " << type;
+  }
   return mlir::success();
 }
 

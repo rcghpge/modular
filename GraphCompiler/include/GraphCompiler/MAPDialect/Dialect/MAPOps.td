@@ -155,8 +155,9 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
 def MAP_YieldOp : MAP_Op<"yield", [Terminator]> {
   let summary = "Terminates a map.iter.opaque body, yielding its results.";
   let description = [{
-    Terminates a `map.iter.prologue`, or a `map.iter.opaque` body whose
-    `map.call.opaque` returns a by-value result.
+    Terminates a `map.iter.prologue`, a `map.iter.reduce` (yielding its
+    contribution), or a `map.iter.opaque` body whose `map.call.opaque` returns
+    a by-value result.
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
@@ -417,6 +418,180 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
 }
 
 //===----------------------------------------------------------------------===//
+// map.iter.rowwise
+//===----------------------------------------------------------------------===//
+
+def MAP_IterRowwiseOp : MAP_Op<"iter.rowwise", [
+  AttrSizedOperandSegments,
+  IsolatedFromAbove,
+  SingleBlock,
+  NoTerminator,
+  DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+]> {
+  let summary = "A kernel that runs its body once per row of a shape";
+  let description = [{
+    Iterates over the rows of `shape` along `axis`. The body runs once per row
+    and holds the row's phases in order: folds (`map.iter.reduce`), row-scalar
+    ops on their results, and stores.
+
+    The row index `%row` indexes the per-row space, `shape` with the `axis`
+    coordinate pinned to 0, so it addresses a per-row (`axis` size 1) output
+    directly. Each result is per-row or has the full `shape`.
+
+    Inputs (tensors or, for in-place kernels, buffers) are shadowed as body
+    block arguments. Outputs are extra block arguments matching the non-chain
+    results. Block arguments are ordered [inputs..., outputs..., row].
+
+    As on `map.iter.foreach`, the optional `chain` operand/result models
+    mutating kernels; it has no block argument, and the output chain is always
+    the last result. `hasReadEffect`/`hasWriteEffect` carry forward the
+    original op's memory effects instead of the conservative "unknown effects"
+    default, and `dispatch` prints only when it isn't `deferred`.
+
+    Example:
+    ```mlir
+    %sum = map.iter.rowwise<[M, N], axis = 1>
+        inputs  (%x: !mo.tensor<[M, N], f32>)
+        outputs (%out: !mo.tensor<[M, 1], f32>)
+        row     (%row: !map.index<2>) -> !mo.tensor<[M, 1], f32> {
+      %acc = map.iter.reduce @builtin_kernels.monoids.ReduceSum
+          index (%i: !map.index<2>) -> f32 {
+        %v = map.load %x[%i] : !mo.tensor<[M, N], f32>
+        map.yield %v : f32
+      }
+      map.store %out[%row] = %acc : !mo.tensor<[M, 1], f32>
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    MOSH_ShapeAttr:$shape,
+    I64Attr:$axis,
+    Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$inputs,
+    Optional<MO_Chain>:$chain,
+    OptionalAttr<MOGG_FusionInfoAttr>:$fusionInfo,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasReadEffect,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$hasWriteEffect,
+    DefaultValuedOptionalAttr<MOGG_DispatchKindAttr,
+                              "::M::MOGG::DispatchKind::Deferred">:$dispatch
+  );
+
+  let results = (outs Variadic<AnyTypeOf<[MO_Tensor, MO_Chain]>>:$results);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    ::mlir::Block::BlockArgListType getInputBlockArgs();
+    ::mlir::Block::BlockArgListType getOutputBlockArgs();
+    ::mlir::BlockArgument getRowArg();
+
+    ::mlir::Value getInputChain() { return getChain(); }
+    // Null if the last result isn't a chain.
+    ::mlir::Value getOutputChain();
+    // No-op when `chain` is null.
+    void setChain(::mlir::Value chain);
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// map.iter.rowwise.body
+//===----------------------------------------------------------------------===//
+
+def MAP_IterRowwiseBodyOp : MAP_Op<"iter.rowwise.body", [
+  HasParent<"IterOpaqueOp">,
+  IsolatedFromAbove,
+  SingleBlock,
+  NoTerminator,
+  MAP_CapturingFusionClosure,
+]> {
+  let summary = "The per-row body of a map.iter.rowwise, wrapped for outlining.";
+  let description = [{
+    Holds the per-row computation of a `map.iter.rowwise` after
+    `OutlineStructuredKernelBodies` wraps it in a `map.iter.opaque`, as
+    `map.iter.foreach.body` does for `map.iter.foreach`. The opaque's input and
+    output block arguments are its `$captures` (see `CapturingFusionClosure`);
+    the leading block argument is the row index. `shape` and `axis` are copied
+    from the wrapped `map.iter.rowwise`.
+
+    Example:
+    ```mlir
+    %r = map.iter.opaque
+        inputs (%x: !mo.tensor<[M, N], f32>)
+        outputs (%out: !mo.tensor<[M, 1], f32>) {
+      map.iter.rowwise.body<[M, N], axis = 1>
+          row (%row: !map.index<2>)
+          capturing (%x0 = %x : !mo.tensor<[M, N], f32>,
+                     %out0 = %out : !mo.tensor<[M, 1], f32>) {
+        %acc = map.iter.reduce @builtin_kernels.monoids.ReduceSum
+            index (%i: !map.index<2>) -> f32 {
+          %v = map.load %x0[%i] : !mo.tensor<[M, N], f32>
+          map.yield %v : f32
+        }
+        map.store %out0[%row] = %acc : !mo.tensor<[M, 1], f32>
+      }
+    }
+    ```
+  }];
+
+  let arguments = (ins MOSH_ShapeAttr:$shape,
+                       I64Attr:$axis,
+                       Variadic<AnyTypeOf<[MO_Tensor, MO_Buffer]>>:$captures);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// map.iter.reduce
+//===----------------------------------------------------------------------===//
+
+def MAP_IterReduceOp : MAP_Op<"iter.reduce", [
+  ParentOneOf<["IterRowwiseOp", "IterRowwiseBodyOp"]>,
+  SingleBlock,
+  RecursiveMemoryEffects,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+]> {
+  let summary = "A fold over the current row with a monoid";
+  let description = [{
+    Folds every element of the enclosing rowwise's current row with `monoid`,
+    a `mogg.kernel.decl` with a `reduction`. The region runs once per element
+    at index `%i` and yields the element's contribution. The results are the
+    monoid's output fields, in order, one value per row, and print with the
+    fields' names.
+
+    The region reads the row and must not store.
+
+    Example:
+    ```mlir
+    %acc_values, %acc_indices = map.iter.reduce @builtin_kernels.monoids.ArgMax
+        index (%i: !map.index<2>) -> (f32, si64) {
+      %v = map.load %x[%i] : !mo.tensor<[M, N], f32>
+      map.yield %v : f32
+    }
+    ```
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$monoid);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    ::mlir::BlockArgument getIndexArg() {
+      return getBody().front().getArgument(0);
+    }
+    YieldOp getYield();
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // map.constant.scalar
 //===----------------------------------------------------------------------===//
 
@@ -552,7 +727,6 @@ def MAP_CallElementwiseOp : MAP_Op<"call.elementwise", [
 //===----------------------------------------------------------------------===//
 
 def MAP_SliceIndexOp : MAP_Op<"index.slice", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -711,7 +885,6 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_BroadcastIndexOp : MAP_Op<"index.broadcast", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -788,7 +961,6 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_TransposeIndexOp : MAP_Op<"index.transpose", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp", "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
 ]> {
@@ -877,8 +1049,6 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
 //===----------------------------------------------------------------------===//
 
 def MAP_ReshapeIndexOp : MAP_Op<"index.reshape", [
-  ParentOneOf<["IterForeachOp", "IterForeachBodyOp", "IterPrologueOp",
-               "IterEpilogueOp"]>,
   Pure,
   DeclareOpInterfaceMethods<MAP_IndexTransformOpInterface, ["createStridedView"]>,
   DeclareOpInterfaceMethods<MAP_DynamicShapeIndexOpInterface>,
