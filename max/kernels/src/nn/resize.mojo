@@ -176,16 +176,21 @@ def resize_nearest_neighbor[
         var in_coords = IndexList[input.rank](0)
 
         comptime for i in range(input.rank):
+            # Floor with half_pixel maps the first output coordinate of an
+            # upsample below zero, so clamp both ends.
             in_coords[i] = min(
-                Int(
-                    round(
-                        coord_transform[coordinate_transformation_mode](
-                            Int(out_coords[i].value()),
-                            Int(input.dim(i)),
-                            Int(output.dim(i)),
-                            scales[i],
+                max(
+                    Int(
+                        round(
+                            coord_transform[coordinate_transformation_mode](
+                                Int(out_coords[i].value()),
+                                Int(input.dim(i)),
+                                Int(output.dim(i)),
+                                scales[i],
+                            )
                         )
-                    )
+                    ),
+                    0,
                 ),
                 Int(input.dim(i)) - 1,
             )
