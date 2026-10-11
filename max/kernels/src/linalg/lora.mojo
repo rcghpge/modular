@@ -19,7 +19,6 @@ from linalg.grouped_matmul import grouped_matmul, naive_grouped_matmul
 from std.utils import Index, IndexList
 from layout.tensor_engine import DefaultEngine, DevicePointerEngine
 from layout import (
-    Coord,
     Idx,
     TileTensor,
     UNKNOWN_VALUE,

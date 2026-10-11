@@ -21,14 +21,13 @@ from max.algorithm import elementwise
 
 from max._plugin import MaxPluginForTarget
 from std.collections.string.string_span import get_static_string
-from std.math import ceildiv
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu, is_gpu
 from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
 from std.sys.info import CompilationTarget, _accelerator_arch
 
 from std.utils.coord import Coord, coord_to_index_list
-from std.utils.index import Index, IndexList
+from std.utils.index import IndexList
 
 # Re-export CPU implementations.
 from .backend.cpu import (

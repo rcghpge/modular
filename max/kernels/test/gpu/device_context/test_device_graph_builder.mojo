@@ -29,9 +29,7 @@ from max.gpu.host import (
     DeviceGraphBuilder,
     DeviceGraphCache,
     DeviceGraphInput,
-    StableAddr,
 )
-from max.gpu.host.device_graph import DeviceGraphMemoryPool
 from max.runtime.async_value import AnyAsyncValueRef
 
 

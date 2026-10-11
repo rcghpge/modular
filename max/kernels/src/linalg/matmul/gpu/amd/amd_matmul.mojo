@@ -33,7 +33,6 @@ from max.gpu import (
     WARP_SIZE,
     block_idx,
     lane_id,
-    thread_idx,
     warp_id,
 )
 from max.gpu.sync import barrier

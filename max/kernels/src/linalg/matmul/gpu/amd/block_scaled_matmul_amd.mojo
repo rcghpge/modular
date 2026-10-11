@@ -71,7 +71,12 @@ from max.gpu.sync import (
     schedule_barrier,
     schedule_group_barrier,
 )
-from layout import Coord, Idx, TensorLayout, TensorEngine, TileTensor
+from layout import (
+    Idx,
+    TensorLayout,
+    TensorEngine,
+    TileTensor,
+)
 from layout.tile_layout import row_major, col_major
 from layout.tile_tensor import stack_allocation
 from layout.swizzle import Swizzle

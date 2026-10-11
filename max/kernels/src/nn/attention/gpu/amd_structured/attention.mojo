@@ -28,10 +28,9 @@ from std.math.constants import log2e
 from std.math.uutils import udivmod
 from std.memory import bitcast, unsafe_stack_allocation
 from layout.tile_tensor import stack_allocation as tt_stack_allocation
-from std.sys import align_of, simd_width_of, size_of
+from std.sys import align_of, simd_width_of
 from std.sys.intrinsics import readfirstlane
 from max.gpu import block_idx, lane_id, thread_idx
-from max.gpu.sync import barrier
 from layout import TileTensor
 from layout import row_major
 from layout.swizzle import Swizzle

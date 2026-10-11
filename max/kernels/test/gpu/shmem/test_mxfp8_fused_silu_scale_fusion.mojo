@@ -35,7 +35,7 @@ from std.memory import bitcast
 from std.random import random_float64, seed
 from std.testing import assert_equal, assert_true
 
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from linalg.swiglu_activation import get_swiglu_activation
 from linalg.fp4_utils import MXFP8_SF_VECTOR_SIZE
 from linalg.matmul.gpu.amd import Shuffler

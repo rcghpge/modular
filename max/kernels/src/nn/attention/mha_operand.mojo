@@ -45,7 +45,6 @@ from layout.tile_layout import (
 )
 from layout.tma_async import (
     SplitLastDimTMATensorTile,
-    SharedMemBarrier,
     _gather4_box_width,
     create_split_tma,
     TMATensorTile,

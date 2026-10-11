@@ -21,7 +21,6 @@ from std.sys import (
     size_of,
 )
 
-import linalg.matmul.vendor.blas as vendor_blas
 from max.benchmark import bencher_iter_custom
 from std.benchmark import (
     Bench,
@@ -50,7 +49,7 @@ from linalg.matmul.gpu.sm100_structured.structured_kernels.row_scales import (
 from linalg.grouped_matmul_sm100_blockwise_fp8 import (
     grouped_matmul_sm100_blockwise_scaled_fp8_persistent,
 )
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from linalg.utils import elementwise_epilogue_type
 
 from std.utils import Index, IndexList

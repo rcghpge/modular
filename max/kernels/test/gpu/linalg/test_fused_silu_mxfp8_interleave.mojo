@@ -27,24 +27,18 @@ block to FP8-E4M3 with FP8-UE8M0 block scales. This test:
 Multiple expert shapes are exercised (single expert, multi-expert with
 ragged token counts) to cover the per-expert offset / SF-block-id math.
 """
-from std.math import align_up, ceildiv, exp, recip
+from std.math import ceildiv, exp, recip
 from max.gpu.host import DeviceContext
 from std.memory import alloc
 from std.memory.unsafe import bitcast
 
-from layout import (
-    Coord,
-    Idx,
-    TileTensor,
-    row_major,
-)
+from layout import Idx, TileTensor, row_major
 from linalg.fp4_utils import (
     SF_MN_GROUP_SIZE,
     SF_ATOM_M,
     SF_ATOM_K,
     MXFP8_SF_DTYPE,
     MXFP8_SF_VECTOR_SIZE,
-    get_scale_factor,
     set_scale_factor,
 )
 from linalg.swiglu_activation import get_swiglu_activation

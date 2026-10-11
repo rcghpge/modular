@@ -32,7 +32,7 @@ from max.gpu.host import (
 from std.collections.optional import OptionalReg
 from std.ffi import c_size_t, external_call
 from std.logger import Logger
-from std.sys import align_of, bit_width_of, size_of, CompilationTarget
+from std.sys import align_of, bit_width_of, size_of
 from std.memory import unsafe_memcpy
 from std.memory.unsafe import bitcast
 from std.reflection import call_location, SourceLocation
@@ -51,7 +51,6 @@ from max.gpu.host.device_context import (
     _check_dim,
     _checked,
     _CString,
-    _DeviceBufferMode,
     _DeviceBufferPtr,
     _DeviceContextPtr,
     _DeviceFunctionPtr,

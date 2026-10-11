@@ -31,7 +31,6 @@ Run:
   ./bazelw test //max/kernels/test/gpu/linalg:test_mxfp6_matmul_amd_preb_epilogue.mojo.test
 """
 
-from std.math import ceildiv
 from std.random import random_ui64, seed
 from std.sys import align_of
 from std.testing import assert_equal, assert_true

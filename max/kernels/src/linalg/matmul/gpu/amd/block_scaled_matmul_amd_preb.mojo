@@ -39,14 +39,12 @@ from std.sys import simd_width_of
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
-    block_idx,
     lane_id,
     thread_idx,
     warp_id,
 )
 from max.gpu.sync import barrier
 from max.gpu.primitives import warp
-from max.gpu.host import DeviceContext
 from max.gpu.host.info import MI355X
 from max.gpu.memory import CacheOperation
 from max.gpu.sync import s_waitcnt
@@ -73,7 +71,7 @@ from structured_kernels.amd_tile_io import (
 from ....utils import elementwise_epilogue_type
 from linalg.swiglu_activation import swiglu, swiglu_activation_type
 
-from .block_scaled_matmul_amd import MX_BLOCK_SIZE, _smem_row_bytes
+from .block_scaled_matmul_amd import _smem_row_bytes
 from ....block_scaled_utils import compute_mxfp8_block_scale
 from .block_scaled_preshuffle_layouts import Shuffler
 from .block_scaled_preshuffle_loaders import (

@@ -19,16 +19,10 @@ quantization paths for bandwidth-limited transfers.
 """
 
 from std.math import align_up, ceildiv
-from std.math.uutils import uceildiv, udivmod, ufloordiv, umod
+from std.math.uutils import udivmod, ufloordiv, umod
 from std.os import abort
 from std.atomic import Atomic, Ordering, fence
-from std.sys import (
-    get_defined_bool,
-    get_defined_int,
-    inlined_assembly,
-    is_amd_gpu,
-    is_nvidia_gpu,
-)
+from std.sys import inlined_assembly, is_amd_gpu, is_nvidia_gpu
 from std.sys.info import (
     CompilationTarget,
     _is_amd_mi355x,
@@ -69,7 +63,7 @@ from linalg.matmul.gpu.amd import Shuffler
 
 import max.gpu.primitives.block as block
 import max.gpu.primitives.warp as warp
-from std.collections import Array, OptionalReg
+from std.collections import Array
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
@@ -88,7 +82,6 @@ from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.memory import (
     external_memory,
     fence_async_view_proxy,
-    fence_mbarrier_init,
     cp_async_bulk_global_shared_cta,
     cp_async_bulk_shared_cluster_global,
 )

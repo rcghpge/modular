@@ -49,7 +49,7 @@ from max.gpu.sync import (
     syncwarp,
 )
 from max.gpu.compute.arch.tcgen05 import *
-from layout import Coord, CoordLike, TileTensor, coord
+from layout import Coord, TileTensor, coord
 from layout.coord import ComptimeInt, Idx
 from layout.tile_layout import row_major as tt_row_major
 from layout.tma_async import (

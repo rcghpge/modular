@@ -87,7 +87,6 @@ from ....structuring import RegTile
 
 # Shared types from SM100 tile_types
 from structured_kernels.tile_types import (
-    SMemTile,
     SMemTileArrayWithLayout,
     SMemTileArray2DRowMajor,
 )

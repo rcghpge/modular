@@ -30,7 +30,7 @@ the QRSCF dispatch chain, before `dispatch_im2col_matmul_conv3d`.
 """
 
 from max.gpu.host import DeviceContext
-from layout import Coord, Idx, TileTensor, row_major
+from layout import TileTensor, row_major
 from linalg.matmul.gpu import _matmul_gpu
 from std.utils.index import IndexList
 from linalg.utils import elementwise_epilogue_type

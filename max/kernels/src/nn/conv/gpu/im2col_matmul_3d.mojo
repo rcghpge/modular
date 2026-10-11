@@ -28,8 +28,6 @@ from std.sys import simd_width_of, size_of
 from max.gpu import block_dim, block_idx, global_idx, thread_idx
 from max.gpu.host import DeviceContext
 from layout import (
-    Coord,
-    Idx,
     TensorLayout,
     TensorEngine,
     TileTensor,

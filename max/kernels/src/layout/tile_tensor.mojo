@@ -24,7 +24,6 @@ from std.builtin.int import index as _index
 from std.collections._conditional import _ComptimeConditional
 from std.memory import unsafe_stack_allocation as _std_stack_allocation
 from std.memory.unsafe_pointer import unsafe_cast
-from std.reflection import call_location
 from max.gpu.host import DeviceBuffer, DeviceContext, DevicePointer, HostBuffer
 from max.gpu.memory import CacheEviction, Fill, async_copy
 from layout._fillers import BATCH_SIZE
@@ -5105,7 +5104,7 @@ def flatten_leading[
 # lt_to_tt -- Convert a LayoutTensor to a TileTensor
 # ============================================================================
 
-from .int_tuple import IntTuple as _IntTuple, product_each as _product_each
+from .int_tuple import product_each as _product_each
 from .layout import Layout as _LegacyLayout
 from .layout_tensor import LayoutTensor as _LayoutTensor
 

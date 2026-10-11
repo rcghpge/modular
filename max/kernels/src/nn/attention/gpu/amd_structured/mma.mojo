@@ -25,7 +25,6 @@ from max.gpu.compute.mma import mma as gpu_mma
 from max.gpu import lane_id, WARP_SIZE
 from max.gpu.intrinsics import ds_read_tr16_b64
 from std.math.uutils import ufloordiv, umod
-from std.memory import AddressSpace
 from std.sys import simd_width_of
 from std.utils import IndexList
 from std.utils.numerics import get_accum_type

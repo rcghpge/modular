@@ -23,7 +23,6 @@
 # ===----------------------------------------------------------------------=== #
 from std.math import align_up, ceildiv
 from std.sys import argv, size_of
-import std.itertools
 import linalg.matmul.vendor.blas as vendor_blas
 from linalg.block_scaled_quantization import naive_block_scaled_matmul
 from max.gpu.host import DeviceContext

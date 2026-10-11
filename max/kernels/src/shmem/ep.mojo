@@ -20,8 +20,7 @@ from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
 from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.info import is_gpu
 from std.math import ceildiv
-from layout import DefaultEngine, TensorLayout, TileTensor, Idx
-from layout.tile_tensor import row_major
+from layout import DefaultEngine, TensorLayout, TileTensor
 from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id
 from std.sys.info import simd_width_of, size_of
 from max.gpu import WARP_SIZE

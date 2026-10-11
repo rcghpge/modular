@@ -62,12 +62,7 @@ from std.memory import Pointer, alloc
 from std.random import random_float64, random_ui64, seed, rand
 from std.simd import _convert_f32_to_float8_scalar
 
-from layout import (
-    Coord,
-    Idx,
-    TileTensor,
-    row_major,
-)
+from layout import Idx, TileTensor, row_major
 from linalg.matmul.gpu.sm100_structured.grouped_block_scaled_1d1d import (
     grouped_matmul_nvfp4_dispatch,
 )

@@ -29,10 +29,8 @@ from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     DefaultEngine,
-    Idx,
     RowMajorLayout,
     TensorEngine,
-    TensorLayout,
     TileTensor,
 )
 from std.logger import Logger

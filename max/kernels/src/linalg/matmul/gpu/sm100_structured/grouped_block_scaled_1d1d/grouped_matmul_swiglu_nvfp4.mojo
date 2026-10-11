@@ -27,9 +27,9 @@ package's `dispatch.mojo`) and the `RealSwiGLUOutput` carrier (in
 """
 
 from max.gpu.host import DeviceContext
-from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
+from max.gpu.primitives.grid_controls import PDLLevel
 from std.memory import UnsafePointer
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 
 from linalg.fp4_utils import NVFP4_SF_DTYPE, NVFP4_SF_VECTOR_SIZE
 from .dispatch import grouped_matmul_nvfp4_dispatch

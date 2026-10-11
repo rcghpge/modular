@@ -18,7 +18,7 @@ from std.sys import is_nvidia_gpu, bit_width_of, llvm_intrinsic
 from std.sys.info import _is_sm_100x_or_newer, _cdna_4_or_newer
 from std.utils.numerics import FPUtils
 from std.memory import bitcast
-from layout import Coord, CoordLike, Idx, TileTensor
+from layout import Coord, CoordLike, TileTensor
 from layout.tile_layout import TensorLayout
 from std.simd import _convert_f32_to_float8_ue8m0
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind

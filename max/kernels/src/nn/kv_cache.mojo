@@ -11,11 +11,10 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.algorithm.functional import unswitch
 from std.builtin.device_passable import DevicePassable
 from std.math import ceildiv, max, min
 from std.math.uutils import udivmod
-from std.memory import ThinAllocation, bitcast, dealloc
+from std.memory import bitcast, dealloc
 from std.memory.alloc import Layout as AllocLayout
 from std.sys.info import align_of, simd_width_of
 from max.gpu import WARP_SIZE, block_dim, block_idx, thread_idx
@@ -36,7 +35,6 @@ from layout import (
     TensorLayout,
     TensorEngine,
     TileTensor,
-    UNKNOWN_VALUE,
     coord_to_index_list,
     row_major,
     stack_allocation,
@@ -53,11 +51,7 @@ from nn._ragged_utils import get_batch_and_token_idx_from_row_offsets
 from nn.attention.cpu.mha import (
     flash_attention_kv_cache as flash_attention_kv_cache_cpu,
 )
-from nn.fused_qk_rope import (
-    get_identity_rope_coeff,
-    get_safetensors_idx,
-    rope_value,
-)
+from nn.fused_qk_rope import get_safetensors_idx, rope_value
 from nn.attention.gpu.mha import flash_attention as gpu_flash_attention
 from nn.attention.gpu.nvidia.common import ImmutTileTensor1D
 from nn.attention.mha_mask import MHAMask

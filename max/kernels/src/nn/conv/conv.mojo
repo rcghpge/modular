@@ -109,7 +109,6 @@ from max.gpu.host._nvidia_cuda import CUDA
 from max.gpu.host.info import _is_sm10x_gpu
 from layout import (
     Coord,
-    Idx,
     IntTuple,
     TensorEngine,
     TensorLayout,

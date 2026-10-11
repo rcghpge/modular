@@ -20,8 +20,6 @@ from max.gpu.host import DeviceContext, get_gpu_target
 from std.testing import *
 from std.utils.coord import Coord
 
-from std.utils import IndexList
-
 
 def run_elementwise[
     dtype: DType

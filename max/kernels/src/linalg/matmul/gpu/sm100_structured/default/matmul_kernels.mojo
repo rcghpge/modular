@@ -44,8 +44,6 @@ from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu import block_idx, lane_id
 from max.gpu.memory import (
     async_copy,
-    async_copy_commit_group,
-    async_copy_wait_group,
     external_memory,
     fence_mbarrier_init,
     CacheEviction,
@@ -62,8 +60,6 @@ from layout import (
     DefaultEngine,
     ComptimeInt,
     Coord,
-    CoordLike,
-    Idx,
     Layout,
     RowMajorLayout,
     TensorEngine,

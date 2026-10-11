@@ -16,7 +16,6 @@
 from max.algorithm.functional import _get_start_indices_of_nth_subvolume
 from layout import (
     Coord,
-    Idx,
     TensorEngine,
     TensorLayout,
     TileTensor,

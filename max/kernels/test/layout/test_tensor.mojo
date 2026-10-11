@@ -25,7 +25,6 @@ from layout import (
     col_major,
     row_major,
     stack_allocation,
-    UNKNOWN_VALUE,
 )
 from layout.int_tuple import product
 from layout.tile_layout import Layout as TileLayout

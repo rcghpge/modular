@@ -14,7 +14,6 @@
 from std.math import ceildiv
 from std.random import randn, seed, random_float64
 
-import max.gpu.primitives.warp as warp
 from max.gpu import WARP_SIZE
 from max.gpu.host import DeviceContext, get_gpu_target
 from std.sys import simd_width_of
@@ -25,7 +24,7 @@ import linalg.matmul.vendor.blas as vendor_blas
 from std.utils import IndexList
 from internal_utils import assert_almost_equal
 
-from layout import TileTensor, Coord, Idx, row_major
+from layout import TileTensor, Coord, row_major
 from layout.tile_layout import Layout
 
 

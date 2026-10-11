@@ -19,12 +19,9 @@ from std.sys import argv
 from max.gpu import *
 from max.gpu.host import DeviceContext
 from layout import Idx, TileTensor, row_major
-from std.memory import unsafe_memset_zero
 from nn.attention.gpu.mha import flash_attention, mha_gpu_naive
 from nn.attention.mha_mask import NullMask
 from std.testing import assert_almost_equal
-
-from std.utils.index import Index
 
 
 def is_benchmark() -> Bool:

@@ -51,7 +51,7 @@ from std.sys.defines import get_defined_bool, get_defined_int
 from std.utils.numerics import isfinite
 
 from max.gpu.host import DeviceContext
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from linalg.fp4_utils import (
     MXFP8_SF_DTYPE,
     MXFP8_SF_VECTOR_SIZE,

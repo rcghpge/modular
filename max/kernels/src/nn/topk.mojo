@@ -15,7 +15,7 @@
 from std.atomic import Atomic, Ordering, fence
 from std.math import align_up, ceildiv, exp, iota
 from std.math.uutils import ufloordiv, udivmod
-from std.memory import ThinAllocation, alloc, dealloc
+from std.memory import alloc, dealloc
 from std.memory.alloc import Layout as AllocLayout
 from std.sys import align_of, simd_width_of, size_of
 
@@ -33,15 +33,13 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
-from max.gpu.host import DeviceContext, DeviceBuffer
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu
 from max.gpu.memory import external_memory
 from std.sys.info import current_accelerator, is_apple_gpu
 from std.random import Random
 from layout import (
     Coord,
-    CoordLike,
-    Idx,
     DefaultEngine,
     RowMajorLayout,
     TensorLayout,

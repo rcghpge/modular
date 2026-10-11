@@ -107,14 +107,12 @@ from max.gpu import (
 )
 from max.gpu import barrier, syncwarp
 from max.gpu.host import DeviceContext, get_gpu_target
-from max.gpu.memory import external_memory
 from max.gpu.host.info import is_cpu, is_gpu
 from std.math import ceildiv, iota
-from std.memory import bitcast, stack_allocation
+from std.memory import stack_allocation
 from std.memory.unsafe_pointer import UnsafePointer
 from std.sys.info import (
     align_of,
-    bit_width_of,
     is_apple_gpu,
     simd_width_of,
     size_of,
@@ -122,7 +120,6 @@ from std.sys.info import (
 )
 from std.sys.intrinsics import strided_load as _strided_load
 from std.utils.coord import Coord, CoordLike
-from std.utils.static_tuple import StaticTuple
 
 
 # ===-----------------------------------------------------------------------===#

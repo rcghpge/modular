@@ -27,7 +27,7 @@ Currently MI355X-only.
 
 from max.gpu.host import DeviceContext, HostBuffer
 from max.gpu.host.info import MI355X
-from std.math import align_up, ceildiv, exp, exp2
+from std.math import align_up, exp, exp2
 from std.random import random_ui64, seed
 
 from layout import Coord, Idx, TileTensor, row_major

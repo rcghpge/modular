@@ -70,7 +70,6 @@ from shmem.ep_comm import (
     dispatch_wait_kernel,
     dispatch_async_kernel,
 )
-from std.testing import assert_equal
 
 
 # Routing mode is read at run time, not baked in: measuring an optimization

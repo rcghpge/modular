@@ -19,7 +19,6 @@ from std.sys._assembly import inlined_assembly
 from std.sys.info import (
     CompilationTarget,
     _cdna_4_or_newer,
-    _is_amd_rdna,
     _is_amd_rdna3,
     _is_amd_rdna4,
     is_amd_gpu,

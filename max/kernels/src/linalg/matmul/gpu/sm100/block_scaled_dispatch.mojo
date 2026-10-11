@@ -18,7 +18,7 @@
 from std.math import ceildiv
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.primitives.grid_controls import PDLLevel
-from layout import Coord, Idx, Layout, TileTensor, row_major
+from layout import Coord, TileTensor
 from layout.tile_tensor import NullableTileTensor
 from std.logger import Logger
 from linalg.fp4_utils import (
@@ -38,7 +38,6 @@ from linalg.utils import (
 )
 from std.utils.index import Index
 from linalg.matmul.vendor.blas import matmul
-from std.memory import UnsafePointer
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.sys import size_of, simd_width_of
 from max.algorithm import elementwise
@@ -46,7 +45,7 @@ from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 from linalg.matmul.gpu.sm100.block_scaled_matmul import (
     blackwell_block_scaled_matmul_tma_umma_warp_specialized,
 )
-from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig, GEMMKind
+from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
 from linalg.matmul.gpu.sm100_structured.default.tuning_configs import (
     TuningConfigSM100,
     _get_tuning_list_sm100_nvfp4,

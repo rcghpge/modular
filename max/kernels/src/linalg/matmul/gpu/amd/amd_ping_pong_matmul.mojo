@@ -25,7 +25,6 @@ from max.gpu import (
     WARP_SIZE,
     block_idx,
     lane_id,
-    thread_idx,
     warp_id,
 )
 from max.gpu.host import DeviceContext
@@ -39,7 +38,6 @@ from std.utils.numerics import get_accum_type
 from layout import TensorLayout, TensorEngine, TileTensor
 from layout.swizzle import Swizzle
 from layout.tile_layout import row_major, col_major
-from layout.tensor_core import num_matrix_reg
 
 from std.bit import log2_floor
 

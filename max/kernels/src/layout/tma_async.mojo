@@ -75,7 +75,6 @@ from layout import (
     Coord,
     CoordLike,
     ComptimeInt,
-    Idx,
     Layout,
     LayoutTensor,
     TileTensor,

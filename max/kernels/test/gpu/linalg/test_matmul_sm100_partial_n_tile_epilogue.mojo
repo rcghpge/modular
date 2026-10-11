@@ -22,8 +22,7 @@ Both ``transpose_c`` branches of ``apply_to_fragment`` are exercised
 (``swapAB=False/True``); each branch has its own bounds checks.
 """
 
-from std.collections import Optional
-from std.sys import align_of, size_of
+from std.sys import size_of
 from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.memory import alloc

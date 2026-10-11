@@ -42,7 +42,12 @@ from std.sys import size_of, simd_width_of
 from std.itertools import product
 from std.random import random_float64, random_si64
 
-from layout import Coord, Idx, TileTensor, coord_to_index_list, row_major
+from layout import (
+    Coord,
+    TileTensor,
+    coord_to_index_list,
+    row_major,
+)
 from comm import Signal
 from comm.sync import enable_p2p, init_signal_buffer
 from comm.lamport import Lamport
@@ -52,7 +57,6 @@ from comm.allreduce import (
     _allreduce_lamport_p2p,
     allreduce,
     allreduce_tuning_table,
-    elementwise_epilogue_type,
 )
 from comm.allreduce_lamport_rmsnorm import lamport_allreduce_rmsnorm
 from comm.device_query import dispatch_select_comm_config, get_sm_version
@@ -61,7 +65,6 @@ from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from max.gpu.primitives.grid_controls import PDLLevel
 from std.memory import bitcast
 from std.testing import assert_equal, assert_true
-from std.collections import Optional
 from std.utils import IndexList, StaticTuple
 
 # Sizes through the small (Lamport) regime. All must be whole 128-bit packs

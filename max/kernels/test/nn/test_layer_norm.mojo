@@ -14,7 +14,7 @@
 from std.math import rsqrt
 
 from std.itertools import product
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Coord, TileTensor, row_major
 from layout.math import mean, variance
 from nn.normalization import *
 from builtin_kernels.rowwise_normalization import layer_norm

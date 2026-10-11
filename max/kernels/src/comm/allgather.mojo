@@ -70,12 +70,7 @@ from .device_query import (
     KB,
     dispatch_select_comm_config,
 )
-from .relay import (
-    RELAY_ARCH,
-    RelayTuningConfig,
-    _relay_pairs,
-    _relay_slice_vectors,
-)
+from .relay import RelayTuningConfig, _relay_pairs, _relay_slice_vectors
 from internal_utils import Table
 
 from .reducescatter import _target_address_space

@@ -18,12 +18,7 @@ from std.sys import simd_width_of, size_of
 from max.algorithm import elementwise
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.info import B200
-from layout import (
-    Coord,
-    Idx,
-    TileTensor,
-    row_major,
-)
+from layout import Coord, TileTensor, row_major
 
 from std.utils import Index
 

@@ -26,7 +26,7 @@ Compile-time configuration:
 
 from std.sys import align_of, get_defined_int
 
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Coord, TileTensor, row_major
 from max.gpu.host import DeviceContext
 from std.utils import IndexList
 import linalg.matmul.vendor.blas as vendor_blas

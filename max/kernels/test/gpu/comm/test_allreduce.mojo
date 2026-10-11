@@ -11,11 +11,15 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-import std.time
 from std.sys import size_of, simd_width_of
 from std.itertools import product
 
-from layout import Coord, Idx, TileTensor, coord_to_index_list, row_major
+from layout import (
+    Coord,
+    TileTensor,
+    coord_to_index_list,
+    row_major,
+)
 from comm import Signal, group_start, group_end
 from comm.sync import enable_p2p, init_signal_buffer
 from comm.allreduce import (

@@ -47,7 +47,6 @@ from std.math.math import min as _min
 from std.memory import UnsafePointer, unsafe_memset_zero
 from std.memory import alloc as ptr_alloc
 from std.sys import size_of
-from std.sys.info import simd_width_of
 
 from std.utils.coord import Coord, coord_to_index_list
 

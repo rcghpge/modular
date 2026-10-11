@@ -39,7 +39,7 @@ from layout.tma_async import (
     TMATensorTile,
 )
 from layout import TileTensor, row_major as tt_row_major
-from layout.coord import Idx, Coord, coord
+from layout.coord import Idx, coord
 from max.gpu import MAX_THREADS_PER_BLOCK_METADATA, thread_idx, warp_id
 from max.gpu.sync import barrier
 from max.gpu.primitives.warp import broadcast

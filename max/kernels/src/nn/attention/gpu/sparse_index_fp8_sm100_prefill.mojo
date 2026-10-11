@@ -123,17 +123,11 @@ from max.gpu.compute.arch.tcgen05 import (
 )
 from std.bit import next_power_of_two
 from std.math import align_down, align_up, ceildiv, clamp, lcm
-from std.sys import (
-    get_defined_bool,
-    get_defined_dtype,
-    get_defined_int,
-    size_of,
-)
+from std.sys import get_defined_dtype, get_defined_int, size_of
 from std.utils.index import IndexList
 from std.utils.static_tuple import StaticTuple
 
 from layout import (
-    Coord,
     DefaultEngine,
     TensorLayout,
     TensorEngine,

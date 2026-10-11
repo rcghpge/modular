@@ -21,7 +21,7 @@ from std.testing import *
 
 from std.utils.coord import Coord
 
-from layout import TileTensor, Idx, row_major
+from layout import TileTensor, row_major
 
 
 def run_elementwise[

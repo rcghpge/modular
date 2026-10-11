@@ -58,13 +58,6 @@ from nn.activations import sigmoid
 from nn.topk import TopK_2
 
 
-from max.gpu.memory import (
-    async_copy,
-    async_copy_commit_group,
-    async_copy_wait_all,
-)
-
-
 # Experts are visited in chunks of one block width, carrying the running token
 # and aligned-scale offsets across chunks, so an expert count above the block
 # width costs another pass over the tokens instead of another kernel. Every

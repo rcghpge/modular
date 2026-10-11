@@ -99,26 +99,20 @@ from shmem.ep import (
 )
 from shmem.ep_comm import (
     BF16TokenFormat,
-    BlockwiseFP8TokenFormat,
-    EP_DATA_READY_FLAG,
     EPLocalSyncCounters,
     MXTokenFormat,
     NVBlockScaledTokenFormat,
     TokenFormat,
 )
-from std.testing import assert_almost_equal, assert_equal
 
 from std.math import align_up
 from linalg.fp4_utils import (
-    E2M1_TO_FLOAT32,
     MXFP4_SF_VECTOR_SIZE,
     NVFP4_SF_VECTOR_SIZE,
     SF_ATOM_M,
     SF_ATOM_K,
     SF_MN_GROUP_SIZE,
-    get_scale_factor,
 )
-from max.gpu.host.info import _is_sm10x_gpu, MI355X
 
 
 def zipf_expert_weights[

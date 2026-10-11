@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """Implements the ONNX Tile operator, which replicates a tensor a specified number of times along each axis."""
 
-from layout import Coord, TileTensor, coord_to_index_list, row_major
+from layout import Coord, TileTensor, coord_to_index_list
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu

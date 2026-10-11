@@ -15,12 +15,7 @@ from std.math import isclose
 from std.random import rand
 
 from max.gpu.host import DeviceContext
-from layout import (
-    TileTensor,
-    Coord,
-    Idx,
-    row_major,
-)
+from layout import TileTensor, Coord, row_major
 from linalg.matmul.gpu import split_k_reduce
 from std.testing import assert_almost_equal
 

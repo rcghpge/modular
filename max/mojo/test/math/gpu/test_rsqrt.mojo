@@ -19,7 +19,6 @@ from max.gpu import *
 from max.gpu.host import DeviceContext, HostBuffer, get_gpu_target
 from std.testing import *
 
-from std.utils import IndexList
 from std.utils.coord import Coord
 
 

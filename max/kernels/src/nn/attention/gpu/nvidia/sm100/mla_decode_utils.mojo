@@ -49,10 +49,6 @@ from layout import TileTensor, row_major, Idx, stack_allocation, coord
 from std.utils.coord import coord_to_index_list
 from layout.tile_layout import row_major as tt_row_major
 from layout.swizzle import make_ldmatrix_swizzle
-from layout.tensor_core_async import (
-    tile_layout_k_major,
-    tile_layout_mn_major,
-)
 from layout.tma_async import (
     create_tensor_tile,
     PipelineState,

@@ -58,7 +58,6 @@ preloaded once and reused across all rows in the loop.
 
 from std.builtin.device_passable import DevicePassable
 from std.collections import Array, Optional
-from std.collections._conditional import _ComptimeConditional
 from std.math import align_up, ceildiv, rsqrt
 from std.sys import (
     align_of,

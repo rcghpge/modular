@@ -14,7 +14,7 @@
 """Provides batched matrix multiplication (BMM) for CPU and GPU targets."""
 
 from std.math import align_up, ceildiv, gcd
-from std.sys import align_of, size_of
+from std.sys import size_of
 from std.sys.info import (
     _has_blackwell_tcgen05,
     _is_amd_rdna,
@@ -47,7 +47,6 @@ from layout import (
     Coord,
     CoordLike,
     Idx,
-    IntTuple,
     TensorLayout,
     TileTensor,
     coord_to_index_list,

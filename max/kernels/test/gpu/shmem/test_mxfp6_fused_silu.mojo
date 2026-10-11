@@ -32,9 +32,9 @@ from max.gpu.host import DeviceContext, HostBuffer
 from max.gpu.host.info import MI355X
 from std.math import align_up, exp, isfinite
 from std.random import random_float64, seed
-from std.testing import assert_almost_equal, assert_true
+from std.testing import assert_true
 
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from linalg.fp6_utils import (
     MXFP6_SF_VECTOR_SIZE,
     FP6Format,

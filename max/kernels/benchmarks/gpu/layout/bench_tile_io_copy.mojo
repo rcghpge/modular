@@ -25,7 +25,6 @@ from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from max.gpu.host.compile import get_gpu_target
 from std.memory import bitcast
-from std.os import abort
 from std.sys import (
     align_of,
     get_defined_dtype,

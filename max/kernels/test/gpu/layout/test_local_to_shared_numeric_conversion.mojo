@@ -13,7 +13,7 @@
 from max.gpu import thread_idx
 from max.gpu.host import DeviceContext
 from max.gpu.sync import barrier
-from layout import Idx, TileTensor, row_major
+from layout import row_major
 from layout.swizzle import Swizzle
 from layout.tile_io import LocalToSharedTileCopier
 from layout.tile_tensor import stack_allocation

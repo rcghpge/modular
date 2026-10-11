@@ -109,7 +109,6 @@ from std.sys import align_of, is_amd_gpu, is_nvidia_gpu, simd_width_of, size_of
 from layout import (
     Coord,
     DefaultEngine,
-    Idx,
     TensorEngine,
     TileTensor,
     row_major,

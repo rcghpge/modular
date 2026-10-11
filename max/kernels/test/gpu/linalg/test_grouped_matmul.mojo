@@ -14,12 +14,7 @@
 
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import B200, H100, _is_sm10x_gpu
-from layout import (
-    Coord,
-    Idx,
-    TileTensor,
-    row_major,
-)
+from layout import Idx, TileTensor, row_major
 from layout._fillers import random
 from linalg.grouped_matmul import grouped_matmul, naive_grouped_matmul
 from std.testing import assert_almost_equal

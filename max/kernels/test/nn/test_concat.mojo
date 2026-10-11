@@ -12,7 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 
 
-from layout import Coord, Idx, TensorLayout, TileTensor, row_major
+from layout import (
+    Coord,
+    TensorLayout,
+    TileTensor,
+    row_major,
+)
 from max.gpu.host import DeviceContext
 from nn.concat import _concat_parallel, _concat_serial, concat
 

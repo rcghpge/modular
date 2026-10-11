@@ -33,7 +33,6 @@ from std.math import align_up
 from std.os import abort
 from std.pathlib import Path
 from std.ffi import (
-    c_char,
     c_int,
     c_uint,
     c_size_t,
@@ -50,10 +49,7 @@ from std.sys import (
     size_of,
 )
 from std.sys.compile import DebugLevel, OptimizationLevel
-from std.sys.info import (
-    CompilationTarget,
-    is_triple,
-)
+from std.sys.info import CompilationTarget
 from std.sys.defines import _is_bool_like
 
 from std.reflection import call_location, SourceLocation
@@ -67,7 +63,6 @@ from std.reflection import reflect, reflect_fn
 from std.memory import Pointer, unsafe_memcpy, unsafe_stack_allocation
 from std.memory import alloc, dealloc, ThinAllocation, Layout, MaybeUninit
 from std.memory.unsafe import bitcast
-from std.builtin.rebind import downcast
 
 from std.builtin._coroutine import (
     AnyCoroutine,
@@ -81,7 +76,7 @@ from std.utils.static_tuple import StaticTuple
 
 from std._gpu.host import get_gpu_target
 from .info import _device_type_encoder_target
-from std._gpu.host.info import TargetAccelerator, GPUInfo, TargetAcceleratorType
+from std._gpu.host.info import GPUInfo
 
 from .compile import (
     _compile_code,

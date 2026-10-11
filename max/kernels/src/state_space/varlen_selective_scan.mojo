@@ -21,7 +21,6 @@ from max.gpu import (
 from layout import DefaultEngine, TensorLayout, TensorEngine, TileTensor
 from max.algorithm import sync_parallelize
 from max.gpu.host import DeviceContext
-import std.math
 from std.bit import next_power_of_two
 from std.math import exp2
 from nn.activations import silu

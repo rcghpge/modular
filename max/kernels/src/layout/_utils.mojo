@@ -17,11 +17,9 @@ from std.sys.intrinsics import readfirstlane
 
 from max.gpu.host import DeviceBuffer, DeviceContext, HostBuffer
 from max.gpu.intrinsics import AMDBufferResource
-from max.gpu.compute.mma import mma
 from layout import *
 from layout.layout_tensor import LayoutTensor
 from layout.tile_layout import Layout as TileLayout
-from std.memory.unsafe import bitcast
 
 from std.utils import IndexList
 

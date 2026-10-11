@@ -36,7 +36,7 @@ the helpers above.
 """
 
 from std.atomic import Atomic, Ordering, fence
-from std.bit import log2_floor, next_power_of_two
+from std.bit import log2_floor
 from max.gpu import (
     WARP_SIZE,
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -47,9 +47,8 @@ from max.gpu import (
     warp_id,
 )
 from max.gpu import barrier, syncwarp
-from max.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
+from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.primitives import block
-from max.gpu.intrinsics import threadfence
 from max.gpu.primitives import warp
 from max.gpu.primitives.grid_controls import (
     PDL,
@@ -59,12 +58,11 @@ from max.gpu.primitives.grid_controls import (
 from std.math import ceildiv
 from std.math.uutils import udivmod
 from std.memory import UnsafePointer, stack_allocation
-from std.sys import simd_width_of, size_of, get_defined_int
+from std.sys import size_of, get_defined_int
 from std.sys.info import default_accelerator, is_apple_gpu
 from std.utils.coord import Coord, DynamicCoord, coord_to_index_list
 from std.utils.static_tuple import StaticTuple
 
-from algorithm.cpu.rowwise import SerialReducer
 from algorithm.rowwise_types import (
     Context,
     ContextParams,

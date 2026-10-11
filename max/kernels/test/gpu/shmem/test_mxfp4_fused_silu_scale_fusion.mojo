@@ -32,7 +32,7 @@ from max.gpu.host.info import MI355X
 from std.math import align_up, exp, exp2, isfinite
 from std.random import random_float64, seed
 
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from linalg.swiglu_activation import get_swiglu_activation
 from linalg.fp4_utils import E2M1_TO_FLOAT32, MXFP4_SF_VECTOR_SIZE
 from linalg.matmul.gpu.amd import Shuffler

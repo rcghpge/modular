@@ -35,12 +35,7 @@ from std.sys import align_of
 from std.testing import assert_false
 
 import linalg.matmul.vendor.blas as vendor_blas
-from layout import (
-    Coord,
-    Idx,
-    TileTensor,
-    row_major,
-)
+from layout import Coord, TileTensor, row_major
 from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from internal_utils import assert_almost_equal

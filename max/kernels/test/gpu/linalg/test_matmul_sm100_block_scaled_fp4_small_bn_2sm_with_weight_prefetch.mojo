@@ -50,7 +50,6 @@ from linalg.fp4_utils import (
     SF_ATOM_K,
     set_scale_factor,
 )
-from std.random import random_ui64
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 
 

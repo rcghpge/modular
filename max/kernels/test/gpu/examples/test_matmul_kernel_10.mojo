@@ -28,7 +28,6 @@ from layout import (
     TileTensor,
     TensorLayout,
     DefaultEngine,
-    Idx,
     row_major,
     stack_allocation,
 )

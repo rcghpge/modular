@@ -36,10 +36,8 @@ MoE expert dims (up-proj N=1856/K=2688, down-proj N=2688/K=1856) at a reduced
 expert count.
 """
 
-from std.collections import Optional
-
 from max.gpu.host import DeviceContext
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from layout._fillers import random
 from linalg.grouped_matmul import grouped_matmul, naive_grouped_matmul
 from linalg.matmul.gpu.apple.matmul2d_fp8 import enqueue_grouped_matmul2d_fp8

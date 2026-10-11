@@ -22,11 +22,10 @@ Target: Apple silicon M5 (compute_capability == 5), bf16/fp16.
 Run with: `mojo max/kernels/test/gpu/nn/test_conv2d_im2col_apple.mojo`.
 """
 
-from std.math import ceildiv, round
+from std.math import round
 
 from layout import (
     Coord,
-    Idx,
     LTToTTLayout,
     Layout,
     TileTensor,

@@ -42,7 +42,6 @@ from layout.tile_layout import Layout, TensorLayout, row_major, col_major
 
 import std.sys
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
-from std.collections.string.string import _calc_initial_buffer_size_int32
 from std.math.uutils import udivmod_unchecked
 
 from layout.coord import (

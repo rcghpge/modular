@@ -23,12 +23,7 @@ from std.sys import size_of
 from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
-from layout import (
-    Layout,
-    TileTensor,
-    coord,
-    flatten_leading,
-)
+from layout import TileTensor, coord, flatten_leading
 from layout.tma_async import create_tensor_tile
 
 from std.utils.index import Index, IndexList

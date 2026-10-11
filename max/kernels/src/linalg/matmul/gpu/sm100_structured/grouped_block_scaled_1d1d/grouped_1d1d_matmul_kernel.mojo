@@ -42,7 +42,7 @@ from std.collections import Array, Optional
 from std.math import align_up, ceildiv
 from std.memory import Pointer, UnsafePointer, bitcast
 from std.math.uutils import ufloordiv, umod
-from std.sys import align_of, get_defined_bool, get_defined_int, size_of
+from std.sys import align_of, get_defined_int, size_of
 
 from max.gpu import (
     WARP_SIZE,
@@ -77,7 +77,6 @@ from max.gpu.compute.arch.tcgen05 import (
     tcgen05_store_wait,
 )
 from layout.tma_async import PipelineState
-from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     Coord,
     Idx,
@@ -106,7 +105,6 @@ from std.time import global_perf_counter_ns
 from linalg.arch.sm100 import MmaOpSM100_BlockScaled_SS
 from linalg.fp4_utils import (
     MXFP8_SF_DTYPE,
-    MXFP8_SF_VECTOR_SIZE,
     NVFP4_SF_DTYPE,
     NVFP4_SF_VECTOR_SIZE,
     SF_ATOM_K,

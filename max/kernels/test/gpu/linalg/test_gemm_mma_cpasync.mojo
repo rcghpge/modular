@@ -12,7 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 """Tests for the non-swapAB GEMM tensor-core kernel."""
 
-from std.math import ceildiv
 from std.random import random_float64
 
 from max.gpu.host import DeviceContext
@@ -24,7 +23,7 @@ import linalg.matmul.vendor.blas as vendor_blas
 from internal_utils import assert_almost_equal
 from std.testing import assert_equal
 
-from layout import TileTensor, Coord, Idx, row_major
+from layout import TileTensor, Coord, row_major
 from std.utils import IndexList
 
 

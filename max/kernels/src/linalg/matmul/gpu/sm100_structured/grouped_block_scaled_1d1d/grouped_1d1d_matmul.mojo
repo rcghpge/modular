@@ -42,7 +42,6 @@ from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
 from layout import Coord, Idx, TileTensor, coord, row_major
 from layout.tma_async import create_tensor_tile
 from structured_kernels.tile_types import create_tma_tile, TmaOpType
-from structured_kernels.kernel_common import WarpRole1D1D
 
 from std.utils.static_tuple import StaticTuple
 

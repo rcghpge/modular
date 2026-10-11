@@ -28,7 +28,6 @@ from layout import (
     coord,
     ComptimeInt,
     Coord,
-    CoordLike,
     Idx,
     RowMajorLayout,
     TensorLayout,

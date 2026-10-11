@@ -35,7 +35,6 @@ from max.gpu import (
     global_idx,
     grid_dim,
     lane_id,
-    thread_idx,
     warp_id,
 )
 from std.memory import unsafe_stack_allocation

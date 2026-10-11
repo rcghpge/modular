@@ -12,8 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 """Implements tensor math operations."""
 
-import std.math
-
 import max.algorithm.reduction as reduction
 from std.math.math import max as b_max
 from std.sys import align_of

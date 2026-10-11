@@ -28,7 +28,6 @@ from std.math import max
 from std.memory import bitcast
 from std.random import seed
 from std.testing import assert_equal, assert_true
-from layout import TileTensor, row_major
 
 from nn.topk_bitonic import (
     PERSISTENT_TOPK_MAX_N,

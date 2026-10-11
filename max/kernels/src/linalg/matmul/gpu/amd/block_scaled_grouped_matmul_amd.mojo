@@ -30,7 +30,12 @@ from max.gpu.host import DeviceContext
 from max.gpu.host.info import MI355X
 from max.gpu.memory import CacheOperation
 
-from layout import Coord, Idx, TensorLayout, TensorEngine, TileTensor
+from layout import (
+    Idx,
+    TensorLayout,
+    TensorEngine,
+    TileTensor,
+)
 from layout.tile_layout import row_major
 
 from std.utils import StaticTuple

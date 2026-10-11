@@ -31,7 +31,6 @@ from std.sys import (
     CompilationTarget,
     align_of,
     get_defined_bool,
-    get_defined_int,
     has_amd_rdna_gpu_accelerator,
     default_accelerator,
     is_amd_gpu,
@@ -47,7 +46,6 @@ from max.gpu.primitives.grid_controls import (
     pdl_launch_attributes,
     wait_on_dependent_grids,
 )
-from max.algorithm import elementwise
 from std.algorithm.functional import tile_and_unswitch, unswitch, vectorize
 from std.bit import next_power_of_two
 from max.gpu import (
@@ -181,7 +179,6 @@ from nn.softmax import (
     _online_softmax_iter_for_mma_output,
     _online_softmax_iter_for_mma_output_split_warp_reduce,
     _softmax_gpu,
-    softmax_inline,
 )
 
 # ===-----------------------------------------------------------------------===#

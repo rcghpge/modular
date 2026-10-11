@@ -12,11 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 """Tests for dual-concat kernels (two independent concats in one launch)."""
 
-from layout import Coord, Idx, TensorLayout, TileTensor, row_major
-from nn.concat import (
-    _fused_dual_concat_gpu,
-    elementwise_epilogue_type,
-)
+from layout import Coord, TileTensor, row_major
+from nn.concat import _fused_dual_concat_gpu
 
 from max.gpu.host import DeviceContext
 from std.testing import assert_equal

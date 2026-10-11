@@ -58,7 +58,6 @@ from std.random import rand
 
 from max.benchmark import bencher_iter_custom
 from max.gpu.host import DeviceContext, get_gpu_target
-from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.primitives.grid_controls import PDLLevel
 
 from internal_utils import CacheBustingBuffer, arg_parse

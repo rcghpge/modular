@@ -32,7 +32,7 @@ from max.gpu.primitives.grid_controls import (
     wait_on_dependent_grids,
     PDLLevel,
 )
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceContext
 from max.gpu.memory import external_memory
 from std.sys.info import (
     is_amd_gpu,
@@ -59,10 +59,7 @@ from std.sys import align_of, simd_width_of, size_of
 from max.runtime.tracing import Trace, TraceLevel, trace_arg
 from std.utils.static_tuple import StaticTuple
 from ..argmaxmin_gpu import _argmaxmin_block_partial
-from ..normalization import (
-    _APPLE_STATIC_SHMEM_MAX_COUNT,
-    _APPLE_STATIC_SHMEM_MAX_BYTES,
-)
+from ..normalization import _APPLE_STATIC_SHMEM_MAX_BYTES
 from ..topk import _block_reduce_topk
 from .coop_row import (
     COOP_SLOT_FLOATS,

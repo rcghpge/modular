@@ -38,7 +38,6 @@ from nn.attention.gpu.sparse_index_fp8_sm100 import (
     SPEC_DECODE_N_TOKENS_ALT,
     fp8_index_score_sm100,
 )
-from std.utils.index import Index
 
 
 struct IndexSmemStorage[

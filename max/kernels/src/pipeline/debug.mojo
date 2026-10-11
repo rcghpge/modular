@@ -36,7 +36,7 @@ print_wait_counts("kernel  ", counts)
 from std.collections import List
 
 from .pipeline_dsl import ScheduleEntry
-from .types import KOffsetKind, OpDesc, _Ops
+from .types import KOffsetKind, _Ops
 
 
 # =============================================================================

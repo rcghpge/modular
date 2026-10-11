@@ -19,7 +19,7 @@ small-N MMA shapes that require a cp.async SFB load path instead of TMA.
 
 from std.math import align_up, ceildiv
 from std.math.uutils import umod, ufloordiv, udivmod_unchecked
-from std.sys import align_of, size_of
+from std.sys import size_of
 
 from max.gpu import MAX_THREADS_PER_BLOCK_METADATA, WARP_SIZE
 from max.gpu.sync import barrier
@@ -49,7 +49,6 @@ from max.gpu.primitives.grid_controls import (
 )
 from max.gpu.sync import (
     async_copy_arrive,
-    umma_arrive_peer_cta,
     named_barrier,
     named_barrier_arrive,
     syncwarp,
@@ -58,9 +57,7 @@ from max.gpu.sync import (
 from max.gpu.compute.arch.tcgen05 import *
 from layout import (
     Coord,
-    CoordLike,
     Idx,
-    Layout,
     TileTensor,
     coord,
 )

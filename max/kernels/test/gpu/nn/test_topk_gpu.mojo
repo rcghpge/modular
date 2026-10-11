@@ -27,7 +27,6 @@ from max.gpu.host import DeviceContext
 
 from layout import (
     Coord,
-    Idx,
     DefaultEngine,
     TileTensor,
     coord_to_index_list,

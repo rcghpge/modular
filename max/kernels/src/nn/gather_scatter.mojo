@@ -31,7 +31,6 @@ from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from max.gpu.host.info import is_cpu, is_gpu
 from layout import (
     Coord,
-    Idx,
     DefaultEngine,
     TileTensor,
     UNKNOWN_VALUE,

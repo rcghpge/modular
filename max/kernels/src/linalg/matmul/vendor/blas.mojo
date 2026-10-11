@@ -98,12 +98,7 @@ from max.gpu.host import DeviceContext
 from max.gpu.host._kernel_load_gate import KernelLoadScope
 from max.gpu.host._amdgpu_hip import HIP
 from max.gpu.host._nvidia_cuda import CUDA
-from layout import (
-    Coord,
-    Idx,
-    TileTensor,
-    row_major,
-)
+from layout import Idx, TileTensor, row_major
 from layout.tile_tensor import (
     NullableTileTensor,
     _ComptimeConditionalTileTensor,

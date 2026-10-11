@@ -35,7 +35,6 @@ from layout import (
     TileTensor,
     row_major,
 )
-from std.memory import alloc
 from nn.attention.gpu.mha import mha_gpu_naive
 from nn.attention.mha_mask import CausalMask, MHAMask, NullMask
 from nn.attention.mha_utils import MHAConfig

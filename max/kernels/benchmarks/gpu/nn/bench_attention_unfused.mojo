@@ -19,7 +19,7 @@ matmul kernel with a compute epilogue that fuses the scale multiply in-register
 """
 
 from std.collections import Optional
-from std.math import ceildiv, rsqrt
+from std.math import rsqrt
 from std.sys import (
     align_of,
     get_defined_bool,
@@ -47,7 +47,7 @@ from nn.attention.mha_mask import NullMask
 from nn.softmax import softmax_inline
 
 
-from std.utils.index import Index, IndexList
+from std.utils.index import IndexList
 
 
 # ---------------------------------------------------------------------------

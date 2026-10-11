@@ -12,7 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 
 from max.gpu.host import DeviceContext
-from layout import Coord, Idx, DefaultEngine, TileTensor, row_major
+from layout import (
+    Coord,
+    DefaultEngine,
+    TileTensor,
+    row_major,
+)
 
 from nn.pad import (
     pad_constant as pad_cpu,

@@ -49,7 +49,6 @@ from layout import (
     TileTensor,
     Idx,
     Coord,
-    RowMajorLayout,
     row_major,
 )
 from linalg.matmul.gpu import _matmul_gpu

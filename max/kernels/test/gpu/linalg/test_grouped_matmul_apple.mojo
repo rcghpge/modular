@@ -26,7 +26,7 @@ shrink and expand shapes (rank 16 on a 4096-wide layer).
 """
 
 from max.gpu.host import DeviceBuffer, DeviceContext, HostBuffer
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 
 from linalg.grouped_matmul import grouped_matmul, naive_grouped_matmul
 from linalg.matmul.gpu.apple.grouped_matmul import (

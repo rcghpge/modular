@@ -25,12 +25,10 @@ from max.gpu import (
     thread_idx,
 )
 from max.gpu.sync import barrier
-import max.gpu.primitives.warp as warp
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.info import is_cpu
 from std.memory import unsafe_stack_allocation
 from layout import (
-    Idx,
     DefaultEngine,
     TensorLayout,
     TensorEngine,

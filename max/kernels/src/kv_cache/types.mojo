@@ -34,7 +34,6 @@ from layout import (
     TensorEngine,
     ComptimeInt,
     Coord,
-    CoordLike,
     IntTuple,
     Layout,
     TensorLayout,
@@ -60,8 +59,6 @@ from std.utils.coord import dyn_coord
 from std.sys import size_of
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.math import ceildiv
-
-from max.gpu import thread_idx
 
 
 @inline(.always)

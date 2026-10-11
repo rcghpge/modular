@@ -41,12 +41,11 @@
 # against cuBLASLt. A tuned row and the heuristic both return DISPATCH_HIT, so
 # that case guards the row's numerics, not that the dispatcher selects it.
 
-from std.sys import size_of
 import linalg.matmul.vendor.blas as vendor_blas
 from max.gpu.host import DeviceContext
 from internal_utils import assert_almost_equal
 from std.random import rand, seed
-from layout import TileTensor, Coord, row_major, Idx
+from layout import TileTensor, row_major, Idx
 from linalg.matmul.gpu.sm100_structured.default.dispatch import (
     matmul_dispatch_sm100_fp8,
     matmul_dispatch_sm100_bf16,

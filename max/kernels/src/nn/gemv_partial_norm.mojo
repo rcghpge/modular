@@ -38,8 +38,6 @@ expresses this.
 """
 
 from std.math import ceildiv, rsqrt
-from std.builtin.device_passable import DevicePassable
-from std.memory import AddressSpace
 from std.atomic import Atomic, Ordering, fence
 from std.sys.info import _is_sm_100x_or_newer, simd_width_of, size_of
 from std.time import global_perf_counter_ns

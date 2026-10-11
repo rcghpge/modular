@@ -27,16 +27,12 @@ from layout import (
     Coord,
     CoordLike,
     DefaultEngine,
-    Idx,
     RowMajorLayout,
     TensorEngine,
     TensorLayout,
     TileTensor,
-    coord_to_index_list,
 )
 from nn._ragged_utils import get_batch_from_row_offsets
-
-from std.utils import IndexList
 
 
 @inline(.always)

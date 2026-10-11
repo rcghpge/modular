@@ -64,16 +64,14 @@ Gate:
 Declined shapes fall through to `dispatch_im2col_matmul_conv3d`.
 """
 
-from std.collections import OptionalReg
 from std.math import ceildiv, gcd
 from std.math.uutils import udivmod
 from max.gpu import global_idx
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.info import _is_sm10x_gpu
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Coord, TileTensor, row_major
 from std.sys import align_of, simd_width_of
 from std.utils import IndexList
-from linalg.utils import elementwise_epilogue_type
 from nn.conv.conv_utils import elementwise_simd_epilogue_type
 
 from .dispatch import dispatch_sm100_conv2d, test_alignment_sm100_conv2d

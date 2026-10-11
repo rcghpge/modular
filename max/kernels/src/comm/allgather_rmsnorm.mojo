@@ -25,7 +25,7 @@ row's `block.sum` runs parallel across blocks, not `ngpus` serial within one.
 
 from std.collections import Array
 from std.math.uutils import ualign_down
-from std.math import ceildiv, rsqrt
+from std.math import rsqrt
 from std.sys import (
     align_of,
     simd_width_of,

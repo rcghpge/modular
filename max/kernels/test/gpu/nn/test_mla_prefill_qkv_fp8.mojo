@@ -14,19 +14,12 @@
 from max.gpu import *
 from max.gpu.host import DeviceContext
 from std.random import randn
-from layout import (
-    Coord,
-    Idx,
-    TileTensor,
-    row_major,
-)
+from layout import Idx, TileTensor, row_major
 from nn.attention.gpu.mha import mha_gpu_naive
 from nn.attention.mha_mask import CausalMask
 from nn.attention.mha_operand import TileTensorMHAOperand
 from nn.attention.gpu.mla import flare_mla_prefill
 from std.testing import assert_almost_equal
-
-from std.utils.index import Index
 
 
 def test_prefill[

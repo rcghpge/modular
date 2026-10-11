@@ -19,7 +19,6 @@ from max.gpu import *
 from max.gpu.host import DeviceContext, get_gpu_target
 from std.testing import assert_almost_equal, TestSuite
 
-from std.utils import IndexList
 from std.utils.coord import Coord
 
 

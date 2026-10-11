@@ -101,14 +101,8 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
-from max.gpu.host.compile import CompilationTarget
 from std.math import ceildiv
-from max.gpu.sync import (
-    AMDScheduleBarrierMask,
-    s_waitcnt,
-    schedule_group_barrier,
-)
-from std.memory import AddressSpace
+from max.gpu.sync import s_waitcnt
 from std.sys._assembly import inlined_assembly
 from std.sys.intrinsics import (
     likely,
@@ -152,7 +146,6 @@ from .mha_softmax import OnlineSoftmax
 from .mha_mma_op import MhaConfigV2, MhaMmaOp
 
 from .iglp import (
-    _iglp_opt,
     sched_barrier_exp_pairs,
     sched_barrier_pairs,
     sched_dsread_valu_pairs,

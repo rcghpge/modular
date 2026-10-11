@@ -15,7 +15,6 @@ from std.utils.index import IndexList
 from layout import (
     ComptimeInt,
     Coord,
-    CoordLike,
     Idx,
     RowMajorLayout,
     TileTensor,

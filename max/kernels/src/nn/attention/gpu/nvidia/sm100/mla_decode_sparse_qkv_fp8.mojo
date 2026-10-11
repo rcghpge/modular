@@ -120,7 +120,6 @@ from nn.attention.gpu.nvidia.sm100.attention_utils import (
     expect_bytes_pred,
     SharedMemPointer,
     MBarType,
-    ProducerPipeline,
     ConsumerPipeline,
 )
 

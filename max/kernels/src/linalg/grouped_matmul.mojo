@@ -33,7 +33,6 @@ from std.collections.string.string_span import get_static_string
 from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from max.gpu.compute.arch.tcgen05 import *
 from layout import (
-    Coord,
     Idx,
     TensorEngine,
     TensorLayout,

@@ -26,7 +26,7 @@ The module is designed for performance-critical code and requires careful usage 
 achieve optimal memory access patterns and cache utilization.
 """
 
-from std.collections.optional import Optional, OptionalReg
+from std.collections.optional import Optional
 from std.collections.string import StaticString
 from std.collections.string.string_span import (
     _get_kgen_string,

@@ -67,12 +67,7 @@ from layout import (
     TileTensor,
 )
 from layout.coord import Coord
-from layout.tile_layout import (
-    Layout as TileLayout,
-    RowMajorLayout,
-    TensorLayout,
-    row_major,
-)
+from layout.tile_layout import Layout as TileLayout, TensorLayout, row_major
 
 from linalg.arch.apple.mma import MmaOpApple
 

@@ -18,7 +18,6 @@ from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from max.gpu.primitives.grid_controls import pdl_launch_attributes, PDLLevel
 from layout import (
     ComptimeInt,
-    Coord,
     Idx,
     Layout,
     RowMajorLayout,
@@ -43,7 +42,7 @@ from nn.attention.gpu.nvidia.common import (
     OptionalPointer,
 )
 from nn.attention.mha_mask import MHAMask
-from nn.attention.mha_operand import MHAOperand, KVCacheMHAOperand
+from nn.attention.mha_operand import MHAOperand
 from nn.attention.mha_utils import (
     MHAConfig,
     null_pointer,

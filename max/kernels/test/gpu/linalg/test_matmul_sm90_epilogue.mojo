@@ -14,7 +14,6 @@
 from std.collections import Optional
 from std.sys import align_of, size_of
 
-import linalg.matmul.vendor.blas as vendor_blas
 from max.gpu.host import DeviceContext
 from linalg.matmul.gpu.sm90.testbed import test_matmul_sm90
 from linalg.matmul.gpu.tile_scheduler import MatmulSchedule

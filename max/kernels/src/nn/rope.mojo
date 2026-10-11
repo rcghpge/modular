@@ -27,7 +27,6 @@ from layout import (
     TensorEngine,
     TensorLayout,
     TileTensor,
-    coord,
 )
 from nn._ragged_utils import get_batch_from_row_offsets
 

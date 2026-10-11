@@ -108,10 +108,8 @@ from max.gpu import (
 )
 from max.gpu.compute.mma import mma as gpu_mma
 from max.gpu.host import DeviceContext
-from max.gpu.host.compile import CompilationTarget
 from max.gpu.sync import s_waitcnt
 from std.math import ceildiv
-from std.memory import AddressSpace
 from std.sys import get_defined_bool, get_defined_int, size_of
 from std.sys.intrinsics import readfirstlane
 from std.utils import StaticTuple

@@ -15,13 +15,8 @@
 
 from std.collections import Optional
 from std.math import align_down, align_up, ceildiv
-from std.math.uutils import umod, ufloordiv
-from std.sys import (
-    is_amd_gpu,
-    is_nvidia_gpu,
-    llvm_intrinsic,
-    simd_width_of,
-)
+from std.math.uutils import ufloordiv
+from std.sys import is_amd_gpu, llvm_intrinsic, simd_width_of
 from std.sys.info import _is_amd_mi250x, _is_sm_100x, size_of
 from max.gpu.compute.mma import ld_matrix, mma
 from max.gpu.sync import async_copy_arrive, named_barrier
@@ -29,7 +24,7 @@ from layout.tma_async import SharedMemBarrier
 from structured_kernels.kernel_common import _to_batched_3d
 from structured_kernels.smem_types import SMemArray
 from structured_kernels.tile_types import SMemTileArray2D
-from layout.swizzle import Swizzle, make_swizzle
+from layout.swizzle import make_swizzle
 
 import max.gpu.primitives.warp as warp
 from max.algorithm.reduction import _reduce_generator

@@ -19,18 +19,13 @@ Accelerate and GEMV fast paths.
 """
 from std.collections import Optional
 from std.math import align_up, ceildiv
-from std.sys.info import align_of, simd_width_of
+from std.sys.info import simd_width_of
 
 from std.algorithm import tile, vectorize
 
 from max.algorithm import sync_parallelize
 from max.gpu.host import DeviceContext
-from layout import (
-    Coord,
-    Idx,
-    TensorEngine,
-    TileTensor,
-)
+from layout import TensorEngine, TileTensor
 from layout.tile_layout import TensorLayout, row_major
 from std.memory import alloc, dealloc, Allocation
 from std.memory.alloc import Alignment, Layout as AllocLayout

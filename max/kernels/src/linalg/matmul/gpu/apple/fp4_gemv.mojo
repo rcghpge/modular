@@ -64,7 +64,6 @@ from std.math import ceildiv
 import max.gpu.primitives.warp as warp
 
 from layout import Coord, TensorEngine, TileTensor, TensorLayout
-from layout.tile_layout import row_major
 
 from linalg.fp4_utils import decode_e2m1_to_f16, NVFP4_SF_VECTOR_SIZE
 from linalg.utils import elementwise_epilogue_type

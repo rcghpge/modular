@@ -21,7 +21,6 @@ from std.complex import ComplexSIMD
 from extensibility import OutputTensor, foreach
 
 from std.utils.coord import Coord, coord_to_index_list
-from std.utils.index import IndexList
 
 comptime float_dtype = DType.float32
 

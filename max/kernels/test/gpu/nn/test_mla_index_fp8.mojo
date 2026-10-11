@@ -42,7 +42,6 @@ from std.sys import size_of
 from std.random import rand, random_ui64
 from std.sys.info import _has_blackwell_tcgen05
 from layout import (
-    Coord,
     Idx,
     TensorLayout,
     TileTensor,

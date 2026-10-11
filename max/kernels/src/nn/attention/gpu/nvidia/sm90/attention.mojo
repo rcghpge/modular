@@ -54,7 +54,6 @@ from nn.attention.mha_operand import (
     MHAOperand,
     PagedRowIndices,
     kv_sub_tile_rows,
-    kv_num_sub_tiles,
 )
 from nn.attention.gpu.nvidia.mha_tile_scheduler import (
     MHASchedulerSynchronization,
@@ -64,7 +63,6 @@ from nn.attention.gpu.nvidia.mha_tile_scheduler import (
     SeqInfo,
 )
 from nn.attention.mha_utils import (
-    MHAConfig,
     MHAPartitionScheme,
     OptionallyStaticInt,
     _is_decoding,
@@ -88,7 +86,6 @@ from nn.attention.gpu.nvidia.common import (
     NullPointer,
     OptionalPointer,
     Pack,
-    QTMATilePrefill,
     QTMATileFused,
     _LocalTT,
     _SharedMemTT,

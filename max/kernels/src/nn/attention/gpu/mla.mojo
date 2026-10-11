@@ -36,10 +36,7 @@ from std.sys import (
 )
 
 from nn.attention.gpu.nvidia.common import ImmutTileTensor1D
-from nn.attention.gpu.mha import (
-    mha_splitk_reduce,
-    q_num_matrix_view_rows,
-)
+from nn.attention.gpu.mha import mha_splitk_reduce
 from nn.attention.gpu.mha_decode_partition_heuristic import (
     mha_decoding_num_partitions,
 )
@@ -70,7 +67,7 @@ from max.gpu.host import (
     DeviceBuffer,
     Dim as LaunchDim,
 )
-from max.gpu.host.info import A100, H100, B200, _is_sm10x_gpu
+from max.gpu.host.info import A100, H100, _is_sm10x_gpu
 from max.gpu.memory import (
     async_copy_commit_group,
     async_copy_wait_all,

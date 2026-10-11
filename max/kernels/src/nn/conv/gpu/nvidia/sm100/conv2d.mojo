@@ -52,13 +52,13 @@ from structured_kernels.tile_types import (
     create_tma_tile,
 )
 from layout import TileTensor, coord
-from layout.tile_layout import Coord, row_major
+from layout.tile_layout import row_major
 from linalg.utils import (
     ElementwiseComputeFn,
     elementwise_epilogue_type,
     identity_compute_fn,
 )
-from std.utils.index import Index, IndexList
+from std.utils.index import IndexList
 from std.utils.static_tuple import StaticTuple
 
 from .conv_config import Conv2dConfig, Conv2dProblemShape

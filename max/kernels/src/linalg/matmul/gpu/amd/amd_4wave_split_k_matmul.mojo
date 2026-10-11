@@ -38,7 +38,7 @@ from std.utils import Index, IndexList
 from max.gpu import block_dim, global_idx, grid_dim
 from max.gpu.host import DeviceBuffer, DeviceContext
 
-from layout import Coord, Idx, TileTensor
+from layout import Idx, TileTensor
 from layout.tile_layout import row_major
 
 from linalg.utils import (

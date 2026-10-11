@@ -23,11 +23,9 @@ from max.gpu.host.info import is_gpu
 from max.gpu import block_dim, block_idx, thread_idx
 from layout import (
     Coord,
-    Idx,
     TensorLayout,
     TensorEngine,
     TileTensor,
-    coord,
     coord_to_index_list,
 )
 from std.itertools import product

@@ -54,7 +54,7 @@ from std.utils import IndexList
 
 from layout import TensorEngine, TileTensor
 from layout.coord import Coord
-from layout.tile_layout import TensorLayout, row_major
+from layout.tile_layout import TensorLayout
 
 from linalg.arch.apple.mma import MmaOpApple
 

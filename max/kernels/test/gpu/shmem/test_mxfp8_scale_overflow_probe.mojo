@@ -42,7 +42,7 @@ from std.math import align_up, exp, isfinite, recip
 from std.memory import bitcast
 from std.testing import assert_true
 
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from linalg.block_scaled_quantization import quantize_mx_amd
 from linalg.fp4_utils import MXFP8_SF_VECTOR_SIZE
 from linalg.swiglu_activation import get_swiglu_activation

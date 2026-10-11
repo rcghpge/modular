@@ -21,7 +21,7 @@ from std.sys import argv
 import linalg.matmul.vendor.blas as vendor_blas
 from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
-from std.memory import alloc, bitcast, dealloc, ThinAllocation
+from std.memory import alloc, bitcast, dealloc
 from std.memory.alloc import Layout as AllocLayout
 from std.random import rand, random_ui64, seed
 from internal_utils import assert_almost_equal

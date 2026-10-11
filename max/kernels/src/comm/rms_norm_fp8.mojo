@@ -25,11 +25,7 @@ from max.gpu import WARP_SIZE, block_idx, thread_idx
 import max.gpu.primitives.warp as warp
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.primitives import block
-from max.gpu.primitives.grid_controls import (
-    PDL,
-    PDLLevel,
-    pdl_launch_attributes,
-)
+from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
 from layout import (
     Coord,
     TensorLayout,

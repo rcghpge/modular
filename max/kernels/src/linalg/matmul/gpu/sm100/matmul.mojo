@@ -23,7 +23,7 @@ For new code, use sm100_structured directly:
 - Import matmul from: linalg.matmul.gpu.sm100_structured.matmul
 """
 
-from std.sys import align_of, simd_width_of, size_of
+from std.sys import align_of, size_of
 from std.math.uutils import umod, ufloordiv, udivmod
 
 from max.gpu import WARP_SIZE, lane_id, warp_id
@@ -48,12 +48,7 @@ from layout import (
     col_major,
 )
 from layout.swizzle import Swizzle
-from layout.tile_layout import (
-    TensorLayout,
-    ZippedDivideLayout,
-    UpcastLayout,
-    BlockedProductLayout,
-)
+from layout.tile_layout import TensorLayout, BlockedProductLayout
 from structured_kernels.tile_types import SMemTileArray2D
 
 from std.utils.fast_div import FastDiv

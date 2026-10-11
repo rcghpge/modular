@@ -22,7 +22,7 @@ from std.sys import simd_width_of, size_of
 from max.gpu import lane_id, WARP_SIZE
 from max.gpu.intrinsics import cvt_pk_fp8_f32_raw
 from layout import TensorEngine, TensorLayout, TileTensor
-from layout.coord import Coord, ComptimeInt, Idx
+from layout.coord import Coord, ComptimeInt
 from layout.swizzle import Swizzle
 from layout.tile_layout import (
     Layout as TileLayout,

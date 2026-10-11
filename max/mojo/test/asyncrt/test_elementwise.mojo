@@ -21,7 +21,6 @@ from std.testing import TestSuite, assert_equal
 
 from std.utils import IndexList
 from std.utils.coord import Coord, coord_to_index_list
-from std.utils.index import Index
 
 
 def run_elementwise[dtype: DType](ctx: DeviceContext) raises:

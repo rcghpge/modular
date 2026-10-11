@@ -23,14 +23,7 @@ from max.gpu.host.info import (
     GPUInfo,
     _is_sm10x_gpu,
 )
-from layout import (
-    Idx,
-    Layout,
-    RuntimeLayout,
-    TileTensor,
-    UNKNOWN_VALUE,
-    row_major,
-)
+from layout import Idx, TileTensor, row_major
 from nn.attention.gpu.mha import (
     flash_attention,
     mha_gpu_naive,
@@ -38,8 +31,6 @@ from nn.attention.gpu.mha import (
 from nn.attention.mha_mask import NullMask
 from nn.attention.gpu.nvidia.common import immut_tile_tensor_1d
 from std.testing import assert_almost_equal
-
-from std.utils.index import Index
 
 
 def is_benchmark() -> Bool:

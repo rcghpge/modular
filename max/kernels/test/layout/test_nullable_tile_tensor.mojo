@@ -12,13 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 
 from layout import (
-    ComptimeInt,
     Coord,
     Idx,
     TileTensor,
     row_major,
 )
-from layout.tile_layout import Layout as TileLayout
 from layout.tile_tensor import NullableTileTensor
 from std.testing import (
     TestSuite,

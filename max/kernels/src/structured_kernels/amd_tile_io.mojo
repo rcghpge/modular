@@ -79,7 +79,6 @@ from max.gpu.intrinsics import (
 )
 from max.gpu._utils import to_i32, to_i64
 from max.gpu.memory import CacheOperation
-from std.memory import AddressSpace
 from std.memory.unsafe import bitcast
 from std.math import ceildiv, min
 from std.math.uutils import udivmod, umod, ufloordiv
@@ -103,7 +102,6 @@ comptime elementwise_epilogue_type = def[
 
 Local re-declaration of `linalg.utils.elementwise_epilogue_type`.
 `structured_kernels` is a *dependency* of `linalg`, so we cannot
-import the canonical definition without creating a cyclic bazel dep.
 Mojo function-pointer types are structural, so this duplicate alias
 is interchangeable with the canonical one at every call site that
 hands a lambda across the package boundary.

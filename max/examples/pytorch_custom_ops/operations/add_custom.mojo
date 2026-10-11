@@ -17,7 +17,6 @@ from max.gpu.host import DeviceContext
 from extensibility import InputTensor, OutputTensor, foreach
 
 from std.utils.coord import Coord
-from std.utils.index import IndexList
 
 
 @extensibility.register("add_constant_custom")

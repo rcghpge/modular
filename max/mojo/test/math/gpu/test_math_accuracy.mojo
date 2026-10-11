@@ -17,9 +17,8 @@ from std.sys import simd_width_of
 from max.algorithm.functional import elementwise
 from max.gpu import *
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
-from std.testing import assert_almost_equal, assert_equal, TestSuite
+from std.testing import assert_almost_equal, TestSuite
 
-from std.utils import Index, IndexList
 from std.utils.coord import Coord
 
 comptime length = 8192

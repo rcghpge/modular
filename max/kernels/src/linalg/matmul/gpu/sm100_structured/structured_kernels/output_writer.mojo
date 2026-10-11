@@ -43,7 +43,6 @@ from std.time import global_perf_counter_ns
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     Coord,
-    Idx,
     IntTuple,
     Layout,
     RuntimeTuple,

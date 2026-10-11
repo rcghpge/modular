@@ -34,7 +34,12 @@ from max.gpu.host import DeviceContext, DeviceBuffer
 from std.memory import alloc
 from internal_utils import assert_almost_equal
 from std.random import rand
-from layout import Coord, RowMajorLayout, TileTensor, row_major, Idx
+from layout import (
+    RowMajorLayout,
+    TileTensor,
+    row_major,
+    Idx,
+)
 from linalg.matmul.gpu.sm100_structured.default.dispatch_fused_bias_residual import (
     fused_bias_residual_matmul_dispatch_sm100,
 )
