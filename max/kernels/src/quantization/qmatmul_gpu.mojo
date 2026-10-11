@@ -465,13 +465,11 @@ def multistage_mma_q[
                             var dst = scales_native_ring.tile[1, BN](
                                 (scales_stage, 0)
                             )
-                            var src = TileTensor[
-                                linear_idx_type=scales_native_src.linear_idx_type
-                            ](
-                                scales_native_src.unsafe_ptr()
-                                + native_scale_group
-                                * scales_native_src.static_stride[0],
-                                scales_native_src.layout,
+                            # Row `native_scale_group` of the [1, BN] tile:
+                            # tiling past the one-row tile with the parent's
+                            # stride, same offset the pointer form computed.
+                            var src = scales_native_src.tile[1, BN](
+                                (native_scale_group, 0)
                             )
                             _copy_quantized_scale_tile(dst, src)
                         native_scale_group += 1
@@ -765,13 +763,12 @@ def multistage_mma_q[
                                     var dst = scales_native_ring.tile[1, BN](
                                         (stage, 0)
                                     )
-                                    var src = TileTensor[
-                                        linear_idx_type=scales_native_src.linear_idx_type
-                                    ](
-                                        scales_native_src.unsafe_ptr()
-                                        + native_scale_group
-                                        * scales_native_src.static_stride[0],
-                                        scales_native_src.layout,
+                                    # Row `native_scale_group` of the [1, BN]
+                                    # tile: tiling past the one-row tile with
+                                    # the parent's stride, same offset the
+                                    # pointer form computed.
+                                    var src = scales_native_src.tile[1, BN](
+                                        (native_scale_group, 0)
                                     )
                                     _copy_quantized_scale_tile(dst, src)
                                 native_scale_group += 1
