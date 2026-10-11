@@ -778,10 +778,8 @@ CValue PatternEmitState::getPathValue(IREmitter &emitter,
     llvm_unreachable("handled above");
   case PatternPath::TupleElement: {
     // Emit `parent[idx]` as a subscript expression.
-    TypedAttr indexAttr =
-        IntegerAttr::get(IndexType::get(emitter.getContext()), path->index);
-    CValue intIndex = emitter.emitInt(
-        ASTExprAnd<PValue>{PValue(indexAttr), expr}, EC_CallParamValue);
+    CValue intIndex =
+        emitter.emitInt(path->index, expr->getLoc(), EC_CallParamValue);
     if (!intIndex)
       return {};
     SyntheticNode baseNode(expr->getLoc(), parent);
@@ -804,10 +802,8 @@ CValue PatternEmitState::getPathValue(IREmitter &emitter,
     return pathValues[path] = fieldVal;
   }
   case PatternPath::EnumPayload: {
-    TypedAttr indexAttr =
-        IntegerAttr::get(IndexType::get(emitter.getContext()), path->index);
-    CValue caseIdxInt = emitter.emitInt(
-        ASTExprAnd<PValue>{PValue(indexAttr), expr}, EC_CallParamValue);
+    CValue caseIdxInt =
+        emitter.emitInt(path->index, expr->getLoc(), EC_CallParamValue);
     if (!caseIdxInt)
       return {};
     SyntheticNode subjectNode(expr->getLoc(), parent);
@@ -841,10 +837,8 @@ RValue PatternEmitState::emitTestForValue(IREmitter &emitter,
 
   AnyValue rhs;
   if (command->kind == PatternCommand::EnumTag) {
-    TypedAttr indexAttr = IntegerAttr::get(IndexType::get(emitter.getContext()),
-                                           command->enumCaseIndex);
-    CValue caseIdxInt = emitter.emitInt(
-        ASTExprAnd<PValue>{PValue(indexAttr), expr}, EC_CallParamValue);
+    CValue caseIdxInt = emitter.emitInt(command->enumCaseIndex, expr->getLoc(),
+                                        EC_CallParamValue);
     if (!caseIdxInt)
       return {};
     rhs = caseIdxInt;

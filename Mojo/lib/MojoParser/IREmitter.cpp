@@ -1804,6 +1804,12 @@ CValue IREmitter::emitInt(ASTExprAnd<AnyValue> indexValue,
   return emitInt(indexValue, dest);
 }
 
+CValue IREmitter::emitInt(int64_t value, llvm::SMLoc loc, ExprContext context) {
+  SyntheticNode expr(loc);
+  auto indexAttr = IntegerAttr::get(IndexType::get(getContext()), value);
+  return emitInt(ASTExprAnd<AnyValue>{PValue(indexAttr), &expr}, context);
+}
+
 /// This returns an instance of Tuple[...] with the specified element types
 /// installed.
 ASTType IREmitter::getBuiltinTupleInstantiation(llvm::SMLoc loc,

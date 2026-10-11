@@ -998,7 +998,8 @@ ParseResult ExprParser::parsePrefixLSquare(ExprNode *&result,
   SmallVector<ExprNode *> exprs;
   // Handle empty list: []
   if (consumeIf(Token::r_square, &rsquareLoc)) {
-    result = create<ListLiteralNode>(lsquareLoc, exprs, rsquareLoc);
+    result =
+        create<ListLiteralNode>(lsquareLoc, exprs, std::nullopt, rsquareLoc);
     return success();
   }
   // Parse the items in the list.
@@ -1007,8 +1008,22 @@ ParseResult ExprParser::parsePrefixLSquare(ExprNode *&result,
 
   // Handle a normal list.
   if (consumeIf(Token::r_square, &rsquareLoc)) {
+    std::optional<size_t> starIndex;
+    for (size_t index = 0; index != exprs.size(); ++index) {
+      ExprNode *&expr = exprs[index];
+      if (expr->kind != ExprNode::kUnpack)
+        continue;
+      if (starIndex) {
+        emitError(expr->getLoc(),
+                  "multiple starred expressions in list pattern")
+            << expr->getRange();
+        return failure();
+      }
+      starIndex = index;
+      expr = cast<UnaryOpNode>(expr)->subExpr;
+    }
     result = create<ListLiteralNode>(
-        lsquareLoc, internElements<ExprNode *>(exprs), rsquareLoc);
+        lsquareLoc, internElements<ExprNode *>(exprs), starIndex, rsquareLoc);
     return success();
   }
 

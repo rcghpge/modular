@@ -536,12 +536,13 @@ struct TupleNode final : public LValueCapableExprNode {
 /// [a, b, c]
 struct ListLiteralNode final : public LValueCapableExprNode {
   ListLiteralNode(SMLoc lsquareLoc, ArrayRef<ExprNode *> exprs,
-                  SMLoc rsquareLoc)
+                  std::optional<size_t> starIndex, SMLoc rsquareLoc)
       : LValueCapableExprNode(kListLiteral), lsquareLoc(lsquareLoc),
-        exprs(exprs), rsquareLoc(rsquareLoc) {}
+        exprs(exprs), starIndex(starIndex), rsquareLoc(rsquareLoc) {}
 
   const SMLoc lsquareLoc;
   ArrayRef<ExprNode *> exprs;
+  const std::optional<size_t> starIndex;
   const SMLoc rsquareLoc;
 
   static bool classof(const ExprNode *node) {

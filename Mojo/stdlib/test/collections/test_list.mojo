@@ -81,6 +81,33 @@ def test_list() raises:
     assert_equal(7, list[len(list) - 1])
 
 
+def test_list_pattern_starred_element() raises:
+    var values: List[Int] = [1, 2, 3, 4, 5, 6]
+
+    var [a, b, *middle, e, f] = values
+    assert_equal(a, 1)
+    assert_equal(b, 2)
+    assert_equal(len(middle), 2)
+    assert_equal(middle[0], 3)
+    assert_equal(middle[1], 4)
+    assert_equal(e, 5)
+    assert_equal(f, 6)
+
+    var [first, *tail] = values
+    assert_equal(first, 1)
+    assert_equal(len(tail), 5)
+    assert_equal(tail[4], 6)
+
+    var [*head, last] = values
+    assert_equal(len(head), 5)
+    assert_equal(head[0], 1)
+    assert_equal(last, 6)
+
+    var [*all_values] = values
+    assert_equal(len(all_values), 6)
+    assert_equal(all_values[5], 6)
+
+
 struct WeirdList[T: AnyType]:
     def __init__(out self, var *values: Self.T, __list_literal__: NoneType):
         pass

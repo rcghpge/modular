@@ -726,6 +726,17 @@ struct Slice(TrivialRegisterPassable):
         pass
 
 
+struct ContiguousSlice(TrivialRegisterPassable):
+    def __init__(
+        out self,
+        start: Optional[Int],
+        end: Optional[Int],
+        stride: NoneType,
+        __slice_literal__: NoneType = None,
+    ):
+        pass
+
+
 @fieldwise_init
 struct _ListIter[
     mut: Bool,
@@ -770,6 +781,11 @@ struct List[T: Copyable](Copyable, Iterable, Sized):
     def __getitem__(
         ref self, idx: Int
     ) -> ref[origin_of(self)._get_owned_interior["element"]] Self.T:
+        abort()
+
+    def __getitem__(
+        ref self, slice: ContiguousSlice
+    ) -> Span[Self.T, origin_of(self)._get_owned_interior["element"]]:
         abort()
 
     comptime IteratorType[

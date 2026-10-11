@@ -300,13 +300,8 @@ CValue TupleDLValue::emitStore(ASTExprAnd<CValue> value,
     assert(lv && "Each dest is known to be an lvalue");
     ExprDest eltDest(lv, EC_TupleElement);
 
-    // Bind the i parameters.  Int explicitly constructs from index type now.
-    TypedAttr indexAttr =
-        IntegerAttr::get(IndexType::get(emitter.getContext()), index);
-
-    CValue intIndexCValue =
-        emitter.emitInt(ASTExprAnd<PValue>{PValue(indexAttr), value.expr},
-                        ExprContext::EC_CallParamValue);
+    CValue intIndexCValue = emitter.emitInt(index, value.expr->getLoc(),
+                                            ExprContext::EC_CallParamValue);
     if (!intIndexCValue) {
       eltDest.resetForError(emitter);
       return BValue();
@@ -338,7 +333,7 @@ CValue TupleDLValue::emitStore(ASTExprAnd<CValue> value,
 ListPatternDLValue::ListPatternDLValue(ArrayRef<ExprNode *> eltExprs,
                                        ASTType listType,
                                        PatternDeclKind patternDeclKind,
-                                       const ExprNode *expr)
+                                       const ListLiteralNode *expr)
     : BaseDLValue(listType), expr(expr),
       eltExprs(eltExprs.begin(), eltExprs.end()),
       patternDeclKind(patternDeclKind) {}
@@ -381,15 +376,17 @@ CValue ListPatternDLValue::emitStore(ASTExprAnd<CValue> value,
   if (!bvalue)
     return {};
 
-  TypedAttr minimumLengthAttr =
-      IntegerAttr::get(IndexType::get(emitter.getContext()), eltExprs.size());
+  // The minimum is the # of patterns in the list literal: the * pattern can
+  // be empty though, so it doesn't count.
   CValue minimumLength = emitter.emitInt(
-      ASTExprAnd<PValue>{PValue(minimumLengthAttr), expr}, EC_CallParamValue);
+      eltExprs.size() - expr->starIndex.has_value(), loc, EC_CallParamValue);
   if (!minimumLength)
     return {};
 
   CValue isExact = emitter.emitBool(
-      ASTExprAnd<PValue>{BoolAttr::get(emitter.getContext(), true), expr},
+      ASTExprAnd<PValue>{
+          BoolAttr::get(emitter.getContext(), !expr->starIndex.has_value()),
+          expr},
       EC_CallParamValue);
   if (!isExact)
     return {};
@@ -413,22 +410,90 @@ CValue ListPatternDLValue::emitStore(ASTExprAnd<CValue> value,
   if (!checkCall.emitCall(std::move(checkOperands), emitter))
     return {};
 
+  // If there is a * pattern e.g. [a, b, *c, d, e], we need to compute the index
+  // that d and e will live at as well as the range that c will cover.  We do
+  // this by calling `collection.__len__()` to get the actual length and doing
+  // simple math.  We only need this if the * pattern is present and not the
+  // last element in the list.
+  CValue suffixStart;
+  if (expr->starIndex && *expr->starIndex + 1 != eltExprs.size()) {
+    // Emit the call to collection.__len__() to get the actual length.
+    SyntheticNode valueNode(loc, bvalue);
+    AttributeRefNode lenAttr(&valueNode, loc, "__len__");
+    CallNode lenCall(&lenAttr, loc, /*operands=*/{}, loc);
+    CValue actualLength =
+        emitter.emitExprCValue(&lenCall, EC_CollectionLiteral);
+    if (!actualLength)
+      return {};
+
+    // Start of the suffix is length-#trailing.
+    size_t suffixLength = eltExprs.size() - *expr->starIndex - 1;
+    CValue suffixLengthValue =
+        emitter.emitInt(suffixLength, loc, EC_CallParamValue);
+    if (!suffixLengthValue)
+      return {};
+    SyntheticNode actualLengthNode(loc, actualLength);
+    SyntheticNode suffixLengthNode(loc, suffixLengthValue);
+    BinOpNode subtract(ExprNode::kSub, &actualLengthNode, loc,
+                       &suffixLengthNode);
+    suffixStart = emitter.emitExprCValue(&subtract, EC_CollectionLiteral);
+    if (!suffixStart)
+      return {};
+  }
+
   // Now that we know the length is correct, extract and store each element.
   SyntheticNode baseNode(loc, bvalue);
   for (auto [index, eltExpr] : llvm::enumerate(eltExprs)) {
-    // Build `base.__getitem__(42)` syntactically.
-    TypedAttr indexAttr =
-        IntegerAttr::get(IndexType::get(emitter.getContext()), index);
-    CValue indexCValue = emitter.emitInt(
-        ASTExprAnd<PValue>{PValue(indexAttr), expr}, EC_CallParamValue);
-    if (!indexCValue)
-      return {};
-    SyntheticNode indexNode(loc, indexCValue);
-    Operand indexOperand(&indexNode, loc, ArgUnpackStyle::kPositional);
+    // If this is the * pattern, emit a slice operation to extract the suffix.
+    if (expr->starIndex && index == *expr->starIndex) {
+      CValue startValue = emitter.emitInt(index, loc, EC_CallParamValue);
+      if (!startValue)
+        return {};
 
+      SyntheticNode startNode(loc, startValue);
+      std::optional<SyntheticNode> endNode;
+      if (suffixStart)
+        endNode.emplace(loc, suffixStart);
+      SliceLiteralNode slice(&startNode, loc, endNode ? &*endNode : nullptr, {},
+                             nullptr);
+      Operand sliceOperand(&slice, loc, ArgUnpackStyle::kPositional);
+      SubscriptNode subscript(&baseNode, loc, sliceOperand, loc);
+
+      ExprDest eltDest(eltExpr, EC_CollectionLiteral);
+      eltDest.setPatternDeclKind(patternDeclKind);
+      if (!emitter.emitExpr(&subscript, eltDest))
+        return {};
+      continue;
+    }
+
+    // Otherwise, we have a single pattern like "x".  Figure out its offset in
+    // the collection based on whether it is before or after the * pattern.
+    CValue indexValue;
+    if (!expr->starIndex || index < *expr->starIndex) {
+      indexValue = emitter.emitInt(index, loc, EC_CallParamValue);
+    } else {
+      size_t suffixOffset = index - *expr->starIndex - 1;
+      if (suffixOffset == 0) {
+        indexValue = suffixStart;
+      } else {
+        CValue offsetValue =
+            emitter.emitInt(suffixOffset, loc, EC_CallParamValue);
+        if (!offsetValue)
+          return {};
+        SyntheticNode suffixStartNode(loc, suffixStart);
+        SyntheticNode offsetNode(loc, offsetValue);
+        BinOpNode add(ExprNode::kAdd, &suffixStartNode, loc, &offsetNode);
+        indexValue = emitter.emitExprCValue(&add, EC_CollectionLiteral);
+      }
+    }
+    if (!indexValue)
+      return {};
+
+    // Build `base.__getitem__(42)` syntactically.
+    SyntheticNode indexNode(loc, indexValue);
+    Operand indexOperand(&indexNode, loc, ArgUnpackStyle::kPositional);
     AttributeRefNode getItemAttr(&baseNode, loc, "__getitem__");
     CallNode getItemCall(&getItemAttr, loc, indexOperand, loc);
-
     ExprDest eltDest(eltExpr, EC_CollectionLiteral);
     eltDest.setPatternDeclKind(patternDeclKind);
     if (!emitter.emitExpr(&getItemCall, eltDest))

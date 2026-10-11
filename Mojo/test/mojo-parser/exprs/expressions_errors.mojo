@@ -393,6 +393,7 @@ def no_unused_values_in_def() raises:
   var bcd = *_
 
   _ = *x # expected-error {{can't use starred expression here}}
+  _ = [*x] # expected-error {{can't use starred expression here}}
 
 # expected-note @+1 {{function declared here}}
 def func_with_static_param[x: Int]() -> Int:
@@ -489,6 +490,11 @@ def list_pattern(value: LengthOnly) raises:
   [_] = value
   # expected-error @+1 {{value of type 'Int' does not conform to 'Sized'}}
   [_] = 4
+
+
+def multiple_starred_list_pattern(value: List[Int]) raises:
+  # expected-error @+1 {{multiple starred expressions in list pattern}}
+  [*a, *b] = value
 
 
 # Issue https://github.com/modular/mojo/issues/1917

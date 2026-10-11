@@ -3626,6 +3626,8 @@ static AnyValue emitListLiteral(const ExprNode *expr,
 ExprNode::ELVIITResult ListLiteralNode::emitLCVIR(ExprDest &dest,
                                                   IREmitter &emitter,
                                                   bool isSpeculative) const {
+  auto expectedType = dest.getIfInitializerType();
+
   // Speculative emission is used for LHS patterns like `var [a, b] = …`. We
   // don't do anything with it, because `[var x:Int] = ...` isn't enough to
   // infer the type of the RHS anyway.  Just wait for the RHS to get emitted.
@@ -3634,12 +3636,20 @@ ExprNode::ELVIITResult ListLiteralNode::emitLCVIR(ExprDest &dest,
 
   // If this is the LHS of an assignment, then we unpack the list pattern into
   // the subexpressions of the pattern.
-  if (auto expectedType = dest.getIfInitializerType()) {
+  if (expectedType) {
     if (sugarIsa<TypeCheckErrorType>(expectedType))
       return {};
+
     DLValue result(RCRef<ListPatternDLValue>::create(
         exprs, expectedType, dest.getPatternDeclKind(), this));
     return emitter.emitResult(result, this, dest);
+  }
+
+  if (starIndex) {
+    emitter.emitError(exprs[*starIndex]->getLoc(),
+                      "can't use starred expression here")
+        << exprs[*starIndex]->getRange();
+    return {};
   }
 
   // Normal RHS emission: `[a, b, c]` as a list literal initializer.
@@ -5463,13 +5473,8 @@ LogicalResult TupleNode::emitDestructuringPValue(PValue toUnpack,
     // Get the item from the tuple into the corresponding LValue.
     ExprDest eltDest(eltType, EC_TupleElement);
 
-    // Bind the i parameters.  Int explicitly constructs from index type now.
-    TypedAttr indexAttr =
-        IntegerAttr::get(IndexType::get(emitter.getContext()), index);
-
     CValue intIndexCValue =
-        emitter.emitInt(ASTExprAnd<PValue>{PValue(indexAttr), this},
-                        ExprContext::EC_CallParamValue);
+        emitter.emitInt(index, getLoc(), ExprContext::EC_CallParamValue);
     PValue intIndex = intIndexCValue.getIfPValue();
     assert(intIndex && "Int must be PValue when constructed from int attr");
 

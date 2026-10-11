@@ -586,6 +586,9 @@ public:
   CValue emitInt(ASTExprAnd<AnyValue> indexValue, ExprDest &dest);
   CValue emitInt(ASTExprAnd<AnyValue> indexValue, ExprContext context);
 
+  /// Emit an `Int`-typed value from a C++ integer.
+  CValue emitInt(int64_t value, llvm::SMLoc loc, ExprContext context);
+
   /// Given an expression that can be used in `origin_of` or a ref expression,
   /// analyze it to determine which origin it represents.  If it doesn't work,
   /// emit an error and return null.

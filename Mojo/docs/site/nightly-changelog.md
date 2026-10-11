@@ -111,6 +111,18 @@ This version is still a work in progress.
   client matches when they compile against a new version of the package that
   adds a case they didn't know about.
 
+- Mojo supports list destructuring assignments from collections that conform
+  to `Sized` and that are subscriptable. A single `*name` captures the elements
+  between any leading and trailing patterns:
+
+  ```mojo
+  var [first, *middle, last] = values
+  ```
+
+  The destructured value must conform to `Sized` and support integer and
+  `ContiguousSlice` subscripting if a `*` pattern is used. Trying to destructure
+  a list with too few elements will raise an error.
+
 - `if case` and `while case`: Conditional patterns are also available in
   `if`, `elif`, and `while` statements using `case pattern = value`. The value
   is evaluated once, and names bound by a successful pattern are available in

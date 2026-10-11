@@ -558,13 +558,6 @@ if case (x, [y, 0]) = get_value():
     use(x, y)
 ```
 
-It also allows trailing conditions with the existing trailing "if" conditions:
-
-```mojo
-if case .Some(x) = get_optional_int() if x != 42:
-    print(x)
-```
-
 Irrefutable patterns can technically appear in this position as well:
 
 ```mojo
@@ -590,6 +583,8 @@ while case [item, 0] = get_next():
 
 ### Alternative considered
 
+**`if pattern = expr` with no `case keyword**
+
 We considered eliding the `case` keyword in `if case`. Note that `=` is a
 **statement**, rather than an expression. This means that we could have allowed
 the user to write:
@@ -608,6 +603,34 @@ number of very confusing things, including things like `if 4 = foo():` and
 `if (True, x) = bar():` which visually look like they are comparison, not
 assignments. Requiring the `case` keyword makes these visually more distinct
 and obvious to readers.
+
+**Trailing condition on `if case`**
+
+We could allow trailing "if" conditions on `if case` following the functionality
+of `case` in a match:
+
+```mojo
+if case .Some(x) = get_optional_int() if x != 42:
+    print(x)
+```
+
+However, repeating `if` within a single condition is visually awkward. In
+`if case ... if ...`, the second `if` can look like the start of a nested
+statement, and the syntax gives the trailing boolean condition a special
+position that cannot naturally be followed by another pattern match.
+
+If we want more expressive capability to reduce nested `if`s, we should consider
+a Swift-style comma-separated condition list instead. This allows each clause to
+be either a boolean condition or a conditional pattern match:
+
+```mojo
+if case .Some(x) = get_first(), x != 42, case .Some(y) = get_second(x):
+    use(x, y)
+```
+
+This form flows lexically from left to right and naturally supports sequences
+such as pattern match, boolean condition, and another pattern match. Bindings
+introduced by a `case` clause would be available to the clauses that follow it.
 
 ## Implementation status
 

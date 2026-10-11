@@ -1837,13 +1837,10 @@ LogicalResult CallParamInf::inferOptionalLiteralSize() {
   for (auto [idx, pog] : llvm::enumerate(declaredParamPogs.getPogs())) {
     if (pog.getName().strref() == "__literal_size__") {
       IREmitter emitter(getDeclScope(), ExprContext::EC_ParameterList);
-      SyntheticNode dummyNode(callOperands.getExprLoc());
-      auto size = IntegerAttr::get(IndexType::get(getShared().getContext()),
-                                   callOperands.values.size() - 1);
       PValue literalSize =
           emitter
-              .emitInt({ASTExprAnd<AnyValue>(size, &dummyNode)},
-                       ExprContext::EC_ParameterList)
+              .emitInt(callOperands.values.size() - 1,
+                       callOperands.getExprLoc(), ExprContext::EC_ParameterList)
               .getIfPValue();
       if (!literalSize) {
         getMojoDiag(callOperands.getExprLoc())
