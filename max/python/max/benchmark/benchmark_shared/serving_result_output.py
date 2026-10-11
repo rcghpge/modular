@@ -781,8 +781,9 @@ class BenchmarkRunResultLabels:
     dataset_name: str
     """The dataset the requests were drawn from."""
 
-    burstiness: float
-    """The arrival burstiness factor."""
+    burstiness: float | None
+    """The arrival burstiness factor, or ``None`` when the load generator has
+    none."""
 
     max_concurrent_conversations: int | None
     """The limit on concurrent multi-turn sessions, or ``None``."""

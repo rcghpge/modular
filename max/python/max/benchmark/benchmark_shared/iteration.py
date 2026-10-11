@@ -131,7 +131,7 @@ def resolve_seed(args: ServingBenchmarkConfig) -> None:
         args.seed = int(np.random.default_rng().integers(0, 10000))
         logger.info("Drew a fresh random seed=%d", args.seed)
     else:
-        logger.info("Using pinned seed=%d", args.seed)
+        logger.info("Using seed=%d", args.seed)
 
 
 def seed_for_concurrency(seed: int, max_concurrency: int | None) -> int:
