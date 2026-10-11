@@ -135,6 +135,17 @@ trait ReduceOp(TrivialRegisterPassable):
         `join` must be associative. The default `join_parallel` also
         assumes commutativity (participants reduce in unspecified
         order); non-commutative monoids must override it.
+
+        A monoid registered for the graph compiler must also follow these
+        rules, which `mogg-verify-kernels` checks:
+
+        - `width` names one of the struct's parameters directly
+          (`comptime width = Self.W`).
+        - Its outputs are its `SIMD` fields whose width is that parameter;
+          it has at least one. Other fields are internal state.
+        - Every other parameter is an output's dtype (inferred from the
+          reduction's result types) or has a default.
+        - It defines no kernel entry point (`execute`, `elementwise`, ...).
     """
 
     comptime Single: ReduceOp
