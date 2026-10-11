@@ -3997,8 +3997,8 @@ def MO_ResizeLinearOp : MO_TensorOp<"resize.linear", [
 
 def MO_ResizeNearestOp : MO_TensorOp<"resize.nearest", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly,
   MO_ParamDeclaration,
+  MO_SingleDeviceWithHostOperands<["size"]>,
 ]> {
   let summary = "Nearest-neighbor resize operation";
   let description = [{
