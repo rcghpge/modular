@@ -402,6 +402,14 @@ This version is still a work in progress.
   within 1 ulp for `float32` and `float64`. `float16` and `bfloat16` inputs
   are computed in `float32`. `float64` `log1p()` is no longer supported on
   Apple GPUs, which have no `float64` arithmetic.
+- `atanh()` in `std.math` no longer calls the system libm for `float64`, so
+  its `float64` form now runs on GPUs that have `float64` as well as on CPU.
+  All floating-point types share one Mojo implementation on CPU and GPU, so
+  `float32` GPU results, previously up to 16 ulp off through a
+  target-dependent `log`, are now within 1 ulp of the CPU. Results can
+  differ from the system libm, and between targets, in the last ulp. On
+  targets that flush subnormals, subnormal inputs are handled and normal
+  results are correct; subnormal results flush to zero.
 
 ## Tooling changes
 

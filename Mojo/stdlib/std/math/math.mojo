@@ -2079,48 +2079,6 @@ def asinh[
 # ===----------------------------------------------------------------------=== #
 
 
-def _atanh_float32(x: SIMD) -> type_of(x) where x.dtype.is_floating_point():
-    """This computes the `atanh` of the inputs for float32. It uses the same
-    approximation used by Eigen library."""
-
-    comptime nan_val = nan[x.dtype]()
-    comptime inf_val = inf[x.dtype]()
-    comptime neg_inf_val = -inf[x.dtype]()
-
-    var is_neg = x.lt(0)
-    var x_abs = abs(x)
-    var x2 = x * x
-    var x3 = x2 * x
-
-    # When x is in the range [0, 0.5], we use a polynomial approximation.
-    # P(x) = x + x^3*(c[4] + x^2 * (c[3] + x^2 * (... x^2 * c[0]) ... )).
-    var p = polynomial_evaluate[
-        [
-            Scalar[x.dtype](0.3333373963832855224609375),
-            0.1997792422771453857421875,
-            0.14672131836414337158203125,
-            8.2311116158962249755859375e-2,
-            0.1819281280040740966796875,
-        ]
-    ](x2)
-    p = x3.fma(p, x)
-
-    # For |x| in the range (0.5, 1), we use the identity:
-    # atanh(x) = 0.5 * log((1 + x) / (1 - x))
-    var r = 0.5 * log((1.0 + x) / (1.0 - x))
-
-    # If x is 1, then the result is +infinity, and -infinity if x is -1.
-    # If |x| > 1, NaN is returned. Otherwise, if |x| > 0.5, we use the r
-    # approximation, otherwise we use the p polynomial approximation.
-    return x_abs.eq(1).select(
-        is_neg.select(neg_inf_val, inf_val),
-        x_abs.ge(1).select(
-            is_neg.select(nan_val, -nan_val),
-            x_abs.gt(0.5).select(r, p),
-        ),
-    )
-
-
 @inline(.always)
 def atanh[
     dtype: DType, width: SIMDLength, //
@@ -2141,16 +2099,18 @@ def atanh[
         The `atanh` of the input.
     """
 
-    comptime if bit_width_of[dtype]() <= 16:
+    _assert_float64_supported[dtype, "atanh"]()
+
+    comptime if bit_width_of[dtype]() < 32:
         # We promote the input to float32 and then cast back to the original
         # type. This is done to avoid precision issues that can occur when
         # using the lower-precision floating-point types.
-        return _atanh_float32(x.cast[.float32]()).cast[dtype]()
-    elif dtype == .float32:
-        return _atanh_float32(x)
-
-    # Otherwise, this is a double and we can just call the libm function.
-    return _call_libm["atanh"](x)
+        var r = _atanh_impl(x.cast[.float32]())
+        comptime if is_apple_gpu() and dtype == .bfloat16:
+            # The `cast` flushes subnormal results to zero on Apple GPUs.
+            return rebind[type_of(x)](_narrow_f32_to_bf16_bits(r))
+        return r.cast[dtype]()
+    return _atanh_impl(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4769,3 +4729,28 @@ def _log1p_accurate[
         near.select(x, kf[1]),
         near.select(T(0), c),
     )
+
+
+@inline(.always)
+def _atanh_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    """Returns the inverse hyperbolic tangent of `x`.
+
+    FreeBSD msun `e_atanh.c` / `e_atanhf.c` over `_log1p_accurate`. Returns
+    NaN for NaN and `|x| > 1`, `+-inf` for `x == +-1`, and `x` itself for
+    `|x| < 2^-28` (preserving the sign of zero). Measured error is within
+    2 ulp (`float32`) and 3 ulp (`float64`) of the system libm.
+    """
+    var t = abs(x)
+    var one_minus_t = 1.0 - t
+    var two_t = t + t
+    var arg = t.lt(0.5).select(
+        two_t + two_t * t / one_minus_t, two_t / one_minus_t
+    )
+    var res = 0.5 * _log1p_accurate(arg)
+    res = t.eq(1.0).select(inf[dtype](), t.gt(1.0).select(nan[dtype](), res))
+    res = copysign(res, x)
+    # Below 2^-28, atanh(x) rounds to x.
+    comptime tiny = Scalar[dtype](3.725290298461914e-09)
+    return (isnan(x) | t.lt(tiny)).select(x, res)

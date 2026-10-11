@@ -51,11 +51,14 @@ from std.math import (
 from std.builtin.dtype import _integral_type_of
 from std.math.math import (
     _call_libm,
+    _frexp_bits,
     _is_subnormal_bits,
     _is_zero_bits,
     _log_accurate,
+    _narrow_f32_to_bf16_bits,
 )
-from std.sys import bit_width_of
+from std.memory import bitcast
+from std.sys import bit_width_of, CompilationTarget
 
 from std.testing import TestSuite
 from std.testing import (
@@ -65,7 +68,15 @@ from std.testing import (
     assert_true,
 )
 
-from std.utils.numerics import FPUtils, inf, isinf, isnan, nan, neg_inf
+from std.utils.numerics import (
+    FPUtils,
+    inf,
+    isinf,
+    isnan,
+    nan,
+    neg_inf,
+    nextafter,
+)
 
 
 def test_sin() raises:
@@ -531,6 +542,100 @@ def test_frexp() raises:
     var res2 = frexp(Float64(1.5e-310))
     assert_almost_equal(res2[0], 0.8628927047339232)
     assert_equal(res2[1], -1029)
+
+
+def _test_frexp_bits_impl[
+    dtype: DType
+]() raises where dtype.is_floating_point():
+    # `_frexp_bits` reads subnormal exponents from the bit pattern instead of
+    # scaling the value, so it must agree with `frexp` bit for bit on the
+    # smallest and largest subnormals, the smallest normal, and ordinary
+    # values, as scalars and as vectors.
+    comptime T = Scalar[dtype]
+    comptime min_normal = T(
+        1.17549435e-38 if dtype == .float32 else 2.2250738585072014e-308
+    )
+    var min_sub = nextafter(T(0), T(1))
+    var xs: List[T] = [
+        min_sub,
+        -min_sub,
+        min_sub * 12345,
+        nextafter(min_normal, T(0)),
+        min_normal,
+        1.0,
+        0.75,
+        -123.45,
+        1e30,
+    ]
+    for x in xs:
+        var got = _frexp_bits(x)
+        var want = frexp(x)
+        assert_equal(
+            got[0].to_bits(), want[0].to_bits(), String(t"frac of {x}")
+        )
+        assert_equal(got[1], want[1], String(t"exponent of {x}"))
+    var v = SIMD[dtype, 4](min_sub, 1.0, -123.45, min_normal)
+    var got4 = _frexp_bits(v)
+    var want4 = frexp(v)
+    assert_equal(got4[0], want4[0])
+    assert_equal(got4[1], want4[1])
+
+
+def test_narrow_f32_to_bf16_bits() raises:
+    # Must agree with the (round-to-nearest-even) `cast`, ties included.
+    var tops: List[UInt32] = [
+        0x0000,
+        0x0001,
+        0x0003,
+        0x007F,
+        0x0080,
+        0x3F80,
+        0x3F81,
+        0x7F7F,
+        0x7F80,
+        0x8001,
+        0x8040,
+        0xBF80,
+        0xFF7F,
+        0xFF80,
+    ]
+    var lows: List[UInt32] = [
+        0x0000,
+        0x0001,
+        0x4000,
+        0x7FFF,
+        0x8000,
+        0x8001,
+        0xBFFF,
+        0xFFFF,
+    ]
+    for hi in tops:
+        for lo in lows:
+            var x = bitcast[.float32]((hi << 16) | lo)
+            assert_equal(
+                _narrow_f32_to_bf16_bits(x).to_bits[.uint16](),
+                x.cast[.bfloat16]().to_bits[.uint16](),
+                String(t"narrow of bits {(hi << 16) | lo}"),
+            )
+    for i in range(300):
+        var x = bitcast[.float32](UInt32(i * 2654435761 % 4294967296))
+        if isnan(x):
+            continue
+        assert_equal(
+            _narrow_f32_to_bf16_bits(x).to_bits[.uint16](),
+            x.cast[.bfloat16]().to_bits[.uint16](),
+        )
+    var nan_bf = _narrow_f32_to_bf16_bits(nan[DType.float32]())
+    assert_true(isnan(nan_bf))
+    var v = SIMD[.float32, 4](
+        1.0, bitcast[.float32](UInt32(0x00008001)), -2.5, 0.0
+    )
+    assert_equal(_narrow_f32_to_bf16_bits(v), v.cast[.bfloat16]())
+
+
+def test_frexp_bits() raises:
+    _test_frexp_bits_impl[.float32]()
+    _test_frexp_bits_impl[.float64]()
 
 
 def test_log() raises:
@@ -1074,6 +1179,30 @@ def test_fma() raises:
     )
 
 
+def _test_atanh_impl[dtype: DType]() raises where dtype.is_floating_point():
+    comptime n = 1 << 16
+    comptime max_ulp = Scalar[dtype](2 if dtype == .float32 else 3)
+    for i in range(-n + 1, n):
+        var x = Scalar[dtype](i) / n
+        var want = _call_libm["atanh"](x)
+        var got = atanh(x)
+        # Written so that a NaN result fails the comparison.
+        assert_true(
+            abs(got - want) <= max_ulp * ulp(want),
+            String(t"atanh[{dtype}]({x}) = {got}, expected {want}"),
+        )
+
+    # Closest representable values to the pole, where `1 - |x|` is smallest.
+    var near_one = nextafter(Scalar[dtype](1), Scalar[dtype](0))
+    for x in [near_one, -near_one]:
+        var want = _call_libm["atanh"](x)
+        var got = atanh(x)
+        assert_true(
+            abs(got - want) <= max_ulp * ulp(want),
+            String(t"atanh[{dtype}]({x}) = {got}, expected {want}"),
+        )
+
+
 def test_atanh() raises:
     assert_equal(atanh(Float32(1)), inf[.float32]())
     assert_equal(atanh(Float32(-1)), -inf[.float32]())
@@ -1125,6 +1254,46 @@ def test_atanh() raises:
         Float32(-1.65625),
         msg="atanh(-0.9297103072)",
     )
+
+    _test_atanh_impl[.float32]()
+    _test_atanh_impl[.float64]()
+
+
+def test_atanh_float16() raises:
+    var input_bits = SIMD[.uint16, 8](
+        0x3C00, 0xBC00, 0x3BFF, 0xBBFF, 0x0000, 0x8000, 0x0001, 0x83FF
+    )
+    # atanh(1 - 2^-11) = 4.1587609981435849, which rounds to 0x4429.
+    var expected_bits = SIMD[.uint16, 8](
+        0x7C00, 0xFC00, 0x4429, 0xC429, 0x0000, 0x8000, 0x0001, 0x83FF
+    )
+    for i in range(8):
+        assert_equal(
+            atanh(bitcast[.float16](input_bits[i])).to_bits[.uint16](),
+            expected_bits[i],
+        )
+    assert_equal(
+        atanh(bitcast[.float16](input_bits)).to_bits[.uint16](), expected_bits
+    )
+
+    var tiny_bits = SIMD[.uint16, 8](
+        0x0001, 0x8001, 0x0200, 0x8200, 0x03FF, 0x83FF, 0x0400, 0x8400
+    )
+    for i in range(8):
+        assert_equal(
+            atanh(bitcast[.float16](tiny_bits[i])).to_bits[.uint16](),
+            tiny_bits[i],
+        )
+    assert_equal(
+        atanh(bitcast[.float16](tiny_bits)).to_bits[.uint16](), tiny_bits
+    )
+
+    var domain_bits = SIMD[.uint16, 8](
+        0x3C01, 0xBC01, 0x7C00, 0xFC00, 0x7E00, 0xFE00, 0x4000, 0xC000
+    )
+    for i in range(8):
+        assert_true(isnan(atanh(bitcast[.float16](domain_bits[i]))))
+    assert_true(isnan(atanh(bitcast[.float16](domain_bits))).reduce_and())
 
 
 def test_sinh() raises:
