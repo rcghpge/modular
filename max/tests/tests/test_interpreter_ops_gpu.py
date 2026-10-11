@@ -4607,3 +4607,53 @@ class TestMutableStoreOpsGPU:
         np.testing.assert_array_equal(
             buf.view(DType.uint8).to_numpy(), expected
         )
+
+
+class TestResizeNearestGPU:
+    """GPU resize_nearest agrees with the CPU path on exactly representable data."""
+
+    @pytest.mark.parametrize(
+        "dtype", [DType.float32, DType.float16, DType.bfloat16]
+    )
+    @pytest.mark.parametrize(
+        "coordinate_transform_mode, round_mode",
+        # half_pixel with floor reads below index 0 without the kernel clamp.
+        [(0, 0), (0, 2), (1, 1), (2, 3)],
+    )
+    def test_matches_cpu(
+        self, dtype: DType, coordinate_transform_mode: int, round_mode: int
+    ) -> None:
+        # Distinct small integers are exact in float16 and bfloat16, so a wrong
+        # source index changes the output.
+        x_np = np.arange(32, dtype=np.float32).reshape(1, 2, 4, 4)
+        out_shape = [1, 2, 6, 3]
+
+        x_gpu = Tensor.from_dlpack(
+            torch.from_numpy(x_np).to(DTYPE_TO_TORCH[dtype]).cuda()
+        )
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            gpu_out = F.resize_nearest(
+                x_gpu,
+                out_shape,
+                coordinate_transform_mode=coordinate_transform_mode,
+                round_mode=round_mode,
+            )
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            cpu_out = F.resize_nearest(
+                Tensor.from_dlpack(x_np),
+                out_shape,
+                coordinate_transform_mode=coordinate_transform_mode,
+                round_mode=round_mode,
+            )
+
+        np.testing.assert_array_equal(
+            torch.from_dlpack(gpu_out).float().cpu().numpy(),
+            np.from_dlpack(cpu_out),
+        )

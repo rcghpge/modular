@@ -8952,7 +8952,7 @@ class TestResizeLinearOp:
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_dtypes(self, dtype: DType) -> None:
         """Resize works for every dtype resize_gc supports on CPU
-        (resize_gc._RESIZE_DTYPES == FLOAT_DTYPES)."""
+        (gc_compile.float_dtypes(cpu) == FLOAT_DTYPES)."""
         rng = np.random.default_rng(4)
         np_dtype = dtype.to_numpy()
         x_np = rng.standard_normal((1, 2, 4, 4)).astype(np_dtype)
@@ -8974,7 +8974,7 @@ class TestResizeLinearOp:
         """float16 doesn't compile through the GC resize path on CPU.
 
         Unlike the old hand-written Mojo kernel, the graph-compiler CPU
-        backend has no float16 kernel (resize_gc._RESIZE_DTYPES excludes it,
+        backend has no float16 kernel (gc_compile.float_dtypes excludes it,
         matching gc_compile.CPU_FLOAT_DTYPES's exclusion for other families).
         """
         rng = np.random.default_rng(4)
@@ -9017,9 +9017,8 @@ class TestResizeNearestOp:
 
     Routes through F.resize_nearest -> ops.resize_nearest ->
     rmo.MoResizeNearestOp -> mo.ResizeNearestOp -> _handle_resize_nearest ->
-    resize_gc.resize_model.  Runs on the input's device (single-device MO
-    op with a host ``size`` operand); GPU-residency is covered by
-    ``test_gpu_output_stays_resident`` below.
+    resize_gc.resize_model.  The CPU path is covered here; the GPU path is
+    covered by TestResizeNearestGPU in test_interpreter_ops_gpu.py.
 
     The reference is a pure-numpy nearest-neighbor lookup applied to every
     dimension.  Four coordinate transformation modes and four rounding modes
@@ -9199,7 +9198,7 @@ class TestResizeNearestOp:
     @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
     def test_dtypes(self, dtype: DType) -> None:
         """Resize works for every dtype resize_gc supports on CPU
-        (resize_gc._RESIZE_DTYPES == FLOAT_DTYPES)."""
+        (gc_compile.float_dtypes(cpu) == FLOAT_DTYPES)."""
         rng = np.random.default_rng(104)
         np_dtype = dtype.to_numpy()
         x_np = rng.standard_normal((1, 2, 4, 4)).astype(np_dtype)
@@ -9219,7 +9218,7 @@ class TestResizeNearestOp:
         """float16 doesn't compile through the GC resize path on CPU.
 
         Unlike the old hand-written Mojo kernel, the graph-compiler CPU
-        backend has no float16 kernel (resize_gc._RESIZE_DTYPES excludes it,
+        backend has no float16 kernel (gc_compile.float_dtypes excludes it,
         matching gc_compile.CPU_FLOAT_DTYPES's exclusion for other families).
         """
         rng = np.random.default_rng(104)

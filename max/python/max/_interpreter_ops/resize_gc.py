@@ -49,15 +49,13 @@ from max.graph import DeviceRef, Graph, Module, TensorType
 
 MAX_RANK = gc_compile.MAX_RANK  # Sweep ranks 1..MAX_RANK for linear/nearest.
 
-# f32/f64 (the same no-16-bit-floats-on-CPU policy as
+# Dtypes come from gc_compile.float_dtypes(device), the same policy as
 # matmul_gc/unary_elementwise_gc/elementwise_binary_gc/reduce_axis_gc/
-# pooling_gc: bfloat16 and float16 both fail to compile through the GC
-# backend there; float16's failure is empirically confirmed -- "The f16 data
-# type is not supported on device 'cpu:0'" -- bfloat16 is excluded for
-# consistency). The GPU nearest sweep keeps the same dtype set as a
-# conservative first cut; 16-bit variants can widen it once a GPU lane
-# proves them.
-_RESIZE_DTYPES = gc_compile.CPU_FLOAT_DTYPES
+# pooling_gc: no 16-bit floats on CPU (bfloat16 and float16 both fail to
+# compile through the GC backend there; float16's failure is empirically
+# confirmed -- "The f16 data type is not supported on device 'cpu:0'" --
+# bfloat16 is excluded for consistency with the same policy rather than an
+# independent per-op finding).
 
 # Variant: (coord_mode, antialias) for linear; (coord_mode, round_mode) for
 # nearest.
@@ -264,16 +262,13 @@ def _is_supported(
         return False
     if not _supports_device(op_type, device):
         return False
-    if dtype not in _RESIZE_DTYPES:
+    if dtype not in gc_compile.float_dtypes(device):
         return False
     return rank in _ranks_for(spec)
 
 
 class _ResizeFamily(gc_compile.GCFamilySpec):
     name = "resize"
-
-    def sweep_devices(self) -> list[Device]:
-        return list(gc_compile.DISCOVERED_DEVICES)
 
     def build_module(self) -> Module:
         module = Module()
@@ -289,7 +284,7 @@ class _ResizeFamily(gc_compile.GCFamilySpec):
         for op_type, spec in _RESIZE_OPS.items():
             if not _supports_device(op_type, device):
                 continue
-            for dtype in _RESIZE_DTYPES:
+            for dtype in gc_compile.float_dtypes(device):
                 for rank in _ranks_for(spec):
                     for variant in spec.variants:
                         spec.build(module, device, dtype, rank, variant)
@@ -321,8 +316,8 @@ def resize_model(
         The compiled model ready for execution.
 
     Raises:
-        KeyError: If the target is outside the supported set (non-CPU device,
-            unsupported dtype, or rank > 5).
+        KeyError: If the target is outside the supported set (a non-CPU
+            device for ``ResizeLinearOp``, unsupported dtype, or rank > 5).
         EagerLazyCompileDisallowed: If a supported target is not already
             compiled and ``MAX_EAGER_ALLOW_LAZY_COMPILE=0``.
     """
@@ -336,8 +331,9 @@ def resize_model(
             return None
         return (
             f"Unsupported resize op/device/dtype/rank for key {key!r}."
-            f" Nearest sweeps every device; linear is CPU-only. Supported"
-            f" dtypes: {_RESIZE_DTYPES}; max rank: {MAX_RANK}."
+            f" Supported dtypes on {device.label}:"
+            f" {gc_compile.float_dtypes(device)}; resize.linear is CPU-only;"
+            f" max rank: {MAX_RANK}."
         )
 
     def build(module: Module) -> None:
