@@ -688,30 +688,31 @@ struct AMDPingPongMatmul[
         def _bind[entry: ScheduleEntry](k_base: Int):
             comptime k_off = entry.op.k_offset.signed_bk_multiple()
             var k = k_base + k_off * BK
-            comptime if entry.op.tag == LOAD_A:
-                load_a[entry.op.stage, entry.op.subtile](k)
-            elif entry.op.tag == LOAD_B:
-                load_b[entry.op.stage, entry.op.subtile](k)
-            elif entry.op.tag == MMA_LOAD_A:
-                mma_op.load_a_quadrant[entry.op.subtile](
-                    a_mma_tiles[entry.op.stage][entry.op.subtile]
-                )
-            elif entry.op.tag == MMA_LOAD_B:
-                mma_op.load_b_quadrant[entry.op.subtile](
-                    b_mma_tiles[entry.op.stage][entry.op.subtile]
-                )
-            elif entry.op.tag == MMA:
-                mma_op.mma_quadrant[entry.op.stage, entry.op.subtile]()
-            elif entry.op.tag == PingPongOps.BARRIER.value:
-                s_barrier()
-            elif entry.op.tag == PingPongOps.WAIT_VM.value:
-                s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
-            elif entry.op.tag == PingPongOps.WAIT_LGKM.value:
-                s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
-            elif entry.op.tag == PingPongOps.SET_PRIO.value:
-                s_setprio[Int16(entry.op.wait_value)]()
-            elif entry.op.tag == PingPongOps.SCHEDULE_BARRIER.value:
-                schedule_barrier()
+            comptime match entry.op.tag:
+                case == LOAD_A:
+                    load_a[entry.op.stage, entry.op.subtile](k)
+                case == LOAD_B:
+                    load_b[entry.op.stage, entry.op.subtile](k)
+                case == MMA_LOAD_A:
+                    mma_op.load_a_quadrant[entry.op.subtile](
+                        a_mma_tiles[entry.op.stage][entry.op.subtile]
+                    )
+                case == MMA_LOAD_B:
+                    mma_op.load_b_quadrant[entry.op.subtile](
+                        b_mma_tiles[entry.op.stage][entry.op.subtile]
+                    )
+                case == MMA:
+                    mma_op.mma_quadrant[entry.op.stage, entry.op.subtile]()
+                case PingPongOps.BARRIER.value:
+                    s_barrier()
+                case PingPongOps.WAIT_VM.value:
+                    s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
+                case PingPongOps.WAIT_LGKM.value:
+                    s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
+                case PingPongOps.SET_PRIO.value:
+                    s_setprio[Int16(entry.op.wait_value)]()
+                case PingPongOps.SCHEDULE_BARRIER.value:
+                    schedule_barrier()
 
         # Prologue.
         comptime for i in range(schedule.warp_stagger_index):

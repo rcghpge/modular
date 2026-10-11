@@ -488,52 +488,54 @@ struct AMDMatmul[
         @__parameter
         @inline(.always)
         def _bind[entry: ScheduleEntry]():
-            comptime if entry.op.tag == LOAD_DRAM:
-                load_tiles_from_dram()
-            elif entry.op.tag == STORE_SMEM:
-                copy_tiles_to_smem()
-            elif entry.op.tag == LOAD_FRAG:
-                # Block-local SMEM views for this k-tile within this
-                # warp-K partition's slice of the BK-wide SMEM buffer.
-                # Offset is in blocked-product element order, not row-major.
-                comptime k = entry.op.subtile
-                var a_blk = TileTensor(
-                    a_smem.ptr + a_warp_k_off + k * BM * k_tile_size,
-                    row_major[BM, k_tile_size](),
-                )
-                var b_blk = TileTensor(
-                    b_smem.ptr + b_warp_k_off + k * BN * k_tile_size,
-                    row_major[BN, k_tile_size](),
-                )
-                mma_op.load_frag[k](
-                    a_blk.tile[WM, k_tile_size](warp_m, 0),
-                    b_blk.tile[WN, k_tile_size](warp_n, 0),
-                )
-            elif entry.op.tag == COMPUTE:
-                mma_op.mma[entry.op.subtile]()
-            elif entry.op.tag == DefaultMatmulOps.BARRIER.value:
-                barrier()
-            elif entry.op.tag == DefaultMatmulOps.SCHEDULE_BARRIER.value:
-                schedule_barrier()
-            elif entry.op.tag == DefaultMatmulOps.SCHED_GROUP_BARRIER.value:
-                comptime sub = entry.op.subtile
-                comptime wait = entry.op.wait_value
-                comptime if sub == SCHED_MASK_DS_READ:
-                    schedule_group_barrier(
-                        AMDScheduleBarrierMask.DS_READ, Int32(wait), 0
+            comptime match entry.op.tag:
+                case == LOAD_DRAM:
+                    load_tiles_from_dram()
+                case == STORE_SMEM:
+                    copy_tiles_to_smem()
+                case == LOAD_FRAG:
+                    # Block-local SMEM views for this k-tile within this
+                    # warp-K partition's slice of the BK-wide SMEM buffer.
+                    # Offset is in blocked-product element order, not row-major.
+                    comptime k = entry.op.subtile
+                    var a_blk = TileTensor(
+                        a_smem.ptr + a_warp_k_off + k * BM * k_tile_size,
+                        row_major[BM, k_tile_size](),
                     )
-                elif sub == SCHED_MASK_DS_WRITE:
-                    schedule_group_barrier(
-                        AMDScheduleBarrierMask.DS_WRITE, Int32(wait), 0
+                    var b_blk = TileTensor(
+                        b_smem.ptr + b_warp_k_off + k * BN * k_tile_size,
+                        row_major[BN, k_tile_size](),
                     )
-                elif sub == SCHED_MASK_VMEM_READ:
-                    schedule_group_barrier(
-                        AMDScheduleBarrierMask.VMEM_READ, Int32(wait), 0
+                    mma_op.load_frag[k](
+                        a_blk.tile[WM, k_tile_size](warp_m, 0),
+                        b_blk.tile[WN, k_tile_size](warp_n, 0),
                     )
-                elif sub == SCHED_MASK_MFMA:
-                    schedule_group_barrier(
-                        AMDScheduleBarrierMask.MFMA, Int32(wait), 0
-                    )
+                case == COMPUTE:
+                    mma_op.mma[entry.op.subtile]()
+                case DefaultMatmulOps.BARRIER.value:
+                    barrier()
+                case DefaultMatmulOps.SCHEDULE_BARRIER.value:
+                    schedule_barrier()
+                case DefaultMatmulOps.SCHED_GROUP_BARRIER.value:
+                    comptime sub = entry.op.subtile
+                    comptime wait = entry.op.wait_value
+                    comptime match sub:
+                        case == SCHED_MASK_DS_READ:
+                            schedule_group_barrier(
+                                AMDScheduleBarrierMask.DS_READ, Int32(wait), 0
+                            )
+                        case == SCHED_MASK_DS_WRITE:
+                            schedule_group_barrier(
+                                AMDScheduleBarrierMask.DS_WRITE, Int32(wait), 0
+                            )
+                        case == SCHED_MASK_VMEM_READ:
+                            schedule_group_barrier(
+                                AMDScheduleBarrierMask.VMEM_READ, Int32(wait), 0
+                            )
+                        case == SCHED_MASK_MFMA:
+                            schedule_group_barrier(
+                                AMDScheduleBarrierMask.MFMA, Int32(wait), 0
+                            )
 
         # Prologue.
         comptime for i in range(len(schedule.prologue)):

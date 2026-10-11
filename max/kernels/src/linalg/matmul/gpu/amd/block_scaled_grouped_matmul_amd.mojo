@@ -61,22 +61,23 @@ def _waves_per_eu_attr[waves_per_eu: Int]() -> __mlir_type.`!kgen.string`:
     # `amdgpu-waves-per-eu` "1,MAX" cap (avoids EU over-subscription); 0 => "1,8"
     # (CDNA4 max waves/SIMD) = non-binding default. Literal per branch: the LLVM
     # passthrough attr needs a StringLiteral, not a computed string.
-    comptime if waves_per_eu == 1:
-        return "1,1".value
-    elif waves_per_eu == 2:
-        return "1,2".value
-    elif waves_per_eu == 3:
-        return "1,3".value
-    elif waves_per_eu == 4:
-        return "1,4".value
-    elif waves_per_eu == 5:
-        return "1,5".value
-    elif waves_per_eu == 6:
-        return "1,6".value
-    elif waves_per_eu == 7:
-        return "1,7".value
-    else:
-        return "1,8".value
+    comptime match waves_per_eu:
+        case 1:
+            return "1,1".value
+        case 2:
+            return "1,2".value
+        case 3:
+            return "1,3".value
+        case 4:
+            return "1,4".value
+        case 5:
+            return "1,5".value
+        case 6:
+            return "1,6".value
+        case 7:
+            return "1,7".value
+        case _:
+            return "1,8".value
 
 
 struct PreShuffledBGroupedGEMM[

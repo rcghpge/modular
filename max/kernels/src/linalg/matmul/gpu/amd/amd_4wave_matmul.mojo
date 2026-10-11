@@ -1218,35 +1218,43 @@ struct AMD4WaveMatmul[
                 # SET_PRIO / SCHEDULE_BARRIER) emit AMD intrinsics
                 # directly; kernel-specific data tags (LOAD_A / LOAD_B /
                 # MMA_LOAD_* / MMA) call the kernel's own loaders.
-                comptime if entry.op.tag == _Ops.BARRIER.value:
-                    llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
-                elif entry.op.tag == _Ops.WAIT_VM.value:
-                    s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.WAIT_LGKM.value:
-                    s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.SET_PRIO.value:
-                    llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
-                        Int16(entry.op.wait_value)
-                    )
-                elif entry.op.tag == _Ops.SCHEDULE_BARRIER.value:
-                    schedule_barrier()
-                else:
-                    comptime k_off = entry.op.k_offset.signed_bk_multiple()
-                    var k = k_base + k_off * BK
-                    comptime if entry.op.tag == LOAD_A:
-                        load_a[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == LOAD_B:
-                        load_b[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == MMA_LOAD_A:
-                        mma_op.load_a_quadrant[entry.op.subtile](
-                            a_mma_tiles[entry.op.stage][entry.op.subtile]
+                comptime match entry.op.tag:
+                    case _Ops.BARRIER.value:
+                        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
+                    case _Ops.WAIT_VM.value:
+                        s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
+                    case _Ops.WAIT_LGKM.value:
+                        s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
+                    case _Ops.SET_PRIO.value:
+                        llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
+                            Int16(entry.op.wait_value)
                         )
-                    elif entry.op.tag == MMA_LOAD_B:
-                        mma_op.load_b_quadrant[entry.op.subtile](
-                            b_mma_tiles[entry.op.stage][entry.op.subtile]
-                        )
-                    elif entry.op.tag == MMA:
-                        mma_op.mma_quadrant[entry.op.stage, entry.op.subtile]()
+                    case _Ops.SCHEDULE_BARRIER.value:
+                        schedule_barrier()
+                    case _:
+                        comptime k_off = entry.op.k_offset.signed_bk_multiple()
+                        var k = k_base + k_off * BK
+                        comptime match entry.op.tag:
+                            case == LOAD_A:
+                                load_a[entry.op.stage, entry.op.subtile](k)
+                            case == LOAD_B:
+                                load_b[entry.op.stage, entry.op.subtile](k)
+                            case == MMA_LOAD_A:
+                                mma_op.load_a_quadrant[entry.op.subtile](
+                                    a_mma_tiles[entry.op.stage][
+                                        entry.op.subtile
+                                    ]
+                                )
+                            case == MMA_LOAD_B:
+                                mma_op.load_b_quadrant[entry.op.subtile](
+                                    b_mma_tiles[entry.op.stage][
+                                        entry.op.subtile
+                                    ]
+                                )
+                            case == MMA:
+                                mma_op.mma_quadrant[
+                                    entry.op.stage, entry.op.subtile
+                                ]()
 
             # Prologue. The schedule overrides `warp_stagger=none()`
             # (4-wave has only 4 warps, so warp-group staggering is
@@ -1821,35 +1829,43 @@ struct AMD4WaveMatmul[
                 # SET_PRIO / SCHEDULE_BARRIER) emit AMD intrinsics
                 # directly; kernel-specific data tags (LOAD_A / LOAD_B /
                 # MMA_LOAD_* / MMA) call the kernel's own loaders.
-                comptime if entry.op.tag == _Ops.BARRIER.value:
-                    llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
-                elif entry.op.tag == _Ops.WAIT_VM.value:
-                    s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.WAIT_LGKM.value:
-                    s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.SET_PRIO.value:
-                    llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
-                        Int16(entry.op.wait_value)
-                    )
-                elif entry.op.tag == _Ops.SCHEDULE_BARRIER.value:
-                    schedule_barrier()
-                else:
-                    comptime k_off = entry.op.k_offset.signed_bk_multiple()
-                    var k = k_base + k_off * BK
-                    comptime if entry.op.tag == LOAD_A:
-                        load_a[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == LOAD_B:
-                        load_b[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == MMA_LOAD_A:
-                        mma_op.load_a_quadrant[entry.op.subtile](
-                            a_mma_tiles[entry.op.stage][entry.op.subtile]
+                comptime match entry.op.tag:
+                    case _Ops.BARRIER.value:
+                        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
+                    case _Ops.WAIT_VM.value:
+                        s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
+                    case _Ops.WAIT_LGKM.value:
+                        s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
+                    case _Ops.SET_PRIO.value:
+                        llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
+                            Int16(entry.op.wait_value)
                         )
-                    elif entry.op.tag == MMA_LOAD_B:
-                        mma_op.load_b_quadrant[entry.op.subtile](
-                            b_mma_tiles[entry.op.stage][entry.op.subtile]
-                        )
-                    elif entry.op.tag == MMA:
-                        mma_op.mma_quadrant[entry.op.stage, entry.op.subtile]()
+                    case _Ops.SCHEDULE_BARRIER.value:
+                        schedule_barrier()
+                    case _:
+                        comptime k_off = entry.op.k_offset.signed_bk_multiple()
+                        var k = k_base + k_off * BK
+                        comptime match entry.op.tag:
+                            case == LOAD_A:
+                                load_a[entry.op.stage, entry.op.subtile](k)
+                            case == LOAD_B:
+                                load_b[entry.op.stage, entry.op.subtile](k)
+                            case == MMA_LOAD_A:
+                                mma_op.load_a_quadrant[entry.op.subtile](
+                                    a_mma_tiles[entry.op.stage][
+                                        entry.op.subtile
+                                    ]
+                                )
+                            case == MMA_LOAD_B:
+                                mma_op.load_b_quadrant[entry.op.subtile](
+                                    b_mma_tiles[entry.op.stage][
+                                        entry.op.subtile
+                                    ]
+                                )
+                            case == MMA:
+                                mma_op.mma_quadrant[
+                                    entry.op.stage, entry.op.subtile
+                                ]()
 
             # Prologue. The schedule overrides `warp_stagger=none()`
             # (4-wave has only 4 warps, so warp-group staggering is

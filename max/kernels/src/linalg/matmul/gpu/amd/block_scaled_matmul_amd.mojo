@@ -1379,56 +1379,62 @@ struct BlockScaledMatmulAMD[
 
             @inline(.always)
             def _bind[entry: ScheduleEntry]() {mut mma_op, imm}:
-                comptime if entry.op.tag == LOAD_DRAM:
-                    load_tiles_from_dram()
-                    load_scales_from_dram()
-                elif entry.op.tag == STORE_SMEM:
-                    copy_tiles_to_smem()
-                    copy_scales_to_smem()
-                elif entry.op.tag == LOAD_FRAG:
-                    comptime k = entry.op.subtile
-                    var a_warp = a_smem.tile[Self.WM, A_SMEM_ROW_BYTES](
-                        warp_m, 0
-                    )
-                    var b_warp = b_smem.tile[Self.WN, B_SMEM_ROW_BYTES](
-                        warp_n, 0
-                    )
-                    mma_op.load_frag_from_smem[k](a_warp, b_warp)
-                    # k_tiles interleaved along the column axis.
-                    var sfa_k = sfa_smem.tile[Self.WM, scales_per_mma](
-                        warp_m, k
-                    )
-                    var sfb_k = sfb_smem.tile[Self.WN, scales_per_mma](
-                        warp_n, k
-                    )
-                    mma_op.load_scales_from_smem[k](sfa_k, sfb_k)
-                elif entry.op.tag == COMPUTE:
-                    mma_op.mma[entry.op.subtile]()
-                elif entry.op.tag == DefaultMatmulOps.BARRIER.value:
-                    barrier()
-                elif entry.op.tag == DefaultMatmulOps.SCHEDULE_BARRIER.value:
-                    schedule_barrier()
-                elif entry.op.tag == (
-                    DefaultMatmulOps.SCHED_GROUP_BARRIER.value
-                ):
-                    comptime sub = entry.op.subtile
-                    comptime wait = entry.op.wait_value
-                    comptime if sub == SCHED_MASK_DS_READ:
-                        schedule_group_barrier(
-                            AMDScheduleBarrierMask.DS_READ, Int32(wait), 0
+                comptime match entry.op.tag:
+                    case == LOAD_DRAM:
+                        load_tiles_from_dram()
+                        load_scales_from_dram()
+                    case == STORE_SMEM:
+                        copy_tiles_to_smem()
+                        copy_scales_to_smem()
+                    case == LOAD_FRAG:
+                        comptime k = entry.op.subtile
+                        var a_warp = a_smem.tile[Self.WM, A_SMEM_ROW_BYTES](
+                            warp_m, 0
                         )
-                    elif sub == SCHED_MASK_DS_WRITE:
-                        schedule_group_barrier(
-                            AMDScheduleBarrierMask.DS_WRITE, Int32(wait), 0
+                        var b_warp = b_smem.tile[Self.WN, B_SMEM_ROW_BYTES](
+                            warp_n, 0
                         )
-                    elif sub == SCHED_MASK_VMEM_READ:
-                        schedule_group_barrier(
-                            AMDScheduleBarrierMask.VMEM_READ, Int32(wait), 0
+                        mma_op.load_frag_from_smem[k](a_warp, b_warp)
+                        # k_tiles interleaved along the column axis.
+                        var sfa_k = sfa_smem.tile[Self.WM, scales_per_mma](
+                            warp_m, k
                         )
-                    elif sub == SCHED_MASK_MFMA:
-                        schedule_group_barrier(
-                            AMDScheduleBarrierMask.MFMA, Int32(wait), 0
+                        var sfb_k = sfb_smem.tile[Self.WN, scales_per_mma](
+                            warp_n, k
                         )
+                        mma_op.load_scales_from_smem[k](sfa_k, sfb_k)
+                    case == COMPUTE:
+                        mma_op.mma[entry.op.subtile]()
+                    case DefaultMatmulOps.BARRIER.value:
+                        barrier()
+                    case DefaultMatmulOps.SCHEDULE_BARRIER.value:
+                        schedule_barrier()
+                    case DefaultMatmulOps.SCHED_GROUP_BARRIER.value:
+                        comptime sub = entry.op.subtile
+                        comptime wait = entry.op.wait_value
+                        comptime match sub:
+                            case == SCHED_MASK_DS_READ:
+                                schedule_group_barrier(
+                                    AMDScheduleBarrierMask.DS_READ,
+                                    Int32(wait),
+                                    0,
+                                )
+                            case == SCHED_MASK_DS_WRITE:
+                                schedule_group_barrier(
+                                    AMDScheduleBarrierMask.DS_WRITE,
+                                    Int32(wait),
+                                    0,
+                                )
+                            case == SCHED_MASK_VMEM_READ:
+                                schedule_group_barrier(
+                                    AMDScheduleBarrierMask.VMEM_READ,
+                                    Int32(wait),
+                                    0,
+                                )
+                            case == SCHED_MASK_MFMA:
+                                schedule_group_barrier(
+                                    AMDScheduleBarrierMask.MFMA, Int32(wait), 0
+                                )
 
             # Prologue.
             comptime for i in range(len(schedule.prologue)):
