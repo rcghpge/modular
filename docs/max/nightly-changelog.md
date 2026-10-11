@@ -649,6 +649,12 @@ This version is still a work in progress.
   index decoded arithmetically from the output index; per-element
   `TensorValue` repeats remain CPU-only and still raise on accelerators.
 
+- Replaced the stack+reshape `repeat_interleave` workarounds in the
+  FLUX.2 / Z-Image RoPE embeddings with `ops.repeat_interleave` now that
+  scalar repeats run on GPU, and refreshed stale `cumsum`-is-CPU-only
+  comments (the GPU path landed with KERN-1095) in the DeepSeek V4
+  ragged helpers, Qwen experimental PLE, and Kimi-K3 state rollback.
+
 - Added GPU support for `mo.arg_nonzero` / `ops.nonzero`. The op previously
   ran only on the host, so every nonzero call on a GPU tensor copied the
   input to the host and back. It now runs on the input's device (a
