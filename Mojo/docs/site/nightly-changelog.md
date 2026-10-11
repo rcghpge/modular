@@ -386,6 +386,14 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `std.math.log10()` no longer calls the system libm or GPU intrinsics: CPU
+  and every GPU now run the same Mojo implementation, accurate to within 1
+  ulp on measured targets, and `float64` `log10()` now runs on AMD GPUs. On
+  CPU, results can differ from the system libm in the last ulp, and results
+  can differ between targets in the last ulp where the compiler contracts a
+  multiply-add into an fma. On targets that flush subnormals, subnormal
+  inputs are handled and normal results are correct; subnormal results
+  flush to zero.
 - `float64` `erfc()` no longer calls the system libm and now runs on GPU as
   well as CPU, and `float64` `erf()` now uses a `float64` approximation and
   is accurate to about 1 ulp. Both share one Mojo implementation with

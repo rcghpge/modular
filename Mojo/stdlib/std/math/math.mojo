@@ -2329,28 +2329,11 @@ def log10[
         The `log10` of the input.
     """
 
-    comptime if is_nvidia_gpu():
-        comptime log10_2 = 0.301029995663981195213738894724493027
+    _assert_float64_supported[dtype, "log10"]()
 
-        comptime if size_of[dtype]() < size_of[DType.float32]():
-            return log10(x.cast[.float32]()).cast[dtype]()
-        elif dtype == .float32:
-            return (
-                _call_ptx_intrinsic[
-                    instruction="lg2.approx.f32", constraints="=f,f"
-                ](x)
-                * log10_2
-            )
-    elif is_amd_gpu():
-        return _llvm_unary_fn["llvm.log10"](x)
-    elif is_apple_gpu():
-        comptime if dtype == .bfloat16:
-            return _llvm_unary_fn["llvm.air.log10"](x.cast[.float32]()).cast[
-                dtype
-            ]()
-        return _llvm_unary_fn["llvm.air.log10"](x)
-
-    return _call_libm["log10"](x)
+    comptime if bit_width_of[dtype]() < 32:
+        return _log10_impl(x.cast[.float32]()).cast[dtype]()
+    return _log10_impl(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4808,6 +4791,97 @@ def _pow2_impl[
         from_bits=(k + I(FPUtils[dtype].exponent_bias()))
         << I(FPUtils[dtype].mantissa_width())
     )
+
+
+def _log10_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    # FreeBSD msun e_log10.c / e_log10f.c with k_log.h / k_logf.h. The
+    # reduced log is split into hi/lo halves so the products with log10(e) and
+    # log10(2) stay well under 1 ULP.
+    comptime is_f32 = dtype == .float32
+    comptime assert is_f32 or dtype == .float64, "expected float32 or float64"
+    comptime ivln10hi = Scalar[dtype](
+        4.3432617188e-01 if is_f32 else 4.34294481878168880939e-01
+    )
+    comptime ivln10lo = Scalar[dtype](
+        -3.1689971365e-05 if is_f32 else 2.50829467116452752298e-11
+    )
+    comptime log10_2hi = Scalar[dtype](
+        3.0102920532e-01 if is_f32 else 3.01029995663611771306e-01
+    )
+    comptime log10_2lo = Scalar[dtype](
+        7.9034151668e-07 if is_f32 else 3.69423907715893078616e-13
+    )
+    # Keeps the high half of the significand so `hi * ivln10hi` is exact.
+    comptime U: DType = .uint32 if is_f32 else .uint64
+    comptime hi_mask = Scalar[U](0xFFFFF000 if is_f32 else 0xFFFFFFFF00000000)
+
+    var y, f = _log_reduce(x)
+    var hfsq = 0.5 * f * f
+    var r = _log_kernel(f)
+
+    var hi = bitcast[dtype](bitcast[U](f - hfsq) & hi_mask)
+    var lo = (f - hi) - hfsq + r
+    var val_hi = hi * ivln10hi
+    var y2 = y * log10_2hi
+    var val_lo = y * log10_2lo + (lo + hi) * ivln10lo + lo * ivln10hi
+    var w = y2 + val_hi
+    val_lo += (y2 - w) + val_hi
+    var result = val_lo + w
+
+    # Zero and sign come from the bits so that a subnormal input is not taken
+    # for zero on targets whose comparisons flush subnormal operands.
+    var bits = x._to_bits_signed()
+    var is_zero = (bits + bits).eq(0)
+    result = x.eq(inf[dtype]()).select(x, result)
+    result = is_zero.select(-inf[dtype](), result)
+    return ((bits.lt(0) & ~is_zero) | isnan(x)).select(nan[dtype](), result)
+
+
+def _log1p_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    # This uses the approximation from cephes to compute log1p via the approximation
+    # log(1+x) = x - x**2/2 + x**3 P(x)/Q(x)
+    # in the domain 1/sqrt(2) <= x < sqrt(2)
+
+    comptime P: List[Scalar[dtype]] = [
+        2.0039553499201281259648e1,
+        5.7112963590585538103336e1,
+        6.0949667980987787057556e1,
+        2.9911919328553073277375e1,
+        6.5787325942061044846969e0,
+        4.9854102823193375972212e-1,
+        4.5270000862445199635215e-5,
+    ]
+    comptime Q: List[Scalar[dtype]] = [
+        6.0118660497603843919306e1,
+        2.1642788614495947685003e2,
+        3.0909872225312059774938e2,
+        2.2176239823732856465394e2,
+        8.3047565967967209469434e1,
+        1.5062909083469192043167e1,
+    ]
+
+    # Sqrt(1/2)
+    comptime sqrt2_div_2 = 0.70710678118654752440
+    # Sqrt(2)
+    comptime sqrt2 = 1.41421356237309504880
+
+    var z = 1.0 + x
+    var log1x = log(z)
+
+    var in_domain_mask = z.lt(sqrt2_div_2) | z.gt(sqrt2)
+    if all(in_domain_mask):
+        return log1x
+
+    z = x * x
+    z = -0.5 * z + x * (
+        z * polynomial_evaluate[P](x) / polynomial_evaluate[Q](x)
+    )
+
+    return in_domain_mask.select(log1x, x + z)
 
 
 @inline(.always)
