@@ -220,6 +220,11 @@ public:
   /// Stores memory that lives as long as the global parser.
   BumpAllocator persistentAllocator;
 
+  /// Stores expression trees and other statement-scoped parser data. Do not
+  /// allocate anything into this that would outlive the current statement being
+  /// parsed.
+  BumpAllocator stmtAllocator;
+
   /// Lookup an operation inside the symbol table of the container decl.
   Operation *lookupSymbolIn(ASTDecl *container, StringAttr name);
   template <typename OpT>

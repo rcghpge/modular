@@ -162,7 +162,8 @@ ParserBase::parseDecorators(ssize_t indentation) {
 
     ExprNode *decoratorExpr;
     LexerCursor cursor = lexer.getCursor();
-    if (parseExpression(decoratorExpr, indentation)) {
+    if (parseExpression(decoratorExpr, shared.persistentAllocator,
+                        indentation)) {
       skipUntilIndentation(indentation, /*stopOnSemicolon=*/false,
                            stopOnStatement);
       break;
@@ -741,6 +742,11 @@ ParseResult StmtParser::parseStmt(bool onlySimpleStmt, bool &parsedCompound,
          << "does not support decorators; remove the decorator";
   };
 
+  // The stmtAllocator is an area of memory that statements can use for scratch
+  // allocations, e.g. the temporary expression parse trees they need.  We
+  // deallocate this memory when we're done parsing the statement using RAII.
+  auto statementCheckpoint = shared.stmtAllocator.checkpoint();
+
   switch (getToken().getKind()) {
     //===------------------------------------------------------------------===//
     // Compound statements.
@@ -799,7 +805,6 @@ ParseResult StmtParser::parseStmt(bool onlySimpleStmt, bool &parsedCompound,
   case Token::kw_class:
     rejectSimpleStmt(); // Not a simple_stmt.
     return parseClassStmt(startCursor, stmtIndent);
-
     //===------------------------------------------------------------------===//
     // Simple statements.
     //===------------------------------------------------------------------===//

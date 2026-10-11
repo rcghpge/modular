@@ -2330,19 +2330,16 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
   // dynamic lookup attribute methods (__getattr__ etc) on the type.
   if (memberDecls.empty()) {
     // Convert the attribute name to a StringLiteralNode since that's how the
-    // operand will be emitted.  We need to allocate it persistently to enable
-    // DLValues to capture it.
+    // operand will be emitted. Allocate it with the surrounding statement so
+    // DLValues can capture it through emission.
     std::string quotedName = '"' + spelling.str() + '"';
-    StringRef quotedNameRef =
-        shared.persistentAllocator.internString(quotedName);
+    StringRef quotedNameRef = shared.stmtAllocator.internString(quotedName);
     // StringLiteral wants ArrayRef<StringRef>.
-    auto strRefs =
-        shared.persistentAllocator.internElements(ArrayRef(quotedNameRef));
-    auto *strLiteral =
-        shared.persistentAllocator.create<StringLiteralNode>(strRefs);
+    auto strRefs = shared.stmtAllocator.internElements(ArrayRef(quotedNameRef));
+    auto *strLiteral = shared.stmtAllocator.create<StringLiteralNode>(strRefs);
     // Put the expression in a ParenNode so it has a location.
-    auto *parenNode = shared.persistentAllocator.create<ParenNode>(
-        getLoc(), strLiteral, getLoc());
+    auto *parenNode =
+        shared.stmtAllocator.create<ParenNode>(getLoc(), strLiteral, getLoc());
     return emitGetterSetterAccess(
         this, {baseVal, base},
         Operand(parenNode, getLoc(), ArgUnpackStyle::kPositional), dest,
@@ -3164,7 +3161,7 @@ static AnyValue emitFStringSubscriptMLIROp(const SubscriptNode &subscript,
       }
       concat.append(dre->spelling.data(), dre->spelling.size());
     }
-    tmpl = emitter.shared.persistentAllocator.internString(concat);
+    tmpl = emitter.shared.stmtAllocator.internString(concat);
   }
 
   // 3. Process `_type` if present (single Type or Tuple of Types).
@@ -4419,7 +4416,7 @@ UnaryOpNode::emitLValueIfImplicitlyTyped(IREmitter &emitter,
   if (newSubExpr == subExpr)
     return this;
 
-  return emitter.shared.persistentAllocator.create<UnaryOpNode>(
+  return emitter.shared.stmtAllocator.create<UnaryOpNode>(
       kind, opLoc, const_cast<ExprNode *>(newSubExpr));
 }
 
@@ -5600,13 +5597,12 @@ auto TupleNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
         newExprs.push_back(const_cast<ExprNode *>(newExpr));
       else {
         assert(result.getIfValue() && "unexpected result kind");
-        newExprs.push_back(shared.persistentAllocator.create<SyntheticNode>(
+        newExprs.push_back(shared.stmtAllocator.create<SyntheticNode>(
             expr->getLoc(), result.getIfValue()));
       }
     }
-    return shared.persistentAllocator.create<TupleNode>(
-        firstCommaLoc,
-        shared.persistentAllocator.internElements(ArrayRef(newExprs)));
+    return shared.stmtAllocator.create<TupleNode>(
+        firstCommaLoc, shared.stmtAllocator.internElements(ArrayRef(newExprs)));
   }
 
   // Otherwise, emit in a non-speculatively path, which could be an LValue or

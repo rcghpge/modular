@@ -748,9 +748,9 @@ static const ExprNode *resolveInferredBaseAttrRef(const ExprNode *expr,
     auto &inferred = *cast<InferredAttributeRefNode>(expr);
     // Materialize the contextual type as a synthetic base expression so
     // attribute lookup can resolve against it.
-    auto *base = shared.persistentAllocator.create<SyntheticNode>(
+    auto *base = shared.stmtAllocator.create<SyntheticNode>(
         inferred.getLoc(), AnyValue(PValue(expectedType)));
-    return shared.persistentAllocator.create<AttributeRefNode>(
+    return shared.stmtAllocator.create<AttributeRefNode>(
         base, inferred.dotLoc, inferred.spelling, inferred.isEscaped);
   }
   case ExprNode::kCall: {
@@ -759,8 +759,8 @@ static const ExprNode *resolveInferredBaseAttrRef(const ExprNode *expr,
     auto &call = *cast<CallNode>(expr);
     auto *newCallee =
         resolveInferredBaseAttrRef(call.callee, expectedType, shared);
-    return shared.persistentAllocator.create<CallNode>(
-        newCallee, call.lparenLoc, call.operands, call.rparenLoc);
+    return shared.stmtAllocator.create<CallNode>(newCallee, call.lparenLoc,
+                                                 call.operands, call.rparenLoc);
   }
   case ExprNode::kAttributeRef: {
     // Resolve the base (e.g. `.red` in `.red.opacity`), then rebuild the
@@ -768,7 +768,7 @@ static const ExprNode *resolveInferredBaseAttrRef(const ExprNode *expr,
     auto &attr = *cast<AttributeRefNode>(expr);
     auto *newBase = const_cast<ExprNode *>(
         resolveInferredBaseAttrRef(attr.base, expectedType, shared));
-    return shared.persistentAllocator.create<AttributeRefNode>(
+    return shared.stmtAllocator.create<AttributeRefNode>(
         newBase, attr.dotLoc, attr.spelling, attr.isEscaped);
   }
   case ExprNode::kSubscript: {
@@ -776,7 +776,7 @@ static const ExprNode *resolveInferredBaseAttrRef(const ExprNode *expr,
     auto &subscript = *cast<SubscriptNode>(expr);
     auto *newBase =
         resolveInferredBaseAttrRef(subscript.base, expectedType, shared);
-    return shared.persistentAllocator.create<SubscriptNode>(
+    return shared.stmtAllocator.create<SubscriptNode>(
         newBase, subscript.lsquareLoc, subscript.operands,
         subscript.rsquareLoc);
   }
@@ -785,8 +785,8 @@ static const ExprNode *resolveInferredBaseAttrRef(const ExprNode *expr,
     auto &paren = *cast<ParenNode>(expr);
     auto *newSub = const_cast<ExprNode *>(
         resolveInferredBaseAttrRef(paren.subExpr, expectedType, shared));
-    return shared.persistentAllocator.create<ParenNode>(paren.lparenLoc, newSub,
-                                                        paren.rparenLoc);
+    return shared.stmtAllocator.create<ParenNode>(paren.lparenLoc, newSub,
+                                                  paren.rparenLoc);
   }
   default:
     llvm_unreachable("unexpected expression in resolveInferredBaseAttrRef");

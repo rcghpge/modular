@@ -46,8 +46,8 @@ using namespace M::KGEN::LIT;
 
 PatternMatchBuilder::PatternMatchBuilder(ASTDecl &declScope,
                                          ExprContext paramContext)
-    : declScope(declScope), paramContext(paramContext),
-      shared(declScope.getShared()) {}
+    : allocator(declScope.getShared().stmtAllocator), declScope(declScope),
+      paramContext(paramContext), shared(declScope.getShared()) {}
 
 IREmitter PatternMatchBuilder::getParamEmitter() {
   return IREmitter(declScope, paramContext);

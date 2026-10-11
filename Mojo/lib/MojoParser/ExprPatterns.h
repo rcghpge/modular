@@ -181,7 +181,7 @@ public:
   static constexpr size_t kMaxSuggestedCases = 8;
   PatternMatchBuilder(ASTDecl &declScope, ExprContext paramContext);
 
-  BumpAllocator allocator;
+  BumpAllocator &allocator;
   ASTDecl &declScope;
   ExprContext paramContext;
   SharedState &shared;

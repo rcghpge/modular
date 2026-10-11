@@ -52,8 +52,9 @@ namespace M::KGEN::LIT {
 class ExprParser : public ParserBase {
 public:
   ExprParser(SharedState &shared, Lexer &lexer,
-             std::optional<size_t> stmtIndent)
-      : ParserBase(shared, lexer), stmtIndent(stmtIndent) {}
+             std::optional<size_t> stmtIndent, BumpAllocator &allocator)
+      : ParserBase(shared, lexer), allocator(allocator),
+        stmtIndent(stmtIndent) {}
 
   ~ExprParser() = default;
 
@@ -74,12 +75,12 @@ public:
 
   template <typename T, typename... Args>
   T *create(Args &&...args) {
-    return shared.persistentAllocator.create<T>(std::forward<Args>(args)...);
+    return allocator.create<T>(std::forward<Args>(args)...);
   }
 
   template <typename T>
   ArrayRef<T> internElements(ArrayRef<T> elements) {
-    return shared.persistentAllocator.internElements(elements);
+    return allocator.internElements(elements);
   }
 
   /// Return true if the current token is part of the current statement, false
@@ -89,6 +90,8 @@ public:
   }
 
 private:
+  BumpAllocator &allocator;
+
   ParseResult parsePrimaryExpr(ExprNode *&result);
   ParseResult parsePrefixLParen(ExprNode *&result, SMLoc lparenLoc);
   ParseResult parsePrefixLSquare(ExprNode *&result, SMLoc lsquareLoc);
@@ -1431,7 +1434,7 @@ ParseResult ExprParser::parseFunctionType(ExprNode *&result) {
   // Parse the capture origin set if present.
   ExprNode *originExpr = nullptr;
   if (consumeIf(Token::l_square)) {
-    if (ParserBase::parseExpression(originExpr, stmtIndent) ||
+    if (ParserBase::parseExpression(originExpr, allocator, stmtIndent) ||
         parseToken(Token::r_square, "expected ']' in function origins"))
       return failure();
   }
@@ -1476,7 +1479,7 @@ ParseResult ExprParser::parseGeneratorType(ExprNode *&result) {
     return failure();
 
   ExprNode *bodyTypeExpr = nullptr;
-  if (ParserBase::parseExpression(bodyTypeExpr, stmtIndent))
+  if (ParserBase::parseExpression(bodyTypeExpr, allocator, stmtIndent))
     return failure();
 
   result = create<GeneratorTypeNode>(
@@ -1532,7 +1535,7 @@ ParseResult ExprParser::parseLambda(ExprNode *&result) {
   SMLoc endLoc = getToken().getEndLoc();
   ExprNode *bodyExpr = nullptr;
   if (parseToken(Token::colon, "expected ':' in lambda expression") ||
-      ParserBase::parseExpression(bodyExpr, stmtIndent))
+      ParserBase::parseExpression(bodyExpr, allocator, stmtIndent))
     return failure();
 
   result = create<LambdaNode>(
@@ -1616,7 +1619,7 @@ ParseResult ParserBase::parseExpressionList(ExprNode *&result,
                                             std::optional<size_t> stmtIndent,
                                             ArrayRef<Token::Kind> terminators,
                                             Precedence itemMinPrec) {
-  ExprParser parser(shared, getLexer(), stmtIndent);
+  ExprParser parser(shared, getLexer(), stmtIndent, shared.stmtAllocator);
   SmallVector<ExprNode *> exprs;
   auto parseItem = [&]() -> ParseResult {
     return parser.parseExpression(exprs.emplace_back(nullptr), itemMinPrec,
@@ -1673,12 +1676,19 @@ ParseResult ParserBase::parseOptionalIdentifier(StringAttr &result,
 ParseResult ParserBase::parseExpression(ExprNode *&result,
                                         std::optional<size_t> stmtIndent,
                                         Precedence minPrec) {
-  return ExprParser(shared, getLexer(), stmtIndent)
+  return parseExpression(result, shared.stmtAllocator, stmtIndent, minPrec);
+}
+
+ParseResult ParserBase::parseExpression(ExprNode *&result,
+                                        BumpAllocator &allocator,
+                                        std::optional<size_t> stmtIndent,
+                                        Precedence minPrec) {
+  return ExprParser(shared, getLexer(), stmtIndent, allocator)
       .parseExpression(result, minPrec);
 }
 
 ParseResult ParserBase::parseStarredItem(ExprNode *&result) {
-  return ExprParser(shared, getLexer(), std::nullopt)
+  return ExprParser(shared, getLexer(), std::nullopt, shared.stmtAllocator)
       .parseStarredItem(result, /*allowAssign*/ true);
 }
 
@@ -1687,14 +1697,14 @@ ParseResult ParserBase::parseStarredItem(ExprNode *&result) {
 /// "in" expressions.
 ParseResult ParserBase::parseTargetListExpr(ExprNode *&result,
                                             std::optional<size_t> stmtIndent) {
-  return ExprParser(shared, getLexer(), stmtIndent)
+  return ExprParser(shared, getLexer(), stmtIndent, shared.stmtAllocator)
       .parseStarredExprListAsTuple(result, /*terminators=*/{},
                                    /*allowAssign=*/false, /*allowVarRef=*/true);
 }
 
 ParseResult ParserBase::parseVarInitExpression(ExprNode *&result,
                                                size_t stmtIndent) {
-  return ExprParser(shared, getLexer(), stmtIndent)
+  return ExprParser(shared, getLexer(), stmtIndent, shared.stmtAllocator)
       .parseStarredExprListAsTuple(result, /*terminators=*/{},
                                    /*allowAssign=*/true);
 }
@@ -1750,7 +1760,7 @@ static std::optional<ExprNode::Kind> getAssignmentKind(Token::Kind tokenKind) {
 /// and starred expression.
 ParseResult ParserBase::parseSimpleStmtExprs(ExprNode *&result,
                                              size_t stmtIndent) {
-  ExprParser p(shared, getLexer(), stmtIndent);
+  ExprParser p(shared, getLexer(), stmtIndent, shared.stmtAllocator);
 
   // We have three very different grammar productions that all start with an
   // expression, starred_expression, or assignment_expression plus the target
