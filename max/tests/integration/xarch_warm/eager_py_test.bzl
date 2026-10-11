@@ -5,29 +5,27 @@ load("//bazel:api.bzl", "modular_py_test")
 
 _WARM_PKG = "//max/tests/integration/xarch_warm"
 
+# One warm per lane: the GPU lanes' warm holds the CPU and accelerator slots, and
+# every other lane's only the CPU slot.
 _WARM_DATA = select({
-    "//:b200_gpu": [_WARM_PKG + ":compose"],
-    "//:h100_gpu": [_WARM_PKG + ":compose"],
-    "//:mi355_gpu": [_WARM_PKG + ":compose"],
+    "//:b200_gpu": [_WARM_PKG + ":warm_gpu"],
+    "//:mi355_gpu": [_WARM_PKG + ":warm_gpu"],
     "//conditions:default": [_WARM_PKG + ":warm_cpu"],
 })
 
-# `XARCH_WARM_RLOCATION` must name the same target `_WARM_DATA` provides, so the
-# conftest points `MODULAR_DERIVED_PATH` at the runfiles dir that was staged.
-_COMPOSE_RLOC = {"XARCH_WARM_RLOCATION": "$(rlocationpath {}:compose)".format(_WARM_PKG)}
-_CPU_RLOC = {"XARCH_WARM_RLOCATION": "$(rlocationpath {}:warm_cpu)".format(_WARM_PKG)}
+# `XARCH_WARM_RLOCATIONS` must name the same target `_WARM_DATA` provides; the
+# plugin resolves it into `MAX_EAGER_WARM_STORE`.
+_GPU_RLOC = {"XARCH_WARM_RLOCATIONS": "$(rlocationpaths {}:warm_gpu)".format(_WARM_PKG)}
+_CPU_RLOC = {"XARCH_WARM_RLOCATIONS": "$(rlocationpaths {}:warm_cpu)".format(_WARM_PKG)}
 _WARM_RLOCATION_ENV = select({
-    "//:b200_gpu": _COMPOSE_RLOC,
-    "//:h100_gpu": _COMPOSE_RLOC,
-    "//:mi355_gpu": _COMPOSE_RLOC,
+    "//:b200_gpu": _GPU_RLOC,
+    "//:mi355_gpu": _GPU_RLOC,
     "//conditions:default": _CPU_RLOC,
 })
 
 _WARM_ENV = {
-    # Batch-compile the GC matrix once at import, not lazily per dispatch.
+    # Load the GC matrix from the warm once at import, not lazily per dispatch.
     "MAX_EAGER_OP_PRECOMPILE": "1",
-    # Opt in to asserted-toolchain force-load adoption of the warm cache above.
-    "MODULAR_EAGER_WARM_ADOPT_ASSERTED": "1",
 }
 
 _HIDE_ACCELERATORS_ENV = {
@@ -49,7 +47,11 @@ def modular_eager_py_test(
         ignore_extra_deps = [],
         args = [],
         **kwargs):
-    """A `modular_py_test` that adopts the build-time-warmed eager-GC cache.
+    """A `modular_py_test` that loads the build-time eager-GC warm store.
+
+    Every eager op family loads its compiled sweep from the warm, and a warm
+    that lacks a slot this test's devices need fails the test rather than
+    compiling.
 
     Args:
         name: Test target name.
@@ -57,7 +59,7 @@ def modular_eager_py_test(
         cpu_only: For tests that do not require a GPU. More of a hack to force
           the test to run with `CUDA_VISIBLE_DEVICES=""` and
           `HIP_VISIBLE_DEVICES=""` which allows the test to use cached ops.
-        data: Extra runtime deps; merged with the warm cache dir.
+        data: Extra runtime deps; merged with the warm store dirs.
         env: Extra env vars; merged over the warm env (caller wins on conflict).
         deps: py deps; merged with the warm-adopt plugin lib.
         ignore_extra_deps: Forwarded; the plugin lib is appended (it is loaded

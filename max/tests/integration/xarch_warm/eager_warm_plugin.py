@@ -11,27 +11,34 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Pytest plugin that points the eager warm cache at the build-warmed dir."""
+"""Pytest plugin that names the build-time eager warm store for this process.
+
+Runs as the plugin loads, before any test imports ``max._interpreter_ops``,
+whose families load from the store the moment they first need a model.
+"""
 
 from __future__ import annotations
 
 import os
-import sys
 
 from python.runfiles import runfiles
 
-_warm_rloc = os.environ.get("XARCH_WARM_RLOCATION")
-if _warm_rloc:
-    _runfiles = runfiles.Create()
-    _resolved = _runfiles.Rlocation(_warm_rloc) if _runfiles else None
-    if _resolved:
-        os.environ["MODULAR_DERIVED_PATH"] = _resolved
-    else:
-        # Surface a miss: otherwise the warm silently won't adopt and the
-        # cold-compile just reads as a timeout.
-        print(
-            f"[eager-warm] XARCH_WARM_RLOCATION={_warm_rloc!r} did not resolve; "
-            "warm cache not adopted -- GC sweep will cold-compile.",
-            file=sys.stderr,
-            flush=True,
-        )
+
+def _store_directories(rlocations: list[str]) -> list[str]:
+    resolver = runfiles.Create()
+    if resolver is None:
+        raise RuntimeError("the eager warm store needs runfiles")
+    directories = []
+    for rlocation in rlocations:
+        resolved = resolver.Rlocation(rlocation)
+        if resolved is None or not os.path.isdir(resolved):
+            raise RuntimeError(f"eager warm store missing at {rlocation!r}")
+        directories.append(resolved)
+    return directories
+
+
+_RLOCATIONS = os.environ.get("XARCH_WARM_RLOCATIONS", "").split()
+if _RLOCATIONS:
+    os.environ["MAX_EAGER_WARM_STORE"] = os.pathsep.join(
+        _store_directories(_RLOCATIONS)
+    )

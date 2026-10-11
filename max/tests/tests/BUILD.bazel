@@ -233,6 +233,7 @@ modular_eager_py_test(
         "//max/python/max/_interpreter_ops",
         "//max/python/max/driver",
         "//max/python/max/dtype",
+        "//max/python/max/engine",
         "//max/python/max/graph",
         requirement("numpy"),
     ],

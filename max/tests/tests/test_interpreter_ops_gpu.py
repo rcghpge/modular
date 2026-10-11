@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 import torch
 from max import _interpreter
-from max._interpreter_ops import GC_FAMILIES, adopted_from_manifest
+from max._interpreter_ops import GC_FAMILIES, adopted_from_store
 from max._interpreter_ops.handlers import (
     _handle_squeeze_shape,
     _handle_tile,
@@ -86,14 +86,13 @@ def _require_warm_adoption() -> None:
     """Fail loudly unless the build-warmed eager-GC cache actually took effect.
 
     The numeric tests below pass whether the warm adopts or silently cold-
-    compiles, so this asserts adoption directly. ``XARCH_WARM_RLOCATION`` is set
+    compiles, so this asserts adoption directly. ``MAX_EAGER_WARM_STORE`` is set
     only on a warmed lane; its absence with an accelerator present means a new
     NVIDIA lane wasn't wired (checked at runtime, not in the BUILD select, since
     the pydeps lint aspect evaluates that select on non-NVIDIA lanes too). When
-    wired, ``adopted_from_manifest`` must hold for every family, else
-    adoption fell through to a cold recompile.
+    wired, ``adopted_from_store`` must hold for every family.
     """
-    if not os.environ.get("XARCH_WARM_RLOCATION"):
+    if not os.environ.get("MAX_EAGER_WARM_STORE"):
         if accelerator_count() > 0:
             raise RuntimeError(
                 "test_interpreter_ops_gpu ran on a GPU with no eager-GC warm"
@@ -104,13 +103,10 @@ def _require_warm_adoption() -> None:
         return
     # Derive from the registry, not a hand-maintained tuple, so this adoption
     # gate can't drift from the families the warm actually covers (MXF-533).
-    unadopted = [
-        f.name for f in GC_FAMILIES if not adopted_from_manifest(f.name)
-    ]
+    unadopted = [f.name for f in GC_FAMILIES if not adopted_from_store(f.name)]
     if unadopted:
         raise RuntimeError(
-            f"eager-GC warm is wired but {unadopted} did not adopt from the"
-            " manifest, a silent cold-compile fallback (arch/key drift)."
+            f"eager-GC warm is wired but {unadopted} did not load from it"
         )
 
 

@@ -23,7 +23,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from max import _core
+from max import _core, engine
 from max._core.dialects import mo, rmo
 from max._interpreter_ops import (
     data_movement_gc,
@@ -52,6 +52,7 @@ from max._interpreter_ops.handlers import (
 )
 from max.driver import CPU, Accelerator, Buffer, Device, accelerator_count
 from max.dtype import DType
+from max.engine import MissingArtifactError
 from max.experimental import functional as F
 from max.experimental import random as max_random
 from max.experimental import realization_context as rc
@@ -75,7 +76,7 @@ from max.experimental.sharding import (
     Sharded,
 )
 from max.experimental.tensor import Tensor, realization_context
-from max.graph import BufferType, DeviceRef, Module
+from max.graph import BufferType, DeviceRef, Graph, Module, TensorType
 
 
 @pytest.fixture(autouse=True)
@@ -9294,6 +9295,56 @@ class TestDistributedReducescatterSumSimulated:
         np.testing.assert_allclose(result.local_shards[1].to_numpy(), total[2:])
 
 
+class _NoDeviceFamily(gc_compile.GCFamilySpec):
+    """A family that sweeps none of this machine's devices."""
+
+    name = "test_no_device"
+
+    def build_module(self) -> Module:
+        return Module()
+
+    def build_module_for_device(
+        self, device: Device, module: Module | None = None
+    ) -> Module:
+        return module if module is not None else Module()
+
+    def sweep_devices(self) -> list[Device]:
+        return []
+
+
+class _CpuAddOneFamily(gc_compile.GCFamilySpec):
+    """A family of one CPU graph, cheap enough to warm in a unit test."""
+
+    name = "test_add_one"
+
+    def build_module(self) -> Module:
+        return self.build_module_for_device(CPU())
+
+    def build_module_for_device(
+        self, device: Device, module: Module | None = None
+    ) -> Module:
+        if module is None:
+            module = Module()
+        tensor = TensorType(DType.float32, [4], device=DeviceRef.CPU())
+        with Graph(
+            "test_add_one", input_types=[tensor], module=module
+        ) as graph:
+            graph.output(graph.inputs[0].tensor + 1.0)
+        return module
+
+    def sweep_devices(self) -> list[Device]:
+        return [CPU()]
+
+
+def _name_warm_store(monkeypatch: pytest.MonkeyPatch, directory: Path) -> None:
+    """Names ``directory`` as this process's warm store, writing an empty one
+    there unless something was already exported into it."""
+    if not (directory / "manifest.json").exists():
+        engine.MefStore.for_export(directory).write_manifest()
+    monkeypatch.setenv(gc_compile.WARM_STORE_ENV_VAR, str(directory))
+    gc_compile.warm_store.cache_clear()
+
+
 class TestLazyGCModelCompilation:
     """Direct tests for the per-(op, device, dtype) GC model caches.
 
@@ -9305,19 +9356,19 @@ class TestLazyGCModelCompilation:
     @pytest.fixture(autouse=True)
     def _isolate_from_session_warm(
         self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Run these decision-logic tests free of any session-wide warm cache.
+    ) -> Generator[None, None, None]:
+        """Run these decision-logic tests free of the session's warm store.
 
-        The shared conftest points ``MODULAR_DERIVED_PATH`` at a build-time warm
-        dir and this target sets ``MODULAR_EAGER_WARM_ADOPT_ASSERTED=1``, so the
-        import-time precompile force-loads it. This class instead unit-tests the
-        lazy/stamp/per-target decision logic against a mocked cache dir, so an
-        always-adoptable process-wide manifest would short-circuit the very path
-        under test. Clear both; tests that need a manifest set their own env (or
-        patch ``read_manifest``) in-body, after this fixture.
+        This target is a ``modular_eager_py_test``, so the process names a
+        build-time warm store that every family loads from. This class instead
+        unit-tests the lazy/stamp/per-target decision logic, which a named
+        store would short-circuit. Tests that need a store name their own
+        in-body, after this fixture.
         """
-        monkeypatch.delenv("MODULAR_DERIVED_PATH", raising=False)
-        monkeypatch.delenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", raising=False)
+        monkeypatch.delenv(gc_compile.WARM_STORE_ENV_VAR, raising=False)
+        gc_compile.warm_store.cache_clear()
+        yield
+        gc_compile.warm_store.cache_clear()
 
     def test_matmul_model_compiles_once_and_reuses(self) -> None:
         """A second call for the same (device, dtype) returns the cached model."""
@@ -9467,46 +9518,25 @@ class TestLazyGCModelCompilation:
         gc_compile.write_warm_stamp()
         assert gc_compile.warm_stamp_matches()
 
-    def test_gc_op_family_prefers_manifest_over_stamp(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_gc_op_family_prefers_store_over_stamp(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """ensure_swept force-loads an adoptable manifest, skipping the stamp sweep."""
-
-        class _FakeFamily(gc_compile.GCFamilySpec):
-            name = "test"
-
-            def build_module(self) -> Module:
-                return Module()
-
-            def build_module_for_device(
-                self, device: Device, module: Module | None = None
-            ) -> Module:
-                return Module()
-
-            def sweep_devices(self) -> list[Device]:
-                return []
-
-        family = gc_compile.GCOpFamily(_FakeFamily())
+        """ensure_swept loads a named warm store, skipping the stamp sweep."""
+        family = gc_compile.GCOpFamily(_NoDeviceFamily())
         calls: list[str] = []
-
-        def fake_adopt(manifest: object) -> bool:
-            calls.append("manifest")
-            return True
-
-        monkeypatch.setattr(gc_compile, "read_manifest", lambda: {"x": 1})
-        monkeypatch.setattr(gc_compile, "manifest_adoptable", lambda m: True)
-        monkeypatch.setattr(family, "_adopt_from_manifest", fake_adopt)
+        _name_warm_store(monkeypatch, tmp_path)
+        monkeypatch.setattr(gc_compile, "warm_stamp_matches", lambda: True)
         monkeypatch.setattr(
             family, "compile_sweep", lambda: calls.append("stamp_sweep")
         )
         family.ensure_swept()
-        assert calls == ["manifest"]
+        assert calls == []
         assert family.swept
 
     def test_gc_op_family_sweeps_on_warm_stamp(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """With no manifest but a matching warm stamp, ensure_swept batch-sweeps."""
+        """With no warm store but a matching warm stamp, ensure_swept batch-sweeps."""
 
         class _FakeFamily(gc_compile.GCFamilySpec):
             name = "test"
@@ -9524,7 +9554,6 @@ class TestLazyGCModelCompilation:
 
         family = gc_compile.GCOpFamily(_FakeFamily())
         calls: list[str] = []
-        monkeypatch.setattr(gc_compile, "read_manifest", lambda: None)
         monkeypatch.setattr(gc_compile, "warm_stamp_matches", lambda: True)
         monkeypatch.setattr(
             family, "compile_sweep", lambda: calls.append("sweep")
@@ -9534,7 +9563,7 @@ class TestLazyGCModelCompilation:
         assert family.swept
 
     def test_warm_families_skips_family_with_no_sweep_devices(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """A family that builds for none of this machine's devices (e.g. a
         GPU-only family on a CPU-only host) warms as zero ops instead of
@@ -9557,16 +9586,14 @@ class TestLazyGCModelCompilation:
 
         family = gc_compile.GCOpFamily(_GpuOnlyFamily())
         monkeypatch.setattr(gc_compile, "registered_families", lambda: [family])
-        monkeypatch.setattr(gc_compile, "read_manifest", lambda: None)
 
         assert list(warm.warm_families(jobs=2)) == [("test_gpu_only", 0)]
         assert list(warm.warm_families(jobs=1)) == [("test_gpu_only", 0)]
         assert family.cache == {}
 
-        # The manifest-adoption path must also no-op without ever building a
+        # Loading from a warm store must also no-op without ever building a
         # session (InferenceSession(devices=[]) silently defaults to CPU).
-        monkeypatch.setattr(gc_compile, "read_manifest", lambda: {"x": 1})
-        monkeypatch.setattr(gc_compile, "manifest_adoptable", lambda m: True)
+        _name_warm_store(monkeypatch, tmp_path)
 
         def _no_session(*args: object, **kwargs: object) -> None:
             raise AssertionError("InferenceSession must not be constructed")
@@ -9598,173 +9625,40 @@ class TestLazyGCModelCompilation:
         assert sig == gc_compile._context_signature()
         assert "accelerators=" in sig and "cpu=" in sig
 
-    def test_manifest_roundtrip_and_adoptable(
+    def test_no_warm_store_unless_named(self) -> None:
+        assert gc_compile.warm_store() is None
+
+    def test_warm_store_missing_a_slot_raises(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
-        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
-        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
-        monkeypatch.setattr(
-            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
-        )
-        envelope = {
-            "host_arch": gc_compile.platform.machine(),
-            "gpu": {"arch": "sm_100a"},
-            "device_count": 2,
-            "toolchain": {"mode": "asserted"},
-        }
-        entries = [
-            {
-                "family": "matmul",
-                "device_class": "cpu",
-                "mef": "matmul_cpu.mef",
-            },
-            {
-                "family": "matmul",
-                "device_class": "gpu:0",
-                "mef": "matmul_slot_0.mef",
-            },
-        ]
-        assert gc_compile.write_manifest(envelope, entries)
-        m = gc_compile.read_manifest()
-        assert m is not None
-        assert gc_compile.manifest_adoptable(m)
-        assert (
-            gc_compile.manifest_entry_path(m, "matmul", "gpu:0")
-            == tmp_path / "matmul_slot_0.mef"
-        )
-        # An unknown (family, device_class) pair resolves to None.
-        assert gc_compile.manifest_entry_path(m, "unary", "cpu") is None
+        """A named store is all-or-nothing: a family whose slot it lacks raises
+        rather than compiling."""
+        family = gc_compile.GCOpFamily(_CpuAddOneFamily())
+        _name_warm_store(monkeypatch, tmp_path)
+        with pytest.raises(
+            MissingArtifactError, match=r"test_add_one_cpu\.mef"
+        ):
+            family.ensure_swept()
 
-    def test_manifest_not_adoptable_without_optin(
+    def test_warm_store_loads_every_slot(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
-        monkeypatch.delenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", raising=False)
-        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
-        monkeypatch.setattr(
-            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
-        )
-        gc_compile.write_manifest(
-            {
-                "gpu": {"arch": "sm_100a"},
-                "device_count": 2,
-                "toolchain": {"mode": "asserted"},
-            },
-            [],
-        )
-        manifest = gc_compile.read_manifest()
-        assert manifest is not None
-        assert not gc_compile.manifest_adoptable(manifest)
-
-    def test_manifest_device_count_is_adoption_ceiling(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Per-slot MEFs make device_count a ceiling, not an equality: a warm
-        adopts iff it has at least as many slots as this box needs (which
-        force-loads slots 0..k-1); fewer means missing slots, so it can't."""
-        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
-        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
-        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 4)
-        monkeypatch.setattr(
-            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
-        )
-
-        def write(device_count: int) -> dict[str, object]:
-            gc_compile.write_manifest(
-                {
-                    "host_arch": gc_compile.platform.machine(),
-                    "gpu": {"arch": "sm_100a"},
-                    "device_count": device_count,
-                    "toolchain": {"mode": "asserted"},
-                },
-                [],
+        family = gc_compile.GCOpFamily(_CpuAddOneFamily())
+        cpu = CPU()
+        store = engine.MefStore.for_export(tmp_path)
+        engine.InferenceSession(devices=[cpu]).compile(
+            family.build_module_for_device(cpu)
+        ).export_mef(
+            store.claim_export_artifact(
+                gc_compile.warm_artifact_name(family.name, cpu)
             )
-            manifest = gc_compile.read_manifest()
-            assert manifest is not None
-            return manifest
-
-        # Warmed 2 < this box's 4: slots 2,3 were never compiled -> reject.
-        assert not gc_compile.manifest_adoptable(write(2))
-        # Warmed 8 >= this box's 4: force-loads slots 0..3, extras unused -> adopt.
-        assert gc_compile.manifest_adoptable(write(8))
-
-    def test_manifest_not_adoptable_on_host_arch_mismatch(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
-        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
-        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
-        monkeypatch.setattr(
-            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
         )
-        # Count + GPU arch match, opt-in on, only the host arch differs (the
-        # per-slot CPU MEF embeds host-ELF kernels, so a foreign host can't
-        # adopt).
-        gc_compile.write_manifest(
-            {
-                "host_arch": "not-this-host",
-                "gpu": {"arch": "sm_100a"},
-                "device_count": 2,
-                "toolchain": {"mode": "asserted"},
-            },
-            [],
-        )
-        manifest = gc_compile.read_manifest()
-        assert manifest is not None
-        assert not gc_compile.manifest_adoptable(manifest)
+        store.write_manifest()
+        _name_warm_store(monkeypatch, tmp_path)
 
-    def test_cpu_only_manifest_adoptable_when_no_accelerator(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """A CPU-only manifest (no ``gpu`` key) adopts on a box with no
-        accelerator, there is no GPU slot to mismatch."""
-        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
-        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
-        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 0)
-        gc_compile.write_manifest(
-            {
-                "host_arch": gc_compile.platform.machine(),
-                "cpu_target": "triple=x86_64-unknown-linux-gnu;cpu=x86-64-v3",
-                "toolchain": {"mode": "asserted"},
-            },
-            [],
-        )
-        manifest = gc_compile.read_manifest()
-        assert manifest is not None
-        assert gc_compile.manifest_adoptable(manifest)
-
-    def test_cpu_only_manifest_not_adoptable_with_accelerator(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """A CPU-only manifest is rejected on a box that has an accelerator: its
-        GPU slots were never warmed, so a GPU box must not adopt it."""
-        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
-        monkeypatch.setenv("MODULAR_EAGER_WARM_ADOPT_ASSERTED", "1")
-        monkeypatch.setattr(gc_compile, "accelerator_count", lambda: 2)
-        # The CPU-only branch returns before consulting
-        # accelerator_architecture_name; stub it anyway so a stray call can't
-        # raise on a CPU host.
-        monkeypatch.setattr(
-            gc_compile, "accelerator_architecture_name", lambda: "sm_100a"
-        )
-        gc_compile.write_manifest(
-            {
-                "host_arch": gc_compile.platform.machine(),
-                "cpu_target": "triple=x86_64-unknown-linux-gnu;cpu=x86-64-v3",
-                "toolchain": {"mode": "asserted"},
-            },
-            [],
-        )
-        manifest = gc_compile.read_manifest()
-        assert manifest is not None
-        assert not gc_compile.manifest_adoptable(manifest)
-
-    def test_read_manifest_absent_is_none(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setenv("MODULAR_DERIVED_PATH", str(tmp_path))
-        assert gc_compile.read_manifest() is None
+        family.ensure_swept()
+        assert family.store_adopted
+        assert set(family.cache) == {"test_add_one"}
 
     def test_binary_model_compiles_once_and_reuses(self) -> None:
         """A second call for the same binary target returns the cached model."""

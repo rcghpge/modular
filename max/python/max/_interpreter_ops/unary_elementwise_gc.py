@@ -234,9 +234,9 @@ def unary_model(
     Lazy by default: compiled on first use and cached for the process lifetime.
     With ``MAX_EAGER_OP_PRECOMPILE=1`` it was precompiled at import and this is a
     lookup. On the first miss an available warm cache is adopted whole instead
-    of compiling each target singly, force-loaded from a manifest when one is
-    present and adoptable, else via a batched sweep of a matching
-    ``warm-interpreter-cache`` stamp.
+    of compiling each target singly, loaded from the warm store when one is
+    named, else via a batched sweep of a matching ``warm-interpreter-cache``
+    stamp.
 
     Args:
         op_type: The concrete ``mo.*Op`` type of the op being handled.
