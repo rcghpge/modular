@@ -93,13 +93,7 @@ from structured_kernels.amd_tile_io import (
 )
 from ....utils import elementwise_epilogue_type
 from .amd_matmul_schedule import build_default_matmul_schedule
-from .amd_matmul_schedule import (
-    DefaultMatmulOps,
-    COMPUTE,
-    LOAD_DRAM,
-    LOAD_FRAG,
-    STORE_SMEM,
-)
+from .amd_matmul_schedule import DefaultMatmulOps
 from pipeline.pipeline_dsl import ScheduleEntry
 
 from .block_scaled_preshuffle_loaders import PreshuffledBLoader
@@ -1384,14 +1378,15 @@ struct BlockScaledMatmulAMD[
 
             @inline(.always)
             def _bind[entry: ScheduleEntry]() {mut mma_op, imm}:
-                comptime match entry.op.tag:
-                    case == LOAD_DRAM:
+                comptime op = DefaultMatmulOps(entry.op.tag)
+                comptime match op:
+                    case .LOAD_DRAM:
                         load_tiles_from_dram()
                         load_scales_from_dram()
-                    case == STORE_SMEM:
+                    case .STORE_SMEM:
                         copy_tiles_to_smem()
                         copy_scales_to_smem()
-                    case == LOAD_FRAG:
+                    case .LOAD_FRAG:
                         comptime k = entry.op.subtile
                         var a_warp = a_smem.tile[Self.WM, A_SMEM_ROW_BYTES](
                             warp_m, 0
@@ -1408,13 +1403,13 @@ struct BlockScaledMatmulAMD[
                             warp_n, k
                         )
                         mma_op.load_scales_from_smem[k](sfa_k, sfb_k)
-                    case == COMPUTE:
+                    case .COMPUTE:
                         mma_op.mma[entry.op.subtile]()
-                    case DefaultMatmulOps.BARRIER.value:
+                    case .BARRIER:
                         barrier()
-                    case DefaultMatmulOps.SCHEDULE_BARRIER.value:
+                    case .SCHEDULE_BARRIER:
                         schedule_barrier()
-                    case DefaultMatmulOps.SCHED_GROUP_BARRIER.value:
+                    case .SCHED_GROUP_BARRIER:
                         comptime sub = entry.op.subtile
                         comptime wait = entry.op.wait_value
                         comptime match sub:

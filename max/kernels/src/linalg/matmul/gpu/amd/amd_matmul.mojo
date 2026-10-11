@@ -61,13 +61,7 @@ from ....utils_gpu import MatmulConfig
 
 from .matmul_mma import MmaOp
 from .amd_matmul_schedule import build_default_matmul_schedule
-from .amd_matmul_schedule import (
-    DefaultMatmulOps,
-    COMPUTE,
-    LOAD_DRAM,
-    LOAD_FRAG,
-    STORE_SMEM,
-)
+from .amd_matmul_schedule import DefaultMatmulOps
 from pipeline.pipeline_dsl import ScheduleEntry
 from structured_kernels.amd_tile_io import (
     RegTileLoader,
@@ -487,12 +481,13 @@ struct AMDMatmul[
         @__parameter
         @inline(.always)
         def _bind[entry: ScheduleEntry]():
-            comptime match entry.op.tag:
-                case == LOAD_DRAM:
+            comptime op = DefaultMatmulOps(entry.op.tag)
+            comptime match op:
+                case .LOAD_DRAM:
                     load_tiles_from_dram()
-                case == STORE_SMEM:
+                case .STORE_SMEM:
                     copy_tiles_to_smem()
-                case == LOAD_FRAG:
+                case .LOAD_FRAG:
                     # Block-local SMEM views for this k-tile within this
                     # warp-K partition's slice of the BK-wide SMEM buffer.
                     # Offset is in blocked-product element order, not row-major.
@@ -509,13 +504,13 @@ struct AMDMatmul[
                         a_blk.tile[WM, k_tile_size](warp_m, 0),
                         b_blk.tile[WN, k_tile_size](warp_n, 0),
                     )
-                case == COMPUTE:
+                case .COMPUTE:
                     mma_op.mma[entry.op.subtile]()
-                case DefaultMatmulOps.BARRIER.value:
+                case .BARRIER:
                     barrier()
-                case DefaultMatmulOps.SCHEDULE_BARRIER.value:
+                case .SCHEDULE_BARRIER:
                     schedule_barrier()
-                case DefaultMatmulOps.SCHED_GROUP_BARRIER.value:
+                case .SCHED_GROUP_BARRIER:
                     comptime sub = entry.op.subtile
                     comptime wait = entry.op.wait_value
                     comptime match sub:

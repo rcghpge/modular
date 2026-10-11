@@ -54,15 +54,7 @@ from pipeline.config import ScheduleConfig, SchedulingStrategy
 from pipeline.pipeline_dsl import ScheduleEntry
 from pipeline.program_builder import derive_safe_max_globals
 from .amd_target import mi355x_target
-from .amd_ping_pong_schedule import (
-    build_schedule,
-    PingPongOps,
-    LOAD_A,
-    LOAD_B,
-    MMA_LOAD_A,
-    MMA_LOAD_B,
-    MMA,
-)
+from .amd_ping_pong_schedule import build_schedule, PingPongOps
 
 from .matmul_mma import QuadrantMmaOp
 from structured_kernels.amd_tile_io import RegTileWriter, TileLoaderLDS
@@ -686,30 +678,31 @@ struct AMDPingPongMatmul[
         def _bind[entry: ScheduleEntry](k_base: Int):
             comptime k_off = entry.op.k_offset.signed_bk_multiple()
             var k = k_base + k_off * BK
-            comptime match entry.op.tag:
-                case == LOAD_A:
+            comptime op = PingPongOps(entry.op.tag)
+            comptime match op:
+                case .LOAD_A:
                     load_a[entry.op.stage, entry.op.subtile](k)
-                case == LOAD_B:
+                case .LOAD_B:
                     load_b[entry.op.stage, entry.op.subtile](k)
-                case == MMA_LOAD_A:
+                case .MMA_LOAD_A:
                     mma_op.load_a_quadrant[entry.op.subtile](
                         a_mma_tiles[entry.op.stage][entry.op.subtile]
                     )
-                case == MMA_LOAD_B:
+                case .MMA_LOAD_B:
                     mma_op.load_b_quadrant[entry.op.subtile](
                         b_mma_tiles[entry.op.stage][entry.op.subtile]
                     )
-                case == MMA:
+                case .MMA:
                     mma_op.mma_quadrant[entry.op.stage, entry.op.subtile]()
-                case PingPongOps.BARRIER.value:
+                case .BARRIER:
                     s_barrier()
-                case PingPongOps.WAIT_VM.value:
+                case .WAIT_VM:
                     s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
-                case PingPongOps.WAIT_LGKM.value:
+                case .WAIT_LGKM:
                     s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
-                case PingPongOps.SET_PRIO.value:
+                case .SET_PRIO:
                     s_setprio[Int16(entry.op.wait_value)]()
-                case PingPongOps.SCHEDULE_BARRIER.value:
+                case .SCHEDULE_BARRIER:
                     schedule_barrier()
 
         # Prologue.

@@ -123,13 +123,60 @@ trait ScheduleOps(Equatable):
 
 
 @fieldwise_init
-struct _Ops(ScheduleOps):
+struct _Ops(EnumLike, ScheduleOps):
     """Framework-internal concrete ScheduleOps for accessing default tag values.
 
     Kernels should not use this; define your own conforming struct instead.
     """
 
     var value: Int
+
+    # Op tags are open-ended Ints (`OpDesc.tag` interchange): a tag value
+    # outside the named cases must stay reachable, so the enum is not
+    # exhaustive and unknown tags map to discriminant -1.
+    comptime _enum_is_exhaustive = False
+
+    comptime _enum_case_names = ParameterList.of[
+        "BARRIER".value,
+        "WAIT_VM".value,
+        "WAIT_LGKM".value,
+        "SET_PRIO".value,
+        "SCHEDULE_BARRIER".value,
+        "SCHED_GROUP_BARRIER".value,
+        "NONE".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        match self.value:
+            case Self.BARRIER.value:
+                return 0
+            case Self.WAIT_VM.value:
+                return 1
+            case Self.WAIT_LGKM.value:
+                return 2
+            case Self.SET_PRIO.value:
+                return 3
+            case Self.SCHEDULE_BARRIER.value:
+                return 4
+            case Self.SCHED_GROUP_BARRIER.value:
+                return 5
+            case Self.NONE.value:
+                return 6
+            case _:
+                return -1
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        comptime assert False, "_Ops has no payload"
 
 
 # =============================================================================
