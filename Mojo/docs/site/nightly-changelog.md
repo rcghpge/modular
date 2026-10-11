@@ -393,6 +393,11 @@ This version is still a work in progress.
 - `float64` `log()` now uses double-precision coefficients and is within
   1 ulp of the correctly rounded result; it was previously off by up to about
   2e7 ulp. It runs the same Mojo code on CPU and GPU.
+- `log1p()` now evaluates in the input's own precision with a Mojo
+  implementation based on musl, shared by CPU and GPU, and is accurate to
+  within 1 ulp for `float32` and `float64`. `float16` and `bfloat16` inputs
+  are computed in `float32`. `float64` `log1p()` is no longer supported on
+  Apple GPUs, which have no `float64` arithmetic.
 
 ## Tooling changes
 
@@ -465,3 +470,5 @@ This version is still a work in progress.
   recursion being behind a pointer.
 
 - `log()`, `log2()`, and `log1p()` of `inf` now return `inf` instead of `nan`.
+- `float64` `log1p()` is now accurate for inputs whose `1 + x` falls in
+  `[sqrt(2)/2, sqrt(2))`, where it was off by up to about 7e9 ulp.

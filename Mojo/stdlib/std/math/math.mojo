@@ -2371,58 +2371,19 @@ def log10[
 # ===----------------------------------------------------------------------=== #
 
 
-@inline(.always)
-def _log1p_impl[
-    dtype: DType, width: SIMDLength, //
-](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
-    # This uses the approximation from cephes to compute log1p via the approximation
-    # log(1+x) = x - x**2/2 + x**3 P(x)/Q(x)
-    # in the domain 1/sqrt(2) <= x < sqrt(2)
-
-    comptime P: List[Scalar[dtype]] = [
-        2.0039553499201281259648e1,
-        5.7112963590585538103336e1,
-        6.0949667980987787057556e1,
-        2.9911919328553073277375e1,
-        6.5787325942061044846969e0,
-        4.9854102823193375972212e-1,
-        4.5270000862445199635215e-5,
-    ]
-    comptime Q: List[Scalar[dtype]] = [
-        6.0118660497603843919306e1,
-        2.1642788614495947685003e2,
-        3.0909872225312059774938e2,
-        2.2176239823732856465394e2,
-        8.3047565967967209469434e1,
-        1.5062909083469192043167e1,
-    ]
-
-    # Sqrt(1/2)
-    comptime sqrt2_div_2 = 0.70710678118654752440
-    # Sqrt(2)
-    comptime sqrt2 = 1.41421356237309504880
-
-    var z = 1.0 + x
-    var log1x = log(z)
-
-    var in_domain_mask = z.lt(sqrt2_div_2) | z.gt(sqrt2)
-    if all(in_domain_mask):
-        return log1x
-
-    z = x * x
-    z = -0.5 * z + x * (
-        z * polynomial_evaluate[P](x) / polynomial_evaluate[Q](x)
-    )
-
-    return in_domain_mask.select(log1x, x + z)
-
-
 def log1p[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
     """Computes the `log1p` of the inputs.
 
-    The `log1p(x)` is equivalent to `log(1+x)`.
+    The `log1p(x)` is equivalent to `log(1+x)`, but stays accurate when `x` is
+    close to zero, where `1 + x` would round away the low bits of `x`.
+
+    The result is accurate to within 1 ulp for `float32` and `float64`.
+    `float16` and `bfloat16` inputs are computed in `float32` and rounded once
+    to the narrow type. Special values: `log1p(±0)` is `±0`, `log1p(-1)` is
+    `-inf`, `log1p(+inf)` is `+inf`, and NaN is returned for NaN and for
+    `x < -1`.
 
     Constraints:
         The input must be a floating-point type.
@@ -2438,14 +2399,22 @@ def log1p[
         The `log1p` of the input.
     """
 
-    # Metal rejects every double-typed value, so evaluating the approximation
-    # in f64 makes `log1p` uncompilable on Apple GPUs for any input dtype --
-    # and it fails as an LLVM IR verifier abort, taking the process with it
-    # rather than surfacing a diagnostic. Evaluate in f32 there instead.
-    comptime if is_apple_gpu():
-        return _log1p_impl(x.cast[.float32]()).cast[dtype]()
+    _assert_float64_supported[dtype, "log1p"]()
 
-    return _log1p_impl(x.cast[.float64]()).cast[dtype]()
+    comptime if bit_width_of[dtype]() < 32:
+        var r32 = log1p(x.cast[.float32]())
+        comptime if dtype == .bfloat16 and is_apple_gpu():
+            # The float32 -> bfloat16 cast flushes subnormal results on Apple.
+            return rebind[type_of(x)](_narrow_f32_to_bf16_bits(r32))
+        return r32.cast[dtype]()
+    var r = _log1p_accurate(x)
+    r = (x.eq(0) | x.eq(inf[dtype]()) | isnan(x)).select(x, r)
+    comptime if is_apple_gpu():
+        # log1p(x) rounds to x for subnormal x; Apple GPUs flush such
+        # operands to zero in arithmetic.
+        r = _is_subnormal_bits(x).select(x, r)
+    r = x.eq(-1).select(-inf[dtype](), r)
+    return x.lt(-1).select(nan[dtype](), r)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4468,6 +4437,18 @@ def _is_subnormal_bits[
 
 
 @inline(.always)
+def _narrow_f32_to_bf16_bits[
+    width: SIMDLength, //
+](x: SIMD[DType.float32, width]) -> SIMD[DType.bfloat16, width]:
+    """Rounds float32 to bfloat16 (nearest even) from the bits, keeping
+    subnormal results that a flush-to-zero `cast` would drop. NaN stays NaN."""
+    var b = x.to_bits()
+    var rounded = (b + 0x7FFF + ((b >> 16) & 1)) >> 16
+    var r = isnan(x).select((b >> 16) | 0x40, rounded)
+    return SIMD[DType.bfloat16, width](from_bits=r.cast[DType.uint16]())
+
+
+@inline(.always)
 def _frexp_bits[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> Tuple[
@@ -4535,3 +4516,24 @@ def _log_accurate[
     """Computes the natural log of positive finite `x` to within about 1 ulp."""
     var exponent, fraction = _log_reduce(x)
     return _log_combine(exponent, fraction, 0)
+
+
+@inline(.always)
+def _log1p_accurate[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    """`log(1 + x)` for finite `x > -1` to within about 1 ulp (musl log1p).
+
+    Outside `1 + x` in `[sqrt(2)/2, sqrt(2))` it reduces `u = fl(1 + x)` and
+    adds back the rounding error of `1 + x` relative to `u`.
+    """
+    comptime T = type_of(x)
+    var u = 1.0 + x
+    var kf = _log_reduce(u)
+    var c = kf[0].ge(2.0).select(1.0 - (u - x), x - (u - 1.0)) / u
+    var near = x.gt(_SQRT2 / 2 - 1) & x.lt(_SQRT2 - 1)
+    return _log_combine(
+        near.select(T(0), kf[0]),
+        near.select(x, kf[1]),
+        near.select(T(0), c),
+    )
