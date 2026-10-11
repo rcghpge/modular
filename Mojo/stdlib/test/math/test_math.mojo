@@ -25,6 +25,7 @@ from std.math import (
     copysign,
     cos,
     cosh,
+    erf,
     erfc,
     expm1,
     exp2,
@@ -1436,6 +1437,136 @@ def test_acos() raises:
     assert_almost_equal(acos(Float64(-1)), pi)
     assert_almost_equal(acos(Float64(0)), pi / 2.0)
     assert_true(isnan(acos(nan[.float64]())))
+
+
+def _assert_same[
+    dtype: DType
+](got: Scalar[dtype], want: Scalar[dtype], msg: String) raises:
+    """Asserts bitwise equality, so NaN matches NaN and -0 differs from +0."""
+    assert_equal(got.to_bits(), want.to_bits(), msg)
+
+
+def _ulp_diff[
+    dtype: DType
+](
+    got: Scalar[dtype], want: Scalar[dtype]
+) -> Int where dtype.is_floating_point():
+    """Counts the floats between `got` and `want`. Bit-identical values give
+    0; a NaN, an infinity, or differing signs (other than +0 and -0) give
+    `Int.MAX`."""
+    comptime sign = UInt64(1) << UInt64(bit_width_of[dtype]() - 1)
+    var a = got.to_bits().cast[.uint64]()
+    var b = want.to_bits().cast[.uint64]()
+    if a == b:
+        return 0
+    if isnan(got) or isnan(want) or isinf(got) or isinf(want):
+        return Int.MAX
+    var ma = a & (sign - 1)
+    var mb = b & (sign - 1)
+    if ((a ^ b) & sign) != 0:
+        return Int(ma + mb) if ma == 0 or mb == 0 else Int.MAX
+    return Int(max(ma, mb) - min(ma, mb))
+
+
+def test_erf_float64_special_values() raises:
+    _assert_same(erf(Float64(0)), Float64(0), "erf(0)")
+    _assert_same(erf(Float64(-0.0)), Float64(-0.0), "erf(-0)")
+    assert_equal(erf(inf[.float64]()), 1.0)
+    assert_equal(erf(neg_inf[.float64]()), -1.0)
+    assert_true(isnan(erf(nan[.float64]())))
+
+
+def test_erf_float64_ulp() raises:
+    # Correctly rounded values from mpmath.
+    var cases: List[Tuple[Float64, Float64]] = [
+        (-0.8358000000000008, -0.7627941782926682),
+        (1e-300, 1.1283791670955126e-300),
+        (2.5e-09, 2.8209479177387815e-09),
+        (0.1, 0.1124629160182849),
+        (0.25, 0.27632639016823696),
+        (0.5, 0.5204998778130465),
+        (0.84375, 0.7672256612323416),
+        (0.9, 0.7969082124228322),
+        (1.0, 0.8427007929497149),
+        (1.2, 0.9103139782296353),
+        (1.25, 0.9229001282564583),
+        (1.5, 0.9661051464753108),
+        (2.0, 0.9953222650189527),
+        (2.857142857142857, 0.9999466876886117),
+        (3.0, 0.9999779095030014),
+        (4.5, 0.9999999998033839),
+        (5.9, 0.9999999999999999),
+        (-0.3, -0.3286267594591274),
+        (-1.1, -0.8802050695740817),
+        (-2.2, -0.9981371537020182),
+    ]
+    for c in cases:
+        var got = erf(c[0])
+        assert_true(
+            _ulp_diff(got, c[1]) <= 1,
+            String("erf(", c[0], ") = ", got, ", expected ", c[1]),
+        )
+
+    # macOS libm erf is off by up to about 3.2 ulp, so the libm comparison
+    # only bounds gross errors; the table above checks the 1 ulp target.
+    comptime n = 20_000
+    for i in range(n):
+        var x = Float64(i) / (n / 14.0) - 7.0
+        _assert_ulp_vs_libm["erf"](x, erf(x), 4)
+    for k in range(-1074, 0, 3):
+        var t = _scaled(Float64(1.2345678901234567), k)
+        _assert_ulp_vs_libm["erf"](t, erf(t), 4)
+        _assert_ulp_vs_libm["erf"](-t, erf(-t), 4)
+    # Interval boundaries of the fdlibm approximations.
+    var edges: Array[Float64, 8] = [
+        0.84375,
+        0.8437499999999999,
+        1.25,
+        1.2499999999999998,
+        2.857142857142857,
+        5.999999999999999,
+        6.0,
+        27.9,
+    ]
+    for x in edges:
+        _assert_ulp_vs_libm["erf"](x, erf(x), 4)
+        _assert_ulp_vs_libm["erf"](-x, erf(-x), 4)
+
+
+def test_erf_plus_erfc() raises:
+    # erf and erfc share their polynomials, so they sum to 1 to within a
+    # couple of rounding errors.
+    comptime n = 10_000
+    for i in range(n):
+        var x = Float64(i) / (n / 6.0) - 3.0
+        assert_almost_equal(
+            erf(x) + erfc(x),
+            1.0,
+            atol=4.5e-16,
+            rtol=0,
+            msg=String("erf + erfc at ", x),
+        )
+
+
+def test_erfc_subnormal_results() raises:
+    # Correctly rounded values from mpmath. Hosts keep subnormals, so these
+    # must come back within 1 ulp (2^-149 or 2^-1074) rather than flush to 0.
+    var x32: List[Float32] = [9.5, 9.6, 10.0]
+    var bits32: List[UInt32] = [0x00006912, 0x00000F66, 0x00000001]
+    for i in range(len(x32)):
+        var got = erfc(x32[i])
+        assert_true(
+            _ulp_diff(got, Float32(from_bits=bits32[i])) <= 1,
+            String("erfc(", x32[i], ") = ", got, ", bits ", hex(got.to_bits())),
+        )
+    var x64: List[Float64] = [26.6, 27.0]
+    var bits64: List[UInt64] = [0x0000C860A467B1A5, 0x0000000000019E0F]
+    for i in range(len(x64)):
+        var got = erfc(x64[i])
+        assert_true(
+            _ulp_diff(got, Float64(from_bits=bits64[i])) <= 1,
+            String("erfc(", x64[i], ") = ", got, ", bits ", hex(got.to_bits())),
+        )
 
 
 def main() raises:

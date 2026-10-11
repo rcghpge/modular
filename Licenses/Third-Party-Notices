@@ -781,6 +781,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 19. Licensee's use of a derivative work of FreeBSD msun (Sun Microsystems fdlibm) is subject to the following terms and conditions.
    All third-party software packages are copyright by their respective authors.
+   The Mojo standard library math module (std.math) contains code derived from FreeBSD msun (Sun Microsystems fdlibm).
+
+   From FreeBSD msun s_erf.c:
    Portions of the Mojo standard library math module are derived from FreeBSD
    msun (Sun Microsystems fdlibm), which carries the following notices.
 
@@ -802,6 +805,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
    is preserved.
    ====================================================
 
+   From FreeBSD msun e_exp.c:
    ====================================================
    Copyright 2004 Sun Microsystems, Inc.  All Rights Reserved.
 
@@ -818,6 +822,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
    is preserved.
    ====================================================
 
+   The float versions add: "Conversion to float by Ian Lance Taylor, Cygnus
+   Support, ian@cygnus.com."
    The derived portions also carry these historical credits:
 
    Conversion to float by Ian Lance Taylor, Cygnus Support,
@@ -856,6 +862,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
    CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
    TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 
 21. Licensee's use of a derivative work of SLEEF is subject to the terms and conditions of the Boost Software License 1.0.
    All third-party software packages are copyright by their respective authors.

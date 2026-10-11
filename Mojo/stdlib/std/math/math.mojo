@@ -1116,6 +1116,11 @@ def erf[
         The result of the elementwise Erf operation.
     """
 
+    _assert_float64_supported[dtype, "erf"]()
+
+    comptime if dtype == .float64:
+        return _erf_f64(x._refine[.float64]())._refine[dtype]()
+
     var x_abs = abs(x)
 
     var r_large = polynomial_evaluate[
@@ -2503,130 +2508,6 @@ def hypot[
 # ===----------------------------------------------------------------------=== #
 
 
-def _erfcf(x: Float32) -> Float32:
-    """Fast single-precision complementary error function (erfc) approximation.
-
-    The complementary error function is defined as:
-    erfc(x) = 1 - erf(x) = (2/√π) ∫[x,∞] e^(-t²) dt
-
-    Uses domain splitting with different rational approximations for accuracy:
-    - Domain 1: |x| < 1.0  - Direct polynomial for erfc
-    - Domain 2: 1.0 ≤ |x| < 2.2 - Polynomial approximation
-    - Domain 3: 2.2 ≤ |x| < 4.3 - Scaled rational approximation with 1/x
-    - Domain 4: 4.3 ≤ |x| < 10.1 - Further scaled rational approximation
-    - Domain 5: |x| ≥ 10.1 - Returns 0 (underflow)
-
-    Each domain uses optimized polynomial coefficients to minimize error.
-
-
-    Args:
-        x: Input value, any real number.
-
-    Returns:
-        Complementary error function erfc(x), range [0, 2].
-    """
-
-    # Handle NaN input
-    if isnan(x):
-        return x
-
-    # Save original input for sign handling
-    var s = x
-
-    # Work with absolute value for domain classification
-    var a = abs(x)
-
-    # Domain classification based on input magnitude
-    var o0 = a < 1.0  # Small values: direct approximation
-    var o1 = a < 2.2  # Medium-small values
-    var o2 = a < 4.3  # Medium values
-    var o3 = a < 10.1  # Medium-large values
-    # o3 false means a >= 10.1: very large values (return 0)
-
-    # Choose transformation: u = a for small values, u = 1/a for large values
-    # This improves numerical stability in different regions
-    var u: Float32
-    if o1:
-        u = a  # Direct evaluation for a < 2.2
-    else:
-        u = 1.0 / a  # Use reciprocal for a >= 2.2
-
-    # Coefficients are domain-specific for optimal accuracy
-    comptime coeffs0: List[Float32] = [
-        -0.112837917790537404939545770596e1,
-        -0.636619483208481931303752546439e0,
-        -0.102775359343930288081655368891e0,
-        0.1914106123e-1,
-        0.1795156277e-3,
-        -0.1665703603e-2,
-        0.6000166177e-3,
-        -0.8638041618e-4,
-    ]
-    comptime coeffs1: List[Float32] = [
-        -0.112855987376668622084547028949e1,
-        -0.635609463574589034216723775292e0,
-        -0.105247583459338632253369014063e0,
-        0.2260518074e-1,
-        -0.2851036377e-2,
-        0.6002851478e-5,
-        0.5749821503e-4,
-        -0.6236977242e-5,
-    ]
-    comptime coeffs2: List[Float32] = [
-        -0.572319781150472949561786101080e0,
-        -0.134450203224533979217859332703e-2,
-        -0.482365310333045318680618892669e0,
-        -0.1328857988e0,
-        0.1249150872e1,
-        -0.1816803217e1,
-        0.1288077235e1,
-        -0.3869504035e0,
-    ]
-    comptime coeffs3: List[Float32] = [
-        -0.572364030327966044425932623525e0,
-        -0.471199543422848492080722832666e-4,
-        -0.498961546254537647970305302739e0,
-        -0.1262947265e-1,
-        0.7155663371e0,
-        -0.3667259514e0,
-        -0.9454904199e0,
-        0.1115344167e1,
-    ]
-
-    # Evaluate polynomial using Horner's method
-    var d: Float32
-    if o0:
-        d = polynomial_evaluate[coeffs0](u)
-    elif o1:
-        d = polynomial_evaluate[coeffs1](u)
-    elif o2:
-        d = polynomial_evaluate[coeffs2](u)
-    else:
-        d = polynomial_evaluate[coeffs3](u)
-
-    # Compute argument for exponential
-    # For small a: x = d * a (using original a value)
-    # For large a: x = -a² + d
-    var exp_arg = d * a if o1 else (-a * a) + d
-
-    # Compute exponential: exp(exp_arg)
-    var result = exp(exp_arg)
-
-    # For large a, multiply by u = 1/a
-    if not o1:
-        result *= u
-
-    # Return 0 for very large values (a >= 10.1)
-    if not o3:
-        result = 0.0
-
-    # Apply symmetry: erfc(-x) = 2 - erfc(x)
-    if s < 0:
-        result = 2.0 - result
-
-    return result
-
-
 def erfc[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
@@ -2646,17 +2527,13 @@ def erfc[
         The `erfc` of the input.
     """
 
-    comptime if size_of[dtype]() < size_of[DType.float32]():
-        return erfc(x.cast[.float32]()).cast[dtype]()
-    elif dtype == .float64:
-        return _call_libm["erfc"](x)
-    else:
-        var result = SIMD[.float32, width]()
+    _assert_float64_supported[dtype, "erfc"]()
 
-        for i in range(width):
-            result[i] = _erfcf(rebind[Float32](x[i]))
-
-        return rebind[type_of(x)](result)
+    comptime if bit_width_of[dtype]() < 32:
+        return _erfc_f32(x.cast[.float32]()).cast[dtype]()
+    elif dtype == .float32:
+        return _erfc_f32(x._refine[.float32]())._refine[dtype]()
+    return _erfc_f64(x._refine[.float64]())._refine[dtype]()
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4040,6 +3917,10 @@ def round[T: Roundable, //](number: T, ndigits: Int) -> T:
 # These run unchanged on CPU and GPU, so they avoid the target-dependent
 # approximations (`sqrt.approx`, `lg2.approx`, `ex2.approx` on NVIDIA) and
 # keep float32 paths free of float64 values, which Apple GPUs reject.
+# Sources are cited per function. Compilers may contract a*b + c into an
+# fma depending on target and flags, so results can differ between targets
+# in the last ulp outside paths that use explicit fma. Apple GPUs may flush
+# subnormals and carry no correct-rounding guarantee for sqrt.
 # Sources are cited per function. Compilers may contract a*b + c into an fma
 # depending on target and flags, so results can differ between targets in the
 # last ulp outside paths that use explicit fma. Apple GPUs may flush subnormals
@@ -4052,6 +3933,7 @@ comptime _LN2 = 0.69314718055994530941723212145817656807550013436026
 # (21 trailing zero bits), so k * _LN2_HI_F64 is exact for |k| < 2^21.
 comptime _LN2_HI_F64 = 6.93147180369123816490e-01
 comptime _LN2_LO_F64 = 1.90821492927058770002e-10
+
 
 comptime _TWO_OVER_PI = 0.63661977236758134307553505349005744813783858296183
 
@@ -4177,6 +4059,109 @@ def _two_sum[
     var s = a + b
     var bb = s - a
     return (s, (a - (s - bb)) + (b - bb))
+
+
+@inline(.always)
+def _exp_kernel[
+    dtype: DType, width: SIMDLength, //
+](hi: SIMD[dtype, width], lo: type_of(hi)) -> type_of(hi):
+    """Returns `exp(hi - lo)` for `|hi - lo| <= ln2/2` (fdlibm e_exp.c,
+    musl expf.c)."""
+    var r = hi - lo
+    var t = r * r
+    var p: type_of(hi)
+    comptime if dtype == .float64:
+        p = polynomial_evaluate[
+            [
+                Scalar[dtype](1.66666666666666019037e-01),
+                -2.77777777770155933842e-03,
+                6.61375632143793436117e-05,
+                -1.65339022054652515390e-06,
+                4.13813679705723846039e-08,
+            ]
+        ](t)
+    else:
+        comptime assert dtype == .float32, "expected float32 or float64"
+        p = polynomial_evaluate[
+            [Scalar[dtype](1.6666625440e-1), -2.7667332906e-3]
+        ](t)
+    var c = r - t * p
+    return 1.0 - ((lo - (r * c) / (2.0 - c)) - hi)
+
+
+@inline(.always)
+def _scale_pow2[
+    dtype: DType, width: SIMDLength, //
+](m: SIMD[dtype, width], k: type_of(m)) -> type_of(m):
+    """Returns `m * 2^k` for integral `|k|` up to about twice the exponent
+    range. Of the two power-of-two steps only the second can round, so a
+    subnormal result rounds once from `m`. The first step is subnormal only
+    when the result is, so on targets that flush subnormals normal results
+    are correct and subnormal results flush to zero.
+    """
+    comptime int_type = FPUtils[dtype].integral_type
+    comptime bias = SIMD[int_type, width](FPUtils[dtype].exponent_bias())
+    comptime shift = SIMD[int_type, width](FPUtils[dtype].mantissa_width())
+    var ki = k.cast[int_type]()
+    var k1 = ki >> 1
+    var s1 = type_of(m)(from_bits=(k1 + bias) << shift)
+    var s2 = type_of(m)(from_bits=(ki - k1 + bias) << shift)
+    return (m * s1) * s2
+
+
+# `_erfc_f32` and `_erfc_f64` follow FreeBSD msun s_erff.c / s_erf.c (Sun
+# fdlibm) but evaluate exp(-z*z - 0.5625 + a) as one exp with the fdlibm
+# e_exp.c / e_expf.c reduction. z*z and k*ln2_hi are exact and nearly cancel,
+# so the reduced argument carries no rounding error from the large -z*z term.
+# std `exp` is not used: on GPU its f32 form is `ex2.approx(x * log2e)`, and
+# its f64 form clamps at -709 and cannot return subnormals. The result comes
+# back as `p * 2**k`, and the caller scales `p / x` by `2**k` last, so a
+# subnormal erfc rounds twice: once in the division and once into the
+# subnormal range. On targets that flush subnormals, subnormal inputs are
+# handled and normal results are correct; subnormal results flush to zero.
+@inline(.always)
+def _erfc_exp[
+    dtype: DType, width: SIMDLength, //
+](zz: SIMD[dtype, width], a: type_of(zz)) -> Tuple[type_of(zz), type_of(zz)]:
+    """Returns `(p, k)` with `exp(-zz - 0.5625 + a) = p * 2**k`."""
+    # ln2_hi has 21 (float64) or 9 (float32) trailing zero bits, so k * ln2_hi
+    # is exact over the clamped range of k.
+    comptime is_f64 = dtype == .float64
+    comptime ln2_hi = Scalar[dtype](_LN2_HI_F64 if is_f64 else 6.9314575195e-01)
+    comptime ln2_lo = Scalar[dtype](_LN2_LO_F64 if is_f64 else 1.4286067653e-06)
+    # For float32, |k| <= 245 here, within the 2 * 126 that `_scale_pow2`
+    # handles.
+    comptime bound = Scalar[dtype](1200.0 if is_f64 else 170.0)
+    var k = floor((a - zz - 0.5625).clamp(-bound, bound) * log2e + 0.5)
+    var hi = ((-zz - k * ln2_hi) - 0.5625) + a
+    return (_exp_kernel(hi, k * ln2_lo), k)
+
+
+@inline(.always)
+def _erf_small_ratio_f64[
+    width: SIMDLength, //
+](z: SIMD[.float64, width]) -> type_of(z):
+    """Returns `y` with `erf(x) = x + x*y` for `|x| < 0.84375`, `z = x*x`."""
+    return polynomial_evaluate[
+        [
+            Float64(1.28379167095512558561e-01),
+            -3.25042107247001499370e-01,
+            -2.84817495755985104766e-02,
+            -5.77027029648944159157e-03,
+            -2.37630166566501626084e-05,
+        ]
+    ](z) / polynomial_evaluate[
+        [
+            Float64(1.0),
+            3.97917223959155352819e-01,
+            6.50222499887672944485e-02,
+            5.08130628187576562776e-03,
+            1.32494738004321644526e-04,
+            -3.96022827877536812320e-06,
+        ]
+    ](
+        z
+    )
 
 
 def _scalbn_impl[
@@ -4987,6 +4972,246 @@ def _log1p_accurate[
 
 
 @inline(.always)
+def _erf_mid_ratio_f64[
+    width: SIMDLength, //
+](s: SIMD[.float64, width]) -> Tuple[type_of(s), type_of(s)]:
+    """Returns `(p, q)` with `erf(1 + s) - erx = p / q` for
+    `0.84375 <= 1 + s < 1.25`."""
+    var p = polynomial_evaluate[
+        [
+            Float64(-2.36211856075265944077e-03),
+            4.14856118683748331666e-01,
+            -3.72207876035701323847e-01,
+            3.18346619901161753674e-01,
+            -1.10894694282396677476e-01,
+            3.54783043256182359371e-02,
+            -2.16637559486879084300e-03,
+        ]
+    ](s)
+    var q = polynomial_evaluate[
+        [
+            Float64(1.0),
+            1.06420880400844228286e-01,
+            5.40397917702171048937e-01,
+            7.18286544141962662868e-02,
+            1.26171219808761642112e-01,
+            1.36370839120290507362e-02,
+            1.19844998467991074170e-02,
+        ]
+    ](s)
+    return (p, q)
+
+
+def _erf_f64[width: SIMDLength, //](x: SIMD[.float64, width]) -> type_of(x):
+    # FreeBSD msun s_erf.c. For 1.25 <= |x| < 6 it computes 1 - erfc(|x|)
+    # from the same exp(-x*x - 0.5625 + R/S) / |x| tail as erfc.
+    comptime erx = 8.45062911510467529297e-01
+    var ax = abs(x)
+    var small = x.fma(_erf_small_ratio_f64(x * x), x)
+    var pq = _erf_mid_ratio_f64(ax - 1.0)
+    var r = ax.lt(1.25).select(erx + pq[0] / pq[1], 1.0 - _erfc_f64(ax))
+    return ax.lt(0.84375).select(small, copysign(r, x))
+
+
+def _erfc_f64[width: SIMDLength, //](x: SIMD[.float64, width]) -> type_of(x):
+    var ax = abs(x)
+    var neg = x.lt(0)
+
+    # |x| < 0.84375
+    var z = x * x
+    var y = _erf_small_ratio_f64(z)
+    # Above 0.25, 0.5 - (x*y + (x - 0.5)) as fdlibm, but keeping the rounding
+    # errors of the inner sum s and of 0.5 - s: near 0.84375 erfc is under
+    # 0.25 while s is over it, so half an ulp of s is a whole ulp of erfc.
+    # d - s is exact there (Sterbenz).
+    var d = x - 0.5
+    var s_mid = x.fma(y, d)
+    var e_mid = x.fma(y, d - s_mid)
+    var h = _two_sum(type_of(x)(0.5), -s_mid)
+    var small = x.lt(0.25).select(1.0 - (x + x * y), h[0] + (h[1] - e_mid))
+
+    # 0.84375 <= |x| < 1.25
+    comptime erx = 8.45062911510467529297e-01
+    var pn_qd = _erf_mid_ratio_f64(ax - 1.0)
+    var pn = pn_qd[0]
+    var qd = pn_qd[1]
+    # erfc is down to 0.07 here while pq reaches 0.08, so keep the rounding
+    # errors of pq and of (1 - erx) - pq.
+    var pq = pn / qd
+    var pq_lo = qd.fma(-pq, pn) / qd
+    var m = _two_sum(type_of(x)(1.0 - erx), -pq)
+    var mid = neg.select(1.0 + (erx + pq), m[0] + (m[1] - pq_lo))
+
+    # 1.25 <= |x| < 28: erfc(x) = exp(-x*x - 0.5625 + R/S) / x, with x*x
+    # split around z (x with the low 32 bits cleared, so z*z is exact).
+    var w = 1.0 / (ax * ax)
+    var ra = polynomial_evaluate[
+        [
+            Float64(-9.86494403484714822705e-03),
+            -6.93858572707181764372e-01,
+            -1.05586262253232909814e01,
+            -6.23753324503260060396e01,
+            -1.62396669462573470355e02,
+            -1.84605092906711035994e02,
+            -8.12874355063065934246e01,
+            -9.81432934416914548592e00,
+        ]
+    ](w) / polynomial_evaluate[
+        [
+            Float64(1.0),
+            1.96512716674392571292e01,
+            1.37657754143519042600e02,
+            4.34565877475229228821e02,
+            6.45387271733267880336e02,
+            4.29008140027567833386e02,
+            1.08635005541779435134e02,
+            6.57024977031928170135e00,
+            -6.04244152148580987438e-02,
+        ]
+    ](
+        w
+    )
+    var rb = polynomial_evaluate[
+        [
+            Float64(-9.86494292470009928597e-03),
+            -7.99283237680523006574e-01,
+            -1.77579549177547519889e01,
+            -1.60636384855821916062e02,
+            -6.37566443368389627722e02,
+            -1.02509513161107724954e03,
+            -4.83519191608651397019e02,
+        ]
+    ](w) / polynomial_evaluate[
+        [
+            Float64(1.0),
+            3.03380607434824582924e01,
+            3.25792512996573918826e02,
+            1.53672958608443695994e03,
+            3.19985821950859553908e03,
+            2.55305040643316442583e03,
+            4.74528541206955367215e02,
+            -2.24409524465858183362e01,
+        ]
+    ](
+        w
+    )
+    # 0x4006DB6D00000000, about 1/0.35.
+    var split = SIMD[.float64, width](from_bits=UInt64(0x4006DB6D00000000))
+    var zh = type_of(x)(from_bits=ax.to_bits[.uint64]() & 0xFFFFFFFF00000000)
+    # As `_erfc_exp`, but the exponent and the exp result are carried in
+    # double-word up to the division by x: one rounding in p and another in
+    # p / x can add to 1.6 ulp when p / x falls just below a power of 2.
+    var zz = zh * zh
+    var a = _two_sum(ax.lt(split).select(ra, rb), (zh - ax) * (zh + ax))
+    var k = floor((a[0] - zz - 0.5625).clamp(-1200.0, 1200.0) * log2e + 0.5)
+    var b = _two_sum(-zz - k * _LN2_HI_F64, type_of(x)(-0.5625))
+    var c = _two_sum(b[0], a[0])
+    var e_hi = c[0]
+    var e_lo = k * _LN2_LO_F64 - ((b[1] + c[1]) + a[1])
+    # fdlibm e_exp.c kernel: exp(e_hi - e_lo) = 1 - q.
+    var r = e_hi - e_lo
+    var t = r * r
+    var rc = r - t * polynomial_evaluate[
+        [
+            Float64(1.66666666666666019037e-01),
+            -2.77777777770155933842e-03,
+            6.61375632143793436117e-05,
+            -1.65339022054652515390e-06,
+            4.13813679705723846039e-08,
+        ]
+    ](t)
+    var p = _two_sum(type_of(x)(1.0), (e_hi - (e_lo - (r * rc) / (2.0 - rc))))
+    var quot = p[0] / ax
+    quot += (ax.fma(-quot, p[0]) + p[1]) / ax
+    var tail = _scale_pow2(quot, k)
+    var big = neg.select(2.0 - tail, tail)
+
+    var result = ax.lt(0.84375).select(
+        small,
+        ax.lt(1.25).select(
+            mid,
+            ax.lt(28.0).select(big, neg.select(type_of(x)(2.0), 0.0)),
+        ),
+    )
+    # erfc(x) rounds to 2 for x <= -6.
+    result = x.le(-6.0).select(type_of(x)(2.0), result)
+    return isnan(x).select(x, result)
+
+
+def _erfc_f32[width: SIMDLength, //](x: SIMD[.float32, width]) -> type_of(x):
+    var ax = abs(x)
+    var neg = x.lt(0)
+
+    # |x| < 0.84375
+    var z = x * x
+    var y = polynomial_evaluate[
+        [Float32(1.28379166e-01), -3.36030394e-01, -1.86261395e-03]
+    ](z) / polynomial_evaluate[
+        [Float32(1.0), 3.12324315e-01, 2.16070414e-02, -1.98859372e-03]
+    ](
+        z
+    )
+    var small = x.lt(0.25).select(1.0 - (x + x * y), 0.5 - (x * y + (x - 0.5)))
+
+    # 0.84375 <= |x| < 1.25
+    comptime erx = Float32(8.42697144e-01)
+    var s = ax - 1.0
+    var pq = polynomial_evaluate[
+        [
+            Float32(3.65041046e-06),
+            4.15109307e-01,
+            -2.09395722e-01,
+            8.67677554e-02,
+        ]
+    ](s) / polynomial_evaluate[
+        [Float32(1.0), 4.95560974e-01, 3.71248513e-01, 3.92478965e-02]
+    ](
+        s
+    )
+    var mid = neg.select(1.0 + (erx + pq), (1.0 - erx) - pq)
+
+    # 1.25 <= |x| < 11, with z = x with the low 13 bits cleared.
+    var w = 1.0 / (ax * ax)
+    var ra = polynomial_evaluate[
+        [
+            Float32(-9.88156721e-03),
+            -5.43658376e-01,
+            -1.66828310e00,
+            -6.91554189e-01,
+        ]
+    ](w) / polynomial_evaluate[
+        [Float32(1.0), 4.48581553e00, 4.10799170e00, 5.53855181e-01]
+    ](
+        w
+    )
+    var rb = polynomial_evaluate[
+        [Float32(-9.86496918e-03), -5.48049808e-01, -1.84115684e00]
+    ](w) / polynomial_evaluate[
+        [Float32(1.0), 4.87132740e00, 3.04982710e00, -7.61900663e-01]
+    ](
+        w
+    )
+    # 0x4036db8c, about 1/0.35.
+    var split = SIMD[.float32, width](from_bits=UInt32(0x4036DB8C))
+    var zh = type_of(x)(from_bits=ax.to_bits[.uint32]() & 0xFFFFE000)
+    var e = _erfc_exp(
+        zh * zh, (zh - ax) * (zh + ax) + ax.lt(split).select(ra, rb)
+    )
+    var tail = _scale_pow2(e[0] / ax, e[1])
+    var big = neg.select(2.0 - tail, tail)
+
+    var result = ax.lt(0.84375).select(
+        small,
+        ax.lt(1.25).select(
+            mid,
+            ax.lt(11.0).select(big, neg.select(type_of(x)(2.0), 0.0)),
+        ),
+    )
+    # erfc(x) rounds to 2 for x <= -5.
+    result = x.le(-5.0).select(type_of(x)(2.0), result)
+    return isnan(x).select(x, result)
+
+
 def _atanh_impl[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():

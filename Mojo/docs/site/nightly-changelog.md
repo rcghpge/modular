@@ -386,6 +386,11 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `float64` `erfc()` no longer calls the system libm and now runs on GPU as
+  well as CPU, and `float64` `erf()` now uses a `float64` approximation and
+  is accurate to about 1 ulp. Both share one Mojo implementation with
+  `float32` `erfc()`, so on CPU their results can differ from the system
+  libm in the last ulp.
 - `std.math.tan` no longer calls the system libm and now runs on GPU as well
   as CPU. On CPU its results come from the same Mojo implementation, so they
   can differ from the system libm in the last ulp, and CPU and GPU results
@@ -495,6 +500,10 @@ This version is still a work in progress.
   rejected with `struct has recursive reference to itself`, despite the
   recursion being behind a pointer.
 
+- `float32` `erfc()` is now accurate in its tail, for large positive inputs,
+  and returns subnormal results instead of flushing them to zero. On targets
+  that flush subnormals, subnormal inputs are handled and normal results are
+  correct; subnormal results flush to zero.
 - `cbrt()` of `inf` and `-inf` now returns `inf` and `-inf` instead of
   `Float32.MAX` and `-Float32.MAX`, and `float32` `cbrt()` is correct near
   `Float32.MAX` and for subnormal inputs. On targets that flush subnormals,
