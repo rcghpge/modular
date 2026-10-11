@@ -541,7 +541,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
     transpose_b: Bool,
     *,
     config: MatmulConfig[_, _, _, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: Optional[UInt32] = None,
     EpilogueLayoutType: TensorLayout = RowMajorLayout[Int64, Int64],
@@ -570,8 +569,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
         transpose_b: Whether B is stored transposed as (N, K). Must be True.
         config: Matmul configuration holding tile shapes, dtypes, swizzle
             modes, cluster shape, and pipeline stages.
-        elementwise_lambda_fn: Optional epilogue lambda applied in the
-            epilogue phase (defaults to None).
         pdl_level: Programmatic dependent launch level for the kernel
             (defaults to PDLLevel()).
         max_profiled_tiles_per_SM: Maximum number of tiles to profile per SM;
@@ -601,14 +598,12 @@ def blackwell_matmul_tma_umma_warp_specialized[
             _blackwell_matmul_tma_umma_warp_specialized_split_k[
                 transpose_b,
                 config=new_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
             ](c_device, b_device, a_device, ctx)
         else:
             _blackwell_matmul_tma_umma_warp_specialized_split_k[
                 transpose_b,
                 config=config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
             ](c_device, a_device, b_device, ctx)
     else:
@@ -616,7 +611,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
             blackwell_batched_matmul_tma_umma_warp_specialized[
                 transpose_b,
                 config=config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
                 max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
             ](
@@ -630,7 +624,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
             blackwell_batched_matmul_tma_umma_warp_specialized[
                 transpose_b,
                 config=config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
                 pdl_level=pdl_level,
                 max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
             ](c_device, a_device, b_device, ctx)
@@ -642,7 +635,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
     transpose_b: Bool,
     *,
     config: MatmulConfig[_, _, _, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: Optional[UInt32] = None,
     EpilogueLayoutType: TensorLayout = RowMajorLayout[Int64, Int64],
@@ -666,7 +658,7 @@ def blackwell_matmul_tma_umma_warp_specialized[
     """SM100 matmul (non-batched, rank-2 inputs) with a compute epilogue
     closure.
 
-    Same as the `elementwise_lambda_fn` form, plus a runtime unified closure
+    Same as the overload without `compute_fn`, plus a runtime unified closure
     applied to each output value before it is stored. Its captures, and the
     origins they carry, stay live until the launch is enqueued, so a buffer
     the epilogue reads cannot be destroyed before the kernel runs. Split-K
@@ -677,9 +669,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
         transpose_b: Whether B is stored transposed as (N, K). Must be True.
         config: Matmul configuration holding tile shapes, dtypes, swizzle
             modes, cluster shape, and pipeline stages.
-        elementwise_lambda_fn: Optional epilogue lambda applied in the
-            epilogue phase; mutually exclusive with a compute epilogue
-            (defaults to None).
         pdl_level: Programmatic dependent launch level for the kernel
             (defaults to PDLLevel()).
         max_profiled_tiles_per_SM: Maximum number of tiles to profile per SM;
@@ -689,8 +678,8 @@ def blackwell_matmul_tma_umma_warp_specialized[
         EpilogueEngine: Engine of the epilogue tensor (defaults to
             DefaultEngine[element_width=1]).
         has_compute_fn: Whether to apply `compute_fn`. When False,
-            `compute_fn` is ignored and this is the `elementwise_lambda_fn`
-            form (defaults to True).
+            `compute_fn` is ignored and this is the overload without it
+            (defaults to True).
 
     Args:
         c_device: Output TileTensor of shape (M, N).
@@ -708,7 +697,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
         blackwell_matmul_tma_umma_warp_specialized[
             transpose_b,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
             EpilogueLayoutType=EpilogueLayoutType,
@@ -747,7 +735,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
         _blackwell_matmul_tma_umma_warp_specialized_impl[
             transpose_b,
             config=new_config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
             EpilogueLayoutType=EpilogueLayoutType,
@@ -768,7 +755,6 @@ def blackwell_matmul_tma_umma_warp_specialized[
         _blackwell_matmul_tma_umma_warp_specialized_impl[
             transpose_b,
             config=config,
-            elementwise_lambda_fn=elementwise_lambda_fn,
             pdl_level=pdl_level,
             max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
             EpilogueLayoutType=EpilogueLayoutType,
@@ -892,11 +878,8 @@ def blackwell_matmul_tma_umma_warp_specialized[
     """SM100 matmul (non-batched, rank-2 inputs) that stores its output
     through an elementwise epilogue closure.
 
-    Same as the `elementwise_lambda_fn` form, but the epilogue is a runtime
-    unified closure that owns the store: `c_device` supplies the output shape
-    and is not written. Its captures, and the origins they carry, stay live
-    until the launch is enqueued. Split-K and `use_tma_epilogue_load` configs
-    are not supported.
+    Same as the overload taking the output shape, which it calls with the
+    shape of `c_device`.
 
     Parameters:
         EpilogueFnType: Type of the elementwise epilogue closure.
@@ -921,9 +904,77 @@ def blackwell_matmul_tma_umma_warp_specialized[
     comptime assert (
         type_of(c_device).rank == 2
     ), "the elementwise epilogue value overload takes rank-2 inputs"
+    blackwell_matmul_tma_umma_warp_specialized[
+        transpose_b,
+        config=config,
+        pdl_level=pdl_level,
+        max_profiled_tiles_per_SM=max_profiled_tiles_per_SM,
+    ](
+        IndexList[2](Int(c_device.dim[0]()), Int(c_device.dim[1]())),
+        a_device,
+        b_device,
+        epilogue_fn,
+        ctx,
+    )
+
+
+def blackwell_matmul_tma_umma_warp_specialized[
+    EpilogueFnType: ElementwiseEpilogueFn,
+    //,
+    transpose_b: Bool,
+    *,
+    config: MatmulConfig[_, _, _, transpose_b],
+    pdl_level: PDLLevel = PDLLevel(),
+    max_profiled_tiles_per_SM: Optional[UInt32] = None,
+](
+    c_shape: IndexList[2],
+    a_device: TileTensor,
+    b_device: TileTensor,
+    epilogue_fn: EpilogueFnType,
+    ctx: DeviceContext,
+) raises:
+    """SM100 matmul (non-batched, rank-2 inputs) that stores its output
+    through an elementwise epilogue closure, given only the output shape.
+
+    The epilogue is a runtime unified closure that owns the store, so it can
+    capture the output tensor itself. Its captures, and the origins they
+    carry, stay live until the launch is enqueued. Split-K and
+    `use_tma_epilogue_load` configs are not supported.
+
+    Parameters:
+        EpilogueFnType: Type of the elementwise epilogue closure.
+        transpose_b: Whether B is stored transposed as (N, K). Must be True.
+        config: Matmul configuration holding tile shapes, dtypes, swizzle
+            modes, cluster shape, and pipeline stages.
+        pdl_level: Programmatic dependent launch level for the kernel
+            (defaults to PDLLevel()).
+        max_profiled_tiles_per_SM: Maximum number of tiles to profile per SM;
+            when set, enables kernel profiling (defaults to None).
+
+    Args:
+        c_shape: Output shape (M, N).
+        a_device: LHS TileTensor of shape (M, K).
+        b_device: RHS TileTensor of shape (N, K) (transposed).
+        epilogue_fn: Stores each output value. Signature:
+            `def[dtype, width, *, alignment](IndexList[2], SIMD)`, with
+            coordinates in the (M, N) output.
+        ctx: Device context used to create TMA descriptors and enqueue the
+            kernel.
+    """
     comptime assert (
         config.num_split_k == 1
     ), "split-K does not support an elementwise epilogue value"
+
+    # The epilogue owns every store, so the kernel never dereferences C's
+    # TMA descriptor; it is encoded over a null address. A pointer derived
+    # from `a_device` or `b_device` would alias them in the launch call.
+    var c_ptr: Optional[
+        UnsafePointer[Scalar[config.c_type], MutUntrackedOrigin]
+    ] = None
+    var c_shape_only = TileTensor(
+        c_ptr._unsafe_nullable(),
+        tt_row_major(Coord(IndexList[3](1, c_shape[0], c_shape[1]))),
+    )
 
     def no_compute_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int
@@ -944,7 +995,7 @@ def blackwell_matmul_tma_umma_warp_specialized[
             has_compute_fn=False,
             compute_fn_reads_c=False,
         ](
-            _to_batched_3d(c_device),
+            c_shape_only,
             _to_batched_3d(b_device),
             _to_batched_3d(a_device),
             ctx,
@@ -961,7 +1012,7 @@ def blackwell_matmul_tma_umma_warp_specialized[
             has_compute_fn=False,
             compute_fn_reads_c=False,
         ](
-            _to_batched_3d(c_device),
+            c_shape_only,
             _to_batched_3d(a_device),
             _to_batched_3d(b_device),
             ctx,
@@ -974,7 +1025,6 @@ def _blackwell_matmul_tma_umma_warp_specialized_split_k[
     transpose_b: Bool,
     *,
     config: MatmulConfig[_, _, _, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     max_profiled_tiles_per_SM: Optional[UInt32] = None,
 ](
     c_device: TileTensor,
@@ -997,9 +1047,6 @@ def _blackwell_matmul_tma_umma_warp_specialized_split_k[
     comptime BN = MMA_N // config.cta_group
     comptime BK = config.block_tile_shape[2]
 
-    comptime assert (
-        elementwise_lambda_fn is None
-    ), "Split-K does not support elementwise epilogue function yet!"
     comptime assert config.cta_group in (
         1,
         2,
