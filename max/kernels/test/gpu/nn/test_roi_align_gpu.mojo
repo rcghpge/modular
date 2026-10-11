@@ -50,9 +50,10 @@ def test_roi_align_gpu[
         var idx = input.layout(i)
         input.raw_store(idx, Scalar[dtype](i))
 
-    # Host rois: a spread of boxes, including one that overflows the input
-    # (negative start, end past the edge) to exercise the bilinear clamp and
-    # the out-of-range early-out.
+    # Host rois: a spread of boxes. The first ROI starts at -1 (x0 = y0 = -1
+    # for ri = 0), which exercises the negative-start clamp (y = max(y, 0));
+    # for large m the ROI ends (x1 = y1 = ri + 3) run far past the input,
+    # which exercises the out-of-range early-out (y > height / x > width).
     var rois_host = ctx.enqueue_create_host_buffer[dtype](roi_layout.product())
     ctx.synchronize()
     var rois = TileTensor(rois_host, roi_layout)
@@ -165,4 +166,13 @@ def main() raises:
         )
         test_roi_align_gpu[dtype, True, "MAX", 2, 8, 8, 4, 3, 4, 4](
             0.5, 1.0, ctx
+        )
+        # Many ROIs so total_rows exceeds sm_count * block_dim.y: forces
+        # rows_per_block > block_dim.y and exercises the row grid-stride.
+        test_roi_align_gpu[dtype, False, "AVG", 2, 10, 10, 1, 200, 5, 5](
+            1.0, 2.0, ctx
+        )
+        # More than 32 channels: exercises the channel grid-stride.
+        test_roi_align_gpu[dtype, True, "MAX", 2, 10, 10, 40, 4, 5, 5](
+            1.0, 2.0, ctx
         )

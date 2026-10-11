@@ -61,9 +61,11 @@ def roi_align_kernel[
 ):
     """One thread per output element ``[ri, ph, pw, c]``.
 
-    The block's ``x`` dimension spans the channel axis (up to 32 channels);
-    the ``y`` dimension spans pooled ``(ph, pw)`` rows.  The grid spans the
-    region axis, chunked by ``rows_per_block``.
+    The block's ``x`` dimension strides the channel axis (32 channels per
+    pass); the ``y`` dimension strides the pooled ``(ph, pw)`` rows assigned
+    to the block.  The grid spans the region axis, chunked by
+    ``rows_per_block``; each block grid-strides its assigned rows and
+    channels so the launch covers every output element.
     """
     comptime assert mode == "AVG" or mode == "MAX", "mode must be AVG or MAX"
 
@@ -81,10 +83,7 @@ def roi_align_kernel[
     var start_row = block_idx.x * _rows_per_block
     var end_row = min(start_row + _rows_per_block, _total_rows)
 
-    var row = start_row + thread_idx.y
-    for _ in range(0, rows_per_iter):
-        if row >= end_row:
-            break
+    for row in range(start_row + thread_idx.y, end_row, rows_per_iter):
         var ri = row // (_pooled_height * _pooled_width)
         var rem = row % (_pooled_height * _pooled_width)
         var ph = rem // _pooled_width
@@ -120,13 +119,18 @@ def roi_align_kernel[
         )
         var pool_elemn_num = max(roi_bin_grid_h * roi_bin_grid_w, 1)
 
-        var c = thread_idx.x
-        if c < channels:
+        for c in range(thread_idx.x, channels, block_dim.x):
             var pool_val: Scalar[dtype]
             comptime if mode == "AVG":
                 pool_val = 0
             else:
                 pool_val = min_or_neg_inf[dtype]()
+
+            var in_base = input_tensor.ptr + Int(
+                input_tensor.layout(Coord(roi_batch_idx, 0, 0, c))
+            )
+            var in_stride_h = Int(input_tensor.layout.stride[1]().value())
+            var in_stride_w = Int(input_tensor.layout.stride[2]().value())
 
             for iy in range(roi_bin_grid_h):
                 for ix in range(roi_bin_grid_w):
@@ -168,16 +172,6 @@ def roi_align_kernel[
                     var w2 = hy * lx
                     var w3 = ly * hx
                     var w4 = ly * lx
-
-                    var in_base = input_tensor.ptr + Int(
-                        input_tensor.layout(Coord(roi_batch_idx, 0, 0, c))
-                    )
-                    var in_stride_h = Int(
-                        input_tensor.layout.stride[1]().value()
-                    )
-                    var in_stride_w = Int(
-                        input_tensor.layout.stride[2]().value()
-                    )
 
                     comptime if mode == "AVG":
                         pool_val = pool_val + (
@@ -240,8 +234,6 @@ def roi_align_kernel[
                 out_ptr[0] = pool_val / Scalar[dtype](pool_elemn_num)
             else:
                 out_ptr[0] = pool_val
-
-        row += rows_per_iter
 
 
 def _roi_align_impl[
