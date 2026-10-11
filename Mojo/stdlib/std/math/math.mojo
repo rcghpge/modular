@@ -2005,6 +2005,7 @@ def tan[
 
     Constraints:
         The input must be a floating-point type.
+        `float64` is not supported on Apple GPUs.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
@@ -2017,7 +2018,16 @@ def tan[
         The `tan` of the input.
     """
 
-    return _call_libm["tan"](x)
+    _assert_float64_supported[dtype, "tan"]()
+
+    comptime if dtype == .bfloat16 and is_apple_gpu():
+        # A float32 -> bfloat16 cast flushes subnormal results on Apple GPUs.
+        return rebind[type_of(x)](
+            _narrow_f32_to_bf16_bits(_tan_impl(x.cast[.float32]()))
+        )
+    elif bit_width_of[dtype]() < 32:
+        return _tan_impl(x.cast[.float32]()).cast[dtype]()
+    return _tan_impl(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4043,6 +4053,8 @@ comptime _LN2 = 0.69314718055994530941723212145817656807550013436026
 comptime _LN2_HI_F64 = 6.93147180369123816490e-01
 comptime _LN2_LO_F64 = 1.90821492927058770002e-10
 
+comptime _TWO_OVER_PI = 0.63661977236758134307553505349005744813783858296183
+
 
 # ===----------------------------------------------------------------------=== #
 # Shared kernels
@@ -4271,6 +4283,288 @@ def _narrow_f32_to_bf16_bits[
     var rounded = (b + 0x7FFF + ((b >> 16) & 1)) >> 16
     var r = isnan(x).select((b >> 16) | 0x40, rounded)
     return SIMD[DType.bfloat16, width](from_bits=r.cast[DType.uint16]())
+
+
+# Fraction bits of 2/pi, 64 per word, after one zero word so that a window may
+# start before the binary point. The 19 nonzero words reach the deepest bit a
+# float64 reduction reads (about 1220).
+comptime _TWO_OVER_PI_BITS: List[UInt64] = [
+    0x0000000000000000,
+    0xA2F9836E4E441529,
+    0xFC2757D1F534DDC0,
+    0xDB6295993C439041,
+    0xFE5163ABDEBBC561,
+    0xB7246E3A424DD2E0,
+    0x06492EEA09D1921C,
+    0xFE1DEB1CB129A73E,
+    0xE88235F52EBB4484,
+    0xE99C7026B45F7E41,
+    0x3991D639835339F4,
+    0x9C845F8BBDF9283B,
+    0x1FF897FFDE05980F,
+    0xEF2F118B5A0A6D1F,
+    0x6D367ECF27CB09B7,
+    0x4F463F669E5FEA2D,
+    0x7527BAC7EBE5F17B,
+    0x3D0739F78A5292EA,
+    0x6BFB5FB11F8D5D08,
+    0x56033046FC7B6BAB,
+]
+
+
+@inline(.always)
+def _umul128[
+    width: SIMDLength, //
+](a: SIMD[.uint64, width], b: type_of(a)) -> Tuple[type_of(a), type_of(a)]:
+    """Returns the low and high words of the 128-bit product `a * b`."""
+    var a0 = a & 0xFFFFFFFF
+    var a1 = a >> 32
+    var b0 = b & 0xFFFFFFFF
+    var b1 = b >> 32
+    var p00 = a0 * b0
+    var p01 = a0 * b1
+    var p10 = a1 * b0
+    var mid = (p00 >> 32) + (p01 & 0xFFFFFFFF) + (p10 & 0xFFFFFFFF)
+    var lo = (mid << 32) | (p00 & 0xFFFFFFFF)
+    var hi = a1 * b1 + (p01 >> 32) + (p10 >> 32) + (mid >> 32)
+    return (lo, hi)
+
+
+@inline(.always)
+def _rem_pio2_large[
+    dtype: DType, width: SIMDLength, //, quarter: Bool = False
+](ax: SIMD[dtype, width]) -> Tuple[
+    SIMD[.int32, width], type_of(ax), type_of(ax)
+]:
+    """Payne-Hanek: returns `(n mod 4, hi, lo)` with `ax = n*pi/2 + hi + lo`
+    and `|hi + lo| <= pi/4`, for finite `ax >= 1`. With `quarter`, reduces
+    `ax - pi/4` instead by subtracting 1/2 from the fixed-point `ax * 2/pi`,
+    so the shift costs no precision.
+
+    Uses only integer and `dtype` arithmetic, so the float32 path never
+    touches float64.
+    """
+    comptime T = type_of(ax)
+    comptime U = SIMD[.uint64, width]
+    comptime I = SIMD[.int64, width]
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime bias = FPUtils[dtype].exponent_bias()
+    comptime P = mant + 1
+
+    comptime assert dtype in (DType.float32, DType.float64)
+    var bits = ax.to_bits().cast[.uint64]()
+
+    # ax = m * 2^(E - bias - mant). Fraction bits of 2/pi weighing 2^-j with
+    # j <= E - bias - mant - 2 only add multiples of 4 quadrants, so a 192-bit
+    # window from bit E - bias - mant - 1 (table bit E - bias - mant + 62)
+    # keeps the quadrant and far more fraction bits than the closest approach
+    # of any float to a multiple of pi/2 needs.
+    var m = (bits & U((1 << mant) - 1)) | U(1 << mant)
+    var e = bits >> U(mant)
+    var pos = e + U(62 - bias - mant)
+    var q = pos >> 6
+    var r = pos & 63
+    comptime max_q = (2 * bias + 62 - bias - mant) >> 6
+    var w = StaticTuple[U, 4](fill=U(0))
+    comptime for k in range(max_q + 1):
+        var hit = q.eq(U(k))
+        comptime for j in range(4):
+            comptime word = _TWO_OVER_PI_BITS[k + j]
+            w[j] = hit.select(U(word), w[j])
+    # Shift in two steps so that r == 0 never shifts by 64.
+    var v0 = (w[0] << r) | ((w[1] >> 1) >> (63 - r))
+    var v1 = (w[1] << r) | ((w[2] >> 1) >> (63 - r))
+    var v2 = (w[2] << r) | ((w[3] >> 1) >> (63 - r))
+
+    # (m * v) mod 2^192 is ax * 2/pi mod 4 with two integer bits.
+    var p2 = _umul128(m, v2)
+    var p1 = _umul128(m, v1)
+    var r1 = p2[1] + p1[0]
+    var r0 = p1[1] + m * v0 + r1.lt(p1[0]).select(U(1), U(0))
+    var h = (r0 << 2) | (r1 >> 62)
+    var l = (r1 << 2) | (p2[0] >> 62)
+    # Rounding to the nearest quadrant leaves the signed fraction h:l in
+    # [-1/2, 1/2), split into P-bit chunks that convert to `dtype` exactly.
+    var n: U
+    comptime if quarter:
+        # frac - 1/2 is already in [-1/2, 1/2): flip the half bit and keep the
+        # integer quadrant.
+        n = (r0 >> 62) & 3
+        h ^= U(1) << 63
+    else:
+        n = ((r0 >> 62) + (h >> 63)) & 3
+    var c0 = bitcast[.int64](h) >> I(64 - P)
+    var c1 = bitcast[.int64](((h << U(P)) | (l >> U(64 - P))) >> U(64 - P))
+    var c2: I
+    comptime if 2 * P < 64:
+        c2 = bitcast[.int64](
+            ((h << U(2 * P)) | (l >> U(64 - 2 * P))) >> U(64 - P)
+        )
+    else:
+        c2 = bitcast[.int64]((l << U(2 * P - 64)) >> U(64 - P))
+
+    @inline(.always)
+    def to_float(c: I) -> T:
+        # The chunks fit in 24 bits for float32; convert through int32.
+        comptime if dtype == .float32:
+            return c.cast[.int32]().cast[dtype]()
+        return c.cast[dtype]()
+
+    comptime s1 = 1 / Scalar[dtype](1 << P)
+    var f = _two_sum(to_float(c0) * s1, to_float(c1) * (s1 * s1))
+    var f_lo = f[1] + to_float(c2) * (s1 * s1 * s1)
+
+    comptime is_f32 = dtype == .float32
+    comptime pio2_hi = Scalar[dtype](
+        1.5707963705062866 if is_f32 else 1.5707963267948966
+    )
+    comptime pio2_lo = Scalar[dtype](
+        -4.371138828673793e-08 if is_f32 else 6.123233995736766e-17
+    )
+    # (f + f_lo) * pi/2 as hi + lo. No rounded product feeds an add: one that
+    # did would be contracted into an fma by GPU backends, while its error
+    # term still assumed the rounded value.
+    var t = fma(f[0], pio2_lo, f_lo * pio2_hi)
+    var hi = fma(f[0], pio2_hi, t)
+    var lo = fma(f[0], pio2_hi, -hi) + t
+    return (n.cast[.int32](), hi, lo)
+
+
+@inline(.always)
+def _rem_pio2[
+    dtype: DType, width: SIMDLength, //, quarter: Bool = False
+](x: SIMD[dtype, width]) -> Tuple[SIMD[.int32, width], type_of(x), type_of(x)]:
+    """Returns `(n mod 4, hi, lo)` with `x = n*pi/2 + hi + lo` and `|hi + lo|`
+    at most slightly above pi/4. Lanes with non-finite `x` return unspecified
+    values.
+
+    With `quarter`, reduces `x - pi/4` for `x >= 0` instead: `k` becomes
+    `n + 1/2`, so the shift is folded into the reduction and the result keeps
+    its full relative accuracy where `x - pi/4` is close to a multiple of
+    pi/2 (the Bessel asymptotic phases). `k` then carries one more bit, so
+    `limit` halves.
+
+    Cody-Waite with pi/2 = C1 + C2 + ... + Cn. `fma(-k, C1, x)` is exact (a
+    multiple of ulp(C1)/2 below 1). Below `limit`, k has at most 14 (float32)
+    or 20 (float64) bits and C2 .. C(n-1) at most 10 or 33, so each `k * Ci`
+    is exact and the two-sums that subtract them are error-free whether or
+    not the backend contracts a multiply into a dependent add (NVPTX and
+    AMDGPU do, even when the product has other uses). Only `k * Cn` rounds,
+    and it lands in the low word through an explicit fma. At the floats
+    closest to a multiple of pi/2 the reduced argument is still accurate to
+    2^-39 (float32) or 2^-70 (float64) relative. Larger inputs take the
+    Payne-Hanek path, run only when some lane needs it.
+    """
+    comptime assert dtype in (DType.float32, DType.float64)
+    comptime T = type_of(x)
+    comptime is_f32 = dtype == .float32
+    comptime c1 = Scalar[dtype](
+        1.5707963705062866 if is_f32 else 1.5707963267948966
+    )
+    comptime c2 = Scalar[dtype](
+        -4.371395334601402e-08 if is_f32 else 6.12323399538461e-17
+    )
+    # float64 needs only one exact piece after c1.
+    comptime c3 = Scalar[dtype](2.5650592760939617e-12 if is_f32 else 0.0)
+    comptime c_last = Scalar[dtype](
+        -1.7151245100058819e-15 if is_f32 else 3.5215598651832e-27
+    )
+    comptime limit = Scalar[dtype](
+        (12288.0 if is_f32 else 786432.0) if quarter else (
+            24576.0 if is_f32 else 1572864.0
+        )
+    )
+
+    var small = abs(x).lt(limit)
+    var ac = small.select(x, T(0))
+    var kf: T
+    comptime if quarter:
+        kf = floor(ac * _TWO_OVER_PI) + 0.5
+    else:
+        kf = floor(ac * _TWO_OVER_PI + 0.5)
+    var s = _two_sum(fma(-kf, c1, ac), -kf * c2)
+    var r_hi = s[0]
+    var r_lo = s[1]
+    comptime if dtype == .float32:
+        var s3 = _two_sum(r_hi, -kf * c3)
+        r_hi = s3[0]
+        r_lo += s3[1]
+    var y = _two_sum(r_hi, fma(-kf, c_last, r_lo))
+    var n: SIMD[.int32, width]
+    comptime if dtype == .float32:
+        n = kf.cast[.int32]() & 3
+    else:
+        n = kf.cast[.int64]().cast[.int32]() & 3
+    var hi = y[0]
+    var lo = y[1]
+
+    var large = ~small & isfinite(x)
+    if large.reduce_or():
+        var ax = abs(x)
+        var big = _rem_pio2_large[quarter=quarter](large.select(ax, T(limit)))
+        var neg = x.lt(0)
+        n = large.select(neg.select(-big[0], big[0]) & 3, n)
+        hi = large.select(neg.select(-big[1], big[1]), hi)
+        lo = large.select(neg.select(-big[2], big[2]), lo)
+    return (n, hi, lo)
+
+
+@inline(.always)
+def _tan_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x):
+    comptime T = type_of(x)
+    var red = _rem_pio2(x)
+    var y = red[1]
+    var yl = red[2]
+    var z = y * y
+    # tan(y + yl) = y + c with c = y^3 R(y^2) + tan'(y) yl, tan'(y) ~ 1 + y^2.
+    var c: T
+    comptime if dtype == .float32:
+        # Minimax fit of the relative error of tan (max 2.7e-9 after rounding
+        # the coefficients) on |y| <= pi/4.
+        var p = polynomial_evaluate[
+            [
+                Scalar[dtype](0.33333349227905273),
+                0.13332659006118774,
+                0.05406050756573677,
+                0.021279029548168182,
+                0.010844247415661812,
+                7.853933493606746e-05,
+                0.004381844773888588,
+            ]
+        ](z)
+        c = fma(y * z, p, fma(yl, z, yl))
+    else:
+        # Cephes tan.c.
+        var p = polynomial_evaluate[
+            [
+                Scalar[dtype](-1.79565251976484877988e7),
+                1.15351664838587416140e6,
+                -1.30936939181383777646e4,
+            ]
+        ](z)
+        var q = polynomial_evaluate[
+            [
+                Scalar[dtype](-5.38695755929454629881e7),
+                2.50083801823357915839e7,
+                -1.32089234440210967447e6,
+                1.36812963470692954678e4,
+                1.0,
+            ]
+        ](z)
+        c = fma(y, z * p / q, fma(yl, z, yl))
+    # |c| < |y|/2, so t_lo is the exact rounding error of t.
+    var t = y + c
+    var t_lo = c - (t - y)
+    # tan(y + pi/2) = -1/tan(y). As in fdlibm k_tan.c, correct q = -1/t for
+    # t_lo: -1/(t + t_lo) ~ q + q (1 + q (t + t_lo)), the residual exact
+    # through the fma.
+    var q = -1.0 / t
+    var cot = fma(q, fma(q, t, 1.0) + q * t_lo, q)
+    var res = (red[0] & 1).ne(0).select(cot, t)
+    res = x.eq(0).select(x, res)
+    return isfinite(x).select(res, x - x)
 
 
 @inline(.always)
