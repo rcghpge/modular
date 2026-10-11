@@ -19,7 +19,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from max.benchmark.benchmark_serving import (
+    BenchmarkSession,
+    EndCondition,
     _make_gpu_recorder,
+    _run_benchmark_sweep,
     _sample_for_seed,
     parse_args,
 )
@@ -356,3 +359,64 @@ def test_chat_turns_unmarked_without_a_response_format() -> None:
         _sample_for_seed(args, "text-generation", None, True, 0)
 
     assert all(m.response_format is None for m in session.messages)
+
+
+def test_run_benchmark_sweep_yields_labeled_failure_without_result() -> None:
+    """A failed iteration without --always-save-result yields labels but no result."""
+    args = parse_args(
+        [
+            "--model",
+            "myorg/model",
+            "--tokenizer",
+            "myorg/tokenizer",
+            "--max-concurrency",
+            "4",
+            "--request-rate",
+            "2.5",
+        ]
+    )
+    args.flush_prefix_cache = False
+    session = BenchmarkSession(
+        benchmark_task="text-generation",
+        endpoint="/v1/completions",
+        api_url="http://localhost:8000/v1/completions",
+        base_url="http://localhost:8000",
+        model_id="myorg/model",
+        tokenizer_id="myorg/session-tokenizer",
+        tokenizer=None,
+        samples=RequestSamples(requests=[]),
+        lora_manager=None,
+        trace_path=None,
+        orig_skip_first=None,
+        orig_skip_last=None,
+    )
+
+    async def failed_benchmark(
+        *args: object, **kwargs: object
+    ) -> tuple[BenchmarkResult, bool]:
+        return BenchmarkResult(task_type="text", max_concurrency=4), False
+
+    with (
+        patch(
+            "max.benchmark.benchmark_serving.benchmark",
+            side_effect=failed_benchmark,
+        ),
+        patch(
+            "max.benchmark.benchmark_serving._sample_for_seed",
+            return_value=RequestSamples(requests=[]),
+        ),
+    ):
+        end_condition = EndCondition(
+            num_prompts=1, num_prompts_multiplier=None, max_duration_s=None
+        )
+        runs = list(_run_benchmark_sweep(args, session, end_condition))
+
+    assert len(runs) == 1
+    (run,) = runs
+    assert run.max_concurrency == 4
+    assert run.request_rate == 2.5
+    assert run.status == "fail"
+    assert run.result is None
+    assert run.labels is not None
+    assert run.labels.tokenizer_id == "myorg/session-tokenizer"
+    assert run.labels.model_id == "myorg/model"

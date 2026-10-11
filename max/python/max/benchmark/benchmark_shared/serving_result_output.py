@@ -26,7 +26,8 @@ import math
 import os
 import re
 import statistics
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
 from typing import NamedTuple
@@ -743,7 +744,7 @@ def print_benchmark_summary(
     print("=" * 50)
 
 
-def _parse_metadata(metadata: list[str] | None) -> dict[str, str]:
+def _parse_metadata(metadata: Sequence[str] | None) -> dict[str, str]:
     """Parse ``KEY=VALUE`` metadata strings into a flat dict.
 
     The special key ``server_cpu`` is mapped to ``cpu``.
@@ -761,45 +762,115 @@ def _parse_metadata(metadata: list[str] | None) -> dict[str, str]:
     return result
 
 
+@dataclass(frozen=True)
+class BenchmarkRunResultLabels:
+    """The benchmark configuration a result was produced with."""
+
+    backend: Backend
+    """The serving backend benchmarked."""
+
+    benchmark_task: BenchmarkTask
+    """The task benchmarked."""
+
+    model_id: str
+    """The model benchmarked."""
+
+    tokenizer_id: str
+    """The tokenizer tokens were counted with."""
+
+    dataset_name: str
+    """The dataset the requests were drawn from."""
+
+    burstiness: float
+    """The arrival burstiness factor."""
+
+    max_concurrent_conversations: int | None
+    """The limit on concurrent multi-turn sessions, or ``None``."""
+
+    client_args: Mapping[str, object]
+    """The load generator's configuration, recorded verbatim apart from the
+    iteration's request rate and concurrency."""
+
+    metadata: Sequence[str]
+    """``KEY=VALUE`` strings recorded as top-level fields."""
+
+    @classmethod
+    def from_config(
+        cls,
+        args: ServingBenchmarkConfig,
+        *,
+        benchmark_task: BenchmarkTask,
+        model_id: str,
+        tokenizer_id: str,
+    ) -> BenchmarkRunResultLabels:
+        """Builds labels for a result produced with ``args``.
+
+        Args:
+            args: The serving benchmark's configuration.
+            benchmark_task: The task benchmarked.
+            model_id: The model benchmarked.
+            tokenizer_id: The tokenizer tokens were counted with.
+
+        Returns:
+            The result's labels.
+        """
+        return cls(
+            backend=args.backend,
+            benchmark_task=benchmark_task,
+            model_id=model_id,
+            tokenizer_id=tokenizer_id,
+            dataset_name=args.dataset_name,
+            burstiness=args.burstiness,
+            max_concurrent_conversations=args.max_concurrent_conversations,
+            client_args=args.model_dump(),
+            metadata=list(args.metadata),
+        )
+
+
 def save_result_json(
     result_filename: str | None,
-    args: ServingBenchmarkConfig,
+    labels: BenchmarkRunResultLabels,
     benchmark_result: BenchmarkResult,
     *,
-    benchmark_task: BenchmarkTask,
-    model_id: str,
-    tokenizer_id: str,
     request_rate: float,
     record_max_concurrency: int | None,
 ) -> None:
-    """Persist benchmark results to *result_filename*."""
+    """Writes a benchmark result to ``result_filename``.
+
+    Args:
+        result_filename: The file to write, or ``None`` to write nothing. An
+            existing file is moved aside to ``<result_filename>.orig``.
+        labels: The benchmark configuration the result was produced with.
+        benchmark_result: The result's metrics.
+        request_rate: The iteration's request rate.
+        record_max_concurrency: The iteration's concurrency limit.
+    """
     if not result_filename:
         return
-    backend: Backend = args.backend
-    client_args = args.model_dump()
+    client_args = dict(labels.client_args)
     rr_client = str(request_rate) if request_rate < float("inf") else "inf"
     client_args["request_rate"] = rr_client
     client_args["max_concurrency"] = record_max_concurrency
     result_json: dict[str, object] = {
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "backend": backend,
-        "benchmark_task": benchmark_task,
-        "model_id": model_id,
-        "tokenizer_id": tokenizer_id,
+        "backend": labels.backend,
+        "benchmark_task": labels.benchmark_task,
+        "model_id": labels.model_id,
+        "tokenizer_id": labels.tokenizer_id,
         "num_prompts": (
             agg.completed
             if (agg := benchmark_result.aggregates) is not None
             else 0
         ),
-        "dataset_name": args.dataset_name,
+        "dataset_name": labels.dataset_name,
         "client_args": client_args,
         "request_rate": (
             request_rate if request_rate < float("inf") else "inf"
         ),
-        "burstiness": args.burstiness,
+        "burstiness": labels.burstiness,
         "max_concurrency": record_max_concurrency,
-        "max_concurrent_conversations": args.max_concurrent_conversations,
-        **_parse_metadata(args.metadata),
+        "max_concurrent_conversations": labels.max_concurrent_conversations,
+        **_parse_metadata(labels.metadata),
         **benchmark_result.to_result_dict(),
     }
     logger.info(f"Writing file: {result_filename}")

@@ -34,7 +34,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -122,10 +122,9 @@ from max.benchmark.benchmark_shared.serving_metrics import (
     compute_output_len,
 )
 from max.benchmark.benchmark_shared.serving_result_output import (
+    BenchmarkRunResultLabels,
     print_input_prompts,
     print_workload_stats,
-    save_output_lengths,
-    save_result_json,
 )
 from max.benchmark.benchmark_shared.single_turn import (
     prime_shared_contexts,
@@ -987,18 +986,24 @@ def flush_prefix_cache(
         )
 
 
+BenchmarkStatus = Literal["pass", "fail"]
+"""The outcome of one benchmark configuration's validation."""
+
+
 @dataclass
 class BenchmarkRunResult:
-    """Result of one (max_concurrency, request_rate) benchmark configuration.
-
-    Yielded by :func:`main_with_parsed_args` — one entry per (mc, rr) combo
-    after median selection across ``num_iters`` iterations.
-    """
+    """Result of one (max_concurrency, request_rate) benchmark configuration."""
 
     max_concurrency: int | None
     request_rate: float
     num_prompts: int
+    labels: BenchmarkRunResultLabels
+    """The benchmark configuration :attr:`result` was produced with, for its
+    result JSON."""
+
     result: BenchmarkResult | None = None
+    status: BenchmarkStatus = "pass"
+    """Whether the result passed or failed validation."""
 
 
 @dataclass
@@ -1364,6 +1369,12 @@ def _run_dry_run_sweep(
                 max_concurrency=mc,
                 request_rate=rr,
                 num_prompts=num_prompts,
+                labels=BenchmarkRunResultLabels.from_config(
+                    args,
+                    benchmark_task=session.benchmark_task,
+                    model_id=session.model_id,
+                    tokenizer_id=session.tokenizer_id,
+                ),
             )
 
 
@@ -1431,45 +1442,47 @@ def _run_benchmark_sweep(
                 idx = 0
             best_result = iteration_results[idx]
 
-            retained = retain_result(
-                best_result,
-                passed=validation_passed,
-                always_save_result=args.always_save_result,
-            )
-            if retained is not None:
-                save_result_json(
-                    args.result_filename,
+            yield BenchmarkRunResult(
+                max_concurrency=mc,
+                request_rate=rr,
+                num_prompts=num_prompts,
+                result=retain_result(
+                    best_result,
+                    passed=validation_passed,
+                    always_save_result=args.always_save_result,
+                ),
+                labels=BenchmarkRunResultLabels.from_config(
                     args,
-                    retained,
                     benchmark_task=session.benchmark_task,
                     model_id=session.model_id,
                     tokenizer_id=session.tokenizer_id,
-                    request_rate=rr,
-                    record_max_concurrency=mc,
-                )
-                save_output_lengths(
-                    args,
-                    retained,
-                    session.benchmark_task,
-                    iteration_config=(mc, rr),
-                )
-
-            yield BenchmarkRunResult(
-                mc,
-                rr,
-                num_prompts,
-                result=retained,
+                ),
+                status="pass" if validation_passed else "fail",
             )
-
-            if not validation_passed:
-                sys.exit(1)
 
 
 def main_with_parsed_args(
     args: ServingBenchmarkConfig,
     *,
     server_liveness: Callable[[], bool] | None = None,
-) -> Iterator[BenchmarkRunResult]:
+) -> Generator[BenchmarkRunResult, None, None]:
+    """Runs a serving benchmark sweep.
+
+    Yields one :class:`BenchmarkRunResult` per (concurrency, request rate)
+    combination.
+
+    Args:
+        args: The benchmark configuration.
+        server_liveness: A predicate that reports whether the server process
+            is alive, so the server-ready wait aborts promptly on a crashed
+            bring-up, or ``None`` to wait until the timeout.
+
+    Yields:
+        Each combination's result, as soon as it completes.
+
+    Raises:
+        ValueError: If ``args.model`` is not set.
+    """
     logging.basicConfig(
         format="%(asctime)s.%(msecs)03d %(levelname)s: %(name)s: %(message)s",
         datefmt="%H:%M:%S",
