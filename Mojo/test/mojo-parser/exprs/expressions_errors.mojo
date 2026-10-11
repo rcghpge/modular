@@ -479,8 +479,15 @@ def tuple_pattern(a: Int) raises:
   # expected-error @+1 {{cannot unpack value of type 'Int' into 2 values}}
   (b, c) = a
 
-def list_pattern():
-  # expected-error @+1 {{'Int' value has no attribute '__len__'}}
+struct LengthOnly(Sized):
+  def __len__(self) -> Int:
+    return 1
+
+
+def list_pattern(value: LengthOnly) raises:
+  # expected-error @+1 {{'LengthOnly' value has no attribute '__getitem__'}}
+  [_] = value
+  # expected-error @+1 {{value of type 'Int' does not conform to 'Sized'}}
   [_] = 4
 
 

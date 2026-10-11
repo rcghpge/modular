@@ -356,26 +356,42 @@ CValue ListPatternDLValue::emitLoad(ExprDest &dest, IREmitter &emitter) const {
 
 CValue ListPatternDLValue::emitStore(ASTExprAnd<CValue> value,
                                      IREmitter &emitter) const {
-  // Okay we have a type like List[T] that has a __len__ and __getitem__ method.
-  // First call __len__ to see if it agrees with the number of elements in the
-  // pattern.
+  ASTType valueType = value.ir.getRValueType();
+  auto sizedConformance =
+      valueType
+          .conformsToBuiltinTrait(
+              "Sized", value.expr->getLoc(), emitter.shared,
+              ASTDecl::getAssumptionsFromScope(&emitter.getDeclScope()))
+          .first;
+  if (!sizedConformance.isTrue()) {
+    auto diag = emitter.emitError(value.expr->getLoc());
+    if (sizedConformance.isUnknown())
+      diag << "cannot prove that value of type " << valueType
+           << " conforms to 'Sized'";
+    else
+      diag << "value of type " << valueType << " does not conform to 'Sized'";
+    diag << value.expr->getRange();
+    return {};
+  }
 
-  // Build `value.__len__()` and the expected pattern length, then call
-  // `check_list_length(actual, expected)` which raises on mismatch.
+  // Emit the input to a BValue so the length check and each __getitem__ can
+  // reuse it without reloading an LValue or consuming an RValue multiple times.
   SMLoc loc = expr->getLoc();
-
-  SyntheticNode valueNode(loc, value.ir);
-  AttributeRefNode lenAttr(&valueNode, loc, "__len__");
-  CallNode lenCall(&lenAttr, loc, /*operands=*/{}, loc);
-  AnyValue actualLen = emitter.emitExpr(&lenCall, EC_CollectionLiteral);
-  if (!actualLen)
+  BValue bvalue = emitter.emitBValue(value, EC_CollectionLiteral);
+  if (!bvalue)
     return {};
 
-  TypedAttr countAttr =
+  TypedAttr minimumLengthAttr =
       IntegerAttr::get(IndexType::get(emitter.getContext()), eltExprs.size());
-  CValue expectedLen = emitter.emitInt(
-      ASTExprAnd<PValue>{PValue(countAttr), expr}, EC_CallParamValue);
-  if (!expectedLen)
+  CValue minimumLength = emitter.emitInt(
+      ASTExprAnd<PValue>{PValue(minimumLengthAttr), expr}, EC_CallParamValue);
+  if (!minimumLength)
+    return {};
+
+  CValue isExact = emitter.emitBool(
+      ASTExprAnd<PValue>{BoolAttr::get(emitter.getContext(), true), expr},
+      EC_CallParamValue);
+  if (!isExact)
     return {};
 
   // Look up check_list_length the same way paramfor_has_next is resolved.
@@ -387,8 +403,9 @@ CValue ListPatternDLValue::emitStore(ASTExprAnd<CValue> value,
 
   CallOperands checkOperands(CallSyntax::kDirectCall, expr,
                              EC_CollectionLiteral);
-  checkOperands.add({actualLen, expr});
-  checkOperands.add({expectedLen, expr});
+  checkOperands.add({bvalue, expr});
+  checkOperands.add({minimumLength, expr});
+  checkOperands.add({isExact, expr});
 
   ParamBindings bindings(emitter.getDeclScope(), expr);
   OverloadSet checkCall("check_list_length", checkFns, std::move(bindings),
@@ -396,16 +413,7 @@ CValue ListPatternDLValue::emitStore(ASTExprAnd<CValue> value,
   if (!checkCall.emitCall(std::move(checkOperands), emitter))
     return {};
 
-  // Okay, now that we know the length is correct, loop over each element of the
-  // collection, calling __getitem__ to get the element and store it into the
-  // corresponding list pattern element.
-
-  // Emit the input to a BValue so each __getitem__ can reuse it without
-  // reloading an LValue or consuming an RValue multiple times.
-  BValue bvalue = emitter.emitBValue(value, EC_CollectionLiteral);
-  if (!bvalue)
-    return {};
-
+  // Now that we know the length is correct, extract and store each element.
   SyntheticNode baseNode(loc, bvalue);
   for (auto [index, eltExpr] : llvm::enumerate(eltExprs)) {
     // Build `base.__getitem__(42)` syntactically.
