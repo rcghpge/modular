@@ -703,12 +703,10 @@ def _amdgpu_matmul_build_block_shape_list[N: Int]() -> List[IndexList[2]]:
     return block_shape_list^
 
 
-# TODO(MOCO-4720): the SM90, Apple and RDNA kernels take only the legacy
-# epilogue lambda; `_matmul_gpu_impl` must not hand them a bare value.
+# TODO(MOCO-4720): the Apple and RDNA kernels take only the legacy epilogue
+# lambda; `_matmul_gpu_impl` must not hand them a bare value.
 comptime _matmul_gpu_needs_legacy_epilogue = (
-    DeviceContext.default_device_info == H100
-    or DeviceContext.target.is_apple_gpu()
-    or has_amd_rdna_gpu_accelerator()
+    DeviceContext.target.is_apple_gpu() or has_amd_rdna_gpu_accelerator()
 )
 
 
@@ -738,7 +736,7 @@ def _matmul_gpu[
     error otherwise).
     """
     # Kernels that take epilogue values get the lambda forwarded through a
-    # value; the lambda itself still reaches the SM90, Apple and RDNA ones.
+    # value; the lambda itself still reaches the Apple and RDNA ones.
     comptime if elementwise_compute_lambda_fn:
         comptime compute_lambda = elementwise_compute_lambda_fn.value()
 
@@ -805,9 +803,9 @@ def _matmul_gpu[
 ) raises:
     """GPU matmul dispatch that stores `compute_fn(idx, a @ b)` into `c`.
 
-    The kernels apply `compute_fn` in their epilogue, except on H100, Apple
-    and AMD RDNA GPUs: those run the matmul into `c` and then apply
-    `compute_fn` in place in a separate elementwise pass.
+    The kernels apply `compute_fn` in their epilogue, except on Apple and AMD
+    RDNA GPUs: those run the matmul into `c` and then apply `compute_fn` in
+    place in a separate elementwise pass.
 
     Parameters:
         ComputeFnType: Type of `compute_fn` (inferred).
@@ -826,8 +824,8 @@ def _matmul_gpu[
     """
     comptime if _matmul_gpu_needs_legacy_epilogue:
         # TODO(MOCO-4720): the extra pass re-reads and re-writes `c`. Pass
-        # `compute_fn` to the SM90, Apple and RDNA kernels once they take
-        # epilogue values.
+        # `compute_fn` to the Apple and RDNA kernels once they take epilogue
+        # values.
         _matmul_gpu[
             use_tensor_core=use_tensor_core,
             transpose_b=transpose_b,
@@ -879,7 +877,7 @@ def _matmul_gpu_impl[
         has_legacy_epilogue
         or not (has_epilogue_fn or has_compute_fn)
         or not _matmul_gpu_needs_legacy_epilogue
-    ), "the SM90, Apple and RDNA matmuls take only legacy epilogue lambdas"
+    ), "the Apple and RDNA matmuls take only legacy epilogue lambdas"
     comptime assert not (
         has_epilogue_fn and has_compute_fn
     ), "pass either epilogue_fn or compute_fn, not both"
@@ -946,8 +944,8 @@ def _matmul_gpu_impl[
     # `DeviceBuffer`-backed tile would reach the device as a host reference.
     var c_epilogue = c.reshape(c.layout)
 
-    # Only the H100 version of gemm supports the compute lambda.
-    # For the other kernels we wrap it around an epilogue lambda instead.
+    # The legacy-only kernels take a store lambda, so a compute lambda is
+    # wrapped into one that stores its result.
     @__parameter
     @inline(.always)
     @__copy_capture(c_epilogue)
@@ -1141,9 +1139,10 @@ def _matmul_gpu_impl[
             a_type,
             b_type,
             transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_wrapper,
             pdl_level=pdl_level,
-        ](c, a, b, ctx)
+            has_epilogue_fn=has_epilogue_fn,
+            has_compute_fn=has_compute_fn,
+        ](c, a, b, ctx, epilogue_fn=epilogue_fn, compute_fn=compute_fn)
 
         if status:
             return

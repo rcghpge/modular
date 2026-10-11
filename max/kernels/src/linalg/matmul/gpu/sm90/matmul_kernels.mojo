@@ -78,6 +78,7 @@ from ....utils import (
     ElementwiseEpilogueFn,
     elementwise_compute_lambda_type,
     elementwise_epilogue_type,
+    no_compute_fn,
     no_epilogue_fn,
 )
 from ....utils_gpu import block_swizzle
@@ -619,12 +620,14 @@ struct HopperMatmulSM90Kernel[
     @inline(.always)
     def consumer_output[
         EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+        ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
         //,
         custom_elementwise_lambda_fn: Optional[
             elementwise_epilogue_type
         ] = Self.elementwise_lambda_fn,
         *,
         has_epilogue_fn: Bool = False,
+        has_compute_fn: Bool = False,
     ](
         c_tma_op: TMATensorTile[Self.c_type, _, _],
         c: TileTensor[mut=True, Self.c_type, address_space=.GENERIC, ...],
@@ -636,15 +639,19 @@ struct HopperMatmulSM90Kernel[
         block_y: Int,
         block_x: Int,
         epilogue_fn: EpilogueFnType = no_epilogue_fn,
+        compute_fn: ComputeFnType = no_compute_fn,
     ):
         """Handle consumer output by writing GEMM results to global memory.
 
         Parameters:
             EpilogueFnType: Type of `epilogue_fn` (inferred).
+            ComputeFnType: Type of `compute_fn` (inferred).
             custom_elementwise_lambda_fn: Optional epilogue function applied
                 to output elements (defaults to the struct's
                 `elementwise_lambda_fn`).
             has_epilogue_fn: Whether `epilogue_fn` stores the output.
+            has_compute_fn: Whether `compute_fn` maps each output before it
+                is stored.
 
         Args:
             c_tma_op: TMA descriptor for the output matrix C, used for TMA
@@ -662,6 +669,8 @@ struct HopperMatmulSM90Kernel[
             block_x: Block-level N coordinate (column) of the output tile.
             epilogue_fn: Stores each output element at its coordinates in
                 `c` when `has_epilogue_fn` is set.
+            compute_fn: Maps each output element at its coordinates in `c`
+                when `has_compute_fn` is set.
         """
         var matmul_tile_writer = MatmulTileWriter[
             BM=Self.BM,
@@ -682,9 +691,9 @@ struct HopperMatmulSM90Kernel[
             block_y,
             block_x,
         )
-        matmul_tile_writer.write_tile[has_epilogue_fn=has_epilogue_fn](
-            c_tma_op, output_reg_tile, epilogue_fn
-        )
+        matmul_tile_writer.write_tile[
+            has_epilogue_fn=has_epilogue_fn, has_compute_fn=has_compute_fn
+        ](c_tma_op, output_reg_tile, epilogue_fn, compute_fn)
 
     @staticmethod
     @inline(.always)
@@ -894,6 +903,10 @@ struct HopperMatmulSM90Kernel[
         a_tensor_layout: TensorLayout,
         b_tensor_layout: TensorLayout,
         c_tensor_layout: TensorLayout,
+        EpilogueFnType: ElementwiseEpilogueFn,
+        has_epilogue_fn: Bool,
+        ComputeFnType: ElementwiseComputeFn,
+        has_compute_fn: Bool,
     ](
         a_tma_op: TMATensorTile[Self.a_type, a_tile_shape, a_desc_shape],
         b_tma_op: TMATensorTile[Self.b_type, b_tile_shape, b_desc_shape],
@@ -908,6 +921,8 @@ struct HopperMatmulSM90Kernel[
             Self.c_type, c_tensor_layout, MutAnyOrigin, Engine=Self.c_engine
         ],
         lut_ptr: UnsafePointer[UInt32, MutAnyOrigin],
+        epilogue_fn: EpilogueFnType,
+        compute_fn: ComputeFnType,
     ):
         """Main kernel entry point for matrix multiplication.
 
@@ -931,6 +946,13 @@ struct HopperMatmulSM90Kernel[
             a_tensor_layout: Memory layout of input matrix A.
             b_tensor_layout: Memory layout of input matrix B.
             c_tensor_layout: Memory layout of output matrix C.
+            EpilogueFnType: Type of `epilogue_fn`.
+            has_epilogue_fn: Whether `epilogue_fn` stores the output, in
+                place of `elementwise_lambda_fn`. Launch with
+                `host_arg=epilogue_fn`.
+            ComputeFnType: Type of `compute_fn`.
+            has_compute_fn: Whether `compute_fn` maps each output before it
+                is stored. Launch with `host_arg2=compute_fn`.
 
         Args:
             a_tma_op: TMA descriptor for matrix A.
@@ -940,6 +962,10 @@ struct HopperMatmulSM90Kernel[
             b: Input matrix B.
             c: Output matrix C.
             lut_ptr: Lookup table for Hilbert curve block scheduling (optional).
+            epilogue_fn: Stores each output element at its `(row, col)` in
+                `c` when `has_epilogue_fn` is set.
+            compute_fn: Maps each output element at its `(row, col)` in `c`
+                when `has_compute_fn` is set.
         """
         comptime K = Self.b_layout.static_shape[1]
         comptime num_k_iters = ceildiv(K, Self.BK)
@@ -1029,7 +1055,9 @@ struct HopperMatmulSM90Kernel[
                 == .float8_e4m3fn else c_reg_tile
             )
 
-            Self.consumer_output(
+            Self.consumer_output[
+                has_epilogue_fn=has_epilogue_fn, has_compute_fn=has_compute_fn
+            ](
                 c_tma_op,
                 c,
                 smem.c_tile(),
@@ -1039,6 +1067,8 @@ struct HopperMatmulSM90Kernel[
                 thread_idx.x - WARPGROUP_SIZE,
                 block_idx_swizzle[1],
                 block_idx_swizzle[0],
+                epilogue_fn,
+                compute_fn,
             )
 
         Self.finalize_kernel()
@@ -1066,6 +1096,10 @@ struct HopperMatmulSM90Kernel[
         splits: Int,
         raster_order: RasterOrder,
         c_tensor_layout: TensorLayout,
+        EpilogueFnType: ElementwiseEpilogueFn,
+        has_epilogue_fn: Bool,
+        ComputeFnType: ElementwiseComputeFn,
+        has_compute_fn: Bool,
     ](
         a_tma_op: TMATensorTile[Self.a_type, a_tile_shape, a_desc_shape],
         b_tma_op: TMATensorTile[Self.b_type, b_tile_shape, b_desc_shape],
@@ -1076,6 +1110,8 @@ struct HopperMatmulSM90Kernel[
         workspace_ptr: UnsafePointer[Scalar[Self.accum_type], MutAnyOrigin],
         locks_ptr: UnsafePointer[UInt8, MutAnyOrigin],
         problem_shape: IndexList[3],
+        epilogue_fn: EpilogueFnType,
+        compute_fn: ComputeFnType,
     ):
         """Split-K variant of the kernel for better load balancing on small problems.
 
@@ -1095,6 +1131,13 @@ struct HopperMatmulSM90Kernel[
             raster_order: Tile rasterization order used by the split-K
                 scheduler to assign output tiles to blocks.
             c_tensor_layout: Memory layout of output matrix C.
+            EpilogueFnType: Type of `epilogue_fn`.
+            has_epilogue_fn: Whether `epilogue_fn` stores the output, in
+                place of `elementwise_lambda_fn`. Launch with
+                `host_arg=epilogue_fn`.
+            ComputeFnType: Type of `compute_fn`.
+            has_compute_fn: Whether `compute_fn` maps each output before it
+                is stored. Launch with `host_arg2=compute_fn`.
 
         Args:
             a_tma_op: TMA descriptor for matrix A.
@@ -1106,6 +1149,10 @@ struct HopperMatmulSM90Kernel[
             locks_ptr: Pointer to the lock array coordinating split-K
                 synchronization across blocks.
             problem_shape: Full GEMM problem dimensions `[M, N, K]`.
+            epilogue_fn: Stores each output element at its `(row, col)` in
+                `c` when `has_epilogue_fn` is set.
+            compute_fn: Maps each output element at its `(row, col)` in `c`
+                when `has_compute_fn` is set.
         """
         comptime K = Self.b_layout.static_shape[1]
         comptime num_k_iters = K // Self.BK
@@ -1240,7 +1287,10 @@ struct HopperMatmulSM90Kernel[
                     var block_y = Int(work_tile_info.m)
                     var block_x = Int(work_tile_info.n)
 
-                    Self.consumer_output(
+                    Self.consumer_output[
+                        has_epilogue_fn=has_epilogue_fn,
+                        has_compute_fn=has_compute_fn,
+                    ](
                         c_tma_op,
                         c,
                         smem.c_tile(),
@@ -1250,6 +1300,8 @@ struct HopperMatmulSM90Kernel[
                         thread_idx.x - WARPGROUP_SIZE,
                         block_y,
                         block_x,
+                        epilogue_fn,
+                        compute_fn,
                     )
 
                 # Get next work tile

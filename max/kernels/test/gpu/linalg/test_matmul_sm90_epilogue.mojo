@@ -11,13 +11,11 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.collections import Optional
-from std.sys import align_of, size_of
+from std.sys import size_of
 
 from max.gpu.host import DeviceContext
 from linalg.matmul.gpu.sm90.testbed import test_matmul_sm90
 from linalg.matmul.gpu.tile_scheduler import MatmulSchedule
-from linalg.utils import elementwise_compute_lambda_type
 
 from std.utils.index import Index, IndexList
 from layout import Idx
@@ -167,13 +165,8 @@ def main() raises:
 
         @inline(.always)
         def test_lambda_fn_square[
-            _dtype: DType,
-            width: SIMDLength,
-            *,
-            alignment: Int = align_of[SIMD[_dtype, width]](),
-        ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
-            _dtype, width
-        ]:
+            _dtype: DType, width: SIMDLength, *, alignment: Int
+        ](idx: IndexList[2], val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
             return val * val
 
         test_matmul_sm90[
@@ -184,21 +177,13 @@ def main() raises:
             block_tile_shape[256, .bfloat16],
             wgmma_shape[256, .bfloat16],
             num_consumer=2,
-            elementwise_compute_lambda_fn=Optional[
-                elementwise_compute_lambda_type
-            ](test_lambda_fn_square),
-            default_epilogue=True,
-        ](ctx, Int(277), Idx[2560], Idx[128])
+            has_compute_fn=True,
+        ](ctx, Int(277), Idx[2560], Idx[128], test_lambda_fn_square)
 
         @inline(.always)
         def test_lambda_add_coords[
-            _dtype: DType,
-            width: SIMDLength,
-            *,
-            alignment: Int = align_of[SIMD[_dtype, width]](),
-        ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
-            _dtype, width
-        ]:
+            _dtype: DType, width: SIMDLength, *, alignment: Int
+        ](idx: IndexList[2], val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
             # Cast indices between 0-1 to avoid accuracy issues
             var i = Float32(idx[0]) / 277.0
             var j = Float32(idx[1] - idx[1] % 8) / 2560.0
@@ -212,11 +197,8 @@ def main() raises:
             block_tile_shape[256, .bfloat16],
             wgmma_shape[256, .bfloat16],
             num_consumer=2,
-            elementwise_compute_lambda_fn=Optional[
-                elementwise_compute_lambda_type
-            ](test_lambda_add_coords),
-            default_epilogue=True,
-        ](ctx, Int(277), Idx[2560], Idx[128])
+            has_compute_fn=True,
+        ](ctx, Int(277), Idx[2560], Idx[128], test_lambda_add_coords)
 
         test_matmul_sm90[
             .bfloat16,

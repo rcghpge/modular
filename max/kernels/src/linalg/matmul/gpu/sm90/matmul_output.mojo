@@ -41,9 +41,11 @@ from layout.tma_async import TMATensorTile
 from std.utils.index import IndexList
 
 from ....utils import (
+    ElementwiseComputeFn,
     ElementwiseEpilogueFn,
     elementwise_compute_lambda_type,
     elementwise_epilogue_type,
+    no_compute_fn,
     no_epilogue_fn,
 )
 from std.collections import OptionalReg
@@ -271,14 +273,17 @@ struct MatmulTileWriter[
         accum_type: DType,
         reg_tile_layout: Layout,
         EpilogueFnType: ElementwiseEpilogueFn,
+        ComputeFnType: ElementwiseComputeFn,
         //,
         check_runtime_bounds: Bool = False,
         *,
         has_epilogue_fn: Bool,
+        has_compute_fn: Bool,
     ](
         self,
         reg_tile: RegTile[accum_type, reg_tile_layout],
         epilogue_fn: EpilogueFnType,
+        compute_fn: ComputeFnType,
     ):
         """Write from registers to global memory."""
 
@@ -316,6 +321,7 @@ struct MatmulTileWriter[
             Self.elementwise_lambda_fn is not None
             or Self.elementwise_compute_lambda_fn is not None
             or has_epilogue_fn
+            or has_compute_fn
         ):
             tile_coords = TileCoordinates(
                 IndexList[2](tile_origin[0], tile_origin[1]),
@@ -342,9 +348,9 @@ struct MatmulTileWriter[
         comptime for row_tile, col_tile in std.itertools.product(
             range(Self.num_m_mmas), range(Self.num_n_mmas)
         ):
-            reg_writer._write_tile[has_epilogue_fn=has_epilogue_fn](
-                reg_tile, (row_tile, col_tile), epilogue_fn
-            )
+            reg_writer._write_tile[
+                has_epilogue_fn=has_epilogue_fn, has_compute_fn=has_compute_fn
+            ](reg_tile, (row_tile, col_tile), epilogue_fn, compute_fn)
 
     @inline(.always)
     def _write_tile_stmatrix[
@@ -353,9 +359,11 @@ struct MatmulTileWriter[
         accum_type: DType,
         reg_tile_layout: Layout,
         EpilogueFnType: ElementwiseEpilogueFn,
+        ComputeFnType: ElementwiseComputeFn,
         //,
         *,
         has_epilogue_fn: Bool,
+        has_compute_fn: Bool,
     ](
         self,
         tma_op: TMATensorTile[Self.dtype, tma_tile_shape, tma_desc_shape],
@@ -363,6 +371,7 @@ struct MatmulTileWriter[
         output_tile: TileTensor[mut=True, Self.dtype, ...],
         tile_origin: IndexList[2],
         value_epilogue_fn: EpilogueFnType,
+        value_compute_fn: ComputeFnType,
     ):
         """Use st.matrix instructions for optimized bf16 output."""
         var max_row, max_col = self._calculate_output_bounds()
@@ -467,6 +476,19 @@ struct MatmulTileWriter[
 
                 apply_epilogue(_compute)
                 named_barrier[Int32(Self.num_consumer_threads)](10)
+            elif has_compute_fn:
+
+                def _value_compute[
+                    dtype: DType, width: SIMDLength, *, alignment: Int = 1
+                ](index: IndexList[2], mut val: SIMD[dtype, width]) {
+                    var value_compute_fn
+                }:
+                    val = value_compute_fn[dtype, width, alignment=alignment](
+                        index, val
+                    )
+
+                apply_epilogue(_value_compute)
+                named_barrier[Int32(Self.num_consumer_threads)](10)
 
             comptime if Self.elementwise_lambda_fn:
                 comptime epilogue_fn = Self.elementwise_lambda_fn.value()
@@ -548,14 +570,17 @@ struct MatmulTileWriter[
         accum_type: DType,
         reg_tile_layout: Layout,
         EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+        ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
         //,
         *,
         has_epilogue_fn: Bool = False,
+        has_compute_fn: Bool = False,
     ](
         self,
         tma_op: TMATensorTile[Self.dtype, tma_tile_shape, tma_desc_shape],
         reg_tile: RegTile[accum_type, reg_tile_layout],
         epilogue_fn: EpilogueFnType = no_epilogue_fn,
+        compute_fn: ComputeFnType = no_compute_fn,
     ):
         """Write output from registers to global memory.
 
@@ -568,8 +593,11 @@ struct MatmulTileWriter[
             accum_type: Data type of the WGMMA accumulator register tile.
             reg_tile_layout: Memory layout of the accumulator register tile.
             EpilogueFnType: Type of `epilogue_fn` (inferred).
+            ComputeFnType: Type of `compute_fn` (inferred).
             has_epilogue_fn: Whether `epilogue_fn` stores the output, in
                 place of `elementwise_lambda_fn`.
+            has_compute_fn: Whether `compute_fn` maps each output before
+                it is stored, in place of `elementwise_compute_lambda_fn`.
 
         Args:
             tma_op: TMA tensor tile descriptor used for async stores from
@@ -578,6 +606,8 @@ struct MatmulTileWriter[
                 result to write.
             epilogue_fn: Stores each output element at its global
                 coordinates.
+            compute_fn: Maps each output element at its global coordinates
+                to the value to store.
         """
         # Output tile dimensions and block coordinates
         # For normal: tile is BM x BN, positioned at (block_y, block_x)
@@ -626,12 +656,15 @@ struct MatmulTileWriter[
         comptime can_use_stmatrix = can_use_stmatrix_swapAB if Self.swapAB else can_use_stmatrix_normal
 
         comptime if can_use_stmatrix:
-            self._write_tile_stmatrix[has_epilogue_fn=has_epilogue_fn](
+            self._write_tile_stmatrix[
+                has_epilogue_fn=has_epilogue_fn, has_compute_fn=has_compute_fn
+            ](
                 tma_op,
                 reg_tile,
                 output_tile,
                 tile_origin,
                 epilogue_fn,
+                compute_fn,
             )
         else:
             comptime check_bounds = (
@@ -640,4 +673,5 @@ struct MatmulTileWriter[
             self._write_tile_to_gmem[
                 check_runtime_bounds=check_bounds,
                 has_epilogue_fn=has_epilogue_fn,
-            ](reg_tile, epilogue_fn)
+                has_compute_fn=has_compute_fn,
+            ](reg_tile, epilogue_fn, compute_fn)

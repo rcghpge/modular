@@ -59,10 +59,12 @@ from max.gpu.compute.mma import st_matrix
 from std.memory import bitcast
 from layout.tensor_core_async import st_matrix_n_layout, st_matrix_m_layout
 from ....utils import (
+    ElementwiseComputeFn,
     ElementwiseEpilogueFn,
     apply_elementwise_epilogue,
     elementwise_compute_lambda_type,
     elementwise_epilogue_type,
+    no_compute_fn,
     no_epilogue_fn,
 )
 from std.utils.index import IndexList
@@ -804,14 +806,17 @@ struct RegisterToGMemWriter[
     @inline(.always)
     def _write_tile[
         EpilogueFnType: ElementwiseEpilogueFn,
+        ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
         //,
         *,
         has_epilogue_fn: Bool,
+        has_compute_fn: Bool = False,
     ](
         self,
         c_reg_tile: RegTile,
         coords: Tuple[Int, Int],
         value_epilogue_fn: EpilogueFnType,
+        value_compute_fn: ComputeFnType = no_compute_fn,
     ):
         var m_mma = coords[0]
         var n_mma = coords[1]
@@ -819,17 +824,32 @@ struct RegisterToGMemWriter[
 
         comptime if Self.check_runtime_bounds or Self.swapAB:
             # Element-by-element with runtime bounds checking
-            self._write_with_runtime_bounds[has_epilogue_fn=has_epilogue_fn](
-                c_reg_tile, m_mma, n_mma, mma_id, value_epilogue_fn
+            self._write_with_runtime_bounds[
+                has_epilogue_fn=has_epilogue_fn, has_compute_fn=has_compute_fn
+            ](
+                c_reg_tile,
+                m_mma,
+                n_mma,
+                mma_id,
+                value_epilogue_fn,
+                value_compute_fn,
             )
         elif (
             Self.epilogue_fn is not None
             or Self.compute_lambda_fn is not None
             or has_epilogue_fn
+            or has_compute_fn
         ):
             # Vectorized with epilogue/compute_lambda
-            self._write_with_transform[has_epilogue_fn=has_epilogue_fn](
-                c_reg_tile, m_mma, n_mma, mma_id, value_epilogue_fn
+            self._write_with_transform[
+                has_epilogue_fn=has_epilogue_fn, has_compute_fn=has_compute_fn
+            ](
+                c_reg_tile,
+                m_mma,
+                n_mma,
+                mma_id,
+                value_epilogue_fn,
+                value_compute_fn,
             )
         else:
             # Direct vectorized copy
@@ -861,9 +881,11 @@ struct RegisterToGMemWriter[
     @inline(.always)
     def _write_with_transform[
         EpilogueFnType: ElementwiseEpilogueFn,
+        ComputeFnType: ElementwiseComputeFn,
         //,
         *,
         has_epilogue_fn: Bool,
+        has_compute_fn: Bool,
     ](
         self,
         c_reg_tile: RegTile,
@@ -871,6 +893,7 @@ struct RegisterToGMemWriter[
         n_mma: Int,
         mma_id: Int,
         value_epilogue_fn: EpilogueFnType,
+        value_compute_fn: ComputeFnType,
     ):
         """Vectorized write with epilogue or compute_lambda transformation."""
         # Get warp tile and coordinates
@@ -910,17 +933,29 @@ struct RegisterToGMemWriter[
             # Bounds check and apply transformation
             if m < Int(max_row) and n < Self.N:
                 Self._apply_transform_and_store[
-                    frag_idx, has_epilogue_fn=has_epilogue_fn
-                ](gmem_frag, c_reg_frag, mma_id, m, n, value_epilogue_fn)
+                    frag_idx,
+                    has_epilogue_fn=has_epilogue_fn,
+                    has_compute_fn=has_compute_fn,
+                ](
+                    gmem_frag,
+                    c_reg_frag,
+                    mma_id,
+                    m,
+                    n,
+                    value_epilogue_fn,
+                    value_compute_fn,
+                )
 
     @inline(.always)
     @staticmethod
     def _apply_transform_and_store[
         EpilogueFnType: ElementwiseEpilogueFn,
+        ComputeFnType: ElementwiseComputeFn,
         //,
         frag_idx: Int,
         *,
         has_epilogue_fn: Bool,
+        has_compute_fn: Bool,
     ](
         gmem_frag: TileTensor[mut=True, Self.c_type, ...],
         c_reg_frag: RegTile,
@@ -928,16 +963,27 @@ struct RegisterToGMemWriter[
         m: Int,
         n: Int,
         value_epilogue_fn: EpilogueFnType,
+        value_compute_fn: ComputeFnType,
     ) capturing:
         """Apply epilogue or compute_lambda and store result."""
+        # The legacy lambdas take alignment in bytes, the values in elements.
         comptime alignment = align_of[SIMD[Self.c_type, 2]]()
+        comptime value_alignment = 2
 
-        comptime if Bool(Self.epilogue_fn) or has_epilogue_fn:
+        var frag_val = c_reg_frag[mma_id, frag_idx].cast[Self.c_type]()
+        comptime if Bool(Self.epilogue_fn):
             apply_elementwise_epilogue[Self.epilogue_fn, alignment=alignment](
-                value_epilogue_fn,
-                (m, n),
-                c_reg_frag[mma_id, frag_idx].cast[Self.c_type](),
+                value_epilogue_fn, (m, n), frag_val
             )
+        elif has_epilogue_fn:
+            value_epilogue_fn[
+                Self.c_type, type_of(frag_val).length, alignment=value_alignment
+            ]((m, n), frag_val)
+        elif has_compute_fn:
+            var reg_val = value_compute_fn[
+                Self.c_type, type_of(frag_val).length, alignment=value_alignment
+            ]((m, n), frag_val)
+            gmem_frag.store(Coord(Idx[frag_idx], Idx[0]), reg_val)
         else:  # compute_lambda
             comptime compute_lambda = Self.compute_lambda_fn.value()
             var reg_val = compute_lambda[alignment=alignment](
@@ -949,9 +995,11 @@ struct RegisterToGMemWriter[
     @inline(.always)
     def _write_with_runtime_bounds[
         EpilogueFnType: ElementwiseEpilogueFn,
+        ComputeFnType: ElementwiseComputeFn,
         //,
         *,
         has_epilogue_fn: Bool,
+        has_compute_fn: Bool,
     ](
         self,
         c_reg_tile: RegTile,
@@ -959,12 +1007,16 @@ struct RegisterToGMemWriter[
         n_mma: Int,
         mma_id: Int,
         value_epilogue_fn: EpilogueFnType,
+        value_compute_fn: ComputeFnType,
     ):
         """Element-by-element with full runtime bounds checking.
 
         Parameters:
             EpilogueFnType: Type of `value_epilogue_fn` (inferred).
+            ComputeFnType: Type of `value_compute_fn` (inferred).
             has_epilogue_fn: Whether `value_epilogue_fn` stores the output.
+            has_compute_fn: Whether `value_compute_fn` maps each output
+                before it is stored.
 
         Args:
             c_reg_tile: Register tile containing accumulator values.
@@ -973,6 +1025,8 @@ struct RegisterToGMemWriter[
             mma_id: Linearized MMA tile ID.
             value_epilogue_fn: Stores each output element when
                 `has_epilogue_fn`.
+            value_compute_fn: Maps each output element when
+                `has_compute_fn`.
         """
 
         comptime warp_tile_size_m = Self.wgmma_shape[
@@ -1064,7 +1118,7 @@ struct RegisterToGMemWriter[
                                 ),
                             )
 
-                    comptime if Bool(Self.epilogue_fn) or has_epilogue_fn:
+                    comptime if Bool(Self.epilogue_fn):
                         var frag_m, frag_n = epilogue_coordinates()
                         apply_elementwise_epilogue[
                             Self.epilogue_fn,
@@ -1074,8 +1128,20 @@ struct RegisterToGMemWriter[
                             (frag_m, frag_n),
                             reg_val,
                         )
+                    elif has_epilogue_fn:
+                        var frag_m, frag_n = epilogue_coordinates()
+                        value_epilogue_fn[
+                            Self.c_type, type_of(reg_val).length, alignment=1
+                        ]((frag_m, frag_n), reg_val)
                     else:
-                        comptime if Self.compute_lambda_fn:
+                        comptime if has_compute_fn:
+                            var frag_m, frag_n = epilogue_coordinates()
+                            reg_val = value_compute_fn[
+                                Self.c_type,
+                                type_of(reg_val).length,
+                                alignment=1,
+                            ]((frag_m, frag_n), reg_val)
+                        elif Self.compute_lambda_fn:
                             comptime compute_lambda = Self.compute_lambda_fn.value()
                             var frag_m, frag_n = epilogue_coordinates()
                             reg_val = compute_lambda[
