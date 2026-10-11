@@ -41,7 +41,6 @@ from uuid import uuid4
 
 import numpy as np
 import psutil
-import yaml
 from cyclopts import App, Parameter
 from cyclopts.config import Env
 from transformers import PreTrainedTokenizerBase
@@ -132,7 +131,6 @@ from max.benchmark.benchmark_shared.utils import (
     argmedian,
     fetch_server_max_model_len,
     get_tokenizer,
-    is_castable_to_int,
     openai_bearer_auth_headers,
     print_section,
     resolve_revision,
@@ -142,6 +140,10 @@ from max.benchmark.benchmark_shared.utils import (
 from max.benchmark.benchmark_shared.warmup import (
     log_warmup_sampling_report,
     pick_warmup_population,
+)
+from max.benchmark.benchmark_shared.workload import (
+    apply_workload,
+    load_workload_file,
 )
 from max.profiler.cpu import (
     CPUMetrics,
@@ -999,45 +1001,6 @@ def validate_task_and_endpoint(
             )
 
 
-def _apply_workload_to_config(
-    config: ServingBenchmarkConfig, workload: Mapping[str, object]
-) -> None:
-    """Set workload YAML values as fields on *config*.
-
-    Keys are converted from kebab-case to snake_case.  Path objects are
-    stringified and env vars in string values are expanded.
-
-    Fields already in `config.model_fields_set` (that is, explicitly provided
-    by the caller, whether via CLI args or direct construction) are left
-    unchanged so that CLI values always take precedence over workload YAML.
-    """
-    for k, v in workload.items():
-        field_name = k.replace("-", "_")
-        if field_name not in ServingBenchmarkConfig.model_fields:
-            logger.warning(f"Ignoring unknown workload key: {k}")
-            continue
-        if field_name in config.model_fields_set:
-            logger.info(
-                f"CLI flag --{k} takes precedence over workload YAML"
-                f" (CLI: {getattr(config, field_name)!r},"
-                f" workload: {v!r})"
-            )
-            continue
-        if isinstance(v, Path):
-            v = str(v)
-        elif isinstance(v, str):
-            v = os.path.expandvars(v)
-        # 'request-rate' from YAML can be a bare number; stringify so the
-        # config before-validator (comma-split strings) runs. 'max-concurrency'
-        # is handled in _load_workload_yaml instead.
-        # TODO(MXTOOLS-166): This should be handled through workload YAML being
-        # a Pydantic model instead, eventually.
-        if field_name == "request_rate" and isinstance(v, (int, float)):
-            v = str(v)
-        logger.info(f"Applying workload YAML value: --{k}={v!r}")
-        setattr(config, field_name, v)
-
-
 def flush_prefix_cache(
     backend: Backend,
     host: str,
@@ -1153,63 +1116,13 @@ def _session_sort_key(sid: str) -> tuple[int, int, str]:
         return (1, 0, sid)
 
 
-_PATH_SUPPORTING_WORKLOAD_KEYS = (
-    "dataset-path",
-    "output-lengths",
-    "extra-body",
-    "agentic-tool-profiles",
-)
-"""Workload keys whose value may name a file rather than hold content."""
-
-
 def _load_workload_yaml(args: ServingBenchmarkConfig) -> None:
     if not args.workload_config:
         return
-    with open(args.workload_config) as workload_file:
-        workload = yaml.safe_load(workload_file)
-    # Resolve relative paths against the YAML's directory.
-    for key in _PATH_SUPPORTING_WORKLOAD_KEYS:
-        value = workload.get(key)
-        # A key may hold the value itself -- a mapping, or inline JSON --
-        # rather than a path to it.
-        if (
-            not isinstance(value, str)
-            or value.lstrip().startswith("{")
-            or is_castable_to_int(value)
-        ):
-            continue
-        path = Path(os.path.expandvars(value))
-        if not path.is_absolute():
-            path = Path(args.workload_config).parent / path
-        workload[key] = path
-    # Resolve max_concurrency: CLI > YAML.
-    yaml_max_concurrency = workload.pop("max-concurrency", None)
-    if (
-        yaml_max_concurrency is not None
-        and "max_concurrency" not in args.model_fields_set
-    ):
-        # TODO(MXTOOLS-166): validate_assignment=True makes it so that this
-        # goes through Pydantic's validator, which converts as needed.
-        # Workload should itself be parsed with Pydantic so we don't need to
-        # defer validation like so.
-        args.max_concurrency = yaml_max_concurrency
-    # --num-prompts and --num-prompts-multiplier both set the request count,
-    # so either one on the CLI overrides both in the YAML.
-    yaml_num_prompts = workload.pop("num-prompts", None)
-    yaml_multiplier = workload.pop("num-prompts-multiplier", None)
-    if args.num_prompts is None and args.num_prompts_multiplier is None:
-        if yaml_num_prompts is not None:
-            args.num_prompts = int(yaml_num_prompts)
-        if yaml_multiplier is not None:
-            # Assign the raw value so validation rejects a fractional
-            # multiplier instead of int() truncating it.
-            args.num_prompts_multiplier = yaml_multiplier
-    # Resolve max_benchmark_duration_s: CLI > YAML.
-    w_duration = workload.pop("max-benchmark-duration-s", None)
-    if w_duration is not None and args.max_benchmark_duration_s is None:
-        args.max_benchmark_duration_s = int(w_duration)
-    _apply_workload_to_config(args, workload)
-    args.skip_test_prompt = True
+    workload_path = Path(args.workload_config)
+    apply_workload(
+        args, load_workload_file(workload_path), base_dir=workload_path.parent
+    )
 
 
 _DEFAULT_NUM_PROMPTS = 1000

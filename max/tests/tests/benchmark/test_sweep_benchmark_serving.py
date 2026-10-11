@@ -34,6 +34,7 @@ from max.benchmark.benchmark_shared.metrics import (
     BenchmarkResult,
     TextGenAggregates,
 )
+from max.benchmark.benchmark_shared.workload import _apply_workload_to_config
 from pydantic import ValidationError
 
 pytestmark = pytest.mark.usefixtures("offline_dryrun_mocks")
@@ -908,7 +909,6 @@ def test_result_json_written_at_specified_path(
 
 def test_apply_workload_skips_explicitly_set_fields() -> None:
     """Fields in model_fields_set must not be overwritten by workload YAML."""
-    from max.benchmark.benchmark_serving import _apply_workload_to_config
     from max.benchmark.benchmark_shared.config import ServingBenchmarkConfig
 
     config = ServingBenchmarkConfig(
@@ -944,7 +944,6 @@ def test_apply_workload_skips_explicitly_set_fields() -> None:
 
 def test_apply_workload_sets_unset_fields() -> None:
     """Fields absent from model_fields_set must be filled from workload YAML."""
-    from max.benchmark.benchmark_serving import _apply_workload_to_config
     from max.benchmark.benchmark_shared.config import ServingBenchmarkConfig
 
     config = ServingBenchmarkConfig(model="myorg/mymodel")

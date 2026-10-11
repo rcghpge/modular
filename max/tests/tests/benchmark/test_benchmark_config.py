@@ -35,6 +35,10 @@ from max.benchmark.benchmark_shared.datasets import DistributionParameter
 from max.benchmark.benchmark_shared.datasets.all import (
     _resolve_agentic_tool_profiles,
 )
+from max.benchmark.benchmark_shared.workload import (
+    apply_workload,
+    load_workload_file,
+)
 from pydantic import ValidationError
 
 
@@ -482,6 +486,38 @@ class TestExtraBodyValidator:
         args = ServingBenchmarkConfig(model="m", workload_config=str(workload))
         _load_workload_yaml(args)
         assert args.extra_body == self._NESTED
+
+
+class TestApplyWorkload:
+    """`apply_workload` applies an in-memory workload like a YAML file."""
+
+    def test_resolves_paths_against_base_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "payload.yaml").write_text("k: v\n")
+        args = ServingBenchmarkConfig(model="m")
+        apply_workload(
+            args,
+            {"extra-body": "payload.yaml", "num-prompts": 7},
+            base_dir=tmp_path,
+        )
+        assert args.extra_body == {"k": "v"}
+        assert args.num_prompts == 7
+
+
+class TestLoadWorkloadFile:
+    """A workload file holds flat options; anything else is rejected."""
+
+    _OPTIONS = {"dataset-name": "random", "num-prompts": 7}
+
+    def test_flat(self, tmp_path: Path) -> None:
+        path = tmp_path / "workload.yaml"
+        _write_yaml(path, self._OPTIONS)
+        assert load_workload_file(path) == self._OPTIONS
+
+    def test_non_mapping_document_rejected(self, tmp_path: Path) -> None:
+        path = tmp_path / "workload.yaml"
+        path.write_text("- dataset-name: random\n")
+        with pytest.raises(ValueError, match="must be a dict"):
+            load_workload_file(path)
 
 
 # ---------------------------------------------------------------------------
