@@ -504,7 +504,7 @@ class TestApplyWorkload:
 
 
 class TestLoadWorkloadFile:
-    """A workload file holds flat options; anything else is rejected."""
+    """Options must be at the root or inside of a native block."""
 
     _OPTIONS = {"dataset-name": "random", "num-prompts": 7}
 
@@ -512,6 +512,52 @@ class TestLoadWorkloadFile:
         path = tmp_path / "workload.yaml"
         _write_yaml(path, self._OPTIONS)
         assert load_workload_file(path) == self._OPTIONS
+
+    @pytest.mark.parametrize(
+        "document",
+        [
+            {"runner": "native", "native": _OPTIONS},
+            {"native": _OPTIONS},
+        ],
+        ids=["explicit-runner", "implicit-runner"],
+    )
+    def test_native_block(
+        self, tmp_path: Path, document: dict[str, Any]
+    ) -> None:
+        path = tmp_path / "workload.yaml"
+        _write_yaml(path, document)
+        assert load_workload_file(path) == self._OPTIONS
+
+    @pytest.mark.parametrize(
+        ("document", "match"),
+        [
+            (
+                {"runner": "other", "other": {"dataset-name": "random"}},
+                "selects runner 'other'",
+            ),
+            ({"runner": "other", "native": _OPTIONS}, "selects runner"),
+            (
+                {"runner": "native", "native": _OPTIONS, "num-prompts": 3},
+                "must hold flat options",
+            ),
+            ({"runner": "native", "native": "random"}, "must hold flat"),
+            ({"runner": "native"}, "has no 'native:' block"),
+        ],
+        ids=[
+            "other-runner",
+            "mismatched-block",
+            "extra-top-level-key",
+            "non-mapping-block",
+            "missing-block",
+        ],
+    )
+    def test_rejected(
+        self, tmp_path: Path, document: dict[str, Any], match: str
+    ) -> None:
+        path = tmp_path / "workload.yaml"
+        _write_yaml(path, document)
+        with pytest.raises(ValueError, match=match):
+            load_workload_file(path)
 
     def test_non_mapping_document_rejected(self, tmp_path: Path) -> None:
         path = tmp_path / "workload.yaml"

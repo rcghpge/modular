@@ -35,9 +35,15 @@ _PATH_SUPPORTING_WORKLOAD_KEYS = (
 )
 """Workload keys whose value may name a file rather than hold content."""
 
+_NATIVE_RUNNER = "native"
+
 
 def load_workload_file(path: Path) -> Mapping[str, object]:
     """Loads a workload YAML file's options.
+
+    A workload file is either flat, with options at the root, or
+    selects the native runner with ``runner: native`` and holds the options
+    in a ``native:`` block.
 
     Args:
         path: The workload YAML file.
@@ -46,7 +52,10 @@ def load_workload_file(path: Path) -> Mapping[str, object]:
         The workload options, keyed by their hyphenated names.
 
     Raises:
-        ValueError: If the file is not a mapping.
+        ValueError: If the file is not a mapping or selects a runner other
+            than the native one. This includes when it selects the native
+            runner without a ``native:`` block, holds anything besides
+            ``runner`` beside that block, or the block is not a mapping.
     """
     with open(path) as workload_file:
         document = yaml.safe_load(workload_file)
@@ -54,7 +63,36 @@ def load_workload_file(path: Path) -> Mapping[str, object]:
         raise ValueError(
             f"Workload {path} must be a dict, got {type(document).__name__}"
         )
-    return document
+    if "runner" not in document and _NATIVE_RUNNER not in document:
+        return document
+    runner = document.get("runner", _NATIVE_RUNNER)
+    block = document.get(_NATIVE_RUNNER)
+    extra_keys = sorted(
+        str(key) for key in document if key not in ("runner", _NATIVE_RUNNER)
+    )
+    if runner != _NATIVE_RUNNER:
+        raise ValueError(
+            f"Workload {path} selects runner {runner!r}; only"
+            " the native runner is supported."
+        )
+    if block is None:
+        raise ValueError(
+            f"Workload {path} selects the native runner but has no"
+            " 'native:' block."
+        )
+    if not isinstance(block, dict):
+        raise ValueError(
+            f"Workload {path} must hold flat options or 'runner: native' with"
+            " a 'native:' mapping and nothing else; got a"
+            f" `native:` block of type {type(block).__name__}."
+        )
+    if extra_keys:
+        raise ValueError(
+            f"Workload {path} must hold flat options or 'runner: native' with"
+            " a 'native:' mapping and nothing else; got a 'native:' block and"
+            f" extra keys {extra_keys}."
+        )
+    return dict(block)
 
 
 def apply_workload(
