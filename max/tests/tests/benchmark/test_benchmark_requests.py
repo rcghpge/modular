@@ -35,6 +35,7 @@ from max.benchmark.benchmark_shared.datasets.types import (
 from max.benchmark.benchmark_shared.request import (
     OpenAIChatCompletionsRequestDriver,
     OpenAICompletionsRequestDriver,
+    OpenAIStreamRecorder,
     OpenResponsesRequestDriver,
     PixelGenerationRequestFuncInput,
     ProgressBarRequestDriver,
@@ -339,6 +340,106 @@ class TestAsyncRequestFunctions:
 
         assert success is True
         assert unload_time >= 0
+
+
+class TestOpenAIStreamRecorder:
+    def test_records_ttft_itl_and_generated_text_for_chat_chunks(self) -> None:
+        """The first content chunk sets ttft; later chunks add itl entries."""
+        recorder = OpenAIStreamRecorder(prompt_len=10, chat=True)
+
+        assert (
+            recorder.on_event(
+                json.dumps({"choices": [{"delta": {"content": "Hello"}}]})
+            )
+            is None
+        )
+        assert recorder.output.ttft > 0.0
+        assert recorder.output.itl == []
+
+        assert (
+            recorder.on_event(
+                json.dumps({"choices": [{"delta": {"content": " world"}}]})
+            )
+            is None
+        )
+        assert len(recorder.output.itl) == 1
+
+        assert recorder.on_event("[DONE]") is None
+
+        output = recorder.finish()
+        assert output is recorder.output
+        assert output.success is True
+        assert output.generated_text == "Hello world"
+        assert output.latency > 0.0
+        assert output.prompt_len == 10
+
+    def test_records_text_for_completion_chunks(self) -> None:
+        """``chat=False`` reads the completions schema's ``text`` field."""
+        recorder = OpenAIStreamRecorder(prompt_len=5, chat=False)
+
+        recorder.on_event(json.dumps({"choices": [{"text": "Hi"}]}))
+        output = recorder.finish()
+
+        assert output.success is True
+        assert output.generated_text == "Hi"
+
+    def test_on_event_returns_output_and_stops_on_error_chunk(self) -> None:
+        """An error chunk ends the stream immediately with the failed output."""
+        recorder = OpenAIStreamRecorder(prompt_len=1, chat=True)
+
+        result = recorder.on_event(
+            json.dumps({"choices": [], "error": {"message": "boom"}})
+        )
+
+        assert result is recorder.output
+        assert result.success is False
+        assert result.error == "boom"
+
+    def test_usage_chunk_is_recorded_as_server_token_stats(self) -> None:
+        """A usage-bearing chunk populates ``server_token_stats``."""
+        recorder = OpenAIStreamRecorder(prompt_len=1, chat=True)
+
+        recorder.on_event(
+            json.dumps(
+                {
+                    "choices": [{"delta": {"content": "x"}}],
+                    "usage": {
+                        "prompt_tokens": 3,
+                        "completion_tokens": 1,
+                        "total_tokens": 4,
+                        "prompt_tokens_details": {"cached_tokens": 2},
+                    },
+                }
+            )
+        )
+
+        stats = recorder.output.server_token_stats
+        assert stats.prompt_tokens == 3
+        assert stats.completion_tokens == 1
+        assert stats.total_tokens == 4
+        assert stats.cached_tokens == 2
+
+    def test_finish_without_content_fails(self) -> None:
+        """Choices present but no modeled text field must fail."""
+        recorder = OpenAIStreamRecorder(prompt_len=1, chat=True)
+
+        recorder.on_event(
+            json.dumps({"choices": [{"delta": {"role": "assistant"}}]})
+        )
+        output = recorder.finish()
+
+        assert output.success is False
+        assert "No text content" in output.error
+
+    def test_fail_marks_output_unsuccessful(self) -> None:
+        """``fail`` sets the error and marks the request unsuccessful."""
+        recorder = OpenAIStreamRecorder(prompt_len=1, chat=True)
+
+        output = recorder.fail("connection reset")
+
+        assert output is recorder.output
+        assert output.success is False
+        assert output.error == "connection reset"
 
 
 class TestRequestDriver:
