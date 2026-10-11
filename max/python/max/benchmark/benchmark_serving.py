@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import json
 import logging
 import os
@@ -85,6 +84,13 @@ from max.benchmark.benchmark_shared.gpu_metrics_scraper import (
     DCGMBackgroundRecorder,
     GPUStatsSnapshot,
 )
+from max.benchmark.benchmark_shared.iteration import (
+    report_and_validate,
+    resolve_seed,
+    resolve_skip_counts,
+    retain_result,
+    seed_for_concurrency,
+)
 from max.benchmark.benchmark_shared.lora_benchmark_manager import (
     LoRABenchmarkManager,
 )
@@ -116,7 +122,6 @@ from max.benchmark.benchmark_shared.serving_metrics import (
     compute_output_len,
 )
 from max.benchmark.benchmark_shared.serving_result_output import (
-    print_benchmark_summary,
     print_input_prompts,
     print_workload_stats,
     save_output_lengths,
@@ -352,70 +357,6 @@ def _benchmark_request_total(samples: Samples) -> int:
     return sum(session.num_turns for session in samples.chat_sessions)
 
 
-def _resolve_skip_counts(
-    orig_skip_first: int | None,
-    orig_skip_last: int | None,
-    request_rate: float,
-    max_concurrency: int | None,
-    ignore_first_turn_stats: bool,
-    warmup_to_steady_state: bool,
-) -> tuple[int, int]:
-    """Resolve effective skip_first / skip_last from user-supplied and auto-derived values.
-
-    Returns:
-        ``(skip_first, skip_last)`` request counts to exclude from stats.
-    """
-    skip_first = orig_skip_first
-    skip_last = orig_skip_last
-
-    if request_rate != float("inf"):
-        # Finite rate → steady drip with no ramp-up / ramp-down artifacts,
-        # so skip nothing (PERF-878).
-        if skip_first is None:
-            skip_first = 0
-        if skip_last is None:
-            skip_last = 0
-    elif max_concurrency is not None and max_concurrency > 1:
-        if skip_first is None:
-            skip_first = max_concurrency
-            logger.info(
-                f"Auto-setting skip_first_n_requests={skip_first}"
-                f" (max_concurrency={max_concurrency})"
-            )
-        if skip_last is None:
-            skip_last = max_concurrency
-            logger.info(
-                f"Auto-setting skip_last_n_requests={skip_last}"
-                f" (max_concurrency={max_concurrency})"
-            )
-    # max_concurrency=1 → sequential requests, no ramp-up to trim.
-    # max_concurrency=None → no cap; default to 0.
-    # Both leave auto values unset → fall through to 0 below.
-    if skip_first is None:
-        skip_first = 0
-    if skip_last is None:
-        skip_last = 0
-
-    if ignore_first_turn_stats and skip_first and not warmup_to_steady_state:
-        # Without --warmup-to-steady-state, sessions all start at turn 0,
-        # so --ignore-first-turn-stats already drops the same head requests
-        # that --skip-first-n-requests would target. Combining them just
-        # trims deeper into the run than the user asked for.
-        # With --warmup-to-steady-state, sessions begin at randomized turn
-        # offsets, so the two features filter different requests and we
-        # want them to compose.
-        logger.warning(
-            "--ignore-first-turn-stats and --skip-first-n-requests both set"
-            " without --warmup-to-steady-state. --ignore-first-turn-stats"
-            " already drops every session's first turn, so"
-            " --skip-first-n-requests would trim deeper than expected."
-            " Ignoring --skip-first-n-requests."
-        )
-        skip_first = 0
-
-    return skip_first, skip_last
-
-
 async def benchmark(
     args: ServingBenchmarkConfig,
     session: BenchmarkSession,
@@ -429,7 +370,7 @@ async def benchmark(
     """
     backend: Backend = args.backend
 
-    skip_first, skip_last = _resolve_skip_counts(
+    skip_first, skip_last = resolve_skip_counts(
         orig_skip_first=session.orig_skip_first,
         orig_skip_last=session.orig_skip_last,
         request_rate=request_rate,
@@ -900,8 +841,6 @@ async def benchmark(
         except Exception as e:
             logger.warning(f"Failed to collect server metrics: {e}")
 
-    achieved_request_rate = 0.0
-
     result: BenchmarkResult
     if session.benchmark_task in PIXEL_GENERATION_TASKS:
         result = build_pixel_generation_result(
@@ -915,7 +854,7 @@ async def benchmark(
             gpu_device_groups=gpu_device_groups,
         )
     else:
-        text_result = build_text_generation_result(
+        result = build_text_generation_result(
             outputs=all_outputs,
             benchmark_duration=benchmark_duration,
             tokenizer=session.tokenizer,
@@ -931,43 +870,20 @@ async def benchmark(
             kv_block_size=args.kv_block_size,
             record_request_text=args.record_request_text,
             gpu_device_groups=gpu_device_groups,
+            outputs_by_session=outputs_by_session,
         )
-        if outputs_by_session is not None:
-            text_result.session_server_stats = {
-                sid: [out.server_token_stats for out in outs]
-                for sid, outs in sorted(
-                    outputs_by_session.items(),
-                    key=lambda kv: _session_sort_key(kv[0]),
-                )
-            }
-        else:
-            text_result.aggregate_server_stats = [
-                out.server_token_stats
-                for out in all_outputs
-                if isinstance(out, RequestFuncOutput)
-            ]
-        result = text_result
     if session.lora_manager is not None:
         result.lora_metrics = session.lora_manager.metrics
 
-    print_benchmark_summary(
-        metrics=result,
+    ok = report_and_validate(
+        result,
         request_rate=request_rate,
         max_concurrency=max_concurrency,
-        achieved_request_rate=achieved_request_rate,
         collect_gpu_stats=args.collect_gpu_stats,
         collect_cpu_stats=args.collect_cpu_stats,
         lora_manager=session.lora_manager,
     )
-
-    ok, validation_errors = result.validate_metrics()
-    if not ok:
-        for err in validation_errors:
-            logger.error(f"Benchmark result validation failed: {err}")
-        logger.info("finished benchmark run: Failed.")
-        return result, False
-    logger.info("finished benchmark run: Success.")
-    return result, True
+    return result, ok
 
 
 def validate_task_and_endpoint(
@@ -1108,14 +1024,6 @@ class BenchmarkSession:
     orig_skip_last: int | None
 
 
-def _session_sort_key(sid: str) -> tuple[int, int, str]:
-    """Sort numeric session ids first by integer value, then anonymous ids."""
-    try:
-        return (0, int(sid), "")
-    except ValueError:
-        return (1, 0, sid)
-
-
 def _load_workload_yaml(args: ServingBenchmarkConfig) -> None:
     if not args.workload_config:
         return
@@ -1196,33 +1104,6 @@ def _resolve_end_condition(
         num_prompts_multiplier=multiplier,
         max_duration_s=duration_s,
     )
-
-
-def _resolve_seed(args: ServingBenchmarkConfig) -> None:
-    """Draw and record a random seed when one was not pinned.
-
-    ``args.seed`` defaults to a fixed value so scheduled and repeated runs are
-    reproducible. A caller can opt into a fresh draw with ``--seed none`` (which
-    sets ``args.seed`` to ``None``); this resolves that draw to a concrete value
-    *before* the workload is sampled, so the run stays reproducible from the
-    recorded seed.
-    """
-    if args.seed is None:
-        args.seed = int(np.random.default_rng().integers(0, 10000))
-        logger.info("Drew a fresh random seed=%d", args.seed)
-    else:
-        logger.info("Using pinned seed=%d", args.seed)
-
-
-def _seed_for_concurrency(seed: int | None, max_concurrency: int | None) -> int:
-    """Derive a per-concurrency-level seed from the base seed.
-
-    Each concurrency level gets its own request sample instead of replaying
-    the same requests as every other level, while staying reproducible from
-    the single base seed.
-    """
-    digest = hashlib.sha256(f"{seed}:{max_concurrency}".encode()).digest()
-    return int.from_bytes(digest[:4], "big")
 
 
 def _run_prefix_len(
@@ -1491,6 +1372,7 @@ def _run_benchmark_sweep(
     session: BenchmarkSession,
     end_condition: EndCondition,
 ) -> Iterator[BenchmarkRunResult]:
+    assert args.seed is not None, "resolve_seed must run first"
     # ---- Sweep loop ----
     for mc in args.max_concurrency:
         num_prompts = end_condition.num_prompts_for(mc)
@@ -1506,7 +1388,7 @@ def _run_benchmark_sweep(
         # Each concurrency level draws its own sample, derived from the base
         # seed, so levels are reproducible individually without replaying
         # the exact same requests at every level.
-        mc_seed = _seed_for_concurrency(args.seed, mc)
+        mc_seed = seed_for_concurrency(args.seed, mc)
         session.samples = _sample_for_seed(
             args,
             session.benchmark_task,
@@ -1549,12 +1431,16 @@ def _run_benchmark_sweep(
                 idx = 0
             best_result = iteration_results[idx]
 
-            save = validation_passed or args.always_save_result
-            if save:
+            retained = retain_result(
+                best_result,
+                passed=validation_passed,
+                always_save_result=args.always_save_result,
+            )
+            if retained is not None:
                 save_result_json(
                     args.result_filename,
                     args,
-                    best_result,
+                    retained,
                     benchmark_task=session.benchmark_task,
                     model_id=session.model_id,
                     tokenizer_id=session.tokenizer_id,
@@ -1563,7 +1449,7 @@ def _run_benchmark_sweep(
                 )
                 save_output_lengths(
                     args,
-                    best_result,
+                    retained,
                     session.benchmark_task,
                     iteration_config=(mc, rr),
                 )
@@ -1572,7 +1458,7 @@ def _run_benchmark_sweep(
                 mc,
                 rr,
                 num_prompts,
-                result=best_result if save else None,
+                result=retained,
             )
 
             if not validation_passed:
@@ -1596,7 +1482,7 @@ def main_with_parsed_args(
         raise ValueError("--model is required when running benchmark")
 
     _load_workload_yaml(args)
-    _resolve_seed(args)
+    resolve_seed(args)
 
     end_condition = _resolve_end_condition(
         args=args, concurrency_range=args.max_concurrency

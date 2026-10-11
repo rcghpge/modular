@@ -23,7 +23,6 @@ import pytest
 import yaml
 from max.benchmark.benchmark_serving import (
     _load_workload_yaml,
-    _resolve_seed,
     main_with_parsed_args,
     parse_args,
 )
@@ -35,6 +34,7 @@ from max.benchmark.benchmark_shared.datasets import DistributionParameter
 from max.benchmark.benchmark_shared.datasets.all import (
     _resolve_agentic_tool_profiles,
 )
+from max.benchmark.benchmark_shared.iteration import resolve_seed
 from max.benchmark.benchmark_shared.workload import (
     apply_workload,
     load_workload_file,
@@ -393,19 +393,19 @@ class TestSeedConfigFileLoading:
 
 
 class TestResolveSeed:
-    """``_resolve_seed`` draws a concrete seed only when one was not pinned."""
+    """``resolve_seed`` draws a concrete seed only when one was not pinned."""
 
     def test_random_seed_is_drawn(self) -> None:
         """A ``None`` seed is resolved to a concrete int in ``[0, 10000)``."""
         config = ServingBenchmarkConfig(model="m", seed=None)
-        _resolve_seed(config)
+        resolve_seed(config)
         assert isinstance(config.seed, int)
         assert 0 <= config.seed < 10000
 
     def test_pinned_seed_is_unchanged(self) -> None:
         """A pinned seed is left exactly as supplied."""
         config = ServingBenchmarkConfig(model="m", seed=1234)
-        _resolve_seed(config)
+        resolve_seed(config)
         assert config.seed == 1234
 
 
