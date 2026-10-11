@@ -441,6 +441,26 @@ class TestOpenAIStreamRecorder:
         assert output.success is False
         assert output.error == "connection reset"
 
+    def test_arrival_times_override_the_clock(self) -> None:
+        """Given arrival times, TTFT, ITL and latency come from them."""
+        recorder = OpenAIStreamRecorder(prompt_len=1, chat=True)
+        start = recorder._st
+
+        recorder.on_event(
+            json.dumps({"choices": [{"delta": {"content": "a"}}]}),
+            arrived=start + 0.5,
+        )
+        recorder.on_event(
+            json.dumps({"choices": [{"delta": {"content": "b"}}]}),
+            arrived=start + 0.75,
+        )
+        recorder.on_event("[DONE]", arrived=start + 1.0)
+        output = recorder.finish()
+
+        assert output.ttft == pytest.approx(0.5)
+        assert output.itl == [pytest.approx(0.25)]
+        assert output.latency == pytest.approx(1.0)
+
 
 class TestRequestDriver:
     """Test cases for RequestDriver classes."""
@@ -1924,3 +1944,20 @@ def test_tag_response_format_outcome_ignores_a_text_format() -> None:
     tag_response_format_outcome(output, _chat_input({"type": "text"}))
     assert output.response_format_constrained
     assert output.response_format_conformed is None
+
+
+def test_stream_recorder_cancel_discards_partial_measurement() -> None:
+    recorder = OpenAIStreamRecorder(prompt_len=12, chat=True)
+    recorder.on_event('{"choices": [{"delta": {"content": "Hello"}}]}')
+    recorder.on_event('{"choices": [{"delta": {"content": " world"}}]}')
+
+    output = recorder.cancel()
+
+    assert recorder.done
+    assert output is recorder.output
+    assert output.cancelled
+    assert not output.success
+    assert output.prompt_len == 0
+    assert output.ttft == 0.0
+    assert output.itl == []
+    assert output.request_submit_time is not None

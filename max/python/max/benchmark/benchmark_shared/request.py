@@ -737,18 +737,32 @@ class OpenAIStreamRecorder:
         self._most_recent_timestamp = self._st
         self._has_content = False
         self._latency = 0.0
+        self._done = False
 
-    def on_event(self, data: str) -> RequestFuncOutput | None:
+    @property
+    def done(self) -> bool:
+        """Whether the request finished, was cancelled, or failed."""
+        return self._done
+
+    def on_event(
+        self, data: str, *, arrived: float | None = None
+    ) -> RequestFuncOutput | None:
         """Records one SSE event's data.
 
         Args:
             data: The event's data field.
+            arrived: When the event arrived, as a ``time.perf_counter()``
+                value; ``None`` reads the clock as the event is recorded.
 
         Returns:
             ``None`` to keep reading the stream, or the request's output when
             the event reported an error and the request is over.
         """
-        self._latency = time.perf_counter() - self._st
+
+        def now() -> float:
+            return time.perf_counter() if arrived is None else arrived
+
+        self._latency = now() - self._st
         if data == "[DONE]":
             return None
 
@@ -788,10 +802,10 @@ class OpenAIStreamRecorder:
             # leave this False so the request is flagged rather than recorded
             # as a success with ttft=0 and no tokens.
             self._has_content = True
-            timestamp = time.perf_counter()
+            timestamp = now()
             # First token
             if self._ttft == 0.0:
-                self._ttft = time.perf_counter() - self._st
+                self._ttft = timestamp - self._st
                 self.output.ttft = self._ttft
 
             # Decoding phase
@@ -814,6 +828,7 @@ class OpenAIStreamRecorder:
         Returns:
             The request's output.
         """
+        self._done = True
         if not self._has_content:
             self.output.error = (
                 "No text content captured from the response"
@@ -838,8 +853,23 @@ class OpenAIStreamRecorder:
         Returns:
             The request's output.
         """
+        self._done = True
         self.output.error = error
         self.output.success = False
+        return self.output
+
+    def cancel(self) -> RequestFuncOutput:
+        """Marks the request cancelled by the client.
+
+        Resets the output, discarding all collected measurements.
+
+        Returns:
+            The request's output.
+        """
+        self._done = True
+        self.output = RequestFuncOutput(
+            cancelled=True, request_submit_time=time.perf_counter()
+        )
         return self.output
 
 
