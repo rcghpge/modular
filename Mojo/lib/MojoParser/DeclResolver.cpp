@@ -1473,8 +1473,8 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
     // for the next stage of resolution.
     if (auto declOp = decl.getIfOperation()) {
       TypeSwitch<Operation &>(*declOp)
-          .Case<FnOp, StructDeclOp, StructFieldOp, TraitDeclOp, ExtensionDeclOp,
-                AliasDeclOp>([&](auto op) {
+          .Case<FnOp, StructDeclOp, StructFieldOp, EnumCaseOp, TraitDeclOp,
+                ExtensionDeclOp, AliasDeclOp>([&](auto op) {
             // If this is a synthetic decl, resolve it specially.
             if (decl.getCursor().isInvalid()) {
               if constexpr (std::is_same_v<FnOp, decltype(op)>) {
@@ -1543,8 +1543,8 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
       // declaration.
       if (!decl.isMatchingEndCursor(lexer.getCursor()) && !decl.isErroneous()) {
         if (lexer.getToken().isAny(Token::kw_def, Token::kw_struct,
-                                   Token::kw_trait, Token::kw_class,
-                                   Token::kw_var)) {
+                                   Token::kw___enum, Token::kw_trait,
+                                   Token::kw_class, Token::kw_var)) {
           lexer.emitTokenError(
               "definition isn't on its own line at the correct "
               "indentation");
@@ -1609,7 +1609,8 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
           })
           .Case<PackageOp>([&](auto op) { (void)resolveBody(op, decl); })
           .Case<ModuleOp, ImportOp, UnresolvedImportOp,
-                UnresolvedWildcardImportOp>([&](auto op) { /*Nothing*/ })
+                UnresolvedWildcardImportOp, EnumCaseOp>(
+              [&](auto op) { /*Nothing*/ })
           .Default([&](Operation &attr) {
             llvm_unreachable(
                 "do not know how to resolve the body of this decl!");

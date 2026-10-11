@@ -117,6 +117,7 @@ static bool isStatementThatMightHaveDecorators(Token::Kind tokenKind) {
   case Token::kw_def:
   case Token::kw_fn:
   case Token::kw_struct:
+  case Token::kw___enum:
   case Token::kw_class:
   case Token::kw_from:
   case Token::kw_import:
@@ -380,6 +381,7 @@ struct StmtParser : public ParserBase {
                                     bool allowRelativeImport);
   ParseResult parseDefFnStmt(LexerCursor startCursor, size_t curIndent);
   ParseResult parseStructStmt(LexerCursor startCursor, size_t curIndent);
+  ParseResult parseEnumCaseStmt(size_t stmtIndent);
   ParseResult parseTraitStmt(LexerCursor startCursor, size_t curIndent);
   ParseResult parseExtensionStmt(LexerCursor startCursor, size_t curIndent);
   ParseResult parseClassStmt(LexerCursor startCursor, size_t curIndent);
@@ -794,6 +796,7 @@ ParseResult StmtParser::parseStmt(bool onlySimpleStmt, bool &parsedCompound,
     rejectSimpleStmt(); // Not a simple_stmt.
     return parseDefFnStmt(startCursor, stmtIndent);
   case Token::kw_struct:
+  case Token::kw___enum:
     rejectSimpleStmt(); // Not a simple_stmt.
     return parseStructStmt(startCursor, stmtIndent);
   case Token::kw_trait:
@@ -818,6 +821,13 @@ ParseResult StmtParser::parseStmt(bool onlySimpleStmt, bool &parsedCompound,
   case Token::kw_import:
     rejectDecorator(); // Decorators not allowed.
     return parseImportStmt();
+  case Token::kw_case:
+    if (auto structOp =
+            dyn_cast_or_null<StructDeclOp>(getParentDecl().getIfOperation());
+        !structOp || !structOp.isEnum())
+      break;
+    rejectDecorator(); // Decorators not allowed.
+    return parseEnumCaseStmt(stmtIndent);
   case Token::kw_pass:
   case Token::dot_dot_dot:
     // pass_stmt ::= "pass"
@@ -4910,6 +4920,18 @@ ParseResult StmtParser::parseVarStmt(LexerCursor startCursor,
     return success();
   }
 
+  if (auto structOp =
+          dyn_cast_or_null<StructDeclOp>(getParentDecl().getIfOperation());
+      structOp && structOp.isEnum()) {
+    rejectDecorator();
+    emitError(loc, "enums do not support 'var' fields; store state in a case "
+                   "payload");
+    skipUntilIndentation(stmtIndent, /*stopOnSemicolon=*/true);
+    StringRef ignoredDocString;
+    parseDocString(ignoredDocString);
+    return success();
+  }
+
   auto unresolvedType = UnresolvedType::get(getContext());
   // If we're in a struct, then this is a field declaration.
   Operation *declOp;
@@ -5131,25 +5153,30 @@ ParseResult StmtParser::parseAliasDeclStmtBody(LexerCursor startCursor,
   return success();
 }
 
+/// Parse a `struct` or an `__enum` declaration. An enum is a struct whose
+/// state is declared by its cases.
 ParseResult StmtParser::parseStructStmt(LexerCursor startCursor,
                                         size_t curIndent) {
+  bool isEnum = getToken().is(Token::kw___enum);
+  StringRef kind = isEnum ? "enum" : "struct";
+
   // We don't support non-top level structs (yet?).
   bool nestFailure = false;
   if (isa_and_nonnull<StructDeclOp>(getParentDecl().getIfOperation())) {
-    emitTokenError("nested struct not supported here");
+    emitTokenError("nested " + kind + " not supported here");
     nestFailure = true;
   } else if (isa_and_nonnull<TraitDeclOp>(getParentDecl().getIfOperation())) {
-    emitTokenError("nested struct in a trait not supported here");
+    emitTokenError("nested " + kind + " in a trait not supported here");
     nestFailure = true;
   } else if (isa_and_nonnull<FnOp>(getParentDecl().getIfOperation())) {
-    emitTokenError("struct inside a function not supported here");
+    emitTokenError(kind + " inside a function not supported here");
     nestFailure = true;
   }
-  consumeToken(Token::kw_struct);
+  consumeToken(isEnum ? Token::kw___enum : Token::kw_struct);
 
   SMLoc smLoc;
   StringAttr nameAttr;
-  if (parseIdentifier(nameAttr, "expected struct name", &smLoc,
+  if (parseIdentifier(nameAttr, "expected " + kind + " name", &smLoc,
                       /*forbidStartOfLine=*/true)) {
     return failure();
   }
@@ -5165,6 +5192,7 @@ ParseResult StmtParser::parseStructStmt(LexerCursor startCursor,
   auto loc = translateLocation(smLoc);
 
   auto newStruct = StructDeclOp::create(builder, loc, nameAttr);
+  newStruct.setIsEnum(isEnum);
 
   // Skip the body of this definition: go to a token the starts a line at the
   // same indent level (or less) as the current definition.
@@ -5178,6 +5206,51 @@ ParseResult StmtParser::parseStructStmt(LexerCursor startCursor,
     // it when it gets referenced.
     getDeclResolver().addDecl(newStruct, smLoc, nameAttr, curDeclScope,
                               startCursor, getLexer().getCursor(), curIndent);
+  }
+  return success();
+}
+
+/// enum_case ::= "case" identifier ["(" expression ("," expression)* [","] ")"]
+///
+/// As for a field, only the name is parsed here: the rest of the line is parsed
+/// when the enum resolves its cases, so that a payload can name any member.
+ParseResult StmtParser::parseEnumCaseStmt(size_t stmtIndent) {
+  LexerCursor caseCursor = getLexer().getCursor();
+  consumeToken(Token::kw_case);
+
+  if (!getToken().isIdentifier() || getToken().isStartOfLine()) {
+    emitError(getTokenLocOrEndOfPreviousLineIfOnNewLine())
+        << "enum case must have the form 'case name' or 'case name(T, ...)'";
+    skipUntilIndentation(stmtIndent, /*stopOnSemicolon=*/true);
+    StringRef ignoredDocString;
+    parseDocString(ignoredDocString);
+    return success();
+  }
+
+  StringAttr name;
+  SMLoc nameLoc;
+  if (parseIdentifier(name, "internal error: checked above", &nameLoc))
+    return failure();
+  skipUntilIndentation(stmtIndent, /*stopOnSemicolon=*/true);
+
+  auto caseOp = EnumCaseOp::create(builder, translateLocation(nameLoc), name,
+                                   /*payloadTypes=*/nullptr,
+                                   /*docString=*/nullptr);
+  // The decl is unlisted: a case is not itself a member but is used to
+  // generate the member of its name (a `comptime` value or a static
+  // constructor), which is the one that name lookup finds.
+  (void)getDeclResolver().createUnlistedDecl(
+      caseOp.getOperation(), nameLoc, curDeclScope, caseCursor,
+      getLexer().getCursor(), stmtIndent);
+  // A case op is not an `ASTDeclInterface`, so set its doc string here.
+  StringRef docString;
+  parseDocString(docString);
+  if (!docString.empty()) {
+    Location loc = shared.diags.translateLocation(
+        lexer.getStringLiteralStartLoc(docString));
+    caseOp.setDocStringAttr(DocStringAttr::get(
+        StringAttr::get(getContext(), lexer.getStringLiteralValue(docString)),
+        dyn_cast<FileLineColLoc>(loc)));
   }
   return success();
 }

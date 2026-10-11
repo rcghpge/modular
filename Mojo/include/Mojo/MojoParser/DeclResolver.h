@@ -44,6 +44,7 @@ class ParserBase;
 class SharedState;
 class UnresolvedImportOp;
 class ImportOp;
+class EnumCaseOp;
 class StructDeclOp;
 class StructFieldOp;
 class TraitDeclOp;
@@ -414,6 +415,10 @@ private:
 
   LogicalResult resolveSignature(StructDeclOp op, Lexer &lexer, ASTDecl &decl);
   ParseResult resolveBody(StructDeclOp op, Lexer &lexer, ASTDecl &decl);
+  /// Resolve the cases parsed in the body of an enum, given in declaration
+  /// order.
+  void resolveEnumCases(ASTDecl &decl, ArrayRef<ASTDecl *> caseDecls);
+  LogicalResult resolveSignature(EnumCaseOp op, Lexer &lexer, ASTDecl &decl);
   LogicalResult resolveSignature(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
   ParseResult resolveBody(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
   LogicalResult resolveSignature(TraitDeclOp op, Lexer &lexer, ASTDecl &decl);
