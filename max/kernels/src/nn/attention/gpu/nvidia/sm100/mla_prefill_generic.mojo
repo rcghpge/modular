@@ -97,7 +97,7 @@ comptime MLA_PREFILL_PDL_LEVEL = PDLLevel.OVERLAP_AT_END if get_defined_bool[
 
 
 @fieldwise_init
-struct WarpRole(Equatable, TrivialRegisterPassable):
+struct WarpRole(EnumLike, Equatable, TrivialRegisterPassable):
     var _role: Int32
     comptime Softmax0 = Self(0)
     comptime Softmax1 = Self(1)
@@ -105,6 +105,37 @@ struct WarpRole(Equatable, TrivialRegisterPassable):
     comptime MMA = Self(3)
     comptime Load = Self(4)
     comptime Empty = Self(5)
+
+    # The implicit fieldwise initializer accepts raw values outside the named
+    # cases, so the enum is not exhaustive.
+    comptime _enum_is_exhaustive = False
+
+    comptime _enum_case_names = ParameterList.of[
+        "Softmax0".value,
+        "Softmax1".value,
+        "Correction".value,
+        "MMA".value,
+        "Load".value,
+        "Empty".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        """Return the active case index."""
+        return Int(self._role)
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        """WarpRole cases carry no payload."""
+        comptime assert False, "WarpRole has no payload"
 
     @inline(.always)
     def __eq__(self, other: Int) -> Bool:
@@ -530,108 +561,109 @@ __extension SM100MLA:
 
         # warp group partitioning
         # Two QO:
-        if role == WarpRole.Softmax0 or role == WarpRole.Softmax1:
-            # softmax $warp_group_idx
-            warpgroup_reg_alloc[num_reg_softmax]()
+        match role:
+            case .Softmax0 | .Softmax1:
+                # softmax $warp_group_idx
+                warpgroup_reg_alloc[num_reg_softmax]()
 
-            if not seq_info.is_valid():
-                return
+                if not seq_info.is_valid():
+                    return
 
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
 
-            fa4_softmax[
-                Self.KVLUTType,
-                Self.config.fa4_config,
-                Self.ValidLengthType,
-                NullPointer[Self.output_dtype],
-                False,
-                Self.MaxSeqLenType,
-                output_nonempty=output_nonempty,
-            ](
-                attn_smem,
-                tmem_addr,
-                pos.score_row,
-                seq_info,
-                mask,
-                pos.num_keys,
-                scale.cast[Self.accum_dtype](),
-                max_seq_len.as_uint32(),
-                ragged_tma_store,
-                NullPointer[Self.output_dtype](),
-            )
+                fa4_softmax[
+                    Self.KVLUTType,
+                    Self.config.fa4_config,
+                    Self.ValidLengthType,
+                    NullPointer[Self.output_dtype],
+                    False,
+                    Self.MaxSeqLenType,
+                    output_nonempty=output_nonempty,
+                ](
+                    attn_smem,
+                    tmem_addr,
+                    pos.score_row,
+                    seq_info,
+                    mask,
+                    pos.num_keys,
+                    scale.cast[Self.accum_dtype](),
+                    max_seq_len.as_uint32(),
+                    ragged_tma_store,
+                    NullPointer[Self.output_dtype](),
+                )
 
-        elif role == WarpRole.Correction:
-            # correction
-            warpgroup_reg_dealloc[num_reg_correction]()
+            case .Correction:
+                # correction
+                warpgroup_reg_dealloc[num_reg_correction]()
 
-            if not seq_info.is_valid():
-                return
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
-            fa4_correction[
-                Self.config.fa4_config,
-                Self.page_size,
-            ](
-                attn_smem,
-                tmem_addr,
-                seq_info.prompt_idx,
-                pos.score_row,
-                pos.num_keys,
-                mask,
-            )
-        elif role == WarpRole.Load:
-            warpgroup_reg_dealloc[num_reg_other]()
+                if not seq_info.is_valid():
+                    return
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
+                fa4_correction[
+                    Self.config.fa4_config,
+                    Self.page_size,
+                ](
+                    attn_smem,
+                    tmem_addr,
+                    seq_info.prompt_idx,
+                    pos.score_row,
+                    pos.num_keys,
+                    mask,
+                )
+            case .Load:
+                warpgroup_reg_dealloc[num_reg_other]()
 
-            if not seq_info.is_valid():
-                return
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
+                if not seq_info.is_valid():
+                    return
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
 
-            Self.load(
-                misc_mbars,
-                pos.score_row,
-                pos.num_keys,
-                seq_info,
-                max_seq_len,
-                mask,
-                q_tma_op,
-                k_nope_tma_op,
-                k_rope_tma_op,
-                v_tma_op,
-                kv_lut,
-                k_rope_lut,
-                q_smem,
-                k_smem,
-                v_smem,
-                rope_smem,
-            )
+                Self.load(
+                    misc_mbars,
+                    pos.score_row,
+                    pos.num_keys,
+                    seq_info,
+                    max_seq_len,
+                    mask,
+                    q_tma_op,
+                    k_nope_tma_op,
+                    k_rope_tma_op,
+                    v_tma_op,
+                    kv_lut,
+                    k_rope_lut,
+                    q_smem,
+                    k_smem,
+                    v_smem,
+                    rope_smem,
+                )
 
-        elif role == WarpRole.MMA:
-            warpgroup_reg_dealloc[num_reg_other]()
+            case .MMA:
+                warpgroup_reg_dealloc[num_reg_other]()
 
-            if not seq_info.is_valid():
-                return
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
-            Self.mma(
-                tmem_addr,
-                misc_mbars,
-                seq_info.prompt_idx,
-                pos.score_row,
-                pos.num_keys,
-                mask,
-                q_smem,
-                k_smem,
-                v_smem,
-                rope_smem,
-            )
-        elif role == WarpRole.Empty:
-            warpgroup_reg_dealloc[num_reg_empty]()
+                if not seq_info.is_valid():
+                    return
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
+                Self.mma(
+                    tmem_addr,
+                    misc_mbars,
+                    seq_info.prompt_idx,
+                    pos.score_row,
+                    pos.num_keys,
+                    mask,
+                    q_smem,
+                    k_smem,
+                    v_smem,
+                    rope_smem,
+                )
+            case .Empty:
+                warpgroup_reg_dealloc[num_reg_empty]()
 
     @staticmethod
     @inline(.always)

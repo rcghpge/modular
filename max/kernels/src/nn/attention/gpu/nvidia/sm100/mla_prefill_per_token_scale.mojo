@@ -524,129 +524,130 @@ __extension SM100MLA:
         var tmem_addr = attn_tmem_addr[cluster_size=1]()
         var role = warp_idx_to_role(warp_idx)
 
-        if role == WarpRole.Softmax0 or role == WarpRole.Softmax1:
-            warpgroup_reg_alloc[num_reg_softmax]()
+        match role:
+            case .Softmax0 | .Softmax1:
+                warpgroup_reg_alloc[num_reg_softmax]()
 
-            if not seq_info.is_valid():
-                return
+                if not seq_info.is_valid():
+                    return
 
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
 
-            fa4_softmax[
-                Self.KVLUTType,
-                Self.config.fa4_config,
-                Self.ValidLengthType,
-                NullPointer[Self.output_dtype],
-                False,
-                Self.MaxSeqLenType,
-                output_nonempty=output_nonempty,
-            ](
-                attn_smem,
-                tmem_addr,
-                pos.score_row,
-                seq_info,
-                mask,
-                pos.num_keys,
-                scale.cast[Self.accum_dtype](),
-                max_seq_len.as_uint32(),
-                ragged_tma_store,
-                NullPointer[Self.output_dtype](),
-                NonNullPointer[config.scale_dtype, AddressSpace.SHARED](
-                    rebind[
-                        UnsafePointer[
-                            Scalar[config.scale_dtype],
-                            ImmutAnyOrigin,
-                            address_space=.SHARED,
-                        ]
-                    ](q_scale_smem)
-                ),
-                NonNullPointer[config.scale_dtype, AddressSpace.SHARED](
-                    rebind[
-                        UnsafePointer[
-                            Scalar[config.scale_dtype],
-                            ImmutAnyOrigin,
-                            address_space=.SHARED,
-                        ]
-                    ](k_scale_smem)
-                ),
-            )
+                fa4_softmax[
+                    Self.KVLUTType,
+                    Self.config.fa4_config,
+                    Self.ValidLengthType,
+                    NullPointer[Self.output_dtype],
+                    False,
+                    Self.MaxSeqLenType,
+                    output_nonempty=output_nonempty,
+                ](
+                    attn_smem,
+                    tmem_addr,
+                    pos.score_row,
+                    seq_info,
+                    mask,
+                    pos.num_keys,
+                    scale.cast[Self.accum_dtype](),
+                    max_seq_len.as_uint32(),
+                    ragged_tma_store,
+                    NullPointer[Self.output_dtype](),
+                    NonNullPointer[config.scale_dtype, AddressSpace.SHARED](
+                        rebind[
+                            UnsafePointer[
+                                Scalar[config.scale_dtype],
+                                ImmutAnyOrigin,
+                                address_space=.SHARED,
+                            ]
+                        ](q_scale_smem)
+                    ),
+                    NonNullPointer[config.scale_dtype, AddressSpace.SHARED](
+                        rebind[
+                            UnsafePointer[
+                                Scalar[config.scale_dtype],
+                                ImmutAnyOrigin,
+                                address_space=.SHARED,
+                            ]
+                        ](k_scale_smem)
+                    ),
+                )
 
-        elif role == WarpRole.Correction:
-            warpgroup_reg_dealloc[num_reg_correction]()
+            case .Correction:
+                warpgroup_reg_dealloc[num_reg_correction]()
 
-            if not seq_info.is_valid():
-                return
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
-            fa4_correction[
-                Self.config.fa4_config,
-                Self.page_size,
-            ](
-                attn_smem,
-                tmem_addr,
-                seq_info.prompt_idx,
-                pos.score_row,
-                pos.num_keys,
-                mask,
-            )
-        elif role == WarpRole.Load:
-            warpgroup_reg_dealloc[num_reg_other]()
+                if not seq_info.is_valid():
+                    return
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
+                fa4_correction[
+                    Self.config.fa4_config,
+                    Self.page_size,
+                ](
+                    attn_smem,
+                    tmem_addr,
+                    seq_info.prompt_idx,
+                    pos.score_row,
+                    pos.num_keys,
+                    mask,
+                )
+            case .Load:
+                warpgroup_reg_dealloc[num_reg_other]()
 
-            if not seq_info.is_valid():
-                return
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
+                if not seq_info.is_valid():
+                    return
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
 
-            Self.load_per_token_scale(
-                misc_mbars,
-                pos.score_row,
-                pos.num_keys,
-                seq_info,
-                max_seq_len,
-                mask,
-                q_nope_tma_op,
-                q_rope_tma_op,
-                k_nope_tma_op,
-                k_rope_tma_op,
-                v_tma_op,
-                q_scale_tma_op,
-                k_scale_tma_op,
-                kv_lut,
-                k_rope_lut,
-                q_smem,
-                k_smem,
-                v_smem,
-                rope_smem,
-                q_scale_smem,
-                k_scale_smem,
-            )
+                Self.load_per_token_scale(
+                    misc_mbars,
+                    pos.score_row,
+                    pos.num_keys,
+                    seq_info,
+                    max_seq_len,
+                    mask,
+                    q_nope_tma_op,
+                    q_rope_tma_op,
+                    k_nope_tma_op,
+                    k_rope_tma_op,
+                    v_tma_op,
+                    q_scale_tma_op,
+                    k_scale_tma_op,
+                    kv_lut,
+                    k_rope_lut,
+                    q_smem,
+                    k_smem,
+                    v_smem,
+                    rope_smem,
+                    q_scale_smem,
+                    k_scale_smem,
+                )
 
-        elif role == WarpRole.MMA:
-            warpgroup_reg_dealloc[num_reg_other]()
+            case .MMA:
+                warpgroup_reg_dealloc[num_reg_other]()
 
-            if not seq_info.is_valid():
-                return
-            var pos: MLAPositionSummary = MLAPositionSummary.create[
-                _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
-            ](k_rope_lut, seq_info)
-            Self.mma(
-                tmem_addr,
-                misc_mbars,
-                seq_info.prompt_idx,
-                pos.score_row,
-                pos.num_keys,
-                mask,
-                q_smem,
-                k_smem,
-                v_smem,
-                rope_smem,
-            )
-        else:
-            warpgroup_reg_dealloc[num_reg_empty]()
+                if not seq_info.is_valid():
+                    return
+                var pos: MLAPositionSummary = MLAPositionSummary.create[
+                    _ndbuffer_mha_operand=Self._ndbuffer_mha_operand,
+                ](k_rope_lut, seq_info)
+                Self.mma(
+                    tmem_addr,
+                    misc_mbars,
+                    seq_info.prompt_idx,
+                    pos.score_row,
+                    pos.num_keys,
+                    mask,
+                    q_smem,
+                    k_smem,
+                    v_smem,
+                    rope_smem,
+                )
+            case _:
+                warpgroup_reg_dealloc[num_reg_empty]()
 
     @staticmethod
     @inline(.always)
