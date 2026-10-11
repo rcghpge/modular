@@ -1589,14 +1589,8 @@ def grouped_matmul_vendor[
     comptime a_type = a.dtype
     comptime b_type = b.dtype
 
-    def _ri(v: Int) -> Int64:
-        return Int64(v)
-
-    # Extract dimensions from TileTensors directly.
+    # Extract the output width from the tensor directly.
     var c_N = Int(c.dim[1]())
-    var a_K = Int(a.dim[1]())
-    var b_N = Int(b.dim[1]())
-    var b_K = Int(b.dim[2]())
 
     @inline(.always)
     def vendor_description_fn() {var c, var a, var b, imm} -> String:
@@ -1642,18 +1636,9 @@ def grouped_matmul_vendor[
                 continue
 
             # Create TileTensor views into the tensors for this expert
-            var a_slice = TileTensor(
-                a.ptr + Int(token_start) * Int(a_K),
-                row_major(_ri(num_tokens), _ri(a_K)),
-            )
-            var b_slice = TileTensor(
-                b.ptr + Int(expert_id) * Int(b_N) * Int(b_K),
-                row_major(_ri(b_N), _ri(b_K)),
-            )
-            var c_slice = TileTensor(
-                c.ptr + Int(token_start) * Int(c_N),
-                row_major(_ri(num_tokens), _ri(c_N)),
-            )
+            var a_slice = a[Int(token_start) : Int(token_start) + num_tokens, :]
+            var b_slice = b[Int(expert_id), :, :]
+            var c_slice = c[Int(token_start) : Int(token_start) + num_tokens, :]
 
             vendor_matmul[use_tf32](
                 ctx,
