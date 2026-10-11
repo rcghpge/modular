@@ -22,6 +22,7 @@ from ..value import TensorValue, TensorValueLike
 from .broadcast_to import broadcast_to
 from .constant import constant
 from .custom import custom
+from .transfer_to import transfer_to
 
 
 def _promote_repeats(
@@ -36,6 +37,10 @@ def _promote_repeats(
     if isinstance(repeats, TensorValue):
         if repeats.rank == 0:
             repeats = broadcast_to(repeats, [1])
+        # The custom op is single-device: repeats must ride on the
+        # input's device (GPU included since the tensor-repeats kernel).
+        if repeats.device != device:
+            repeats = transfer_to(repeats, device)
         return repeats, out_dim
 
     if repeats <= 0:
@@ -118,23 +123,16 @@ def repeat_interleave(
         axis: The axis to repeat along. If ``None`` (the default), the input is
             flattened first.
         out_dim: The output size along ``axis``. Required when ``repeats`` is a
-            ``TensorValue``.
+            ``TensorValue`` (the output extent is data-dependent).
 
     Returns:
         A ``TensorValue`` representing the input with its elements interleaved.
 
     Raises:
-        ValueError: If ``repeats`` is non-positive, if ``axis`` is out of
-            range, or if per-element ``TensorValue`` repeats are used on an
-            accelerator device.
+        ValueError: If ``repeats`` is non-positive or ``axis`` is out of
+            range.
     """
     x = TensorValue(x)
-
-    if x.device != DeviceRef.CPU() and isinstance(repeats, TensorValue):
-        raise ValueError(
-            "repeat_interleave with per-element (tensor) repeats is not"
-            " supported on accelerator devices; use scalar repeats"
-        )
 
     if axis is not None and not -x.rank <= axis < x.rank:
         raise ValueError(

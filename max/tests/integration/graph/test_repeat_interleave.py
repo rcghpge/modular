@@ -52,10 +52,6 @@ def test_repeat_interleave(
     np.testing.assert_equal(result.to_numpy(), expected)
 
 
-@pytest.mark.skipif(
-    accelerator_count() > 0,
-    reason="per-element (tensor) repeats are not supported on accelerators",
-)
 @pytest.mark.parametrize(
     "input,repeats,axis",
     [

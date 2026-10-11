@@ -650,12 +650,15 @@ This version is still a work in progress.
   longer inserts the host round-trip. The eager interpreter family now
   sweeps accelerators directly.
 
-- Added GPU support for `ops.repeat_interleave` with scalar repeats. The op
-  previously rejected accelerator inputs outright, forcing callers (e.g.
-  Llama4 attention-scale construction) to round-trip data through the CPU.
-  Scalar repeats now run natively on the input's device, with the source
-  index decoded arithmetically from the output index; per-element
-  `TensorValue` repeats remain CPU-only and still raise on accelerators.
+- Added GPU support for `ops.repeat_interleave` with both scalar and
+  per-element repeats. The op previously rejected accelerator inputs
+  outright, forcing callers (e.g. Llama4 attention-scale construction)
+  to round-trip data through the CPU. Scalar repeats now run natively on
+  the input's device, with the source index decoded arithmetically from
+  the output index; per-element `TensorValue` repeats build the
+  output->input offset map on the device (a chunked block-wide exclusive
+  scan over the repeats, then a per-element gather), so no repeats value
+  is read on the host.
 
 - Replaced the stack+reshape `repeat_interleave` workarounds in the
   FLUX.2 / Z-Image RoPE embeddings with `ops.repeat_interleave` now that
