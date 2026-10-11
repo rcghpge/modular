@@ -7,7 +7,6 @@
 from std.collections.string.string_span import _get_kgen_string
 from .._trait import HalPluginHooks
 from ..._machine import DeviceRef
-from ...execution_config import ExecutionConfig
 from ...execution_config._nvidia import ExecutionConfigForTarget
 from ...extensions.cuda import CUDAHALExtensions
 

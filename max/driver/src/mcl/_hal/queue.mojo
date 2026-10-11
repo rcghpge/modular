@@ -26,10 +26,7 @@ from std.memory import (
 )
 from std.memory.arc_pointer import WeakPointer
 from .execution_config import (
-    ExecutionConfig,
-    BlockExecutionConfig,
     GridBlockExecutionConfig,
-    GPUExecutionConfiguration,
     NearComputeGeneralPurposeScratchpadExecutionConfig,
 )
 

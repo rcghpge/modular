@@ -12,20 +12,14 @@ from the M_driver_* C API.
 from std.collections import OptionalReg
 
 from std.ffi import (
-    __fn_type_is_cabi,
-    _DLHandle,
     OwnedDLHandle,
     RTLD,
     CStringSpan,
     UnsafeUnion,
-    c_uchar,
     c_char,
-    c_uint,
-    c_int,
 )
 
 from std.memory import (
-    alloc,
     ImmPointer,
     MutOpaquePointer,
     MutPointer,
@@ -38,10 +32,8 @@ from .status import (
     STATUS_SUCCESS,
     STATUS_UNKNOWN_ERROR,
     STATUS_UNKNOWN_PROPERTY_NAME,
-    STATUS_UNKNOWN_SYMBOL,
     HALError,
 )
-from .device import DeviceSpec
 
 from .plugins import *
 

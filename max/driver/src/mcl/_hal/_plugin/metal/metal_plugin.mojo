@@ -6,7 +6,6 @@
 
 from .._trait import HalPluginHooks
 from ..._machine import DeviceRef
-from ...execution_config import ExecutionConfig
 from std.collections.string.string_span import _get_kgen_string
 from ...execution_config._apple import ExecutionConfigForTarget
 from ...extensions.metal import MetalHALExtensions

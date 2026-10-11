@@ -9,13 +9,7 @@ from std.ffi import _DLHandle
 
 from ..plugin import RawDriver
 from ..plugins import ContextHandle, DeviceHandle, HALPluginConstructable
-from ..status import (
-    STATUS_SUCCESS,
-    STATUS_UNKNOWN_ERROR,
-    STATUS_UNKNOWN_PROPERTY_NAME,
-    STATUS_UNKNOWN_SYMBOL,
-    HALError,
-)
+from ..status import HALError
 
 
 trait HALExtensions(Deinitable, HALPluginConstructable, Movable):

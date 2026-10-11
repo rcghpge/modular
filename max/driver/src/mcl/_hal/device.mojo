@@ -25,9 +25,7 @@ from std.memory import (
 )
 from std.memory.arc_pointer import WeakPointer
 
-from max.gpu.host import get_gpu_target
-from max.gpu.host.info import GPUInfo
-from ._machine import MachineDefinition, DeviceRef, DeviceSpec
+from ._machine import MachineDefinition, DeviceSpec
 
 # Buffer size for string-valued device properties; must match
 # M_DRIVER_DEVICE_PROPERTY_MAX_LEN in SDK/include/HAL/M_driver_device.h.

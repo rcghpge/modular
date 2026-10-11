@@ -4,7 +4,7 @@
 #
 # ===----------------------------------------------------------------------=== #
 
-from ._trait import DefaultHalPlugin, HalPluginHooks
+from ._trait import DefaultHalPlugin
 from .cuda import CudaHalPlugin
 from .hip import HipHalPlugin
 from .metal import MetalHalPlugin

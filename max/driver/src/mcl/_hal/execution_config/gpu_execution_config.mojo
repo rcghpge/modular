@@ -5,19 +5,13 @@
 # ===----------------------------------------------------------------------=== #
 """Placeholder configuration to start to prototype the API with."""
 
-from max.gpu.host import ConstantMemoryMapping, Dim, LaunchAttribute
+from max.gpu.host import Dim
 from . import (
     ExecutionConfig,
     BlockExecutionConfig,
     GridBlockExecutionConfig,
-    ClusterExecutionConfig,
-    AsmDumpableExecutionConfig,
-    LlvmDumpableExecutionConfig,
-    VendorIRDumpableExecutionConfig,
     NearComputeGeneralPurposeScratchpadExecutionConfig,
-    ConstantMemoryMappingExecutionConfig,
 )
-from max.gpu.host.device_context import _DumpPath
 
 
 struct GPUExecutionConfiguration(
