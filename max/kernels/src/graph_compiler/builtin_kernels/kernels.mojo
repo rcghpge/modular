@@ -101,6 +101,7 @@ from nn.rand_normal import random_normal
 from nn.rand_uniform import keyed_uniform, random_uniform
 from nn.repeat_interleave import repeat_interleave, repeat_interleave_shape
 from nn.roi_align import roi_align_nhwc
+from nn.roi_align_gpu import roi_align_gpu
 from nn.rope import rope_ragged
 from nn.sampling import (
     apply_masked_penalties_to_logits,
@@ -687,6 +688,7 @@ struct ROIAlign:
         aligned: Bool,
         mode: StaticString,
         dtype: DType,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=4, ...],
         input: InputTensor[dtype=dtype, rank=4, ...],
@@ -695,16 +697,35 @@ struct ROIAlign:
         output_width: Int64,
         spatial_scale: Scalar,
         sampling_ratio: Scalar,
-    ):
-        roi_align_nhwc[aligned, mode](
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
-            rois.to_tile_tensor[.int64](),
-            Int(output_height),
-            Int(output_width),
-            spatial_scale,
-            sampling_ratio,
-        )
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            roi_align_nhwc[aligned, mode](
+                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[.int64](),
+                rois.to_tile_tensor[.int64](),
+                Int(output_height),
+                Int(output_width),
+                spatial_scale,
+                sampling_ratio,
+            )
+        elif is_gpu[target]():
+            roi_align_gpu[
+                dtype,
+                aligned,
+                mode,
+            ](
+                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[.int64](),
+                rois.to_tile_tensor[.int64](),
+                Int(output_height),
+                Int(output_width),
+                spatial_scale,
+                sampling_ratio,
+                ctx,
+            )
+        else:
+            comptime assert False, "Unknown target " + target
 
 
 @extensibility.register_shape_function("mo.roi_align")
