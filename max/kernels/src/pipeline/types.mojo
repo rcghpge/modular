@@ -250,11 +250,12 @@ struct Phase(EnumLike, Equatable, ImplicitlyCopyable, Movable):
 
 
 @fieldwise_init
-struct OpRole(Equatable, ImplicitlyCopyable, Movable):
+struct OpRole(EnumLike, Equatable, ImplicitlyCopyable, Movable):
     """Role of an operation in the pipeline data flow.
 
     Classifies ops for automatic phase derivation (prologue, epilogue, etc.).
-    Set at OpDesc construction time by factory methods.
+    Set at OpDesc construction time by factory methods. Conforms to
+    `EnumLike` so ops can be dispatched with `match` over `.CASE` arms.
     """
 
     var _value: Int
@@ -268,6 +269,37 @@ struct OpRole(Equatable, ImplicitlyCopyable, Movable):
     comptime VALU_COMPUTE = Self(6)  # VALU compute (softmax, exp2, reductions)
     """Vector ALU compute (softmax, exp2, reductions)."""
     comptime NONE = Self(255)  # sentinel
+
+    # Arbitrary backing values (and the 255 sentinel) exist outside the
+    # named cases, so the enum is not exhaustive.
+    comptime _enum_is_exhaustive = False
+
+    comptime _enum_case_names = ParameterList.of[
+        "GLOBAL_LOAD".value,
+        "SHARED_STORE".value,
+        "FRAGMENT_LOAD".value,
+        "COMPUTE".value,
+        "SYNC".value,
+        "FENCE".value,
+        "VALU_COMPUTE".value,
+        "NONE".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        return 7 if self._value == 255 else self._value
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        comptime assert False, "OpRole has no payload"
 
 
 # =============================================================================
