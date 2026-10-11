@@ -4074,7 +4074,7 @@ def MO_ResizeBicubicOp : MO_TensorOp<"resize.bicubic", [
 def MO_RoiAlignOp : MO_TensorOp<"roi_align", [
   DeclareOpInterfaceMethods<MO_ParamDeclaration>,
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly,
+  MO_SingleDeviceWithHostOperands<["output_height", "output_width", "spatial_scale", "sampling_ratio"]>,
 ]> {
   let summary = "ROI alignment operation";
   let description = [{
