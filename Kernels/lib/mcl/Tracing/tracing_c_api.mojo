@@ -51,9 +51,9 @@ def create_trace(
 
 @export
 def destroy_trace(trace: TracePointer) abi("C"):
-    if trace:
+    if case .Some(trace) = trace:
         _ = OwnedPointer[OpTrace](
-            unsafe_from_opaque_pointer=trace.unsafe_value().unsafe_origin_cast[
+            unsafe_from_opaque_pointer=trace.unsafe_origin_cast[
                 UntrackedOrigin[mut=True]
             ]()
         )

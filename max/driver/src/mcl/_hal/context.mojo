@@ -541,8 +541,8 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
         length pairs with the hash so a 64-bit collision alone cannot alias two
         different code images."""
         var key = String(t"{discriminator}:{byte_length}:{name}")
-        if attr_code:
-            key += String(t"#{attr_code.value()}={attr_value}")
+        if case .Some(attr_code) = attr_code:
+            key += String(t"#{attr_code}={attr_value}")
         return key^
 
     def _function_cache_find(
@@ -632,23 +632,23 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
         """Returns the cached function for `content_key`, loading `asm` on first
         use."""
         var found = self._function_cache_find(content_key)
-        if found:
-            return found.value()
+        if case .Some(found) = found:
+            return found
 
         # Load outside the lock so concurrent first-launches don't serialize.
         var bundle = self.load_bundle(asm)
         var func = self.load_function(bundle, name.copy())
-        if attr_code:
-            self.set_function_attribute(func, attr_code.value(), attr_value)
+        if case .Some(attr_code) = attr_code:
+            self.set_function_attribute(func, attr_code, attr_value)
 
         var raced = self._function_cache_insert(
             content_key.copy(),
             _CachedFunction(func, bundle^),
         )
-        if raced:
+        if case .Some(raced) = raced:
             # Another thread cached this function while we were loading;
             # the insert discarded our duplicate load. Use the cached one.
-            return raced.value()
+            return raced
         return func
 
     def get_or_load_function(
@@ -673,8 +673,8 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
             attr_value,
         )
         var found = self._function_alias_find(addr_key)
-        if found:
-            return found.value()
+        if case .Some(found) = found:
+            return found
 
         var content_key = Self._function_cache_key(
             _code_digest(asm), asm.byte_length(), name, attr_code, attr_value

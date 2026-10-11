@@ -113,8 +113,8 @@ def regPass[T: def(zz: Int) -> Int](impl: T, y: Int):
 def takeItMaybe[
     T: Copyable & def(x: Int) -> Int
 ](x: Int, state: Optional[T] = None):
-    if state:
-        print(state.value()(x))
+    if case .Some(state) = state:
+        print(state(x))
     else:
         print("none")
 

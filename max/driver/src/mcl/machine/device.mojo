@@ -40,8 +40,8 @@ struct DeviceRef(Copyable, Movable):
         """
 
         # see DRIV-208, avoiding this requires CPU devices
-        if spec.info:
-            self.driver = spec.info.unsafe_value().api
+        if case .Some(info) = spec.info:
+            self.driver = info.api
         else:
             self.driver = "CPU"
         self.spec = spec^

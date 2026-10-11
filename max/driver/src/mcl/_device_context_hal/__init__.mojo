@@ -2948,22 +2948,22 @@ struct DeviceFunction[
             )
         var attr_code = OptionalReg[Int32](None)
         var attr_value = Int32(0)
-        if func_attribute:
+        if case .Some(func_attribute) = func_attribute:
             if (
-                func_attribute.value().attribute
+                func_attribute.attribute
                 == Attribute.MAX_DYNAMIC_SHARED_SIZE_BYTES
             ):
                 # Metal and HIP have no per-function cap; their plugins
                 # reject it.
                 if ctx.api() == "cuda":
                     attr_code = OptionalReg[Int32](
-                        func_attribute.value().attribute.code
+                        func_attribute.attribute.code
                     )
-                    attr_value = Int32(func_attribute.value().value)
+                    attr_value = Int32(func_attribute.value)
             else:
                 raise Error(
                     "the function attribute '",
-                    func_attribute.value().attribute,
+                    func_attribute.attribute,
                     "' is not currently supported",
                 )
         # The context's function cache owns the loaded module: repeated
@@ -3075,10 +3075,8 @@ struct DeviceFunction[
         # array assembled below. `constant_memory` mappings DO change
         # semantics and are not yet plumbed through, so refuse them rather
         # than silently dropping them.
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -3115,10 +3113,8 @@ struct DeviceFunction[
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
     ) capturing raises:
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -3171,10 +3167,8 @@ struct DeviceFunction[
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
     ) capturing raises:
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -3240,10 +3234,8 @@ struct DeviceFunction[
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
     ) capturing raises:
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -3322,10 +3314,8 @@ struct DeviceFunction[
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
     ) capturing raises:
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -3417,10 +3407,8 @@ struct DeviceFunction[
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
     ) capturing raises:
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -3725,10 +3713,10 @@ struct DeviceFunction[
         _ = attributes^
         _ = translated_args^
 
-        if capture_blob:
+        if case .Some(capture_blob) = capture_blob:
             dealloc(
                 ThinAllocation(
-                    unsafe_owned_ptr=capture_blob.value()
+                    unsafe_owned_ptr=capture_blob
                 ).unsafe_with_layout({count = max(capture_blob_size, 1)})
             )
         if num_captures > num_captures_static:
@@ -3764,10 +3752,8 @@ struct DeviceFunction[
         # array assembled below. `constant_memory` mappings DO change
         # semantics and are not yet plumbed through, so refuse them rather
         # than silently dropping them.
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -3899,10 +3885,10 @@ struct DeviceFunction[
         # Keep attributes alive until the plugin has read them.
         _ = attributes^
 
-        if capture_blob:
+        if case .Some(capture_blob) = capture_blob:
             dealloc(
                 ThinAllocation(
-                    unsafe_owned_ptr=capture_blob.value()
+                    unsafe_owned_ptr=capture_blob
                 ).unsafe_with_layout({count = max(capture_blob_size, 1)})
             )
         if num_captures > num_captures_static:
@@ -4031,10 +4017,10 @@ struct DeviceFunction[
             num_args=UInt32(num_args + num_captures),
         )
 
-        if capture_blob:
+        if case .Some(capture_blob) = capture_blob:
             dealloc(
                 ThinAllocation(
-                    unsafe_owned_ptr=capture_blob.value()
+                    unsafe_owned_ptr=capture_blob
                 ).unsafe_with_layout({count = max(capture_blob_size, 1)})
             )
         if num_captures > num_captures_static:
@@ -4148,10 +4134,8 @@ struct DeviceExternalFunction(ImplicitlyCopyable, Movable):
         # array assembled below. `constant_memory` mappings DO change
         # semantics and are not yet plumbed through, so refuse them rather
         # than silently dropping them.
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
         if constant_memory:
             raise Error(
                 "HAL DeviceContext.enqueue_function does not support"
@@ -5862,8 +5846,8 @@ comptime _DumpPath = Variant[Bool, Path, StaticString, def() capturing -> Path]
 
 def _string_from_owned_charptr(c_str: _CString) -> String:
     var result = String()
-    if c_str:
-        result = String(unsafe_from_utf8_ptr=c_str.unsafe_value().ptr())
+    if case .Some(c_str) = c_str:
+        result = String(unsafe_from_utf8_ptr=c_str.ptr())
     # void AsyncRT_DeviceContext_strfree(const char* ptr)
     external_call["AsyncRT_DeviceContext_strfree", NoneType](c_str)
     return result^
