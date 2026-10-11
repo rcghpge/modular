@@ -36,10 +36,8 @@ from layout import (
     coord_to_index_list,
     row_major,
 )
-from nn.normalization import (
-    rms_norm_fused_quantize_dynamic_scaled_fp8,
-    rms_norm_quantize_dynamic_scaled_fp8,
-)
+from nn.normalization import rms_norm_quantize_dynamic_scaled_fp8
+from .rowwise_normalization import rms_norm_fused_quantize_dynamic_scaled_fp8
 from std.utils.coord import ComptimeInt
 from std.utils.index import IndexList
 from linalg.fp8_quantization import (

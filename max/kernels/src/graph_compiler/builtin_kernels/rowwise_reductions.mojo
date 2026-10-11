@@ -15,7 +15,7 @@
 Pure-reduction entry points (`reduce_sum` / `reduce_max` / `reduce_min` /
 `reduce_product` / `reduce_mean` / `reduce_argmax` / `reduce_argmin` /
 `reduce_min_and_max`) built on the `algorithm.rowwise` scaffolder and the
-`algorithm.reduce_op` monoid library. Each authors one free-form body — a
+`builtin_kernels.monoids` monoid library. Each authors one free-form body — a
 single reduce phase plus a per-row `emit` — and runs on both CPU and GPU.
 """
 
@@ -24,7 +24,7 @@ from std.utils.coord import Coord
 
 from algorithm import rowwise
 from algorithm.rowwise_types import RowCoord
-from algorithm.reduce_op import (
+from .monoids import (
     ArgMax,
     ArgMin,
     MinMax,

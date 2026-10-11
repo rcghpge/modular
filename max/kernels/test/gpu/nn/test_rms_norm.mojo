@@ -17,6 +17,7 @@ from std.random import rand
 from max.gpu.host import DeviceContext
 from layout import Coord, Idx, TileTensor, row_major
 from nn.normalization import *
+from builtin_kernels.rowwise_normalization import rms_norm
 from std.testing import assert_almost_equal
 
 from std.utils.index import Index, IndexList

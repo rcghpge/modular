@@ -15,6 +15,7 @@ package(default_visibility = ["//max:consumers"])
         target_compatible_with = ["//:has_gpu"],
         deps = [
             "//max:algorithm",
+            "//max:builtin_kernels",
             "//max:layout",
             "@mojo//:std",
         ],

@@ -21,7 +21,7 @@ from std.random import random_float64, seed
 from std.sys import get_defined_dtype, size_of
 from std.sys.info import size_of as _size_of
 
-from algorithm.reductions import reduce_argmax
+from builtin_kernels.rowwise_reductions import reduce_argmax
 from max.benchmark import bencher_iter_custom
 from std.benchmark import (
     Bench,

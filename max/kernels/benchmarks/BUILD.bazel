@@ -15,6 +15,11 @@ _RUN_BENCHMARKS = [
 
 _EXTRA_DEPS = {
     "algorithm/parallelize_overhead.mojo": ["//max:max_mojo"],
+    "gpu/nn/bench_argmax.mojo": ["//max:builtin_kernels"],
+    "gpu/nn/bench_normalization.mojo": ["//max:builtin_kernels"],
+    "gpu/nn/bench_rms_norm_fused_residual_add.mojo": ["//max:builtin_kernels"],
+    "gpu/nn/bench_rms_norm_rope.mojo": ["//max:builtin_kernels"],
+    "gpu/nn/bench_softmax.mojo": ["//max:builtin_kernels"],
     "linalg/bench_layout_tensor.mojo": ["//max:max_mojo"],
 }
 
@@ -277,7 +282,7 @@ mojo_binary(
             "//max:shmem",
             "//max:structured_kernels",
             "@mojo//:std",
-        ],
+        ] + _EXTRA_DEPS.get(src, []),
     )
     for src in glob(
         ["gpu/**/*.mojo"],
@@ -608,7 +613,7 @@ _FA4_WS_DEPS = [
             "gpu",
             "manual",
         ],
-        deps = _FA4_WS_DEPS,
+        deps = _FA4_WS_DEPS + ["//max:builtin_kernels"],
     )
     for rows in [
         16,

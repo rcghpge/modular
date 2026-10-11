@@ -23,7 +23,7 @@ import extensibility
 # ===-----------------------------------------------------------------------===#
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
-from algorithm.reductions import (
+from .rowwise_reductions import (
     reduce_argmax,
     reduce_argmin,
     reduce_max,
@@ -41,9 +41,8 @@ from nn import arg_nonzero
 from nn.argsort import argsort
 from nn.cumsum import cumsum
 from nn.gather_scatter import _unsafe_normalize_neg_index
-from nn.normalization import (
-    apply_qk_rms_norm,
-    group_norm,
+from nn.normalization import apply_qk_rms_norm, group_norm
+from .rowwise_normalization import (
     layer_norm,
     layer_norm_rope_ragged,
     rms_norm_fused_residual_add,
@@ -52,7 +51,7 @@ from nn.normalization import (
     row_mean_of_squares_qk,
     row_mean_of_squares,
 )
-from nn.softmax import softmax
+from .rowwise_softmax import softmax
 from nn.topk import _top_k_cpu, top_k, top_k_shape_impl, topk_gpu
 from state_space.rms_norm_fused_residual import (
     _rms_norm_fused_residual_cpu_entry,
