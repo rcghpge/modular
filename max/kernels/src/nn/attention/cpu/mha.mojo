@@ -890,8 +890,8 @@ struct _FlashAttention[
                         )
 
                     var sink_weight: Optional[Scalar[Self.dtype]] = None
-                    if sink_weights:
-                        sink_weight = sink_weights.value()[head][0]
+                    if case .Some(sink_weights) = sink_weights:
+                        sink_weight = sink_weights[head][0]
 
                     Self._online_softmax[mask_2d_fn](
                         qk_block_ptr,

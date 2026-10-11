@@ -1871,8 +1871,8 @@ def allreduce[
         group_size, sm_version, allreduce_tuning_table
     ](num_bytes)
 
-    if _max_num_blocks:
-        dispatch_config.num_blocks = _max_num_blocks.value()
+    if case .Some(max_num_blocks) = _max_num_blocks:
+        dispatch_config.num_blocks = max_num_blocks
 
     if dispatch_config.num_blocks > MAX_NUM_BLOCKS_UPPER_BOUND:
         raise Error(

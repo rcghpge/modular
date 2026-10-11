@@ -33,9 +33,9 @@ def parallelism_level(ctx: Optional[DeviceContext]) -> Int:
     """
     from max.gpu.host import DeviceAttribute
 
-    if ctx:
+    if case .Some(ctx) = ctx:
         try:
-            return ctx.value().get_attribute(DeviceAttribute.PARALLELISM_LEVEL)
+            return ctx.get_attribute(DeviceAttribute.PARALLELISM_LEVEL)
         except:
             pass
     return std_parallelism_level()

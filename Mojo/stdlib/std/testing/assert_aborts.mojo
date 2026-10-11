@@ -232,8 +232,7 @@ def _spawn_and_check(
             t"assert_aborts: expected the process to abort, but it exited"
             t" normally{note}.\nCaptured output:\n{captured}"
         )
-    if contains:
-        var message = contains.value()
+    if case .Some(message) = contains:
         if message not in captured:
             raise Error(
                 t"assert_aborts: the process aborted, but the captured output"

@@ -235,8 +235,8 @@ struct Error(
             collected, or `None` if stack trace collection was disabled
             or unavailable.
         """
-        if self._stack_trace:
-            return String(self._stack_trace.value())
+        if case .Some(stack_trace) = self._stack_trace:
+            return String(stack_trace)
         return None
 
 

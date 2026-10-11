@@ -518,10 +518,10 @@ struct DoubleBuffer[dtype: DType](ImplicitlyCopyable):
 
     @inline(.always)
     def current(self, ctx: DeviceContext) -> DeviceBuffer[Self.dtype]:
-        if self._d_buffers[self._selection]:
+        if case .Some(ptr) = self._d_buffers[self._selection]:
             return DeviceBuffer[Self.dtype](
                 ctx,
-                self._d_buffers[self._selection].unsafe_value(),
+                ptr,
                 self._size,
                 owning=False,
             )
@@ -530,10 +530,10 @@ struct DoubleBuffer[dtype: DType](ImplicitlyCopyable):
 
     @inline(.always)
     def alternate(self, ctx: DeviceContext) -> DeviceBuffer[Self.dtype]:
-        if self._d_buffers[self._selection ^ 1]:
+        if case .Some(ptr) = self._d_buffers[self._selection ^ 1]:
             return DeviceBuffer[Self.dtype](
                 ctx,
-                self._d_buffers[self._selection ^ 1].unsafe_value(),
+                ptr,
                 self._size,
                 owning=False,
             )

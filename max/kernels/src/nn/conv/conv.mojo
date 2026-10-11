@@ -3800,8 +3800,8 @@ def _get_cudnn_meta(
 
     # Get or create the per-device cache dictionary.
     var ptr_meta = _get_global_or_null(cache_key)
-    if ptr_meta:
-        var ptr = ptr_meta.unsafe_value().unsafe_bitcast[CuDNNConvMeta]()
+    if case .Some(ptr_meta) = ptr_meta:
+        var ptr = ptr_meta.unsafe_bitcast[CuDNNConvMeta]()
         check_cudnn_error(cudnnSetStream(ptr[].ptr_handle, CUDA(ctx.stream())))
         return ptr.as_unsafe_any_origin()
 
@@ -3930,10 +3930,8 @@ def _get_cached_cudnn_meta_nhwc_full(
     var cache_key = "CUDA_CUDNN_CACHED_META_NHWC_FULL_" + String(ctx.id())
 
     var ptr_meta = _get_global_or_null(cache_key)
-    if ptr_meta:
-        var ptr = ptr_meta.unsafe_value().unsafe_bitcast[
-            CachedCuDNNMetaNHWCFull
-        ]()
+    if case .Some(ptr_meta) = ptr_meta:
+        var ptr = ptr_meta.unsafe_bitcast[CachedCuDNNMetaNHWCFull]()
         check_cudnn_error(cudnnSetStream(ptr[].ptr_handle, CUDA(ctx.stream())))
         return ptr.as_unsafe_any_origin()
 
@@ -4309,10 +4307,8 @@ def _get_cached_miopen_meta[
     )
 
     var ptr_meta = _get_global_or_null(cache_key)
-    if ptr_meta:
-        var ptr = ptr_meta.unsafe_value().unsafe_bitcast[
-            CachedMIOpenMeta[conv_rank]
-        ]()
+    if case .Some(ptr_meta) = ptr_meta:
+        var ptr = ptr_meta.unsafe_bitcast[CachedMIOpenMeta[conv_rank]]()
         check_miopen_error(miopenSetStream(ptr[].handle, HIP(ctx.stream())))
         return ptr.as_unsafe_any_origin()
 
@@ -5290,9 +5286,9 @@ def conv_gpu[
                 ctx.enqueue_copy(host_mio, output_view)
 
                 comptime if has_residual:
-                    if source_ptr:
+                    if case .Some(source_ptr) = source_ptr:
                         var source_view = DeviceBuffer[output_type](
-                            ctx, source_ptr.value(), n_elements, owning=False
+                            ctx, source_ptr, n_elements, owning=False
                         )
                         ctx.enqueue_copy(host_src, source_view)
                 ctx.synchronize()
@@ -6406,11 +6402,9 @@ def _conv3d_cudnn[
     var workspace_size_var: Int
 
     var ptr_cached = _get_global_or_null(cache_key)
-    if ptr_cached:
+    if case .Some(ptr_cached) = ptr_cached:
         # Cache hit — reuse previously selected algorithm.
-        var entry = ptr_cached.unsafe_value().unsafe_bitcast[
-            _Conv3dAlgoCacheEntry
-        ]()
+        var entry = ptr_cached.unsafe_bitcast[_Conv3dAlgoCacheEntry]()
         algo = entry[].algo()
         workspace_size_var = entry[].workspace_size
     else:

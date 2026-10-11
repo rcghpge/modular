@@ -464,8 +464,8 @@ def flare_mla_decoding[
         var max_prompt_len: Int
         var num_keys = Int(k.max_context_length())
 
-        if q_max_seq_len:
-            max_prompt_len = q_max_seq_len.value()
+        if case .Some(q_max_seq_len) = q_max_seq_len:
+            max_prompt_len = q_max_seq_len
         else:
             max_prompt_len = Int(k.max_prompt_length())
 
@@ -477,8 +477,8 @@ def flare_mla_decoding[
             comptime rope_aware_config = MHAConfig[dtype](config.num_heads, 576)
             # Build extra_k_operand when extra_k is provided.
             var extra_k_operand: OptionalReg[type_of(k_operand)] = None
-            if extra_k is not None:
-                extra_k_operand = KVCacheMHAOperand(extra_k.value())
+            if case .Some(extra_k) = extra_k:
+                extra_k_operand = KVCacheMHAOperand(extra_k)
 
             flare_mla_decoding_dispatch[
                 kv_num_heads=kv_num_heads,
@@ -522,8 +522,8 @@ def flare_mla_decoding[
         else:
             # Build extra_k_operand when extra_k is provided.
             var extra_k_operand: OptionalReg[type_of(k_operand)] = None
-            if extra_k is not None:
-                extra_k_operand = KVCacheMHAOperand(extra_k.value())
+            if case .Some(extra_k) = extra_k:
+                extra_k_operand = KVCacheMHAOperand(extra_k)
 
             flare_mla_decoding_dispatch[
                 kv_num_heads=kv_num_heads,
@@ -1154,8 +1154,8 @@ def flare_mla_decoding_dispatch[
             # today; non-SM10x NVIDIA stays at 1 to preserve existing behavior.
             # Partition count is independent of BM; both BM variants share it.
             var num_partitions_value: Int
-            if num_partitions:
-                num_partitions_value = num_partitions.value()
+            if case .Some(num_partitions) = num_partitions:
+                num_partitions_value = num_partitions
             else:
                 comptime if ctx.target.is_amd_gpu():
                     # MLA: kv_num_heads == 1, so heads_per_group == num_heads.
@@ -2845,8 +2845,8 @@ def flare_mla_prefill[
     ):
         var max_prompt_len: Int
 
-        if q_max_seq_len:
-            max_prompt_len = q_max_seq_len.value()
+        if case .Some(q_max_seq_len) = q_max_seq_len:
+            max_prompt_len = q_max_seq_len
         else:
             max_prompt_len = Int(k_rope.max_prompt_length())
 
@@ -2968,8 +2968,8 @@ def flare_mla_prefill[
     ):
         var max_prompt_len: Int = Int(q.dim[0]())
 
-        if q_max_seq_len:
-            max_prompt_len = q_max_seq_len.value()
+        if case .Some(q_max_seq_len) = q_max_seq_len:
+            max_prompt_len = q_max_seq_len
         var cro_buf = _ragged_offsets_view(cache_row_offsets)
         var k_operand = RaggedMHAOperand(_ragged_kv_view(k), cro_buf)
         var v_operand = RaggedMHAOperand(_ragged_kv_view(v), cro_buf)
@@ -3081,8 +3081,8 @@ def flare_mla_prefill[
     ):
         var max_prompt_len: Int = Int(q.dim[0]())
 
-        if q_max_seq_len:
-            max_prompt_len = q_max_seq_len.value()
+        if case .Some(q_max_seq_len) = q_max_seq_len:
+            max_prompt_len = q_max_seq_len
         var cro_buf = _ragged_offsets_view(cache_row_offsets)
         var k_operand = RaggedMHAOperand(_ragged_kv_view(k), cro_buf)
         var v_operand = RaggedMHAOperand(_ragged_kv_view(v), cro_buf)
@@ -3195,8 +3195,8 @@ def flare_mla_prefill[
             "q_scale must be a per token scale 2D tensor of [batch_size *"
             " seq_len, 1]"
         )
-        if q_max_seq_len:
-            max_prompt_len = q_max_seq_len.value()
+        if case .Some(q_max_seq_len) = q_max_seq_len:
+            max_prompt_len = q_max_seq_len
 
         comptime assert k_scales.rank == 2, (
             "k_scales must be a per token scale 2D tensor of [batch_size *"
@@ -3327,8 +3327,8 @@ def flare_mla_prefill[
     ):
         var max_prompt_len: Int
 
-        if q_max_seq_len:
-            max_prompt_len = q_max_seq_len.value()
+        if case .Some(q_max_seq_len) = q_max_seq_len:
+            max_prompt_len = q_max_seq_len
         else:
             max_prompt_len = Int(k_rope.max_prompt_length())
 
@@ -3665,8 +3665,7 @@ def mla_prefill[
         start_pos = UInt32(k_rope.cache_length(batch_idx))
         num_keys = Int(start_pos) + seq_len
 
-    if cache_offsets:
-        var cache_offsets_nd = cache_offsets.value()
+    if case .Some(cache_offsets_nd) = cache_offsets:
         cache_start_pos = cache_offsets_nd[batch_idx][0]
 
     var q_batch_offset = start_of_seq * q_depth * config.num_heads

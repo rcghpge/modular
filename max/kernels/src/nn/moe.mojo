@@ -209,9 +209,8 @@ def moe_create_indices_kernel[
         if expert < num_experts:
             expert_ids[Coord(expert)] = Int32(expert)
             expert_start_indices[Coord(expert)] = g_offset
-            if scales_offset_p:
-                var _ptr = scales_offset_p.value()
-                _ptr[expert] = (
+            if case .Some(scales_offset) = scales_offset_p:
+                scales_offset[expert] = (
                     aligned_g_offset // _scale_alignment
                     - g_offset // _scale_alignment
                 )

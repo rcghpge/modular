@@ -1540,10 +1540,8 @@ def mla_prefill_branch_sparse_fp8[
         row_major(seq_len),
     )
     var attn_sink_opt = Optional[UnsafePointer[Float32, ImmutAnyOrigin]](None)
-    if attn_sink_ptr:
-        attn_sink_opt = UnsafePointer[Float32, ImmutAnyOrigin](
-            attn_sink_ptr.value()
-        )
+    if case .Some(attn_sink_ptr) = attn_sink_ptr:
+        attn_sink_opt = UnsafePointer[Float32, ImmutAnyOrigin](attn_sink_ptr)
 
     var k_cache = kv_collection.get_key_cache(Int(layer_idx))
     # Unit-scale FP8 latent cache on SM100 runs the native-FP8 sparse prefill
@@ -1687,8 +1685,8 @@ def _sparse_prefill_rows[
     prefill_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
 ) raises -> UnsafePointer[Int32, MutAnyOrigin]:
     """Returns the paged physical rows the sparse prefill branch gathers."""
-    if prefill_d_indices:
-        return prefill_d_indices.value()
+    if case .Some(prefill_d_indices) = prefill_d_indices:
+        return prefill_d_indices
     comptime if not physical_indices:
         raise Error(
             "sparse prefill needs prefill_d_indices when d_indices holds token"
@@ -2824,10 +2822,8 @@ def mla_prefill_branch_sparse_bf16[
         row_major(seq_len),
     )
     var attn_sink_opt = Optional[UnsafePointer[Float32, ImmutAnyOrigin]](None)
-    if attn_sink_ptr:
-        attn_sink_opt = UnsafePointer[Float32, ImmutAnyOrigin](
-            attn_sink_ptr.value()
-        )
+    if case .Some(attn_sink_ptr) = attn_sink_ptr:
+        attn_sink_opt = UnsafePointer[Float32, ImmutAnyOrigin](attn_sink_ptr)
 
     var k_cache = kv_collection.get_key_cache(Int(layer_idx))
     comptime if collection_t.CacheType.dtype.is_float8():

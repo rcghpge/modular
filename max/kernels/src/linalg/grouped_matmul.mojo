@@ -868,8 +868,8 @@ def grouped_matmul[
         # reads the device tensor directly and never calls this.
         @inline(.always)
         def resolve_usage_stats() raises {imm} -> Tuple[Int, Int]:
-            if host_stats:
-                return host_stats.value()
+            if case .Some(host_stats) = host_stats:
+                return host_stats
             # The sync below aborts an in-flight device-graph capture. On AMD
             # use host-known upper bounds instead: no group has more rows than
             # `a`, and `moe_create_indices` always reports every expert active.

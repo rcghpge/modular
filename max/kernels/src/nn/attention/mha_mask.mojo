@@ -2034,8 +2034,8 @@ struct MaterializedMask[
 
     @inline(.always)
     def get_start_pos(self, batch_idx: Int) -> Int:
-        if self.start_pos:
-            return Int(self.start_pos.value()[batch_idx])
+        if case .Some(start_pos) = self.start_pos:
+            return Int(start_pos[batch_idx])
         else:
             return Int(self.mask_tensor.dim[Self.layout_.rank - 1]()) - Int(
                 self.mask_tensor.dim[Self.layout_.rank - 2]()

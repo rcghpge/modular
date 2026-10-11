@@ -7201,8 +7201,8 @@ def _copy_dram_to_local[
                     )
                 )
 
-    if offset:
-        offset_helper(offset.value())
+    if case .Some(offset) = offset:
+        offset_helper(offset)
     else:
         var base_ptr = buffer.get_base_ptr()
         offset_helper(ufloordiv(Int(src.ptr) - base_ptr, size_of[src.dtype]()))

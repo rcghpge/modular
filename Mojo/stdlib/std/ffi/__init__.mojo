@@ -486,8 +486,8 @@ struct OwnedDLHandle(Boolable, Movable):
 
         var lib = OwnedDLHandle("libcounters.so")
         var counter = lib.get_symbol[c_int]("live_connections")
-        if counter:
-            print(counter.value()[])
+        if case .Some(ptr) = counter:
+            print(ptr[])
         ```
 
         Parameters:
@@ -1063,10 +1063,10 @@ struct _Global[
         opaque_ptr: OptionalPointer[NoneType, UntrackedOrigin[mut=True]]
     ):
         # Deinitialize and deallocate the storage.
-        if opaque_ptr:
+        if case .Some(opaque_ptr) = opaque_ptr:
             dealloc(
                 ThinAllocation(
-                    unsafe_owned_ptr=opaque_ptr.unsafe_value().unsafe_bitcast[
+                    unsafe_owned_ptr=opaque_ptr.unsafe_bitcast[
                         Self.StorageType
                     ]()
                 ).unsafe_with_layout({count = 1})

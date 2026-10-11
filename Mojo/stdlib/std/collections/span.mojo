@@ -1096,8 +1096,8 @@ struct Span[
                     return 0
 
             var index = span.binary_search_by[cmp]()
-            if index:
-                print("Found at index: ", index.value())
+            if case .Some(i) = index:
+                print("Found at index: ", i)
             else:
                 print("Not found")
             ```
@@ -1149,8 +1149,8 @@ struct Span[
                         return 0
 
                 var index = span.binary_search_by(cmp)
-                if index:
-                    print("Found at index: ", index.value())
+                if case .Some(i) = index:
+                    print("Found at index: ", i)
                 else:
                     print("Not found")
             ```

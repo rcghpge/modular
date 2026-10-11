@@ -67,8 +67,8 @@ def epilogue_test_fn[
 def select_max_ulp_distance[
     lambda_fn: Optional[epilogue_func_type]
 ](max_ulp_distance: Optional[Int]) -> Int:
-    if max_ulp_distance:
-        return max_ulp_distance.value()
+    if case .Some(max_ulp_distance) = max_ulp_distance:
+        return max_ulp_distance
     else:
         comptime if lambda_fn:
             return 4

@@ -1253,8 +1253,8 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
             SIMD[output_dtype, width]
         ](output_val.cast[output_dtype]())
 
-        if bias:
-            output_val_out += bias.value().load[
+        if case .Some(bias) = bias:
+            output_val_out += bias.load[
                 width=width, alignment=align_of[output_dtype]()
             ](Coord(idx[1]))
 

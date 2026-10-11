@@ -607,8 +607,8 @@ struct TestCaseMultiRank[_sampling: Bool, rank: Int, _largest: Bool = True](
 
 def print_test_case(test_case: TestCase):
     var num_blocks_per_in_msg = "auto"
-    if test_case.num_blocks_per_input:
-        num_blocks_per_in_msg = String(test_case.num_blocks_per_input.value())
+    if case .Some(num_blocks_per_input) = test_case.num_blocks_per_input:
+        num_blocks_per_in_msg = String(num_blocks_per_input)
     print(
         "==== Running Top-K "
         + (test_case.name + " " if test_case.name else "")
@@ -629,11 +629,11 @@ def print_test_case(test_case: TestCase):
 
 def print_test_case(test_case: TestCaseMultiRank):
     var num_blocks_per_in_msg = "auto"
-    if test_case.num_blocks_per_input:
-        num_blocks_per_in_msg = String(test_case.num_blocks_per_input.value())
+    if case .Some(num_blocks_per_input) = test_case.num_blocks_per_input:
+        num_blocks_per_in_msg = String(num_blocks_per_input)
     var block_size_msg = "auto"
-    if test_case.block_size:
-        block_size_msg = String(test_case.block_size.value())
+    if case .Some(block_size) = test_case.block_size:
+        block_size_msg = String(block_size)
     print(
         "==== Running Top-K sampling=",
         test_case.sampling,

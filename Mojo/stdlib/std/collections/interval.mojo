@@ -473,8 +473,8 @@ struct IntervalTree[
 
     def __deinit__(deinit self):
         """Destructor that frees the interval tree's memory."""
-        if self._root:
-            Self._del_helper(self._root.value())
+        if case .Some(root) = self._root:
+            Self._del_helper(root)
 
     @staticmethod
     def _del_helper(
@@ -973,8 +973,8 @@ struct IntervalTree[
         else:
             u.value()[].parent().value()[].right() = v
 
-        if v:
-            v.value()[].parent() = u.value()[].parent()
+        if case .Some(v) = v:
+            v[].parent() = u.value()[].parent()
 
     def search(self, interval: Tuple[Self.T, Self.T]) raises -> List[Self.U]:
         """Searches for intervals overlapping with the given tuple.

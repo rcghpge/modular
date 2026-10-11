@@ -995,8 +995,8 @@ struct RegisterToGMemWriter[
         ](Coord(coord_0, coord_1))
 
         var warp_tile_coords = rebind[IndexList[2]](warp_tile_coords_raw)
-        if self.tile_coords:
-            warp_tile_coords = self.tile_coords.value().adjust(warp_tile_coords)
+        if case .Some(tile_coords) = self.tile_coords:
+            warp_tile_coords = tile_coords.adjust(warp_tile_coords)
 
         # Process fragment matrices
         comptime for m_frag, n_frag in std.itertools.product(

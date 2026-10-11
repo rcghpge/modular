@@ -2897,8 +2897,8 @@ struct PagedKVCache[
         self.max_seq_length = max_seq_length
         self.max_cache_length = max_cache_length
         self.scales = scales
-        if scales_lookup_table:
-            self.scales_lookup_table = scales_lookup_table.value()
+        if case .Some(scales_lookup_table) = scales_lookup_table:
+            self.scales_lookup_table = scales_lookup_table
         else:
             self.scales_lookup_table = self.lookup_table
 
@@ -4422,8 +4422,8 @@ struct PagedKVCacheCollection[
             Self.CacheType.lookup_table_tt_layout,
             Self.CacheType.lookup_table_tt_type.Engine,
         ](lookup_table)
-        if scales_lookup_table:
-            self.scales_lookup_table = scales_lookup_table.value()
+        if case .Some(scales_lookup_table) = scales_lookup_table:
+            self.scales_lookup_table = scales_lookup_table
         else:
             self.scales_lookup_table = self.lookup_table
         self.max_seq_length = max_seq_length
@@ -4433,8 +4433,8 @@ struct PagedKVCacheCollection[
                 self.blocks, page_stride
             )
         )
-        if scales is not None:
-            self.scales = scales.value()
+        if case .Some(scales) = scales:
+            self.scales = scales
             self.kv_cache_scales_dynamic_shape, self.kv_cache_scales_dynamic_strides = _compute_kv_cache_dynamic_shape_strides[
                 4, [1, 2]
             ](
@@ -4535,17 +4535,15 @@ struct PagedKVCacheCollection[
 
         var scales_tt: OptionalReg[Self.CacheType.scales_tt_type] = None
         comptime if Self.CacheType.quantization_enabled:
-            if self.scales is not None:
-                var scale_offset = Int(
-                    self.scales.value().layout(kv_layer_coord)
-                )
+            if case .Some(scales) = self.scales:
+                var scale_offset = Int(scales.layout(kv_layer_coord))
                 scales_tt = _make_cache_tt[
                     Self.CacheType.scale_dtype,
                     Self.CacheType.scales_tt_layout,
                     4,
                     Engine=Self.CacheType.scales_engine,
                 ](
-                    self.scales.value().ptr + scale_offset,
+                    scales.ptr + scale_offset,
                     self.kv_cache_scales_dynamic_shape,
                     self.kv_cache_scales_dynamic_strides,
                 )

@@ -3909,7 +3909,7 @@ def persistent_topk_block[
     """
     _assert_scores_16b_aligned(in_scores, N, total_seq_len)
     if N <= PERSISTENT_TOPK_MAX_N:
-        if row_bounds:
+        if case .Some(row_bounds) = row_bounds:
             ctx.enqueue_function[
                 _persistent_topk_2048_bounded_kernel[in_dtype, RB]
             ](
@@ -3917,7 +3917,7 @@ def persistent_topk_block[
                 out_idxs,
                 Int32(N),
                 Int32(K),
-                row_bounds.value(),
+                row_bounds,
                 grid_dim=total_seq_len,
                 block_dim=_PTOPK_BLOCK,
             )
@@ -4084,7 +4084,7 @@ def persistent_topk_block_split[
                 # and no reason for the per-bin digit -- both exist only to make
                 # ranking cheap. `sel_cap` of `_PTOPK_TOTAL` is what asks the
                 # rounds to land exactly on `K` instead.
-                if row_bounds:
+                if case .Some(row_bounds) = row_bounds:
                     ctx.enqueue_function[
                         _histsel_resident_bounded_kernel[
                             NullTrace,
@@ -4102,7 +4102,7 @@ def persistent_topk_block_split[
                         out_idxs,
                         Int32(N),
                         Int32(K),
-                        row_bounds.value(),
+                        row_bounds,
                         NullTrace(),
                         grid_dim=total_seq_len,
                         block_dim=_HSEL_RES_BLOCK,
@@ -4139,7 +4139,7 @@ def persistent_topk_block_split[
             # score level including the masked tail, whose `phi` takes the digit's
             # top varying positions and leaves it unable to split within a level.
             if N >= K + K // 2:
-                if row_bounds:
+                if case .Some(row_bounds) = row_bounds:
                     ctx.enqueue_function[
                         _histsel_resident_bounded_kernel[
                             NullTrace,
@@ -4154,7 +4154,7 @@ def persistent_topk_block_split[
                         out_idxs,
                         Int32(N),
                         Int32(K),
-                        row_bounds.value(),
+                        row_bounds,
                         NullTrace(),
                         grid_dim=total_seq_len,
                         block_dim=_HSEL_RES_BLOCK,
@@ -4182,7 +4182,7 @@ def persistent_topk_block_split[
             # instantiation takes the per-bin digit -- and only this one, since it
             # costs a scan and shared memory the shapes above do not need. With the
             # runs narrow again the hand-over is affordable here too.
-            if row_bounds:
+            if case .Some(row_bounds) = row_bounds:
                 ctx.enqueue_function[
                     _histsel_resident_bounded_kernel[
                         NullTrace,
@@ -4198,7 +4198,7 @@ def persistent_topk_block_split[
                     out_idxs,
                     Int32(N),
                     Int32(K),
-                    row_bounds.value(),
+                    row_bounds,
                     NullTrace(),
                     grid_dim=total_seq_len,
                     block_dim=_HSEL_RES_BLOCK,
@@ -4250,7 +4250,7 @@ def persistent_topk_block_split[
         # group buys them no parallelism and only raises pressure.
         if not hsel_fills_gpu:
             comptime if (not ordered) and (not deterministic):
-                if row_bounds:
+                if case .Some(row_bounds) = row_bounds:
                     ctx.enqueue_function[
                         _histsel_topk_bounded_kernel[
                             NullTrace,
@@ -4269,7 +4269,7 @@ def persistent_topk_block_split[
                         out_idxs,
                         Int32(N),
                         Int32(K),
-                        row_bounds.value(),
+                        row_bounds,
                         NullTrace(),
                         grid_dim=total_seq_len,
                         block_dim=_PTOPK_BLOCK,
@@ -4305,7 +4305,7 @@ def persistent_topk_block_split[
                     ),
                 )
                 return
-            if row_bounds:
+            if case .Some(row_bounds) = row_bounds:
                 ctx.enqueue_function[
                     _histsel_topk_bounded_kernel[
                         NullTrace,
@@ -4324,7 +4324,7 @@ def persistent_topk_block_split[
                     out_idxs,
                     Int32(N),
                     Int32(K),
-                    row_bounds.value(),
+                    row_bounds,
                     NullTrace(),
                     grid_dim=total_seq_len,
                     block_dim=_PTOPK_BLOCK,
@@ -4361,7 +4361,7 @@ def persistent_topk_block_split[
             )
             return
 
-        if row_bounds:
+        if case .Some(row_bounds) = row_bounds:
             ctx.enqueue_function[
                 _histsel_topk_bounded_kernel[
                     NullTrace,
@@ -4377,7 +4377,7 @@ def persistent_topk_block_split[
                 out_idxs,
                 Int32(N),
                 Int32(K),
-                row_bounds.value(),
+                row_bounds,
                 NullTrace(),
                 grid_dim=total_seq_len,
                 block_dim=_PTOPK_BLOCK,

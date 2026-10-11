@@ -2533,7 +2533,7 @@ def gpu_qint4_repack_GPTQ[
 
     var smem_usage: Int = BN * 2 * group_bytes
 
-    if perm_idx:
+    if case .Some(perm_idx) = perm_idx:
         comptime repack = repack_GPTQ_for_sm8x[
             b.LayoutType,
             b_packed.LayoutType,
@@ -2545,7 +2545,7 @@ def gpu_qint4_repack_GPTQ[
         cuda_ctx.enqueue_function[repack](
             b,
             b_packed,
-            perm_idx.value(),
+            perm_idx,
             grid_dim=(ceildiv(N, BN), ceildiv(K, BK), 1),
             block_dim=(128, 1, 1),
         )

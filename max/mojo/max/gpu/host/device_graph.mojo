@@ -367,9 +367,9 @@ struct DeviceGraphCache(Movable):
     ) -> String:
         var key = Self._closure_key(build)
 
-        if ctx:
+        if case .Some(ctx) = ctx:
             try:
-                key.write(t"Device({ctx.value().id()})", "|")
+                key.write(t"Device({ctx.id()})", "|")
             except e:
                 pass
 
@@ -1374,8 +1374,8 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         ties to the enclosing `DeviceGraph.create` scope.
         """
         var id = self._last_node_id()
-        if id:
-            return Self.Node(id.value())
+        if case .Some(id) = id:
+            return Self.Node(id)
         return None
 
     @inline(.always)

@@ -396,9 +396,8 @@ struct Pointer[
     if random_float64() > 0.5:
         maybe_ptr = alloc(layout).unsafe_leak()
 
-    # Check for absence, then unwrap to use the pointer.
-    if maybe_ptr:
-        var ptr = maybe_ptr.value()
+    # Unwrap the pointer only if it is present.
+    if case .Some(ptr) = maybe_ptr:
         ptr.write(42)
         print(ptr[])  # => 42
         dealloc(

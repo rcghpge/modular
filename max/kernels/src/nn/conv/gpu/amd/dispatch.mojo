@@ -452,9 +452,9 @@ def dispatch_amd_4wave_conv2d[
                 # When called with has_residual=True, the caller must
                 # supply source_ptr. Materialize an immutable view of it
                 # (the kernel only reads).
-                if source_ptr:
+                if case .Some(source_ptr) = source_ptr:
                     return UnsafePointer[Scalar[output_type], ImmutAnyOrigin](
-                        unsafe_from_address=Int(source_ptr.value())
+                        unsafe_from_address=Int(source_ptr)
                     )
             return _src_ptr_immut
 

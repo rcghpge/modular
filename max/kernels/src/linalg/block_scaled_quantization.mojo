@@ -1630,8 +1630,8 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
             var input_vector = SIMD[input_dtype, ELEMENTS_PER_THREAD](0)
             if is_valid:
                 var source_row = token_start + local_row
-                if row_indices:
-                    source_row = Int(row_indices.value()[source_row])
+                if case .Some(row_indices) = row_indices:
+                    source_row = Int(row_indices[source_row])
                 input_vector = input_tensor.load[width=ELEMENTS_PER_THREAD](
                     (source_row, input_col)
                 )

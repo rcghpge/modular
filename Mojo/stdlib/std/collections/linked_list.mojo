@@ -388,8 +388,8 @@ struct LinkedList[ElementType: Movable](
         value_ptr.unsafe_write(value^)
         addr[].prev() = self._tail
         addr[].next() = Self._NodePointer()
-        if self._tail:
-            self._tail.value()[].next() = addr
+        if case .Some(tail) = self._tail:
+            tail[].next() = addr
         else:
             self._head = addr
         self._tail = addr
@@ -487,8 +487,7 @@ struct LinkedList[ElementType: Movable](
         var idx = index(i)
         var current = self._get_node_ptr(idx)
 
-        if current:
-            var nn = current.value()
+        if case .Some(nn) = current:
             var node = nn.unsafe_take_pointee()
             if node.prev():
                 node.prev().value()[].next() = node.next()
@@ -629,9 +628,9 @@ struct LinkedList[ElementType: Movable](
                 )
             )
 
-            if self._head:
+            if case .Some(head) = self._head:
                 node[].next() = self._head
-                self._head.value()[].prev() = node
+                head[].prev() = node
 
             self._head = node
 
@@ -654,8 +653,8 @@ struct LinkedList[ElementType: Movable](
         data.unsafe_write(elem^)
         node[].next() = next
         node[].prev() = current
-        if next:
-            next.value()[].prev() = node
+        if case .Some(next) = next:
+            next[].prev() = node
         curr_nn[].next() = node
         if node[].next() == Self._NodePointer():
             self._tail = node
@@ -672,10 +671,10 @@ struct LinkedList[ElementType: Movable](
         Notes:
             Time Complexity: O(1).
         """
-        if self._tail:
-            self._tail.value()[].next() = other._head
-            if other._head:
-                other._head.value()[].prev() = self._tail
+        if case .Some(tail) = self._tail:
+            tail[].next() = other._head
+            if case .Some(head) = other._head:
+                head[].prev() = self._tail
             if other._tail:
                 self._tail = other._tail
 

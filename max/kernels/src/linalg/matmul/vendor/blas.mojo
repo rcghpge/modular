@@ -356,8 +356,8 @@ def _ffi_void_ptr[
 
     Returns None when the optional is empty.
     """
-    if ptr:
-        return rebind[OpaquePointer[MutAnyOrigin]](ptr.unsafe_value())
+    if case .Some(ptr) = ptr:
+        return rebind[OpaquePointer[MutAnyOrigin]](ptr)
     return None
 
 
@@ -392,8 +392,8 @@ def _get_global_handle[
 ](ctx: DeviceContext) raises -> Handle[backend]:
     var HANDLE_NAME = String(t"LINALG_VENDOR_BLAS_{backend}_{ctx.id()}")
     var global_ptr = _get_global_or_null(HANDLE_NAME)
-    if global_ptr:
-        var ptr = global_ptr.value().unsafe_bitcast[Handle[backend]]()
+    if case .Some(global_ptr) = global_ptr:
+        var ptr = global_ptr.unsafe_bitcast[Handle[backend]]()
         _attach_handle_to_stream(ctx, ptr[])
         return ptr[]
 

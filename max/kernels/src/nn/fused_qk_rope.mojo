@@ -446,8 +446,8 @@ def fused_qk_rope_ragged[
             var post_seq_idx = k_cache.cache_length(batch_idx) + token_idx
 
             var position_ids_idx = post_seq_idx
-            if position_ids:
-                comptime PIdTensor = type_of(position_ids.value())
+            if case .Some(position_ids) = position_ids:
+                comptime PIdTensor = type_of(position_ids)
                 comptime assert PIdTensor.flat_rank == 2
 
                 comptime if mrope_section:
@@ -459,12 +459,10 @@ def fused_qk_rope_ragged[
                             section_idx = i
                             break
                     position_ids_idx = Int(
-                        position_ids.value()[section_idx, global_token_idx]
+                        position_ids[section_idx, global_token_idx]
                     )
                 else:
-                    position_ids_idx = Int(
-                        position_ids.value()[0, global_token_idx]
-                    )
+                    position_ids_idx = Int(position_ids[0, global_token_idx])
 
             # WARN assumes head_size % simd_width == 0
             # guarded by constrained statement below

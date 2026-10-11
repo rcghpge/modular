@@ -46,8 +46,8 @@ def print_svg[
     _print_svg_impl[swizzle, memory_bank, element_layout](
         tensor_base, tensors, s, color_map
     )
-    if file_path:
-        file_path.value().write_text(s)
+    if case .Some(file_path) = file_path:
+        file_path.write_text(s)
     else:
         print(s)
 

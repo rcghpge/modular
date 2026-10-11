@@ -215,32 +215,32 @@ def _get_arg(handle: String) -> Optional[String]:
 
 def arg_parse(handle: String, default: Int) raises -> Int:
     var val = _get_arg(handle)
-    if val:
-        return Int(val.value())
+    if case .Some(val) = val:
+        return Int(val)
     return default
 
 
 def arg_parse(handle: String, default: Bool) raises -> Bool:
     var val = _get_arg(handle)
-    if val:
-        if val.value() == "True":
+    if case .Some(val) = val:
+        if val == "True":
             return True
-        elif val.value() == "False":
+        elif val == "False":
             return False
     return default
 
 
 def arg_parse(handle: String, default: String) raises -> String:
     var val = _get_arg(handle)
-    if val:
-        return val.value()
+    if case .Some(val) = val:
+        return val
     return default
 
 
 def arg_parse(handle: String, default: Float64) raises -> Float64:
     var val = _get_arg(handle)
-    if val:
-        return atof(val.value())
+    if case .Some(val) = val:
+        return atof(val)
     return default
 
 

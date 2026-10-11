@@ -386,9 +386,9 @@ def mha_sm100_depth512_dispatch[
                     with_valid_length[NullPointer[.uint32]]({})
 
             # --- kv_input_row_offsets dispatch ---
-            if kv_input_row_offsets:
+            if case .Some(kv_input_row_offsets) = kv_input_row_offsets:
                 with_kv_offsets[NonNullPointer[.uint32]](
-                    {kv_input_row_offsets.value().ptr}
+                    {kv_input_row_offsets.ptr}
                 )
             else:
                 with_kv_offsets[NullPointer[.uint32]]({})
@@ -516,9 +516,9 @@ def mha_sm100_depth512_dispatch[
                     with_valid_length_q[NullPointer[.uint32]]({})
 
             # --- kv_input_row_offsets dispatch ---
-            if kv_input_row_offsets:
+            if case .Some(kv_input_row_offsets) = kv_input_row_offsets:
                 with_kv_offsets_q[NonNullPointer[.uint32]](
-                    {kv_input_row_offsets.value().ptr}
+                    {kv_input_row_offsets.ptr}
                 )
             else:
                 with_kv_offsets_q[NullPointer[.uint32]]({})

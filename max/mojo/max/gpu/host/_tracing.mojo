@@ -238,8 +238,8 @@ struct EventAttributes[message_origin: ImmOrigin](TrivialRegisterPassable):
     ):
         comptime ASCII = 1
         var resolved_color: Color
-        if color:
-            resolved_color = color.value()
+        if case .Some(color) = color:
+            resolved_color = color
         else:
             resolved_color = color_from_category(category)
         self._value = _C_EventAttributes(

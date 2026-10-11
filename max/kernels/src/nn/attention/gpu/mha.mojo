@@ -668,10 +668,10 @@ def _flash_attention_kv_cache[
         var max_prompt_len: Int
         var num_keys = Int(k.max_context_length())
 
-        if q_max_seq_len:
-            max_prompt_len = q_max_seq_len.value()
-        elif decode_dispatch_metadata:
-            max_prompt_len = decode_dispatch_metadata.value().q_max_seq_len
+        if case .Some(q_max_seq_len) = q_max_seq_len:
+            max_prompt_len = q_max_seq_len
+        elif case .Some(decode_dispatch_metadata) = decode_dispatch_metadata:
+            max_prompt_len = decode_dispatch_metadata.q_max_seq_len
         else:
             max_prompt_len = Int(k.max_prompt_length())
 
@@ -1034,18 +1034,16 @@ def flash_attention_dispatch[
             # keeps prefill on the raw argument.
             var fa4_max_cache_len = max_cache_valid_length
             if is_token_generation:
-                if decode_dispatch_metadata:
-                    fa4_max_cache_len = (
-                        decode_dispatch_metadata.value().max_cache_valid_length
-                    )
+                if case .Some(decode_metadata) = decode_dispatch_metadata:
+                    fa4_max_cache_len = decode_metadata.max_cache_valid_length
             # An explicit `num_partitions` is forwarded verbatim as FA4's exact
             # partition count (`0` == auto), not snapped to the `_bucket_ws`
             # ladder; honoring it forces a BM < 256 route, since the 2Q config
             # has no split-K mechanism. `dispatch_metadata.num_partitions` is
             # unused here -- FA4 sizes its own auto P.
             var fa4_num_partitions: Int = 0
-            if num_partitions:
-                fa4_num_partitions = num_partitions.value()
+            if case .Some(num_partitions) = num_partitions:
+                fa4_num_partitions = num_partitions
             # d256/d512 large-prefill carveout: a long prompt goes to the
             # pair-CTA `mha_sm100_depth512_dispatch`; short prefill and all
             # decode fall through to FA4 below. The `comptime if` is
@@ -1323,7 +1321,7 @@ def flash_attention_dispatch[
                                     .as_unsafe_any_origin()
                                     .ptr
                                 )
-                                if kv_input_row_offsets:
+                                if case .Some(offsets) = kv_input_row_offsets:
                                     mha_prefill_v2_ragged[
                                         config=v2_config,
                                         cross_attention=True,
@@ -1336,9 +1334,7 @@ def flash_attention_dispatch[
                                         mask_functor,
                                         scale,
                                         q_off_ptr,
-                                        kv_input_row_offsets.value()
-                                        .as_unsafe_any_origin()
-                                        .ptr,
+                                        offsets.as_unsafe_any_origin().ptr,
                                         max_prompt_len,
                                         batch_size,
                                         ctx,
@@ -1362,7 +1358,7 @@ def flash_attention_dispatch[
                                         sw_ptr,
                                     )
                             else:
-                                if kv_input_row_offsets:
+                                if case .Some(offsets) = kv_input_row_offsets:
                                     mha_prefill_v2_ragged[
                                         config=v2_config, cross_attention=True
                                     ](
@@ -1373,9 +1369,7 @@ def flash_attention_dispatch[
                                         mask_functor,
                                         scale,
                                         q_off_ptr,
-                                        kv_input_row_offsets.value()
-                                        .as_unsafe_any_origin()
-                                        .ptr,
+                                        offsets.as_unsafe_any_origin().ptr,
                                         max_prompt_len,
                                         batch_size,
                                         ctx,
@@ -1558,8 +1552,8 @@ def flash_attention_dispatch[
                 var num_q_rows = q_num_matrix_view_rows(q)
 
                 var dispatch_metadata: MHADecodeDispatchMetadata
-                if decode_dispatch_metadata:
-                    dispatch_metadata = decode_dispatch_metadata.value()
+                if case .Some(decode_metadata) = decode_dispatch_metadata:
+                    dispatch_metadata = decode_metadata
                 else:
                     dispatch_metadata = (
                         MHADecodeDispatchMetadata.from_runtime_values[
@@ -1606,8 +1600,8 @@ def flash_attention_dispatch[
                 # For explicit/override partition counts we do not over-launch,
                 # so max == actual.
                 var max_num_partitions_value: Int
-                if num_partitions:
-                    num_partitions_value = num_partitions.value()
+                if case .Some(num_partitions) = num_partitions:
+                    num_partitions_value = num_partitions
                     max_num_partitions_value = num_partitions_value
                 elif (
                     dispatch_metadata.num_partitions > 0
@@ -2679,8 +2673,7 @@ def mha[
 
         # this is used for cross attention where we get the num_keys
         # from kv_input_row_offsets. This is when num_keys != seq_len
-        if kv_input_row_offsets:
-            var kv_row_offsets = kv_input_row_offsets.value()
+        if case .Some(kv_row_offsets) = kv_input_row_offsets:
             var kv_seq_start = Int(kv_row_offsets[batch_idx])
             var kv_seq_end = Int(kv_row_offsets[batch_idx + 1])
             var cur_kv_len = kv_seq_end - kv_seq_start

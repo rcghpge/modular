@@ -353,8 +353,8 @@ struct MHAConfig[dtype: DType](TrivialRegisterPassable, Writable):
             # BM
             self.num_queries_per_block = num_queries_per_block.or_else(128)
             var reg_per = 224 if self.num_queries_per_block > 64 else 256
-            if num_keys_per_block:
-                self.num_keys_per_block = num_keys_per_block.value()
+            if case .Some(num_keys_per_block) = num_keys_per_block:
+                self.num_keys_per_block = num_keys_per_block
             # FIXME: for depth == 64, larger num_keys_per_block values currently
             #        trigger correctness issues; this hardcoded value is a
             #        temporary workaround and should be revisited.

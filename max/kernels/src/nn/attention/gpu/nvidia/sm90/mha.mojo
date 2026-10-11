@@ -766,10 +766,8 @@ def _mha_sm90_kv_input_row_offset_dispatch[
 ) raises:
     comptime KVRowOffsetsNonNull = NonNullPointer[.uint32]
     comptime KVRowOffsetsNull = NullPointer[.uint32]
-    if kv_input_row_offsets:
-        var kv_row_offsets: KVRowOffsetsNonNull = {
-            kv_input_row_offsets.value().ptr
-        }
+    if case .Some(kv_input_row_offsets) = kv_input_row_offsets:
+        var kv_row_offsets: KVRowOffsetsNonNull = {kv_input_row_offsets.ptr}
         _mha_sm90_valid_length_dispatch[
             q_tile_shape,
             q_desc_shape,
@@ -1400,8 +1398,8 @@ def _mha_sm90[
         if not initial_seq_info.is_valid():
             comptime if persistent:
                 var seq_info = advance[True, MHASchedulerSynchronization.ALL](1)
-                if seq_info:
-                    initial_seq_info = seq_info.value()
+                if case .Some(seq_info) = seq_info:
+                    initial_seq_info = seq_info
                 else:
                     return
             else:

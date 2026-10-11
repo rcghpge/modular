@@ -215,8 +215,8 @@ struct PyObjectPtr(
 
     @inline(.always)
     def __int__(self) -> Int:
-        if self._unsized_obj_ptr:
-            return Int(self._unsized_obj_ptr.unsafe_value())
+        if case .Some(unsized_obj_ptr) = self._unsized_obj_ptr:
+            return Int(unsized_obj_ptr)
         else:
             return 0
 

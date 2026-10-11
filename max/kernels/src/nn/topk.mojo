@@ -294,8 +294,8 @@ def _top_k_cpu[
 
             var batch_idx = indices[0] if axis != 0 else 0
             var k_val = max_k
-            if k:
-                var k_raw = Int(k.value()[batch_idx])
+            if case .Some(k) = k:
+                var k_raw = Int(k[batch_idx])
                 k_val = max_k if k_raw == -1 else k_raw
 
             # Clamp k to the size of the axis to avoid out-of-bounds access
@@ -697,12 +697,12 @@ def _top_k_sampling[
     # Sample from the top K elements
     for batch in range(internal_bs):
         var temperature_val = Float32(1.0)
-        if temperature:
-            temperature_val = temperature.value()[batch][0]
+        if case .Some(temperature) = temperature:
+            temperature_val = temperature[batch][0]
 
         var k_val = max_k
-        if k:
-            var k_raw = Int(k.value()[batch])
+        if case .Some(k) = k:
+            var k_raw = Int(k[batch])
             k_val = max_k if k_raw == -1 else k_raw
 
         # Clamp k_val to the number of valid top-k entries available in internal_out_vals
@@ -726,16 +726,16 @@ def _top_k_sampling[
 
         # Handle top_p parameter - extract scalar value from buffer
         var top_p_val = Scalar[dtype](1.0)
-        if top_p:
-            top_p_val = top_p.value()[batch][0].cast[dtype]()
+        if case .Some(top_p) = top_p:
+            top_p_val = top_p[batch][0].cast[dtype]()
         var _top_p = _adjust_top_p[dtype](
             top_p_val, exp_vals_ptr, k_val, sum_exp
         )
 
         # Handle seed parameter - extract scalar value from buffer
         var seed_val = UInt64(0)
-        if seed:
-            seed_val = seed.value()[batch][0]
+        if case .Some(seed) = seed:
+            seed_val = seed[batch][0]
 
         # Use the same RNG as the GPU sampling implementation
         var rng_state = Random(seed=seed_val)
@@ -1144,8 +1144,8 @@ def _topk_stage1[
     var out_idxs = local_topk_idxs + bid * _max_k
 
     var k_batch = _max_k
-    if K:
-        var k_raw = Int(K.unsafe_value()[batch_id])
+    if case .Some(K) = K:
+        var k_raw = Int(K[batch_id])
         k_batch = _max_k if k_raw == -1 else k_raw
 
     # Clamp k_batch to the number of elements we can actually draw from
@@ -1320,8 +1320,8 @@ def _topk_stage2[
     with PDL():
         # Handle the case where stage 1 is executed with a single block
         var k_batch = _max_k
-        if K:
-            var k_raw = Int(K.unsafe_value()[batch_id])
+        if case .Some(K) = K:
+            var k_raw = Int(K[batch_id])
             k_batch = _max_k if k_raw == -1 else k_raw
 
         # Clamp k_batch to not exceed the reduced elements per batch and _max_k
@@ -1409,8 +1409,8 @@ def _topk_stage2[
                     batch_i_topk_vals[k] = total.u
                     s_id[k] = total.p
                     var temp_val = Float32(1.0)
-                    if temperature:
-                        temp_val = temperature.unsafe_value()[batch_id]
+                    if case .Some(temperature) = temperature:
+                        temp_val = temperature[batch_id]
                     total.u = exp(
                         (total.u - max_logit) / max(temp_val.cast[T](), 1e-6)
                     )
@@ -1452,10 +1452,8 @@ def _topk_stage2[
                 # Since s_val2[0] = exp(0/temp) = 1.0 is the max, the
                 # threshold in this unnormalized softmax domain is simply
                 # min_p_val.
-                if min_p:
-                    var min_p_val = Scalar[T](
-                        min_p.unsafe_value()[batch_id].cast[T]()
-                    )
+                if case .Some(min_p) = min_p:
+                    var min_p_val = Scalar[T](min_p[batch_id].cast[T]())
                     if min_p_val > 0:
                         for ki in range(k_batch):
                             if s_val2[ki] < min_p_val:
@@ -1463,8 +1461,8 @@ def _topk_stage2[
                                 s_val2[ki] = Scalar[T](0)
 
                 var top_p_val = Scalar[T](1.0)
-                if top_p:
-                    top_p_val = top_p.unsafe_value()[batch_id].cast[T]()
+                if case .Some(top_p) = top_p:
+                    top_p_val = top_p[batch_id].cast[T]()
                 var _top_p = _adjust_top_p[T](
                     top_p_val, s_val2, k_batch, s_sum[0]
                 )
@@ -1473,8 +1471,8 @@ def _topk_stage2[
                 # generator, so that we don't use the same random number for every
                 # token in the sequence.
                 var seed_val = UInt64(0)
-                if seed:
-                    seed_val = seed.unsafe_value()[batch_id]
+                if case .Some(seed) = seed:
+                    seed_val = seed[batch_id]
                 var rng_state = Random(seed=seed_val)
                 var rng = rng_state.step_uniform()
                 var softmax_norm = s_sum[0]
@@ -1491,9 +1489,9 @@ def _topk_stage2[
                         batch_i_topk_idxs[0] = token_id
 
                         # post-validation
-                        if valid:
+                        if case .Some(valid) = valid:
                             if max_logit == _topk_dead_val[T, largest]():
-                                valid.unsafe_value()[batch_id] = 0
+                                valid[batch_id] = 0
                         break
 
 
@@ -1566,8 +1564,8 @@ def _topk_warp[
     var row_idxs = out_idxs + batch_id * _max_k
 
     var k_batch = _max_k
-    if K:
-        var k_raw = Int(K.unsafe_value()[batch_id])
+    if case .Some(K) = K:
+        var k_raw = Int(K[batch_id])
         k_batch = _max_k if k_raw == -1 else k_raw
     if k_batch > _num_elements:
         k_batch = _num_elements
@@ -1770,8 +1768,8 @@ def _topk_gpu[
 
     # Handle optional k parameter
     var k_ptr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]] = None
-    if k:
-        k_ptr = rebind[UnsafePointer[Int64, ImmutAnyOrigin]](k.value().ptr)
+    if case .Some(k) = k:
+        k_ptr = rebind[UnsafePointer[Int64, ImmutAnyOrigin]](k.ptr)
 
     # Enqueue the first kernel (stage 1)
     var input_buf_tmp = ctx.enqueue_create_buffer[dtype](batch_size * N)
@@ -1819,29 +1817,25 @@ def _topk_gpu[
 
     # Handle optional temperature parameter
     var temp_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
-    if temperature:
+    if case .Some(temperature) = temperature:
         temp_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](
-            temperature.value().ptr
+            temperature.ptr
         )
 
     # Handle optional top_p parameter
     var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
-    if top_p:
-        top_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](
-            top_p.value().ptr
-        )
+    if case .Some(top_p) = top_p:
+        top_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](top_p.ptr)
 
     # Handle optional min_p parameter
     var min_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
-    if min_p:
-        min_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](
-            min_p.value().ptr
-        )
+    if case .Some(min_p) = min_p:
+        min_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](min_p.ptr)
 
     # Handle optional seed parameter
     var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
-    if seed:
-        seed_ptr = seed.value().ptr
+    if case .Some(seed) = seed:
+        seed_ptr = seed.ptr
 
     # Enqueue the second kernel (stage 2)
     comptime kernel_2 = _topk_stage2[dtype, out_idx_type, sampling, largest]
@@ -2103,9 +2097,9 @@ def topk_gpu[
                 var warp_k_ptr: Optional[
                     UnsafePointer[Int64, ImmutAnyOrigin]
                 ] = None
-                if k:
+                if case .Some(k) = k:
                     warp_k_ptr = rebind[UnsafePointer[Int64, ImmutAnyOrigin]](
-                        k.value().ptr
+                        k.ptr
                     )
 
                 comptime warp_kernel = _topk_warp[dtype, out_idx_type, largest]
@@ -2449,13 +2443,13 @@ def apply_gumbel_noise_kernel[
 
         for tok_idx in range(group_id, Int(num_tokens), num_groups):
             var temp_val = Float32(1.0)
-            if temperature:
-                temp_val = temperature.unsafe_value()[tok_idx]
+            if case .Some(temperature) = temperature:
+                temp_val = temperature[tok_idx]
                 temp_val = max(temp_val, MIN_TEMP)
 
             var seed_val = UInt64(0)
-            if seed:
-                seed_val = seed.unsafe_value()[tok_idx]
+            if case .Some(seed) = seed:
+                seed_val = seed[tok_idx]
 
             var ld_ptr = input.ptr + tok_idx * N
             var st_ptr = output.ptr + tok_idx * N
@@ -2635,13 +2629,13 @@ def _gumbel_argmax_fused_kernel[
         block_in_row = block_idx.x % blocks_per_row_int
 
     var temp_val = Float32(1.0)
-    if temperature:
-        temp_val = temperature.unsafe_value()[batch_id]
+    if case .Some(temperature) = temperature:
+        temp_val = temperature[batch_id]
         temp_val = max(temp_val, MIN_TEMP)
 
     var seed_val = UInt64(0)
-    if seed:
-        seed_val = seed.unsafe_value()[batch_id]
+    if case .Some(seed) = seed:
+        seed_val = seed[batch_id]
 
     var ld_ptr = input.ptr + batch_id * N
     comptime align = align_of[SIMD[dtype, simd_width]]()
@@ -2834,11 +2828,11 @@ def gumbel_sampling_fused_gpu[
         var temperature_ptr: Optional[
             UnsafePointer[Float32, ImmutAnyOrigin]
         ] = None
-        if temperature:
-            temperature_ptr = temperature.value().ptr
+        if case .Some(temperature) = temperature:
+            temperature_ptr = temperature.ptr
         var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
-        if seed:
-            seed_ptr = seed.value().ptr
+        if case .Some(seed) = seed:
+            seed_ptr = seed.ptr
 
         comptime split_capable = (
             ctx.target.is_amd_gpu() and from_probs and dtype == DType.float32
@@ -2980,11 +2974,11 @@ def gumbel_sampling_gpu[
         var temperature_ptr: Optional[
             UnsafePointer[Float32, ImmutAnyOrigin]
         ] = None
-        if temperature:
-            temperature_ptr = temperature.value().ptr
+        if case .Some(temperature) = temperature:
+            temperature_ptr = temperature.ptr
         var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
-        if seed:
-            seed_ptr = seed.value().ptr
+        if case .Some(seed) = seed:
+            seed_ptr = seed.ptr
 
         ctx.enqueue_function[gumbel_kernel](
             noised_input,

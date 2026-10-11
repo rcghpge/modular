@@ -580,9 +580,9 @@ struct assert_raises:
         Returns:
             True if the error was successfully caught and matched.
         """
-        if self.message_contains:
+        if case .Some(message_contains) = self.message_contains:
             comptime assert conforms_to(
                 E, Writable
             ), "assert_raises(contains=...) requires a Writable error type"
-            return self.message_contains.value() in String(error)
+            return message_contains in String(error)
         return True

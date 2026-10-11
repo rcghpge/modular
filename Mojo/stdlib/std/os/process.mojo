@@ -166,15 +166,15 @@ struct Pipe:
     @inline(.always)
     def set_input_only(mut self):
         """Close the output descriptor/ channel for this side of the pipe."""
-        if self.fd_out:
-            _ = close(Int32(rebind[Int](self.fd_out.value())))
+        if case .Some(fd_out) = self.fd_out:
+            _ = close(Int32(rebind[Int](fd_out)))
             self.fd_out = None
 
     @inline(.always)
     def set_output_only(mut self):
         """Close the input descriptor/ channel for this side of the pipe."""
-        if self.fd_in:
-            _ = close(Int32(rebind[Int](self.fd_in.value())))
+        if case .Some(fd_in) = self.fd_in:
+            _ = close(Int32(rebind[Int](fd_in)))
             self.fd_in = None
 
     @inline(.always)
@@ -187,8 +187,8 @@ struct Pipe:
         Raises:
             Error: If called on a read-only pipe.
         """
-        if self.fd_out:
-            self.fd_out.value().write_bytes(bytes)
+        if case .Some(ref fd_out) = self.fd_out:
+            fd_out.write_bytes(bytes)
         else:
             raise Error("Can not write from read only side of pipe")
 
@@ -205,8 +205,8 @@ struct Pipe:
         Raises:
             Error: If the pipe is in write-only mode.
         """
-        if self.fd_in:
-            return self.fd_in.value().read_bytes(buffer)
+        if case .Some(ref fd_in) = self.fd_in:
+            return fd_in.read_bytes(buffer)
 
         raise Error("Can not read from write only side of pipe")
 
@@ -341,8 +341,8 @@ struct Process:
         Raises:
             Error: If `waitpid` fails.
         """
-        if self.status:
-            return self.status.value()
+        if case .Some(cached) = self.status:
+            return cached
 
         var status: c_int = 0
         var pid = waitpid(self.child_pid, Pointer(to=status), WaitFlags.WNOHANG)
@@ -363,8 +363,8 @@ struct Process:
         Raises:
             Error: If `waitpid` fails or the process does not exit.
         """
-        if self.status:
-            return self.status.value()
+        if case .Some(cached) = self.status:
+            return cached
 
         var status: c_int = 0
         var pid = waitpid(self.child_pid, Pointer(to=status), 0)

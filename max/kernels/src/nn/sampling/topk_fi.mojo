@@ -254,8 +254,8 @@ def TopKMaskLogitsKernel[
 
     with PDL():
         var k = _top_k_val
-        if top_k_arr:
-            k = Int(top_k_arr.unsafe_value()[bx])
+        if case .Some(top_k_arr) = top_k_arr:
+            k = Int(top_k_arr[bx])
 
         # Initialize pivot to negative infinity.
         var pivot = Float32.MIN
@@ -448,8 +448,8 @@ def topk_mask_logits[
         var top_k_ptr: Optional[
             UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
-        if top_k_arr:
-            top_k_ptr = top_k_arr.value().ptr
+        if case .Some(top_k_arr) = top_k_arr:
+            top_k_ptr = top_k_arr.ptr
 
         def launch_kernel[vec_size: Int]() raises {imm}:
             comptime kernel = TopKMaskLogitsKernel[
@@ -808,11 +808,11 @@ def TopKSamplingFromProbKernel[
     with PDL():
         var generator = Random(seed=rng_seed, offset=UInt64(bx) + rng_offset)
         var k = _top_k_val
-        if top_k_arr:
-            k = Int(top_k_arr.unsafe_value().load(bx))
+        if case .Some(top_k_arr) = top_k_arr:
+            k = Int(top_k_arr.load(bx))
         var row_idx = bx
-        if indices:
-            row_idx = Int(indices.unsafe_value().load(bx))
+        if case .Some(indices) = indices:
+            row_idx = Int(indices.load(bx))
 
         var probs_ptr = probs.ptr + row_idx * _d
         var probs_row = TileTensor(probs_ptr, row_major(Idx[1], _d))
@@ -1199,14 +1199,14 @@ def topk_sampling_from_prob[
         var indices_ptr: Optional[
             UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
-        if indices:
-            indices_ptr = indices.value().ptr
+        if case .Some(indices) = indices:
+            indices_ptr = indices.ptr
 
         var top_k_ptr: Optional[
             UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
-        if top_k_arr:
-            top_k_ptr = top_k_arr.value().ptr
+        if case .Some(top_k_arr) = top_k_arr:
+            top_k_ptr = top_k_arr.ptr
 
         def launch_kernel[vec_size: Int, deterministic: Bool]() raises {imm}:
             comptime kernel = TopKSamplingFromProbKernel[
@@ -1947,13 +1947,13 @@ def TopKTopPSamplingFromProbKernel[
     ]()
 
     var row_idx = bx
-    if indices:
-        row_idx = Int(indices.unsafe_value().load(bx))
+    if case .Some(indices) = indices:
+        row_idx = Int(indices.load(bx))
 
     with PDL():
         var seed_val = UInt64(0)
-        if rng_seed:
-            seed_val = rng_seed.unsafe_value()[row_idx]
+        if case .Some(rng_seed) = rng_seed:
+            seed_val = rng_seed[row_idx]
 
         # The per-row seed is the only thing that separates rows: it carries
         # a per-request key, so mixing an index in here would tie the draw to
@@ -1961,16 +1961,16 @@ def TopKTopPSamplingFromProbKernel[
         var generator = Random(seed=seed_val, offset=rng_offset)
 
         var k = _top_k_val
-        if top_k_arr:
-            k = Int(top_k_arr.unsafe_value().load(row_idx))
+        if case .Some(top_k_arr) = top_k_arr:
+            k = Int(top_k_arr.load(row_idx))
         if k == -1:
             k = _top_k_val
         if k <= 0 or k > _d:
             k = _d
 
         var p = top_p_val
-        if top_p_arr:
-            p = top_p_arr.unsafe_value()[row_idx]
+        if case .Some(top_p_arr) = top_p_arr:
+            p = top_p_arr[row_idx]
 
         var probs_ptr = probs.ptr + row_idx * _d
         var probs_row = TileTensor(probs_ptr, row_major(Idx[1], _d))
@@ -2020,12 +2020,12 @@ def TopKTopPSamplingFromProbKernel[
 
         comptime if from_logits:
             var temp_val = Float32(1.0)
-            if temperature:
-                temp_val = temperature.unsafe_value()[row_idx]
+            if case .Some(temperature) = temperature:
+                temp_val = temperature[row_idx]
             # Clamp to prevent division by zero on greedy (T=0) rows.
             inv_temp = 1.0 / max(temp_val, Float32(1e-6))
-            if min_p:
-                min_p_thresh = min_p.unsafe_value()[row_idx]
+            if case .Some(min_p) = min_p:
+                min_p_thresh = min_p[row_idx]
 
             # Every block needs the same row maximum because later control
             # flow contains group barriers.
@@ -2730,32 +2730,32 @@ def topk_topp_sampling_from_prob[
         var indices_ptr: Optional[
             UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]
         ] = None
-        if indices:
-            indices_ptr = indices.unsafe_value().ptr
+        if case .Some(indices) = indices:
+            indices_ptr = indices.ptr
 
         var top_k_ptr: Optional[
             UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]
         ] = None
-        if top_k_arr:
-            top_k_ptr = top_k_arr.unsafe_value().ptr
+        if case .Some(top_k_arr) = top_k_arr:
+            top_k_ptr = top_k_arr.ptr
 
         var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
-        if top_p_arr:
-            top_p_ptr = top_p_arr.unsafe_value().ptr
+        if case .Some(top_p_arr) = top_p_arr:
+            top_p_ptr = top_p_arr.ptr
 
         var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
-        if rng_seed:
-            seed_ptr = rng_seed.unsafe_value().ptr
+        if case .Some(rng_seed) = rng_seed:
+            seed_ptr = rng_seed.ptr
 
         var temperature_ptr: Optional[
             UnsafePointer[Float32, ImmutAnyOrigin]
         ] = None
-        if temperature:
-            temperature_ptr = temperature.unsafe_value().ptr
+        if case .Some(temperature) = temperature:
+            temperature_ptr = temperature.ptr
 
         var min_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
-        if min_p:
-            min_p_ptr = min_p.unsafe_value().ptr
+        if case .Some(min_p) = min_p:
+            min_p_ptr = min_p.ptr
 
         var dist_ptr: Optional[
             UnsafePointer[Scalar[dist_dtype], MutAnyOrigin]
@@ -2886,11 +2886,11 @@ def topk_softmax_sample_kernel[
     var logits_row = logits[bx : bx + 1, :]
 
     var k = _top_k_val
-    if top_k_arr:
-        k = Int(top_k_arr.unsafe_value()[bx])
+    if case .Some(top_k_arr) = top_k_arr:
+        k = Int(top_k_arr[bx])
     var temp_val = temperature_val
-    if temperature:
-        temp_val = max(temperature.unsafe_value()[bx], 1e-6)
+    if case .Some(temperature) = temperature:
+        temp_val = max(temperature[bx], 1e-6)
 
     # Allocate shared memory for caching top-k elements.
     # Round up to ensure proper alignment for Int array.
@@ -3052,8 +3052,8 @@ def topk_softmax_sample_kernel[
         # PHASE 3: Sampling (thread 0 only).
         if tx == 0:
             var seed_val = seed_val
-            if seed:
-                seed_val = seed.unsafe_value()[bx]
+            if case .Some(seed) = seed:
+                seed_val = seed[bx]
             var rng_state = Random(seed=seed_val)
             var rng = rng_state.step_uniform()
             var r = block_sum * rng[0]
@@ -3190,18 +3190,18 @@ def topk_softmax_sample[
         var top_k_ptr: Optional[
             UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
-        if top_k_arr:
-            top_k_ptr = top_k_arr.unsafe_value().ptr
+        if case .Some(top_k_arr) = top_k_arr:
+            top_k_ptr = top_k_arr.ptr
 
         var temp_ptr: Optional[
             UnsafePointer[Float32, MutUntrackedOrigin]
         ] = None
-        if temperature:
-            temp_ptr = temperature.unsafe_value().ptr
+        if case .Some(temperature) = temperature:
+            temp_ptr = temperature.ptr
 
         var seed_ptr: Optional[UnsafePointer[UInt64, MutUntrackedOrigin]] = None
-        if seed:
-            seed_ptr = seed.unsafe_value().ptr
+        if case .Some(seed) = seed:
+            seed_ptr = seed.ptr
 
         def launch_kernel[vec_size: Int]() raises {imm}:
             comptime kernel = topk_softmax_sample_kernel[
@@ -3312,19 +3312,19 @@ def TopKTopPMaskedProbsKernel[
     launch_dependent_grids()
 
     var k = Int(top_k_val)
-    if top_k_arr:
-        k = Int(top_k_arr.unsafe_value().load(bx))
+    if case .Some(top_k_arr) = top_k_arr:
+        k = Int(top_k_arr.load(bx))
     if k <= 0 or k > _d:
         k = _d
 
     var p = top_p_val
-    if top_p_arr:
-        p = top_p_arr.unsafe_value()[bx]
+    if case .Some(top_p_arr) = top_p_arr:
+        p = top_p_arr[bx]
     p = p.clamp(Float32(0.0), Float32(1.0))
 
     var temp_val = Float32(1.0)
-    if temperature:
-        temp_val = temperature.unsafe_value()[bx]
+    if case .Some(temperature) = temperature:
+        temp_val = temperature[bx]
     # Clamp so a greedy (T=0) row cannot divide by zero.
     var inv_temp = 1.0 / max(temp_val, Float32(1e-6))
 
@@ -3556,18 +3556,18 @@ def topk_topp_masked_probs[
         var vec_size = gcd(8, d)
 
         var top_k_ptr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]] = None
-        if top_k_arr:
-            top_k_ptr = top_k_arr.unsafe_value().ptr
+        if case .Some(top_k_arr) = top_k_arr:
+            top_k_ptr = top_k_arr.ptr
 
         var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
-        if top_p_arr:
-            top_p_ptr = top_p_arr.unsafe_value().ptr
+        if case .Some(top_p_arr) = top_p_arr:
+            top_p_ptr = top_p_arr.ptr
 
         var temperature_ptr: Optional[
             UnsafePointer[Float32, ImmutAnyOrigin]
         ] = None
-        if temperature:
-            temperature_ptr = temperature.unsafe_value().ptr
+        if case .Some(temperature) = temperature:
+            temperature_ptr = temperature.ptr
 
         comptime coop_capable = ctx.target.is_amd_gpu()
         var coop = 1

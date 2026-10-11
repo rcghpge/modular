@@ -1047,8 +1047,8 @@ def mla_decode_sm100_dispatch[
         cost_optimal_split=_cost_optimal_split,
     )
 
-    if num_partitions_in:
-        num_partitions = num_partitions_in.value()
+    if case .Some(num_partitions_in) = num_partitions_in:
+        num_partitions = num_partitions_in
 
     # =========================================================================
     # split_page_size routing: use finer split granularity for short cache

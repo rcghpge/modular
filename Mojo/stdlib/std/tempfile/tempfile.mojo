@@ -388,8 +388,8 @@ struct NamedTemporaryFile(Movable):
         self._delete = delete
         self.name = ""
 
-        if name:
-            self.name = name.value()
+        if case .Some(name) = name:
+            self.name = name
         else:
             for _ in range(TMP_MAX):
                 var potential_name = (

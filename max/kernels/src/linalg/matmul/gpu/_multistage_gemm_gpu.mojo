@@ -370,11 +370,9 @@ def multistage_mma[
                     b_smem_iter.linear_uint_type(stage)
                 )[]
 
-                if num_b_rows:
-                    var num_rows_bound = (
-                        num_b_rows.value() if transpose_b else max(
-                            0, num_b_rows.value() - stage * BK
-                        )
+                if case .Some(num_b_rows) = num_b_rows:
+                    var num_rows_bound = num_b_rows if transpose_b else max(
+                        0, num_b_rows - stage * BK
                     )
                     var b_tensor = _mask_tensor_row(b_iter[], num_rows_bound)
                     _copy_tensor_to_sram[async_copy_b_layout, swizzle_b](
@@ -494,11 +492,12 @@ def multistage_mma[
                                     )[]
                                 )
 
-                                if num_b_rows:
-                                    var num_rows_bound = num_b_rows.value() if transpose_b else max(
-                                        0,
-                                        num_b_rows.value()
-                                        - prefetch_tile_id * BK,
+                                if case .Some(num_b_rows) = num_b_rows:
+                                    var num_rows_bound = (
+                                        num_b_rows if transpose_b else max(
+                                            0,
+                                            num_b_rows - prefetch_tile_id * BK,
+                                        )
                                     )
                                     var b_tensor = _mask_tensor_row(
                                         b_iter[], num_rows_bound
@@ -616,12 +615,11 @@ def multistage_mma[
                                 )
                             )[]
 
-                            if num_b_rows:
+                            if case .Some(num_b_rows) = num_b_rows:
                                 var num_rows_bound = (
-                                    num_b_rows.value() if transpose_b else max(
+                                    num_b_rows if transpose_b else max(
                                         0,
-                                        num_b_rows.value()
-                                        - prefetch_tile_id * BK,
+                                        num_b_rows - prefetch_tile_id * BK,
                                     )
                                 )
                                 var b_tensor = _mask_tensor_row(
@@ -656,12 +654,14 @@ def multistage_mma[
                                 transpose_b_next or b_type.is_half_float()
                             ) and is_nvidia_gpu()
 
-                            if num_b_rows:
+                            if case .Some(num_b_rows) = num_b_rows:
                                 # TODO: can we guard at compile time num_b_rows is set here?
-                                var num_rows_bound = num_b_rows.value() if transpose_b_next else max(
-                                    0,
-                                    num_b_rows.value()
-                                    - (prefetch_tile_id - num_iters) * BK,
+                                var num_rows_bound = (
+                                    num_b_rows if transpose_b_next else max(
+                                        0,
+                                        num_b_rows
+                                        - (prefetch_tile_id - num_iters) * BK,
+                                    )
                                 )
 
                                 var b_tensor = _mask_tensor_row(
