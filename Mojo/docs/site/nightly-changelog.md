@@ -398,6 +398,14 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- The Bessel functions `j0`, `j1`, `y0`, and `y1` in `std.math` no longer
+  call the system libm and now run on GPU as well as CPU. On CPU their
+  results come from the same Mojo implementations, so they can differ from
+  the system libm in the last ulp. For `float32`, relative error grows near
+  the zeros of each function, while absolute error stays small there. On
+  targets that flush subnormals, subnormal inputs and subnormal results
+  are handled; only `j1` can produce a subnormal result in `float32`, and
+  it is kept.
 - `std.math.log10()` no longer calls the system libm or GPU intrinsics: CPU
   and every GPU now run the same Mojo implementation, accurate to within 1
   ulp on measured targets, and `float64` `log10()` now runs on AMD GPUs. On

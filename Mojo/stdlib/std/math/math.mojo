@@ -2645,6 +2645,9 @@ def j0[
     """Computes the Bessel function of the first kind of order 0 for each input
     value.
 
+    For float32, relative error grows near the zeros of the function;
+    absolute error stays small there.
+
     Constraints:
         The input must be a floating-point type.
 
@@ -2659,7 +2662,11 @@ def j0[
         A vector containing the computed value for each value in the input.
     """
 
-    return _call_libm["j0"](x)
+    _assert_float64_supported[dtype, "j0"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        return _j0y0_impl[False](x.cast[.float32]()).cast[dtype]()
+    return _j0y0_impl[False](x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2673,6 +2680,9 @@ def j1[
     """Computes the Bessel function of the first kind of order 1 for each input
     value.
 
+    For float32, relative error grows near the zeros of the function;
+    absolute error stays small there.
+
     Constraints:
         The input must be a floating-point type.
 
@@ -2687,7 +2697,17 @@ def j1[
         A vector containing the computed value for each value in the input.
     """
 
-    return _call_libm["j1"](x)
+    _assert_float64_supported[dtype, "j1"]()
+
+    comptime if is_apple_gpu() and dtype == .bfloat16:
+        return rebind[type_of(x)](
+            _narrow_f32_to_bf16_bits(
+                _j1y1_impl[is_y1=False](x.cast[.float32]())
+            )
+        )
+    comptime if bit_width_of[dtype]() < 32:
+        return _j1y1_impl[is_y1=False](x.cast[.float32]()).cast[dtype]()
+    return _j1y1_impl[is_y1=False](x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2701,6 +2721,9 @@ def y0[
     """Computes the Bessel function of the second kind of order 0 for each input
     value.
 
+    For float32, relative error grows near the zeros of the function;
+    absolute error stays small there.
+
     Constraints:
         The input must be a floating-point type.
 
@@ -2715,7 +2738,11 @@ def y0[
         A vector containing the computed value for each value in the input.
     """
 
-    return _call_libm["y0"](x)
+    _assert_float64_supported[dtype, "y0"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        return _j0y0_impl[True](x.cast[.float32]()).cast[dtype]()
+    return _j0y0_impl[True](x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2729,6 +2756,9 @@ def y1[
     """Computes the Bessel function of the second kind of order 1 for each input
     value.
 
+    For float32, relative error grows near the zeros of the function;
+    absolute error stays small there.
+
     Constraints:
         The input must be a floating-point type.
 
@@ -2743,7 +2773,11 @@ def y1[
         A vector containing the computed value for each value in the input.
     """
 
-    return _call_libm["y1"](x)
+    _assert_float64_supported[dtype, "y1"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        return _j1y1_impl[is_y1=True](x.cast[.float32]()).cast[dtype]()
+    return _j1y1_impl[is_y1=True](x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -3917,8 +3951,40 @@ comptime _LN2 = 0.69314718055994530941723212145817656807550013436026
 comptime _LN2_HI_F64 = 6.93147180369123816490e-01
 comptime _LN2_LO_F64 = 1.90821492927058770002e-10
 
+comptime _TWO_OVER_PI_BITS: List[UInt64] = [
+    0x0000000000000000,
+    0xA2F9836E4E441529,
+    0xFC2757D1F534DDC0,
+    0xDB6295993C439041,
+    0xFE5163ABDEBBC561,
+    0xB7246E3A424DD2E0,
+    0x06492EEA09D1921C,
+    0xFE1DEB1CB129A73E,
+    0xE88235F52EBB4484,
+    0xE99C7026B45F7E41,
+    0x3991D639835339F4,
+    0x9C845F8BBDF9283B,
+    0x1FF897FFDE05980F,
+    0xEF2F118B5A0A6D1F,
+    0x6D367ECF27CB09B7,
+    0x4F463F669E5FEA2D,
+    0x7527BAC7EBE5F17B,
+    0x3D0739F78A5292EA,
+    0x6BFB5FB11F8D5D08,
+    0x56033046FC7B6BAB,
+]
 
 comptime _TWO_OVER_PI = 0.63661977236758134307553505349005744813783858296183
+
+comptime _SQRT_TWO_OVER_PI = 0.79788456080286535587989211986876373695171726232987
+
+comptime _PQ_SPLIT_8 = 8.0
+
+comptime _PQ_SPLIT_5 = 4.545452117919922
+
+comptime _PQ_SPLIT_3 = 2.8571414947509766
+
+comptime _BESSEL_ASYMPTOTIC_MIN = 2.0
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4256,28 +4322,6 @@ def _narrow_f32_to_bf16_bits[
 # Fraction bits of 2/pi, 64 per word, after one zero word so that a window may
 # start before the binary point. The 19 nonzero words reach the deepest bit a
 # float64 reduction reads (about 1220).
-comptime _TWO_OVER_PI_BITS: List[UInt64] = [
-    0x0000000000000000,
-    0xA2F9836E4E441529,
-    0xFC2757D1F534DDC0,
-    0xDB6295993C439041,
-    0xFE5163ABDEBBC561,
-    0xB7246E3A424DD2E0,
-    0x06492EEA09D1921C,
-    0xFE1DEB1CB129A73E,
-    0xE88235F52EBB4484,
-    0xE99C7026B45F7E41,
-    0x3991D639835339F4,
-    0x9C845F8BBDF9283B,
-    0x1FF897FFDE05980F,
-    0xEF2F118B5A0A6D1F,
-    0x6D367ECF27CB09B7,
-    0x4F463F669E5FEA2D,
-    0x7527BAC7EBE5F17B,
-    0x3D0739F78A5292EA,
-    0x6BFB5FB11F8D5D08,
-    0x56033046FC7B6BAB,
-]
 
 
 @inline(.always)
@@ -4296,106 +4340,6 @@ def _umul128[
     var lo = (mid << 32) | (p00 & 0xFFFFFFFF)
     var hi = a1 * b1 + (p01 >> 32) + (p10 >> 32) + (mid >> 32)
     return (lo, hi)
-
-
-@inline(.always)
-def _rem_pio2_large[
-    dtype: DType, width: SIMDLength, //, quarter: Bool = False
-](ax: SIMD[dtype, width]) -> Tuple[
-    SIMD[.int32, width], type_of(ax), type_of(ax)
-]:
-    """Payne-Hanek: returns `(n mod 4, hi, lo)` with `ax = n*pi/2 + hi + lo`
-    and `|hi + lo| <= pi/4`, for finite `ax >= 1`. With `quarter`, reduces
-    `ax - pi/4` instead by subtracting 1/2 from the fixed-point `ax * 2/pi`,
-    so the shift costs no precision.
-
-    Uses only integer and `dtype` arithmetic, so the float32 path never
-    touches float64.
-    """
-    comptime T = type_of(ax)
-    comptime U = SIMD[.uint64, width]
-    comptime I = SIMD[.int64, width]
-    comptime mant = FPUtils[dtype].mantissa_width()
-    comptime bias = FPUtils[dtype].exponent_bias()
-    comptime P = mant + 1
-
-    comptime assert dtype in (DType.float32, DType.float64)
-    var bits = ax.to_bits().cast[.uint64]()
-
-    # ax = m * 2^(E - bias - mant). Fraction bits of 2/pi weighing 2^-j with
-    # j <= E - bias - mant - 2 only add multiples of 4 quadrants, so a 192-bit
-    # window from bit E - bias - mant - 1 (table bit E - bias - mant + 62)
-    # keeps the quadrant and far more fraction bits than the closest approach
-    # of any float to a multiple of pi/2 needs.
-    var m = (bits & U((1 << mant) - 1)) | U(1 << mant)
-    var e = bits >> U(mant)
-    var pos = e + U(62 - bias - mant)
-    var q = pos >> 6
-    var r = pos & 63
-    comptime max_q = (2 * bias + 62 - bias - mant) >> 6
-    var w = StaticTuple[U, 4](fill=U(0))
-    comptime for k in range(max_q + 1):
-        var hit = q.eq(U(k))
-        comptime for j in range(4):
-            comptime word = _TWO_OVER_PI_BITS[k + j]
-            w[j] = hit.select(U(word), w[j])
-    # Shift in two steps so that r == 0 never shifts by 64.
-    var v0 = (w[0] << r) | ((w[1] >> 1) >> (63 - r))
-    var v1 = (w[1] << r) | ((w[2] >> 1) >> (63 - r))
-    var v2 = (w[2] << r) | ((w[3] >> 1) >> (63 - r))
-
-    # (m * v) mod 2^192 is ax * 2/pi mod 4 with two integer bits.
-    var p2 = _umul128(m, v2)
-    var p1 = _umul128(m, v1)
-    var r1 = p2[1] + p1[0]
-    var r0 = p1[1] + m * v0 + r1.lt(p1[0]).select(U(1), U(0))
-    var h = (r0 << 2) | (r1 >> 62)
-    var l = (r1 << 2) | (p2[0] >> 62)
-    # Rounding to the nearest quadrant leaves the signed fraction h:l in
-    # [-1/2, 1/2), split into P-bit chunks that convert to `dtype` exactly.
-    var n: U
-    comptime if quarter:
-        # frac - 1/2 is already in [-1/2, 1/2): flip the half bit and keep the
-        # integer quadrant.
-        n = (r0 >> 62) & 3
-        h ^= U(1) << 63
-    else:
-        n = ((r0 >> 62) + (h >> 63)) & 3
-    var c0 = bitcast[.int64](h) >> I(64 - P)
-    var c1 = bitcast[.int64](((h << U(P)) | (l >> U(64 - P))) >> U(64 - P))
-    var c2: I
-    comptime if 2 * P < 64:
-        c2 = bitcast[.int64](
-            ((h << U(2 * P)) | (l >> U(64 - 2 * P))) >> U(64 - P)
-        )
-    else:
-        c2 = bitcast[.int64]((l << U(2 * P - 64)) >> U(64 - P))
-
-    @inline(.always)
-    def to_float(c: I) -> T:
-        # The chunks fit in 24 bits for float32; convert through int32.
-        comptime if dtype == .float32:
-            return c.cast[.int32]().cast[dtype]()
-        return c.cast[dtype]()
-
-    comptime s1 = 1 / Scalar[dtype](1 << P)
-    var f = _two_sum(to_float(c0) * s1, to_float(c1) * (s1 * s1))
-    var f_lo = f[1] + to_float(c2) * (s1 * s1 * s1)
-
-    comptime is_f32 = dtype == .float32
-    comptime pio2_hi = Scalar[dtype](
-        1.5707963705062866 if is_f32 else 1.5707963267948966
-    )
-    comptime pio2_lo = Scalar[dtype](
-        -4.371138828673793e-08 if is_f32 else 6.123233995736766e-17
-    )
-    # (f + f_lo) * pi/2 as hi + lo. No rounded product feeds an add: one that
-    # did would be contracted into an fma by GPU backends, while its error
-    # term still assumed the rounded value.
-    var t = fma(f[0], pio2_lo, f_lo * pio2_hi)
-    var hi = fma(f[0], pio2_hi, t)
-    var lo = fma(f[0], pio2_hi, -hi) + t
-    return (n.cast[.int32](), hi, lo)
 
 
 @inline(.always)
@@ -4793,6 +4737,631 @@ def _pow2_impl[
     )
 
 
+def _atanh_float32(x: SIMD) -> type_of(x) where x.dtype.is_floating_point():
+    """This computes the `atanh` of the inputs for float32. It uses the same
+    approximation used by Eigen library."""
+
+    comptime nan_val = nan[x.dtype]()
+    comptime inf_val = inf[x.dtype]()
+    comptime neg_inf_val = -inf[x.dtype]()
+
+    var is_neg = x.lt(0)
+    var x_abs = abs(x)
+    var x2 = x * x
+    var x3 = x2 * x
+
+    # When x is in the range [0, 0.5], we use a polynomial approximation.
+    # P(x) = x + x^3*(c[4] + x^2 * (c[3] + x^2 * (... x^2 * c[0]) ... )).
+    var p = polynomial_evaluate[
+        [
+            Scalar[x.dtype](0.3333373963832855224609375),
+            0.1997792422771453857421875,
+            0.14672131836414337158203125,
+            8.2311116158962249755859375e-2,
+            0.1819281280040740966796875,
+        ]
+    ](x2)
+    p = x3.fma(p, x)
+
+    # For |x| in the range (0.5, 1), we use the identity:
+    # atanh(x) = 0.5 * log((1 + x) / (1 - x))
+    var r = 0.5 * log((1.0 + x) / (1.0 - x))
+
+    # If x is 1, then the result is +infinity, and -infinity if x is -1.
+    # If |x| > 1, NaN is returned. Otherwise, if |x| > 0.5, we use the r
+    # approximation, otherwise we use the p polynomial approximation.
+    return x_abs.eq(1).select(
+        is_neg.select(neg_inf_val, inf_val),
+        x_abs.ge(1).select(
+            is_neg.select(nan_val, -nan_val),
+            x_abs.gt(0.5).select(r, p),
+        ),
+    )
+
+
+@inline(.never)
+def _bessel_is_zero_bits[
+    dtype: DType, width: SIMDLength, //
+](bits: SIMD[dtype, width]) -> SIMD[.bool, width]:
+    # Inlining the signless-bit test can turn it into a flushing FP compare.
+    comptime assert dtype == .int32 or dtype == .int64
+    comptime mask = SIMD[dtype, width]((1 << (bit_width_of[dtype]() - 1)) - 1)
+    return (bits & mask).eq(0)
+
+
+@inline(.always)
+def _interval_coef[
+    dtype: DType,
+    width: SIMDLength,
+    //,
+    c8: Span[Scalar[dtype], _],
+    c5: Span[Scalar[dtype], _],
+    c3: Span[Scalar[dtype], _],
+    c2: Span[Scalar[dtype], _],
+    i: Int,
+](
+    m8: SIMD[.bool, width], m5: SIMD[.bool, width], m3: SIMD[.bool, width]
+) -> SIMD[dtype, width]:
+    comptime V = SIMD[dtype, width]
+    comptime a8 = c8[i]
+    comptime a5 = c5[i]
+    comptime a3 = c3[i]
+    comptime a2 = c2[i]
+    return m8.select(V(a8), m5.select(V(a5), m3.select(V(a3), V(a2))))
+
+
+@inline(.always)
+def _interval_poly[
+    dtype: DType,
+    width: SIMDLength,
+    //,
+    c8: Span[Scalar[dtype], _],
+    c5: Span[Scalar[dtype], _],
+    c3: Span[Scalar[dtype], _],
+    c2: Span[Scalar[dtype], _],
+](
+    m8: SIMD[.bool, width],
+    m5: SIMD[.bool, width],
+    m3: SIMD[.bool, width],
+    z: SIMD[dtype, width],
+) -> SIMD[dtype, width]:
+    """Evaluates the polynomial in `z` whose coefficient set each lane picks
+    from its interval mask (`c8` for x >= 8, then `c5`, `c3`, else `c2`)."""
+    comptime n = len(c8)
+    var acc = _interval_coef[c8, c5, c3, c2, n - 1](m8, m5, m3)
+    comptime for j in range(1, n):
+        acc = acc.fma(z, _interval_coef[c8, c5, c3, c2, n - 1 - j](m8, m5, m3))
+    return acc
+
+
+@inline(.always)
+def _j0_small[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    """Evaluates `j0(x)` for `0 <= x < 2` (fdlibm e_j0.c)."""
+    var z = x * x
+    var r = z * polynomial_evaluate[
+        [
+            Scalar[dtype](1.56249999999999947958e-02),
+            -1.89979294238854721751e-04,
+            1.82954049532700665670e-06,
+            -4.61832688532103189199e-09,
+        ]
+    ](z)
+    var s = polynomial_evaluate[
+        [
+            Scalar[dtype](1.0),
+            1.56191029464890010492e-02,
+            1.16926784663337450260e-04,
+            5.13546550207318111446e-07,
+            1.16614003333790000205e-09,
+        ]
+    ](z)
+    var u = 0.5 * x
+    return x.lt(1.0).select(
+        1.0 + z * (r / s - 0.25), (1.0 + u) * (1.0 - u) + z * (r / s)
+    )
+
+
+@inline(.always)
+def _j0y0_asymptotic[
+    dtype: DType, width: SIMDLength, //, is_y0: Bool
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    """Evaluates `j0(x)` or `y0(x)` for finite `x >= 2` (fdlibm e_j0.c).
+
+    `j0 = sqrt(2/(pi x)) (P cos(x0) - Q sin(x0))` and
+    `y0 = sqrt(2/(pi x)) (P sin(x0) + Q cos(x0))` with `x0 = x - pi/4`.
+    """
+    comptime T = type_of(x)
+    var sc = _sincos_minus_pio4(x)
+    var pq = _j0y0_pq(x)
+    var amp: T
+    comptime if is_y0:
+        amp = pq[0] * sc[0] + pq[1] * sc[1]
+    else:
+        amp = pq[0] * sc[1] - pq[1] * sc[0]
+    return T(_SQRT_TWO_OVER_PI) * amp / _sqrt_ieee(x)
+
+
+@inline(.always)
+def _j0y0_impl[
+    dtype: DType, width: SIMDLength, //, is_y0: Bool
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    """Computes `j0` or `y0` in float32 or float64 arithmetic."""
+    comptime T = type_of(x)
+    var ax = abs(x)
+    var big = ax.ge(_BESSEL_ASYMPTOTIC_MIN) & ax.lt(inf[dtype]())
+    var res = T(0)
+
+    if any(big):
+        res = _j0y0_asymptotic[is_y0](big.select(ax, T(_BESSEL_ASYMPTOTIC_MIN)))
+
+    if not all(big):
+        var xs = big.select(T(1), ax)
+        var j = _j0_small(xs)
+        comptime if is_y0:
+            var z = xs * xs
+            var u = polynomial_evaluate[
+                [
+                    Scalar[dtype](-7.38042951086872317523e-02),
+                    1.76666452509181115538e-01,
+                    -1.38185671945596898896e-02,
+                    3.47453432093683650238e-04,
+                    -3.81407053724364161125e-06,
+                    1.95590137035022920206e-08,
+                    -3.98205194132103398453e-11,
+                ]
+            ](z)
+            var v = polynomial_evaluate[
+                [
+                    Scalar[dtype](1.0),
+                    1.27304834834123699328e-02,
+                    7.60068627350353253702e-05,
+                    2.59150851840457805467e-07,
+                    4.41110311332675467403e-10,
+                ]
+            ](z)
+            j = u / v + T(_TWO_OVER_PI) * (j * _log_accurate(xs))
+        res = big.select(res, j)
+
+    comptime if is_y0:
+        # Sign and zero from the bits, which a flushing compare cannot alter.
+        var bits = x._to_bits_signed()
+        var is_zero = _bessel_is_zero_bits(bits)
+        res = isinf(x).select(T(0), res)
+        res = is_zero.select(-inf[dtype](), res)
+        return ((bits.lt(0) & ~is_zero) | isnan(x)).select(nan[dtype](), res)
+    return isinf(x).select(T(0), res)
+
+
+@inline(.always)
+def _j0y0_pq[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> Tuple[
+    type_of(x), type_of(x)
+] where dtype.is_floating_point():
+    """Returns fdlibm's `(pzero(x), qzero(x))` for `x >= 2`.
+
+    The rational coefficients are from fdlibm e_j0.c; float32 rounds them,
+    which reproduces e_j0f.c.
+    """
+    # Intervals [8, inf), [_PQ_SPLIT_5, 8), [_PQ_SPLIT_3, _PQ_SPLIT_5),
+    # [2, _PQ_SPLIT_3).
+    comptime PR8: List[Scalar[dtype]] = [
+        0.0,
+        -7.03124999999900357484e-02,
+        -8.08167041275349795626e00,
+        -2.57063105679704847262e02,
+        -2.48521641009428822144e03,
+        -5.25304380490729545272e03,
+    ]
+    comptime PR5: List[Scalar[dtype]] = [
+        -1.14125464691894502584e-11,
+        -7.03124940873599280078e-02,
+        -4.15961064470587782438e00,
+        -6.76747652265167261021e01,
+        -3.31231299649172967747e02,
+        -3.46433388365604912451e02,
+    ]
+    comptime PR3: List[Scalar[dtype]] = [
+        -2.54704601771951915620e-09,
+        -7.03119616381481654654e-02,
+        -2.40903221549529611423e00,
+        -2.19659774734883086467e01,
+        -5.80791704701737572236e01,
+        -3.14479470594888503854e01,
+    ]
+    comptime PR2: List[Scalar[dtype]] = [
+        -8.87534333032526411254e-08,
+        -7.03030995483624743247e-02,
+        -1.45073846780952986357e00,
+        -7.63569613823527770791e00,
+        -1.11931668860356747786e01,
+        -3.23364579351335335033e00,
+    ]
+    comptime PS8: List[Scalar[dtype]] = [
+        1.16534364619668181717e02,
+        3.83374475364121826715e03,
+        4.05978572648472545552e04,
+        1.16752972564375915681e05,
+        4.76277284146730962675e04,
+    ]
+    comptime PS5: List[Scalar[dtype]] = [
+        6.07539382692300335975e01,
+        1.05125230595704579173e03,
+        5.97897094333855784498e03,
+        9.62544514357774460223e03,
+        2.40605815922939109441e03,
+    ]
+    comptime PS3: List[Scalar[dtype]] = [
+        3.58560338055209726349e01,
+        3.61513983050303863820e02,
+        1.19360783792111533330e03,
+        1.12799679856907414432e03,
+        1.73580930813335754692e02,
+    ]
+    comptime PS2: List[Scalar[dtype]] = [
+        2.22202997532088808441e01,
+        1.36206794218215208048e02,
+        2.70470278658083486789e02,
+        1.53875394208320329881e02,
+        1.46576176948256193810e01,
+    ]
+    comptime QR8: List[Scalar[dtype]] = [
+        0.0,
+        7.32421874999935051953e-02,
+        1.17682064682252693899e01,
+        5.57673380256401856059e02,
+        8.85919720756468632317e03,
+        3.70146267776887834771e04,
+    ]
+    comptime QR5: List[Scalar[dtype]] = [
+        1.84085963594515531381e-11,
+        7.32421766612684765896e-02,
+        5.83563508962056953777e00,
+        1.35111577286449829671e02,
+        1.02724376596164097464e03,
+        1.98997785864605384631e03,
+    ]
+    comptime QR3: List[Scalar[dtype]] = [
+        4.37741014089738620906e-09,
+        7.32411180042911447163e-02,
+        3.34423137516170720929e00,
+        4.26218440745412650017e01,
+        1.70808091340565596283e02,
+        1.66733948696651168575e02,
+    ]
+    comptime QR2: List[Scalar[dtype]] = [
+        1.50444444886983272379e-07,
+        7.32234265963079278272e-02,
+        1.99819174093815998816e00,
+        1.44956029347885735348e01,
+        3.16662317504781540833e01,
+        1.62527075710929267416e01,
+    ]
+    comptime QS8: List[Scalar[dtype]] = [
+        1.63776026895689824414e02,
+        8.09834494656449805916e03,
+        1.42538291419120476348e05,
+        8.03309257119514397345e05,
+        8.40501579819060512818e05,
+        -3.43899293537866615225e05,
+    ]
+    comptime QS5: List[Scalar[dtype]] = [
+        8.27766102236537761883e01,
+        2.07781416421392987104e03,
+        1.88472887785718085070e04,
+        5.67511122894947329769e04,
+        3.59767538425114471465e04,
+        -5.35434275601944773371e03,
+    ]
+    comptime QS3: List[Scalar[dtype]] = [
+        4.87588729724587182091e01,
+        7.09689221056606015736e02,
+        3.70414822620111362994e03,
+        6.46042516752568917582e03,
+        2.51633368920368957333e03,
+        -1.49247451836156386662e02,
+    ]
+    comptime QS2: List[Scalar[dtype]] = [
+        3.03655848355219184498e01,
+        2.69348118608049844624e02,
+        8.44783757595320139444e02,
+        8.82935845112488550512e02,
+        2.12666388511798828631e02,
+        -5.31095493882666946917e00,
+    ]
+
+    var m8 = x.ge(_PQ_SPLIT_8)
+    var m5 = x.ge(_PQ_SPLIT_5)
+    var m3 = x.ge(_PQ_SPLIT_3)
+    var z = 1.0 / (x * x)
+    var pr = _interval_poly[PR8, PR5, PR3, PR2](m8, m5, m3, z)
+    var ps = 1.0 + z * _interval_poly[PS8, PS5, PS3, PS2](m8, m5, m3, z)
+    var qr = _interval_poly[QR8, QR5, QR3, QR2](m8, m5, m3, z)
+    var qs = 1.0 + z * _interval_poly[QS8, QS5, QS3, QS2](m8, m5, m3, z)
+    return (1.0 + pr / ps, (qr / qs - 0.125) / x)
+
+
+@inline(.always)
+def _j1y1_impl[
+    dtype: DType, width: SIMDLength, //, is_y1: Bool
+](x: SIMD[dtype, width]) -> SIMD[dtype, width] where dtype.is_floating_point():
+    """Computes `j1(x)` or `y1(x)` following FreeBSD msun e_j1.c / e_j1f.c."""
+    comptime V = SIMD[dtype, width]
+    comptime is_f64 = dtype == .float64
+
+    var ax = abs(x)
+    var asym = ax.ge(_BESSEL_ASYMPTOTIC_MIN) & isfinite(x)
+
+    var res = V(0.0)
+    if any(asym):
+        # |x| >= 2, with x0 = x - pi/4 and x - 3pi/4 = x0 - pi/2:
+        # j1 = sqrt(2/(pi x)) (p1 sin(x0) + q1 cos(x0)),
+        # y1 = sqrt(2/(pi x)) (q1 sin(x0) - p1 cos(x0)).
+        var xa = asym.select(ax, V(_BESSEL_ASYMPTOTIC_MIN))
+        var sc = _sincos_minus_pio4(xa)
+        var pq = _j1y1_pone_qone(xa)
+        var amp: V
+        comptime if is_y1:
+            amp = pq[1] * sc[0] - pq[0] * sc[1]
+        else:
+            amp = pq[0] * sc[0] + pq[1] * sc[1]
+        var big = V(_SQRT_TWO_OVER_PI) * amp / _sqrt_ieee(xa)
+        comptime if is_y1:
+            res = big
+        else:
+            res = x.lt(0.0).select(-big, big)
+
+    if not all(asym):
+        # |x| < 2: j1(x) = x/2 + x z R(z)/S(z), z = x^2.
+        var xs = asym.select(V(1.0), x)
+        var z = xs * xs
+        var r = z * polynomial_evaluate[
+            [
+                Scalar[dtype](-6.25000000000000000000e-02),
+                1.40705666955189706048e-03,
+                -1.59955631084035597520e-05,
+                4.96727999609584448412e-08,
+            ]
+        ](z)
+        var sd = polynomial_evaluate[
+            [
+                Scalar[dtype](1.0),
+                1.91537599538363460805e-02,
+                1.85946785588630915560e-04,
+                1.17718464042623683263e-06,
+                5.04636257076217042715e-09,
+                1.23542274426137913908e-11,
+            ]
+        ](z)
+        var j1_small = (0.5 + r / sd) * xs
+
+        comptime if not is_y1:
+            comptime if is_apple_gpu():
+                # j1(x) = x/2 to float32 precision for |x| < 2^-125, where
+                # x/2 is subnormal. Apple flushes that, so halve x from its
+                # integer significand and round the result from its bits.
+                comptime assert dtype == .float32, "Apple GPUs lack float64"
+                comptime abs_mask = 0x7FFFFFFF
+                comptime two_pow_neg_125_bits = 0x01000000
+                comptime min_normal_bits = 0x00800000
+                comptime lift_shift = 24  # scales by 2^24
+                comptime two_pow_24 = 16777216.0
+                var m = x._to_bits_signed() & abs_mask
+                var tiny = m.ne(0) & m.lt(two_pow_neg_125_bits)
+                var scaled = m.lt(min_normal_bits).select(
+                    _scale_up_subnormal[lift_shift](x), x * two_pow_24
+                )
+                j1_small = tiny.select(
+                    _scale_down_bits[lift_shift + 1](scaled), j1_small
+                )
+            res = asym.select(res, j1_small)
+        else:
+            # y1(x) = x U(z)/V(z) + (2/pi)(j1(x) log(x) - 1/x).
+            comptime tiny = Scalar[dtype](
+                5.551115123125783e-17 if is_f64 else 2.9802322387695312e-08
+            )  # 2^-54 or 2^-25
+            var u = polynomial_evaluate[
+                [
+                    Scalar[dtype](-1.96057090646238940668e-01),
+                    5.04438716639811282616e-02,
+                    -1.91256895875763547298e-03,
+                    2.35252600561610495928e-05,
+                    -9.19099158039878874504e-08,
+                ]
+            ](z)
+            var v = polynomial_evaluate[
+                [
+                    Scalar[dtype](1.0),
+                    1.99167318236649903973e-02,
+                    2.02552581025135171496e-04,
+                    1.35608801097516229404e-06,
+                    6.22741452364621501295e-09,
+                    1.66559246207992079114e-11,
+                ]
+            ](z)
+            var log_ok = xs.ge(tiny) & xs.lt(_BESSEL_ASYMPTOTIC_MIN)
+            var lg = _log_accurate(log_ok.select(xs, V(1.0)))
+            var y1_small = xs.fma(
+                u / v, _TWO_OVER_PI * j1_small.fma(lg, -1.0 / xs)
+            )
+            # Below `tiny`, y1(x) = -2/(pi x). A subnormal x = m * 2^(emin - mant)
+            # is divided through its integer significand, scaled so that the
+            # quotient stays normal: a target that flushes subnormal operands
+            # (Apple GPUs in float32) would otherwise divide by zero, and 1/x
+            # alone overflows where y1 is still finite.
+            comptime I = SIMD[FPUtils[dtype].integral_type, width]
+            comptime mant = FPUtils[dtype].mantissa_width()
+            comptime bias = FPUtils[dtype].exponent_bias()
+            comptime exp_mask = (1 << FPUtils[dtype].exponent_width()) - 1
+            comptime two_mant = V(from_bits=I(bias + mant) << I(mant))
+            comptime two_neg_emin = V(from_bits=I(2 * bias - 1) << I(mant))
+            comptime c_scaled = V(_TWO_OVER_PI) * two_mant
+            var bits = x._to_bits_signed()
+            var sig = (bits & I((1 << mant) - 1)).cast[dtype]()
+            var sub = ((bits >> I(mant)) & I(exp_mask)).eq(0)
+            var tiny_y1 = sub.select(
+                -(c_scaled / sig) * two_neg_emin, -_TWO_OVER_PI / xs
+            )
+            y1_small = xs.lt(tiny).select(tiny_y1, y1_small)
+            res = asym.select(res, y1_small)
+
+    comptime if not is_y1:
+        # +0 at either infinity matches j0's convention and musl.
+        return isinf(x).select(V(0.0), res)
+    var bits = x._to_bits_signed()
+    var is_zero = _bessel_is_zero_bits(bits)
+    res = is_zero.select(V(-inf[dtype]()), res)
+    res = (bits.lt(0) & ~is_zero).select(V(nan[dtype]()), res)
+    return x.eq(inf[dtype]()).select(V(0.0), res)
+
+
+@inline(.always)
+def _j1y1_pone_qone[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> Tuple[SIMD[dtype, width], SIMD[dtype, width]]:
+    """Returns fdlibm's `(pone(x), qone(x))` for `x >= 2` (FreeBSD msun
+    e_j1.c; the float32 path uses the same coefficients rounded to float)."""
+    # Intervals [8, inf), [_PQ_SPLIT_5, 8), [_PQ_SPLIT_3, _PQ_SPLIT_5),
+    # [2, _PQ_SPLIT_3).
+    comptime PR8: List[Scalar[dtype]] = [
+        0.00000000000000000000e00,
+        1.17187499999988647970e-01,
+        1.32394806593073575129e01,
+        4.12051854307378562225e02,
+        3.87474538913960532227e03,
+        7.91447954031891731574e03,
+    ]
+    comptime PS8: List[Scalar[dtype]] = [
+        1.14207370375678408436e02,
+        3.65093083420853463394e03,
+        3.69562060269033463555e04,
+        9.76027935934950801311e04,
+        3.08042720627888811578e04,
+    ]
+    comptime PR5: List[Scalar[dtype]] = [
+        1.31990519556243522749e-11,
+        1.17187493190614097638e-01,
+        6.80275127868432871736e00,
+        1.08308182990189109773e02,
+        5.17636139533199752805e02,
+        5.28715201363337541807e02,
+    ]
+    comptime PS5: List[Scalar[dtype]] = [
+        5.92805987221131331921e01,
+        9.91401418733614377743e02,
+        5.35326695291487976647e03,
+        7.84469031749551231769e03,
+        1.50404688810361062679e03,
+    ]
+    comptime PR3: List[Scalar[dtype]] = [
+        3.02503916137373618024e-09,
+        1.17186865567253592491e-01,
+        3.93297750033315640650e00,
+        3.51194035591636932736e01,
+        9.10550110750781271918e01,
+        4.85590685197364919645e01,
+    ]
+    comptime PS3: List[Scalar[dtype]] = [
+        3.47913095001251519989e01,
+        3.36762458747825746741e02,
+        1.04687139975775130551e03,
+        8.90811346398256432622e02,
+        1.03787932439639277504e02,
+    ]
+    comptime PR2: List[Scalar[dtype]] = [
+        1.07710830106873743082e-07,
+        1.17176219462683348094e-01,
+        2.36851496667608785174e00,
+        1.22426109148261232917e01,
+        1.76939711271687727390e01,
+        5.07352312588818499250e00,
+    ]
+    comptime PS2: List[Scalar[dtype]] = [
+        2.14364859363821409488e01,
+        1.25290227168402751090e02,
+        2.32276469057162813669e02,
+        1.17679373287147100768e02,
+        8.36463893371618283368e00,
+    ]
+    comptime QR8: List[Scalar[dtype]] = [
+        0.00000000000000000000e00,
+        -1.02539062499992714161e-01,
+        -1.62717534544589987888e01,
+        -7.59601722513950107896e02,
+        -1.18498066702429587167e04,
+        -4.84385124285750353010e04,
+    ]
+    comptime QS8: List[Scalar[dtype]] = [
+        1.61395369700722909556e02,
+        7.82538599923348465381e03,
+        1.33875336287249578163e05,
+        7.19657723683240939863e05,
+        6.66601232617776375264e05,
+        -2.94490264303834643215e05,
+    ]
+    comptime QR5: List[Scalar[dtype]] = [
+        -2.08979931141764104297e-11,
+        -1.02539050241375426231e-01,
+        -8.05644828123936029840e00,
+        -1.83669607474888380239e02,
+        -1.37319376065508163265e03,
+        -2.61244440453215656817e03,
+    ]
+    comptime QS5: List[Scalar[dtype]] = [
+        8.12765501384335777857e01,
+        1.99179873460485964642e03,
+        1.74684851924908907677e04,
+        4.98514270910352279316e04,
+        2.79480751638918118260e04,
+        -4.71918354795128470869e03,
+    ]
+    comptime QR3: List[Scalar[dtype]] = [
+        -5.07831226461766561369e-09,
+        -1.02537829820837089745e-01,
+        -4.61011581139473403113e00,
+        -5.78472216562783643212e01,
+        -2.28244540737631695038e02,
+        -2.19210128478909325622e02,
+    ]
+    comptime QS3: List[Scalar[dtype]] = [
+        4.76651550323729509273e01,
+        6.73865112676699709482e02,
+        3.38015286679526343505e03,
+        5.54772909720722782367e03,
+        1.90311919338810798763e03,
+        -1.35201191444307340817e02,
+    ]
+    comptime QR2: List[Scalar[dtype]] = [
+        -1.78381727510958865572e-07,
+        -1.02517042607985553460e-01,
+        -2.75220568278187460720e00,
+        -1.96636162643703720221e01,
+        -4.23253133372830490089e01,
+        -2.13719211703704061733e01,
+    ]
+    comptime QS2: List[Scalar[dtype]] = [
+        2.95333629060523854548e01,
+        2.52981549982190529136e02,
+        7.57502834868645436472e02,
+        7.39393205320467245656e02,
+        1.55949003336666123687e02,
+        -4.95949898822628210127e00,
+    ]
+
+    var m8 = x.ge(_PQ_SPLIT_8)
+    var m5 = x.ge(_PQ_SPLIT_5)
+    var m3 = x.ge(_PQ_SPLIT_3)
+    var z = 1.0 / (x * x)
+    var pr = _interval_poly[PR8, PR5, PR3, PR2](m8, m5, m3, z)
+    var ps = 1.0 + z * _interval_poly[PS8, PS5, PS3, PS2](m8, m5, m3, z)
+    var qr = _interval_poly[QR8, QR5, QR3, QR2](m8, m5, m3, z)
+    var qs = 1.0 + z * _interval_poly[QS8, QS5, QS3, QS2](m8, m5, m3, z)
+    return (1.0 + pr / ps, (0.375 + qr / qs) / x)
+
+
+@inline(.always)
 def _log10_impl[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
@@ -4882,6 +5451,200 @@ def _log1p_impl[
     )
 
     return in_domain_mask.select(log1x, x + z)
+
+
+@inline(.always)
+def _rem_pio2_large[
+    dtype: DType, width: SIMDLength, //, quarter: Bool = False
+](ax: SIMD[dtype, width]) -> Tuple[
+    SIMD[.int32, width], type_of(ax), type_of(ax)
+]:
+    """Payne-Hanek: returns `(n mod 4, hi, lo)` with `ax = n*pi/2 + hi + lo`
+    and `|hi + lo| <= pi/4`, for finite `ax >= 1`. With `quarter`, reduces
+    `ax - pi/4` instead by subtracting 1/2 from the fixed-point `ax * 2/pi`,
+    so the shift costs no precision.
+
+    Uses only integer and `dtype` arithmetic, so the float32 path never
+    touches float64.
+    """
+    comptime T = type_of(ax)
+    comptime U = SIMD[.uint64, width]
+    comptime I = SIMD[.int64, width]
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime bias = FPUtils[dtype].exponent_bias()
+    comptime P = mant + 1
+
+    comptime assert dtype in (DType.float32, DType.float64)
+    var bits = ax.to_bits().cast[.uint64]()
+
+    # ax = m * 2^(E - bias - mant). Fraction bits of 2/pi weighing 2^-j with
+    # j <= E - bias - mant - 2 only add multiples of 4 quadrants, so a 192-bit
+    # window from bit E - bias - mant - 1 (table bit E - bias - mant + 62)
+    # keeps the quadrant and far more fraction bits than the closest approach
+    # of any float to a multiple of pi/2 needs.
+    var m = (bits & U((1 << mant) - 1)) | U(1 << mant)
+    var e = bits >> U(mant)
+    var pos = e + U(62 - bias - mant)
+    var q = pos >> 6
+    var r = pos & 63
+    comptime max_q = (2 * bias + 62 - bias - mant) >> 6
+    var w = StaticTuple[U, 4](fill=U(0))
+    comptime for k in range(max_q + 1):
+        var hit = q.eq(U(k))
+        comptime for j in range(4):
+            comptime word = _TWO_OVER_PI_BITS[k + j]
+            w[j] = hit.select(U(word), w[j])
+    # Shift in two steps so that r == 0 never shifts by 64.
+    var v0 = (w[0] << r) | ((w[1] >> 1) >> (63 - r))
+    var v1 = (w[1] << r) | ((w[2] >> 1) >> (63 - r))
+    var v2 = (w[2] << r) | ((w[3] >> 1) >> (63 - r))
+
+    # (m * v) mod 2^192 is ax * 2/pi mod 4 with two integer bits.
+    var p2 = _umul128(m, v2)
+    var p1 = _umul128(m, v1)
+    var r1 = p2[1] + p1[0]
+    var r0 = p1[1] + m * v0 + r1.lt(p1[0]).select(U(1), U(0))
+    var h = (r0 << 2) | (r1 >> 62)
+    var l = (r1 << 2) | (p2[0] >> 62)
+    # Rounding to the nearest quadrant leaves the signed fraction h:l in
+    # [-1/2, 1/2), split into P-bit chunks that convert to `dtype` exactly.
+    var n: U
+    comptime if quarter:
+        # frac - 1/2 is already in [-1/2, 1/2): flip the half bit and keep the
+        # integer quadrant.
+        n = (r0 >> 62) & 3
+        h ^= U(1) << 63
+    else:
+        n = ((r0 >> 62) + (h >> 63)) & 3
+    var c0 = bitcast[.int64, width](h) >> I(64 - P)
+    var c1 = bitcast[.int64, width](
+        ((h << U(P)) | (l >> U(64 - P))) >> U(64 - P)
+    )
+    var c2: I
+    comptime if 2 * P < 64:
+        c2 = bitcast[.int64, width](
+            ((h << U(2 * P)) | (l >> U(64 - 2 * P))) >> U(64 - P)
+        )
+    else:
+        c2 = bitcast[.int64, width]((l << U(2 * P - 64)) >> U(64 - P))
+
+    @inline(.always)
+    def to_float(c: I) -> T:
+        # The chunks fit in 24 bits for float32; convert through int32.
+        comptime if dtype == .float32:
+            return c.cast[.int32]().cast[dtype]()
+        return c.cast[dtype]()
+
+    comptime s1 = 1 / Scalar[dtype](1 << P)
+    var f = _two_sum(to_float(c0) * s1, to_float(c1) * (s1 * s1))
+    var f_lo = f[1] + to_float(c2) * (s1 * s1 * s1)
+
+    comptime is_f32 = dtype == .float32
+    comptime pio2_hi = Scalar[dtype](
+        1.5707963705062866 if is_f32 else 1.5707963267948966
+    )
+    comptime pio2_lo = Scalar[dtype](
+        -4.371138828673793e-08 if is_f32 else 6.123233995736766e-17
+    )
+    # (f + f_lo) * pi/2 as hi + lo. No rounded product feeds an add: one that
+    # did would be contracted into an fma by GPU backends, while its error
+    # term still assumed the rounded value.
+    var t = fma(f[0], pio2_lo, f_lo * pio2_hi)
+    var hi = fma(f[0], pio2_hi, t)
+    var lo = fma(f[0], pio2_hi, -hi) + t
+    return (n.cast[.int32](), hi, lo)
+
+
+@inline(.always)
+def _sincos_kernel[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], y: type_of(x)) -> Tuple[type_of(x), type_of(x)]:
+    """Returns `(sin(x + y), cos(x + y))` for `|x + y| <~ pi/4` and tiny `y`.
+
+    fdlibm k_sin.c / k_cos.c for float64; Cephes sinf/cosf polynomials with
+    the same tail correction for float32.
+    """
+    var z = x * x
+    var sin_v: type_of(x)
+    var cos_r: type_of(x)
+    comptime if dtype == .float64:
+        var w = z * z
+        var r = polynomial_evaluate[
+            [
+                Scalar[dtype](8.33333333332248946124e-03),
+                -1.98412698298579493134e-04,
+                2.75573137070700676789e-06,
+            ]
+        ](z) + z * w * polynomial_evaluate[
+            [
+                Scalar[dtype](-2.50507602534068634195e-08),
+                1.58969099521155010221e-10,
+            ]
+        ](
+            z
+        )
+        var v = z * x
+        sin_v = x - (
+            (z * (0.5 * y - v * r) - y) - v * -1.66666666666666324348e-01
+        )
+        cos_r = z * polynomial_evaluate[
+            [
+                Scalar[dtype](4.16666666666666019037e-02),
+                -1.38888888888741095749e-03,
+                2.48015872894767294178e-05,
+            ]
+        ](z) + w * w * polynomial_evaluate[
+            [
+                Scalar[dtype](-2.75573143513906633035e-07),
+                2.08757232129817482790e-09,
+                -1.13596475577881948265e-11,
+            ]
+        ](
+            z
+        )
+    else:
+        comptime assert dtype == .float32, "expected float32 or float64"
+        var sp = polynomial_evaluate[
+            [Scalar[dtype](-1.6666654611e-1), 8.3321608736e-3, -1.9515295891e-4]
+        ](z)
+        sin_v = x + (x * z * sp + y * (1.0 - 0.5 * z))
+        cos_r = z * polynomial_evaluate[
+            [
+                Scalar[dtype](4.166664568298827e-2),
+                -1.388731625493765e-3,
+                2.443315711809948e-5,
+            ]
+        ](z)
+    var hz = 0.5 * z
+    var w1 = 1.0 - hz
+    return (sin_v, w1 + (((1.0 - w1) - hz) + (z * cos_r - x * y)))
+
+
+@inline(.always)
+def _sincos_minus_pio4[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> Tuple[type_of(x), type_of(x)]:
+    """Returns `(sin(x - pi/4), cos(x - pi/4))` for finite `x >= 2`.
+
+    The Bessel asymptotic forms need these where `sin(x) -+ cos(x)` cancels.
+    fdlibm recovers the cancelling side through a `cos(2x)` identity; here
+    the pi/4 shift is folded into the argument reduction, so the reduced
+    argument keeps its relative accuracy even where `x - pi/4` lies within
+    2^-60 of a multiple of pi/2 (subtracting a double-word pi/4 after the
+    reduction lost 62 ulp there).
+    """
+    var red = _rem_pio2[quarter=True](x)
+    var n = red[0]
+    var sc = _sincos_kernel(red[1], red[2])
+    var swap = (n & 1).eq(1)
+    var sin_v = swap.select(sc[1], sc[0])
+    var cos_v = swap.select(-sc[0], sc[1])
+    var flip = n.ge(2)
+    return (flip.select(-sin_v, sin_v), flip.select(-cos_v, cos_v))
+
+
+# fdlibm's pzero/qzero and pone/qone breakpoints (high words 0x40122E8B and
+# 0x4006DB6D); both are exact in float32.
 
 
 @inline(.always)
