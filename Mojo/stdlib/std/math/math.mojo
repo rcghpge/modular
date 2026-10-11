@@ -2529,8 +2529,13 @@ def lgamma[
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
     """Computes the `lgamma` of the inputs.
 
+    The error is about 2 ulp or less, including next to the negative real
+    zeros of `lgamma` (such as -2.457 and -2.748), where the result is near
+    0.
+
     Constraints:
-        The input must be a floating-point type.
+        The input must be a floating-point type. `float64` is not supported
+        on Apple GPU.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
@@ -2543,7 +2548,11 @@ def lgamma[
         The `lgamma` of the input.
     """
 
-    return _call_libm["lgamma"](x)
+    _assert_float64_supported[dtype, "lgamma"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        return _lgamma_impl(x.cast[.float32]()).cast[dtype]()
+    return _lgamma_impl(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -3932,6 +3941,15 @@ def round[T: Roundable, //](number: T, ndigits: Int) -> T:
 # Pure-Mojo libm implementations
 # ===----------------------------------------------------------------------=== #
 # These run unchanged on CPU and GPU, so they avoid the target-dependent
+# approximations above (`sqrt.approx`, `lg2.approx`, `ex2.approx` on NVIDIA)
+# and keep float32 paths free of float64 values, which Apple GPUs reject.
+# Algorithm provenance is documented with each implementation.
+# GPU backends contract a*b + c into fma where CPU code generation does not, so
+# CPU and GPU results may differ in the last ulp outside paths that use
+# explicit fma.
+
+comptime _SQRT2 = 1.41421356237309504880168872420969807856967187537694
+
 # approximations (`sqrt.approx`, `lg2.approx`, `ex2.approx` on NVIDIA) and
 # keep float32 paths free of float64 values, which Apple GPUs reject.
 # Sources are cited per function. Compilers may contract a*b + c into an
@@ -3943,13 +3961,13 @@ def round[T: Roundable, //](number: T, ndigits: Int) -> T:
 # last ulp outside paths that use explicit fma. Apple GPUs may flush subnormals
 # and carry no correct-rounding guarantee for sqrt.
 
-comptime _SQRT2 = 1.41421356237309504880168872420969807856967187537694
 comptime _LN2 = 0.69314718055994530941723212145817656807550013436026
 
 # ln2 = _LN2_HI_F64 + _LN2_LO_F64, where _LN2_HI_F64 has 32 significant bits
 # (21 trailing zero bits), so k * _LN2_HI_F64 is exact for |k| < 2^21.
 comptime _LN2_HI_F64 = 6.93147180369123816490e-01
 comptime _LN2_LO_F64 = 1.90821492927058770002e-10
+
 
 comptime _TWO_OVER_PI_BITS: List[UInt64] = [
     0x0000000000000000,
@@ -5653,6 +5671,9 @@ def _log_kernel[
 ](f: SIMD[dtype, width]) -> type_of(f):
     """Returns `log(1 + f) - f + f*f/2` for `1 + f` in `[sqrt(2)/2, sqrt(2))`.
 
+    FreeBSD msun k_log.h (float64) and k_logf.h / e_logf.c (float32):
+    `s = f / (2 + f)` and a minimax polynomial in `s^2`.
+
     Uses Sun fdlibm k_log.h (float64) and FreeBSD msun e_logf.c (float32),
     also carried by historical musl logf.c: `s = f / (2 + f)` and a minimax
     polynomial in `s^2`.
@@ -5787,7 +5808,1201 @@ def _log_accurate[
     return _log_combine(exponent, fraction, 0)
 
 
+def _cbrtf(x: Float32) -> Float32:
+    """Compute the cube root of a 32-bit floating-point number.
+
+    This function implements an efficient algorithm for computing the cube root (∛x)
+    of a single-precision floating-point value. The algorithm works by:
+
+    1. Extracting the binary exponent `e` from the input `x` such that x = 2^e * mantissa.
+    2. Normalizing the input by scaling `x` by 2^(-e) to obtain a mantissa in [0.5, 1).
+    3. Dividing the exponent `e` by 3 to obtain the cube root exponent, and computing the remainder.
+    4. Applying a correction factor based on the remainder to improve accuracy.
+    5. Reconstructing the result by scaling the cube root of the mantissa by 2^(e/3) and the correction factor.
+
+    Args:
+        x: Input value (Float32) for which to compute the cube root.
+
+    Returns:
+        The cube root of `x` as a Float32.
+    """
+    # Initialize correction factor q (may be adjusted based on exponent remainder)
+    var q = Float32(1.0)
+
+    # Extract exponent e such that x = 2^e * mantissa
+    # Add 1 to exponent for normalization purposes
+    var e = _ilogb(abs(x)) + 1  # Get binary exponent
+
+    # Normalize input: scale x by 2^(-e) to get mantissa in [0.5, 1)
+    var d = ldexp(x, -e)
+
+    # Compute exponent division by 3 with remainder
+    # We need to split e into: e = 3*qu + re where re ∈ {0, 1, 2}
+    # Add offset 6144 to ensure positive values for easier integer division
+    var t = Float32(e) + 6144.0
+    var qu = Int(t / 3.0)  # Quotient: e // 3
+    var re = Int(t - Float32(qu) * 3.0)  # Remainder: e % 3
+
+    comptime CBRT_2 = 1.2599210498948731647672106
+    comptime CBRT_4 = 1.5874010519681994747517056
+
+    # Apply correction factors based on remainder
+    # If e % 3 == 1: need to multiply by 2^(1/3) = cbrt(2)
+    if re == 1:
+        q = CBRT_2
+    # If e % 3 == 2: need to multiply by 2^(2/3) = cbrt(4)
+    elif re == 2:
+        q = CBRT_4
+
+    # Scale q by 2^(qu - 2048) to reconstruct proper exponent
+    # Subtract 2048 to compensate for the 6144 offset used earlier
+    q = ldexp(q, Int32(qu - 2048))
+
+    # Apply sign to correction factor (cube root preserves sign)
+    q = copysign(q, x)
+
+    # Work with absolute value for polynomial approximation
+    d = abs(d)
+
+    # Polynomial approximation for cbrt(d) where d ∈ [0.5, 1)
+    # Using Horner's method for efficient evaluation
+    var poly = polynomial_evaluate[
+        [
+            Scalar[x.dtype](2.2241256237030029296875),
+            -3.8095417022705078125,
+            5.898262500762939453125,
+            -5.532182216644287109375,
+            2.8208892345428466796875,
+            -0.601564466953277587890625,
+        ]
+    ](d)
+
+    # Newton-Raphson refinement step
+    # Formula: y_new = y - (y³ - d) / (3y²)
+    # Rearranged as: y_new = (2y³ + d) / (3y²)
+    var y = d * poly * poly  # d * (poly ** 2), where poly ≈ cbrt(d)
+
+    # Apply Newton iteration: y = y - (2/3) * y * (y*x - 1)
+    # This refines the approximation
+    y = y - (2.0 / 3.0) * y * (y * poly - 1.0)
+
+    # Multiply by the correction factor q to get final result
+    y = y * q
+
+    # Handle special cases
+    if isinf(x):
+        y = copysign(Float32.MAX, x)  # cbrt(±∞) = ±∞
+    if x == 0.0:
+        y = copysign(Float32(0.0), x)  # cbrt(±0) = ±0
+
+    return y
+
+
 @inline(.always)
+def _dd_add[
+    dtype: DType, width: SIMDLength, //
+](
+    ah: SIMD[dtype, width], al: type_of(ah), bh: type_of(ah), bl: type_of(ah)
+) -> Tuple[type_of(ah), type_of(ah)]:
+    """Returns the double-word sum `(ah + al) + (bh + bl)`."""
+    var s = _two_sum(ah, bh)
+    return (s[0], s[1] + (al + bl))
+
+
+@inline(.always)
+def _dd_div[
+    dtype: DType, width: SIMDLength, //
+](
+    nh: SIMD[dtype, width], nl: type_of(nh), dh: type_of(nh), dl: type_of(nh)
+) -> Tuple[type_of(nh), type_of(nh)]:
+    """Returns the double-word quotient `(nh + nl) / (dh + dl)`."""
+    var q = nh / dh
+    return (q, ((fma(-q, dh, nh) + nl) - q * dl) / dh)
+
+
+@inline(.always)
+def _dd_log[
+    dtype: DType, width: SIMDLength, //
+](h: SIMD[dtype, width], l: type_of(h)) -> Tuple[
+    type_of(h), type_of(h)
+] where dtype.is_floating_point():
+    """Returns `log(h + l)` as a double-word for positive normal `h`.
+
+    As in SLEEF logk2, `log(2^k m) = k log(2) + 2 atanh((m - 1) / (m + 1))`
+    with the reduced argument and its square carried as double-words.
+    """
+    comptime T = type_of(h)
+    comptime is_f32 = dtype == .float32
+    comptime ln2_hi = Scalar[dtype](
+        0.69314718246459960938 if is_f32 else 0.693147180559945286226764
+    )
+    comptime ln2_lo = Scalar[dtype](
+        -1.904654323148236017e-09 if is_f32 else 2.319046813846299558417771e-17
+    )
+    var kf = _log_reduce(h)
+    var m = kf[1] + 1.0
+    # m / h is the exact power of two that scaled h to m.
+    var ml = l * (m / h)
+    var den = _two_sum(m, T(1))
+    var x = _dd_div(kf[1], ml, den[0], den[1] + ml)
+    var x2 = _dd_mul(x[0], x[1], x[0], x[1])
+    # Taylor series 2x + 2x^3/3 + 2x^5/5 + ... for |x| <= 3 - 2 sqrt(2); the
+    # 2/3 and 2/5 terms are added in double-word arithmetic.
+    var t: T
+    comptime if is_f32:
+        t = polynomial_evaluate[
+            [
+                Scalar[dtype](0.2857142857142857),
+                0.2222222222222222,
+                0.18181818181818182,
+                0.15384615384615385,
+                0.13333333333333333,
+                0.11764705882352941,
+                0.10526315789473684,
+                0.09523809523809523,
+            ]
+        ](x2[0])
+    else:
+        t = polynomial_evaluate[
+            [
+                Scalar[dtype](0.2857142857142857),
+                0.2222222222222222,
+                0.18181818181818182,
+                0.15384615384615385,
+                0.13333333333333333,
+                0.11764705882352941,
+                0.10526315789473684,
+                0.09523809523809523,
+                0.08695652173913043,
+                0.08,
+                0.07407407407407407,
+                0.06896551724137931,
+            ]
+        ](x2[0])
+    comptime two_5_hi = Scalar[dtype](0.4000000059604645 if is_f32 else 0.4)
+    comptime two_5_lo = Scalar[dtype](
+        -5.9604645663569045e-09 if is_f32 else -2.2204460492503132e-17
+    )
+    comptime two_3_hi = Scalar[dtype](
+        0.6666666865348816 if is_f32 else 0.6666666666666666
+    )
+    comptime two_3_lo = Scalar[dtype](
+        -1.9868215517249155e-08 if is_f32 else 3.700743415417188e-17
+    )
+    var p = _dd_mul(t, T(0), x2[0], x2[1])
+    p = _dd_add(p[0], p[1], T(two_5_hi), T(two_5_lo))
+    p = _dd_mul(p[0], p[1], x2[0], x2[1])
+    p = _dd_add(p[0], p[1], T(two_3_hi), T(two_3_lo))
+    var x3 = _dd_mul(x2[0], x2[1], x[0], x[1])
+    p = _dd_mul(p[0], p[1], x3[0], x3[1])
+    var s = _dd_mul(T(ln2_hi), T(ln2_lo), kf[0], T(0))
+    s = _dd_add(s[0], s[1], x[0] + x[0], x[1] + x[1])
+    return _dd_add(s[0], s[1], p[0], p[1])
+
+
+@inline(.always)
+def _dd_mul[
+    dtype: DType, width: SIMDLength, //
+](
+    ah: SIMD[dtype, width], al: type_of(ah), bh: type_of(ah), bl: type_of(ah)
+) -> Tuple[type_of(ah), type_of(ah)]:
+    """Returns the double-word product `(ah + al) * (bh + bl)`."""
+    # The high part is an fma that already holds the cross terms, so a
+    # backend that contracts a*b + c cannot fuse it into a later add and
+    # desynchronize it from the exact remainder below.
+    var cross = ah * bl + al * bh
+    var hi = fma(ah, bh, cross)
+    return (hi, fma(ah, bh, -hi) + cross)
+
+
+def _ilogb[width: SIMDLength](x: SIMD[.float32, width]) -> SIMD[.int32, width]:
+    """Extract binary exponent from floating-point number.
+
+    Args:
+        x: Input floating-point value.
+
+    Returns:
+        Integer binary exponent of x.
+    """
+
+    @inline(.always)
+    def extract(x: SIMD[.float32, width]) -> SIMD[.int32, width]:
+        """Internal helper function to extract binary exponent from float.
+
+        Args:
+            x: Input floating-point value (assumed positive).
+
+        Returns:
+            Unbiased binary exponent as integer.
+        """
+        # Check if d is subnormal (very small, < 2^-64 ≈ 5.421010862427522e-20)
+        var is_subnormal_mask = x.lt(5.421010862427522e-20)
+        var d = is_subnormal_mask.select(
+            x * 1.8446744073709552e19,  # Scale by 2^64
+            x,
+        )
+
+        # Extract exponent bits from IEEE 754 representation
+        # Step 1: Reinterpret float as 32-bit integer
+        var bits = rebind[SIMD[.int32, width]](d._to_bits_signed())
+
+        # Step 2: Right shift by 23 to move exponent to lower bits
+        # This moves bits [30:23] to positions [7:0]
+        var exponent_bits = (bits >> 23) & 0xFF  # Mask to get 8 bits
+
+        # Step 3: Remove bias to get true exponent
+        # IEEE 754 bias for single precision is 127 (0x7f)
+        # If subnormal path was taken, also subtract 64 to compensate for scaling
+
+        return is_subnormal_mask.select(
+            exponent_bits - (64 + 0x7F),  # Remove bias and scaling offset
+            exponent_bits - 0x7F,  # Remove bias only
+        )
+
+    comptime FP_ILOGB0 = (-2147483647 - 1)
+    comptime FP_ILOGBNAN = 2147483647
+
+    # Extract the binary exponent from |x|
+    # For x = m × 2^e where m ∈ [1, 2), this returns e
+    var e = extract(abs(x))
+
+    comptime for i in range(width):
+        var d = x[i]
+
+        # Special case: ilogb(±0) returns FP_ILOGB0
+        if d == 0.0:
+            e[i] = FP_ILOGB0
+
+        # Special case: ilogb(NaN) returns FP_ILOGBNAN
+        if isnan(d):
+            e[i] = FP_ILOGBNAN
+
+        # Special case: ilogb(±∞) returns Int32.MAX
+        if isinf(d):
+            e[i] = Int32.MAX
+
+    return e
+
+
+@inline(.always)
+def _lgamma_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[dtype, width] where dtype.is_floating_point():
+    # Port of fdlibm e_lgamma_r.c (f64) / e_lgammaf_r.c (f32): every
+    # interval is evaluated and the per-lane result picked with `select`.
+    comptime T = SIMD[dtype, width]
+    comptime is_f32 = dtype == .float32
+    comptime tiny = Scalar[dtype](
+        4.76837158203125e-07 if is_f32 else 8.470329472543003e-22
+    )  # 2**-21 / 2**-70
+    comptime huge = Scalar[dtype](2.8823037615171174e17)  # 2**58
+    comptime tc = Scalar[dtype](1.46163214496836224576)
+    comptime tf = Scalar[dtype](
+        -1.2148628384e-01 if is_f32 else -1.21486290535849611461e-01
+    )
+    comptime tt = Scalar[dtype](
+        6.6971006518e-09 if is_f32 else -3.63867699703950536541e-18
+    )
+
+    # fdlibm boundaries inside (0, 2): below split_09 the expansions are for
+    # lgamma(x + 1) and shifted by 1 above it.
+    comptime split_09 = 0.9
+    comptime near_1_bound = 0.73163
+    comptime near_2_hi_bound = 1.73163
+    comptime near_tc_bound = 0.23164
+    comptime near_tc_hi_bound = 1.23164
+
+    comptime TInt = SIMD[_integral_type_of[dtype](), width]
+    comptime sign_mask = TInt(FPUtils[dtype].sign_mask())
+    var bits = x._to_bits_signed()
+    var ax_bits = bits & ~sign_mask
+    var is_zero = _lgamma_is_zero_bits(bits)
+    var ax = T(from_bits=ax_bits)
+    var neg = bits.lt(0)
+    var lt09 = ax.lt(split_09)
+    var lt2 = ax.lt(2.0)
+    var lt8 = ax.lt(8.0)
+
+    # [2, 8): lgamma(2 + y) via a rational fit, then the recurrence up to ax.
+    var fl = floor(ax)
+    var ym = ax - fl
+    var zm = T(1)
+    comptime for k in range(3, 8):
+        zm *= fl.ge(Scalar[dtype](k)).select(ym + Scalar[dtype](k - 1), T(1))
+    var mid = (~lt2) & lt8
+    var log_x = _log_accurate(mid.select(zm, ax))
+
+    # (0, 2): three expansions around 1, the minimum tc, and 2.
+    var sel0 = lt09.select(ax.ge(near_1_bound), ax.ge(near_2_hi_bound))
+    var sel1 = lt09.select(ax.ge(near_tc_bound), ax.ge(near_tc_hi_bound))
+    var y0 = lt09.select(1 - ax, 2 - ax)
+    var y1 = lt09.select(ax - (tc - 1), ax - tc)
+    var y2 = lt09.select(ax, ax - 1)
+
+    var z0 = y0 * y0
+    var p0 = y0 * polynomial_evaluate[
+        [
+            Scalar[dtype](7.72156649015328655494e-02),
+            6.73523010531292681824e-02,
+            7.38555086081402883957e-03,
+            1.19270763183362067845e-03,
+            2.20862790713908385557e-04,
+            2.52144565451257326939e-05,
+        ]
+    ](z0) + z0 * polynomial_evaluate[
+        [
+            Scalar[dtype](3.22467033424113591611e-01),
+            2.05808084325167332806e-02,
+            2.89051383673415629091e-03,
+            5.10069792153511336608e-04,
+            1.08011567247583939954e-04,
+            4.48640949618915160150e-05,
+        ]
+    ](
+        z0
+    )
+    var r0 = p0 - 0.5 * y0
+
+    var z1 = y1 * y1
+    var w1 = z1 * y1
+    var p11 = polynomial_evaluate[
+        [
+            Scalar[dtype](4.83836122723810047042e-01),
+            -3.27885410759859649565e-02,
+            6.10053870246291332635e-03,
+            -1.40346469989232843813e-03,
+            3.15632070903625950361e-04,
+        ]
+    ](w1)
+    var p12 = polynomial_evaluate[
+        [
+            Scalar[dtype](-1.47587722994593911752e-01),
+            1.79706750811820387126e-02,
+            -3.68452016781138256760e-03,
+            8.81081882437654011382e-04,
+            -3.12754168375120860518e-04,
+        ]
+    ](w1)
+    var p13 = polynomial_evaluate[
+        [
+            Scalar[dtype](6.46249402391333854778e-02),
+            -1.03142241298341437450e-02,
+            2.25964780900612472250e-03,
+            -5.38595305356740546715e-04,
+            3.35529192635519073543e-04,
+        ]
+    ](w1)
+    var r1 = tf + (z1 * p11 - (tt - w1 * (p12 + y1 * p13)))
+
+    var p21 = y2 * polynomial_evaluate[
+        [
+            Scalar[dtype](-7.72156649015328655494e-02),
+            6.32827064025093366517e-01,
+            1.45492250137234768737e00,
+            9.77717527963372745603e-01,
+            2.28963728064692451092e-01,
+            1.33810918536787660377e-02,
+        ]
+    ](y2)
+    var p22 = polynomial_evaluate[
+        [
+            Scalar[dtype](1.0),
+            2.45597793713041134822e00,
+            2.12848976379893395361e00,
+            7.69285150456672783825e-01,
+            1.04222645593369134254e-01,
+            3.21709242282423911810e-03,
+        ]
+    ](y2)
+    var r2 = p21 / p22 - 0.5 * y2
+
+    var r_small = sel0.select(r0, sel1.select(r1, r2))
+    r_small = lt09.select(r_small - log_x, r_small)
+
+    var pm = ym * polynomial_evaluate[
+        [
+            Scalar[dtype](-7.72156649015328655494e-02),
+            2.14982415960608852501e-01,
+            3.25778796408930981787e-01,
+            1.46350472652464452805e-01,
+            2.66422703033638609560e-02,
+            1.84028451407337715652e-03,
+            3.19475326584100867617e-05,
+        ]
+    ](ym)
+    var qm = polynomial_evaluate[
+        [
+            Scalar[dtype](1.0),
+            1.39200533467621045958e00,
+            7.21935547567138069525e-01,
+            1.71933865632803078993e-01,
+            1.86459191715652901344e-02,
+            7.77942496381893596434e-04,
+            7.32668430744625636189e-06,
+        ]
+    ](ym)
+    var r_mid = (0.5 * ym + pm / qm) + log_x
+
+    # [8, inf): Stirling series in 1/x.
+    # log(2 pi) / 2 - 1/2
+    comptime half_log_2pi_m_half = 4.18938533204672725052e-01
+    var zb = 1 / ax
+    var wb = zb.fma(
+        polynomial_evaluate[
+            [
+                Scalar[dtype](8.33333333333329678849e-02),
+                -2.77777777728775536470e-03,
+                7.93650558643019558500e-04,
+                -5.95187557450339963135e-04,
+                8.36339918996282139126e-04,
+                -1.63092934096575273989e-03,
+            ]
+        ](zb * zb),
+        half_log_2pi_m_half,
+    )
+    var r_big = ax.lt(huge).select(
+        (ax - 0.5) * (log_x - 1) + wb, ax * (log_x - 1)
+    )
+
+    var r = lt2.select(r_small, lt8.select(r_mid, r_big))
+
+    if neg.reduce_or():
+        r = neg.select(_lgamma_neg(ax), r)
+        # Past this bound the absolute error of `_lgamma_neg` stays below
+        # 0.25 ulp of the result.
+        comptime near_zero = Scalar[dtype](2.0**-13 if is_f32 else 2.0**-14)
+        var near = neg & abs(r).lt(near_zero)
+        if near.reduce_or():
+            r = near.select(_lgamma_neg_zero(ax, r), r)
+
+    r = (ax.eq(1) | ax.eq(2)).select(T(0), r)
+    r = ax.lt(tiny).select(-log_x, r)
+    var pole = is_zero | (neg & ax.ge(1) & fl.eq(ax))
+    r = pole.select(inf[dtype](), r)
+    # inf -> +inf, nan -> nan.
+    return (isinf(x) | isnan(x)).select(x * x, r)
+
+
+@inline(.never)
+def _lgamma_is_zero_bits[
+    dtype: DType, width: SIMDLength, //
+](bits: SIMD[dtype, width]) -> SIMD[.bool, width]:
+    comptime assert dtype.is_integral(), "expected integer bit pattern"
+    # Keep the bit classification opaque to floating-point canonicalization:
+    # a floating zero comparison can misclassify subnormal inputs under DAZ.
+    comptime sign_mask = SIMD[dtype, width](1) << SIMD[dtype, width](
+        bit_width_of[dtype]() - 1
+    )
+    return bits.eq(0) | bits.eq(sign_mask)
+
+
+@inline(.always)
+def _lgamma_neg[
+    dtype: DType, width: SIMDLength, //
+](ax: SIMD[dtype, width]) -> SIMD[dtype, width] where dtype.is_floating_point():
+    """Returns `lgamma(-ax)` for finite non-integer `ax > 0`.
+
+    SLEEF gammak / xlgamma_u1: `log(pi) - lgamma(1 + ax) - log|sin(pi ax)|`
+    with every term, the logs, and the final sum in double-word arithmetic,
+    because the terms cancel near the zeros of lgamma on the negative axis.
+    """
+    comptime T = type_of(ax)
+    comptime is_f32 = dtype == .float32
+    # Recurrence steps that lift 1 + ax in [2.3, shift_bound] far enough for
+    # the Stirling correction to err by about 2^-70 (f64) or 2^-41 (f32);
+    # SLEEF's shorter shifts leave 2^-60 or 2^-38, which dominates near the
+    # zeros.
+    comptime nshift = 6 if is_f32 else 10
+    comptime shift_bound = Scalar[dtype](8 if is_f32 else 12)
+    comptime log_pi_hi = Scalar[dtype](
+        1.1447298526763916 if is_f32 else 1.1447298858494001639
+    )
+    comptime log_pi_lo = Scalar[dtype](
+        3.317300922844879e-08 if is_f32 else 1.026595116270782638e-17
+    )
+    comptime half_log_2pi_hi = Scalar[dtype](
+        0.9189385175704956 if is_f32 else 0.91893853320467278056
+    )
+    comptime half_log_2pi_lo = Scalar[dtype](
+        1.563417661998301e-08 if is_f32 else -3.8782941580672414498e-17
+    )
+    # Coefficients, constant term first, for 1 + ax >= 2.3 (Stirling series
+    # in 1/x), 1 + ax near 1, and 1 + ax near 2. The two leading ones of each
+    # set are kept apart and applied in double-word arithmetic.
+    comptime b0_hi = Scalar[dtype](
+        0.0833333358168602 if is_f32 else 0.08333333333333333
+    )  # 1/12
+    comptime b0_lo = Scalar[dtype](
+        -2.4835269396561444e-09 if is_f32 else 4.625929269271485e-18
+    )
+    comptime b1 = Scalar[dtype](0.003472222222222222222175164840)
+    comptime c10 = Scalar[dtype](
+        0.2705872357 if is_f32 else 0.2705808084277815939
+    )
+    comptime c11 = Scalar[dtype](
+        -0.2072454542 if is_f32 else -0.2073855510284092762
+    )
+    comptime c20 = Scalar[dtype](
+        0.2058077045e-1 if is_f32 else 0.2058080842778455335e-1
+    )
+    comptime c21 = Scalar[dtype](
+        -0.7385451812e-2 if is_f32 else -0.7385551028674461858e-2
+    )
+    comptime CB: List[Scalar[dtype]] = [
+        -0.002681327160493827160473958490,
+        -0.000229472093621399176949318732,
+        0.000784039221720066627493314301,
+        6.97281375836585777403743539e-05,
+        -0.000592166437353693882857342347,
+        -5.17179090826059219329394422e-05,
+        0.000839498720672087279971000786,
+    ] if is_f32 else [
+        -0.002681327160493827160473958490,
+        -0.000229472093621399176949318732,
+        0.000784039221720066627493314301,
+        6.97281375836585777403743539e-05,
+        -0.000592166437353693882857342347,
+        -5.17179090826059219329394422e-05,
+        0.000839498720672087279971000786,
+        7.20489541602001055898311517e-05,
+        -0.001914438498565477526465972390,
+        -0.000162516262783915816896611252,
+        0.006403362833808069794787256200,
+        0.000540164767892604515196325186,
+        -0.029527880945699120504851034100,
+        -0.002481743600264997730942489280,
+        0.179540117061234856098844714000,
+        0.015056113040026424412918973400,
+        -1.391801093265337481495562410000,
+        -0.116546276599463200848033357000,
+        13.39798545514258921833306020000,
+        1.120804464289911606838558160000,
+        -156.801412704022726379848862,
+    ]
+    comptime C1: List[Scalar[dtype]] = [
+        0.1697509140e0,
+        -0.1493408978e0,
+        0.1013825238e0,
+        -0.8855129778e-1,
+        0.4826702476e0,
+        0.8670063615e0,
+        0.9435157776e0,
+    ] if is_f32 else [
+        0.1695571770041949811e0,
+        -0.1440498967843054368e0,
+        0.1255096673213020875e0,
+        -0.1113342861544207724e0,
+        0.1000996313575929358e0,
+        -0.9094964931456242518e-1,
+        0.8337492023017314957e-1,
+        -0.7712481339961671511e-1,
+        0.6828831828341884458e-1,
+        -0.8211558669746804595e-1,
+        0.8396709124579147809e-1,
+        0.7270275473996180571e0,
+        0.5766792106140076868e1,
+        0.2512856643080930752e2,
+        0.7748735764030416817e2,
+        0.1728670414673559605e3,
+        0.2818145867730348186e3,
+        0.3287022855685790432e3,
+        0.2617544025784515043e3,
+        0.1281459691827820109e3,
+        0.2947916772827614196e2,
+    ]
+    comptime C2: List[Scalar[dtype]] = [
+        0.2891599433e-2,
+        -0.1193488017e-2,
+        0.4962242092e-3,
+        -0.2355068718e-3,
+        0.1528468856e-3,
+        0.8160019934e-4,
+        0.1102489550e-3,
+    ] if is_f32 else [
+        0.2890510330742210310e-2,
+        -0.1192753911667886971e-2,
+        0.5096695247101967622e-3,
+        -0.2231547599034983196e-3,
+        0.9945751236071875931e-4,
+        -0.4492620183431184018e-4,
+        0.2050727030376389804e-4,
+        -0.9439951268304008677e-5,
+        0.4373363141819725815e-5,
+        -0.2036886057225966011e-5,
+        0.9724785897406779555e-6,
+        -0.4343931277157336040e-6,
+        0.1358883821470355377e-6,
+        -0.3189252471452599844e-6,
+        -0.6554816306542489902e-7,
+        0.4744167749884993937e-6,
+        0.1288143074933901020e-5,
+        0.1508349150733329167e-5,
+        0.1040114641628246946e-5,
+        0.4009244333008730443e-6,
+        0.7074816000864609279e-7,
+    ]
+
+    # Coefficients of t^3, t^2, t about 1 and about 2.
+    comptime z3_1 = Scalar[dtype](
+        -0.400686534596170958447352690395 if is_f32 else -0.4006856343865314862
+    )
+    comptime z3_2 = Scalar[dtype](
+        -0.673523028297382446749257758235e-1 if is_f32 else -0.6735230105319810201e-1
+    )
+    comptime z2_1 = Scalar[dtype](
+        0.822466960142643054450325495997 if is_f32 else 0.8224670334241132030
+    )
+    comptime z2_2 = Scalar[dtype](
+        0.322467033928981157743538726901 if is_f32 else 0.3224670334241132030
+    )
+    comptime z1_1 = Scalar[dtype](
+        -0.577215665946766039837398973297 if is_f32 else -0.5772156649015328655
+    )
+    comptime z1_2 = Scalar[dtype](
+        0.422784335087484338986941629852 if is_f32 else 0.4227843350984671345
+    )
+    comptime o1_bound = Scalar[dtype](1.2 if is_f32 else 1.1)
+    comptime stirling_bound = 2.3
+
+    var x = _two_sum(T(1), ax)
+    var o1 = x[0].le(o1_bound)
+    var o2 = x[0].ge(stirling_bound)
+
+    var prod = x
+    comptime for k in range(1, nshift):
+        var f = _dd_add(x[0], x[1], T(k), T(0))
+        prod = _dd_mul(f[0], f[1], prod[0], prod[1])
+        prod = _two_sum(prod[0], prod[1])
+    var shifted = o2 & x[0].le(shift_bound)
+    var num = (shifted.select(prod[0], T(1)), shifted.select(prod[1], T(0)))
+    x = _dd_add(x[0], x[1], shifted.select(T(nshift), T(0)), T(0))
+
+    # t is 1/x for Stirling, else x - 1 or x - 2, as a double-word: near
+    # the zeros u * t must be accurate well below one ulp of lgamma(1 + ax).
+    var xm = _dd_add(x[0], x[1], o1.select(T(-1), T(-2)), T(0))
+    xm = _two_sum(xm[0], xm[1])
+    var rx = _dd_div(T(1), T(0), x[0], x[1])
+    var t = o2.select(rx[0], xm[0])
+    var tl = o2.select(rx[1], xm[1])
+    var u = _dd_mul(_interval_poly[CB, C1, C2, C2](o2, o1, o1, t), T(0), t, tl)
+    u = _dd_add(u[0], u[1], o2.select(T(b1), o1.select(T(c11), T(c21))), T(0))
+    u = _dd_mul(u[0], u[1], t, tl)
+    u = _dd_add(
+        u[0],
+        u[1],
+        o2.select(T(b0_hi), o1.select(T(c10), T(c20))),
+        o2.select(T(b0_lo), T(0)),
+    )
+    var ut = _dd_mul(u[0], u[1], t, tl)
+
+    # Stirling: (x - 1/2) log(x) - x + log(2 pi) / 2.
+    var lx = _dd_log(x[0], x[1])
+    var xh = _dd_add(x[0], x[1], T(-0.5), T(0))
+    var st = _dd_mul(xh[0], xh[1], lx[0], lx[1])
+    st = _dd_add(st[0], st[1], -x[0], -x[1])
+    st = _dd_add(st[0], st[1], T(half_log_2pi_hi), T(half_log_2pi_lo))
+
+    # Taylor series of lgamma about 1 or 2, with the tail ut.
+    var z = _dd_add(ut[0], ut[1], o1.select(T(z3_1), T(z3_2)), T(0))
+    z = _dd_mul(z[0], z[1], t, tl)
+    z = _dd_add(z[0], z[1], o1.select(T(z2_1), T(z2_2)), T(0))
+    z = _dd_mul(z[0], z[1], t, tl)
+    z = _dd_add(z[0], z[1], o1.select(T(z1_1), T(z1_2)), T(0))
+    z = _dd_mul(z[0], z[1], t, tl)
+
+    # lgamma(1 + ax) is st + log(1 + ut) - log(prod) or z; fold it with
+    # log(pi) and log|sin(pi ax)| into one log of a quotient.
+    var c = _dd_add(
+        T(log_pi_hi),
+        T(log_pi_lo),
+        -o2.select(st[0], z[0]),
+        -o2.select(st[1], z[1]),
+    )
+    var corr = _dd_add(ut[0], ut[1], T(1), T(0))
+    var sp = _lgamma_sinpi(ax)
+    var den = _dd_mul(
+        o2.select(corr[0], T(1)), o2.select(corr[1], T(0)), sp[0], sp[1]
+    )
+    var q = _dd_div(num[0], num[1], den[0], den[1])
+    var lq = _dd_log(q[0], q[1])
+    var r = _dd_add(c[0], c[1], lq[0], lq[1])
+    return r[0] + r[1]
+
+
+@inline(.always)
+def _lgamma_neg_zero[
+    dtype: DType, width: SIMDLength, //
+](ax: SIMD[dtype, width], r: type_of(ax)) -> type_of(
+    ax
+) where dtype.is_floating_point():
+    """Returns `lgamma(-ax)` for lanes next to a zero of `lgamma` on the
+    negative axis, and `r` for the other lanes.
+
+    `_lgamma_neg` has an absolute error near 2^-70 (f64) or 2^-39 (f32),
+    which is large relative to the result next to a zero. There
+    `lgamma(-(a + t))` is its Taylor series in `t` about the zero `-a`, with
+    `a` split into three words so that `t` keeps full relative precision
+    however close `ax` is to `a`. Rows are the zeros on `(-n - 1, -n)` for
+    `n` = 2..6 (f32) or 2..13 (f64), larger root first; past those every
+    float is far enough from the zeros for `_lgamma_neg`. The coefficients
+    are `(-1)^j polygamma(j - 1, -a) / j!` and the window of each row covers
+    `|lgamma| <= 2^-12` with a truncation error below 2^-56 (f64) or 2^-33
+    (f32) relative.
+    """
+    comptime T = type_of(ax)
+    comptime is_f32 = dtype == .float32
+    comptime nq = 2 if is_f32 else 4
+    comptime A_HI: List[Scalar[dtype]] = [
+        2.747682571411133,
+        2.4570248126983643,
+        3.955294370651245,
+        3.143580913543701,
+        4.991544723510742,
+        4.039361953735352,
+        5.998607635498047,
+        5.008218288421631,
+        6.9998016357421875,
+        6.00138521194458,
+    ] if is_f32 else [
+        2.7476826467274127,
+        2.4570247382208006,
+        3.955294284858598,
+        3.14358088834998,
+        4.991544640560048,
+        4.039361839740537,
+        5.998607480080875,
+        5.0082181683225935,
+        6.999801507890638,
+        6.001385294453155,
+        7.999975197095821,
+        7.000198333407325,
+        8.999997244250977,
+        8.000024800270682,
+        9.99999972442663,
+        9.000002755714823,
+        10.99999997494789,
+        10.000000275573013,
+        11.999999997912324,
+        11.000000025052106,
+        12.99999999983941,
+        12.000000002087676,
+        13.99999999998853,
+        13.00000000016059,
+    ]
+    comptime A_LO: List[Scalar[dtype]] = [
+        7.531627943535568e-08,
+        -7.447756189549182e-08,
+        -8.579264942909504e-08,
+        -2.519372088727323e-08,
+        -8.295069164887536e-08,
+        -1.1399481536500389e-07,
+        -1.5541716891220858e-07,
+        -1.2009903116450005e-07,
+        -1.2785154979155777e-07,
+        8.250857774783071e-08,
+    ] if is_f32 else [
+        -9.055340329338315e-17,
+        3.7075610815513266e-17,
+        1.999428391746348e-17,
+        2.1818179852331714e-16,
+        -1.5174411760571722e-16,
+        -2.1143995503980602e-16,
+        3.311862478893795e-16,
+        4.3926353491015815e-17,
+        -1.0550130037400023e-17,
+        -6.415847287933042e-17,
+        5.261737128572354e-17,
+        -2.504354173632409e-16,
+        2.2185620509727132e-16,
+        4.354586297860107e-16,
+        -4.883037618642443e-16,
+        9.491348611623208e-17,
+        -1.9843998306985407e-16,
+        3.4909708332642057e-16,
+        1.0020693920103036e-16,
+        6.850849812286175e-16,
+        -6.747262033096337e-16,
+        -1.2222548112048185e-16,
+        -8.094860741926607e-16,
+        6.745919484964342e-16,
+    ]
+    comptime A_LO2: List[Scalar[dtype]] = [
+        3.5353580266508195e-16,
+        -1.739281254386864e-15,
+        2.240440261970251e-15,
+        -2.2590741927164574e-16,
+        -2.8162793057768523e-15,
+        6.76738455516481e-16,
+        -2.33334897661397e-15,
+        -6.173322656289216e-15,
+        -1.0550130366200395e-17,
+        -2.7286937696901527e-15,
+    ] if is_f32 else [
+        -3.322761057167369e-33,
+        1.3622663121726005e-33,
+        -6.2357435447617e-34,
+        1.1246581285745781e-32,
+        9.643515906617392e-34,
+        3.5961421111626576e-33,
+        -3.4720224807210337e-33,
+        2.68183947324466e-33,
+        4.08696427365735e-34,
+        1.116080967205309e-33,
+        2.0441803623138533e-33,
+        -2.413795840298293e-32,
+        -7.336677520259467e-33,
+        -2.3599860861934562e-32,
+        -3.548028340923709e-32,
+        5.762352109706189e-33,
+        4.778979059252407e-33,
+        1.2687206116063323e-32,
+        -6.563612372549864e-34,
+        2.753413969507158e-33,
+        -3.2387758664429733e-32,
+        -2.4017170001173477e-33,
+        -9.034244883215544e-33,
+        -4.8554922539526397e-32,
+    ]
+    comptime D1_HI: List[Scalar[dtype]] = [
+        1.914350152015686,
+        -1.5156034231185913,
+        20.725061416625977,
+        -7.781884670257568,
+        116.53578186035156,
+        -26.790481567382812,
+        716.2454223632812,
+        -123.3621826171875,
+        5035.96728515625,
+        -723.7366333007812,
+    ] if is_f32 else [
+        1.9143501856115988,
+        -1.5156034480216574,
+        20.725060845803707,
+        -7.781884658131351,
+        116.53578161624363,
+        -26.790480886140593,
+        716.2454304275473,
+        -123.3621845633534,
+        5035.967373768125,
+        -723.7366299252801,
+        40315.71854218779,
+        -5044.029941110829,
+        362875.4964746711,
+        -40324.281108124356,
+        3628795.296492739,
+        -362884.5034850277,
+        39916795.114676446,
+        -3628804.7035030955,
+        479001594.94800997,
+        -39916804.88532317,
+        6227020794.794164,
+        -479001605.05199003,
+        87178291194.6513,
+        -6227020805.205836,
+    ]
+    comptime D1_LO: List[Scalar[dtype]] = [
+        3.3595913606632166e-08,
+        -2.4903066275783203e-08,
+        -5.708222943212604e-07,
+        1.2126217363572778e-08,
+        -2.4410792320850305e-07,
+        6.812422270741081e-07,
+        8.064265784923919e-06,
+        -1.9461658666841686e-06,
+        8.861187234288082e-05,
+        3.3755011372704757e-06,
+    ] if is_f32 else [
+        6.288473508186805e-17,
+        4.0695290379659363e-17,
+        -1.4319348367658305e-15,
+        1.2366266971852707e-16,
+        5.71604654736871e-15,
+        -7.29303362861673e-16,
+        2.978324292002825e-14,
+        1.7685712092825869e-15,
+        3.431412146498085e-13,
+        -1.1249184125179834e-14,
+        1.3528231836249092e-12,
+        -2.1055091809068177e-13,
+        -1.3486075072383962e-11,
+        2.389812710483955e-12,
+        1.2671744970551317e-10,
+        -5.4195819812064025e-12,
+        -7.737126660349542e-10,
+        3.2764123120909294e-11,
+        -1.1134489574140605e-08,
+        1.9950818162239775e-09,
+        1.1429843684124307e-07,
+        2.2289997782624084e-08,
+        5.242382227630101e-07,
+        1.1693576000219276e-07,
+    ]
+    # d2..d(nq + 1) of each row, row after row.
+    comptime DQ: List[Scalar[dtype]] = [
+        9.575189590454102,
+        20.095134735107422,
+        4.858321189880371,
+        -1.4112911224365234,
+        251.7146759033203,
+        3730.604736328125,
+        25.83133888244629,
+        -112.26898956298828,
+        6995.23583984375,
+        551420.0,
+        324.25531005859375,
+        -5465.69189453125,
+        257851.59375,
+        123445280.0,
+        7404.76220703125,
+        -600556.1875,
+        12690641.0,
+        42623488000.0,
+        260548.40625,
+        -125386984.0,
+    ] if is_f32 else [
+        9.575189475709667,
+        20.095134916842603,
+        62.627282713513715,
+        194.76615530344623,
+        4.8583209516339965,
+        -1.41129114307798,
+        8.721782583815346,
+        -5.800414566599873,
+        251.7146825868894,
+        3730.6047156806126,
+        62588.08191876606,
+        1119991.501665522,
+        25.831338372387957,
+        -112.268986297176,
+        588.8907422380014,
+        -3277.1937854953417,
+        6995.235954894064,
+        551419.9978512884,
+        48911582.709059045,
+        4627747171.739249,
+        324.25532293784715,
+        -5465.691820777134,
+        104145.55520145541,
+        -2116669.417577535,
+        257851.58963956262,
+        123445282.15783688,
+        66486633581.99334,
+        38196442388133.234,
+        7404.762432228682,
+        -600556.168452811,
+        54807486.35665586,
+        -5335250743.384385,
+        12690641.16604718,
+        42623489764.75812,
+        161052333144473.78,
+        6.491032158885829e17,
+        260548.41030309396,
+        -125386984.94090366,
+        67884656938.77096,
+        -39203019565186.83,
+        812764889.3354839,
+        21845960238437.15,
+        6.605867627581421e17,
+        2.1306755305163004e22,
+        12710958.833951395,
+        -42725890801.879196,
+        161568434353282.84,
+        -6.517043660273723e17,
+        65840130084.02046,
+        1.592794543191949e16,
+        4.3349227292710556e21,
+        1.258437599020075e27,
+        812937510.664516,
+        -21852920330413.64,
+        6.608673936664925e17,
+        -2.1318070343392603e22,
+        6584086185960.205,
+        1.5928210978304629e19,
+        4.335019090413096e25,
+        1.258472566431477e32,
+        65841764315.97954,
+        -1.5928538462012788e16,
+        4.33513792803131e21,
+        -1.2585156903461966e27,
+        796675363616762.2,
+        2.120048613893936e22,
+        6.346916349938978e29,
+        2.026788600430993e37,
+        6584103254039.795,
+        -1.5928272914951848e19,
+        4.335041565983639e25,
+        -1.2584807223665154e32,
+        1.1472126519132435e17,
+        3.6634446193922216e25,
+        1.3160968687098167e34,
+        5.043300020340304e42,
+        796675558623237.8,
+        -2.1200493922973838e22,
+        6.346919457076453e29,
+        -2.0267898407008447e37,
+        1.9387894005607895e19,
+        8.048587946043371e28,
+        3.758904339726865e38,
+        1.872542039912427e48,
+        1.1472126761123565e17,
+        -3.66344473530636e25,
+        1.3160969242328746e34,
+        -5.0433002862966394e42,
+        3.8000272280428536e21,
+        2.208532534960574e32,
+        1.4440206933867054e43,
+        1.0070980520242424e54,
+        1.9387894038024745e19,
+        -8.048587966229412e28,
+        3.758904352296755e38,
+        -1.872542047739723e48,
+    ]
+
+    var res = r
+    comptime for j in range(len(A_HI)):
+        comptime a_hi = A_HI[j]
+        comptime a_lo = A_LO[j]
+        comptime a_lo2 = A_LO2[j]
+        comptime d1h = D1_HI[j]
+        comptime d1l = D1_LO[j]
+        # Four times the window: rows never overlap, the closest pair of
+        # zeros (around -8) being 5e-5 apart.
+        comptime tol = Scalar[dtype](2.0**-10) / abs(d1h)
+        # Exact by Sterbenz's lemma inside the window.
+        var t1 = ax - a_hi
+        var s = _two_sum(t1, T(-a_lo))
+        var th = s[0]
+        var tl = s[1] - a_lo2
+        comptime dn = DQ[j * nq + nq - 1]
+        var q = T(dn)
+        comptime for i in range(1, nq):
+            comptime di = DQ[j * nq + nq - 1 - i]
+            q = q.fma(th, T(di))
+        # One fma rounds d1 * t together with the small terms.
+        var v = fma(th, T(d1h), th * d1l + tl * d1h + th * th * q)
+        res = abs(t1).lt(tol).select(v, res)
+    return res
+
+
+@inline(.always)
+def _lgamma_sinpi[
+    dtype: DType, width: SIMDLength, //
+](ax: SIMD[dtype, width]) -> Tuple[
+    type_of(ax), type_of(ax)
+] where dtype.is_floating_point():
+    """Returns `|sin(pi * ax)|` as a double-word for `ax >= 0`.
+
+    The reduction to `w` in `[0, 1/2]` is exact. The Taylor series of
+    `sin(pi/4 * t)` or `cos(pi/4 * t)`, `t` in `[0, 1]`, is summed with its
+    four leading coefficients in double-word arithmetic.
+    """
+    comptime T = type_of(ax)
+    comptime is_f32 = dtype == .float32
+    # (pi/4)^(2k+1) / (2k+1)! and (pi/4)^(2k+2) / (2k+2)! with alternating
+    # signs, k = 0..3, split into high and low words.
+    comptime S_HI: List[Scalar[dtype]] = [
+        0.7853981852531433,
+        -0.08074551075696945,
+        0.002490394515916705,
+        -3.657620254671201e-05,
+    ] if is_f32 else [
+        0.7853981633974483,
+        -0.08074551218828079,
+        0.0024903945701927202,
+        -3.657620418217725e-05,
+    ]
+    comptime S_LO: List[Scalar[dtype]] = [
+        -2.1855694143368964e-08,
+        -1.4313112917108128e-09,
+        5.427601423857453e-11,
+        -1.6354652007666282e-12,
+    ] if is_f32 else [
+        3.061616997868383e-17,
+        3.541503566529601e-18,
+        -7.745123384107965e-20,
+        1.7364661332386583e-21,
+    ]
+    comptime C_HI: List[Scalar[dtype]] = [
+        -0.3084251284599304,
+        0.01585434377193451,
+        -0.0003259918885305524,
+        3.5908603877032874e-06,
+    ] if is_f32 else [
+        -0.30842513753404244,
+        0.015854344243815502,
+        -0.00032599188692739,
+        3.59086044859151e-06,
+    ]
+    comptime C_LO: List[Scalar[dtype]] = [
+        -9.074112128359957e-09,
+        4.718809787362943e-10,
+        1.6031623728193778e-12,
+        6.088822480064537e-14,
+    ] if is_f32 else [
+        -1.9579048464811598e-17,
+        -1.0391406571991658e-18,
+        7.76739206351315e-22,
+        -1.9200234339484294e-23,
+    ]
+    comptime S_TAIL: List[Scalar[dtype]] = [
+        3.1336168903781217e-07,
+        -1.757247673443401e-09,
+        6.948453273886629e-12,
+        -2.0410263396641442e-14,
+        4.628704628834683e-17,
+    ] if is_f32 else [
+        3.1336168903781217e-07,
+        -1.757247673443401e-09,
+        6.948453273886629e-12,
+        -2.0410263396641442e-14,
+        4.628704628834683e-17,
+        -8.348589834811673e-20,
+        1.2261499847700472e-22,
+    ]
+    comptime C_TAIL: List[Scalar[dtype]] = [
+        -2.4611369504942e-08,
+        1.1501159127974052e-10,
+        -3.8980731712596753e-13,
+        1.001886461636272e-15,
+        -2.019653396886682e-18,
+    ] if is_f32 else [
+        -2.4611369504942e-08,
+        1.1501159127974052e-10,
+        -3.8980731712596753e-13,
+        1.001886461636272e-15,
+        -2.019653396886682e-18,
+        3.2784835616098472e-21,
+        -4.377345209491838e-24,
+    ]
+
+    var y = ax - floor(ax)
+    var w = min(y, 1 - y)
+    var use_cos = w.gt(0.25)
+    var t = use_cos.select(2 - 4 * w, 4 * w)
+    var s = _dd_mul(t, T(0), t, T(0))
+    var v = (
+        _interval_poly[C_TAIL, S_TAIL, S_TAIL, S_TAIL](
+            use_cos, use_cos, use_cos, s[0]
+        ),
+        T(0),
+    )
+    comptime for j in range(4):
+        comptime ch = C_HI[3 - j]
+        comptime cl = C_LO[3 - j]
+        comptime sh = S_HI[3 - j]
+        comptime sl = S_LO[3 - j]
+        v = _dd_mul(v[0], v[1], s[0], s[1])
+        v = _dd_add(
+            v[0],
+            v[1],
+            use_cos.select(T(ch), T(sh)),
+            use_cos.select(T(cl), T(sl)),
+        )
+    v = _dd_mul(v[0], v[1], use_cos.select(s[0], t), use_cos.select(s[1], T(0)))
+    var vc = _dd_add(T(1), T(0), v[0], v[1])
+    return (use_cos.select(vc[0], v[0]), use_cos.select(vc[1], v[1]))
+
+
 def _log1p_accurate[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():

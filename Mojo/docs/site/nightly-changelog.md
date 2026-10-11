@@ -398,6 +398,11 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `std.math.lgamma()` no longer calls the system libm and now runs on GPU as
+  well as CPU. On CPU its result comes from the same Mojo implementation, so
+  it can differ from the system libm in the last ulp. It stays within about 2
+  ulp for negative inputs, including next to the negative real zeros of
+  `lgamma` (such as -2.457 and -2.748), where the result is near 0.
 - The Bessel functions `j0`, `j1`, `y0`, and `y1` in `std.math` no longer
   call the system libm and now run on GPU as well as CPU. On CPU their
   results come from the same Mojo implementations, so they can differ from

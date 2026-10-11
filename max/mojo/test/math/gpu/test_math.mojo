@@ -120,7 +120,7 @@ def test_math() raises:
             cbrt,
             hypot_fn,
             erfc,
-            # lgamma,
+            lgamma,
             # gamma,
             remainder_fn,
             # j0,
