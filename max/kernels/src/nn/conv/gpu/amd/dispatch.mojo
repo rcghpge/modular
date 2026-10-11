@@ -218,20 +218,21 @@ def _launch_amd_4wave_conv2d_runtime[
             beta=beta,
         )
 
-    if stride == 1 and pad == 0:
-        _launch[1, 0]()
-    elif stride == 1 and pad == 1:
-        _launch[1, 1]()
-    elif stride == 1 and pad == 2:
-        _launch[1, 2]()
-    elif stride == 2 and pad == 0:
-        _launch[2, 0]()
-    elif stride == 2 and pad == 1:
-        _launch[2, 1]()
-    elif stride == 2 and pad == 2:
-        _launch[2, 2]()
-    else:
-        return False
+    match (stride, pad):
+        case (1, 0):
+            _launch[1, 0]()
+        case (1, 1):
+            _launch[1, 1]()
+        case (1, 2):
+            _launch[1, 2]()
+        case (2, 0):
+            _launch[2, 0]()
+        case (2, 1):
+            _launch[2, 1]()
+        case (2, 2):
+            _launch[2, 2]()
+        case _:
+            return False
     return True
 
 
@@ -521,26 +522,27 @@ def dispatch_amd_4wave_conv2d[
                 )
                 return True
 
-            if stride[0] == 1 and pad == 0:
-                if not _launch_static[1, 0]():
+            match (stride[0], pad):
+                case (1, 0):
+                    if not _launch_static[1, 0]():
+                        return False
+                case (1, 1):
+                    if not _launch_static[1, 1]():
+                        return False
+                case (1, 2):
+                    if not _launch_static[1, 2]():
+                        return False
+                case (2, 0):
+                    if not _launch_static[2, 0]():
+                        return False
+                case (2, 1):
+                    if not _launch_static[2, 1]():
+                        return False
+                case (2, 2):
+                    if not _launch_static[2, 2]():
+                        return False
+                case _:
                     return False
-            elif stride[0] == 1 and pad == 1:
-                if not _launch_static[1, 1]():
-                    return False
-            elif stride[0] == 1 and pad == 2:
-                if not _launch_static[1, 2]():
-                    return False
-            elif stride[0] == 2 and pad == 0:
-                if not _launch_static[2, 0]():
-                    return False
-            elif stride[0] == 2 and pad == 1:
-                if not _launch_static[2, 1]():
-                    return False
-            elif stride[0] == 2 and pad == 2:
-                if not _launch_static[2, 2]():
-                    return False
-            else:
-                return False
         else:
             if not _launch_amd_4wave_conv2d_runtime[
                 C_in=_C_in,

@@ -276,22 +276,23 @@ def amd_4wave_conv_fprop_with_residual[
 
         var s = problem.stride_h
         var p = problem.pad_h
-        if s == 1 and p == 0:
-            _launch_kpad[1, 0]()
-        elif s == 1 and p == 1:
-            _launch_kpad[1, 1]()
-        elif s == 1 and p == 2:
-            _launch_kpad[1, 2]()
-        elif s == 2 and p == 0:
-            _launch_kpad[2, 0]()
-        elif s == 2 and p == 1:
-            _launch_kpad[2, 1]()
-        elif s == 2 and p == 2:
-            _launch_kpad[2, 2]()
-        else:
-            raise Error(
-                "unsupported (stride, pad) combination for amd_4wave_conv"
-            )
+        match (s, p):
+            case (1, 0):
+                _launch_kpad[1, 0]()
+            case (1, 1):
+                _launch_kpad[1, 1]()
+            case (1, 2):
+                _launch_kpad[1, 2]()
+            case (2, 0):
+                _launch_kpad[2, 0]()
+            case (2, 1):
+                _launch_kpad[2, 1]()
+            case (2, 2):
+                _launch_kpad[2, 2]()
+            case _:
+                raise Error(
+                    "unsupported (stride, pad) combination for amd_4wave_conv"
+                )
     else:
         comptime _filter_2d_layout_no_pad = row_major[_C_out, K_real]()
         var filter_2d_no_pad = filter.reshape(_filter_2d_layout_no_pad)
@@ -325,22 +326,23 @@ def amd_4wave_conv_fprop_with_residual[
 
         var s = problem.stride_h
         var p = problem.pad_h
-        if s == 1 and p == 0:
-            _launch_no_pad[1, 0]()
-        elif s == 1 and p == 1:
-            _launch_no_pad[1, 1]()
-        elif s == 1 and p == 2:
-            _launch_no_pad[1, 2]()
-        elif s == 2 and p == 0:
-            _launch_no_pad[2, 0]()
-        elif s == 2 and p == 1:
-            _launch_no_pad[2, 1]()
-        elif s == 2 and p == 2:
-            _launch_no_pad[2, 2]()
-        else:
-            raise Error(
-                "unsupported (stride, pad) combination for amd_4wave_conv"
-            )
+        match (s, p):
+            case (1, 0):
+                _launch_no_pad[1, 0]()
+            case (1, 1):
+                _launch_no_pad[1, 1]()
+            case (1, 2):
+                _launch_no_pad[1, 2]()
+            case (2, 0):
+                _launch_no_pad[2, 0]()
+            case (2, 1):
+                _launch_no_pad[2, 1]()
+            case (2, 2):
+                _launch_no_pad[2, 2]()
+            case _:
+                raise Error(
+                    "unsupported (stride, pad) combination for amd_4wave_conv"
+                )
 
 
 # ----------------------------------------------------------------------
@@ -472,22 +474,23 @@ def _launch_plain_conv[
 
         var s = problem.stride_h
         var p = problem.pad_h
-        if s == 1 and p == 0:
-            _launch_kpad[1, 0]()
-        elif s == 1 and p == 1:
-            _launch_kpad[1, 1]()
-        elif s == 1 and p == 2:
-            _launch_kpad[1, 2]()
-        elif s == 2 and p == 0:
-            _launch_kpad[2, 0]()
-        elif s == 2 and p == 1:
-            _launch_kpad[2, 1]()
-        elif s == 2 and p == 2:
-            _launch_kpad[2, 2]()
-        else:
-            raise Error(
-                "unsupported (stride, pad) combination for amd_4wave_conv"
-            )
+        match (s, p):
+            case (1, 0):
+                _launch_kpad[1, 0]()
+            case (1, 1):
+                _launch_kpad[1, 1]()
+            case (1, 2):
+                _launch_kpad[1, 2]()
+            case (2, 0):
+                _launch_kpad[2, 0]()
+            case (2, 1):
+                _launch_kpad[2, 1]()
+            case (2, 2):
+                _launch_kpad[2, 2]()
+            case _:
+                raise Error(
+                    "unsupported (stride, pad) combination for amd_4wave_conv"
+                )
     else:
         comptime _filter_2d_layout_no_pad = row_major[_C_out, K_real]()
         var filter_2d_no_pad = filter.reshape(_filter_2d_layout_no_pad)
@@ -523,19 +526,20 @@ def _launch_plain_conv[
 
         var s = problem.stride_h
         var p = problem.pad_h
-        if s == 1 and p == 0:
-            _launch_no_pad[1, 0]()
-        elif s == 1 and p == 1:
-            _launch_no_pad[1, 1]()
-        elif s == 1 and p == 2:
-            _launch_no_pad[1, 2]()
-        elif s == 2 and p == 0:
-            _launch_no_pad[2, 0]()
-        elif s == 2 and p == 1:
-            _launch_no_pad[2, 1]()
-        elif s == 2 and p == 2:
-            _launch_no_pad[2, 2]()
-        else:
-            raise Error(
-                "unsupported (stride, pad) combination for amd_4wave_conv"
-            )
+        match (s, p):
+            case (1, 0):
+                _launch_no_pad[1, 0]()
+            case (1, 1):
+                _launch_no_pad[1, 1]()
+            case (1, 2):
+                _launch_no_pad[1, 2]()
+            case (2, 0):
+                _launch_no_pad[2, 0]()
+            case (2, 1):
+                _launch_no_pad[2, 1]()
+            case (2, 2):
+                _launch_no_pad[2, 2]()
+            case _:
+                raise Error(
+                    "unsupported (stride, pad) combination for amd_4wave_conv"
+                )
