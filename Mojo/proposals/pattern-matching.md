@@ -443,17 +443,19 @@ following forms:
     ```
 
     These are refutable when the runtime sequence may have a different length.
-    The same underlying decomposition support can also be used by ordinary
-    destructuring assignments. This should be tied into some trait that the
-    collection conforms to.
+    The subject must conform to `Sized` and support integer subscripting. The
+    same protocol supports ordinary list destructuring assignments.
 
-4. **Variable-length sequence patterns** capture a prefix, suffix, or remainder,
-   tied into the same trait (only a single `*` pattern is allowed):
+4. **Variable-length sequence patterns** capture a prefix, suffix, or remainder
+   (only a single `*` pattern is allowed):
 
     ```mojo
     case [first, *rest]:
     case [first, *middle, last]:
     ```
+
+    The subject must also support `ContiguousSlice` subscripting. The starred
+    pattern receives the slice between the fixed prefix and suffix.
 
 5. **OR patterns** match when any of several alternatives match:
 
@@ -637,8 +639,4 @@ introduced by a `case` clause would be available to the clauses that follow it.
 The core proposal is fully implemented and expected to work correctly. The
 following parts of this proposal are not yet implemented:
 
-- **Sequence patterns** — fixed-length forms such as `case [x, y]:` and
-  variable-length forms such as `case [first, *rest]:`, plus the shared trait or
-  protocol that backs both match patterns and failable sequence destructuring
-  (`var [a, b, c] = get_list()`).
 - **Mapping patterns** — for example `case {"name": name, "age": age}:`.

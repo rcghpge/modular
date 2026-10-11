@@ -696,6 +696,15 @@ def match_expression_patterns_require_explicit_equality(
         pass
 
 
+def match_list_requires_sized(value: Int):
+    match value:
+    # expected-error @+1 {{value of type 'Int' does not conform to 'Sized'}}
+    case [element]:
+        _ = element
+    case _:
+        pass
+
+
 def deprecated_dunder_match(value: Int):
     # expected-warning @+1 {{'__match' is deprecated; use 'match'}}
     __match value:

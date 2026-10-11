@@ -29,6 +29,7 @@
 #include "Mojo/POPDialect/POPAttrs.h"
 #include "Mojo/Support/TriBool.h"
 #include "MojoUtils.h"
+#include "OverloadSet.h"
 #include "ParserEvaluationContext.h"
 
 #include "mlir/Dialect/Index/IR/IndexAttrs.h"
@@ -100,6 +101,15 @@ void PatternPath::print(raw_ostream &os) const {
     case EnumPayload:
       os << "#payload(" << p->index << ")";
       break;
+    case ListElement:
+      os << "[" << p->index << "]";
+      break;
+    case ListElementFromEnd:
+      os << "[-" << p->index << "]";
+      break;
+    case ListSlice:
+      os << "[" << p->index << ":-" << p->endOffset << "]";
+      break;
     }
   }
   os << " : " << type;
@@ -128,9 +138,18 @@ void PatternCommand::print(raw_ostream &os, unsigned indent) const {
       os << "<null-path>";
     os << " case=" << enumCaseIndex;
     break;
+  case ListLength:
+    os << "list_length ";
+    if (path)
+      path->print(os);
+    else
+      os << "<null-path>";
+    os << " minimum=" << listLengthData.minimumLength
+       << " exact=" << listLengthData.exactLength;
+    break;
   case Bind:
-    os << "bind " << stringifyPatternDeclKind(declKind) << " " << bindName
-       << " at ";
+    os << "bind " << stringifyPatternDeclKind(bindData.declKind) << " "
+       << bindData.bindName << " at ";
     if (path)
       path->print(os);
     else
@@ -402,6 +421,46 @@ TupleNode::buildCheckList(PatternMatchBuilder &builder, CValue subject,
     const PatternPath *eltPath = builder.getTupleElement(path, i, eltType);
     // Nested subjects are not projected yet; subpatterns use path types.
     if (failed(exprs[i]->buildCheckList(builder, CValue(), eltPath, out)))
+      return failure();
+  }
+  return success();
+}
+
+LogicalResult ListLiteralNode::buildCheckList(
+    PatternMatchBuilder &builder, CValue subject, const PatternPath *path,
+    SmallVectorImpl<const PatternCommand *> &out) const {
+  ASTType subjectType = path->type;
+  auto sizedConformance =
+      subjectType
+          .conformsToBuiltinTrait(
+              "Sized", getLoc(), builder.shared,
+              ASTDecl::getAssumptionsFromScope(&builder.declScope))
+          .first;
+  if (!sizedConformance.isTrue()) {
+    auto diag = builder.emitError(getLoc());
+    if (sizedConformance.isUnknown())
+      diag << "cannot prove that value of type " << subjectType
+           << " conforms to 'Sized'";
+    else
+      diag << "value of type " << subjectType << " does not conform to 'Sized'";
+    diag << getRange();
+    return failure();
+  }
+
+  size_t minimumLength = exprs.size() - starIndex.has_value();
+  out.push_back(builder.createListLength(path, this, minimumLength,
+                                         /*exactLength=*/!starIndex));
+
+  for (auto [index, element] : llvm::enumerate(exprs)) {
+    const PatternPath *elementPath;
+    if (starIndex && index == *starIndex) {
+      elementPath = builder.getListSlice(path, index, exprs.size() - index - 1);
+    } else if (starIndex && index > *starIndex) {
+      elementPath = builder.getListElementFromEnd(path, exprs.size() - index);
+    } else {
+      elementPath = builder.getListElement(path, index);
+    }
+    if (failed(element->buildCheckList(builder, CValue(), elementPath, out)))
       return failure();
   }
   return success();
@@ -802,6 +861,7 @@ CValue PatternEmitState::getPathValue(IREmitter &emitter,
     return pathValues[path] = fieldVal;
   }
   case PatternPath::EnumPayload: {
+    // Project out the payload.
     CValue caseIdxInt =
         emitter.emitInt(path->index, expr->getLoc(), EC_CallParamValue);
     if (!caseIdxInt)
@@ -820,6 +880,89 @@ CValue PatternEmitState::getPathValue(IREmitter &emitter,
     if (!payload)
       return {};
     return pathValues[path] = payload;
+  }
+  case PatternPath::ListElement:
+  case PatternPath::ListElementFromEnd: {
+    // Elements before a * pattern use their absolute index. Elements after it
+    // are relative to the end, so compute `collection.__len__() - offset`.
+    CValue index;
+    if (path->kind == PatternPath::ListElement) {
+      index = emitter.emitInt(path->index, expr->getLoc(), EC_CallParamValue);
+    } else {
+      SyntheticNode parentNode(expr->getLoc(), parent);
+      AttributeRefNode lenAttr(&parentNode, expr->getLoc(), "__len__");
+      CallNode lenCall(&lenAttr, expr->getLoc(), /*operands=*/{},
+                       expr->getLoc());
+      CValue length = emitter.emitExprCValue(&lenCall, EC_MatchSubject);
+      CValue offset =
+          emitter.emitInt(path->index, expr->getLoc(), EC_CallParamValue);
+      if (!length || !offset)
+        return {};
+      SyntheticNode lengthNode(expr->getLoc(), length);
+      SyntheticNode offsetNode(expr->getLoc(), offset);
+      BinOpNode subtract(ExprNode::kSub, &lengthNode, expr->getLoc(),
+                         &offsetNode);
+      index = emitter.emitExprCValue(&subtract, EC_MatchSubject);
+    }
+    if (!index)
+      return {};
+
+    // Build `collection[index]` syntactically so normal subscript resolution
+    // determines the element type and access convention.
+    SyntheticNode parentNode(expr->getLoc(), parent);
+    SyntheticNode indexNode(expr->getLoc(), index);
+    Operand indexOperand(&indexNode, expr->getLoc(),
+                         ArgUnpackStyle::kPositional);
+    SubscriptNode subscript(&parentNode, expr->getLoc(), indexOperand,
+                            expr->getLoc());
+    CValue element = emitter.emitExprCValue(&subscript, EC_MatchSubject);
+    if (!element)
+      return {};
+    return pathValues[path] = element;
+  }
+  case PatternPath::ListSlice: {
+    // A * pattern captures everything between the fixed prefix and suffix.
+    // Omit the end bound when there is no suffix; otherwise compute it as
+    // `collection.__len__() - endOffset`.
+    CValue start =
+        emitter.emitInt(path->index, expr->getLoc(), EC_CallParamValue);
+    if (!start)
+      return {};
+    SyntheticNode startNode(expr->getLoc(), start);
+
+    std::optional<SyntheticNode> endNode;
+    if (path->endOffset != 0) {
+      SyntheticNode parentNode(expr->getLoc(), parent);
+      AttributeRefNode lenAttr(&parentNode, expr->getLoc(), "__len__");
+      CallNode lenCall(&lenAttr, expr->getLoc(), /*operands=*/{},
+                       expr->getLoc());
+      CValue length = emitter.emitExprCValue(&lenCall, EC_MatchSubject);
+      CValue offset =
+          emitter.emitInt(path->endOffset, expr->getLoc(), EC_CallParamValue);
+      if (!length || !offset)
+        return {};
+      SyntheticNode lengthNode(expr->getLoc(), length);
+      SyntheticNode offsetNode(expr->getLoc(), offset);
+      BinOpNode subtract(ExprNode::kSub, &lengthNode, expr->getLoc(),
+                         &offsetNode);
+      CValue end = emitter.emitExprCValue(&subtract, EC_MatchSubject);
+      if (!end)
+        return {};
+      endNode.emplace(expr->getLoc(), end);
+    }
+
+    // Build `collection[start:end]` syntactically so the collection controls
+    // its ContiguousSlice result type.
+    SliceLiteralNode slice(&startNode, expr->getLoc(),
+                           endNode ? &*endNode : nullptr, {}, nullptr);
+    Operand sliceOperand(&slice, expr->getLoc(), ArgUnpackStyle::kPositional);
+    SyntheticNode parentNode(expr->getLoc(), parent);
+    SubscriptNode subscript(&parentNode, expr->getLoc(), sliceOperand,
+                            expr->getLoc());
+    CValue result = emitter.emitExprCValue(&subscript, EC_MatchSubject);
+    if (!result)
+      return {};
+    return pathValues[path] = result;
   }
   }
   llvm_unreachable("unknown PatternPath kind");
@@ -857,6 +1000,41 @@ RValue PatternEmitState::emitTestForValue(IREmitter &emitter,
   BinOpNode equality(ExprNode::kCmpEQ, &subjectNode, expr->getLoc(),
                      &rhsValueNode);
   CValue result = emitter.emitExprCValue(&equality, EC_BoolCondition);
+  return emitter.emitScalarBool({result, expr}, EC_BoolCondition);
+}
+
+RValue PatternEmitState::emitListLengthTest(IREmitter &emitter,
+                                            const PatternCommand *command) {
+  assert(command->kind == PatternCommand::ListLength);
+  const ExprNode *expr = command->expr;
+  CValue subject = getPathValue(emitter, command->path, expr);
+  CValue minimum = emitter.emitInt(command->listLengthData.minimumLength,
+                                   expr->getLoc(), EC_CallParamValue);
+  CValue exact = emitter.emitBool(
+      {SIMDAttr::getScalarBool(emitter.getContext(),
+                               command->listLengthData.exactLength),
+       expr},
+      EC_CallParamValue);
+  if (!subject || !minimum || !exact)
+    return {};
+
+  ArrayRef<ASTDecl *> functions = emitter.shared.getBuiltinFunction(
+      emitter.getDeclScope(), {"std", "builtin", "_stubs"},
+      "list_length_matches", expr->getLoc());
+  if (functions.empty())
+    return {};
+
+  CallOperands operands(CallSyntax::kDirectCall, expr, EC_MatchSubject);
+  operands.add({subject, expr});
+  operands.add({minimum, expr});
+  operands.add({exact, expr});
+
+  ParamBindings bindings(emitter.getDeclScope(), expr);
+  OverloadSet call("list_length_matches", functions, std::move(bindings),
+                   CallSyntax::kDirectCall);
+  CValue result = call.emitCall(std::move(operands), emitter);
+  if (!result)
+    return {};
   return emitter.emitScalarBool({result, expr}, EC_BoolCondition);
 }
 
@@ -998,10 +1176,11 @@ FailureOr<TypedAttr> PatternEmitState::emitComptimeCondition(
     switch (cmd->kind) {
     case PatternCommand::Bind: {
       // Comptime match only supports bare (imm) name bindings as PValues.
-      if (cmd->declKind == PatternDeclKind::kVar ||
-          cmd->declKind == PatternDeclKind::kRef) {
+      if (cmd->bindData.declKind == PatternDeclKind::kVar ||
+          cmd->bindData.declKind == PatternDeclKind::kRef) {
         emitter.emitError(cmd->expr->getLoc())
-            << (cmd->declKind == PatternDeclKind::kVar ? "'var'" : "'ref'")
+            << (cmd->bindData.declKind == PatternDeclKind::kVar ? "'var'"
+                                                                : "'ref'")
             << " bindings are not supported in 'comptime match'"
             << cmd->expr->getRange();
         return failure();
@@ -1009,7 +1188,8 @@ FailureOr<TypedAttr> PatternEmitState::emitComptimeCondition(
       CValue subject = getPathValue(emitter, cmd->path, cmd->expr);
       if (!subject)
         return failure();
-      bindings.push_back({cmd->bindName, subject, cmd->declKind});
+      bindings.push_back(
+          {cmd->bindData.bindName, subject, cmd->bindData.declKind});
       continue;
     }
     case PatternCommand::Or: {
@@ -1018,6 +1198,20 @@ FailureOr<TypedAttr> PatternEmitState::emitComptimeCondition(
       if (failed(orCond))
         return failure();
       newTest = *orCond;
+      break;
+    }
+    case PatternCommand::ListLength: {
+      RValue matches = emitListLengthTest(emitter, cmd);
+      if (!matches)
+        return failure();
+      newTest = matches.getIfPValue();
+      if (!newTest) {
+        emitter.emitError(cmd->expr->getLoc())
+            << "'comptime match' list pattern must be evaluable at "
+               "compile-time"
+            << cmd->expr->getRange();
+        return failure();
+      }
       break;
     }
     case PatternCommand::Equal:
@@ -1060,6 +1254,27 @@ PatternEmitState::emitCommands(OpBuilder &builder,
   for (const PatternCommand *cmd : commands) {
     assert(cmd && "null pattern command");
     switch (cmd->kind) {
+    case PatternCommand::ListLength: {
+      RValue matchesR = emitListLengthTest(emitter, cmd);
+      SRValue matches = emitter.emitSRValue({AnyValue(matchesR), cmd->expr},
+                                            EC_BoolCondition);
+      if (!matches)
+        return failure();
+
+      Location loc =
+          curDeclScope.getShared().translateLocation(cmd->expr->getLoc());
+      HLCF::IfOp::create(
+          *emitter.builder, loc, TypeRange(), matches,
+          [&]() -> LogicalResult {
+            HLCF::YieldOp::create(*emitter.builder, loc);
+            return success();
+          },
+          [&]() -> LogicalResult {
+            HLCF::MatchNextOp::create(*emitter.builder, loc);
+            return success();
+          });
+      break;
+    }
     case PatternCommand::Equal:
     case PatternCommand::EnumTag: {
       CValue value = emitTestableValue(emitter, cmd);
@@ -1095,7 +1310,8 @@ PatternEmitState::emitCommands(OpBuilder &builder,
       CValue subject = getPathValue(emitter, cmd->path, cmd->expr);
       if (!subject)
         return failure();
-      bindings.push_back({cmd->bindName, subject, cmd->declKind});
+      bindings.push_back(
+          {cmd->bindData.bindName, subject, cmd->bindData.declKind});
       break;
     }
     case PatternCommand::Or:

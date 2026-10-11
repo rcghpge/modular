@@ -835,6 +835,42 @@ def match_vec3(v: Vec3):
         case_callee[1]()
 
 
+# CHECK-LABEL: lit.fn @"match_list
+def match_list(values: List[Int]):
+    # Fixed-length list patterns test the length before indexing.
+    # CHECK:       [[MIN:%.*]] = kgen.param.constant: !Int = <{:scalar<index> 2}>
+    # CHECK-NEXT:  [[EXACT:%.*]] = kgen.param.constant: !Bool = <{:scalar<bool> true}>
+    # CHECK:       [[LENGTH_MATCHES:%.*]] = lit.call {{.*}}@"list_length_matches{{.*}}(%values, [[MIN]], [[EXACT]])
+    # CHECK:       hlcf.if
+    # CHECK:         [[ZERO:%.*]] = kgen.param.constant: !Int = <{:scalar<index> 0}>
+    # CHECK:         lit.call {{.*}}@List::@"__getitem__{{.*}}(%values, [[ZERO]])
+    match values:
+    case [0, value]:
+        _ = value
+        case_callee[0]()
+    case _:
+        case_callee[1]()
+
+
+# CHECK-LABEL: lit.fn @"match_starred_list
+def match_starred_list(values: List[Int]):
+    # A starred pattern accepts its minimum length and extracts the middle
+    # through ContiguousSlice subscripting.
+    # CHECK:       [[MIN:%.*]] = kgen.param.constant: !Int = <{:scalar<index> 2}>
+    # CHECK-NEXT:  [[INEXACT:%.*]] = kgen.param.constant: !Bool = <{:scalar<bool> false}>
+    # CHECK:       lit.call {{.*}}@"list_length_matches{{.*}}(%values, [[MIN]], [[INEXACT]])
+    # CHECK:       lit.call {{.*}}@List::@"__len__
+    # CHECK:       lit.call {{.*}}@List::@"__getitem__{{.*ContiguousSlice}}
+    match values:
+    case [first, *middle, last]:
+        _ = first
+        _ = middle
+        _ = last
+        case_callee[0]()
+    case _:
+        case_callee[1]()
+
+
 # CHECK-LABEL: lit.fn @"match_optional_refined_payload
 def match_optional_refined_payload(opt: Optional[Int]):
     # `Some(0)` only covers one payload value; the following `Some(n)` remains

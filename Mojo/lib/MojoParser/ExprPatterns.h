@@ -47,12 +47,23 @@ class SharedState;
 
 /// Uniqued access path from the match subject (keyed by pointer address).
 struct PatternPath {
-  enum Kind { Root, TupleElement, StructField, EnumPayload };
+  enum Kind {
+    Root,
+    TupleElement,
+    StructField,
+    EnumPayload,
+    ListElement,        // [x, ...]  where index is the index in the list.
+    ListElementFromEnd, // [.. *y, x] whehere index is the offset from the end.
+    ListSlice, // [a, *x, c] where index is the start and endOffset is the end.
+  };
   Kind kind;
   const PatternPath *parent = nullptr; ///< Null for `Root`.
   ASTType type;
-  size_t index = 0;     ///< TupleElement / EnumPayload.
-  StringAttr fieldName; ///< StructField.
+  size_t index = 0; ///< Element/payload index or slice start.
+  union {
+    size_t endOffset = 0; ///< Elements excluded from the end of a list slice.
+    StringAttr fieldName; ///< StructField.
+  };
 
   void print(raw_ostream &os) const;
   LLVM_DUMP_METHOD void dump() const;
@@ -64,20 +75,69 @@ using PatternCommandList = ArrayRef<const PatternCommand *>;
 /// One step in a case program: test the subject at `path`, nest alternatives,
 /// or record a name binding for later emission.
 struct PatternCommand {
-  enum Kind { Equal, EnumTag, Or, Bind };
+  enum Kind { Equal, EnumTag, ListLength, Or, Bind };
 
   Kind kind;
   /// The pattern path indicates what subobject is being tested.
   const PatternPath *path = nullptr;
   const ExprNode *expr = nullptr; ///< Source pattern (diags / later emit).
 
-  // Equal / EnumTag / Or.
-  size_t enumCaseIndex = 0;
-  ArrayRef<PatternCommandList> orAlternatives;
+  // ListLength.
+  struct ListLengthData {
+    size_t minimumLength;
+    bool exactLength;
+  };
+  struct BindData {
+    StringRef bindName;
+    PatternDeclKind declKind;
+  };
+  struct EmptyData {};
+  union {
+    // Equal.
+    EmptyData emptyData;
+    // EnumTag.
+    size_t enumCaseIndex;
+    // ListLength.
+    ListLengthData listLengthData;
+    // Or.
+    ArrayRef<PatternCommandList> orAlternatives;
+    // Bind.
+    BindData bindData;
+  };
 
-  // Bind.
-  StringRef bindName;
-  PatternDeclKind declKind = PatternDeclKind::kNone;
+  static PatternCommand getEqual(const PatternPath *path,
+                                 const ExprNode *expr) {
+    return {.kind = Equal, .path = path, .expr = expr, .emptyData = {}};
+  }
+  static PatternCommand getEnumTag(const PatternPath *path,
+                                   const ExprNode *expr, size_t enumCaseIndex) {
+    return {.kind = EnumTag,
+            .path = path,
+            .expr = expr,
+            .enumCaseIndex = enumCaseIndex};
+  }
+  static PatternCommand getListLength(const PatternPath *path,
+                                      const ExprNode *expr,
+                                      size_t minimumLength, bool exactLength) {
+    return {.kind = ListLength,
+            .path = path,
+            .expr = expr,
+            .listLengthData = {minimumLength, exactLength}};
+  }
+  static PatternCommand getOr(const PatternPath *path, const ExprNode *expr,
+                              ArrayRef<PatternCommandList> orAlternatives) {
+    return {.kind = Or,
+            .path = path,
+            .expr = expr,
+            .orAlternatives = orAlternatives};
+  }
+  static PatternCommand getBind(const PatternPath *path, const ExprNode *expr,
+                                StringRef bindName, PatternDeclKind declKind) {
+    return {.kind = Bind,
+            .path = path,
+            .expr = expr,
+            .bindData = {bindName, declKind}};
+  }
 
   void print(raw_ostream &os, unsigned indent = 0) const;
   LLVM_DUMP_METHOD void dump() const;
@@ -166,6 +226,9 @@ struct PatternEmitState {
   RValue emitTestForValue(IREmitter &emitter, const PatternCommand *command,
                           CValue value);
 
+  /// Test the minimum/exact length requirement of a list pattern.
+  RValue emitListLengthTest(IREmitter &emitter, const PatternCommand *command);
+
   /// AND together Equal/EnumTag tests in `commands` into one compile-time
   /// bool attribute. Or alternatives are OR'd with `getLogicalOr` (same as
   /// comptime `or`). Bind commands append to `bindings` (like `emitCommands`)
@@ -196,58 +259,59 @@ public:
   MojoInflightDiag emitWarning(SMLoc loc, const Twine &message = {});
 
   const PatternPath *getRootPath(ASTType type) {
-    return getOrCreatePath(PatternPath::Root, nullptr, type, 0, {});
+    return getOrCreatePath(PatternPath::Root, nullptr, type, 0, 0, {});
   }
   const PatternPath *getTupleElement(const PatternPath *parent, size_t index,
                                      ASTType elemType) {
     return getOrCreatePath(PatternPath::TupleElement, parent, elemType, index,
-                           {});
+                           0, {});
   }
   const PatternPath *getStructField(const PatternPath *parent,
                                     StringAttr fieldName, ASTType fieldType) {
-    return getOrCreatePath(PatternPath::StructField, parent, fieldType, 0,
+    return getOrCreatePath(PatternPath::StructField, parent, fieldType, 0, 0,
                            fieldName);
   }
   const PatternPath *getEnumPayload(const PatternPath *parent, size_t caseIndex,
                                     ASTType payloadType) {
     return getOrCreatePath(PatternPath::EnumPayload, parent, payloadType,
-                           caseIndex, {});
+                           caseIndex, 0, {});
+  }
+  const PatternPath *getListElement(const PatternPath *parent, size_t index) {
+    return getOrCreatePath(PatternPath::ListElement, parent, {}, index, 0, {});
+  }
+  const PatternPath *getListElementFromEnd(const PatternPath *parent,
+                                           size_t offset) {
+    return getOrCreatePath(PatternPath::ListElementFromEnd, parent, {}, offset,
+                           0, {});
+  }
+  const PatternPath *getListSlice(const PatternPath *parent, size_t start,
+                                  size_t endOffset) {
+    return getOrCreatePath(PatternPath::ListSlice, parent, {}, start, endOffset,
+                           {});
   }
 
   PatternCommand *createEqual(const PatternPath *path, const ExprNode *expr) {
-    auto *cmd = allocator.create<PatternCommand>();
-    cmd->kind = PatternCommand::Equal;
-    cmd->path = path;
-    cmd->expr = expr;
-    return cmd;
+    return allocator.intern(PatternCommand::getEqual(path, expr));
   }
   PatternCommand *createEnumTag(const PatternPath *path, const ExprNode *expr,
                                 size_t caseIndex) {
-    auto *cmd = allocator.create<PatternCommand>();
-    cmd->kind = PatternCommand::EnumTag;
-    cmd->path = path;
-    cmd->expr = expr;
-    cmd->enumCaseIndex = caseIndex;
-    return cmd;
+    return allocator.intern(PatternCommand::getEnumTag(path, expr, caseIndex));
+  }
+  PatternCommand *createListLength(const PatternPath *path,
+                                   const ExprNode *expr, size_t minimumLength,
+                                   bool exactLength) {
+    return allocator.intern(
+        PatternCommand::getListLength(path, expr, minimumLength, exactLength));
   }
   PatternCommand *createOr(const PatternPath *path, const ExprNode *expr,
                            ArrayRef<PatternCommandList> alternatives) {
-    auto *cmd = allocator.create<PatternCommand>();
-    cmd->kind = PatternCommand::Or;
-    cmd->path = path;
-    cmd->expr = expr;
-    cmd->orAlternatives = allocator.internElements(alternatives);
-    return cmd;
+    return allocator.intern(PatternCommand::getOr(
+        path, expr, allocator.internElements(alternatives)));
   }
   PatternCommand *createBind(const PatternPath *path, const ExprNode *expr,
                              StringRef name, PatternDeclKind declKind) {
-    auto *cmd = allocator.create<PatternCommand>();
-    cmd->kind = PatternCommand::Bind;
-    cmd->path = path;
-    cmd->expr = expr;
-    cmd->bindName = name;
-    cmd->declKind = declKind;
-    return cmd;
+    return allocator.intern(
+        PatternCommand::getBind(path, expr, name, declKind));
   }
 
   /// Bump-allocate `commands` and return an immutable command list.
@@ -303,10 +367,11 @@ private:
     const PatternPath *parent;
     PatternPath::Kind kind;
     size_t index;
+    size_t endOffset;
     Attribute fieldName;
     bool operator==(const PathKey &o) const {
       return parent == o.parent && kind == o.kind && index == o.index &&
-             fieldName == o.fieldName;
+             endOffset == o.endOffset && fieldName == o.fieldName;
     }
   };
   struct PathKeyInfo {
@@ -314,25 +379,28 @@ private:
       return {reinterpret_cast<const PatternPath *>(~uintptr_t(0)),
               PatternPath::Root,
               0,
+              0,
               {}};
     }
     static PathKey getTombstoneKey() {
       return {reinterpret_cast<const PatternPath *>(~uintptr_t(1)),
               PatternPath::Root,
               0,
+              0,
               {}};
     }
     static unsigned getHashValue(const PathKey &key) {
       return llvm::hash_combine(key.parent, unsigned(key.kind), key.index,
-                                key.fieldName);
+                                key.endOffset, key.fieldName);
     }
     static bool isEqual(const PathKey &a, const PathKey &b) { return a == b; }
   };
 
   const PatternPath *getOrCreatePath(PatternPath::Kind kind,
                                      const PatternPath *parent, ASTType type,
-                                     size_t index, StringAttr fieldName) {
-    PathKey key{parent, kind, index, fieldName};
+                                     size_t index, size_t endOffset,
+                                     StringAttr fieldName) {
+    PathKey key{parent, kind, index, endOffset, fieldName};
     const PatternPath *&slot = pathUniques[key];
     if (slot)
       return slot;
@@ -341,7 +409,10 @@ private:
     path->parent = parent;
     path->type = type;
     path->index = index;
-    path->fieldName = fieldName;
+    if (kind == PatternPath::ListSlice)
+      path->endOffset = endOffset;
+    else if (kind == PatternPath::StructField)
+      path->fieldName = fieldName;
     return slot = path;
   }
 

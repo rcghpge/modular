@@ -15,8 +15,9 @@ This version is still a work in progress.
   literals, contextual initializer lists such as `{}` and `{1, offset=2}`,
   explicit value patterns such as `== expected`, or-patterns (`|`), guards
   (`if`), `as` / bare name bindings, tuples, structs, and `EnumLike` types such
-  as `Optional`. An initializer-list pattern constructs a value of the subject
-  type and compares it to the subject. An explicit value pattern compares
+  as `Optional`, plus fixed and starred list patterns. An initializer-list
+  pattern constructs a value of the subject type and compares it to the
+  subject. An explicit value pattern compares
   against an existing value or expression without binding its name. Dynamic
   match also supports `var` / `ref` bindings; comptime match binds names as
   parameter values and rejects `var` / `ref`. Nested patterns can dig through
@@ -111,17 +112,26 @@ This version is still a work in progress.
   client matches when they compile against a new version of the package that
   adds a case they didn't know about.
 
-- Mojo supports list destructuring assignments from collections that conform
-  to `Sized` and that are subscriptable. A single `*name` captures the elements
-  between any leading and trailing patterns:
+- Mojo supports list destructuring assignments and list patterns for
+  collections that conform to `Sized` and that are subscriptable. A single
+  `*name` captures the elements between any leading and trailing patterns:
 
   ```mojo
   var [first, *middle, last] = values
+
+  match values:
+      case []:
+          print("empty")
+      case [1, *middle, last]:
+          print(len(middle), last)
+      case [first, *rest]:
+          print(first, len(rest))
   ```
 
-  The destructured value must conform to `Sized` and support integer and
-  `ContiguousSlice` subscripting if a `*` pattern is used. Trying to destructure
-  a list with too few elements will raise an error.
+  The subject must conform to `Sized` and support integer and
+  `ContiguousSlice` subscripting if a `*` pattern is used. A destructuring
+  assignment with the wrong length raises an error, while a list pattern with
+  the wrong length does not match.
 
 - `if case` and `while case`: Conditional patterns are also available in
   `if`, `elif`, and `while` statements using `case pattern = value`. The value

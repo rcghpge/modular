@@ -16,7 +16,7 @@
 """End-to-end pattern matching: literals, tuples, structs, Optional, EnumLike,
 and comptime match."""
 
-from std.collections import Optional
+from std.collections import List, Optional
 from std.utils import Variant
 from std.os import abort
 
@@ -150,6 +150,20 @@ def classify_pair(pair: Tuple[Int, Int]) -> String:
             return String("y-axis:", y)
         case (var x, var y):
             return String("pair:", x, ",", y)
+
+
+def classify_list(values: List[Int]) -> String:
+    match values:
+        case []:
+            return "empty"
+        case [0]:
+            return "zero"
+        case [first, *middle, last]:
+            return String("middle:", first, ":", len(middle), ":", last)
+        case [first, *rest]:
+            return String("rest:", first, ":", len(rest))
+        case _:
+            abort("unreachable")
 
 
 def classify_expected(value: Int, expected: Int) -> String:
@@ -408,6 +422,22 @@ def test_tuples_and_structs():
     print(classify_point(Point(9, 1)))
 
 
+def test_lists():
+    # CHECK-LABEL: == test_lists
+    print("== test_lists")
+
+    # CHECK: empty
+    print(classify_list([]))
+    # CHECK: zero
+    print(classify_list([0]))
+    # CHECK: middle:1:1:3
+    print(classify_list([1, 2, 3]))
+    # CHECK: middle:4:0:5
+    print(classify_list([4, 5]))
+    # CHECK: rest:4:0
+    print(classify_list([4]))
+
+
 def test_explicit_value_patterns():
     # CHECK-LABEL: == test_explicit_value_patterns
     print("== test_explicit_value_patterns")
@@ -583,6 +613,7 @@ def main():
     test_enum_like_token()
     test_literals_guards_or()
     test_tuples_and_structs()
+    test_lists()
     test_explicit_value_patterns()
     test_or_bindings()
     test_if_case()

@@ -554,6 +554,10 @@ struct ListLiteralNode final : public LValueCapableExprNode {
                          bool isSpeculative) const override;
   LogicalResult emitDestructuringPValue(PValue value,
                                         IREmitter &emitter) const override;
+  LogicalResult
+  buildCheckList(PatternMatchBuilder &builder, CValue subject,
+                 const PatternPath *path,
+                 SmallVectorImpl<const PatternCommand *> &out) const override;
   void print(mlir::raw_indented_ostream &os) const override;
 };
 
