@@ -15,6 +15,7 @@ variants) built on the `algorithm.rowwise` scaffolder and the
 `builtin_kernels.monoids` monoid library."""
 
 from std.math import rsqrt
+from std.sys import size_of
 from std.sys.info import align_of
 
 from max.algorithm import mean
@@ -170,6 +171,7 @@ def rms_norm[
         simd_width=simd_width,
         target=target,
         num_phases=2,
+        dtype_size=size_of[dtype](),
         computationally_expensive=True,
     ](body, shape, context)
 
@@ -1336,6 +1338,6 @@ def rms_norm_fused_quantize_dynamic_scaled_fp8[
         axis=reduce_dim,
         simd_width=simd_width,
         target=target,
-        num_phases=2,
+        num_phases=3,
         computationally_expensive=True,
     ](body, shape, context)

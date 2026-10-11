@@ -15,7 +15,7 @@
 
 from std.math import exp, log
 from std.collections import Optional
-from std.sys import size_of
+from std.sys import align_of, size_of
 
 from max.gpu.host import DeviceContext
 from layout import Coord, CoordLike, TileTensor
@@ -135,7 +135,12 @@ def softmax[
             var output,
             var ctx_p,
         }:
-            comptime alignment = ctx_p.element_alignment[dtype, width]()
+            # `element_alignment` counts elements; `TileTensor.store` takes
+            # bytes. Passing the count through under-claims alignment and splits
+            # the store (a bf16 scalar becomes two byte stores).
+            comptime alignment = ctx_p.element_alignment[
+                dtype, width
+            ]() * align_of[dtype]()
             var tile_accum = tile.cast[accum]()
 
             comptime if logsoftmax:

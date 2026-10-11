@@ -77,6 +77,8 @@ from algorithm.cpu.rowwise import (
     launch as _cpu_launch,
     once as _cpu_once,
     pjoin as _cpu_pjoin,
+    pointwise_splitk_combine as _cpu_pointwise_splitk_combine,
+    pointwise_splitk_store_partial as _cpu_pointwise_splitk_store_partial,
     reduce as _cpu_reduce,
 )
 from algorithm.gpu.rowwise import (
@@ -445,18 +447,20 @@ def strided_load[
 #   phase-aware K+1-launch schedule, where `num_phases - 1` is the number
 #   of dependent `row.reduce` phases before the final per-element write.
 #
-# `num_phases` counts phases uniformly across both shapes: the 8 pure
-# reductions plus `row_mean_of_squares` pass `1` (the reduce's own result
-# IS the final output — no separate normalize phase); `rms_norm` /
-# `layer_norm` / `rms_norm_rope` / `rms_norm_fused_residual_add` /
-# `rms_norm_fused_quantize_dynamic_scaled_fp8` pass `2` (one reduce, then a
-# normalizing per-element write); `softmax` / `log_softmax` pass `3` (two
-# dependent reduces — max, then sum(exp(x-max)) — then the normalizing
-# write). Asserted `> 0`; a reduce-shaped body's `num_phases == 1` never
-# reaches the phase-aware split-K branch (that branch is gated on
-# `num_phases > 1`), so `associative` (reduce-shaped's CPU-only accumulator
-# knob) and `dtype_size` (normalize-shaped's split-K byte gate) are each
-# meaningless — and simply left at their defaults — for the other shape.
+# `num_phases` is the number of plain (uncached) `row.reduce` calls plus one:
+# the 8 pure reductions plus `row_mean_of_squares` pass `1` (the reduce's own
+# result IS the final output — no separate normalize phase); `rms_norm` /
+# `layer_norm` / `rms_norm_rope` / `layer_norm_rope_ragged` /
+# `rms_norm_fused_residual_add` (its second reduce reads a cache) pass `2`;
+# `softmax` / `log_softmax` / `rms_norm_fused_quantize_dynamic_scaled_fp8`
+# pass `3` (two plain reduces, then the per-element write). Cached reduces,
+# `cache`, and `emit` aren't phase-aware, so a body using them must leave
+# `dtype_size = 0` (asserted). Asserted `> 0`; a reduce-shaped body's
+# `num_phases == 1` never reaches the phase-aware split-K branch (that branch
+# is gated on `num_phases > 1`), so `associative` (reduce-shaped's CPU-only
+# accumulator knob) and `dtype_size` (normalize-shaped's split-K byte gate)
+# are each meaningless — and simply left at their defaults — for the other
+# shape.
 # (`BLOCK_SIZE` / `COOPERATIVE_BLOCK_SIZE` / `WARP_BLOCK_WARPS` are internal
 # GPU launch-geometry constants, not part of the public signature — no caller
 # anywhere in the repo has ever overridden them. `supports_tiled` is likewise
@@ -666,13 +670,13 @@ def launch[
             where element order matters (`product`'s narrower-dtype
             rounding, tie-breaking in `arg_max` / `arg_min`, ...). Ignored
             on GPU and meaningless for normalize-shaped bodies.
-        dtype_size: Normalize-shaped (`num_phases > 1`) only, GPU only.
-            Byte size of the body's primary dtype (`size_of[dtype]()`),
-            used only by the phase-aware split-K byte gate; `0` (the
-            default) leaves that tier's runtime condition permanently
-            false, so the extra codegen it introduces is unreachable
-            (softmax / log-softmax pass their dtype's size to actually
-            engage it). Meaningless for reduce-shaped bodies.
+        dtype_size: Normalize-shaped (`num_phases > 1`) only. Byte size
+            of the body's primary dtype (`size_of[dtype]()`), used by the
+            GPU phase-aware split-K byte gate; any value `> 0` also opts
+            the body into the CPU pointwise split-axis tier. `0` (the
+            default) leaves both tiers unreachable (softmax / log-softmax
+            / rms_norm pass their dtype's size to engage them).
+            Meaningless for reduce-shaped bodies.
 
     Args:
         body: The per-row computation. Receives a `Context` and the
@@ -696,6 +700,7 @@ def launch[
                 simd_width=simd_width,
                 supports_tiled=True,
                 associative=associative,
+                supports_splitk=True,
             ](body, shape)
         else:
             comptime assert is_gpu[target](), "unknown rowwise target"
@@ -722,6 +727,7 @@ def launch[
                 axis=axis,
                 simd_width=simd_width,
                 supports_tiled=False,
+                num_phases=num_phases if dtype_size > 0 else 0,
             ](body, shape)
         else:
             comptime assert is_gpu[target](), "unknown rowwise target"
@@ -1206,7 +1212,10 @@ struct Row[
             self._reduce_index = i + 1
             var phase = Int(self.ctx._phase)
             if i < phase:
-                return _pointwise_splitk_combine[M](self.ctx, i)
+                comptime if is_cpu[Self.params.target]():
+                    return _cpu_pointwise_splitk_combine[M](self.ctx, i)
+                else:
+                    return _pointwise_splitk_combine[M](self.ctx, i)
             if i > phase:
                 return M()
 
@@ -1226,14 +1235,24 @@ struct Row[
                     Self._index_vector[ws](pos),
                 )
 
-            _gpu_reduce(
-                self.row_coord,
-                Int(self.axis_size.value()),
-                self.ctx,
-                partial,
-                splitk_reduce_tile,
-            )
-            _pointwise_splitk_store_partial(partial, self.ctx, i)
+            comptime if is_cpu[Self.params.target]():
+                _cpu_reduce(
+                    self.row_coord,
+                    Int(self.axis_size.value()),
+                    self.ctx,
+                    partial,
+                    splitk_reduce_tile,
+                )
+                _cpu_pointwise_splitk_store_partial(partial, self.ctx, i)
+            else:
+                _gpu_reduce(
+                    self.row_coord,
+                    Int(self.axis_size.value()),
+                    self.ctx,
+                    partial,
+                    splitk_reduce_tile,
+                )
+                _pointwise_splitk_store_partial(partial, self.ctx, i)
             return partial
 
         var state = M()
@@ -1322,6 +1341,10 @@ struct Row[
                 (non-fuse path only).
         """
         comptime if Self.params._num_phases > 1:
+            debug_assert(
+                self._reduce_index == Self.params._num_phases - 1,
+                "num_phases must be the number of plain reduces + 1",
+            )
             # Split-K terminal: write only in the final phase (`p == N`,
             # every reduce already combined to its global stat; `N` is the
             # number of dependent reduces, `Self.params._num_phases - 1`).
@@ -1338,12 +1361,20 @@ struct Row[
                     comptime al = ctx.element_alignment[Self.dtype, ws]()
                     g[ws](input_fn[ws, al](coords), coords)
 
-                _gpu_reduce(
-                    self.row_coord,
-                    Int(self.axis_size.value()),
-                    self.ctx,
-                    splitk_emit_tile,
-                )
+                comptime if is_cpu[Self.params.target]():
+                    _cpu_reduce(
+                        self.row_coord,
+                        Int(self.axis_size.value()),
+                        self.ctx,
+                        splitk_emit_tile,
+                    )
+                else:
+                    _gpu_reduce(
+                        self.row_coord,
+                        Int(self.axis_size.value()),
+                        self.ctx,
+                        splitk_emit_tile,
+                    )
             return
 
         comptime if Self._fuse:
@@ -1413,6 +1444,9 @@ struct Row[
                 row's output(s) at the collapsed coordinate (reduced axis
                 pinned to 0).
         """
+        comptime assert (
+            Self.params._num_phases <= 1
+        ), "emit isn't phase-aware; pass dtype_size=0 to launch"
         var row_coord = self.row_coord
 
         @inline(.always)
@@ -1481,6 +1515,9 @@ struct Row[
         Returns:
             A `RowCache` handle over the cached row.
         """
+        comptime assert (
+            Self.params._num_phases <= 1
+        ), "cache isn't phase-aware; pass dtype_size=0 to launch"
         var out = RowCache[
             Self.params,
             T,
@@ -1613,6 +1650,9 @@ struct Row[
         Returns:
             The joined `M`, broadcast to every participant.
         """
+        comptime assert (
+            Self.params._num_phases <= 1
+        ), "cached reduce isn't phase-aware; pass dtype_size=0 to launch"
         var state = M()
 
         comptime if Self._fuse:
@@ -1749,6 +1789,9 @@ struct Row[
                 (non-fuse path only).
             compute: The producer that built `over` (non-fuse path only).
         """
+        comptime assert (
+            Self.params._num_phases <= 1
+        ), "cached elementwise isn't phase-aware; pass dtype_size=0 to launch"
         comptime if Self._fuse:
             var participant = Self._participant()
             var base = over.row_coord
