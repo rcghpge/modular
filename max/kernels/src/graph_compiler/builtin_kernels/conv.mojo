@@ -458,15 +458,16 @@ struct Conv:
         var pad_h_tuple = IndexList[2](0)
         var pad_w_tuple = IndexList[2](0)
 
-        comptime if input.rank == 3:
-            pad_w_tuple = Index(paddings._ptr[0], paddings._ptr[1])
-        elif input.rank == 4:
-            pad_h_tuple = Index(paddings._ptr[0], paddings._ptr[1])
-            pad_w_tuple = Index(paddings._ptr[2], paddings._ptr[3])
-        elif input.rank == 5:
-            pad_d_tuple = Index(paddings._ptr[0], paddings._ptr[1])
-            pad_h_tuple = Index(paddings._ptr[2], paddings._ptr[3])
-            pad_w_tuple = Index(paddings._ptr[4], paddings._ptr[5])
+        comptime match input.rank:
+            case 3:
+                pad_w_tuple = Index(paddings._ptr[0], paddings._ptr[1])
+            case 4:
+                pad_h_tuple = Index(paddings._ptr[0], paddings._ptr[1])
+                pad_w_tuple = Index(paddings._ptr[2], paddings._ptr[3])
+            case 5:
+                pad_d_tuple = Index(paddings._ptr[0], paddings._ptr[1])
+                pad_h_tuple = Index(paddings._ptr[2], paddings._ptr[3])
+                pad_w_tuple = Index(paddings._ptr[4], paddings._ptr[5])
 
         comptime input_shape_val = Int(
             input._static_shape_tuple[input.rank - 1]

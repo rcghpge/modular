@@ -517,18 +517,19 @@ def dispatch_amd_matmul_by_block_shape[
         launcher_fn[default_config]()
 
     # auto-tuned sizes
-    if M == 128 and N == 256 and K == 256:
-        default_config_launcher[32, 32, 128]()
-    elif M == 256 and N == 512 and K == 1024:
-        default_config_launcher[32, 32, 128]()
-    elif M == 384 and N == 768 and K == 1024:
-        default_config_launcher[32, 64, 128]()
-    elif M == 1977 and N == 192 and K == 1024:
-        default_config_launcher[64, 96, 128]()
-    elif M == 1977 and N == 1280 and K == 1024:
-        default_config_launcher[96, 96, 64]()
-    else:
-        default_config_launcher[64, 64, 64]()
+    match (M, N, K):
+        case (128, 256, 256):
+            default_config_launcher[32, 32, 128]()
+        case (256, 512, 1024):
+            default_config_launcher[32, 32, 128]()
+        case (384, 768, 1024):
+            default_config_launcher[32, 64, 128]()
+        case (1977, 192, 1024):
+            default_config_launcher[64, 96, 128]()
+        case (1977, 1280, 1024):
+            default_config_launcher[96, 96, 64]()
+        case _:
+            default_config_launcher[64, 64, 64]()
 
 
 def grouped_matmul_amd[

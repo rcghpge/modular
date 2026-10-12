@@ -1301,7 +1301,7 @@ def packA_i8mm[
 
 
 @fieldwise_init
-struct InnerKernelID(TrivialRegisterPassable):
+struct InnerKernelID(EnumLike, TrivialRegisterPassable):
     """Identifies the inner matmul kernel variant selected for a target."""
 
     comptime DEFAULT = InnerKernelID(0)
@@ -1310,6 +1310,35 @@ struct InnerKernelID(TrivialRegisterPassable):
     comptime I8MM = InnerKernelID(3)
 
     var value: Int
+
+    # The implicit fieldwise initializer accepts raw values outside the named
+    # cases, so the enum is not exhaustive.
+    comptime _enum_is_exhaustive = False
+
+    comptime _enum_case_names = ParameterList.of[
+        "DEFAULT".value,
+        "VNNI".value,
+        "NEON".value,
+        "I8MM".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        """Return the active case index."""
+        return self.value
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        """InnerKernelID cases carry no payload."""
+        comptime assert False, "InnerKernelID has no payload"
 
     @inline(.always)
     def __eq__(self, rhs: InnerKernelID) -> Bool:

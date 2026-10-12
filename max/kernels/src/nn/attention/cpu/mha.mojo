@@ -822,14 +822,15 @@ struct _FlashAttention[
                 def get_mask_nd_index(
                     x: Int, y: Int
                 ) -> IndexList[Self.mask_rank]:
-                    comptime if Self.mask_rank == 4:
-                        return IndexList[Self.mask_rank](batch, head, x, y)
-                    elif Self.mask_rank == 3:
-                        return IndexList[Self.mask_rank](batch, x, y)
-                    elif Self.mask_rank == 2:
-                        return IndexList[Self.mask_rank](x, y)
-                    else:
-                        return IndexList[Self.mask_rank]()
+                    comptime match Self.mask_rank:
+                        case 4:
+                            return IndexList[Self.mask_rank](batch, head, x, y)
+                        case 3:
+                            return IndexList[Self.mask_rank](batch, x, y)
+                        case 2:
+                            return IndexList[Self.mask_rank](x, y)
+                        case _:
+                            return IndexList[Self.mask_rank]()
 
                 var count_m = min(Self._config.block_m, seq_len - m)
                 var count_n = min(Self._config.o_block_n, depth_dim - n)

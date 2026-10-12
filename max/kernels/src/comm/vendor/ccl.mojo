@@ -303,14 +303,15 @@ struct Communicators(ImplicitlyCopyable):
 
 
 def _dtype_to_ccl[dtype: DType]() raises -> ncclDataType_t:
-    comptime if dtype == .float32:
-        return ncclDataType_t.ncclFloat32
-    elif dtype == .bfloat16:
-        return ncclDataType_t.ncclBfloat16
-    elif dtype == .float16:
-        return ncclDataType_t.ncclFloat16
-
-    raise Error("vendor_ccl: dtype not supported: ", dtype)
+    comptime match dtype:
+        case .float32:
+            return ncclDataType_t.ncclFloat32
+        case .bfloat16:
+            return ncclDataType_t.ncclBfloat16
+        case .float16:
+            return ncclDataType_t.ncclFloat16
+        case _:
+            raise Error("vendor_ccl: dtype not supported: ", dtype)
 
 
 @inline(.always)

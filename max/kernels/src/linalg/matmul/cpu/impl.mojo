@@ -773,68 +773,69 @@ def matmul[
             kernel_type=kernel_type,
         ]()
 
-        comptime if kernel_id == InnerKernelID.DEFAULT:
-            _matmul_cpu_impl[
-                config,
-                transpose_b,
-                b_packed,
-                elementwise_lambda_fn,
-                kernel_id,
-            ](
-                Inner_matmul_default(),
-                c,
-                a,
-                b,
-                num_threads,
-                ctx,
-            )
-        elif kernel_id == InnerKernelID.VNNI:
-            _matmul_cpu_impl[
-                config,
-                transpose_b,
-                b_packed,
-                elementwise_lambda_fn,
-                kernel_id,
-            ](
-                Inner_matmul_vnni[saturated_vnni](),
-                c,
-                a,
-                b,
-                num_threads,
-                ctx,
-            )
-        elif kernel_id == InnerKernelID.NEON:
-            _matmul_cpu_impl[
-                config,
-                transpose_b,
-                b_packed,
-                elementwise_lambda_fn,
-                kernel_id,
-            ](
-                Inner_matmul_neon(),
-                c,
-                a,
-                b,
-                num_threads,
-                ctx,
-            )
-        elif kernel_id == InnerKernelID.I8MM:
-            _matmul_cpu_impl[
-                config,
-                transpose_b,
-                b_packed,
-                elementwise_lambda_fn,
-                kernel_id,
-            ](
-                Inner_matmul_i8mm(),
-                c,
-                a,
-                b,
-                num_threads,
-                ctx,
-            )
-        else:
-            comptime assert False, "no _run_inner_loop implementation"
+        comptime match kernel_id:
+            case .DEFAULT:
+                _matmul_cpu_impl[
+                    config,
+                    transpose_b,
+                    b_packed,
+                    elementwise_lambda_fn,
+                    kernel_id,
+                ](
+                    Inner_matmul_default(),
+                    c,
+                    a,
+                    b,
+                    num_threads,
+                    ctx,
+                )
+            case .VNNI:
+                _matmul_cpu_impl[
+                    config,
+                    transpose_b,
+                    b_packed,
+                    elementwise_lambda_fn,
+                    kernel_id,
+                ](
+                    Inner_matmul_vnni[saturated_vnni](),
+                    c,
+                    a,
+                    b,
+                    num_threads,
+                    ctx,
+                )
+            case .NEON:
+                _matmul_cpu_impl[
+                    config,
+                    transpose_b,
+                    b_packed,
+                    elementwise_lambda_fn,
+                    kernel_id,
+                ](
+                    Inner_matmul_neon(),
+                    c,
+                    a,
+                    b,
+                    num_threads,
+                    ctx,
+                )
+            case .I8MM:
+                _matmul_cpu_impl[
+                    config,
+                    transpose_b,
+                    b_packed,
+                    elementwise_lambda_fn,
+                    kernel_id,
+                ](
+                    Inner_matmul_i8mm(),
+                    c,
+                    a,
+                    b,
+                    num_threads,
+                    ctx,
+                )
+            case _:
+                comptime assert False, "no _run_inner_loop implementation"
 
     var shape = GemmShape.get[transpose_b](c, a, b)
     var n = shape.N
@@ -911,65 +912,66 @@ def _submatmul_sequential_sync[
 ):
     comptime kernel_id = select_inner_kernel[a.dtype, b.dtype, c.dtype]()
 
-    comptime if kernel_id == InnerKernelID.DEFAULT:
-        _submatmul_sequential_sync[
-            config,
-            transpose_b,
-            b_packed,
-            elementwise_lambda_fn,
-            kernel_id,
-        ](
-            Inner_matmul_default(),
-            c,
-            a,
-            b,
-            sub_matrix_shape,
-            sub_matrix_offset,
-        )
-    elif kernel_id == InnerKernelID.VNNI:
-        _submatmul_sequential_sync[
-            config,
-            transpose_b,
-            b_packed,
-            elementwise_lambda_fn,
-            kernel_id,
-        ](
-            Inner_matmul_vnni[saturated_vnni](),
-            c,
-            a,
-            b,
-            sub_matrix_shape,
-            sub_matrix_offset,
-        )
-    elif kernel_id == InnerKernelID.NEON:
-        _submatmul_sequential_sync[
-            config,
-            transpose_b,
-            b_packed,
-            elementwise_lambda_fn,
-            kernel_id,
-        ](
-            Inner_matmul_neon(),
-            c,
-            a,
-            b,
-            sub_matrix_shape,
-            sub_matrix_offset,
-        )
-    elif kernel_id == InnerKernelID.I8MM:
-        _submatmul_sequential_sync[
-            config,
-            transpose_b,
-            b_packed,
-            elementwise_lambda_fn,
-            kernel_id,
-        ](
-            Inner_matmul_i8mm(),
-            c,
-            a,
-            b,
-            sub_matrix_shape,
-            sub_matrix_offset,
-        )
-    else:
-        comptime assert False, "no _run_inner_loop implementation"
+    comptime match kernel_id:
+        case .DEFAULT:
+            _submatmul_sequential_sync[
+                config,
+                transpose_b,
+                b_packed,
+                elementwise_lambda_fn,
+                kernel_id,
+            ](
+                Inner_matmul_default(),
+                c,
+                a,
+                b,
+                sub_matrix_shape,
+                sub_matrix_offset,
+            )
+        case .VNNI:
+            _submatmul_sequential_sync[
+                config,
+                transpose_b,
+                b_packed,
+                elementwise_lambda_fn,
+                kernel_id,
+            ](
+                Inner_matmul_vnni[saturated_vnni](),
+                c,
+                a,
+                b,
+                sub_matrix_shape,
+                sub_matrix_offset,
+            )
+        case .NEON:
+            _submatmul_sequential_sync[
+                config,
+                transpose_b,
+                b_packed,
+                elementwise_lambda_fn,
+                kernel_id,
+            ](
+                Inner_matmul_neon(),
+                c,
+                a,
+                b,
+                sub_matrix_shape,
+                sub_matrix_offset,
+            )
+        case .I8MM:
+            _submatmul_sequential_sync[
+                config,
+                transpose_b,
+                b_packed,
+                elementwise_lambda_fn,
+                kernel_id,
+            ](
+                Inner_matmul_i8mm(),
+                c,
+                a,
+                b,
+                sub_matrix_shape,
+                sub_matrix_offset,
+            )
+        case _:
+            comptime assert False, "no _run_inner_loop implementation"
