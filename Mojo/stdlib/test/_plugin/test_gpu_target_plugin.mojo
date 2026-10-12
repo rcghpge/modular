@@ -11,8 +11,9 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std._plugin import PluginForTarget
 from std._plugin._overlay import STD_PLUGINS
-from std.testing import assert_equal, TestSuite
+from std.testing import assert_equal, assert_false, TestSuite
 
 from max.gpu.host.info import (
     _a100_target,
@@ -40,6 +41,12 @@ def test_amd_targets_select_hip_plugin() raises:
 
 def test_apple_targets_select_metal_plugin() raises:
     assert_equal(_idx[_metal_m1_target._mlir_value](), 1)
+
+
+def test_plugin_for_target_specializes_on_target() raises:
+    assert_false(
+        PluginForTarget[_h100_target._mlir_value]._handles_debug_assert
+    )
 
 
 def main() raises:

@@ -11,8 +11,13 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std._plugin._trait import PluginHooks, _PrintEmitPluginHookFnType
+from std._plugin._trait import (
+    PluginHooks,
+    StdPlugin,
+    _PrintEmitPluginHookFnType,
+)
 from std.collections import OptionalReg
+from std.sys.info import CompilationTarget
 from std.collections.string.string_span import _get_kgen_string
 from std.ffi import CStringSpan
 from std.io.file_descriptor import FileDescriptor
@@ -27,11 +32,14 @@ def _print_emit[O: Origin](cstr: CStringSpan[O], file: FileDescriptor):
     _metal_print_write(StringSlice(unsafe_from_utf8=cstr.as_bytes_with_nul()))
 
 
-struct MetalPlugin(PluginHooks):
+struct MetalPlugin(StdPlugin):
     """`PluginHooks` implementation for Apple Metal backends."""
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["metal"]()
+    comptime HookFor[target: CompilationTarget] = MetalPluginHooks[target]
 
+
+struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     comptime print_emit_fn: OptionalReg[
         _PrintEmitPluginHookFnType
     ] = _print_emit

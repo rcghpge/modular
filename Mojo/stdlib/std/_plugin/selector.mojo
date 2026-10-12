@@ -16,7 +16,16 @@ from std.sys.info import _TargetType, _current_target
 
 
 trait Plugin:
-    """Defines the identity required by a compile-time plugin registry."""
+    """Defines the identity required by a compile-time plugin registry.
+
+    Each plugin system refines this trait with a parametric member
+    `comptime HookFor[target: CompilationTarget]: <Hooks>` naming the hooks it
+    uses for `target`. Traits can't take parameters, so this indirection is how
+    a plugin's hook trait gets specialized per target: the plugin is a plain
+    struct that selects a backend by `name`, and `HookFor[target]` is a
+    separate struct parameterized on the target that implements the actual
+    hooks.
+    """
 
     comptime name: __mlir_type.`!kgen.string`
     """The stable identifier matched against a target's plugin field."""
@@ -27,6 +36,15 @@ struct PluginSelector[
     //,
     *PluginTypes: Trait,
 ]:
+    """Selects one of `PluginTypes` by matching a target's `stdlib_plugin`
+    field against each plugin's `name`.
+
+    The selected plugin is not yet specialized to a target; callers apply it
+    with `HookFor`, for example
+    `SELECTOR.current.HookFor[CompilationTarget.current()]` or
+    `SELECTOR.for_target[target].HookFor[CompilationTarget[_mlir_value=target]()]`.
+    """
+
     comptime index_for_target[
         target: _TargetType
     ]: __mlir_type.index = Self._find[target, __mlir_attr.`0 : index`]()

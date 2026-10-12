@@ -26,6 +26,7 @@ from std.collections.string.string_span import (
 from std.utils import StaticTuple
 
 from .selector import Plugin
+from std.sys.info import CompilationTarget
 
 comptime _ReduceGeneratorPluginHookFnType = (
     def[
@@ -56,7 +57,11 @@ comptime _ReduceGeneratorPluginHookFnType = (
 """Plugin-hook signature for `PluginHooks.reduce_generator_fn`; keep in sync with `_reduce_generator`."""
 
 
-trait PluginHooks(Plugin):
+trait StdPlugin(Plugin):
+    comptime HookFor[target: CompilationTarget]: PluginHooks
+
+
+trait PluginHooks:
     """Compile-time hook interface for pluggable stdlib behavior.
 
     Most hooks are `comptime OptionalReg[Callable]` fields; call sites invoke
@@ -69,9 +74,6 @@ trait PluginHooks(Plugin):
     path — an `OptionalReg` field would re-enter that template via its own
     `debug_assert` and deadlock comptime instantiation.
     """
-
-    comptime name: __mlir_type.`!kgen.string`
-    """Stable plugin identifier used by the selector to select this backend."""
 
     # ===------------------------------------------------------------------=== #
     # Math & Algorithm Operations
@@ -202,7 +204,7 @@ trait PluginHooks(Plugin):
 # ===-----------------------------------------------------------------------===#
 
 
-struct DefaultPlugin(PluginHooks):
+struct DefaultPlugin(StdPlugin):
     """Default `PluginHooks` implementation used when no plugin is active.
 
     Every hook is left at its `PluginHooks` default, so the built-in stdlib
@@ -210,3 +212,8 @@ struct DefaultPlugin(PluginHooks):
     """
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["default"]()
+    comptime HookFor[target: CompilationTarget] = DefaultPluginHooks[target]
+
+
+struct DefaultPluginHooks[target: CompilationTarget](PluginHooks):
+    pass
