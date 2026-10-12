@@ -235,3 +235,4 @@ pyproject.toml @modular/sdlc
 /Support/**/Profiling/ @modular/mojo-tooling
 /Support/include/Support/Profiling/PluginABI.h @modular/max-sdk
 /Support/lib/ProfilerHostGlue.cpp @modular/max-sdk
+/Support/max_license/Tracy/ @modular/max-sdk

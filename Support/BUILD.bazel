@@ -611,7 +611,7 @@ PROFILING_DEPS = [
 })
 
 # Modular's Tracy profiler integration (CPU zones + the TracyCuda/TracyRocm
-# GPU backends). The headers live under Support/mcl/ and the GPU backend
+# GPU backends). The headers live under Support/max_license/ and the GPU backend
 # sources under Support/internal/, so neither is part of the public
 # open-source export; this target keeps the long-standing name so the many
 # compiler-stack consumers keep their dep label and the OSS build keeps
@@ -623,10 +623,10 @@ modular_cc_library(
         "internal/Tracy/TracyRocm.cpp",
     ],
     hdrs = [
-        "mcl/Tracy/Tracy.h",
-        "mcl/Tracy/TracyCuda.h",
-        "mcl/Tracy/TracyRocm.h",
-        "mcl/Tracy/TracyZone.h",
+        "max_license/Tracy/Tracy.h",
+        "max_license/Tracy/TracyCuda.h",
+        "max_license/Tracy/TracyRocm.h",
+        "max_license/Tracy/TracyZone.h",
     ],
     # TracyRocm.cpp uses a constructor to promote Tracy symbols to RTLD_GLOBAL
     # so that the rocprofiler-sdk plugin can resolve them via dlsym.
