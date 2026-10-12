@@ -1,5 +1,6 @@
-load("//bazel:api.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "modular_cc_library", "modular_shared_library", "mojo_shared_library", "pkg_files", "td_library")
+load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library", "mojo_shared_library", "pkg_files")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG")
+load("//bazel:tablegen.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "td_library")
 
 # gazelle:default_visibility //MLRT:consumers
 # gazelle:default_features layering_check,parse_headers
