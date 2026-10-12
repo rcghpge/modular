@@ -11,31 +11,24 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.ffi import _external_call_const
 from std.math import hypot, inf, isinf, isnan, nan
-from std.sys import bit_width_of, default_accelerator, simd_width_of
-from std.utils.numerics import FPUtils, max_finite
+from std.sys import default_accelerator, simd_width_of
+from std.utils.numerics import max_finite
 
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from std.testing import TestSuite, assert_equal, assert_raises
+from test_utils.binary_op_helpers import (
+    PairMode,
+    hypot_specials,
+    libm_call_binary,
+    pair_inputs,
+)
 
 from std.utils.coord import Coord
 
 comptime length = 8192
-comptime num_fill_modes = 3
 comptime seed = 1234
-
-
-def _libm[dtype: DType](x: Scalar[dtype], y: Scalar[dtype]) -> Scalar[dtype]:
-    """Calls host libm directly; f16/bf16 round the f32 libm result."""
-    comptime if dtype == .float64:
-        return _external_call_const["hypot", Scalar[dtype]](x, y)
-    elif dtype == .float32:
-        return _external_call_const["hypotf", Scalar[dtype]](x, y)
-    return _external_call_const["hypotf", Float32](
-        x.cast[.float32](), y.cast[.float32]()
-    ).cast[dtype]()
 
 
 def _check[
@@ -103,7 +96,7 @@ def run_hypot[
         for i in range(length):
             var x = x_host[i]
             var y = y_host[i]
-            var expected = _libm(x, y)
+            var expected = libm_call_binary["hypotf", "hypot"](x, y)
             worst = max(
                 worst,
                 _check[max_ulp](
@@ -122,136 +115,20 @@ def run_hypot[
     print(t"hypot {dtype} max ulp gpu: {worst} host: {worst_host}")
 
 
-struct _Rng:
-    var state: UInt64
-
-    def __init__(out self, seed: UInt64):
-        self.state = seed
-
-    def next(mut self) -> UInt64:
-        # splitmix64
-        self.state += 0x9E3779B97F4A7C15
-        var z = self.state
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EB
-        return z ^ (z >> 31)
-
-    def bits[dtype: DType](mut self) -> Scalar[dtype]:
-        """Returns a uniformly random bit pattern of `dtype`."""
-        comptime nbits = bit_width_of[dtype]()
-        var v = self.next() >> UInt64(64 - nbits)
-        return Scalar[dtype](from_bits=v.cast[FPUtils[dtype].integral_type]())
-
-    def uniform(mut self) -> Float64:
-        return Float64(self.next() >> 11) / Float64(1 << 53)
-
-
-def _specials[dtype: DType]() -> List[Scalar[dtype]]:
-    var big = max_finite[dtype]()
-    var tiny = Scalar[dtype](from_bits=Scalar[FPUtils[dtype].integral_type](1))
-    var min_normal = Scalar[dtype](
-        from_bits=Scalar[FPUtils[dtype].integral_type](
-            1 << FPUtils[dtype].mantissa_width()
-        )
-    )
-    var half_min_normal = Scalar[dtype](
-        from_bits=Scalar[FPUtils[dtype].integral_type](
-            1 << (FPUtils[dtype].mantissa_width() - 1)
-        )
-    )
-    var max_subnormal = Scalar[dtype](
-        from_bits=Scalar[FPUtils[dtype].integral_type](
-            (1 << FPUtils[dtype].mantissa_width()) - 1
-        )
-    )
-    var specials: List[Scalar[dtype]] = [
-        half_min_normal,
-        max_subnormal,
-        Scalar[dtype](0),
-        Scalar[dtype](-0.0),
-        Scalar[dtype](1),
-        Scalar[dtype](-1),
-        Scalar[dtype](0.5),
-        Scalar[dtype](1.5),
-        Scalar[dtype](2.5),
-        Scalar[dtype](-2.5),
-        Scalar[dtype](3),
-        Scalar[dtype](-7),
-        Scalar[dtype](0.75),
-        Scalar[dtype](10),
-        big,
-        -big,
-        tiny,
-        -tiny,
-        min_normal,
-        -min_normal,
-        inf[dtype](),
-        -inf[dtype](),
-        nan[dtype](),
-    ]
-
-    comptime if dtype == .bfloat16:
-        # Paired with max_subnormal, the f32 result is subnormal but casts
-        # to the minimum normal bf16 value.
-        specials.append(
-            Scalar[dtype](
-                from_bits=Scalar[FPUtils[dtype].integral_type](0x000C)
-            )
-        )
-    return specials^
-
-
 def _fill_pairs[
     dtype: DType
 ](
     x_device: DeviceBuffer[dtype],
     y_device: DeviceBuffer[dtype],
-    mode: Int,
+    mode: PairMode,
     seed: UInt64,
-) raises:
-    """Fills x and y with special-value pairs, then `mode`-specific inputs.
-
-    mode 0: random bit patterns for both operands.
-    mode 1: x random bits, y a small integer (some non-integral, some huge).
-    mode 2: x = (n + 0.5) * y, and x, y of nearby magnitude.
-    """
-    var rng = _Rng(seed)
-    var sp = _specials[dtype]()
+) raises where dtype.is_floating_point():
+    """Fills x and y with the `pair_inputs` for `mode`."""
+    var pairs = pair_inputs(hypot_specials[dtype](), mode, seed, length)
     with x_device.map_to_host() as x_host, y_device.map_to_host() as y_host:
-        var i = 0
-        for a in sp:
-            for b in sp:
-                x_host[i] = a
-                y_host[i] = b
-                i += 1
-        while i < length:
-            var x = rng.bits[dtype]()
-            var y: Scalar[dtype]
-            if mode == 0:
-                y = rng.bits[dtype]()
-            elif mode == 1:
-                var r = rng.uniform()
-                comptime span = 2 * (
-                    FPUtils[dtype].exponent_bias()
-                    + FPUtils[dtype].mantissa_width()
-                    + 4
-                )
-                var n = Float64(Int(r * Float64(span)) - span // 2)
-                if i % 17 == 0:
-                    n += 0.5
-                elif i % 29 == 0:
-                    n *= 1e6
-                y = Scalar[dtype](n)
-            else:
-                y = rng.bits[dtype]()
-                var n = Scalar[dtype](Int(rng.next() >> 54))
-                if i % 2 == 0:
-                    x = (n + 0.5) * y
-                else:
-                    x = y * Scalar[dtype](1 + rng.uniform() * 8)
-            x_host[i] = x
-            y_host[i] = y
-            i += 1
+        for i in range(length):
+            x_host[i] = pairs[0][i]
+            y_host[i] = pairs[1][i]
 
 
 def _run_all[
@@ -262,8 +139,9 @@ def _run_all[
     # Compare representable steps to the rounded libm oracle, not real-valued
     # ULP error. Narrow types can round the float32 paths to adjacent values.
     comptime hypot_ulp = 2 if dtype in (DType.float32, DType.float64) else 1
-    for mode in range(num_fill_modes):
-        _fill_pairs(x, y, mode, UInt64(seed + mode))
+    var modes: List[PairMode] = [.random_bits, .integer_y, .small_quotients]
+    for i, mode in enumerate(modes):
+        _fill_pairs(x, y, mode, UInt64(seed + i))
         run_hypot[hypot_ulp](ctx, x, y)
 
 

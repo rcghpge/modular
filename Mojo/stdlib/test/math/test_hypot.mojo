@@ -11,137 +11,21 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.ffi import _external_call_const
 from std.math import hypot, inf, isinf, isnan, nan
-from std.sys import argv, bit_width_of
+from std.sys import argv
 from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 from std.utils.numerics import FPUtils, FlushDenormals, max_finite
+
+from test_utils.binary_op_helpers import (
+    PairMode,
+    hypot_specials,
+    libm_call_binary,
+    pair_inputs,
+)
 
 
 comptime length = 1 << 12
 comptime width = 4
-comptime num_modes = 3
-
-
-def _libm[dtype: DType](x: Scalar[dtype], y: Scalar[dtype]) -> Scalar[dtype]:
-    comptime if dtype == .float64:
-        return _external_call_const["hypot", Scalar[dtype]](x, y)
-    elif dtype == .float32:
-        return _external_call_const["hypotf", Scalar[dtype]](x, y)
-    return _external_call_const["hypotf", Float32](
-        x.cast[.float32](), y.cast[.float32]()
-    ).cast[dtype]()
-
-
-struct _Rng:
-    var state: UInt64
-
-    def __init__(out self, seed: UInt64):
-        self.state = seed
-
-    def next(mut self) -> UInt64:
-        # splitmix64
-        self.state += 0x9E3779B97F4A7C15
-        var z = self.state
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EB
-        return z ^ (z >> 31)
-
-    def bits[dtype: DType](mut self) -> Scalar[dtype]:
-        comptime nbits = bit_width_of[dtype]()
-        var v = self.next() >> UInt64(64 - nbits)
-        return Scalar[dtype](from_bits=v.cast[FPUtils[dtype].integral_type]())
-
-    def uniform(mut self) -> Float64:
-        return Float64(self.next() >> 11) / Float64(1 << 53)
-
-
-def _specials[dtype: DType]() -> List[Scalar[dtype]]:
-    comptime IT = Scalar[FPUtils[dtype].integral_type]
-    var big = max_finite[dtype]()
-    var tiny = Scalar[dtype](from_bits=IT(1))
-    var min_normal = Scalar[dtype](
-        from_bits=IT(1 << FPUtils[dtype].mantissa_width())
-    )
-    var half_min_normal = Scalar[dtype](
-        from_bits=IT(1 << (FPUtils[dtype].mantissa_width() - 1))
-    )
-    var max_subnormal = Scalar[dtype](
-        from_bits=IT((1 << FPUtils[dtype].mantissa_width()) - 1)
-    )
-    return [
-        half_min_normal,
-        max_subnormal,
-        Scalar[dtype](0),
-        Scalar[dtype](-0.0),
-        Scalar[dtype](1),
-        Scalar[dtype](-1),
-        Scalar[dtype](0.5),
-        Scalar[dtype](1.5),
-        Scalar[dtype](2.5),
-        Scalar[dtype](-2.5),
-        Scalar[dtype](3),
-        Scalar[dtype](-7),
-        Scalar[dtype](0.75),
-        Scalar[dtype](10),
-        big,
-        -big,
-        tiny,
-        -tiny,
-        min_normal,
-        -min_normal,
-        inf[dtype](),
-        -inf[dtype](),
-        nan[dtype](),
-    ]
-
-
-def _inputs[
-    dtype: DType
-](mode: Int, seed: UInt64) -> Tuple[List[Scalar[dtype]], List[Scalar[dtype]]]:
-    """Returns special-value pairs, then `mode`-specific inputs.
-
-    mode 0: random bit patterns for both operands.
-    mode 1: x random bits, y a small integer (some non-integral, some huge).
-    mode 2: x = (n + 0.5) * y, and x, y of nearby magnitude.
-    """
-    var rng = _Rng(seed)
-    var sp = _specials[dtype]()
-    var xs = List[Scalar[dtype]]()
-    var ys = List[Scalar[dtype]]()
-    for a in sp:
-        for b in sp:
-            xs.append(a)
-            ys.append(b)
-    var i = len(xs)
-    while i < length:
-        var x = rng.bits[dtype]()
-        var y: Scalar[dtype]
-        if mode == 0:
-            y = rng.bits[dtype]()
-        elif mode == 1:
-            comptime span = 2 * (
-                FPUtils[dtype].exponent_bias()
-                + FPUtils[dtype].mantissa_width()
-                + 4
-            )
-            var n = Float64(Int(rng.uniform() * Float64(span)) - span // 2)
-            if i % 17 == 0:
-                n += 0.5
-            elif i % 29 == 0:
-                n *= 1e6
-            y = Scalar[dtype](n)
-        else:
-            y = rng.bits[dtype]()
-            var n = Scalar[dtype](Int(rng.next() >> 54))
-            if i % 2 == 0:
-                x = (n + 0.5) * y
-            else:
-                x = y * Scalar[dtype](1 + rng.uniform() * 8)
-        xs.append(x)
-        ys.append(y)
-        i += 1
-    return (xs^, ys^)
 
 
 def _check[
@@ -204,8 +88,11 @@ def _run[dtype: DType]() raises where dtype.is_floating_point():
     # ULP error. Narrow types can round the float32 paths to adjacent values.
     comptime max_ulp = 2 if dtype in (DType.float32, DType.float64) else 1
     var worst = 0
-    for mode in range(num_modes):
-        var inputs = _inputs[dtype](mode, UInt64(1234 + mode))
+    var modes: List[PairMode] = [.random_bits, .integer_y, .small_quotients]
+    for i, mode in enumerate(modes):
+        var inputs = pair_inputs(
+            hypot_specials[dtype](), mode, UInt64(1234 + i), length
+        )
         ref xs = inputs[0]
         ref ys = inputs[1]
         for base in range(0, length, width):
@@ -218,7 +105,7 @@ def _run[dtype: DType]() raises where dtype.is_floating_point():
             comptime for j in range(width):
                 var x = xv[j]
                 var y = yv[j]
-                var expected = _libm(x, y)
+                var expected = libm_call_binary["hypotf", "hypot"](x, y)
                 worst = max(worst, _check[max_ulp](got[j], expected))
     print(t"hypot {dtype} max ulp: {worst}")
 
@@ -358,7 +245,7 @@ def _test_near_overflow[dtype: DType]() raises where dtype.is_floating_point():
             var x = Scalar[dtype](from_bits=base + I(dx))
             var y = Scalar[dtype](from_bits=base + I(dy))
             var got = hypot(SIMD[dtype, width](x), SIMD[dtype, width](y))
-            var expected = _libm(x, y)
+            var expected = libm_call_binary["hypotf", "hypot"](x, y)
             for j in range(width):
                 # Near the overflow threshold the kernel and libm may each
                 # round to max_finite or inf, or differ by an ulp below
