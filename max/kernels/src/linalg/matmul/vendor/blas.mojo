@@ -565,69 +565,74 @@ def matmul[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(ctx),
     ):
-        comptime if handle.resolved_backend is Backend.CUBLAS:
-            _cublas_matmul[use_tf32=use_tf32](
-                ctx,
-                handle._get_cublas(),
-                c_tensor,
-                a_tensor,
-                b_tensor,
-                c_row_major=c_row_major,
-                transpose_a=transpose_a,
-                transpose_b=transpose_b,
-                alpha=alpha,
-                beta=beta,
-            )
-        elif handle.resolved_backend is Backend.ROCBLAS:
-            _rocblas_matmul[use_tf32=use_tf32](
-                ctx,
-                handle._get_rocblas(),
-                c_tensor,
-                a_tensor,
-                b_tensor,
-                c_row_major=c_row_major,
-                transpose_a=transpose_a,
-                transpose_b=transpose_b,
-                alpha=alpha,
-                beta=beta,
-            )
-        elif handle.resolved_backend is Backend.CUBLASLT:
-            _cublasLt_matmul[scales_type=scales_type, has_scales=has_scales](
-                ctx,
-                handle._get_cublas(),
-                c_tensor,
-                a_tensor,
-                b_tensor,
-                a_scales=a_scales,
-                b_scales=b_scales,
-                c_row_major=c_row_major,
-                transpose_a=transpose_a,
-                transpose_b=transpose_b,
-                alpha=alpha,
-                beta=beta,
-            )
-        elif handle.resolved_backend is Backend.HIPBLASLT:
-            _hipblasLt_matmul[scales_type=scales_type, has_scales=has_scales](
-                ctx,
-                handle._get_hipblaslt(),
-                c_tensor,
-                a_tensor,
-                b_tensor,
-                a_scales=a_scales,
-                b_scales=b_scales,
-                c_row_major=c_row_major,
-                transpose_a=transpose_a,
-                transpose_b=transpose_b,
-                alpha=alpha,
-                beta=beta,
-                batch_size=batch_size,
-            )
-        else:
-            raise Error(
-                "the backend '",
-                handle.backend,
-                "' is not currently supported",
-            )
+        comptime match handle.resolved_backend:
+            case .CUBLAS:
+                _cublas_matmul[use_tf32=use_tf32](
+                    ctx,
+                    handle._get_cublas(),
+                    c_tensor,
+                    a_tensor,
+                    b_tensor,
+                    c_row_major=c_row_major,
+                    transpose_a=transpose_a,
+                    transpose_b=transpose_b,
+                    alpha=alpha,
+                    beta=beta,
+                )
+            case .ROCBLAS:
+                _rocblas_matmul[use_tf32=use_tf32](
+                    ctx,
+                    handle._get_rocblas(),
+                    c_tensor,
+                    a_tensor,
+                    b_tensor,
+                    c_row_major=c_row_major,
+                    transpose_a=transpose_a,
+                    transpose_b=transpose_b,
+                    alpha=alpha,
+                    beta=beta,
+                )
+            case .CUBLASLT:
+                _cublasLt_matmul[
+                    scales_type=scales_type, has_scales=has_scales
+                ](
+                    ctx,
+                    handle._get_cublas(),
+                    c_tensor,
+                    a_tensor,
+                    b_tensor,
+                    a_scales=a_scales,
+                    b_scales=b_scales,
+                    c_row_major=c_row_major,
+                    transpose_a=transpose_a,
+                    transpose_b=transpose_b,
+                    alpha=alpha,
+                    beta=beta,
+                )
+            case .HIPBLASLT:
+                _hipblasLt_matmul[
+                    scales_type=scales_type, has_scales=has_scales
+                ](
+                    ctx,
+                    handle._get_hipblaslt(),
+                    c_tensor,
+                    a_tensor,
+                    b_tensor,
+                    a_scales=a_scales,
+                    b_scales=b_scales,
+                    c_row_major=c_row_major,
+                    transpose_a=transpose_a,
+                    transpose_b=transpose_b,
+                    alpha=alpha,
+                    beta=beta,
+                    batch_size=batch_size,
+                )
+            case _:
+                raise Error(
+                    "the backend '",
+                    handle.backend,
+                    "' is not currently supported",
+                )
 
 
 # ===----------------------------------------------------------------------===#
