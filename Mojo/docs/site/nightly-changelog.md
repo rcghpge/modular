@@ -408,6 +408,12 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `float64` `expm1()` in `std.math` no longer calls the system libm and now
+  runs on GPU as well as CPU. On CPU its result comes from the same Mojo
+  implementation, so it can differ from the system libm in the last ulp. On
+  targets that flush subnormals, subnormal inputs are handled; an input
+  whose result would be subnormal is returned bit-exactly, so no
+  subnormal result is ever flushed.
 - `std.math.logb` no longer calls the system libm and now runs on GPU as well
   as CPU. It reads the exponent from the bit pattern, so subnormal inputs
   return their true exponent even on GPUs that flush subnormals.
@@ -546,6 +552,8 @@ This version is still a work in progress.
   rejected with `struct has recursive reference to itself`, despite the
   recursion being behind a pointer.
 
+- `float32` `expm1()` no longer overflows early for inputs just below 88.7,
+  and it now returns `-0.0` for `-0.0` and `inf` for `inf`.
 - `float32` `erfc()` is now accurate in its tail, for large positive inputs,
   and returns subnormal results instead of flushing them to zero. On targets
   that flush subnormals, subnormal inputs are handled and normal results are

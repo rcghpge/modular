@@ -2224,59 +2224,6 @@ def sinh[
 
 
 @inline(.always)
-def _expm1_float32[
-    width: SIMDLength, //
-](d: SIMD[.float32, width]) -> type_of(d):
-    # Constants for range reduction
-    # R_LN2f = 1/ln(2) for converting to base-2 exponent
-    comptime R_LN2f = 1.442695040888963407359924681  # 1/ln(2)
-
-    # ln(2) split into high and low parts for extra precision
-    # ln(2) = L2Uf + L2Lf where both are exactly representable
-    comptime L2Uf = 0.693145751953125  # High part of ln(2)
-    comptime L2Lf = 1.428606765330187045e-06  # Low part of ln(2)
-
-    # Step 1: Range reduction
-    # Compute q = round(d / ln(2)) to find the power-of-2 scale factor
-    var q = round(d * R_LN2f)
-
-    # Step 2: Compute remainder s = d - q*ln(2) using compensated summation
-    # Use high and low parts of ln(2) for accurate subtraction
-    # s = d - q*L2Uf - q*L2Lf
-    var s = d - q * L2Uf  # Subtract high part
-    s = s - q * L2Lf  # Subtract low part (FMA for accuracy)
-
-    # Now s is in approximately [-ln(2)/2, ln(2)/2] ≈ [-0.347, 0.347]
-
-    # Step 3: Evaluate polynomial approximation for e^s - 1
-    # Using Taylor series: e^s - 1 ≈ s + s²/2! + s³/3! + s⁴/4! + s⁵/5! + s⁶/6!
-    # Coefficients are: 1/2!, 1/3!, 1/4!, 1/5!, 1/6!
-
-    # When x is in the range [0, 0.5], we use a polynomial approximation.
-    # P(x) = x + x^3*(c[4] + x^2 * (c[3] + x^2 * (... x^2 * c[0]) ... )).
-    var u = polynomial_evaluate[
-        [
-            Float32(0.5),
-            0.166666671633720397949219,
-            0.0416664853692054748535156,
-            0.00833336077630519866943359,
-            0.00139304355252534151077271,
-            0.000198527617612853646278381,
-        ]
-    ](s)
-
-    # Finalize: u*s² + s gives the full polynomial
-    # This computes: s + s²/2 + s³/6 + s⁴/24 + s⁵/120 + s⁶/720
-    u = s * s * u + s
-
-    # Step 4: Reconstruct the result
-    # If q = 0: e^d - 1 = e^s - 1 ≈ u (return polynomial directly)
-    # If q ≠ 0: e^d - 1 = 2^q * e^s - 1 = 2^q * (1 + u) - 1
-
-    return q.eq(0).select(u, ldexp(u + 1.0, q.cast[.int32]()) - 1.0)
-
-
-@inline(.always)
 def expm1[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
@@ -2296,13 +2243,17 @@ def expm1[
         The `expm1` of the input.
     """
 
-    comptime if bit_width_of[dtype]() <= 32:
+    _assert_float64_supported[dtype, "expm1"]()
+
+    comptime if bit_width_of[dtype]() < 32:
         # We promote the input to float32 and then cast back to the original
         # type. This is done to avoid precision issues that can occur when
         # using the lower-precision floating-point types.
-        return _expm1_float32(x.cast[.float32]()).cast[dtype]()
-
-    return _call_libm["expm1"](x)
+        var r = _expm1_accurate(x.cast[.float32]())
+        comptime if is_apple_gpu() and dtype == DType.bfloat16:
+            return rebind[type_of(x)](_narrow_f32_to_bf16_bits(r))
+        return r.cast[dtype]()
+    return _expm1_accurate(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4792,6 +4743,107 @@ def _pow2_impl[
         from_bits=(k + I(FPUtils[dtype].exponent_bias()))
         << I(FPUtils[dtype].mantissa_width())
     )
+
+
+def _expm1_accurate[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    # FreeBSD msun / Sun fdlibm `s_expm1.c` and `s_expm1f.c`, made branch-free
+    # over lanes. The k = 0 and k = +-1 cases avoid forming 2^k (1 + r) - 1,
+    # whose rounded 1 + r loses the low bits the subtraction exposes.
+    comptime assert dtype in (DType.float32, DType.float64)
+    comptime is_f32 = dtype == .float32
+    comptime T = type_of(x)
+    comptime int_t = DType.int32 if is_f32 else DType.int64
+    comptime uint_t = DType.uint32 if is_f32 else DType.uint64
+    comptime mant_bits = Scalar[uint_t](23 if is_f32 else 52)
+    comptime bias = Scalar[int_t](127 if is_f32 else 1023)
+    # x - k*ln2 = xr + c, with k * ln2_hi exact for every k reached here.
+    comptime ln2_hi = Scalar[dtype](6.9313812256e-01 if is_f32 else _LN2_HI_F64)
+    comptime ln2_lo = Scalar[dtype](9.0580006145e-06 if is_f32 else _LN2_LO_F64)
+    # Largest x with a finite result: log(MAX_FINITE) rounded down.
+    comptime o_threshold = Scalar[dtype](
+        88.72283172607421875 if is_f32 else 7.09782712893383973096e02
+    )
+    # Below -27 ln2 (f32) or -56 ln2 (f64), expm1(x) rounds to -1.
+    comptime neg_threshold = Scalar[dtype](
+        -18.714973875 if is_f32 else -38.816242111356935
+    )
+    # Below 2^-25 (f32) or 2^-54 (f64), expm1(x) rounds to x.
+    comptime tiny = Scalar[dtype](
+        2.98023223876953125e-08 if is_f32 else 5.551115123125783e-17
+    )
+    comptime clamp_lo = Scalar[dtype](-30.0 if is_f32 else -60.0)
+    comptime clamp_hi = Scalar[dtype](89.0 if is_f32 else 710.0)
+    # fdlibm's cutoff between the y_mid and y_hi forms below.
+    comptime k_mid = Scalar[int_t](23 if is_f32 else 20)
+
+    # Clamp (and zero NaN) so the float->int conversion below never sees an
+    # out-of-range value; lanes outside the clamp are replaced at the end.
+    var xc = isnan(x).select(T(0), x.clamp(clamp_lo, clamp_hi))
+    var kf = round(xc * log2e)
+    var k = kf.cast[int_t]()
+
+    var hi = xc - kf * ln2_hi
+    var lo = kf * ln2_lo
+    var xr = hi - lo
+    var c = (hi - xr) - lo
+
+    var hfx = 0.5 * xr
+    var hxs = xr * hfx
+    var q: T
+    comptime if is_f32:
+        q = polynomial_evaluate[
+            [Scalar[dtype](-3.3333212137e-2), 1.5807170421e-3]
+        ](hxs)
+    else:
+        q = polynomial_evaluate[
+            [
+                Scalar[dtype](-3.33333333333331316428e-02),
+                1.58730158725481460165e-03,
+                -7.93650757867487942473e-05,
+                4.00821782732936239552e-06,
+                -2.01099218183624371326e-07,
+            ]
+        ](hxs)
+    var r1 = 1.0 + hxs * q
+    var t = 3.0 - r1 * hfx
+    var e = hxs * ((r1 - t) / (6.0 - xr * t))
+
+    var res_k0 = xr - (xr * e - hxs)
+
+    e = xr * (e - c) - c
+    e = e - hxs
+
+    var res_km1 = 0.5 * (xr - e) - 0.5
+    var res_k1 = xr.lt(-0.25).select(
+        -2.0 * (e - (xr + 0.5)), 1.0 + 2.0 * (xr - e)
+    )
+
+    # 2^(k-1) and 2^-k as bit patterns; scaling by 2 * 2^(k-1) reaches the
+    # top binade without overflowing the exponent field.
+    var twopk_m1 = bitcast[dtype, width](
+        (k + (bias - 1)).cast[uint_t]() << mant_bits
+    )
+    var kc = k.clamp(-60, 60)
+    var twomk = bitcast[dtype, width]((bias - kc).cast[uint_t]() << mant_bits)
+
+    var y_far = (1.0 - (e - xr)) * 2.0 * twopk_m1 - 1.0
+    var y_mid = ((1.0 - twomk) - (e - xr)) * 2.0 * twopk_m1
+    var y_hi = ((xr - (e + twomk)) + 1.0) * 2.0 * twopk_m1
+
+    var res = (k.le(-2) | k.gt(56)).select(
+        y_far, k.lt(k_mid).select(y_mid, y_hi)
+    )
+    res = k.eq(1).select(res_k1, res)
+    res = k.eq(-1).select(res_km1, res)
+    res = k.eq(0).select(res_k0, res)
+
+    res = x.gt(o_threshold).select(inf[dtype](), res)
+    res = x.lt(neg_threshold).select(T(-1), res)
+    # NaN passes through; tiny inputs (including -0 and subnormals) return x
+    # exactly. Apple GPUs compare subnormals as zero, which still selects x.
+    return (isnan(x) | abs(x).lt(tiny)).select(x, res)
 
 
 def _atanh_float32(x: SIMD) -> type_of(x) where x.dtype.is_floating_point():

@@ -1569,5 +1569,118 @@ def test_erfc_subnormal_results() raises:
         )
 
 
+def _test_expm1_tiny_bits[
+    dtype: DType
+]() raises where dtype.is_floating_point():
+    comptime uint_type = DType.uint32 if dtype == .float32 else DType.uint64
+    comptime sign_bit = Scalar[uint_type](1) << Scalar[uint_type](
+        31 if dtype == .float32 else 63
+    )
+    comptime min_normal_bits = Scalar[uint_type](1) << Scalar[uint_type](
+        23 if dtype == .float32 else 52
+    )
+    for bits in [
+        Scalar[uint_type](0),
+        1,
+        2,
+        min_normal_bits >> 1,
+        min_normal_bits - 1,
+        min_normal_bits,
+    ]:
+        for sign in [Scalar[uint_type](0), sign_bit]:
+            var input_bits = bits | sign
+            var x = bitcast[dtype](input_bits)
+            assert_equal(bitcast[uint_type](expm1(x)), input_bits)
+            # A tiny lane must also be preserved alongside ordinary/special lanes.
+            var mixed = SIMD[dtype, 4](x, 1.0, inf[dtype](), nan[dtype]())
+            var result = expm1(mixed)
+            assert_equal(bitcast[uint_type](result[0]), input_bits)
+            assert_equal(result[2], inf[dtype]())
+            assert_true(isnan(result[3]))
+
+
+def test_expm1_bfloat16_tiny() raises:
+    # Subnormal bit patterns plus 0x3F80 (1.0), a normal boundary value.
+    var bits: List[UInt16] = [1, 2, 0x40, 0x7F, 0x80, 0x3F80]
+    for b in bits:
+        for sign in [UInt16(0), UInt16(0x8000)]:
+            var x = bitcast[DType.bfloat16](b | sign)
+            var expected = _call_libm["expm1"](x.cast[.float64]()).cast[
+                .bfloat16
+            ]()
+            assert_equal(
+                bitcast[DType.uint16](expm1(x)),
+                bitcast[DType.uint16](expected),
+            )
+
+
+def test_expm1_float32_edges() raises:
+    assert_equal(expm1(inf[.float32]()), inf[.float32]())
+    assert_equal(expm1(neg_inf[.float32]()), -1.0)
+    assert_true(isnan(expm1(nan[.float32]())))
+    var neg_zero = expm1(Float32(-0.0))
+    assert_equal(neg_zero, 0.0)
+    assert_equal(copysign(Float32(1.0), neg_zero), -1.0)
+    assert_equal(expm1(Float32(-30.0)), -1.0)
+    # Just below the overflow threshold log(FLT_MAX), where the result needs
+    # the top binade.
+    comptime log_flt_max = Float32(88.7228)
+    var near_overflow: List[Float32] = [88.38, 88.5, 88.72, log_flt_max]
+    for val in near_overflow:
+        var got = expm1(val)
+        assert_false(isinf(got), msg=String(t"expm1({val}) overflowed"))
+        assert_almost_equal(
+            got, _call_libm["expm1"](val), rtol=1e-6, msg=String(val)
+        )
+    assert_equal(expm1(Float32(88.73)), inf[.float32]())
+    assert_equal(expm1(Float32(1000.0)), inf[.float32]())
+    # The largest float32 below log(FLT_MAX) stays finite; the next one
+    # overflows.
+    comptime last_finite = Float32(88.72283172607421875)
+    assert_false(isinf(expm1(last_finite)))
+    assert_equal(expm1(Float32(88.72283935546875)), inf[.float32]())
+
+
+def test_expm1_float32_ulp() raises:
+    # The k = +-1 reductions (|x| near ln2) used to reach 3 ulp around 0.36.
+    # The reference is the float64 libm result rounded to float32, so this
+    # allows up to 1 ulp of error, not a correctly rounded result.
+    comptime n = 2_000
+    for i in range(n + 1):
+        var x = Float32(-20.0) + Float32(i) * (Float32(108.0) / n)
+        var dense = Float32(-1.5) + Float32(i) * (Float32(3.0) / n)
+        for val in [x, dense]:
+            var expected = _call_libm["expm1"](val.cast[.float64]()).cast[
+                .float32
+            ]()
+            var got = expm1(val)
+            assert_true(
+                abs(got - expected) <= ulp(expected),
+                msg=String(t"expm1({val}) = {got}, expected {expected}"),
+            )
+
+
+def test_expm1_float64_edges() raises:
+    assert_equal(expm1(inf[.float64]()), inf[.float64]())
+    assert_equal(expm1(neg_inf[.float64]()), -1.0)
+    assert_true(isnan(expm1(nan[.float64]())))
+    var neg_zero = expm1(Float64(-0.0))
+    assert_equal(neg_zero, 0.0)
+    assert_equal(copysign(Float64(1.0), neg_zero), -1.0)
+    assert_equal(expm1(Float64(-745.0)), -1.0)
+    # The float64 path is new, so pin its overflow threshold the way the
+    # float32 test does: the largest float64 below 1024*ln(2) stays finite
+    # (just under FLT64_MAX after subtracting 1), and the next one overflows.
+    comptime last_finite = Float64(709.782712893384)
+    assert_false(isinf(expm1(last_finite)))
+    assert_equal(expm1(Float64(709.7827128933841)), inf[.float64]())
+    assert_equal(expm1(Float64(1000.0)), inf[.float64]())
+
+
+def test_expm1_tiny_bits() raises:
+    _test_expm1_tiny_bits[.float32]()
+    _test_expm1_tiny_bits[.float64]()
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
