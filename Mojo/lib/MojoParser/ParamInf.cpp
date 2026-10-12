@@ -2405,7 +2405,7 @@ VerifiedParamBindings CallParamInf::inferForCall() {
   // that doesn't have us shadowing parameters like this!
   // A trait member's enclosing declaration is a trait rather than a struct, so
   // the struct-shaped CTAD inference never applies to one.
-  if (declIfKnown && !declIfKnown->getIfWitness()) {
+  if (declIfKnown && !isa<WitnessASTDecl>(declIfKnown)) {
     auto fnOp = cast<FnOp>(declIfKnown->getIfOperation());
     if (!fnOp.getIsStatic() && isa<StructDeclOp>(fnOp->getParentOp())) {
       if (failed(inferCTADParams()))

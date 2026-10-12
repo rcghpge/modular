@@ -270,7 +270,7 @@ TypedAttr LIT::getBoundConstAttrForFn(ASTDecl &fnDecl, SharedState &shared,
         verified.getDischargedBodyConstraints());
   }
 
-  auto witnessEntry = fnDecl.getIfWitness();
+  auto *witnessEntry = dyn_cast<WitnessASTDecl>(&fnDecl);
   assert(witnessEntry);
 
   ArrayRef<TypedAttr> verifiedValues = verified.getValues();

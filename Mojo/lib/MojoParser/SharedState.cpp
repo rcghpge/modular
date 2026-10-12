@@ -763,7 +763,7 @@ auto SharedState::lookupAndResolveDecl(StringRef name, SMLoc loc,
         }
         return LookupResult::getSuccess(e);
       }
-    } while ((curSearchScope = curSearchScope->parentDecl));
+    } while ((curSearchScope = curSearchScope->getParentDecl()));
     // If we found a name in a context that we skip, return it in the failure
     // for diagnostic reporting.
     return LookupResult::getFailure(skipped);
@@ -863,7 +863,7 @@ auto SharedState::lookupAllDeclsWithName(StringRef name, SMLoc loc,
         for (ASTDecl *decl : e)
           allDecls.push_back(decl);
       }
-    } while ((curSearchScope = curSearchScope->parentDecl));
+    } while ((curSearchScope = curSearchScope->getParentDecl()));
 
     // If we found declarations, return success.
     if (!allDecls.empty())
@@ -1533,7 +1533,7 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
       packageImportLoc = origin->bytecodeImportLoc;
       break;
     }
-  } while ((parentDecl = parentDecl->parentDecl));
+  } while ((parentDecl = parentDecl->getParentDecl()));
   assert(bytecodeReader && "bytecode decl doesn't have a bytecode reader");
 
   // Functor used to resolve references within a single operation.
@@ -1872,9 +1872,9 @@ SharedState::getCaptureRangeInScope(ASTDecl &scope) {
 void SharedState::addCaptureToScope(ASTDecl &scope, ASTDecl *captureDecl,
                                     Capture capture) {
   getImpl().capturesInScope[&scope].insert({capture.getSpelling(), capture});
-  if (captureDecl->getParentDecl() != scope.parentDecl) {
+  if (captureDecl->getParentDecl() != scope.getParentDecl()) {
     if (scope.getNearestDeclOfType<FnOp>())
-      addCaptureToScope(*scope.parentDecl, captureDecl, capture);
+      addCaptureToScope(*scope.getParentDecl(), captureDecl, capture);
   }
 }
 

@@ -651,7 +651,7 @@ CalleeResult OverloadSet::filterOverloadSet(
     }
 
     FnTypeGeneratorType desiredSignature = candidate->getDeclFullSignature();
-    if (candidate->getIfWitness()) {
+    if (isa<WitnessASTDecl>(candidate)) {
       auto sig = cast<FnTypeGeneratorType>(getCanonicalType(desiredSignature));
       ArrayRef<Type> inputParamTypes = sig.getInputParamTypes();
       if (inputParamTypes.empty() || !isa<TraitType>(inputParamTypes[0]))

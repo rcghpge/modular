@@ -101,6 +101,11 @@ public:
   ASTDecl &createUnlistedDecl(Operation *decl, llvm::SMLoc loc,
                               ASTDecl *parentDecl, LexerCursor cursor,
                               LexerCursor endCursor, ssize_t indentation);
+  WitnessASTDecl &
+  createUnlistedWitnessDecl(WitnessASTDecl::UnresolvedDecls unresolvedDecls,
+                            TraitSymbolAttr traitSymbol, llvm::SMLoc loc,
+                            ASTDecl *parentDecl, LexerCursor cursor,
+                            LexerCursor endCursor, ssize_t indentation);
 
   /// Attach a declaration to its parent's name table.  For use with
   /// `makeUnlistedDecl`.
@@ -431,8 +436,8 @@ private:
 
   ParseResult resolveSignature(TraitType traitType, ASTDecl &decl);
   ParseResult resolveBody(TraitType traitType, ASTDecl &decl);
-  ParseResult resolveSignature(WitnessDecl *witness, ASTDecl &decl);
-  ParseResult resolveBody(WitnessDecl *witness, ASTDecl &decl);
+  ParseResult resolveSignature(WitnessASTDecl &witness);
+  ParseResult resolveBody(WitnessASTDecl &witness);
 
   ParseResult resolveBody(ConformanceOp op, ASTDecl &decl);
 

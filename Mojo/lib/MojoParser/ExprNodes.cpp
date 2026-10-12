@@ -2443,7 +2443,7 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
         cast<AliasDeclOp>(memberDecls[0]->getIfOperation()), spelling,
         baseRVType.getParamBindings(), getLoc(), emitter);
     return emitter.emitResult(getParamMemberSugar(result), this, dest);
-  } else if (WitnessDecl *witness = memberDecls[0]->getIfWitness()) {
+  } else if (auto *witness = dyn_cast<WitnessASTDecl>(memberDecls[0])) {
     assert(sugarIsa<TraitType>(typeDecl->getIfTypeValue()) &&
            "Trait witness lookup must be routed via TraitType decl.");
 

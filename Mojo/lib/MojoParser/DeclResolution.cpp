@@ -5416,15 +5416,14 @@ ParseResult DeclResolver::resolveSignature(LIT::UnresolvedImportOp op,
 // Trait Composition Decl implementation
 //===----------------------------------------------------------------------===//
 
-ParseResult DeclResolver::resolveSignature(WitnessDecl *witness,
-                                           ASTDecl &decl) {
-  if (auto alias = dyn_cast<AliasDeclOp>(
-          witness->getDecls().front()->getIfOperation())) {
+ParseResult DeclResolver::resolveSignature(WitnessASTDecl &witness) {
+  if (auto alias =
+          dyn_cast<AliasDeclOp>(witness.getDecls().front()->getIfOperation())) {
     Type mergedType;
     ASTDecl *mergedTypeDecl = nullptr;
 
     DenseSet<TraitType> traitTypesToMerge;
-    for (ASTDecl *curDecl : witness->getDecls()) {
+    for (ASTDecl *curDecl : witness.getDecls()) {
       if (failed(resolve(*curDecl, DeclResolvedness::signature,
                          curDecl->getLoc())))
         return failure();
@@ -5432,9 +5431,9 @@ ParseResult DeclResolver::resolveSignature(WitnessDecl *witness,
       auto alias = cast<AliasDeclOp>(curDecl->getIfOperation());
       Type aliasType = alias.getType();
       std::optional<ParameterEvaluator> evaluatorOpt =
-          populateTraitBindingEvaluator(witness->traitSymbol, shared);
+          populateTraitBindingEvaluator(witness.traitSymbol, shared);
       if (evaluatorOpt) {
-        assert(shared.isUniversalParametricClosureTrait(witness->traitSymbol));
+        assert(shared.isUniversalParametricClosureTrait(witness.traitSymbol));
         aliasType = cast<FnTypeGeneratorType>(evaluatorOpt->replace(aliasType));
       }
 
@@ -5476,14 +5475,14 @@ ParseResult DeclResolver::resolveSignature(WitnessDecl *witness,
     // The merged entry is keyed by whichever trait the first alias came from;
     // all of them agree on the name, and conformance checking re-verifies the
     // merged bound against each.
-    WitnessDecl::ResolvedType resolved;
+    WitnessASTDecl::ResolvedType resolved;
     resolved.witnessName = alias.getDeclName();
     resolved.witnessType = mergedType;
-    witness->storage = resolved;
+    witness.storage = resolved;
     return success();
   }
 
-  ASTDecl &onlyWitness = *witness->getDecls().front();
+  ASTDecl &onlyWitness = *witness.getDecls().front();
   if (failed(resolve(onlyWitness, DeclResolvedness::signature,
                      onlyWitness.getLoc())))
     return failure();
@@ -5492,26 +5491,26 @@ ParseResult DeclResolver::resolveSignature(WitnessDecl *witness,
   // overridden method, so this has to be checked before touching the
   // operation, which disabling clears.
   if (onlyWitness.isDisabled()) {
-    decl.markDisabled();
+    witness.markDisabled();
     return success();
   }
 
   auto fnOp = cast<FnOp>(onlyWitness.getIfOperation());
 
-  WitnessDecl::ResolvedType resolved;
+  WitnessASTDecl::ResolvedType resolved;
   resolved.witnessName = fnOp.getSymNameAttr();
   resolved.witnessType = fnOp.getFullSignature();
   resolved.implicitConversion = fnOp.getImplicitConversion();
   resolved.isStaticMethod = fnOp.getIsStatic();
-  witness->storage = resolved;
+  witness.storage = resolved;
   return success();
 }
 
-ParseResult DeclResolver::resolveBody(WitnessDecl *witness, ASTDecl &decl) {
+ParseResult DeclResolver::resolveBody(WitnessASTDecl &witness) {
   // We don't need to resolve the body of a witness, only need the type.
-  assert(witness->getWitnessEntry().witnessType &&
+  assert(witness.getWitnessEntry().witnessType &&
          "Witness type should be resolved");
-  decl.resolvedness = DeclResolvedness::body;
+  witness.resolvedness = DeclResolvedness::body;
   return success();
 }
 

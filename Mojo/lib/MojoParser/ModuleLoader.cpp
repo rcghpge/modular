@@ -789,21 +789,21 @@ ModuleLoader::importRelativeModuleState(const SharedState::ImportPath &path,
     // Find the current package.
     identifierLoc = adjustIdentifierLoc(1);
     while (!isa_and_nonnull<PackageOp>(parentDecl->getIfOperation()) &&
-           parentDecl->parentDecl)
-      parentDecl = parentDecl->parentDecl;
+           parentDecl->getParentDecl())
+      parentDecl = parentDecl->getParentDecl();
     if (!isa_and_nonnull<PackageOp>(parentDecl->getIfOperation()))
       return emitError("cannot import relative to a top-level package");
 
     // Otherwise, this is a package relative to the current parent.
     while (--relativeLevel) {
       identifierLoc = adjustIdentifierLoc(1);
-      if (!parentDecl->parentDecl ||
+      if (!parentDecl->getParentDecl() ||
           !isa_and_nonnull<PackageOp>(
-              parentDecl->parentDecl->getIfOperation())) {
+              parentDecl->getParentDecl()->getIfOperation())) {
         return emitError(
             "attempted relative import with no known parent package");
       }
-      parentDecl = parentDecl->parentDecl;
+      parentDecl = parentDecl->getParentDecl();
     }
 
     // If the path itself is empty, we're grabbing the parent package.

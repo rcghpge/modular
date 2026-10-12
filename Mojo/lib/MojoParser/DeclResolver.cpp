@@ -171,6 +171,17 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *declOp, SMLoc loc,
                             endCursor, indentation);
 }
 
+WitnessASTDecl &DeclResolver::createUnlistedWitnessDecl(
+    WitnessASTDecl::UnresolvedDecls unresolvedDecls,
+    TraitSymbolAttr traitSymbol, SMLoc loc, ASTDecl *parentDecl,
+    LexerCursor cursor, LexerCursor endCursor, ssize_t indentation) {
+  auto *decl = new (shared.persistentAllocator.allocate<WitnessASTDecl>())
+      WitnessASTDecl(shared, std::move(unresolvedDecls), traitSymbol, loc,
+                     parentDecl, cursor, endCursor, indentation);
+  parsedDeclList.push_back(decl);
+  return *decl;
+}
+
 // Check whether we're merging in a bunch of ASTDecls that could all contribute
 // to a single struct's namespace.
 // For example, say we have these imports:
@@ -431,8 +442,8 @@ void DeclResolver::attachDeclToTraitCompositionDecl(
     traitDecl->declsInScope.reset(new ASTDecl::DeclInScopeType());
 
   auto loc = childDecl.front()->getLoc(); // Just use the first location.
-  ASTDecl *witnessDecl = &createUnlistedDecl(
-      DeclIRValue(WitnessDecl{std::move(childDecl), witnessFor}), loc,
+  ASTDecl *witnessDecl = &createUnlistedWitnessDecl(
+      std::move(childDecl), witnessFor, loc,
       /*parentDecl=*/traitDecl, LexerCursor(), LexerCursor(),
       /*indentation=*/-1);
   witnessDecl->resolvedness = DeclResolvedness::unparsed;
@@ -1520,8 +1531,8 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
                           "decl!");
       if (failed(resolveSignature(traitType, decl)))
         decl.setErroneous();
-    } else if (auto witness = decl.getIfWitness()) {
-      if (failed(resolveSignature(witness, decl)))
+    } else if (auto *witness = dyn_cast<WitnessASTDecl>(&decl)) {
+      if (failed(resolveSignature(*witness)))
         decl.setErroneous();
     } else {
       llvm_unreachable(
@@ -1620,8 +1631,8 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
       assert(traitType && "do not know how to resolve the body of this decl!");
       if (failed(resolveBody(traitType, decl)))
         decl.setErroneous();
-    } else if (auto witness = decl.getIfWitness()) {
-      if (failed(resolveBody(witness, decl)))
+    } else if (auto *witness = dyn_cast<WitnessASTDecl>(&decl)) {
+      if (failed(resolveBody(*witness)))
         decl.setErroneous();
     } else {
       llvm_unreachable("do not know how to resolve the body of this decl!");
