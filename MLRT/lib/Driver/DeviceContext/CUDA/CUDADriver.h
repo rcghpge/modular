@@ -14,7 +14,7 @@
 #include "MLRT/Driver/DeviceContext/KernelLoadGate.h"
 #include "Support/ErrorOr.h"
 #include "Support/Preprocessor.h"
-#include "Support/mcl/Tracy/Tracy.h"
+#include "Support/max_license/Tracy/Tracy.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"

@@ -17,7 +17,7 @@
 #include "MLRT/GraphRT/MEF/MEFReader.h"
 #include "MLRT/GraphRT/MEFExecutor/PrimitiveDescriptor.h"
 #include "Support/AssertStream.h"
-#include "Support/mcl/Tracy/Tracy.h"
+#include "Support/max_license/Tracy/Tracy.h"
 #include "llvm/Support/TrailingObjects.h"
 #include <cassert>
 

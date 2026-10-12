@@ -8,7 +8,7 @@
 #define KERNELS_TRACING_H
 
 #include "Support/ErrorOr.h"
-#include "Support/mcl/Tracy/TracyZone.h"
+#include "Support/max_license/Tracy/TracyZone.h"
 #include "tracing_c_api.h"
 #include "llvm/ADT/StringRef.h"
 

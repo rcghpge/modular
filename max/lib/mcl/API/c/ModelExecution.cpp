@@ -12,7 +12,7 @@
 #include "Support/ML/DebugPrint.h"
 #include "Support/ML/TensorShape.h"
 #include "Support/SpanGuard.h"
-#include "Support/mcl/Tracy/Tracy.h"
+#include "Support/max_license/Tracy/Tracy.h"
 #include "max/mcl/API/c/EngineContext.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "llvm/ADT/ScopeExit.h"

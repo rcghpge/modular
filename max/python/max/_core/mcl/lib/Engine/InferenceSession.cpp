@@ -13,7 +13,7 @@
 #include "Kernels/mcl/WeightsRegistry.h"
 #include "Support/Filesystem/Paths.h"
 #include "Support/Profiling/Ranges.h"
-#include "Support/mcl/Tracy/Tracy.h"
+#include "Support/max_license/Tracy/Tracy.h"
 #include "_core/DLPack/Utils.h"
 #include "_core/Driver/Buffer.h"
 #include "_core/Engine/DebugConfig.h"

@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/MAX_LICENSE
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 //
 // This file provides helper functions for creating Tracy profiling zones with
@@ -13,7 +20,7 @@
 #ifndef SUPPORT_PROFILING_TRACY_ZONE_H
 #define SUPPORT_PROFILING_TRACY_ZONE_H
 
-#include "Support/mcl/Tracy/Tracy.h"
+#include "Support/max_license/Tracy/Tracy.h"
 #include "llvm/ADT/StringRef.h"
 #include <cstddef>
 #include <cstdint>
