@@ -4870,11 +4870,9 @@ def _k_cache_to_buffer[
     comptime assert cache_offsets.flat_rank == 1
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(k_cache, buffer_row_offsets, cache_offsets)
     def copy_fn[
         width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    ](idx: IndexList[rank]) {var}:
         comptime assert rank == 2, "rank should be equal to 2"
 
         var global_token_idx = idx[0]
@@ -4913,7 +4911,9 @@ def _k_cache_to_buffer[
     var launch_shape = Coord(Int(length), Int(buffer.dim[1]()))
     comptime target_simd_width = simd_width_of[dtype, target=context.target]()
 
-    def copy_fn_unified[width: Int, alignment: Int = 1](idx: Coord):
+    def copy_fn_unified[
+        width: Int, alignment: Int = 1
+    ](idx: Coord) {var copy_fn}:
         copy_fn[width, idx.rank, alignment](coord_to_index_list(idx))
 
     _elementwise_impl_gpu[

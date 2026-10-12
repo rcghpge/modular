@@ -118,11 +118,9 @@ def quantize_static_scaled_fp8[
     ), "output dtype should be float8_e4m3fn or float8_e4m3fnuz"
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(out_tensor, in_tensor, scale)
     def scaled_fp8_quant[
         width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    ](idx: IndexList[rank]) {var}:
         comptime assert rank == 2, "rank should be equal to 2"
 
         var in_vec_f32 = in_tensor.load_linear[width](idx).cast[.float32]()
@@ -136,7 +134,9 @@ def quantize_static_scaled_fp8[
         in_dtype, target=context.target
     ]()
 
-    def scaled_fp8_quant_unified[width: Int, alignment: Int = 1](idx: Coord) {}:
+    def scaled_fp8_quant_unified[
+        width: Int, alignment: Int = 1
+    ](idx: Coord) {var scaled_fp8_quant}:
         scaled_fp8_quant[width, idx.rank, alignment](coord_to_index_list(idx))
 
     _elementwise_impl_gpu[
@@ -2138,11 +2138,9 @@ def convert_e4m3fn_to_e4m3fnuz(
     )
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(input_buffer, output_buffer)
     def convert_kernel[
         width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    ](idx: IndexList[rank]) {var}:
         comptime assert rank == 2, "rank should be equal to 2"
 
         var input_vec_e4m3fn = input_buffer.load_linear[width](idx)
@@ -2160,7 +2158,9 @@ def convert_e4m3fn_to_e4m3fnuz(
         DType.float8_e4m3fn, target=context.target
     ]()
 
-    def convert_kernel_unified[width: Int, alignment: Int = 1](idx: Coord) {}:
+    def convert_kernel_unified[
+        width: Int, alignment: Int = 1
+    ](idx: Coord) {var convert_kernel}:
         convert_kernel[width, idx.rank, alignment](coord_to_index_list(idx))
 
     _elementwise_impl_gpu[

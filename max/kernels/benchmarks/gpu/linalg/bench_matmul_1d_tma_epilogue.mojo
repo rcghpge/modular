@@ -250,15 +250,13 @@ def bench_matmul_1d_tma_epilogue[
 
         elif variant == "compute_lambda_bias":
 
-            @__parameter
             @inline(.always)
-            @__copy_capture(tensor_c, bias_tile)
             def epilogue_lambda[
                 _dtype: DType,
                 width: SIMDLength,
                 *,
-                alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
+                alignment: Int,
+            ](idx: Coord, val: SIMD[_dtype, width]) {var} -> SIMD[
                 _dtype, width
             ]:
                 comptime assert (
@@ -270,11 +268,9 @@ def bench_matmul_1d_tma_epilogue[
                 ]()
                 return val + epi_val
 
-            _matmul_gpu[
-                use_tensor_core=True,
-                transpose_b=transpose_b,
-                elementwise_compute_lambda_fn=epilogue_lambda,
-            ](tensor_c, tensor_a, tensor_b, ctx)
+            _matmul_gpu[use_tensor_core=True, transpose_b=transpose_b](
+                tensor_c, tensor_a, tensor_b, epilogue_lambda, ctx
+            )
 
         else:  # "tma_bias"
             # Wrap 1D bias as a (1, N) TileTensor to match the 2D epilogue
@@ -365,15 +361,13 @@ def bench_matmul_1d_tma_epilogue[
 
         elif variant == "compute_lambda_bias":
 
-            @__parameter
             @inline(.always)
-            @__copy_capture(bias_ver_nd)
             def ver_epilogue_lambda[
                 _dtype: DType,
                 width: SIMDLength,
                 *,
-                alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
+                alignment: Int,
+            ](idx: Coord, val: SIMD[_dtype, width]) {var} -> SIMD[
                 _dtype, width
             ]:
                 comptime assert (
@@ -384,11 +378,9 @@ def bench_matmul_1d_tma_epilogue[
                 ]()
                 return val + epi_val
 
-            _matmul_gpu[
-                use_tensor_core=True,
-                transpose_b=transpose_b,
-                elementwise_compute_lambda_fn=ver_epilogue_lambda,
-            ](c_kernel_nd, a_ver_nd, b_ver_nd, ctx)
+            _matmul_gpu[use_tensor_core=True, transpose_b=transpose_b](
+                c_kernel_nd, a_ver_nd, b_ver_nd, ver_epilogue_lambda, ctx
+            )
 
         else:
             var ver_epi_1 = Int64(1)

@@ -326,16 +326,15 @@ struct Copy:
         input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
         def func[
             width: Int, element_alignment: Int
-        ](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        ](idx: IndexList[rank]) {var} -> SIMD[dtype, width]:
             return input._fused_load[
                 width, element_alignment=element_alignment
             ](idx)
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register("nan_check_count")

@@ -29,9 +29,8 @@ struct AddConstantCustom[value: Int]:
         x: InputTensor[dtype=outp.dtype, rank=outp.rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def add_constant[width: Int](idx: Coord) -> SIMD[x.dtype, width]:
+        def add_constant[width: Int](idx: Coord) {var} -> SIMD[x.dtype, width]:
             return x.load[width](idx) + Scalar[outp.dtype](Self.value)
 
-        foreach[add_constant, target=target](outp, ctx)
+        foreach[target=target](add_constant, outp, ctx)

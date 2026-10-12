@@ -2350,22 +2350,19 @@ struct AdvancedIndexingSetItem:
         """
 
         # First copy over input tensor into the output
-        @__parameter
         @inline(.always)
         def func[
             width: Int, element_alignment: Int
-        ](idx: IndexList[output_tensor.rank]) -> SIMD[
+        ](idx: IndexList[output_tensor.rank]) {var} -> SIMD[
             output_tensor.dtype, width
         ]:
             return input_tensor._fused_load[
                 width, element_alignment=element_alignment
             ](idx)
 
-        foreach[
-            func,
-            target=target,
-            _trace_name=_trace_name + "_p1/2_copy",
-        ](output_tensor, ctx)
+        foreach[target=target, _trace_name=_trace_name + "_p1/2_copy"](
+            func, output_tensor, ctx
+        )
 
         # Then run the updates in-place.
         # For type checking

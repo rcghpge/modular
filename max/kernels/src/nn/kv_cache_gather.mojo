@@ -85,9 +85,7 @@ def kv_cache_gather_rows_ragged[
 
     # Same closure form as `kv_cache_store_ragged`: a KV cache view cannot be
     # captured by a unified closure yet.
-    @__parameter
-    @__copy_capture(cache, row_offsets, output, slots)
-    def copy_row[width: Int, alignment: Int = 1](idx: Coord) capturing:
+    def copy_row[width: Int, alignment: Int = 1](idx: Coord) {var}:
         var r = Int(idx[0].value())
         var j = Int(idx[1].value())
         var d = Int(idx[2].value())
@@ -109,8 +107,7 @@ def kv_cache_gather_rows_ragged[
     )
 
     elementwise[
-        copy_row,
         simd_width,
         target=target,
         _trace_description="kv_cache_gather_rows_ragged",
-    ](Coord(num_rows, num_slots, head_dim), ctx)
+    ](copy_row, Coord(num_rows, num_slots, head_dim), ctx)

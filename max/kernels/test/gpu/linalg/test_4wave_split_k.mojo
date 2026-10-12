@@ -178,15 +178,13 @@ def test_4wave_split_k_epilogue[
 
     ctx.enqueue_memset(device_out, 0)
 
-    @__parameter
     @inline(.always)
-    @__copy_capture(out_tt)
     def epilogue_fn[
         _dtype: DType,
         width: SIMDLength,
         *,
-        alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        alignment: Int,
+    ](idx: Coord, val: SIMD[_dtype, width]) {var} -> None:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime assert idx.flat_rank == out_tt.flat_rank
         out_tt.store[width=width, alignment=alignment](
@@ -195,10 +193,8 @@ def test_4wave_split_k_epilogue[
 
     var workspace = SplitKWorkspace[num_splits](ctx, M * N)
     amd_4wave_split_k_matmul[
-        num_splits=num_splits,
-        enable_swizzle=enable_swizzle,
-        elementwise_lambda_fn=epilogue_fn,
-    ](a_tt, b_tt, c_tt, ctx, workspace=workspace)
+        num_splits=num_splits, enable_swizzle=enable_swizzle
+    ](a_tt, b_tt, c_tt, epilogue_fn, ctx, workspace=workspace)
 
     with device_out.map_to_host() as host_out, device_c_ref.map_to_host() as host_c_ref, device_c.map_to_host() as host_c:
         # 1. Lambda accuracy: out_tt vs vendor BLAS reference

@@ -5275,9 +5275,7 @@ def generic_kv_cache_radd_dispatch[
     # fail codegen when stored into a unified closure ('pop.store' pointer
     # element-type verification). Keep using the deprecated parameter-closure
     # overload until cache captures in unified closures are supported.
-    @__parameter
-    @__copy_capture(a, k_cache, v_cache, input_row_offsets)
-    def do_radd[width: Int, alignment: Int = 1](idx: Coord):
+    def do_radd[width: Int, alignment: Int = 1](idx: Coord) {var}:
         comptime assert idx.rank == 2, "Rank must be 2"
 
         # we could be slicing the batch, so we need to add the offset to get the actual index in the flattened batch
@@ -5323,15 +5321,15 @@ def generic_kv_cache_radd_dispatch[
         comptime compile_target = ctx.target
         comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
-        elementwise[do_radd, simd_width, target=target](
-            a.layout.shape_coord(), ctx
+        elementwise[simd_width, target=target](
+            do_radd, a.layout.shape_coord(), ctx
         )
     else:
         comptime compile_target = CompilationTarget.current()
         comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
-        elementwise[do_radd, simd_width, target=target](
-            a.layout.shape_coord(), ctx
+        elementwise[simd_width, target=target](
+            do_radd, a.layout.shape_coord(), ctx
         )
 
 
@@ -5381,12 +5379,10 @@ def kv_cache_store_ragged[
     # fails codegen when stored into a unified closure ('pop.store' pointer
     # element-type verification). Keep using the deprecated parameter-closure
     # overload until cache captures in unified closures are supported.
-    @__parameter
-    @__copy_capture(cache, input_row_offsets)
     def write_to_cache[
         width: Int,
         alignment: Int = 1,
-    ](idx: Coord) capturing:
+    ](idx: Coord) {var}:
         var row = Int(idx[0].value())
         # Rows past the last offset belong to no request. A producer whose
         # output row count is only an upper bound on a data-dependent one
@@ -5422,11 +5418,8 @@ def kv_cache_store_ragged[
     )
 
     elementwise[
-        write_to_cache,
-        simd_width,
-        target=target,
-        _trace_description="kv_cache_store_ragged",
-    ](input_shape, context)
+        simd_width, target=target, _trace_description="kv_cache_store_ragged"
+    ](write_to_cache, input_shape, context)
 
 
 def kv_cache_store_padded[
@@ -5472,10 +5465,8 @@ def kv_cache_store_padded[
     # fails codegen when stored into a unified closure ('pop.store' pointer
     # element-type verification). Keep using the deprecated parameter-closure
     # overload until cache captures in unified closures are supported.
-    @__parameter
-    @__copy_capture(cache, valid_lengths)
     @inline(.always)
-    def write_to_cache[width: Int, alignment: Int = 1](idx: Coord) capturing:
+    def write_to_cache[width: Int, alignment: Int = 1](idx: Coord) {var}:
         var batch_idx = Int(idx[0].value())
         var token_idx = Int(idx[1].value())
         var valid_len = Int(valid_lengths[batch_idx])
@@ -5503,11 +5494,8 @@ def kv_cache_store_padded[
     )
 
     elementwise[
-        write_to_cache,
-        simd_width,
-        target=target,
-        _trace_description="kv_cache_store_padded",
-    ](Coord(input_shape), context)
+        simd_width, target=target, _trace_description="kv_cache_store_padded"
+    ](write_to_cache, Coord(input_shape), context)
 
 
 # ===-----------------------------------------------------------------------===#

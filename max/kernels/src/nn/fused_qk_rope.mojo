@@ -419,9 +419,7 @@ def fused_qk_rope_ragged[
     # parameter-closure overload until cache captures in unified closures are
     # supported.
     @inline(.always)
-    @__parameter
-    @__copy_capture(k_cache, batch_size, input_row_offsets, position_ids)
-    def rope_fn[width: Int, alignment: Int = 1](idx: Coord):
+    def rope_fn[width: Int, alignment: Int = 1](idx: Coord) {var}:
         comptime assert idx.rank == 3, "Invalid rank passed to rope kernel"
 
         comptime if width == 1:
@@ -547,8 +545,7 @@ def fused_qk_rope_ragged[
     comptime assert kernel_simd_width >= 2, "invalid simd_width and head size"
 
     elementwise[
-        func=rope_fn,
         simd_width=kernel_simd_width,
         target=target,
         _trace_description="fused_qk_rope_ragged",
-    ](launch_shape, context)
+    ](rope_fn, launch_shape, context)

@@ -2555,11 +2555,9 @@ def convert_bf16_to_fp8_e4m3fn(
     ), "Input and output must have the same rank"
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(input_buffer, output_buffer)
     def convert_kernel[
         width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]):
+    ](idx: IndexList[rank]) {var}:
         comptime assert rank == 2 or rank == 3, "rank should be 2 or 3"
 
         output_buffer.store_linear(
@@ -2573,7 +2571,9 @@ def convert_bf16_to_fp8_e4m3fn(
         DType.bfloat16, target=context.target
     ]()
 
-    def convert_kernel_unified[width: Int, alignment: Int = 1](idx: Coord):
+    def convert_kernel_unified[
+        width: Int, alignment: Int = 1
+    ](idx: Coord) {var convert_kernel}:
         convert_kernel[width, idx.rank, alignment](coord_to_index_list(idx))
 
     comptime if input_buffer.rank == 2:
