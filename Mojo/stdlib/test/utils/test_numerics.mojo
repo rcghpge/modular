@@ -496,27 +496,41 @@ def test_nextafter_matches_libm() raises:
         0x00000000,  # +0
         0x80000000,  # -0
         0x00000001,  # smallest subnormal
+        0x80000001,  # -smallest subnormal
         0x007FFFFF,  # largest subnormal
+        0x807FFFFF,  # -largest subnormal
         0x00800000,  # smallest normal
+        0x80800000,  # -smallest normal
         0x3F800000,  # 1.0
+        0xBF800000,  # -1.0
         0x3F7FFFFF,  # value just below 1.0
+        0xBF7FFFFF,  # value just above -1.0
         0x7F7FFFFF,  # largest finite
+        0xFF7FFFFF,  # -largest finite
         0x7F800000,  # +inf
         0xFF800000,  # -inf
         0x40490FDB,  # pi
+        0xC0490FDB,  # -pi
     ]
     comptime f64_bits: List[UInt64] = [
         0x0000000000000000,
         0x8000000000000000,
         0x0000000000000001,
+        0x8000000000000001,
         0x000FFFFFFFFFFFFF,
+        0x800FFFFFFFFFFFFF,
         0x0010000000000000,
+        0x8010000000000000,
         0x3FF0000000000000,
+        0xBFF0000000000000,
         0x3FEFFFFFFFFFFFFF,
+        0xBFEFFFFFFFFFFFFF,
         0x7FEFFFFFFFFFFFFF,
+        0xFFEFFFFFFFFFFFFF,
         0x7FF0000000000000,
         0xFFF0000000000000,
         0x400921FB54442D18,
+        0xC00921FB54442D18,
     ]
 
     comptime for xi in range(len(f32_bits)):

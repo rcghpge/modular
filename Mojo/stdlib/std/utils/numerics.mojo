@@ -959,13 +959,14 @@ def nextafter[
     """Computes next representable value of `arg0` in the direction of `arg1`.
 
     CPU and GPU targets share one Mojo implementation that walks the IEEE-754
-    bit pattern directly, so the result is exact on every target and is
-    unaffected by targets that flush subnormal arithmetic. Read as a signed
-    integer, the raw bit pattern is monotone increasing across the entire
-    real line: -NaN < -inf < ... < -0 < +0 < ... < +inf < +NaN. Stepping to
-    the neighbouring representable value is therefore a single increment or
-    decrement of the bit pattern, with the direction decided by the ordering
-    of `arg0` and `arg1` and the sign of `arg0`.
+    bit pattern directly: the only floating-point operation is the NaN check,
+    so the result is exact on every target and is unaffected by targets that
+    flush subnormal arithmetic. Read as a signed integer, the raw bit pattern
+    is monotone on each half of the real line — increasing with value from
+    +0 to +NaN, and decreasing from -1 at -NaN to the most negative integer
+    at -0 — so a single ±1 step of the bit pattern, with the direction
+    decided by the ordering of `arg0` and `arg1` and the sign of `arg0`,
+    reaches the neighbouring representable value.
 
     Constraints:
         The element dtype of the input must be a floating-point type.
@@ -993,24 +994,38 @@ def nextafter[
     comptime int_dtype = _integral_type_of[dtype]()
     comptime IntT = SIMD[int_dtype, width]
     var bits = bitcast[int_dtype, width](arg0)
+    var ybits = bitcast[int_dtype, width](arg1)
+    comptime Imax = IntT(FPUtils[dtype].exponent_mantissa_mask())
+    # A totalOrder key on the raw bits, monotone increasing along
+    # -NaN < -inf < ... < -0 < +0 < ... < +inf < +NaN. Every predicate below
+    # is an integer operation on the key or the bits, so — unlike a floating
+    # point comparison — it is correct on targets that flush subnormal
+    # operands to zero.
+    var key = bits.ge(0).select(bits, bits ^ Imax)
+    var ykey = ybits.ge(0).select(ybits, ybits ^ Imax)
     # Moving toward `arg1` grows the magnitude (and the raw-bit integer)
     # when it heads away from zero, and shrinks it otherwise: a larger
     # value steps the bits up for a positive `arg0` but down for a negative
     # one, and vice versa.
-    var toward_larger = arg1.gt(arg0)
-    var negative = arg0.lt(0)
+    var toward_larger = ykey.gt(key)
+    var negative = bits.lt(0)
     var stepped = toward_larger.select(
         negative.select(bits - IntT(1), bits + IntT(1)),
         negative.select(bits + IntT(1), bits - IntT(1)),
     )
     var result = bitcast[dtype, width](stepped)
-    # `arg0 == 0` covers both +0 and -0, whose bit patterns (0 and the sign
-    # bit) have no shared neighbour: the answer is the smallest subnormal
-    # carrying `arg1`'s sign (bit pattern `1`).
     var smallest = bitcast[dtype, width](IntT(1))
-    result = arg0.eq(0).select(arg1.lt(0).select(-smallest, smallest), result)
-    # Equal inputs (including +0 and -0) return `arg1` per the C contract.
-    result = arg0.eq(arg1).select(arg1, result)
+    # `arg0` zero (either sign) has no bit-neighbour towards the other zero:
+    # the answer is the smallest subnormal carrying `arg1`'s sign (bit
+    # pattern `1`). Reading zero from the bits keeps this correct on
+    # targets that flush subnormals, where a subnormal would compare equal
+    # to zero.
+    var x_zero = (bits & Imax).eq(0)
+    var y_zero = (ybits & Imax).eq(0)
+    result = x_zero.select(ykey.lt(0).select(-smallest, smallest), result)
+    # Equal inputs (including +0 and -0, whose keys differ) return `arg1` per
+    # the C contract.
+    result = (key.eq(ykey) | (x_zero & y_zero)).select(arg1, result)
     # A NaN operand yields NaN.
     result = (isnan(arg0) | isnan(arg1)).select(
         SIMD[dtype, width](nan[dtype]()), result
