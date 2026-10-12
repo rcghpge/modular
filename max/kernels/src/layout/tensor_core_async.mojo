@@ -1445,6 +1445,7 @@ struct TensorCoreAsync[
                     var b_desc_n = b_desc + b_offset
 
                     var c_frags = c_reg_tile.tile[1, c_frag_size](mma_id, 0)
+                    comptime assert c_frags.rank == c_frags.flat_rank == 2
 
                     var c_frags_in_tuple = _convert_cfrags_to_tuple[
                         Self.c_type, c_frag_size

@@ -1324,15 +1324,13 @@ struct TileTensor[
     @inline(.nodebug)
     def __setitem__[
         *IndexTypes: Indexer & Copyable
-    ](self, *items: *IndexTypes, value: Self.ElementType) where (
-        IndexTypes.length == Self.flat_rank
-    ) & Self.mut:
+    ](self, *items: *IndexTypes, value: Self.ElementType) where Self.mut:
         """Sets a single element in the tensor at the specified indices.
 
-        Uses flat indexing based on flat_rank. For non-nested layouts,
-        flat_rank == rank, so tensor[i, j, k] = value works normally. For
-        nested layouts (e.g., from blocked_product), use all flat_rank indices:
-        tensor[i0, i1, i2, i3] = value for a tensor with flat_rank == 4.
+        Takes one index per mode, which `crd2idx` splits across a nested
+        mode's leaves, or one index per leaf (`flat_rank` indices). The count
+        is checked when the tensor's layout is concrete, so generic code can
+        index a tile whose layout it can't see.
 
         Parameters:
             IndexTypes: The types of the indices (must implement Indexer).
@@ -1342,6 +1340,12 @@ struct TileTensor[
             value: The value to store.
         """
         comptime arg_count = IndexTypes.length
+        comptime assert (
+            arg_count == Self.rank or arg_count == Self.flat_rank
+        ), String(
+            t"__setitem__ takes {Self.rank} indices (one per mode) or"
+            t" {Self.flat_rank} (one per leaf); got {arg_count}"
+        )
         var linear_tuple = DynamicCoord[Self.linear_idx_type, arg_count]()
 
         comptime for i in range(arg_count):

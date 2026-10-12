@@ -1140,6 +1140,24 @@ def test_transpose_preserves_element_count() raises:
     assert_equal(trans.num_elements(), 20)
 
 
+def test_setitem_nested_layout() raises:
+    """Test that plain-index assignment takes one index per mode or per leaf
+    on a nested layout."""
+    var data = Array[Int32, 1024](fill=0)
+    var tensor = TileTensor(
+        data,
+        TileLayout(
+            Coord(Coord(Idx[2], Idx[16]), Idx[32]),
+            Coord(Coord(Idx[1], Idx[64]), Idx[2]),
+        ),
+    )
+    # Row 7 is leaves (1, 3), so element (7, 5) is at 1 + 3 * 64 + 5 * 2.
+    tensor[7, 5] = -1
+    assert_equal(data[203], -1)
+    tensor[1, 3, 5] = -2
+    assert_equal(data[203], -2)
+
+
 def test_num_elements_nested_layout() raises:
     """Test that num_elements counts every leaf of a nested layout."""
     var data = Array[Int32, 1024](fill={})
