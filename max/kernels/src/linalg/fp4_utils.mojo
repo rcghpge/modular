@@ -562,18 +562,19 @@ def cast_float_to_fp4e2m1_amd[
     var packed = UInt32(0)
 
     comptime for i in range(width // 2):
-        comptime if dtype == .bfloat16:
-            packed = llvm_intrinsic[
-                "llvm.amdgcn.cvt.scalef32.pk.fp4.bf16",
-                UInt32,
-            ](packed, input.slice[2, offset=i * 2](), scale, Int32(i))
-        elif dtype == .float32:
-            packed = llvm_intrinsic[
-                "llvm.amdgcn.cvt.scalef32.pk.fp4.f32",
-                UInt32,
-            ](packed, input[i * 2], input[i * 2 + 1], scale, Int32(i))
-        else:
-            comptime assert False, "Unsupported dtype"
+        comptime match dtype:
+            case .bfloat16:
+                packed = llvm_intrinsic[
+                    "llvm.amdgcn.cvt.scalef32.pk.fp4.bf16",
+                    UInt32,
+                ](packed, input.slice[2, offset=i * 2](), scale, Int32(i))
+            case .float32:
+                packed = llvm_intrinsic[
+                    "llvm.amdgcn.cvt.scalef32.pk.fp4.f32",
+                    UInt32,
+                ](packed, input[i * 2], input[i * 2 + 1], scale, Int32(i))
+            case _:
+                comptime assert False, "Unsupported dtype"
 
     return packed
 
