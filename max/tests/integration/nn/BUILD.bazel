@@ -127,7 +127,7 @@ modular_py_test(
         ],
     ) + ["conftest.py"],
     exec_properties = {
-        "test.resources:gpu-memory": "4",
+        "test.resources:gpu-memory": "3",
     },
     gpu_constraints = ["//:has_gpu"] + select({
         "//:apple_gpu": ["@platforms//:incompatible"],
@@ -165,7 +165,7 @@ modular_py_test(
         "test_fused_qkv_mxfp8_matmul_gpu.py",
     ],
     exec_properties = {
-        "test.resources:gpu-memory": "4",
+        "test.resources:gpu-memory": "2",
     },
     gpu_constraints = ["//:has_gpu"] + select({
         "//:apple_gpu": ["@platforms//:incompatible"],
@@ -652,7 +652,7 @@ modular_py_test(
         "test_tp_moe_nvfp4_distributed_gpu.py",
     ],
     exec_properties = {
-        "test.resources:gpu-memory": "4",
+        "test.resources:gpu-memory": "3",
     },
     gpu_constraints = [
         "//:b200_gpu",
