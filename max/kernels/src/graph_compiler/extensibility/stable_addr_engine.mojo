@@ -60,6 +60,28 @@ struct StableStorage[
         self = Self(addr, 0)
 
     @inline(.always)
+    def __init__(out self, ptr: Pointer[NoneType, _]):
+        """Initializes the stable storage over the slot at address `ptr`, with
+        0 offset.
+
+        `ptr` is reinterpreted as the slot's address and never read through.
+        The graph compiler hands a stable argument's slot where a dense
+        argument's data pointer would go, and this constructor is where the
+        two meet.
+
+        Args:
+            ptr: The slot's address.
+        """
+        self = Self(
+            StableAddr(
+                ptr.unsafe_bitcast[Pointer[NoneType, MutUntrackedOrigin]]()
+                .unsafe_mut_cast[False]()
+                .unsafe_origin_cast[ImmUntrackedOrigin]()
+            ),
+            0,
+        )
+
+    @inline(.always)
     def _leaf_ptr(
         self,
     ) -> Pointer[
