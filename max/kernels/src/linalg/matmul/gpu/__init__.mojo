@@ -260,9 +260,7 @@ def matmul_kernel[
     if row < m and col < n:
         comptime if elementwise_lambda_fn:
             comptime elementwise_lambda = elementwise_lambda_fn.value()
-            elementwise_lambda[c_type, 1](
-                Coord(Index(row, col)), result.cast[c_type]()
-            )
+            elementwise_lambda[c_type, 1]((row, col), result.cast[c_type]())
         else:
             c[row, col] = result.cast[c_type]()
 
@@ -429,13 +427,11 @@ def _matmul_kernel_naive_impl[
                 * rebind[Scalar[b_type]](b[i, y]).cast[s_type]()
             )
     comptime if has_epilogue_fn:
-        epilogue_fn[c_type, 1, alignment=1](
-            Coord(Index(x, y)), accum.cast[c_type]()
-        )
+        epilogue_fn[c_type, 1, alignment=1]((x, y), accum.cast[c_type]())
     else:
         var out = accum.cast[c_type]()
         comptime if has_compute_fn:
-            out = compute_fn[c_type, 1, alignment=1](Coord(Index(x, y)), out)
+            out = compute_fn[c_type, 1, alignment=1]((x, y), out)
         c[x, y] = out
 
 
@@ -2113,11 +2109,7 @@ def _split_k_reduce_impl[
             var out = vec.cast[c_type]()
             comptime if has_compute_fn:
                 out = compute_fn[c_type, simd_width, alignment=align](
-                    Coord(
-                        IndexList[2](
-                            Int(c_coord[0].value()), Int(c_coord[1].value())
-                        )
-                    ),
+                    c_coord,
                     out,
                 )
             c.store[width=simd_width]((c_coord[0], c_coord[1]), out)

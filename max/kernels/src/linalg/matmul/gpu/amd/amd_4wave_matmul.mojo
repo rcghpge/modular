@@ -2028,7 +2028,7 @@ struct AMD4WaveMatmul[
                                 alignment=align_of[
                                     SIMD[Self.c_type, c_frag_size]
                                 ]()
-                            ](Coord(IndexList[2](m_logical, n_global)), v)
+                            ]((m_logical, n_global), v)
                         comptime if has_residual:
                             var skip = prefetched[
                                 m_mma * num_n_mmas + n_mma

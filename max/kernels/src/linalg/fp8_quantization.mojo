@@ -1858,7 +1858,7 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
 
     comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
-        elementwise_lambda[c_type, 1](Coord(Index(x, y)), accum.cast[c_type]())
+        elementwise_lambda[c_type, 1]((x, y), accum.cast[c_type]())
     else:
         c.store_linear(Index(x, y), accum.cast[c_type]())
 
@@ -2102,9 +2102,7 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
 
     comptime if elementwise_lambda_fn:
         comptime ep = elementwise_lambda_fn.value()
-        ep[c_type, 1](
-            Coord(Index(a_start_row + m_local, n)), accum.cast[c_type]()
-        )
+        ep[c_type, 1]((a_start_row + m_local, n), accum.cast[c_type]())
     else:
         var c_ptr = c.ptr + a_start_row * N
         c_ptr[m_local * N + n] = accum.cast[c_type]()
@@ -2314,9 +2312,7 @@ def blockwise_scaled_fp8_with_epilogue[
                 simd_width: Int, alignment: Int = 1
             ](idx: Coord) {var}:
                 var c_val = c.load[simd_width](idx)
-                epilogue[c_type, simd_width, alignment=alignment](
-                    Coord(Index(idx[0].value(), idx[1].value())), c_val
-                )
+                epilogue[c_type, simd_width, alignment=alignment](idx, c_val)
 
             blockwise_fp8_matmul[
                 transpose_b=transpose_b,

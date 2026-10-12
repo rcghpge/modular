@@ -481,13 +481,9 @@ def _blackwell_matmul_tma_umma_warp_specialized_impl[
             ), "the matmul epilogue contract is rank 2"
             var c_val = SIMD[dtype, width](0)
             comptime if compute_fn_reads_c:
-                c_val = c_device.load[width=width](
-                    Coord(
-                        IndexList[3](
-                            0, Int(idx[0].value()), Int(idx[1].value())
-                        )
-                    )
-                ).cast[dtype]()
+                c_val = c_device.load[width=width]((0, idx[0], idx[1])).cast[
+                    dtype
+                ]()
             return compute_fn[dtype, width, alignment=alignment](
                 idx, val, c_val
             )

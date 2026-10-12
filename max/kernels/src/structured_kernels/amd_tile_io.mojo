@@ -2791,7 +2791,7 @@ struct RegTileEpilogue[
                     Self.c_type,
                     Self.chunk_width,
                     alignment=Self.chunk_width,
-                ](Coord(IndexList[2](m, n)), v),
+                ]((m, n), v),
             )
         elif n < self.n_total:
             for e in range(Self.chunk_width):
@@ -2799,9 +2799,7 @@ struct RegTileEpilogue[
                 if col < self.n_total:
                     self._ptr()[m * self.row_stride + col] = compute_fn[
                         Self.c_type, 1, alignment=1
-                    ](Coord(IndexList[2](m, col)), SIMD[Self.c_type, 1](v[e]))[
-                        0
-                    ]
+                    ]((m, col), SIMD[Self.c_type, 1](v[e]))[0]
 
 
 @inline(.always)

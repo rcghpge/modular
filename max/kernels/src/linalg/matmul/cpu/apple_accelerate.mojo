@@ -376,7 +376,7 @@ def apple_gemv[
 
             comptime if elementwise_lambda_fn:
                 comptime func = elementwise_lambda_fn.value()
-                func[c.dtype, 1](Coord(Index(0, n)), val)
+                func[c.dtype, 1]((0, n), val)
             else:
                 c.store[width=1](Coord(Idx[0], n), val)
 
@@ -465,9 +465,7 @@ def apple_matmul[
             simd_width: Int, alignment: Int = 1
         ](idx: Coord) {var}:
             var c_val = c.load[width=simd_width](idx)
-            epilogue[c.dtype, simd_width](
-                Coord(Index(idx[0].value(), idx[1].value())), c_val
-            )
+            epilogue[c.dtype, simd_width](idx, c_val)
 
         # TODO: thread a DeviceContext through the matmul stack so we can
         # drop this local construction.

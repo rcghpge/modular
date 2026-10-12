@@ -20,7 +20,6 @@ from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.info import B200
 from layout import Coord, TileTensor, row_major
 
-from std.utils import Index
 
 from ...utils import (
     ElementwiseComputeFn,
@@ -225,9 +224,7 @@ def apply_compute_fn_in_place[
         var c_val = c_tt.load[width=simd_width, alignment=byte_alignment](idx)
         c_tt.store[width=simd_width, alignment=byte_alignment](
             idx,
-            compute_fn[c_type, simd_width, alignment=alignment](
-                Coord(Index(idx[0].value(), idx[1].value())), c_val
-            ),
+            compute_fn[c_type, simd_width, alignment=alignment](idx, c_val),
         )
 
     elementwise[simd_size, target="gpu"](

@@ -851,9 +851,7 @@ def naive_block_scaled_matmul_kernel[
 
     comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
-        elementwise_lambda[c_type, 1](
-            Coord(Index(row_idx, col_idx)), accum.cast[c_type]()
-        )
+        elementwise_lambda[c_type, 1]((row_idx, col_idx), accum.cast[c_type]())
     else:
         c[Coord(row_idx, col_idx)] = accum.cast[c_type]()
 
@@ -2067,9 +2065,7 @@ def block_scaled_matmul_with_epilogue[
                 simd_width: Int, alignment: Int = 1
             ](idx: Coord) {var}:
                 var c_val = c.load[width=simd_width](idx)
-                epilogue[c_type, simd_width, alignment=alignment](
-                    Coord(Index(idx[0].value(), idx[1].value())), c_val
-                )
+                epilogue[c_type, simd_width, alignment=alignment](idx, c_val)
 
             matmul[scales_type=scales_dtype](
                 ctx,

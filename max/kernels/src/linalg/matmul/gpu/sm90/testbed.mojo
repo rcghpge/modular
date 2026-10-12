@@ -289,7 +289,7 @@ def test_matmul_sm90[
         for i in range(M):
             for j in range(N):
                 c_host_ref[i * N + j] = compute_fn[c_type, 1, alignment=1](
-                    Coord(IndexList[2](i, j)), c_host_ref[i * N + j]
+                    (i, j), c_host_ref[i * N + j]
                 )
 
     comptime if measure_threshold:

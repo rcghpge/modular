@@ -31,10 +31,10 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.compute.mma import mma as _mma_intrinsic
-from layout import Coord, TensorEngine, TensorLayout, TileTensor
+from layout import TensorEngine, TensorLayout, TileTensor
 from std.math import ceildiv
 from std.memory import unsafe_stack_allocation
-from std.utils import Index, IndexList
+from std.utils import IndexList
 from std.utils.numerics import get_accum_type
 
 from linalg.utils import elementwise_epilogue_type
@@ -488,7 +488,7 @@ def conv2d_kernel_rdna[
                             elementwise_lambda_fn.value()
                         )
                         elementwise_lambda[out_type, 1](
-                            Coord(Index(global_row, global_col)),
+                            (global_row, global_col),
                             c_accum[c_idx][v].cast[out_type](),
                         )
                     else:

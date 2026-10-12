@@ -175,7 +175,7 @@ def naive_grouped_matmul_kernel[
                 * b_by_expert[n * K + k].cast[accum_type]()
             )
 
-    var idx = Coord(Index(Int(a_start_row) + m, n))
+    var idx = Coord(Int(a_start_row) + m, n)
     var out = accum.cast[c_type]()
     comptime if has_epilogue_fn:
         epilogue_fn[c_type, 1, alignment=1](idx, out)
@@ -342,7 +342,7 @@ def grouped_matmul_amd_kernel_launcher[
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var row = Int(idx[0].value())
         var col = Int(idx[1].value())
-        var row_idx = Coord(Index(Int(a_start_row) + row, col))
+        var row_idx = Coord(Int(a_start_row) + row, col)
         comptime if has_compute_fn:
             (c_ptr + row * N + col).store[alignment=alignment](
                 rebind[SIMD[c_type, width]](
@@ -1345,9 +1345,7 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
 
     comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
-        elementwise_lambda[c_type, 1](
-            Coord(Index(Int(m_global), n)), accum.cast[c_type]()
-        )
+        elementwise_lambda[c_type, 1]((Int(m_global), n), accum.cast[c_type]())
     else:
         var c_by_expert = c.ptr + Int64(a_start_row) * Int64(N)
         c_by_expert[m * N + n] = accum.cast[c_type]()

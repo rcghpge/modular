@@ -74,7 +74,6 @@ from max.gpu import WARP_SIZE, global_idx, lane_id
 from max.gpu.host import DeviceContext
 from std.math import ceildiv
 import max.gpu.primitives.warp as warp
-from std.utils import IndexList
 
 from layout import Coord, TensorEngine, TileTensor, TensorLayout
 from layout.tile_layout import row_major
@@ -244,7 +243,7 @@ def fp8_gemv_kernel[
 
         comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
             apply_elementwise_epilogue[elementwise_lambda_fn](
-                epilogue_fn, Coord(IndexList[2](0, n_idx)), y
+                epilogue_fn, (0, n_idx), y
             )
         else:
             c.store(Coord(0, n_idx), y)

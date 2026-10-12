@@ -28,7 +28,6 @@ from max.gpu.host import DeviceContext
 from std.memory import dealloc
 from std.memory.alloc import Layout as AllocLayout
 from layout import Coord, CoordLike, TileTensor, row_major
-from std.utils.index import IndexList
 from internal_utils import assert_almost_equal
 from std.random import rand
 from std.utils.index import Index, IndexList
@@ -791,7 +790,7 @@ def test_matmul_sm90_swapAB_comparison_v2[
             for j in range(N):
                 c_normal_host_ptr[i * N + j] = compute_fn[
                     c_type, 1, alignment=1
-                ](Coord(IndexList[2](i, j)), c_normal_host_ptr[i * N + j])
+                ]((i, j), c_normal_host_ptr[i * N + j])
 
     # =========================================================================
     # Compare results: Both should be identical
