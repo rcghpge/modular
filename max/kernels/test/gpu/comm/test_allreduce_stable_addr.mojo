@@ -195,7 +195,7 @@ def stable_allreduce_test[
                     pdl_level=PDLLevel(),
                 ](
                     in_tensors,
-                    out_tensors[i],
+                    out_tensors[i].layout,
                     rank_sigs,
                     two_stage_cfg,
                     ctxs[i],

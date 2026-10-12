@@ -3131,7 +3131,7 @@ struct BundledAllReduceSum:
             inputs[0].to_tile_tensor[.int64]().as_imm()
         )
         var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
-        var out_buf = output.to_tile_tensor[.int64]()
+        var out_layout = output.runtime_layout()
         var rank_sigs = Array[_, num_devices](
             fill_with_unrolled=lambda [i: Int]() -> Pointer[
                 Signal, MutAnyOrigin
@@ -3161,7 +3161,7 @@ struct BundledAllReduceSum:
             output_lambda=output_lambda,
         ](
             in_tensors,
-            out_buf,
+            out_layout,
             rank_sigs,
             ctx,
         )

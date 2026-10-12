@@ -57,7 +57,7 @@ preloaded once and reused across all rows in the loop.
 """
 
 from std.builtin.device_passable import DevicePassable
-from std.collections import Array, Optional
+from std.collections import Array
 from std.math import align_up, ceildiv, rsqrt
 from std.sys import (
     align_of,
@@ -95,7 +95,6 @@ from .rms_norm_fp8 import rms_norm_fused_fp8
 
 from .allreduce import (
     allreduce,
-    elementwise_epilogue_type,
     allreduce_tuning_table,
 )
 from .device_query import get_sm_version, dispatch_select_comm_config
@@ -1027,10 +1026,9 @@ def _launch_split_allreduce_rmsnorm_fp8[
             rebind[SIMD[in_dtype, _width]](sum_f32.cast[_dtype]()),
         )
 
-    allreduce[
-        ngpus=ngpus,
-        output_lambda=Optional[elementwise_epilogue_type](add_epilogue),
-    ](input_buffers, residual_output, rank_sigs, ctx)
+    allreduce[ngpus=ngpus, output_lambda=add_epilogue](
+        input_buffers, residual_output.layout, rank_sigs, ctx
+    )
 
     # Step 2: Fused RMSNorm + FP8 on residual_output (kernel already compiled).
     rms_norm_fused_fp8[in_dtype, out_dtype, scales_dtype, 2, input_fn](

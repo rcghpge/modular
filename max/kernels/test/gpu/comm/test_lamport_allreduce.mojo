@@ -249,7 +249,7 @@ def lamport_allreduce_test[
                 pdl_level=PDLLevel(),
             ](
                 in_tensors,
-                out_tensors[i],
+                out_tensors[i].layout,
                 rank_sigs,
                 lamport_cfg,
                 list_of_ctx[i],
@@ -447,7 +447,7 @@ def lamport_mixed_size_test[
                     pdl_level=PDLLevel(),
                 ](
                     in_tensors,
-                    out_tensors[i],
+                    out_tensors[i].layout,
                     rank_sigs,
                     cfg,
                     list_of_ctx[i],
@@ -965,7 +965,7 @@ def lamport_coexist_test[
                 pdl_level=PDLLevel(),
             ](
                 sin_tensors,
-                sout_tensors[i],
+                sout_tensors[i].layout,
                 rank_sigs,
                 cfg,
                 list_of_ctx[i],
@@ -1138,7 +1138,7 @@ def lamport_unsynced_skew_test[
                 pdl_level=PDLLevel(),
             ](
                 in_tensors,
-                out_capture[i],
+                out_capture[i].layout,
                 rank_sigs,
                 cfg,
                 list_of_ctx[i],
@@ -1309,7 +1309,7 @@ def lamport_wrap_test[
                 pdl_level=PDLLevel(),
             ](
                 in_tensors,
-                out_tensors[i],
+                out_tensors[i].layout,
                 rank_sigs,
                 cfg,
                 list_of_ctx[i],
