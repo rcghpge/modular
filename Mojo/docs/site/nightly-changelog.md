@@ -582,6 +582,8 @@ This version is still a work in progress.
   rejected with `struct has recursive reference to itself`, despite the
   recursion being behind a pointer.
 
+- Passing `x^` to an `imm` or `ref` argument now warns that the move has
+  no effect instead of it being silently ignored.
 - On macOS, `scalb()` now returns NaN for a non-integral exponent, as it does
   on Linux.
 - `float32` `expm1()` no longer overflows early for inputs just below 88.7,

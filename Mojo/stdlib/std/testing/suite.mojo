@@ -681,7 +681,7 @@ struct TestSuite(not Deinitable, Movable):
         var report = self.generate_report(skip_all=skip_all)
 
         if report.failures > 0:
-            raise Error(report^)
+            raise Error(report)
         if not quiet:
             print(report)
 

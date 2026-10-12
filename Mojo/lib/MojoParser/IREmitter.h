@@ -330,6 +330,10 @@ public:
   /// This emits an error and returns null if emission fails.
   Value emitRefValue(ASTExprAnd<AnyValue> value, ExprContext context);
 
+  /// Warn when `value` is a transfer out of a variable that is about to
+  /// be borrowed rather than consumed.
+  void warnIfTransferIsOnlyBorrowed(ASTExprAnd<AnyValue> value);
+
   //===--------------------------------------------------------------------===//
   // Function Calls
 

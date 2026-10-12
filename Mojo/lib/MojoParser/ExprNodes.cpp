@@ -3969,8 +3969,11 @@ AnyValue BinOpNode::emitWalrus(ExprDest &dest, IREmitter &emitter) const {
   if (rhsRValue.getIfSRValue())
     rhsRValue = emitter.emitMRValue({rhsRValue, rhs}, EC_Assignment);
 
-  // A setter taking a 'var' argument would consume the value we return.
-  BValue bValue = emitter.emitBValue({rhsRValue, rhs}, EC_Assignment);
+  // A setter taking a 'var' argument would consume the value we return. The
+  // synthetic node keeps a `x^` RHS from warning that it is only borrowed,
+  // since the value is moved into the result below.
+  SyntheticNode rhsNode(rhs->getLoc());
+  BValue bValue = emitter.emitBValue({rhsRValue, &rhsNode}, EC_Assignment);
   if (!bValue)
     return {};
   if (!emitter.emitStoreToLValue({bValue, rhs}, lhsLV, EC_Assignment))
