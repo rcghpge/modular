@@ -281,6 +281,14 @@ _DEFAULT_VALID_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 # Tool-name length cap; checked by length so it holds even when a parser widens the charset.
 _MAX_TOOL_NAME_LEN = 1024
 
+# Config resolution auto-enables the overlap scheduler for architectures
+# that support it unless ``--force`` is set, so the advice names both flags.
+_OVERLAP_LOGPROBS_ERROR = (
+    "Log probabilities are not supported with the overlap scheduler. Start"
+    " the server with --no-enable-overlap-scheduler --force to use logprobs,"
+    " or --allow-unsupported-logprobs to silently ignore the field."
+)
+
 # Standard OpenAI message roles; a tokenizer may allow more via ``extra_chat_roles``.
 _STANDARD_CHAT_ROLES = frozenset(
     {"developer", "system", "user", "assistant", "tool", "function"}
@@ -2520,13 +2528,7 @@ async def openai_create_chat_completion(
                 )
                 logprobs_count = 0
             else:
-                raise InputError(
-                    "Log probabilities are not supported with the overlap"
-                    " scheduler. Start the server with"
-                    " --no-enable-overlap-scheduler to use logprobs, or"
-                    " --allow-unsupported-logprobs to silently ignore the"
-                    " field."
-                )
+                raise InputError(_OVERLAP_LOGPROBS_ERROR)
 
         # When the orchestrator has already tokenized the prompt for
         # KV cache-aware routing, pass the token IDs directly so MAX Serve
@@ -3626,13 +3628,7 @@ async def openai_create_completion(
                 )
                 completion_request.logprobs = None
             else:
-                raise InputError(
-                    "Log probabilities are not supported with the overlap"
-                    " scheduler. Start the server with"
-                    " --no-enable-overlap-scheduler to use logprobs, or"
-                    " --allow-unsupported-logprobs to silently ignore the"
-                    " field."
-                )
+                raise InputError(_OVERLAP_LOGPROBS_ERROR)
 
         response_generator = OpenAICompletionResponseGenerator(
             pipeline,

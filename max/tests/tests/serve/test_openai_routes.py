@@ -3807,7 +3807,9 @@ async def test_chat_completion_logprobs_with_overlap_scheduler_rejected_by_defau
         response = await client.post("/v1/chat/completions", json=body)
 
     assert response.status_code == 400
-    assert "overlap" in response.json()["error"]["message"].lower()
+    message = response.json()["error"]["message"]
+    assert "--no-enable-overlap-scheduler --force" in message
+    assert "--allow-unsupported-logprobs" in message
 
 
 @pytest.mark.asyncio
@@ -3898,7 +3900,9 @@ async def test_completion_logprobs_with_overlap_scheduler_rejected_by_default(
         )
 
     assert response.status_code == 400
-    assert "overlap" in response.json()["error"]["message"].lower()
+    message = response.json()["error"]["message"]
+    assert "--no-enable-overlap-scheduler --force" in message
+    assert "--allow-unsupported-logprobs" in message
 
 
 @pytest.mark.asyncio
