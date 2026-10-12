@@ -47,6 +47,10 @@ PATCHES = [
     # target, so lldb:ConfigHeader fails to see llvm_libxml2_auto. Let the
     # three members inherit the package's public default.
     "//bazel/public-patches:llvm-libxml2-config-setting-visibility.patch",
+    # Default the overlay's feature flags to what every build wants, so no rc
+    # flag names an @llvm-project label. Parsing such a flag fetches the LLVM
+    # source before analysis can start.
+    "//bazel/public-patches:llvm-flag-defaults.patch",
 ]
 
 def _llvm_source_impl(module_ctx):

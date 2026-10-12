@@ -1,16 +1,6 @@
-load(
-    "//bazel:api.bzl",
-    "gentbl_cc_library",
-    "gentbl_mlir_dialect",
-    "gentbl_modular_passes",
-    "mlir_nanobind",
-    "modular_cc_library",
-    "modular_nanobind_library",
-    "modular_shared_library",
-    "pkg_files",
-    "td_library",
-)
+load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library", "modular_shared_library", "pkg_files")
 load("//bazel:config.bzl", "ASYNCRT_PROFILING_LOCAL_DEFINES", "CONFIG_SECTION_LOCAL_DEFINES")
+load("//bazel:tablegen.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "mlir_nanobind", "td_library")
 
 # gazelle:default_visibility //visibility:public
 # gazelle:default_features layering_check,parse_headers

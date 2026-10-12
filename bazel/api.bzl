@@ -1,6 +1,5 @@
 """Public API accessors to reduce the number of load statements needed in BUILD.bazel files."""
 
-load("@llvm-project//mlir:tblgen.bzl", _gentbl_cc_library = "gentbl_cc_library", _td_library = "td_library")
 load("@rules_pkg//pkg:mappings.bzl", _pkg_filegroup = "pkg_filegroup", _pkg_files = "pkg_files", _strip_prefix = "strip_prefix")
 load("@with_cfg.bzl//with_cfg/private:select.bzl", "decompose_select_elements")  # buildifier: disable=bzl-visibility
 load("//bazel:mojo_aliases.bzl", "INTERNAL_PACKAGES")
@@ -33,14 +32,9 @@ load("//bazel/internal:mojo_shared_library.bzl", _mojo_shared_library = "mojo_sh
 load("//bazel/internal:mojo_test.bzl", _mojo_test = "mojo_test")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:mojo_test_environment.bzl", _mojo_test_environment = "mojo_test_environment")  # buildifier: disable=bzl-visibility
 load("//bazel/internal:py_repl.bzl", _py_repl = "py_repl")  # buildifier: disable=bzl-visibility
-load("//bazel/internal:tablegen.bzl", _driver_option_tablegen = "driver_option_tablegen", _gentbl_mlir_dialect = "gentbl_mlir_dialect", _gentbl_modular_passes = "gentbl_modular_passes")  # buildifier: disable=bzl-visibility
 load("//bazel/pip:pip_requirement.bzl", _requirement = "pip_requirement")
 
 dialect_checksum = _dialect_checksum
-driver_option_tablegen = _driver_option_tablegen
-gentbl_cc_library = _gentbl_cc_library
-gentbl_mlir_dialect = _gentbl_mlir_dialect
-gentbl_modular_passes = _gentbl_modular_passes
 kgen_kernel = _kgen_kernel
 lit_tests = _lit_tests
 modular_genrule = _modular_genrule
@@ -60,7 +54,6 @@ pkg_files = _pkg_files
 py_repl = _py_repl
 requirement = _requirement
 strip_prefix = _strip_prefix
-td_library = _td_library
 
 _OVERRIDE_DEFINES = {
     "MOJO_COMPILER_ACCELERATOR_SUPPORT": "0",
@@ -259,6 +252,5 @@ def _noop(**_kwargs):
     pass
 
 install_docs = _noop
-mlir_nanobind = _noop
 modular_nanobind_library = _noop
 modular_python_binding_library_test = _noop

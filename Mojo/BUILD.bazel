@@ -1,18 +1,5 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load(
-    "//bazel:api.bzl",
-    "copy_files",
-    "dialect_checksum",
-    "gentbl_cc_library",
-    "gentbl_mlir_dialect",
-    "gentbl_modular_passes",
-    "mlir_nanobind",
-    "modular_cc_library",
-    "modular_py_binary",
-    "modular_shared_library",
-    "pkg_files",
-    "td_library",
-)
+load("//bazel:api.bzl", "copy_files", "dialect_checksum", "modular_cc_library", "modular_py_binary", "modular_shared_library", "pkg_files")
 load(
     "//bazel:config.bzl",
     "ALLOW_UNUSED_TAG",
@@ -21,6 +8,7 @@ load(
     "KERNEL_PROFILING_LOCAL_DEFINES",
     "TOP_LEVEL_TAG",
 )
+load("//bazel:tablegen.bzl", "gentbl_cc_library", "gentbl_mlir_dialect", "gentbl_modular_passes", "mlir_nanobind", "td_library")
 
 # gazelle:default_visibility //Mojo:consumers
 
