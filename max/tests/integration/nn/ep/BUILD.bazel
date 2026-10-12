@@ -115,9 +115,9 @@ modular_py_test(
     ],
     tags = [
         "gpu",
-        # Postsubmit rather than presubmit: it holds two GPUs for two full EP
-        # compiles to check a runtime property few changes touch.
-        "postsubmit",
+        # TODO(GEX-4366): side-stream work seems to launch after the main
+        # stream on AMD. Manual until the flake is fixed.
+        "manual",
         "requires-network",
     ],
     deps = [
