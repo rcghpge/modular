@@ -2134,6 +2134,15 @@ class OverlapTextGenerationPipeline(
         return not self._disable_overlap
 
     @property
+    def graph_capture_ready(self) -> bool:
+        """Whether :meth:`warmup_graph_capture` has run.
+
+        Once it has, pure-decode steps with at most the capture batch size per
+        replica replay captured graphs, and every other step runs eagerly.
+        """
+        return self._graph_capture_runner is not None
+
+    @property
     def pipeline_config(self) -> PipelineConfig:
         """Returns the pipeline configuration."""
         return self._pipeline_config
