@@ -5046,8 +5046,8 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
 
   // Produce a fresh error AnyAsyncValueRef. The actual output slot assignment
   // is emitted by the mogg.output terminator (which consumes the TryOp result).
-  MojoValue errorValue = state.builder.var(
-      MojoValue(kFnMoggAsyncErrorValue)({}, {formattedErr.transfer()}));
+  MojoValue errorValue =
+      state.builder.var(MojoValue(kFnMoggAsyncErrorValue)({}, {formattedErr}));
   state.setMojoValueFor(getResult(), errorValue);
 
   return success();

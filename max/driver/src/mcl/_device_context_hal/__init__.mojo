@@ -3141,7 +3141,7 @@ struct DeviceFunction[
             ctx,
             config,
             *encoded_args,
-            host0=host0^,
+            host0=host0,
             host0_size=UInt64(size_of[Host]()),
             attributes=attributes^,
             location=location,
@@ -3204,8 +3204,8 @@ struct DeviceFunction[
             ctx,
             config,
             *encoded_args,
-            host0=host0^,
-            host1=host1^,
+            host0=host0,
+            host1=host1,
             host0_size=UInt64(size_of[Host0]()),
             host1_size=UInt64(size_of[Host1]()),
             attributes=attributes^,
@@ -3280,9 +3280,9 @@ struct DeviceFunction[
             ctx,
             config,
             *encoded_args,
-            host0=host0^,
-            host1=host1^,
-            host2=host2^,
+            host0=host0,
+            host1=host1,
+            host2=host2,
             host0_size=UInt64(size_of[Host0]()),
             host1_size=UInt64(size_of[Host1]()),
             host2_size=UInt64(size_of[Host2]()),
@@ -3369,10 +3369,10 @@ struct DeviceFunction[
             ctx,
             config,
             *encoded_args,
-            host0=host0^,
-            host1=host1^,
-            host2=host2^,
-            host3=host3^,
+            host0=host0,
+            host1=host1,
+            host2=host2,
+            host3=host3,
             host0_size=UInt64(size_of[Host0]()),
             host1_size=UInt64(size_of[Host1]()),
             host2_size=UInt64(size_of[Host2]()),
@@ -3471,11 +3471,11 @@ struct DeviceFunction[
             ctx,
             config,
             *encoded_args,
-            host0=host0^,
-            host1=host1^,
-            host2=host2^,
-            host3=host3^,
-            host4=host4^,
+            host0=host0,
+            host1=host1,
+            host2=host2,
+            host3=host3,
+            host4=host4,
             host0_size=UInt64(size_of[Host0]()),
             host1_size=UInt64(size_of[Host1]()),
             host2_size=UInt64(size_of[Host2]()),
@@ -4108,7 +4108,7 @@ struct DeviceExternalFunction(ImplicitlyCopyable, Movable):
             asm: Pre-compiled assembly/object bytes.
         """
         var func_handle = ctx._context[].get_or_load_function_dynamic(
-            asm, function_name^
+            asm, function_name
         )
         self._ctx = ctx
         self._inner = ArcPointer(_ExternalFunctionInner(func_handle))
