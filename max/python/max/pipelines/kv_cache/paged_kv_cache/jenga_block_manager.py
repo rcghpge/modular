@@ -578,11 +578,21 @@ class JengaBlockManager:
                 block_hashes,
                 replica_idx=replica_idx,
             )
-            # The connector reads these pages on its own engine, so pin them
-            # until the D2H lands. An offload that moved nothing is already
-            # complete and needs no pin.
+            # Use the event to determine which pages the connector needs to read
+            # and track only those in the transfer.
             if not event.is_complete():
-                self._track_transfer(event, src, replica_idx)
+                by_bid = {
+                    leaf_id: {block.bid: block for block in blocks}
+                    for leaf_id, blocks in src.items()
+                }
+                self._track_transfer(
+                    event,
+                    {
+                        leaf_id: [by_bid[leaf_id][bid] for bid in taken]
+                        for leaf_id, taken in event.g0_blocks_per_leaf.items()
+                    },
+                    replica_idx,
+                )
         self._pending_offloads[replica_idx].clear()
 
     def poll_transfers(self) -> None:
