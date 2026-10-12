@@ -888,9 +888,8 @@ def simd_store_into_managed_tensor_slice[
     ].static_value
 
     # Stride = 1
-    @__parameter
     @inline(.always)
-    def store_stride1():
+    def store_stride1() {imm}:
         comptime if dtype == .bool:
             var v = value.cast[.uint8]()
             tensor._ptr.unsafe_bitcast[UInt8]().unsafe_store(flat_index, v)
@@ -898,9 +897,8 @@ def simd_store_into_managed_tensor_slice[
             tensor._ptr.unsafe_store[alignment=max_alignment](flat_index, value)
 
     # Stride > 1
-    @__parameter
     @inline(.always)
-    def store_strided(stride: Int):
+    def store_strided(stride: Int) {imm}:
         comptime if dtype == .bool:
             var v = value.cast[.uint8]()
             strided_store(
@@ -1059,9 +1057,8 @@ def simd_load_from_managed_tensor_slice[
     comptime invariant = not tensor.io_spec.mut
 
     # Stride = 1
-    @__parameter
     @inline(.always)
-    def load_stride1() -> SIMD[dtype, simd_width]:
+    def load_stride1() {imm} -> SIMD[dtype, simd_width]:
         comptime if dtype == .bool:
             var v = tensor._ptr.unsafe_bitcast[UInt8]().unsafe_load[
                 width=simd_width,
@@ -1074,9 +1071,8 @@ def simd_load_from_managed_tensor_slice[
             ](flat_index)
 
     # Stride > 1
-    @__parameter
     @inline(.always)
-    def load_strided(stride: Int) -> SIMD[dtype, simd_width]:
+    def load_strided(stride: Int) {imm} -> SIMD[dtype, simd_width]:
         comptime if dtype == .bool:
             var v = strided_load[simd_width, invariant=invariant](
                 tensor._ptr.unsafe_bitcast[UInt8]().unsafe_offset(flat_index),

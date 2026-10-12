@@ -340,15 +340,15 @@ def test_grouped_gemm_epilogue[
 
     # Apply epilogue lambda on CPU to reference
 
-    @__parameter
     @inline(.always)
-    @__copy_capture(c_host_original)
     def epilogue_add_c_host[
         _dtype: DType,
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[_dtype, width]:
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_host_original} -> SIMD[
+        _dtype, width
+    ]:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return val + c_host_original.load[width=width](idx).cast[_dtype]()
 

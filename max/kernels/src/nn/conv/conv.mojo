@@ -5238,9 +5238,8 @@ def conv_gpu[
             # residual path and the 4-wave kernel does the residual add
             # in-kernel. We pull `source_ptr`'s contents to host along
             # with the other two buffers and combine them in the loop.
-            @__parameter
             @inline(.always)
-            def _audit_amd_4wave_vs_miopen() raises:
+            def _audit_amd_4wave_vs_miopen() raises {imm}:
                 if getenv("MODULAR_CONV_AUDIT_MIOPEN", "0") != "1":
                     return
 

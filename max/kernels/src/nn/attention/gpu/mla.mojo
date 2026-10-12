@@ -1093,13 +1093,12 @@ def flare_mla_decoding_dispatch[
         comptime amd_fp8 = ctx.target.is_amd_gpu() and q.dtype.is_float8()
 
         @inline(.always)
-        @__parameter
         def launch_with_BM[
             BM: Int,
             q_seq_len: Int = 1,
             WM: Int = BM,
             WN: Int = (16 if ctx.target.is_nvidia_gpu() else 32),
-        ]() raises:
+        ]() raises {imm}:
             # `q_seq_len` (S) folds H*S query rows into the MMA M dimension.
             # Default 1 = single-token decode. `WM`/`WN` default to the legacy
             # (1,4) geometry (WM=BM, WN=32 AMD / 16 NVIDIA), so S=1 call sites are

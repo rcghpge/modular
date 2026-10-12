@@ -3187,8 +3187,7 @@ struct DeviceFunction[
         """
 
         # Get ASM - either from the pre-compiled func_impl or by compiling now
-        @__parameter
-        def get_asm() -> StaticString:
+        def get_asm() {imm} -> StaticString:
             comptime if Self._emission_kind == "asm":
                 return self._func_impl.asm
             return _compile_code[

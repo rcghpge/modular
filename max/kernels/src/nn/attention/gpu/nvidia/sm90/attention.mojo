@@ -571,11 +571,10 @@ def produce[
     var tile_state = tile_state_arg
     var position = initial_position
 
-    @__parameter
     @inline(.nodebug)
     def q_producer(
         q_idx: UInt32, offset: UInt32 = 0
-    ) -> TileTensor[
+    ) {imm} -> TileTensor[
         qkv_type,
         type_of(row_major(q_tile_shape)),
         type_of(q_smem).origin,
@@ -616,7 +615,6 @@ def produce[
         BM, BN, page_size
     ]()
 
-    @__parameter
     @inline(.nodebug)
     def _num_valid_pages(end_row: UInt32, current_kv_row: UInt32) -> UInt32:
         return min(

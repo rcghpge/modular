@@ -483,7 +483,6 @@ def mha_sm100_dispatch[
     var max_cache_valid_length: UInt32 = UInt32(max_cache_valid_length_arg)
     var batch_size: UInt32 = UInt32(batch_size_arg)
 
-    @__parameter
     @inline(.always)
     def with_fa4_config[
         NumPartitionsType: OptionallyStaticInt,
@@ -500,7 +499,7 @@ def mha_sm100_dispatch[
         # and a separate combine kernel merges it into `output`. Every other
         # launch omits it and infers the null conformer from this default.
         o_workspace_ptr: OWorkspaceType = NullPointer[output_type](),
-    ) raises:
+    ) raises {imm}:
         # `num_partitions` is ALWAYS static: the 2Q config (and its in-kernel 1Q
         # switch) carry a static 1, and each num_q==1 split-K config is compiled
         # once per static partition count `P` (cluster size `P`) — the dispatch
@@ -701,19 +700,18 @@ def mha_sm100_dispatch[
                 num_qk_stages=fa4_config.num_qk_stages,
             ](ctx, q, num_rows_q)
 
-            @__parameter
             @inline(.always)
-            def with_sink[SinkType: OptionalPointer](sink_ptr: SinkType) raises:
-                @__parameter
+            def with_sink[
+                SinkType: OptionalPointer
+            ](sink_ptr: SinkType) raises {imm}:
                 @inline(.always)
                 def with_kv_offsets[
                     KVRowOffsetsType: OptionalPointer
-                ](kv_row_offsets: KVRowOffsetsType) raises:
-                    @__parameter
+                ](kv_row_offsets: KVRowOffsetsType) raises {imm}:
                     @inline(.always)
                     def with_valid_length[
                         ValidLengthType: OptionalPointer
-                    ](valid_len: ValidLengthType) raises:
+                    ](valid_len: ValidLengthType) raises {imm}:
                         # the pack contains all possibly 0-sized objects
                         comptime PackType = Pack[
                             MaskType,
@@ -881,21 +879,18 @@ def mha_sm100_dispatch[
                 num_qk_stages=fa4_config.num_qk_stages,
             ](ctx, q, num_rows_q)
 
-            @__parameter
             @inline(.always)
             def with_sink_q[
                 SinkType: OptionalPointer
-            ](sink_ptr: SinkType) raises:
-                @__parameter
+            ](sink_ptr: SinkType) raises {imm}:
                 @inline(.always)
                 def with_kv_offsets[
                     KVRowOffsetsType: OptionalPointer
-                ](kv_row_offsets: KVRowOffsetsType) raises:
-                    @__parameter
+                ](kv_row_offsets: KVRowOffsetsType) raises {imm}:
                     @inline(.always)
                     def with_valid_length[
                         ValidLengthType: OptionalPointer
-                    ](valid_len: ValidLengthType) raises:
+                    ](valid_len: ValidLengthType) raises {imm}:
                         # the pack contains all possibly 0-sized objects
                         comptime PackType = Pack[
                             MaskType,
@@ -1055,9 +1050,10 @@ def mha_sm100_dispatch[
             else:
                 with_sink_q[NullPointer[KVType.dtype]]({})
 
-    @__parameter
     @inline(.always)
-    def launch_workspace[fa4_config: FA4Config[KVType.dtype]](p: UInt32) raises:
+    def launch_workspace[
+        fa4_config: FA4Config[KVType.dtype]
+    ](p: UInt32) raises {imm}:
         """Traditional (unfused / workspace) split-K launch: run the plain 1Q
         config over an over-launched grid that writes each partition's
         locally-normalized `O_p/l_p` + fused per-row LSE to a transient

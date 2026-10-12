@@ -1492,10 +1492,9 @@ def topk_topp_sampling_from_prob_cluster[
                 ):
                     cluster_size = c
 
-        @__parameter
         def launch_cluster[
             vec_size: Int, deterministic: Bool, cluster_size: Int
-        ]() raises:
+        ]() raises {imm}:
             comptime if emit_dist and from_logits:
                 comptime kernel = TopKTopPSamplingEmitDistClusterKernel[
                     probs.LayoutType,
@@ -1537,8 +1536,7 @@ def topk_topp_sampling_from_prob_cluster[
                     attributes=pdl_launch_attributes(PDLLevel.ON),
                 )
 
-        @__parameter
-        def launch_single[vec_size: Int, deterministic: Bool]() raises:
+        def launch_single[vec_size: Int, deterministic: Bool]() raises {imm}:
             comptime kernel = TopKTopPSamplingFromProbKernel[
                 probs.LayoutType,
                 ImmOrigin(probs.origin),
@@ -1576,8 +1574,7 @@ def topk_topp_sampling_from_prob_cluster[
             )
 
         # `vec_size = gcd(8, d)`, so 8 is the widest case.
-        @__parameter
-        def dispatch_vec_size[deterministic: Bool]() raises:
+        def dispatch_vec_size[deterministic: Bool]() raises {imm}:
             comptime for param_vec_size in [8, 4, 2, 1]:
                 if vec_size == param_vec_size:
                     comptime for param_cluster in [1, 2, _MAX_CUTOFF_CLUSTER]:

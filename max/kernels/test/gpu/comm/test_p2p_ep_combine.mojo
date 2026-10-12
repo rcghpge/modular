@@ -473,8 +473,7 @@ def test_combine[
         run_combine_async_wait(dev_idx, slot_idx)
 
     @inline(.always)
-    @__parameter
-    def clean_up(dev_idx: Int) raises:
+    def clean_up(dev_idx: Int) raises {imm}:
         var ctx = list_of_ctx[dev_idx]
         ctx.enqueue_memset(atomic_counters_list[dev_idx], Int32(0))
         ctx.enqueue_memset(
