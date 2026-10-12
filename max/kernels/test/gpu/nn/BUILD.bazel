@@ -261,6 +261,11 @@ _EXTRA_CONSTRAINTS = {
         "//:mi355_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    # k-pooled scorer over GLM-5.3-Flash's per-token pooled cache layout.
+    "test_mla_index_kpool_cache_layout.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     "test_rms_norm_fused_fp8.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],

@@ -45,6 +45,10 @@ from nn.attention.gpu.sparse_index_fp8_sm100 import (
     SPEC_DECODE_N_TOKENS_ALT,
     fp8_index_score_sm100,
 )
+from nn.attention.gpu.sparse_index_fp8_sm100_prefill import (
+    _k_box_rows,
+    _k_tile_fits_pages,
+)
 from nn.attention.mha_mask import MaskName
 from nn.attention.mha_operand import KVCacheMHAOperand, KVCacheScalesMHAOperand
 from nn.attention.mha_utils import indexer_key_bound
@@ -435,10 +439,12 @@ def mla_indexer_ragged_float8_paged[
         _has_blackwell_tcgen05()
         and num_heads in (64, 32, 8, 4)
         and depth == 128
-        and (
-            type_of(k_operand).page_size == 0
-            or type_of(k_operand).page_size % _BM_KEY == 0
-        )
+        and _k_tile_fits_pages[
+            _BM_KEY,
+            type_of(k_operand).page_size,
+            # `pool_row_tokens`, derived below.
+            1 if CacheType.kv_params.head_size == depth else kpool,
+        ]()
     )
 
     # gfx950 MFMA scorer: same score-buffer contract as SM100 (fused causal
@@ -462,6 +468,15 @@ def mla_indexer_ragged_float8_paged[
         "pooled indexing (kpool > 1) is implemented only on the SM100"
         " tensor-core scorer; the scalar fallback walks token rows"
     )
+
+    # A pooled cache comes in two shapes: one `depth`-wide row per pool, or
+    # (GLM-5.3-Flash) one `depth / kpool`-wide row per token with each pool's
+    # key spread over its tokens' rows. The SM100 scorer reads either.
+    comptime cache_row_width = CacheType.kv_params.head_size
+    comptime assert (
+        cache_row_width == depth or cache_row_width * kpool == depth
+    ), "the indexer cache row must hold a whole key or one token's share of it"
+    comptime pool_row_tokens = 1 if cache_row_width == depth else kpool
 
     # The scalar fallback is f32-only, so `scores_dtype` is
     # a preference, not a contract: no caller can observe which arm ran, and an
@@ -576,9 +591,15 @@ def mla_indexer_ragged_float8_paged[
             # `rebind` because the collection's `CacheType.dtype` is not
             # syntactically `dtype`, though the route already requires them
             # equal -- the same rebind the scorer does on its own tiles.
-            var k_tma_tile = rebind[KTMATileT[dtype, _BM_KEY, depth]](
+            comptime k_box_rows = _k_box_rows[
+                _BM_KEY, type_of(k_operand).page_size, pool_row_tokens
+            ]()
+            var k_tma_tile = rebind[KTMATileT[dtype, k_box_rows, depth]](
                 k_cache.create_paged_tma_tile[
-                    _INDEX_SWIZZLE, BN=_BM_KEY, BK=depth
+                    _INDEX_SWIZZLE,
+                    BN=k_box_rows,
+                    BK=depth,
+                    pool_row_tokens=pool_row_tokens,
                 ](ctx)
             )
             fp8_index_score_sm100[
@@ -606,6 +627,8 @@ def mla_indexer_ragged_float8_paged[
                 # is a many-token prefill landing here.
                 N_TOKENS_ALT=SPEC_DECODE_N_TOKENS_ALT,
                 kpool=kpool,
+                pool_row_tokens=pool_row_tokens,
+                k_box_rows=k_box_rows,
             ](
                 scores_tile,
                 q,
