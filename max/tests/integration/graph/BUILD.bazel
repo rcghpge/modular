@@ -145,6 +145,9 @@ modular_py_test(
         "test_epilogue_fusion.py": ["postsubmit"],
     },
     precompile_mefs = True,
+    precompile_shards = {
+        "test_resize_nearest.py": 8,
+    },
     tags = [
         "gpu",
     ],
