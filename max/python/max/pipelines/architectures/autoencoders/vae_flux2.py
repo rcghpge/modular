@@ -727,8 +727,10 @@ def interpolate_2d_nearest(
 ) -> TensorValue:
     """Upsample a 2D tensor using nearest-neighbor interpolation.
 
-    Workaround using reshape + broadcast because ``ops.resize`` does not
-    support NEAREST mode.  Only ``scale_factor=2`` is implemented.
+    Implemented with reshape + broadcast rather than ``ops.resize_nearest``:
+    an exact 2x upsample is pure data movement with static shapes, so no
+    resize kernel or coordinate arithmetic is needed. Only ``scale_factor=2``
+    is implemented.
 
     Args:
         x: Input tensor of shape ``[N, C, H, W]`` (NCHW).

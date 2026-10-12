@@ -461,7 +461,12 @@ class AttentionBlock(Module):
 
 
 class Upsample2d(Module):
-    """Nearest-neighbor 2D upsample by factor 2."""
+    """Nearest-neighbor 2D upsample by factor 2.
+
+    Implemented with reshape + concat rather than ``ops.resize_nearest``:
+    an exact 2x upsample is pure data movement with static shapes, so no
+    resize kernel or coordinate arithmetic is needed.
+    """
 
     def __init__(self) -> None:
         super().__init__()

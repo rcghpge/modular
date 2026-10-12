@@ -26,16 +26,14 @@ def interpolate_2d_nearest(
 ) -> TensorValue:
     """Upsamples a 2D tensor using nearest-neighbor interpolation.
 
-    This is a workaround implementation because MAX framework's ops.resize
-    does not support NEAREST mode (only BICUBIC is currently supported).
-    The workaround uses reshape and broadcast operations to achieve
-    nearest-neighbor upsampling by a factor of 2.
+    Implemented with reshape and broadcast rather than ``ops.resize_nearest``:
+    an exact 2x upsample is pure data movement with static shapes, so no
+    resize kernel or coordinate arithmetic is needed. ``ops.resize_nearest``
+    (asymmetric transform, floor rounding) produces identical output for 2x,
+    should a non-integer scale ever be needed.
 
     This function works in both Graph context and eager execution contexts,
     compatible with Module API style.
-
-    Note:
-        This workaround can be removed once ops.resize supports NEAREST mode.
 
     Args:
         x: Input tensor of shape [N, C, H, W] in NCHW format.

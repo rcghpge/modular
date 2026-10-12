@@ -53,7 +53,12 @@ def _interpolate_2d_nearest(
     *,
     scale_factor: int = 2,
 ) -> TensorValue:
-    """Upsample an NCHW tensor using nearest-neighbor expansion."""
+    """Upsample an NCHW tensor using nearest-neighbor expansion.
+
+    Implemented with reshape + broadcast rather than ``ops.resize_nearest``:
+    an exact 2x upsample is pure data movement with static shapes, so no
+    resize kernel or coordinate arithmetic is needed.
+    """
     if x.rank != 4:
         raise ValueError(f"Input tensor must have rank 4, got {x.rank}")
     if scale_factor != 2:
