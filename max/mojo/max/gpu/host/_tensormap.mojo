@@ -60,14 +60,15 @@ struct DataType(TrivialRegisterPassable):
             DType.float8_e8m0fnu,
         ), "Unsupported dtype"
 
-        comptime if dtype == .float32:
-            return Self.FLOAT32
-        elif dtype == .float16:
-            return Self.FLOAT16
-        elif dtype in (DType.float8_e4m3fn, DType.float8_e8m0fnu, DType.uint8):
-            return Self.UINT8
-        else:
-            return Self.BFLOAT16
+        comptime match dtype:
+            case .float32:
+                return Self.FLOAT32
+            case .float16:
+                return Self.FLOAT16
+            case .float8_e4m3fn | .float8_e8m0fnu | .uint8:
+                return Self.UINT8
+            case _:
+                return Self.BFLOAT16
 
 
 @fieldwise_init("implicit")
