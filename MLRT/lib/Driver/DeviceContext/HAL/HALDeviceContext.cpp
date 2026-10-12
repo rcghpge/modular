@@ -367,6 +367,10 @@ ErrorOr<int> Device::getAttribute(Attribute attr) const {
   return static_cast<int>(value);
 }
 
+ErrorOr<Device::AllocationRange> Device::allocationRange(void *) const {
+  return Error("allocation range queries are not supported on this device");
+}
+
 ErrorOr<size_t> Device::maxSingleAllocationSize() const {
   if (!isVirtual()) {
     bool hasLimit = false;

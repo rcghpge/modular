@@ -156,6 +156,17 @@ size_t Python::Device::getMaxSingleAllocSize() const {
   return sizeOr.get();
 }
 
+std::pair<uintptr_t, size_t>
+Python::Device::getAllocationRange(uintptr_t address) const {
+  nb::gil_scoped_release release;
+  ErrorOr<M::Driver::Device::AllocationRange> rangeOr =
+      ctx->device().allocationRange(reinterpret_cast<void *>(address));
+  if (rangeOr.isError())
+    throw std::runtime_error("failed to get the allocation range: "s +
+                             rangeOr.getError());
+  return {reinterpret_cast<uintptr_t>(rangeOr->base), rangeOr->size};
+}
+
 bool Python::Device::isHostUnified() const {
   nb::gil_scoped_release release;
   ErrorOr<bool> unifiedOr = ctx->device().isHostUnified();

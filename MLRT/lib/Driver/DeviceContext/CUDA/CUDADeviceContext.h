@@ -106,6 +106,7 @@ public:
   ErrorOrSuccess vmmUnmap(void *va, size_t byteSize) override;
 
   ErrorOr<Device::MemInfo> getMemoryInfo() const override;
+  ErrorOr<AllocationRange> allocationRange(void *ptr) const override;
 
   ErrorOr<Device::GraphMemInfo> getGraphMemoryInfo() const override;
 

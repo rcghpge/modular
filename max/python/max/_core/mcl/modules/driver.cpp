@@ -17,6 +17,7 @@
 #include "nanobind/nanobind.h"
 #include "nanobind/operators.h"
 #include "nanobind/stl/optional.h"   // IWYU pragma: keep (type caster)
+#include "nanobind/stl/pair.h"       // IWYU pragma: keep (type caster)
 #include "nanobind/stl/shared_ptr.h" // IWYU pragma: keep (type casters)
 #include "nanobind/stl/string.h"     // IWYU pragma: keep (type casters)
 #include "nanobind/stl/vector.h"     // IWYU pragma: keep (type casters)
@@ -155,6 +156,10 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
       .def_prop_ro("max_single_alloc_size",
                    &Python::Device::getMaxSingleAllocSize,
                    "Largest single contiguous allocation, in bytes.")
+      .def("_allocation_range", &Python::Device::getAllocationRange,
+           nb::arg("address"),
+           "Returns ``(base, size)`` of the driver allocation that contains "
+           "``address``.")
       .def_prop_ro("label", &Python::Device::getLabel, R"nbdoc(
         Returns device label.
 

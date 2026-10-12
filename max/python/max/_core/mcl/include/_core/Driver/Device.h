@@ -113,6 +113,9 @@ struct Device : public std::enable_shared_from_this<Device> {
   // Returns the largest single contiguous allocation the device supports.
   size_t getMaxSingleAllocSize() const;
 
+  // Returns (base, size) of the driver allocation containing `address`.
+  std::pair<uintptr_t, size_t> getAllocationRange(uintptr_t address) const;
+
   // Returns the programming API for the device.
   std::string getApi() const;
 

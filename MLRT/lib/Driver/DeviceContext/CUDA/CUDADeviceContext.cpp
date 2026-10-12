@@ -650,6 +650,17 @@ const CUmemAllocationProp &CUDADevice::vmmAllocProp() const {
             cudaDevice_) == CUDADriver::SUCCESS &&
         rdmaWithVmm)
       vmmAllocProp_.allocFlags.gpuDirectRDMACapable = 1;
+    // Make granules exportable as POSIX fds so another process on this node
+    // can map them. UCX cuda_ipc needs this to move VMM memory over NVLink;
+    // without an exportable handle it falls back to a host-staged transport.
+    int posixFdSupported = 0;
+    if (driver_.cuDeviceGetAttribute(
+            &posixFdSupported,
+            CUdevice_attribute::HANDLE_TYPE_POSIX_FILE_DESCRIPTOR_SUPPORTED,
+            cudaDevice_) == CUDADriver::SUCCESS &&
+        posixFdSupported)
+      vmmAllocProp_.requestedHandleTypes =
+          CUmemAllocationHandleType::POSIX_FILE_DESCRIPTOR;
   });
   return vmmAllocProp_;
 }
@@ -779,6 +790,16 @@ ErrorOr<Device::MemInfo> CUDADevice::getMemoryInfo() const {
     return getHostUnifiedMemoryInfo(memInfo);
 #endif
   return memInfo;
+}
+
+ErrorOr<Device::AllocationRange> CUDADevice::allocationRange(void *ptr) const {
+  CUDA_WITH_DEV_ERR(*this);
+  CUdeviceptr base = nullptr;
+  size_t size = 0;
+  // UCX sizes the region it registers with this same call, so callers that
+  // split registrations here line up with what UCX exports.
+  CUDA_CHECK_ERR(driver_.cuMemGetAddressRange_v2(&base, &size, ptr));
+  return AllocationRange{base, size};
 }
 
 ErrorOr<Device::GraphMemInfo> CUDADevice::getGraphMemoryInfo() const {

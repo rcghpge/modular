@@ -274,6 +274,15 @@ public:
 
   virtual ErrorOr<Device::MemInfo> getMemoryInfo() const = 0;
 
+  // The driver allocation that contains an address. Under VMM one buffer is
+  // stitched from many allocations, and transports that register or export
+  // memory one allocation at a time need the boundaries.
+  struct AllocationRange {
+    void *base;
+    size_t size;
+  };
+  virtual ErrorOr<AllocationRange> allocationRange(void *ptr) const;
+
   /// Largest single contiguous device allocation. Defaults to
   /// `getMemoryInfo().total`; Metal overrides to `maxBufferLength`.
   virtual ErrorOr<size_t> maxSingleAllocationSize() const;

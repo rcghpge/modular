@@ -239,6 +239,10 @@ ErrorOr<size_t> Device::maxSingleAllocationSize() const {
   return info.total;
 }
 
+ErrorOr<Device::AllocationRange> Device::allocationRange(void *) const {
+  return Error("allocation range queries are not supported on this device");
+}
+
 // Default VMM implementations: unsupported. Backends that support VMM (CUDA)
 // override `vmmSupported()` and these methods. The MemoryManager never calls
 // the methods below unless `vmmSupported()` returned true.

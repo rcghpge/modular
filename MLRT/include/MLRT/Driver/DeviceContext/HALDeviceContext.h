@@ -149,6 +149,13 @@ public:
   ErrorOr<GraphMemInfo> getGraphMemoryInfo() const { return GraphMemInfo(); }
   /// The plugin's `max_allocation_size` property, else total device memory.
   ErrorOr<size_t> maxSingleAllocationSize() const;
+  /// Mirrors `M::Driver::Device::AllocationRange`. The HAL plugin ABI has no
+  /// allocation-range query, so `allocationRange` always errors.
+  struct AllocationRange {
+    void *base;
+    size_t size;
+  };
+  ErrorOr<AllocationRange> allocationRange(void *ptr) const;
   /// Whether this device can directly access `other`'s memory.
   ErrorOr<bool> canAccess(const Device &other) const;
   /// Answered by the plugin's `host_unified` property; virtual devices
