@@ -554,23 +554,24 @@ def _mark_eviction[
             - Non-zero handle for fractional L2 eviction policy.
     """
 
-    comptime if eviction_policy == CacheEviction.EVICT_NORMAL:
-        return 0
-    elif eviction_policy == CacheEviction.EVICT_LAST:
-        return inlined_assembly[
-            "createpolicy.fractional.L2::evict_last.b64 $0;",
-            UInt64,
-            constraints="=l",
-        ]()
-    else:
-        comptime assert (
-            eviction_policy == CacheEviction.EVICT_FIRST
-        ), "invalid eviction policy, only support normal, first, and last"
-        return inlined_assembly[
-            "createpolicy.fractional.L2::evict_first.b64 $0;",
-            UInt64,
-            constraints="=l",
-        ]()
+    comptime match eviction_policy:
+        case == CacheEviction.EVICT_NORMAL:
+            return 0
+        case == CacheEviction.EVICT_LAST:
+            return inlined_assembly[
+                "createpolicy.fractional.L2::evict_last.b64 $0;",
+                UInt64,
+                constraints="=l",
+            ]()
+        case _:
+            comptime assert (
+                eviction_policy == CacheEviction.EVICT_FIRST
+            ), "invalid eviction policy, only support normal, first, and last"
+            return inlined_assembly[
+                "createpolicy.fractional.L2::evict_first.b64 $0;",
+                UInt64,
+                constraints="=l",
+            ]()
 
 
 @inline(.nodebug)
