@@ -772,7 +772,7 @@ def _reducescatter_p2p_relay[
     # `ngpus`-wide grouped barrier and this one advance the same counters at
     # different rates and hang the node.
     comptime relay_domain_id = 0 if 2 * ngpus == MAX_GPUS else 2 * ngpus
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
 
     # A relay block only runs if some partition in the relay world is long
     # enough to split. Both groups see both length sets, so they agree on the
@@ -1128,7 +1128,7 @@ def _reducescatter_launch[
     var group_start = ualign_down(my_rank, group_size)
     var loc_rank = my_rank - group_start
 
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     comptime BLOCK_SIZE = 256
     comptime num_buffers = 1 if use_multimem else group_size
 
@@ -1229,7 +1229,7 @@ def _reducescatter_plan[
     comptime assert (
         ngpus % group_size == 0
     ), "group_size must evenly divide ngpus"
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     comptime tensor_rank = in_layout.rank
 
     # Validate axis and rank combination.

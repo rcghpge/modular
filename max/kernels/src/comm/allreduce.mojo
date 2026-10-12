@@ -720,7 +720,7 @@ def _allreduce_naive_single_ptr[
 
     # Grid configuration for naive kernels.
     var grid_size = clamp(ceildiv(num_elements, BLOCK_SIZE), 1, max_num_blocks)
-    comptime simd_width_epi = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width_epi = simd_width_of[dtype, target=ctx.target]()
     var num_simd_vecs_epi = num_elements // simd_width_epi
     var tail_elems_epi = num_elements - num_simd_vecs_epi * simd_width_epi
     var grid_simd_epi = ceildiv(num_simd_vecs_epi, BLOCK_SIZE)
@@ -1555,7 +1555,7 @@ def _allreduce_p2p[
     var group_start = ualign_down(my_rank, group_size)
     var loc_rank = my_rank - group_start
 
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     var num_elements = list_of_in_tensors[group_start].num_elements()
 
     # Do nothing if there are no elements to reduce.

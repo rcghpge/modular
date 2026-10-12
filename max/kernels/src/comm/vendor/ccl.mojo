@@ -29,7 +29,7 @@ from std.collections.optional import Optional
 from layout import TensorLayout, TileTensor, row_major
 from std.memory.unsafe_pointer import unsafe_cast
 from std.memory.alloc import Layout as AllocLayout
-from max.gpu.host import DeviceContext, DeviceBuffer, get_gpu_target
+from max.gpu.host import DeviceContext, DeviceBuffer
 from max.gpu.host._amdgpu_hip import HIP
 from max.gpu.host._nvidia_cuda import CUDA
 from comm import MAX_GPUS, Signal
@@ -477,7 +477,7 @@ def allreduce[
         )
     )
 
-    comptime simd_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_size = simd_width_of[dtype, target=ctx.target]()
 
     def epilogue_wrapper[simd_width: Int, alignment: Int = 1](idx: Coord) {var}:
         var flat_idx = idx[0].value()

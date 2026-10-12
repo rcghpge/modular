@@ -516,7 +516,7 @@ def broadcast[
     var my_rank: Int = rank
 
     var num_elements = output_tensor.num_elements()
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
 
     # Do nothing if there are no elements to reduce.
     if num_elements == 0:
@@ -656,7 +656,7 @@ def broadcast_2stage[
     var my_rank: Int = rank
 
     var num_elements = output_tensor.num_elements()
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
 
     # Do nothing if there are no elements.
     if num_elements == 0:
