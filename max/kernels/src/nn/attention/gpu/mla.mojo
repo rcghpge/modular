@@ -170,7 +170,9 @@ comptime AMD_MLA_DECODE_FOLD_MAX_NUM_HEADS = 16
 
 
 @inline(.always)
-def mla_decode_max_seq_len[dtype: DType, num_heads: Int]() -> Int:
+def mla_decode_max_seq_len[
+    dtype: DType, num_heads: Int, sparse_mla: Bool
+]() -> Int:
     """Max query tokens (S) the MLA *decode* branch can fold for this config.
 
     On AMD the S>1 fold is FP8-only AND num_heads<=AMD_MLA_DECODE_FOLD_MAX_NUM_HEADS
@@ -179,16 +181,24 @@ def mla_decode_max_seq_len[dtype: DType, num_heads: Int]() -> Int:
     Mirrors the host-side fold gate in `flare_mla_decoding_dispatch` so the router
     never hands the gate an S>1 batch it would reject.
 
+    Sparse MLA on AMD is a different composition -- one gather slot per row of
+    `q`, so the batch geometry is only correct at S=1 -- and it has no fold at
+    any head count. Its S>1 work goes to the AMD sparse *prefill* arm, which
+    gathers per query token and so serves any S.
+
     Parameters:
         dtype: Element type of the query tensor. On AMD the S>1 fold is
             FP8-only, so non-FP8 routes S>1 to MLA prefill.
         num_heads: Number of query attention heads. On AMD the S>1 fold
             requires `num_heads <= AMD_MLA_DECODE_FOLD_MAX_NUM_HEADS`.
+        sparse_mla: Whether top-k sparse attention is in use. On AMD this
+            forces S>1 to prefill regardless of dtype and head count.
     """
     return 1 if (
         default_accelerator().is_amd_gpu()
         and (
-            not dtype.is_float8()
+            sparse_mla
+            or not dtype.is_float8()
             or num_heads > AMD_MLA_DECODE_FOLD_MAX_NUM_HEADS
         )
     ) else MLA_DECODE_MAX_SEQ_LEN
@@ -1044,6 +1054,29 @@ def flare_mla_decoding_dispatch[
         if batch_size == 0:
             return
 
+        comptime assert not sparse, (
+            "Sparse MLA decode is implemented only for SM100 (B200). This"
+            " architecture would otherwise silently compute dense attention"
+            " over the whole KV cache."
+        )
+        comptime assert not rope_aware_kv_sparse, (
+            "rope_aware_kv_sparse is a sparse-only SM100 routing flag and is"
+            " not honored by this architecture's dense MLA decode path."
+        )
+        comptime assert not fold_shared_index, (
+            "Read-once shared-index fold (fold_shared_index) is implemented"
+            " only for SM100 (B200); this architecture would ignore the flag."
+        )
+        comptime assert not per_token_scale_rope_aware, (
+            "per_token_scale_rope_aware is implemented only for SM100 (B200);"
+            " this architecture's dense MLA decode path would ignore the"
+            " interleaved FP8+BF16 layout."
+        )
+        comptime assert not decoding_warp_split_k, (
+            "decoding_warp_split_k is not supported by this architecture's MLA"
+            " decode kernel. Use split-K via num_partitions instead."
+        )
+
         # only A100 or H100 have the enough smem to store the full BM * head_dim Q tensor.
         comptime has_enough_smem = ctx.default_device_info == A100 or ctx.default_device_info == H100
 
@@ -1471,6 +1504,8 @@ def flare_mla_decoding_dispatch[
                 launch_with_BM[32]()
         else:
             # BF16 AMD or non-AMD: keep original BM choice.
+            # AMD decode MMA is 16x16x32, so BM is a multiple of 16: one 16-row
+            # tile, masking padding at num_heads<16; NVIDIA clamps instead.
             comptime preferred_BM_default = (
                 16 if (not has_enough_smem or ctx.target.is_amd_gpu()) else 32
             )
@@ -3562,6 +3597,7 @@ def flare_mla_prefill_dispatch[
             q_depth=q_depth,
             cache_depth=cache_depth,
             _ndbuffer_mha_operand=_ndbuffer_mha_operand,
+            v_depth=v_depth,
         ]
         var grid_dim = LaunchDim(
             ceildiv(max_prompt_len, BM),
@@ -3615,6 +3651,7 @@ def mla_prefill[
     q_depth: Int = 192,
     cache_depth: Int = 576,
     _ndbuffer_mha_operand: Bool = False,
+    v_depth: Int = config.depth,
 ](
     q_ptr: UnsafePointer[Scalar[q_type], MutAnyOrigin],
     k: k_t,
@@ -3669,7 +3706,7 @@ def mla_prefill[
         cache_start_pos = cache_offsets_nd[batch_idx][0]
 
     var q_batch_offset = start_of_seq * q_depth * config.num_heads
-    var o_batch_offset = start_of_seq * depth * config.num_heads
+    var o_batch_offset = start_of_seq * v_depth * config.num_heads
 
     comptime if is_nvidia_gpu():
         mla_prefill_single_batch[
@@ -3693,7 +3730,9 @@ def mla_prefill[
             batch_idx,
         )
     elif is_amd_gpu():
-        var attention = Attention[config, 1, False, q_depth=q_depth](
+        var attention = Attention[
+            config, 1, False, q_depth=q_depth, output_depth=v_depth
+        ](
             output_ptr + o_batch_offset,
             q_ptr + q_batch_offset,
             k,

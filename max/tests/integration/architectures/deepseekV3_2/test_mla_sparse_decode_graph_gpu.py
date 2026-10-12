@@ -73,7 +73,7 @@ from max.pipelines.architectures.deepseekV3_2.layers.sparse_mla import (
 )
 from max.pipelines.kv_cache import PagedKVCacheManager
 from test_common.context_utils import create_text_context
-from test_common.graph_utils import is_b100_b200
+from test_common.graph_utils import is_b100_b200, is_gfx950
 from test_common.simple_kv_cache import paged_kv_cache_inputs
 from torch.utils.dlpack import from_dlpack
 
@@ -1098,12 +1098,8 @@ def test_mla_graph_sparse_plain_topk_selection_lag(
 
 
 @pytest.mark.skipif(
-    accelerator_api() == "hip",
-    reason="Sparse MLA decode graph is only wired for NVIDIA GPUs.",
-)
-@pytest.mark.skipif(
-    not is_b100_b200(),
-    reason="Sparse MLA decode kernel is SM100-class (B100/B200); skip elsewhere.",
+    not (is_b100_b200() or is_gfx950()),
+    reason="Sparse MLA decode runs on SM100 (B100/B200) and gfx950 (MI355).",
 )
 def test_mla_decode_graph_sparse_multi_step_smoke() -> None:
     """E2E prefill then decode for :class:`SparseLatentAttentionWithRopeFp8` (toy shapes).

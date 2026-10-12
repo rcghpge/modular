@@ -138,9 +138,11 @@ _EXTRA_CONSTRAINTS = {
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    # Scalar index kernel; arch-neutral fallbacks are valid on CDNA4.
     "test_index_fp8.mojo": select({
         "//:h100_gpu": [],
         "//:b200_gpu": [],
+        "//:mi355_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     # The SM100 K-streaming scorer only (tcgen05, TMA).
@@ -155,6 +157,16 @@ _EXTRA_CONSTRAINTS = {
     "test_mla_prefill_qkv_fp8.mojo": select({
         "//:b200_gpu": [],
         "//:amd_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "test_mla_decode_sparse_kv_fp8_gather.mojo": select({
+        "//:b200_gpu": [],
+        "//:mi355_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "test_mla_prefill_sparse_kv_fp8_gather.mojo": select({
+        "//:b200_gpu": [],
+        "//:mi355_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_mla_prefill_per_token_scale_fp8.mojo": select({
@@ -207,6 +219,7 @@ _EXTRA_CONSTRAINTS = {
     }),
     "test_mla_decode_fp8_q_graph.mojo": select({
         "//:b200_gpu": [],
+        "//:mi355_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_mla_decode_split_policy.mojo": select({
@@ -241,9 +254,11 @@ _EXTRA_CONSTRAINTS = {
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    # Scalar MLA index kernel; arch-neutral fallbacks are valid on CDNA4.
     "test_mla_index_fp8.mojo": select({
         "//:h100_gpu": [],
         "//:b200_gpu": [],
+        "//:mi355_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_rms_norm_fused_fp8.mojo": select({
@@ -1404,8 +1419,10 @@ _MLA_DECODE_PAGED_CONFIGS = [
     for page_size in _MLA_DECODE_PAGED_CONFIGS
 ]
 
-# Disabled due to nondeterminism. Tracking: QUA-777
+# QUA-777 / KERN-3237: disabled on B200 due to nondeterminism.
 # Re-enable tracking: https://linear.app/modularml/issue/KERN-3237
+# Verified on MI355 (gfx950), so enable there to guard the S=1 paged decode
+# path including the new num_heads=8 GLM-5.3 TP8 shape.
 mojo_test(
     name = "test_mla_decode_paged_variable_ps128.mojo.test",
     size = "large",
@@ -1422,7 +1439,10 @@ mojo_test(
         "test.resources:gpu-memory": "6",
     },
     tags = ["gpu"],
-    target_compatible_with = ["@platforms//:incompatible"],
+    target_compatible_with = ["//:has_gpu"] + select({
+        "//:mi355_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         "//max:internal_utils",
         "//max:kv_cache",

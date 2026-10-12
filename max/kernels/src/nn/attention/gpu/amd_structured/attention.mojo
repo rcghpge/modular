@@ -373,8 +373,11 @@ struct Attention[
             or Self.amd_structured_config.double_buffer_k_only
         ) else 1
     )
+    # V SMEM must cover the wider of K depth and output depth: MLA prefill has
+    # depth=qk_nope < output_depth=v_head_dim (GLM 192<256), or V truncates.
+    comptime _v_smem_depth = max(Self.depth, Self.output_depth)
     comptime _v_smem_physical_depth = ceildiv(
-        Self.depth, Self._bk_smem
+        Self._v_smem_depth, Self._bk_smem
     ) * Self._bk_smem
     comptime _v_smem_size = (
         Self.BN if Self.amd_structured_config.full_kv else Self.BK

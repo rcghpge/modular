@@ -32,7 +32,12 @@ from max.gpu.host import DeviceContext, FuncAttribute
 from kv_cache.paged_sparse_kv_index_remap import NoRemap, SparseIndexRemap
 from kv_cache.types import KVCollectionT
 
-from nn.index_fp8 import fp8_index_kernel, IndexSmemStorage
+from nn.index_fp8 import (
+    IndexSmemStorage,
+    _has_gfx950_accelerator,
+    fp8_index_kernel,
+    fp8_index_score_amd,
+)
 from nn.attention.gpu.sparse_index_fp8_sm100 import (
     _BM_KEY,
     _INDEX_SWIZZLE,
@@ -436,6 +441,17 @@ def mla_indexer_ragged_float8_paged[
         )
     )
 
+    # gfx950 MFMA scorer: same score-buffer contract as SM100 (fused causal
+    # guard, all slots written). Per-key-row (any page size); num_heads >= 32.
+    comptime use_amd_scorer = (
+        _has_gfx950_accelerator()
+        and num_heads % 32 == 0
+        and depth % 64 == 0
+        and dtype == .float8_e4m3fn
+        and type_of(k_operand).dtype == .float8_e4m3fn
+        and kpool == 1
+    )
+
     comptime assert (
         kpool == 1 or not R.enabled
     ), "a remap needs token positions; pooled indices are pool ids"
@@ -525,7 +541,35 @@ def mla_indexer_ragged_float8_paged[
             row_major(chunk_rows, max_num_keys),
         )
 
-        comptime if use_sm100_scorer:
+        comptime if use_amd_scorer:
+            comptime assert (
+                scores_dt == .float32
+            ), "the AMD scorer writes float32 scores"
+            var scores_tile_f32 = TileTensor(
+                scores_buf.unsafe_ptr().bitcast[Float32](),
+                row_major(chunk_rows, max_num_keys),
+            )
+            fp8_index_score_amd[
+                dtype,
+                type_of(k_operand),
+                type_of(ks_operand),
+                num_heads,
+                depth,
+                _is_cache_length_accurate=False,
+                causal=mask_str == MaskName.CAUSAL.name,
+            ](
+                scores_tile_f32,
+                q,
+                q_s.as_imm(),
+                k_operand,
+                ks_operand,
+                input_row_offsets,
+                batch_size,
+                max_new_tokens,
+                max_num_keys,
+                ctx,
+            )
+        elif use_sm100_scorer:
             # The split `(block, row_in_block)` descriptor: folding the block
             # into the row spans the whole shared slab and leaves signed 32
             # bits on a large pool. See `PagedKVCache.create_paged_tma_tile`.

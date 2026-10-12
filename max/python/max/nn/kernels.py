@@ -5407,6 +5407,7 @@ def mla_decode_graph(
     sparse_topk_lengths: TensorValue | None = None,
     sparse_attn_sink: TensorValue | None = None,
     sparse_indices_stride: int | None = None,
+    sparse_attn_sink_inert: bool = False,
     index_share: bool = False,
     physical_indices: bool | None = None,
     index_kpool: int = 1,
@@ -5549,6 +5550,10 @@ def mla_decode_graph(
             sparse_topk_lengths,
             sparse_attn_sink,
         )
+        if sparse_attn_sink_inert and quant_config is not None:
+            # The AMD sparse arms reject a sink unless its producer says it is
+            # inert. Emitted only when True, so off is byte-identical.
+            parameters["attn_sink_inert"] = True
         if index_share:
             if quant_config is None:
                 raise ValueError(
@@ -5616,6 +5621,7 @@ def mla_prefill_decode_graph(
     index_pool_topk: int = 0,
     index_kpool_select_tail: bool = True,
     selection_lag: int = 0,
+    sparse_attn_sink_inert: bool = False,
 ) -> TensorValue:
     """Fused MLA prefill/decode kernel for FP8.
 
@@ -5736,6 +5742,10 @@ def mla_prefill_decode_graph(
             sparse_topk_lengths,
             sparse_attn_sink,
         )
+        if sparse_attn_sink_inert and quant_config is not None:
+            # The AMD sparse arms reject a sink unless its producer says it is
+            # inert. Emitted only when True, so off is byte-identical.
+            parameters["attn_sink_inert"] = True
 
     # Capturable-graph scalar appended after the optional sparse tensors
     # (see MoGG op signature).

@@ -1621,6 +1621,21 @@ trait KVCacheT(DevicePassable, TrivialRegisterPassable):
         """
         ...
 
+    @always_inline
+    def blocks_raw_ptr(
+        self,
+    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+        """Returns the base pointer to the K/V blocks tensor.
+
+        Combined with `get_tma_row`, this lets a caller address a row
+        without a lookup-table indirection: element
+        `(virtual_row, head_idx, head_dim_idx)` sits at
+        `blocks_raw_ptr() + virtual_row * (kv_params.num_heads *
+        kv_params.head_size) + head_idx * kv_params.head_size +
+        head_dim_idx`, where `virtual_row = get_tma_row(encoded_index)`.
+        """
+        ...
+
     @staticmethod
     def max_tile_size() -> Int:
         """Returns the maximum tile size for the KVCache."""
@@ -2655,6 +2670,13 @@ struct ContinuousBatchingKVCache[
         return UnsafePointer[
             Scalar[Self.scale_dtype], MutAnyOrigin
         ].unsafe_dangling()
+
+    @always_inline
+    def blocks_raw_ptr(
+        self,
+    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+        """Returns the base pointer to the blocks tensor."""
+        return self.blocks.ptr.as_unsafe_any_origin()
 
 
 struct PagedKVCache[
@@ -4047,6 +4069,13 @@ struct PagedKVCache[
         return UnsafePointer[
             Scalar[Self.scale_dtype], MutAnyOrigin
         ].unsafe_dangling()
+
+    @always_inline
+    def blocks_raw_ptr(
+        self,
+    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+        """Returns the base pointer to the blocks tensor."""
+        return self.blocks.ptr.as_unsafe_any_origin()
 
 
 trait KVCollectionT(ImplicitlyCopyable):

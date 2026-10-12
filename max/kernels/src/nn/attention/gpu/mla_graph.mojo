@@ -35,6 +35,7 @@ from max.gpu import (
     grid_dim,
     thread_idx,
 )
+import max.gpu.primitives.block as block
 from max.gpu.primitives.grid_controls import (
     PDL,
     PDLLevel,
@@ -69,9 +70,15 @@ from nn.kv_cache_ragged import (
     generic_flare_mla_decode_kv_cache_ragged,
     generic_flare_mla_prefill_kv_cache_ragged,
 )
-from nn.attention.gpu.mla import _k_cache_to_buffer, mla_decode_max_seq_len
+from nn.attention.gpu.mla import (
+    _k_cache_to_buffer,
+    flare_mla_decoding,
+    mla_decode_max_seq_len,
+)
 from nn.attention.gpu.nvidia.sm100.mla_decode_utils import SparseRowLayout
+from nn.attention.mha_mask import PaddingMask
 from nn.attention.mha_utils import (
+    MHAConfig,
     NullPointer,
     OptionalPointer,
     as_optional_reg,
@@ -910,22 +917,87 @@ def mla_prefill_branch_fp8[
         row_major(buffer_length, Idx[num_heads], Idx[v_head_dim]),
     )
 
-    generic_flare_mla_prefill_kv_cache_ragged[
-        target=target,
-        mask_str=mask_str,
-    ](
-        q,
-        k,
-        v,
-        buffer_row_offsets,
-        cache_offsets,
-        input_row_offsets,
-        kv_collection,
-        layer_idx,
-        scale,
-        output,
-        ctx,
+    # On AMD a unit-scale FP8 latent cache needs FP8 Q/K/V together for the
+    # validated FP8xFP8 path; bf16 Q hits an unsupported fp8xbf16 MFMA.
+    comptime stage_prefill_fp8_amd = (
+        ctx.target.is_amd_gpu()
+        and dtype == .bfloat16
+        and collection_t.CacheType.dtype == .float8_e4m3fn
+        and not collection_t.CacheType.quantization_enabled
     )
+    comptime if stage_prefill_fp8_amd:
+        var q_fp8_buf = ctx.enqueue_create_buffer[.float8_e4m3fn](
+            seq_len * num_heads * q_head_dim
+        )
+        var q_fp8 = TileTensor(
+            q_fp8_buf,
+            row_major(seq_len, Idx[num_heads], Idx[q_head_dim]),
+        )
+        var q_view = TileTensor(
+            q.as_imm().ptr.bitcast[BFloat16](),
+            row_major(seq_len, Idx[num_heads], Idx[q_head_dim]),
+        )
+        convert_bf16_to_fp8_e4m3fn(q_view, q_fp8, ctx)
+
+        var k_fp8_buf = ctx.enqueue_create_buffer[.float8_e4m3fn](
+            buffer_length * num_heads * qk_nope_head_dim
+        )
+        var k_fp8 = TileTensor(
+            k_fp8_buf,
+            row_major((buffer_length, Idx[num_heads], Idx[qk_nope_head_dim])),
+        )
+        var k_view = TileTensor(
+            k.as_imm().ptr.bitcast[BFloat16](),
+            row_major((buffer_length, Idx[num_heads], Idx[qk_nope_head_dim])),
+        )
+        convert_bf16_to_fp8_e4m3fn(k_view, k_fp8, ctx)
+
+        var v_fp8_buf = ctx.enqueue_create_buffer[.float8_e4m3fn](
+            buffer_length * num_heads * v_head_dim
+        )
+        var v_fp8 = TileTensor(
+            v_fp8_buf,
+            row_major(buffer_length, Idx[num_heads], Idx[v_head_dim]),
+        )
+        var v_view = TileTensor(
+            v.as_imm().ptr.bitcast[BFloat16](),
+            row_major(buffer_length, Idx[num_heads], Idx[v_head_dim]),
+        )
+        convert_bf16_to_fp8_e4m3fn(v_view, v_fp8, ctx)
+
+        generic_flare_mla_prefill_kv_cache_ragged[
+            target=target,
+            mask_str=mask_str,
+        ](
+            q_fp8,
+            k_fp8,
+            v_fp8,
+            buffer_row_offsets,
+            cache_offsets,
+            input_row_offsets,
+            kv_collection,
+            layer_idx,
+            scale,
+            output,
+            ctx,
+        )
+    else:
+        generic_flare_mla_prefill_kv_cache_ragged[
+            target=target,
+            mask_str=mask_str,
+        ](
+            q,
+            k,
+            v,
+            buffer_row_offsets,
+            cache_offsets,
+            input_row_offsets,
+            kv_collection,
+            layer_idx,
+            scale,
+            output,
+            ctx,
+        )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1047,6 +1119,118 @@ def quantize_and_bmm_fp8_helper[
     )
 
 
+# AMD sparse MLA decode: gfx950 has no native gather4/TMA sparse kernel, so
+# gather the top-k latent rows into scratch and run the dense AMD decode kernel.
+comptime _AMD_SPARSE_MLA_GATHER_VEC = 16
+
+
+@__name(t"amd_sparse_mla_gather_kv_rows_{k_cache_dim}_{rows_per_block}")
+def _amd_sparse_mla_gather_kv_rows[
+    CacheT: KVCacheT,
+    k_cache_dim: Int,
+    rows_per_block: Int,
+](
+    k_cache: CacheT,
+    blocks_base: UnsafePointer[Scalar[CacheT.dtype], MutAnyOrigin],
+    d_indices: UnsafePointer[Int32, MutAnyOrigin],
+    topk_lengths: UnsafePointer[Int32, MutAnyOrigin],
+    scratch: UnsafePointer[Scalar[CacheT.dtype], MutAnyOrigin],
+    indices_stride: Int32,
+):
+    """Gathers selected MLA latent rows from a paged KV cache into scratch.
+
+    Grid: `(ceildiv(indices_stride, rows_per_block), batch_size)`; each
+    block packs `rows_per_block` (batch, slot) rows, copied (or
+    zero-filled) one `k_cache_dim`-wide row by `thread_idx.x` vector
+    lanes of `_AMD_SPARSE_MLA_GATHER_VEC` elements each (`thread_idx.y`
+    is the row), so a wavefront moves 64 x 16 B at a stride of 16 B
+    instead of 64 scalar bytes. Slots at or past `topk_lengths[batch]`,
+    and any `-1` (invalid) index, are zero-filled -- correctness relies on
+    the caller masking these columns out (a zero row participates in, and
+    would corrupt, an unmasked softmax).
+    """
+    comptime assert CacheT.kv_params.num_heads == 1, (
+        "AMD sparse MLA gather only supports a single-head (absorbed"
+        " latent) KV cache."
+    )
+    comptime assert (
+        k_cache_dim % _AMD_SPARSE_MLA_GATHER_VEC == 0
+    ), "AMD sparse MLA gather vector lanes must tile k_cache_dim exactly."
+
+    var indices_stride_i = Int(indices_stride)
+    var batch_idx = Int(block_idx.y)
+    var col = Int(block_idx.x) * rows_per_block + Int(thread_idx.y)
+    if col < indices_stride_i:
+        var vec_off = Int(thread_idx.x) * _AMD_SPARSE_MLA_GATHER_VEC
+        var slot = batch_idx * indices_stride_i + col
+        var dst = scratch + slot * k_cache_dim + vec_off
+
+        var encoded = d_indices[slot]
+        if col < Int(topk_lengths[batch_idx]) and encoded >= 0:
+            var virtual_row = Int(k_cache.get_tma_row(encoded))
+            var src = blocks_base + virtual_row * k_cache_dim + vec_off
+            dst.store(src.load[width=_AMD_SPARSE_MLA_GATHER_VEC]())
+        else:
+            dst.store(SIMD[CacheT.dtype, _AMD_SPARSE_MLA_GATHER_VEC](0))
+
+
+comptime _AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS = 256
+
+
+@__name("amd_sparse_mla_row_valid_lengths")
+def _amd_sparse_mla_row_valid_lengths[
+    BLOCK_SIZE: Int = _AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS,
+](
+    d_indices: UnsafePointer[Int32, MutAnyOrigin],
+    topk_lengths: UnsafePointer[Int32, MutAnyOrigin],
+    valid_lengths: UnsafePointer[UInt32, MutAnyOrigin],
+    indices_stride: Int32,
+):
+    """Writes each gathered row's valid prefix length for `PaddingMask`.
+
+    The caller's `topk_lengths` is the constant `index_topk` (the Python
+    graph broadcasts it, which is exact for SM100 -- see
+    `mla_decode_sparse_kv_fp8`'s causal slot bound -- but names no real
+    count), so masking with it leaves every zero-filled invalid slot visible
+    to the softmax. `fill_invalid_topk_kernel` writes the invalid slots as a
+    `-1` suffix, so the first negative index is the row's true length.
+
+    Taking the FIRST negative rather than counting the non-negatives matters:
+    if a `-1` ever appeared mid-row the count would overcount and re-admit a
+    zero row, while the first-negative truncates instead. Truncating loses
+    keys; admitting a zero row corrupts the softmax denominator.
+
+    The length is also capped at `topk_lengths[row]`, the bound the gather
+    applies, so a slot the gather zero-filled is never admitted even when a
+    caller's lengths stop short of the first `-1`.
+    """
+    var row = Int(block_idx.x)
+    var base = row * Int(indices_stride)
+
+    # Strided scan: thread `t` examines columns `t, t+BLK, t+2*BLK, ...`
+    # and keeps the first negative it sees (or `indices_stride` if none).
+    var tid = Int(thread_idx.x)
+    var stride = Int(indices_stride)
+    var local_length = stride
+    for col in range(tid, stride, BLOCK_SIZE):
+        if d_indices[base + col] < 0:
+            local_length = col
+            break
+
+    # Block-reduce the per-thread partial minima with MIN: same reduction as
+    # the serial first-negative scan, identical result for any input.
+    var block_min = block.min[
+        block_size=BLOCK_SIZE,
+        broadcast=False,
+    ](
+        SIMD[DType.int32, 1](local_length)
+    )[0]
+
+    if tid == 0:
+        var topk_len = min(max(Int(topk_lengths[row]), 0), stride)
+        valid_lengths[row] = UInt32(min(Int(block_min), topk_len))
+
+
 def mla_decode_branch_fp8[
     dtype: DType,
     fp8_dtype: DType,
@@ -1062,8 +1246,8 @@ def mla_decode_branch_fp8[
     ],
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
-    # Read-once shared-index MTP fold (KERN-3141); threaded to flare_mla_decoding
-    # (fp8-KV only; on the bf16 branch it is parity plumbing, always False).
+    # Read-once shared-index MTP fold; threaded to flare_mla_decoding (fp8-KV
+    # only; bf16 branch is parity plumbing, always False).
     fold_shared_index: Bool = False,
     # How the sparse index producer packs each row; see flare_mla_decoding.
     sparse_row: SparseRowLayout = SparseRowLayout(),
@@ -1076,6 +1260,9 @@ def mla_decode_branch_fp8[
     # (inferred from those arguments).
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    # Set only by a caller that knows the sink is the inert -1e38 constant; the
+    # AMD sparse arm never reads it, so a live sink must fail loudly.
+    attn_sink_inert: Bool = False,
 ](
     output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
     q: TileTensor[dtype, address_space=.GENERIC, ...],
@@ -1158,6 +1345,9 @@ def mla_decode_branch_fp8[
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type of `topk_lengths` and
             `extra_topk_lengths` (inferred, defaults to `NullPointer`).
+        attn_sink_inert: Whether the caller guarantees `attn_sink_ptr` holds
+            the inert -1e38 constant. The AMD sparse arm never reads the sink
+            and rejects one otherwise.
 
     Args:
         output: Output tensor of shape [tot_seq_len, num_heads, v_head_dim].
@@ -1231,10 +1421,57 @@ def mla_decode_branch_fp8[
     if seq_len == 0:
         return
 
-    # Sparse decode over a unit-scale FP8 latent cache on SM100 hands the
-    # kernel an FP8 Q so the dispatch routes to the native-FP8 sparse kernel
-    # (MLA_SM100_Decode_Sparse_QKV_FP8). Both producers below quantize as they
-    # store, so Q is staged in FP8 directly, matching the bf16-weights branch.
+    comptime if ctx.target.is_amd_gpu() and sparse_mla:
+        # Gather top-k rows into scratch, reuse the dense decode kernel (top-k
+        # selection gives causality). Guards reject unsupported features first.
+        if d_indices is None:
+            raise Error("AMD sparse MLA decode requires d_indices.")
+        if extra_k is not None:
+            raise Error(
+                "AMD sparse MLA decode does not support a second (extra)"
+                " KV stream."
+            )
+        if not AttnSinkPtrType.is_null and not attn_sink_inert:
+            raise Error(
+                "AMD sparse MLA decode does not consume attention sinks; a"
+                " caller whose sink is inert must say so with"
+                " `attn_sink_inert`."
+            )
+        if logical_indices is not None:
+            raise Error(
+                "AMD sparse MLA decode enforces causality via top-k"
+                " selection, not logical position; logical_indices is not"
+                " honored."
+            )
+        comptime assert not fold_shared_index, (
+            "The read-once shared-index MTP fold is not implemented for"
+            " AMD sparse MLA decode."
+        )
+        comptime assert physical_indices, (
+            "AMD sparse MLA decode gathers paged physical rows; logical"
+            " d_indices are not supported."
+        )
+        comptime assert not sparse_row.is_bounded(), (
+            "AMD sparse MLA decode supports plain top-k rows only (no k-pool"
+            " row layout)."
+        )
+
+        # This arm treats every `q` row as its own S=1 sequence (batch =
+        # seq_len); a ragged S>1 batch (MTP/spec-decode) runs wrong geometry.
+        var num_batches = Int(input_row_offsets.dim(0)) - 1
+        if seq_len != num_batches:
+            raise Error(
+                "AMD sparse MLA decode only supports one query token per"
+                " sequence (S=1 decode); got "
+                + String(seq_len)
+                + " query tokens across "
+                + String(num_batches)
+                + " sequences. Multi-token decode (MTP / speculative-"
+                "decode verify, S>1) is not implemented on this path."
+            )
+
+    # Stage Q in the FP8 cache dtype where the kernel consumes it natively:
+    # SM100 sparse decode, and AMD dense decode/prefill (no fp8xbf16 MFMA).
     comptime native_fp8_sparse = (
         fp8_q
         and sparse_mla
@@ -1243,8 +1480,16 @@ def mla_decode_branch_fp8[
         and not collection_t.CacheType.quantization_enabled
         and _is_sm10x_gpu(ctx.default_device_info)
     )
+    # The AMD arm needs FP8 Q whether it runs over the KV cache or a gathered
+    # scratch of the same dtype, so this does not gate on `sparse_mla`.
+    comptime stage_fp8_amd = (
+        ctx.target.is_amd_gpu()
+        and collection_t.CacheType.dtype == .float8_e4m3fn
+        and not collection_t.CacheType.quantization_enabled
+    )
     comptime mla_decode_input_dtype = (
-        collection_t.CacheType.dtype if native_fp8_sparse else dtype
+        collection_t.CacheType.dtype if native_fp8_sparse
+        or stage_fp8_amd else dtype
     )
 
     # First, create a input buffer for the mla decode kernel
@@ -1339,36 +1584,157 @@ def mla_decode_branch_fp8[
         row_major(seq_len, Idx[num_heads], Idx[kv_latent_dim]),
     )
 
-    generic_flare_mla_decode_kv_cache_ragged[
-        target=target,
-        mask_str=mask_str,
-        sparse_mla=sparse_mla,
-        fold_shared_index=fold_shared_index,
-        sparse_row=sparse_row,
-        has_extra_k=has_extra_k,
-        physical_indices=physical_indices,
-    ](
-        mla_decode_input,
-        input_row_offsets,
-        kv_collection,
-        layer_idx,
-        scale,
-        raw_output,
-        scalar_args_buf,
-        ctx,
-        d_indices=d_indices,
-        indices_stride=indices_stride,
-        topk_lengths=topk_lengths,
-        attn_sink_ptr=attn_sink_ptr,
-        extra_k=extra_k,
-        extra_d_indices=extra_d_indices,
-        extra_indices_stride=extra_indices_stride,
-        extra_topk_lengths=extra_topk_lengths,
-        extra_scales_ptr=extra_scales_ptr,
-        num_partitions_in=num_partitions_in,
-        logical_indices=logical_indices,
-        selection_lag=selection_lag,
-    )
+    comptime if ctx.target.is_amd_gpu() and sparse_mla:
+        # Guards for this arm (d_indices presence, extra_k,
+        # attn_sink_ptr, logical_indices, fold_shared_index, S=1) already
+        # ran above, before the up-projection/RoPE preamble.
+        var batch_size = seq_len
+        var k_cache = kv_collection.get_key_cache(Int(layer_idx))
+
+        # The graph omits `topk_lengths` when every token keeps the full top-k
+        # stride; the gather reads a per-token length, so hand it that form.
+        var full_topk: Optional[DeviceBuffer[DType.int32]] = None
+        var decode_topk_lengths: UnsafePointer[Int32, MutAnyOrigin]
+        comptime if TopkLengthsPtrType.is_null:
+            full_topk = ctx.enqueue_create_buffer[DType.int32](batch_size)
+            full_topk.value().enqueue_fill(Int32(indices_stride))
+            decode_topk_lengths = (
+                full_topk.value()
+                .unsafe_ptr()
+                .unsafe_origin_cast[MutAnyOrigin]()
+            )
+        else:
+            decode_topk_lengths = rebind[UnsafePointer[Int32, MutAnyOrigin]](
+                as_optional_reg(topk_lengths).value()
+            )
+
+        var scratch_buf = ctx.enqueue_create_buffer[mla_decode_input_dtype](
+            batch_size * indices_stride * k_cache_dim
+        )
+        # 576 / 16 = 36 vector lanes per row x 7 rows = 252 threads
+        # (4 wavefronts); grid.x shrinks 7x vs one block per row.
+        comptime GATHER_ROWS_PER_BLOCK = 7
+        var k_cache_blocks_base = k_cache.blocks_raw_ptr()
+        ctx.enqueue_function[
+            _amd_sparse_mla_gather_kv_rows[
+                type_of(k_cache), k_cache_dim, GATHER_ROWS_PER_BLOCK
+            ]
+        ](
+            k_cache,
+            k_cache_blocks_base,
+            d_indices.value(),
+            decode_topk_lengths,
+            scratch_buf.unsafe_ptr(),
+            Int32(indices_stride),
+            grid_dim=(
+                ceildiv(indices_stride, GATHER_ROWS_PER_BLOCK),
+                batch_size,
+                1,
+            ),
+            block_dim=(
+                k_cache_dim // _AMD_SPARSE_MLA_GATHER_VEC,
+                GATHER_ROWS_PER_BLOCK,
+                1,
+            ),
+        )
+
+        var k_scratch = TileTensor(
+            scratch_buf,
+            row_major(batch_size, indices_stride, Idx[1], Idx[k_cache_dim]),
+        )
+        # View decode input/output as rank-4 [batch,1,heads,depth]; decode has
+        # q_seq_len==1 (batch==seq_len), so a size-1 axis, no data movement.
+        var q_padded = TileTensor(
+            mla_decode_input.ptr,
+            TileLayout(
+                (batch_size, Idx[1], Idx[num_heads], Idx[k_cache_dim]),
+                (
+                    Idx[num_heads * k_cache_dim],
+                    Idx[num_heads * k_cache_dim],
+                    Idx[k_cache_dim],
+                    Idx[1],
+                ),
+            ),
+        )
+        var raw_output_padded = TileTensor(
+            raw_output.ptr,
+            TileLayout(
+                (batch_size, Idx[1], Idx[num_heads], Idx[kv_latent_dim]),
+                (
+                    Idx[num_heads * kv_latent_dim],
+                    Idx[num_heads * kv_latent_dim],
+                    Idx[kv_latent_dim],
+                    Idx[1],
+                ),
+            ),
+        )
+
+        # `topk_lengths` is the constant `index_topk`, so masking with it marks
+        # every tile NO_MASK; derive the row's real length from the `-1` suffix.
+        var valid_lengths_buf = ctx.enqueue_create_buffer[DType.uint32](
+            batch_size
+        )
+        ctx.enqueue_function[
+            _amd_sparse_mla_row_valid_lengths[
+                _AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS
+            ]
+        ](
+            d_indices.value(),
+            decode_topk_lengths,
+            valid_lengths_buf.unsafe_ptr(),
+            Int32(indices_stride),
+            grid_dim=(batch_size, 1, 1),
+            block_dim=(_AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS, 1, 1),
+        )
+        var amd_lengths_tt = TileTensor(
+            valid_lengths_buf.unsafe_ptr(), row_major(batch_size)
+        )
+        var padding_mask = PaddingMask(amd_lengths_tt)
+
+        flare_mla_decoding[
+            config=MHAConfig[mla_decode_input_dtype](num_heads, k_cache_dim),
+            decoding_warp_split_k=False,
+        ](
+            raw_output_padded,
+            q_padded,
+            k_scratch,
+            padding_mask,
+            scale,
+            ctx,
+            scalar_args_buf,
+            num_partitions=num_partitions_in,
+        )
+    else:
+        generic_flare_mla_decode_kv_cache_ragged[
+            target=target,
+            mask_str=mask_str,
+            sparse_mla=sparse_mla,
+            fold_shared_index=fold_shared_index,
+            sparse_row=sparse_row,
+            has_extra_k=has_extra_k,
+            physical_indices=physical_indices,
+        ](
+            mla_decode_input,
+            input_row_offsets,
+            kv_collection,
+            layer_idx,
+            scale,
+            raw_output,
+            scalar_args_buf,
+            ctx,
+            d_indices=d_indices,
+            indices_stride=indices_stride,
+            topk_lengths=topk_lengths,
+            attn_sink_ptr=attn_sink_ptr,
+            extra_k=extra_k,
+            extra_d_indices=extra_d_indices,
+            extra_indices_stride=extra_indices_stride,
+            extra_topk_lengths=extra_topk_lengths,
+            extra_scales_ptr=extra_scales_ptr,
+            num_partitions_in=num_partitions_in,
+            logical_indices=logical_indices,
+            selection_lag=selection_lag,
+        )
 
     # Create a view of the output tensor with logical shape
     # [num_heads, seq_len, v_head_dim], and map directly to
@@ -1409,6 +1775,8 @@ def mla_prefill_branch_sparse_fp8[
     ],
     indices_stride: Int,
     target: StaticString = "cpu",
+    # See `mla_decode_branch_fp8`; this path does not read the sink either.
+    attn_sink_inert: Bool = False,
 ](
     output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
     q: TileTensor[dtype, address_space=.GENERIC, ...],
@@ -1423,6 +1791,7 @@ def mla_prefill_branch_sparse_fp8[
     w_uk_scale: TileTensor[fp8_scale_dtype, address_space=.GENERIC, ...],
     w_uv: TileTensor[fp8_dtype, address_space=.GENERIC, ...],
     w_uv_scale: TileTensor[fp8_scale_dtype, address_space=.GENERIC, ...],
+    scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
     ctx: DeviceContext,
     d_indices: UnsafePointer[Int32, MutAnyOrigin],
     topk_lengths: UnsafePointer[Int32, MutAnyOrigin],
@@ -1431,12 +1800,17 @@ def mla_prefill_branch_sparse_fp8[
     """Sparse MLA prefill branch (DSv3.2/GLM absorbed shape, FP8 weights).
 
     Reuses `mla_decode_branch_fp8`'s absorbed-Q construction (q_nope up-proj via
-    `w_uk` + RoPE/RMSNorm) and the identical `w_uv` output up-projection, and
-    swaps the attention call to the existing `mla_sm100_prefill_sparse` kernel
-    over the paged BF16 latent cache. The caller (`.fp8.sparse` op) has already
-    remapped `d_indices` from logical to physical rows, so they are passed
-    straight through. Only supported for a BF16 KV cache; the FP8-cache case is
-    handled by the caller (dense fallback).
+    `w_uk` + RoPE/RMSNorm) and the identical `w_uv` output up-projection. On
+    SM100 the attention call swaps to `mla_sm100_prefill_sparse[_fp8]` over the
+    paged latent cache; the caller (`.fp8.sparse` op) has already remapped
+    `d_indices` from logical to physical rows, so they are passed straight
+    through. On AMD (no native gather4/TMA sparse prefill kernel), it instead
+    gathers each query token's selected rows into a dense scratch and reuses
+    the validated dense AMD decode kernel over it -- see
+    `mla_decode_branch_fp8`'s AMD arm; `d_indices`/`topk_lengths` are already
+    `[total_q, indices_stride]`/`[total_q]` (per query token, not per
+    sequence), so treating every row of `q` as its own single-token decode
+    batch is exactly the same composition, no prefill-specific kernel needed.
     """
     comptime kv_params = collection_t.kv_params
     comptime assert kv_params.is_mla, "kv_params.is_mla should be true"
@@ -1467,9 +1841,29 @@ def mla_prefill_branch_sparse_fp8[
     if seq_len == 0:
         return
 
-    var mla_decode_input_buf = ctx.enqueue_create_buffer[dtype](
-        seq_len * num_heads * k_cache_dim
+    comptime if ctx.target.is_amd_gpu():
+        # Runs before the preamble, so an unsupported combo fails before launch.
+        if attn_sink_ptr is not None and not attn_sink_inert:
+            raise Error(
+                "AMD sparse MLA prefill does not consume attention sinks; a"
+                " caller whose sink is inert must say so with"
+                " `attn_sink_inert`."
+            )
+
+    # Same mixed-precision MMA restriction as the decode arm: stage the absorbed
+    # Q in the cache dtype so the gathered scratch and Q agree.
+    comptime stage_fp8_amd = (
+        ctx.target.is_amd_gpu()
+        and collection_t.CacheType.dtype == .float8_e4m3fn
+        and not collection_t.CacheType.quantization_enabled
     )
+    comptime mla_decode_input_dtype = (
+        collection_t.CacheType.dtype if stage_fp8_amd else dtype
+    )
+
+    var mla_decode_input_buf = ctx.enqueue_create_buffer[
+        mla_decode_input_dtype
+    ](seq_len * num_heads * k_cache_dim)
     var mla_decode_input = TileTensor(
         mla_decode_input_buf,
         row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
@@ -1544,88 +1938,197 @@ def mla_prefill_branch_sparse_fp8[
         attn_sink_opt = UnsafePointer[Float32, ImmutAnyOrigin](attn_sink_ptr)
 
     var k_cache = kv_collection.get_key_cache(Int(layer_idx))
-    # Unit-scale FP8 latent cache on SM100 runs the native-FP8 sparse prefill
-    # kernel (QK^T and P*V in FP8, no dequant) when the head count fits its
-    # tiles: num_q_heads == 128 (cta_group=2) or a multiple of 8 in (0, 64]
-    # (cta_group=1). `quantize_and_bmm_fp8_helper` ties its output dtype to
-    # the bf16 input, so Q is converted with a saturating-cast pass (unlike
-    # the bf16-weights branch, which stages FP8 directly).
-    comptime native_fp8_sparse = (
-        dtype == .bfloat16
-        and collection_t.CacheType.dtype == .float8_e4m3fn
-        and not collection_t.CacheType.quantization_enabled
-        and _is_sm10x_gpu(ctx.default_device_info)
-        and (num_heads == 128 or (num_heads <= 64 and num_heads % 8 == 0))
-    )
-    comptime if collection_t.CacheType.dtype.is_float8():
-        comptime if native_fp8_sparse:
-            var q_fp8_buf = ctx.enqueue_create_buffer[.float8_e4m3fn](
-                seq_len * num_heads * k_cache_dim
-            )
-            var q_fp8 = TileTensor(
-                q_fp8_buf,
-                row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
-            )
-            var mla_decode_input_bf16 = TileTensor(
-                mla_decode_input.ptr.bitcast[BFloat16](),
-                row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
-            )
-            convert_bf16_to_fp8_e4m3fn(mla_decode_input_bf16, q_fp8, ctx)
 
-            comptime cta_group = 2 if num_heads == 128 else 1
-            comptime b_topk = 128 if cta_group == 2 else 64
-            comptime num_mbars = 2 if cta_group == 2 else 4
-            comptime config = MLASparseConfig[
-                DType.bfloat16,
-                b_topk_=b_topk,
-                num_mbars_=num_mbars,
-                cta_group_=cta_group,
-            ](
-                num_q_heads=num_heads,
-                num_kv_heads=1,
-                # Tile stays laid out for 576. The kernel zero-fills the NoPE tail.
-                qk_depth=kv_latent_dim + 64,
-                input_qk_depth=k_cache_dim,
-                v_depth=kv_latent_dim,
-                indices_stride=indices_stride,
-                group=num_heads,
-            )
-            mla_prefill_sparse_qkv_fp8[
-                config=config,
-                group=num_heads,
-                q_depth=k_cache_dim,
-                scale_block_size=0,
-            ](
-                raw_output,
-                q_fp8,
-                k_cache,
-                indices_tt,
-                topk_lengths_tt,
-                attn_sink_opt,
-                scale,
-                Int32(indices_stride),
-                ctx,
-            )
+    comptime if ctx.target.is_amd_gpu():
+        # Gather each query token's top-k rows into scratch and run the dense
+        # decode kernel; index buffers are per-token, so each `q` row is S=1.
+        # TODO(anand): scratch is O(total_q * indices_stride * k_cache_dim)
+        # (~2.4 GB/layer at the smoke shape); tile the gather before perf work.
+        # Same packed geometry as the decode gather: 36 lanes x 7 rows/block.
+        comptime GATHER_ROWS_PER_BLOCK = 7
+        var batch_size = seq_len
+        var scratch_buf = ctx.enqueue_create_buffer[mla_decode_input_dtype](
+            batch_size * indices_stride * k_cache_dim
+        )
+        var k_cache_blocks_base = k_cache.blocks_raw_ptr()
+        ctx.enqueue_function[
+            _amd_sparse_mla_gather_kv_rows[
+                type_of(k_cache), k_cache_dim, GATHER_ROWS_PER_BLOCK
+            ]
+        ](
+            k_cache,
+            k_cache_blocks_base,
+            d_indices,
+            topk_lengths,
+            scratch_buf.unsafe_ptr(),
+            Int32(indices_stride),
+            grid_dim=(
+                ceildiv(indices_stride, GATHER_ROWS_PER_BLOCK),
+                batch_size,
+                1,
+            ),
+            block_dim=(
+                k_cache_dim // _AMD_SPARSE_MLA_GATHER_VEC,
+                GATHER_ROWS_PER_BLOCK,
+                1,
+            ),
+        )
+
+        var k_scratch = TileTensor(
+            scratch_buf,
+            row_major(batch_size, indices_stride, Idx[1], Idx[k_cache_dim]),
+        )
+        # View decode input/output as rank-4 [batch,1,heads,depth]; one slot
+        # per gathered row (q_seq_len==1), so a size-1 axis, no data movement.
+        var q_padded = TileTensor(
+            mla_decode_input.ptr,
+            TileLayout(
+                (batch_size, Idx[1], Idx[num_heads], Idx[k_cache_dim]),
+                (
+                    Idx[num_heads * k_cache_dim],
+                    Idx[num_heads * k_cache_dim],
+                    Idx[k_cache_dim],
+                    Idx[1],
+                ),
+            ),
+        )
+        var raw_output_padded = TileTensor(
+            raw_output.ptr,
+            TileLayout(
+                (batch_size, Idx[1], Idx[num_heads], Idx[kv_latent_dim]),
+                (
+                    Idx[num_heads * kv_latent_dim],
+                    Idx[num_heads * kv_latent_dim],
+                    Idx[kv_latent_dim],
+                    Idx[1],
+                ),
+            ),
+        )
+        # `topk_lengths` is the constant `index_topk`, so derive each gathered
+        # row's real length from its `-1` suffix; confined to this AMD arm.
+        var valid_lengths_buf = ctx.enqueue_create_buffer[DType.uint32](
+            batch_size
+        )
+        ctx.enqueue_function[
+            _amd_sparse_mla_row_valid_lengths[
+                _AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS
+            ]
+        ](
+            d_indices,
+            topk_lengths,
+            valid_lengths_buf.unsafe_ptr(),
+            Int32(indices_stride),
+            grid_dim=(batch_size, 1, 1),
+            block_dim=(_AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS, 1, 1),
+        )
+        var amd_lengths_tt = TileTensor(
+            valid_lengths_buf.unsafe_ptr(), row_major(batch_size)
+        )
+        var padding_mask = PaddingMask(amd_lengths_tt)
+
+        flare_mla_decoding[
+            config=MHAConfig[mla_decode_input_dtype](num_heads, k_cache_dim),
+            decoding_warp_split_k=False,
+        ](
+            raw_output_padded,
+            q_padded,
+            k_scratch,
+            padding_mask,
+            scale,
+            ctx,
+            scalar_args_buf,
+        )
+    else:
+        # SM100 runs the native-FP8 sparse prefill kernel when heads fit its
+        # tiles (128, or a multiple of 8 in (0,64]); Q is cast to FP8.
+        comptime native_fp8_sparse = (
+            dtype == .bfloat16
+            and collection_t.CacheType.dtype == .float8_e4m3fn
+            and not collection_t.CacheType.quantization_enabled
+            and _is_sm10x_gpu(ctx.default_device_info)
+            and (num_heads == 128 or (num_heads <= 64 and num_heads % 8 == 0))
+        )
+        comptime if collection_t.CacheType.dtype.is_float8():
+            comptime if native_fp8_sparse:
+                var q_fp8_buf = ctx.enqueue_create_buffer[.float8_e4m3fn](
+                    seq_len * num_heads * k_cache_dim
+                )
+                var q_fp8 = TileTensor(
+                    q_fp8_buf,
+                    row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
+                )
+                var mla_decode_input_bf16 = TileTensor(
+                    mla_decode_input.ptr.bitcast[BFloat16](),
+                    row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
+                )
+                convert_bf16_to_fp8_e4m3fn(mla_decode_input_bf16, q_fp8, ctx)
+
+                comptime cta_group = 2 if num_heads == 128 else 1
+                comptime b_topk = 128 if cta_group == 2 else 64
+                comptime num_mbars = 2 if cta_group == 2 else 4
+                comptime config = MLASparseConfig[
+                    DType.bfloat16,
+                    b_topk_=b_topk,
+                    num_mbars_=num_mbars,
+                    cta_group_=cta_group,
+                ](
+                    num_q_heads=num_heads,
+                    num_kv_heads=1,
+                    # Tile stays laid out for 576. The kernel zero-fills the NoPE tail.
+                    qk_depth=kv_latent_dim + 64,
+                    input_qk_depth=k_cache_dim,
+                    v_depth=kv_latent_dim,
+                    indices_stride=indices_stride,
+                    group=num_heads,
+                )
+                mla_prefill_sparse_qkv_fp8[
+                    config=config,
+                    group=num_heads,
+                    q_depth=k_cache_dim,
+                    scale_block_size=0,
+                ](
+                    raw_output,
+                    q_fp8,
+                    k_cache,
+                    indices_tt,
+                    topk_lengths_tt,
+                    attn_sink_opt,
+                    scale,
+                    Int32(indices_stride),
+                    ctx,
+                )
+            else:
+                # FP8 cache + bf16 Q: run the FP8 sparse-prefill kernel over the
+                # quantized cache at unit scale (no dequant scales yet, so
+                # scale_block_size=0 and scales_ptr is a non-null dummy).
+                var dummy_scales = (
+                    raw_output_buf.unsafe_ptr()
+                    .bitcast[Float32]()
+                    .as_unsafe_any_origin()
+                )
+                mla_sm100_prefill_sparse_fp8[
+                    num_q_heads=num_heads,
+                    qk_depth=k_cache_dim,
+                    v_depth=kv_latent_dim,
+                    indices_stride=indices_stride,
+                    scale_block_size=0,
+                ](
+                    raw_output,
+                    mla_decode_input,
+                    k_cache,
+                    indices_tt,
+                    topk_lengths_tt,
+                    attn_sink_opt,
+                    dummy_scales,
+                    scale,
+                    ctx,
+                )
         else:
-            # FP8 latent cache with bf16 Q: run the FP8 sparse-prefill kernel
-            # directly over the quantized cache (no BF16 staging). Today the
-            # cache carries no dequant scales (scale_dtype=int8 => quantization
-            # disabled), so read at unit scale (scale_block_size=0), mirroring
-            # the sparse-DECODE kernel's read. scales_ptr is unused at
-            # scale_block_size=0; pass a non-null dummy (SnapMLA/SERVOPT-1094
-            # will supply real scales + a positive scale_block_size here once
-            # the cache carries them).
-            var dummy_scales = (
-                raw_output_buf.unsafe_ptr()
-                .bitcast[Float32]()
-                .as_unsafe_any_origin()
-            )
-            mla_sm100_prefill_sparse_fp8[
+            mla_sm100_prefill_sparse[
                 num_q_heads=num_heads,
                 qk_depth=k_cache_dim,
                 v_depth=kv_latent_dim,
                 indices_stride=indices_stride,
-                scale_block_size=0,
             ](
                 raw_output,
                 mla_decode_input,
@@ -1633,26 +2136,9 @@ def mla_prefill_branch_sparse_fp8[
                 indices_tt,
                 topk_lengths_tt,
                 attn_sink_opt,
-                dummy_scales,
                 scale,
                 ctx,
             )
-    else:
-        mla_sm100_prefill_sparse[
-            num_q_heads=num_heads,
-            qk_depth=k_cache_dim,
-            v_depth=kv_latent_dim,
-            indices_stride=indices_stride,
-        ](
-            raw_output,
-            mla_decode_input,
-            k_cache,
-            indices_tt,
-            topk_lengths_tt,
-            attn_sink_opt,
-            scale,
-            ctx,
-        )
 
     var output_t = TileTensor(
         output.ptr,
@@ -1696,13 +2182,15 @@ def _sparse_prefill_rows[
 
 
 def mla_graph_takes_decode_branch[
-    cache_dtype: DType, num_heads: Int
+    cache_dtype: DType, num_heads: Int, sparse_mla: Bool = False
 ](max_seq_len: Int) -> Bool:
     """Returns whether `mla_prefill_decode_graph_*` takes its decode branch.
 
     Parameters:
         cache_dtype: Element type of the latent KV cache.
         num_heads: Number of query attention heads.
+        sparse_mla: Whether top-k sparse attention is in use; on AMD it
+            routes S>1 to prefill.
 
     Args:
         max_seq_len: Maximum query length in the batch.
@@ -1710,7 +2198,10 @@ def mla_graph_takes_decode_branch[
     Returns:
         True when `max_seq_len` fits the decode branch's query fold.
     """
-    return max_seq_len <= mla_decode_max_seq_len[cache_dtype, num_heads]()
+    return (
+        max_seq_len
+        <= mla_decode_max_seq_len[cache_dtype, num_heads, sparse_mla]()
+    )
 
 
 def mla_prefill_decode_graph_fp8[
@@ -1729,8 +2220,8 @@ def mla_prefill_decode_graph_fp8[
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
     sparse_indices_stride: Int = 0,
-    # Read-once shared-index MTP fold (KERN-3141); threaded to flare_mla_decoding
-    # (fp8-KV only; on the bf16 branch it is parity plumbing, always False).
+    # Read-once shared-index MTP fold; threaded to flare_mla_decoding (fp8-KV
+    # only; bf16 branch is parity plumbing, always False).
     fold_shared_index: Bool = False,
     # Stage Q in the FP8 cache dtype where the sparse decode supports it; see
     # `mla_decode_branch_fp8`.
@@ -1744,6 +2235,8 @@ def mla_prefill_decode_graph_fp8[
     # (inferred from those arguments).
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    # Forwarded to both branches; see `mla_decode_branch_fp8`.
+    attn_sink_inert: Bool = False,
 ](
     output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
     q: TileTensor[dtype, address_space=.GENERIC, ...],
@@ -1822,6 +2315,8 @@ def mla_prefill_decode_graph_fp8[
             (inferred, defaults to `NullPointer`).
         TopkLengthsPtrType: `OptionalPointer` type of `topk_lengths` and
             `extra_topk_lengths` (inferred, defaults to `NullPointer`).
+        attn_sink_inert: Whether the caller guarantees an inert attention
+            sink; see `mla_decode_branch_fp8`.
 
     Args:
         output: Output tensor of shape [tot_seq_len, num_heads, v_head_dim].
@@ -1889,8 +2384,10 @@ def mla_prefill_decode_graph_fp8[
         return
 
     # When running verification with MTP we want to use the decode branch.
+    # AMD sparse is the exception: its decode arm is S=1-only, so `sparse_mla`
+    # sends S>1 to the sparse prefill arm instead.
     if mla_graph_takes_decode_branch[
-        collection_t.CacheType.dtype, q.static_shape[1]
+        collection_t.CacheType.dtype, q.static_shape[1], sparse_mla
     ](max_seq_len):
         mla_decode_branch_fp8[
             m_scale_granularity=m_scale_granularity,
@@ -1905,6 +2402,7 @@ def mla_prefill_decode_graph_fp8[
             has_extra_k=has_extra_k,
             physical_indices=physical_indices,
             sparse_row=sparse_row,
+            attn_sink_inert=attn_sink_inert,
         ](
             output,
             q,
@@ -1936,6 +2434,20 @@ def mla_prefill_decode_graph_fp8[
 
     else:
         comptime if sparse_mla:
+            # Sparse MLA prefill is implemented for SM100 and (via the
+            # gather-to-scratch decode composition, see
+            # `mla_prefill_branch_sparse_fp8`'s AMD arm) AMD; any other
+            # architecture reaching this branch would instantiate SM100-only
+            # tcgen05 kernels and fail with an unhelpful message. Fail fast
+            # and name the real reason.
+            comptime assert (
+                _is_sm10x_gpu(ctx.default_device_info)
+                or ctx.target.is_amd_gpu()
+            ), (
+                "Sparse MLA prefill is implemented only for SM100 (B200) and"
+                " AMD (gfx950). This architecture would otherwise attempt to"
+                " compile SM100-only tcgen05 kernels."
+            )
             # The sparse prefill kernels read a per-token top-k length and
             # branch on the sink at runtime, so hand them that form. Absent
             # lengths mean every token keeps the full top-k stride.
@@ -1969,6 +2481,7 @@ def mla_prefill_decode_graph_fp8[
                 kv_input_fn=kv_input_fn,
                 indices_stride=sparse_indices_stride,
                 target=target,
+                attn_sink_inert=attn_sink_inert,
             ](
                 output,
                 q,
@@ -1983,6 +2496,7 @@ def mla_prefill_decode_graph_fp8[
                 w_uk_scale,
                 w_uv,
                 w_uv_scale,
+                scalar_args_buf,
                 ctx,
                 _sparse_prefill_rows[physical_indices](
                     d_indices, prefill_d_indices
@@ -2737,10 +3251,8 @@ def mla_prefill_branch_sparse_bf16[
     if seq_len == 0:
         return
 
-    # Unit-scale FP8 latent cache on SM100 stages Q in FP8 and runs the
-    # native-FP8 sparse prefill kernel (QK^T and P*V in FP8, no dequant); the
-    # kernel supports num_q_heads == 128 (cta_group=2) or a multiple of 8 in
-    # (0, 64] (cta_group=1). Other configs keep bf16 Q.
+    # SM100 stages Q in FP8 and runs the native-FP8 sparse prefill kernel when
+    # heads fit its tiles (128, or a multiple of 8 in (0,64]); else keep bf16 Q.
     comptime native_fp8_sparse = (
         collection_t.CacheType.dtype == .float8_e4m3fn
         and not collection_t.CacheType.quantization_enabled
@@ -2869,14 +3381,9 @@ def mla_prefill_branch_sparse_bf16[
                 ctx,
             )
         else:
-            # FP8 latent cache with bf16 Q: run the FP8 sparse-prefill kernel
-            # directly over the quantized cache (no BF16 staging). Today the
-            # cache carries no dequant scales (scale_dtype=int8 => quantization
-            # disabled), so read at unit scale (scale_block_size=0), mirroring
-            # the sparse-DECODE kernel's read. scales_ptr is unused at
-            # scale_block_size=0; pass a non-null dummy (SnapMLA/SERVOPT-1094
-            # will supply real scales + a positive scale_block_size here once
-            # the cache carries them).
+            # FP8 cache + bf16 Q: run the FP8 sparse-prefill kernel over the
+            # quantized cache at unit scale (no dequant scales stored yet, so
+            # scale_block_size=0 and scales_ptr is a non-null dummy).
             var dummy_scales = (
                 raw_output_buf.unsafe_ptr()
                 .bitcast[Float32]()
@@ -3074,10 +3581,11 @@ def mla_prefill_decode_graph_bf16[
     # the cache dtype, not the BF16 compute dtype: an FP8 cache with
     # num_heads<=AMD_MLA_DECODE_FOLD_MAX_NUM_HEADS routes S>1 to the decode fold
     # (prefill can't serve MTP); a BF16 cache or num_heads>16 returns 1 and routes
-    # S>1 to prefill (no large-head decode fold exists). Mirrors
-    # `mla_prefill_decode_graph_fp8`.
+    # S>1 to prefill (no large-head decode fold exists), as does AMD sparse at
+    # any head count -- its decode arm gathers one slot per row of `q` and is
+    # correct only at S=1. Mirrors `mla_prefill_decode_graph_fp8`.
     if mla_graph_takes_decode_branch[
-        collection_t.CacheType.dtype, q.static_shape[1]
+        collection_t.CacheType.dtype, q.static_shape[1], sparse_mla
     ](max_seq_len):
         mla_decode_branch_bf16[
             mask_str=mask_str,
@@ -3109,6 +3617,14 @@ def mla_prefill_decode_graph_bf16[
         )
     else:
         comptime if sparse_mla:
+            # Sparse MLA prefill is implemented only for SM100; a non-SM100 build
+            # that reaches this branch would instantiate tcgen05 kernels and fail
+            # with an unhelpful message. Fail fast and name the real reason.
+            comptime assert _is_sm10x_gpu(ctx.default_device_info), (
+                "Sparse MLA prefill is implemented only for SM100 (B200). This"
+                " architecture would otherwise attempt to compile SM100-only"
+                " tcgen05 kernels."
+            )
             # The sparse prefill kernels read a per-token top-k length and
             # branch on the sink at runtime, so hand them that form. Absent
             # lengths mean every token keeps the full top-k stride.

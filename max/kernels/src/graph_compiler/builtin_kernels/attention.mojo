@@ -3418,9 +3418,9 @@ def _sparse_prefill_indices[
     indexer supplied physical rows or the graph takes the decode branch.
     """
     comptime if not physical_indices:
-        if not mla_graph_takes_decode_branch[cache_dtype, num_heads](
-            max_seq_len
-        ):
+        if not mla_graph_takes_decode_branch[
+            cache_dtype, num_heads, sparse_mla=True
+        ](max_seq_len):
             return _sparse_gather_indices[
                 target, page_size, indices_stride, cache_dtype
             ](
@@ -3475,6 +3475,9 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
         # read; the decode kernels are specialized on its absence.
         has_topk_lengths: Bool = True,
         has_attn_sink: Bool = True,
+        # Set from the Python `attn_sink_inert` attribute when the caller knows
+        # the sink is inert (-1e38); the AMD sparse arms reject a live one.
+        attn_sink_inert: Bool = False,
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
@@ -3573,6 +3576,7 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
                     pool_topk=index_pool_topk,
                     select_tail=index_kpool_select_tail,
                 ),
+                attn_sink_inert=attn_sink_inert,
             ](
                 output.to_tile_tensor[.int64](),
                 q.to_tile_tensor[.int64](),
@@ -4035,6 +4039,9 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
         index_kpool: Int = 1,
         index_pool_topk: Int = 0,
         index_kpool_select_tail: Bool = True,
+        # Set from the Python `attn_sink_inert` attribute when the caller knows
+        # the sink is inert (-1e38); the AMD sparse arms reject a live one.
+        attn_sink_inert: Bool = False,
     ](
         output: OutputTensor[dtype=dtype, rank=3, ...],
         q: InputTensor[dtype=dtype, rank=3, ...],
@@ -4140,6 +4147,7 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
                     pool_topk=index_pool_topk,
                     select_tail=index_kpool_select_tail,
                 ),
+                attn_sink_inert=attn_sink_inert,
             ](
                 output.to_tile_tensor[.int64](),
                 q.to_tile_tensor[.int64](),
