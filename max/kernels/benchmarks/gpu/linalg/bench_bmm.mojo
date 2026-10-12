@@ -29,7 +29,7 @@ from std.benchmark import (
     BenchMetric,
     ThroughputMeasure,
 )
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from internal_utils import arg_parse
 from internal_utils._utils import (
     InitializationType,
@@ -165,7 +165,7 @@ def bench_bmm[
         var update_val = func(val)
         c_device.store(idx, update_val.cast[c_device.dtype]())
 
-    comptime pack_size = simd_width_of[c_type, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[c_type, target=ctx.target]()
 
     @inline(.always)
     def func[simd_width: Int, alignment: Int = 1](idx: Coord) {var}:

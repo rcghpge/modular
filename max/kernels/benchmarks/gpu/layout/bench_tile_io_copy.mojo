@@ -23,7 +23,6 @@ from std.benchmark import (
 from max.gpu import thread_idx
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
-from max.gpu.host.compile import get_gpu_target
 from std.memory import bitcast
 from std.sys import (
     align_of,
@@ -398,7 +397,7 @@ def bench_copy_roundtrip[
     N: Int,
     num_threads: Int,
 ](ctx: DeviceContext, mut bench: Bench) raises:
-    comptime simd_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_size = simd_width_of[dtype, target=ctx.target]()
     comptime tensor_layout = Layout.row_major(M, N)
 
     comptime assert (

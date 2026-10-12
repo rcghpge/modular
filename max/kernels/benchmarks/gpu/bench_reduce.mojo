@@ -24,7 +24,7 @@ from std.benchmark import (
     ThroughputMeasure,
 )
 from layout import Coord, TileTensor, row_major
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.memory import Layout as AllocLayout, dealloc
 from internal_utils import (
     CacheBustingBuffer,
@@ -58,7 +58,7 @@ def run_reduce[
     var out_shape = shape
     out_shape[axis] = 1
     comptime init: Scalar[dtype] = Scalar[dtype](0.0)
-    comptime align = align_of_simd[dtype, simd_target=get_gpu_target()]()
+    comptime align = align_of_simd[dtype, simd_target=ctx.target]()
 
     var in_size = shape.flattened_length()
     var out_size = in_size // shape[axis]
