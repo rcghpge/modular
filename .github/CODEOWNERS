@@ -104,30 +104,30 @@
 /Mojo/**/MojoTooling @modular/mojo-tooling
 /Mojo/**/ToolCommon @modular/mojo-lang @modular/mojo-tooling
 /max/BUILD.bazel @modular/sdlc
-/max/mojo/max/__init__.mojo @modular/stdlib @modular/kernels @modular/driver
+/max/mojo/max/__init__.mojo @modular/stdlib @modular/kernels @copilot-pull-request-reviewer @modular/driver
 /max/mojo/max/_category_.json @modular/mojo-docs
 /max/mojo/max/BUILD.bazel @modular/stdlib
-/max/mojo/max/algorithm/ @modular/stdlib @modular/gpu-abstractions
-/max/mojo/max/benchmark/ @modular/stdlib
-/max/mojo/max/gpu/ @modular/stdlib @modular/gpu-abstractions
-/max/mojo/max/gpu/host @modular/stdlib @modular/kernels @modular/driver
-/max/mojo/max/runtime @modular/stdlib @modular/mojo-lang
-/max/mojo/max/_plugin/ @modular/stdlib @modular/gpu-abstractions
-/max/mojo/test/atomic/ @modular/stdlib
-/max/mojo/test/algorithm/ @modular/stdlib @modular/gpu-abstractions
-/max/mojo/test/asyncrt/ @modular/stdlib @modular/kernels @modular/runtime
-/max/mojo/test/benchmark/ @modular/stdlib
-/max/mojo/test/compile/ @modular/stdlib
-/max/mojo/test/gpu/ @modular/stdlib @modular/gpu-abstractions
-/max/mojo/test/math/ @modular/stdlib
-/max/mojo/test/runtime/ @modular/stdlib
+/max/mojo/max/algorithm/ @modular/stdlib @modular/gpu-abstractions @copilot-pull-request-reviewer
+/max/mojo/max/benchmark/ @modular/stdlib @copilot-pull-request-reviewer
+/max/mojo/max/gpu/ @modular/stdlib @modular/gpu-abstractions @copilot-pull-request-reviewer
+/max/mojo/max/gpu/host @modular/stdlib @modular/kernels @modular/driver @copilot-pull-request-reviewer
+/max/mojo/max/runtime @modular/stdlib @modular/mojo-lang @copilot-pull-request-reviewer
+/max/mojo/max/_plugin/ @modular/stdlib @modular/gpu-abstractions @copilot-pull-request-reviewer
+/max/mojo/test/atomic/ @modular/stdlib @copilot-pull-request-reviewer
+/max/mojo/test/algorithm/ @modular/stdlib @modular/gpu-abstractions @copilot-pull-request-reviewer
+/max/mojo/test/asyncrt/ @modular/stdlib @modular/kernels @modular/runtime @copilot-pull-request-reviewer
+/max/mojo/test/benchmark/ @modular/stdlib @copilot-pull-request-reviewer
+/max/mojo/test/compile/ @modular/stdlib @copilot-pull-request-reviewer
+/max/mojo/test/gpu/ @modular/stdlib @modular/gpu-abstractions @copilot-pull-request-reviewer
+/max/mojo/test/math/ @modular/stdlib @copilot-pull-request-reviewer
+/max/mojo/test/runtime/ @modular/stdlib @copilot-pull-request-reviewer
 /max/include/ @modular/GraphExecution
-/max/kernels @modular/kernels
-/max/kernels/benchmarks/autotune @modular/max-sdk @modular/kernels
-/max/kernels/src/graph_compiler @modular/runtime
-/max/kernels/src/layout @modular/gpu-abstractions @modular/kernels
-/max/kernels/test/gpu/layout @modular/gpu-abstractions @modular/kernels
-/max/kernels/test/layout @modular/gpu-abstractions @modular/kernels
+/max/kernels @modular/kernels @copilot-pull-request-reviewer
+/max/kernels/benchmarks/autotune @modular/max-sdk @modular/kernels @copilot-pull-request-reviewer
+/max/kernels/src/graph_compiler @modular/runtime @copilot-pull-request-reviewer
+/max/kernels/src/layout @modular/gpu-abstractions @modular/kernels @copilot-pull-request-reviewer
+/max/kernels/test/gpu/layout @modular/gpu-abstractions @modular/kernels @copilot-pull-request-reviewer
+/max/kernels/test/layout @modular/gpu-abstractions @modular/kernels @copilot-pull-request-reviewer
 /max/python/docs/ @modular/mojo-docs
 /max/python/layer_benchmarks/ @modular/max-sdk @modular/max-serve
 /max/python/max/BUILD.bazel @modular/runtime
