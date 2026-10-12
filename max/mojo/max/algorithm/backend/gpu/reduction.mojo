@@ -17,7 +17,7 @@ from std.math.uutils import udivmod, ufloordiv
 
 from max.algorithm.reduction import _get_nd_indices_from_flat_index
 from max.gpu.primitives.block import broadcast
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
@@ -879,7 +879,7 @@ def reduce_launch[
     if thread_saturated and not reduce_contig_dim:
         # TODO: a shape which *only just* saturates the device might be
         # more performant without SIMD, but the dispatch is more complicated
-        comptime simd_packing_factor = simd_width_of[dtype, get_gpu_target()]()
+        comptime simd_packing_factor = simd_width_of[dtype, ctx.target]()
         comptime BLOCK_SIZE = get_defined_int["MOJO_REDUCTION_BLOCK_SIZE", 32]()
 
         comptime kernel = saturated_reduce_kernel[

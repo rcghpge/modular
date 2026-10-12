@@ -16,7 +16,7 @@ from std.sys import simd_width_of
 from max.algorithm.functional import elementwise
 from asyncrt_test_utils import create_test_device_context
 from max.gpu import *
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import TestSuite, assert_equal
 
 from std.utils import IndexList
@@ -27,7 +27,7 @@ def run_elementwise[dtype: DType](ctx: DeviceContext) raises:
     print("-")
     print("run_elementwise[", dtype, "]:")
 
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     comptime rank = 2
     comptime dim_x = 2
