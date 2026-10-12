@@ -420,6 +420,13 @@ This version is still a work in progress.
   CPU. The `float64` type is not supported on Apple GPU. On targets that
   flush subnormals, subnormal inputs and subnormal results are handled;
   the results are bit-exact against IEEE targets.
+
+- `std.utils.numerics.nextafter()` no longer calls the system libm and now
+  runs on GPU as well as CPU. Both share one Mojo implementation that steps
+  the IEEE-754 bit pattern directly, so the result is exact and bit-identical
+  to libm on every target, and it is unaffected by targets that flush
+  subnormal arithmetic. `std.math.ulp()`, which is defined through
+  `nextafter`, follows it onto the GPU.
 - `std.math.atan()` and `std.math.atan2()` no longer call the system libm and
   now run on GPU as well as CPU. On CPU their results come from the same Mojo
   implementations, so they can differ from the system libm in the last ulp.
