@@ -2788,25 +2788,29 @@ def flare_mla_prefill[
     """
     comptime assert rank == 3, "only support ragged inputs"
 
-    comptime if q.dtype == .bfloat16 and cache_t.dtype == .bfloat16:
-        comptime assert (
-            q.dtype == k.dtype == v.dtype == cache_t.dtype == output.dtype
-        ), "Q, K, V, output should have same type if q.dtype is bfloat16"
-    elif q.dtype == .bfloat16 and cache_t.dtype == .float8_e4m3fn:
-        comptime assert q.dtype == k.dtype == v.dtype == output.dtype, (
-            "Q, K, V, output should have same type if q.dtype is bfloat16 and"
-            " k_rope.dtype is float8_e4m3fn"
-        )
-    elif q.dtype == .float8_e4m3fn and cache_t.dtype == .float8_e4m3fn:
-        comptime assert (
-            q.dtype == k.dtype == v.dtype == cache_t.dtype
-            and output.dtype == .bfloat16
-        ), (
-            "Q, K, V, output should have same type if q.dtype is float8_e4m3fn"
-            " and k_rope.dtype is float8_e4m3fn and output.dtype is bfloat16"
-        )
-    else:
-        comptime assert False, "Q, K, V, output dtype combination not supported"
+    comptime match (q.dtype, cache_t.dtype):
+        case (.bfloat16, .bfloat16):
+            comptime assert (
+                q.dtype == k.dtype == v.dtype == cache_t.dtype == output.dtype
+            ), "Q, K, V, output should have same type if q.dtype is bfloat16"
+        case (.bfloat16, .float8_e4m3fn):
+            comptime assert q.dtype == k.dtype == v.dtype == output.dtype, (
+                "Q, K, V, output should have same type if q.dtype is bfloat16"
+                " and k_rope.dtype is float8_e4m3fn"
+            )
+        case (.float8_e4m3fn, .float8_e4m3fn):
+            comptime assert (
+                q.dtype == k.dtype == v.dtype == cache_t.dtype
+                and output.dtype == .bfloat16
+            ), (
+                "Q, K, V, output should have same type if q.dtype is"
+                " float8_e4m3fn and k_rope.dtype is float8_e4m3fn and"
+                " output.dtype is bfloat16"
+            )
+        case _:
+            comptime assert (
+                False
+            ), "Q, K, V, output dtype combination not supported"
 
     @inline(.always)
     def description_fn() {imm} -> String:
