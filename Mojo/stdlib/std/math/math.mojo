@@ -1844,6 +1844,7 @@ def atan[
 
     Constraints:
         The input must be a floating-point type.
+        `float64` is not supported on Apple GPUs.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
@@ -1856,7 +1857,13 @@ def atan[
         The `atan` of the input.
     """
 
-    return _call_libm["atan"](x)
+    _assert_float64_supported[dtype, "atan"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        return _narrow_from_f32[dtype](_atan_f32(x.cast[.float32]()))
+    elif dtype == .float32:
+        return _atan_f32(x._refine[.float32]())._refine[dtype]()
+    return _atan_f64(x._refine[.float64]())._refine[dtype]()
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1873,6 +1880,7 @@ def atan2[
 
     Constraints:
         The input must be a floating-point type.
+        `float64` is not supported on Apple GPUs.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
@@ -1886,22 +1894,13 @@ def atan2[
         The `atan2` of the inputs.
     """
 
-    @inline(.nodebug)
-    def _float32_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["atan2f", Scalar[result_type]](arg0, arg1)
+    _assert_float64_supported[dtype, "atan2"]()
 
-    @inline(.nodebug)
-    def _float64_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["atan2", Scalar[result_type]](arg0, arg1)
-
-    comptime if dtype == .float64:
-        return _simd_apply[_float64_dispatch, result_dtype=dtype](y, x)
-    else:
-        return _simd_apply[_float32_dispatch, result_dtype=dtype](y, x)
+    comptime if bit_width_of[dtype]() < 32:
+        return _narrow_from_f32[dtype](
+            _atan2_impl(y.cast[.float32](), x.cast[.float32]())
+        )
+    return _atan2_impl(y, x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -3938,6 +3937,8 @@ comptime _LN2 = 0.69314718055994530941723212145817656807550013436026
 comptime _LN2_HI_F64 = 6.93147180369123816490e-01
 comptime _LN2_LO_F64 = 1.90821492927058770002e-10
 
+comptime _F32_ABS_MASK = 0x7FFFFFFF
+
 
 comptime _TWO_OVER_PI_BITS: List[UInt64] = [
     0x0000000000000000,
@@ -4774,6 +4775,241 @@ def _pow2_impl[
     )
 
 
+def _atan2_impl[
+    dtype: DType, width: SIMDLength, //
+](y: SIMD[dtype, width], x: SIMD[dtype, width]) -> type_of(
+    x
+) where dtype.is_floating_point():
+    comptime assert dtype in (DType.float32, DType.float64)
+    comptime T = type_of(x)
+    comptime is_f32 = dtype == .float32
+    comptime pi_lo = Scalar[dtype](
+        -8.742278e-8 if is_f32 else 1.2246467991473532e-16
+    )
+    # 2^(emin + p): above it the division remainder is exactly representable.
+    comptime tiny = Scalar[dtype](
+        1.9721522630525295e-31 if is_f32 else 2.004168360008973e-292
+    )
+    comptime scale = Scalar[dtype](
+        1.8446744073709552e19 if is_f32 else 3.402823669209385e38
+    )
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime abs_mask = I(_F32_ABS_MASK if is_f32 else 0x7FFFFFFFFFFFFFFF)
+    var ax_bits = x._to_bits_signed() & abs_mask
+    var ay_bits = y._to_bits_signed() & abs_mask
+    # Integer ordering preserves unequal subnormals under DAZ comparisons.
+    var swap = ay_bits.gt(ax_bits)
+    var num_bits = swap.select(ax_bits, ay_bits)
+    var den_bits = swap.select(ay_bits, ax_bits)
+    var num = T(from_bits=num_bits)
+    var den = T(from_bits=den_bits)
+    var both_inf = isinf(x) & isinf(y)
+    # Exact rescale so the remainder below stays exact; if den overflows,
+    # num / den was already below the smallest subnormal. A subnormal operand
+    # is rebuilt from its integer significand m as `m * 2^(emin - mant)`
+    # times the scale, preserving the ratio under arithmetic DAZ/FTZ.
+    var small = num_bits.lt(I(tiny._to_bits_signed()))
+    comptime unit = Scalar[dtype](
+        2.5849394142282115e-26 if is_f32 else 1.681218273811815e-285
+    )
+    var mant_mask = I((1 << mant) - 1)
+    var num_sub = (num_bits >> I(mant)).eq(0)
+    var den_sub = (den_bits >> I(mant)).eq(0)
+    num = small.select(
+        num_sub.select(
+            (num_bits & mant_mask).cast[dtype]() * unit, num * scale
+        ),
+        num,
+    )
+    den = small.select(
+        den_sub.select(
+            (den_bits & mant_mask).cast[dtype]() * unit, den * scale
+        ),
+        den,
+    )
+    # 0/0 and inf/inf are NaN; the Annex F results are atan(0) and atan(1).
+    var t = both_inf.select(T(1.0), den.eq(0.0).select(T(0.0), num / den))
+    var a = atan(t)
+    # First-order correction for the rounding of num / den, which otherwise
+    # adds up to half an ulp on top of atan's error. Divide by den first
+    # rather than overflow den * (1 + t*t) for finite large operands.
+    var exact_rem = num.ge(tiny) & ~isinf(den)
+    var c = exact_rem.select(((-t).fma(den, num) / den) / t.fma(t, 1.0), T(0.0))
+    # Unfold the octant in hi/lo pairs; each Fast2Sum is exact because the
+    # constant dominates the angle subtracted from it.
+    comptime pio2_hi = T(pi / 2.0)
+    var s = pio2_hi - a
+    var hi = swap.select(s, a)
+    var lo = swap.select(((pio2_hi - s) - a) + (T(pi_lo * 0.5) - c), c)
+    # The sign bit, not x < 0, so that atan2(+-0, -0) is +-pi.
+    var x_neg = copysign(T(1.0), x).lt(0.0)
+    var s2 = T(pi) - hi
+    lo = x_neg.select(((T(pi) - s2) - hi) + (T(pi_lo) - lo), lo)
+    hi = x_neg.select(s2, hi)
+    var r = copysign(hi + lo, y)
+    comptime if is_f32:
+        r = _atan2_tiny_f32(
+            y._refine[.float32](), x._refine[.float32](), r._refine[.float32]()
+        )._refine[dtype]()
+    return (isnan(x) | isnan(y)).select(x + y, r)
+
+
+def _atan2_tiny_f32[
+    width: SIMDLength, //
+](
+    y: SIMD[.float32, width],
+    x: SIMD[.float32, width],
+    result: SIMD[.float32, width],
+) -> type_of(x):
+    comptime T = type_of(x)
+    comptime itype = FPUtils[DType.float32].integral_type
+    comptime I = SIMD[itype, width]
+    comptime sign_mask = -2147483648
+    comptime inf_bits = 0x7F800000
+    comptime min_normal_bits = 0x00800000
+    comptime mantissa_mask = 0x007FFFFF
+    comptime one_bits = 0x3F800000
+    var xb = x._to_bits_signed() & _F32_ABS_MASK
+    var yb = y._to_bits_signed() & _F32_ABS_MASK
+    var xs = xb.lt(min_normal_bits)
+    var ys = yb.lt(min_normal_bits)
+    # Normalize integer significands without consuming a subnormal operand.
+    var nx = xs.select(xb.cast[.float32]()._to_bits_signed(), xb)
+    var ny = ys.select(yb.cast[.float32]()._to_bits_signed(), yb)
+    var ex = (nx >> 23) - xs.select(I(149), I(0))
+    var ey = (ny >> 23) - ys.select(I(149), I(0))
+    var shift = ey - ex + 149
+    var tiny = (
+        (ey - ex).le(-126)
+        & x._to_bits_signed().gt(0)
+        & xb.lt(inf_bits)
+        & yb.ne(0)
+    )
+    # Express the quotient in units of 2^-149. Clamping keeps even unselected
+    # SIMD lanes normal, finite, and within the float-to-integer range.
+    var scale = T(from_bits=(clamp(shift, I(-1), I(23)) + 127) << 23)
+    var num = T(from_bits=(ny & mantissa_mask) | one_bits) * scale
+    var den = T(from_bits=(nx & mantissa_mask) | one_bits)
+    var q = floor(num / den)
+    var rem = (-q).fma(den, num)
+    # The residual resolves division rounding near half-integers. At an
+    # exact halfway ratio, atan(ratio) is strictly below ratio: round down.
+    var bits = q.cast[itype]() + rem.gt(den * 0.5).cast[itype]()
+    bits = shift.lt(-1).select(I(0), bits)
+    var signed_bits = bits | (y._to_bits_signed() & I(sign_mask))
+    return tiny.select(T(from_bits=signed_bits), result)
+
+
+def _atan_f32[width: SIMDLength, //](x: SIMD[.float32, width]) -> type_of(x):
+    comptime T = type_of(x)
+    # Reduction breakpoints 7/16, 11/16, 19/16, 39/16.
+    comptime break_0 = 0.4375
+    comptime break_1 = 0.6875
+    comptime break_2 = 1.1875
+    comptime break_3 = 2.4375
+    # Hi/lo words of atan(1/2), atan(1), atan(3/2), pi/2 from s_atanf.c.
+    comptime half_hi = 4.6364760399e-01
+    comptime half_lo = 5.0121582440e-09
+    comptime quarter_pi_hi = 7.8539812565e-01
+    comptime quarter_pi_lo = 3.7748947079e-08
+    comptime one_and_half_hi = 9.8279368877e-01
+    comptime one_and_half_lo = 3.4473217170e-08
+    comptime half_pi_hi = 1.5707962513e00
+    comptime half_pi_lo = 7.5497894159e-08
+    # Bits of 2^-12: below it, atan(x) rounds to x in float32.
+    comptime tiny_bits = 0x39800000
+    var ax = abs(x)
+    var i0 = ax.ge(break_0)
+    var i1 = ax.ge(break_1)
+    var i2 = ax.ge(break_2)
+    var i3 = ax.ge(break_3)
+    # Each numerator is exact by Sterbenz on its interval.
+    var num = i3.select(
+        T(-1.0), i2.select(ax - 1.5, i1.select(ax - 1.0, ax + ax - 1.0))
+    )
+    var den = i3.select(
+        ax, i2.select(ax.fma(1.5, 1.0), i1.select(ax + 1.0, ax + 2.0))
+    )
+    var xr = i0.select(num / den, ax)
+    var hi = i3.select(
+        T(half_pi_hi),
+        i2.select(
+            T(one_and_half_hi),
+            i1.select(T(quarter_pi_hi), i0.select(T(half_hi), 0.0)),
+        ),
+    )
+    var lo = i3.select(
+        T(half_pi_lo),
+        i2.select(
+            T(one_and_half_lo),
+            i1.select(T(quarter_pi_lo), i0.select(T(half_lo), 0.0)),
+        ),
+    )
+    var z = xr * xr
+    var p = z * polynomial_evaluate[
+        [
+            Float32(3.3333328366e-01),
+            -1.9999158382e-01,
+            1.4253635705e-01,
+            -1.0648017377e-01,
+            6.1687607318e-02,
+        ]
+    ](z)
+    var result = copysign(hi - (xr.fma(p, -lo) - xr), x)
+    # For |x| < 2^-12, the cubic correction is below half an ulp.
+    # Select the original bits rather than flush a subnormal through arithmetic.
+    return (x._to_bits_signed() & _F32_ABS_MASK).lt(tiny_bits).select(x, result)
+
+
+# Cephes atan: same reduction with a 0.66 split and a [4/5] rational in x^2;
+# MOREBITS carries the low part of pi/2 so the reduced branches stay accurate.
+
+
+def _atan_f64[width: SIMDLength, //](x: SIMD[.float64, width]) -> type_of(x):
+    comptime tan_3pi_8 = _SQRT2 + 1
+    # Low part of pi/2 (Cephes MOREBITS).
+    comptime morebits = 6.123233995736765886130e-17
+    # Cephes split between the unreduced and the (x-1)/(x+1) branch.
+    comptime mid_split = 0.66
+    var ax = abs(x)
+    var big = ax.gt(tan_3pi_8)
+    var mid = ax.gt(mid_split) & ~big
+    var xr = big.select(-1.0 / ax, mid.select((ax - 1.0) / (ax + 1.0), ax))
+    var base = big.select(
+        type_of(x)(pi / 2.0), mid.select(type_of(x)(pi / 4.0), 0.0)
+    )
+    var lo = big.select(
+        type_of(x)(morebits),
+        mid.select(type_of(x)(0.5 * morebits), 0.0),
+    )
+    var z = xr * xr
+    var num = polynomial_evaluate[
+        [
+            Float64(-6.485021904942025371773e1),
+            -1.228866684490136173410e2,
+            -7.500855792314704667340e1,
+            -1.615753718733365076637e1,
+            -8.750608600031904122785e-1,
+        ]
+    ](z)
+    var den = polynomial_evaluate[
+        [
+            Float64(1.945506571482613964425e2),
+            4.853903996359136964868e2,
+            4.328810604912902668951e2,
+            1.650270098316988542046e2,
+            2.485846490142306297962e1,
+            1.0,
+        ]
+    ](z)
+    var r = (z * num / den).fma(xr, xr) + lo
+    return copysign(base + r, x)
+
+
+# Reduces to atan(min(|y|,|x|) / max(|y|,|x|)) in [0, pi/4] and unfolds the
+# octant with hi/lo splits of pi/2 and pi, following C99 Annex F for zeros,
+# infinities and NaN.
 def _gamma_2_to_3[
     dtype: DType, width: SIMDLength, //
 ](t: SIMD[dtype, width]) -> SIMD[dtype, width]:
@@ -5767,6 +6003,16 @@ def _log1p_impl[
     )
 
     return in_domain_mask.select(log1x, x + z)
+
+
+def _narrow_from_f32[
+    width: SIMDLength, //, dtype: DType
+](x: SIMD[.float32, width]) -> SIMD[dtype, width]:
+    """Narrows a float32 result to a 16-bit `dtype`, keeping bfloat16
+    subnormals that Apple GPUs flush in a plain `cast`."""
+    comptime if is_apple_gpu() and dtype == .bfloat16:
+        return _narrow_f32_to_bf16_bits(x)._refine[dtype]()
+    return x.cast[dtype]()
 
 
 @inline(.always)

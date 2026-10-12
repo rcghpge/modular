@@ -416,6 +416,11 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `std.math.atan()` and `std.math.atan2()` no longer call the system libm and
+  now run on GPU as well as CPU. On CPU their results come from the same Mojo
+  implementations, so they can differ from the system libm in the last ulp.
+  On targets that flush subnormals, subnormal inputs are handled and normal
+  results are correct; subnormal results flush to zero.
 - `std.math.gamma` no longer calls the system libm and now runs on GPU as
   well as CPU. On CPU its results come from the same Mojo implementation, so
   they can differ from the system libm in the last ulp. Subnormal inputs and

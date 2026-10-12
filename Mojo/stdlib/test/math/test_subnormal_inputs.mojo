@@ -19,6 +19,8 @@
 # counterpart is `test_bessel_huge_args_gpu.mojo`.
 
 from std.math import (
+    atan,
+    atan2,
     gamma,
     cbrt,
     frexp,
@@ -41,6 +43,7 @@ from std.math.math import (
     _scale_down_bits,
     _scale_up_subnormal,
 )
+from std.memory import bitcast
 from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 from std.utils.numerics import FlushDenormals
 
@@ -455,6 +458,130 @@ def test_remainder_subnormal_results() raises:
         ).to_bits()
         == 1
     )
+
+
+def _check_subnormal_order(y: SIMD[.float32, 4], x: SIMD[.float32, 4]) raises:
+    var got = atan2(y, x)
+    var expected = SIMD[.float32, 4](
+        1.249045729637146,
+        0.32175055146217346,
+        -1.249045729637146,
+        1.8925468921661377,
+    )
+    for i in range(4):
+        _check(got[i], expected[i], "unequal subnormals")
+
+
+def _check_tiny_atan(bits: SIMD[.uint32, 4]) raises:
+    var x = SIMD[.float32, 4](from_bits=bits)
+    assert_equal(bitcast[.uint32, 4](atan(x)), bits)
+
+
+def _check_tiny_bits(
+    y_bits: SIMD[.uint32, 4],
+    x_bits: SIMD[.uint32, 4],
+    expected: SIMD[.uint32, 4],
+) raises:
+    var y = SIMD[.float32, 4](from_bits=y_bits)
+    var x = SIMD[.float32, 4](from_bits=x_bits)
+    assert_equal(bitcast[.uint32, 4](atan2(y, x)), expected)
+
+
+def _tiny_atan_cases() raises:
+    _check_tiny_atan(SIMD[.uint32, 4](1, 0x80000001, 0x007FFFFF, 0x807FFFFF))
+    _check_tiny_atan(SIMD[.uint32, 4](0, 0x80000000, 0x00800000, 0x80800000))
+
+
+def _tiny_cases() raises:
+    _check_tiny_bits(
+        SIMD[.uint32, 4](0x00800000, 0x80800000, 0x007FFFFF, 0x807FFFFF),
+        SIMD[.uint32, 4](0x40000000, 0x40000000, 0x3F800000, 0x3F800000),
+        SIMD[.uint32, 4](0x00400000, 0x80400000, 0x007FFFFF, 0x807FFFFF),
+    )
+    _check_tiny_bits(
+        SIMD[.uint32, 4](0x00800000, 0x00800000, 0x00FFFFFF, 0x80FFFFFF),
+        SIMD[.uint32, 4](0x3F800001, 0x3F7FFFFF, 0x40000000, 0x40000000),
+        SIMD[.uint32, 4](0x007FFFFF, 0x00800001, 0x007FFFFF, 0x807FFFFF),
+    )
+    # Halfway quotients round downward because atan(t) < t for positive t.
+    _check_tiny_bits(
+        SIMD[.uint32, 4](1, 3, 5, 7),
+        SIMD[.uint32, 4](0x40000000),
+        SIMD[.uint32, 4](0, 1, 2, 3),
+    )
+    _check_tiny_bits(
+        SIMD[.uint32, 4](0x00800000, 0x00800000, 0x00800000, 0x00800001),
+        SIMD[.uint32, 4](0x4AFFFFFF, 0x4B000000, 0x4B000001, 0x3F800000),
+        SIMD[.uint32, 4](1, 1, 1, 0x00800001),
+    )
+    _check_tiny_bits(
+        SIMD[.uint32, 4](1, 1, 1, 0x80000001),
+        SIMD[.uint32, 4](0x3FFFFFFF, 0x40000000, 0x40000001, 0x40000000),
+        SIMD[.uint32, 4](1, 0, 0, 0x80000000),
+    )
+
+
+def test_atan2_subnormal() raises:
+    comptime f32_min = Float32(from_bits=UInt32(1))  # 2^-149
+    comptime f32_max_sub = Float32(from_bits=UInt32(0x007FFFFF))
+    comptime f64_min = Float64(from_bits=UInt64(1))  # 2^-1074
+    comptime f64_max_sub = Float64(from_bits=UInt64(0x000FFFFFFFFFFFFF))
+    assert_equal(atan2(f32_min, f32_min), 0.7853981852531433)
+    _check(
+        atan2(Float32(from_bits=UInt32(3)), f32_min),
+        1.249045729637146,
+        "atan2(3u, u)",
+    )
+    _check(
+        atan2(f32_min, Float32(from_bits=UInt32(4))),
+        0.244978666305542,
+        "atan2(u, 4u)",
+    )
+    _check(
+        atan2(f32_min, Float32(1.1754943508222875e-38)),
+        1.1920928955078125e-07,
+        "atan2(u, 2^-126)",
+    )
+    _check(atan2(f32_min, -f32_max_sub), 3.141592502593994, "atan2(u, -max)")
+    _check(atan2(-f32_max_sub, f32_min), -1.570796251296997, "atan2(-max, u)")
+    assert_equal(atan2(f64_min, f64_min), 0.7853981633974483)
+    _check(
+        atan2(Float64(from_bits=UInt64(3)), f64_min),
+        1.2490457723982544,
+        "atan2(3u, u)",
+    )
+    _check(atan2(f64_min, -f64_max_sub), 3.141592653589793, "atan2(u, -max)")
+    var v = atan2(
+        SIMD[.float32, 4](f32_min, 3.0, -f32_max_sub, 0.0),
+        SIMD[.float32, 4](f32_min, 4.0, f32_min, -f32_min),
+    )
+    assert_equal(v[0], atan2(f32_min, f32_min))
+    assert_equal(v[1], atan2(Float32(3.0), Float32(4.0)))
+    assert_equal(v[2], atan2(-f32_max_sub, f32_min))
+    assert_equal(v[3], 3.1415927410125732)
+
+
+def test_subnormal_order_flush_denormals() raises:
+    var ys = SIMD[.float32, 4](from_bits=SIMD[.uint32, 4](3, 1, 0x80000003, 3))
+    var xs = SIMD[.float32, 4](from_bits=SIMD[.uint32, 4](1, 3, 1, 0x80000001))
+    _check_subnormal_order(ys, xs)
+    with FlushDenormals():
+        _check_subnormal_order(ys, xs)
+
+
+def test_tiny_atan_bits() raises:
+    _tiny_atan_cases()
+    with FlushDenormals():
+        _tiny_atan_cases()
+
+
+def test_tiny_bits() raises:
+    _tiny_cases()
+
+
+def test_tiny_bits_flush_denormals() raises:
+    with FlushDenormals():
+        _tiny_cases()
 
 
 def test_scale_up_subnormal() raises:
