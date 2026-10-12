@@ -74,6 +74,11 @@ def coord_transform[
     Returns:
         The corresponding input coordinate as a floating-point value.
     """
+    # This is the shared coordinate transform of the nearest and linear
+    # modes. resize_cubic maps coordinates itself, in `_half_pixel_center`:
+    # it multiplies by the input-to-output ratio to match torch's CPU
+    # bicubic, and dividing by the inverse ratio here would round
+    # differently.
     var out_coord_f32 = Float32(out_coord)
 
     comptime match mode:
@@ -125,6 +130,119 @@ struct RoundMode(ImplicitlyCopyable):
         return self.value == other.value
 
 
+def _check_resize_shapes[
+    in_dtype: DType, out_dtype: DType, //
+](input: TileTensor[in_dtype, ...], output: TileTensor[out_dtype, ...],):
+    """Checks the shape relationship every resize mode requires.
+
+    Every resize writes an output of the same rank as its input, and an
+    empty input can only resize to an empty output: each output element
+    reads the input at a coordinate derived from its own, so a non-empty
+    output of an empty input would read out of bounds. The rank check is
+    compile time, and the empty-input check is a debug assertion.
+
+    Args:
+        input: The input to be resized.
+        output: The output containing the resized input.
+    """
+    comptime assert (
+        input.rank == output.rank
+    ), "input rank must match output rank"
+    debug_assert(
+        input.num_elements() != 0 or output.num_elements() == 0,
+        "cannot resize an empty input to a non-empty output",
+    )
+
+
+@inline(.always)
+def _axis_scale(in_dim: Int, out_dim: Int) -> Float32:
+    """Returns the scale of one resize axis: its output size over its input
+    size.
+
+    The division runs in float64 and narrows to float32, so the nearest and
+    linear modes derive the same scale value for the same axis.
+
+    Args:
+        in_dim: The size of the input dimension.
+        out_dim: The size of the output dimension.
+
+    Returns:
+        The ratio of output size to input size, as float32.
+    """
+    return (Float64(out_dim) / Float64(in_dim)).cast[.float32]()
+
+
+@inline(.always)
+def _round_coordinate[
+    round_mode: RoundMode, dtype: DType
+](val: Scalar[dtype]) -> Scalar[dtype]:
+    """Rounds a fractional coordinate to an integer index the way
+    `round_mode` selects. This is the one implementation of `RoundMode`
+    semantics that resize consumes.
+
+    Parameters:
+        round_mode: How to round fractional input coordinates to integer indices.
+        dtype: The type of the coordinate.
+
+    Args:
+        val: The fractional coordinate to round.
+
+    Returns:
+        The rounded coordinate, of the same type as `val`.
+    """
+    comptime match round_mode:
+        case .HalfDown:
+            return ceil(val - 0.5)
+        case .HalfUp:
+            return floor(val + 0.5)
+        case .Floor:
+            return floor(val)
+        case .Ceil:
+            return ceil(val)
+        case _:
+            comptime assert False, "round_mode not implemented"
+
+
+@inline(.always)
+def _nearest_source_index[
+    coordinate_transformation_mode: CoordinateTransformationMode,
+    round_mode: RoundMode,
+](out_coord: Int, in_dim: Int, out_dim: Int, scale: Float32) -> Int:
+    """Returns the input index that nearest-neighbor resize gathers for
+    `out_coord`: `coord_transform` maps the output coordinate into the
+    input by `coordinate_transformation_mode`, `_round_coordinate` rounds
+    it by `round_mode`, and the result is clamped to the input.
+
+    Parameters:
+        coordinate_transformation_mode: How to map a coordinate in output to a coordinate in input.
+        round_mode: How to round fractional input coordinates to integer indices.
+
+    Args:
+        out_coord: The output coordinate to map.
+        in_dim: The size of the input dimension.
+        out_dim: The size of the output dimension.
+        scale: The ratio of output dimension size to input dimension size.
+
+    Returns:
+        The input index to gather, within `[0, in_dim)`.
+    """
+    # Floor with half_pixel maps the first output coordinate of an
+    # upsample below zero, so clamp both ends.
+    return min(
+        max(
+            Int(
+                _round_coordinate[round_mode](
+                    coord_transform[coordinate_transformation_mode](
+                        out_coord, in_dim, out_dim, scale
+                    )
+                )
+            ),
+            0,
+        ),
+        in_dim - 1,
+    )
+
+
 def resize_nearest_neighbor[
     coordinate_transformation_mode: CoordinateTransformationMode,
     round_mode: RoundMode,
@@ -148,48 +266,10 @@ def resize_nearest_neighbor[
         output: The output containing the resized input.
         ctx: The device context used to launch the kernel.
     """
-    comptime assert (
-        input.rank == output.rank
-    ), "input rank must match output rank"
+    _check_resize_shapes(input, output)
     var scales = StaticTuple[Float32, input.rank]()
     for i in range(input.rank):
-        scales[i] = (Float64(output.dim(i)) / Float64(input.dim(i))).cast[
-            .float32
-        ]()
-
-    @inline(.always)
-    def round[dtype: DType](val: Scalar[dtype]) -> Scalar[dtype]:
-        comptime match round_mode:
-            case .HalfDown:
-                return ceil(val - 0.5)
-            case .HalfUp:
-                return floor(val + 0.5)
-            case .Floor:
-                return floor(val)
-            case .Ceil:
-                return ceil(val)
-            case _:
-                comptime assert False, "round_mode not implemented"
-
-    @inline(.always)
-    def source_index(
-        out_coord: Int, in_dim: Int, out_dim: Int, scale: Float32
-    ) -> Int:
-        # Floor with half_pixel maps the first output coordinate of an
-        # upsample below zero, so clamp both ends.
-        return min(
-            max(
-                Int(
-                    round(
-                        coord_transform[coordinate_transformation_mode](
-                            out_coord, in_dim, out_dim, scale
-                        )
-                    )
-                ),
-                0,
-            ),
-            in_dim - 1,
-        )
+        scales[i] = _axis_scale(Int(input.dim(i)), Int(output.dim(i)))
 
     # Every lane of a vector shares its outer coordinates, so the outer source
     # indices are computed once per vector and only the innermost axis is
@@ -201,7 +281,9 @@ def resize_nearest_neighbor[
         var in_coords = IndexList[input.rank](0)
 
         comptime for i in range(last):
-            in_coords[i] = source_index(
+            in_coords[i] = _nearest_source_index[
+                coordinate_transformation_mode, round_mode
+            ](
                 Int(out_coords[i].value()),
                 Int(input.dim(i)),
                 Int(output.dim(i)),
@@ -211,7 +293,9 @@ def resize_nearest_neighbor[
         var out_last = Int(out_coords[last].value())
         var values = SIMD[dtype, simd_width]()
         comptime for lane in range(simd_width):
-            in_coords[last] = source_index(
+            in_coords[last] = _nearest_source_index[
+                coordinate_transformation_mode, round_mode
+            ](
                 out_last + lane,
                 Int(input.dim(last)),
                 Int(output.dim(last)),
@@ -357,9 +441,7 @@ def resize_linear[
         input: The input to be resized.
         output: The output containing the resized input.
     """
-    comptime assert (
-        input.rank == output.rank
-    ), "input rank must match output rank"
+    _check_resize_shapes(input, output)
 
     if rebind[IndexList[input.rank]](
         coord_to_index_list(input.layout.shape_coord())
@@ -375,9 +457,7 @@ def resize_linear[
     for i in range(input.rank):
         # need to consider output dims when upsampling and input dims when downsampling
         tmp_dims[i] = max(Int(input.dim(i)), Int(output.dim(i)))
-        scales[i] = (Float64(output.dim(i)) / Float64(input.dim(i))).cast[
-            .float32
-        ]()
+        scales[i] = _axis_scale(Int(input.dim(i)), Int(output.dim(i)))
         if Int(input.dim(i)) != Int(output.dim(i)):
             resize_dims.append(i)
 
@@ -476,9 +556,7 @@ def resize_linear_gpu[
         output: The output containing the resized input, on the device.
         ctx: The device context used to launch the kernels.
     """
-    comptime assert (
-        input.rank == output.rank
-    ), "input rank must match output rank"
+    _check_resize_shapes(input, output)
     comptime rank = input.rank
 
     var in_shape = coord_to_index_list(input.layout.shape_coord())
@@ -487,9 +565,7 @@ def resize_linear_gpu[
     var scales = StaticTuple[Float32, rank]()
     var resize_dims = List[Int](capacity=rank)
     for i in range(rank):
-        scales[i] = (Float64(final_shape[i]) / Float64(in_shape[i])).cast[
-            .float32
-        ]()
+        scales[i] = _axis_scale(in_shape[i], final_shape[i])
         if in_shape[i] != final_shape[i]:
             resize_dims.append(i)
 
@@ -579,6 +655,7 @@ def resize_cubic[
     Constraints:
         Both tensors are rank 4. The input is float32 or an integer type.
     """
+    _check_resize_shapes(input, output)
     comptime assert (
         input.rank == 4 and output.rank == 4
     ), "input and output must be [outer, H, W, inner]"
@@ -597,10 +674,6 @@ def resize_cubic[
         "outer and inner sizes must match",
     )
     if input.num_elements() == 0 or output.num_elements() == 0:
-        debug_assert(
-            output.num_elements() == 0,
-            "cannot resize an empty input to a non-empty output",
-        )
         return
     var outer = in_shape[0]
     var inner = in_shape[3]
