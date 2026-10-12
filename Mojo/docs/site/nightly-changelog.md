@@ -239,6 +239,14 @@ This version is still a work in progress.
   returns. `is_big_endian()` and `is_little_endian()` are deprecated; compare
   `Endian.native()` with `.big` or `.little` instead.
 
+- `SIMD` gained `to_endian()` and `from_endian()`, which convert an integer
+  value to and from a given byte order.
+
+  ```mojo
+  var wire = UInt16(8080).to_endian[.big]()  # stored as [0x1F, 0x90]
+  var port = UInt16.from_endian[.big](wire)  # 8080
+  ```
+
 - Hashing a byte sequence is now spelled `hash_bytes()`, which takes an
   `ImmSpan[Byte]`. The pointer-and-length `hash()` overload is deprecated:
 
