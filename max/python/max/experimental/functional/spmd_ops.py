@@ -283,7 +283,17 @@ def functional(
             with ensure_context():
                 return to_tensors(on_graph_values(*args, **kwargs))
 
-        mesh = distributed[0].mesh
+        # Keyword arguments flatten in sorted order, so a host-side argument
+        # such as a per-device length could come first; the op runs on the
+        # devices that hold the real data.
+        mesh = next(
+            (
+                t.mesh
+                for t in distributed
+                if not all(isinstance(d, CPU) for d in t.mesh.devices)
+            ),
+            distributed[0].mesh,
+        )
         active_rule = getattr(wrapper, "rule", None)
         if active_rule is None:
             # Without a rule nothing relates the per-device results, so the op
