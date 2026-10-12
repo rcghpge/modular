@@ -656,6 +656,17 @@ This version is still a work in progress.
   float32 (float64 for float64), so bfloat16 and float16 inputs no longer
   round at every tap. The eager resize family sweeps accelerators for
   every resize op.
+- Added GPU support for the fused `mo.gather_sum` (gather on axis 0 + sum
+  reduction on axis 1, the multi-hot embedding sum used by DLRM-style
+  models). The op was host-only, so a device-resident embedding table was
+  round-tripped through the CPU on every call; it is now single-device and
+  executes on the gather's device. The gather+reduce fusion that produces
+  the op was also revived — its pattern still matched the reduce axis as
+  an operand, but `mo.reduce.add` carries `axis` as an attribute, so
+  `gather_sum` had been unreachable in compiled graphs. Measured on an
+  M-series GPU (fused kernel vs the previous device-to-host-to-device
+  round-trip, batch 1024, 64 multi-hot ids, embedding dim 128/512,
+  float32), the fused op runs 24-37x faster.
 - Added GPU support for `ops.resize_nearest` / `mo.resize.nearest`. The op
   was host-only; its kernel is a pure gather, so it now launches on the
   input's device (the op is single-device with a host `size` operand, like

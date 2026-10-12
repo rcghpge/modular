@@ -413,7 +413,6 @@ def gather_sum[
 
     if input.num_elements() == 0 or indices.num_elements() == 0:
         return
-    var dev_ctx = ctx
 
     var batch = Int(indices.dim[0]())
     var multi_hot = Int(indices.dim[1]())
@@ -442,7 +441,7 @@ def gather_sum[
             input_flat,
             indices,
             0,
-            dev_ctx,
+            ctx,
         )
     else:
         comptime block_size = 256
@@ -459,7 +458,7 @@ def gather_sum[
             indices_imm.Engine,
             output_mut.Engine,
         ]
-        dev_ctx.enqueue_function[kernel](
+        ctx.enqueue_function[kernel](
             input_imm,
             indices_imm,
             output_mut,
