@@ -641,6 +641,17 @@ This version is still a work in progress.
   while linear stays CPU-only until its scratch-buffer kernel is ported;
   new Metal-verified GPU kernel tests cover up/downsampling and both
   coordinate modes, plus an eager GPU-residency test.
+
+- Trimmed the eager resize family's accelerator warm to rank 4. The
+  GPU warm action (`warm_accel_resize`) swept all five ranks for
+  `resize.nearest`/`resize.linear` across every dtype and variant, which
+  alone made the action compile 363 graphs per virtual accelerator and
+  put it among the slowest warm fragments. The warm now builds only the
+  image-shaped rank-4 graphs per accelerator (75 per slot, a 4.8x drop in
+  compile count and artifact size); CPU keeps the full 1..5 sweep. A
+  rank outside the warm is not unsupported — it lazy-compiles on first
+  dispatch and is cached, now covered by a GPU test.
+
 - Added GPU support for `mo.roi_align` / `ops.roi_align`. The op previously
   ran only on the host, so every ROI-align call on a GPU tensor copied the
   input and ROIs to the host and back. It now runs on the input's device

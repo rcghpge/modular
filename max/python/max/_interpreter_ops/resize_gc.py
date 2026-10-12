@@ -26,11 +26,11 @@ attrs, baked into the cache key as a ``variant`` tuple -- same shape as
 variant attrs (half-pixel mapping and the Keys ``a = -0.75`` filter are
 fixed), so its key carries the empty variant.
 
-``ResizeNearestOp`` and ``ResizeBicubicOp`` are single-device with a host
-``size`` operand: their kernels run on the input's device, so they sweep
-every discovered device. Bicubic is rank-4 only (NCHW images).
-``ResizeLinearOp`` remains CPU-only (its kernel ping-pongs through
-host-allocated scratch buffers, so it cannot launch on an accelerator).
+All three ops are single-device with a host ``size`` operand, so they sweep
+every discovered device; their kernels run on the input's device. Bicubic is
+rank-4 only (NCHW images). Nearest and linear warm only rank
+``MAX_RANK - 1`` on accelerators (see ``ResizeSpec.gpu_max_rank``) and
+lazy-compile other ranks on first dispatch; CPU warms every rank.
 
 Two compile modes, selected by ``MAX_EAGER_OP_PRECOMPILE`` (see
 :func:`gc_compile.should_precompile`). Must not import from ``handlers.py``.
@@ -47,7 +47,7 @@ from max.driver import Device
 from max.dtype import DType
 from max.graph import DeviceRef, Graph, Module, TensorType
 
-MAX_RANK = gc_compile.MAX_RANK  # Sweep ranks 1..MAX_RANK for linear/nearest.
+MAX_RANK = gc_compile.MAX_RANK  # CPU sweeps 1..MAX_RANK; GPU warms MAX_RANK-1.
 
 # Dtypes come from gc_compile.float_dtypes(device), the same policy as
 # matmul_gc/unary_elementwise_gc/elementwise_binary_gc/reduce_axis_gc/
@@ -81,6 +81,15 @@ class ResizeSpec:
     max_rank: int
     rank_keyed: bool
     variants: tuple[Variant, ...] = (_NO_VARIANT,)
+    gpu_max_rank: int | None = None
+    """The one rank accelerators warm; ``None`` warms every rank there.
+
+    Set to ``MAX_RANK - 1`` today: the resize kernels are image-shaped,
+    so rank 4 (NCHW) covers every GPU consumer, and the rank sweep
+    dominated the warm action's compile cost (MXF-841). A rank the warm
+    skips still dispatches via the lazy compile path (see
+    ``resize_model``), so this is a warm-cost cap, not a support cap.
+    """
 
 
 def _symbolic_dims(rank: int, prefix: str) -> list[str]:
@@ -187,12 +196,16 @@ _RESIZE_OPS: dict[type[_core.Operation], ResizeSpec] = {
         max_rank=MAX_RANK,
         rank_keyed=True,
         variants=_linear_variants(),
+        # GPU slots warm only the top sweep rank (see ResizeSpec.gpu_max_rank).
+        gpu_max_rank=MAX_RANK - 1,
     ),
     mo.ResizeNearestOp: ResizeSpec(
         build=_build_nearest_graph,
         max_rank=MAX_RANK,
         rank_keyed=True,
         variants=_nearest_variants(),
+        # GPU slots warm only the top sweep rank (see ResizeSpec.gpu_max_rank).
+        gpu_max_rank=MAX_RANK - 1,
     ),
 }
 
@@ -208,9 +221,26 @@ def _spec_for(op_type: type[_core.Operation]) -> ResizeSpec | None:
     return gc_compile.spec_for(op_type, _RESIZE_OPS_BY_NAME)
 
 
-def _ranks_for(spec: ResizeSpec) -> list[int]:
+def _supported_ranks(spec: ResizeSpec) -> list[int]:
+    """Ranks a dispatch may target on any device; the lazy path builds
+    these on demand when no warm has them."""
     if not spec.rank_keyed:
         return [spec.max_rank]
+    return list(range(1, spec.max_rank + 1))
+
+
+def _sweep_ranks_for(spec: ResizeSpec, device: Device) -> list[int]:
+    """Ranks the warm/sweep builds for *device*.
+
+    A rank absent from a warm artifact is not unsupported --
+    ``resize_model`` lazy-compiles it on first dispatch -- it is only
+    missing from the warm. Accelerators warm just the capped rank
+    (``gpu_max_rank``); CPU warms every rank.
+    """
+    if not spec.rank_keyed:
+        return [spec.max_rank]
+    if spec.gpu_max_rank is not None and device.label != "cpu":
+        return [min(spec.max_rank, spec.gpu_max_rank)]
     return list(range(1, spec.max_rank + 1))
 
 
@@ -244,7 +274,7 @@ def _is_supported(
         return False
     if dtype not in gc_compile.float_dtypes(device):
         return False
-    return rank in _ranks_for(spec)
+    return rank in _supported_ranks(spec)
 
 
 class _ResizeFamily(gc_compile.GCFamilySpec):
@@ -263,7 +293,7 @@ class _ResizeFamily(gc_compile.GCFamilySpec):
             module = Module()
         for spec in _RESIZE_OPS.values():
             for dtype in gc_compile.float_dtypes(device):
-                for rank in _ranks_for(spec):
+                for rank in _sweep_ranks_for(spec, device):
                     for variant in spec.variants:
                         spec.build(module, device, dtype, rank, variant)
         return module

@@ -4695,3 +4695,58 @@ class TestResizeLinearGPU:
             rtol=2e-2,
             atol=2e-2,
         )
+
+
+class TestResizeLazyCompileGPU:
+    """A rank the GPU warm skips lazy-compiles on dispatch and is reused.
+
+    The resize family warms rank 4 only on accelerators (MXF-841), so this
+    guards the trim's precondition (AGENT-553): a dispatch outside the
+    warmed set still compiles on demand, and the second dispatch reuses
+    the cached model rather than recompiling.
+    """
+
+    def test_trimmed_rank_lazy_compiles_and_is_reused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from max._core.dialects import mo
+        from max._interpreter_ops import resize_gc
+
+        # The warm suite forbids cold compiles (eager_py_test.bzl sets
+        # MAX_EAGER_ALLOW_LAZY_COMPILE=0); this test exercises the lazy
+        # path a trimmed rank relies on, so it re-allows it for itself.
+        monkeypatch.setenv("MAX_EAGER_ALLOW_LAZY_COMPILE", "1")
+
+        # Rank 3 (NCW): a rank the accelerated warm does not build.
+        x_np = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
+        x_3d = Tensor.from_dlpack(torch.from_numpy(x_np).cuda())
+        assert x_3d.storage is not None
+        device = x_3d.storage.device
+        out_shape = [2, 6, 8]
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            first = F.resize_nearest(x_3d, out_shape)
+
+        assert first.storage is not None
+        assert first.storage.device == device
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            F.resize_nearest(x_3d, out_shape)
+
+        # The second dispatch must hit the family cache, not recompile.
+        key = resize_gc._graph_name(
+            mo.ResizeNearestOp, device, DType.float32, 3, (0, 0)
+        )
+        assert key in resize_gc._FAMILY.cache
+        assert (
+            resize_gc.resize_model(
+                mo.ResizeNearestOp, device, DType.float32, 3, (0, 0)
+            )
+            is resize_gc._FAMILY.cache[key]
+        )
