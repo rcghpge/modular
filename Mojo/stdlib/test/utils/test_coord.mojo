@@ -94,6 +94,43 @@ def test_construction_from_array_narrow_dtype() raises:
     assert_equal(t[1].value(), 9)
 
 
+def to_int[T: CoordLike](c: T) -> Int:
+    """Convert any scalar coordinate value to an `Int`.
+
+    Exercising the conversion through a `CoordLike` bound, rather than on a
+    concrete type, is what `CoordLike` deriving from `Intable` enables.
+    """
+    return Int(c)
+
+
+def test_int_conversion_from_comptime_value() raises:
+    assert_equal(Int(ComptimeInt[5]()), 5)
+    assert_equal(Int(Idx[3]), 3)
+
+
+def test_int_conversion_from_runtime_scalar() raises:
+    assert_equal(Int(Int(8)), 8)
+    assert_equal(Int(Int32(-7)), -7)
+    assert_equal(Int(UInt16(9)), 9)
+
+
+def test_int_conversion_through_coordlike_bound() raises:
+    assert_equal(to_int(ComptimeInt[6]()), 6)
+    assert_equal(to_int(Idx[4]), 4)
+    assert_equal(to_int(Int(9)), 9)
+    assert_equal(to_int(Int32(5)), 5)
+    assert_equal(to_int(UInt8(3)), 3)
+
+
+def test_int_conversion_of_coord_elements() raises:
+    # Converting an element straight out of a `Coord`, without unwrapping
+    # `.value()` first.
+    var c = Coord(Idx[3], Int(5), Int32(7))
+    assert_equal(Int(c[0]), 3)
+    assert_equal(Int(c[1]), 5)
+    assert_equal(Int(c[2]), 7)
+
+
 def test_static_product() raises:
     comptime p = coord[1, 2, 3].static_product
     assert_equal(p, 6)

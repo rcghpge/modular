@@ -21,7 +21,7 @@ from std.math.uutils import umod, ufloordiv
 
 
 trait CoordLike(
-    Defaultable, ImplicitlyCopyable, TrivialRegisterPassable, Writable
+    Defaultable, ImplicitlyCopyable, Intable, TrivialRegisterPassable, Writable
 ):
     """Trait for unified layout handling of compile-time and runtime indices."""
 
@@ -84,8 +84,17 @@ trait CoordLike(
         """
         ...
 
+    @inline(.always)
+    def __int__(self) -> Int:
+        """Convert this coordinate to an `Int`.
 
-struct ComptimeInt[val: Int](CoordLike, TrivialRegisterPassable):
+        Returns:
+            The coordinate's scalar value as an `Int`.
+        """
+        return Int(self.value())
+
+
+struct ComptimeInt[val: Int](CoordLike):
     """Compile-time known index value.
 
     Parameters:
