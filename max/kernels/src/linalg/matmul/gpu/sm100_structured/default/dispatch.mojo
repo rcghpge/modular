@@ -25,7 +25,7 @@ from std.sys import (
 )
 
 from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     DefaultEngine,
@@ -142,7 +142,7 @@ def _small_MN_gemms_impl[
         comptime c_type = c.dtype
         comptime a_type = a.dtype
         comptime b_type = b.dtype
-        comptime simd_width = simd_width_of[a_type, target=get_gpu_target()]()
+        comptime simd_width = simd_width_of[a_type, target=ctx.target]()
         comptime static_N = c.static_shape[1]
         # m is only known at runtime, so the grid can overshoot the final
         # rows whenever tile_m > 1 (m % tile_m != 0); the row guard must
@@ -643,7 +643,7 @@ def _matmul_dispatch_sm100_impl[
         and has_static_N
         and static_N <= 256
         and static_K >= 2048
-        and static_K % simd_width_of[a_type, target=get_gpu_target()]() == 0
+        and static_K % simd_width_of[a_type, target=ctx.target]() == 0
     )
 
     # use_tf32=False promises IEEE-fp32 multiplies, which the SM100 tensor
@@ -696,7 +696,7 @@ def _matmul_dispatch_sm100_impl[
         comptime has_split_k_band = (
             static_N <= 642
             and static_K >= 128
-            and static_K % simd_width_of[a_type, target=get_gpu_target()]() == 0
+            and static_K % simd_width_of[a_type, target=ctx.target]() == 0
         )
 
         comptime if has_split_k_band:

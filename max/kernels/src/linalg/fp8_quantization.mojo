@@ -33,7 +33,7 @@ from max.gpu import (
     warp_id,
 )
 from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import B200, GPUInfo, MI355X, _is_sm10x_gpu
 from layout import (
     Coord,
@@ -133,7 +133,7 @@ def quantize_static_scaled_fp8[
         )
 
     comptime target_simd_width = simd_width_of[
-        in_dtype, target=get_gpu_target()
+        in_dtype, target=context.target
     ]()
 
     def scaled_fp8_quant_unified[width: Int, alignment: Int = 1](idx: Coord) {}:
@@ -2147,7 +2147,7 @@ def convert_e4m3fn_to_e4m3fnuz(
         output_buffer.store_linear(idx, output_vec)
 
     comptime target_simd_width = simd_width_of[
-        DType.float8_e4m3fn, target=get_gpu_target()
+        DType.float8_e4m3fn, target=context.target
     ]()
 
     def convert_kernel_unified[width: Int, alignment: Int = 1](idx: Coord) {}:
@@ -2292,7 +2292,7 @@ def blockwise_scaled_fp8_with_epilogue[
                 and ctx.default_device_info.compute >= B200.compute
             )
             comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
-                simd_width_of[c_type, target=get_gpu_target()]()
+                simd_width_of[c_type, target=ctx.target]()
             )
 
             var m = Int(c.dim[0]())

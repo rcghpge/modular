@@ -26,7 +26,7 @@ from max.gpu import (
     WARP_SIZE,
     MAX_THREADS_PER_BLOCK_METADATA,
 )
-from max.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
+from max.gpu.host import DeviceContext, FuncAttribute
 from layout import (
     coord,
     Coord,
@@ -2060,7 +2060,7 @@ def block_scaled_matmul_with_epilogue[
             # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
             comptime use_32b_simd = True
             comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
-                simd_width_of[c_type, target=get_gpu_target()]()
+                simd_width_of[c_type, target=ctx.target]()
             )
 
             def epilogue_wrapper[

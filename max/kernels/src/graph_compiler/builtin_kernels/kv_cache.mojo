@@ -26,7 +26,7 @@ import extensibility
 # ===-----------------------------------------------------------------------===#
 from max.algorithm import elementwise
 
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_gpu
 from kv_cache.types import KVCacheStaticParams, KVCollectionT
@@ -296,7 +296,7 @@ struct Struct_kv_cache_store_k_scales_paged:
             )
 
         comptime simd_width = (
-            simd_width_of[scale_dtype, target=get_gpu_target()]() if is_gpu[
+            simd_width_of[scale_dtype, target=context.target]() if is_gpu[
                 target
             ]() else simd_width_of[
                 scale_dtype, target=CompilationTarget.current()

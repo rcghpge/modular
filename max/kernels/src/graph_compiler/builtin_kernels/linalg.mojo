@@ -31,7 +31,7 @@ import extensibility
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
 
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_gpu, _is_sm10x_gpu
 from layout import (
@@ -2407,7 +2407,7 @@ struct Struct_router_gate_mixed_gemv:
             )
 
         elementwise[
-            simd_width_of[DType.bfloat16, target=get_gpu_target()](),
+            simd_width_of[DType.bfloat16, target=context.target](),
             target=target,
         ](_cast_bf16_to_fp32, Coord(M, Idx[K]), context)
 

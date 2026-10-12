@@ -35,7 +35,7 @@ from .rowwise_reductions import (
 )
 from algorithm.rowwise_types import RowCoord
 
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu, is_gpu
 from nn import arg_nonzero
 from nn.argsort import argsort

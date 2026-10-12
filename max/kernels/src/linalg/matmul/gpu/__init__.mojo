@@ -33,7 +33,7 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.primitives.grid_controls import PDLLevel
-from max.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
+from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.info import A100, B200, H100, MI355X, GPUInfo
 from layout import (
     Coord,
@@ -2082,7 +2082,7 @@ def _split_k_reduce_impl[
     ctx: DeviceContext,
 ) raises:
     comptime c_type = c.dtype
-    comptime simd_width = simd_width_of[c_type, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[c_type, target=ctx.target]()
     var num_partitions = Int(work_space.dim[0]())
     var M = Int(c.dim[0]())
     var N = Int(c.dim[1]())

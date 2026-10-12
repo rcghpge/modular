@@ -2267,7 +2267,7 @@ def _gemv_gpu_dispatch_impl[
     comptime c_type = c.dtype
     comptime a_type = a.dtype
     comptime b_type = b.dtype
-    comptime simd_width = simd_width_of[a_type, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[a_type, target=ctx.target]()
 
     comptime has_N = c.static_shape[1] > -1
     comptime static_N = c.static_shape[1] if has_N else UNKNOWN_VALUE
@@ -2926,7 +2926,7 @@ def _gemv_gpu_impl[
     var m = shape.M
     var n = shape.N
     var k = shape.K
-    comptime simd_width = simd_width_of[a_type, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[a_type, target=ctx.target]()
 
     comptime has_M = c.static_shape[0] > -1
     comptime has_N = c.static_shape[1] > -1
