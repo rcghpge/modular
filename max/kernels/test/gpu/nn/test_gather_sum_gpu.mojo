@@ -282,6 +282,10 @@ def test_gather_sum_gpu_large_embedding_dim() raises:
                 for j in range(multi_hot):
                     var idx = Int((b * multi_hot + j) * 3) % table_size
                     expected += Float32((idx * emb_dim + k) % 17)
+                assert_equal(
+                    output_host[b * emb_dim + k],
+                    expected,
+                )
 
 
 def main() raises:

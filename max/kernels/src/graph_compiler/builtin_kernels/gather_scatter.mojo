@@ -1887,7 +1887,7 @@ struct GatherSum:
             output.to_tile_tensor[.int64](),
             input.to_tile_tensor[.int64](),
             indices.to_tile_tensor[.int64](),
-            Optional[DeviceContext](ctx),
+            ctx,
         )
 
 

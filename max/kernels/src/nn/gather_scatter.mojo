@@ -368,6 +368,16 @@ def _gather_sum_kernel[
                 var idx = Int(indices_buffer.raw_load(row * multi_hot + j))
                 if idx < 0:
                     idx += table_size
+                # Trap in safe builds if normalization still leaves the
+                # index out of bounds: raw_load would silently read garbage
+                # on GPU (the gather path at line ~745 validates the same).
+                debug_assert[assert_mode="safe"](
+                    0 <= idx < table_size,
+                    (
+                        "Gather_sum index out of bounds. Run on CPU for"
+                        " more detailed error checking."
+                    ),
+                )
                 accum += input_buffer.raw_load(idx * emb_dim + k)
             output_buffer.raw_store(row * emb_dim + k, accum)
             k += BLOCK_SIZE
@@ -382,7 +392,7 @@ def gather_sum[
     output: TileTensor[mut=True, dtype, ...],
     input: TileTensor[mut=False, dtype, ...],
     indices: TileTensor[mut=False, .int32, ...],
-    ctx: Optional[DeviceContext],
+    ctx: DeviceContext,
 ) raises:
     """Computes output[i, k] = Σ_j input[indices[i, j], k].
 
@@ -395,19 +405,15 @@ def gather_sum[
             (rank 3).
         input: Source embedding table, shape [num_embeddings, embedding_dim].
         indices: Multi-hot indices, shape [batch, multi_hot], `int32`.
-        ctx: Optional device context for parallel execution (defaults to
-            None).
+        ctx: Device context for kernel execution; the compiled builtin
+            always supplies the placement device's context.
     """
     comptime assert input.flat_rank == 2
     comptime assert indices.flat_rank == 2
 
     if input.num_elements() == 0 or indices.num_elements() == 0:
         return
-    var dev_ctx = DeviceContext()
-    if case .Some(var bound_ctx) = ctx:
-        dev_ctx = bound_ctx
-    else:
-        raise Error("gather_sum requires a DeviceContext")
+    var dev_ctx = ctx
 
     var batch = Int(indices.dim[0]())
     var multi_hot = Int(indices.dim[1]())
