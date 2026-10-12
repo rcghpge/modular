@@ -45,3 +45,7 @@ from .managed_tensor_slice import (
     _dot_prod,
     _shape_types_compatible,
 )
+from .stable_tensor import (
+    _StableMutableInputTensor,
+    _StableMutableInputVariadicTensors,
+)

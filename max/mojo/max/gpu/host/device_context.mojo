@@ -7406,6 +7406,21 @@ struct DeviceContextArray[length: Int](Copyable, Sized):
     var device_contexts: Array[DeviceContext, Self.length]
     """The underlying storage for the per-device contexts."""
 
+    def __init__(out self) raises:
+        """Initialize with DeviceContext(device_id=id) for id in [0, length).
+
+        Raises:
+            If creating any device context fails.
+        """
+        var scratch = Array[Optional[DeviceContext], Self.length]()
+
+        for i in range(Self.length):
+            scratch[i] = DeviceContext(device_id=i)
+
+        self.device_contexts = Array[DeviceContext, Self.length](
+            fill_with=lambda (i: Int) {ref} -> DeviceContext: scratch[i].take()
+        )
+
     @inline(.always)
     def __init__(
         out self, var device_contexts: Array[DeviceContext, Self.length]

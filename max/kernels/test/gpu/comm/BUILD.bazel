@@ -101,6 +101,31 @@ mojo_test(
     ],
 )
 
+# Standalone multi-GPU test: the bundled allreduce kernel's `build_graph` entry
+# point over stable address slots. Needs the graph-compiler kernel package.
+mojo_test(
+    name = "test_bundled_allreduce_build_graph.mojo.test",
+    size = "large",
+    srcs = ["test_bundled_allreduce_build_graph.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
+    exec_properties = {
+        "test.resources:gpu-memory": "4",
+    },
+    tags = ["gpu"],
+    target_compatible_with = [
+        "//:has_gpu",
+        "//:has_multi_gpu",
+    ],
+    deps = [
+        "//max:builtin_kernels",
+        "//max:comm",
+        "//max:extensibility",
+        "//max:layout",
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
+)
+
 # Regular tests for all other files
 [
     mojo_test(
@@ -136,6 +161,7 @@ mojo_test(
             "test_multimem_reducescatter.mojo",
             "test_allreduce_residual_rmsnorm.mojo",  # Has its own standalone rule above
             "test_enum_like_conformance.mojo",  # Has its own standalone rule below
+            "test_bundled_allreduce_build_graph.mojo",  # Has its own standalone rule above
         ],
     )
 ]

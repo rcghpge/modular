@@ -34,7 +34,12 @@ from comm.allreduce_residual_rmsnorm import allreduce_residual_rmsnorm
 from comm.device_collective import _launch_device_collective
 from comm import Signal
 from extensibility import StaticTensorSpec
-from max.gpu.host import CompletionFlag, DeviceContext, DeviceContextArray
+from max.gpu.host import (
+    CompletionFlag,
+    DeviceContext,
+    DeviceContextArray,
+    DeviceGraphBuilder,
+)
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_cpu, is_gpu, is_valid_target
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
@@ -145,6 +150,7 @@ from extensibility import (
     IOSpec,
     ManagedTensorSlice,
     OutputTensor,
+    StableInputVariadicTensors,
     Tensor,
     TileTensorable,
     VariadicTensors,
@@ -3077,43 +3083,26 @@ struct BundledAllReduceSum:
     """
 
     @staticmethod
-    def execute[
+    def _launch[
         dtype: DType,
         rank: Int,
-        target: StaticString,
-        _trace_name: StaticString,
+        num_devices: Int,
+        in_layout: TensorLayout,
+        in_origin: Origin,
+        in_engine: TensorEngine,
+        //,
     ](
         output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
-        inputs: InputVariadicTensors[dtype=dtype, rank=rank, ...],
+        in_tensors: Array[
+            TileTensor[dtype, in_layout, in_origin, Engine=in_engine],
+            num_devices,
+        ],
+        input_size: Int,
         signal_buffers: MutableInputVariadicTensors[
             dtype=DType.uint8, rank=1, ...
         ],
         ctx: DeviceContext,
     ) capturing raises:
-        """Per-device allreduce sum, for use with mo.parallel dispatch.
-
-        Unlike DistributedAllReduceSum which dispatches to all GPUs internally,
-        this kernel handles a single GPU. The mo.parallel framework is
-        responsible for launching one instance per device and passing all N
-        input buffers to each launch.
-
-        This path does not take the kernel-load gate: `mo.parallel` emits N
-        independent async stubs, with no single point to claim or release it,
-        so a first-time kernel load can still interleave with these launches.
-
-        Parameters:
-            dtype: Element type of the input and output tensors.
-            rank: Number of dimensions in the input and output tensors.
-            target: Target device identifier for code generation.
-            _trace_name: Trace name used for profiling and debugging.
-
-        Args:
-            output: Output tensor for THIS GPU.
-            inputs: Input tensors from ALL participating GPUs.
-            signal_buffers: Signal buffers for ALL participating GPUs.
-            ctx: Device context for THIS GPU.
-        """
-        comptime num_devices = inputs.size
         comptime assert signal_buffers.size == num_devices, (
             "expected allreduce inputs and signal buffers to have"
             " the same number of elements"
@@ -3122,26 +3111,21 @@ struct BundledAllReduceSum:
         # allreduce 2-stage uses size/ngpus scratch space
         var scratch_buffer_size_bytes = _partitioned_scratch_requirement[
             num_devices, dtype
-        ](inputs[0].size())
+        ](input_size)
         _check_signal_buffer_size(
             signal_buffers[0].size(), scratch_buffer_size_bytes
         )
 
-        comptime InputTensorType = type_of(
-            inputs[0].to_tile_tensor[.int64]().as_imm()
-        )
-        var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
         var out_layout = output.runtime_layout()
         var rank_sigs = Array[_, num_devices](
             fill_with_unrolled=lambda [i: Int]() -> Pointer[
                 Signal, MutAnyOrigin
-            ]: (signal_buffers[i]._ptr.bitcast[Signal]().as_unsafe_any_origin())
-        )
-
-        comptime for i in range(num_devices):
-            in_tensors[i] = rebind[InputTensorType](
-                inputs[i].to_tile_tensor[.int64]().as_imm()
+            ]: (
+                signal_buffers[i]
+                ._ptr.unsafe_bitcast[Signal]()
+                .as_unsafe_any_origin()
             )
+        )
 
         @inline(.always)
         @__parameter
@@ -3164,6 +3148,95 @@ struct BundledAllReduceSum:
             out_layout,
             rank_sigs,
             ctx,
+        )
+
+    @staticmethod
+    def execute[
+        dtype: DType,
+        rank: Int,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
+        inputs: InputVariadicTensors[dtype=dtype, rank=rank, ...],
+        signal_buffers: MutableInputVariadicTensors[
+            dtype=DType.uint8, rank=1, ...
+        ],
+        ctx: DeviceContext,
+    ) capturing raises:
+        """Per-device allreduce sum, for use with mo.parallel dispatch.
+
+        This path does not take the kernel-load gate: `mo.parallel` emits N
+        independent async stubs, with no single point to claim or release it,
+        so a first-time kernel load can still interleave with these launches.
+
+        Parameters:
+            dtype: Element type of the input and output tensors.
+            rank: Number of dimensions in the input and output tensors.
+            target: Target device identifier for code generation.
+            _trace_name: Trace name used for profiling and debugging.
+
+        Args:
+            output: Output tensor for THIS GPU.
+            inputs: Input tensors from ALL participating GPUs.
+            signal_buffers: Signal buffers for ALL participating GPUs.
+            ctx: Device context for THIS GPU.
+        """
+        comptime num_devices = inputs.size
+        comptime InputTensorType = type_of(
+            inputs[0].to_tile_tensor[.int64]().as_imm()
+        )
+        var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
+
+        comptime for i in range(num_devices):
+            in_tensors[i] = rebind[InputTensorType](
+                inputs[i].to_tile_tensor[.int64]().as_imm()
+            )
+
+        Self._launch(output, in_tensors, inputs[0].size(), signal_buffers, ctx)
+
+    @staticmethod
+    def build_graph[
+        dtype: DType,
+        rank: Int,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
+        inputs: StableInputVariadicTensors[dtype=dtype, rank=rank, ...],
+        signal_buffers: MutableInputVariadicTensors[
+            dtype=DType.uint8, rank=1, ...
+        ],
+        builder: DeviceGraphBuilder,
+    ) capturing raises:
+        """Records the per-device allreduce sum into a device graph.
+
+        The peers arrive as stable address slots: the recorded kernels read
+        each peer's data pointer out of its slot at replay time, so the graph
+        does not bake in the peer buffers themselves.
+
+        Parameters:
+            dtype: Element type of the input and output tensors.
+            rank: Number of dimensions in the input and output tensors.
+            target: Target device identifier for code generation.
+            _trace_name: Trace name used for profiling and debugging.
+
+        Args:
+            output: Output tensor for THIS GPU.
+            inputs: Slot-backed input tensors from ALL participating GPUs.
+            signal_buffers: Signal buffers for ALL participating GPUs.
+            builder: Device graph builder for THIS GPU.
+        """
+        var in_tensors = inputs.to_tile_tensor()
+
+        # The recording context reports the builder's backing device id, so
+        # the rank resolves exactly as it does under `execute`.
+        Self._launch(
+            output,
+            in_tensors,
+            inputs[0].size(),
+            signal_buffers,
+            builder.recording_context(),
         )
 
 
