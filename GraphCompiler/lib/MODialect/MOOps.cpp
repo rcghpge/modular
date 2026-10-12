@@ -2505,6 +2505,58 @@ LogicalResult GatherOp::verify() {
   return success();
 }
 
+LogicalResult GatherSumOp::verify() {
+  TensorType inputType = getInput().getType();
+  TensorType indicesType = getIndices().getType();
+  TensorType resultType = getResult().getType();
+
+  if (inputType.getDtype() != resultType.getDtype())
+    return emitError("input and result must have the same element type");
+
+  // The builtin kernel is compiled for int32 indices; reject other index
+  // dtypes here with a clear message rather than a builtin-match failure.
+  if (!indicesType.getElementType().isSignedInteger(32))
+    return emitError("gather_sum indices must be int32");
+
+  // Nothing we can say if any operand is dynamically ranked.
+  if (!inputType.hasRank() || !indicesType.hasRank() || !resultType.hasRank())
+    return success();
+
+  if (indicesType.getRank() != 2)
+    return emitError("gather_sum indices must be rank 2: "
+                     "[batch, multi_hot]");
+
+  // The kernel binds the table as [num_embeddings, embedding_dim].
+  if (inputType.getRank() != 2)
+    return emitError("gather_sum input must be rank 2: "
+                     "[num_embeddings, embedding_dim]");
+
+  // Result is the reduce.add output shape [batch, 1, ...] with the
+  // multi-hot axis kept at size 1 (or the rank-2 equivalent).
+  if (resultType.getRank() != 2 && resultType.getRank() != 3)
+    return emitError("gather_sum result must be rank 2 or 3");
+
+  // With static shapes, pin the result to the kernel's derived strides:
+  // batch from the indices, multi-hot axis kept at 1, embedding dim from
+  // the table. A too-small declared result would otherwise write out of
+  // bounds (there is no registered shape function for this op).
+  if (inputType.hasStaticShape() && indicesType.hasStaticShape() &&
+      resultType.hasStaticShape()) {
+    bool shapeOk =
+        resultType.getIntDim(0) == indicesType.getIntDim(0) &&
+        (resultType.getRank() == 2
+             ? resultType.getIntDim(1) == inputType.getIntDim(1)
+             : resultType.getIntDim(1) == 1 &&
+                   resultType.getIntDim(2) == inputType.getIntDim(1));
+    if (!shapeOk)
+      return emitError("gather_sum result must be [batch, 1, emb_dim] "
+                       "(or [batch, emb_dim]) matching the indices batch "
+                       "and table width");
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ScatterOp
 //===----------------------------------------------------------------------===//

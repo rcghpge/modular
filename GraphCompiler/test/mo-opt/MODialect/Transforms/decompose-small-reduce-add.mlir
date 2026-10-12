@@ -202,15 +202,12 @@ mo.graph @no_decompose_extent9_boundary(
   mo.output %n : !mo.tensor<[2, 1, 3], f32>
 }
 
-// A gather feeding reduce.add: the decompose pattern's gather guard bails (it
-// leaves gather + reduce to GatherSumPattern), so no `mo.slice` is produced and
-// the reduce.add survives. (GatherSumPattern itself no longer matches the
-// attribute-based reduce.add axis, but either way this pattern must not
-// decompose a gather input.)
+// A gather feeding reduce.add: the decompose pattern's gather guard bails
+// (gather + reduce is handled by GatherSumPattern), so no `mo.slice` is
+// produced. GatherSumPattern then fuses the pair into mo.gather_sum.
 // CHECK-LABEL: mo.graph @no_decompose_gather_input
-// CHECK: mo.gather
-// CHECK: mo.reduce.add
-// CHECK: mo.reduce.rms_norm
+// CHECK: %[[GS:.*]] = "mo.gather_sum"
+// CHECK: %[[N:.*]] = mo.reduce.rms_norm(%[[GS]]
 // CHECK-NOT: mo.slice
 mo.graph @no_decompose_gather_input(
     %table: !mo.tensor<[5, 3], f32>,
@@ -219,6 +216,27 @@ mo.graph @no_decompose_gather_input(
     %eps: !mo.tensor<[], f32>,
     %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
   %g = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 4, 3], f32>
+  %r = mo.reduce.add(%g) [axis = 1] : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  mo.output %n : !mo.tensor<[2, 1, 3], f32>
+}
+
+// The same gather feeding reduce.add but with int64 indices: GatherSumPattern
+// bails on the non-si32 indices, and the decompose pattern's own gather guard
+// (not GatherSumPattern firing first) keeps the pair as gather + reduce.add --
+// no slices, no gather_sum.
+// CHECK-LABEL: mo.graph @no_decompose_gather_input_i64_indices
+// CHECK: mo.gather
+// CHECK: mo.reduce.add
+// CHECK-NOT: mo.slice
+// CHECK-NOT: mo.gather_sum
+mo.graph @no_decompose_gather_input_i64_indices(
+    %table: !mo.tensor<[5, 3], f32>,
+    %indices: !mo.tensor<[2, 4], si64>,
+    %gamma: !mo.tensor<[3], f32>,
+    %eps: !mo.tensor<[], f32>,
+    %off: !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32> {
+  %g = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si64>) -> !mo.tensor<[2, 4, 3], f32>
   %r = mo.reduce.add(%g) [axis = 1] : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   %n = mo.reduce.rms_norm(%r, %gamma, %eps, %off) {multiply_before_cast = false} : (!mo.tensor<[2, 1, 3], f32>, !mo.tensor<[3], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %n : !mo.tensor<[2, 1, 3], f32>

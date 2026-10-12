@@ -180,22 +180,43 @@ struct GatherSumPattern
   LogicalResult
   deviceAwareMatchAndRewrite(MO::ReduceAddOp op,
                              MO::DeviceAwareRewriter &rewriter) const override {
-    Value input, indices, reduceAxis;
-
-    // The gather `axis` is an attribute, not a matchable operand; it is
-    // checked below.
-    if (!m_Op<MO::ReduceAddOp>(m_Op<MO::GatherOp>(m_MOMatrix(m_Any(&input)),
-                                                  m_MOMatrix(m_Any(&indices))),
-                               m_ScalarConstant(&reduceAxis, 1))
-             .match(op))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    if (!input || !indices || !reduceAxis)
-      return rewriter.notifyMatchFailure(op, "null input value");
-
+    // The reduce.add input must be a mo.gather; its `axis` and the reduce
+    // `axis` are attributes checked below.
     auto gatherOp = op.getInput().getDefiningOp<MO::GatherOp>();
-    if (!gatherOp || gatherOp.getAxisAttr().getInt() != 0)
+    if (!gatherOp)
+      return rewriter.notifyMatchFailure(op,
+                                         "reduce.add input is not a gather");
+
+    Value input = gatherOp.getInput();
+    Value indices = gatherOp.getIndices();
+
+    if (gatherOp.getAxisAttr().getInt() != 0)
       return rewriter.notifyMatchFailure(op, "gather axis must be 0");
+
+    if (op.getAxisAttr().getInt() != 1)
+      return rewriter.notifyMatchFailure(op, "reduce axis must be 1");
+
+    // The fused op's builtin kernel handles only int32 indices and a rank-2
+    // table; anything else must stay unfused (it compiled fine before this
+    // fusion was revived, and the kernel would misread non-rank-2 indices).
+    // Unranked operands can still fuse: the verifier skips rank checks for
+    // them, and shape inference materializes the rank-2 shapes below.
+    auto indicesTy = dyn_cast<MO::TensorType>(indices.getType());
+    if (!indicesTy || !indicesTy.getElementType().isSignedInteger(32) ||
+        (indicesTy.hasRank() && indicesTy.getRank() != 2))
+      return rewriter.notifyMatchFailure(
+          op, "gather_sum needs si32 rank-2 indices");
+
+    auto inputTy = dyn_cast<MO::TensorType>(input.getType());
+    if (!inputTy || (inputTy.hasRank() && inputTy.getRank() != 2))
+      return rewriter.notifyMatchFailure(op, "gather_sum needs a rank-2 table");
+
+    // gather_sum is single-device: only fuse when the gather and the
+    // reduce sit on the same device, letting the device-aware rewriter
+    // stamp the fused op with it.
+    if (!rewriter.addOps({gatherOp}))
+      return rewriter.notifyMatchFailure(
+          op, "gather and reduce.add are not on one device");
 
     rewriter.replaceOpWithNewOp<MO::GatherSumOp>(
         op, op->getResultTypes(), SmallVector<Value>{input, indices});

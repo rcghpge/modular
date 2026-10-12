@@ -3340,7 +3340,9 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 }
 
 // TODO(#20442): Remove with generic gather fusion.
-def MO_GatherSumOp : MO_TensorOp<"gather_sum", [MO_HostOnly]> {
+def MO_GatherSumOp : MO_TensorOp<"gather_sum", [
+  MO_SingleDevice,
+]> {
   let summary = "`gather-sum` operation";
   let description = [{
     Gather on axis 0 followed by a sum reduction on axis 1.
@@ -3351,6 +3353,8 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum", [MO_HostOnly]> {
     MO_IndicesTensor:$indices
   );
   let results = (outs MO_Tensor:$result);
+
+  let hasVerifier = 1;
 }
 
 def MO_GatherNdOp : MO_TensorOp<"gather_nd", [
