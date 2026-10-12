@@ -2075,15 +2075,87 @@ Type TargetParamAttr::getType() const { return TargetType::get(getContext()); }
 // GetTargetPluginAttr
 //===----------------------------------------------------------------------===//
 
-TypedAttr GetTargetPluginAttr::get(TypedAttr target, Type type) {
+LogicalResult
+GetTargetPluginAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                            TypedAttr target, TypedAttr fallback, Type type) {
+  if (!isa<TargetType>(target.getType()))
+    return emitError() << "target must have !kgen.target type";
+  if (fallback.getType() != type)
+    return emitError() << "fallback type " << fallback.getType()
+                       << " does not match result type " << type;
+  return success();
+}
+
+TypedAttr GetTargetPluginAttr::get(TypedAttr target, TypedAttr fallback,
+                                   Type type) {
+  assert(fallback.getType() == type &&
+         "target plugin fallback must have the result type");
   if (auto targetAttr = dyn_cast<TargetParamAttr>(target)) {
-    if (auto plugin = dyn_cast_if_present<TypedAttr>(
-            targetAttr.getTarget().getOpaquePlugin()))
-      if (plugin.getType() == type)
-        return plugin;
+    TypedAttr plugin = targetAttr.getTarget().getOpaquePlugin();
+    if (!plugin)
+      return fallback;
+    if (plugin.getType() == type)
+      return plugin;
   }
 
-  return Base::get(target.getContext(), target, type);
+  return Base::get(target.getContext(), target, fallback, type);
+}
+
+/// Describe why a literal target's payload can never satisfy the requested
+/// type, or return nullopt if it might. Types that still mention parameters are
+/// left alone: substitution may yet make them agree, which is what keeps the
+/// expression unresolved.
+static std::optional<std::string> describePluginTypeMismatch(TypedAttr target,
+                                                             Type type) {
+  auto targetAttr = dyn_cast<TargetParamAttr>(target);
+  if (!targetAttr)
+    return std::nullopt;
+  TypedAttr plugin = targetAttr.getTarget().getOpaquePlugin();
+  if (!plugin)
+    return std::nullopt;
+
+  Type pluginType = plugin.getType();
+  if (pluginType == type || isParameterizedType(pluginType) ||
+      isParameterizedType(type))
+    return std::nullopt;
+  return "target 'opaque_plugin' has type '" + mlir::debugString(pluginType) +
+         "'; expected a value of type '" + mlir::debugString(type) + "'";
+}
+
+TypedAttr
+GetTargetPluginAttr::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                TypedAttr target, TypedAttr fallback,
+                                Type type) {
+  if (failed(verify(emitError, target, fallback, type)))
+    return {};
+  if (std::optional<std::string> mismatch =
+          describePluginTypeMismatch(target, type)) {
+    emitError() << *mismatch;
+    return {};
+  }
+  return get(target, fallback, type);
+}
+
+/// A target parameter only becomes a literal after substitution, which cannot
+/// report through `getChecked`, so the mismatch is diagnosed here instead.
+FailureOr<TypedAttr> GetTargetPluginAttr::evaluateWithContext(
+    ParameterEvaluationContext &context) const {
+  if (std::optional<std::string> mismatch =
+          describePluginTypeMismatch(getTarget(), getType()))
+    context.emitMaterializationError(*mismatch);
+  return failure();
+}
+
+TypedAttr GetTargetPluginAttr::get(MLIRContext *ctx, TypedAttr target,
+                                   TypedAttr fallback, Type type) {
+  return get(target, fallback, type);
+}
+
+TypedAttr
+GetTargetPluginAttr::getChecked(function_ref<InFlightDiagnostic()> emitError,
+                                MLIRContext *ctx, TypedAttr target,
+                                TypedAttr fallback, Type type) {
+  return getChecked(emitError, target, fallback, type);
 }
 
 bool GetTargetPluginAttr::isConstant() const { return false; }
