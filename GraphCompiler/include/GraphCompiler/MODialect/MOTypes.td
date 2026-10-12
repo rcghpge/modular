@@ -463,6 +463,10 @@ def MO_Rank1IndexTensor: MO_ConfinedTensor<
 def MO_Rank2IndexTensor: MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[2]>, IntOrIndexElementTypePred], "rank-2 index tensor">;
 
+def MO_Rank2SI32Tensor : MO_ConfinedTensor<
+  [MO_HasAnyRankOfPred<[2]>, HasSI32ElementTypePred],
+  "rank-2 tensor with signed 32-bit integer elements">;
+
 def MO_Rank1Tensor: MO_ConfinedTensor<
   [MO_HasAnyRankOfPred<[1]>], "rank-1 tensor">;
 

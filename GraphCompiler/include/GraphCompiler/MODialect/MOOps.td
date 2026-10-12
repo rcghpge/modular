@@ -3342,6 +3342,7 @@ def MO_GatherOp : MO_TensorOp<"gather", [
 // TODO(#20442): Remove with generic gather fusion.
 def MO_GatherSumOp : MO_TensorOp<"gather_sum", [
   MO_SingleDevice,
+  AllDTypesMatch<["input", "result"]>,
 ]> {
   let summary = "`gather-sum` operation";
   let description = [{
@@ -3349,8 +3350,8 @@ def MO_GatherSumOp : MO_TensorOp<"gather_sum", [
   }];
 
   let arguments = (ins
-    MO_NonScalarIfRanked:$input,
-    MO_IndicesTensor:$indices
+    MO_Rank2Tensor:$input,
+    MO_Rank2SI32Tensor:$indices
   );
   let results = (outs MO_Tensor:$result);
 

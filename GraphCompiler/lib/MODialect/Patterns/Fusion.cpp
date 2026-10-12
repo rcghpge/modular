@@ -199,16 +199,14 @@ struct GatherSumPattern
     // The fused op's builtin kernel handles only int32 indices and a rank-2
     // table; anything else must stay unfused (it compiled fine before this
     // fusion was revived, and the kernel would misread non-rank-2 indices).
-    // Unranked operands can still fuse: the verifier skips rank checks for
-    // them, and shape inference materializes the rank-2 shapes below.
-    auto indicesTy = dyn_cast<MO::TensorType>(indices.getType());
-    if (!indicesTy || !indicesTy.getElementType().isSignedInteger(32) ||
-        (indicesTy.hasRank() && indicesTy.getRank() != 2))
+    auto indicesTy = cast<MO::TensorType>(indices.getType());
+    if (!indicesTy.getElementType().isSignedInteger(32) ||
+        indicesTy.getRank() != 2)
       return rewriter.notifyMatchFailure(
           op, "gather_sum needs si32 rank-2 indices");
 
-    auto inputTy = dyn_cast<MO::TensorType>(input.getType());
-    if (!inputTy || (inputTy.hasRank() && inputTy.getRank() != 2))
+    auto inputTy = cast<MO::TensorType>(input.getType());
+    if (inputTy.getRank() != 2)
       return rewriter.notifyMatchFailure(op, "gather_sum needs a rank-2 table");
 
     // gather_sum is single-device: only fuse when the gather and the
