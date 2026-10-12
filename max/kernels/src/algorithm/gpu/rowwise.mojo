@@ -47,7 +47,7 @@ from max.gpu import (
     warp_id,
 )
 from max.gpu import barrier, syncwarp
-from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host import DeviceContext
 from max.gpu.primitives import block
 from max.gpu.primitives import warp
 from max.gpu.primitives.grid_controls import (
@@ -1285,8 +1285,6 @@ def launch[
     BLOCK_SIZE: Int = 256,
     COOPERATIVE_BLOCK_SIZE: Int = 128,
     WARP_BLOCK_WARPS: Int = 4,
-    cache_dtype: Optional[DType] = None,
-    cache_count: Int = 0,
     num_phases: Int = 0,
     dtype_size: Int = 0,
 ](body: Body, shape: Coord, ctx: DeviceContext) raises:
@@ -1333,9 +1331,6 @@ def launch[
         COOPERATIVE_BLOCK_SIZE: Threads per block for the non-inner
             cooperative tier.
         WARP_BLOCK_WARPS: Warps per block for the warp tier.
-        cache_dtype: Optional persistent-cache dtype for the warp-tier
-            multi-row scratch (`None` for no cache).
-        cache_count: Number of cache entries per row.
         num_phases: Per-element-output split-K opt-in for
             normalize-shaped bodies. `<= 1` disables it (comptime-dead,
             byte-identical codegen). `N > 1` = the body has `N - 1`
@@ -1787,27 +1782,12 @@ def launch[
                 simd_width=sw,
                 target="gpu",
             )
-            comptime if cache_count > 0:
-                var shmem_bytes = (
-                    row_size * cache_count * size_of[cache_dtype.value()]()
-                )
-                ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_dc),
-                    grid_dim=num_blocks,
-                    block_dim=BS,
-                    attributes=pdl_launch_attributes(_PDL_LEVEL),
-                    shared_mem_bytes=shmem_bytes,
-                    func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
-                        UInt32(shmem_bytes)
-                    ),
-                )
-            else:
-                ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_dc),
-                    grid_dim=num_blocks,
-                    block_dim=BS,
-                    attributes=pdl_launch_attributes(_PDL_LEVEL),
-                )
+            ctx.enqueue_function(
+                _BlockKernel[rank, block_params, Body](body, shape_dc),
+                grid_dim=num_blocks,
+                block_dim=BS,
+                attributes=pdl_launch_attributes(_PDL_LEVEL),
+            )
 
         var use_simd_full = (
             effective_simd > 1 and row_size % effective_simd == 0
@@ -1842,27 +1822,12 @@ def launch[
                 simd_width=sw,
                 target="gpu",
             )
-            comptime if cache_count > 0:
-                var shmem_bytes = (
-                    row_size * cache_count * size_of[cache_dtype.value()]()
-                )
-                ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_dc),
-                    grid_dim=num_blocks,
-                    block_dim=BLOCK_SIZE,
-                    attributes=pdl_launch_attributes(_PDL_LEVEL),
-                    shared_mem_bytes=shmem_bytes,
-                    func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
-                        UInt32(shmem_bytes)
-                    ),
-                )
-            else:
-                ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_dc),
-                    grid_dim=num_blocks,
-                    block_dim=BLOCK_SIZE,
-                    attributes=pdl_launch_attributes(_PDL_LEVEL),
-                )
+            ctx.enqueue_function(
+                _BlockKernel[rank, block_params, Body](body, shape_dc),
+                grid_dim=num_blocks,
+                block_dim=BLOCK_SIZE,
+                attributes=pdl_launch_attributes(_PDL_LEVEL),
+            )
 
         unswitch(use_simd_full, dispatch)
 
@@ -1885,27 +1850,12 @@ def launch[
                 simd_width=sw,
                 target="gpu",
             )
-            comptime if cache_count > 0:
-                var shmem_bytes = (
-                    row_size * cache_count * size_of[cache_dtype.value()]()
-                )
-                ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_dc),
-                    grid_dim=num_blocks,
-                    block_dim=BS,
-                    attributes=pdl_launch_attributes(_PDL_LEVEL),
-                    shared_mem_bytes=shmem_bytes,
-                    func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
-                        UInt32(shmem_bytes)
-                    ),
-                )
-            else:
-                ctx.enqueue_function(
-                    _BlockKernel[rank, block_params, Body](body, shape_dc),
-                    grid_dim=num_blocks,
-                    block_dim=BS,
-                    attributes=pdl_launch_attributes(_PDL_LEVEL),
-                )
+            ctx.enqueue_function(
+                _BlockKernel[rank, block_params, Body](body, shape_dc),
+                grid_dim=num_blocks,
+                block_dim=BS,
+                attributes=pdl_launch_attributes(_PDL_LEVEL),
+            )
 
         # SIMD width only on SIMD-divisible rows so a body's `ws > 1`
         # tile lands on an aligned offset (the alignment contract, same
