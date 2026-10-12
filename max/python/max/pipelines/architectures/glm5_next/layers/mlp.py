@@ -105,10 +105,16 @@ class Glm5NextMoE(DeepseekV3_2MoE):
     DeepSeek-V3's node-limited routing.
     """
 
-    def __init__(self, *args, swiglu_limit: float, **kwargs) -> None:
-        kwargs["activation"] = GatedActivation("silu", limit=swiglu_limit)
+    def __init__(
+        self, *args, swiglu_limit: float | None = None, **kwargs
+    ) -> None:
+        # `MoE.shard()` rebuilds each shard through `self.__class__`, passing
+        # the parent's `activation` rather than `swiglu_limit`.
+        if swiglu_limit is not None:
+            kwargs["activation"] = GatedActivation("silu", limit=swiglu_limit)
+        elif kwargs.get("activation") is None:
+            raise ValueError("Glm5NextMoE needs swiglu_limit or activation")
         super().__init__(*args, **kwargs)
-        self.swiglu_limit = swiglu_limit
 
 
 @tree.dataclass(frozen=True, kw_only=True)
