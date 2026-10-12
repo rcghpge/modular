@@ -341,24 +341,18 @@ struct BatchMatmul:
         @__parameter
         @inline(.always)
         def output_fn[
-            _type: DType, _width: SIMDLength, _rank: Int, *, alignment: Int = 1
-        ](coords: IndexList[_rank], val: SIMD[_type, _width]):
+            _type: DType, _width: SIMDLength, *, alignment: Int = 1
+        ](coords: Coord, val: SIMD[_type, _width]):
             comptime has_compute_lambda = type_of(c)._has_compute_fusion
 
             comptime if has_compute_lambda:
                 var output = c._fused_compute_output_lambda[
                     element_alignment=alignment
-                ](
-                    rebind[IndexList[c.rank]](coords),
-                    rebind[SIMD[c.dtype, _width]](val),
-                )
-                c.store[element_alignment=alignment](
-                    rebind[IndexList[c.rank]](coords), output
-                )
+                ](coords, rebind[SIMD[c.dtype, _width]](val))
+                c.store[element_alignment=alignment](coords, output)
             else:
                 c._lambda_store[width=_width, element_alignment=alignment](
-                    rebind[IndexList[c.rank]](coords),
-                    rebind[SIMD[c.dtype, _width]](val),
+                    coords, rebind[SIMD[c.dtype, _width]](val)
                 )
 
         batched_matmul[
@@ -459,11 +453,9 @@ struct LinalgBandPart:
     ) capturing raises:
         @inline(.always)
         def input_fn[
-            width: Int, _rank: Int
-        ](coords: IndexList[_rank]) {var input} -> SIMD[output.dtype, width]:
-            return input._lambda_load[width=width](
-                rebind[IndexList[input.rank]](coords)
-            )
+            width: Int
+        ](coords: Coord) {var input} -> SIMD[output.dtype, width]:
+            return input._lambda_load[width=width](coords)
 
         matrix_band_part[
             simd_width=simd_width_of[dtype](),

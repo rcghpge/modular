@@ -1453,10 +1453,6 @@ def _rms_norm_impl[
     weight_offset: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
-    # Everything here is `Coord`-form: the rank check, the empty guard and both
-    # target paths read the coord directly. Callers whose lambdas need runtime
-    # index subscripts (`kv_cache.mojo`) wrap theirs to `Coord`-form at the call
-    # site (see `coord_to_index_list`).
     comptime assert gamma.flat_rank == 1, "gamma must have rank 1"
     comptime assert shape.rank == rank, "shape.rank must be the same as rank"
 

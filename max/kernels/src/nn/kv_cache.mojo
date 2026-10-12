@@ -2611,15 +2611,15 @@ def rms_norm_kv_cache_ragged_paged[
     @__parameter
     @__copy_capture(k_cache, input_row_offsets)
     def key_cache_input_fn[
-        width: Int, rank_: Int
-    ](idx: IndexList[rank_]) -> SIMD[dtype, width]:
+        width: Int, alignment: Int
+    ](idx: Coord) -> SIMD[dtype, width]:
         comptime assert (
-            rank_ == rank
+            idx.rank == rank
         ), "rms_norm_key_cache input lambda index should have rank " + String(
             rank
         )
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2631,11 +2631,12 @@ def rms_norm_kv_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = idx[1]
-            head_dim_idx = idx[2]
+            head_idx = Int(idx[1].value())
+            head_dim_idx = Int(idx[2].value())
         else:
-            head_idx = idx[1] // params.head_size
-            head_dim_idx = idx[1] % params.head_size
+            head_idx, head_dim_idx = divmod(
+                Int(idx[1].value()), params.head_size
+            )
 
         return k_cache.load[width=width](
             bs=batch_idx,
@@ -2649,8 +2650,14 @@ def rms_norm_kv_cache_ragged_paged[
     @__copy_capture(k_cache)
     def key_cache_output_fn[
         width: SIMDLength, alignment: Int
-    ](idx: IndexList[rank], val: SIMD[dtype, width]) -> None:
-        var global_token_idx = idx[0]
+    ](idx: Coord, val: SIMD[dtype, width]) -> None:
+        comptime assert (
+            idx.rank == rank
+        ), "rms_norm_key_cache output lambda index should have rank " + String(
+            rank
+        )
+
+        var global_token_idx = Int(idx[0].value())
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2662,11 +2669,12 @@ def rms_norm_kv_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = idx[1]
-            head_dim_idx = idx[2]
+            head_idx = Int(idx[1].value())
+            head_dim_idx = Int(idx[2].value())
         else:
-            head_idx = idx[1] // params.head_size
-            head_dim_idx = idx[1] % params.head_size
+            head_idx, head_dim_idx = divmod(
+                Int(idx[1].value()), params.head_size
+            )
         k_cache.store(
             bs=batch_idx,
             tok_idx=cache_token_idx,
@@ -2682,32 +2690,11 @@ def rms_norm_kv_cache_ragged_paged[
         + String(kv_collection.kv_params.head_size),
         task_id=get_safe_task_id(context),
     ):
-        # `_rms_norm_impl` migrated to a `Coord` boundary (softmax PR #88203).
-        # The cache lambdas do runtime `idx[0]/idx[1]/idx[2]` subscripts, which
-        # `Coord` cannot express, so they stay IndexList-form; wrap them to the
-        # `Coord` interface here (`coord_to_index_list` recovers the runtime
-        # IndexList the cache logic subscripts) and pass `Coord(shape)`.
-        @inline(.always)
-        def key_cache_input_fn_coord[
-            width: Int, alignment: Int
-        ](coords: Coord) -> SIMD[dtype, width]:
-            return key_cache_input_fn[width, rank](
-                rebind[IndexList[rank]](coord_to_index_list(coords))
-            )
-
-        @inline(.always)
-        def key_cache_output_fn_coord[
-            width: SIMDLength, alignment: Int
-        ](coords: Coord, val: SIMD[dtype, width]) -> None:
-            key_cache_output_fn[width, alignment](
-                rebind[IndexList[rank]](coord_to_index_list(coords)), val
-            )
-
         _rms_norm_impl[
             dtype,
             rank,
-            key_cache_input_fn_coord,
-            key_cache_output_fn_coord,
+            key_cache_input_fn,
+            key_cache_output_fn,
             target=target,
             multiply_before_cast=multiply_before_cast,
         ](
@@ -2776,14 +2763,14 @@ def rms_norm_value_cache_ragged_paged[
     @__parameter
     @__copy_capture(v_cache, input_row_offsets)
     def value_cache_input_fn[
-        width: Int, rank_: Int
-    ](idx: IndexList[rank_]) -> SIMD[dtype, width]:
-        comptime assert rank_ == rank, (
+        width: Int, alignment: Int
+    ](idx: Coord) -> SIMD[dtype, width]:
+        comptime assert idx.rank == rank, (
             "rms_norm_value_cache input lambda index should have rank "
             + String(rank)
         )
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2795,11 +2782,12 @@ def rms_norm_value_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = idx[1]
-            head_dim_idx = idx[2]
+            head_idx = Int(idx[1].value())
+            head_dim_idx = Int(idx[2].value())
         else:
-            head_idx = idx[1] // params.head_size
-            head_dim_idx = idx[1] % params.head_size
+            head_idx, head_dim_idx = divmod(
+                Int(idx[1].value()), params.head_size
+            )
 
         return v_cache.load[width=width](
             bs=batch_idx,
@@ -2813,8 +2801,13 @@ def rms_norm_value_cache_ragged_paged[
     @__copy_capture(v_cache)
     def value_cache_output_fn[
         width: SIMDLength, alignment: Int
-    ](idx: IndexList[rank], val: SIMD[dtype, width]) -> None:
-        var global_token_idx = idx[0]
+    ](idx: Coord, val: SIMD[dtype, width]) -> None:
+        comptime assert idx.rank == rank, (
+            "rms_norm_value_cache output lambda index should have rank "
+            + String(rank)
+        )
+
+        var global_token_idx = Int(idx[0].value())
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2826,11 +2819,12 @@ def rms_norm_value_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = idx[1]
-            head_dim_idx = idx[2]
+            head_idx = Int(idx[1].value())
+            head_dim_idx = Int(idx[2].value())
         else:
-            head_idx = idx[1] // params.head_size
-            head_dim_idx = idx[1] % params.head_size
+            head_idx, head_dim_idx = divmod(
+                Int(idx[1].value()), params.head_size
+            )
         v_cache.store(
             bs=batch_idx,
             tok_idx=cache_token_idx,
@@ -2846,30 +2840,11 @@ def rms_norm_value_cache_ragged_paged[
         + String(kv_collection.kv_params.head_size),
         task_id=get_safe_task_id(context),
     ):
-        # See `rms_norm_key_cache_ragged_paged` above: cache lambdas stay
-        # IndexList-form (runtime index subscripts) and are wrapped to the
-        # `Coord` boundary `_rms_norm_impl` now expects.
-        @inline(.always)
-        def value_cache_input_fn_coord[
-            width: Int, alignment: Int
-        ](coords: Coord) -> SIMD[dtype, width]:
-            return value_cache_input_fn[width, rank](
-                rebind[IndexList[rank]](coord_to_index_list(coords))
-            )
-
-        @inline(.always)
-        def value_cache_output_fn_coord[
-            width: SIMDLength, alignment: Int
-        ](coords: Coord, val: SIMD[dtype, width]) -> None:
-            value_cache_output_fn[width, alignment](
-                rebind[IndexList[rank]](coord_to_index_list(coords)), val
-            )
-
         _rms_norm_impl[
             dtype,
             rank,
-            value_cache_input_fn_coord,
-            value_cache_output_fn_coord,
+            value_cache_input_fn,
+            value_cache_output_fn,
             target=target,
             multiply_before_cast=multiply_before_cast,
         ](

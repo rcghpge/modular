@@ -349,12 +349,11 @@ struct Struct_kv_cache_store_padded:
         @inline(.always)
         def input_fn[
             width: Int, alignment: Int
-        ](idx: IndexList[4]) capturing -> SIMD[dtype, width]:
+        ](idx: Coord) capturing -> SIMD[dtype, width]:
+            comptime assert idx.rank == 4
             return inputs._lambda_load[
                 width=width, element_alignment=alignment
-            ](
-                idx,
-            )
+            ](idx)
 
         kv_cache_store_padded[input_fn=input_fn, target=target](
             cache,

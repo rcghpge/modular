@@ -592,7 +592,7 @@ def apple_batched_matmul[
             local_batch_coords[rank - 2] = out_coords[0]
 
             comptime func = elementwise_epilogue_fn.value()
-            func[c_type, width, rank](local_batch_coords, out_val)
+            func[c_type, width](Coord(local_batch_coords), out_val)
 
         apple_matmul[
             transpose_b=transpose_b,

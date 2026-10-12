@@ -5418,9 +5418,9 @@ def kv_cache_store_padded[
     cache_t: KVCacheT,
     //,
     target: StaticString,
-    input_fn: def[width: Int, alignment: Int](
-        idx: IndexList[4]
-    ) capturing -> SIMD[cache_t.dtype, width],
+    input_fn: def[width: Int, alignment: Int](idx: Coord) capturing -> SIMD[
+        cache_t.dtype, width
+    ],
 ](
     cache: cache_t,
     input_shape: IndexList[4],
@@ -5466,13 +5466,7 @@ def kv_cache_store_padded[
         var valid_len = Int(valid_lengths[batch_idx])
         if token_idx >= valid_len:
             return
-        var input_idx = IndexList[4](
-            batch_idx,
-            token_idx,
-            Int(idx[2].value()),
-            Int(idx[3].value()),
-        )
-        var loaded_val = input_fn[width=width, alignment=alignment](input_idx)
+        var loaded_val = input_fn[width=width, alignment=alignment](idx)
         var h_idx = Int(idx[2].value())
         var hd_idx = Int(idx[3].value())
         var cache_length = cache.cache_length(batch_idx)
