@@ -102,6 +102,11 @@ _HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE = 0.9
 # down to whole huge blocks (at least one).
 _DRIVER_STAGING_CHUNK_BYTES = 4 * 1024**3
 
+# O_DIRECT requires the buffer address and length aligned to the device's
+# logical block size; 4 KiB covers the devices MAX runs on and matches the
+# native connectors' DIRECT_IO_ALIGN.
+_DIRECT_IO_ALIGN_BYTES = 1 << 12
+
 
 # The extension module behind each connector type. Both are runtime-provided
 # rather than build deps, so OSS MAX imports this module without either.
@@ -467,6 +472,7 @@ class TierConnector(KVConnector):
         num_h2d_onload_lanes: int = 1,
         connector_type: KVConnectorType = KVConnectorType.rust_tiered,
         host_staging_alloc: HostStagingAlloc = "registered",
+        use_disk_direct_io: bool = False,
     ) -> None:
         """Initializes the connector over ``replica_kv_memory``'s device buffers.
 
@@ -552,6 +558,7 @@ class TierConnector(KVConnector):
                 disk_path,
                 disk_offload_max_bytes,
                 num_disk_workers,
+                use_disk_direct_io,
                 devices=devices,
             )
         else:
@@ -571,6 +578,7 @@ class TierConnector(KVConnector):
                 disk_offload_max_bytes,
                 num_disk_workers,
                 num_h2d_onload_lanes,
+                use_disk_direct_io,
             )
         # Set only once the native connector exists, so `__del__` on a
         # half-built instance has nothing to stop.
@@ -638,6 +646,44 @@ class TierConnector(KVConnector):
                 "read this variable either way."
             )
 
+        disk_offload_max_bytes: int = (
+            int(cfg.disk_offload_max_gb * 1024**3)
+            if cfg.disk_offload_max_gb is not None
+            else 2 * device_memory_bytes
+        )
+        # Direct I/O only touches the disk tier, so with a zero disk budget
+        # (a host-only connector) none of its compatibility checks apply.
+        use_disk_direct_io = (
+            cfg.use_disk_direct_io and disk_offload_max_bytes > 0
+        )
+        if cfg.use_disk_direct_io and not use_disk_direct_io:
+            logger.warning(
+                "kv_connector_config: use_disk_direct_io has no effect with "
+                "no disk tier (disk_offload_max_gb=0)."
+            )
+
+        if use_disk_direct_io and cfg.host_staging_alloc == "driver":
+            # The native probe below catches this too (the direct write
+            # EFAULTs on AMD's driver-owned GTT memory), but naming the
+            # conflicting config here is a clearer error than an errno.
+            # CUDA's driver-allocated staging is ordinary page-locked memory
+            # that takes O_DIRECT fine, so only HIP is refused up front; the
+            # probe remains the final word on both vendors.
+            if api == "hip":
+                raise ValueError(
+                    "kv_connector_config.use_disk_direct_io is incompatible "
+                    "with host_staging_alloc='driver' on AMD: the "
+                    "driver-owned GTT staging memory rejects O_DIRECT "
+                    "(EFAULT), and there is no buffered fallback. Use the "
+                    "registered staging region to keep direct disk I/O, or "
+                    "drop use_disk_direct_io to keep driver staging."
+                )
+            logger.warning(
+                "use_disk_direct_io with host_staging_alloc='driver' on CUDA: "
+                "driver staging is ordinary page-locked memory, so direct "
+                "I/O should work. The startup probe will confirm it."
+            )
+
         if cfg.type == KVConnectorType.tiered:
             logger.warning(
                 "kv_connector '%s' is deprecated: its Python implementation "
@@ -664,26 +710,25 @@ class TierConnector(KVConnector):
         else:
             _check_host_memory_capacity(host_offload_max_bytes)
 
-        disk_offload_max_bytes: int = (
-            int(cfg.disk_offload_max_gb * GiB)
-            if cfg.disk_offload_max_gb is not None
-            else 2 * device_memory_bytes
-        )
-        # A zero disk budget means no disk last level. The tier sizes its
-        # capacity from the budget, so a 0 that still opened one would disable
-        # eviction rather than disable the tier.
-        disk_dir = (
-            None
-            if disk_offload_max_bytes == 0
-            else acquire_offload_dir(cfg.disk_offload_dir)
-        )
-        if disk_dir is not None:
-            _check_disk_capacity(disk_dir.path, disk_offload_max_bytes)
-
         leaf_cache_sizes = {
             leaf_id: leaf_buffers.host_bytes_per_page
             for leaf_id, leaf_buffers in replica_kv_memory[0].items()
         }
+        if use_disk_direct_io:
+            # O_DIRECT needs every block length aligned to 4096 bytes. Check
+            # all leaves before allocating anything, so one error names every
+            # offender.
+            unaligned = {
+                leaf_id: size
+                for leaf_id, size in leaf_cache_sizes.items()
+                if size % _DIRECT_IO_ALIGN_BYTES != 0
+            }
+            if unaligned:
+                raise ValueError(
+                    "use_disk_direct_io requires every leaf's block size to "
+                    f"be a multiple of 4096 bytes; offending leaves: {unaligned}. "
+                    "Disable the flag."
+                )
         # The host pool is built without a null block -- unlike the device
         # pool -- so it hands out every huge block, and one is enough.
         num_huge_blocks, huge_page_bytes, cache_ratios = compute_jenga_ratios(
@@ -693,41 +738,61 @@ class TierConnector(KVConnector):
         )
         host_offload_max_bytes = num_huge_blocks * huge_page_bytes
 
-        logger.info(
-            "Creating TierConnector: "
-            f"type={cfg.type.value}, "
-            f"host_offload_max_bytes={to_human_readable_bytes(host_offload_max_bytes)}, "
-            f"disk_cache_dir={disk_dir.path if disk_dir else 'disabled (host-only)'}, "
-            f"disk_offload_max_bytes={to_human_readable_bytes(disk_offload_max_bytes)}, "
-            f"num_disk_workers={cfg.num_disk_workers}, "
-            f"num_h2d_onload_lanes={cfg.num_h2d_onload_lanes}"
+        # A zero disk budget means no disk last level. The tier sizes its
+        # capacity from the budget, so a 0 that still opened one would disable
+        # eviction rather than disable the tier.
+        disk_dir = (
+            None
+            if disk_offload_max_bytes == 0
+            else acquire_offload_dir(cfg.disk_offload_dir)
         )
-        logger.info(
-            f"TierConnector: {num_huge_blocks} huge pages x {to_human_readable_bytes(huge_page_bytes)} = {to_human_readable_bytes(host_offload_max_bytes)}"
-        )
-        max_leaf_id_len = max(len(leaf_id) for leaf_id in leaves)
-        for leaf_id in leaves:
-            ratio = cache_ratios[leaf_id]
-            mem = replica_kv_memory[0][leaf_id]
+        # Everything past the acquisition can still raise (the native
+        # direct-I/O probe, for one), and `__del__` skips a half-built
+        # connector, so the directory is released here on any failure.
+        try:
+            if disk_dir is not None:
+                _check_disk_capacity(disk_dir.path, disk_offload_max_bytes)
             logger.info(
-                f"\t{leaf_id:<{max_leaf_id_len}}: {ratio * num_huge_blocks} pages of {mem.host_bytes_per_page}  ({ratio} per huge page)"
+                "Creating TierConnector: "
+                f"type={cfg.type.value}, "
+                f"host_offload_max_bytes={to_human_readable_bytes(host_offload_max_bytes)}, "
+                f"disk_cache_dir={disk_dir.path if disk_dir else 'disabled (host-only)'}, "
+                f"disk_offload_max_bytes={to_human_readable_bytes(disk_offload_max_bytes)}, "
+                f"num_disk_workers={cfg.num_disk_workers}, "
+                f"num_h2d_onload_lanes={cfg.num_h2d_onload_lanes}, "
+                f"disk_io={'direct (O_DIRECT)' if use_disk_direct_io else 'buffered'}"
             )
+            logger.info(
+                f"TierConnector: {num_huge_blocks} huge pages x {to_human_readable_bytes(huge_page_bytes)} = {to_human_readable_bytes(host_offload_max_bytes)}"
+            )
+            max_leaf_id_len = max(len(leaf_id) for leaf_id in leaves)
+            for leaf_id in leaves:
+                ratio = cache_ratios[leaf_id]
+                mem = replica_kv_memory[0][leaf_id]
+                logger.info(
+                    f"\t{leaf_id:<{max_leaf_id_len}}: {ratio * num_huge_blocks} pages of {mem.host_bytes_per_page}  ({ratio} per huge page)"
+                )
 
-        return cls(
-            leaves=leaves,
-            leaf_cache_sizes=leaf_cache_sizes,
-            replica_kv_memory=replica_kv_memory,
-            page_size=params.page_size,
-            host_offload_num_huge_blocks=num_huge_blocks,
-            host_offload_huge_page_bytes=huge_page_bytes,
-            host_offload_cache_ratios=cache_ratios,
-            disk_dir=disk_dir,
-            disk_offload_max_bytes=disk_offload_max_bytes,
-            num_disk_workers=cfg.num_disk_workers,
-            num_h2d_onload_lanes=cfg.num_h2d_onload_lanes,
-            connector_type=cfg.type,
-            host_staging_alloc=cfg.host_staging_alloc,
-        )
+            return cls(
+                leaves=leaves,
+                leaf_cache_sizes=leaf_cache_sizes,
+                replica_kv_memory=replica_kv_memory,
+                page_size=params.page_size,
+                host_offload_num_huge_blocks=num_huge_blocks,
+                host_offload_huge_page_bytes=huge_page_bytes,
+                host_offload_cache_ratios=cache_ratios,
+                disk_dir=disk_dir,
+                disk_offload_max_bytes=disk_offload_max_bytes,
+                num_disk_workers=cfg.num_disk_workers,
+                num_h2d_onload_lanes=cfg.num_h2d_onload_lanes,
+                connector_type=cfg.type,
+                host_staging_alloc=cfg.host_staging_alloc,
+                use_disk_direct_io=use_disk_direct_io,
+            )
+        except BaseException:
+            if disk_dir is not None:
+                disk_dir.release()
+            raise
 
     @property
     def leaves(self) -> Mapping[str, KVCacheGroupId]:

@@ -236,6 +236,17 @@ class KVConnectorConfig(ConfigFileModel):
         ),
     )
     """Concurrent H2D onload lanes for the rust_tiered connector."""
+    use_disk_direct_io: bool = Field(
+        default=False,
+        description=(
+            "Open the disk cache files with O_DIRECT so offload bypasses the "
+            "page cache. There is no buffered fallback: startup fails if "
+            "direct I/O does not work. Requires 4096-byte-aligned leaf "
+            "blocks and is incompatible with host_staging_alloc='driver' on "
+            "AMD."
+        ),
+    )
+    """Whether the disk tier's reads and writes bypass the page cache (O_DIRECT)."""
 
     block_store_endpoint: str | None = Field(
         default=None,

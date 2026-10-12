@@ -16,11 +16,18 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from max.driver import CPU
-from max.nn.kv_cache import KVCacheGroupId, KVConnectorType
+from max.nn.kv_cache import (
+    KVCacheGroupId,
+    KVCacheMemory,
+    KVConnectorType,
+)
+from max.pipelines.kv_cache.config import KVConnectorConfig
 from max.pipelines.kv_cache.connectors import tier_connector
 
 
@@ -233,6 +240,8 @@ def test_disk_capacity_accepts_fitting(
 
 def _create_with_driver_staging_on_hip(
     monkeypatch: pytest.MonkeyPatch,
+    use_disk_direct_io: bool = False,
+    disk_offload_max_gb: float = 1.0,
 ) -> None:
     """Drives ``TierConnector.create`` up to its HSA_USERPTR_FOR_PAGED_MEM
     check with ``host_staging_alloc='driver'`` on a stubbed HIP device.
@@ -247,7 +256,11 @@ def _create_with_driver_staging_on_hip(
         tier_connector, "_native_connector_class", lambda connector_type: object
     )
     cfg = SimpleNamespace(
-        type=KVConnectorType.rust_tiered, host_staging_alloc="driver"
+        type=KVConnectorType.rust_tiered,
+        host_staging_alloc="driver",
+        use_disk_direct_io=use_disk_direct_io,
+        host_offload_max_gb=1.0,
+        disk_offload_max_gb=disk_offload_max_gb,
     )
     tier_connector.TierConnector.create(
         leaves={"full": KVCacheGroupId.full()},
@@ -281,6 +294,81 @@ def test_create_refuses_driver_staging_on_hip_with_the_wrong_value(
 
     with pytest.raises(RuntimeError, match="HSA_USERPTR_FOR_PAGED_MEM"):
         _create_with_driver_staging_on_hip(monkeypatch)
+
+
+def test_create_refuses_direct_io_with_driver_staging_on_hip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AMD's driver-allocated GTT staging memory rejects O_DIRECT (EFAULT),
+    and direct disk I/O has no buffered fallback, so the combination must be
+    refused up front with a message naming the conflicting settings rather
+    than surfacing as an errno from the native probe."""
+    monkeypatch.setenv("HSA_USERPTR_FOR_PAGED_MEM", "0")
+
+    with pytest.raises(ValueError, match="use_disk_direct_io"):
+        _create_with_driver_staging_on_hip(monkeypatch, use_disk_direct_io=True)
+
+
+def test_create_ignores_direct_io_without_a_disk_tier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With ``disk_offload_max_gb=0`` the connector is host-only, so no
+    O_DIRECT operation can happen and the driver-staging refusal must not
+    fire. Creation proceeds past the direct-I/O checks and only then trips on
+    the empty ``replica_kv_memory`` this stub passes."""
+    monkeypatch.setenv("HSA_USERPTR_FOR_PAGED_MEM", "0")
+    monkeypatch.setattr(tier_connector, "_check_gtt_capacity", lambda _: None)
+
+    with pytest.raises(IndexError):
+        _create_with_driver_staging_on_hip(
+            monkeypatch, use_disk_direct_io=True, disk_offload_max_gb=0
+        )
+
+
+def test_connector_config_defaults_disk_io_to_buffered() -> None:
+    """Direct disk I/O is opt-in: the default must be byte-for-byte the
+    buffered behavior that shipped before the flag existed."""
+    assert KVConnectorConfig().use_disk_direct_io is False
+    assert KVConnectorConfig(use_disk_direct_io=True).use_disk_direct_io is True
+
+
+def test_create_refuses_direct_io_with_unaligned_leaf_sizes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every leaf whose block width is not a 4 KiB multiple must be named in
+    one error before anything is allocated, since no buffered fallback
+    exists and a single unaligned leaf makes every one of its blocks unable
+    to take the direct path."""
+    monkeypatch.setattr(tier_connector, "accelerator_api", lambda: "cuda")
+    monkeypatch.setattr(
+        tier_connector, "_native_connector_class", lambda connector_type: object
+    )
+    # A leaf of 4096+16 bytes: a token-scaled geometry can produce this with
+    # a small page size; the check must fire before the staging region.
+    unaligned = SimpleNamespace(
+        leaf_id="full",
+        host_bytes_per_page=4096 + 16,
+        buffers=[SimpleNamespace(device=SimpleNamespace(is_host=False))],
+    )
+    cfg = SimpleNamespace(
+        type=KVConnectorType.rust_tiered,
+        host_staging_alloc="registered",
+        use_disk_direct_io=True,
+        host_offload_max_gb=None,
+        disk_offload_max_gb=1.0,
+        disk_offload_dir=None,
+        num_disk_workers=2,
+    )
+    with pytest.raises(ValueError, match="offending leaves"):
+        tier_connector.TierConnector.create(
+            leaves={"full": KVCacheGroupId.full()},
+            replica_kv_memory=cast(
+                "Sequence[Mapping[str, KVCacheMemory]]",
+                [{"full": unaligned}],
+            ),
+            params=SimpleNamespace(kv_connector_config=cfg),
+            device_memory_bytes=0,
+        )
 
 
 @pytest.mark.parametrize(

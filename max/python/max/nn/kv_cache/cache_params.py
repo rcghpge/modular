@@ -362,6 +362,11 @@ class KVConnectorConfigInterface(Protocol):
         ...
 
     @property
+    def use_disk_direct_io(self) -> bool:
+        """Whether the disk tier's file I/O bypasses the page cache."""
+        ...
+
+    @property
     def block_store_endpoint(self) -> str | None:
         """Endpoint for the co-located dKV service."""
         ...
@@ -382,6 +387,7 @@ class NullKVConnectorConfig:
     disk_offload_dir: str | None = None
     num_disk_workers: int = 32
     num_h2d_onload_lanes: int = 1
+    use_disk_direct_io: bool = False
     block_store_endpoint: str | None = None
 
 
