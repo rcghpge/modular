@@ -416,6 +416,10 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `std.math.scalb()` is now implemented in Mojo and runs on GPU as well as
+  CPU. The `float64` type is not supported on Apple GPU. On targets that
+  flush subnormals, subnormal inputs and subnormal results are handled;
+  the results are bit-exact against IEEE targets.
 - `std.math.atan()` and `std.math.atan2()` no longer call the system libm and
   now run on GPU as well as CPU. On CPU their results come from the same Mojo
   implementations, so they can differ from the system libm in the last ulp.
@@ -570,6 +574,8 @@ This version is still a work in progress.
   rejected with `struct has recursive reference to itself`, despite the
   recursion being behind a pointer.
 
+- On macOS, `scalb()` now returns NaN for a non-integral exponent, as it does
+  on Linux.
 - `float32` `expm1()` no longer overflows early for inputs just below 88.7,
   and it now returns `-0.0` for `-0.0` and `inf` for `inf`.
 - `float32` `erfc()` is now accurate in its tail, for large positive inputs,

@@ -19,6 +19,7 @@
 # counterpart is `test_bessel_huge_args_gpu.mojo`.
 
 from std.math import (
+    scalb,
     atan,
     atan2,
     gamma,
@@ -458,6 +459,66 @@ def test_remainder_subnormal_results() raises:
         ).to_bits()
         == 1
     )
+
+
+def test_scalb_infinite_exponent() raises:
+    assert_equal(scalb(f32_min, inf[.float32]()), inf[.float32]())
+    assert_equal(scalb(-f32_min, inf[.float32]()), -inf[.float32]())
+    assert_equal(scalb(f32_max_sub, inf[.float32]()), inf[.float32]())
+    assert_true(isnan(scalb(Float32(0.0), inf[.float32]())))
+    assert_true(isnan(scalb(Float32(-0.0), inf[.float32]())))
+    assert_equal(scalb(Float32(3.0), inf[.float32]()), inf[.float32]())
+    assert_true(scalb(-f32_min, -inf[.float32]()).to_bits() == 0x80000000)
+    assert_true(scalb(f32_max_sub, -inf[.float32]()).to_bits() == 0)
+    assert_true(isnan(scalb(inf[.float32](), -inf[.float32]())))
+    assert_equal(scalb(inf[.float32](), inf[.float32]()), inf[.float32]())
+    assert_equal(scalb(f64_min, inf[.float64]()), inf[.float64]())
+    assert_equal(scalb(-f64_max_sub, inf[.float64]()), -inf[.float64]())
+    assert_true(isnan(scalb(Float64(0.0), inf[.float64]())))
+    assert_true(
+        scalb(-f64_min, -inf[.float64]()).to_bits() == 0x8000000000000000
+    )
+    var v = scalb(
+        SIMD[.float32, 4](f32_min, -f32_max_sub, 0.0, 2.0),
+        SIMD[.float32, 4](
+            inf[.float32](), inf[.float32](), inf[.float32](), -inf[.float32]()
+        ),
+    )
+    assert_equal(v[0], inf[.float32]())
+    assert_equal(v[1], -inf[.float32]())
+    assert_true(isnan(v[2]))
+    assert_equal(v[3], 0.0)
+
+
+def test_scalb_subnormal() raises:
+    assert_equal(scalb(f32_min, Float32(149)), 1.0)
+    assert_equal(
+        scalb(f32_min * 4, Float32(100)), Float32(7.105427357601002e-15)
+    )
+    assert_equal(scalb(-f32_max_sub, Float32(126)), -Float32(0.99999988079071))
+    assert_equal(scalb(f32_min, Float32(0)), f32_min)
+    assert_equal(scalb(-f32_min, Float32(300)), -inf[.float32]())
+    assert_equal(scalb(f64_min, Float64(1074)), 1.0)
+    assert_equal(scalb(f64_max_sub, Float64(1022)), 0.9999999999999998)
+    assert_equal(scalb(f64_min, Float64(-1)), 0.0)
+
+
+def test_scalb_subnormal_exponent() raises:
+    # A subnormal exponent is never integral, so the result is NaN even on a
+    # target that flushes the exponent to zero before comparing it.
+    assert_true(isnan(scalb(Float32(1), f32_min)))
+    assert_true(isnan(scalb(Float32(-8), -f32_max_sub)))
+    assert_true(isnan(scalb(f32_min, f32_min)))
+    assert_true(isnan(scalb(Float64(1), f64_min)))
+    assert_true(isnan(scalb(Float64(2), -f64_max_sub)))
+    var v = scalb(
+        SIMD[.float32, 4](1.0, 2.0, 3.0, 4.0),
+        SIMD[.float32, 4](f32_min, 1.0, -f32_max_sub, 0.0),
+    )
+    assert_true(isnan(v[0]))
+    assert_equal(v[1], 4.0)
+    assert_true(isnan(v[2]))
+    assert_equal(v[3], 4.0)
 
 
 def _check_subnormal_order(y: SIMD[.float32, 4], x: SIMD[.float32, 4]) raises:

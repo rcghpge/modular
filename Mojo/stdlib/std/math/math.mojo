@@ -2768,38 +2768,45 @@ def scalb[
 ](arg0: SIMD[dtype, width], arg1: SIMD[dtype, width]) -> SIMD[
     dtype, width
 ] where dtype.is_floating_point():
-    """Computes the `scalb` of the inputs.
+    """Scales each value in `arg0` by 2 raised to its exponent in `arg1`.
+
+    A finite, non-integral exponent produces NaN. A positive infinite
+    exponent produces infinity with the sign of `arg0`, except that a zero
+    base produces NaN. A negative infinite exponent produces zero with the
+    sign of `arg0`, except that an infinite base produces NaN. NaN arguments
+    produce NaN.
+
+    For example:
+
+    ```mojo
+    from std.math import scalb
+    var scaled = scalb(Float32(1.5), Float32(2.0))
+    ```
 
     Constraints:
-        The input must be a floating-point type.
+        The input must be a floating-point type. The `float64` type is not
+        supported on Apple GPU.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
         width: The width of the input and output SIMD vector.
 
     Args:
-        arg0: The first input argument.
-        arg1: The second input argument.
+        arg0: The values to scale.
+        arg1: The base-2 exponents.
 
     Returns:
-        The `scalb` of the inputs.
+        The scaled values, computed elementwise.
     """
 
-    @inline(.nodebug)
-    def _float32_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["scalbf", Scalar[result_type]](arg0, arg1)
+    _assert_float64_supported[dtype, "scalb"]()
 
-    @inline(.nodebug)
-    def _float64_dispatch[
-        lhs_type: DType, rhs_type: DType, result_type: DType
-    ](arg0: Scalar[lhs_type], arg1: Scalar[rhs_type]) -> Scalar[result_type]:
-        return _external_call_const["scalb", Scalar[result_type]](arg0, arg1)
-
-    comptime if dtype == .float64:
-        return _simd_apply[_float64_dispatch, result_dtype=dtype](arg0, arg1)
-    return _simd_apply[_float32_dispatch, result_dtype=dtype](arg0, arg1)
+    comptime if bit_width_of[dtype]() < 32:
+        var r = _scalb_impl(arg0.cast[.float32](), arg1.cast[.float32]())
+        comptime if is_apple_gpu() and dtype == .bfloat16:
+            return rebind[SIMD[dtype, width]](_narrow_f32_to_bf16_bits(r))
+        return r.cast[dtype]()
+    return _scalb_impl(arg0, arg1)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4232,42 +4239,6 @@ def _erf_small_ratio_f64[
     )
 
 
-def _scalbn_impl[
-    dtype: DType, width: SIMDLength, //
-](x: SIMD[dtype, width], n: SIMD[.int32, width]) -> SIMD[
-    dtype, width
-] where dtype.is_floating_point():
-    """Computes x * 2^n with a single final rounding (musl `scalbn`)."""
-    comptime I = SIMD[FPUtils[dtype].integral_type, width]
-    comptime emax = FPUtils[dtype].exponent_bias()
-    comptime emin = 1 - emax
-    # Scaling down by 2^(emin + p) rather than 2^emin keeps the intermediate
-    # normal, so a subnormal result is rounded only once.
-    comptime mant = FPUtils[dtype].mantissa_width()
-    comptime down_exp = emin + mant + 1
-    var up = _pow2_impl[dtype, width](I(emax))
-    var down = _pow2_impl[dtype, width](I(down_exp))
-    # A subnormal x is `m * 2^(emin - mant)` for its integer significand m;
-    # converting m is exact and keeps the scaling away from arithmetic on a
-    # subnormal, which targets that flush them (Apple GPUs) treat as zero.
-    var bits = x._to_bits_signed()
-    var sub = (
-        (bits >> I(mant)) & I((1 << FPUtils[dtype].exponent_width()) - 1)
-    ).eq(0)
-    var m = (bits & I((1 << mant) - 1)).cast[dtype]()
-    var y = sub.select(copysign(m, x), x)
-    var k = n.cast[FPUtils[dtype].integral_type]() + sub.select(
-        I(emin - mant), I(0)
-    )
-    comptime for _ in range(2):
-        var hi = k.gt(I(emax))
-        var lo = k.lt(I(emin))
-        y = hi.select(y * up, lo.select(y * down, y))
-        k = hi.select(k - I(emax), lo.select(k - I(down_exp), k))
-    k = k.clamp(I(emin), I(emax))
-    return y * _pow2_impl[dtype, width](k)
-
-
 @inline(.always)
 def _scale_up_subnormal[
     dtype: DType, width: SIMDLength, //, shift: Int
@@ -4773,6 +4744,114 @@ def _pow2_impl[
         from_bits=(k + I(FPUtils[dtype].exponent_bias()))
         << I(FPUtils[dtype].mantissa_width())
     )
+
+
+def _has_zero_exponent[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[
+    DType.bool, width
+] where dtype.is_floating_point():
+    """Returns true for lanes that are zero or subnormal, read from the bits.
+
+    Unlike a comparison, this is correct on targets that flush subnormal
+    operands to zero.
+    """
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime exponent = I(
+        ((1 << FPUtils[dtype].exponent_width()) - 1)
+        << FPUtils[dtype].mantissa_width()
+    )
+    return (x._to_bits_signed() & exponent).eq(0)
+
+
+def _scalbn_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], n: SIMD[.int32, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    """Computes x * 2^n with a single final rounding (musl `scalbn`).
+
+    Requires float32 or float64 inputs; `scalb()` promotes narrower types.
+    """
+    comptime assert dtype in (
+        DType.float32,
+        DType.float64,
+    ), "_scalbn_impl requires float32 or float64; promote narrow inputs first"
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime emax = FPUtils[dtype].exponent_bias()
+    comptime emin = 1 - emax
+    # Scaling down by 2^(emin + p) rather than 2^emin keeps the intermediate
+    # normal, so a subnormal result is rounded only once.
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime down_exp = emin + mant + 1
+    var up = _pow2_impl[dtype, width](I(emax))
+    var down = _pow2_impl[dtype, width](I(down_exp))
+    # A subnormal x is `m * 2^(emin - mant)` for its integer significand m;
+    # converting m is exact and keeps the scaling away from arithmetic on a
+    # subnormal, which targets that flush them (Apple GPUs) treat as zero. On
+    # such targets subnormal inputs are handled and normal results are
+    # correct; a subnormal result is produced by the final multiply and
+    # flushes to zero.
+    var bits = x._to_bits_signed()
+    var sub = _has_zero_exponent(x)
+    var m = (bits & I((1 << mant) - 1)).cast[dtype]()
+    var y = sub.select(copysign(m, x), x)
+    var k = n.cast[FPUtils[dtype].integral_type]() + sub.select(
+        I(emin - mant), I(0)
+    )
+    comptime for _ in range(2):
+        var hi = k.gt(I(emax))
+        var lo = k.lt(I(emin))
+        y = hi.select(y * up, lo.select(y * down, y))
+        k = hi.select(k - I(emax), lo.select(k - I(down_exp), k))
+    k = k.clamp(I(emin), I(emax))
+    var r = y * _pow2_impl[dtype, width](k)
+    comptime if is_apple_gpu():
+        # The multiply above flushes a subnormal result. Rebuild those lanes
+        # from a result scaled into the normal range, which `_scale_down_bits`
+        # rounds once from its bits.
+        var y_exp = (y._to_bits_signed() >> I(mant)) & I(
+            (1 << FPUtils[dtype].exponent_width()) - 1
+        )
+        var tiny = (y_exp + k).lt(I(1))
+        var scaled = y * _pow2_impl[dtype, width](k + I(mant + 1))
+        r = tiny.select(_scale_down_bits[mant + 1](scaled), r)
+    return r
+
+
+def _scalb_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[
+    dtype, width
+] where dtype.is_floating_point():
+    """Computes fdlibm `scalb` (Sun `e_scalb.c`): x * 2^y for integral y.
+
+    A non-integral y gives NaN, an infinite y gives x * y except that
+    `0 * inf` and `inf * -inf` give NaN, and a NaN operand propagates. y is
+    clamped to +-65000, far beyond any finite float32 or float64 scaling.
+    Requires float32 or float64; `scalb()` promotes narrower types.
+    """
+    comptime T = SIMD[dtype, width]
+    # Far beyond any finite float32 or float64 scaling, and safe to cast to
+    # Int32.
+    comptime exp_limit = 65000
+    var y_nan = isnan(y)
+    var y_inf = isinf(y)
+    var n = y_nan.select(T(0), y).clamp(-exp_limit, exp_limit)
+    var r = _scalbn_impl(x, n.cast[.int32]())
+    # The bit tests below stay correct on a target that flushes subnormal
+    # operands (Apple GPUs in float32), where `trunc` and comparisons see a
+    # subnormal as zero: a subnormal y is never integral, and a subnormal x
+    # must not turn into 0 * inf.
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    var magnitude = I((1 << (bit_width_of[dtype]() - 1)) - 1)
+    var y_sub = _has_zero_exponent(y) & (y._to_bits_signed() & magnitude).ne(0)
+    r = (~y_inf & (trunc(y).ne(y) | y_sub)).select(nan[dtype](), r)
+    var x_zero = (x._to_bits_signed() & magnitude).eq(0)
+    var to_inf = x_zero.select(nan[dtype](), copysign(T(inf[dtype]()), x))
+    var to_zero = isinf(x).select(nan[dtype](), copysign(T(0), x))
+    r = y_inf.select(y.gt(0).select(to_inf, to_zero), r)
+    return (isnan(x) | y_nan).select(x * y, r)
 
 
 def _atan2_impl[
@@ -7808,6 +7887,7 @@ def _erfc_f32[width: SIMDLength, //](x: SIMD[.float32, width]) -> type_of(x):
     return isnan(x).select(x, result)
 
 
+@inline(.always)
 def _atanh_impl[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
