@@ -2290,7 +2290,7 @@ def _handle_pad_repeat(
 def _handle_resize_linear(
     op: mo.ResizeLinearOp, inputs: Sequence[Buffer | None]
 ) -> Sequence[Buffer]:
-    """Handle mo.resize.linear (CPU-only).
+    """Handle mo.resize.linear.
 
     Args:
         op: The resize-linear operation.

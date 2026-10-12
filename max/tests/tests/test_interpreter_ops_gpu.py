@@ -4657,3 +4657,41 @@ class TestResizeNearestGPU:
             torch.from_dlpack(gpu_out).float().cpu().numpy(),
             np.from_dlpack(cpu_out),
         )
+
+
+class TestResizeLinearGPU:
+    """GPU resize_linear agrees with the CPU path."""
+
+    @pytest.mark.parametrize(
+        "dtype", [DType.float32, DType.float16, DType.bfloat16]
+    )
+    @pytest.mark.parametrize("antialias", [False, True])
+    def test_matches_cpu(self, dtype: DType, antialias: bool) -> None:
+        # Small integers are exact in float16 and bfloat16. Two axes change, so
+        # the kernel runs two passes through a scratch buffer.
+        x_np = np.arange(60, dtype=np.float32).reshape(1, 3, 4, 5)
+        out_shape = [1, 3, 7, 3]
+
+        x_gpu = Tensor.from_dlpack(
+            torch.from_numpy(x_np).to(DTYPE_TO_TORCH[dtype]).cuda()
+        )
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            gpu_out = F.resize_linear(x_gpu, out_shape, antialias=antialias)
+
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            cpu_out = F.resize_linear(
+                Tensor.from_dlpack(x_np), out_shape, antialias=antialias
+            )
+
+        torch.testing.assert_close(
+            torch.from_dlpack(gpu_out).float().cpu(),
+            torch.from_dlpack(cpu_out),
+            rtol=2e-2,
+            atol=2e-2,
+        )

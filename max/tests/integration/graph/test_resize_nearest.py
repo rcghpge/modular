@@ -61,21 +61,56 @@ def _source_index(
 
 
 def _expected(
-    data: NDArray[np.float32], coord_mode: int, round_mode: int
+    data: NDArray[np.float32],
+    out_shape: list[int],
+    coord_mode: int,
+    round_mode: int,
 ) -> NDArray[np.float32]:
+    in_shape = data.shape
     rows = [
-        _source_index(
-            i, INPUT_SHAPE[2], OUTPUT_SHAPE[2], coord_mode, round_mode
-        )
-        for i in range(OUTPUT_SHAPE[2])
+        _source_index(i, in_shape[2], out_shape[2], coord_mode, round_mode)
+        for i in range(out_shape[2])
     ]
     cols = [
-        _source_index(
-            j, INPUT_SHAPE[3], OUTPUT_SHAPE[3], coord_mode, round_mode
-        )
-        for j in range(OUTPUT_SHAPE[3])
+        _source_index(j, in_shape[3], out_shape[3], coord_mode, round_mode)
+        for j in range(out_shape[3])
     ]
     return data[:, :, rows, :][:, :, :, cols]
+
+
+def _check(
+    session: InferenceSession,
+    device: DeviceRef,
+    in_shape: list[int],
+    out_shape: list[int],
+    coord_mode: int,
+    round_mode: int,
+) -> None:
+    if device.device_type == "gpu" and accelerator_count() == 0:
+        pytest.skip("No GPU available")
+
+    input_type = TensorType(DType.float32, in_shape, device=device)
+    with Graph("test_resize_nearest", input_types=[input_type]) as graph:
+        graph.output(
+            ops.resize_nearest(
+                graph.inputs[0].tensor,
+                out_shape,
+                coordinate_transform_mode=coord_mode,
+                round_mode=round_mode,
+            )
+        )
+    model = session.load(graph)
+
+    # Distinct values, so a wrong source index changes the output.
+    data = np.arange(np.prod(in_shape), dtype=np.float32).reshape(in_shape)
+    result = model.execute(Buffer.from_numpy(data).to(model.input_devices[0]))[
+        0
+    ]
+    assert isinstance(result, Buffer)
+    assert result.device == model.input_devices[0]
+    np.testing.assert_array_equal(
+        result.to_numpy(), _expected(data, out_shape, coord_mode, round_mode)
+    )
 
 
 @pytest.mark.parametrize("device", [DeviceRef.CPU(), DeviceRef.GPU()])
@@ -87,30 +122,20 @@ def test_resize_nearest(
     coord_mode: int,
     round_mode: int,
 ) -> None:
-    if device.device_type == "gpu" and accelerator_count() == 0:
-        pytest.skip("No GPU available")
+    _check(session, device, INPUT_SHAPE, OUTPUT_SHAPE, coord_mode, round_mode)
 
-    input_type = TensorType(DType.float32, INPUT_SHAPE, device=device)
-    with Graph("test_resize_nearest", input_types=[input_type]) as graph:
-        graph.output(
-            ops.resize_nearest(
-                graph.inputs[0].tensor,
-                OUTPUT_SHAPE,
-                coordinate_transform_mode=coord_mode,
-                round_mode=round_mode,
-            )
-        )
-    model = session.load(graph)
 
-    # Distinct values, so a wrong source index changes the output.
-    data = np.arange(np.prod(INPUT_SHAPE), dtype=np.float32).reshape(
-        INPUT_SHAPE
-    )
-    result = model.execute(Buffer.from_numpy(data).to(model.input_devices[0]))[
-        0
-    ]
-    assert isinstance(result, Buffer)
-    assert result.device == model.input_devices[0]
-    np.testing.assert_array_equal(
-        result.to_numpy(), _expected(data, coord_mode, round_mode)
-    )
+@pytest.mark.parametrize("device", [DeviceRef.CPU(), DeviceRef.GPU()])
+@pytest.mark.parametrize(
+    "coord_mode, round_mode",
+    [(HALF_PIXEL, HALF_DOWN), (HALF_PIXEL, FLOOR)]
+    + [(ALIGN_CORNERS, HALF_UP), (ASYMMETRIC, CEIL)],
+)
+def test_resize_nearest_full_vectors(
+    session: InferenceSession,
+    device: DeviceRef,
+    coord_mode: int,
+    round_mode: int,
+) -> None:
+    """The output width is a multiple of the kernel's vector width."""
+    _check(session, device, [1, 2, 3, 5], [1, 2, 7, 16], coord_mode, round_mode)

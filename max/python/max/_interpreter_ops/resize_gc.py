@@ -81,8 +81,6 @@ class ResizeSpec:
     max_rank: int
     rank_keyed: bool
     variants: tuple[Variant, ...] = (_NO_VARIANT,)
-    gpu: bool = False
-    """Whether this op's kernel can launch on accelerators."""
 
 
 def _symbolic_dims(rank: int, prefix: str) -> list[str]:
@@ -183,7 +181,6 @@ _RESIZE_OPS: dict[type[_core.Operation], ResizeSpec] = {
         # The bicubic kernel is rank-4 only (NCHW images).
         max_rank=4,
         rank_keyed=False,
-        gpu=True,
     ),
     mo.ResizeLinearOp: ResizeSpec(
         build=_build_linear_graph,
@@ -196,7 +193,6 @@ _RESIZE_OPS: dict[type[_core.Operation], ResizeSpec] = {
         max_rank=MAX_RANK,
         rank_keyed=True,
         variants=_nearest_variants(),
-        gpu=True,
     ),
 }
 
@@ -210,22 +206,6 @@ _RESIZE_OPS_BY_NAME = {
 
 def _spec_for(op_type: type[_core.Operation]) -> ResizeSpec | None:
     return gc_compile.spec_for(op_type, _RESIZE_OPS_BY_NAME)
-
-
-# Devices the sweep covers: every op runs on CPU, and GPU-capable ops add
-# every discovered accelerator (see the module docstring).
-_SWEEP_DEVICES = list(gc_compile.DISCOVERED_DEVICES)
-
-
-def _devices_for(spec: ResizeSpec) -> list[Device]:
-    if spec.gpu:
-        return _SWEEP_DEVICES
-    return [d for d in _SWEEP_DEVICES if d.label == "cpu"]
-
-
-def _supports_device(op_type: type[_core.Operation], device: Device) -> bool:
-    spec = _spec_for(op_type)
-    return spec is not None and device in _devices_for(spec)
 
 
 def _ranks_for(spec: ResizeSpec) -> list[int]:
@@ -260,7 +240,7 @@ def _is_supported(
     spec = _spec_for(op_type)
     if spec is None:
         return False
-    if not _supports_device(op_type, device):
+    if device not in gc_compile.DISCOVERED_DEVICES:
         return False
     if dtype not in gc_compile.float_dtypes(device):
         return False
@@ -281,9 +261,7 @@ class _ResizeFamily(gc_compile.GCFamilySpec):
     ) -> Module:
         if module is None:
             module = Module()
-        for op_type, spec in _RESIZE_OPS.items():
-            if not _supports_device(op_type, device):
-                continue
+        for spec in _RESIZE_OPS.values():
             for dtype in gc_compile.float_dtypes(device):
                 for rank in _ranks_for(spec):
                     for variant in spec.variants:
@@ -316,8 +294,8 @@ def resize_model(
         The compiled model ready for execution.
 
     Raises:
-        KeyError: If the target is outside the supported set (a non-CPU
-            device for ``ResizeLinearOp``, unsupported dtype, or rank > 5).
+        KeyError: If the target is outside the supported set (undiscovered
+            device, unsupported dtype, or rank > 5).
         EagerLazyCompileDisallowed: If a supported target is not already
             compiled and ``MAX_EAGER_ALLOW_LAZY_COMPILE=0``.
     """
@@ -332,7 +310,7 @@ def resize_model(
         return (
             f"Unsupported resize op/device/dtype/rank for key {key!r}."
             f" Supported dtypes on {device.label}:"
-            f" {gc_compile.float_dtypes(device)}; resize.linear is CPU-only;"
+            f" {gc_compile.float_dtypes(device)};"
             f" max rank: {MAX_RANK}."
         )
 

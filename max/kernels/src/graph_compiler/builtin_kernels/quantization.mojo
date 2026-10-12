@@ -65,6 +65,7 @@ from nn.resize import (
     CoordinateTransformationMode,
     RoundMode,
     resize_linear,
+    resize_linear_gpu,
     resize_nearest_neighbor,
 )
 from quantization import (
@@ -340,17 +341,30 @@ struct ResizeLinear:
         antialias: Bool,
         rank: Int,
         dtype: DType,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
         input: InputTensor[dtype=dtype, rank=rank, ...],
         size: InputTensor[rank=1, ...],
-    ):
-        resize_linear[
-            CoordinateTransformationMode(coordinate_transform_mode), antialias
-        ](
-            input.to_tile_tensor[.int64](),
-            output.to_tile_tensor[.int64](),
-        )
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            resize_linear[
+                CoordinateTransformationMode(coordinate_transform_mode),
+                antialias,
+            ](
+                input.to_tile_tensor[.int64](),
+                output.to_tile_tensor[.int64](),
+            )
+        else:
+            resize_linear_gpu[
+                CoordinateTransformationMode(coordinate_transform_mode),
+                antialias,
+            ](
+                input.to_tile_tensor[.int64](),
+                output.to_tile_tensor[.int64](),
+                ctx,
+            )
 
 
 @extensibility.register_shape_function("mo.resize.linear")

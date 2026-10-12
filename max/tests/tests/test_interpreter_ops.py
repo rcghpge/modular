@@ -8727,7 +8727,8 @@ class TestResizeLinearOp:
 
     Routes through F.resize_linear -> ops.resize_linear ->
     rmo.MoResizeLinearOp -> mo.ResizeLinearOp -> _handle_resize_linear ->
-    resize_gc.resize_model.  CPU-only (MO_HostOnly).
+    resize_gc.resize_model.  The CPU path is covered here; the GPU path is
+    covered by TestResizeLinearGPU in test_interpreter_ops_gpu.py.
 
     The reference is a pure-numpy separable 1-D linear interpolation along
     each spatial dimension (dimensions 2 and beyond).  Four coordinate
