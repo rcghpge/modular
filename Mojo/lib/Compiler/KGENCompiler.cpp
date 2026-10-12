@@ -515,11 +515,12 @@ static ErrorOr<CrossDeviceFunction> compileElaboratorAsm(
     const SymbolTable &symtab, TargetInfoAttr target, EmitAs emissionKind,
     EmissionOptions emissionOptions, CompilationOptions compilationOptions,
     ElaborateGeneratorsOptions elaboratorOptions) {
-  DEFINE_OR_RETURN_ERROR(
-      CompiledStandaloneKernel, compiled,
-      compileStandaloneKernel(func, symbol, name, symtab, target, emissionKind,
-                              emissionOptions, compilationOptions,
-                              elaboratorOptions));
+  ErrorOr<CompiledStandaloneKernel> compiledOr = compileStandaloneKernel(
+      func, symbol, name, symtab, target, emissionKind, emissionOptions,
+      compilationOptions, elaboratorOptions);
+  if (compiledOr.isError())
+    return compiledOr.takeError();
+  CompiledStandaloneKernel compiled = compiledOr.takeValue();
   return CrossDeviceFunction{compiled.contents, compiled.numCaptures,
                              std::move(compiled.capturesFunc)};
 }
@@ -552,11 +553,12 @@ compileElaboratorKernel(GeneratorOp func, SymbolConstantAttr symbol,
   mlir::DenseI64ArrayAttr captureSizes;
   OwningOpRef<Operation *> capturesFunc;
   for (auto [index, kind] : llvm::enumerate(kinds)) {
-    DEFINE_OR_RETURN_ERROR(
-        CompiledStandaloneKernel, compiled,
-        compileStandaloneKernel(func, symbol, name, symtab, target, kind,
-                                emissionOptions, compilationOptions,
-                                elaboratorOptions));
+    ErrorOr<CompiledStandaloneKernel> compiledOr = compileStandaloneKernel(
+        func, symbol, name, symtab, target, kind, emissionOptions,
+        compilationOptions, elaboratorOptions);
+    if (compiledOr.isError())
+      return compiledOr.takeError();
+    CompiledStandaloneKernel compiled = compiledOr.takeValue();
     contents.insert({kind, compiled.contents});
     moduleNames.insert({kind, getXXH3Hash(compiled.contents)});
     if (index == 0) {
@@ -829,9 +831,11 @@ static ElaboratorCompileOffloadRetType compileOffloads(
 
       // Backends owning offload lowering left through the per-kernel branch
       // above, so everything reaching here needs an LLVM TargetMachine.
-      DEFINE_OR_RETURN_ERROR(std::unique_ptr<llvm::TargetMachine>, tm,
-                             createTargetMachine(compilationOptions,
-                                                 /*isJIT=*/false));
+      ErrorOr<std::unique_ptr<llvm::TargetMachine>> tmOr =
+          createTargetMachine(compilationOptions, /*isJIT=*/false);
+      if (tmOr.isError())
+        return tmOr.takeError();
+      std::unique_ptr<llvm::TargetMachine> tm = tmOr.takeValue();
 
       // Run elaboration through to the end of the optimization pipeline.
       // The scope comes before the pass manager in this declaration. Thus
