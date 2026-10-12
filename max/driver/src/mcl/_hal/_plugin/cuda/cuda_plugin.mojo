@@ -5,20 +5,24 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.collections.string.string_span import _get_kgen_string
-from .._trait import HalPluginHooks
+from std.sys.info import CompilationTarget
+from .._trait import HalPlugin, HalPluginHooks
 from ..._machine import DeviceRef
 from ...execution_config._nvidia import ExecutionConfigForTarget
 from ...extensions.cuda import CUDAHALExtensions
 
 
-struct CudaHalPlugin(HalPluginHooks):
+struct CudaHalPlugin(HalPlugin):
     """`PluginHooks` implementation for NVIDIA CUDA backends.
 
     Every hook is left at its `PluginHooks` default.
     """
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["cuda"]()
+    comptime HookFor[target: CompilationTarget] = CudaHalPluginHooks[target]
 
+
+struct CudaHalPluginHooks[target: CompilationTarget](HalPluginHooks):
     comptime ExecutionConfigType[device: DeviceRef] = ExecutionConfigForTarget[
         device.spec.name
     ]

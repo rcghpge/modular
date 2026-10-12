@@ -82,7 +82,7 @@ struct Device[spec: DeviceSpec](Deinitable, Movable):
 
     comptime Extensions = HAL_PLUGINS.for_target[
         DeviceSpec._mlir_target[Self.spec]()
-    ].extensions
+    ].HookFor[DeviceSpec.target[Self.spec]()].extensions
     var extensions: Self.Extensions
 
     @staticmethod

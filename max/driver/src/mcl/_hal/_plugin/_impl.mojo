@@ -12,6 +12,9 @@ target's `stdlib_plugin` field. The default build resolves to
 
 from ._trait import HalPluginHooks
 from ._overlay import HAL_PLUGINS
+from std.sys.info import CompilationTarget
 
-comptime CurrentHalPlugin: HalPluginHooks = HAL_PLUGINS.current
+comptime CurrentHalPlugin: HalPluginHooks = HAL_PLUGINS.current.HookFor[
+    CompilationTarget.current()
+]
 """The active HAL plugin."""

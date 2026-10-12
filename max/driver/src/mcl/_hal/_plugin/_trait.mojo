@@ -6,6 +6,7 @@
 
 from std.collections.string.string_span import _get_kgen_string
 from std._plugin.selector import Plugin
+from std.sys.info import CompilationTarget
 
 from .._machine import DeviceRef
 from ..execution_config import ExecutionConfig
@@ -13,7 +14,11 @@ from ..execution_config.cpu import CPUExecutionConfiguration
 from ..extensions.traits import DefaultHALExtensions, HALExtensions
 
 
-trait HalPluginHooks(Plugin):
+trait HalPlugin(Plugin):
+    comptime HookFor[target: CompilationTarget]: HalPluginHooks
+
+
+trait HalPluginHooks:
     """Compile-time hook interface for pluggable stdlib behavior.
 
     Most hooks are `comptime OptionalReg[Callable]` fields; call sites invoke
@@ -27,9 +32,6 @@ trait HalPluginHooks(Plugin):
     `debug_assert` and deadlock comptime instantiation.
     """
 
-    comptime name: __mlir_type.`!kgen.string`
-    """Stable plugin identifier used by the selector to select this backend."""
-
     comptime ExecutionConfigType[device: DeviceRef]: ExecutionConfig
 
     comptime extensions: HALExtensions = DefaultHALExtensions
@@ -40,7 +42,7 @@ trait HalPluginHooks(Plugin):
 # ===-----------------------------------------------------------------------===#
 
 
-struct DefaultHalPlugin(HalPluginHooks):
+struct DefaultHalPlugin(HalPlugin):
     """Default `HalPluginHooks` implementation used when no plugin is active.
 
     Every hook is left at its `HalPluginHooks` default, so the built-in stdlib
@@ -48,7 +50,10 @@ struct DefaultHalPlugin(HalPluginHooks):
     """
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["default"]()
+    comptime HookFor[target: CompilationTarget] = DefaultHalPluginHooks[target]
 
+
+struct DefaultHalPluginHooks[target: CompilationTarget](HalPluginHooks):
     comptime ExecutionConfigType[device: DeviceRef] = CPUExecutionConfiguration
 
     comptime extensions = DefaultHALExtensions
