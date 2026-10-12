@@ -15,7 +15,6 @@ from std.math import ceildiv
 from std.sys import align_of
 
 from layout._fillers import arange
-from layout._utils import ManagedLayoutTensor
 from layout import (
     Layout,
     TileTensor,
@@ -1455,9 +1454,10 @@ def test_nested_tile() raises:
     comptime base_layout = Layout.row_major(8, 8)
     comptime tiler_layout = Layout.row_major(2, 2)
     comptime layout = blocked_product(base_layout, tiler_layout)
-    var managed_tensor_a = ManagedLayoutTensor[.float32, layout]()
-    arange(managed_tensor_a.tensor())
-    var tensor_a = managed_tensor_a.tensor()
+    var tensor_a = LayoutTensor[
+        .float32, layout, MutAnyOrigin
+    ].stack_allocation()
+    arange(tensor_a)
     var vt = tensor_a.tile[4, 4](0, 0)
     for i in range(4):
         for j in range(4):
