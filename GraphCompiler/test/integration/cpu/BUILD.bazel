@@ -59,7 +59,15 @@ lit_tests(
     ),
     custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
     data = _COMMON_DATA,
+    # GEX-4343: tests hang intermittently on aarch64 (m7g, ubsan). Passes
+    # finish in under 200s, so fail at 300s instead of the 800s eternal
+    # timeout
+    env = select({
+        "//:asan_linux_aarch64": {},
+        "//:linux_aarch64": {"LIT_OPTS": "--timeout=300"},
+        "//conditions:default": {},
+    }),
     mojo_deps = _COMMON_MOJO_DEPS,
     tools = _COMMON_TOOLS,
-    deps = _COMMON_DEPS,
+    deps = _COMMON_DEPS + [requirement("psutil")],
 )
