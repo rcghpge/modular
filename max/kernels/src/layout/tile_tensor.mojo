@@ -1705,16 +1705,13 @@ struct TileTensor[
     def num_elements(self) -> Int:
         """Returns the total number of elements in the tensor.
 
-        Computes the product of all shape dimensions.
+        Computes the product of all shape dimensions, including those inside
+        nested modes.
 
         Returns:
             The total element count.
         """
-        var result = 1
-
-        comptime for i in range(Self.rank):
-            result *= Int(self.layout.shape[i]().value())
-        return result
+        return self.layout.product()
 
     @inline(.nodebug)
     def copy_from(self, other: TileTensor) where Self.mut:
@@ -4008,16 +4005,13 @@ struct NullableTileTensor[
     def num_elements(self) -> Int:
         """Returns the total number of elements in the tensor.
 
-        Computes the product of all shape dimensions.
+        Computes the product of all shape dimensions, including those inside
+        nested modes.
 
         Returns:
             The total element count.
         """
-        var result = 1
-
-        comptime for i in range(Self.rank):
-            result *= Int(self.layout.shape[i]().value())
-        return result
+        return self.layout.product()
 
     @inline(.nodebug)
     def to_layout_tensor(

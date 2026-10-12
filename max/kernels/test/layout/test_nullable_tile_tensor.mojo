@@ -13,10 +13,12 @@
 
 from layout import (
     Coord,
+    coord,
     Idx,
     TileTensor,
     row_major,
 )
+from layout.tile_layout import Layout as TileLayout
 from layout.tile_tensor import NullableTileTensor
 from std.testing import (
     TestSuite,
@@ -63,6 +65,21 @@ def test_dim_comptime() raises:
     var nullable = NullableTileTensor(TileTensor(data, row_major[3, 4]()))
     assert_equal(nullable.dim[0](), 3)
     assert_equal(nullable.dim[1](), 4)
+
+
+def test_num_elements_nested_layout() raises:
+    """Num_elements() counts every leaf of a nested layout."""
+    var data = Array[Int32, 1024](fill={})
+    var nullable = NullableTileTensor(
+        TileTensor(
+            data,
+            TileLayout(
+                Coord(coord[2, 16], Idx[32]),
+                Coord(coord[1, 64], Idx[2]),
+            ),
+        )
+    )
+    assert_equal(nullable.num_elements(), 1024)
 
 
 def test_dim_runtime() raises:

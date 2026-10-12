@@ -586,6 +586,26 @@ def test_crd2idx_narrow_uint32_within_range() raises:
     assert_equal(Int(idx_u32), Int(idx_i64))
 
 
+def test_crd2idx_narrow_uint32_scalar_split() raises:
+    """A scalar coordinate splits across nested modes correctly in `uint32`.
+
+    The coordinate splits first across the two top-level modes, then within
+    each mode, first sub-mode fastest.
+    """
+    var tiles = 3
+    var shape = Coord(Coord(tiles, Idx[16]), coord[2, 8])
+    var stride = Coord(Coord(Int(512), Idx[2]), coord[1, 64])
+
+    for i in range(tiles * 16 * 16):
+        var row = i % (tiles * 16)
+        var col = i // (tiles * 16)
+        var expected = (
+            512 * (row % tiles) + 2 * (row // tiles) + col % 2 + 64 * (col // 2)
+        )
+        var idx = crd2idx[out_type=DType.uint32](Coord(i), shape, stride)
+        assert_equal(Int(idx), expected)
+
+
 def test_cast_preserves_static_dims() raises:
     var c = Coord[
         ComptimeInt[5],

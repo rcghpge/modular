@@ -193,15 +193,13 @@ def test_nested_index_narrowing_precedes_colex_expansion() raises:
     var narrowed = RuntimeTuple[IntTuple(-1, -1), element_type=.int32](
         Int(Int32(wide)), 0
     )
-    # A narrow output dtype alone does not reproduce legacy __getitem__:
-    # its IndexList narrows before nested divmod, not after expansion.
+    # crd2idx splits a scalar coordinate at the output dtype, so a narrow
+    # output dtype narrows before the nested divmod, like legacy __getitem__.
     assert_equal(Int(runtime(narrowed)), 1)
     assert_equal(
         Int(native[linear_idx_type=.int32](Coord(Int32(wide), Int32(0)))), 1
     )
-    assert_equal(
-        Int(native[linear_idx_type=.int32](Coord(wide, Int64(0)))), -1431655766
-    )
+    assert_equal(Int(native[linear_idx_type=.int32](Coord(wide, Int64(0)))), 1)
 
 
 def test_borrowed_views_keep_origin_and_alias_storage() raises:
