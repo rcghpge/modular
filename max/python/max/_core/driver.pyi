@@ -123,6 +123,11 @@ class Device:
     def max_single_alloc_size(self) -> int:
         """Largest single contiguous allocation, in bytes."""
 
+    def _allocation_range(self, address: int) -> tuple[int, int]:
+        """
+        Returns ``(base, size)`` of the driver allocation that contains ``address``.
+        """
+
     @property
     def label(self) -> str:
         """
