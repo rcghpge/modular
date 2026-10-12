@@ -14,9 +14,9 @@
 path.
 
 Each shape is chosen to land on one path: GEMV, small-MN split-K GEMV,
-small-MN MMA-cp.async, unaligned-N split-K GEMV, IEEE-fp32 split-K GEMV, the
-vendor BLAS low-perf route, and the tcgen05 tile GEMM. The closure scales by a
-power of two, so its result must match the plain dispatch exactly.
+small-MN MMA-cp.async, unaligned-N split-K GEMV, IEEE-fp32 split-K GEMV, a
+tuned (N, K) with split-K outlier rows, and the tcgen05 tile GEMM. The closure
+scales by a power of two, so its result must match the plain dispatch exactly.
 """
 
 from std.random import rand
@@ -97,9 +97,9 @@ def main() raises:
         test_dispatch_epilogue_fn[.bfloat16, .bfloat16, 100, 4096](ctx, 4)
         # IEEE-fp32 split-K GEMV.
         test_dispatch_epilogue_fn[.float32, .float32, 128, 6144](ctx, 4)
-        # Vendor BLAS low-perf route: the matmul runs into `c` first.
-        test_dispatch_epilogue_fn[
-            .bfloat16, .bfloat16, 2112, 14336, kernel_writes_c=True
-        ](ctx, 64)
+        # Tuned (N, K) with split-K outlier rows, which the closure skips (an
+        # instantiation that took one would not compile). At this M neither
+        # dispatch has a split-K row, so both run the same kernel.
+        test_dispatch_epilogue_fn[.bfloat16, .bfloat16, 2112, 14336](ctx, 256)
         # tcgen05 tile GEMM.
         test_dispatch_epilogue_fn[.bfloat16, .bfloat16, 4096, 4096](ctx, 256)

@@ -17,6 +17,11 @@ The shapes land on the GEMV, small-M, tile GEMM and vendor BLAS paths of the
 SM100 dispatch, and on the 4-wave, split-K and multistage paths of the AMD
 CDNA dispatch, with and without `transpose_b`. Each epilogue scales by a power
 of two, so its result must match the plain `_matmul_gpu` exactly.
+
+The tuned SM100 (N, K) = (2112, 14336) has split-K rows that the epilogues skip,
+so its plain dispatch sums K in another order and cannot match them bit for
+bit. Its reference runs through an identity compute epilogue instead, which
+takes the same kernel as the epilogues.
 """
 
 from std.random import rand
@@ -28,9 +33,15 @@ from std.testing import assert_equal
 
 
 def test_epilogues[
-    dtype: DType, N: Int, K: Int, *, transpose_b: Bool = True
+    dtype: DType,
+    N: Int,
+    K: Int,
+    *,
+    transpose_b: Bool = True,
+    split_k_tuned: Bool = False,
 ](ctx: DeviceContext, m: Int) raises:
-    """Checks each epilogue against the plain matmul at every output index."""
+    """Checks each epilogue against the plain matmul at every output index.
+    With `split_k_tuned`, the reference is the identity compute epilogue."""
     print(dtype, m, "x", N, "x", K, "transpose_b:", transpose_b)
     comptime b_rows = N if transpose_b else K
     comptime b_cols = K if transpose_b else N
@@ -53,7 +64,19 @@ def test_epilogues[
     # A raw-pointer tile: `@__copy_capture` byte-copies its capture.
     var d = TileTensor(d_dev.unsafe_ptr(), row_major(m, Idx[N]))
 
-    _matmul_gpu[use_tensor_core=True, transpose_b=transpose_b](c_ref, a, b, ctx)
+    def identity_fn[
+        _dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: Coord, val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+        return val
+
+    comptime if split_k_tuned:
+        _matmul_gpu[use_tensor_core=True, transpose_b=transpose_b](
+            c_ref, a, b, identity_fn, ctx
+        )
+    else:
+        _matmul_gpu[use_tensor_core=True, transpose_b=transpose_b](
+            c_ref, a, b, ctx
+        )
 
     @__parameter
     @inline(.always)
@@ -122,6 +145,6 @@ def main() raises:
         test_epilogues[.bfloat16, 4096, 4096](ctx, 256)
         test_epilogues[.bfloat16, 4096, 4096](ctx, 512)
         test_epilogues[.bfloat16, 4096, 4096](ctx, 2048)
-        test_epilogues[.bfloat16, 2112, 14336](ctx, 64)
+        test_epilogues[.bfloat16, 2112, 14336, split_k_tuned=True](ctx, 64)
         test_epilogues[.bfloat16, 1024, 1024, transpose_b=False](ctx, 256)
         test_epilogues[.float32, 1024, 1024](ctx, 100)

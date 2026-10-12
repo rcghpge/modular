@@ -26,6 +26,7 @@ from std.sys import (
 
 from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
 from max.gpu.host import DeviceContext
+from max.gpu.host.device_attribute import DeviceAttribute
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     DefaultEngine,
@@ -74,6 +75,7 @@ from linalg.gemv import (
 from .matmul import (
     blackwell_matmul_tma_umma_warp_specialized,
     blackwell_batched_matmul_tma_umma_warp_specialized,
+    splitk_grid,
 )
 from internal_utils import Table
 from .tuning_configs import (
@@ -587,6 +589,10 @@ def _matmul_dispatch_sm100_impl[
         comptime CTA_GROUP = get_defined_int["TUNE_CTA_GROUP", 2]()
         comptime K_GROUP_SIZE = get_defined_int["TUNE_K_GROUP_SIZE", 1]()
         comptime AB_SWAPPED = get_defined_bool["TUNE_AB_SWAPPED", False]()
+        comptime NUM_SPLIT_K = get_defined_int["TUNE_NUM_SPLIT_K", 1]()
+        comptime STAGES = get_defined_int["TUNE_STAGES", 0]()
+        comptime NUM_ACCUM = get_defined_int["TUNE_NUM_ACCUM", 2]()
+        comptime NUM_CLC = get_defined_int["TUNE_NUM_CLC", 2]()
 
         comptime umma_shape = Index(BM * CTA_GROUP, BN * CTA_GROUP, MMA_K)
 
@@ -599,11 +605,21 @@ def _matmul_dispatch_sm100_impl[
             AB_swapped=AB_SWAPPED,
             k_group_size=K_GROUP_SIZE,
             use_tma_epilogue_load=False,
+            num_split_k=NUM_SPLIT_K,
+            num_pipeline_stages=Optional[Int](STAGES) if STAGES > 0 else None,
+            num_accum_pipeline_stages=NUM_ACCUM,
+            num_clc_pipeline_stages=NUM_CLC,
         )
 
+        comptime PROFILE_TILES = get_defined_int["TUNE_PROFILE_TILES", 0]()
         return blackwell_matmul_tma_umma_warp_specialized[
             transpose_b=transpose_b,
             config=config,
+            pdl_level=pdl_level,
+            max_profiled_tiles_per_SM=Optional[UInt32](
+                UInt32(PROFILE_TILES)
+            ) if PROFILE_TILES
+            > 0 else None,
         ](c, a, b, ctx)
 
     # M = 1(or N = 1) : dispatch to GEMV or SM100 based on(N, K).
@@ -1058,6 +1074,43 @@ def _sm100_outlier_configs[
         ).find(rule=rule)
 
 
+@inline(.always)
+def _outlier_fits_device[
+    tuning_config: TuningConfigSM100
+](ctx: DeviceContext, m: Int, n: Int) raises -> Bool:
+    """Returns whether the device can hold every CTA of a split-K row's grid.
+
+    The splits of a tile wait on each other, so the split-K launcher needs
+    the whole grid resident; a device with fewer SMs (a smaller part or a
+    MIG slice) falls through to the next row or the heuristic instead.
+
+    Parameters:
+        tuning_config: The outlier row.
+
+    Args:
+        ctx: Device context of the launch.
+        m: Rows of the output.
+        n: Columns of the output.
+
+    Returns:
+        True for rows without split-K or whose grid fits.
+    """
+    comptime if tuning_config.num_split_k == 1:
+        return True
+    var grid = splitk_grid(
+        n if tuning_config.swapAB else m,
+        m if tuning_config.swapAB else n,
+        tuning_config.mma_shape[0] // tuning_config.cta_group,
+        tuning_config.mma_shape[1],
+        tuning_config.cluster_shape[0],
+        tuning_config.cluster_shape[1],
+        tuning_config.num_split_k,
+    )
+    return grid[0] * grid[1] * grid[2] <= ctx.get_attribute(
+        DeviceAttribute.MULTIPROCESSOR_COUNT
+    )
+
+
 def select_and_launch_sm100_config[
     c_type: DType,
     a_type: DType,
@@ -1084,6 +1137,8 @@ def select_and_launch_sm100_config[
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_tensor: Bool = False,
     epilogue_is_1d: Bool = False,
+    has_compute_fn: Bool = True,
+    has_epilogue_fn: Bool = False,
 ](
     launch: launch_type,
     c: TileTensor[mut=True, c_type, ...],
@@ -1131,29 +1186,48 @@ def select_and_launch_sm100_config[
 
     # do not use outliers list when c_type is FP8 as we don't support all tile shapes dude to TMA requirements
     comptime if c_type != .float8_e4m3fn:
+        # Split-K writes the reduced sums itself and cannot apply an
+        # epilogue, so instantiations that carry one skip split-K rows and
+        # fall through to the heuristic.
+        comptime split_k_allowed = (
+            not has_compute_fn
+            and not has_epilogue_fn
+            and not has_epilogue_tensor
+        )
         comptime for tuning_config in outlier_configs:
-            if m >= tuning_config.M and m < tuning_config.M_end:
-                comptime matmul_config = MatmulConfig[
-                    a_type, b_type, c_type, transpose_b
-                ](
-                    mma_shape=tuning_config.mma_shape,
-                    cta_group=tuning_config.cta_group,
-                    cluster_shape=tuning_config.cluster_shape,
-                    block_swizzle_size=tuning_config.block_swizzle_size,
-                    raster_order=tuning_config.rasterize_order,
-                    AB_swapped=tuning_config.swapAB,
-                    num_accum_pipeline_stages=tuning_config.num_accum_pipeline_stages,
-                    num_clc_pipeline_stages=tuning_config.num_clc_pipeline_stages,
-                    k_group_size=tuning_config.k_group_size,
-                    num_split_k=tuning_config.num_split_k,
-                    use_tma_epilogue_load=has_epilogue_tensor,
-                    epilogue_is_1d=epilogue_is_1d,
-                )
+            comptime if tuning_config.num_split_k == 1 or split_k_allowed:
+                if (
+                    m >= tuning_config.M
+                    and m < tuning_config.M_end
+                    and _outlier_fits_device[tuning_config](ctx, m, static_N)
+                ):
+                    comptime matmul_config = MatmulConfig[
+                        a_type, b_type, c_type, transpose_b
+                    ](
+                        mma_shape=tuning_config.mma_shape,
+                        cta_group=tuning_config.cta_group,
+                        cluster_shape=tuning_config.cluster_shape,
+                        block_swizzle_size=tuning_config.block_swizzle_size,
+                        raster_order=tuning_config.rasterize_order,
+                        AB_swapped=tuning_config.swapAB,
+                        num_pipeline_stages=Optional[Int](
+                            tuning_config.num_pipeline_stages
+                        ) if tuning_config.num_pipeline_stages
+                        > 0 else None,
+                        num_accum_pipeline_stages=tuning_config.num_accum_pipeline_stages,
+                        num_clc_pipeline_stages=tuning_config.num_clc_pipeline_stages,
+                        k_group_size=tuning_config.k_group_size,
+                        num_split_k=tuning_config.num_split_k,
+                        use_tma_epilogue_load=has_epilogue_tensor,
+                        epilogue_is_1d=epilogue_is_1d,
+                    )
 
-                logger.info("dispatching to outlier config: ", matmul_config)
+                    logger.info(
+                        "dispatching to outlier config: ", matmul_config
+                    )
 
-                launch[matmul_config](c, a, b, ctx, epilogue_tensor)
-                return DISPATCH_HIT
+                    launch[matmul_config](c, a, b, ctx, epilogue_tensor)
+                    return DISPATCH_HIT
 
     comptime configs = build_sm100_matmul_configs[
         a_type,
@@ -1223,9 +1297,9 @@ def matmul_dispatch_sm100_bf16[
     """Dispatches a bfloat16-input SM100 matmul with a compute epilogue
     closure to a tuned or heuristic config.
 
-    Routes known low-performance shapes to vendor BLAS, tries the small-MN GEMM
-    tuning table for matched (N, K), then falls back to the heuristic outlier
-    dispatch and finally the default SM100 config on a miss.
+    Tries the small-MN GEMM tuning table for matched (N, K), then falls back
+    to the heuristic outlier dispatch and finally the default SM100 config on
+    a miss.
 
     Parameters:
         c_type: Output element type (inferred).
@@ -1267,21 +1341,6 @@ def matmul_dispatch_sm100_bf16[
 
     comptime MMA_K = 16
     comptime BK = (TensorMapSwizzle.SWIZZLE_128B.bytes() // size_of[a_type]())
-
-    comptime low_perf_shapes = [
-        Index(2112, 14336),
-    ]
-
-    # fallback to vendor matmul for shapes that Mojo kernel is lagging behind
-    comptime if (static_N, static_K) in low_perf_shapes and c_type in (
-        DType.bfloat16,
-    ):
-        _vendor_blas_matmul_sm100[
-            transpose_b=transpose_b,
-            has_epilogue_fn=has_epilogue_fn,
-            has_compute_fn=has_compute_fn,
-        ](c, a, b, epilogue_fn, compute_fn, ctx)
-        return DISPATCH_HIT
 
     comptime small_MN_gemms_table = Table(
         _get_tuning_list_small_MN_gemms_bf16(), "small_MN_gemms_configs"
@@ -1879,4 +1938,6 @@ def sm100_heuristic_and_outliers_dispatch[
         pdl_level,
         has_epilogue_tensor=has_epilogue_tensor,
         epilogue_is_1d=epilogue_is_1d,
+        has_compute_fn=has_compute_fn,
+        has_epilogue_fn=has_epilogue_fn,
     ](launch_callback, c, a, b, ctx, epilogue_tensor)

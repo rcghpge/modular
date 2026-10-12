@@ -76,7 +76,7 @@ from structured_kernels.kernel_common import WarpRole1D1D
 from .config import OutputPipelineConfig
 from .tile_pipeline import OutputStage
 from .output_writer_trait import OutputWriter
-from .tile_scheduler_splitk import TileScheduler, WorkInfo
+from .tile_scheduler_splitk import SplitKTileCounters, TileScheduler, WorkInfo
 from .epilogue_components import (
     AccumBarrier,
     AccumTile,
@@ -852,6 +852,56 @@ struct TileWriter[
             return
 
         self._copy_to_gmem(c_tiles, stage, (work_info.m, work_info.n), shape)
+
+    @inline(.always)
+    def write_splitk_parallel[
+        pieces_per_batch: Int
+    ](
+        self,
+        stage: Self.Stage,
+        scheduler: TileScheduler,
+        workspace: UnsafePointer[Scalar[Self.accum_type], MutAnyOrigin],
+        counters: SplitKTileCounters,
+        c: UnsafePointer[Scalar[Self.c_type], MutAnyOrigin],
+        c_row_stride: Int,
+        work_info: WorkInfo,
+        shape: Tuple[UInt32, UInt32],
+    ):
+        """Writes a split-K tile with the parallel reduction: this split's
+        partial goes to its own workspace slot, the TMEM stage is released,
+        then every split of the tile reduces its slice of all the slots and
+        stores it to C (see `TileScheduler.reduce_slice_to_output`).
+
+        Parameters:
+            pieces_per_batch: Pieces per thread whose slot loads are in
+                flight together.
+
+        Args:
+            stage: The accumulator stage holding this split's partial.
+            scheduler: The split-K tile scheduler.
+            workspace: Base of the fp32 workspace, one slot per split.
+            counters: The kernel's tile counters.
+            c: Base of the row-major output.
+            c_row_stride: Elements between consecutive rows of the output.
+            work_info: The split's work tile.
+            shape: The output's (rows, columns).
+        """
+        var epilogue_thread_idx = thread_idx.x
+        scheduler.store_partial_slot(
+            stage.tmem.address(), workspace, epilogue_thread_idx, work_info
+        )
+        AccumBarrier[Self.cta_group].arrive(stage.pipeline, stage.index)
+        scheduler.reduce_slice_to_output[
+            transpose_c=Self.transpose_c, pieces_per_batch=pieces_per_batch
+        ](
+            workspace,
+            counters,
+            c,
+            c_row_stride,
+            epilogue_thread_idx,
+            work_info,
+            shape,
+        )
 
     @inline(.always)
     def write_absolute_with_bounds_check[
