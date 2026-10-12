@@ -124,9 +124,9 @@ from structured_kernels.trace_buf import (
     ring_emit,
 )
 
-comptime elementwise_epilogue_type = def[
-    dtype: DType, width: SIMDLength, *, alignment: Int = 1
-](IndexList[2], SIMD[dtype, width]) capturing -> None
+comptime ep_combine_store_type = def[
+    dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
+](IndexList[rank], SIMD[dtype, width]) capturing -> None
 
 comptime router_weights_wrapper_type = def[width: Int](
     token_idx: Int, topk_id: Int
@@ -4796,48 +4796,6 @@ struct EPCombineKernel[
 
     @staticmethod
     @inline(.always)
-    def copy_shared_expert_outputs[
-        input_type: DType,
-        //,
-    ](
-        input_tokens: TileTensor[input_type, Engine=DefaultEngine[], ...],
-        output_tokens: TileTensor[
-            mut=True, input_type, Engine=DefaultEngine[], ...
-        ],
-    ) -> None:
-        """Copies shared expert outputs to the output tensor.
-
-        This method copies the shared expert's output tokens from the input
-        tensor to the output tensor when fused_shared_expert is enabled.
-
-        Args:
-            input_tokens: The input tokens containing shared expert outputs.
-            output_tokens: The output tensor to copy shared expert outputs to.
-        """
-        comptime assert (
-            input_tokens.flat_rank >= 2
-        ), "input_tokens expects rank >= 2"
-        comptime assert (
-            output_tokens.flat_rank >= 2
-        ), "output_tokens expects rank >= 2"
-        comptime hid_dim = input_tokens.static_shape[1]
-        var tid = thread_idx.x
-        var sm_id = block_idx.x
-        var shared_expert_token_count = output_tokens.dim(0)
-
-        for token_idx in range(
-            sm_id, Int(shared_expert_token_count), Self.n_sms
-        ):
-            var output_tokens_p = output_tokens._storage + token_idx * hid_dim
-            var input_tokens_p = input_tokens._storage + token_idx * hid_dim
-            block_memcpy[hid_dim * size_of[input_type](), Self.num_threads](
-                output_tokens_p.bitcast[UInt8](),
-                input_tokens_p.bitcast[UInt8](),
-                tid,
-            )
-
-    @staticmethod
-    @inline(.always)
     def send_tokens_back[
         input_type: DType,
         //,
@@ -5443,12 +5401,10 @@ struct EPCombineKernel[
     @inline(.always)
     def reduce_and_copy_to_output[
         output_type: DType,
+        store_fn: ep_combine_store_type,
         router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
-        elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     ](
-        output_tokens: TileTensor[
-            mut=True, output_type, Engine=DefaultEngine[], ...
-        ],
+        num_tokens: Int,
         recv_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
         atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
@@ -5458,11 +5414,20 @@ struct EPCombineKernel[
     ) -> None:
         """Communication SM logic for combine_wait_kernel.
 
-        Copies received tokens to the output tensor, optionally applying
-        router weights and reduction across top-k experts.
+        Copies received tokens to the output through `store_fn`, optionally
+        applying router weights and reduction across top-k experts.
+
+        Parameters:
+            output_type: The type of the output tokens.
+            store_fn: Stores one output vector. Called with
+                `(token_idx, elem)` when `router_weights_wrapper` is set, and
+                with `(token_idx, topk_idx, elem)` otherwise.
+            router_weights_wrapper: The wrapper for the router weights. If
+                provided, the routed experts' outputs for a token are weighted
+                and summed.
 
         Args:
-            output_tokens: The tensor to store the output tokens.
+            num_tokens: The number of output tokens.
             recv_buf_p: Pointer to the receive buffer.
             atomic_counter: Atomic counter for synchronization.
             my_rank: The rank of the current device.
@@ -5475,17 +5440,14 @@ struct EPCombineKernel[
                 if skip_a2a is True.
         """
         comptime DATA_READY_FLAG = 1024
-        var num_tokens = Int(output_tokens.dim(0))
         comptime dst_simd_width = simd_width_of[output_type]()
         comptime byte_simd_width = simd_width_of[DType.uint8]()
 
-        comptime last_dim = 1 if router_weights_wrapper else 2
-        comptime hid_dim = output_tokens.static_shape[last_dim]
+        comptime hid_dim = Self.msg_bytes // size_of[Scalar[output_type]]()
         comptime _align = align_of[SIMD[.uint8, byte_simd_width]]()
+        # `_align` is in bytes; stores take an alignment in elements.
+        comptime store_align = _align // size_of[Scalar[output_type]]()
 
-        comptime assert (
-            Self.msg_bytes == hid_dim * size_of[Scalar[output_type]]()
-        ), "EP combine_async: output shape doesn't match message size."
         comptime assert (
             Self.msg_bytes % byte_simd_width == 0
         ), "EP combine_async: message size must be divisible by " + String(
@@ -5564,49 +5526,24 @@ struct EPCombineKernel[
                     accum += weight * recv_chunk.cast[.float32]()
 
                 else:
-                    # The output tensor is of shape
-                    # `(num_tokens, top_k, hid_dim)`.
-                    comptime assert output_tokens.flat_rank >= 3, (
-                        "output_tokens expects rank >= 3 for (token_idx,"
-                        " topk_idx, elem_offset)"
-                    )
+                    # The output is of shape `(num_tokens, top_k, hid_dim)`.
                     var elem_offset = (
                         chunk_idx_in_token * n_chunk_elems
                         + lane_id() * dst_simd_width
                     )
-                    output_tokens.store(
-                        (
-                            token_idx,
-                            topk_idx,
-                            elem_offset,
-                        ),
-                        recv_chunk,
+                    store_fn[alignment=store_align](
+                        Index(token_idx, topk_idx, elem_offset), recv_chunk
                     )
 
             comptime if router_weights_wrapper:
-                comptime if elementwise_lambda_fn:
-                    comptime lambda_fn = elementwise_lambda_fn.value()
-                    lambda_fn[alignment=_align](
-                        (
-                            token_idx,
-                            chunk_idx_in_token * n_chunk_elems
-                            + lane_id() * dst_simd_width,
-                        ),
-                        accum.cast[output_type](),
-                    )
-
-                else:
-                    comptime assert (
-                        output_tokens.flat_rank >= 2
-                    ), "output_tokens expects rank >= 2 for reduced output"
-                    output_tokens.store(
-                        (
-                            token_idx,
-                            chunk_idx_in_token * n_chunk_elems
-                            + lane_id() * dst_simd_width,
-                        ),
-                        accum.cast[output_type](),
-                    )
+                store_fn[alignment=store_align](
+                    Index(
+                        token_idx,
+                        chunk_idx_in_token * n_chunk_elems
+                        + lane_id() * dst_simd_width,
+                    ),
+                    accum.cast[output_type](),
+                )
 
 
 @__llvm_metadata(
@@ -5723,19 +5660,16 @@ def combine_async_kernel[
 def combine_wait_kernel[
     output_type: DType,
     num_threads: Int,
-    output_tokens_layout: TensorLayout,
     n_sms: Int,
     top_k: Int,
     n_experts: Int,
     n_ranks: Int,
     msg_bytes: Int,
     max_tokens_per_rank: Int,
+    store_fn: ep_combine_store_type,
     router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
-    output_tokens: TileTensor[
-        output_type, output_tokens_layout, MutUntrackedOrigin
-    ],
+    num_tokens: Int32,
     recv_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
     recv_count_p: UnsafePointer[UInt64, MutUntrackedOrigin],
     ep_counters: EPLocalSyncCounters[n_experts],
@@ -5750,19 +5684,20 @@ def combine_wait_kernel[
     Parameters:
         output_type: The type of the output tokens.
         num_threads: The number of threads in the block.
-        output_tokens_layout: The layout of the output tokens.
         n_sms: The total number of SMs in the device.
         top_k: The number of selected experts per token.
         n_experts: The number of experts in the device.
         n_ranks: The number of ranks.
         msg_bytes: The number of bytes in the message for each token.
         max_tokens_per_rank: The maximum number of tokens per rank.
+        store_fn: Stores the output tokens. Called with
+            `(token_idx, elem)` when `router_weights_wrapper` is set, and
+            with `(token_idx, topk_idx, elem)` otherwise.
         router_weights_wrapper: The wrapper for the router weights. If provided,
             all routed experts' outputs for a token will be weighted and summed.
-        elementwise_lambda_fn: Optional output lambda function.
 
     Args:
-        output_tokens: The tensor to store the output tokens.
+        num_tokens: The number of output tokens.
         recv_buf_p: The pointer to the receive buffer. Need to be allocated using
             `shmem_alloc`. The underlying buffer is of shape
             `(max_tokens_per_rank, top_k, msg_bytes)`.
@@ -5801,10 +5736,10 @@ def combine_wait_kernel[
     else:
         combine_impl.reduce_and_copy_to_output[
             output_type,
+            store_fn,
             router_weights_wrapper,
-            elementwise_lambda_fn,
         ](
-            output_tokens,
+            Int(num_tokens),
             recv_buf_p,
             atomic_counter,
             my_rank,
@@ -6054,7 +5989,6 @@ def combine_kernel[
     num_threads: Int,
     input_tokens_layout: TensorLayout,
     src_info_layout: TensorLayout,
-    output_tokens_layout: TensorLayout,
     n_sms: Int,
     top_k: Int,
     n_experts: Int,
@@ -6062,9 +5996,9 @@ def combine_kernel[
     msg_bytes: Int,
     max_tokens_per_rank: Int,
     p2p_world_size: Int,
+    store_fn: ep_combine_store_type,
     router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
     fused_shared_expert: Bool = False,
-    epilogue_fn: Optional[elementwise_epilogue_type] = None,
     skip_a2a: Bool = False,
     use_shmem: Bool = True,
     allreduce_world_size: Int = 1,
@@ -6073,9 +6007,7 @@ def combine_kernel[
         input_type, input_tokens_layout, ImmUntrackedOrigin
     ],
     src_info: TileTensor[.int32, src_info_layout, ImmUntrackedOrigin],
-    output_tokens: TileTensor[
-        input_type, output_tokens_layout, MutUntrackedOrigin
-    ],
+    num_tokens: Int32,
     send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
     recv_buf_ptrs: Array[
         UnsafePointer[UInt8, MutUntrackedOrigin], p2p_world_size
@@ -6096,7 +6028,7 @@ def combine_kernel[
     outputs for each token.
 
     For fused_shared_expert mode, the shared expert outputs are added to the
-    reduced routed expert outputs using an elementwise lambda. This requires
+    reduced routed expert outputs before `store_fn` is called. This requires
     router_weights_wrapper to be provided (output must be reduced).
 
     Parameters:
@@ -6104,7 +6036,6 @@ def combine_kernel[
         num_threads: The number of threads in the block.
         input_tokens_layout: The layout of the input tokens.
         src_info_layout: The layout of the source token info.
-        output_tokens_layout: The layout of the output tokens.
         n_sms: The total number of SMs in the device.
         top_k: The number of selected experts per token.
         n_experts: The total number of experts in the model.
@@ -6112,14 +6043,14 @@ def combine_kernel[
         msg_bytes: The number of bytes per token message.
         max_tokens_per_rank: The maximum number of tokens per rank.
         p2p_world_size: Size of a High-speed GPU interconnect group.
+        store_fn: Stores the combined output tokens. Called with
+            `(token_idx, elem)` when `router_weights_wrapper` is set, and
+            with `(token_idx, topk_idx, elem)` otherwise.
         router_weights_wrapper: The wrapper for the router weights. If provided,
             all routed experts' outputs for a token will be weighted and summed.
             REQUIRED when fused_shared_expert is True.
         fused_shared_expert: Whether to add the shared expert's output to the
             combined output. Requires router_weights_wrapper to be provided.
-        epilogue_fn: Optional elementwise epilogue function applied after
-            computing combined output. If provided, this function is called with
-            coordinates and values instead of directly storing to output.
         skip_a2a: Whether to skip the A2A communication. If true, we will only
             send tokens within the current device.
         use_shmem: Whether to use the SHMEM API for the communication.
@@ -6129,7 +6060,7 @@ def combine_kernel[
     Args:
         input_tokens: The tokens to be sent back to the original rank.
         src_info: The source token info tensor.
-        output_tokens: The tensor to store the output tokens.
+        num_tokens: The number of output tokens.
         send_buf_p: The pointer to the send buffer. Need to be allocated using
             `shmem_alloc` if `use_shmem` is True.
         recv_buf_ptrs: An array of pointers to the receive buffers for each
@@ -6197,38 +6128,38 @@ def combine_kernel[
                 grid_dim.x - combine_impl.n_wait_sms,
             )
         else:
-            # Create an elementwise lambda that adds shared expert output if enabled
             comptime if fused_shared_expert:
                 comptime assert (
                     input_tokens.flat_rank >= 2
                 ), "input_tokens expects rank >= 2"
-                comptime assert (
-                    output_tokens.flat_rank >= 2
-                ), "output_tokens expects rank >= 2"
-                comptime hid_dim = input_tokens.static_shape[1]
 
                 @inline(.always)
                 @__parameter
                 def add_shared_expert_output[
-                    dtype: DType, width: SIMDLength, *, alignment: Int = 1
+                    dtype: DType,
+                    rank: Int,
+                    width: SIMDLength,
+                    *,
+                    alignment: Int = 1,
                 ](
-                    idx: IndexList[2], combined_val: SIMD[dtype, width]
+                    idx: IndexList[rank], combined_val: SIMD[dtype, width]
                 ) capturing:
+                    comptime assert rank == 2, "expects a reduced output"
                     var shared_expert_val = SIMD[dtype, width]()
 
                     comptime if combine_impl.skip_a2a:
-                        var num_tokens = UInt32(output_tokens.dim(0))
+                        var n_tokens = UInt32(num_tokens)
                         var shared_expert_token_count = (
-                            num_tokens
+                            n_tokens
                             + _allreduce_world_size
                             - UInt32(my_rank)
                             - 1
                         ) // _allreduce_world_size
                         var rank_start = UInt32(my_rank) * (
-                            num_tokens // _allreduce_world_size
+                            n_tokens // _allreduce_world_size
                         ) + min(
                             UInt32(my_rank),
-                            num_tokens % _allreduce_world_size,
+                            n_tokens % _allreduce_world_size,
                         )
 
                         if (
@@ -6244,23 +6175,16 @@ def combine_kernel[
                             (idx[0], idx[1])
                         ).cast[dtype]()
 
-                    var result = combined_val + shared_expert_val
-
-                    comptime if epilogue_fn:
-                        comptime epilogue = epilogue_fn.value()
-                        epilogue[width=width, alignment=alignment](idx, result)
-                    else:
-                        output_tokens.store(
-                            (idx[0], idx[1]),
-                            result.cast[input_type](),
-                        )
+                    store_fn[alignment=alignment](
+                        idx, combined_val + shared_expert_val
+                    )
 
                 combine_impl.reduce_and_copy_to_output[
                     input_type,
-                    router_weights_wrapper,
                     add_shared_expert_output,
+                    router_weights_wrapper,
                 ](
-                    output_tokens,
+                    Int(num_tokens),
                     recv_buf_ptrs[my_p2p_rank],
                     wait_atomic_counter,
                     my_rank,
@@ -6272,10 +6196,10 @@ def combine_kernel[
             else:
                 combine_impl.reduce_and_copy_to_output[
                     input_type,
+                    store_fn,
                     router_weights_wrapper,
-                    epilogue_fn,
                 ](
-                    output_tokens,
+                    Int(num_tokens),
                     recv_buf_ptrs[my_p2p_rank],
                     wait_atomic_counter,
                     my_rank,

@@ -69,7 +69,6 @@ from shmem.ep_comm import (
     EPLocalSyncCounters,
     MXTokenFormat,
     NVBlockScaledTokenFormat,
-    elementwise_epilogue_type,
     fused_silu_kernel,
     fused_silu_mx_kernel,
     fused_silu_mxfp6_kernel,
@@ -2269,7 +2268,6 @@ struct DistributedEPCombine:
         n_gpus_per_node: Int,
         n_nodes: Int,
         fused_shared_expert: Bool,
-        has_epilogue_fusion: Bool,
         //,
         target: StaticString,
         _trace_name: StaticString,
@@ -2303,8 +2301,6 @@ struct DistributedEPCombine:
             n_nodes: Number of physical nodes.
             fused_shared_expert: Whether a shared expert is fused into the
                 combine kernel.
-            has_epilogue_fusion: Whether the combine output is fused with a
-                downstream elementwise epilogue.
             target: Compile-time device target.
             _trace_name: Trace label for this op.
 
@@ -2345,6 +2341,10 @@ struct DistributedEPCombine:
             imm atomic_counters,
             imm gpu_ctxs,
         }:
+            comptime assert (
+                Int(type_of(output_tokens).static_specs[index].shape_tuple[1])
+                == hidden_size
+            ), "EP combine: output tokens shape doesn't match hidden size."
             var rw_tensor = router_weights[index].to_tile_tensor[.int64]()
 
             @__parameter
@@ -2360,9 +2360,13 @@ struct DistributedEPCombine:
             @__parameter
             @inline(.always)
             def output_fn[
-                dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](coords: IndexList[2], val: SIMD[dtype, width]):
-                output_tokens[index]._lambda_store[
+                dtype: DType,
+                rank: Int,
+                width: SIMDLength,
+                *,
+                alignment: Int = 1,
+            ](coords: IndexList[rank], val: SIMD[dtype, width]):
+                output_tokens[index]._fused_store[
                     width=width, element_alignment=alignment
                 ](
                     coords,
@@ -2377,13 +2381,11 @@ struct DistributedEPCombine:
                 n_gpus_per_node,
                 n_nodes,
                 target,
+                output_fn,
                 router_weights_wrapper=router_weights_fn,
-                epilogue_fn=Optional[elementwise_epilogue_type](
-                    output_fn
-                ) if has_epilogue_fusion else None,
                 fused_shared_expert=fused_shared_expert,
             ](
-                output_tokens[index].to_tile_tensor[.int64](),
+                output_tokens[index].dim_size[0](),
                 atomic_counters[index].to_tile_tensor[.int64](),
                 input_tokens[index].to_tile_tensor[.int64](),
                 src_info[index].to_tile_tensor[.int64](),
@@ -2493,7 +2495,6 @@ struct Struct_ep_combine_wait:
         max_token_per_rank: Int,
         n_gpus_per_node: Int,
         n_nodes: Int,
-        has_epilogue_fusion: Bool,
         target: StaticString,
     ](
         output_tokens: FusedOutputTensor[dtype=combine_dtype, rank=2, ...],
@@ -2521,9 +2522,6 @@ struct Struct_ep_combine_wait:
                 receive.
             n_gpus_per_node: Number of GPUs per physical node.
             n_nodes: Number of physical nodes in the deployment.
-            has_epilogue_fusion: Whether to apply an elementwise
-                epilogue function after computing the combined
-                output.
             target: Compile-time device target.
 
         Args:
@@ -2541,6 +2539,9 @@ struct Struct_ep_combine_wait:
                 Shape `[num_tokens, top_k]`.
             context: GPU device context for the current device.
         """
+        comptime assert (
+            Int(output_tokens.static_spec.shape_tuple[1]) == hidden_size
+        ), "EP combine: output tokens shape doesn't match hidden size."
         var router_weights_tensor = router_weights.to_tile_tensor[.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
@@ -2558,21 +2559,21 @@ struct Struct_ep_combine_wait:
         @__parameter
         @inline(.always)
         def output_fn[
-            dtype: DType, width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[dtype, width]):
-            output_tokens._lambda_store[
+            dtype: DType,
+            rank: Int,
+            width: SIMDLength,
+            *,
+            alignment: Int = 1,
+        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+            output_tokens._fused_store[
                 width=width, element_alignment=alignment
             ](
                 coords,
                 rebind[SIMD[combine_dtype, width]](val),
             )
 
-        var output_tokens_tensor = output_tokens.to_tile_tensor[.int64]()
-        # `output_tokens.dim(0)` is the per-token combine result count
-        # (= num_input_tokens). Pass it to enable the decode-fast-path
-        # grid sizing in `ep_combine_wait_kernel_api`.
-        var num_input_tokens = Int(output_tokens_tensor.dim(0))
         ep_combine_wait_kernel_api[
+            combine_dtype,
             hidden_size,
             top_k,
             n_experts,
@@ -2580,17 +2581,14 @@ struct Struct_ep_combine_wait:
             n_gpus_per_node,
             n_nodes,
             target,
+            output_fn,
             router_weights_wrapper=router_weights_fn,
-            epilogue_fn=Optional[elementwise_epilogue_type](
-                output_fn
-            ) if has_epilogue_fusion else None,
         ](
-            output_tokens_tensor,
+            output_tokens.dim_size[0](),
             atomic_counters.to_tile_tensor[.int64](),
             recv_ptrs.to_tile_tensor[.int64](),
             recv_count_ptrs.to_tile_tensor[.int64](),
             context,
-            num_input_tokens,
         )
 
 
@@ -2610,7 +2608,6 @@ struct Struct_ep_combine:
         n_gpus_per_node: Int,
         n_nodes: Int,
         fused_shared_expert: Bool,
-        has_epilogue_fusion: Bool,
         skip_a2a: Bool,
         //,
         target: StaticString,
@@ -2651,9 +2648,6 @@ struct Struct_ep_combine:
             fused_shared_expert: Whether a shared expert is fused into
                 the combine kernel, adding its output to the routed
                 expert outputs (inferred).
-            has_epilogue_fusion: Whether to apply an elementwise
-                epilogue function after computing the combined output
-                (inferred).
             skip_a2a: Whether to skip the all-to-all communication and
                 send tokens only within the current device (inferred).
             target: Compile-time device target.
@@ -2680,6 +2674,12 @@ struct Struct_ep_combine:
                 `[num_tokens, top_k]`.
             context: GPU device context for the current device.
         """
+        comptime assert (
+            not skip_a2a
+        ), "ep.combine: skip_a2a is lowered to ep.combine.skip_a2a."
+        comptime assert (
+            Int(output_tokens.static_spec.shape_tuple[1]) == hidden_size
+        ), "EP combine: output tokens shape doesn't match hidden size."
         var router_weights_tensor = router_weights.to_tile_tensor[.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
@@ -2697,9 +2697,13 @@ struct Struct_ep_combine:
         @__parameter
         @inline(.always)
         def output_fn[
-            dtype: DType, width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[dtype, width]):
-            output_tokens._lambda_store[
+            dtype: DType,
+            rank: Int,
+            width: SIMDLength,
+            *,
+            alignment: Int = 1,
+        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+            output_tokens._fused_store[
                 width=width, element_alignment=alignment
             ](
                 coords,
@@ -2714,14 +2718,12 @@ struct Struct_ep_combine:
             n_gpus_per_node,
             n_nodes,
             target,
+            output_fn,
             router_weights_wrapper=router_weights_fn,
-            epilogue_fn=Optional[elementwise_epilogue_type](
-                output_fn
-            ) if has_epilogue_fusion else None,
             fused_shared_expert=fused_shared_expert,
             skip_a2a=skip_a2a,
         ](
-            output_tokens.to_tile_tensor[.int64](),
+            output_tokens.dim_size[0](),
             atomic_counters.to_tile_tensor[.int64](),
             input_tokens.to_tile_tensor[.int64](),
             src_info.to_tile_tensor[.int64](),
@@ -2748,7 +2750,6 @@ struct Struct_ep_combine_skip_a2a:
         n_gpus_per_node: Int,
         n_nodes: Int,
         fused_shared_expert: Bool,
-        has_epilogue_fusion: Bool,
         skip_a2a: Bool,
         allreduce_world_size: Int,
         //,
@@ -2793,9 +2794,6 @@ struct Struct_ep_combine_skip_a2a:
             fused_shared_expert: Whether a shared expert is fused
                 into the combine kernel, adding its output to the
                 routed expert outputs (inferred).
-            has_epilogue_fusion: Whether to apply an elementwise
-                epilogue function after computing the combined
-                output (inferred).
             skip_a2a: Whether to skip the all-to-all communication
                 and reduce expert outputs locally instead
                 (inferred).
@@ -2828,6 +2826,9 @@ struct Struct_ep_combine_skip_a2a:
                 Shape `[num_tokens, top_k]`.
             context: GPU device context for the current device.
         """
+        comptime assert (
+            Int(output_tokens.static_spec.shape_tuple[1]) == hidden_size
+        ), "EP combine: output tokens shape doesn't match hidden size."
         var router_weights_tensor = router_weights.to_tile_tensor[.int64]()
         comptime assert router_weights_tensor.flat_rank == 2
         comptime assert router_weights_tensor.flat_rank >= 2
@@ -2845,9 +2846,13 @@ struct Struct_ep_combine_skip_a2a:
         @__parameter
         @inline(.always)
         def output_fn[
-            dtype: DType, width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[dtype, width]):
-            output_tokens._lambda_store[
+            dtype: DType,
+            rank: Int,
+            width: SIMDLength,
+            *,
+            alignment: Int = 1,
+        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+            output_tokens._fused_store[
                 width=width, element_alignment=alignment
             ](
                 coords,
@@ -2862,15 +2867,13 @@ struct Struct_ep_combine_skip_a2a:
             n_gpus_per_node,
             n_nodes,
             target,
+            output_fn,
             router_weights_wrapper=router_weights_fn,
-            epilogue_fn=Optional[elementwise_epilogue_type](
-                output_fn
-            ) if has_epilogue_fusion else None,
             fused_shared_expert=fused_shared_expert,
             skip_a2a=skip_a2a,
             allreduce_world_size=allreduce_world_size,
         ](
-            output_tokens.to_tile_tensor[.int64](),
+            output_tokens.dim_size[0](),
             atomic_counters.to_tile_tensor[.int64](),
             input_tokens.to_tile_tensor[.int64](),
             src_info.to_tile_tensor[.int64](),

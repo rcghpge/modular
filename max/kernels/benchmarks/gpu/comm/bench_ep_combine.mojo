@@ -55,7 +55,7 @@ from std.benchmark import (
 )
 from comm.sync import enable_p2p
 from max.gpu.host import DeviceBuffer, DeviceContext
-from layout import TileTensor, Idx
+from layout import Coord, TileTensor, Idx
 from layout.tile_layout import row_major
 from shmem.ep import (
     ep_combine_async_kernel_api,
@@ -65,11 +65,11 @@ from shmem.ep import (
 from shmem.ep_comm import (
     BF16TokenFormat,
     EPLocalSyncCounters,
-    combine_wait_kernel,
     combine_async_kernel,
     dispatch_wait_kernel,
     dispatch_async_kernel,
 )
+from std.utils.index import IndexList
 
 
 # Routing mode is read at run time, not baked in: measuring an optimization
@@ -595,19 +595,6 @@ def bench_combine[
         use_shmem=False,
     ]
 
-    # Combine callback kernel
-    comptime combine_wait = combine_wait_kernel[
-        input_type,
-        hw_info.max_thread_block_size,
-        type_of(output_2_layout),
-        hw_info.sm_count,
-        top_k,
-        n_experts,
-        n_ranks,
-        combine_msg_bytes,
-        n_tokens_per_rank,
-    ]
-
     @inline(.always)
     @__parameter
     def run_dispatch_async(dev_idx: Int, slot_idx: Int) raises:
@@ -716,7 +703,20 @@ def bench_combine[
     @__parameter
     def run_combine_async_wait(dev_idx: Int, slot_idx: Int) raises:
         var ctx = list_of_ctx[dev_idx]
+        var output_2_tensor = get_output_2_tensor(dev_idx, slot_idx)
+
+        @inline(.always)
+        @__parameter
+        @__copy_capture(output_2_tensor)
+        def store_output_2[
+            dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
+        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+            output_2_tensor.store[
+                width=width, alignment=alignment * size_of[dtype]()
+            ](Coord(coords), rebind[SIMD[input_type, width]](val))
+
         ep_combine_wait_kernel_api[
+            input_type,
             hidden_size,
             top_k,
             n_experts,
@@ -724,9 +724,10 @@ def bench_combine[
             n_ranks,
             1,
             "gpu",
+            store_output_2,
             router_weights_wrapper=unit_router_weight,
         ](
-            get_output_2_tensor(dev_idx, slot_idx),
+            n_tokens_per_rank,
             get_atomic_counters_tt(dev_idx, slot_idx),
             get_c_recv_ptrs(slot_idx),
             get_c_recv_count_ptrs(slot_idx),
@@ -742,6 +743,18 @@ def bench_combine[
     @__parameter
     def run_fused_combine(dev_idx: Int, slot_idx: Int) raises:
         var ctx = list_of_ctx[dev_idx]
+        var output_2_tensor = get_output_2_tensor(dev_idx, slot_idx)
+
+        @inline(.always)
+        @__parameter
+        @__copy_capture(output_2_tensor)
+        def store_output_2[
+            dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
+        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+            output_2_tensor.store[
+                width=width, alignment=alignment * size_of[dtype]()
+            ](Coord(coords), rebind[SIMD[input_type, width]](val))
+
         ep_fused_combine_kernel_api[
             hidden_size,
             top_k,
@@ -750,10 +763,11 @@ def bench_combine[
             n_ranks,
             1,
             "gpu",
+            store_output_2,
             router_weights_wrapper=unit_router_weight,
             use_shmem=False,
         ](
-            get_output_2_tensor(dev_idx, slot_idx),
+            n_tokens_per_rank,
             get_atomic_counters_tt(dev_idx, slot_idx),
             get_output_tensor(dev_idx, slot_idx).as_imm(),
             get_src_token_info_tensor(dev_idx, slot_idx).as_imm(),
