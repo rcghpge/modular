@@ -37,6 +37,10 @@ static constexpr std::array<llvm::StringLiteral, 3>
     kMaxFusedOutputVariadicTensors = {kPackageExtensibility,
                                       kPackageManagedTensorSlice,
                                       kLeafFusedOutputVariadicTensors};
+static constexpr std::array<llvm::StringLiteral, 3> kMaxStableTensor = {
+    kPackageExtensibility, kPackageStableTensor, kLeafStableTensor};
+static constexpr std::array<llvm::StringLiteral, 3> kMaxStableVariadicTensors =
+    {kPackageExtensibility, kPackageStableTensor, kLeafStableVariadicTensors};
 
 static constexpr llvm::StringLiteral kLeafDeviceContextBase =
     "DeviceContextBase";
@@ -48,6 +52,7 @@ static constexpr llvm::StringLiteral kFusedKey = "fused";
 static constexpr llvm::StringLiteral kAccessKey = "access";
 static constexpr llvm::StringLiteral kCapabilitiesKey = "capabilities";
 static constexpr llvm::StringLiteral kBoundKey = "bound";
+static constexpr llvm::StringLiteral kStableKey = "stable";
 
 /// Build a "root.intermediate...leaf" opaque type string from a symbol ref,
 /// '.'-joined like a Mojo qualified name, so consumers (e.g.
@@ -92,12 +97,15 @@ getIOSpecFromStructType(KGEN::LIT::StructType structType) {
   if (symbolMatches(structType.getSymbol(), kMaxFusedOutputVariadicTensors))
     return IOSpec::FusedOutputTensor;
 
-  // All other tensors encode mut and input as the first two param values.
-  bool isManagedTensor =
-      symbolMatches(structType.getSymbol(), kMaxManagedTensorSlice);
-  bool isVariadicTensor =
-      symbolMatches(structType.getSymbol(), kMaxVariadicTensors);
-  if (!isManagedTensor && !isVariadicTensor)
+  // All other tensors (including the slot-backed `StableTensor` /
+  // `StableVariadicTensors`) encode mut and input as the first two param
+  // values.
+  auto sym = structType.getSymbol();
+  bool isTensorStruct = symbolMatches(sym, kMaxManagedTensorSlice) ||
+                        symbolMatches(sym, kMaxVariadicTensors) ||
+                        symbolMatches(sym, kMaxStableTensor) ||
+                        symbolMatches(sym, kMaxStableVariadicTensors);
+  if (!isTensorStruct)
     return std::nullopt;
 
   auto params = structType.getParamValues();
@@ -309,6 +317,26 @@ static KernelDeclOperandVariant classifyArgType(mlir::MLIRContext *ctx,
   if (symbolMatches(sym, kMaxFusedOutputVariadicTensors))
     return KernelDeclVariadicTensorAdaptor{IOSpec::FusedOutputTensor};
 
+  // Slot-backed views: same adaptor kinds as their pointer-backed siblings,
+  // flagged `stable` so emit and the verifier can tell them apart.
+  if (symbolMatches(sym, kMaxStableTensor)) {
+    auto ioSpec = getIOSpecFromStructType(structType);
+    if (!ioSpec)
+      return KernelDeclOpaqueAdaptor{buildOpaqueSymbol(ctx, sym)};
+    KernelDeclTensorAdaptor adaptor{*ioSpec};
+    adaptor.stable = true;
+    return adaptor;
+  }
+
+  if (symbolMatches(sym, kMaxStableVariadicTensors)) {
+    auto ioSpec = getIOSpecFromStructType(structType);
+    if (!ioSpec)
+      return KernelDeclOpaqueAdaptor{buildOpaqueSymbol(ctx, sym)};
+    KernelDeclVariadicTensorAdaptor adaptor{*ioSpec};
+    adaptor.stable = true;
+    return adaptor;
+  }
+
   // --- Scalar ---
   // SIMD may be re-exported at different depths (e.g. @std::@builtin::@SIMD vs
   // @std::@SIMD).
@@ -399,6 +427,9 @@ enum class TraitCategory {
   /// A dense data-access capability (`TileTensorable`); carries no contract
   /// meaning on its own.
   dataCapability,
+  /// A storage marker (`Stable`): the argument's pointer lives in a stable
+  /// address slot. Carries no payload; contributes `contract.stable`.
+  storage,
   /// An access-form marker (`LoadAccess` / `StoreAccess` / `TransformAccess`).
   /// The row's `access` payload names the form it contributes.
   accessMarker,
@@ -484,6 +515,7 @@ constexpr VocabEntry kTensorArgVocab[] = {
     {"Transformable", TraitCategory::accessCapability,
      TensorArgAccess::transform},
     {kTileTensorableLeaf, TraitCategory::dataCapability},
+    {"Stable", TraitCategory::storage},
     {"TileTransformAccess", TraitCategory::deferred},
     {"TileTransformable", TraitCategory::deferred},
 };
@@ -929,6 +961,13 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     return any;
   };
 
+  auto isPresentLeaf = [&](llvm::StringRef leaf) {
+    for (size_t i = 0; i < std::size(kTensorArgVocab); ++i)
+      if (kTensorArgVocab[i].leaf == leaf)
+        return present[i];
+    return false;
+  };
+
   // Shape-function lane: arguments always run on the host and are
   // read-only, so reading through `TileTensorable` is safe here (unlike
   // the execute lane). The distiller records the deepest bound written
@@ -945,6 +984,12 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
       emitError("Fused is not allowed on a shape-function tensor argument");
       return mlir::failure();
     }
+    if (anyPresent(TraitCategory::storage)) {
+      emitError("Stable is not allowed on a shape-function tensor argument; "
+                "shape functions run on the host and cannot read a stable "
+                "address slot");
+      return mlir::failure();
+    }
     if (anyPresent(TraitCategory::accessMarker) ||
         anyPresent(TraitCategory::accessCapability) ||
         anyPresent(TraitCategory::deferred)) {
@@ -955,12 +1000,6 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
           "TileTensorable instead");
       return mlir::failure();
     }
-    auto isPresentLeaf = [&](llvm::StringRef leaf) {
-      for (size_t i = 0; i < std::size(kTensorArgVocab); ++i)
-        if (kTensorArgVocab[i].leaf == leaf)
-          return present[i];
-      return false;
-    };
     TensorArgContract contract;
     contract.role = TensorArgRole::none;
     contract.fused = false;
@@ -995,6 +1034,31 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
   contract.role = role;
 
   contract.fused = anyPresent(TraitCategory::fused);
+
+  // Storage: a `Stable` argument is read through a `TileTensor` projection
+  // over its slot, so it needs the dense tier and cannot be a fusion functor
+  // or a pointer-written output.
+  contract.stable = anyPresent(TraitCategory::storage);
+  if (contract.stable) {
+    if (contract.fused) {
+      emitError("a Stable tensor argument cannot also be Fused; a stable "
+                "address slot is read through a TileTensor projection, not a "
+                "fusion functor");
+      return mlir::failure();
+    }
+    if (contract.role == TensorArgRole::output) {
+      emitError("Stable is not valid on an Output argument; outputs are "
+                "written through a pointer-backed buffer (use Input or "
+                "MutableInput)");
+      return mlir::failure();
+    }
+    if (!isPresentLeaf(kDenseTensorLeaf)) {
+      emitError("a Stable tensor argument must also conform to DenseTensor; "
+                "the stable address slot is only reachable through a "
+                "TileTensor projection");
+      return mlir::failure();
+    }
+  }
 
   // Tile-transform fusion is deferred.
   if (anyPresent(TraitCategory::deferred)) {
@@ -1192,6 +1256,9 @@ tensorArgContractToDict(mlir::MLIRContext *ctx,
   if (contract.bound != TensorArgBound::unspecified)
     entries.push_back(
         b.getNamedAttr(kBoundKey, b.getStringAttr(toString(contract.bound))));
+  // Likewise `stable` is omitted when false.
+  if (contract.stable)
+    entries.push_back(b.getNamedAttr(kStableKey, b.getBoolAttr(true)));
   return mlir::DictionaryAttr::get(ctx, entries);
 }
 
@@ -1241,7 +1308,8 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
   }
 
   return MOGG::TensorArgContractAttr::get(ctx, irRole, contract.fused, irAccess,
-                                          irCapabilities, irBound);
+                                          irCapabilities, irBound,
+                                          contract.stable);
 }
 
 std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
@@ -1276,6 +1344,8 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
   // `bound` is only ever baked for a shape-fn contract; absent means
   // `unspecified` (every execute-lane encoding).
   std::optional<StringRef> boundStr = getStr(kBoundKey);
+  // `stable` is only ever baked when set; absent means false.
+  std::optional<bool> stable = getBool(kStableKey);
 
   // Inverse of `toString(TensorArgRole)`.
   TensorArgRole role;
@@ -1309,6 +1379,7 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
   contract.accessMask = *accessMask;
   contract.capabilityMask = *capabilityMask;
   contract.bound = bound;
+  contract.stable = stable.value_or(false);
   return contract;
 }
 

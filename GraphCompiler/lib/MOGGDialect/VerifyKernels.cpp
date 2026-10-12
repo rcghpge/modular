@@ -71,6 +71,10 @@ static std::string capitalize(llvm::StringRef s) {
 /// A pair is compatible when types match exactly, or when the lhs side has a
 /// `MutableInputTensor` and the rhs side has a non-mutable tensor (shape /
 /// build_graph cannot mutate their inputs, so a relaxed match is allowed).
+/// Adaptor equality ignores the `stable` flag on purpose, so a build_graph
+/// `StableTensor` / `StableVariadicTensors` argument aligns with the plain
+/// execute argument at the same position; `declVerifyStableTensorArguments`
+/// owns the rules for where stable arguments may appear.
 LogicalResult verifyInputArgumentsAlign(KernelDeclOp decl,
                                         const KernelDeclFunctionAdaptor &lhs,
                                         llvm::StringRef lhsKind,
@@ -168,7 +172,10 @@ LogicalResult declVerifyShapeFunctionInputsMatchExecuteFunction(
 }
 
 /// build_graph must align with execute modulo their launch arguments
-/// (DeviceContext vs DeviceGraphBuilder). Same tensor signature is required.
+/// (DeviceContext vs DeviceGraphBuilder). Same tensor signature is required,
+/// except that a build_graph argument may be the slot-backed (`StableTensor` /
+/// `StableVariadicTensors`) form of the execute argument at the same position:
+/// the adaptor equality used by `verifyInputArgumentsAlign` ignores `stable`.
 LogicalResult
 declVerifyExecuteMatchesBuildGraph(KernelDeclOp decl,
                                    const KernelDeclAdaptor &adaptor) {
@@ -177,6 +184,62 @@ declVerifyExecuteMatchesBuildGraph(KernelDeclOp decl,
     return success();
   return verifyInputArgumentsAlign(decl, *adaptor.executeFunction, "execute",
                                    *adaptor.buildGraphFunction, "build_graph");
+}
+
+/// Slot-backed tensor arguments (`StableTensor` / `StableVariadicTensors`)
+/// are a device-graph recording concept: the slot is populated by the graph
+/// builder, so only `build_graph` may declare them, and only as inputs (a
+/// kernel writes its outputs through live addresses). The pack never carries
+/// fusion functors, so a fused stable argument is rejected too.
+LogicalResult declVerifyStableTensorArguments(
+    KernelDeclOp decl, const KernelDeclAdaptor &adaptor,
+    const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
+  auto positionOf = [](const KernelDeclOperandAdaptor &arg) -> uint64_t {
+    return arg.sourceDescriptor ? arg.sourceDescriptor->position : 0;
+  };
+
+  auto rejectStable = [&](const std::optional<KernelDeclFunctionAdaptor> &func,
+                          StringRef kind) -> LogicalResult {
+    if (!func.has_value())
+      return success();
+    for (const auto &args : {func->inputArguments, func->outputArguments})
+      for (const auto &arg : args)
+        if (arg.isStableTensorType())
+          return decl->emitError()
+                 << "stable tensor arguments (StableTensor / "
+                    "StableVariadicTensors) are only supported on build_graph "
+                    "functions (argument at position "
+                 << positionOf(arg) << " of the " << kind << " function)";
+    return success();
+  };
+
+  if (rejectStable(adaptor.executeFunction, "execute").failed() ||
+      rejectStable(shapeFunction, "shape").failed() ||
+      rejectStable(adaptor.elementwiseFunction, "elementwise").failed() ||
+      rejectStable(adaptor.tileElementwiseFunction, "tile_elementwise")
+          .failed())
+    return failure();
+
+  if (!adaptor.buildGraphFunction.has_value())
+    return success();
+
+  for (const auto &arg : adaptor.buildGraphFunction->outputArguments)
+    if (arg.isStableTensorType())
+      return decl->emitError()
+             << "a stable tensor argument cannot be an output (argument at "
+                "position "
+             << positionOf(arg)
+             << " of the build_graph function); a device graph writes "
+                "through live addresses, not stable address slots";
+
+  for (const auto &arg : adaptor.buildGraphFunction->inputArguments)
+    if (arg.isStableTensorType() && arg.isFusedTensorType())
+      return decl->emitError()
+             << "stable tensor arguments cannot be fused (argument at "
+                "position "
+             << positionOf(arg) << " of the build_graph function)";
+
+  return success();
 }
 
 /// A build_graph method records nodes against a DeviceGraphBuilder, so the
@@ -867,6 +930,11 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
 
       if (setFlagIfFailed(failed, declVerifyExecuteMatchesBuildGraph, decl,
                           adaptor)
+              .failed())
+        continue;
+
+      if (setFlagIfFailed(failed, declVerifyStableTensorArguments, decl,
+                          adaptor, shapeFnAdaptor)
               .failed())
         continue;
 

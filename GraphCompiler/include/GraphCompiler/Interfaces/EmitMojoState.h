@@ -61,6 +61,10 @@ struct EmitMojoState {
   /// shape-function trait tensor argument. Shape functions run on the host,
   /// so it needs none of `_MoggDenseTensorArg`'s device-passable machinery.
   bool emittedShapeTensorArgDefs = false;
+  /// One-per-module guard for `_MoggStableTensorArg` (`kStableTensorArgDefs`):
+  /// the trait-lane wrapper for a `Stable` argument, whose storage is a
+  /// `StableAddr` slot read through `StableAddrEngine`.
+  bool emittedStableTensorArgDefs = false;
   /// One-per-module guard for `_MoggTensorBufferCapture` (region→stub
   /// boundary).
   bool emittedTensorBufferCaptureDefs = false;

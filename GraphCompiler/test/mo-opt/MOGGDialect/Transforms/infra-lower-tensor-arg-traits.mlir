@@ -64,6 +64,15 @@
 // -> output/none (identical to a plain dense output).
 // IMPORT-DAG: registration = "trait_tile_tensorable_output"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, unit, unit, unit]
 
+// --- Stable storage marker --- //
+
+// `Stable` sets the contract's `stable` key (elided when false, so every other
+// row above is unchanged). Input, mutable input, and the `TileTensorable`
+// refinement of `DenseTensor` all distill with it.
+// IMPORT-DAG: registration = "trait_stable_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input", stable = true}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_stable_mutable_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "mutable_input", stable = true}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_stable_tile_tensorable"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input", stable = true}, unit, unit, unit]
+
 // --- Fused load (marker vs capability) --- //
 
 // Input + Fused + LoadAccess (bare MARKER) -> input/load/fused, capability=0.

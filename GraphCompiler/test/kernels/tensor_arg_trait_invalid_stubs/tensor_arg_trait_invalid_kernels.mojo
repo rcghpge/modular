@@ -25,8 +25,10 @@ from extensibility import (
     Loadable,
     MutableInput,
     Output,
+    Stable,
     StoreAccess,
     Storable,
+    Tensor,
     TensorTuple,
     Transformable,
 )
@@ -212,4 +214,57 @@ def trait_shape_fn_fused[T: Fused & DenseTensor](x: T) -> IndexList[T.rank]:
 def trait_shape_fn_loadable[
     T: Loadable & DenseTensor
 ](x: T) -> IndexList[T.rank]:
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+
+
+# ========================================================================== #
+# Stable tensor marker                                                       #
+# ========================================================================== #
+
+
+# `Output & DenseTensor & Stable`: outputs are written through a live pointer,
+# never through a slot.
+@extensibility.register("trait_stable_output")
+struct TraitStableOutput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & DenseTensor & Stable], ctx: DeviceContext) raises:
+        pass
+
+
+# `Input & Fused & Loadable & Stable`: a slot is read through a `TileTensor`
+# projection, not a fusion functor.
+@extensibility.register("trait_stable_fused")
+struct TraitStableFused:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Fused & Loadable & Stable],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# `Input & Tensor & Stable`: the slot is only reachable through the dense
+# tier's `TileTensor` projection.
+@extensibility.register("trait_stable_no_dense")
+struct TraitStableNoDense:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & Tensor & Stable],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# A shape-function tensor argument carrying `Stable`: shape functions run on
+# the host, where a slot cannot be read.
+@extensibility.register_shape_function("trait_shape_fn_stable")
+def trait_shape_fn_stable[T: Stable & DenseTensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))

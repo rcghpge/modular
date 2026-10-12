@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mogg-emit-mojo -mogg-dump-mojo 2>&1 | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages --mogg-emit-mojo --mogg-dump-mojo 2>&1 | FileCheck %s
 
 // A `stable`-marked `!mo.tensor` lowers the same way everywhere it is
 // realized: `mogg.tensor.__init__` builds it with the `StableTensor` primitive

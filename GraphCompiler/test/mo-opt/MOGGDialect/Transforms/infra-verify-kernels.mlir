@@ -8,4 +8,10 @@
 // CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.AddFuseLHS registration = "imposter_add_lhs"
 // CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.AddElementwise registration = "imposter_add_elementwise"
 
+// A `build_graph` may take the slot-backed form of an `execute` argument
+// (`StableInputVariadicTensors` for `InputVariadicTensors`, `StableInputTensor`
+// for `InputTensor`); the two signatures still align.
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.StableBuildGraph registration = "imposter_stable_build_graph"
+// CHECK-DAG: mogg.kernel.decl @testing_kernels.testing_kernels.StableSingleBuildGraph registration = "imposter_stable_single_build_graph"
+
 module {}

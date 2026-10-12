@@ -100,3 +100,17 @@
 // CHECK-DAG: error: Loadable, Storable, Transformable, and the *Access markers are fusion machinery
 
 module {}
+
+// === Stable storage marker ================================================ //
+
+// `Output & DenseTensor & Stable` (kernel `trait_stable_output`).
+// CHECK-DAG: error: Stable is not valid on an Output argument
+
+// `Input & Fused & Loadable & Stable` (kernel `trait_stable_fused`).
+// CHECK-DAG: error: a Stable tensor argument cannot also be Fused
+
+// `Input & Tensor & Stable` (kernel `trait_stable_no_dense`) -- no dense tier.
+// CHECK-DAG: error: a Stable tensor argument must also conform to DenseTensor
+
+// `Stable & DenseTensor` on a shape function (`trait_shape_fn_stable`).
+// CHECK-DAG: error: Stable is not allowed on a shape-function tensor argument

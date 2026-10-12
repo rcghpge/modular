@@ -6,6 +6,7 @@
 
 #include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Transforms/MGPTransforms.h"
+#include "GraphCompiler/MOGGDialect/Analysis/KernelDeclAdaptor.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "mlir/Analysis/SymbolTableAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -52,6 +53,30 @@ ProducerDispatch findProducerDispatch(FuncOp stub, WithTraceOp &withTrace) {
   });
 
   return result;
+}
+
+/// Re-stamps the variadic ABI of each `mogg.tuple.create` feeding the
+/// recording dispatch from the `build_graph` parameter it satisfies.
+/// `ConformCallOperands` packed the run against `execute`, whose signature
+/// cannot declare a slot-backed (`StableVariadicTensors`) pack; `build_graph`
+/// can, and this stub is what calls it. Packed operands sit 1:1 with the
+/// signature's arguments, as `CallBuildGraphOp::emitMojo` already relies on.
+void stampBuildGraphVariadicAbi(KernelDeclOp decl, ValueRange inputs,
+                                ValueRange outputs) {
+  KernelDeclAdaptor adaptor(decl);
+  if (!adaptor.buildGraphFunction)
+    return;
+  auto stamp = [](ValueRange operands,
+                  ArrayRef<KernelDeclOperandAdaptor> parameters) {
+    for (auto [operand, parameter] : llvm::zip(operands, parameters)) {
+      auto tuple = operand.getDefiningOp<TupleCreateOp>();
+      if (tuple && parameter.isVariadicTensorType() &&
+          parameter.isStableTensorType())
+        tuple.setVariadicAbi(VariadicABI::Stable);
+    }
+  };
+  stamp(inputs, adaptor.buildGraphFunction->inputArguments);
+  stamp(outputs, adaptor.buildGraphFunction->outputArguments);
 }
 
 /// A generated recording sibling stub; `contextArgIndex` is the call operand
@@ -133,6 +158,8 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
     isThrows = buildGraphSignature.isThrows() ? UnitAttr::get(ctx) : UnitAttr();
     kernelParams = opaque.getKernelParamAttr();
   }
+  if (useBuildGraph)
+    stampBuildGraphVariadicAbi(decl, kernelInputs, outputs);
 
   BlockArgument launchArg = context;
   launchArg.setType(DeviceGraphBuilderType::get(ctx));

@@ -1827,6 +1827,103 @@ LogicalResult ScalarCreateOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+namespace {
+
+/// The aggregate a variadic run of tensor operands packs into.
+enum class VariadicPackKind { Plain, Stable, FusedInput, FusedOutput };
+
+/// Emits the aggregate for a variadic run of tensor values. A pointer-backed
+/// element contributes its data pointer, a slot-backed (`StableTensor`)
+/// element its slot address; shapes, static specs and `io_spec` are spelled
+/// identically on both. `fusionValues` / `fusionTypeParams` are consumed only
+/// by the fused kinds (one functor and its type per element).
+MojoValue emitVariadicTensorPack(EmitMojoState &state,
+                                 ArrayRef<MojoValue> inputValues,
+                                 VariadicPackKind kind,
+                                 ArrayRef<MojoValue> fusionValues,
+                                 ArrayRef<MojoValue> fusionTypeParams) {
+  const bool stable = kind == VariadicPackKind::Stable;
+
+  SmallVector<MojoValue> runtimeStorage =
+      llvm::map_to_vector(inputValues, [&](const MojoValue &val) {
+        return stable ? StableTensorRef(val).addr()
+                      : ManagedTensorSliceRef(val).rawPtr();
+      });
+  SmallVector<MojoValue> runtimeShapes =
+      llvm::map_to_vector(inputValues, [&](const MojoValue &val) {
+        return stable ? StableTensorRef(val).shape()
+                      : ManagedTensorSliceRef(val).shape();
+      });
+
+  MojoValue inputTupleConstructor = MojoValue(kStructStaticTuple)[{
+      MojoValue(kParameterSize).equal(std::to_string(inputValues.size()))}];
+  MojoValue runtimeStorageTuple =
+      state.builder.var(inputTupleConstructor({}, runtimeStorage));
+  MojoValue runtimeShapesTuple =
+      state.builder.var(inputTupleConstructor({}, runtimeShapes));
+
+  // Create the StaticTensorSpecList from per-element internals, shapes, and
+  // strides. Each spec is split into its homogeneous runtime part
+  // (StaticTensorSpecInternal) and its compile-time shape/strides so that
+  // heterogeneous specs can be stored in a single list. `shape_tuple` /
+  // `strides_tuple` are comptime members of the `StaticTensorSpec` itself,
+  // distinct from its `get_internals()` result.
+  auto staticSpecOf = [&](const MojoValue &val) {
+    return StaticTensorSpecRef(stable
+                                   ? StableTensorRef(val).staticSpec()
+                                   : ManagedTensorSliceRef(val).staticSpec());
+  };
+  MojoValue rank = staticSpecOf(inputValues.front()).rank();
+  SmallVector<MojoValue> staticSpecInternals;
+  SmallVector<MojoValue> staticSpecShapes;
+  SmallVector<MojoValue> staticSpecStrides;
+  for (const auto &reboundInput : inputValues) {
+    StaticTensorSpecRef spec = staticSpecOf(reboundInput);
+    staticSpecInternals.push_back(spec.getInternals());
+    staticSpecShapes.push_back(
+        MojoValue(kFnToIndexList)({rank}, {spec.shapeTuple()}));
+    staticSpecStrides.push_back(
+        MojoValue(kFnToIndexList)({rank}, {spec.stridesTuple()}));
+  }
+  MojoValue inputSpecsInternalsComptime =
+      state.builder.comptime(ParameterListRef::of(staticSpecInternals));
+  MojoValue inputSpecsShapesComptime =
+      state.builder.comptime(ParameterListRef::of(staticSpecShapes));
+  MojoValue inputSpecsStridesComptime =
+      state.builder.comptime(ParameterListRef::of(staticSpecStrides));
+  MojoValue inputSpecsComptime =
+      state.builder.comptime(MojoValue(kStructStaticTensorSpecList)[{
+          inputSpecsInternalsComptime, inputSpecsShapesComptime,
+          inputSpecsStridesComptime}]());
+  MojoValue staticSpecsParam =
+      MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime);
+
+  if (kind == VariadicPackKind::Plain || stable) {
+    MojoValue ioSpec = stable ? StableTensorRef(inputValues[0]).ioSpec()
+                              : ManagedTensorSliceRef(inputValues[0]).ioSpec();
+    StringRef structName =
+        stable ? kStructStableVariadicTensors : kStructVariadicTensors;
+    MojoValue ctor = MojoValue(structName)[{
+        MojoValue(kParameterIOSpec).equal(ioSpec), staticSpecsParam}];
+    return state.builder.var(
+        ctor({}, {runtimeStorageTuple, runtimeShapesTuple}));
+  }
+
+  // Fused: the functors and their types become a `_FusionPack` +
+  // `*FusionTypes`; `static_specs` is keyword-only after the pack.
+  MojoValue fusionsTuple =
+      state.builder.var(MojoValue(kStructMsFusionPack)({}, fusionValues));
+  SmallVector<MojoValue> typeParams(fusionTypeParams);
+  typeParams.push_back(staticSpecsParam);
+  StringRef structName = kind == VariadicPackKind::FusedInput
+                             ? kStructMsFusedInputVariadicTensors
+                             : kStructMsFusedOutputVariadicTensors;
+  return state.builder.var(MojoValue(structName)[typeParams](
+      {}, {runtimeStorageTuple, runtimeShapesTuple, fusionsTuple}));
+}
+
+} // namespace
+
 LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
   // `$variadic_abi` (set by `ConformCallOperands`) selects `VariadicTensors`,
   // `_FusedInputVariadicTensors`, `_FusedOutputVariadicTensors`, or a
@@ -1859,63 +1956,24 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
     return success();
   }
 
-  SmallVector<MojoValue> runtimePointers =
-      llvm::map_to_vector(inputValues, [&](const MojoValue &val) {
-        return ManagedTensorSliceRef(val).rawPtr();
-      });
-  SmallVector<MojoValue> runtimeShapes =
-      llvm::map_to_vector(inputValues, [&](const MojoValue &val) {
-        return ManagedTensorSliceRef(val).shape();
-      });
-
-  MojoValue inputTupleConstructor = MojoValue(kStructStaticTuple)[{
-      MojoValue(kParameterSize).equal(std::to_string(inputValues.size()))}];
-  MojoValue runtimePointersTuple =
-      state.builder.var(inputTupleConstructor({}, runtimePointers));
-  MojoValue runtimeShapesTuple =
-      state.builder.var(inputTupleConstructor({}, runtimeShapes));
-
-  MojoValue rank = StaticTensorSpecRef(
-                       ManagedTensorSliceRef(inputValues.front()).staticSpec())
-                       .rank();
-  SmallVector<MojoValue> staticSpecInternals;
-  SmallVector<MojoValue> staticSpecShapes;
-  SmallVector<MojoValue> staticSpecStrides;
-  for (const auto &reboundInput : inputValues) {
-    StaticTensorSpecRef spec(ManagedTensorSliceRef(reboundInput).staticSpec());
-    staticSpecInternals.push_back(spec.getInternals());
-    staticSpecShapes.push_back(
-        MojoValue(kFnToIndexList)({rank}, {spec.shapeTuple()}));
-    staticSpecStrides.push_back(
-        MojoValue(kFnToIndexList)({rank}, {spec.stridesTuple()}));
-  }
-  MojoValue inputSpecsInternalsComptime =
-      state.builder.comptime(ParameterListRef::of(staticSpecInternals));
-  MojoValue inputSpecsShapesComptime =
-      state.builder.comptime(ParameterListRef::of(staticSpecShapes));
-  MojoValue inputSpecsStridesComptime =
-      state.builder.comptime(ParameterListRef::of(staticSpecStrides));
-  MojoValue inputSpecsComptime =
-      state.builder.comptime(MojoValue(kStructStaticTensorSpecList)[{
-          inputSpecsInternalsComptime, inputSpecsShapesComptime,
-          inputSpecsStridesComptime}]());
-
-  // Plain: a `VariadicTensors` over the raw pointers/shapes.
-  if (getVariadicAbi() == VariadicABI::Plain) {
-    MojoValue ctor = MojoValue(kStructVariadicTensors)[{
-        MojoValue(kParameterIOSpec)
-            .equal(ManagedTensorSliceRef(inputValues[0]).ioSpec()),
-        MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime)}];
-    state.setMojoValueFor(
-        getTuple(), state.builder.var(
-                        ctor({}, {runtimePointersTuple, runtimeShapesTuple})));
+  // Plain: a `VariadicTensors` over the raw pointers/shapes. Stable: a
+  // `StableVariadicTensors` over the elements' slot addresses; the elements
+  // are `StableTensor`s, built by stable `mogg.tensor.create`s.
+  if (getVariadicAbi() == VariadicABI::Plain ||
+      getVariadicAbi() == VariadicABI::Stable) {
+    VariadicPackKind kind = getVariadicAbi() == VariadicABI::Stable
+                                ? VariadicPackKind::Stable
+                                : VariadicPackKind::Plain;
+    state.setMojoValueFor(getTuple(),
+                          emitVariadicTensorPack(state, inputValues, kind,
+                                                 /*fusionValues=*/{},
+                                                 /*fusionTypeParams=*/{}));
     return success();
   }
 
-  // Fused: gather each element's fusion functor and its type into a
-  // `_FusionPack` + `*FusionTypes`, then build the matching fused aggregate.
-  // The functor lives on the element slice itself (`in_fusion` / `out_fusion`),
-  // so nothing here reaches back into the producing op.
+  // Fused: gather each element's fusion functor and its type. The functor
+  // lives on the element slice itself (`in_fusion` / `out_fusion`), so nothing
+  // here reaches back into the producing op.
   bool isInput = getVariadicAbi() == VariadicABI::FusedInput;
   SmallVector<MojoValue> fusionValues;
   SmallVector<MojoValue> typeParams;
@@ -1925,16 +1983,11 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
     typeParams.push_back(isInput ? slice.inFusionType()
                                  : slice.outFusionType());
   }
-  MojoValue fusionsTuple =
-      state.builder.var(MojoValue(kStructMsFusionPack)({}, fusionValues));
-  typeParams.push_back(
-      MojoValue(kParameterStaticSpecs).equal(inputSpecsComptime));
-
-  StringRef structName = isInput ? kStructMsFusedInputVariadicTensors
-                                 : kStructMsFusedOutputVariadicTensors;
-  MojoValue fusedValue = MojoValue(structName)[typeParams](
-      {}, {runtimePointersTuple, runtimeShapesTuple, fusionsTuple});
-  state.setMojoValueFor(getTuple(), state.builder.var(fusedValue));
+  state.setMojoValueFor(getTuple(), emitVariadicTensorPack(
+                                        state, inputValues,
+                                        isInput ? VariadicPackKind::FusedInput
+                                                : VariadicPackKind::FusedOutput,
+                                        fusionValues, typeParams));
   return success();
 }
 
@@ -4055,6 +4108,126 @@ static MojoValue emitShapeTensorArg(EmitMojoState &state, MojoValue dtype,
       {dtype, layoutType, alignment, dataVisible}, {ptr, layout}));
 }
 
+// `_MoggStableTensorArg`: the trait-lane wrapper for a `Stable` argument. The
+// pointer the stub receives for such an argument IS the slot address (the same
+// reinterpretation `mogg_stable_tensor_init` performs for the legacy lane), so
+// the ctor wraps it as a `StableAddr` and never dereferences it. `Engine` is
+// `StableAddrEngine`, so the `TileTensorable` projection keeps reading through
+// the slot: `to_tile_tensor` is host-callable, while loads and stores are
+// device only (the engine asserts `is_gpu()`). GPU only: emit rejects a host
+// stub. The value crosses to the device field-by-field with no pointer
+// translation, since both slot layers are device addresses already (mirrors
+// `extensibility.StableTensor`). Depends on `_MoggTensorIO` from
+// `kDenseTensorArgDefs`, which `emitStableTensorArg` emits first.
+static constexpr llvm::StringLiteral kStableTensorArgStructName =
+    "_MoggStableTensorArg";
+static constexpr llvm::StringLiteral kStableTensorArgDefs = R"mojo(
+from layout.stable_addr_engine import StableAddrEngine
+from max.gpu.host import StableAddr
+from std.memory import AddressSpace
+from extensibility import Stable
+
+
+struct _MoggStableTensorArg[
+    _dtype: DType,
+    _LayoutType: TensorLayout,
+    _alignment: Int,
+    _io: _MoggTensorIO,
+](
+    DenseTensor,
+    DevicePassable,
+    Stable,
+    TileTensorable,
+    Input where _io == _MoggTensorIO.INPUT,
+    MutableInput where _io == _MoggTensorIO.MUTABLE_INPUT,
+):
+    comptime mut = Self._io.is_mut()
+    comptime dtype = Self._dtype
+    comptime LayoutType = Self._LayoutType
+    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime rank = Self.LayoutType.rank
+    comptime alignment = Self._alignment
+    comptime Engine = StableAddrEngine[element_width=1]
+    var _addr: StableAddr
+    var _layout: Self.LayoutType
+
+    @inline(.always)
+    def __init__(
+        out self,
+        ptr: Pointer[NoneType, MutAnyOrigin],
+        layout: Self.LayoutType,
+    ):
+        # `ptr` is the slot address the stub received as the buffer's data
+        # pointer; wrap it, never read through it here.
+        self._addr = StableAddr(
+            ptr.unsafe_bitcast[Pointer[NoneType, MutUntrackedOrigin]]()
+            .unsafe_origin_cast[MutUntrackedOrigin]()
+        )
+        self._layout = layout
+
+    comptime device_type: AnyType = Self
+
+    @inline(.always)
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode_fields[Self](self, target)
+
+    @staticmethod
+    def get_type_name() -> String:
+        return String("_MoggStableTensorArg")
+
+    @inline(.always)
+    def shape(self) -> Self.ShapeType:
+        return rebind[Self.ShapeType](self._layout.shape_coord())
+
+    @inline(.always)
+    def layout(self) -> Self.LayoutType:
+        return self._layout
+
+    @inline(.always)
+    def to_tile_tensor(
+        self,
+    ) -> TileTensor[
+        dtype = Self.dtype,
+        LayoutType = Self.LayoutType,
+        origin = UntrackedOrigin[mut = Self.mut],
+        Engine = Self.Engine,
+    ]:
+        # Host-callable: only the handle is built here. Loads and stores read
+        # the slot and are device only.
+        return TileTensor[
+            dtype = Self.dtype,
+            LayoutType = Self.LayoutType,
+            origin = UntrackedOrigin[mut = Self.mut],
+            Engine = Self.Engine,
+        ](
+            Self.Engine.StorageType[
+                Self.dtype, UntrackedOrigin[mut = Self.mut], AddressSpace.GENERIC
+            ](self._addr, 0),
+            self._layout,
+        )
+)mojo";
+
+/// Emit `_MoggStableTensorArg[dtype, layoutType, alignment, io](ptr, layout)`,
+/// defining the struct once per module (after the dense defs it depends on).
+/// `ptr` is the slot address.
+static MojoValue emitStableTensorArg(EmitMojoState &state, MojoValue dtype,
+                                     MojoValue layoutType, MojoValue alignment,
+                                     MojoValue io, MojoValue ptr,
+                                     MojoValue layout) {
+  if (!state.emittedDenseTensorArgDefs) {
+    state.structDefsBuilder.verbatim(MojoValue(kDenseTensorArgDefs.str()));
+    state.emittedDenseTensorArgDefs = true;
+  }
+  if (!state.emittedStableTensorArgDefs) {
+    state.structDefsBuilder.verbatim(MojoValue(kStableTensorArgDefs.str()));
+    state.emittedStableTensorArgDefs = true;
+  }
+  return state.builder.var(MojoValue(kStableTensorArgStructName.str())(
+      {dtype, layoutType, alignment, io}, {ptr, layout}));
+}
+
 LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
   auto tensorTy = MO::dynCastFromTensorLike(getType());
   if (!tensorTy)
@@ -4117,13 +4290,26 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
   MojoValue slice = state.getMojoValueFor(getTensor());
   MOGG::TensorArgContractAttr contract = getContract();
 
+  // A stable `mogg.tensor.create` yields a `StableTensor` rather than a
+  // slice: its layout is a field, and the pointer to hand on is the slot
+  // address (`unsafe_ptr()` would read the data pointer, on the device only).
+  auto createOp = getTensor().getDefiningOp<TensorCreateOp>();
+  bool stableSource = createOp && createOp.getStable();
+
   MojoValue dTypeParam(llvm::formatv("type_of({0}).dtype", slice.text).str());
-  MojoValue layoutArg = state.builder.var(slice.get("runtime_layout")());
+  MojoValue layoutArg =
+      state.builder.var(stableSource ? StableTensorRef(slice).runtimeLayout()
+                                     : slice.get("runtime_layout")());
   MojoValue layoutType = MojoValue("type_of")({}, {layoutArg});
   MojoValue ptrArg = state.builder.var(
-      llvm::formatv("{0}.unsafe_bitcast[NoneType]().as_unsafe_any_origin()",
-                    ManagedTensorSliceRef(slice).unsafePtr().text)
-          .str());
+      stableSource
+          ? llvm::formatv("{0}.as_unsafe_any_origin()",
+                          StableTensorRef(slice).slotPtr().text)
+                .str()
+          : llvm::formatv(
+                "{0}.unsafe_bitcast[NoneType]().as_unsafe_any_origin()",
+                ManagedTensorSliceRef(slice).unsafePtr().text)
+                .str());
 
   // Device is on the op (like `mogg.tensor.create`), so alignment and the
   // device-passable / tile-projection flavors are picked locally.
@@ -4160,6 +4346,19 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
     }
     llvm_unreachable("unhandled TensorArgRoleKind");
   }();
+  // A `Stable` argument wraps the slice's pointer as the slot address (the
+  // slice over a stable `!mgp.tensor` carries the slot, not the data).
+  if (contract.getStable()) {
+    if (deviceLabel == kCPULabel)
+      return emitOpError("Stable trait argument requires a device kernel; a "
+                         "stable address slot cannot be read on the host");
+    state.setMojoValueFor(getResult(),
+                          emitStableTensorArg(state, dTypeParam, layoutType,
+                                              alignmentParam, ioParam, ptrArg,
+                                              layoutArg));
+    return success();
+  }
+
   bool devicePassable = deviceLabel != kCPULabel;
   bool canProjectTileTensor = canProjectTileTensorForDeviceLabel(deviceLabel);
   state.setMojoValueFor(

@@ -27,6 +27,7 @@ from extensibility import (
     MutableInput,
     Output,
     OutputTensor,
+    Stable,
     StoreAccess,
     Storable,
     Tensor,
@@ -558,3 +559,45 @@ def trait_tile_tensorable_shape_fn[
 ](x: T) -> IndexList[T.rank]:
     _ = x.to_tile_tensor()
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+
+
+# `Input & DenseTensor & Stable`: a slot-backed read-only input. Distills to
+# the input contract with `stable = true`; the `Stable` storage marker is the
+# only vocabulary row that sets it.
+@extensibility.register("trait_stable_input")
+struct TraitStableInput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & DenseTensor & Stable],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# `MutableInput & DenseTensor & Stable`: a slot-backed in-place argument.
+@extensibility.register("trait_stable_mutable_input")
+struct TraitStableMutableInput:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](x: Some[MutableInput & DenseTensor & Stable], ctx: DeviceContext) raises:
+        pass
+
+
+# `Input & TileTensorable & Stable`: `TileTensorable` refines `DenseTensor`,
+# and the ancestor-inclusive symbol list is what the distiller checks the
+# dense requirement against, so no explicit `DenseTensor` is needed.
+@extensibility.register("trait_stable_tile_tensorable")
+struct TraitStableTileTensorable:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        x: Some[Input & TileTensorable & Stable],
+        ctx: DeviceContext,
+    ) raises:
+        pass

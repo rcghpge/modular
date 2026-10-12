@@ -14,10 +14,12 @@ lit_tests(
         "%tensor_arg_trait_pkg": "$(rlocationpath //GraphCompiler/test/kernels/tensor_arg_trait_stubs:TensorArgTraitStubs)",
         "%tensor_arg_trait_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs)",
         "%reduction_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/reduction_invalid_stubs:ReductionInvalidStubs)",
+        "%stable_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/stable_invalid_stubs:StableInvalidStubs)",
     },
     data = [
         "//GraphCompiler/test/kernels:testing_kernels",
         "//GraphCompiler/test/kernels/reduction_invalid_stubs:ReductionInvalidStubs",
+        "//GraphCompiler/test/kernels/stable_invalid_stubs:StableInvalidStubs",
         "//GraphCompiler/test/kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs",
         "//GraphCompiler/test/kernels/tensor_arg_trait_stubs:TensorArgTraitStubs",
     ],

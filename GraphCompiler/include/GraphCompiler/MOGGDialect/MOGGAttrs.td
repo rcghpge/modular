@@ -98,6 +98,12 @@ def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
       - `bound`        : the deepest trait bound on a shape-function tensor
                          argument (`tensor`, `dense`, `tile`). Execute-lane
                          arguments carry `unspecified`, which printing elides.
+      - `stable`       : whether the argument's storage is a stable address
+                         slot (the `Stable` marker): emit hands the kernel a
+                         `StableAddr`-backed wrapper read through
+                         `StableAddrEngine`. Printing elides `stable` at
+                         `false`.
+
   }];
 
   let parameters = (ins
@@ -106,12 +112,16 @@ def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
     EnumParameter<MOGG_TensorArgAccess>:$access,
     EnumParameter<MOGG_TensorArgAccess>:$capabilities,
     DefaultValuedParameter<"::M::MOGG::TensorArgBoundKind",
-        "::M::MOGG::TensorArgBoundKind::unspecified">:$bound
+        "::M::MOGG::TensorArgBoundKind::unspecified">:$bound,
+    DefaultValuedParameter<"bool", "false">:$stable
   );
 
+  // `struct` prints the parameters in declaration order and elides `bound` /
+  // `stable` at their defaults, so every pre-existing contract keeps its
+  // spelling; it also parses the keys in any order.
   let assemblyFormat = [{
-    `<` `{` `role` `=` $role `,` `fused` `=` $fused `,` `access` `=` $access
-        `,` `capabilities` `=` $capabilities (`,` `bound` `=` $bound^)? `}` `>`
+    `<` `{` struct($role, $fused, $access, $capabilities, $bound, $stable)
+    `}` `>`
   }];
 
   let extraClassDeclaration = [{

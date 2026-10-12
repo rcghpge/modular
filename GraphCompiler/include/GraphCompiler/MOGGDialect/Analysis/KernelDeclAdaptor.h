@@ -87,6 +87,7 @@ inline unsigned bit(TensorArgAccess access) {
 struct TensorArgContract {
   TensorArgRole role = TensorArgRole::input;
   bool fused = false;
+  bool stable = false;
   unsigned accessMask = 0;
   /// Subset of `accessMask` whose capability (e.g. `Loadable`) was required,
   /// not just the marker (e.g. `LoadAccess`). Matters for opaque-device
@@ -117,8 +118,9 @@ struct TensorArgContract {
   }
 
   bool operator==(const TensorArgContract &o) const {
-    return role == o.role && fused == o.fused && accessMask == o.accessMask &&
-           capabilityMask == o.capabilityMask && bound == o.bound;
+    return role == o.role && fused == o.fused && stable == o.stable &&
+           accessMask == o.accessMask && capabilityMask == o.capabilityMask &&
+           bound == o.bound;
   }
   bool operator!=(const TensorArgContract &o) const { return !(*this == o); }
 };
@@ -231,6 +233,7 @@ bool isMutableIOSpec(IOSpec spec);
 struct KernelDeclTensorAdaptor {
   bool mut = false;
   bool fused = false;
+  bool stable = false;
   IOSpec ioSpec = {};
   /// Set only for a trait-bound argument, which lowers to
   /// `mogg.tensor_arg.__init__`. The fields above hold equivalent values so
@@ -248,6 +251,7 @@ struct KernelDeclTensorAdaptor {
 struct KernelDeclVariadicTensorAdaptor {
   bool mut = false;
   bool fused = false;
+  bool stable = false;
   IOSpec ioSpec = {};
   /// Present only for a trait-lane variadic (`xs: TensorTuple[*Ts]`): the
   /// contract shared by every element. Empty for the legacy `VariadicTensors`
@@ -338,6 +342,15 @@ struct KernelDeclOperandAdaptor {
     if (const auto *t =
             std::get_if<KernelDeclVariadicTensorAdaptor>(&underlyingType))
       return t->mut;
+    return false;
+  }
+
+  bool isStableTensorType() const {
+    if (const auto *t = std::get_if<KernelDeclTensorAdaptor>(&underlyingType))
+      return t->stable;
+    if (const auto *t =
+            std::get_if<KernelDeclVariadicTensorAdaptor>(&underlyingType))
+      return t->stable;
     return false;
   }
 
@@ -529,11 +542,13 @@ StreamType &operator<<(StreamType &os, const KernelDeclOperandVariant &var) {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, KernelDeclTensorAdaptor>) {
           os << "Tensor[mut=" << (v.mut ? "true" : "false")
-             << ", fused=" << (v.fused ? "true" : "false") << "]";
+             << ", fused=" << (v.fused ? "true" : "false")
+             << (v.stable ? ", stable" : "") << "]";
         } else if constexpr (std::is_same_v<T,
                                             KernelDeclVariadicTensorAdaptor>) {
           os << "*Tensor[mut=" << (v.mut ? "true" : "false")
-             << ", fused=" << (v.fused ? "true" : "false") << "]";
+             << ", fused=" << (v.fused ? "true" : "false")
+             << (v.stable ? ", stable" : "") << "]";
         } else if constexpr (std::is_same_v<T, KernelDeclScalarAdaptor>) {
           os << "Scalar";
         } else if constexpr (std::is_same_v<T, KernelDeclOpaqueAdaptor>) {
