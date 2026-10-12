@@ -27,7 +27,7 @@ from layout import Coord, Idx, TileTensor, row_major, coord_to_index_list
 from layout._fillers import arange as arange, random
 from linalg.matmul.gpu import _matmul_gpu, multistage_gemm
 from linalg.utils_gpu import MatmulConfig
-from test_utils import ulp_distance
+from test_utils.math import ulp_distance
 from std.testing import assert_almost_equal
 
 from std.utils import IndexList

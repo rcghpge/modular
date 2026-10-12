@@ -18,7 +18,7 @@ from std.utils.numerics import FPUtils
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from std.testing import TestSuite
-from test_utils.binary_op_helpers import (
+from test_utils.math import (
     PairMode,
     libm_call_binary,
     pair_inputs,

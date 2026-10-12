@@ -16,7 +16,7 @@ from std.testing import assert_equal, assert_true, TestSuite
 from std.sys import CompilationTarget
 from std.utils.numerics import FlushDenormals, FPUtils
 
-from test_utils.lgamma_helpers import (
+from test_utils.math import (
     lgamma_bit_refs,
     lgamma_zeros_f32,
     lgamma_zeros_f64,

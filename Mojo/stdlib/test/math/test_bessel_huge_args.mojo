@@ -20,7 +20,7 @@
 from std.math import j0, j1, y0, y1
 from std.testing import TestSuite, assert_true
 
-from test_utils import ulp_distance
+from test_utils.math import ulp_distance
 
 comptime f32_max_ulp = 2
 

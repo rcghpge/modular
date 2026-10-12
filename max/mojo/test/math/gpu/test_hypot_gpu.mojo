@@ -18,7 +18,7 @@ from std.utils.numerics import max_finite
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from std.testing import TestSuite, assert_equal, assert_raises
-from test_utils.binary_op_helpers import (
+from test_utils.math import (
     PairMode,
     hypot_specials,
     libm_call_binary,

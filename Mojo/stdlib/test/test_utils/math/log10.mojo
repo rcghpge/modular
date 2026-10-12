@@ -10,11 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Provides inputs and a ULP metric for the host and GPU `log10` tests."""
+"""Provides inputs for the host and GPU `log10` tests."""
 
-from std.builtin.dtype import _unsigned_integral_type_of
-from std.math import inf, isinf, isnan, nan
-from std.sys import bit_width_of
+from std.math import inf, nan
 
 comptime num_log10_inputs = 16384
 """The number of values each `log10_*_inputs` function returns."""
@@ -42,41 +40,6 @@ def _xorshift64(mut state: UInt64) -> UInt64:
     state ^= state >> 7
     state ^= state << 17
     return state
-
-
-def ulp_diff[dtype: DType, //](a: Scalar[dtype], b: Scalar[dtype]) -> Int:
-    """Computes the ULP distance between `a` and `b` on their ordered bits.
-
-    Bit-identical values (two NaNs, or a zero or infinity of the same sign)
-    and +0 vs -0 are 0 apart. Otherwise a NaN or an infinity on either side,
-    or differing signs, are `Int.MAX` apart so that no tolerance accepts them.
-    `ulp_distance` can instead overflow to a negative result for float64
-    values of opposite sign, which passes any tolerance.
-
-    Parameters:
-        dtype: The floating-point data type.
-
-    Args:
-        a: The first value.
-        b: The second value.
-
-    Returns:
-        The ULP distance, or `Int.MAX` when no tolerance should accept the
-        pair.
-    """
-    comptime U = _unsigned_integral_type_of[dtype]()
-    comptime sign_bit = Scalar[U](1) << Scalar[U](bit_width_of[dtype]() - 1)
-    var a_bits = a.to_bits[U]()
-    var b_bits = b.to_bits[U]()
-    if a_bits == b_bits:
-        return 0
-    if isnan(a) or isnan(b) or isinf(a) or isinf(b):
-        return Int.MAX
-    var a_mag = Int(a_bits & ~sign_bit)
-    var b_mag = Int(b_bits & ~sign_bit)
-    if (a_bits ^ b_bits) & sign_bit != 0:
-        return 0 if a_mag == 0 and b_mag == 0 else Int.MAX
-    return abs(a_mag - b_mag)
 
 
 def log10_f64_inputs() -> List[Float64]:

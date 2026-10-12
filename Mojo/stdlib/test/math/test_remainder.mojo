@@ -20,7 +20,7 @@ from std.math.math import (
 )
 from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
-from test_utils.binary_op_helpers import (
+from test_utils.math import (
     PairMode,
     SplitMix64,
     libm_call_binary,

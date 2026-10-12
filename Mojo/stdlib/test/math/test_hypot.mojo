@@ -16,7 +16,7 @@ from std.sys import argv
 from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 from std.utils.numerics import FPUtils, FlushDenormals, max_finite
 
-from test_utils.binary_op_helpers import (
+from test_utils.math import (
     PairMode,
     hypot_specials,
     libm_call_binary,

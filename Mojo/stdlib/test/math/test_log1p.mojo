@@ -21,7 +21,7 @@ from std.math.math import (
 from std.sys import bit_width_of
 from std.testing import TestSuite, assert_equal, assert_true
 from std.utils.numerics import FPUtils, inf, isinf, isnan, nan, neg_inf
-from test_utils import ulp_distance
+from test_utils.math import ulp_distance
 
 
 def _scaled[

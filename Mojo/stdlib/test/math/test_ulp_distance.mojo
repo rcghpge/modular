@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.math import inf
-from test_utils import ulp_distance
+from test_utils.math import ulp_distance
 from std.testing import assert_equal, assert_true, TestSuite
 
 

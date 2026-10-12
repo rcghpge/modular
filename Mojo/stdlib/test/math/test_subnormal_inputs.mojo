@@ -48,7 +48,7 @@ from std.memory import bitcast
 from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 from std.utils.numerics import FlushDenormals
 
-from test_utils import ulp_distance
+from test_utils.math import ulp_distance
 
 comptime f32_min = Float32(from_bits=UInt32(1))  # 2^-149
 comptime f32_min_normal = Float32(from_bits=UInt32(0x00800000))  # 2^-126
@@ -424,7 +424,7 @@ from std.math import (
 )
 from std.math.math import _narrow_f32_to_bf16_bits, _scale_down_bits
 
-from test_utils import ulp_distance
+from test_utils.math import ulp_distance
 
 
 def test_remainder_subnormal() raises:

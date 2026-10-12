@@ -10,39 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Provides reference values and a ULP check for the host and GPU `lgamma`
-tests."""
-
-from std.math import isinf, isnan
-
-
-def within_two_ulp[
-    dtype: DType
-](got: Scalar[dtype], want: Scalar[dtype]) -> Bool:
-    """Returns whether `got` is a finite value within 2 ULP of `want`.
-
-    Values of opposite sign, including +0 and -0, are never within 2 ULP.
-
-    Parameters:
-        dtype: The floating-point data type.
-
-    Args:
-        got: The computed value.
-        want: The reference value.
-
-    Returns:
-        True if both values are finite, share a sign, and are at most 2 ULP
-        apart.
-    """
-    if isnan(got) or isinf(got) or isnan(want) or isinf(want):
-        return False
-    var got_bits = got._to_bits_signed()
-    var want_bits = want._to_bits_signed()
-    if (got_bits < 0) != (want_bits < 0):
-        return False
-    # Same-sign finite bit patterns span less than Int.MAX, so neither the
-    # subtraction nor its absolute value can overflow.
-    return abs(Int(got_bits) - Int(want_bits)) <= 2
+"""Provides reference values for the host and GPU `lgamma` tests."""
 
 
 def lgamma_bit_refs[dtype: DType]() -> List[Tuple[UInt64, Float64]]:

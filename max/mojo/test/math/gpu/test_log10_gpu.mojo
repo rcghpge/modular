@@ -19,7 +19,7 @@ from std.sys import default_accelerator, simd_width_of
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceContext, get_gpu_target
 from std.testing import assert_equal, assert_true, TestSuite
-from test_utils.log10_helpers import (
+from test_utils.math import (
     f32_max_subnormal_bits,
     f32_min_subnormal_bits,
     f64_max_subnormal_bits,

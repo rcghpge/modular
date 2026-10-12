@@ -19,7 +19,7 @@ from std.sys.info import default_accelerator
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from std.testing import TestSuite
-from test_utils.lgamma_helpers import (
+from test_utils.math import (
     lgamma_bit_refs,
     lgamma_zeros_f32,
     lgamma_zeros_f64,
