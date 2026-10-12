@@ -69,8 +69,12 @@ from .tensor_engine import (
 )
 from .tmem_engine import (
     TMemEngine,
+    TMem16x256bLayout,
+    TMem16x256bRegisters,
     TMemStorage,
     TMEM_NUM_COLS,
     TMEM_NUM_LANES,
+    tmem_cell,
     tmem_copy_async,
+    tmem_16x256b,
 )
