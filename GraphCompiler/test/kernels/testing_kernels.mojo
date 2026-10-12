@@ -3719,3 +3719,60 @@ struct MapLowerPartialFusedInputs:
         ctx: DeviceContext,
     ) capturing raises:
         pass
+
+
+# `trait_tensor_tuple_fused_concat` through a host-built unified closure: the
+# host projects the whole tuple to its access-enabled views with
+# `TensorTuple._fused_view(inputs)`, the device closure copy-captures the view
+# tuple, and the body loads element `k` through it. The view tuple is
+# `RegisterPassable` only conditionally, which the closure emitter proves from
+# the tuple's bindings. GPU only.
+@extensibility.register("trait_tensor_tuple_fused_concat_unified_closure")
+struct TraitTensorTupleFusedConcatUnifiedClosure:
+    @staticmethod
+    def execute[
+        Ins: TypeList[Trait=Input & Fused & LoadAccess, ...],
+        //,
+        target: StaticString,
+    ](
+        z: Some[Output & DenseTensor],
+        inputs: TensorTuple[*Ins],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            raise Error(
+                "trait_tensor_tuple_fused_concat_unified_closure only runs on"
+                " the GPU"
+            )
+        else:
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            var zt = to_tile_tensor(z)
+            comptime out_dtype = type_of(zt).dtype
+            var offsets = StaticTuple[Int32, len(Ins) + 1](fill=0)
+            comptime for k in range(len(Ins)):
+                offsets[k + 1] = offsets[k] + Int32(
+                    Int(inputs[k].shape().product())
+                )
+            var n_dev = offsets[len(Ins)]
+            var views = TensorTuple._fused_view(inputs)
+
+            def device_body() {var views, var zt, var offsets, var n_dev}:
+                var i = Int32(global_idx.x)
+                if i >= n_dev:
+                    return
+                comptime for k in range(len(Ins)):
+                    if i >= offsets[k] and i < offsets[k + 1]:
+                        comptime assert conforms_to(type_of(views[k]), Loadable)
+                        zt.raw_store(
+                            Int(i),
+                            views[k]
+                            .load[1](Coord(Int(i - offsets[k])))
+                            .cast[out_dtype](),
+                        )
+
+            comptime block_size = 64
+            ctx.enqueue_function(
+                device_body,
+                grid_dim=(ceildiv(Int(n_dev), block_size),),
+                block_dim=(block_size,),
+            )
