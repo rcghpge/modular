@@ -28,6 +28,12 @@ inline constexpr size_t kDefaultChunkBytes = 512ULL * 1024 * 1024;
 /// One host mapping registered in chunks, because page-locking a
 /// multi-hundred-GiB range in one call is slow and impossible above 1 TiB.
 ///
+/// With `driverAlloc`, each chunk is instead its own pinned host allocation
+/// from the GPU driver (`Device::chunkAlloc`, bypassing the host memory
+/// manager's pool), so the chunks are not contiguous: callers work from
+/// `chunkAddresses()`. Pages the driver allocates are not on the kernel's LRU,
+/// so memory compaction cannot migrate them out from under the device.
+///
 /// Not a `Buffer`: a transfer crossing a chunk boundary fails, so callers work
 /// from `address()` and keep each transfer inside a row.
 struct ChunkedStagingRegion {
@@ -35,13 +41,16 @@ struct ChunkedStagingRegion {
   ///
   /// No chunk boundary falls inside a `rowBytes` row.
   ///
-  /// REQUIRES: a non-host device whose backend implements `wrapHostMemory`;
-  /// `byteSize > 0`, a multiple of `rowBytes > 0`; `chunkBytes > 0`.
+  /// REQUIRES: a non-host device whose backend implements `wrapHostMemory`
+  /// (with `driverAlloc`, host `chunkAlloc`); `byteSize > 0`, a multiple of
+  /// `rowBytes > 0`; `chunkBytes > 0`.
   ChunkedStagingRegion(size_t byteSize, size_t rowBytes, PyDeviceTy device,
                        unsigned threads = kDefaultTouchThreads,
-                       size_t chunkBytes = kDefaultChunkBytes);
+                       size_t chunkBytes = kDefaultChunkBytes,
+                       bool driverAlloc = false);
 
-  /// Drains the device, unregisters every chunk, then unmaps.
+  /// Drains the device, then unregisters every chunk and unmaps, or frees
+  /// every driver-allocated chunk.
   ~ChunkedStagingRegion();
 
   // The destructor releases, so a copy would double-free.
@@ -51,7 +60,15 @@ struct ChunkedStagingRegion {
   ChunkedStagingRegion &operator=(ChunkedStagingRegion &&) = delete;
 
   /// Valid for `byteSize()` bytes until this is destroyed.
-  uintptr_t address() const { return reinterpret_cast<uintptr_t>(base_); }
+  ///
+  /// Throws for a `driverAlloc` region, which has no single base.
+  uintptr_t address() const;
+
+  /// Chunk `i` holds bytes `[i * chunkBytes(), (i + 1) * chunkBytes())` of the
+  /// region, valid until this is destroyed.
+  std::vector<uintptr_t> chunkAddresses() const;
+
+  bool driverAlloc() const { return !driverChunks_.empty(); }
 
   size_t byteSize() const { return byteSize_; }
   size_t rowBytes() const { return rowBytes_; }
@@ -59,13 +76,17 @@ struct ChunkedStagingRegion {
   /// The requested `chunkBytes` rounded up to whole rows and pages.
   size_t chunkBytes() const { return chunkBytes_; }
 
-  unsigned numChunks() const { return static_cast<unsigned>(wraps_.size()); }
+  unsigned numChunks() const {
+    return static_cast<unsigned>(driverAlloc() ? driverChunks_.size()
+                                               : wraps_.size());
+  }
 
   PyDeviceTy getDevice() const { return device_; }
 
 private:
   PyDeviceTy device_;
   std::vector<M::Driver::DeviceBufferRef> wraps_;
+  std::vector<void *> driverChunks_;
   char *base_ = nullptr;
   size_t mapLen_ = 0;
   size_t byteSize_ = 0;

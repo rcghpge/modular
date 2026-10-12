@@ -1612,8 +1612,13 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
       fails. Callers work from :obj:`address` and keep each transfer inside
       one ``row_bytes`` row, which no chunk boundary splits.
 
+      With ``driver_alloc``, each chunk is instead its own pinned host
+      allocation from the GPU driver, which the kernel cannot migrate during
+      memory compaction. The chunks are then not contiguous, so callers work
+      from :obj:`chunk_addresses`.
+
       Releases on garbage collection: drains the device, unregisters every
-      chunk, then unmaps.
+      chunk, then unmaps (or frees every driver-allocated chunk).
 
       Internal to ``max``; no compatibility guarantee.
 
@@ -1621,18 +1626,29 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           byte_size (int): Total bytes to map. Must be a positive multiple of ``row_bytes``.
           row_bytes (int): Row width no chunk boundary may fall inside.
           device (Device): GPU/Accelerator the range is made accessible to. Must not be CPU.
-          threads (int, optional): Parallel page-touch workers. Defaults to 16.
+          threads (int, optional): Parallel page-touch workers. Defaults to 16. Unused with ``driver_alloc``.
           chunk_bytes (int, optional): Registration granularity, rounded up to whole rows and pages. Defaults to 512 MiB.
+          driver_alloc (bool, optional): Allocate each chunk as pinned host memory from the GPU driver instead of registering one host mapping. Defaults to False.
 
       Raises:
           ValueError: If ``device`` is a CPU device, any size is zero, or ``byte_size`` is not a multiple of ``row_bytes``.
+          RuntimeError: If registering or allocating a chunk fails.
   )nbdoc")
-      .def(nb::init<size_t, size_t, Python::PyDeviceTy, unsigned, size_t>(),
+      .def(nb::init<size_t, size_t, Python::PyDeviceTy, unsigned, size_t,
+                    bool>(),
            "byte_size"_a, "row_bytes"_a, "device"_a,
            "threads"_a = Python::kDefaultTouchThreads,
-           "chunk_bytes"_a = Python::kDefaultChunkBytes)
+           "chunk_bytes"_a = Python::kDefaultChunkBytes,
+           "driver_alloc"_a = false)
       .def_prop_ro("address", &Python::ChunkedStagingRegion::address,
-                   "Base host address, valid until this is released.")
+                   "Base host address, valid until this is released. Raises "
+                   "for a ``driver_alloc`` region, which has no single base.")
+      .def_prop_ro("chunk_addresses",
+                   &Python::ChunkedStagingRegion::chunkAddresses,
+                   "Host address of each chunk, in order; chunk ``i`` holds "
+                   "region bytes ``[i * chunk_bytes, (i + 1) * "
+                   "chunk_bytes)``.")
+      .def_prop_ro("driver_alloc", &Python::ChunkedStagingRegion::driverAlloc)
       .def_prop_ro("byte_size", &Python::ChunkedStagingRegion::byteSize)
       .def_prop_ro("row_bytes", &Python::ChunkedStagingRegion::rowBytes)
       .def_prop_ro("chunk_bytes", &Python::ChunkedStagingRegion::chunkBytes,
