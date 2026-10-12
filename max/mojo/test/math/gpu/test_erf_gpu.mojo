@@ -16,7 +16,7 @@ from std.math.math import _call_libm
 from std.sys import bit_width_of, default_accelerator, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import assert_true, TestSuite
 
 from std.utils.coord import Coord
@@ -103,7 +103,7 @@ def _run[
 ](
     ctx: DeviceContext, max_ulp: Int, abs_tol: Float64 = 0.0
 ) raises where dtype.is_floating_point():
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var inputs = _inputs[dtype, name]()
     var length = len(inputs)
 

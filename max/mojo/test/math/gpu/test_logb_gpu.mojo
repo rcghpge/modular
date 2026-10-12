@@ -19,7 +19,7 @@ from std.sys import bit_width_of, simd_width_of
 from std.sys.info import default_accelerator
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import assert_equal, assert_true, TestSuite
 from std.utils.numerics import FPUtils
 
@@ -39,7 +39,7 @@ def run_on_gpu[
 ](ctx: DeviceContext, inputs: List[Scalar[dtype]]) raises -> List[
     Scalar[dtype]
 ] where dtype.is_floating_point():
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     assert_equal(len(inputs), length)
 
     var in_device = ctx.enqueue_create_buffer[dtype](length)

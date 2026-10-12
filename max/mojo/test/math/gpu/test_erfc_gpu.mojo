@@ -16,7 +16,7 @@ from std.math.math import _call_libm
 from std.sys import bit_width_of, default_accelerator, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext
 from std.testing import assert_true, TestSuite
 
 from std.utils.coord import Coord
@@ -99,7 +99,7 @@ def _run_erfc[
 ](
     ctx: DeviceContext, lo: Float64, hi: Float64, max_ulp: Int
 ) raises where dtype.is_floating_point():
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     var in_device = ctx.enqueue_create_buffer[dtype](length)
     var out_device = ctx.enqueue_create_buffer[dtype](length)
@@ -153,22 +153,22 @@ def test_erfc_f64_hard_cases() raises:
     comptime if default_accelerator().is_apple_gpu():
         return
     comptime dtype = DType.float64
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
-    var inputs: List[Float64] = [
-        0.8291682292057292,
-        0.8324116746883992,
-        1.1728488886441404,
-        2.834710867771694,
-    ]
-    var want: List[Float64] = [
-        0.2409478422146139,
-        0.23911254431355505,
-        0.09718456490977953,
-        6.10057131957997e-05,
-    ]
-    var n = len(inputs)
-    var padded = (n + pack_size - 1) // pack_size * pack_size
     with DeviceContext() as ctx:
+        comptime pack_size = simd_width_of[dtype, target=ctx.target]()
+        var inputs: List[Float64] = [
+            0.8291682292057292,
+            0.8324116746883992,
+            1.1728488886441404,
+            2.834710867771694,
+        ]
+        var want: List[Float64] = [
+            0.2409478422146139,
+            0.23911254431355505,
+            0.09718456490977953,
+            6.10057131957997e-05,
+        ]
+        var n = len(inputs)
+        var padded = (n + pack_size - 1) // pack_size * pack_size
         var in_device = ctx.enqueue_create_buffer[dtype](padded)
         var out_device = ctx.enqueue_create_buffer[dtype](padded)
         with in_device.map_to_host() as in_host:

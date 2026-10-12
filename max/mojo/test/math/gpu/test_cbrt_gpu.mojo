@@ -18,7 +18,7 @@ from std.memory import bitcast
 from std.sys import bit_width_of, default_accelerator, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import TestSuite, assert_equal, assert_true
 
 from std.utils.coord import Coord
@@ -101,7 +101,7 @@ def _check_cbrt[
     """Returns the number of inputs outside the tolerance."""
     var values = _inputs[dtype]()
     var length = len(values)
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     var in_device = ctx.enqueue_create_buffer[dtype](length)
     var out_device = ctx.enqueue_create_buffer[dtype](length)

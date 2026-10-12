@@ -17,7 +17,7 @@ from std.memory import bitcast
 from std.sys import bit_width_of, default_accelerator, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, HostBuffer, get_gpu_target
+from max.gpu.host import DeviceContext, HostBuffer
 from std.testing import assert_true, TestSuite
 
 from std.utils.coord import Coord
@@ -196,7 +196,7 @@ def _run[
     max_ulp: Int,
 ](ctx: DeviceContext) raises where dtype.is_floating_point():
     comptime name = "acosh" if is_acosh else "asinh"
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var in_device = ctx.enqueue_create_buffer[dtype](length)
     var out_device = ctx.enqueue_create_buffer[dtype](length)
     with in_device.map_to_host() as in_host:
@@ -314,7 +314,7 @@ def _check_hard_cases[
 ) raises where dtype.is_floating_point():
     """Checks inputs that once had more than 1.5 ulp of error against their
     correctly rounded results (mpmath), to within 1 ulp on GPU and host."""
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var n = len(inputs)
     var padded = (n + pack_size - 1) // pack_size * pack_size
     var in_device = ctx.enqueue_create_buffer[dtype](padded)

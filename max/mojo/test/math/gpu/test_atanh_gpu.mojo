@@ -18,7 +18,7 @@ from std.sys import simd_width_of
 from std.sys.info import bit_width_of, default_accelerator
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.utils.numerics import FPUtils
 from std.testing import assert_equal, assert_true, TestSuite
 
@@ -92,7 +92,7 @@ def _check[
 ](
     ctx: DeviceContext, inputs: List[Scalar[dtype]], max_ulp: Int
 ) raises where dtype.is_floating_point():
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var length = len(inputs)
 
     var in_device = ctx.enqueue_create_buffer[dtype](length)
@@ -222,7 +222,7 @@ def _check_frexp_bits[
     """Runs `_frexp_bits` on the GPU and compares each (fraction, exponent)
     pair to host `frexp`, which the GPU `frexp` must match without flushing
     subnormal inputs."""
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var length = len(inputs)
 
     var in_device = ctx.enqueue_create_buffer[dtype](length)
@@ -317,7 +317,7 @@ def _check_subnormals[
     xs.append(bitcast[dtype](Scalar[uint_type]((1 << mantissa_width) - 1)))
     var length = len(xs)
 
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var in_device = ctx.enqueue_create_buffer[dtype](length)
     var out_device = ctx.enqueue_create_buffer[dtype](length)
     with in_device.map_to_host() as in_host:

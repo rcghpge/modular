@@ -17,7 +17,7 @@ from std.sys import simd_width_of
 from std.sys.info import default_accelerator
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext
 from std.testing import TestSuite
 from test_utils.math import (
     lgamma_bit_refs,
@@ -251,7 +251,7 @@ def _check[
 def _run[
     dtype: DType
 ](ctx: DeviceContext) raises where dtype.is_floating_point():
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     var in_device = ctx.enqueue_create_buffer[dtype](length)
     var out_device = ctx.enqueue_create_buffer[dtype](length)

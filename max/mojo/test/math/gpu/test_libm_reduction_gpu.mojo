@@ -31,7 +31,7 @@ from std.memory import bitcast
 from std.sys import default_accelerator, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import assert_equal, assert_true, TestSuite
 
 from std.utils.coord import Coord
@@ -339,7 +339,7 @@ def _check[
 ) raises where dtype.is_floating_point():
     """Checks `tan` on GPU and host against `wants`, or float64 libm when
     `wants` is empty."""
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var n = len(inputs)
     var padded = align_up(n, pack_size)
 

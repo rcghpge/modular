@@ -27,7 +27,7 @@ from std.sys import (
 from std.utils.numerics import FPUtils, max_finite
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext
 from std.testing import TestSuite, assert_true
 
 from std.utils.coord import Coord
@@ -113,7 +113,7 @@ def run_scalb[
     x_device: DeviceBuffer[dtype],
     y_device: DeviceBuffer[dtype],
 ) raises where dtype.is_floating_point():
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     var out_device = ctx.enqueue_create_buffer[dtype](length)
     var x_buffer = Span(unsafe_ptr=x_device.unsafe_ptr(), length=length)
@@ -271,7 +271,7 @@ def _run[
 ] where dtype.is_floating_point():
     """Applies `math_fn` to `xs` on the GPU."""
     var n = len(xs)
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     # Pad to a whole number of packs so every lane holds a real input.
     var padded = align_up(n, pack_size)
     var in_device = ctx.enqueue_create_buffer[dtype](padded)

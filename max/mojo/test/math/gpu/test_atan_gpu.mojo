@@ -31,7 +31,7 @@ from std.memory import bitcast
 from std.sys import default_accelerator, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import TestSuite, assert_equal
 
 from std.utils.coord import Coord
@@ -206,7 +206,7 @@ def _test_atan[
         var v = in_span.unsafe_ptr().unsafe_load[width=simd_width](idx)
         out_span.unsafe_ptr().unsafe_store[width=simd_width](idx, atan(v))
 
-    comptime pack = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack = simd_width_of[dtype, target=ctx.target]()
     elementwise[pack, target="gpu"](func, Coord(length), ctx)
 
     var worst = 0
@@ -291,7 +291,7 @@ def _test_atan2[
         var x = x_span.unsafe_ptr().unsafe_load[width=simd_width](idx)
         out_span.unsafe_ptr().unsafe_store[width=simd_width](idx, atan2(y, x))
 
-    comptime pack = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack = simd_width_of[dtype, target=ctx.target]()
     elementwise[pack, target="gpu"](func, Coord(length), ctx)
 
     var worst = 0
@@ -355,7 +355,7 @@ def _test_atan2_reference[
         var x = x_span.unsafe_ptr().unsafe_load[width=simd_width](idx)
         out_span.unsafe_ptr().unsafe_store[width=simd_width](idx, atan2(y, x))
 
-    comptime pack = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack = simd_width_of[dtype, target=ctx.target]()
     elementwise[pack, target="gpu"](func, Coord(length), ctx)
 
     var worst = 0

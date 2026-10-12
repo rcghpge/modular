@@ -16,7 +16,7 @@ from std.sys import default_accelerator, simd_width_of
 from std.utils.numerics import max_finite
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext
 from std.testing import TestSuite, assert_equal, assert_raises
 from test_utils.math import (
     PairMode,
@@ -72,7 +72,7 @@ def run_hypot[
     x_device: DeviceBuffer[dtype],
     y_device: DeviceBuffer[dtype],
 ) raises where dtype.is_floating_point():
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     var out_device = ctx.enqueue_create_buffer[dtype](length)
     var x_buffer = Span(unsafe_ptr=x_device.unsafe_ptr(), length=length)

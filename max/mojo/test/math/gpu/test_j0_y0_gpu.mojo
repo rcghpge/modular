@@ -17,7 +17,7 @@ from std.sys import simd_width_of
 from std.utils.numerics import FPUtils
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import TestSuite
 
 from std.utils.coord import Coord
@@ -131,7 +131,7 @@ def _run[
         DType.float64,
     ) else half_max_ulp
     var length = len(xs)
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var in_device = ctx.enqueue_create_buffer[dtype](length)
     var out_device = ctx.enqueue_create_buffer[dtype](length)
     with in_device.map_to_host() as in_host:

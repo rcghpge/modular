@@ -16,7 +16,7 @@ from std.math.math import _call_libm
 from std.sys import default_accelerator, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.testing import assert_equal, assert_true, assert_raises, TestSuite
 
 from std.utils.coord import Coord
@@ -70,7 +70,7 @@ def _run[
     ctx: DeviceContext, values: List[Float64], max_ulp: Int
 ) raises -> Bool where dtype.is_floating_point():
     """Checks GPU and host `gamma` against libm `tgamma` evaluated on host."""
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
     var n = len(values)
     var in_device = ctx.enqueue_create_buffer[dtype](n)
     var out_device = ctx.enqueue_create_buffer[dtype](n)
