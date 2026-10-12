@@ -22,7 +22,7 @@ from std.math import align_up, ceildiv
 from std.sys import simd_width_of
 
 from max.gpu import WARP_SIZE, global_idx
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext
 from layout import Coord, Idx, TileTensor, row_major
 from linalg.gemv import (
     _GEMV_MULTIROW_ROWS,
@@ -70,7 +70,7 @@ def test_matches_one_row_kernel[
     c_type: DType, dtype: DType, N: Int, K: Int, *, with_epilogue: Bool = False
 ](ctx: DeviceContext, seed: Int) raises:
     """Runs both kernels on the same inputs and requires identical outputs."""
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     comptime check_bounds_k = K % (WARP_SIZE * simd_width) != 0
     comptime rows_per_warp = _GEMV_MULTIROW_ROWS
     comptime warps_per_block = 8
@@ -200,7 +200,7 @@ def test_matches_host_reference[
     Inputs are small integers, so the f32 accumulation is exact and the host
     result is independent of summation order.
     """
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     comptime check_bounds_k = K % (WARP_SIZE * simd_width) != 0
     comptime rows_per_warp = _GEMV_MULTIROW_ROWS
     comptime warps_per_block = 8

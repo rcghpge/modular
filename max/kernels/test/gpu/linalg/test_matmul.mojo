@@ -22,7 +22,7 @@ from std.sys import (
 
 import linalg.matmul.vendor.blas as vendor_blas
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from layout import Coord, Idx, TileTensor, row_major, coord_to_index_list
 from layout._fillers import arange as arange, random
 from linalg.matmul.gpu import _matmul_gpu, multistage_gemm
@@ -260,7 +260,7 @@ def test[
         transpose_b=transpose_b,
     )
 
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     @inline(.always)
     def func[simd_width: Int, alignment: Int = 1](idx0: Coord) {var}:

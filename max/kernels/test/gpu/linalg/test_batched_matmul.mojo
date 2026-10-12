@@ -16,7 +16,7 @@ from std.sys import simd_width_of
 
 import linalg.matmul.vendor.blas as vendor_blas
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from layout import Coord, Idx, DefaultEngine, TileTensor, row_major
 from layout.tile_layout import Layout
 from linalg.bmm import (
@@ -194,7 +194,7 @@ def run_bmm_and_check_result[
                 transpose_b=transpose_b,
             )
 
-    comptime pack_size = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime pack_size = simd_width_of[dtype, target=ctx.target]()
 
     @inline(.always)
     def func[simd_width: Int, alignment: Int = 1](coord: Coord) {var}:

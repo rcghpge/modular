@@ -15,7 +15,7 @@ from std.math import ceildiv
 from std.random import randn, seed, random_float64
 
 from max.gpu import WARP_SIZE
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from std.sys import simd_width_of
 from linalg.gemv import gemv_kernel, gemv_split_k, gevm_kernel
 from linalg.matmul.gpu import matmul_kernel
@@ -357,7 +357,7 @@ def run_split_k_gemm[
     weight_non_temporal: Bool = True,
 ](*, ctx: DeviceContext) raises:
     comptime c_type = DType.float32
-    comptime simd_width = simd_width_of[c_type, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[c_type, target=ctx.target]()
     comptime check_bounds_n = N % tile_n != 0
     # The grid covers ceildiv(M, tile_m) * tile_m rows, so tile_m > 1 needs
     # the row guard (tile_m == 1 covers M exactly).

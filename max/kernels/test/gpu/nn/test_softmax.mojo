@@ -17,7 +17,7 @@ from std.random import rand, random_float64, seed
 from std.sys import simd_width_of
 
 from max.gpu import WARP_SIZE, thread_idx, warp_id
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from layout import (
     Coord,
     Layout,
@@ -379,7 +379,7 @@ def test_gpu_softmax_large_vocab[test_type: DType](ctx: DeviceContext) raises:
 
     _softmax_gpu[
         ref_type,
-        simd_width_of[ref_type, target=get_gpu_target()](),
+        simd_width_of[ref_type, target=ctx.target](),
         rank,
         input_fn_ref,
     ](
@@ -391,7 +391,7 @@ def test_gpu_softmax_large_vocab[test_type: DType](ctx: DeviceContext) raises:
 
     _softmax_gpu[
         test_type,
-        simd_width_of[test_type, target=get_gpu_target()](),
+        simd_width_of[test_type, target=ctx.target](),
         rank,
         input_fn_test,
     ](
@@ -478,7 +478,7 @@ def test_gpu_softmax_masked_split[test_type: DType](ctx: DeviceContext) raises:
 
     _softmax_gpu[
         test_type,
-        simd_width_of[test_type, target=get_gpu_target()](),
+        simd_width_of[test_type, target=ctx.target](),
         rank,
         input_fn_device,
     ](
