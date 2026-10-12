@@ -1015,11 +1015,15 @@ class PagedKVLeafRegion(KVLeafRegion):
     def blocks_to_reserve(
         self, num_blocks: int, *, enable_prefix_caching: bool
     ) -> int:
-        """Returns ``num_blocks``, capped by the window when the leaf has one."""
+        """Returns ``num_blocks``, capped by the window when the leaf has one.
+
+        A sliding-window leaf only needs the pages holding the tokens its
+        window looks back at, plus the page it is writing now.
+        """
         if self.group_id.is_full():
             return num_blocks
         return min(
-            num_blocks, ceildiv(self.group_id.window_size, self.page_size)
+            num_blocks, self.group_id.blocks_in_window(self.page_size) + 1
         )
 
     def staged_input_shapes(
