@@ -2361,38 +2361,73 @@ def _run_gemv_case[
     rows_per_warp: Int,
     tile_k: Int = 8,
     unroll: Int = 2,
+    compute: Bool = False,
 ](ctx: DeviceContext, m: Int, name: String) raises:
-    """Runs one launch configuration at `[m, N, K]` and checks it."""
+    """Runs one launch configuration at `[m, N, K]` and checks it.
+
+    With `compute`, a `compute_fn` adds a per-column bias and the kernel
+    stores the result; the bias is subtracted before the check, which
+    verifies the `(row, col)` coordinates the kernel hands the closure.
+    """
     print("==", name, "m", m, "n", N, "k", K)
     var act_h = ctx.enqueue_create_host_buffer[in_type](m * K)
     var w_h = ctx.enqueue_create_host_buffer[in_type](N * K)
+    var bias_h = ctx.enqueue_create_host_buffer[.float32](N)
     var c_h = ctx.enqueue_create_host_buffer[c_type](tile_m * N)
     _gemv_fill_random(act_h, m * K)
     _gemv_fill_random(w_h, N * K)
+    _gemv_fill_random(bias_h, N, 4.0)
     for i in range(tile_m * N):
         c_h[i] = Scalar[c_type](_GEMV_SENTINEL)
 
     var act_d = ctx.enqueue_create_buffer[in_type](m * K)
     var w_d = ctx.enqueue_create_buffer[in_type](N * K)
+    var bias_d = ctx.enqueue_create_buffer[.float32](N)
     var c_d = ctx.enqueue_create_buffer[c_type](tile_m * N)
     ctx.enqueue_copy(act_d, act_h)
     ctx.enqueue_copy(w_d, w_h)
+    ctx.enqueue_copy(bias_d, bias_h)
     ctx.enqueue_copy(c_d, c_h)
 
     var a_tt = TileTensor(act_d, row_major(m, Idx[K])).as_imm()
     var w_tt = TileTensor(w_d, row_major(Idx[N], Idx[K])).as_imm()
     var c_tt = TileTensor(c_d, row_major(m, Idx[N]))
-    enqueue_apple_gemv_config[
-        tile_m=tile_m,
-        rows_per_warp=rows_per_warp,
-        tile_k=tile_k,
-        unroll=unroll,
-    ](c_tt, a_tt, w_tt, ctx)
+    var bias_ptr = bias_d.unsafe_ptr()
+
+    @inline(.always)
+    def bias_add_fn[
+        dtype: DType, width: SIMDLength, *, alignment: Int
+    ](coords: Coord, val: SIMD[dtype, width]) {var bias_ptr} -> SIMD[
+        dtype, width
+    ]:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
+        var col = Int(coords[1].value())
+        var out = val.cast[.float32]() + bias_ptr.load[width=width](col)
+        return out.cast[dtype]()
+
+    comptime if compute:
+        enqueue_apple_gemv_config[
+            tile_m=tile_m,
+            rows_per_warp=rows_per_warp,
+            tile_k=tile_k,
+            unroll=unroll,
+            has_compute_fn=True,
+        ](c_tt, a_tt, w_tt, ctx, compute_fn=bias_add_fn)
+    else:
+        enqueue_apple_gemv_config[
+            tile_m=tile_m,
+            rows_per_warp=rows_per_warp,
+            tile_k=tile_k,
+            unroll=unroll,
+        ](c_tt, a_tt, w_tt, ctx)
     ctx.enqueue_copy(c_h, c_d)
     ctx.synchronize()
-    _ = act_d^
-    _ = w_d^
-    _ = c_d^
+    comptime if compute:
+        for i in range(m):
+            for j in range(N):
+                c_h[i * N + j] -= bias_h[j].cast[c_type]()
     _gemv_check[in_type, c_type](c_h, act_h, w_h, m, tile_m, N, K, name)
     print("  PASS")
 
@@ -2463,6 +2498,17 @@ def test_gemv_small_batch(ctx: DeviceContext) raises:
     _run_gemv_case[.bfloat16, .bfloat16, 256, 512, tile_m=4, rows_per_warp=1](
         ctx, 4, "m4 bf16 out"
     )
+
+
+def test_gemv_compute_fn(ctx: DeviceContext) raises:
+    """`compute_fn` at ragged N and M below `tile_m`."""
+    seed(4)
+    _run_gemv_case[
+        .bfloat16, .float32, 203, 512, tile_m=4, rows_per_warp=2, compute=True
+    ](ctx, 3, "compute_fn m3 of 4")
+    _run_gemv_case[
+        .float16, .float32, 256, 1024, tile_m=8, rows_per_warp=1, compute=True
+    ](ctx, 8, "compute_fn fp16 m8")
 
 
 def test_gemv_large_shapes(ctx: DeviceContext) raises:
@@ -2756,5 +2802,6 @@ def main() raises:
     test_gemv_configs(ctx)
     test_gemv_ragged(ctx)
     test_gemv_small_batch(ctx)
+    test_gemv_compute_fn(ctx)
     test_gemv_large_shapes(ctx)
     test_gemv_dispatch(ctx)

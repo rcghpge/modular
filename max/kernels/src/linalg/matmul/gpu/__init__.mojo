@@ -1049,8 +1049,9 @@ def _matmul_gpu_impl[
             ):
                 logger.info("Executing: Apple M5 small-batch GEMV kernel")
                 enqueue_apple_gemv[
-                    elementwise_lambda_fn=elementwise_lambda_wrapper
-                ](c, a, rebind[BAsAType](b), ctx)
+                    has_epilogue_fn=has_epilogue_fn,
+                    has_compute_fn=has_compute_fn,
+                ](c, a, rebind[BAsAType](b), ctx, epilogue_fn, compute_fn)
                 return
         if (
             # m > 1 (not m >= 64): the kernel already handles a partial M tile
