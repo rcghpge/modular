@@ -1199,7 +1199,7 @@ struct NoMaskFlashAttentionCPU:
             IndexList[0](),
             output.to_tile_tensor[.int64](),
             scale.cast[.float32](),
-            ctx=Optional[DeviceContext](ctx),
+            ctx=Optional(ctx.assert_cpu_target()),
         )
 
 
@@ -1286,7 +1286,7 @@ struct WithMaskFlashAttentionSplitKVCPU:
             mask.shape(),
             output.to_tile_tensor[.int64](),
             scale.cast[.float32](),
-            ctx=Optional[DeviceContext](ctx),
+            ctx=Optional(ctx.assert_cpu_target()),
         )
 
 
@@ -1389,7 +1389,7 @@ struct WithMaskFlashAttentionCPU:
             mask.shape(),
             output.to_tile_tensor[.int64](),
             scale.cast[.float32](),
-            ctx=Optional[DeviceContext](ctx),
+            ctx=Optional(ctx.assert_cpu_target()),
         )
 
 

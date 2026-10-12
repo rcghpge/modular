@@ -174,7 +174,7 @@ def index_tensor[
         return _index_tensor_1d[
             batch_dims,
             target=target,
-        ](data, indices, output, Optional[DeviceContext](ctx))
+        ](data, indices, output, Optional(ctx.assert_cpu_target()))
     else:
         return _index_tensor_impl[
             batch_dims,
@@ -195,7 +195,7 @@ def _index_tensor_1d[
     data: TileTensor[mut=False, dtype, ...],
     indices: TileTensor[mut=False, indices_type, ...],
     output: TileTensor[mut=True, dtype, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     comptime assert (
         data.flat_rank >= 2 and indices.flat_rank == 2

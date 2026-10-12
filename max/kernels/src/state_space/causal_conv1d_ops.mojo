@@ -106,7 +106,7 @@ struct CausalConv1D[activation: StaticString]:
                 O,
                 B,
                 silu_activation,
-                Optional[DeviceContext](ctx),
+                Optional(ctx.assert_cpu_target()),
             )
         elif is_gpu[target]():
             var gpu_ctx: DeviceContext = ctx

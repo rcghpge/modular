@@ -1468,7 +1468,7 @@ def _matmul_Qb_K[
     a: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     comptime assert a.rank == 2
     comptime assert b.rank == 2
@@ -1565,7 +1565,7 @@ def matmul_Q4_K[
     a_tt: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c_tt: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """Computes a matrix multiplication with Q4_K block-quantized weights.
 
@@ -1600,7 +1600,7 @@ def matmul_Q6_K[
     a_tt: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c_tt: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """Computes a matrix multiplication with Q6_K block-quantized weights.
 

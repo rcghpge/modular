@@ -511,7 +511,7 @@ struct Conv:
                 pad_h_tuple,
                 pad_w_tuple,
                 Int(num_groups),
-                Optional[DeviceContext](ctx),
+                Optional(ctx.assert_cpu_target()),
             )
         else:
             comptime assert (input.rank == 4 and filter.rank == 4) or (
@@ -766,7 +766,7 @@ struct ConvTranspose:
                 pad_d,
                 pad_h,
                 pad_w,
-                Optional[DeviceContext](ctx),
+                Optional(ctx.assert_cpu_target()),
             )
         else:
             comptime assert (

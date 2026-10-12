@@ -521,7 +521,7 @@ struct ConvTransposedPacked[
             ...,
         ],
         conv_shape: ConvShape[Self.conv_attr_rank],
-        ctx: Optional[DeviceContext] = None,
+        ctx: Optional[DeviceContext.CPU] = None,
     ) raises:
         comptime assert input.rank - 2 == Self.conv_attr_rank
         comptime simd_size = simd_width_of[Self.output_type]()
@@ -1555,7 +1555,7 @@ def conv_transposed_cpu[
     pad_d: IndexList[2],
     pad_h: IndexList[2],
     pad_w: IndexList[2],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     """Runs a transposed convolution on the CPU using the direct register-tiled kernel.
 

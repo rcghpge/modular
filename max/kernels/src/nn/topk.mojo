@@ -233,7 +233,7 @@ def top_k[
                 out_idxs,
                 grain_size,
                 sorted=sorted,
-                ctx=Optional[DeviceContext](ctx),
+                ctx=Optional(ctx.assert_cpu_target()),
                 k=k,
             )
         else:
@@ -268,7 +268,7 @@ def _top_k_cpu[
     out_idxs: TileTensor[mut=True, out_idx_type, ...],
     parallelism_grain_size: Int,  # impl detail, exposed for testing
     sorted: Bool,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
     k: Optional[
         TileTensor[.int64, KLayoutType, ImmutAnyOrigin, Engine=KEngine]
     ] = None,

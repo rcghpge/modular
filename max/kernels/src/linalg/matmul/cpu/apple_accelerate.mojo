@@ -272,7 +272,7 @@ def apple_gemv[
     c: TileTensor[mut=True, address_space=.GENERIC, ...],
     a: TileTensor[mut=False, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     """Performs a parallelized and vectorized GEMV for the M=1 case on Apple CPUs.
 

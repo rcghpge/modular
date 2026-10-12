@@ -1351,7 +1351,7 @@ def rms_norm_cpu[
     gamma: TileTensor[mut=False, dtype, ...],
     epsilon: Float32,
     weight_offset: Scalar[dtype],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     comptime assert gamma.flat_rank == 1, "gamma must have rank 1"
     comptime rank = shape.rank
@@ -1487,7 +1487,7 @@ def _rms_norm_impl[
             gamma,
             epsilon,
             weight_offset,
-            Optional[DeviceContext](ctx),
+            Optional(ctx.assert_cpu_target()),
         )
     elif is_gpu[target]():
         rms_norm_gpu[
@@ -2703,7 +2703,7 @@ def group_norm_cpu[
     epsilon: Float32,
     output: TileTensor[mut=True, dtype, ...],
     num_groups: Int,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     """Computes group normalization on CPU.
 
@@ -2869,7 +2869,7 @@ def group_norm[
                 epsilon,
                 output,
                 num_groups,
-                Optional[DeviceContext](ctx),
+                Optional(ctx.assert_cpu_target()),
             )
         elif is_gpu[target]():
             group_norm_gpu[dtype=dtype, rank=rank](

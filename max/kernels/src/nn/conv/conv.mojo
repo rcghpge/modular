@@ -389,7 +389,7 @@ def _reduce_output[
     F: Int,
     num_partitions: Int,
     num_threads: Int,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     var num_rows = N * output_space_dims.flattened_length()
     var buf_size = num_rows * F
@@ -528,7 +528,7 @@ struct ConvDirectNHWC[
             Self.filter_type, Self.filter_layout, Self.filter_origin
         ],
         conv_shape: ConvShape[Self.conv_attr_rank],
-        ctx: Optional[DeviceContext] = None,
+        ctx: Optional[DeviceContext.CPU] = None,
     ) raises:
         comptime assert Self.conv_attr_rank == Self.input_layout.flat_rank - 2
         comptime simd_size = simd_width_of[Self.output_type]()
@@ -3432,7 +3432,7 @@ def conv_nhwc_direct[
     pad_h: IndexList[2],
     pad_w: IndexList[2],
     num_groups: Int,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     """Runs a direct (register-tiled) NHWC convolution on CPU, dispatching to
     `ConvDirectNHWC.run` with optional elementwise epilogue fusion.

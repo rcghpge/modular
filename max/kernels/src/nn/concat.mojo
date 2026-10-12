@@ -284,7 +284,7 @@ def _concat_parallel[
     axis: Int,
     inputs: List[TileTensor[dtype, InputLayoutType, input_origin]],
     epilogue_fn: EpilogueFnType,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     var output_canon = _canonical_reshape_output(output, axis, inputs)
 
@@ -585,7 +585,7 @@ def _concat_cpu[
     axis: Int,
     inputs: List[TileTensor[dtype, InputLayoutType, input_origin]],
     epilogue_fn: EpilogueFnType,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     _check_input_consistency[dtype](axis, inputs)
 
@@ -799,7 +799,7 @@ def _concat_impl[
                 axis,
                 inputVec,
                 epilogue_fn,
-                ctx=Optional[DeviceContext](context),
+                ctx=Optional(context.assert_cpu_target()),
             )
         else:
             _concat_gpu[dtype, has_epilogue](

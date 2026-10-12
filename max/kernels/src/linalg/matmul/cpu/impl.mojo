@@ -505,7 +505,7 @@ def _matmul_cpu_impl[
     a: TileTensor[mut=False, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, address_space=.GENERIC, ...],
     num_threads: Int = -1,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     comptime assert c.rank == 2 and c.flat_rank == 2
     comptime assert a.rank == 2 and a.flat_rank == 2
@@ -677,7 +677,7 @@ def matmul[
     b: TileTensor[mut=False, address_space=.GENERIC, ...],
     kernel_type_m: Int,
     num_threads: Int = -1,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     """TileTensor matmul dispatcher. Selects kernel type and delegates to
     `_matmul_cpu_impl`.

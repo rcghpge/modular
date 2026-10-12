@@ -86,7 +86,7 @@ def causal_conv1d_channel_first_fwd_cpu[
     output: TileTensor[mut=True, output_dtype, ...],  # Shape (B, C, L)
     bias: TileTensor[mut=False, bias_dtype, ...],  # Shape (C,)
     silu_activation: Bool,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """CPU implementation of causal conv1d for channel-first layout with bias.
 
@@ -193,7 +193,7 @@ def causal_conv1d_channel_first_fwd_cpu_no_bias[
     weight: TileTensor[mut=False, weight_dtype, ...],  # Shape (C, W)
     output: TileTensor[mut=True, output_dtype, ...],  # Shape (B, C, L)
     silu_activation: Bool,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """CPU implementation of causal conv1d for channel-first layout without bias.
 

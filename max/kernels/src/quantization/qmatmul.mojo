@@ -993,7 +993,7 @@ def _matmul_qint4_m_1[
         ...,
     ],
     c: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     comptime assert a_quant.rank == 2
     comptime assert a_scale.rank == 2
@@ -1077,7 +1077,7 @@ def _matmul_qint4_m_any[
         ...,
     ],
     c: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     comptime simd_width = simd_width_of[DType.float32]()
     comptime alignment = align_of[SIMD[.float32, simd_width]]()
@@ -1239,7 +1239,7 @@ def _matmul_qint4[
         ...,
     ],
     c: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     comptime simd_width = simd_width_of[DType.float32]()
     comptime alignment = Alignment.of[SIMD[.float32, simd_width]]()
@@ -1286,7 +1286,7 @@ def matmul_qint4[
     a: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """Computes a matrix multiply of a float32 A matrix against block-wise
     quantized int4 B weights, producing a float32 result.

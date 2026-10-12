@@ -4459,6 +4459,10 @@ struct DeviceContextBase[
     parameterized by compilation target.
     """
 
+    # DeviceContext is only usable on hosts so `current()` will always be a CPU.
+    comptime CPU = DeviceContextBase[CompilationTarget.current()]
+    """DeviceContext type for the current CPU target."""
+
     comptime default_device_info = GPUInfo.from_target[Self.target]()
     """`GPUInfo` object for the default accelerator."""
 
@@ -4644,6 +4648,53 @@ struct DeviceContextBase[
             NoneType,
             _DeviceContextPtr[mut=True],
         ](self._handle)
+
+    @staticmethod
+    def cpu() -> DeviceContext.CPU:
+        """Creates a CPU `DeviceContext`.
+
+        Returns:
+            A new CPU `DeviceContext`.
+        """
+        try:
+            return DeviceContext.CPU(api="cpu")
+        except e:
+            abort(t"unable to create CPU DeviceContext: {e}")
+
+    @inline(.always)
+    def assert_cpu_target(var self) -> DeviceContext.CPU:
+        """Temporary function to assert and cast this DeviceContext to the CPU
+        target.
+
+        This method will be removed once all uses have migrated to static CPU
+        DeviceContext target types.
+
+        The check is performed at runtime on the context's API, since the
+        static `target` of a plain `DeviceContext` is always the default
+        accelerator, even for contexts created with `api="cpu"`.
+
+        Returns:
+            This device context cast to the CPU target.
+        """
+        if self.api() != "cpu":
+            abort(
+                String(
+                    t"using DeviceContext with non-CPU target is not supported"
+                    t" from: {call_location()}"
+                )
+            )
+        return rebind_var[DeviceContext.CPU](self)
+
+    # FIXME: The more obvious spelling of this currently crashes the compiler:
+    #    context.map(DeviceContext.assert_cpu_target)
+    @staticmethod
+    def _map_assert_cpu_target(
+        ctx: Optional[DeviceContext],
+    ) -> Optional[DeviceContext.CPU]:
+        var cpu_ctx = Optional[DeviceContext.CPU]()
+        if ctx:
+            cpu_ctx = ctx.value().assert_cpu_target()
+        return cpu_ctx^
 
     # TODO(MSTDL-3258): Remove once all APIs fully support generic DeviceContext
     @inline(.always)

@@ -472,7 +472,7 @@ struct VroomQ40Matmul:
             a.to_tile_tensor[.int64](),
             b.to_tile_tensor[.int64](),
             c.to_tile_tensor[.int64](),
-            Optional[DeviceContext](ctx),
+            Optional(ctx.assert_cpu_target()),
         )
 
 
@@ -577,7 +577,7 @@ struct VroomQ4KMatmul:
             a.to_tile_tensor[.int64](),
             b.to_tile_tensor[.int64](),
             c.to_tile_tensor[.int64](),
-            Optional[DeviceContext](ctx),
+            Optional(ctx.assert_cpu_target()),
         )
 
 
@@ -685,7 +685,7 @@ struct VroomQ6KMatmul:
             a.to_tile_tensor[.int64](),
             b.to_tile_tensor[.int64](),
             c.to_tile_tensor[.int64](),
-            Optional[DeviceContext](ctx),
+            Optional(ctx.assert_cpu_target()),
         )
 
 

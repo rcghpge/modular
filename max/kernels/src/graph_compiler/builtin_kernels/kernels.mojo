@@ -2683,7 +2683,7 @@ struct Struct_fused_token_sampling:
                     input.to_tile_tensor[.int64](),
                     rank - 1,
                     out_idxs.to_tile_tensor[.int64](),
-                    Optional[DeviceContext](ctx),
+                    Optional(ctx.assert_cpu_target()),
                 )
                 return
             _fused_token_sampling_cpu(
@@ -4678,7 +4678,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     b_fn,
                     c_fn,
                     slot_fn,
-                    Optional[DeviceContext](ctx),
+                    Optional(ctx.assert_cpu_target()),
                 )
             elif not is_gpu[target]():
                 raise Error("Unsupported target device")

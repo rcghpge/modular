@@ -243,7 +243,7 @@ def _batched_matmul_cpu[
     c_tile: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
     a_tile: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
     b_tile: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     comptime assert rank < 5, "max rank for batched matmul is currently 4"
 
@@ -1030,6 +1030,7 @@ def batched_matmul[
         comptime assert is_valid_target[target](), "unsupported target"
 
         comptime if is_cpu[target]():
+            var cpu_ctx = DeviceContext._map_assert_cpu_target(context)
             _batched_matmul_cpu[
                 rank,
                 a_buf.dtype,
@@ -1038,7 +1039,7 @@ def batched_matmul[
                 transpose_b=transpose_b,
                 elementwise_epilogue_fn=elementwise_epilogue_fn,
                 saturated_vnni=saturated_vnni,
-            ](c_buf, a_buf, b_buf, ctx=context)
+            ](c_buf, a_buf, b_buf, ctx=cpu_ctx)
         else:
             comptime assert (
                 saturated_vnni == False

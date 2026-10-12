@@ -2170,7 +2170,7 @@ struct TopKPerRow:
                 indices.to_tile_tensor[.int64](),
                 1000,
                 sorted=True,
-                ctx=Optional[DeviceContext](ctx),
+                ctx=Optional(ctx.assert_cpu_target()),
                 k=k_tt,
             )
         else:

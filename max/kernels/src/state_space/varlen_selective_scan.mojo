@@ -394,7 +394,7 @@ def varlen_selective_state_update_cpu[
     output: TileTensor[mut=True, kernel_dtype, ...],
     dt_bias: TileTensor[mut=False, kernel_dtype, ...],
     state_batch_indices: TileTensor[mut=False, .int32, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """CPU kernel for varlen selective state update."""
     var has_dt_bias = Int(dt_bias.dim[0]()) > 0
@@ -506,7 +506,7 @@ def varlen_selective_scan_fwd_cpu[
     query_start_loc: TileTensor[mut=False, .int32, ...],
     cache_indices: TileTensor[mut=False, .int32, ...],
     has_initial_state: TileTensor[mut=False, .bool, ...],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """CPU kernel for variable-length selective scan."""
     var has_D = Int(D.dim[0]()) > 0

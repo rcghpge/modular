@@ -708,7 +708,7 @@ struct _FlashAttention[
         max_seq_len: Int,
         scale: Float32,
         sink_weights: OptionalReg[ImmutTileTensor1D[Self.dtype]] = None,
-        ctx: Optional[DeviceContext] = None,
+        ctx: Optional[DeviceContext.CPU] = None,
     ):
         var kv_group_count = num_heads // num_kv_heads
 
@@ -991,7 +991,7 @@ def _flash_attention[
     output: TileTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     scale: Float32,
     sink_weights: OptionalReg[ImmutTileTensor1D[dtype]] = None,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     comptime assert q.rank == q.flat_rank == rank
     comptime assert output.rank == output.flat_rank == rank
@@ -1100,7 +1100,7 @@ def flash_attention[
     output: TileTensor[dtype, _, output_origin, address_space=.GENERIC, ...],
     scale: Float32,
     sink_weights: OptionalReg[ImmutTileTensor1D[dtype]] = None,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """Computes scaled dot-product flash attention on CPU for the given query, key, value, and mask accessors.
 
@@ -1174,7 +1174,7 @@ def flash_attention_split_kv[
     mask_shape: IndexList[mask_rank],
     output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
     scale: Float32,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     """Variant of flash attention that takes the previous KV cache
     `input_{k,v}_cache_fn` and the current KV tensors `input_k_fn` and

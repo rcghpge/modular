@@ -348,7 +348,11 @@ def _elementwise_impl[
             _elementwise_impl_cpu[
                 simd_width=simd_width,
                 trace_description=trace_description,
-            ](func_wrap_cpu, shape=shape, ctx=Optional(context))
+            ](
+                func_wrap_cpu,
+                shape=shape,
+                ctx=Optional(context.assert_cpu_target()),
+            )
         elif _accelerator_arch() != "" and MaxPluginForTarget[
             context.target
         ]._handles_elementwise:

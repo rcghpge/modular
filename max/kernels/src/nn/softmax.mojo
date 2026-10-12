@@ -737,7 +737,7 @@ def _softmax_cpu[
     shape: Coord,
     output: TileTensor[mut=True, dtype, ...],
     axis: Int,
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     # TODO: Add rowwise generator to de-duplicate partitioning logic between
     # softmax and logsoftmax
@@ -1357,6 +1357,7 @@ def softmax_inline[
         if shape_il.flattened_length() == 0:
             return
         comptime if is_cpu[target]():
+            var cpu_ctx = DeviceContext._map_assert_cpu_target(context)
             _softmax_cpu[
                 dtype,
                 simd_width,
@@ -1364,7 +1365,7 @@ def softmax_inline[
                 origin_of()._mlir_origin,
                 input_fn,
                 logsoftmax=logsoftmax,
-            ](shape, output, axis, context)
+            ](shape, output, axis, cpu_ctx)
         elif is_gpu[target]():
             _softmax_gpu[
                 dtype,

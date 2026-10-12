@@ -137,7 +137,7 @@ def gather_reduce[
     input: TileTensor[mut=False, dtype, ...],
     indices: TileTensor[mut=False, .int32, ...],
     reduce_init: Scalar[dtype],
-    ctx: Optional[DeviceContext] = None,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     """Computes output[i, j, k] = input[indices[i, j], k] and simultaneously
     reduces the output across axis 1 to produce output[i, k].
@@ -364,12 +364,14 @@ def gather_sum[
         ]:
             return x + y
 
+        var cpu_ctx = DeviceContext._map_assert_cpu_target(dev_ctx)
+
         gather_reduce[dtype, 0, 1, simd_width_of[dtype](), add](
             output_flat,
             input_flat,
             indices,
             0,
-            dev_ctx,
+            cpu_ctx,
         )
     else:
         # Elementwise over the output's [batch, emb_dim] view: each call

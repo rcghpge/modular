@@ -143,7 +143,7 @@ struct VarlenSelectiveScanFwd[delta_softplus: Bool = False]:
                         query_start_loc_tt,
                         cache_indices_tt,
                         has_initial_state_tt,
-                        Optional[DeviceContext](ctx),
+                        Optional(ctx.assert_cpu_target()),
                     )
                 case 8:
                     varlen_selective_scan_fwd_cpu[
@@ -192,7 +192,7 @@ struct VarlenSelectiveScanFwd[delta_softplus: Bool = False]:
                         query_start_loc_tt,
                         cache_indices_tt,
                         has_initial_state_tt,
-                        Optional[DeviceContext](ctx),
+                        Optional(ctx.assert_cpu_target()),
                     )
         elif is_gpu[target]():
             var gpu_ctx = ctx
@@ -486,7 +486,7 @@ struct VarlenSelectiveStateUpdate[dt_softplus: Bool = False]:
                         output_tt,
                         dt_bias_tt,
                         state_batch_indices_tt,
-                        Optional[DeviceContext](ctx),
+                        Optional(ctx.assert_cpu_target()),
                     )
                 case 8:
                     varlen_selective_state_update_cpu[
@@ -535,7 +535,7 @@ struct VarlenSelectiveStateUpdate[dt_softplus: Bool = False]:
                         output_tt,
                         dt_bias_tt,
                         state_batch_indices_tt,
-                        Optional[DeviceContext](ctx),
+                        Optional(ctx.assert_cpu_target()),
                     )
         elif is_gpu[target]():
             var gpu_ctx = ctx

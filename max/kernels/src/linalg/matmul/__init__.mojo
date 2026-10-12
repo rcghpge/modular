@@ -206,9 +206,11 @@ def matmul[
                 compute_lambda_wrapper
             ) if elementwise_compute_lambda_fn else elementwise_lambda_fn
 
+            var cpu_ctx = DeviceContext._map_assert_cpu_target(ctx)
+
             cpu.matmul[
                 transpose_b=transpose_b,
                 b_packed=b_packed,
                 elementwise_lambda_fn=elementwise_lambda_wrapper,
                 saturated_vnni=saturated_vnni,
-            ](c, a, b, kernel_type_m, ctx=ctx)
+            ](c, a, b, kernel_type_m, ctx=cpu_ctx)
