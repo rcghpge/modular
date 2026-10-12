@@ -51,6 +51,7 @@ from nn.gather_scatter import (
     gather_nd,
     gather_nd_shape,
     gather_reduce,
+    gather_sum,
     gather_shape,
     _unsafe_normalize_neg_index as normalize_neg_index,
     scatter_elements,
@@ -1877,20 +1878,15 @@ struct GatherSum:
         indices: InputTensor[dtype=.int32, ...],
         ctx: DeviceContext,
     ) raises:
-        comptime assert is_cpu[target](), "only valid on CPUs"
+        """Fused gather (axis 0) + sum reduction (axis 1).
 
-        def add[
-            dtype: DType, simd_width: SIMDLength
-        ](x: SIMD[dtype, simd_width], y: SIMD[dtype, simd_width]) -> SIMD[
-            dtype, simd_width
-        ]:
-            return x + y
-
-        gather_reduce[output.dtype, 0, 1, simd_width_of[output.dtype](), add](
+        Dispatches to the CPU `gather_reduce` kernel or the GPU
+        `gather_sum` kernel based on `target`.
+        """
+        gather_sum[target=target](
             output.to_tile_tensor[.int64](),
             input.to_tile_tensor[.int64](),
             indices.to_tile_tensor[.int64](),
-            0,
             Optional[DeviceContext](ctx),
         )
 

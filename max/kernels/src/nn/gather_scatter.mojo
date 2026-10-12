@@ -11,7 +11,21 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """Implements gather and scatter operations for CPU and GPU, including indexed reductions."""
-
+from max.gpu import (
+    MAX_THREADS_PER_BLOCK_METADATA,
+    block_idx,
+    thread_idx,
+)
+from layout import (
+    Coord,
+    DefaultEngine,
+    TensorEngine,
+    TensorLayout,
+    TileTensor,
+    UNKNOWN_VALUE,
+    coord_to_index_list,
+    row_major,
+)
 from std.collections.string.string_span import get_static_string
 from std.math import align_down, ceildiv, iota
 from std.sys import align_of, bit_width_of, simd_width_of, size_of
@@ -29,14 +43,7 @@ from std.algorithm.functional import tile
 from std.atomic import Atomic
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from max.gpu.host.info import is_cpu, is_gpu
-from layout import (
-    Coord,
-    DefaultEngine,
-    TileTensor,
-    UNKNOWN_VALUE,
-    coord_to_index_list,
-    row_major,
-)
+
 from layout.coord import DynamicCoord
 from std.memory import unsafe_memcpy
 from max.runtime.asyncrt import parallelism_level
@@ -306,6 +313,157 @@ def gather_reduce[
             _ = i
 
     sync_parallelize(task_func, num_tasks, ctx)
+
+
+@__llvm_metadata(
+    MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(BLOCK_SIZE))
+)
+@__name(t"gather_sum_{dtype}_{BLOCK_SIZE}")
+def _gather_sum_kernel[
+    dtype: DType,
+    BLOCK_SIZE: Int,
+    InputLayout: TensorLayout,
+    IndicesLayout: TensorLayout,
+    OutputLayout: TensorLayout,
+    InputEngine: TensorEngine,
+    IndicesEngine: TensorEngine,
+    OutputEngine: TensorEngine,
+](
+    input_buffer: TileTensor[
+        dtype, InputLayout, ImmutAnyOrigin, Engine=InputEngine
+    ],
+    indices_buffer: TileTensor[
+        DType.int32, IndicesLayout, ImmutAnyOrigin, Engine=IndicesEngine
+    ],
+    output_buffer: TileTensor[
+        mut=True, dtype, OutputLayout, MutAnyOrigin, Engine=OutputEngine
+    ],
+    batch_arg: Int64,
+    multi_hot_arg: Int64,
+    emb_dim_arg: Int64,
+    table_size_arg: Int64,
+):
+    """Computes output[i, k] = Σ_j input[indices[i, j], k] on the device.
+
+    One block per batch row: threads stride over the embedding dimension
+    in BLOCK_SIZE-element chunks, and the multi-hot (j) loop is hoisted
+    once per row so each embedding row is read at most once per j.
+    Negative indices are normalized against the table size, matching
+    the CPU `gather_reduce` path. Each output element is written by
+    exactly one thread, so no atomics or cross-thread reductions are
+    needed.
+    """
+    var multi_hot = Int(multi_hot_arg)
+    var emb_dim = Int(emb_dim_arg)
+    var table_size = Int(table_size_arg)
+
+    var row = Int(block_idx.x)
+    var tid = Int(thread_idx.x)
+
+    if row < Int(batch_arg):
+        var k = tid
+        while k < emb_dim:
+            var accum = Scalar[dtype](0)
+            for j in range(multi_hot):
+                var idx = Int(indices_buffer.raw_load(row * multi_hot + j))
+                if idx < 0:
+                    idx += table_size
+                accum += input_buffer.raw_load(idx * emb_dim + k)
+            output_buffer.raw_store(row * emb_dim + k, accum)
+            k += BLOCK_SIZE
+
+
+@inline(.always)
+def gather_sum[
+    dtype: DType,
+    //,
+    target: StaticString = "cpu",
+](
+    output: TileTensor[mut=True, dtype, ...],
+    input: TileTensor[mut=False, dtype, ...],
+    indices: TileTensor[mut=False, .int32, ...],
+    ctx: Optional[DeviceContext],
+) raises:
+    """Computes output[i, k] = Σ_j input[indices[i, j], k].
+
+    Dispatches to the CPU `gather_reduce` kernel on CPU targets and to
+    `_gather_sum_kernel` on GPU targets.
+
+    Args:
+        output: Output tensor holding the reduced embeddings, shape
+            [batch, embedding_dim] (rank 2) or [batch, 1, embedding_dim]
+            (rank 3).
+        input: Source embedding table, shape [num_embeddings, embedding_dim].
+        indices: Multi-hot indices, shape [batch, multi_hot], `int32`.
+        ctx: Optional device context for parallel execution (defaults to
+            None).
+    """
+    comptime assert input.flat_rank == 2
+    comptime assert indices.flat_rank == 2
+
+    if input.num_elements() == 0 or indices.num_elements() == 0:
+        return
+    var dev_ctx = DeviceContext()
+    if case .Some(var bound_ctx) = ctx:
+        dev_ctx = bound_ctx
+    else:
+        raise Error("gather_sum requires a DeviceContext")
+
+    var batch = Int(indices.dim[0]())
+    var multi_hot = Int(indices.dim[1]())
+    var emb_dim = Int(input.dim[1]())
+    var table_size = Int(input.dim[0]())
+
+    # Rank-3 outputs ([batch, 1, emb_dim]) are contiguous with the rank-2
+    # view, so one flat layout covers both.
+    var output_flat = TileTensor(output.ptr, row_major(Coord(batch, emb_dim)))
+    var input_flat = TileTensor(
+        input.ptr,
+        input.layout.make_dynamic[.int64](),
+    )
+
+    comptime if is_cpu[target]():
+
+        def add[
+            dtype: DType, simd_width: SIMDLength
+        ](x: SIMD[dtype, simd_width], y: SIMD[dtype, simd_width]) -> SIMD[
+            dtype, simd_width
+        ]:
+            return x + y
+
+        gather_reduce[dtype, 0, 1, simd_width_of[dtype](), add](
+            output_flat,
+            input_flat,
+            indices,
+            0,
+            dev_ctx,
+        )
+    else:
+        comptime block_size = 256
+        var input_imm = input_flat.as_imm().as_unsafe_any_origin()
+        var indices_imm = indices.as_imm().as_unsafe_any_origin()
+        var output_mut = output_flat.as_unsafe_any_origin()
+        comptime kernel = _gather_sum_kernel[
+            dtype,
+            block_size,
+            input_imm.LayoutType,
+            indices_imm.LayoutType,
+            output_mut.LayoutType,
+            input_imm.Engine,
+            indices_imm.Engine,
+            output_mut.Engine,
+        ]
+        dev_ctx.enqueue_function[kernel](
+            input_imm,
+            indices_imm,
+            output_mut,
+            Int64(batch),
+            Int64(multi_hot),
+            Int64(emb_dim),
+            Int64(table_size),
+            grid_dim=max(batch, 1),
+            block_dim=block_size,
+        )
 
 
 # TODO: Delete / for testing purposes (test_gather.mojo)
