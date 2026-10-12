@@ -439,12 +439,17 @@ struct Matmul2dFp8[
         @inline(.always)
         def group_epilogue_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]) {
+        ](idx: Coord, val: SIMD[dtype, width]) {
             var epilogue_fn, var compute_fn, var c_ptr, var a_start, var N
         }:
-            var row_idx: IndexList[2] = (a_start + idx[0], idx[1])
+            comptime assert (
+                idx.rank == 2
+            ), "the matmul epilogue contract is rank 2"
+            var row = a_start + Int(idx[0].value())
+            var col = Int(idx[1].value())
+            var row_idx = Coord(row, col)
             comptime if has_compute_fn:
-                (c_ptr + row_idx[0] * N + idx[1]).store[alignment=alignment](
+                (c_ptr + row * N + col).store[alignment=alignment](
                     rebind[SIMD[Self.c_type, width]](
                         compute_fn[dtype, width, alignment=alignment](
                             row_idx, val

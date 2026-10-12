@@ -162,10 +162,10 @@ struct GEMVAlgorithm(
 
 
 @inline(.always)
-def reverse_idx[transpose: Bool](x: Int, y: Int) -> IndexList[2]:
+def reverse_idx[transpose: Bool](x: Int, y: Int) -> Coord[Int, Int]:
     """Returns an index pair (x, y) or (y, x) depending on the transpose parameter.
     """
-    return Index(y, x) if transpose else Index(x, y)
+    return Coord(y, x) if transpose else Coord(x, y)
 
 
 # Matrix-Column Vector Multiplication using scalar arithmetic
@@ -1364,26 +1364,26 @@ def _gemv_split_k_impl[
                     comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
                         apply_elementwise_epilogue[elementwise_lambda_fn](
                             epilogue_fn,
-                            Index(row, col + ni),
+                            Coord(Index(row, col + ni)),
                             vals[ni].cast[c_type](),
                         )
                     else:
                         var out = vals[ni].cast[c_type]()
                         comptime if has_compute_fn:
                             out = compute_fn[c_type, 1, alignment=1](
-                                Index(row, col + ni), out
+                                Coord(Index(row, col + ni)), out
                             )
                         output[row, col + ni] = out
         else:
             comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
                 apply_elementwise_epilogue[elementwise_lambda_fn](
-                    epilogue_fn, Index(row, col), vals.cast[c_type]()
+                    epilogue_fn, Coord(Index(row, col)), vals.cast[c_type]()
                 )
             else:
                 var out = vals.cast[c_type]()
                 comptime if has_compute_fn:
                     out = compute_fn[c_type, tile_n, alignment=1](
-                        Index(row, col), out
+                        Coord(Index(row, col)), out
                     )
                 comptime for ni in range(tile_n):
                     output[row, col + ni] = out[ni]
@@ -1670,13 +1670,15 @@ def _gevm_kernel_impl[
     if lane_id % warps_per_block == 0:
         comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
             apply_elementwise_epilogue[elementwise_lambda_fn](
-                epilogue_fn, Index(0, global_warp_id), total.cast[c_type]()
+                epilogue_fn,
+                Coord(Index(0, global_warp_id)),
+                total.cast[c_type](),
             )
         else:
             var out = total.cast[c_type]()
             comptime if has_compute_fn:
                 out = compute_fn[c_type, 1, alignment=1](
-                    Index(0, global_warp_id), out
+                    Coord(Index(0, global_warp_id)), out
                 )
             c[global_warp_id] = out
 
@@ -3568,14 +3570,14 @@ struct _MmaCpAsyncMmaComputer[
                     ):
                         apply_elementwise_epilogue[Self.elementwise_lambda_fn](
                             epilogue_fn,
-                            Index(out_row, out_col),
+                            Coord(Index(out_row, out_col)),
                             total.cast[Self.c_type](),
                         )
                     else:
                         var out = total.cast[Self.c_type]()
                         comptime if has_compute_fn:
                             out = compute_fn[Self.c_type, 1, alignment=1](
-                                Index(out_row, out_col), out
+                                Coord(Index(out_row, out_col)), out
                             )
                         self.out_ptr[out_off] = out
 

@@ -27,8 +27,6 @@ from linalg.matmul.gpu import multistage_gemm
 from linalg.utils_gpu import MatmulConfig, MatmulKernels
 from std.testing import assert_equal
 
-from std.utils import IndexList
-
 
 def _runtime_config[
     a_type: DType, c_type: DType
@@ -74,10 +72,9 @@ def test_compute_fn[
 
     def scale_odd_rows_negated[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var scale} -> SIMD[
-        dtype, width
-    ]:
-        var row_scale = -scale if idx[0] % 2 == 1 else scale
+    ](idx: Coord, val: SIMD[dtype, width]) {var scale} -> SIMD[dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row_scale = -scale if Int(idx[0].value()) % 2 == 1 else scale
         return val * SIMD[dtype, width](row_scale)
 
     comptime if num_k_partitions > 0:
@@ -133,10 +130,11 @@ def test_epilogue_fn[
 
     def store_odd_rows_negated[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var d}:
-        var row_scale = -2 if idx[0] % 2 == 1 else 2
+    ](idx: Coord, val: SIMD[dtype, width]) {var d}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row_scale = -2 if Int(idx[0].value()) % 2 == 1 else 2
         d.store[width=width](
-            Coord(idx),
+            idx,
             (val * SIMD[dtype, width](row_scale)).cast[c_type](),
         )
 

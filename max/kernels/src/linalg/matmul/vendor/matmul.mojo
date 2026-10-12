@@ -129,9 +129,7 @@ def matmul[
             # Load takes alignment in bytes, the epilogue takes elements.
             alignment=alignment * size_of[c_type](),
         ](idx)
-        epilogue_fn[c_type, simd_width, alignment=alignment](
-            Index(idx[0].value(), idx[1].value()), c_val
-        )
+        epilogue_fn[c_type, simd_width, alignment=alignment](idx, c_val)
 
     var m = Int(c.dim[0]())
     var n = Int(c.dim[1]())
@@ -228,7 +226,7 @@ def apply_compute_fn_in_place[
         c_tt.store[width=simd_width, alignment=byte_alignment](
             idx,
             compute_fn[c_type, simd_width, alignment=alignment](
-                Index(idx[0].value(), idx[1].value()), c_val
+                Coord(Index(idx[0].value(), idx[1].value())), c_val
             ),
         )
 

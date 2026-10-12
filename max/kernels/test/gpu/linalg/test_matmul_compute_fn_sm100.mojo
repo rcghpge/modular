@@ -20,12 +20,11 @@ dispatch exactly.
 """
 
 from max.gpu.host import DeviceContext
-from layout import Idx, TileTensor, row_major
+from layout import Coord, Idx, TileTensor, row_major
 from layout._fillers import random
 from linalg.matmul.gpu import _matmul_gpu
 
 from std.testing import assert_true
-from std.utils.index import IndexList
 
 
 def test_dispatch_compute_fn[
@@ -65,10 +64,9 @@ def test_dispatch_compute_fn[
 
     def scale_odd_rows_negated[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var scale} -> SIMD[
-        dtype, width
-    ]:
-        var row_scale = -scale if idx[0] % 2 == 1 else scale
+    ](idx: Coord, val: SIMD[dtype, width]) {var scale} -> SIMD[dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row_scale = -scale if Int(idx[0].value()) % 2 == 1 else scale
         return val * SIMD[dtype, width](row_scale)
 
     _matmul_gpu[use_tensor_core=True, transpose_b=True](

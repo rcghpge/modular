@@ -41,7 +41,7 @@ from max.gpu.sync import (
     schedule_barrier,
     schedule_group_barrier,
 )
-from layout import TensorEngine, TensorLayout, TileTensor
+from layout import Coord, TensorEngine, TensorLayout, TileTensor
 from layout.swizzle import Swizzle
 from layout.tile_layout import row_major, col_major
 from layout.tile_tensor import stack_allocation
@@ -603,7 +603,7 @@ struct AMDMatmul[
                                             compute_fn[
                                                 Self.c_type, 1, alignment=1
                                             ](
-                                                IndexList[2](m, col),
+                                                Coord(IndexList[2](m, col)),
                                                 SIMD[Self.c_type, 1](v[e]),
                                             ),
                                         )
@@ -613,7 +613,7 @@ struct AMDMatmul[
                                             alignment=scalar_align,
                                         ](
                                             epilogue_fn,
-                                            IndexList[2](m, col),
+                                            Coord(IndexList[2](m, col)),
                                             SIMD[Self.c_type, 1](v[e]),
                                         )
                         else:
@@ -630,7 +630,7 @@ struct AMDMatmul[
                                             Self.c_type,
                                             c_frag_size,
                                             alignment=1,
-                                        ](IndexList[2](m, n), v),
+                                        ](Coord(IndexList[2](m, n)), v),
                                     )
                                 else:
                                     apply_elementwise_epilogue[
@@ -638,7 +638,7 @@ struct AMDMatmul[
                                         alignment=align_of[
                                             SIMD[Self.c_type, c_frag_size]
                                         ](),
-                                    ](epilogue_fn, IndexList[2](m, n), v)
+                                    ](epilogue_fn, Coord(IndexList[2](m, n)), v)
         elif N % BN != 0:
             # Boundary path: N not block-aligned, per-element OOB store.
             var lane_group, thread_m = divmod(Int(lane_id()), MMA_M)

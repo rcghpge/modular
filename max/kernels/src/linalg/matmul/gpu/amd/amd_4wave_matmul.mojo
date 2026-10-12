@@ -53,7 +53,7 @@ from max.gpu.host.info import MI355X
 from max.gpu.intrinsics import AMDBufferResource
 from max.gpu.sync import schedule_barrier, s_waitcnt
 
-from layout import TensorLayout, TensorEngine, TileTensor
+from layout import Coord, TensorLayout, TensorEngine, TileTensor
 from layout.swizzle import Swizzle
 from layout.tile_layout import row_major
 from layout.tile_tensor import stack_allocation
@@ -1376,7 +1376,7 @@ struct AMD4WaveMatmul[
         # Pre-residual fused compute lambda (SM100 reference:
         # `D = lambda(Conv(A,B)) + beta * C`). Fires on the post-cast
         # `c_type` MMA output, BEFORE the residual FMA. Signature
-        # `(IndexList[2], SIMD) capturing -> SIMD`. Use for bias / ReLU /
+        # `(Coord, SIMD) capturing -> SIMD`. Use for bias / ReLU /
         # SiLU / GELU fusion. The post-residual store-site lambda is
         # the existing struct-level `Self.elementwise_lambda_fn` and
         # fires after the residual FMA (or directly on the MMA output
@@ -1431,7 +1431,7 @@ struct AMD4WaveMatmul[
                 output BEFORE the residual FMA, matching the SM100
                 `D = lambda(Conv(A,B)) + beta * C` ordering. Use for
                 bias / ReLU / SiLU / GELU fusion. Signature
-                `(IndexList[2], SIMD) capturing -> SIMD`. When unset,
+                `(Coord, SIMD) capturing -> SIMD`. When unset,
                 the comptime branch dead-code-eliminates.
 
         Args:
@@ -2028,7 +2028,7 @@ struct AMD4WaveMatmul[
                                 alignment=align_of[
                                     SIMD[Self.c_type, c_frag_size]
                                 ]()
-                            ]((m_logical, n_global), v)
+                            ](Coord(IndexList[2](m_logical, n_global)), v)
                         comptime if has_residual:
                             var skip = prefetched[
                                 m_mma * num_n_mmas + n_mma

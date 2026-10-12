@@ -1393,9 +1393,12 @@ def _matmul_dynamic_scaled_fp8_impl[
                 width: SIMDLength,
                 *,
                 alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
                 _dtype, width
             ]:
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 var a_scale = a_scales.load[width=1](
                     Coord(Idx[0], idx[0])
                 ).cast[.float32]()
@@ -1421,9 +1424,12 @@ def _matmul_dynamic_scaled_fp8_impl[
                 width: SIMDLength,
                 *,
                 alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
                 _dtype, width
             ]:
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 var a_scale = a_scales.load[width=1](
                     Coord(Idx[0], Idx[0])
                 ).cast[.float32]()
@@ -1457,7 +1463,10 @@ def _matmul_dynamic_scaled_fp8_impl[
             @inline(.always)
             def scaled_output_fn[
                 dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](idx: IndexList[2], val: SIMD[dtype, width]):
+            ](idx: Coord, val: SIMD[dtype, width]):
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 var a_scale = a_scales.load[width=1](
                     Coord(Idx[0], idx[0])
                 ).cast[dtype]()
@@ -1475,8 +1484,7 @@ def _matmul_dynamic_scaled_fp8_impl[
                 var scaled_val = val * a_scale * b_scale
 
                 c.store[width=width, alignment=alignment](
-                    Coord(idx[0], idx[1]),
-                    scaled_val.cast[c_type](),
+                    idx, scaled_val.cast[c_type]()
                 )
 
             @__parameter
@@ -1484,7 +1492,10 @@ def _matmul_dynamic_scaled_fp8_impl[
             @inline(.always)
             def scaled_output_fn_tensor[
                 dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](idx: IndexList[2], val: SIMD[dtype, width]):
+            ](idx: Coord, val: SIMD[dtype, width]):
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 var a_scale = a_scales.load[width=1](
                     Coord(Idx[0], Idx[0])
                 ).cast[dtype]()
@@ -1494,8 +1505,7 @@ def _matmul_dynamic_scaled_fp8_impl[
                 var scaled_val = val * a_scale * b_scale
 
                 c.store[width=width, alignment=alignment](
-                    Coord(idx[0], idx[1]),
-                    scaled_val.cast[c_type](),
+                    idx, scaled_val.cast[c_type]()
                 )
 
             # Allocate an fp32 scratch buffer for the matmul accumulator;
@@ -1848,7 +1858,7 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
 
     comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
-        elementwise_lambda[c_type, 1](Index(x, y), accum.cast[c_type]())
+        elementwise_lambda[c_type, 1](Coord(Index(x, y)), accum.cast[c_type]())
     else:
         c.store_linear(Index(x, y), accum.cast[c_type]())
 
@@ -2092,7 +2102,9 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
 
     comptime if elementwise_lambda_fn:
         comptime ep = elementwise_lambda_fn.value()
-        ep[c_type, 1](Index(a_start_row + m_local, n), accum.cast[c_type]())
+        ep[c_type, 1](
+            Coord(Index(a_start_row + m_local, n)), accum.cast[c_type]()
+        )
     else:
         var c_ptr = c.ptr + a_start_row * N
         c_ptr[m_local * N + n] = accum.cast[c_type]()
@@ -2303,7 +2315,7 @@ def blockwise_scaled_fp8_with_epilogue[
             ](idx: Coord) {var}:
                 var c_val = c.load[simd_width](idx)
                 epilogue[c_type, simd_width, alignment=alignment](
-                    Index(idx[0].value(), idx[1].value()), c_val
+                    Coord(Index(idx[0].value(), idx[1].value())), c_val
                 )
 
             blockwise_fp8_matmul[

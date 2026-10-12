@@ -31,7 +31,7 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.compute.mma import mma as _mma_intrinsic
-from layout import TensorEngine, TensorLayout, TileTensor
+from layout import Coord, TensorEngine, TensorLayout, TileTensor
 from std.math import ceildiv
 from std.memory import unsafe_stack_allocation
 from std.utils import Index, IndexList
@@ -488,7 +488,7 @@ def conv2d_kernel_rdna[
                             elementwise_lambda_fn.value()
                         )
                         elementwise_lambda[out_type, 1](
-                            Index(global_row, global_col),
+                            Coord(Index(global_row, global_col)),
                             c_accum[c_idx][v].cast[out_type](),
                         )
                     else:

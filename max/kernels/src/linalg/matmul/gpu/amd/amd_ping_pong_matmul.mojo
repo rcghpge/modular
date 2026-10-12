@@ -35,7 +35,7 @@ from std.sys.intrinsics import readfirstlane
 from std.utils import Index, IndexList, StaticTuple
 from std.utils.numerics import get_accum_type
 
-from layout import TensorLayout, TensorEngine, TileTensor
+from layout import Coord, TensorLayout, TensorEngine, TileTensor
 from layout.swizzle import Swizzle
 from layout.tile_layout import row_major, col_major
 
@@ -778,7 +778,7 @@ struct AMDPingPongMatmul[
                                                 compute_fn[
                                                     Self.c_type, 1, alignment=1
                                                 ](
-                                                    IndexList[2](m, col),
+                                                    Coord(IndexList[2](m, col)),
                                                     SIMD[Self.c_type, 1](v[e]),
                                                 ),
                                             )
@@ -788,7 +788,7 @@ struct AMDPingPongMatmul[
                                                 alignment=scalar_align,
                                             ](
                                                 epilogue_fn,
-                                                IndexList[2](m, col),
+                                                Coord(IndexList[2](m, col)),
                                                 SIMD[Self.c_type, 1](v[e]),
                                             )
                             else:
@@ -805,7 +805,7 @@ struct AMDPingPongMatmul[
                                                 Self.c_type,
                                                 c_frag_size,
                                                 alignment=1,
-                                            ](IndexList[2](m, n), v),
+                                            ](Coord(IndexList[2](m, n)), v),
                                         )
                                     else:
                                         apply_elementwise_epilogue[
@@ -813,7 +813,11 @@ struct AMDPingPongMatmul[
                                             alignment=align_of[
                                                 SIMD[Self.c_type, c_frag_size]
                                             ](),
-                                        ](epilogue_fn, IndexList[2](m, n), v)
+                                        ](
+                                            epilogue_fn,
+                                            Coord(IndexList[2](m, n)),
+                                            v,
+                                        )
             else:
                 var c_block = c.tile[BM, BN](block_idx.y, block_idx.x)
                 var c_warp = c_block.tile[WM, WN](warp_id_m, warp_id_n)

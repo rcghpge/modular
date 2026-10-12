@@ -55,7 +55,6 @@ from linalg.matmul.gpu import _matmul_gpu
 from linalg.matmul.gpu.sm100_structured.default.dispatch_fused_bias_residual import (
     fused_bias_residual_matmul_dispatch_sm100,
 )
-from std.utils import IndexList
 
 
 # ---------------------------------------------------------------------------
@@ -259,9 +258,12 @@ def bench_matmul_1d_tma_epilogue[
                 width: SIMDLength,
                 *,
                 alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
                 _dtype, width
             ]:
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 # 1D bias: broadcast bias[j] across all M rows.
                 var epi_val = bias_tile.load[width=width](Coord(idx[1])).cast[
                     _dtype
@@ -371,9 +373,12 @@ def bench_matmul_1d_tma_epilogue[
                 width: SIMDLength,
                 *,
                 alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
                 _dtype, width
             ]:
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 var epi_val = bias_ver_nd.load[width=width](Coord(idx[1])).cast[
                     _dtype
                 ]()

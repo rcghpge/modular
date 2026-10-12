@@ -1217,7 +1217,7 @@ def multi_stage_store_C[
                     comptime if has_elementwise_lambda:
                         apply_elementwise_epilogue[
                             elementwise_lambda_fn, alignment=alignment
-                        ](epilogue_fn, (Int(n), Int(m)), val_vec)
+                        ](epilogue_fn, Coord(Index(n, m)), val_vec)
                     else:
                         (c_ptr + Int(n) * cN + Int(m)).store[
                             alignment=alignment
@@ -1396,7 +1396,7 @@ def zero_output_epilogue[
             if m < UInt32(cN):
                 apply_elementwise_epilogue[
                     elementwise_lambda_fn, alignment=alignment
-                ](epilogue_fn, (Int(n), Int(m)), zero_vec)
+                ](epilogue_fn, Coord(Index(n, m)), zero_vec)
 
 
 # Important deviation from the normal SM100 matmul: The coordinate returned by

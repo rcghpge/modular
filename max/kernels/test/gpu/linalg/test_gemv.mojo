@@ -21,7 +21,6 @@ from linalg.gemv import gemv_kernel, gemv_split_k, gevm_kernel
 from linalg.matmul.gpu import matmul_kernel
 import linalg.matmul.vendor.blas as vendor_blas
 
-from std.utils import IndexList
 from internal_utils import assert_almost_equal
 
 from layout import TileTensor, Coord, row_major
@@ -217,9 +216,10 @@ def run_matvec_with_epilogue_fn(
     @__copy_capture(c_device_nd, const_val)
     def epilogue_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]):
+    ](idx: Coord, val: SIMD[dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         c_device_nd.store[width=width](
-            Coord(idx),
+            idx,
             rebind[SIMD[.float32, width]](val + SIMD[dtype, width](const_val)),
         )
 
@@ -408,9 +408,12 @@ def run_split_k_gemm[
         @__copy_capture(c_nd)
         def epilogue_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int = 1
-        ](idx: IndexList[2], val: SIMD[dtype, width]):
+        ](idx: Coord, val: SIMD[dtype, width]):
+            comptime assert (
+                idx.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             c_nd.store[width=width](
-                Coord(idx),
+                idx,
                 rebind[SIMD[c_type, width]](
                     val + SIMD[dtype, width](const_val)
                 ),

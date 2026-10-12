@@ -185,13 +185,15 @@ def test[
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var update_val: SIMD[_dtype, width] = val
 
         comptime if lambda_fn:
             comptime func = lambda_fn.value()
-            update_val = func(idx, (m, n), update_val)
-        c_device.store_linear[alignment=alignment * size_of[dtype]()](
+            var il = rebind[IndexList[2]](coord_to_index_list(idx))
+            update_val = func(il, (m, n), update_val)
+        c_device.store[alignment=alignment * size_of[dtype]()](
             idx, rebind[SIMD[dtype, width]](update_val)
         )
 
@@ -201,10 +203,17 @@ def test[
 
             def compute_fn[
                 _dtype: DType, width: SIMDLength, *, alignment: Int
-            ](idx: IndexList[2], val: SIMD[_dtype, width]) {
-                var m, var n
-            } -> SIMD[_dtype, width]:
-                return func(idx, (m, n), val)
+            ](idx: Coord, val: SIMD[_dtype, width]) {var m, var n} -> SIMD[
+                _dtype, width
+            ]:
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
+                return func(
+                    IndexList[2](Int(idx[0].value()), Int(idx[1].value())),
+                    (m, n),
+                    val,
+                )
 
             multistage_gemm[
                 transpose_b=transpose_b,

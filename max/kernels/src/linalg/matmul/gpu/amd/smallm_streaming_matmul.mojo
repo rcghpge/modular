@@ -44,7 +44,7 @@ from max.gpu.compute.mma import mma
 from max.gpu.host import DeviceContext
 from max.gpu.sync import barrier
 
-from layout import TensorLayout, TensorEngine, TileTensor
+from layout import Coord, TensorLayout, TensorEngine, TileTensor
 from linalg.utils import elementwise_epilogue_type
 
 comptime _MFMA_K = 32
@@ -288,7 +288,7 @@ def _gemm_smallm_streaming_kernel[
                                         elementwise_lambda_fn.value()
                                     )
                                     elementwise_lambda(
-                                        Index(row, out_col),
+                                        Coord(Index(row, out_col)),
                                         acc[t][r4].cast[c_type](),
                                     )
                                 else:
@@ -365,7 +365,7 @@ def _gemm_smallm_streaming_kernel[
                                         elementwise_lambda_fn.value()
                                     )
                                     elementwise_lambda(
-                                        Index(row, out_col),
+                                        Coord(Index(row, out_col)),
                                         acc[u * m_tiles + t][r4].cast[c_type](),
                                     )
                                 else:

@@ -172,11 +172,10 @@ def test_grouped_gemm_epilogue[
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
-        _dtype, width
-    ]:
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[_dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         # C' = matmul(A, B) + C_original
-        return val + c_tensor.load[width=width](Coord(idx)).cast[_dtype]()
+        return val + c_tensor.load[width=width](idx).cast[_dtype]()
 
     # Initialize random data
     seed(42)
@@ -349,18 +348,15 @@ def test_grouped_gemm_epilogue[
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
-        _dtype, width
-    ]:
-        return (
-            val + c_host_original.load[width=width](Coord(idx)).cast[_dtype]()
-        )
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[_dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        return val + c_host_original.load[width=width](idx).cast[_dtype]()
 
     for i in range(Int(m.value())):
         for j in range(Int(n.value())):
             comptime assert c_host_ref.flat_rank >= 2
             c_host_ref[Coord(i, j)] = epilogue_add_c_host(
-                IndexList[2](i, j),
+                Coord(i, j),
                 c_host_ref[i, j],
             )
 

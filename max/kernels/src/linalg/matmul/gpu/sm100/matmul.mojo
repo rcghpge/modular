@@ -586,31 +586,39 @@ def _compute_register_lambda_fn[
     comptime for i in range(2):
         comptime if not transpose_c:
             frag[offset + i] = compute_lambda_fn(
-                IndexList[2](
-                    Int(top_frag_upper_coord[0]),
-                    Int(top_frag_upper_coord[1] + UInt32(i)),
+                Coord(
+                    IndexList[2](
+                        Int(top_frag_upper_coord[0]),
+                        Int(top_frag_upper_coord[1] + UInt32(i)),
+                    )
                 ),
                 frag[offset + i],
             )
             frag[offset + 2 + i] = compute_lambda_fn(
-                IndexList[2](
-                    Int(bottom_frag_upper_coord[0]),
-                    Int(bottom_frag_upper_coord[1] + UInt32(i)),
+                Coord(
+                    IndexList[2](
+                        Int(bottom_frag_upper_coord[0]),
+                        Int(bottom_frag_upper_coord[1] + UInt32(i)),
+                    )
                 ),
                 frag[offset + 2 + i],
             )
         else:
             frag[offset + i] = compute_lambda_fn(
-                IndexList[2](
-                    Int(top_frag_upper_coord[1] + UInt32(i)),
-                    Int(top_frag_upper_coord[0]),
+                Coord(
+                    IndexList[2](
+                        Int(top_frag_upper_coord[1] + UInt32(i)),
+                        Int(top_frag_upper_coord[0]),
+                    )
                 ),
                 frag[offset + i],
             )
             frag[offset + 2 + i] = compute_lambda_fn(
-                IndexList[2](
-                    Int(bottom_frag_upper_coord[1] + UInt32(i)),
-                    Int(bottom_frag_upper_coord[0]),
+                Coord(
+                    IndexList[2](
+                        Int(bottom_frag_upper_coord[1] + UInt32(i)),
+                        Int(bottom_frag_upper_coord[0]),
+                    )
                 ),
                 frag[offset + 2 + i],
             )

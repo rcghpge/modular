@@ -166,18 +166,20 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
     # store path; reference is plain vendor BLAS).
     def epilogue_fn[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_tensor}:
-        c_tensor.store_linear[
-            width=width, alignment=alignment * size_of[c_type]()
-        ](idx, rebind[SIMD[c_type, width]](val))
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        c_tensor.store[width=width, alignment=alignment * size_of[c_type]()](
+            idx, rebind[SIMD[c_type, width]](val)
+        )
 
     # Compute epilogue: out = matmul * C_initial (also checks the coordinate).
     @inline(.always)
     def compute_fn[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](
-        idx: IndexList[2], val: SIMD[_dtype, width], c_val: SIMD[_dtype, width]
-    ) -> SIMD[_dtype, width]:
+    ](idx: Coord, val: SIMD[_dtype, width], c_val: SIMD[_dtype, width]) -> SIMD[
+        _dtype, width
+    ]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return val * c_val
 
     comptime if compute_epilogue:

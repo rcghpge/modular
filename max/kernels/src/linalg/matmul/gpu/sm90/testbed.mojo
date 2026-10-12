@@ -226,8 +226,9 @@ def test_matmul_sm90[
     @inline(.always)
     def epilogue_fn[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_tensor}:
-        c_tensor.store_linear[alignment=alignment * size_of[c_type]()](
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        c_tensor.store[alignment=alignment * size_of[c_type]()](
             idx, rebind[SIMD[c_type, width]](val)
         )
 
@@ -288,7 +289,7 @@ def test_matmul_sm90[
         for i in range(M):
             for j in range(N):
                 c_host_ref[i * N + j] = compute_fn[c_type, 1, alignment=1](
-                    IndexList[2](i, j), c_host_ref[i * N + j]
+                    Coord(IndexList[2](i, j)), c_host_ref[i * N + j]
                 )
 
     comptime if measure_threshold:

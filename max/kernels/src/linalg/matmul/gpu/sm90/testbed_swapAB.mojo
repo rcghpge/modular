@@ -27,7 +27,7 @@ from std.sys import size_of
 from max.gpu.host import DeviceContext
 from std.memory import dealloc
 from std.memory.alloc import Layout as AllocLayout
-from layout import CoordLike, TileTensor, row_major
+from layout import Coord, CoordLike, TileTensor, row_major
 from std.utils.index import IndexList
 from internal_utils import assert_almost_equal
 from std.random import rand
@@ -683,16 +683,18 @@ def test_matmul_sm90_swapAB_comparison_v2[
     @inline(.always)
     def epilogue_fn_normal[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_normal_tensor}:
-        c_normal_tensor.store_linear[alignment=alignment * size_of[c_type]()](
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_normal_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        c_normal_tensor.store[alignment=alignment * size_of[c_type]()](
             idx, rebind[SIMD[c_type, width]](val)
         )
 
     @inline(.always)
     def epilogue_fn_swapAB[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_swapAB_tensor}:
-        c_swapAB_tensor.store_linear[alignment=alignment * size_of[c_type]()](
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_swapAB_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        c_swapAB_tensor.store[alignment=alignment * size_of[c_type]()](
             idx, rebind[SIMD[c_type, width]](val)
         )
 
@@ -789,7 +791,7 @@ def test_matmul_sm90_swapAB_comparison_v2[
             for j in range(N):
                 c_normal_host_ptr[i * N + j] = compute_fn[
                     c_type, 1, alignment=1
-                ](IndexList[2](i, j), c_normal_host_ptr[i * N + j])
+                ](Coord(IndexList[2](i, j)), c_normal_host_ptr[i * N + j])
 
     # =========================================================================
     # Compare results: Both should be identical

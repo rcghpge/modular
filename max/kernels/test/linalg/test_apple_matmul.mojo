@@ -305,8 +305,9 @@ def test_matmul[
     @__copy_capture(c)
     def epilogue_fn[
         _type: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_type, width]) -> None:
-        c.store(Coord(idx), rebind[SIMD[c_type, width]](val + some_constant))
+    ](idx: Coord, val: SIMD[_type, width]) -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        c.store(idx, rebind[SIMD[c_type, width]](val + some_constant))
 
     comptime if has_epilogue_fusion:
         errors = test_matmul[

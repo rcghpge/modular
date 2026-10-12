@@ -97,7 +97,7 @@ from std.itertools import product
 
 comptime elementwise_epilogue_type = def[
     dtype: DType, width: SIMDLength, *, alignment: Int = 1
-](IndexList[2], SIMD[dtype, width]) capturing -> None
+](Coord, SIMD[dtype, width]) capturing -> None
 """Type alias for a fused elementwise epilogue lambda.
 
 Local re-declaration of `linalg.utils.elementwise_epilogue_type`.
@@ -109,7 +109,7 @@ hands a lambda across the package boundary.
 
 comptime _elementwise_epilogue_fn_signature = def[
     dtype: DType, width: SIMDLength, *, alignment: Int
-](IndexList[2], SIMD[dtype, width]) -> None
+](Coord, SIMD[dtype, width]) -> None
 
 comptime ElementwiseEpilogueFn = (
     ImplicitlyCopyable & RegisterPassable & _elementwise_epilogue_fn_signature
@@ -119,7 +119,7 @@ same cyclic-dependency reason as `elementwise_epilogue_type`."""
 
 comptime _elementwise_compute_fn_signature = def[
     dtype: DType, width: SIMDLength, *, alignment: Int
-](IndexList[2], SIMD[dtype, width]) -> SIMD[dtype, width]
+](Coord, SIMD[dtype, width]) -> SIMD[dtype, width]
 
 comptime ElementwiseComputeFn = (
     ImplicitlyCopyable & RegisterPassable & _elementwise_compute_fn_signature
@@ -2688,7 +2688,7 @@ struct RegTileEpilogue[
                 comptime epilogue_fn = Self.elementwise_lambda_fn.value()
                 epilogue_fn[
                     alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
-                ]((m, n), v)
+                ](Coord(m, n), v)
             else:
                 self._ptr().store[
                     alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
@@ -2700,7 +2700,7 @@ struct RegTileEpilogue[
                     comptime if Bool(Self.elementwise_lambda_fn):
                         comptime epilogue_fn = Self.elementwise_lambda_fn.value()
                         epilogue_fn[alignment=align_of[Scalar[Self.c_type]]()](
-                            IndexList[2](m, col),
+                            Coord(m, col),
                             SIMD[Self.c_type, 1](v[e]),
                         )
                     else:
@@ -2740,7 +2740,7 @@ struct RegTileEpilogue[
                 Self.c_type,
                 Self.chunk_width,
                 alignment=align_of[SIMD[Self.c_type, Self.chunk_width]](),
-            ](IndexList[2](m, n), v)
+            ](Coord(m, n), v)
         elif n < self.n_total:
             for e in range(Self.chunk_width):
                 var col = n + e
@@ -2749,7 +2749,7 @@ struct RegTileEpilogue[
                         Self.c_type,
                         1,
                         alignment=align_of[Scalar[Self.c_type]](),
-                    ](IndexList[2](m, col), SIMD[Self.c_type, 1](v[e]))
+                    ](Coord(m, col), SIMD[Self.c_type, 1](v[e]))
 
     @inline(.always)
     def store_with_compute_fn[
@@ -2791,7 +2791,7 @@ struct RegTileEpilogue[
                     Self.c_type,
                     Self.chunk_width,
                     alignment=Self.chunk_width,
-                ](IndexList[2](m, n), v),
+                ](Coord(IndexList[2](m, n)), v),
             )
         elif n < self.n_total:
             for e in range(Self.chunk_width):
@@ -2799,7 +2799,9 @@ struct RegTileEpilogue[
                 if col < self.n_total:
                     self._ptr()[m * self.row_stride + col] = compute_fn[
                         Self.c_type, 1, alignment=1
-                    ](IndexList[2](m, col), SIMD[Self.c_type, 1](v[e]))[0]
+                    ](Coord(IndexList[2](m, col)), SIMD[Self.c_type, 1](v[e]))[
+                        0
+                    ]
 
 
 @inline(.always)

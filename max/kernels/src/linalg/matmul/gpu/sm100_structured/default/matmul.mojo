@@ -99,10 +99,12 @@ def _blackwell_matmul_tma_umma_warp_specialized[
     def no_compute_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int
     ](
-        idx: IndexList[2],
+        idx: Coord,
         val: SIMD[dtype, width],
         c_val: SIMD[dtype, width],
-    ) -> SIMD[dtype, width]:
+    ) -> SIMD[
+        dtype, width
+    ]:
         return val
 
     _blackwell_matmul_tma_umma_warp_specialized_impl[
@@ -471,13 +473,20 @@ def _blackwell_matmul_tma_umma_warp_specialized_impl[
         # the capture.
         def compute_with_c[
             dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]) {
+        ](idx: Coord, val: SIMD[dtype, width]) {
             var compute_fn, var c_device
         } -> SIMD[dtype, width]:
+            comptime assert (
+                idx.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             var c_val = SIMD[dtype, width](0)
             comptime if compute_fn_reads_c:
                 c_val = c_device.load[width=width](
-                    Coord(IndexList[3](0, idx[0], idx[1]))
+                    Coord(
+                        IndexList[3](
+                            0, Int(idx[0].value()), Int(idx[1].value())
+                        )
+                    )
                 ).cast[dtype]()
             return compute_fn[dtype, width, alignment=alignment](
                 idx, val, c_val
@@ -686,7 +695,7 @@ def blackwell_matmul_tma_umma_warp_specialized[
         a_device: LHS TileTensor of shape (M, K).
         b_device: RHS TileTensor of shape (N, K) (transposed).
         compute_fn: Element-wise epilogue applied to each output value.
-            Signature: `def[dtype, width, *, alignment](IndexList[2], SIMD)
+            Signature: `def[dtype, width, *, alignment](Coord, SIMD)
             -> SIMD`, with coordinates in the (M, N) output.
         ctx: Device context used to create TMA descriptors and enqueue the
             kernel.
@@ -714,7 +723,7 @@ def blackwell_matmul_tma_umma_warp_specialized[
     def compute_ignoring_c[
         dtype: DType, width: SIMDLength, *, alignment: Int
     ](
-        idx: IndexList[2],
+        idx: Coord,
         val: SIMD[dtype, width],
         c_val: SIMD[dtype, width],
     ) {
@@ -810,7 +819,7 @@ def blackwell_matmul_tma_umma_warp_specialized[
         a_device: LHS TileTensor of shape (M, K).
         b_device: RHS TileTensor of shape (N, K) (transposed).
         compute_fn: Element-wise epilogue applied to each output value.
-            Signature: `def[dtype, width, *, alignment](IndexList[2], SIMD,
+            Signature: `def[dtype, width, *, alignment](Coord, SIMD,
             SIMD) -> SIMD`, called as `compute_fn(idx, val, c_val)` with
             coordinates in the (M, N) output and `c_val` the value of
             `c_device` at `idx` before the matmul writes it.
@@ -896,7 +905,7 @@ def blackwell_matmul_tma_umma_warp_specialized[
         a_device: LHS TileTensor of shape (M, K).
         b_device: RHS TileTensor of shape (N, K) (transposed).
         epilogue_fn: Stores each output value. Signature:
-            `def[dtype, width, *, alignment](IndexList[2], SIMD)`, with
+            `def[dtype, width, *, alignment](Coord, SIMD)`, with
             coordinates in the (M, N) output.
         ctx: Device context used to create TMA descriptors and enqueue the
             kernel.
@@ -979,10 +988,12 @@ def blackwell_matmul_tma_umma_warp_specialized[
     def no_compute_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int
     ](
-        idx: IndexList[2],
+        idx: Coord,
         val: SIMD[dtype, width],
         c_val: SIMD[dtype, width],
-    ) -> SIMD[dtype, width]:
+    ) -> SIMD[
+        dtype, width
+    ]:
         return val
 
     comptime if config.AB_swapped:

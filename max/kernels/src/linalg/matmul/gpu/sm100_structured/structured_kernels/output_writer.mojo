@@ -939,7 +939,7 @@ struct TileWriter[
 
             def forward[
                 dtype: DType, width: SIMDLength, *, alignment: Int
-            ](idx: IndexList[2], val: SIMD[dtype, width]):
+            ](idx: Coord, val: SIMD[dtype, width]):
                 elementwise_lambda[dtype, width, alignment=alignment](idx, val)
 
             self._copy_to_gmem_with_elementwise_epilogue_impl(
@@ -968,7 +968,7 @@ struct TileWriter[
 
             def forward[
                 dtype: DType, width: SIMDLength, *, alignment: Int
-            ](idx: IndexList[2], val: SIMD[dtype, width]):
+            ](idx: Coord, val: SIMD[dtype, width]):
                 elementwise_lambda[dtype, width, alignment=alignment](idx, val)
 
             self._copy_to_gmem_with_elementwise_epilogue_impl(
@@ -1267,7 +1267,7 @@ struct TileWriter[
 
             def forward[
                 dtype: DType, width: SIMDLength, *, alignment: Int
-            ](idx: IndexList[2], val: SIMD[dtype, width]) -> SIMD[dtype, width]:
+            ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
                 return compute_lambda_fn[dtype, width, alignment=alignment](
                     idx, val
                 )
@@ -2721,7 +2721,7 @@ struct TileWriter[
 
                 def forward[
                     dtype: DType, width: SIMDLength, *, alignment: Int
-                ](idx: IndexList[2], val: SIMD[dtype, width]):
+                ](idx: Coord, val: SIMD[dtype, width]):
                     elementwise_lambda[dtype, width, alignment=alignment](
                         idx, val
                     )

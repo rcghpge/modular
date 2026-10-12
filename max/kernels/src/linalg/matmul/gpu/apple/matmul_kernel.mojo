@@ -28,9 +28,10 @@ tails. Operands load DRAM->register directly -- threadgroup-memory staging
 
 from std.collections import Array, Optional
 from max.gpu import WARP_SIZE, block_dim, block_idx, lane_id, thread_idx
-from std.math import align_down, ceildiv
+from std.math import align_down, ceildiv, divmod
 from max.gpu.host import DeviceContext
 from std.sys import align_of, size_of
+from std.utils import IndexList
 from layout import TensorEngine, TileTensor, Idx
 from layout.tile_layout import Layout, TensorLayout, row_major
 from layout.coord import Coord
@@ -991,7 +992,7 @@ struct AppleM5MatMul[
                     comptime if bounded:
                         if acol + 3 < n:
                             epilogue[Self.c_type, 4, alignment=elem_align](
-                                (arow, acol), y
+                                Coord(IndexList[2](arow, acol)), y
                             )
                         else:
                             for e in range(min(4, n - acol)):
@@ -1001,7 +1002,7 @@ struct AppleM5MatMul[
                                 )
                     else:
                         epilogue[Self.c_type, 4, alignment=elem_align](
-                            (arow, acol), y
+                            Coord(IndexList[2](arow, acol)), y
                         )
                 else:
                     comptime if bounded:
@@ -1826,8 +1827,9 @@ struct AppleM5MatMul[
         var y = acc.cast[Self.c_type]()
         comptime if Self.elementwise_lambda_fn:
             comptime epilogue = Self.elementwise_lambda_fn.value()
+            var row, col = divmod(idx, n)
             epilogue[Self.c_type, 1](
-                (idx // n, idx % n), SIMD[Self.c_type, 1](y)
+                Coord(IndexList[2](row, col)), SIMD[Self.c_type, 1](y)
             )
         else:
             c_ptr[idx] = y

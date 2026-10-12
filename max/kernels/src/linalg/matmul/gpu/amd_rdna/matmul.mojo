@@ -37,7 +37,7 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.compute.mma import mma as _mma_intrinsic
-from layout import TensorEngine, TensorLayout, TileTensor
+from layout import Coord, TensorEngine, TensorLayout, TileTensor
 from std.memory import unsafe_stack_allocation
 from std.utils import Index, IndexList
 from std.utils.numerics import get_accum_type
@@ -252,7 +252,7 @@ def _naive_matmul_kernel[
             comptime if elementwise_lambda_fn:
                 comptime elementwise_lambda = elementwise_lambda_fn.value()
                 elementwise_lambda[c_type, 1](
-                    Index(global_row, global_col),
+                    Coord(Index(global_row, global_col)),
                     accum.cast[c_type](),
                 )
             else:
@@ -779,7 +779,7 @@ def _wmma_matmul_kernel[
                             elementwise_lambda_fn.value()
                         )
                         elementwise_lambda[c_type, 1](
-                            Index(global_row, global_col),
+                            Coord(Index(global_row, global_col)),
                             c_accum[c_idx][v].cast[c_type](),
                         )
                     else:

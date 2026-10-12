@@ -40,7 +40,6 @@ from std.math import ceildiv
 from std.sys import align_of
 
 from layout import Coord, Idx, TileTensor, row_major
-from std.utils import IndexList
 
 from linalg.utils import (
     elementwise_compute_lambda_type,
@@ -131,11 +130,11 @@ def amd_4wave_conv_fprop_with_residual[
             matches `act_type` otherwise.
         elementwise_lambda_fn: Optional void epilogue lambda applied
             at the store site, *after* the residual add. Signature:
-            `def(IndexList[2], SIMD) -> None`. Responsible for the
+            `def(Coord, SIMD) -> None`. Responsible for the
             output store when set.
         elementwise_compute_lambda_fn: Optional value-transforming
             lambda applied *before* the residual add. Signature:
-            `def(IndexList[2], SIMD) -> SIMD`. Use for bias / ReLU /
+            `def(Coord, SIMD) -> SIMD`. Use for bias / ReLU /
             SiLU / GELU fusion in the SM100 ordering.
         has_residual: If True, fuse residual add. If False, `source`
             is ignored and this routes through plain `amd_4wave_conv`.
@@ -403,14 +402,15 @@ def _launch_plain_conv[
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime if Bool(elementwise_lambda_fn):
             comptime _user_lambda = elementwise_lambda_fn.value()
             _user_lambda[alignment=alignment](idx, val)
         else:
             # No user lambda — store directly.
-            var m = idx[0]
-            var n = idx[1]
+            var m = Int(idx[0].value())
+            var n = Int(idx[1].value())
             var batch_idx = m // HW_out
             var rem = m - batch_idx * HW_out
             var h_idx = rem // W_out

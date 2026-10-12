@@ -28,6 +28,7 @@ from std.sys import simd_width_of, size_of
 from max.gpu import block_dim, block_idx, global_idx, thread_idx
 from max.gpu.host import DeviceContext
 from layout import (
+    Coord,
     TensorLayout,
     TensorEngine,
     TileTensor,
@@ -462,9 +463,12 @@ def dispatch_im2col_matmul_conv3d[
                 _width: SIMDLength,
                 *,
                 alignment: Int = 1,
-            ](coords_2d: IndexList[2], val: SIMD[_dtype, _width]):
-                var full_m = _m_offset + coords_2d[0]
-                var n_idx = coords_2d[1]
+            ](coords_2d: Coord, val: SIMD[_dtype, _width]):
+                comptime assert (
+                    coords_2d.rank == 2
+                ), "the matmul epilogue contract is rank 2"
+                var full_m = _m_offset + Int(coords_2d[0].value())
+                var n_idx = Int(coords_2d[1].value())
                 var batch_idx = full_m // DHW_out
                 var sp = full_m - batch_idx * DHW_out
                 var d_idx = sp // HW_out

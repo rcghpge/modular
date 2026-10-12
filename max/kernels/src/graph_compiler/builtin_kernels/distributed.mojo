@@ -2201,9 +2201,12 @@ struct DistributedMatmulReduceScatterSum:
         @inline(.always)
         def residual_add_fn[
             _dtype: DType, _width: SIMDLength, *, alignment: Int
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]) {
-            var residual
-        } -> SIMD[_dtype, _width]:
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var residual} -> SIMD[
+            _dtype, _width
+        ]:
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             return val + rebind[SIMD[_dtype, _width]](
                 residual.load[width=_width, element_alignment=alignment](coords)
             )

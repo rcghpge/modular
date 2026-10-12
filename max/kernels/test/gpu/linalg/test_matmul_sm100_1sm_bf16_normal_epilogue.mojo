@@ -170,9 +170,10 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
 
     def epilogue_fn[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_tensor}:
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         c_tensor.store[alignment=alignment * size_of[c_type]()](
-            Coord(idx), rebind[SIMD[c_type, width]](val)
+            idx, rebind[SIMD[c_type, width]](val)
         )
 
     comptime if normal_epilogue:

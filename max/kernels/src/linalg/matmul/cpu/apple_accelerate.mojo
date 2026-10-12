@@ -376,7 +376,7 @@ def apple_gemv[
 
             comptime if elementwise_lambda_fn:
                 comptime func = elementwise_lambda_fn.value()
-                func[c.dtype, 1](Index(0, n), val)
+                func[c.dtype, 1](Coord(Index(0, n)), val)
             else:
                 c.store[width=1](Coord(Idx[0], n), val)
 
@@ -466,7 +466,7 @@ def apple_matmul[
         ](idx: Coord) {var}:
             var c_val = c.load[width=simd_width](idx)
             epilogue[c.dtype, simd_width](
-                Index(idx[0].value(), idx[1].value()), c_val
+                Coord(Index(idx[0].value(), idx[1].value())), c_val
             )
 
         # TODO: thread a DeviceContext through the matmul stack so we can
@@ -586,10 +586,13 @@ def apple_batched_matmul[
         @__copy_capture(batch_coords)
         def elementwise_lambda_2d[
             c_type: DType, width: SIMDLength, *, alignment: Int = 1
-        ](out_coords: IndexList[2], out_val: SIMD[c_type, width]):
+        ](out_coords: Coord, out_val: SIMD[c_type, width]):
+            comptime assert (
+                out_coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             var local_batch_coords = batch_coords
-            local_batch_coords[rank - 1] = out_coords[1]
-            local_batch_coords[rank - 2] = out_coords[0]
+            local_batch_coords[rank - 1] = Int(out_coords[1].value())
+            local_batch_coords[rank - 2] = Int(out_coords[0].value())
 
             comptime func = elementwise_epilogue_fn.value()
             func[c_type, width](Coord(local_batch_coords), out_val)

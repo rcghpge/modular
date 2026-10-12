@@ -28,7 +28,6 @@ from std.sys import align_of, get_defined_int
 
 from layout import Coord, TileTensor, row_major
 from max.gpu.host import DeviceContext
-from std.utils import IndexList
 import linalg.matmul.vendor.blas as vendor_blas
 from std.testing import assert_equal
 from std.random import random_float64
@@ -100,11 +99,11 @@ def test_4wave_epilogue[
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
-        var coord = Coord(idx)
-        comptime assert coord.flat_rank == out_tt.flat_rank
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        comptime assert idx.flat_rank == out_tt.flat_rank
         out_tt.store[width=width, alignment=alignment](
-            coord, rebind[SIMD[out_dtype, width]](val)
+            idx, rebind[SIMD[out_dtype, width]](val)
         )
 
     structured_4wave_matmul[

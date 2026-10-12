@@ -261,7 +261,7 @@ def matmul_kernel[
         comptime if elementwise_lambda_fn:
             comptime elementwise_lambda = elementwise_lambda_fn.value()
             elementwise_lambda[c_type, 1](
-                Index(row, col), result.cast[c_type]()
+                Coord(Index(row, col)), result.cast[c_type]()
             )
         else:
             c[row, col] = result.cast[c_type]()
@@ -429,11 +429,13 @@ def _matmul_kernel_naive_impl[
                 * rebind[Scalar[b_type]](b[i, y]).cast[s_type]()
             )
     comptime if has_epilogue_fn:
-        epilogue_fn[c_type, 1, alignment=1](Index(x, y), accum.cast[c_type]())
+        epilogue_fn[c_type, 1, alignment=1](
+            Coord(Index(x, y)), accum.cast[c_type]()
+        )
     else:
         var out = accum.cast[c_type]()
         comptime if has_compute_fn:
-            out = compute_fn[c_type, 1, alignment=1](Index(x, y), out)
+            out = compute_fn[c_type, 1, alignment=1](Coord(Index(x, y)), out)
         c[x, y] = out
 
 
@@ -742,7 +744,7 @@ def _matmul_gpu[
 
         def compute_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]) -> SIMD[dtype, width]:
+        ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
             return compute_lambda[dtype, width, alignment=alignment](idx, val)
 
         _matmul_gpu_impl[
@@ -760,7 +762,7 @@ def _matmul_gpu[
 
         def epilogue_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[dtype, width]):
+        ](idx: Coord, val: SIMD[dtype, width]):
             store_lambda[dtype, width, alignment=alignment](idx, val)
 
         _matmul_gpu_impl[
@@ -951,15 +953,19 @@ def _matmul_gpu_impl[
     @__copy_capture(c_epilogue)
     def compute_lambda_wrapper[
         _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[_dtype, _width]):
+    ](coords: Coord, val: SIMD[_dtype, _width]):
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         comptime if elementwise_compute_lambda_fn:
             comptime compute_lambda = elementwise_compute_lambda_fn.value()
             var output = compute_lambda(coords, val)
             comptime assert (
                 output.dtype == c_type
             ), "compute epilogue lambda output and c type mismatch"
-            c_epilogue.store_linear[alignment=alignment * size_of[c_type]()](
-                coords, rebind[SIMD[c_type, _width]](output)
+            c_epilogue.store[alignment=alignment * size_of[c_type]()](
+                coords,
+                rebind[SIMD[c_type, _width]](output),
             )
 
     comptime elementwise_lambda_wrapper = Optional[elementwise_epilogue_type](
@@ -2100,15 +2106,17 @@ def _split_k_reduce_impl[
 
         comptime if has_epilogue_fn:
             epilogue_fn[c_type, simd_width, alignment=align](
-                IndexList[2](Int(c_coord[0].value()), Int(c_coord[1].value())),
+                c_coord,
                 vec.cast[c_type](),
             )
         else:
             var out = vec.cast[c_type]()
             comptime if has_compute_fn:
                 out = compute_fn[c_type, simd_width, alignment=align](
-                    IndexList[2](
-                        Int(c_coord[0].value()), Int(c_coord[1].value())
+                    Coord(
+                        IndexList[2](
+                            Int(c_coord[0].value()), Int(c_coord[1].value())
+                        )
                     ),
                     out,
                 )

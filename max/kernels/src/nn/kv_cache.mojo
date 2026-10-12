@@ -267,11 +267,13 @@ def _fused_qkv_matmul_kv_cache_impl[
     @inline(.always)
     def write_to_cache[
         dtype_: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype_, width]):
-        var b_idx, t_idx = udivmod(idx[0], SEQ_LEN)
-        if idx[1] < q_dim:
+    ](idx: Coord, val: SIMD[dtype_, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var col = Int(idx[1].value())
+        var b_idx, t_idx = udivmod(Int(idx[0].value()), SEQ_LEN)
+        if col < q_dim:
             output.store[width=width, alignment=align_of[dtype]()](
-                Coord(b_idx, t_idx, idx[1]),
+                Coord(b_idx, t_idx, col),
                 rebind[SIMD[dtype, width]](val),
             )
             return
@@ -284,13 +286,13 @@ def _fused_qkv_matmul_kv_cache_impl[
         var hd_idx: Int
         var cache: cache_t
         var output_val = val
-        if idx[1] < qk_offset:
+        if col < qk_offset:
             cache = k_cache
-            h_idx, hd_idx = udivmod(idx[1] - q_dim, kv_params.head_size)
+            h_idx, hd_idx = udivmod(col - q_dim, kv_params.head_size)
 
         else:
             cache = v_cache
-            h_idx, hd_idx = udivmod(idx[1] - qk_offset, kv_params.head_size)
+            h_idx, hd_idx = udivmod(col - qk_offset, kv_params.head_size)
 
         var cache_len = cache.cache_length(b_idx)
         var cache_t_idx = t_idx + cache_len

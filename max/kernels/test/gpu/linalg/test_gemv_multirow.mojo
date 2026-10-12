@@ -30,7 +30,6 @@ from linalg.gemv import (
     gemv_kernel_vector_multirow,
 )
 from linalg.utils import elementwise_epilogue_type
-from std.utils import IndexList
 
 
 def _fill[
@@ -112,11 +111,11 @@ def test_matches_one_row_kernel[
     @__copy_capture(c, bias)
     def bias_epilogue[
         _dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         c.store[width=width](
-            (idx[0], idx[1]),
-            val.cast[c_type]()
-            + bias.load[width=width](Coord(idx)).cast[c_type](),
+            idx,
+            val.cast[c_type]() + bias.load[width=width](idx).cast[c_type](),
         )
 
     comptime epilogue = Optional[elementwise_epilogue_type](

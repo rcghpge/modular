@@ -1150,12 +1150,12 @@ def _multistage_gemm_kernel_impl[
         comptime if has_compute_fn:
             var out = compute_fn[
                 c_type, width, alignment=alignment // size_of[c_type]()
-            ](Index(m, n), vec.cast[c_type]())
+            ](Coord(Index(m, n)), vec.cast[c_type]())
             c_tt.store_linear[alignment=alignment](Index(m, n), out)
         else:
             apply_elementwise_epilogue[
                 elementwise_lambda_fn, alignment=alignment
-            ](epilogue_fn, Index(m, n), vec)
+            ](epilogue_fn, Coord(Index(m, n)), vec)
 
     @inline(.always)
     def apply_epilogue() {imm}:

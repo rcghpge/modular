@@ -21,7 +21,7 @@ from std.algorithm import tile
 
 from max.algorithm import sync_parallelize
 from max.gpu.host import DeviceContext
-from layout import TileTensor
+from layout import Coord, TileTensor
 from linalg.accumulate import _Accumulator
 from linalg.arch.cpu.neon_intrinsics import _neon_dotprod_lane
 from linalg.arch.cpu.vnni_intrinsics import (
@@ -969,9 +969,11 @@ def _accumulate_and_store[
                 comptime for nn in range(tile_n):
                     var val = c_float[mm, nn]
                     func[.float32, simd_width](
-                        Index(
-                            m + mm,
-                            n + nn * simd_width,
+                        Coord(
+                            Index(
+                                m + mm,
+                                n + nn * simd_width,
+                            )
                         ),
                         val,
                     )

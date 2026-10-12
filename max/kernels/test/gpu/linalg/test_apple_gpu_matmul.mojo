@@ -32,7 +32,6 @@ from std.random import random_float64, random_si64, seed
 from max.gpu import WARP_SIZE
 from max.gpu.host import DeviceBuffer, DeviceContext, HostBuffer
 from std.sys.info import _accelerator_arch
-from std.utils import IndexList
 
 from layout import Coord, TileTensor, Idx
 from layout.tile_layout import row_major
@@ -263,13 +262,16 @@ def _run_8x8_bias_case[
     @__copy_capture(d_ptr, bias_ptr, row_stride)
     def bias_epilogue[
         dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[dt, w]) capturing -> None:
+    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         # Kernel invokes with `dt == c_type`; rebind so the store matches d_ptr.
-        var bias = (bias_ptr + coords[1]).load[width=w]()
+        var bias = (bias_ptr + Int(coords[1].value())).load[width=w]()
         var v_c = rebind[SIMD[c_type, w]](val)
-        (d_ptr + coords[0] * row_stride + coords[1]).store[alignment=alignment](
-            v_c + bias
-        )
+        (
+            d_ptr + Int(coords[0].value()) * row_stride + Int(coords[1].value())
+        ).store[alignment=alignment](v_c + bias)
 
     comptime kernel = gemm_kernel_apple_8x8[
         c_type,
@@ -1677,11 +1679,16 @@ def _run_bias_epilogue_test[
     @__copy_capture(d_ptr, bias_ptr)
     def bias_epilogue[
         dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[dt, w]) capturing -> None:
+    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         # Kernel invokes with `dt == c_type`; rebind so the store matches d_ptr.
-        var b = (bias_ptr + coords[1]).load[width=w]()
+        var b = (bias_ptr + Int(coords[1].value())).load[width=w]()
         var v_c = rebind[SIMD[c_type, w]](val)
-        (d_ptr + coords[0] * N + coords[1]).store[alignment=alignment](v_c + b)
+        (d_ptr + Int(coords[0].value()) * N + Int(coords[1].value())).store[
+            alignment=alignment
+        ](v_c + b)
 
     # Mojo `comptime if` does not lift `var` bindings out of branches, so
     # inline both enqueue calls.
@@ -1900,10 +1907,15 @@ def test_kernel_128_nt_fp16_fp16_relu_compose_epilogue(
     @__copy_capture(d_ptr)
     def relu_compose_epilogue[
         dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[dt, w]) capturing -> None:
+    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         var v_fp16 = rebind[SIMD[.float16, w]](val)
         var relu_val = max(v_fp16, SIMD[.float16, w](0))
-        (d_ptr + coords[0] * N + coords[1]).store[alignment=alignment](relu_val)
+        (d_ptr + Int(coords[0].value()) * N + Int(coords[1].value())).store[
+            alignment=alignment
+        ](relu_val)
 
     enqueue_apple_matmul[
         in_type=.float16,
@@ -1981,14 +1993,17 @@ def test_kernel_128_nt_fp16_fp16_bias_relu_compose_epilogue(
     @__copy_capture(d_ptr, bias_ptr)
     def bias_relu_compose_epilogue[
         dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[dt, w]) capturing -> None:
+    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         var v_fp16 = rebind[SIMD[.float16, w]](val)
-        var b = (bias_ptr + coords[1]).load[width=w]()
+        var b = (bias_ptr + Int(coords[1].value())).load[width=w]()
         var biased = v_fp16 + b
         var activated = max(biased, SIMD[.float16, w](0))
-        (d_ptr + coords[0] * N + coords[1]).store[alignment=alignment](
-            activated
-        )
+        (d_ptr + Int(coords[0].value()) * N + Int(coords[1].value())).store[
+            alignment=alignment
+        ](activated)
 
     enqueue_apple_matmul[
         in_type=.float16,
@@ -2068,12 +2083,15 @@ def test_kernel_ragged_100x100x97_nt_fp16_fp16_bias_epilogue(
     @__copy_capture(d_ptr, bias_ptr)
     def bias_epilogue[
         dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[dt, w]) capturing -> None:
+    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         var v_fp16 = rebind[SIMD[.float16, w]](val)
-        var b = (bias_ptr + coords[1]).load[width=w]()
-        (d_ptr + coords[0] * N + coords[1]).store[alignment=alignment](
-            v_fp16 + b
-        )
+        var b = (bias_ptr + Int(coords[1].value())).load[width=w]()
+        (d_ptr + Int(coords[0].value()) * N + Int(coords[1].value())).store[
+            alignment=alignment
+        ](v_fp16 + b)
 
     enqueue_apple_matmul[
         in_type=.float16,
@@ -2211,10 +2229,15 @@ def test_kernel_64x130x64_nn_fp16_fp16_oddn_bias_epilogue(
     @__copy_capture(d_ptr, bias_ptr)
     def bias_epilogue[
         dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[dt, w]) capturing -> None:
-        var b = (bias_ptr + coords[1]).load[width=w]()
+    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
+        var b = (bias_ptr + Int(coords[1].value())).load[width=w]()
         var v_c = rebind[SIMD[.float16, w]](val)
-        (d_ptr + coords[0] * N + coords[1]).store[alignment=alignment](v_c + b)
+        (d_ptr + Int(coords[0].value()) * N + Int(coords[1].value())).store[
+            alignment=alignment
+        ](v_c + b)
 
     enqueue_apple_matmul[
         in_type=.float16,
@@ -2508,10 +2531,13 @@ def _run_gemv_dispatch_case[
     @__copy_capture(c_tt, bias_tt)
     def bias_epilogue[
         dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[dt, w]) capturing -> None:
-        var b = bias_tt.load[width=w, alignment=alignment](Coord(coords[1]))
+    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
+        var b = bias_tt.load[width=w, alignment=alignment]((coords[1],))
         c_tt.store[alignment=alignment](
-            Coord(coords[0], coords[1]),
+            coords,
             (val.cast[.float32]() + b).cast[c_type](),
         )
 

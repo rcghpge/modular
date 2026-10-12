@@ -455,7 +455,7 @@ def matmul_dispatch_sm100[
             or `[N, K]` when `transpose_b` is set.
         compute_fn: Compute epilogue, for example a static scale, applied
             to each output value before it is stored. Signature:
-            `def[dtype, width, *, alignment](IndexList[2], SIMD) -> SIMD`.
+            `def[dtype, width, *, alignment](Coord, SIMD) -> SIMD`.
         ctx: Device context used to enqueue the selected kernel.
     """
     _matmul_dispatch_sm100_impl[
@@ -512,7 +512,7 @@ def matmul_dispatch_sm100[
         b: RHS input matrix as a rank-2 `TileTensor` of shape `[K, N]`,
             or `[N, K]` when `transpose_b` is set.
         epilogue_fn: Stores each output value. Signature:
-            `def[dtype, width, *, alignment](IndexList[2], SIMD)`.
+            `def[dtype, width, *, alignment](Coord, SIMD)`.
         ctx: Device context used to enqueue the selected kernel.
     """
     _matmul_dispatch_sm100_impl[

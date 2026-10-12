@@ -451,7 +451,7 @@ def _vendor_blas_block_scaled_matmul_with_epilogue[
                     c_tt.load[width=simd_width](idx)
                 )
                 epilogue[c_type, simd_width, alignment=alignment](
-                    Index(idx[0].value(), idx[1].value()), c_val
+                    Coord(Index(idx[0].value(), idx[1].value())), c_val
                 )
 
             matmul(

@@ -19,6 +19,7 @@ from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from internal_utils import assert_almost_equal
 from std.random import rand
 from layout import (
+    Coord,
     TileTensor,
     CoordLike,
     row_major,
@@ -123,9 +124,10 @@ def test_matmul_sm100_epilogue[
     @inline(.always)
     def test_lambda_add_coords_summ[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](
-        idx: IndexList[2], val: SIMD[_dtype, width], c_val: SIMD[_dtype, width]
-    ) -> SIMD[_dtype, width]:
+    ](idx: Coord, val: SIMD[_dtype, width], c_val: SIMD[_dtype, width]) -> SIMD[
+        _dtype, width
+    ]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         # this function helps us determine if the provided indexes are correct
         # while also testing arithmetic operations
         return val + c_val
@@ -200,14 +202,15 @@ def test_matmul_sm100_epilogue[
     @inline(.always)
     def test_lambda_add_coords_summ_local[
         _dtype: DType, width: SIMDLength
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_host_copy} -> SIMD[
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_host_copy} -> SIMD[
         _dtype, width
     ]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return (
             val
-            + c_host_copy.load_linear[
-                width=width, alignment=align_of[c_type]()
-            ](idx).cast[_dtype]()
+            + c_host_copy.load[width=width, alignment=align_of[c_type]()](
+                idx
+            ).cast[_dtype]()
         )
 
     comptime if test_lambda_fn:
@@ -216,7 +219,7 @@ def test_matmul_sm100_epilogue[
             for j in range(Int(n.value())):
                 comptime assert c_host_ref.flat_rank == 2
                 c_host_ref[i, j] = test_lambda_add_coords_summ_local(
-                    (i, j), c_host_ref[i, j]
+                    Coord(i, j), c_host_ref[i, j]
                 )
 
     comptime rtol = 1e-2

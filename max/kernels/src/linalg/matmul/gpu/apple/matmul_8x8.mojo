@@ -215,7 +215,7 @@ def _mma8_store[
                 comptime if elementwise_lambda_fn:
                     comptime ep = elementwise_lambda_fn.value()
                     ep[c_type, FRAG8, alignment=size_of[c_type]()](
-                        Index(row, col), frag
+                        Coord(Index(row, col)), frag
                     )
                 else:
                     c.store_linear[alignment=size_of[c_type]()](
@@ -226,7 +226,7 @@ def _mma8_store[
                     if row < m and col + s < n:
                         comptime if elementwise_lambda_fn:
                             comptime ep = elementwise_lambda_fn.value()
-                            ep[c_type, 1](Index(row, col + s), frag[s])
+                            ep[c_type, 1](Coord(Index(row, col + s)), frag[s])
                         else:
                             c.store_linear[alignment=size_of[c_type]()](
                                 IndexList[2](row, col + s),

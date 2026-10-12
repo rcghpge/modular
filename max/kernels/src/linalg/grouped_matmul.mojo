@@ -33,6 +33,7 @@ from std.collections.string.string_span import get_static_string
 from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from max.gpu.compute.arch.tcgen05 import *
 from layout import (
+    Coord,
     Idx,
     TensorEngine,
     TensorLayout,
@@ -174,7 +175,7 @@ def naive_grouped_matmul_kernel[
                 * b_by_expert[n * K + k].cast[accum_type]()
             )
 
-    var idx: IndexList[2] = (Int(a_start_row) + m, n)
+    var idx = Coord(Index(Int(a_start_row) + m, n))
     var out = accum.cast[c_type]()
     comptime if has_epilogue_fn:
         epilogue_fn[c_type, 1, alignment=1](idx, out)
@@ -335,12 +336,15 @@ def grouped_matmul_amd_kernel_launcher[
     @inline(.always)
     def group_epilogue_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {
+    ](idx: Coord, val: SIMD[dtype, width]) {
         var epilogue_fn, var compute_fn, var c_ptr, var a_start_row
     }:
-        var row_idx: IndexList[2] = (Int(a_start_row) + idx[0], idx[1])
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row = Int(idx[0].value())
+        var col = Int(idx[1].value())
+        var row_idx = Coord(Index(Int(a_start_row) + row, col))
         comptime if has_compute_fn:
-            (c_ptr + idx[0] * N + idx[1]).store[alignment=alignment](
+            (c_ptr + row * N + col).store[alignment=alignment](
                 rebind[SIMD[c_type, width]](
                     compute_fn[dtype, width, alignment=alignment](row_idx, val)
                 )
@@ -1342,7 +1346,7 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
     comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
         elementwise_lambda[c_type, 1](
-            Index(Int(m_global), n), accum.cast[c_type]()
+            Coord(Index(Int(m_global), n)), accum.cast[c_type]()
         )
     else:
         var c_by_expert = c.ptr + Int64(a_start_row) * Int64(N)

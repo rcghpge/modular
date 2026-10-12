@@ -19,6 +19,7 @@ from linalg.grouped_matmul import grouped_matmul, naive_grouped_matmul
 from std.utils import Index, IndexList
 from layout.tensor_engine import DefaultEngine, DevicePointerEngine
 from layout import (
+    Coord,
     Idx,
     TileTensor,
     UNKNOWN_VALUE,
@@ -101,7 +102,7 @@ def shrink_qkv_permute_3mn_sm100(
     @inline(.always)
     def permute_dim_lora_bmn[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var c_lora} -> None:
+    ](idx: Coord, val: SIMD[dtype, width]) {var c_lora} -> None:
         """Epilogue: permute flat (M, 3N) columns to planar (3, M, N) tiles.
         Maps a flat column index `j` into `(head, n)` via `divmod(j, N)` and
         stores the SIMD vector `val` into the original 3D tile tensor at
@@ -123,9 +124,11 @@ def shrink_qkv_permute_3mn_sm100(
                 * Input view is row-major (M, 3N).
                 * Output view is row-major (3, M, N) with head-major tiles.
         """
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime N = c_lora.static_shape[2]
-        var i = idx[0]
-        var j = idx[1]
+        var i = Int(idx[0].value())
+        var j = Int(idx[1].value())
         var new_j, new_k = divmod(j, N)
         comptime assert N % width == 0, "N must be divisible by width"
         # The current index is [i, new_j, new_k] in the M x 3 x N row major
@@ -319,7 +322,7 @@ def expand_qkv_sm100(
     @inline(.always)
     def route_qkv[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {
+    ](idx: Coord, val: SIMD[dtype, width]) {
         var q_out, var kv_out, var M
     } -> None:
         """Epilogue: scatter each matmul output element to `q_out` or `kv_out`.
@@ -349,10 +352,12 @@ def expand_qkv_sm100(
             - `val` is cast to each output tensor's own dtype
               (`q_type` / `kv_type`) on store.
         """
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime assert q_dim % width == 0, "q_dim must be divisible by width"
         comptime assert kv_dim % width == 0, "kv_dim must be divisible by width"
-        var token = idx[0]
-        var j = idx[1]
+        var token = Int(idx[0].value())
+        var j = Int(idx[1].value())
         if j < q_dim:
             q_out.store_linear[width=width, alignment=alignment](
                 IndexList[2](token, j), val.cast[q_type]()

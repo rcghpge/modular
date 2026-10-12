@@ -518,9 +518,10 @@ def test_conv2d_epilogue_lambda[
     @inline(.always)
     def epilogue_add_bias[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var bias_tensor} -> SIMD[
+    ](idx: Coord, val: SIMD[_dtype, width]) {var bias_tensor} -> SIMD[
         _dtype, width
     ]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         # Load bias value for this channel and broadcast to SIMD width
         # Note: For width > 1, consecutive columns may have different biases
         # so we need to load a vector of biases
@@ -692,9 +693,10 @@ def test_conv2d_bias_fusion[
     @inline(.always)
     def add_bias[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var bias_tensor} -> SIMD[
+    ](idx: Coord, val: SIMD[_dtype, width]) {var bias_tensor} -> SIMD[
         _dtype, width
     ]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return val + bias_tensor.load[width=width]((idx[1],)).cast[_dtype]()
 
     # Run conv2d with fused bias

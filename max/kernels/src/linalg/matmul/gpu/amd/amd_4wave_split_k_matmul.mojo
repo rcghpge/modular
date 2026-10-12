@@ -38,7 +38,7 @@ from std.utils import Index, IndexList
 from max.gpu import block_dim, global_idx, grid_dim
 from max.gpu.host import DeviceBuffer, DeviceContext
 
-from layout import Idx, TileTensor
+from layout import Coord, Idx, TileTensor
 from layout.tile_layout import row_major
 
 from linalg.utils import (
@@ -200,7 +200,7 @@ def _split_k_reduce_impl[
                 elementwise_lambda_fn, alignment=align_of[Scalar[c_type]]()
             ](
                 epilogue_fn,
-                IndexList[2](m, n),
+                Coord(IndexList[2](m, n)),
                 SIMD[c_type, 1](acc.cast[c_type]()),
             )
         else:
@@ -208,7 +208,7 @@ def _split_k_reduce_impl[
             comptime if has_compute_fn:
                 var m = tid // _n_dim
                 out = compute_fn[c_type, 1, alignment=1](
-                    IndexList[2](m, tid - m * _n_dim), out
+                    Coord(IndexList[2](m, tid - m * _n_dim)), out
                 )
             c_ptr[tid] = out
         tid += stride

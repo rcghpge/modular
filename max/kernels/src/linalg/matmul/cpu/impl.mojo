@@ -25,7 +25,7 @@ from std.algorithm import tile, vectorize
 
 from max.algorithm import sync_parallelize
 from max.gpu.host import DeviceContext
-from layout import TensorEngine, TileTensor
+from layout import Coord, TensorEngine, TileTensor
 from layout.tile_layout import TensorLayout, row_major
 from std.memory import alloc, dealloc, Allocation
 from std.memory.alloc import Alignment, Layout as AllocLayout
@@ -111,7 +111,7 @@ def elementwise_epilogue_c_tile[
     simd_width: Int,
     c_type: DType,
     func: def[dtype: DType, width: SIMDLength, *, alignment: Int = 1](
-        IndexList[2], SIMD[dtype, width]
+        Coord, SIMD[dtype, width]
     ) capturing -> None,
 ](
     offset: GemmShape,
@@ -139,10 +139,8 @@ def elementwise_epilogue_c_tile[
         var n_coord = idx_n + offset.N
         for idx_m in range(tile_len.M):
             var m_coord = idx_m + offset.M
-            var c_coord = Index(m_coord, n_coord)
-            var c_val = c.load_linear[width=col_chunk_size, alignment=1](
-                c_coord
-            )
+            var c_coord = Coord(m_coord, n_coord)
+            var c_val = c.load[width=col_chunk_size, alignment=1](c_coord)
             func[c_type, col_chunk_size](c_coord, c_val)
 
     vectorize[simd_width](tile_len.N, activation_on_col_chunk)
@@ -741,15 +739,16 @@ def matmul[
         @inline(.always)
         def cast_epilogue[
             dtype: DType, width: SIMDLength, *, alignment: Int = 1
-        ](coord: IndexList[2], val: SIMD[dtype, width]):
+        ](coord: Coord, val: SIMD[dtype, width]):
+            comptime assert (
+                coord.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             var cast_val = val.cast[c.dtype]()
             comptime if elementwise_lambda_fn:
                 comptime user_fn = elementwise_lambda_fn.value()
                 user_fn[c.dtype, width, alignment=alignment](coord, cast_val)
             else:
-                c.store_linear[width=width, alignment=alignment](
-                    coord, cast_val
-                )
+                c.store[width=width, alignment=alignment](coord, cast_val)
 
         matmul[
             transpose_b=transpose_b,

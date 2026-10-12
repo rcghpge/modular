@@ -19,8 +19,6 @@ from layout import TileTensor, Coord, row_major
 from linalg.matmul.gpu import split_k_reduce
 from std.testing import assert_almost_equal
 
-from std.utils import IndexList
-
 
 def test_split_k_reduce_rank3[
     c_type: DType,
@@ -83,11 +81,12 @@ def test_split_k_reduce_rank3[
 
     def add_epilogue_data[
         _dtype: DType, _width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, _width]) {
-        var epilogue_buffer
-    } -> SIMD[_dtype, _width]:
+    ](idx: Coord, val: SIMD[_dtype, _width]) {var epilogue_buffer} -> SIMD[
+        _dtype, _width
+    ]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return val + rebind[SIMD[_dtype, _width]](
-            epilogue_buffer.load[width=_width](Coord(idx[0], idx[1]))
+            epilogue_buffer.load[width=_width](idx)
         )
 
     split_k_reduce(c, work_space, add_epilogue_data, ctx)

@@ -386,13 +386,16 @@ def _batched_matmul_cpu[
             @__parameter
             def elementwise_lambda_2d[
                 c_type: DType, width: SIMDLength, *, alignment: Int = 1
-            ](out_coords: IndexList[2], out_val: SIMD[c_type, width]):
+            ](out_coords: Coord, out_val: SIMD[c_type, width]):
+                comptime assert (
+                    out_coords.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 # the caller provided the elementwise epilogue def over the original
                 # buffer rank, not the collapsed buffer rank
                 # so un-collapse the batch dims here
                 comptime if elementwise_epilogue_fn:
-                    batch_coords[rank - 1] = out_coords[1]
-                    batch_coords[rank - 2] = out_coords[0]
+                    batch_coords[rank - 1] = Int(out_coords[1].value())
+                    batch_coords[rank - 2] = Int(out_coords[0].value())
 
                     comptime func = elementwise_epilogue_fn.value()
                     func[c_type, width](Coord(batch_coords), out_val)
@@ -633,14 +636,17 @@ def batched_matmul_kernel_gpu[
     @__parameter
     def elementwise_epilogue_fn_wrapper[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](out_coords: IndexList[2], val: SIMD[dtype, width]) capturing -> None:
+    ](out_coords: Coord, val: SIMD[dtype, width]) capturing -> None:
+        comptime assert (
+            out_coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         comptime if elementwise_lambda_fn:
             comptime elementwise_epilogue = elementwise_lambda_fn.value()
             var nd_coords = _get_start_indices_of_nth_subvolume[2](
                 block_idx.z, c_buff_nd_shape
             )
-            nd_coords[rank - 1] = out_coords[1]
-            nd_coords[rank - 2] = out_coords[0]
+            nd_coords[rank - 1] = Int(out_coords[1].value())
+            nd_coords[rank - 2] = Int(out_coords[0].value())
             elementwise_epilogue(Coord(nd_coords), val)
 
     comptime if is_nvidia_gpu():
@@ -745,13 +751,14 @@ def _batched_matmul_gpu[
                 @__copy_capture(c_buf)
                 def elementwise_epilogue_fn_wrapper[
                     dtype: DType, width: SIMDLength, *, alignment: Int = 1
-                ](
-                    out_coords: IndexList[2], val: SIMD[dtype, width]
-                ) capturing -> None:
+                ](out_coords: Coord, val: SIMD[dtype, width]) capturing -> None:
+                    comptime assert (
+                        out_coords.rank == 2
+                    ), "the matmul epilogue contract is rank 2"
                     var batch_coords = IndexList[rank](0)
 
-                    batch_coords[rank - 1] = out_coords[1]
-                    batch_coords[rank - 2] = out_coords[0]
+                    batch_coords[rank - 1] = Int(out_coords[1].value())
+                    batch_coords[rank - 2] = Int(out_coords[0].value())
 
                     elementwise_epilogue(Coord(batch_coords), val)
 
@@ -1165,7 +1172,10 @@ def _bmm_sm100_blockwise_scaled_fp8_kernel[
     @__parameter
     def elementwise_epilogue_fn_wrapper[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](out_coords: IndexList[2], val: SIMD[dtype, width]) capturing -> None:
+    ](out_coords: Coord, val: SIMD[dtype, width]) capturing -> None:
+        comptime assert (
+            out_coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         comptime if elementwise_lambda_fn:
             comptime elementwise_epilogue = elementwise_lambda_fn.value()
             elementwise_epilogue(

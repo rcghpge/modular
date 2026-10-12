@@ -135,7 +135,7 @@ struct MatmulTileWriter[
     ]
     comptime lambda_type = def[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](IndexList[2], mut SIMD[dtype, width]) -> None
+    ](Coord, mut SIMD[dtype, width]) -> None
 
     # Instance fields
     @__allow_legacy_any_origin_fields
@@ -251,7 +251,7 @@ struct MatmulTileWriter[
                 epilogue[
                     dtype=type_of(shared_value).dtype,
                     width=type_of(shared_value).length,
-                ](IndexList[2](Int(row), Int(col)), shared_value)
+                ](Coord(Int(row), Int(col)), shared_value)
                 shared_fragment.store(Coord(Idx[i], Idx[0]), shared_value)
 
     @inline(.always)
@@ -449,9 +449,12 @@ struct MatmulTileWriter[
 
                 def _value_compute[
                     dtype: DType, width: SIMDLength, *, alignment: Int = 1
-                ](index: IndexList[2], mut val: SIMD[dtype, width]) {
+                ](index: Coord, mut val: SIMD[dtype, width]) {
                     var value_compute_fn
                 }:
+                    comptime assert (
+                        index.rank == 2
+                    ), "the matmul epilogue contract is rank 2"
                     val = value_compute_fn[dtype, width, alignment=alignment](
                         index, val
                     )
@@ -463,9 +466,12 @@ struct MatmulTileWriter[
 
                 def _value_epilogue[
                     dtype: DType, width: SIMDLength, *, alignment: Int = 1
-                ](index: IndexList[2], mut val: SIMD[dtype, width]) {
+                ](index: Coord, mut val: SIMD[dtype, width]) {
                     var value_epilogue_fn
                 }:
+                    comptime assert (
+                        index.rank == 2
+                    ), "the matmul epilogue contract is rank 2"
                     value_epilogue_fn[dtype, width, alignment=alignment](
                         index, val
                     )

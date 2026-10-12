@@ -925,15 +925,17 @@ def _fused_qkv_matmul_kv_cache_ragged_impl[
     @inline(.always)
     def write_to_cache[
         _dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_dtype, width]):
-        if idx[1] < q_dim:
+    ](idx: Coord, val: SIMD[_dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var col = Int(idx[1].value())
+        if col < q_dim:
             output.store[width=width, alignment=align_of[dtype]()](
-                Coord(idx),
+                idx,
                 rebind[SIMD[dtype, width]](val),
             )
             return
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -951,15 +953,15 @@ def _fused_qkv_matmul_kv_cache_ragged_impl[
         comptime if kv_params.is_mla:
             cache = k_cache
             h_idx = 0  # in MLA mode we only have one head
-            hd_idx = idx[1] - q_dim
+            hd_idx = col - q_dim
 
         else:
-            if idx[1] < qk_offset:
+            if col < qk_offset:
                 cache = k_cache
-                h_idx, hd_idx = udivmod(idx[1] - q_dim, kv_params.head_size)
+                h_idx, hd_idx = udivmod(col - q_dim, kv_params.head_size)
             else:
                 cache = v_cache.value()
-                h_idx, hd_idx = udivmod(idx[1] - qk_offset, kv_params.head_size)
+                h_idx, hd_idx = udivmod(col - qk_offset, kv_params.head_size)
 
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -1065,18 +1067,20 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_bias[
     @inline(.always)
     def write_to_cache[
         _dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_dtype, width]):
+    ](idx: Coord, val: SIMD[_dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var col = Int(idx[1].value())
         var output_val = val + rebind[SIMD[_dtype, width]](
-            bias.load[width=width, alignment=align_of[dtype]()](Coord(idx[1]))
+            bias.load[width=width, alignment=align_of[dtype]()](Coord(col))
         )
-        if idx[1] < q_dim:
+        if col < q_dim:
             output.store[width=width, alignment=align_of[dtype]()](
-                Coord(idx),
+                idx,
                 rebind[SIMD[dtype, width]](output_val),
             )
             return
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -1089,12 +1093,12 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_bias[
         var h_idx: Int
         var hd_idx: Int
         var cache: cache_t
-        if idx[1] < qk_offset:
+        if col < qk_offset:
             cache = k_cache
-            h_idx, hd_idx = udivmod(idx[1] - q_dim, kv_params.head_size)
+            h_idx, hd_idx = udivmod(col - q_dim, kv_params.head_size)
         else:
             cache = v_cache
-            h_idx, hd_idx = udivmod(idx[1] - qk_offset, kv_params.head_size)
+            h_idx, hd_idx = udivmod(col - qk_offset, kv_params.head_size)
 
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -1229,7 +1233,9 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
     @inline(.always)
     def write_to_cache[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]):
+    ](idx: Coord, val: SIMD[dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var col = Int(idx[1].value())
         var output_val: SIMD[dtype, width]
 
         comptime if use_per_tensor:
@@ -1237,12 +1243,12 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
             var scale_b = weight_scale[0, 0][0].cast[dtype]()
             output_val = val * (scale_a * scale_b)
         elif use_per_channel:
-            var scale_a = input_scale.load[width=1](Coord(0, idx[0])).cast[
-                dtype
-            ]()
+            var scale_a = input_scale.load[width=1](
+                Coord(0, Int(idx[0].value()))
+            ).cast[dtype]()
             var scale_b = weight_scale.load[
                 width=width, alignment=align_of[scale_dtype]()
-            ](Coord(idx[1], 0)).cast[dtype]()
+            ](Coord(col, 0)).cast[dtype]()
             output_val = val * (scale_a * scale_b)
         else:
             # blockwise quantization, we need to use the blockwise_scaled_fp8_with_epilogue kernel
@@ -1255,16 +1261,16 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
         if case .Some(bias) = bias:
             output_val_out += bias.load[
                 width=width, alignment=align_of[output_dtype]()
-            ](Coord(idx[1]))
+            ](Coord(col))
 
-        if idx[1] < q_dim:
+        if col < q_dim:
             output.store[width=width, alignment=align_of[output_dtype]()](
-                Coord(idx),
+                idx,
                 output_val_out,
             )
             return
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -1281,15 +1287,15 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
         comptime if kv_params.is_mla:
             cache = k_cache
             h_idx = 0  # in MLA mode we only have one head
-            hd_idx = idx[1] - q_dim
+            hd_idx = col - q_dim
 
         else:
-            if idx[1] < qk_offset:
+            if col < qk_offset:
                 cache = k_cache
-                h_idx, hd_idx = udivmod(idx[1] - q_dim, kv_params.head_size)
+                h_idx, hd_idx = udivmod(col - q_dim, kv_params.head_size)
             else:
                 cache = v_cache.value()
-                h_idx, hd_idx = udivmod(idx[1] - qk_offset, kv_params.head_size)
+                h_idx, hd_idx = udivmod(col - qk_offset, kv_params.head_size)
 
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -1408,7 +1414,8 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale_float4[
     @inline(.always)
     def write_to_cache[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]):
+    ](idx: Coord, val: SIMD[dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         # Blockwise-scaled matmul epilogue: scatter Q to `output` and K/V into
         # the paged cache. Runs as the `elementwise_lambda_fn` of the
         # block-scaled matmul (Mojo kernel when covered, vendor otherwise).
@@ -1416,14 +1423,16 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale_float4[
             SIMD[output_dtype, width]
         ](val.cast[output_dtype]())
 
-        if idx[1] < q_dim:
+        var col = Int(idx[1].value())
+
+        if col < q_dim:
             output.store[width=width, alignment=align_of[output_dtype]()](
-                Coord(idx),
+                idx,
                 output_val_out,
             )
             return
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -1440,15 +1449,15 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale_float4[
         comptime if kv_params.is_mla:
             cache = k_cache
             h_idx = 0  # in MLA mode we only have one head
-            hd_idx = idx[1] - q_dim
+            hd_idx = col - q_dim
 
         else:
-            if idx[1] < qk_offset:
+            if col < qk_offset:
                 cache = k_cache
-                h_idx, hd_idx = udivmod(idx[1] - q_dim, kv_params.head_size)
+                h_idx, hd_idx = udivmod(col - q_dim, kv_params.head_size)
             else:
                 cache = v_cache.value()
-                h_idx, hd_idx = udivmod(idx[1] - qk_offset, kv_params.head_size)
+                h_idx, hd_idx = udivmod(col - qk_offset, kv_params.head_size)
 
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -1853,19 +1862,20 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl_scale_float4[
     @inline(.always)
     def write_to_caches[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]):
+    ](idx: Coord, val: SIMD[dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         # The block-scaled matmul already applied the scales; the epilogue just
         # routes and casts. `idx[1]` is the column in the concatenated N space.
         var output_val_out: SIMD[output_dtype, width] = rebind[
             SIMD[output_dtype, width]
         ](val.cast[output_dtype]())
 
-        var col = idx[1]
+        var col = Int(idx[1].value())
 
         # Q band -> q_output[:, col].
         if col < q_end:
             q_output.store[width=width, alignment=align_of[output_dtype]()](
-                Coord(idx), output_val_out
+                idx, output_val_out
             )
             return
 
@@ -1874,12 +1884,12 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl_scale_float4[
         # (Q | K | V | IndexQ | IndexK).
         if col >= v_end and col < iq_end:
             iq_output.store[width=width, alignment=align_of[output_dtype]()](
-                Coord(idx[0], col - v_end),
+                Coord(Int(idx[0].value()), col - v_end),
                 output_val_out,
             )
             return
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2216,19 +2226,20 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl[
     @inline(.always)
     def write_to_caches[
         _dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_dtype, width]):
+    ](idx: Coord, val: SIMD[_dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         # The matmul produced the projections; the epilogue just routes and
         # casts. `idx[1]` is the column in the concatenated N space.
         var output_val_out: SIMD[dtype, width] = rebind[SIMD[dtype, width]](
             val.cast[dtype]()
         )
 
-        var col = idx[1]
+        var col = Int(idx[1].value())
 
         # Q band -> output[:, col].
         if col < q_end:
             output.store[width=width, alignment=align_of[dtype]()](
-                Coord(idx), output_val_out
+                idx, output_val_out
             )
             return
 
@@ -2237,12 +2248,12 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl[
         # branch order matches the column layout (Q | K | V | IndexQ | IndexK).
         if col >= v_end and col < iq_end:
             output.store[width=width, alignment=align_of[dtype]()](
-                Coord(idx[0], q_dim + (col - v_end)),
+                Coord(Int(idx[0].value()), q_dim + (col - v_end)),
                 output_val_out,
             )
             return
 
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2749,20 +2760,17 @@ def _matmul_kv_cache_ragged_impl[
     @inline(.always)
     def write_to_cache_common[
         dtype: DType, cache_t: KVCacheT, width: SIMDLength
-    ](
-        k_cache: cache_t,
-        v_cache: cache_t,
-        idx: IndexList[2],
-        val: SIMD[dtype, width],
-    ):
+    ](k_cache: cache_t, v_cache: cache_t, idx: Coord, val: SIMD[dtype, width],):
         comptime kv_type = cache_t.dtype
+
+        comptime assert idx.rank == 2, "the KV-cache write contract is rank 2"
 
         comptime assert (
             kv_type == dtype
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -2771,17 +2779,18 @@ def _matmul_kv_cache_ragged_impl[
             UInt32(global_token_idx) - input_row_offsets[batch_idx]
         )
 
+        var col = Int(idx[1].value())
         var cache: cache_t
         var h_idx: Int
         var hd_idx: Int
-        if idx[1] < k_offset:
+        if col < k_offset:
             # Write this element to the K cache.
             cache = k_cache
-            h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
+            h_idx, hd_idx = udivmod(col, kv_params.head_size)
         else:
             # Otherwise, write this element to the V cache.
             cache = v_cache
-            h_idx, hd_idx = udivmod(idx[1] - k_offset, kv_params.head_size)
+            h_idx, hd_idx = udivmod(col - k_offset, kv_params.head_size)
 
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -2802,7 +2811,8 @@ def _matmul_kv_cache_ragged_impl[
     @inline(.always)
     def write_to_cache_continuous[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]):
+    ](idx: Coord, val: SIMD[dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         write_to_cache_common(k_cache_reg, v_cache_reg, idx, val)
 
     _matmul_common[
@@ -2981,7 +2991,8 @@ def _matmul_k_cache_ragged_impl[
     @inline(.always)
     def write_to_cache[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width],):
+    ](idx: Coord, val: SIMD[dtype, width],):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime kv_type = cache_t.dtype
 
         comptime assert (
@@ -2989,7 +3000,7 @@ def _matmul_k_cache_ragged_impl[
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -2998,7 +3009,7 @@ def _matmul_k_cache_ragged_impl[
             UInt32(global_token_idx) - input_row_offsets[batch_idx]
         )
 
-        var h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
+        var h_idx, hd_idx = udivmod(Int(idx[1].value()), kv_params.head_size)
 
         var cache_length = k_cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -3177,7 +3188,8 @@ def _matmul_k_cache_ragged_scale_impl[
     @inline(.always)
     def write_to_cache[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width],):
+    ](idx: Coord, val: SIMD[dtype, width],):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime kv_type = cache_t.dtype
 
         comptime assert (
@@ -3185,7 +3197,7 @@ def _matmul_k_cache_ragged_scale_impl[
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -3194,7 +3206,7 @@ def _matmul_k_cache_ragged_scale_impl[
             UInt32(global_token_idx) - input_row_offsets[batch_idx]
         )
 
-        var h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
+        var h_idx, hd_idx = udivmod(Int(idx[1].value()), kv_params.head_size)
 
         var cache_length = k_cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -3489,15 +3501,17 @@ def _qmatmul_k_or_v_cache_ragged_gguf_quantized_impl[
     @inline(.always)
     def write_to_cache_common[
         dtype: DType, cache_t: KVCacheT, width: SIMDLength
-    ](k_or_v_cache: cache_t, idx: IndexList[2], val: SIMD[dtype, width],):
+    ](k_or_v_cache: cache_t, idx: Coord, val: SIMD[dtype, width],):
         comptime k_or_v_type = cache_t.dtype
+
+        comptime assert idx.rank == 2, "the KV-cache write contract is rank 2"
 
         comptime assert (
             k_or_v_type == dtype
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        var global_token_idx = idx[0]
+        var global_token_idx = Int(idx[0].value())
 
         var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -3508,7 +3522,7 @@ def _qmatmul_k_or_v_cache_ragged_gguf_quantized_impl[
 
         # Write this element to the K or V cache.
         var cache = k_or_v_cache
-        var h_idx, hd_idx = udivmod(idx[1], kv_params.head_size)
+        var h_idx, hd_idx = udivmod(Int(idx[1].value()), kv_params.head_size)
 
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -3525,7 +3539,8 @@ def _qmatmul_k_or_v_cache_ragged_gguf_quantized_impl[
     @__copy_capture(k_or_v_cache)
     def write_to_k_or_v_cache_continuous[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]):
+    ](idx: Coord, val: SIMD[dtype, width]):
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         write_to_cache_common(k_or_v_cache, idx, val)
 
     _qmatmul_gguf_quantized_alloc_output[

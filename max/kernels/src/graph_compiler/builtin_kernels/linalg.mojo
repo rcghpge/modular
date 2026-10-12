@@ -267,7 +267,10 @@ struct Matmul:
         @inline(.always)
         def epilogue_fn[
             _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]):
+        ](coords: Coord, val: SIMD[_dtype, _width]):
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             c._lambda_store[width=_width, element_alignment=alignment](
                 coords,
                 rebind[SIMD[c.dtype, _width]](val),
@@ -277,9 +280,10 @@ struct Matmul:
         @inline(.always)
         def output_compute_fn[
             _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]) -> SIMD[
-            _dtype, _width
-        ]:
+        ](coords: Coord, val: SIMD[_dtype, _width]) -> SIMD[_dtype, _width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             return rebind[SIMD[_dtype, _width]](
                 c._fused_compute_output_lambda[element_alignment=alignment](
                     coords, rebind[SIMD[c.dtype, _width]](val)
@@ -504,7 +508,10 @@ struct Struct_grouped_matmul_ragged:
         @inline(.always)
         def epilogue_fn[
             _dtype: DType, _width: SIMDLength, *, alignment: Int
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]) {var c}:
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var c}:
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             c._lambda_store[width=_width, element_alignment=alignment](
                 coords,
                 rebind[SIMD[c_type, _width]](val),
@@ -513,9 +520,12 @@ struct Struct_grouped_matmul_ragged:
         @inline(.always)
         def output_compute_fn[
             _dtype: DType, _width: SIMDLength, *, alignment: Int
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]) {var c} -> SIMD[
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var c} -> SIMD[
             _dtype, _width
         ]:
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             return rebind[SIMD[_dtype, _width]](
                 c._fused_compute_output_lambda[element_alignment=alignment](
                     coords, rebind[SIMD[c_type, _width]](val)
@@ -1388,7 +1398,10 @@ struct Struct_matmul_dynamic_block_scaled:
         @inline(.always)
         def epilogue_fn[
             _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]):
+        ](coords: Coord, val: SIMD[_dtype, _width]):
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             c._lambda_store[width=_width, element_alignment=alignment](
                 coords,
                 val.cast[c.dtype](),
@@ -1398,9 +1411,10 @@ struct Struct_matmul_dynamic_block_scaled:
         @inline(.always)
         def output_compute_fn[
             _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[2], val: SIMD[_dtype, _width]) -> SIMD[
-            _dtype, _width
-        ]:
+        ](coords: Coord, val: SIMD[_dtype, _width]) -> SIMD[_dtype, _width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             return c._fused_compute_output_lambda[element_alignment=alignment](
                 coords, val.cast[c.dtype]()
             ).cast[_dtype]()
@@ -2028,9 +2042,12 @@ struct MatmulStaticScaledFloat8:
                 width: SIMDLength,
                 *,
                 alignment: Int = align_of[SIMD[dtype, width]](),
-            ](idx: IndexList[2], val: SIMD[dtype, width]) capturing -> SIMD[
+            ](idx: Coord, val: SIMD[dtype, width]) capturing -> SIMD[
                 dtype, width
             ]:
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 var scale = (
                     input_scale.cast[.float32]() * weight_scale.cast[.float32]()
                 )
@@ -2054,14 +2071,18 @@ struct MatmulStaticScaledFloat8:
             @inline(.always)
             def scaled_output_fn[
                 dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](idx: IndexList[2], val: SIMD[dtype, width]):
+            ](idx: Coord, val: SIMD[dtype, width]):
+                comptime assert (
+                    idx.rank == 2
+                ), "the matmul epilogue contract is rank 2"
                 var scale = (
                     input_scale.cast[dtype]() * weight_scale.cast[dtype]()
                 )
                 var scaled_val = val * scale
 
-                output_tt.store_linear[width=width, alignment=alignment](
-                    idx, scaled_val.cast[output_type]()
+                output_tt.store[width=width, alignment=alignment](
+                    idx,
+                    scaled_val.cast[output_type](),
                 )
 
             # Allocate an fp32 scratch buffer for the matmul accumulator;

@@ -318,10 +318,11 @@ def test_rmsnorm_then_matmul[
 
     def epilogue_fn[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_ours_tensor}:
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_ours_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         c_ours_tensor.raw_store[
             width=width, alignment=alignment * size_of[c_type]()
-        ](c_ours_tensor.layout(Coord(idx)), rebind[SIMD[c_type, width]](val))
+        ](c_ours_tensor.layout(idx), rebind[SIMD[c_type, width]](val))
 
     blackwell_matmul_tma_umma_warp_specialized[
         transpose_b=transpose_b,

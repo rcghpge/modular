@@ -107,8 +107,9 @@ def test_transposed_epilogue_row_straddle[
 
     def store_epilogue[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) {var c_tensor}:
-        c_tensor.store[width=width](Coord(idx), val.cast[c_type]())
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        c_tensor.store[width=width](idx, val.cast[c_type]())
 
     seed(1234)
     rand(a_host.as_span())

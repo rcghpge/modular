@@ -1056,7 +1056,7 @@ def _matmul_qint4_m_1[
                 comptime for nn in range(tile_n):
                     var val = c_float[0, nn]
                     func[.float32, simd_width](
-                        Index(0, n + nn * simd_width), val
+                        Coord(Index(0, n + nn * simd_width)), val
                     )
 
         tile[[2, 1]](0, ceildiv(task_n_count, simd_width), process_cols)
@@ -1218,9 +1218,11 @@ def _matmul_qint4_m_any[
                                 comptime for nn in range(tile_n):
                                     var val = c_float[mm, nn]
                                     func[.float32, simd_width](
-                                        Index(
-                                            m + mm,
-                                            n + nn * simd_width,
+                                        Coord(
+                                            Index(
+                                                m + mm,
+                                                n + nn * simd_width,
+                                            )
                                         ),
                                         val,
                                     )

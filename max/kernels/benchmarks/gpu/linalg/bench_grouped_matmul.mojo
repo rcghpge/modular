@@ -49,7 +49,7 @@ from linalg.matmul.gpu.sm100_structured.structured_kernels.row_scales import (
 from linalg.grouped_matmul_sm100_blockwise_fp8 import (
     grouped_matmul_sm100_blockwise_scaled_fp8_persistent,
 )
-from layout import Idx, TileTensor, row_major
+from layout import Coord, Idx, TileTensor, row_major
 from linalg.utils import elementwise_epilogue_type
 
 from std.utils import Index, IndexList
@@ -324,26 +324,32 @@ def bench_grouped_matmul[
     @__parameter
     def epilogue_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]) -> None:
+    ](idx: Coord, val: SIMD[dtype, width]) -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var new_val = val
 
         comptime for i in range(width):
-            new_val[i] = test_epilogue(idx[0], idx[1] + i, val[i])
+            new_val[i] = test_epilogue(
+                Int(idx[0].value()), Int(idx[1].value()) + i, val[i]
+            )
 
-        c_dev.store_linear[width=width, alignment=alignment](
+        c_dev.store[width=width, alignment=alignment](
             idx, new_val.cast[out_type]()
         )
 
     @inline(.always)
     def epilogue_value_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var c_dev} -> None:
+    ](idx: Coord, val: SIMD[dtype, width]) {var c_dev} -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var new_val = val
 
         comptime for i in range(width):
-            new_val[i] = test_epilogue(idx[0], idx[1] + i, val[i])
+            new_val[i] = test_epilogue(
+                Int(idx[0].value()), Int(idx[1].value()) + i, val[i]
+            )
 
-        c_dev.store_linear[width=width, alignment=alignment](
+        c_dev.store[width=width, alignment=alignment](
             idx, new_val.cast[out_type]()
         )
 

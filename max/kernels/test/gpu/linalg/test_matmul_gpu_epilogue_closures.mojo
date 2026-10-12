@@ -26,8 +26,6 @@ from layout import Coord, Idx, TileTensor, row_major
 from linalg.matmul.gpu import _matmul_gpu
 from std.testing import assert_equal
 
-from std.utils.index import IndexList
-
 
 def test_epilogues[
     dtype: DType, N: Int, K: Int, *, transpose_b: Bool = True
@@ -62,26 +60,27 @@ def test_epilogues[
     @__copy_capture(d)
     def store_lambda[
         _dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
-        var row_scale = -2 if idx[0] % 2 == 1 else 2
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row_scale = -2 if Int(idx[0].value()) % 2 == 1 else 2
         d.store[width=width](
-            Coord(idx), (val * SIMD[_dtype, width](row_scale)).cast[dtype]()
+            idx, (val * SIMD[_dtype, width](row_scale)).cast[dtype]()
         )
 
     @__parameter
     @inline(.always)
     def compute_lambda[
         _dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
-        _dtype, width
-    ]:
-        var row_scale = -2 if idx[0] % 2 == 1 else 2
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[_dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row_scale = -2 if Int(idx[0].value()) % 2 == 1 else 2
         return val * SIMD[_dtype, width](row_scale)
 
     def compute_fn[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
-        var row_scale = -2 if idx[0] % 2 == 1 else 2
+    ](idx: Coord, val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row_scale = -2 if Int(idx[0].value()) % 2 == 1 else 2
         return val * SIMD[_dtype, width](row_scale)
 
     _matmul_gpu[

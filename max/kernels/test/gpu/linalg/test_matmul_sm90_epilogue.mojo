@@ -17,8 +17,8 @@ from max.gpu.host import DeviceContext
 from linalg.matmul.gpu.sm90.testbed import test_matmul_sm90
 from linalg.matmul.gpu.tile_scheduler import MatmulSchedule
 
-from std.utils.index import Index, IndexList
-from layout import Idx
+from std.utils.index import Index
+from layout import Coord, Idx
 
 comptime block_tile_shape[wgmma_n: Int, a_dtype: DType] = Index(
     128, wgmma_n, 128 // size_of[a_dtype]()
@@ -166,7 +166,10 @@ def main() raises:
         @inline(.always)
         def test_lambda_fn_square[
             _dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+        ](idx: Coord, val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+            comptime assert (
+                idx.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             return val * val
 
         test_matmul_sm90[
@@ -183,10 +186,14 @@ def main() raises:
         @inline(.always)
         def test_lambda_add_coords[
             _dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: IndexList[2], val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+        ](idx: Coord, val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+            comptime assert (
+                idx.rank == 2
+            ), "the matmul epilogue contract is rank 2"
             # Cast indices between 0-1 to avoid accuracy issues
-            var i = Float32(idx[0]) / 277.0
-            var j = Float32(idx[1] - idx[1] % 8) / 2560.0
+            var col = Int(idx[1].value())
+            var i = Float32(idx[0].value()) / 277.0
+            var j = Float32(col - col % 8) / 2560.0
             return val + i.cast[_dtype]() + 2 * j.cast[_dtype]()
 
         test_matmul_sm90[

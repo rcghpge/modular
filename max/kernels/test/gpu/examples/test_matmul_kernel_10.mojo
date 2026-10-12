@@ -263,9 +263,15 @@ def sgemm_warp_tiling_kernel[
                     comptime if elementwise_lambda_fn:
                         comptime elementwise_lambda = elementwise_lambda_fn.value()
                         elementwise_lambda[c_type, 4](
-                            Index(
-                                M_offset_warp + M_offset_subtile + M_offset_val,
-                                N_offset_warp + N_offset_subtile + N_offset_val,
+                            Coord(
+                                Index(
+                                    M_offset_warp
+                                    + M_offset_subtile
+                                    + M_offset_val,
+                                    N_offset_warp
+                                    + N_offset_subtile
+                                    + N_offset_val,
+                                )
                             ),
                             vec,
                         )

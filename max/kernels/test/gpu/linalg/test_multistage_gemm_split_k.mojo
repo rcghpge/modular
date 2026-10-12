@@ -13,10 +13,10 @@
 
 from std.math import isnan, nan
 from std.testing import assert_almost_equal, assert_true
-from std.utils import Index, IndexList
+from std.utils import Index
 
 from max.gpu.host import DeviceContext
-from layout import Idx, TileTensor, row_major
+from layout import Coord, Idx, TileTensor, row_major
 from layout.tensor_core import get_mma_shape
 from linalg.matmul.gpu import _amdgpu_get_mma_shape, multistage_gemm
 from linalg.utils_gpu import MatmulConfig
@@ -69,9 +69,8 @@ def run_split_k[
 
     def add_one[
         value_type: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], value: SIMD[value_type, width]) -> SIMD[
-        value_type, width
-    ]:
+    ](idx: Coord, value: SIMD[value_type, width]) -> SIMD[value_type, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return value + 1
 
     comptime if use_epilogue:

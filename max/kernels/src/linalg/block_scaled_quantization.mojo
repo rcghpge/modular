@@ -852,7 +852,7 @@ def naive_block_scaled_matmul_kernel[
     comptime if elementwise_lambda_fn:
         comptime elementwise_lambda = elementwise_lambda_fn.value()
         elementwise_lambda[c_type, 1](
-            Index(row_idx, col_idx), accum.cast[c_type]()
+            Coord(Index(row_idx, col_idx)), accum.cast[c_type]()
         )
     else:
         c[Coord(row_idx, col_idx)] = accum.cast[c_type]()
@@ -2068,7 +2068,7 @@ def block_scaled_matmul_with_epilogue[
             ](idx: Coord) {var}:
                 var c_val = c.load[width=simd_width](idx)
                 epilogue[c_type, simd_width, alignment=alignment](
-                    Index(idx[0].value(), idx[1].value()), c_val
+                    Coord(Index(idx[0].value(), idx[1].value())), c_val
                 )
 
             matmul[scales_type=scales_dtype](
@@ -2251,15 +2251,19 @@ def block_scaled_matmul[
     @__copy_capture(c)
     def compute_lambda_wrapper[
         _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[_dtype, _width]):
+    ](coords: Coord, val: SIMD[_dtype, _width]):
+        comptime assert (
+            coords.rank == 2
+        ), "the matmul epilogue contract is rank 2"
         comptime if elementwise_compute_lambda_fn:
             comptime compute_lambda = elementwise_compute_lambda_fn.value()
             var output = compute_lambda(coords, val)
             comptime assert (
                 output.dtype == c_type
             ), "compute epilogue lambda output and c type mismatch"
-            c.store_linear[alignment=alignment * size_of[c_type]()](
-                coords, rebind[SIMD[c_type, _width]](output)
+            c.store[alignment=alignment * size_of[c_type]()](
+                coords,
+                rebind[SIMD[c_type, _width]](output),
             )
 
     comptime elementwise_lambda_wrapper = Optional[elementwise_epilogue_type](

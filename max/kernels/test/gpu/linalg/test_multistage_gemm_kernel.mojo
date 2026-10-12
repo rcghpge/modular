@@ -18,6 +18,7 @@ from std.random import rand
 from internal_utils import assert_almost_equal
 from layout import (
     ComptimeInt,
+    Coord,
     Idx,
     RowMajorLayout,
     TileTensor,
@@ -26,8 +27,6 @@ from layout import (
 from linalg.matmul.gpu import matmul_kernel_naive, multistage_gemm
 from linalg.matmul.gpu._multistage_gemm_gpu import multistage_gemm_kernel
 from linalg.utils_gpu import MatmulKernels
-
-from std.utils import IndexList
 
 
 def multistage_gemm_simple[
@@ -125,7 +124,8 @@ def multistage_gemm_fp32_run[
 
     def compute_fn[
         _dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+    ](idx: Coord, val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return val
 
     # The config the vendor BLAS fallback hardcodes (KERN-1812).

@@ -5060,9 +5060,12 @@ def conv_gpu[
                         _width: SIMDLength,
                         *,
                         alignment: Int = 1,
-                    ](coords_2d: IndexList[2], val: SIMD[_dtype, _width],):
-                        var m = coords_2d[0]
-                        var n = coords_2d[1]
+                    ](coords_2d: Coord, val: SIMD[_dtype, _width],):
+                        comptime assert (
+                            coords_2d.rank == 2
+                        ), "the matmul epilogue contract is rank 2"
+                        var m = Int(coords_2d[0].value())
+                        var n = Int(coords_2d[1].value())
                         var batch_idx: Int
                         var rem: Int
                         var h_idx: Int
@@ -5397,9 +5400,12 @@ def conv_gpu[
                     _width: SIMDLength,
                     *,
                     alignment: Int = 1,
-                ](coords_2d: IndexList[2], val: SIMD[_dtype, _width]):
-                    var m = coords_2d[0]
-                    var n = coords_2d[1]
+                ](coords_2d: Coord, val: SIMD[_dtype, _width]):
+                    comptime assert (
+                        coords_2d.rank == 2
+                    ), "the matmul epilogue contract is rank 2"
+                    var m = Int(coords_2d[0].value())
+                    var n = Int(coords_2d[1].value())
                     var batch_idx: Int
                     var rem: Int
                     var h_idx: Int
@@ -5645,9 +5651,12 @@ def conv_gpu[
                         _width: SIMDLength,
                         *,
                         alignment: Int = 1,
-                    ](coords_2d: IndexList[2], val: SIMD[_dtype, _width],):
-                        var m = coords_2d[0]
-                        var n = coords_2d[1]
+                    ](coords_2d: Coord, val: SIMD[_dtype, _width],):
+                        comptime assert (
+                            coords_2d.rank == 2
+                        ), "the matmul epilogue contract is rank 2"
+                        var m = Int(coords_2d[0].value())
+                        var n = Int(coords_2d[1].value())
                         var batch_idx: Int
                         var rem: Int
                         var d_idx: Int

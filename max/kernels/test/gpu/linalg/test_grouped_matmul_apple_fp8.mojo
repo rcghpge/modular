@@ -37,7 +37,7 @@ expert count.
 """
 
 from max.gpu.host import DeviceContext
-from layout import Idx, TileTensor, row_major
+from layout import Coord, Idx, TileTensor, row_major
 from layout._fillers import random
 from linalg.grouped_matmul import grouped_matmul, naive_grouped_matmul
 from linalg.matmul.gpu.apple.matmul2d_fp8 import enqueue_grouped_matmul2d_fp8
@@ -209,12 +209,13 @@ def _run_case[
     @inline(.always)
     def epilogue_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var c_epi_ptr}:
+    ](idx: Coord, val: SIMD[dtype, width]) {var c_epi_ptr}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         # Store at element alignment, which holds whatever `alignment` the
         # dispatch reports.
         var out = val.cast[.float32]() * 2 + 1
         c_epi_ptr.unsafe_store[width=width](
-            idx[0] * N + idx[1], out.cast[out_type]()
+            Int(idx[0].value()) * N + Int(idx[1].value()), out.cast[out_type]()
         )
 
     grouped_matmul[has_epilogue_fn=True](
