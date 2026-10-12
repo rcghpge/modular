@@ -226,12 +226,13 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
         """Packs the supplied external buffer to local storage."""
         comptime assert (Self._packed_stride % Self._simd_width) == 0
 
-        comptime if Self.bit_width == 4:
-            return self._pack_int4(src_ptr)
-        elif Self.bit_width == 6:
-            return self._pack_int6(src_ptr)
-        else:
-            comptime assert False, "unsupported bit width"
+        comptime match Self.bit_width:
+            case 4:
+                return self._pack_int4(src_ptr)
+            case 6:
+                return self._pack_int6(src_ptr)
+            case _:
+                comptime assert False, "unsupported bit width"
 
     @inline(.always)
     def unpack[
@@ -240,13 +241,14 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
         """Unpacks the local storage to the supplied external buffer."""
         comptime assert (Self._packed_stride % Self._simd_width) == 0
 
-        comptime if Self.bit_width == 4:
-            comptime assert zero_point == 0, "zero point not implemented"
-            return self._unpack_int4(dst_ptr)
-        elif Self.bit_width == 6:
-            return self._unpack_int6[zero_point](dst_ptr)
-        else:
-            comptime assert False, "unsupported bit width"
+        comptime match Self.bit_width:
+            case 4:
+                comptime assert zero_point == 0, "zero point not implemented"
+                return self._unpack_int4(dst_ptr)
+            case 6:
+                return self._unpack_int6[zero_point](dst_ptr)
+            case _:
+                comptime assert False, "unsupported bit width"
 
 
 struct _block_Q4_K_packed[block_n: Int = 1]:
