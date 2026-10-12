@@ -678,9 +678,8 @@ __extension SM100MLA:
             Self.ov_depth * kv_sub_BN * size_of[Self.qkv_dtype]()
         )
 
-        @__parameter
         @inline(.always)
-        def _k_num_valid_pages(current_kv_row: UInt32) -> UInt32:
+        def _k_num_valid_pages(current_kv_row: UInt32) {imm} -> UInt32:
             """Valid K_nope/V sub-tile pages at `current_kv_row`."""
             if current_kv_row >= num_keys:
                 return UInt32(0)
@@ -689,9 +688,8 @@ __extension SM100MLA:
                 UInt32(ceildiv(Int(num_keys - current_kv_row), Int(kv_sub_BN))),
             )
 
-        @__parameter
         @inline(.always)
-        def _rope_num_valid_pages(current_kv_row: UInt32) -> UInt32:
+        def _rope_num_valid_pages(current_kv_row: UInt32) {imm} -> UInt32:
             """Valid K_rope sub-tile pages at `current_kv_row`."""
             if current_kv_row >= num_keys:
                 return UInt32(0)
@@ -724,16 +722,17 @@ __extension SM100MLA:
             Self.ov_depth * Self.config.BN * size_of[Self.qkv_dtype]()
         )
 
-        @__parameter
+        comptime produce_k_rope_rope_pages_type = type_of(rope_paged_rows)
+
         @inline(.always)
         def _produce_k_rope[
             partial: Bool,
         ](
-            rope_pages: type_of(rope_paged_rows),
+            rope_pages: produce_k_rope_rope_pages_type,
             kv_row_base: UInt32,
             smem_base_ptr: SharedMemPointer[Scalar[Self.KRopeType.dtype]],
             rope_nvp: UInt32,
-        ):
+        ) {imm}:
             """K_rope sub-tile TMA into smem starting at `smem_base_ptr`,
             signaling completion on the CVT producer mbar.
 
@@ -795,16 +794,17 @@ __extension SM100MLA:
                     e,
                 )
 
-        @__parameter
+        comptime produce_v_paged_type = type_of(paged_rows)
+
         @inline(.always)
         def _produce_v[
             partial: Bool,
         ](
-            paged: type_of(paged_rows),
+            paged: produce_v_paged_type,
             mbar: SharedMemPointer[SharedMemBarrier],
             smem_ptr: SharedMemPointer[Scalar[Self.KVLUTType.dtype]],
             v_nvp: UInt32 = UInt32(num_kv_pages),
-        ):
+        ) {imm}:
             """V tile production at `mbar` / `smem_ptr`. Both modes pass
             the V destination smem pointer directly so this closure
             doesn't need to know about pipeline machinery
@@ -850,11 +850,10 @@ __extension SM100MLA:
             var kv_pipeline: KVPipeProdType = {mbars.get_k_mbars()}
             kv_pipeline.state._phase = 1  # producer starts at phase 1
 
-            @__parameter
             @inline(.always)
-            def _fused_rope_smem_ptr() -> (
-                SharedMemPointer[Scalar[Self.KRopeType.dtype]]
-            ):
+            def _fused_rope_smem_ptr() {
+                imm
+            } -> SharedMemPointer[Scalar[Self.KRopeType.dtype]]:
                 """FP8 base of the current rope-buffer slot.
 
                 Bug-B fix: bitcast the BF16 buffer base to FP8 BEFORE
@@ -869,19 +868,24 @@ __extension SM100MLA:
                     * UInt32(rope_stage_elems)
                 ).bitcast[Scalar[Self.KRopeType.dtype]]()
 
-            @__parameter
+            comptime produce_k_fused_paged_type = type_of(paged_rows)
+            comptime produce_k_fused_rope_paged_type = type_of(rope_paged_rows)
+            comptime produce_k_fused_mbar_type = type_of(
+                kv_pipeline.producer_mbar()
+            )
+
             @inline(.always)
             def _produce_k_fused[
                 partial: Bool,
                 with_q: Bool = False,
             ](
-                paged: type_of(paged_rows),
-                rope_paged: type_of(rope_paged_rows),
+                paged: produce_k_fused_paged_type,
+                rope_paged: produce_k_fused_rope_paged_type,
                 kv_row_local: UInt32,
-                mbar: type_of(kv_pipeline.producer_mbar()),
+                mbar: produce_k_fused_mbar_type,
                 k_nvp: UInt32 = UInt32(num_kv_pages),
                 rope_nvp: UInt32 = UInt32(num_rope_pages),
-            ):
+            ) {imm}:
                 """Q (if `with_q`) + K_nope onto `mbar`, then K_rope
                 onto `tma_to_cvt_pipeline.producer_mbar()` via the
                 shared `_produce_k_rope` closure.
@@ -923,11 +927,10 @@ __extension SM100MLA:
                     rope_nvp,
                 )
 
-            @__parameter
             @inline(.always)
-            def _fused_v_smem_ptr() -> (
-                SharedMemPointer[Scalar[Self.KVLUTType.dtype]]
-            ):
+            def _fused_v_smem_ptr() {
+                imm
+            } -> SharedMemPointer[Scalar[Self.KVLUTType.dtype]]:
                 """V destination smem ptr at the current KV stage."""
                 return k_smem_base + kv_pipeline.state.index() * UInt32(
                     kv_stage_elems
@@ -1091,19 +1094,22 @@ __extension SM100MLA:
             # Get K0 barrier (no wait needed for first iteration)
             var k0_mbar = k_pipeline.producer_mbar[qk_stage=0]()
 
-            @__parameter
+            comptime produce_k_split_paged_type = type_of(paged_rows)
+            comptime produce_k_split_rope_paged_type = type_of(rope_paged_rows)
+            comptime produce_k_split_mbar_type = type_of(k0_mbar)
+
             @inline(.always)
             def _produce_k_split[
                 partial: Bool,
                 with_q: Bool = False,
             ](
-                paged: type_of(paged_rows),
-                rope_paged: type_of(rope_paged_rows),
+                paged: produce_k_split_paged_type,
+                rope_paged: produce_k_split_rope_paged_type,
                 kv_row_local: UInt32,
-                mbar: type_of(k0_mbar),
+                mbar: produce_k_split_mbar_type,
                 k_nvp: UInt32 = UInt32(num_kv_pages),
                 rope_nvp: UInt32 = UInt32(num_rope_pages),
-            ):
+            ) {imm}:
                 """Q (if `with_q`) + K_nope onto `mbar`, then K_rope
                 onto `tma_to_cvt_pipeline.producer_mbar()` via the
                 shared `_produce_k_rope` closure.
@@ -1163,10 +1169,13 @@ __extension SM100MLA:
                     rope_nvp,
                 )
 
-            @__parameter
+            comptime split_v_smem_ptr_pair_type = type_of(
+                pipeline_v.get_tile[qk_stage=0]()
+            )
+
             @inline(.always)
             def _split_v_smem_ptr(
-                pair: type_of(pipeline_v.get_tile[qk_stage=0]()),
+                pair: split_v_smem_ptr_pair_type,
             ) -> SharedMemPointer[Scalar[Self.KVLUTType.dtype]]:
                 """V destination smem ptr for non-shared-KV's V pipeline pair.
 

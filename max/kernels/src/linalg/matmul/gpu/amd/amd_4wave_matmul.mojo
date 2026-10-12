@@ -1117,8 +1117,7 @@ struct AMD4WaveMatmul[
         )
 
         @inline(.always)
-        @__parameter
-        def load_a[stage: Int, which: Int](k: Int):
+        def load_a[stage: Int, which: Int](k: Int) {imm}:
             a_loader.load_tile(
                 a_load_tiles[stage][which],
                 m_offset=which * half_BM,
@@ -1126,8 +1125,7 @@ struct AMD4WaveMatmul[
             )
 
         @inline(.always)
-        @__parameter
-        def load_b[stage: Int, which: Int](k: Int):
+        def load_b[stage: Int, which: Int](k: Int) {imm}:
             b_loader.load_tile(
                 b_load_tiles[stage][which],
                 m_offset=which * half_BN,
@@ -1147,9 +1145,8 @@ struct AMD4WaveMatmul[
         # ====================================================
         # Body: framework-driven via Pipeline4Wave.
         # ====================================================
-        @__parameter
         @inline(.always)
-        def _emit_framework_body():
+        def _emit_framework_body() {imm}:
             # `Pipeline4Wave.__init__` forces IDENTITY +
             # minimal_barriers + omit_mma_set_prio; the ScheduleConfig
             # we pass here only contributes `sched_barrier_mask` and
@@ -1206,9 +1203,8 @@ struct AMD4WaveMatmul[
                 sched_config, target
             )
 
-            @__parameter
             @inline(.always)
-            def _bind[entry: ScheduleEntry](k_base: Int):
+            def _bind[entry: ScheduleEntry](k_base: Int) {imm}:
                 # Framework-level infrastructure tags (BARRIER / WAIT_* /
                 # SET_PRIO / SCHEDULE_BARRIER) emit AMD intrinsics
                 # directly; kernel-specific data tags (LOAD_A / LOAD_B /
@@ -1733,8 +1729,7 @@ struct AMD4WaveMatmul[
         )
 
         @inline(.always)
-        @__parameter
-        def load_a[stage: Int, which: Int](k: Int):
+        def load_a[stage: Int, which: Int](k: Int) {imm}:
             # `m_anchor=pid_m*BM` baked into the loader at construction;
             # callsite only carries the within-block `which*half_BM`
             # offset — same shape as the matmul's load_a / load_b.
@@ -1745,8 +1740,7 @@ struct AMD4WaveMatmul[
             )
 
         @inline(.always)
-        @__parameter
-        def load_b[stage: Int, which: Int](k: Int):
+        def load_b[stage: Int, which: Int](k: Int) {imm}:
             b_loader.load_tile(
                 b_load_tiles[stage][which],
                 m_offset=which * half_BN,
@@ -1766,9 +1760,8 @@ struct AMD4WaveMatmul[
         # ====================================================
         # Body: framework-driven via Pipeline4Wave.
         # ====================================================
-        @__parameter
         @inline(.always)
-        def _emit_framework_body():
+        def _emit_framework_body() {imm}:
             # `Pipeline4Wave.__init__` forces IDENTITY +
             # minimal_barriers + omit_mma_set_prio; the ScheduleConfig
             # we pass here only contributes `sched_barrier_mask` and
@@ -1811,9 +1804,8 @@ struct AMD4WaveMatmul[
                 sched_config, target
             )
 
-            @__parameter
             @inline(.always)
-            def _bind[entry: ScheduleEntry](k_base: Int):
+            def _bind[entry: ScheduleEntry](k_base: Int) {imm}:
                 # Framework-level infrastructure tags (BARRIER / WAIT_* /
                 # SET_PRIO / SCHEDULE_BARRIER) emit AMD intrinsics
                 # directly; kernel-specific data tags (LOAD_A / LOAD_B /

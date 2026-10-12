@@ -900,9 +900,8 @@ __extension SM100MLA:
             Self.ov_depth * Self.config.BN * size_of[Self.qkv_dtype]()
         )
 
-        @__parameter
         @inline(.always)
-        def _k_num_valid_pages(current_kv_row: UInt32) -> UInt32:
+        def _k_num_valid_pages(current_kv_row: UInt32) {imm} -> UInt32:
             """Valid K_nope/V/k_scale sub-tile pages at `current_kv_row`."""
             if current_kv_row >= num_keys:
                 return UInt32(0)
@@ -911,9 +910,8 @@ __extension SM100MLA:
                 UInt32(ceildiv(Int(num_keys - current_kv_row), Int(kv_sub_BN))),
             )
 
-        @__parameter
         @inline(.always)
-        def _rope_num_valid_pages(current_kv_row: UInt32) -> UInt32:
+        def _rope_num_valid_pages(current_kv_row: UInt32) {imm} -> UInt32:
             """Valid K_rope sub-tile pages at `current_kv_row`."""
             if current_kv_row >= num_keys:
                 return UInt32(0)
@@ -939,17 +937,18 @@ __extension SM100MLA:
 
         # K_rope shared closure. Bytes are accounted by the caller on
         # the K barrier (no separate CVT mbar — unlike blockscale).
-        @__parameter
+        comptime produce_k_rope_rope_pages_type = type_of(rope_paged_rows)
+
         @inline(.always)
         def _produce_k_rope[
             partial: Bool,
         ](
-            rope_pages: type_of(rope_paged_rows),
+            rope_pages: produce_k_rope_rope_pages_type,
             kv_row_base: UInt32,
             smem_base_ptr: SharedMemPointer[Scalar[Self.KRopeType.dtype]],
             mbar: SharedMemPointer[SharedMemBarrier],
             rope_nvp: UInt32 = UInt32(num_rope_pages),
-        ):
+        ) {imm}:
             """K_rope sub-tile TMA. `partial=True` early-returns at
             `_p == rope_nvp`. Bytes are accounted by the caller on
             `mbar`.
@@ -994,17 +993,18 @@ __extension SM100MLA:
                 )
 
         # k_scale shared closure. Bytes accounted by caller on `mbar`.
-        @__parameter
+        comptime produce_k_scale_k_pages_type = type_of(paged_rows)
+
         @inline(.always)
         def _produce_k_scale[
             partial: Bool,
         ](
-            k_pages: type_of(paged_rows),
+            k_pages: produce_k_scale_k_pages_type,
             kv_row_base: UInt32,
             k_scale_smem_ptr: SharedMemPointer[Scalar[config.scale_dtype]],
             mbar: SharedMemPointer[SharedMemBarrier],
             k_nvp: UInt32 = UInt32(num_kv_pages),
-        ):
+        ) {imm}:
             """k_scale sub-tile TMA. `partial=True` early-returns at
             `_p == k_nvp`. Bytes are accounted by the caller on `mbar`.
             """
@@ -1044,16 +1044,17 @@ __extension SM100MLA:
         # (kv_pipeline.producer_mbar() in shared-KV,
         # pipeline_v.get_tile().mbar in non-shared-KV), so this closure
         # emits its own partial-aware `expect_bytes_pred` directly.
-        @__parameter
+        comptime produce_v_paged_type = type_of(paged_rows)
+
         @inline(.always)
         def _produce_v[
             partial: Bool,
         ](
-            paged: type_of(paged_rows),
+            paged: produce_v_paged_type,
             mbar: SharedMemPointer[SharedMemBarrier],
             smem_ptr: SharedMemPointer[Scalar[Self.KVLUTType.dtype]],
             v_nvp: UInt32 = UInt32(num_kv_pages),
-        ):
+        ) {imm}:
             """V tile production at `mbar` / `smem_ptr`. Emits partial-
             aware `expect_bytes_pred` so the caller doesn't need to
             track V byte count.
@@ -1102,21 +1103,19 @@ __extension SM100MLA:
             )
             var k_scale_idx: UInt32 = 0
 
-            @__parameter
             @inline(.always)
-            def _fused_kv_buffer_ptr() -> (
-                SharedMemPointer[Scalar[Self.KVLUTType.dtype]]
-            ):
+            def _fused_kv_buffer_ptr() {
+                imm
+            } -> SharedMemPointer[Scalar[Self.KVLUTType.dtype]]:
                 """Current kv_pipeline buffer slot (shared K_nope/V)."""
                 return k_smem_base + kv_pipeline.state.index() * UInt32(
                     kv_stage_elems
                 )
 
-            @__parameter
             @inline(.always)
-            def _fused_rope_smem_ptr() -> (
-                SharedMemPointer[Scalar[Self.KRopeType.dtype]]
-            ):
+            def _fused_rope_smem_ptr() {
+                imm
+            } -> SharedMemPointer[Scalar[Self.KRopeType.dtype]]:
                 """Current rope buffer slot.
 
                 `rope_smem_base` is already typed as
@@ -1125,27 +1124,31 @@ __extension SM100MLA:
                 """
                 return rope_smem_base + rope_idx * UInt32(rope_stage_elems)
 
-            @__parameter
             @inline(.always)
-            def _fused_k_scale_smem_ptr() -> (
-                SharedMemPointer[Scalar[config.scale_dtype]]
-            ):
+            def _fused_k_scale_smem_ptr() {
+                imm
+            } -> SharedMemPointer[Scalar[config.scale_dtype]]:
                 """Current k_scale buffer slot."""
                 return k_scale_smem + k_scale_idx * UInt32(k_scale_elems)
 
-            @__parameter
+            comptime produce_k_fused_paged_type = type_of(paged_rows)
+            comptime produce_k_fused_rope_paged_type = type_of(rope_paged_rows)
+            comptime produce_k_fused_mbar_type = type_of(
+                kv_pipeline.producer_mbar()
+            )
+
             @inline(.always)
             def _produce_k_fused[
                 partial: Bool,
                 with_q: Bool = False,
             ](
-                paged: type_of(paged_rows),
-                rope_paged: type_of(rope_paged_rows),
+                paged: produce_k_fused_paged_type,
+                rope_paged: produce_k_fused_rope_paged_type,
                 kv_row_local: UInt32,
-                mbar: type_of(kv_pipeline.producer_mbar()),
+                mbar: produce_k_fused_mbar_type,
                 k_nvp: UInt32 = UInt32(num_kv_pages),
                 rope_nvp: UInt32 = UInt32(num_rope_pages),
-            ):
+            ) {imm}:
                 """Q + q_scale (if `with_q`) + K_nope + K_rope + k_scale
                 onto `mbar`.
 
@@ -1237,19 +1240,21 @@ __extension SM100MLA:
                 # rope+k_scale buffer cycle / step). The first peeled K
                 # slot passes `acquire=False` (initial producer
                 # phase = 1).
-                @__parameter
+                comptime emit_k_1q_paged_type = type_of(paged_rows)
+                comptime emit_k_1q_rope_paged_type = type_of(rope_paged_rows)
+
                 @inline(.always)
                 def _emit_k_1q[
                     partial: Bool,
                     with_q: Bool = False,
                     acquire: Bool = True,
                 ](
-                    paged: type_of(paged_rows),
-                    rope_paged: type_of(rope_paged_rows),
+                    paged: emit_k_1q_paged_type,
+                    rope_paged: emit_k_1q_rope_paged_type,
                     kv_row_local: UInt32,
                     k_nvp: UInt32,
                     rope_nvp: UInt32,
-                ):
+                ) {mut k_scale_idx, mut kv_pipeline, mut rope_idx, imm}:
                     comptime if acquire:
                         kv_pipeline.producer_acquire()
                     var mbar = kv_pipeline.producer_mbar()
@@ -1265,11 +1270,14 @@ __extension SM100MLA:
                     k_scale_idx = (k_scale_idx + 1) % num_k_scale_bufs
                     kv_pipeline.state.step()
 
-                @__parameter
+                comptime emit_v_1q_paged_type = type_of(paged_rows)
+
                 @inline(.always)
                 def _emit_v_1q[
                     partial: Bool
-                ](paged: type_of(paged_rows), v_nvp: UInt32):
+                ](paged: emit_v_1q_paged_type, v_nvp: UInt32) {
+                    mut kv_pipeline, imm
+                }:
                     kv_pipeline.producer_acquire()
                     var mbar = kv_pipeline.producer_mbar()
                     _produce_v[partial=partial](
@@ -1642,10 +1650,13 @@ __extension SM100MLA:
             comptime k_rope_split_sub = Self.rope_depth * rope_sub_BN
             comptime KNopeSplitSub = SMemTensorLT[k_nope_split_sub]
 
-            @__parameter
+            comptime split_v_smem_ptr_pair_type = type_of(
+                pipeline_v.get_tile[qk_stage=0]()
+            )
+
             @inline(.always)
             def _split_v_smem_ptr(
-                pair: type_of(pipeline_v.get_tile[qk_stage=0]()),
+                pair: split_v_smem_ptr_pair_type,
             ) -> SharedMemPointer[Scalar[Self.KVLUTType.dtype]]:
                 """V destination smem ptr for non-shared-KV V pipeline pair.
 
@@ -1659,19 +1670,24 @@ __extension SM100MLA:
                     pair.smem.ptr
                 )
 
-            @__parameter
+            comptime produce_k_split_paged_type = type_of(paged_rows)
+            comptime produce_k_split_rope_paged_type = type_of(rope_paged_rows)
+            comptime produce_k_split_mbar_type = type_of(
+                k_pipeline.producer_mbar[qk_stage=0]()
+            )
+
             @inline(.always)
             def _produce_k_split[
                 partial: Bool,
                 with_q: Bool = False,
             ](
-                paged: type_of(paged_rows),
-                rope_paged: type_of(rope_paged_rows),
+                paged: produce_k_split_paged_type,
+                rope_paged: produce_k_split_rope_paged_type,
                 kv_row_local: UInt32,
-                mbar: type_of(k_pipeline.producer_mbar[qk_stage=0]()),
+                mbar: produce_k_split_mbar_type,
                 k_nvp: UInt32 = UInt32(num_kv_pages),
                 rope_nvp: UInt32 = UInt32(num_rope_pages),
-            ):
+            ) {imm}:
                 """Q + q_scale (if `with_q`) + K_nope + K_rope + k_scale
                 onto `mbar`.
 
@@ -2163,9 +2179,8 @@ def mla_sm100_prefill_per_token_scale[
     # configs (Q nope/rope TMAs, q_scale box, and ragged store use
     # `BM // num_q` = 128 in both modes; K/V/rope/k_scale TMA shapes
     # are BM-independent), so they are passed through unchanged.
-    @__parameter
     @inline(.always)
-    def _launch[cfg: MLAConfig]() raises:
+    def _launch[cfg: MLAConfig]() raises {imm}:
         comptime assert cfg.supported(), cfg.fa4_config.description()
         comptime SchedulerType = TransientScheduler[
             UInt32(cfg.BM),

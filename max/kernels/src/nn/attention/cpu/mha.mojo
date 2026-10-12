@@ -1258,7 +1258,6 @@ def flash_attention_split_kv[
 
         @inline(.always)
         @__copy_capture(kv_cache_len)
-        @__parameter
         def load_from_split_cache[
             curr_fn: def[simd_width: Int, rank: Int](
                 IndexList[rank]
@@ -1268,7 +1267,7 @@ def flash_attention_split_kv[
             ) capturing -> SIMD[dtype, simd_width],
             rank: Int,
             simd_width: Int,
-        ](idx: IndexList[rank]) -> SIMD[dtype, simd_width]:
+        ](idx: IndexList[rank]) {imm} -> SIMD[dtype, simd_width]:
             # Load directly from either `curr_fn` or `cache_fn` depending on the
             # sequence index.
             # Boundary condition handling is done by the caller since

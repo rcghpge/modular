@@ -1427,9 +1427,8 @@ def _fp8_index_score_prefill_kernel_sm100[
         # One item per pass: each item is read off its slot's metadata, its
         # q-scales re-hoisted, then the slot freed for the load warp. Every ring
         # cursor carries over.
-        @__parameter
         @inline(.always)
-        def consume_item():
+        def consume_item() {mut c_state, mut k_state, mut qs_reg, imm}:
             # `n_tiles_local` is `Int32`, so `range` yields an `Int32` induction
             # variable directly (`range.mojo:495`) -- the whole key-index chain
             # stays 32-bit with no per-iteration cast, which is what the narrowing

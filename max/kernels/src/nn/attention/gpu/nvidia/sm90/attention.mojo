@@ -622,7 +622,6 @@ def produce[
             UInt32(KVPagedRows.num_pages),
         )
 
-    @__parameter
     @inline(.nodebug)
     def produce_kv[
         is_k_side: Bool,
@@ -633,7 +632,7 @@ def produce[
         prompt_idx: UInt32,
         kv_tile_row: UInt32,
         kv_head_idx: UInt32,
-    ):
+    ) {imm}:
         var write_idx: UInt32 = state.index()
         var write_phase: UInt32 = state.phase()
 
@@ -671,7 +670,6 @@ def produce[
             )
         state.step()
 
-    @__parameter
     @inline(.nodebug)
     def produce_kv_partial[
         is_k_side: Bool,
@@ -683,7 +681,7 @@ def produce[
         kv_tile_row: UInt32,
         kv_head_idx: UInt32,
         num_valid_pages: UInt32,
-    ):
+    ) {imm}:
         """Like `produce_kv` but with runtime-bounded page loops.
 
         Uses `populate` + `tma_copy_{k,v}[needs_partial=True]` so the
@@ -727,9 +725,8 @@ def produce[
             )
         state.step()
 
-    @__parameter
     @inline(.always)
-    def get_position(seq_info: SeqInfo) -> PositionType:
+    def get_position(seq_info: SeqInfo) {imm} -> PositionType:
         return _get_position[
             BM,
             BN,

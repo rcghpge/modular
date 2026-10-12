@@ -621,8 +621,7 @@ struct AMDPingPongMatmul[
         )
 
         @inline(.always)
-        @__parameter
-        def load_a[stage: Int, which: Int](k: Int):
+        def load_a[stage: Int, which: Int](k: Int) {imm}:
             a_loader.load_tile(
                 a_load_tiles[stage][which],
                 m_offset=which * half_BM,
@@ -630,8 +629,7 @@ struct AMDPingPongMatmul[
             )
 
         @inline(.always)
-        @__parameter
-        def load_b[stage: Int, which: Int](k: Int):
+        def load_b[stage: Int, which: Int](k: Int) {imm}:
             b_loader.load_tile(
                 b_load_tiles[stage][which],
                 m_offset=which * half_BN,
@@ -673,9 +671,8 @@ struct AMDPingPongMatmul[
             Self.LGKM_PER_LOAD_B,
         ](sched_config, target)
 
-        @__parameter
         @inline(.always)
-        def _bind[entry: ScheduleEntry](k_base: Int):
+        def _bind[entry: ScheduleEntry](k_base: Int) {imm}:
             comptime k_off = entry.op.k_offset.signed_bk_multiple()
             var k = k_base + k_off * BK
             comptime op = PingPongOps(entry.op.tag)
@@ -869,8 +866,7 @@ def amd_ping_pong_matmul[
     var M = Int(c.dim[0]())
 
     @inline(.always)
-    @__parameter
-    def run_kernel[config: KernelConfig]() raises:
+    def run_kernel[config: KernelConfig]() raises {imm}:
         comptime kernel = AMDPingPongMatmul[
             a_type,
             b_type,

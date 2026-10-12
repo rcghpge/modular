@@ -1219,8 +1219,7 @@ struct BlockScaledMatmulAMD_PreB[
         var k_counter = 0
 
         @inline(.always)
-        @__parameter
-        def load_a_tile_from_dram[reg_slot: Int = 0]():
+        def load_a_tile_from_dram[reg_slot: Int = 0]() {mut k_counter, imm}:
             # Register-bounce load into landing-ring slot `reg_slot` (no-op in dram_to_lds mode).
             comptime if not Self.dram_to_lds:
                 var a_block = a_blockrow.tile[Self.BM, Self.BK_BYTES](
@@ -1236,16 +1235,20 @@ struct BlockScaledMatmulAMD_PreB[
                     )
                 k_counter += 1
 
+        comptime a_smem_slot_return_type = type_of(
+            a_smem.tile[Self.BM, Self.A_SMEM_ROW_BYTES](0, 0)
+        )
+
         @inline(.always)
-        @__parameter
         def a_smem_slot(
             slot: Int,
-        ) -> type_of(a_smem.tile[Self.BM, Self.A_SMEM_ROW_BYTES](0, 0)):
+        ) {imm} -> a_smem_slot_return_type:
             return a_smem.tile[Self.BM, Self.A_SMEM_ROW_BYTES](slot, 0)
 
         @inline(.always)
-        @__parameter
-        def copy_a_tile_to_smem[reg_slot: Int = 0](slot: Int):
+        def copy_a_tile_to_smem[
+            reg_slot: Int = 0
+        ](slot: Int) {mut k_counter, imm}:
             comptime if Self.dram_to_lds:
                 # DRAM->LDS via the shared swizzled loader (TileLoaderLDS does
                 # the readfirstlane->m0 base + source-side byte swizzle +
@@ -1305,8 +1308,9 @@ struct BlockScaledMatmulAMD_PreB[
                         )
 
         @inline(.always)
-        @__parameter
-        def load_scales_for_iter[slot: Int = 0](k_pair_base: Int):
+        def load_scales_for_iter[
+            slot: Int = 0
+        ](k_pair_base: Int) {mut mma_op, imm}:
             """Issues all A+B preshuffled scale-dword loads for one outer-K iter.
 
             `k_pair_base = k_iter * mma_k_pair_per_tile` is the absolute
@@ -1348,10 +1352,9 @@ struct BlockScaledMatmulAMD_PreB[
         comptime n_clusters = ceildiv(Self.num_k_mmas, Self.mfma_cluster)
 
         @inline(.always)
-        @__parameter
         def mma_chain_plain[
             b_slot: Int, a_slot: Int = b_slot, scale_slot: Int = 0
-        ]():
+        ]() {imm}:
             # a_slot/scale_slot default to b_slot/0 (unchanged callers); the
             # co-deepened path passes distinct ring indices.
             var a_warp = a_smem_slot(a_slot).tile[
@@ -1364,8 +1367,7 @@ struct BlockScaledMatmulAMD_PreB[
             s_setprio[0]()
 
         @inline(.always)
-        @__parameter
-        def mma_chain_epilogue[slot: Int]():
+        def mma_chain_epilogue[slot: Int]() {imm}:
             # Last resident tile, no B prefetch left to overlap.
             comptime if Self.cluster_drain_sched:
                 # Fully drain the slot's B + scales first (a partial drain

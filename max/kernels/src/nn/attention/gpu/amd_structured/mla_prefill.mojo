@@ -178,8 +178,7 @@ __extension Attention:
 
         # Phase 1: Q_nope @ K^T (depth // BK iterations)
         @inline(.always)
-        @__parameter
-        def mma_qk_nope():
+        def mma_qk_nope() {imm}:
             comptime MmaOp = TiledMmaOp[
                 accum_type,
                 Self.q_type,
@@ -198,8 +197,7 @@ __extension Attention:
 
         # Phase 2: Q_rope @ K_rope^T (rope_depth // BK iterations)
         @inline(.always)
-        @__parameter
-        def mma_qk_rope():
+        def mma_qk_rope() {imm}:
             comptime MmaOp = TiledMmaOp[
                 accum_type,
                 Self.q_type,
@@ -217,8 +215,7 @@ __extension Attention:
                     )
 
         @inline(.always)
-        @__parameter
-        def mma_pv():
+        def mma_pv() {imm}:
             comptime PVMmaOp = TiledMmaOp[
                 accum_type,
                 Self.q_type,
@@ -297,8 +294,9 @@ __extension Attention:
             _ = v_buffer.load_from_dram[next_slot]()
 
         @inline(.always)
-        @__parameter
-        def process_tile[slot: Int, has_next: Bool]():
+        def process_tile[
+            slot: Int, has_next: Bool
+        ]() {mut k_buffer, mut k_rope_buffer, mut self, mut v_buffer, imm}:
             comptime next_slot = 1 - slot
 
             # Wait for K + K_rope loads to complete for this slot.

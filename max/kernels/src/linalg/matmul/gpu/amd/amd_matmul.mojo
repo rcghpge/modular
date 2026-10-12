@@ -430,8 +430,7 @@ struct AMDMatmul[
         var k_counter = 0
 
         @inline(.always)
-        @__parameter
-        def load_tiles_from_dram():
+        def load_tiles_from_dram() {mut k_counter, imm}:
             var a_block = a_blockrow.tile[BM, BK](0, k_counter)
             var b_block = b_blockrow.tile[BN, BK](0, k_counter)
             a_loader.load(a_load_reg, a_block.vectorize[1, simd_width]())
@@ -439,8 +438,7 @@ struct AMDMatmul[
             k_counter += 1
 
         @inline(.always)
-        @__parameter
-        def copy_tiles_to_smem():
+        def copy_tiles_to_smem() {imm}:
             comptime thread_layout = row_major[
                 load_thread_rows, load_thread_cols
             ]()
@@ -478,9 +476,8 @@ struct AMDMatmul[
             b_loads_per_thread=b_loads_per_thread,
         ]()
 
-        @__parameter
         @inline(.always)
-        def _bind[entry: ScheduleEntry]():
+        def _bind[entry: ScheduleEntry]() {imm}:
             comptime op = DefaultMatmulOps(entry.op.tag)
             comptime match op:
                 case .LOAD_DRAM:
