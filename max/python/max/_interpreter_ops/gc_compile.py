@@ -427,8 +427,8 @@ class GCFamilySpec(Protocol):
         concrete, inherited implementation rather than a per-family override
         point -- except for a family whose kernel is restricted to a device
         subset, which must override this to exclude the devices it never
-        builds for: the ``MO_HostOnly`` families (``resize_gc``,
-        ``nms_gc``) which are CPU-only, since sweeping an
+        builds for: the ``MO_HostOnly`` families (such as ``nms_gc``)
+        which are CPU-only, since sweeping an
         accelerator for a host-only op would only produce an empty per-slot
         module. The warm producer fails on a device this returns but builds
         nothing for, and adoption loads an artifact for every device it

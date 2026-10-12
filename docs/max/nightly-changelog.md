@@ -634,13 +634,20 @@ This version is still a work in progress.
 
 ## Kernels and GPU programming
 
+- Added GPU support for `ops.resize_linear` / `mo.resize.linear` in graphs
+  and eager mode. The op was host-only; `resize_linear_gpu` now runs one
+  pass per resized axis through device scratch buffers with the same
+  per-point interpolation as the CPU kernel. Interpolation accumulates in
+  float32 (float64 for float64), so bfloat16 and float16 inputs no longer
+  round at every tap. The eager resize family sweeps accelerators for
+  every resize op.
 - Added GPU support for `ops.resize_nearest` / `mo.resize.nearest`. The op
   was host-only; its kernel is a pure gather, so it now launches on the
   input's device (the op is single-device with a host `size` operand, like
-  bicubic). The eager resize family sweeps accelerators for nearest
-  while linear stays CPU-only until its scratch-buffer kernel is ported;
-  new Metal-verified GPU kernel tests cover up/downsampling and both
-  coordinate modes, plus an eager GPU-residency test.
+HEAD
+  bicubic). The eager resize family sweeps accelerators for all three
+  modes; new Metal-verified GPU kernel tests cover up/downsampling and
+  both coordinate modes, plus an eager GPU-residency test.
 
 - Trimmed the eager resize family's accelerator warm to rank 4. The
   GPU warm action (`warm_accel_resize`) swept all five ranks for
@@ -651,7 +658,6 @@ This version is still a work in progress.
   compile count and artifact size); CPU keeps the full 1..5 sweep. A
   rank outside the warm is not unsupported — it lazy-compiles on first
   dispatch and is cached, now covered by a GPU test.
-
 - Added GPU support for `mo.roi_align` / `ops.roi_align`. The op previously
   ran only on the host, so every ROI-align call on a GPU tensor copied the
   input and ROIs to the host and back. It now runs on the input's device

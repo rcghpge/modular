@@ -28,7 +28,8 @@ fixed), so its key carries the empty variant.
 
 All three ops are single-device with a host ``size`` operand, so they sweep
 every discovered device; their kernels run on the input's device. Bicubic is
-rank-4 only (NCHW images). Nearest and linear warm only rank
+rank-4 only (NCHW images). Linear runs one pass per resized axis through
+device scratch buffers. Nearest and linear warm only rank
 ``MAX_RANK - 1`` on accelerators (see ``ResizeSpec.gpu_max_rank``) and
 lazy-compile other ranks on first dispatch; CPU warms every rank.
 

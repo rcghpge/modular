@@ -2321,8 +2321,7 @@ def _handle_resize_nearest(
 ) -> Sequence[Buffer]:
     """Handle mo.resize.nearest.
 
-    Nearest runs on the input's device (CPU or accelerator); linear is
-    still CPU-only (see ``resize_gc``).
+    Nearest runs on the input's device (CPU or accelerator).
 
     Args:
         op: The resize-nearest operation.
