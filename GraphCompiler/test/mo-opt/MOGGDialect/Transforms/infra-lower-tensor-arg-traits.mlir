@@ -140,10 +140,11 @@
 //
 // Dense assembly types available inside the stub.
 // EMIT-DAG: struct _MoggTensorIO
-// EMIT-DAG: struct _MoggDenseTensorArg[
+// EMIT-DAG: struct _MoggTensorArg[
 // EMIT-DAG: _can_project_tile_tensor: Bool,
 // EMIT-DAG: TileTensorable where _can_project_tile_tensor,
-// EMIT-DAG: ] where Self._can_project_tile_tensor:
+// EMIT-DAG: ) -> Self.TileTensorType where Self._can_project_tile_tensor:
+// EMIT-DAG: comptime _MoggDenseTensorArg = _MoggTensorArg[
 //
 // The projection names its engine explicitly instead of inheriting the
 // pointer-backed default, so the arg's engine stays a per-target choice.

@@ -3849,24 +3849,30 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 // TensorArgInitOp
 //===----------------------------------------------------------------------===//
 
-// Inline Mojo definitions for the dense trait tensor-argument struct, emitted
-// once per module (guarded by `EmitMojoState::emittedDenseTensorArgDefs`). One
-// struct serves CPU and GPU: storage is always a pointer, and
-// `_is_device_passable` selects whether it crosses to the device (the
-// projected `TileTensor` is itself `DevicePassable`).
+// Inline Mojo definitions for the trait tensor-argument struct, emitted once
+// per module (guarded by `EmitMojoState::emittedTensorArgDefs`). One struct
+// serves every execute lane. `_Engine` names how the storage is referenced: a
+// raw pointer under `DefaultEngine`, a stable address slot under
+// `StableAddrEngine`. `_is_device_passable` selects whether it crosses to the
+// device (as the projected `TileTensor`, itself `DevicePassable`), and
 // `_can_project_tile_tensor` gates top-level `TileTensorable` conformance:
 // true for CPU and GPU kernels, false for accelerators whose handles can't be
-// reinterpreted as tiles.
-static constexpr llvm::StringLiteral kDenseTensorArgDefs = R"mojo(
-from layout import Coord, TensorLayout, TileTensor
+// reinterpreted as tiles. The `_MoggDenseTensorArg` and `_MoggStableTensorArg`
+// aliases bind the engine, so a stub names the lane rather than the engine.
+static constexpr llvm::StringLiteral kTensorArgDefs = R"mojo(
+from layout import Coord, DefaultEngine, TensorEngine, TensorLayout, TileTensor
 from extensibility import (
     DenseTensor,
     Input,
     MutableInput,
     Output,
+    Stable,
+    StableAddrEngine,
+    StableStorage,
     TileTensorable,
 )
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
+from std.memory import AddressSpace
 
 
 @fieldwise_init("implicit")
@@ -3894,27 +3900,31 @@ struct _MoggTensorIO(Equatable, ImplicitlyCopyable, TrivialRegisterPassable):
         return self == _MoggTensorIO.OUTPUT or self == _MoggTensorIO.MUTABLE_INPUT
 
 
-struct _MoggDenseTensorArg[
+struct _MoggTensorArg[
     _dtype: DType,
     _LayoutType: TensorLayout,
     _alignment: Int,
     _io: _MoggTensorIO,
     _is_device_passable: Bool,
     _can_project_tile_tensor: Bool,
+    _Engine: TensorEngine = DefaultEngine[element_width=1],
 ](
-    # A pointer and a layout, so copies alias the same buffer, as `TileTensor`
-    # copies do. `TensorTuple` holds its elements by value.
+    # A storage handle and a layout, so copies alias the same buffer, as
+    # `TileTensor` copies do. `TensorTuple` holds its elements by value.
     Copyable,
     DenseTensor,
     DevicePassable where _is_device_passable,
     Input where _io == _MoggTensorIO.INPUT,
     MutableInput where _io == _MoggTensorIO.MUTABLE_INPUT,
     Movable,
-    Output where _io == _MoggTensorIO.OUTPUT,
+    # An output is written through a live pointer, never through a slot.
+    Output where _io == _MoggTensorIO.OUTPUT
+    and _Engine == DefaultEngine[element_width=1],
+    Stable where _Engine == StableAddrEngine[element_width=1],
     # Top-level `TileTensorable` projection is allowed only for CPU/GPU kernels,
-    # where the dense arg's pointer-backed storage can be directly viewed as a
-    # host or unified-memory `TileTensor`. On discrete-GPU targets the pointer
-    # still crosses via the `TileTensor` value's own `DevicePassable` encoding.
+    # where the arg's storage can be directly viewed as a host or
+    # unified-memory `TileTensor`. On discrete-GPU targets the storage still
+    # crosses via the `TileTensor` value's own `DevicePassable` encoding.
     TileTensorable where _can_project_tile_tensor,
 ):
     comptime mut = Self._io.is_mut()
@@ -3923,60 +3933,75 @@ struct _MoggDenseTensorArg[
     comptime ShapeType = Coord[*Self.LayoutType._shape_types]
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
-    var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
+    comptime Engine = Self._Engine
+    comptime Origin = UntrackedOrigin[mut = Self.mut]
+    # The projection names its engine explicitly instead of inheriting the
+    # pointer-backed default, so the arg's engine stays a per-target choice.
+    comptime TileTensorType = TileTensor[
+        dtype = Self.dtype,
+        LayoutType = Self.LayoutType,
+        origin = Self.Origin,
+        Engine = Self.Engine,
+    ]
+    var _storage: Self.Engine.StorageType[
+        Self.dtype, Self.Origin, AddressSpace.GENERIC
+    ]
     var _layout: Self.LayoutType
+
+    # `ptr` is whatever the stub received as the buffer's data pointer, and the
+    # engine decides what that is: the data itself under `DefaultEngine`, the
+    # slot's address under `StableAddrEngine` (the same reinterpretation
+    # `mogg_stable_tensor_init` performs for the legacy lane). The storage
+    # field's type is opaque behind the `TensorEngine` bound, hence the
+    # `rebind` once the engine is pinned.
+    @inline(.always)
+    def __init__(
+        out self,
+        ptr: Pointer[NoneType, MutAnyOrigin],
+        layout: Self.LayoutType,
+    ) where Self.Engine == DefaultEngine[element_width=1]:
+        self._storage = rebind[type_of(self._storage)](
+            ptr.unsafe_bitcast[Scalar[Self.dtype]]()
+            .unsafe_mut_cast[Self.mut]()
+            .unsafe_origin_cast[Self.Origin]()
+        )
+        self._layout = layout
 
     @inline(.always)
     def __init__(
         out self,
         ptr: Pointer[NoneType, MutAnyOrigin],
         layout: Self.LayoutType,
-    ):
-        self.handle = ptr.unsafe_bitcast[Scalar[Self.dtype]]().unsafe_mut_cast[
-            Self.mut
-        ]().unsafe_origin_cast[UntrackedOrigin[mut = Self.mut]]()
+    ) where Self.Engine == StableAddrEngine[element_width=1]:
+        self._storage = rebind[type_of(self._storage)](
+            StableStorage[Self.dtype, Self.Origin, AddressSpace.GENERIC](ptr)
+        )
         self._layout = layout
 
-    # The device representation is a `TileTensor` (mirrors the mockup
-    # `EmitMojoDenseTensor`): the device kernel receives a real `TileTensor`
-    # (Coord-indexed load/store), not a bare pointer. `_to_device_type`
-    # TRANSLATES the buffer pointer to its device address first (a bit-copy of a
-    # `TileTensor` over the host handle would NOT translate -- it works only on
-    # unified memory), then builds the device-side `TileTensor` from the
-    # translated pointer and encodes it. The graph must transfer the buffer to
-    # the device (see the GPU e2e tests' `mo.transfer`) so this address is valid.
-    comptime device_type: AnyType = TileTensor[
-        dtype = Self.dtype,
-        LayoutType = Self.LayoutType,
-        origin = UntrackedOrigin[mut = Self.mut],
-        Engine = Self.Engine,
-    ]
+    # The device representation is the projected `TileTensor`: the device
+    # kernel receives a real tile (Coord-indexed load/store), not this arg. The
+    # encoder copies the storage handle bit-for-bit, so the graph must have
+    # transferred the buffer to the device (see the GPU e2e tests'
+    # `mo.transfer`) for a pointer handle to be a valid device address. A slot
+    # handle's two pointer layers are device addresses already.
+    comptime device_type: AnyType = Self.TileTensorType
 
     @inline(.always)
     def _to_device_type(
         self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
     ) where Self._is_device_passable:
-        var device_ptr = Pointer[
-            Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]
-        ].unsafe_dangling()
-        self.handle._to_device_type(
-            encoder, Pointer(to=device_ptr).unsafe_bitcast[NoneType]()
-        )
-        var device_value = TileTensor[
-            dtype = Self.dtype,
-            LayoutType = Self.LayoutType,
-            origin = UntrackedOrigin[mut = Self.mut],
-            Engine = Self.Engine,
-        ](ptr=device_ptr, layout=self.layout())
-        encoder.encode(device_value, target)
+        encoder.encode(Self.TileTensorType(self._storage, self._layout), target)
 
     @staticmethod
     def get_type_name() -> String where Self._is_device_passable:
-        return String("_MoggDenseTensorArg")
+        var name = String("_MoggTensorArg[Engine=")
+        Self.Engine.write_type_name_to(name)
+        name += "]"
+        return name^
 
     @inline(.always)
     def shape(self) -> Self.ShapeType:
-        return rebind[Self.ShapeType](self.layout().shape_coord())
+        return rebind[Self.ShapeType](self._layout.shape_coord())
 
     @inline(.always)
     def layout(self) -> Self.LayoutType:
@@ -3985,22 +4010,31 @@ struct _MoggDenseTensorArg[
     @inline(.always)
     def to_tile_tensor(
         self,
-    ) -> TileTensor[
-        dtype = Self.dtype,
-        LayoutType = Self.LayoutType,
-        origin = UntrackedOrigin[mut = Self.mut],
-        Engine = Self.Engine,
-    ] where Self._can_project_tile_tensor:
-        return TileTensor[
-            dtype = Self.dtype,
-            LayoutType = Self.LayoutType,
-            origin = UntrackedOrigin[mut = Self.mut],
-            Engine = Self.Engine,
-        ](ptr=self.handle, layout=self.layout())
+    ) -> Self.TileTensorType where Self._can_project_tile_tensor:
+        return {self._storage, self._layout}
+
+
+comptime _MoggDenseTensorArg = _MoggTensorArg[
+    _Engine=DefaultEngine[element_width=1], ...
+]
+
+# A `Stable` argument is GPU only, and the slot handle always projects to a
+# tile, so the alias pins both flags.
+comptime _MoggStableTensorArg = _MoggTensorArg[
+    _is_device_passable=True,
+    _can_project_tile_tensor=True,
+    _Engine=StableAddrEngine[element_width=1],
+    ...,
+]
 )mojo";
 
+static constexpr llvm::StringLiteral kDenseTensorArgAlias =
+    "_MoggDenseTensorArg";
+static constexpr llvm::StringLiteral kStableTensorArgAlias =
+    "_MoggStableTensorArg";
+
 // `_MoggShapeTensorArg`: shape functions run host-only, so this struct
-// skips `_MoggDenseTensorArg`'s device-passable machinery. `_data_visible`
+// skips `_MoggTensorArg`'s device-passable machinery. `_data_visible`
 // gates off `DenseTensor`/`TileTensorable` for a bare `Tensor` bound.
 // Emitted once per module, guarded by
 // `EmitMojoState::emittedShapeTensorArgDefs`.
@@ -4075,25 +4109,6 @@ static bool canProjectTileTensorForDeviceLabel(StringRef label) {
   return label == kCPULabel || label == kGPULabel;
 }
 
-/// Emit `_MoggDenseTensorArg[dtype, layoutType, alignment, io, devicePassable,
-/// canProjectTileTensor](ptr, layout)`, defining the struct once per module.
-/// The runtime args are a `Pointer[NoneType, MutAnyOrigin]` and the layout;
-/// callers source them from a stub-bound capture or a codegen slice (via
-/// `mogg.trait.create`).
-static MojoValue emitDenseTensorArg(EmitMojoState &state, MojoValue dtype,
-                                    MojoValue layoutType, MojoValue alignment,
-                                    MojoValue io, MojoValue devicePassable,
-                                    MojoValue canProjectTileTensor,
-                                    MojoValue ptr, MojoValue layout) {
-  if (!state.emittedDenseTensorArgDefs) {
-    state.structDefsBuilder.verbatim(MojoValue(kDenseTensorArgDefs.str()));
-    state.emittedDenseTensorArgDefs = true;
-  }
-  return state.builder.var(MojoValue("_MoggDenseTensorArg")(
-      {dtype, layoutType, alignment, io, devicePassable, canProjectTileTensor},
-      {ptr, layout}));
-}
-
 /// Emit `_MoggShapeTensorArg[dtype, layoutType, alignment, dataVisible](ptr,
 /// layout)`, the host-only shape-lane counterpart, defined once per module.
 static MojoValue emitShapeTensorArg(EmitMojoState &state, MojoValue dtype,
@@ -4108,124 +4123,22 @@ static MojoValue emitShapeTensorArg(EmitMojoState &state, MojoValue dtype,
       {dtype, layoutType, alignment, dataVisible}, {ptr, layout}));
 }
 
-// `_MoggStableTensorArg`: the trait-lane wrapper for a `Stable` argument. The
-// pointer the stub receives for such an argument IS the slot address (the same
-// reinterpretation `mogg_stable_tensor_init` performs for the legacy lane), so
-// the ctor wraps it as a `StableAddr` and never dereferences it. `Engine` is
-// `StableAddrEngine`, so the `TileTensorable` projection keeps reading through
-// the slot: `to_tile_tensor` is host-callable, while loads and stores are
-// device only (the engine asserts `is_gpu()`). GPU only: emit rejects a host
-// stub. The value crosses to the device field-by-field with no pointer
-// translation, since both slot layers are device addresses already (mirrors
-// `extensibility.StableTensor`). Depends on `_MoggTensorIO` from
-// `kDenseTensorArgDefs`, which `emitStableTensorArg` emits first.
-static constexpr llvm::StringLiteral kStableTensorArgStructName =
-    "_MoggStableTensorArg";
-static constexpr llvm::StringLiteral kStableTensorArgDefs = R"mojo(
-from layout.stable_addr_engine import StableAddrEngine
-from max.gpu.host import StableAddr
-from std.memory import AddressSpace
-from extensibility import Stable
-
-
-struct _MoggStableTensorArg[
-    _dtype: DType,
-    _LayoutType: TensorLayout,
-    _alignment: Int,
-    _io: _MoggTensorIO,
-](
-    DenseTensor,
-    DevicePassable,
-    Stable,
-    TileTensorable,
-    Input where _io == _MoggTensorIO.INPUT,
-    MutableInput where _io == _MoggTensorIO.MUTABLE_INPUT,
-):
-    comptime mut = Self._io.is_mut()
-    comptime dtype = Self._dtype
-    comptime LayoutType = Self._LayoutType
-    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
-    comptime rank = Self.LayoutType.rank
-    comptime alignment = Self._alignment
-    comptime Engine = StableAddrEngine[element_width=1]
-    var _addr: StableAddr
-    var _layout: Self.LayoutType
-
-    @inline(.always)
-    def __init__(
-        out self,
-        ptr: Pointer[NoneType, MutAnyOrigin],
-        layout: Self.LayoutType,
-    ):
-        # `ptr` is the slot address the stub received as the buffer's data
-        # pointer; wrap it, never read through it here.
-        self._addr = StableAddr(
-            ptr.unsafe_bitcast[Pointer[NoneType, MutUntrackedOrigin]]()
-            .unsafe_origin_cast[MutUntrackedOrigin]()
-        )
-        self._layout = layout
-
-    comptime device_type: AnyType = Self
-
-    @inline(.always)
-    def _to_device_type(
-        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
-    ):
-        encoder.encode_fields[Self](self, target)
-
-    @staticmethod
-    def get_type_name() -> String:
-        return String("_MoggStableTensorArg")
-
-    @inline(.always)
-    def shape(self) -> Self.ShapeType:
-        return rebind[Self.ShapeType](self._layout.shape_coord())
-
-    @inline(.always)
-    def layout(self) -> Self.LayoutType:
-        return self._layout
-
-    @inline(.always)
-    def to_tile_tensor(
-        self,
-    ) -> TileTensor[
-        dtype = Self.dtype,
-        LayoutType = Self.LayoutType,
-        origin = UntrackedOrigin[mut = Self.mut],
-        Engine = Self.Engine,
-    ]:
-        # Host-callable: only the handle is built here. Loads and stores read
-        # the slot and are device only.
-        return TileTensor[
-            dtype = Self.dtype,
-            LayoutType = Self.LayoutType,
-            origin = UntrackedOrigin[mut = Self.mut],
-            Engine = Self.Engine,
-        ](
-            Self.Engine.StorageType[
-                Self.dtype, UntrackedOrigin[mut = Self.mut], AddressSpace.GENERIC
-            ](self._addr, 0),
-            self._layout,
-        )
-)mojo";
-
-/// Emit `_MoggStableTensorArg[dtype, layoutType, alignment, io](ptr, layout)`,
-/// defining the struct once per module (after the dense defs it depends on).
-/// `ptr` is the slot address.
-static MojoValue emitStableTensorArg(EmitMojoState &state, MojoValue dtype,
-                                     MojoValue layoutType, MojoValue alignment,
-                                     MojoValue io, MojoValue ptr,
-                                     MojoValue layout) {
-  if (!state.emittedDenseTensorArgDefs) {
-    state.structDefsBuilder.verbatim(MojoValue(kDenseTensorArgDefs.str()));
-    state.emittedDenseTensorArgDefs = true;
+/// Emit `<alias>[params...](ptr, layout)` for an execute-lane trait tensor
+/// argument, defining the shared struct and its lane aliases once per module.
+/// `alias` is `kDenseTensorArgAlias` (`[dtype, layoutType, alignment, io,
+/// devicePassable, canProjectTileTensor]`) or `kStableTensorArgAlias`
+/// (`[dtype, layoutType, alignment, io]`). The runtime args are a
+/// `Pointer[NoneType, MutAnyOrigin]` and the layout; callers source them from
+/// a stub-bound capture or a codegen slice (via `mogg.trait.create`). For a
+/// stable argument `ptr` is the slot address.
+static MojoValue emitTensorArg(EmitMojoState &state, StringRef alias,
+                               ArrayRef<MojoValue> params, MojoValue ptr,
+                               MojoValue layout) {
+  if (!state.emittedTensorArgDefs) {
+    state.structDefsBuilder.verbatim(MojoValue(kTensorArgDefs.str()));
+    state.emittedTensorArgDefs = true;
   }
-  if (!state.emittedStableTensorArgDefs) {
-    state.structDefsBuilder.verbatim(MojoValue(kStableTensorArgDefs.str()));
-    state.emittedStableTensorArgDefs = true;
-  }
-  return state.builder.var(MojoValue(kStableTensorArgStructName.str())(
-      {dtype, layoutType, alignment, io}, {ptr, layout}));
+  return state.builder.var(MojoValue(alias.str())(params, {ptr, layout}));
 }
 
 LogicalResult TensorArgInitOp::emitMojo(EmitMojoState &state) {
@@ -4352,20 +4265,22 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
     if (deviceLabel == kCPULabel)
       return emitOpError("Stable trait argument requires a device kernel; a "
                          "stable address slot cannot be read on the host");
-    state.setMojoValueFor(getResult(),
-                          emitStableTensorArg(state, dTypeParam, layoutType,
-                                              alignmentParam, ioParam, ptrArg,
-                                              layoutArg));
+    state.setMojoValueFor(
+        getResult(),
+        emitTensorArg(state, kStableTensorArgAlias,
+                      {dTypeParam, layoutType, alignmentParam, ioParam}, ptrArg,
+                      layoutArg));
     return success();
   }
 
   bool devicePassable = deviceLabel != kCPULabel;
   bool canProjectTileTensor = canProjectTileTensorForDeviceLabel(deviceLabel);
-  state.setMojoValueFor(
-      getResult(),
-      emitDenseTensorArg(state, dTypeParam, layoutType, alignmentParam, ioParam,
-                         MojoValue(devicePassable),
-                         MojoValue(canProjectTileTensor), ptrArg, layoutArg));
+  state.setMojoValueFor(getResult(),
+                        emitTensorArg(state, kDenseTensorArgAlias,
+                                      {dTypeParam, layoutType, alignmentParam,
+                                       ioParam, MojoValue(devicePassable),
+                                       MojoValue(canProjectTileTensor)},
+                                      ptrArg, layoutArg));
   return success();
 }
 

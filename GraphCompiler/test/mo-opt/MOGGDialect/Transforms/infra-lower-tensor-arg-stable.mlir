@@ -13,13 +13,17 @@
 // CHECK-DAG: mogg.trait.create{{.*}}contract = <{role = output, fused = false, access = none, capabilities = none}>
 // CHECK-DAG: mogg.trait.create{{.*}}contract = <{role = input, fused = false, access = none, capabilities = none, stable = true}>
 
-// The stable wrapper is defined once, after the dense defs it depends on for
-// `_MoggTensorIO`, with the slot engine and field-wise device encoding.
+// Dense and stable share one struct, `_MoggTensorArg`, parameterized on its
+// engine: the `Stable` conformance and the constructor overload that wraps
+// the slot both follow the engine, and `_MoggStableTensorArg` is the alias
+// that pins `StableAddrEngine`.
 // EMIT-DAG: struct _MoggTensorIO
-// EMIT-DAG: struct _MoggStableTensorArg[
-// EMIT-DAG: comptime Engine = StableAddrEngine[element_width=1]
-// EMIT-DAG: self._addr = StableAddr(
-// EMIT-DAG: encoder.encode_fields[Self](self, target)
+// EMIT-DAG: struct _MoggTensorArg[
+// EMIT-DAG: Stable where _Engine == StableAddrEngine[element_width=1],
+// EMIT-DAG: ) where Self.Engine == StableAddrEngine[element_width=1]:
+// EMIT-DAG: StableStorage[Self.dtype, Self.Origin, AddressSpace.GENERIC](ptr)
+// EMIT-DAG: comptime _MoggStableTensorArg = _MoggTensorArg[
+// EMIT-DAG: _Engine=StableAddrEngine[element_width=1],
 //
 // The stub assembles the stable input and the dense output from their buffer
 // captures, then calls the trait kernel.
