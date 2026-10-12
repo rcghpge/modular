@@ -732,7 +732,6 @@ modular_cc_library(
     }),
     deps = [
         ":Base",
-        ":Base64",
         ":Configuration",
         ":Filesystem",
         ":MArchTarget",
