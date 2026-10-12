@@ -35,14 +35,26 @@ from std.utils.index import Index, IndexList
 
 
 # Elementwise epilogue signature
-comptime elementwise_epilogue_type = def[rank: Int](
-    coords: IndexList[rank],
+comptime elementwise_epilogue_type = def(
+    coords: Coord,
     f_size: Int,
 ) capturing -> None
+"""Fused epilogue applied over a whole `f_size`-long run at `coords`.
+
+Distinct from `elementwise_simd_epilogue_type`, which receives the value; this
+one receives only the coordinate and the run length. Rank-N in the output's own
+space; the `Coord` carries its rank, so there is no `rank` parameter.
+"""
 
 comptime elementwise_simd_epilogue_type = def[
-    dtype: DType, rank: Int, width: SIMDLength, alignment: Int = 1
-](IndexList[rank], SIMD[dtype, width]) capturing -> None
+    dtype: DType, width: SIMDLength, alignment: Int = 1
+](Coord, SIMD[dtype, width]) capturing -> None
+"""Fused elementwise epilogue for convolution: `(coord, value) -> None`.
+
+The coordinate is rank-N in the output's own space (NHWC / NDHWC), unlike
+`linalg.utils.elementwise_epilogue_type`, which is always rank 2. The `Coord`
+carries its own rank.
+"""
 
 
 # ===----------------------------------------------------------------------=== #

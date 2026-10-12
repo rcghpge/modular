@@ -1032,9 +1032,7 @@ struct ConvTransposedPacked[
             comptime if Self.InputLayoutType.rank == 4:  # 2D ConvTransposed.
                 for ho in range(self.conv_shape.ho()):
                     for wo in range(self.conv_shape.wo()):
-                        epilogue(
-                            Index(n, ho, wo, f_offset), self.partition.f_size
-                        )
+                        epilogue((n, ho, wo, f_offset), self.partition.f_size)
                         output_ptr += self.conv_shape.f
 
             elif Self.InputLayoutType.rank == 5:  # 3D ConvTransposed.
@@ -1042,7 +1040,7 @@ struct ConvTransposedPacked[
                     for ho in range(self.conv_shape.ho()):
                         for wo in range(self.conv_shape.wo()):
                             epilogue(
-                                Index(n, do, ho, wo, f_offset),
+                                (n, do, ho, wo, f_offset),
                                 self.partition.f_size,
                             )
                             output_ptr += self.conv_shape.f
@@ -1654,19 +1652,20 @@ def conv_transposed_cpu[
         # The closure updates a row segment of the output.
         @inline(.always)
         @__parameter
-        def elementwise_epilogue[
-            rank: Int
-        ](coords: IndexList[rank], f_size: Int):
+        def elementwise_epilogue(coords: Coord, f_size: Int):
             comptime simd_size = simd_width_of[output.dtype]()
             comptime input_rank = input.rank
+            comptime assert coords.rank == input_rank
 
             @inline(.always)
             def body[width: Int](idx: Int) {coords, output, mut}:
                 # Coordinates of the current index.
-                var curr_coords = rebind[IndexList[input_rank]](coords)
-                curr_coords[input_rank - 1] += idx
+                var curr_coords = coords
+                curr_coords.replace_dynamic[input_rank - 1](
+                    Int(coords[input_rank - 1].value()) + idx
+                )
 
-                var output_idx = output.layout(Coord(curr_coords))
+                var output_idx = output.layout(curr_coords)
 
                 var vec = output.raw_load[width=width](output_idx)
                 elementwise_lambda(curr_coords, vec)
@@ -1759,7 +1758,7 @@ def conv_transposed_gpu[
             comptime align = align_of[SIMD[output_type, _width]]()
             var idx = output_tmp.layout(coords)
             var vec = output_tmp.raw_load[width=_width, alignment=align](idx)
-            epilogue(coord_to_index_list(coords), vec)
+            epilogue(coords, vec)
 
         elementwise[simd_width_of[output_type](), target="gpu"](
             epilogue_wrapper, output.layout.shape_coord(), ctx

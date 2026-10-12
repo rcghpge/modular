@@ -174,7 +174,7 @@ def dispatch_1x1x1_matmul_conv3d[
             var h_idx = rem // W_out
             var w_idx = rem - h_idx * W_out
             epilogue_5d(
-                IndexList[5](batch_idx, d_idx, h_idx, w_idx, n_idx),
+                (batch_idx, d_idx, h_idx, w_idx, n_idx),
                 rebind[SIMD[output_type, _width]](val),
             )
 

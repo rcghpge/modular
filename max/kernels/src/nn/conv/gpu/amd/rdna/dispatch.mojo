@@ -434,7 +434,7 @@ def dispatch_rdna_conv2d[
                     batch_idx, rem_idx = divmod(m_idx, hw)
                     h_idx, w_idx = divmod(rem_idx, out_w)
                     epilogue_4d(
-                        IndexList[4](batch_idx, h_idx, w_idx, n_idx),
+                        (batch_idx, h_idx, w_idx, n_idx),
                         rebind[SIMD[output_type, _width]](out_val),
                     )
                 else:

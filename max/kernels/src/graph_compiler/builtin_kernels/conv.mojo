@@ -26,7 +26,7 @@ import extensibility
 
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu, is_gpu
-from layout import IntTuple, TileTensor, coord_to_index_list
+from layout import Coord, IntTuple, TileTensor, coord_to_index_list
 from linalg.fp8_quantization import convert_e4m3fn_to_e4m3fnuz
 from nn.conv.conv import ConvInfoStatic, conv_gpu, conv_nhwc_direct, conv_shape
 from nn.conv.conv import pack_filter_shape as pack_filter_shape_conv
@@ -423,11 +423,10 @@ struct Conv:
         @inline(.always)
         @__copy_capture(output)
         def output_fn[
-            _dtype: DType, _rank: Int, _width: SIMDLength, _alignment: Int = 1
-        ](coords: IndexList[_rank], val: SIMD[_dtype, _width]):
+            _dtype: DType, _width: SIMDLength, _alignment: Int = 1
+        ](coords: Coord, val: SIMD[_dtype, _width]):
             output._lambda_store[width=_width, element_alignment=_alignment](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](val),
+                coords, rebind[SIMD[output.dtype, _width]](val)
             )
 
         comptime assert (
@@ -604,18 +603,17 @@ struct Conv2dResidualAdd:
         @inline(.always)
         @__copy_capture(output, bias)
         def output_fn[
-            _dtype: DType, _rank: Int, _width: SIMDLength, _alignment: Int = 1
-        ](coords: IndexList[_rank], val: SIMD[_dtype, _width]):
+            _dtype: DType, _width: SIMDLength, _alignment: Int = 1
+        ](coords: Coord, val: SIMD[_dtype, _width]):
             var result = val
 
             comptime if has_bias:
-                var c_idx = coords[_rank - 1]
+                var c_idx = Int(coords[coords.rank - 1].value())
                 var bias_vec = (bias.unsafe_ptr() + c_idx).load[width=_width]()
                 result = val + bias_vec.cast[_dtype]()
 
             output._lambda_store[width=_width, element_alignment=_alignment](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](result),
+                coords, rebind[SIMD[output.dtype, _width]](result)
             )
 
         comptime assert not is_cpu[
@@ -744,11 +742,10 @@ struct ConvTranspose:
         @__parameter
         @inline(.always)
         def output_fn[
-            _dtype: DType, _rank: Int, _width: SIMDLength, _alignment: Int = 1
-        ](coords: IndexList[_rank], val: SIMD[_dtype, _width]):
+            _dtype: DType, _width: SIMDLength, _alignment: Int = 1
+        ](coords: Coord, val: SIMD[_dtype, _width]):
             output._lambda_store[width=_width, element_alignment=_alignment](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](val),
+                coords, rebind[SIMD[output.dtype, _width]](val)
             )
 
         comptime filter_packed = filter_layout == "FRSCf" or filter_layout == "FQRSCf"

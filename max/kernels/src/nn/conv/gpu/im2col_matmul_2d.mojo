@@ -390,7 +390,7 @@ def dispatch_im2col_matmul_conv2d[
                 var h_idx = sp // _W_out
                 var w_idx = sp - h_idx * _W_out
                 epilogue_4d(
-                    IndexList[4](batch_idx, h_idx, w_idx, n_idx),
+                    (batch_idx, h_idx, w_idx, n_idx),
                     rebind[SIMD[output_type, _width]](val),
                 )
 
@@ -616,7 +616,7 @@ def dispatch_fused_im2col_conv2d_apple[
             var h_idx = sp // _W_out
             var w_idx = sp - h_idx * _W_out
             epilogue_4d(
-                IndexList[4](batch_idx, h_idx, w_idx, n_idx),
+                (batch_idx, h_idx, w_idx, n_idx),
                 rebind[SIMD[output_type, _width]](val),
             )
 

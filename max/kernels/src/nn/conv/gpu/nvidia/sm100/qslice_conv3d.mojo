@@ -176,7 +176,7 @@ def _fp32_to_dtype_epilogue_kernel[
         width=output_simd_width,
         alignment=align_of[SIMD[.float32, output_simd_width]](),
     ](output_idx).cast[dtype]()
-    epilogue[alignment=output_simd_width](IndexList[5](b, d, h, w, c), val)
+    epilogue[alignment=output_simd_width]((b, d, h, w, c), val)
 
 
 # =========================================================================

@@ -423,7 +423,7 @@ def _reduce_output[
                 var nhowo = _m_to_n_ho_wo_nhwc(
                     m, output_space_dims[0], output_space_dims[1]
                 )
-                epilogue(Index(nhowo[0], nhowo[1], nhowo[2], 0), F)
+                epilogue((nhowo[0], nhowo[1], nhowo[2], 0), F)
 
     # NOTE: _synchronous, so use of locally allocated output_ptr is safe.
     sync_parallelize(reduce_task, num_threads, ctx)
@@ -995,7 +995,7 @@ struct ConvDirectNHWC[
                 # Convert the 1D index back to (n, ho, wo).
                 var ho, wo = divmod(m, self.conv_shape.wo())
                 epilogue(
-                    Index(
+                    (
                         n,
                         ho,
                         wo,
@@ -2056,9 +2056,7 @@ struct ConvDirectNHWC[
                 F - f_tile_offset if has_residual else f_tile_size
             )
             for wo_idx in range(wo, wo + micro_kernel_height):
-                epilogue(
-                    Index(n, ho, wo_idx, f_tile_offset), f_tile_size_bounded
-                )
+                epilogue((n, ho, wo_idx, f_tile_offset), f_tile_size_bounded)
 
         return
 
@@ -2289,7 +2287,7 @@ def conv1d_update_wo_tile[
             f_tile_size_bounded = f_tile_size
 
         for wo_idx in range(wo, wo + micro_kernel_height):
-            epilogue(Index(n, wo_idx, f_tile_offset), f_tile_size_bounded)
+            epilogue((n, wo_idx, f_tile_offset), f_tile_size_bounded)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2556,9 +2554,7 @@ def conv2d_update_wo_tile[
 
         for wo_idx in range(howo[1], howo[1] + micro_kernel_height):
             # elementwise_epilogue_fn[4](
-            epilogue(
-                Index(n, howo[0], wo_idx, f_tile_offset), f_tile_size_bounded
-            )
+            epilogue((n, howo[0], wo_idx, f_tile_offset), f_tile_size_bounded)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2823,7 +2819,7 @@ def conv3d_update_wo_tile[
 
         for wo_idx in range(dohowo[2], dohowo[2] + micro_kernel_height):
             epilogue(
-                Index(n, dohowo[0], dohowo[1], wo_idx, f_tile_offset),
+                (n, dohowo[0], dohowo[1], wo_idx, f_tile_offset),
                 f_tile_size_bounded,
             )
 
@@ -3525,22 +3521,22 @@ def conv_nhwc_direct[
         # The closure updates a row segment of the output.
         @inline(.always)
         @__parameter
-        def elementwise_epilogue[
-            rank: Int
-        ](coords: IndexList[rank], f_size: Int):
+        def elementwise_epilogue(coords: Coord, f_size: Int):
             comptime simd_size = simd_width_of[output_type]()
 
             @inline(.always)
             def body[width: Int](idx: Int) {coords, output, imm}:
-                # Coordinates of the current index.
-                var curr_coords = rebind[IndexList[input.rank]](coords)
-                curr_coords[input.rank - 1] += idx
+                comptime last = input.rank - 1
+                var curr_coords = coords
+                curr_coords.replace_dynamic[last](
+                    Int(coords[last].value()) + idx
+                )
 
                 # Read through the parameter, not the local `output_tt`
                 # view: this closure outlives the last explicit use of the
                 # locals in this frame, and the parameter is alive for the
                 # whole call.
-                var vec = output.load[width=width](Coord(curr_coords))
+                var vec = output.load[width=width](curr_coords)
                 elementwise_lambda(curr_coords, vec)
 
             vectorize[simd_size](f_size, body)
@@ -3677,7 +3673,7 @@ def conv2d_gpu_naive_nhwc_rscf[
         comptime if maybe_epilogue_func:
             comptime epilogue_func = maybe_epilogue_func.value()
             epilogue_func(
-                IndexList[4](n, h, w, co),
+                (n, h, w, co),
                 value.cast[output_type](),
             )
         else:
@@ -4723,7 +4719,7 @@ def _conv_miopen[
             _width: Int, alignment: Int = 1
         ](coords: Coord) {var output_tmp}:
             epilogue(
-                coord_to_index_list(coords),
+                coords,
                 output_tmp.load[width=_width](coords),
             )
 
@@ -5073,7 +5069,7 @@ def conv_gpu[
                         batch_idx, rem = divmod(m, hw)
                         h_idx, w_idx = divmod(rem, out_w)
                         epilogue(
-                            IndexList[4](batch_idx, h_idx, w_idx, n),
+                            (batch_idx, h_idx, w_idx, n),
                             rebind[SIMD[output_type, _width]](val),
                         )
 
@@ -5413,7 +5409,7 @@ def conv_gpu[
                     batch_idx, rem = divmod(m, _amd_4wave_hw)
                     h_idx, w_idx = divmod(rem, _amd_4wave_out_w)
                     _amd_4wave_epi(
-                        IndexList[4](batch_idx, h_idx, w_idx, n),
+                        (batch_idx, h_idx, w_idx, n),
                         rebind[SIMD[output_type, _width]](val),
                     )
 
@@ -5507,11 +5503,10 @@ def conv_gpu[
                 def epilogue_wrapper[
                     _width: Int, alignment: Int = 1
                 ](coords: Coord) {var output_tmp}:
-                    var idx = rebind[IndexList[4]](coord_to_index_list(coords))
                     var vec = output_tmp.load[
                         width=_width, alignment=align_of[output_type]()
                     ](coords)
-                    epilogue(idx, vec)
+                    epilogue(coords, vec)
 
                 elementwise[simd_width_of[output_type](), target="gpu"](
                     epilogue_wrapper,
@@ -5667,7 +5662,7 @@ def conv_gpu[
                         d_idx, rem2 = divmod(rem, _amd_3d_HW)
                         h_idx, w_idx = divmod(rem2, _amd_3d_W_out)
                         _amd_3d_epi_5d(
-                            IndexList[5](batch_idx, d_idx, h_idx, w_idx, n),
+                            (batch_idx, d_idx, h_idx, w_idx, n),
                             rebind[SIMD[output_type, _width]](val),
                         )
 
@@ -5905,7 +5900,7 @@ def conv3d_gpu_naive_ndhwc_qrscf[
         comptime if maybe_epilogue_func:
             comptime epilogue_func = maybe_epilogue_func.value()
             epilogue_func(
-                IndexList[5](n, d_out_idx, h_out_idx, w_out_idx, co),
+                (n, d_out_idx, h_out_idx, w_out_idx, co),
                 value.cast[output_type](),
             )
         else:
