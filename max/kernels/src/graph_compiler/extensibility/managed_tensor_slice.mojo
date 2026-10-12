@@ -916,20 +916,22 @@ def simd_store_into_managed_tensor_slice[
     comptime if not _last_stride_is_static:
         var stride = tensor.stride_length[rank - 1]()
         # Dynamic stride
-        if stride == 0:
-            tensor._ptr.unsafe_store[alignment=max_alignment](0, value)
-        elif stride == 1:
-            store_stride1()
-        else:
-            store_strided(stride)
+        match stride:
+            case 0:
+                tensor._ptr.unsafe_store[alignment=max_alignment](0, value)
+            case 1:
+                store_stride1()
+            case _:
+                store_strided(stride)
     else:
         # static stride
-        comptime if _last_stride_value == 0:
-            tensor._ptr.unsafe_store[alignment=max_alignment](0, value)
-        elif _last_stride_value == 1:
-            store_stride1()
-        else:
-            store_strided(_last_stride_value)
+        comptime match _last_stride_value:
+            case 0:
+                tensor._ptr.unsafe_store[alignment=max_alignment](0, value)
+            case 1:
+                store_stride1()
+            case _:
+                store_strided(_last_stride_value)
 
 
 @doc_hidden
@@ -1089,20 +1091,22 @@ def simd_load_from_managed_tensor_slice[
     comptime if not _last_stride_is_static:
         var stride = tensor.stride_length[rank - 1]()
         # Dynamic stride
-        if stride == 0:
-            return tensor._ptr.unsafe_load[invariant=invariant](flat_index)
-        elif stride == 1:
-            return load_stride1()
-        else:
-            return load_strided(stride)
+        match stride:
+            case 0:
+                return tensor._ptr.unsafe_load[invariant=invariant](flat_index)
+            case 1:
+                return load_stride1()
+            case _:
+                return load_strided(stride)
     else:
         # Static stride
-        comptime if _last_stride_value == 0:
-            return tensor._ptr.unsafe_load[invariant=invariant](flat_index)
-        elif _last_stride_value == 1:
-            return load_stride1()
-        else:
-            return load_strided(_last_stride_value)
+        comptime match _last_stride_value:
+            case 0:
+                return tensor._ptr.unsafe_load[invariant=invariant](flat_index)
+            case 1:
+                return load_stride1()
+            case _:
+                return load_strided(_last_stride_value)
 
 
 # ===----------------------------------------------------------------------=== #
