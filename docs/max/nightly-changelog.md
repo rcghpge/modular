@@ -347,6 +347,21 @@ This version is still a work in progress.
 
 ### Inference server
 
+- The tiered KV connector can allocate its pinned host staging region from
+  the GPU driver instead of registering ordinary host memory, with
+  `"host_staging_alloc": "driver"` in `--kv-connector-config`. The default is
+  unchanged. On AMD, registered host memory stays movable: when the kernel
+  compacts memory it migrates those pages, which makes the driver evict the
+  process's GPU queues and revalidate the whole registration before they
+  resume. At a large host tier that takes tens of seconds, long enough to
+  fail a health check. Driver-allocated memory cannot be migrated. It needs
+  `HSA_USERPTR_FOR_PAGED_MEM=0` in the environment before the server starts,
+  because the HIP runtime otherwise backs the allocation with movable pages
+  anyway; the server refuses to start rather than run unprotected. The
+  memory counts against the GPU driver's system memory limit, which every
+  process on the node shares, and it is not charged to the server's memory
+  cgroup.
+
 - A model with recurrent state, such as Qwen3.5 and the other hybrid
   architectures on the recurrent cache group, can now use a KV connector.
   The host and disk tiers hold each state checkpoint beside the KV blocks of

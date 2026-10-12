@@ -23,6 +23,7 @@ from max.config import ConfigFileModel
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.nn.kv_cache.cache_params import (
+    HostStagingAlloc,
     KVCacheParams,
     KVCacheQuantizationConfig,
     KVConnectorType,
@@ -157,6 +158,33 @@ class KVConnectorConfig(ConfigFileModel):
     )
     """Maximum host memory in GiB for KV cache offloading. ``None`` sizes it to
     1.5 times the device page pool."""
+
+    host_staging_alloc: HostStagingAlloc = Field(
+        default="registered",
+        description=(
+            "How the tiered connector allocates its pinned host staging "
+            "region. ``registered`` maps ordinary host memory and registers it "
+            "with the GPU. ``driver`` allocates it from the GPU driver in "
+            "chunks, so kernel memory compaction cannot migrate it; on AMD "
+            "this also needs ``HSA_USERPTR_FOR_PAGED_MEM=0`` in the "
+            "environment."
+        ),
+    )
+    """How the tiered connector allocates its pinned host staging region.
+
+    ``registered`` (the default) maps ordinary anonymous host memory and
+    registers it with the GPU. Those pages stay movable, so when the kernel
+    compacts memory it can migrate them, and on AMD each migration evicts the
+    process's GPU queues until the registration is revalidated.
+
+    ``driver`` allocates the region as pinned host memory from the GPU driver,
+    in chunks of whole huge blocks. On AMD the HIP runtime still backs such
+    allocations with movable user pages unless ``HSA_USERPTR_FOR_PAGED_MEM=0``
+    is set before it initializes; with it set they are driver-owned and count
+    against the driver's system memory limit, which every process on the node
+    shares. Only the tiered connectors (``rust_tiered`` / ``mojo_tiered``) read
+    this.
+    """
 
     disk_offload_dir: str | None = Field(
         default=None,

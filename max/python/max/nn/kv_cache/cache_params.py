@@ -81,6 +81,9 @@ SpeculativeMethod = Literal["eagle", "mtp", "dflash", "dflash2", "dspark"]
 KVHashAlgo = Literal["ahash64", "sha256"]
 """Supported hash algorithms for KV-cache block identity."""
 
+HostStagingAlloc = Literal["registered", "driver"]
+"""How a tiered KV connector allocates its pinned host staging region."""
+
 logger = logging.getLogger("max.pipelines")
 
 
@@ -334,6 +337,11 @@ class KVConnectorConfigInterface(Protocol):
         ...
 
     @property
+    def host_staging_alloc(self) -> HostStagingAlloc:
+        """Whether the host tier registers host memory or driver-allocates it."""
+        ...
+
+    @property
     def disk_offload_max_gb(self) -> float | None:
         """Disk budget in GiB; ``None`` sizes it from the device pool."""
         ...
@@ -369,6 +377,7 @@ class NullKVConnectorConfig:
 
     type: KVConnectorType = KVConnectorType.null
     host_offload_max_gb: float | None = None
+    host_staging_alloc: HostStagingAlloc = "registered"
     disk_offload_max_gb: float | None = None
     disk_offload_dir: str | None = None
     num_disk_workers: int = 32

@@ -15,9 +15,12 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import pytest
+from max.driver import CPU
+from max.nn.kv_cache import KVCacheGroupId, KVConnectorType
 from max.pipelines.kv_cache.connectors import tier_connector
 
 
@@ -61,7 +64,10 @@ def test_default_host_offload_is_one_and_a_half_times_the_device_pool(
 ) -> None:
     _set_available_host_memory(monkeypatch, 1 << 40)
 
-    assert tier_connector._default_host_offload_bytes(8 << 30) == 12 << 30
+    assert (
+        tier_connector._default_host_offload_bytes(8 << 30, gtt_bound=False)
+        == 12 << 30
+    )
 
 
 def test_default_host_offload_is_capped_to_what_the_process_may_use(
@@ -70,7 +76,10 @@ def test_default_host_offload_is_capped_to_what_the_process_may_use(
 ) -> None:
     _set_available_host_memory(monkeypatch, 20 << 30)
 
-    assert tier_connector._default_host_offload_bytes(64 << 30) == 18 << 30
+    assert (
+        tier_connector._default_host_offload_bytes(64 << 30, gtt_bound=False)
+        == 18 << 30
+    )
     assert "Reduced the default KV cache host offload budget" in caplog.text
 
 
@@ -79,7 +88,122 @@ def test_default_host_offload_uncapped_when_availability_is_unknown(
 ) -> None:
     _set_available_host_memory(monkeypatch, None)
 
-    assert tier_connector._default_host_offload_bytes(64 << 30) == 96 << 30
+    assert (
+        tier_connector._default_host_offload_bytes(64 << 30, gtt_bound=False)
+        == 96 << 30
+    )
+
+
+def _set_gtt_usage(
+    monkeypatch: pytest.MonkeyPatch, usage: tier_connector._GttUsage | None
+) -> None:
+    monkeypatch.setattr(tier_connector, "_read_gtt_usage", lambda: usage)
+
+
+def test_gtt_capacity_rejects_oversized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_gtt_usage(
+        monkeypatch, tier_connector._GttUsage(total_bytes=1024, used_bytes=0)
+    )
+
+    with pytest.raises(RuntimeError, match="host_offload_max_gb"):
+        tier_connector._check_gtt_capacity(2048)
+
+
+def test_gtt_capacity_accepts_fitting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_gtt_usage(
+        monkeypatch, tier_connector._GttUsage(total_bytes=4096, used_bytes=0)
+    )
+
+    tier_connector._check_gtt_capacity(4096)
+
+
+def test_gtt_capacity_accounts_for_what_the_node_already_uses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Headroom is total - used, not total: another process on the node
+    # holding GTT must shrink what this preflight accepts.
+    _set_gtt_usage(
+        monkeypatch,
+        tier_connector._GttUsage(total_bytes=4096, used_bytes=3072),
+    )
+
+    with pytest.raises(RuntimeError, match="host_offload_max_gb"):
+        tier_connector._check_gtt_capacity(1025)
+    tier_connector._check_gtt_capacity(1024)
+
+
+def test_gtt_capacity_skips_when_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _set_gtt_usage(monkeypatch, None)
+
+    tier_connector._check_gtt_capacity(1 << 60)
+    assert "skipping the KV cache driver-staging capacity preflight" in (
+        caplog.text
+    )
+
+
+def test_default_host_offload_gtt_bound_is_one_and_a_half_times_the_device_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_gtt_usage(
+        monkeypatch,
+        tier_connector._GttUsage(total_bytes=1 << 40, used_bytes=0),
+    )
+
+    assert (
+        tier_connector._default_host_offload_bytes(8 << 30, gtt_bound=True)
+        == 12 << 30
+    )
+
+
+def test_default_host_offload_gtt_bound_is_capped_to_free_gtt(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _set_gtt_usage(
+        monkeypatch,
+        tier_connector._GttUsage(total_bytes=20 << 30, used_bytes=0),
+    )
+
+    assert (
+        tier_connector._default_host_offload_bytes(64 << 30, gtt_bound=True)
+        == 18 << 30
+    )
+    assert "Reduced the default KV cache host offload budget" in caplog.text
+    assert "free GTT" in caplog.text
+
+
+def test_default_host_offload_gtt_bound_accounts_for_what_the_node_already_uses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Half the node's GTT is already held by another process, so the cap is
+    # half what it would be against the raw total.
+    _set_gtt_usage(
+        monkeypatch,
+        tier_connector._GttUsage(total_bytes=40 << 30, used_bytes=20 << 30),
+    )
+
+    assert (
+        tier_connector._default_host_offload_bytes(64 << 30, gtt_bound=True)
+        == 18 << 30
+    )
+
+
+def test_default_host_offload_gtt_bound_uncapped_when_availability_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_gtt_usage(monkeypatch, None)
+
+    assert (
+        tier_connector._default_host_offload_bytes(64 << 30, gtt_bound=True)
+        == 96 << 30
+    )
 
 
 def test_disk_capacity_rejects_oversized(
@@ -105,3 +229,98 @@ def test_disk_capacity_accepts_fitting(
     )
 
     tier_connector._check_disk_capacity("/tmp", 4096)
+
+
+def _create_with_driver_staging_on_hip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drives ``TierConnector.create`` up to its HSA_USERPTR_FOR_PAGED_MEM
+    check with ``host_staging_alloc='driver'`` on a stubbed HIP device.
+
+    An empty ``replica_kv_memory`` skips the preceding CPU-device check, and
+    a stubbed ``_native_connector_class`` skips importing the real
+    `kv_tier_connector`/`kv_tier_mojo` extension this CPU-only test target
+    doesn't depend on, so this never needs a GPU.
+    """
+    monkeypatch.setattr(tier_connector, "accelerator_api", lambda: "hip")
+    monkeypatch.setattr(
+        tier_connector, "_native_connector_class", lambda connector_type: object
+    )
+    cfg = SimpleNamespace(
+        type=KVConnectorType.rust_tiered, host_staging_alloc="driver"
+    )
+    tier_connector.TierConnector.create(
+        leaves={"full": KVCacheGroupId.full()},
+        replica_kv_memory=[],
+        params=SimpleNamespace(kv_connector_config=cfg),
+        device_memory_bytes=0,
+    )
+
+
+def test_create_refuses_driver_staging_on_hip_without_the_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one thing standing between a correctly protected deployment and
+    one that silently pays the full driver-allocation cost for none of the
+    protection (ENABLE-3039) -- so it must fail closed, not warn. Covered
+    here with no GPU: the guard is pure Python reading ``os.environ``, and
+    CI's own GPU runs always pass the variable, so they never exercise its
+    absence."""
+    monkeypatch.delenv("HSA_USERPTR_FOR_PAGED_MEM", raising=False)
+
+    with pytest.raises(RuntimeError, match="HSA_USERPTR_FOR_PAGED_MEM"):
+        _create_with_driver_staging_on_hip(monkeypatch)
+
+
+def test_create_refuses_driver_staging_on_hip_with_the_wrong_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the literal '0' satisfies the check -- HIP falls back to movable
+    userptr memory for anything else, including a truthy-looking '1'."""
+    monkeypatch.setenv("HSA_USERPTR_FOR_PAGED_MEM", "1")
+
+    with pytest.raises(RuntimeError, match="HSA_USERPTR_FOR_PAGED_MEM"):
+        _create_with_driver_staging_on_hip(monkeypatch)
+
+
+@pytest.mark.parametrize(
+    "cpp_message",
+    [
+        pytest.param(
+            "ChunkedStagingRegion: driver_alloc chunk is not driver-owned "
+            "GTT memory (...). HSA_USERPTR_FOR_PAGED_MEM=0 must be set in "
+            "the process environment before the process starts.",
+            id="hardening_check",
+        ),
+        pytest.param(
+            "ChunkedStagingRegion: driver_alloc is not available in this "
+            "build configuration (--config=hal-device-context); use the "
+            "registered path instead.",
+            id="hal_unsupported",
+        ),
+        pytest.param(
+            "ChunkedStagingRegion: driver host allocation of 4294967296 "
+            "bytes failed at chunk 2 of 4 (1073741824 bytes, after "
+            "2147483648 bytes allocated): out of memory",
+            id="genuine_allocation_failure",
+        ),
+    ],
+)
+def test_driver_staging_alloc_failure_propagates_unwrapped(
+    monkeypatch: pytest.MonkeyPatch, cpp_message: str
+) -> None:
+    """``_ChunkedStagingRegion`` raises the same ``RuntimeError`` type for
+    three distinct failures, each with its own already-actionable message.
+    Re-wrapping them all as "reduce host_offload_max_gb" would be correct
+    for only one of the three and actively wrong -- and message-hiding --
+    for the other two, so the caller must see the original message intact."""
+
+    def refuse(**kwargs: object) -> None:
+        raise RuntimeError(cpp_message)
+
+    monkeypatch.setattr(tier_connector, "_ChunkedStagingRegion", refuse)
+
+    with pytest.raises(RuntimeError, match=re.escape(cpp_message)):
+        tier_connector._alloc_chunked_staging_region(
+            4, 1024**3, CPU(), "driver"
+        )

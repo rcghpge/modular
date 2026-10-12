@@ -45,14 +45,16 @@ How it works:
   of those lanes run at once.
 
 This shim owns the host staging region (allocated the same way as
-``BlockOffloadEngine``) and passes its address plus the per-replica device
-buffer pointers and compute queues to the native connector.
+``BlockOffloadEngine``) and passes its chunk addresses plus the per-replica
+device buffer pointers and compute queues to the native connector.
 """
 
 from __future__ import annotations
 
+import glob
 import importlib
 import logging
+import os
 import time
 from collections.abc import Mapping, Sequence
 from typing import NamedTuple, Protocol
@@ -70,6 +72,7 @@ from max.nn.kv_cache import (
     KVCacheParamInterface,
     KVConnectorType,
 )
+from max.nn.kv_cache.cache_params import HostStagingAlloc
 from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.pipelines.kv_cache.paged_kv_cache.jenga_block_pool import (
     compute_jenga_ratios,
@@ -94,6 +97,10 @@ logger = logging.getLogger("max.pipelines")
 # The default host tier is page-locked up front, so cap it below what the
 # process can still allocate, leaving headroom for everything else.
 _HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE = 0.9
+
+# Each driver-allocated chunk is its own driver call; the region rounds this
+# down to whole huge blocks (at least one).
+_DRIVER_STAGING_CHUNK_BYTES = 4 * 1024**3
 
 
 # The extension module behind each connector type. Both are runtime-provided
@@ -159,17 +166,119 @@ def _check_host_memory_capacity(requested_bytes: int) -> None:
         )
 
 
-def _default_host_offload_bytes(device_memory_bytes: int) -> int:
-    """Returns 1.5x the device page pool, capped to what the process may use.
+class _GttUsage(NamedTuple):
+    """The node's GTT (GPU driver pinned host memory) pool, from sysfs."""
+
+    total_bytes: int
+    used_bytes: int
+
+
+def _read_gtt_usage() -> _GttUsage | None:
+    """Reads the node's GTT pool from sysfs, or ``None`` if unavailable.
+
+    amdgpu exposes one GTT pool per *node*, mirrored identically under every
+    GPU's own sysfs device node, so ``used_bytes`` already reflects every
+    process on the node sharing it -- not just this one. Reading the first
+    card is therefore as good as reading all of them.
+
+    ``None`` when the sysfs files don't exist or aren't readable: non-AMD
+    hardware, or a deployment that doesn't expose ``/sys/class/drm`` into the
+    container.
+    """
+    for total_path in sorted(
+        glob.glob("/sys/class/drm/card*/device/mem_info_gtt_total")
+    ):
+        used_path = total_path.replace(
+            "mem_info_gtt_total", "mem_info_gtt_used"
+        )
+        try:
+            with open(total_path) as total_file:
+                total_bytes = int(total_file.read().strip())
+            with open(used_path) as used_file:
+                used_bytes = int(used_file.read().strip())
+        except (OSError, ValueError):
+            continue
+        return _GttUsage(total_bytes, used_bytes)
+    return None
+
+
+# A GTT preflight (unlike the cgroup-bounded host-memory one) warns about a
+# limit shared with every other process on the node, not just this one.
+_GTT_SHARED_LIMIT_NOTE = (
+    "GTT is a node-wide limit shared by every process on the node -- "
+    "including any other engine pod co-located on it -- not a per-pod "
+    "budget, so another process may be the one consuming it; reducing only "
+    "this deployment's host_offload_max_gb will not free anything it isn't "
+    "holding itself."
+)
+
+
+def _check_gtt_capacity(requested_bytes: int) -> None:
+    """Raises when a driver-allocated host staging region exceeds the node's
+    free GTT (GPU driver pinned memory) -- the limit that binds for
+    ``host_staging_alloc='driver'`` on HIP, where the allocation is NOT
+    charged to this process's memory cgroup."""
+    usage = _read_gtt_usage()
+    if usage is None:
+        logger.warning(
+            "Unable to read the node's GTT (GPU driver pinned memory) usage "
+            "from sysfs; skipping the KV cache driver-staging capacity "
+            "preflight."
+        )
+        return
+    headroom = max(0, usage.total_bytes - usage.used_bytes)
+    if requested_bytes > headroom:
+        raise RuntimeError(
+            "KV cache host offload buffer requests "
+            f"{to_human_readable_bytes(requested_bytes)} of GPU driver "
+            "pinned (GTT) memory (host_staging_alloc='driver'), but only "
+            f"{to_human_readable_bytes(headroom)} of the node's "
+            f"{to_human_readable_bytes(usage.total_bytes)} GTT pool is "
+            f"free. {_GTT_SHARED_LIMIT_NOTE} Reduce host_offload_max_gb, or "
+            "check what else on the node is holding GTT "
+            "(/sys/class/drm/card*/device/mem_info_gtt_used)."
+        )
+
+
+def _default_host_offload_bytes(
+    device_memory_bytes: int, gtt_bound: bool
+) -> int:
+    """Returns 1.5x the device page pool, capped to what's actually free.
 
     Only the default is capped; an explicit ``host_offload_max_gb`` that
-    doesn't fit is refused instead.
+    doesn't fit is refused instead (by :func:`_check_host_memory_capacity` or
+    :func:`_check_gtt_capacity`). ``gtt_bound`` (``host_staging_alloc='driver'``
+    on HIP) caps against the node's free GTT rather than cgroup-bounded host
+    RAM: that allocation isn't charged to this process's memory cgroup, so
+    the cgroup bound doesn't apply to it, and the GTT bound is what actually
+    binds there instead.
     """
     requested = int(1.5 * device_memory_bytes)
+
+    if gtt_bound:
+        usage = _read_gtt_usage()
+        if usage is None:
+            return requested
+        free_gtt_bytes = max(0, usage.total_bytes - usage.used_bytes)
+        cap = int(free_gtt_bytes * _HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE)
+        if requested <= cap:
+            return requested
+        logger.warning(
+            "Reduced the default KV cache host offload budget from %s to "
+            "%s: it exceeded %.0f%% of the %s free GTT (GPU driver pinned "
+            "memory) on the node. %s Set host_offload_max_gb to size the "
+            "tier yourself.",
+            to_human_readable_bytes(requested),
+            to_human_readable_bytes(cap),
+            _HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE * 100,
+            to_human_readable_bytes(free_gtt_bytes),
+            _GTT_SHARED_LIMIT_NOTE,
+        )
+        return cap
+
     available_bytes = available_host_memory()
     if available_bytes is None:
         return requested
-
     cap = int(available_bytes * _HOST_OFFLOAD_MAX_FRACTION_OF_AVAILABLE)
     if requested <= cap:
         return requested
@@ -295,25 +404,45 @@ def _alloc_chunked_staging_region(
     host_offload_num_huge_blocks: int,
     host_offload_huge_page_bytes: int,
     device: Device,
+    host_staging_alloc: HostStagingAlloc = "registered",
 ) -> _ChunkedStagingRegion:
     host_offload_bytes = (
         host_offload_num_huge_blocks * host_offload_huge_page_bytes
     )
     logger.info(
-        "Allocating %s host KV cache staging region...",
+        "Allocating %s host KV cache staging region (%s)...",
         to_human_readable_bytes(host_offload_bytes),
+        host_staging_alloc,
     )
     start = time.perf_counter()
-    # Rust copies a block at a time, so no chunk boundary may split one.
-    region = _ChunkedStagingRegion(
-        byte_size=host_offload_bytes,
-        row_bytes=host_offload_huge_page_bytes,
-        device=device,
-    )
+    # The connectors copy a block at a time, so no chunk boundary may split
+    # one.
+    if host_staging_alloc == "driver":
+        # _ChunkedStagingRegion raises RuntimeError for three distinct
+        # failures (a genuine allocation failure, the hardening check
+        # refusing movable userptr memory, or this HAL build not supporting
+        # driver_alloc at all) and its message is already specific and
+        # actionable for each -- left to propagate unchanged rather than
+        # replaced with generic advice that fits only the first case.
+        region = _ChunkedStagingRegion(
+            byte_size=host_offload_bytes,
+            row_bytes=host_offload_huge_page_bytes,
+            device=device,
+            chunk_bytes=_DRIVER_STAGING_CHUNK_BYTES,
+            driver_alloc=True,
+        )
+    else:
+        region = _ChunkedStagingRegion(
+            byte_size=host_offload_bytes,
+            row_bytes=host_offload_huge_page_bytes,
+            device=device,
+        )
     elapsed = time.perf_counter() - start
     logger.info(
-        "Allocated %s host KV cache staging region in %.1f s (%.2f GiB/s)",
+        "Allocated %s host KV cache staging region in %d chunks in %.1f s "
+        "(%.2f GiB/s)",
         to_human_readable_bytes(host_offload_bytes),
+        region.num_chunks,
         elapsed,
         host_offload_bytes / 1024**3 / elapsed,
     )
@@ -337,6 +466,7 @@ class TierConnector(KVConnector):
         num_disk_workers: int = 32,
         num_h2d_onload_lanes: int = 1,
         connector_type: KVConnectorType = KVConnectorType.rust_tiered,
+        host_staging_alloc: HostStagingAlloc = "registered",
     ) -> None:
         """Initializes the connector over ``replica_kv_memory``'s device buffers.
 
@@ -351,8 +481,18 @@ class TierConnector(KVConnector):
             host_offload_num_huge_blocks,
             host_offload_huge_page_bytes,
             gpu0,
+            host_staging_alloc,
         )
-        host_base = self._host_region.address
+        if self._host_region.driver_alloc:
+            host_chunk_bases = list(self._host_region.chunk_addresses)
+            host_rows_per_chunk = (
+                self._host_region.chunk_bytes // host_offload_huge_page_bytes
+            )
+        else:
+            # The registered region is one contiguous mapping, however many
+            # chunks it was registered in.
+            host_chunk_bases = [self._host_region.address]
+            host_rows_per_chunk = host_offload_num_huge_blocks
 
         replica_memories: list[list[_Leaf]] = []
         for memories in replica_kv_memory:
@@ -404,7 +544,8 @@ class TierConnector(KVConnector):
                 bytes_per_leaf,
                 host_offload_num_huge_blocks,
                 cache_ratios,
-                host_base,
+                host_chunk_bases,
+                host_rows_per_chunk,
                 replica_memories,
                 compute_queues,
                 only_last_level,
@@ -418,7 +559,8 @@ class TierConnector(KVConnector):
                 bytes_per_leaf,
                 host_offload_num_huge_blocks,
                 cache_ratios,
-                host_base,
+                host_chunk_bases,
+                host_rows_per_chunk,
                 replica_memories,
                 {
                     device_id: queue.native_stream_handle
@@ -475,6 +617,27 @@ class TierConnector(KVConnector):
         # rather than the missing extension, and before anything is acquired.
         _native_connector_class(cfg.type)
 
+        if (
+            cfg.host_staging_alloc == "driver"
+            and api == "hip"
+            and os.environ.get("HSA_USERPTR_FOR_PAGED_MEM") != "0"
+        ):
+            raise RuntimeError(
+                "kv_connector_config.host_staging_alloc='driver' requires "
+                "HSA_USERPTR_FOR_PAGED_MEM=0 in the environment on HIP, and "
+                "it is unset (or not '0'). Without it, hipHostMalloc silently "
+                "returns ordinary movable host memory: the deployment pays "
+                "the full cost of a driver allocation (system GTT memory, "
+                "shared with every process on the node) and gets none of the "
+                "protection from kernel memory compaction that 'driver' "
+                "exists to provide. HIP reads HSA_USERPTR_FOR_PAGED_MEM once, "
+                "at its own initialization, so it must be set in this "
+                "process's environment before the process starts -- setting "
+                "it after HIP has already initialized has no effect. "
+                "hipHostRegister (host_staging_alloc='registered') does not "
+                "read this variable either way."
+            )
+
         if cfg.type == KVConnectorType.tiered:
             logger.warning(
                 "kv_connector '%s' is deprecated: its Python implementation "
@@ -484,13 +647,22 @@ class TierConnector(KVConnector):
                 cfg.type.value,
             )
 
+        # A driver allocation draws from the node's shared GTT pool, not this
+        # process's memory cgroup, only on HIP; on CUDA it's ordinary
+        # cudaHostAlloc pinned memory, still cgroup-bounded like a
+        # registered region.
+        gtt_bound = cfg.host_staging_alloc == "driver" and api == "hip"
+
         GiB = 1024**3
         host_offload_max_bytes: int = (
             int(cfg.host_offload_max_gb * GiB)
             if cfg.host_offload_max_gb is not None
-            else _default_host_offload_bytes(device_memory_bytes)
+            else _default_host_offload_bytes(device_memory_bytes, gtt_bound)
         )
-        _check_host_memory_capacity(host_offload_max_bytes)
+        if gtt_bound:
+            _check_gtt_capacity(host_offload_max_bytes)
+        else:
+            _check_host_memory_capacity(host_offload_max_bytes)
 
         disk_offload_max_bytes: int = (
             int(cfg.disk_offload_max_gb * GiB)
@@ -554,6 +726,7 @@ class TierConnector(KVConnector):
             num_disk_workers=cfg.num_disk_workers,
             num_h2d_onload_lanes=cfg.num_h2d_onload_lanes,
             connector_type=cfg.type,
+            host_staging_alloc=cfg.host_staging_alloc,
         )
 
     @property

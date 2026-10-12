@@ -138,6 +138,14 @@ modular_py_test(
 modular_py_test(
     name = "test_chunked_staging_region_gpu",
     srcs = ["test_chunked_staging_region_gpu.py"],
+    env = {
+        # The HIP runtime backs pinned host allocations with movable user
+        # pages unless this is set, so without it the driver_alloc cases
+        # fail their startup check rather than exercising it. Harmless on
+        # NVIDIA/Apple, where nothing reads this variable, and the
+        # registered-path tests are unaffected either way.
+        "HSA_USERPTR_FOR_PAGED_MEM": "0",
+    },
     exec_properties = {
         "test.resources:gpu-memory": "2",
     },
@@ -145,7 +153,10 @@ modular_py_test(
     tags = [
         "gpu",
     ],
-    deps = ["//max/python/max/driver"],
+    deps = [
+        "//max/python/max/driver",
+        requirement("numpy"),
+    ],
 )
 
 # No kernels in the path, so this runs on Apple GPUs too.
