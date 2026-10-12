@@ -3968,7 +3968,7 @@ def MO_RangeOp : MO_TensorOp<"range", [
 
 def MO_ResizeLinearOp : MO_TensorOp<"resize.linear", [
   DeclareOpInterfaceMethods<MO_ShapeMaterialization>,
-  MO_HostOnly,
+  MO_SingleDeviceWithHostOperands<["size"]>,
   MO_ParamDeclaration,
 ]> {
   let summary = "Linear resize operation";
