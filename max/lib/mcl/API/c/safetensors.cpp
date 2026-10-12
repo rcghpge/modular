@@ -6,7 +6,7 @@
 
 #include "max/c/safetensors.h"
 #include "GraphCompiler/Support/SafeTensor/SafeTensor.h"
-#include "Kernels/mcl/WeightsRegistry.h"
+#include "Kernels/max_license/WeightsRegistry.h"
 #include "Support/Error.h"
 #include "Support/ErrorOr.h"
 #include "max/mcl/API/c/detail/helpers.h"

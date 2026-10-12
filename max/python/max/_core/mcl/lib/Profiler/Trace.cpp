@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "_core/Profiler/Trace.h"
-#include "Kernels/mcl/Tracing.h"
+#include "Kernels/max_license/Tracing.h"
 #include "Support/StringExtras.h"
 #include "nanobind/nanobind.h"
 #include "llvm/ADT/STLExtras.h"

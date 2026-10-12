@@ -567,7 +567,7 @@ modular_cc_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = [
-        "//Kernels/tools/mcl/gpu-query:__pkg__",
+        "//Kernels/tools/max_license/gpu-query:__pkg__",
         "//Mojo:__subpackages__",
     ],
     deps = [
@@ -738,7 +738,7 @@ modular_cc_library(
     hdrs = ["include/MLRT/Driver/DeviceContext/BinaryID.h"],
     visibility = [
         "//GraphCompiler:__subpackages__",
-        "//Kernels/tools/mcl/gpu-query:__pkg__",
+        "//Kernels/tools/max_license/gpu-query:__pkg__",
         "//MLRT:__subpackages__",
     ],
     deps = [

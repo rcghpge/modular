@@ -17,7 +17,7 @@
 #include "GraphCompiler/Driver/Device/DeviceMap.h"
 #include "GraphCompiler/Support/QuantSpec.h"
 #include "GraphCompiler/Support/ResultInfo.h"
-#include "Kernels/mcl/WeightsRegistry.h"
+#include "Kernels/max_license/WeightsRegistry.h"
 #include "MLRT/GraphRT/MEFExecutor/MEFFile.h"
 #include "Support/ML/CompiledFrameworkLabel.h"
 #include "Support/ML/DebugPrint.h"

@@ -9,7 +9,7 @@
 
 #include "AsyncRT/Runtime/AsyncValueRef.h"
 #include "GraphCompiler/Support/ModelTensorSpec.h"
-#include "Kernels/mcl/WeightsRegistry.h"
+#include "Kernels/max_license/WeightsRegistry.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "_core/DLPack/Utils.h"
 #include "_core/Driver/Buffer.h"

@@ -9,7 +9,7 @@
 
 #include "AsyncRT/ForwardDecls.h"
 #include "AsyncRT/Runtime/CPUDevice.h"
-#include "Kernels/mcl/WeightsRegistry.h"
+#include "Kernels/max_license/WeightsRegistry.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/SymbolExport.h"
 #include "max/mcl/API/c/CompiledModels.h"

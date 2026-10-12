@@ -9,7 +9,7 @@
 
 #include "GraphCompiler/Support/ModelTensorSpec.h"
 #include "GraphCompiler/Support/SafeTensor/SafeTensor.h"
-#include "Kernels/mcl/WeightsRegistry.h"
+#include "Kernels/max_license/WeightsRegistry.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/DeviceSpecs.h"
 #include "Support/ErrorOr.h"
