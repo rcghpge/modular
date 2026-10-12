@@ -2529,6 +2529,7 @@ def gamma[
 
     Constraints:
         The input must be a floating-point type.
+        `float64` is not supported on Apple GPU targets.
 
     Parameters:
         dtype: The `dtype` of the input and output SIMD vector.
@@ -2541,7 +2542,16 @@ def gamma[
         The Gamma function evaluated at the input.
     """
 
-    return _call_libm["tgamma"](x)
+    _assert_float64_supported[dtype, "gamma"]()
+
+    comptime if bit_width_of[dtype]() < 32:
+        comptime if is_apple_gpu() and dtype == .bfloat16:
+            # The float32 -> bfloat16 cast flushes subnormal results there.
+            return rebind[type_of(x)](
+                _narrow_f32_to_bf16_bits(_gamma_impl(x.cast[.float32]()))
+            )
+        return _gamma_impl(x.cast[.float32]()).cast[dtype]()
+    return _gamma_impl(x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -4731,6 +4741,25 @@ def _hypot_impl[
     return (isinf(x) | isinf(y)).select(inf[dtype](), r)
 
 
+def _gamma_max_scalings(n: Int, scale_log2: Int) -> Int:
+    """Returns the largest c with 2^(scale_log2 * c) < 2 * n!.
+
+    The running product in `_gamma_impl` is at most 2 * n!: up to n! from the
+    factors of magnitude above 1, times one factor in [1, 2) that crosses zero.
+    """
+    var scale = 1.0
+    for _ in range(scale_log2):
+        scale *= 2.0
+    var p = 2.0
+    var count = 0
+    for i in range(2, n + 1):
+        p *= Float64(i)
+        while p > scale:
+            p /= scale
+            count += 1
+    return count
+
+
 @inline(.always)
 def _pow2_impl[
     dtype: DType, width: SIMDLength
@@ -4743,6 +4772,184 @@ def _pow2_impl[
         from_bits=(k + I(FPUtils[dtype].exponent_bias()))
         << I(FPUtils[dtype].mantissa_width())
     )
+
+
+def _gamma_2_to_3[
+    dtype: DType, width: SIMDLength, //
+](t: SIMD[dtype, width]) -> SIMD[dtype, width]:
+    """Returns Gamma(2 + t) for t in [0, 1]."""
+    comptime if dtype == .float64:
+        # Cephes gamma.c rational approximation of Gamma(2 + t).
+        var p = polynomial_evaluate[
+            [
+                Scalar[dtype](9.99999999999999996796e-1),
+                4.94214826801497100753e-1,
+                2.07448227648435975150e-1,
+                4.76367800457137231464e-2,
+                1.04213797561761569935e-2,
+                1.19135147006586384913e-3,
+                1.60119522476751861407e-4,
+            ]
+        ](t)
+        var q = polynomial_evaluate[
+            [
+                Scalar[dtype](1.00000000000000000320e0),
+                7.14304917030273074085e-2,
+                -2.34591795718243348568e-1,
+                3.58236398605498653373e-2,
+                1.18139785222060435552e-2,
+                -4.45641913851797240494e-3,
+                5.39605580493303397842e-4,
+                -2.31581873324120129819e-5,
+            ]
+        ](t)
+        return p / q
+    else:
+        # Relative least-squares fit of Gamma(2 + t) on [0, 1], max error
+        # about 1.1 ulp in float32.
+        return polynomial_evaluate[
+            [
+                Scalar[dtype](1.0),
+                0.42278435826301575,
+                0.41183924674987793,
+                0.0815906971693039,
+                0.07415854185819626,
+                7.92462524259463e-05,
+                0.010327345691621304,
+                -0.001574849127791822,
+                0.0007953942404128611,
+            ]
+        ](t)
+
+
+def _gamma_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[dtype, width] where dtype.is_floating_point():
+    """Computes Gamma(x) in float32 or float64 without libm.
+
+    Reduces x to z in [2, 3) with the recurrence Gamma(x + 1) = x Gamma(x),
+    accumulating the product of the shift factors in double-word arithmetic so
+    the only roundings are the base approximation and the final combination.
+    The factors are generated as exact two-sums of x and an integer, and the
+    product is rescaled by a power of two whenever it grows large, so neither
+    near-overflow results nor underflowing results for negative x lose
+    accuracy. This avoids exp/log/pow, whose GPU implementations are not
+    accurate enough for a few-ulp Gamma near the overflow threshold.
+
+    Subnormal inputs and results are handled on targets that flush
+    subnormals (Apple GPUs in float32): the input is read from its bits and
+    the last rescaling of a subnormal result is done with integer operations.
+    """
+    comptime assert dtype in (DType.float32, DType.float64)
+    comptime T = SIMD[dtype, width]
+    comptime is_f64 = dtype == .float64
+    # Above `max_arg` the result overflows; below `min_arg` it underflows to a
+    # signed zero. Both bound the number of recurrence steps.
+    comptime max_arg = Scalar[dtype](172.0 if is_f64 else 36.0)
+    comptime min_arg = Scalar[dtype](-190.0 if is_f64 else -50.0)
+    comptime scale_log2 = 1000 if is_f64 else 64
+    comptime scale_up = Scalar[dtype](
+        1.0715086071862673e301 if is_f64 else 1.8446744073709552e19
+    )  # 2^1000 or 2^64, also the rescaling threshold
+    comptime scale_down = Scalar[dtype](
+        9.332636185032189e-302 if is_f64 else 5.421010862427522e-20
+    )  # 2^-1000 or 2^-64
+    # A rescaling fires only once the unscaled running product exceeds
+    # scale_up^count, so the count is bounded by the largest product.
+    comptime max_scalings = _gamma_max_scalings(
+        max(Int(max_arg) - 1, Int(-min_arg)), scale_log2
+    )
+
+    var fl = floor(x)
+    # Sign of Gamma on (n, n + 1) for negative integer n is (-1)^n.
+    var odd = (fl - 2 * floor(fl * 0.5)).ne(0)
+    var is_nan = isnan(x)
+    var is_zero = x.eq(0)
+    var is_pole = x.lt(0) & x.eq(fl)
+    var too_big = x.gt(max_arg)
+    var too_small = x.lt(min_arg)
+    var special = is_nan | is_zero | is_pole | too_big | too_small
+    var xc = special.select(T(2.5), x)
+    fl = special.select(T(2.0), fl)
+
+    var up = xc.ge(2)
+    # For x >= 2: Gamma(x) = Gamma(z) * (x - 1) ... (x - m), with z = x - m.
+    # For x < 2:  Gamma(x) = Gamma(z) / (x (x + 1) ... (x + m - 1)), z = x + m.
+    var m = up.select(fl - 2, 2 - fl)
+    var shift = up.select(-m, m)
+    var zs = _two_sum(xc, shift)
+    var z = zs[0]
+    var z_lo = zs[1]
+
+    var ph = T(1)
+    var pl = T(0)
+    var nscale = T(0)
+    var steps = Int(m.reduce_max())
+    for j in range(steps):
+        var jf = T(Scalar[dtype](j))
+        var active = jf.lt(m)
+        var c = up.select(-(jf + 1), jf)
+        var f = _two_sum(xc, c)
+        var fh = active.select(f[0], T(1))
+        var f_lo = active.select(f[1], T(0))
+        # Double-word product (ph, pl) * (fh, f_lo). Every rounded product
+        # that must stay unfused is an explicit fma, so the result does not
+        # depend on whether the backend contracts a*b + c (ptxas does).
+        var cross = ph * f_lo + pl * fh
+        var hi = fma(ph, fh, cross)
+        pl = fma(ph, fh, -hi) + cross
+        ph = hi
+        var big = abs(ph).gt(scale_up)
+        ph = big.select(ph * scale_down, ph)
+        pl = big.select(pl * scale_down, pl)
+        nscale += big.select(T(1), T(0))
+
+    var t = z - 2
+    var r = _gamma_2_to_3(t)
+    # z is xc + shift rounded; correct by z_lo using Gamma'/Gamma = digamma,
+    # which a line approximates well enough on [2, 3] for this tiny term.
+    comptime digamma_2 = 0.42278433509846713  # 1 - Euler's constant
+    r = fma(r * (digamma_2 + 0.5 * t), z_lo, r)
+
+    var prod = fma(r, ph, r * pl)
+    var q = r / ph
+    var quot = q + (fma(-q, ph, r) - q * pl) / ph
+    quot = isinf(q).select(q, quot)
+    var res = up.select(prod, quot)
+    comptime for i in range(max_scalings):
+        var apply = nscale.gt(Scalar[dtype](i))
+        comptime if is_apple_gpu():
+            # Scaling down may produce a subnormal, which a multiply flushes.
+            res = apply.select(
+                up.select(res * scale_up, _scale_down_bits[scale_log2](res)),
+                res,
+            )
+        else:
+            res = apply.select(res * up.select(T(scale_up), T(scale_down)), res)
+
+    var tiny = odd.select(T(-0.0), T(0.0))
+    res = too_small.select(tiny, res)
+    res = too_big.select(T(inf[dtype]()), res)
+    res = is_zero.select(copysign(T(inf[dtype]()), x), res)
+
+    # For subnormal x, Gamma(x) = 1/x - euler_gamma + O(x) rounds to 1/x: the
+    # correction is 2^-126 (2^-1022) relative and 1/x is never that close to
+    # a rounding boundary. Build 1/x from the integer significand m, with
+    # x = m * 2^(emin - mant), so a target that flushes subnormal operands
+    # (Apple GPUs in float32) still gets the normal or overflowing result.
+    comptime I = SIMD[FPUtils[dtype].integral_type, width]
+    comptime mant = FPUtils[dtype].mantissa_width()
+    comptime bias = FPUtils[dtype].exponent_bias()
+    var bits = x._to_bits_signed()
+    var sig = (bits & I((1 << mant) - 1)).cast[dtype]()
+    comptime exp_mask = (1 << FPUtils[dtype].exponent_width()) - 1
+    var sub = ((bits >> I(mant)) & I(exp_mask)).eq(0) & sig.ne(0)
+    comptime two_mant = T(from_bits=I(bias + mant) << I(mant))
+    comptime two_neg_emin = T(from_bits=I(2 * bias - 1) << I(mant))
+    var inv = (two_mant / sig) * two_neg_emin
+    res = sub.select(bits.lt(0).select(-inv, inv), res)
+    res = (is_nan | is_pole).select(T(nan[dtype]()), res)
+    return res
 
 
 def _expm1_accurate[

@@ -19,6 +19,7 @@
 # counterpart is `test_bessel_huge_args_gpu.mojo`.
 
 from std.math import (
+    gamma,
     cbrt,
     frexp,
     hypot,
@@ -55,263 +56,191 @@ comptime f64_max_sub = Float64(from_bits=UInt64(0x000FFFFFFFFFFFFF))
 def _check[
     dtype: DType, //
 ](got: Scalar[dtype], want: Scalar[dtype], name: String) raises:
-    assert_true(isfinite(got), String(t"{name} = {got}, expected {want}"))
-    var d = ulp_distance(got, want)
-    assert_true(d <= 1, String(t"{name} = {got}, expected {want} ({d} ulp)"))
+    var msg = String(t"{name} = {got}, expected {want}")
+    assert_true(isfinite(got) and isfinite(want), msg)
+    assert_true(
+        (got._to_bits_signed() < 0) == (want._to_bits_signed() < 0), msg
+    )
+    var got_bits = got.to_bits[.uint64]()
+    var want_bits = want.to_bits[.uint64]()
+    var d = max(got_bits, want_bits) - min(got_bits, want_bits)
+    assert_true(d <= 1, String(t"{msg} ({d} ulp)"))
 
 
-def test_y1_y0_subnormal() raises:
-    # y1(x) = -2/(pi x) below 2^-25; at 2^-128 1/x overflows but y1 does not.
+def test_gamma_subnormal() raises:
+    # Gamma(x) = 1/x - euler_gamma + O(x) rounds to 1/x here.
+    assert_equal(
+        gamma(Float32(from_bits=UInt32(1) << 22)), 1.7014118346046923e38
+    )
+    assert_equal(
+        gamma(-Float32(from_bits=UInt32(1) << 22)), -1.7014118346046923e38
+    )
+    _check(gamma(f32_max_sub), 8.507060187143942e37, "gamma(max_sub)")
+    _check(gamma(-f32_max_sub), -8.507060187143942e37, "gamma(-max_sub)")
     _check(
-        y1(Float32(from_bits=UInt32(1) << 22)),
-        -1.0831523711529481e38,
-        "y1(2^-127)",
+        gamma(Float32(from_bits=UInt32(3) << 21)),
+        1.1342745902071442e38,
+        "gamma(3 * 2^-128)",
     )
+    assert_equal(gamma(Float32(from_bits=UInt32(1) << 21)), inf[.float32]())
+    assert_equal(gamma(f32_min), inf[.float32]())
+    assert_equal(gamma(-f32_min), -inf[.float32]())
+    assert_equal(
+        gamma(Float64(from_bits=UInt64(1) << 51)), 8.98846567431158e307
+    )
+    _check(gamma(f64_max_sub), 4.494232837155791e307, "gamma(max_sub)")
+    _check(gamma(-f64_max_sub), -4.494232837155791e307, "gamma(-max_sub)")
+    assert_equal(gamma(f64_min), inf[.float64]())
+    var v = gamma(SIMD[.float32, 4](f32_max_sub, 5.0, -f32_max_sub, f32_min))
+    assert_equal(v[0], gamma(f32_max_sub))
+    assert_equal(v[1], 24.0)
+    assert_equal(v[2], gamma(-f32_max_sub))
+    assert_equal(v[3], inf[.float32]())
+
+
+def _check_rejects_mutants[dtype: DType]() raises:
+    comptime S = Scalar[dtype]
+    var infinity = inf[dtype]()
+    var max_finite = S(from_bits=infinity._to_bits_signed() - 1)
+    var nan_next_to_inf = S(from_bits=infinity._to_bits_signed() + 1)
+    _check(S(1.0), S(1.0), "oracle")
+    _check(max_finite, max_finite, "oracle")
+    for mutant in [S(-4.0), infinity, -infinity, nan_next_to_inf]:
+        with assert_raises():
+            _check(mutant, S(1.0), "oracle mutant")
+    for mutant in [infinity, nan_next_to_inf, -max_finite]:
+        with assert_raises():
+            _check(mutant, max_finite, "oracle mutant")
+
+
+def test_gamma_subnormal_oracle_f32() raises:
+    _check_rejects_mutants[.float32]()
+
+
+def test_gamma_subnormal_oracle_f64() raises:
+    _check_rejects_mutants[.float64]()
+
+
+def test_hypot_subnormal() raises:
+    # Both subnormal, normal result.
     _check(
-        y1(Float32(from_bits=UInt32(1) << 21)),
-        -2.1663047423058962e38,
-        "y1(2^-128)",
+        hypot(f32_max_sub, f32_max_sub),
+        1.6623998848452245e-38,
+        "hypot(max_sub, max_sub)",
     )
-    _check(y1(f32_max_sub), -5.415762869885221e37, "y1(max_sub)")
-    assert_equal(y1(f32_min * 4), -inf[.float32]())
-    assert_equal(y1(Float32(0.0)), -inf[.float32]())
-    assert_equal(y1(Float32(-0.0)), -inf[.float32]())
-    assert_true(isnan(y1(-f32_min)))
+    # Normal and subnormal operands of comparable size.
     _check(
-        y1(Float64(from_bits=UInt64(1) << 51)),
-        -5.722234971514057e307,
-        "y1(2^-1023)",
+        hypot(Float32(1.1754943508222875e-38), Float32(1.1571272515906893e-38)),
+        1.6494636579419635e-38,
+        "hypot(2^-126, 0.98 * 2^-126)",
     )
-    _check(y1(f64_max_sub), -2.861117485757029e307, "y1(max_sub)")
-    _check(y0(f32_min), -65.82321166992188, "y0(2^-149)")
-    _check(y0(f32_max_sub), -55.67397689819336, "y0(max_sub)")
-    assert_equal(y0(Float32(-0.0)), -inf[.float32]())
-    assert_true(isnan(y0(-f32_max_sub)))
-    _check(y0(f64_min), -473.9990734230043, "y0(2^-1074)")
-    var v = y1(SIMD[.float32, 4](f32_max_sub, 8.0, -f32_min, 0.0))
-    assert_equal(v[0], y1(f32_max_sub))
-    assert_equal(v[1], y1(Float32(8.0)))
-    assert_true(isnan(v[2]))
-    assert_equal(v[3], -inf[.float32]())
-
-
-@inline(.never)
-def _runtime_y0[
-    dtype: DType, width: SIMDLength, //
-](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
-    return y0(x)
-
-
-def test_y0_flush_denormals() raises:
-    # Calling out of line prevents the subnormal fixtures from being folded
-    # before entering the flushing context. References are rounded MPFR values.
-    var x32 = SIMD[.float32, 4](
-        f32_min, Float32(from_bits=UInt32(1) << 22), f32_max_sub, 1.0
+    assert_equal(hypot(f32_min, Float32(1.0)), 1.0)
+    assert_equal(hypot(f32_min, Float32(0.0)), f32_min)
+    _check(
+        hypot(f64_max_sub, f64_max_sub),
+        3.1467296279827165e-308,
+        "hypot(max_sub, max_sub)",
     )
-    var x64 = SIMD[.float64, 4](
-        f64_min, Float64(from_bits=UInt64(1) << 51), f64_max_sub, 1.0
+
+
+def test_hypot_subnormal_outputs() raises:
+    var half_min = Float32(from_bits=Int32(0x00400000))
+    assert_equal(Int(hypot(half_min, half_min)._to_bits_signed()), 0x005A827A)
+    var bf16_half_min = BFloat16(from_bits=Int16(0x0040))
+    assert_equal(
+        Int(hypot(bf16_half_min, bf16_half_min)._to_bits_signed()), 0x005B
     )
-    var want32 = SIMD[.float32, 4](
-        -65.82321166992188,
-        -56.1152458190918,
-        -55.67397689819336,
-        0.08825696259737015,
+    assert_equal(hypot(bf16_half_min, BFloat16(0)), bf16_half_min)
+    assert_equal(
+        Int(
+            hypot(
+                BFloat16(from_bits=Int16(0x007F)),
+                BFloat16(from_bits=Int16(0x000C)),
+            )._to_bits_signed()
+        ),
+        0x0080,
     )
-    var want64 = SIMD[.float64, 4](
-        -473.9990734230043,
-        -451.49424220743384,
-        -451.0529710071285,
-        0.08825696421567696,
+
+    var xs = SIMD[.float32, 4](
+        half_min, f32_max_sub, nan[.float32](), inf[.float32]()
     )
-    var normal32 = y0(Float32(8.0))
-    var normal64 = y0(Float64(8.0))
-    with FlushDenormals():
-        var got32 = _runtime_y0(x32)
-        var got64 = _runtime_y0(x64)
-        for i in range(4):
-            _check(got32[i], want32[i], "y0 f32 FTZ mixed")
-            _check(got64[i], want64[i], "y0 f64 FTZ mixed")
-        _check(_runtime_y0(f32_min), want32[0], "y0 f32 FTZ min")
-        _check(_runtime_y0(f64_min), want64[0], "y0 f64 FTZ min")
-        var mixed32 = _runtime_y0(
-            SIMD[.float32, 4](f32_min, 8.0, f32_max_sub, 0.0)
-        )
-        var mixed64 = _runtime_y0(
-            SIMD[.float64, 4](f64_min, 8.0, f64_max_sub, 0.0)
-        )
-        _check(mixed32[0], want32[0], "y0 f32 FTZ small/large")
-        _check(mixed64[0], want64[0], "y0 f64 FTZ small/large")
-        assert_equal(mixed32[1], normal32)
-        assert_equal(mixed64[1], normal64)
-        _check(mixed32[2], want32[2], "y0 f32 FTZ max mixed")
-        _check(mixed64[2], want64[2], "y0 f64 FTZ max mixed")
-        assert_equal(mixed32[3], -inf[.float32]())
-        assert_equal(mixed64[3], -inf[.float64]())
-        assert_true(isnan(_runtime_y0(Float32(from_bits=UInt32(0x80000001)))))
-        assert_true(
-            isnan(_runtime_y0(Float64(from_bits=UInt64(0x8000000000000001))))
-        )
-
-
-@inline(.never)
-def _runtime_y1[
-    dtype: DType, width: SIMDLength, //
-](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
-    return y1(x)
-
-
-def test_y1_flush_denormals() raises:
-    var x32 = SIMD[.float32, 4](
-        Float32(from_bits=UInt32(1) << 22),
-        f32_max_sub,
-        Float32(from_bits=UInt32(0x80000001)),
-        0.0,
+    var ys = SIMD[.float32, 4](
+        half_min, f32_max_sub, Float32(1), nan[.float32]()
     )
-    var x64 = SIMD[.float64, 4](
-        Float64(from_bits=UInt64(1) << 51),
-        f64_max_sub,
-        Float64(from_bits=UInt64(0x8000000000000001)),
-        0.0,
+    var got = hypot(xs, ys)
+    assert_equal(Int(got[0]._to_bits_signed()), 0x005A827A)
+    _check(got[1], Float32(from_bits=Int32(0x00B504F2)), "hypot SIMD normal")
+    assert_true(isnan(got[2]))
+    assert_equal(got[3], inf[.float32]())
+
+
+def _scale_down_reference(y: Float32, shift: Int) -> Float32:
+    """Rounds `y * 2^-shift` once, through an exact float64 product."""
+    var scale = Float64(from_bits=UInt64(1023 - shift) << 52)
+    return (Float64(y) * scale).cast[.float32]()
+
+
+def _check_scale_down[shift: Int](y: Float32) raises:
+    var got = _scale_down_bits[shift](SIMD[.float32, 1](y))[0]
+    var want = _scale_down_reference(y, shift)
+    assert_equal(
+        Int(got._to_bits_signed()),
+        Int(want._to_bits_signed()),
+        String(t"_scale_down_bits[{shift}]({y})"),
     )
-    with FlushDenormals():
-        var got32 = _runtime_y1(x32)
-        var got64 = _runtime_y1(x64)
-        _check(got32[0], Float32(-1.0831523711529481e38), "y1 f32 FTZ mid")
-        _check(got32[1], Float32(-5.415762869885221e37), "y1 f32 FTZ max")
-        _check(got64[0], Float64(-5.722234971514057e307), "y1 f64 FTZ mid")
-        _check(got64[1], Float64(-2.861117485757029e307), "y1 f64 FTZ max")
-        assert_true(isnan(got32[2]))
-        assert_true(isnan(got64[2]))
-        assert_equal(got32[3], -inf[.float32]())
-        assert_equal(got64[3], -inf[.float64]())
-
-
-def _check_log_helpers[
-    dtype: DType
-](x: Scalar[dtype]) raises where dtype.is_floating_point():
-    """`_frexp_bits` feeds `_log_reduce`; it must agree with `frexp` on
-    subnormals, and `_log_accurate` of a subnormal must match libm."""
-    var want = frexp(x)
-    var got = _frexp_bits(x)
-    assert_equal(got[0], want[0], msg=String(t"_frexp_bits({x}) fraction"))
-    assert_equal(got[1], want[1], msg=String(t"_frexp_bits({x}) exponent"))
-    if x > 0:
-        var lg = _log_accurate(x)
-        var want_log = _call_libm["log"](x)
-        var d = ulp_distance(lg, want_log)
-        assert_true(
-            d <= 1,
-            String(t"_log_accurate({x}) = {lg}, libm {want_log} ({d} ulp)"),
-        )
-
-
-def test_log_helpers_subnormal() raises:
-    _check_log_helpers(f32_min)
-    _check_log_helpers(f32_max_sub)
-    _check_log_helpers(Float32(from_bits=UInt32(1) << 22))
-    _check_log_helpers(-f32_min)
-    _check_log_helpers(-f32_max_sub)
-    _check_log_helpers(Float32(0.75))
-    _check_log_helpers(Float32(3.0e38))
-    _check_log_helpers(f64_min)
-    _check_log_helpers(f64_max_sub)
-    _check_log_helpers(Float64(from_bits=UInt64(1) << 51))
-    _check_log_helpers(-f64_max_sub)
-    _check_log_helpers(Float64(1.5e308))
-    var v = _frexp_bits(SIMD[.float32, 4](f32_min, -f32_max_sub, 6.0, 0.5))
-    var w = frexp(SIMD[.float32, 4](f32_min, -f32_max_sub, 6.0, 0.5))
-    assert_equal(v[0], w[0])
-    assert_equal(v[1], w[1])
-
-
-def test_scale_up_subnormal() raises:
-    var patterns: List[UInt32] = [
-        1,
-        2,
-        3,
-        0x12345,
-        0x35555,
-        0x3FFFFF,
-        0x400000,
-        0x400001,
-        0x7FFFFF,
-    ]
-    for p in patterns:
-        for neg in range(2):
-            var x = Float32(from_bits=p | (UInt32(neg) << 31))
-            assert_equal(
-                _scale_up_subnormal[23](x),
-                Float32(ldexp(Float64(x), 23)),
-                msg=String(t"_scale_up_subnormal[23]({x})"),
-            )
-            assert_equal(
-                _scale_up_subnormal[40](x),
-                Float32(ldexp(Float64(x), 40)),
-                msg=String(t"_scale_up_subnormal[40]({x})"),
-            )
-    var h = Float16(from_bits=UInt16(0x0155))
-    assert_equal(_scale_up_subnormal[10](h), Float16(ldexp(Float64(h), 10)))
 
 
 def test_scale_down_bits() raises:
-    # Mantissas with every rounding case (exact, below/above/at the half way
-    # point, carry into the exponent) at every exponent whose result is
-    # subnormal, tiny normal or zero.
-    var mantissas = List[UInt32]()
-    for k in range(23):
-        mantissas.append(UInt32(1) << UInt32(k))
-        mantissas.append((UInt32(1) << UInt32(k)) - 1)
-        mantissas.append((UInt32(1) << UInt32(k)) + 1)
-    mantissas.append(0x2AAAAA)
-    mantissas.append(0x7FFFFF)
-    var count = 0
-    for e in range(1, 40):
-        for m in mantissas:
-            for neg in range(2):
-                var y = Float32(
-                    from_bits=(UInt32(e) << 23) | m | (UInt32(neg) << 31)
+    var state = UInt32(12345)
+    # Normal inputs of several exponents with random mantissas, and mantissas
+    # that sit exactly on a rounding tie for each subnormal shift amount.
+    for exp in range(120, 140):
+        for trial in range(64):
+            state = state * 1664525 + 1013904223
+            var mant = state >> 9
+            if trial < 25:
+                mant = (mant >> UInt32(trial + 1) << UInt32(trial + 1)) | (
+                    UInt32(1) << UInt32(trial)
                 )
-                assert_equal(
-                    _scale_down_bits[25](y),
-                    Float32(ldexp(Float64(y), -25)),
-                    msg=String(t"_scale_down_bits[25]({y})"),
-                )
-                assert_equal(
-                    _scale_down_bits[3](y),
-                    Float32(ldexp(Float64(y), -3)),
-                    msg=String(t"_scale_down_bits[3]({y})"),
-                )
-                count += 1
-    assert_true(count > 500)
-    var v = _scale_down_bits[25](SIMD[.float32, 2](1.0, -3.0))
-    assert_equal(v[0], Float32(ldexp(Float64(1.0), -25)))
-    assert_equal(v[1], Float32(ldexp(Float64(-3.0), -25)))
+                mant &= 0x7FFFFF
+            var y = Float32(from_bits=(UInt32(exp) << 23) | mant)
+            _check_scale_down[126](y)
+            _check_scale_down[126](-y)
+            _check_scale_down[130](y)
+            _check_scale_down[100](y)
+    _check_scale_down[126](Float32(0))
+    _check_scale_down[126](Float32(1))
+    _check_scale_down[126](Float32(from_bits=UInt32(0x00800000)))
 
 
 def test_narrow_f32_to_bf16_bits() raises:
-    # Random bit patterns, plus ties and near ties at every bfloat16 binade
-    # including the subnormal ones.
-    var state = UInt32(12345)
-    var patterns = List[UInt32]()
-    for _ in range(400):
+    var state = UInt32(777)
+    for i in range(512):
         state = state * 1664525 + 1013904223
-        patterns.append(state)
-    for e in range(0, 255):
-        for low in [UInt32(0x7FFF), 0x8000, 0x8001, 0x0000, 0xFFFF]:
-            for hi in [UInt32(0), 1, 0x55, 0x7F]:
-                patterns.append((UInt32(e) << 23) | (hi << 16) | low)
-    for b in patterns:
-        var x = Float32(from_bits=b)
+        var bits = state
+        if i % 4 == 0:
+            # Subnormal float32 inputs.
+            bits &= 0x807FFFFF
+        elif i % 4 == 1:
+            # Exact ties between two bfloat16 values.
+            bits = (bits & 0xFFFF0000) | 0x8000
+        var x = Float32(from_bits=bits)
         if isnan(x):
-            assert_true(isnan(_narrow_f32_to_bf16_bits(x)))
             continue
+        var got = _narrow_f32_to_bf16_bits(SIMD[.float32, 1](x))[0]
         assert_equal(
-            _narrow_f32_to_bf16_bits(x).to_bits(),
-            x.cast[.bfloat16]().to_bits(),
-            msg=String(t"_narrow_f32_to_bf16_bits({x})"),
+            Int(got._to_bits_signed()),
+            Int(x.cast[.bfloat16]()._to_bits_signed()),
+            String(t"narrow({x})"),
+        )
+    for x in [inf[.float32](), -inf[.float32](), Float32(0), Float32(-0.0)]:
+        var got = _narrow_f32_to_bf16_bits(SIMD[.float32, 1](x))[0]
+        assert_equal(
+            Int(got._to_bits_signed()),
+            Int(x.cast[.bfloat16]()._to_bits_signed()),
         )
     assert_true(
-        isnan(_narrow_f32_to_bf16_bits(Float32(from_bits=UInt32(0x7F800001))))
+        isnan(_narrow_f32_to_bf16_bits(SIMD[.float32, 1](nan[.float32]()))[0])
     )
 
 
@@ -341,20 +270,37 @@ def _check_cbrt[
     assert_true(d <= 1, String(t"{name} = {got}, expected {want} ({d} ulp)"))
 
 
-def _check_scale_down[shift: Int](y: Float32) raises:
-    var got = _scale_down_bits[shift](SIMD[.float32, 1](y))[0]
-    var want = _scale_down_reference(y, shift)
-    assert_equal(
-        Int(got._to_bits_signed()),
-        Int(want._to_bits_signed()),
-        String(t"_scale_down_bits[{shift}]({y})"),
-    )
+def _check_log_helpers[
+    dtype: DType
+](x: Scalar[dtype]) raises where dtype.is_floating_point():
+    """`_frexp_bits` feeds `_log_reduce`; it must agree with `frexp` on
+    subnormals, and `_log_accurate` of a subnormal must match libm."""
+    var want = frexp(x)
+    var got = _frexp_bits(x)
+    assert_equal(got[0], want[0], msg=String(t"_frexp_bits({x}) fraction"))
+    assert_equal(got[1], want[1], msg=String(t"_frexp_bits({x}) exponent"))
+    if x > 0:
+        var lg = _log_accurate(x)
+        var want_log = _call_libm["log"](x)
+        var d = ulp_distance(lg, want_log)
+        assert_true(
+            d <= 1,
+            String(t"_log_accurate({x}) = {lg}, libm {want_log} ({d} ulp)"),
+        )
 
 
-def _scale_down_reference(y: Float32, shift: Int) -> Float32:
-    """Rounds `y * 2^-shift` once, through an exact float64 product."""
-    var scale = Float64(from_bits=UInt64(1023 - shift) << 52)
-    return (Float64(y) * scale).cast[.float32]()
+@inline(.never)
+def _runtime_y0[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    return y0(x)
+
+
+@inline(.never)
+def _runtime_y1[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> type_of(x) where dtype.is_floating_point():
+    return y1(x)
 
 
 def test_cbrt_subnormal() raises:
@@ -401,68 +347,23 @@ def test_check() raises:
             _check_cbrt(Scalar[dtype](1.0), nan[dtype](), "NaN reference")
 
 
-def _check_nonneg[
-    dtype: DType
-](got: Scalar[dtype], want: Scalar[dtype], name: String) raises:
-    assert_true(not isnan(got) and not isinf(got))
-    assert_true(got._to_bits_signed() >= 0)
-    var d = ulp_distance(got, want)
-    assert_true(d <= 1, String(t"{name} = {got}, expected {want} ({d} ulp)"))
-
-
-def test_hypot_subnormal() raises:
-    # Both subnormal, normal result.
-    _check_nonneg(
-        hypot(f32_max_sub, f32_max_sub),
-        1.6623998848452245e-38,
-        "hypot(max_sub, max_sub)",
-    )
-    # Normal and subnormal operands of comparable size.
-    _check_nonneg(
-        hypot(Float32(1.1754943508222875e-38), Float32(1.1571272515906893e-38)),
-        1.6494636579419635e-38,
-        "hypot(2^-126, 0.98 * 2^-126)",
-    )
-    assert_equal(hypot(f32_min, Float32(1.0)), 1.0)
-    assert_equal(hypot(f32_min, Float32(0.0)), f32_min)
-    _check_nonneg(
-        hypot(f64_max_sub, f64_max_sub),
-        3.1467296279827165e-308,
-        "hypot(max_sub, max_sub)",
-    )
-
-
-def test_hypot_subnormal_outputs() raises:
-    var half_min = Float32(from_bits=Int32(0x00400000))
-    assert_equal(Int(hypot(half_min, half_min)._to_bits_signed()), 0x005A827A)
-    var bf16_half_min = BFloat16(from_bits=Int16(0x0040))
-    assert_equal(
-        Int(hypot(bf16_half_min, bf16_half_min)._to_bits_signed()), 0x005B
-    )
-    assert_equal(hypot(bf16_half_min, BFloat16(0)), bf16_half_min)
-    assert_equal(
-        Int(
-            hypot(
-                BFloat16(from_bits=Int16(0x007F)),
-                BFloat16(from_bits=Int16(0x000C)),
-            )._to_bits_signed()
-        ),
-        0x0080,
-    )
-
-    var xs = SIMD[.float32, 4](
-        half_min, f32_max_sub, nan[.float32](), inf[.float32]()
-    )
-    var ys = SIMD[.float32, 4](
-        half_min, f32_max_sub, Float32(1), nan[.float32]()
-    )
-    var got = hypot(xs, ys)
-    assert_equal(Int(got[0]._to_bits_signed()), 0x005A827A)
-    _check_nonneg(
-        got[1], Float32(from_bits=Int32(0x00B504F2)), "hypot SIMD normal"
-    )
-    assert_true(isnan(got[2]))
-    assert_equal(got[3], inf[.float32]())
+def test_log_helpers_subnormal() raises:
+    _check_log_helpers(f32_min)
+    _check_log_helpers(f32_max_sub)
+    _check_log_helpers(Float32(from_bits=UInt32(1) << 22))
+    _check_log_helpers(-f32_min)
+    _check_log_helpers(-f32_max_sub)
+    _check_log_helpers(Float32(0.75))
+    _check_log_helpers(Float32(3.0e38))
+    _check_log_helpers(f64_min)
+    _check_log_helpers(f64_max_sub)
+    _check_log_helpers(Float64(from_bits=UInt64(1) << 51))
+    _check_log_helpers(-f64_max_sub)
+    _check_log_helpers(Float64(1.5e308))
+    var v = _frexp_bits(SIMD[.float32, 4](f32_min, -f32_max_sub, 6.0, 0.5))
+    var w = frexp(SIMD[.float32, 4](f32_min, -f32_max_sub, 6.0, 0.5))
+    assert_equal(v[0], w[0])
+    assert_equal(v[1], w[1])
 
 
 def test_remainder_normal_results_near_min_normal() raises:
@@ -554,3 +455,144 @@ def test_remainder_subnormal_results() raises:
         ).to_bits()
         == 1
     )
+
+
+def test_scale_up_subnormal() raises:
+    var patterns: List[UInt32] = [
+        1,
+        2,
+        3,
+        0x12345,
+        0x35555,
+        0x3FFFFF,
+        0x400000,
+        0x400001,
+        0x7FFFFF,
+    ]
+    for p in patterns:
+        for neg in range(2):
+            var x = Float32(from_bits=p | (UInt32(neg) << 31))
+            assert_equal(
+                _scale_up_subnormal[23](x),
+                Float32(ldexp(Float64(x), 23)),
+                msg=String(t"_scale_up_subnormal[23]({x})"),
+            )
+            assert_equal(
+                _scale_up_subnormal[40](x),
+                Float32(ldexp(Float64(x), 40)),
+                msg=String(t"_scale_up_subnormal[40]({x})"),
+            )
+    var h = Float16(from_bits=UInt16(0x0155))
+    assert_equal(_scale_up_subnormal[10](h), Float16(ldexp(Float64(h), 10)))
+
+
+def test_y0_flush_denormals() raises:
+    # Calling out of line prevents the subnormal fixtures from being folded
+    # before entering the flushing context. References are rounded MPFR values.
+    var x32 = SIMD[.float32, 4](
+        f32_min, Float32(from_bits=UInt32(1) << 22), f32_max_sub, 1.0
+    )
+    var x64 = SIMD[.float64, 4](
+        f64_min, Float64(from_bits=UInt64(1) << 51), f64_max_sub, 1.0
+    )
+    var want32 = SIMD[.float32, 4](
+        -65.82321166992188,
+        -56.1152458190918,
+        -55.67397689819336,
+        0.08825696259737015,
+    )
+    var want64 = SIMD[.float64, 4](
+        -473.9990734230043,
+        -451.49424220743384,
+        -451.0529710071285,
+        0.08825696421567696,
+    )
+    var normal32 = y0(Float32(8.0))
+    var normal64 = y0(Float64(8.0))
+    with FlushDenormals():
+        var got32 = _runtime_y0(x32)
+        var got64 = _runtime_y0(x64)
+        for i in range(4):
+            _check(got32[i], want32[i], "y0 f32 FTZ mixed")
+            _check(got64[i], want64[i], "y0 f64 FTZ mixed")
+        _check(_runtime_y0(f32_min), want32[0], "y0 f32 FTZ min")
+        _check(_runtime_y0(f64_min), want64[0], "y0 f64 FTZ min")
+        var mixed32 = _runtime_y0(
+            SIMD[.float32, 4](f32_min, 8.0, f32_max_sub, 0.0)
+        )
+        var mixed64 = _runtime_y0(
+            SIMD[.float64, 4](f64_min, 8.0, f64_max_sub, 0.0)
+        )
+        _check(mixed32[0], want32[0], "y0 f32 FTZ small/large")
+        _check(mixed64[0], want64[0], "y0 f64 FTZ small/large")
+        assert_equal(mixed32[1], normal32)
+        assert_equal(mixed64[1], normal64)
+        _check(mixed32[2], want32[2], "y0 f32 FTZ max mixed")
+        _check(mixed64[2], want64[2], "y0 f64 FTZ max mixed")
+        assert_equal(mixed32[3], -inf[.float32]())
+        assert_equal(mixed64[3], -inf[.float64]())
+        assert_true(isnan(_runtime_y0(Float32(from_bits=UInt32(0x80000001)))))
+        assert_true(
+            isnan(_runtime_y0(Float64(from_bits=UInt64(0x8000000000000001))))
+        )
+
+
+def test_y1_flush_denormals() raises:
+    var x32 = SIMD[.float32, 4](
+        Float32(from_bits=UInt32(1) << 22),
+        f32_max_sub,
+        Float32(from_bits=UInt32(0x80000001)),
+        0.0,
+    )
+    var x64 = SIMD[.float64, 4](
+        Float64(from_bits=UInt64(1) << 51),
+        f64_max_sub,
+        Float64(from_bits=UInt64(0x8000000000000001)),
+        0.0,
+    )
+    with FlushDenormals():
+        var got32 = _runtime_y1(x32)
+        var got64 = _runtime_y1(x64)
+        _check(got32[0], Float32(-1.0831523711529481e38), "y1 f32 FTZ mid")
+        _check(got32[1], Float32(-5.415762869885221e37), "y1 f32 FTZ max")
+        _check(got64[0], Float64(-5.722234971514057e307), "y1 f64 FTZ mid")
+        _check(got64[1], Float64(-2.861117485757029e307), "y1 f64 FTZ max")
+        assert_true(isnan(got32[2]))
+        assert_true(isnan(got64[2]))
+        assert_equal(got32[3], -inf[.float32]())
+        assert_equal(got64[3], -inf[.float64]())
+
+
+def test_y1_y0_subnormal() raises:
+    # y1(x) = -2/(pi x) below 2^-25; at 2^-128 1/x overflows but y1 does not.
+    _check(
+        y1(Float32(from_bits=UInt32(1) << 22)),
+        -1.0831523711529481e38,
+        "y1(2^-127)",
+    )
+    _check(
+        y1(Float32(from_bits=UInt32(1) << 21)),
+        -2.1663047423058962e38,
+        "y1(2^-128)",
+    )
+    _check(y1(f32_max_sub), -5.415762869885221e37, "y1(max_sub)")
+    assert_equal(y1(f32_min * 4), -inf[.float32]())
+    assert_equal(y1(Float32(0.0)), -inf[.float32]())
+    assert_equal(y1(Float32(-0.0)), -inf[.float32]())
+    assert_true(isnan(y1(-f32_min)))
+    _check(
+        y1(Float64(from_bits=UInt64(1) << 51)),
+        -5.722234971514057e307,
+        "y1(2^-1023)",
+    )
+    _check(y1(f64_max_sub), -2.861117485757029e307, "y1(max_sub)")
+    _check(y0(f32_min), -65.82321166992188, "y0(2^-149)")
+    _check(y0(f32_max_sub), -55.67397689819336, "y0(max_sub)")
+    assert_equal(y0(Float32(-0.0)), -inf[.float32]())
+    assert_true(isnan(y0(-f32_max_sub)))
+    _check(y0(f64_min), -473.9990734230043, "y0(2^-1074)")
+    var v = y1(SIMD[.float32, 4](f32_max_sub, 8.0, -f32_min, 0.0))
+    assert_equal(v[0], y1(f32_max_sub))
+    assert_equal(v[1], y1(Float32(8.0)))
+    assert_true(isnan(v[2]))
+    assert_equal(v[3], -inf[.float32]())

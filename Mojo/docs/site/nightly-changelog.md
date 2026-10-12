@@ -408,6 +408,11 @@ This version is still a work in progress.
   removed outright after all in-tree consumers migrated; spell the rank
   choice explicitly with `QTMATilePrefill` or `QTMATileFused`.
 
+- `std.math.gamma` no longer calls the system libm and now runs on GPU as
+  well as CPU. On CPU its results come from the same Mojo implementation, so
+  they can differ from the system libm in the last ulp. Subnormal inputs and
+  results are also handled on targets that flush subnormals, such as Apple
+  GPUs in float32.
 - `float64` `expm1()` in `std.math` no longer calls the system libm and now
   runs on GPU as well as CPU. On CPU its result comes from the same Mojo
   implementation, so it can differ from the system libm in the last ulp. On
