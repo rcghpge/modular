@@ -243,14 +243,13 @@ struct Foo:
         y: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
                 SIMD[z.dtype, width]
             ](y.load[width](idx))
 
-        foreach[func, target=target](z, ctx)
+        foreach[target=target](func, z, ctx)
 
 
 @extensibility.register_shape_function("imposter_add")
@@ -271,14 +270,13 @@ struct FooRaisingShape:
         y: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
                 SIMD[z.dtype, width]
             ](y.load[width](idx))
 
-        foreach[func, target=target](z, ctx)
+        foreach[target=target](func, z, ctx)
 
 
 @extensibility.register_shape_function("imposter_add_raising_shape")
@@ -1756,15 +1754,14 @@ struct FooWithStructParam[flip: Bool]:
         x: InputTensor[dtype=dtype, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             var v = rebind[SIMD[z.dtype, width]](x.load[width](idx))
             comptime if Self.flip:
                 return -v
             return v
 
-        foreach[func](z, ctx)
+        foreach(func, z, ctx)
 
 
 @extensibility.register_shape_function("imposter_add_struct_param")
@@ -1838,12 +1835,11 @@ struct PrintTensorSpecOp:
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
 
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x.load[width](idx))
 
-        foreach[func](outp, ctx)
+        foreach(func, outp, ctx)
 
 
 @extensibility.register_shape_function("print_tensor_spec")
@@ -1859,12 +1855,11 @@ struct PrintTensor:
     ](outp: OutputTensor, input: InputTensor, ctx: DeviceContext) raises:
         print(input)
 
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](input.load[width](idx))
 
-        foreach[func](outp, ctx)
+        foreach(func, outp, ctx)
 
 
 @extensibility.register("print_tensor_spec_fused")
@@ -1882,12 +1877,11 @@ struct PrintTensorSpecFusedOp:
         print("x.alignment =", x.alignment)
         print("x.address_space =", x.address_space)
 
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[outp.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[outp.dtype, width]:
             return rebind[SIMD[outp.dtype, width]](x._fused_load[width](idx))
 
-        foreach[func](outp, ctx)
+        foreach(func, outp, ctx)
 
 
 @extensibility.register_shape_function("print_tensor_spec_fused")
@@ -1910,15 +1904,14 @@ struct PrintOutputShapeStridesFusedOp:
         print("output._runtime_shape = ", output.shape())
         print("output._runtime_strides = ", output.strides())
 
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             return (
                 rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
                 * 2.0
             )
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register_shape_function("print_output_shape_strides_fused")
@@ -2048,14 +2041,13 @@ struct AddFuseLHS:
         y: InputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y.load[width](idx))
 
-        foreach[func](z, ctx)
+        foreach(func, z, ctx)
 
 
 @extensibility.register("imposter_has_prologue_fusion")
@@ -2069,12 +2061,11 @@ struct ImposterHasPrologueFusion:
         x: FusedInputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             return rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register("imposter_add_fuse_inputs")
@@ -2088,14 +2079,13 @@ struct AddFuseInputs:
         y: FusedInputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
                 x._fused_load[width](idx)
             ) + rebind[SIMD[z.dtype, width]](y._fused_load[width](idx))
 
-        foreach[func](z, ctx)
+        foreach(func, z, ctx)
 
 
 @extensibility.register("imposter_add_compute_fusion")
@@ -2149,14 +2139,13 @@ struct AddFuseOutput:
         y: InputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
                 SIMD[z.dtype, width]
             ](y.load[width](idx))
 
-        foreach[func, target=target](z, ctx)
+        foreach[target=target](func, z, ctx)
 
 
 # c = a @ b, should support CPU and GPU
@@ -2273,9 +2262,8 @@ struct VariadicAdd:
         inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[dtype, width]:
             var acc = SIMD[dtype, width](0)
 
             comptime for i in range(inputs.size):
@@ -2283,7 +2271,7 @@ struct VariadicAdd:
 
             return acc
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register("print_shape_fused")
@@ -2296,15 +2284,14 @@ struct ElementwisePrintShape:
         x: FusedInputTensor,
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
         print("input.shape =", x.shape())
         print("output.shape =", z.shape())
 
-        foreach[func](z, ctx)
+        foreach(func, z, ctx)
 
 
 @extensibility.register_shape_function("print_shape_fused")
@@ -2322,12 +2309,11 @@ struct CustomOpThatRaises:
         if x.shape()[0] == 10:
             raise ("input_shape[0] == 10")
 
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[z.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
 
-        foreach[func](z, ctx)
+        foreach(func, z, ctx)
 
 
 @extensibility.register_shape_function("custom_op_that_raises")
@@ -2376,13 +2362,12 @@ struct MONNXAbsOverload:
         in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
-        foreach[func](out_tensor, ctx)
+        foreach(func, out_tensor, ctx)
 
 
 @extensibility.register("torch.aten.abs")
@@ -2395,13 +2380,12 @@ struct MTorchAbsOverload:
         in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[dtype, width]:
             return abs(in_tensor._fused_load[width](idx))
 
         print("The custom identity op is running!")
-        foreach[func](out_tensor, ctx)
+        foreach(func, out_tensor, ctx)
 
 
 @extensibility.register("op_with_custom_params")
@@ -2559,12 +2543,11 @@ struct TraitMetadataShapeOp:
         input: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             return input.load[width](idx)
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register_shape_function("trait_metadata_shape_op")
@@ -2590,12 +2573,11 @@ struct TraitTensorShapeOp:
         input: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             return input.load[width](idx)
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register_shape_function("trait_tensor_shape_op")
@@ -2622,12 +2604,11 @@ struct TraitReshapeShapeOp:
         sizes: InputTensor[dtype=.int64, rank=1, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             return data.load[width](idx)
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register_shape_function("trait_reshape_shape_op")
@@ -2950,13 +2931,12 @@ struct InplaceNoOutFunc:
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[output.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             var val = input._fused_load[width](idx)
             return val * SIMD[output.dtype, width](2.0)
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @fieldwise_init
@@ -3658,12 +3638,11 @@ struct MapLowerAddOne:
     def execute[
         target: StaticString,
     ](res: OutputTensor, a: InputTensor, ctx: DeviceContext,) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[res.dtype, width]:
             return rebind[SIMD[res.dtype, width]](a.load[width](idx)) + 1
 
-        foreach[func, target=target](res, ctx)
+        foreach[target=target](func, res, ctx)
 
 
 # Real-body plain-output kernels below broaden the advanced-fusion MAP-ABI
@@ -3687,16 +3666,15 @@ struct MapLowerAdd3:
         c: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[res.dtype, width]:
             return (
                 rebind[SIMD[res.dtype, width]](a.load[width](idx))
                 + rebind[SIMD[res.dtype, width]](b.load[width](idx))
                 + rebind[SIMD[res.dtype, width]](c.load[width](idx))
             )
 
-        foreach[func, target=target](res, ctx)
+        foreach[target=target](func, res, ctx)
 
 
 # 1 input / 2 outputs: `res0 = a + 1`, `res1 = a * 2` (two plain outputs, two
@@ -3712,19 +3690,17 @@ struct MapLowerTwoOutputs:
         a: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def add_one[width: Int](idx: Coord) -> SIMD[res0.dtype, width]:
+        def add_one[width: Int](idx: Coord) {var} -> SIMD[res0.dtype, width]:
             return rebind[SIMD[res0.dtype, width]](a.load[width](idx)) + 1
 
-        foreach[add_one](res0, ctx)
+        foreach(add_one, res0, ctx)
 
-        @__parameter
         @inline(.always)
-        def times_two[width: Int](idx: Coord) -> SIMD[res1.dtype, width]:
+        def times_two[width: Int](idx: Coord) {var} -> SIMD[res1.dtype, width]:
             return rebind[SIMD[res1.dtype, width]](a.load[width](idx)) * 2
 
-        foreach[times_two](res1, ctx)
+        foreach(times_two, res1, ctx)
 
 
 # 2 inputs / 2 outputs: `res0 = a + b`, `res1 = a - b`.
@@ -3740,23 +3716,21 @@ struct MapLowerAddSub:
         b: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def add[width: Int](idx: Coord) -> SIMD[res0.dtype, width]:
+        def add[width: Int](idx: Coord) {var} -> SIMD[res0.dtype, width]:
             return rebind[SIMD[res0.dtype, width]](a.load[width](idx)) + rebind[
                 SIMD[res0.dtype, width]
             ](b.load[width](idx))
 
-        foreach[add, target=target](res0, ctx)
+        foreach[target=target](add, res0, ctx)
 
-        @__parameter
         @inline(.always)
-        def sub[width: Int](idx: Coord) -> SIMD[res1.dtype, width]:
+        def sub[width: Int](idx: Coord) {var} -> SIMD[res1.dtype, width]:
             return rebind[SIMD[res1.dtype, width]](a.load[width](idx)) - rebind[
                 SIMD[res1.dtype, width]
             ](b.load[width](idx))
 
-        foreach[sub, target=target](res1, ctx)
+        foreach[target=target](sub, res1, ctx)
 
 
 # Scalar operand: `res = a * s` where `s: Scalar[dtype]`. Exercises the MAP
@@ -3773,14 +3747,13 @@ struct MapLowerScale:
         s: Scalar[dtype],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[res.dtype, width]:
             return rebind[SIMD[res.dtype, width]](a.load[width](idx)) * rebind[
                 Scalar[res.dtype]
             ](s)
 
-        foreach[func](res, ctx)
+        foreach(func, res, ctx)
 
 
 # Variadic operand: `res = sum(inputs)` over an `InputVariadicTensors`.
@@ -3798,9 +3771,8 @@ struct MapLowerVarSum:
         inputs: InputVariadicTensors[dtype=dtype, rank=1, size=size, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        def func[width: Int](idx: Coord) -> SIMD[res.dtype, width]:
+        def func[width: Int](idx: Coord) {var} -> SIMD[res.dtype, width]:
             var acc = SIMD[res.dtype, width](0)
 
             comptime for i in range(size):
@@ -3810,7 +3782,7 @@ struct MapLowerVarSum:
 
             return acc
 
-        foreach[func](res, ctx)
+        foreach(func, res, ctx)
 
 
 @extensibility.register("map_lower_two_fused_inputs")
