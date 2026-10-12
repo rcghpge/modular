@@ -1331,63 +1331,66 @@ struct ConvDirectNHWC[
             - self.conv_shape.s() * self.conv_shape.dilation_at[w_axis]()
         ) // self.conv_shape.stride_at[w_axis]() + 1
 
-        comptime if Self.input_layout.rank == 3:
-            self.output_space_loop_1d[
-                micro_kernel_height,
-                micro_kernel_width,
-                has_residual,
-                last_c_tile,
-            ](
-                # Safety: turn off mutable aliasing pointer check
-                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
-                input_ptr,
-                filter_ptr,
-                n,
-                self.is_new_c_accum(c_tile_offset),
-                c_tile_size,
-                f_tile_offset,
-                f_tile_size,
-                left_pad_impact_end,
-                right_pad_impact_start,
-            )
-        elif Self.input_layout.rank == 4:
-            self.output_space_loop_2d[
-                micro_kernel_height,
-                micro_kernel_width,
-                has_residual,
-                last_c_tile,
-            ](
-                # Safety: turn off mutable aliasing pointer check
-                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
-                input_ptr,
-                filter_ptr,
-                n,
-                self.is_new_c_accum(c_tile_offset),
-                c_tile_size,
-                f_tile_offset,
-                f_tile_size,
-                left_pad_impact_end,
-                right_pad_impact_start,
-            )
-        elif Self.input_layout.rank == 5:
-            self.output_space_loop_3d[
-                micro_kernel_height,
-                micro_kernel_width,
-                has_residual,
-                last_c_tile,
-            ](
-                # Safety: turn off mutable aliasing pointer check
-                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
-                input_ptr,
-                filter_ptr,
-                n,
-                self.is_new_c_accum(c_tile_offset),
-                c_tile_size,
-                f_tile_offset,
-                f_tile_size,
-                left_pad_impact_end,
-                right_pad_impact_start,
-            )
+        comptime match Self.input_layout.rank:
+            case 3:
+                self.output_space_loop_1d[
+                    micro_kernel_height,
+                    micro_kernel_width,
+                    has_residual,
+                    last_c_tile,
+                ](
+                    # Safety: turn off mutable aliasing pointer check
+                    output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
+                    input_ptr,
+                    filter_ptr,
+                    n,
+                    self.is_new_c_accum(c_tile_offset),
+                    c_tile_size,
+                    f_tile_offset,
+                    f_tile_size,
+                    left_pad_impact_end,
+                    right_pad_impact_start,
+                )
+
+            case 4:
+                self.output_space_loop_2d[
+                    micro_kernel_height,
+                    micro_kernel_width,
+                    has_residual,
+                    last_c_tile,
+                ](
+                    # Safety: turn off mutable aliasing pointer check
+                    output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
+                    input_ptr,
+                    filter_ptr,
+                    n,
+                    self.is_new_c_accum(c_tile_offset),
+                    c_tile_size,
+                    f_tile_offset,
+                    f_tile_size,
+                    left_pad_impact_end,
+                    right_pad_impact_start,
+                )
+
+            case 5:
+                self.output_space_loop_3d[
+                    micro_kernel_height,
+                    micro_kernel_width,
+                    has_residual,
+                    last_c_tile,
+                ](
+                    # Safety: turn off mutable aliasing pointer check
+                    output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
+                    input_ptr,
+                    filter_ptr,
+                    n,
+                    self.is_new_c_accum(c_tile_offset),
+                    c_tile_size,
+                    f_tile_offset,
+                    f_tile_size,
+                    left_pad_impact_end,
+                    right_pad_impact_start,
+                )
 
     def output_space_loop_1d[
         micro_kernel_height: Int,
