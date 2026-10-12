@@ -11,11 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """Implements gather and scatter operations for CPU and GPU, including indexed reductions."""
-from max.gpu import (
-    MAX_THREADS_PER_BLOCK_METADATA,
-    block_idx,
-    thread_idx,
-)
 from layout import (
     Coord,
     DefaultEngine,
@@ -315,74 +310,6 @@ def gather_reduce[
     sync_parallelize(task_func, num_tasks, ctx)
 
 
-@__llvm_metadata(
-    MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(BLOCK_SIZE))
-)
-@__name(t"gather_sum_{dtype}_{BLOCK_SIZE}")
-def _gather_sum_kernel[
-    dtype: DType,
-    BLOCK_SIZE: Int,
-    InputLayout: TensorLayout,
-    IndicesLayout: TensorLayout,
-    OutputLayout: TensorLayout,
-    InputEngine: TensorEngine,
-    IndicesEngine: TensorEngine,
-    OutputEngine: TensorEngine,
-](
-    input_buffer: TileTensor[
-        dtype, InputLayout, ImmutAnyOrigin, Engine=InputEngine
-    ],
-    indices_buffer: TileTensor[
-        DType.int32, IndicesLayout, ImmutAnyOrigin, Engine=IndicesEngine
-    ],
-    output_buffer: TileTensor[
-        mut=True, dtype, OutputLayout, MutAnyOrigin, Engine=OutputEngine
-    ],
-    batch_arg: Int64,
-    multi_hot_arg: Int64,
-    emb_dim_arg: Int64,
-    table_size_arg: Int64,
-):
-    """Computes output[i, k] = Σ_j input[indices[i, j], k] on the device.
-
-    One block per batch row: threads stride over the embedding dimension
-    in BLOCK_SIZE-element chunks, and the multi-hot (j) loop is hoisted
-    once per row so each embedding row is read at most once per j.
-    Negative indices are normalized against the table size, matching
-    the CPU `gather_reduce` path. Each output element is written by
-    exactly one thread, so no atomics or cross-thread reductions are
-    needed.
-    """
-    var multi_hot = Int(multi_hot_arg)
-    var emb_dim = Int(emb_dim_arg)
-    var table_size = Int(table_size_arg)
-
-    var row = Int(block_idx.x)
-    var tid = Int(thread_idx.x)
-
-    if row < Int(batch_arg):
-        var k = tid
-        while k < emb_dim:
-            var accum = Scalar[dtype](0)
-            for j in range(multi_hot):
-                var idx = Int(indices_buffer.raw_load(row * multi_hot + j))
-                if idx < 0:
-                    idx += table_size
-                # Trap in safe builds if normalization still leaves the
-                # index out of bounds: raw_load would silently read garbage
-                # on GPU (the gather path at line ~745 validates the same).
-                debug_assert[assert_mode="safe"](
-                    0 <= idx < table_size,
-                    (
-                        "Gather_sum index out of bounds. Run on CPU for"
-                        " more detailed error checking."
-                    ),
-                )
-                accum += input_buffer.raw_load(idx * emb_dim + k)
-            output_buffer.raw_store(row * emb_dim + k, accum)
-            k += BLOCK_SIZE
-
-
 @inline(.always)
 def gather_sum[
     dtype: DType,
@@ -397,7 +324,7 @@ def gather_sum[
     """Computes output[i, k] = Σ_j input[indices[i, j], k].
 
     Dispatches to the CPU `gather_reduce` kernel on CPU targets and to
-    `_gather_sum_kernel` on GPU targets.
+    the `elementwise` GPU driver on GPU targets.
 
     Args:
         output: Output tensor holding the reduced embeddings, shape
@@ -413,6 +340,7 @@ def gather_sum[
 
     if input.num_elements() == 0 or indices.num_elements() == 0:
         return
+    var dev_ctx = ctx
 
     var batch = Int(indices.dim[0]())
     var multi_hot = Int(indices.dim[1]())
@@ -441,33 +369,70 @@ def gather_sum[
             input_flat,
             indices,
             0,
-            ctx,
+            dev_ctx,
         )
     else:
-        comptime block_size = 256
-        var input_imm = input_flat.as_imm().as_unsafe_any_origin()
-        var indices_imm = indices.as_imm().as_unsafe_any_origin()
-        var output_mut = output_flat.as_unsafe_any_origin()
-        comptime kernel = _gather_sum_kernel[
-            dtype,
-            block_size,
-            input_imm.LayoutType,
-            indices_imm.LayoutType,
-            output_mut.LayoutType,
-            input_imm.Engine,
-            indices_imm.Engine,
-            output_mut.Engine,
-        ]
-        ctx.enqueue_function[kernel](
-            input_imm,
-            indices_imm,
-            output_mut,
-            Int64(batch),
-            Int64(multi_hot),
-            Int64(emb_dim),
-            Int64(table_size),
-            grid_dim=max(batch, 1),
-            block_dim=block_size,
+        # Elementwise over the output's [batch, emb_dim] view: each call
+        # sums one multi-hot row-slice of the table. The elementwise GPU
+        # driver sizes the grid to saturate the SMs (grid-stride loop with
+        # per-thread ILP) and packs simd_width lanes along the contiguous
+        # embedding axis, including the uneven tail, so no hand-rolled
+        # kernel is needed for either GPU family.
+        comptime target_simd_width = (
+            simd_width_of[dtype, target=get_gpu_target()]()
+        )
+
+        @inline(.always)
+        def gather_sum_elementwise_fn[
+            width: Int, alignment: Int = 1
+        ](coords: Coord) {
+            # Copy-capture the tensors: an `imm` (by-reference) capture
+            # marshals a host pointer into the kernel arg struct on
+            # address-space-disjoint backends (Metal), so the body would
+            # silently read/write host memory (see rope.mojo and the
+            # gpu-kernel-closures-must-copy-capture-tensors KB entry).
+            var input_flat,
+            var indices,
+            var output_flat,
+            var multi_hot,
+            var emb_dim,
+            var table_size,
+        }:
+            var i = Int(coords[0].value())
+            var k = Int(coords[1].value())
+
+            var accum = SIMD[dtype, width](0)
+            for j in range(multi_hot):
+                var idx = Int(indices.raw_load(i * multi_hot + j))
+                if idx < 0:
+                    idx += table_size
+                # Trap in safe builds if normalization still leaves the
+                # index out of bounds: raw_load would silently read
+                # garbage on GPU (the gather path above validates the
+                # same).
+                debug_assert[assert_mode="safe"](
+                    0 <= idx < table_size,
+                    (
+                        "Gather_sum index out of bounds. Run on CPU for"
+                        " more detailed error checking."
+                    ),
+                )
+                accum += input_flat.raw_load[
+                    width=width, alignment=alignment * align_of[dtype]()
+                ](idx * emb_dim + k)
+
+            output_flat.raw_store[
+                width=width, alignment=alignment * align_of[dtype]()
+            ](i * emb_dim + k, accum)
+
+        elementwise[
+            simd_width=target_simd_width,
+            target=target,
+            _trace_description="gather_sum",
+        ](
+            gather_sum_elementwise_fn,
+            Coord(batch, emb_dim),
+            dev_ctx,
         )
 
 
