@@ -15,15 +15,21 @@ from __future__ import annotations
 
 import queue
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Any, TypeVar, get_args
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from max.driver import CPU, Device
-from max.nn.kv_cache import MultiKVCacheParams
+from max.nn.kv_cache import (
+    KVCacheGroupId,
+    KVConnectorType,
+    MultiKVCacheParams,
+)
 from max.pipelines.context import (
     GenerationStatus,
     TextContext,
@@ -32,6 +38,12 @@ from max.pipelines.context import (
 )
 from max.pipelines.context.context import FUTURE_TOKEN
 from max.pipelines.kv_cache.config import KVConnectorConfig
+from max.pipelines.kv_cache.connectors import NullConnector
+from max.pipelines.kv_cache.kv_connector import KVTransfer
+from max.pipelines.kv_cache.paged_kv_cache import (
+    cache_manager,
+    jenga_cache_manager,
+)
 from max.pipelines.kv_cache.paged_kv_cache.transfer_engine import (
     KVTransferEngineMetadata,
 )
@@ -203,6 +215,56 @@ class BasicDispatcherClient(DecodeDispatcherClient):
         return blocking_recv(super().recv_reply_nowait)
 
 
+class HintRecordingConnector(NullConnector):
+    """Stand in for the dKV connector. Records the hint of every ``lookup``
+    and ``load`` it is handed.
+
+    Reports the first block of each lookup as held off-device, so the block
+    manager goes on to ``load`` it rather than stopping at a miss.
+    """
+
+    def __init__(self) -> None:
+        self.lookup_hints: list[bytes | None] = []
+        self.load_hints: list[bytes | None] = []
+        self._leaves: Mapping[str, KVCacheGroupId] = {}
+
+    def build(
+        self, *, leaves: Mapping[str, KVCacheGroupId], **_: object
+    ) -> HintRecordingConnector:
+        """Stands in for ``create_connector``, serving the manager's leaves."""
+        self._leaves = leaves
+        return self
+
+    @property
+    def leaves(self) -> Mapping[str, KVCacheGroupId]:
+        return self._leaves
+
+    @property
+    def name(self) -> str:
+        # The block manager bypasses a connector named "NullConnector".
+        return "HintRecordingConnector"
+
+    def lookup(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> Mapping[str, Sequence[bool]]:
+        self.lookup_hints.append(hint)
+        held = [i == 0 for i in range(len(block_hashes))]
+        return {leaf_id: held for leaf_id in self.leaves}
+
+    def load(
+        self,
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Mapping[str, Sequence[bytes]],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> KVTransfer:
+        self.load_hints.append(hint)
+        return super().load(block_ids, block_hashes, replica_idx, hint)
+
+
 def create_text_context(
     target_endpoint: str,
     prompt_len: int,
@@ -242,6 +304,7 @@ def create_di_scheduler(
     prefill_dp: int | None = None,
     decode_dp: int | None = None,
     jenga_fp8: bool = False,
+    prefill_connector: HintRecordingConnector | None = None,
 ) -> tuple[DecodeScheduler, PrefillScheduler, str, DIQueues]:
     """Creates a DecodeScheduler and PrefillScheduler pair for testing.
 
@@ -267,6 +330,8 @@ def create_di_scheduler(
             ``dp``).
         jenga_fp8: Give both workers a Jenga manager for an fp8 cache, whose
             values and scales leaves hold independent block ids.
+        prefill_connector: Build the prefill KV cache with this connector
+            in place of the one its config names. Decode keeps its own.
     """
 
     effective_prefill_dp = prefill_dp if prefill_dp is not None else dp
@@ -342,17 +407,36 @@ def create_di_scheduler(
     ] = queue.Queue()
     cancel_queue: queue.Queue[list[RequestID]] = queue.Queue()
 
+    def _prefill_connector_patch(
+        manager_module: ModuleType,
+    ) -> AbstractContextManager[object]:
+        if prefill_connector is None:
+            return nullcontext()
+        return patch.object(
+            manager_module, "create_connector", prefill_connector.build
+        )
+
     kv_cache_prefill: PagedKVCacheManagerInterface
     kv_cache_decode: PagedKVCacheManagerInterface
     if jenga_fp8:
-        kv_cache_prefill = create_jenga_fp8_kv_cache(
-            64, max_batch_size, max_seq_len, page_size, enable_prefix_caching
-        )
+        with _prefill_connector_patch(jenga_cache_manager):
+            kv_cache_prefill = create_jenga_fp8_kv_cache(
+                64,
+                max_batch_size,
+                max_seq_len,
+                page_size,
+                enable_prefix_caching,
+                # Jenga discards the connector when the config names none.
+                kv_connector_config=KVConnectorConfig(type=KVConnectorType.dkv)
+                if prefill_connector is not None
+                else None,
+            )
         kv_cache_decode = create_jenga_fp8_kv_cache(
             64, max_batch_size, max_seq_len, page_size, enable_prefix_caching
         )
     else:
-        kv_cache_prefill = _create_prefill_kv_cache()
+        with _prefill_connector_patch(cache_manager):
+            kv_cache_prefill = _create_prefill_kv_cache()
         kv_cache_decode = _create_decode_kv_cache()
     server_addr = generate_zmq_ipc_path()
     client_addr = generate_zmq_ipc_path()
@@ -1450,6 +1534,65 @@ def test_prefix_caching_prefill_skips_cached_blocks_in_transfer() -> None:
         f"Expected fewer than {num_total_pages} pages transferred, "
         f"got {transferred_pages}"
     )
+
+
+@pytest.mark.parametrize("jenga_fp8", [False, True], ids=["paged", "jenga"])
+def test_dkv_cache_hint_reaches_prefill_connector(jenga_fp8: bool) -> None:
+    """A request's ``dkv_cache_hint`` reaches the prefill connector's
+    ``lookup`` and ``load`` through the real DI path.
+
+    Only prefill is built with the recording connector, so the hint it sees
+    can only have crossed the wire inside the ``PrefillRequest``.
+    """
+    page_size = 128
+    # Note: the last token is never hashed, so this leaves two full blocks for a
+    # fresh prefill to ask the connector about.
+    prompt_len = 2 * page_size + 44
+    connector = HintRecordingConnector()
+    decode, prefill, server_addr, q = create_di_scheduler(
+        page_size=page_size,
+        enable_prefix_caching=True,
+        jenga_fp8=jenga_fp8,
+        prefill_connector=connector,
+    )
+
+    dkv_cache_hint = b'{"version":2,"instances":[{"instance_name":"dkv-peer"}]}'
+    hinted = create_text_context(
+        target_endpoint=server_addr, prompt_len=prompt_len, output_len=5
+    )
+    hinted.dkv_cache_hint = dkv_cache_hint
+    q.request_queue.put(hinted)
+    decode.run_iteration()
+    prefill.run_iteration()
+    run_until(lambda: hinted.request_id in done_request_ids(q), decode, prefill)
+
+    assert connector.lookup_hints, "prefill never looked up the connector"
+    assert connector.load_hints, "prefill never loaded from the connector"
+    for hint in connector.lookup_hints + connector.load_hints:
+        assert type(hint) is bytes
+        assert hint == dkv_cache_hint
+
+    # Different tokens, so the prefill device cache cannot serve this one
+    # before the connector is asked.
+    unhinted = TextContext(
+        request_id=RequestID(),
+        max_length=prompt_len + 5,
+        tokens=TokenBuffer(np.full(prompt_len, 2, dtype=np.int64)),
+        target_endpoint=server_addr,
+    )
+    num_hinted_lookups = len(connector.lookup_hints)
+    num_hinted_loads = len(connector.load_hints)
+    q.request_queue.put(unhinted)
+    run_until(
+        lambda: unhinted.request_id in done_request_ids(q), decode, prefill
+    )
+
+    unhinted_hints = (
+        connector.lookup_hints[num_hinted_lookups:]
+        + connector.load_hints[num_hinted_loads:]
+    )
+    assert unhinted_hints
+    assert all(hint is None for hint in unhinted_hints)
 
 
 def test_completed_request_cleans_up_all_state() -> None:

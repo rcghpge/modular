@@ -28,6 +28,7 @@ from max.nn.kv_cache import (
     MHAKVCacheParams,
     MLAKVCacheParams,
     MultiKVCacheParams,
+    NullKVConnectorConfig,
 )
 from max.pipelines.context import (
     GenerationStatus,
@@ -196,6 +197,7 @@ def create_jenga_fp8_kv_cache(
     max_seq_len: int,
     page_size: int,
     enable_prefix_caching: bool = False,
+    kv_connector_config: KVConnectorConfig | None = None,
 ) -> JengaKVCacheManager:
     """Builds a Jenga manager for an fp8 cache on CPU.
 
@@ -209,6 +211,7 @@ def create_jenga_fp8_kv_cache(
         head_dim=128,
         page_size=page_size,
         enable_prefix_caching=enable_prefix_caching,
+        kv_connector_config=kv_connector_config or NullKVConnectorConfig(),
         devices=[DeviceRef.CPU()],
         kvcache_quant_config=KVCacheQuantizationConfig(
             scale_dtype=DType.float32
